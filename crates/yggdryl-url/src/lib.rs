@@ -118,6 +118,13 @@ pub(crate) fn params_to_query(params: &Params, encode: bool) -> String {
     pairs.join("&")
 }
 
+/// Builds the query field from `params`: `None` for an empty map (clearing the
+/// query), otherwise the rendered string. Shared by `with_params` and the query
+/// mutators so the empty-check lives in one place.
+fn build_query(params: &Params, encode: bool) -> Option<String> {
+    (!params.is_empty()).then(|| params_to_query(params, encode))
+}
+
 // Re-exported so a dependent only needs `yggdryl-url`.
 pub use yggdryl_core::{
     percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Output, Params,
@@ -527,8 +534,26 @@ impl Uri {
     /// Returns a copy whose query is built from `params`. When `encode`, each key
     /// and value is percent-encoded. An empty map clears the query.
     pub fn with_params(self, params: &Params, encode: bool) -> Uri {
-        let query = (!params.is_empty()).then(|| params_to_query(params, encode));
-        Uri::from_parts(self.scheme, self.authority, self.path, query, self.fragment)
+        Uri::from_parts(
+            self.scheme,
+            self.authority,
+            self.path,
+            build_query(params, encode),
+            self.fragment,
+        )
+    }
+
+    /// Clones the non-query fields once and attaches `query`. The query mutators
+    /// use this instead of `self.clone()` so the replaced (old) query — which we
+    /// fully own and are about to discard — is never cloned.
+    fn cloned_with_query(&self, query: Option<String>) -> Uri {
+        Uri::from_parts(
+            self.scheme.clone(),
+            self.authority.clone(),
+            self.path.clone(),
+            query,
+            self.fragment.clone(),
+        )
     }
 
     /// Returns a copy with `key` set to `values`, adding the parameter if absent
@@ -537,15 +562,22 @@ impl Uri {
     pub fn add_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Uri {
         let mut params = self.params(true);
         params.insert(key.into(), values);
-        self.clone().with_params(&params, encode)
+        self.cloned_with_query(build_query(&params, encode))
     }
 
     /// Renders the URI as a string. When `encode`, each component is percent-
     /// encoded for transport (idempotent); when not, components are percent-
     /// decoded for display. Both renderings are cached.
     pub fn to_str(&self, encode: bool) -> String {
+        self.rendered(encode).to_string()
+    }
+
+    /// The cached rendering as a borrowed `&str` (computed once per `encode`),
+    /// shared by [`to_str`](Uri::to_str) and the [`Display`] impl so neither
+    /// re-renders nor clones beyond the caller's needs.
+    fn rendered(&self, encode: bool) -> &str {
         let cache = if encode { &self.encoded } else { &self.decoded };
-        cache.get_or_init(|| self.render(encode)).clone()
+        cache.get_or_init(|| self.render(encode))
     }
 
     /// Builds the rendering for [`Uri::to_str`].
@@ -612,14 +644,14 @@ impl Uri {
     pub fn set_params(&self, params: &Params, encode: bool) -> Uri {
         let mut current = self.params(true);
         current.extend(params.iter().map(|(k, v)| (k.clone(), v.clone())));
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with one parameter removed (single delete).
     pub fn remove_param(&self, key: &str, encode: bool) -> Uri {
         let mut current = self.params(true);
         current.remove(key);
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with several parameters removed (bulk delete).
@@ -628,19 +660,19 @@ impl Uri {
         for key in keys {
             current.remove(key);
         }
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with the entire query removed.
     pub fn clear_params(&self) -> Uri {
-        self.clone().without_query()
+        self.cloned_with_query(None)
     }
 }
 
 impl fmt::Display for Uri {
-    /// Renders the encoded form (`to_str(true)`).
+    /// Renders the encoded form, writing the cached rendering directly (no clone).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str(true))
+        f.write_str(self.rendered(true))
     }
 }
 
@@ -1153,7 +1185,6 @@ impl Url {
     /// Returns a copy whose query is built from `params`. When `encode`, each key
     /// and value is percent-encoded. An empty map clears the query.
     pub fn with_params(self, params: &Params, encode: bool) -> Url {
-        let query = (!params.is_empty()).then(|| params_to_query(params, encode));
         Url::from_parts(
             self.scheme,
             self.username,
@@ -1161,8 +1192,24 @@ impl Url {
             self.host,
             self.port,
             self.path,
-            query,
+            build_query(params, encode),
             self.fragment,
+        )
+    }
+
+    /// Clones the non-query fields once and attaches `query`. The query mutators
+    /// use this instead of `self.clone()` so the replaced (old) query — which we
+    /// fully own and are about to discard — is never cloned.
+    fn cloned_with_query(&self, query: Option<String>) -> Url {
+        Url::from_parts(
+            self.scheme.clone(),
+            self.username.clone(),
+            self.password.clone(),
+            self.host.clone(),
+            self.port,
+            self.path.clone(),
+            query,
+            self.fragment.clone(),
         )
     }
 
@@ -1172,7 +1219,7 @@ impl Url {
     pub fn add_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Url {
         let mut params = self.params(true);
         params.insert(key.into(), values);
-        self.clone().with_params(&params, encode)
+        self.cloned_with_query(build_query(&params, encode))
     }
 
     /// Views this URL as a generic [`Uri`] — the "is-a URI" relationship, since
@@ -1191,8 +1238,14 @@ impl Url {
     /// encoded for transport (idempotent); when not, components are percent-
     /// decoded for display. Both renderings are cached.
     pub fn to_str(&self, encode: bool) -> String {
+        self.rendered(encode).to_string()
+    }
+
+    /// The cached rendering as a borrowed `&str` (computed once per `encode`),
+    /// shared by [`to_str`](Url::to_str) and the [`Display`] impl.
+    fn rendered(&self, encode: bool) -> &str {
         let cache = if encode { &self.encoded } else { &self.decoded };
-        cache.get_or_init(|| self.render(encode)).clone()
+        cache.get_or_init(|| self.render(encode))
     }
 
     /// Builds the rendering for [`Url::to_str`].
@@ -1295,14 +1348,14 @@ impl Url {
     pub fn set_params(&self, params: &Params, encode: bool) -> Url {
         let mut current = self.params(true);
         current.extend(params.iter().map(|(k, v)| (k.clone(), v.clone())));
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with one parameter removed (single delete).
     pub fn remove_param(&self, key: &str, encode: bool) -> Url {
         let mut current = self.params(true);
         current.remove(key);
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with several parameters removed (bulk delete).
@@ -1311,12 +1364,12 @@ impl Url {
         for key in keys {
             current.remove(key);
         }
-        self.clone().with_params(&current, encode)
+        self.cloned_with_query(build_query(&current, encode))
     }
 
     /// Returns a copy with the entire query removed.
     pub fn clear_params(&self) -> Url {
-        self.clone().without_query()
+        self.cloned_with_query(None)
     }
 }
 
@@ -1347,9 +1400,9 @@ impl From<&Url> for MediaType {
 }
 
 impl fmt::Display for Url {
-    /// Renders the encoded form (`to_str(true)`).
+    /// Renders the encoded form, writing the cached rendering directly (no clone).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str(true))
+        f.write_str(self.rendered(true))
     }
 }
 

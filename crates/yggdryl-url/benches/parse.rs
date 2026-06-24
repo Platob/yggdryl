@@ -84,6 +84,12 @@ fn main() {
     bench("Uri::has_param (miss)", n, || {
         black_box(black_box(&q).has_param(black_box("zzz")));
     });
+    bench("Url::to_string() [Display]", n, || {
+        black_box(black_box(&url).to_string());
+    });
+    bench("Uri::add_param (has query)", n, || {
+        black_box(black_box(&q).add_param(black_box("z"), black_box(vec!["9".into()]), true));
+    });
 
     println!("== encoding ==");
     bench("percent_encode (no special)", n, || {
