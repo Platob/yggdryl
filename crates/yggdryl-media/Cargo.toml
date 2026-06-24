@@ -16,3 +16,10 @@ path = "src/lib.rs"
 
 [dependencies]
 yggdryl-core.workspace = true
+# Optional, off by default: structured logging via the `log` facade. Enabling the
+# `log` feature emits events for global registry changes; without it the crate
+# stays dependency-free.
+log = { version = "0.4", optional = true }
+
+[features]
+log = ["dep:log"]

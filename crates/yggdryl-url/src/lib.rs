@@ -17,6 +17,15 @@ use std::sync::OnceLock;
 
 use yggdryl_core::{encode_component, validate_percent_encoding};
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise (so the crate is dependency-free by default and pays no runtime cost).
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+
 // Per-component sets of delimiter bytes that are left as-is when encoding a
 // component for output (on top of the always-safe unreserved set).
 pub(crate) const KEEP_AUTHORITY: &[u8] = b":@[]";
@@ -211,12 +220,19 @@ impl FromInput for Uri {
     /// "scheme" is read as a Windows drive letter, also `file`). The scheme and
     /// any `%XX` escapes are validated.
     fn from_str(input: &str) -> Result<Uri, UriError> {
+        log_event!(trace, "Uri::from_str {input:?}");
         if input.is_empty() {
             return Err(UriError::Empty);
         }
-        // Normalise Windows separators so paths use `/` everywhere.
-        let normalized = input.replace('\\', "/");
-        let input = normalized.as_str();
+        // Normalise Windows separators so paths use `/` everywhere. Only allocate
+        // when a backslash is actually present (the uncommon case).
+        let normalized;
+        let input = if input.contains('\\') {
+            normalized = input.replace('\\', "/");
+            normalized.as_str()
+        } else {
+            input
+        };
 
         // Peel off the fragment, then the query, from the right.
         let (rest, fragment) = split_once_owned(input, '#');
@@ -744,6 +760,7 @@ impl FromInput for Url {
     /// Parses a string into a [`Url`]. Requires a scheme, an authority and a
     /// non-empty host.
     fn from_str(input: &str) -> Result<Url, UrlError> {
+        log_event!(trace, "Url::from_str {input:?}");
         Url::from_uri(&Uri::from_str(input)?)
     }
 
@@ -1416,6 +1433,52 @@ fn push_host(out: &mut String, host: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uri_edge_cases() {
+        // Empty input.
+        assert_eq!(Uri::from_str(""), Err(UriError::Empty));
+        // A `?`/`#` inside the query/fragment is kept (split is leftmost only).
+        let u = Uri::from_str("http://h/p?a=b?c#x#y").unwrap();
+        assert_eq!(u.query(), Some("a=b?c"));
+        assert_eq!(u.fragment(), Some("x#y"));
+        // A `:` after the first `/` is part of the path, not a scheme.
+        assert_eq!(Uri::from_str("a/b:c").unwrap().scheme(), "file");
+        // Empty query/fragment are preserved as `Some("")`.
+        let e = Uri::from_str("http://h/p?#").unwrap();
+        assert_eq!(e.query(), Some(""));
+        assert_eq!(e.fragment(), Some(""));
+        // Scheme-only with empty authority.
+        let bare = Uri::from_str("http://").unwrap();
+        assert_eq!(bare.authority(), Some(""));
+        assert_eq!(bare.path(), "");
+        // A trailing `%` is a malformed escape.
+        assert!(Uri::from_str("http://h/a%").is_err());
+        assert!(Uri::from_str("http://h/a%2").is_err());
+    }
+
+    #[test]
+    fn url_edge_cases() {
+        // Port out of the u16 range is rejected.
+        assert!(matches!(
+            Url::from_str("http://h:99999"),
+            Err(UrlError::InvalidPort(_))
+        ));
+        // An unclosed IPv6 literal is rejected.
+        assert!(Url::from_str("http://[::1/p").is_err());
+        // Userinfo with an `@`-free password and an empty path round-trips.
+        let u = Url::from_str("http://user:pa:ss@h:1/").unwrap();
+        assert_eq!(u.username(), Some("user"));
+        assert_eq!(u.password(), Some("pa:ss"));
+        assert_eq!(u.port(), Some(1));
+        // Empty host is rejected even with userinfo.
+        assert_eq!(Url::from_str("http://u@:80"), Err(UrlError::MissingHost));
+        // IPv6 with zone-id-like content round-trips through brackets.
+        assert_eq!(
+            Url::from_str("http://[::1]:8080/").unwrap().to_string(),
+            "http://[::1]:8080/"
+        );
+    }
 
     #[test]
     fn uri_full() {

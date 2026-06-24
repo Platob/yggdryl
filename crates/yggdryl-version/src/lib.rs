@@ -179,6 +179,27 @@ impl ToOutput for Version {
 mod tests {
     use super::*;
     #[test]
+    fn version_edge_cases() {
+        // u64::MAX parses; one past it overflows and errors.
+        assert_eq!(
+            Version::from_str("18446744073709551615").unwrap().major(),
+            u64::MAX
+        );
+        assert!(matches!(
+            Version::from_str("18446744073709551616"),
+            Err(VersionError::InvalidNumber(_))
+        ));
+        // Negatives, whitespace and trailing dots are not valid numbers.
+        assert!(Version::from_str("-1").is_err());
+        assert!(Version::from_str("1. 2").is_err());
+        assert_eq!(
+            Version::from_str("1."),
+            Err(VersionError::InvalidNumber(String::new()))
+        );
+        // Leading zeros are accepted.
+        assert_eq!(Version::from_str("01.02").unwrap(), Version::new(1, 2, 0));
+    }
+    #[test]
     fn version_parse_full() {
         let v = Version::from_str("1.4.2").unwrap();
         assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));

@@ -27,6 +27,15 @@ use std::sync::{OnceLock, RwLock};
 
 pub use yggdryl_core::{FromInput, Mapping, ToOutput};
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise (so the crate is dependency-free by default and pays no runtime cost).
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+
 /// Error returned when a media or MIME type cannot be interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaError {
@@ -490,12 +499,22 @@ impl MimeType {
     /// Looks up a [`MimeType`] by its (case-insensitive) MIME string, falling back
     /// to [`Other`](MimeType::Other) for anything not built in.
     pub fn from_mime(mime: &str) -> MimeType {
-        let mime = mime.to_ascii_lowercase();
+        // Fast path: an already-lowercase string matches a built-in by borrow, so
+        // no allocation is needed unless it falls through to `Other`. Registry
+        // lookups (`from_extension`/`from_magic`) always hit this path.
+        if !mime.bytes().any(|b| b.is_ascii_uppercase()) {
+            return BUILTINS
+                .iter()
+                .find(|b| b.mime == mime)
+                .map(|b| (b.new)())
+                .unwrap_or_else(|| MimeType::Other(mime.to_string()));
+        }
+        let lower = mime.to_ascii_lowercase();
         BUILTINS
             .iter()
-            .find(|b| b.mime == mime)
+            .find(|b| b.mime == lower)
             .map(|b| (b.new)())
-            .unwrap_or(MimeType::Other(mime))
+            .unwrap_or(MimeType::Other(lower))
     }
 
     /// Builds a [`MimeType`] from its `type` and `subtype` parts directly, without
@@ -588,6 +607,11 @@ impl MimeType {
             mime: mime.clone(),
         };
         let mut registry = registry().write().unwrap();
+        log_event!(
+            debug,
+            "MimeType::register {mime:?} ({} extensions)",
+            entry.extensions.len()
+        );
         match registry.iter_mut().find(|e| e.mime == mime) {
             Some(slot) => *slot = entry,
             None => registry.push(entry),
@@ -601,7 +625,9 @@ impl MimeType {
         let mut registry = registry().write().unwrap();
         let before = registry.len();
         registry.retain(|e| e.mime != mime);
-        registry.len() != before
+        let removed = registry.len() != before;
+        log_event!(debug, "MimeType::unregister {mime:?} (removed: {removed})");
+        removed
     }
 
     /// Restores the global registry to its built-in defaults, discarding every
@@ -609,6 +635,11 @@ impl MimeType {
     pub fn reset_registry() {
         let mut registry = registry().write().unwrap();
         *registry = BUILTINS.iter().map(Entry::from_builtin).collect();
+        log_event!(
+            debug,
+            "MimeType::reset_registry ({} built-ins)",
+            registry.len()
+        );
     }
 }
 
@@ -834,6 +865,37 @@ impl ToOutput for MediaType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mime_edge_cases() {
+        // Malformed MIME strings.
+        assert!(MimeType::from_str("/").is_err());
+        assert!(MimeType::from_str("application/").is_err());
+        assert!(MimeType::from_str("/json").is_err());
+        // Case-insensitive lookup (the upper-case path of `from_mime`).
+        assert_eq!(MimeType::from_mime("TEXT/CSV"), MimeType::Csv);
+        assert_eq!(
+            MimeType::from_str("Application/JSON").unwrap(),
+            MimeType::Json
+        );
+        // Leading dots and case on extensions are normalised.
+        assert_eq!(MimeType::from_extension("...GZ"), Some(MimeType::Gzip));
+        assert_eq!(MimeType::from_extension(""), None);
+    }
+
+    #[test]
+    fn media_type_edge_cases() {
+        // Trailing dot, empty, and extension-less names yield an empty stack.
+        assert!(MediaType::from_path("a.").is_empty());
+        assert!(MediaType::from_path("").is_empty());
+        assert!(MediaType::from_path("/a/b/").is_empty());
+        // A leading dot makes the first segment a dotfile stem.
+        assert_eq!(MediaType::from_path(".tar.gz").types(), [MimeType::Gzip]);
+        // A directory that looks like an extension is ignored (only the name).
+        assert!(MediaType::from_path("/srv/json/file").is_empty());
+        // from_str on an empty input errors, unlike from_path.
+        assert_eq!(MediaType::from_str(""), Err(MediaError::Empty));
+    }
 
     #[test]
     fn parses_and_splits_mime() {

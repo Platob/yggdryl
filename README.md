@@ -112,6 +112,25 @@ npm run build                   # napi build --platform --release
 npm test                        # node --test
 ```
 
+### Benchmarks
+
+The hot parsing/rendering paths have a lightweight, dependency-free timing
+benchmark (a `harness = false` binary, no benchmark framework):
+
+```bash
+cargo bench -p yggdryl-url       # prints ns/iter for Uri/Url/MediaType parsing
+```
+
+### Logging (optional)
+
+`yggdryl-url` and `yggdryl-media` have an optional `log` feature (off by default,
+so the crates stay dependency-free). Enable it to emit `log` events — parse
+traces and global MIME-registry changes — through any `log` backend:
+
+```toml
+yggdryl-url = { version = "0.1", features = ["log"] }
+```
+
 ## Why this shape?
 
 - **Rust-first**: the core holds all parsing logic and the test suite of record.
