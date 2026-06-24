@@ -133,6 +133,29 @@ variables → Actions:
 | `PYPI_API_TOKEN` | PyPI — Linux + Windows wheels (+ sdist) |
 | `NPM_TOKEN` | npm — the `yggdryl` addon (both `.node` files bundled) |
 
+The PyPI step uses `pypa/gh-action-pypi-publish` — `maturin upload`/`maturin
+publish` are deprecated, so don't reintroduce them.
+
+### Publishing manually
+
+If you ever publish outside CI, use the non-deprecated tools:
+
+```bash
+# Rust
+cargo publish -p yggdryl
+
+# Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)
+maturin build --release -m bindings/python/Cargo.toml --out dist
+maturin sdist           -m bindings/python/Cargo.toml --out dist
+twine upload dist/*
+
+# Node
+cd bindings/node && npm run build && npm publish --access public
+```
+
+`twine` reads `TWINE_USERNAME=__token__` / `TWINE_PASSWORD=<pypi-token>` from the
+environment, so no credential is written to disk or a keyring.
+
 ## License
 
 [Apache-2.0](LICENSE).

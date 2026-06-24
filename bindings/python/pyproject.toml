@@ -23,6 +23,8 @@ Repository = "https://github.com/Platob/yggdryl"
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
+# `twine` is the recommended uploader; `maturin upload` is deprecated.
+publish = ["twine>=5.0"]
 
 [tool.maturin]
 # Build the crate in this directory and name the wheel `yggdryl`.
