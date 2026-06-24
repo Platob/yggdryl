@@ -215,6 +215,87 @@ impl Uri {
         self.inner.fragment().map(str::to_string)
     }
 
+    /// Base scheme before any `+` extension (e.g. `https` for `https+zip`).
+    #[napi(getter, js_name = "schemeBase")]
+    pub fn scheme_base(&self) -> String {
+        self.inner.scheme_base().to_string()
+    }
+
+    /// The `+`-separated scheme extensions (e.g. `["zip"]`).
+    #[napi(getter, js_name = "schemeExt")]
+    pub fn scheme_ext(&self) -> Vec<String> {
+        self.inner
+            .scheme_ext()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Build a `Uri` from a `Url`.
+    #[napi(factory, js_name = "fromUrl")]
+    pub fn from_url(url: &Url) -> Uri {
+        Uri {
+            inner: CoreUri::from_url(&url.inner),
+        }
+    }
+
+    /// Parse this URI into a `Url` (requires an authority and host).
+    #[napi(js_name = "toUrl")]
+    pub fn to_url(&self) -> Result<Url> {
+        self.inner
+            .to_url()
+            .map(|inner| Url { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Decoded values of one query parameter, or `null`.
+    #[napi(js_name = "getParam")]
+    pub fn get_param(&self, key: String) -> Option<Vec<String>> {
+        self.inner.get_param(&key)
+    }
+
+    /// Return a copy with one parameter created or replaced (single update).
+    #[napi(js_name = "setParam")]
+    pub fn set_param(&self, key: String, values: Vec<String>, encode: Option<bool>) -> Uri {
+        Uri {
+            inner: self.inner.set_param(key, values, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with every entry of `params` set, others untouched (bulk).
+    #[napi(js_name = "setParams")]
+    pub fn set_params(&self, params: HashMap<String, Vec<String>>, encode: Option<bool>) -> Uri {
+        Uri {
+            inner: self
+                .inner
+                .set_params(&params.into_iter().collect(), encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with one parameter removed (single delete).
+    #[napi(js_name = "removeParam")]
+    pub fn remove_param(&self, key: String, encode: Option<bool>) -> Uri {
+        Uri {
+            inner: self.inner.remove_param(&key, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with several parameters removed (bulk delete).
+    #[napi(js_name = "removeParams")]
+    pub fn remove_params(&self, keys: Vec<String>, encode: Option<bool>) -> Uri {
+        Uri {
+            inner: self.inner.remove_params(&keys, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with the entire query removed.
+    #[napi(js_name = "clearParams")]
+    pub fn clear_params(&self) -> Uri {
+        Uri {
+            inner: self.inner.clear_params(),
+        }
+    }
+
     /// Render the URI; `encode` (default) percent-encodes, else decodes.
     #[napi(js_name = "toString")]
     pub fn to_string_js(&self, encode: Option<bool>) -> String {
@@ -479,6 +560,78 @@ impl Url {
     #[napi(getter)]
     pub fn authority(&self) -> String {
         self.inner.authority()
+    }
+
+    /// Base scheme before any `+` extension (e.g. `https` for `https+zip`).
+    #[napi(getter, js_name = "schemeBase")]
+    pub fn scheme_base(&self) -> String {
+        self.inner.scheme_base().to_string()
+    }
+
+    /// The `+`-separated scheme extensions (e.g. `["zip"]`).
+    #[napi(getter, js_name = "schemeExt")]
+    pub fn scheme_ext(&self) -> Vec<String> {
+        self.inner
+            .scheme_ext()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Build a `Url` from a `Uri` (requires an authority and host).
+    #[napi(factory, js_name = "fromUri")]
+    pub fn from_uri(uri: &Uri) -> Result<Url> {
+        CoreUrl::from_uri(&uri.inner)
+            .map(|inner| Url { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Decoded values of one query parameter, or `null`.
+    #[napi(js_name = "getParam")]
+    pub fn get_param(&self, key: String) -> Option<Vec<String>> {
+        self.inner.get_param(&key)
+    }
+
+    /// Return a copy with one parameter created or replaced (single update).
+    #[napi(js_name = "setParam")]
+    pub fn set_param(&self, key: String, values: Vec<String>, encode: Option<bool>) -> Url {
+        Url {
+            inner: self.inner.set_param(key, values, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with every entry of `params` set, others untouched (bulk).
+    #[napi(js_name = "setParams")]
+    pub fn set_params(&self, params: HashMap<String, Vec<String>>, encode: Option<bool>) -> Url {
+        Url {
+            inner: self
+                .inner
+                .set_params(&params.into_iter().collect(), encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with one parameter removed (single delete).
+    #[napi(js_name = "removeParam")]
+    pub fn remove_param(&self, key: String, encode: Option<bool>) -> Url {
+        Url {
+            inner: self.inner.remove_param(&key, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with several parameters removed (bulk delete).
+    #[napi(js_name = "removeParams")]
+    pub fn remove_params(&self, keys: Vec<String>, encode: Option<bool>) -> Url {
+        Url {
+            inner: self.inner.remove_params(&keys, encode.unwrap_or(true)),
+        }
+    }
+
+    /// Return a copy with the entire query removed.
+    #[napi(js_name = "clearParams")]
+    pub fn clear_params(&self) -> Url {
+        Url {
+            inner: self.inner.clear_params(),
+        }
     }
 
     /// Render the URL; `encode` (default) percent-encodes, else decodes.

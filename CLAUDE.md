@@ -27,9 +27,12 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
 | Single-field functional update | `with_<field>(value)` returns a new value |
 | Clear an optional field | `without_<field>()` |
-| Read query parameters | `params()` → `map<str, list<str>>` |
-| Replace the whole query | `with_params(map)` |
-| Add/replace one parameter | `add_param(key, values)` |
+| Read query parameters | `params(decode=true)` → `map<str, list<str>>` |
+| Replace the whole query | `with_params(map, encode=true)` |
+| Add/replace one parameter | `add_param(key, values, encode=true)` |
+| Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
+| Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
+| Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
 
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use

@@ -696,6 +696,70 @@ impl Uri {
     }
 }
 
+/// Scheme extensions, conversions and query-parameter CRUD.
+impl Uri {
+    /// The base scheme before any `+` extension, e.g. `"https"` for `"https+zip"`.
+    pub fn scheme_base(&self) -> &str {
+        self.scheme.split('+').next().unwrap_or(&self.scheme)
+    }
+
+    /// The `+`-separated scheme extensions, e.g. `["zip"]` for `"https+zip"` and
+    /// `[]` for a plain `"https"`.
+    pub fn scheme_ext(&self) -> Vec<&str> {
+        self.scheme.split('+').skip(1).collect()
+    }
+
+    /// Builds a [`Uri`] from a [`Url`].
+    pub fn from_url(url: &Url) -> Uri {
+        url.to_uri()
+    }
+
+    /// Parses this URI into a [`Url`] (requires an authority with a non-empty
+    /// host).
+    pub fn to_url(&self) -> Result<Url, UrlError> {
+        Url::from_uri(self)
+    }
+
+    /// The decoded values of one query parameter, or `None` if absent.
+    pub fn get_param(&self, key: &str) -> Option<Vec<String>> {
+        self.params(true).get(key).cloned()
+    }
+
+    /// Returns a copy with one parameter created or replaced (single update).
+    pub fn set_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Uri {
+        self.add_param(key, values, encode)
+    }
+
+    /// Returns a copy with every entry of `params` created or replaced, leaving
+    /// other parameters untouched (bulk update).
+    pub fn set_params(&self, params: &Params, encode: bool) -> Uri {
+        let mut current = self.params(true);
+        current.extend(params.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with one parameter removed (single delete).
+    pub fn remove_param(&self, key: &str, encode: bool) -> Uri {
+        let mut current = self.params(true);
+        current.remove(key);
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with several parameters removed (bulk delete).
+    pub fn remove_params(&self, keys: &[String], encode: bool) -> Uri {
+        let mut current = self.params(true);
+        for key in keys {
+            current.remove(key);
+        }
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with the entire query removed.
+    pub fn clear_params(&self) -> Uri {
+        self.clone().without_query()
+    }
+}
+
 impl fmt::Display for Uri {
     /// Renders the encoded form (`to_str(true)`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -753,39 +817,7 @@ impl FromInput for Url {
     /// Parses a string into a [`Url`]. Requires a scheme, an authority and a
     /// non-empty host. `safe` is forwarded to the underlying [`Uri`] parse.
     fn from_str(input: &str, safe: bool) -> Result<Url, UrlError> {
-        let uri = Uri::from_str(input, safe)?;
-        let authority = uri.authority.ok_or(UrlError::MissingAuthority)?;
-
-        // Split optional `userinfo@` from `host[:port]`.
-        let (userinfo, host_port) = match authority.split_once('@') {
-            Some((user, rest)) => (Some(user), rest),
-            None => (None, authority.as_str()),
-        };
-
-        let (username, password) = match userinfo {
-            Some(info) => match info.split_once(':') {
-                Some((u, p)) => (Some(u.to_string()), Some(p.to_string())),
-                None => (Some(info.to_string()), None),
-            },
-            None => (None, None),
-        };
-
-        let (host, port) = split_host_port(host_port)?;
-        if host.is_empty() {
-            return Err(UrlError::MissingHost);
-        }
-
-        Ok(Url {
-            scheme: uri.scheme,
-            username,
-            password,
-            host,
-            port,
-            path: uri.path,
-            query: uri.query,
-            fragment: uri.fragment,
-            ..Default::default()
-        })
+        Url::from_uri(&Uri::from_str(input, safe)?)
     }
 
     /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
@@ -1204,6 +1236,94 @@ impl Url {
             out.push_str(&render_component(fragment, KEEP_FRAGMENT, encode));
         }
         out
+    }
+}
+
+/// Conversions, scheme extensions and query-parameter CRUD.
+impl Url {
+    /// Builds a [`Url`] from a [`Uri`] by decomposing its authority. Requires an
+    /// authority with a non-empty host.
+    pub fn from_uri(uri: &Uri) -> Result<Url, UrlError> {
+        let authority = uri.authority().ok_or(UrlError::MissingAuthority)?;
+
+        // Split optional `userinfo@` from `host[:port]`.
+        let (userinfo, host_port) = match authority.split_once('@') {
+            Some((user, rest)) => (Some(user), rest),
+            None => (None, authority),
+        };
+        let (username, password) = match userinfo {
+            Some(info) => match info.split_once(':') {
+                Some((u, p)) => (Some(u.to_string()), Some(p.to_string())),
+                None => (Some(info.to_string()), None),
+            },
+            None => (None, None),
+        };
+
+        let (host, port) = split_host_port(host_port)?;
+        if host.is_empty() {
+            return Err(UrlError::MissingHost);
+        }
+
+        Ok(Url {
+            scheme: uri.scheme().to_string(),
+            username,
+            password,
+            host,
+            port,
+            path: uri.path().to_string(),
+            query: uri.query().map(str::to_string),
+            fragment: uri.fragment().map(str::to_string),
+            ..Default::default()
+        })
+    }
+
+    /// The base scheme before any `+` extension, e.g. `"https"` for `"https+zip"`.
+    pub fn scheme_base(&self) -> &str {
+        self.scheme.split('+').next().unwrap_or(&self.scheme)
+    }
+
+    /// The `+`-separated scheme extensions, e.g. `["zip"]` for `"https+zip"`.
+    pub fn scheme_ext(&self) -> Vec<&str> {
+        self.scheme.split('+').skip(1).collect()
+    }
+
+    /// The decoded values of one query parameter, or `None` if absent.
+    pub fn get_param(&self, key: &str) -> Option<Vec<String>> {
+        self.params(true).get(key).cloned()
+    }
+
+    /// Returns a copy with one parameter created or replaced (single update).
+    pub fn set_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Url {
+        self.add_param(key, values, encode)
+    }
+
+    /// Returns a copy with every entry of `params` created or replaced, leaving
+    /// other parameters untouched (bulk update).
+    pub fn set_params(&self, params: &Params, encode: bool) -> Url {
+        let mut current = self.params(true);
+        current.extend(params.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with one parameter removed (single delete).
+    pub fn remove_param(&self, key: &str, encode: bool) -> Url {
+        let mut current = self.params(true);
+        current.remove(key);
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with several parameters removed (bulk delete).
+    pub fn remove_params(&self, keys: &[String], encode: bool) -> Url {
+        let mut current = self.params(true);
+        for key in keys {
+            current.remove(key);
+        }
+        self.clone().with_params(&current, encode)
+    }
+
+    /// Returns a copy with the entire query removed.
+    pub fn clear_params(&self) -> Url {
+        self.clone().without_query()
     }
 }
 
@@ -1772,6 +1892,72 @@ mod tests {
         assert_eq!(updated.query(), Some("q=x&q=y"));
         let added = updated.add_param("r", vec!["1".to_string()], true);
         assert_eq!(added.query(), Some("q=x&q=y&r=1"));
+    }
+
+    #[test]
+    fn scheme_extensions() {
+        let uri = Uri::from_str("https+zip://h/f", true).unwrap();
+        assert_eq!(uri.scheme(), "https+zip");
+        assert_eq!(uri.scheme_base(), "https");
+        assert_eq!(uri.scheme_ext(), vec!["zip"]);
+        let plain = Uri::from_str("https://h", true).unwrap();
+        assert_eq!(plain.scheme_base(), "https");
+        assert!(plain.scheme_ext().is_empty());
+        // works on Url too
+        let url = Url::from_str("git+ssh://h/r", true).unwrap();
+        assert_eq!(url.scheme_base(), "git");
+        assert_eq!(url.scheme_ext(), vec!["ssh"]);
+    }
+
+    #[test]
+    fn uri_url_conversions() {
+        let url = Url::from_str("https://user@h:8443/p?x=1", true).unwrap();
+        let uri = Uri::from_url(&url);
+        assert_eq!(uri.authority(), Some("user@h:8443"));
+        // round-trip back to Url
+        let back = uri.to_url().unwrap();
+        assert_eq!(back, url);
+        // a Uri without authority cannot become a Url
+        assert_eq!(
+            Uri::from_str("mailto:a@b", true).unwrap().to_url(),
+            Err(UrlError::MissingAuthority)
+        );
+        // Url::from_uri mirrors to_url
+        assert_eq!(Url::from_uri(&uri).unwrap(), url);
+    }
+
+    #[test]
+    fn params_crud_single_and_bulk() {
+        let base = Url::from_str("https://h/p?a=1&b=2&c=3", true).unwrap();
+        assert_eq!(base.get_param("a"), Some(vec!["1".to_string()]));
+        assert_eq!(base.get_param("z"), None);
+
+        // single update
+        assert_eq!(
+            base.set_param("a", vec!["9".into()], true).get_param("a"),
+            Some(vec!["9".to_string()])
+        );
+
+        // bulk update (b replaced, d added, a/c kept)
+        let bulk = base.set_params(
+            &Params::from([
+                ("b".to_string(), vec!["x".to_string()]),
+                ("d".to_string(), vec!["y".to_string()]),
+            ]),
+            true,
+        );
+        assert_eq!(bulk.get_param("b"), Some(vec!["x".to_string()]));
+        assert_eq!(bulk.get_param("d"), Some(vec!["y".to_string()]));
+        assert_eq!(bulk.get_param("a"), Some(vec!["1".to_string()]));
+
+        // single + bulk delete, and clear
+        assert_eq!(base.remove_param("a", true).get_param("a"), None);
+        let trimmed = base.remove_params(&["a".to_string(), "b".to_string()], true);
+        assert_eq!(
+            trimmed.params(true).keys().cloned().collect::<Vec<_>>(),
+            vec!["c".to_string()]
+        );
+        assert_eq!(base.clear_params().query(), None);
     }
 
     #[test]

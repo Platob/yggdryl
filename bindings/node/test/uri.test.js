@@ -134,6 +134,34 @@ test('url toUri', () => {
   assert.strictEqual(uri.authority, 'user@h:8443')
 })
 
+test('scheme extensions', () => {
+  const uri = new Uri('https+zip://h/f')
+  assert.strictEqual(uri.schemeBase, 'https')
+  assert.deepStrictEqual(uri.schemeExt, ['zip'])
+  assert.deepStrictEqual(new Uri('https://h').schemeExt, [])
+})
+
+test('uri/url conversions', () => {
+  const url = new Url('https://user@h:8443/p?x=1')
+  const uri = Uri.fromUrl(url)
+  assert.strictEqual(uri.authority, 'user@h:8443')
+  assert.strictEqual(uri.toUrl().toString(), url.toString())
+  assert.strictEqual(Url.fromUri(uri).toString(), url.toString())
+  assert.throws(() => new Uri('mailto:a@b').toUrl())
+})
+
+test('params CRUD single and bulk', () => {
+  const base = new Url('https://h/p?a=1&b=2&c=3')
+  assert.deepStrictEqual(base.getParam('a'), ['1'])
+  assert.strictEqual(base.getParam('z'), null)
+  assert.deepStrictEqual(base.setParam('a', ['9']).getParam('a'), ['9'])
+  const bulk = base.setParams({ b: ['x'], d: ['y'] })
+  assert.deepStrictEqual(bulk.getParam('d'), ['y'])
+  assert.strictEqual(base.removeParam('a').getParam('a'), null)
+  assert.deepStrictEqual(Object.keys(base.removeParams(['a', 'b']).params()), ['c'])
+  assert.strictEqual(base.clearParams().query, null)
+})
+
 test('encode/decode toString and params', () => {
   const url = new Url('https://h/a%20b?q=x%20y', false)
   assert.strictEqual(url.toString(), 'https://h/a%20b?q=x%20y') // encode (default)

@@ -176,5 +176,35 @@ def test_encode_decode_to_string():
     assert built.query == "a=b c"
 
 
+def test_scheme_ext():
+    uri = yggdryl.Uri("https+zip://h/f")
+    assert uri.scheme == "https+zip"
+    assert uri.scheme_base == "https"
+    assert uri.scheme_ext == ["zip"]
+    assert yggdryl.Uri("https://h").scheme_ext == []
+
+
+def test_uri_url_conversions():
+    url = yggdryl.Url("https://user@h:8443/p?x=1")
+    uri = yggdryl.Uri.from_url(url)
+    assert uri.authority == "user@h:8443"
+    assert url == uri.to_url()
+    assert url == yggdryl.Url.from_uri(uri)
+    with pytest.raises(ValueError):
+        yggdryl.Uri("mailto:a@b").to_url()
+
+
+def test_params_crud():
+    base = yggdryl.Url("https://h/p?a=1&b=2&c=3")
+    assert base.get_param("a") == ["1"]
+    assert base.get_param("z") is None
+    assert base.set_param("a", ["9"]).get_param("a") == ["9"]
+    bulk = base.set_params({"b": ["x"], "d": ["y"]})
+    assert bulk.get_param("b") == ["x"] and bulk.get_param("d") == ["y"]
+    assert base.remove_param("a").get_param("a") is None
+    assert list(base.remove_params(["a", "b"]).params().keys()) == ["c"]
+    assert base.clear_params().query is None
+
+
 def test_module_version():
     assert isinstance(yggdryl.__version__, str)

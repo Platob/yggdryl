@@ -176,6 +176,78 @@ impl Uri {
         }
     }
 
+    /// Base scheme before any ``+`` extension (e.g. ``https`` for ``https+zip``).
+    #[getter]
+    fn scheme_base(&self) -> &str {
+        self.inner.scheme_base()
+    }
+
+    /// The ``+``-separated scheme extensions (e.g. ``["zip"]``).
+    #[getter]
+    fn scheme_ext(&self) -> Vec<&str> {
+        self.inner.scheme_ext()
+    }
+
+    /// Build a :class:`Uri` from a :class:`Url`.
+    #[staticmethod]
+    fn from_url(url: &Url) -> Self {
+        Uri {
+            inner: CoreUri::from_url(&url.inner),
+        }
+    }
+
+    /// Parse this URI into a :class:`Url` (requires an authority and host).
+    fn to_url(&self) -> PyResult<Url> {
+        self.inner
+            .to_url()
+            .map(|inner| Url { inner })
+            .map_err(url_err)
+    }
+
+    /// Decoded values of one query parameter, or ``None``.
+    fn get_param(&self, key: &str) -> Option<Vec<String>> {
+        self.inner.get_param(key)
+    }
+
+    /// Return a copy with one parameter created or replaced (single update).
+    #[pyo3(signature = (key, values, encode = true))]
+    fn set_param(&self, key: String, values: Vec<String>, encode: bool) -> Self {
+        Uri {
+            inner: self.inner.set_param(key, values, encode),
+        }
+    }
+
+    /// Return a copy with every entry of ``params`` set, others untouched (bulk).
+    #[pyo3(signature = (params, encode = true))]
+    fn set_params(&self, params: Params, encode: bool) -> Self {
+        Uri {
+            inner: self.inner.set_params(&params, encode),
+        }
+    }
+
+    /// Return a copy with one parameter removed (single delete).
+    #[pyo3(signature = (key, encode = true))]
+    fn remove_param(&self, key: &str, encode: bool) -> Self {
+        Uri {
+            inner: self.inner.remove_param(key, encode),
+        }
+    }
+
+    /// Return a copy with several parameters removed (bulk delete).
+    #[pyo3(signature = (keys, encode = true))]
+    fn remove_params(&self, keys: Vec<String>, encode: bool) -> Self {
+        Uri {
+            inner: self.inner.remove_params(&keys, encode),
+        }
+    }
+
+    /// Return a copy with the entire query removed.
+    fn clear_params(&self) -> Self {
+        Uri {
+            inner: self.inner.clear_params(),
+        }
+    }
+
     /// Render the URI; ``encode`` (default) percent-encodes, else decodes.
     #[pyo3(signature = (encode = true))]
     fn to_string(&self, encode: bool) -> String {
@@ -409,6 +481,70 @@ impl Url {
     fn add_param(&self, key: String, values: Vec<String>, encode: bool) -> Self {
         Url {
             inner: self.inner.add_param(key, values, encode),
+        }
+    }
+
+    /// Base scheme before any ``+`` extension (e.g. ``https`` for ``https+zip``).
+    #[getter]
+    fn scheme_base(&self) -> &str {
+        self.inner.scheme_base()
+    }
+
+    /// The ``+``-separated scheme extensions (e.g. ``["zip"]``).
+    #[getter]
+    fn scheme_ext(&self) -> Vec<&str> {
+        self.inner.scheme_ext()
+    }
+
+    /// Build a :class:`Url` from a :class:`Uri` (requires an authority and host).
+    #[staticmethod]
+    fn from_uri(uri: &Uri) -> PyResult<Self> {
+        CoreUrl::from_uri(&uri.inner)
+            .map(|inner| Url { inner })
+            .map_err(url_err)
+    }
+
+    /// Decoded values of one query parameter, or ``None``.
+    fn get_param(&self, key: &str) -> Option<Vec<String>> {
+        self.inner.get_param(key)
+    }
+
+    /// Return a copy with one parameter created or replaced (single update).
+    #[pyo3(signature = (key, values, encode = true))]
+    fn set_param(&self, key: String, values: Vec<String>, encode: bool) -> Self {
+        Url {
+            inner: self.inner.set_param(key, values, encode),
+        }
+    }
+
+    /// Return a copy with every entry of ``params`` set, others untouched (bulk).
+    #[pyo3(signature = (params, encode = true))]
+    fn set_params(&self, params: Params, encode: bool) -> Self {
+        Url {
+            inner: self.inner.set_params(&params, encode),
+        }
+    }
+
+    /// Return a copy with one parameter removed (single delete).
+    #[pyo3(signature = (key, encode = true))]
+    fn remove_param(&self, key: &str, encode: bool) -> Self {
+        Url {
+            inner: self.inner.remove_param(key, encode),
+        }
+    }
+
+    /// Return a copy with several parameters removed (bulk delete).
+    #[pyo3(signature = (keys, encode = true))]
+    fn remove_params(&self, keys: Vec<String>, encode: bool) -> Self {
+        Url {
+            inner: self.inner.remove_params(&keys, encode),
+        }
+    }
+
+    /// Return a copy with the entire query removed.
+    fn clear_params(&self) -> Self {
+        Url {
+            inner: self.inner.clear_params(),
         }
     }
 
