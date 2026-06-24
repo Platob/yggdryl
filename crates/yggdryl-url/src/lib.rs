@@ -245,6 +245,10 @@ impl FromInput for Uri {
 
         let (scheme, authority, path) = if !has_scheme {
             // No scheme: default to `file`, the whole input is the path.
+            log_event!(
+                warn,
+                "Uri::from_str: no scheme in {input:?}, defaulting to 'file'"
+            );
             ("file".to_string(), None, rest.to_string())
         } else {
             let colon = colon.expect("has_scheme implies a colon");
@@ -254,6 +258,10 @@ impl FromInput for Uri {
             }
             if raw_scheme.len() == 1 && raw_scheme.as_bytes()[0].is_ascii_alphabetic() {
                 // A single-letter "scheme" is a Windows drive letter, e.g. `C:`.
+                log_event!(
+                    warn,
+                    "Uri::from_str: single-letter scheme {raw_scheme:?} treated as a Windows drive (scheme 'file')"
+                );
                 let path = if rest.starts_with('/') {
                     rest.to_string()
                 } else {
@@ -296,7 +304,10 @@ impl FromInput for Uri {
         let scheme = match fields.get("scheme") {
             Some(s) if s.is_empty() => return Err(UriError::MissingScheme),
             Some(s) => s.clone(),
-            None => "file".to_string(),
+            None => {
+                log_event!(warn, "Uri::from_mapping: no scheme, defaulting to 'file'");
+                "file".to_string()
+            }
         };
         if !is_valid_scheme(&scheme) {
             return Err(UriError::InvalidScheme);
@@ -768,7 +779,13 @@ impl FromInput for Url {
     /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
     fn from_mapping(fields: &Mapping) -> Result<Url, UrlError> {
         // A missing scheme defaults to `file`.
-        let scheme = fields.get("scheme").map_or("file", String::as_str);
+        let scheme = match fields.get("scheme") {
+            Some(s) => s.as_str(),
+            None => {
+                log_event!(warn, "Url::from_mapping: no scheme, defaulting to 'file'");
+                "file"
+            }
+        };
         if !is_valid_scheme(scheme) {
             return Err(UrlError::Uri(UriError::InvalidScheme));
         }

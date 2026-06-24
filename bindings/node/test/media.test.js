@@ -43,6 +43,15 @@ test('mime invalid throws', () => {
   assert.throws(() => new MimeType('notamime'))
 })
 
+test('from str short names', () => {
+  assert.ok(new MimeType('json').equals(new MimeType('application/json')))
+  assert.strictEqual(new MimeType('gzip').mime, 'application/gzip')
+  assert.strictEqual(new MimeType('zstd').mime, 'application/zstd')
+  assert.throws(() => new MimeType('nope'))
+  assert.deepStrictEqual(MediaType.fromStr('gzip').types.map((t) => t.mime), ['application/gzip'])
+  assert.deepStrictEqual(MediaType.fromStr('nope').types, [])
+})
+
 test('mime to/from mapping and equality', () => {
   const m = new MimeType('image/svg+xml')
   assert.deepStrictEqual(m.toMapping(), { type: 'image', subtype: 'svg+xml' })

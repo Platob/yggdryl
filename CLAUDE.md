@@ -64,7 +64,7 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
-| Single MIME type | `MimeType` enum; `from_str` / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
+| Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
 | Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |
 | Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` |
 | Inferred media/MIME type on a URI/URL | `media_type()` → `MediaType` stack or null; `mime_type()` → outermost `MimeType` or null (Rust also has `MediaType::from(&uri)`) |
@@ -88,6 +88,26 @@ Rules:
   doctest. Match the existing terse style.
 - **Bindings**: each wrapper method is one or two lines delegating to
   `self.inner`. Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+
+## Logging
+
+The Rust crates carry an optional, **off-by-default** `log` feature, emitted only
+through the crate-local `log_event!(level, …)` macro (which compiles to nothing
+when the feature is off, so the crates stay dependency-free and pay no runtime
+cost). Never call `log::` directly, and keep the `log` dependency `optional`.
+
+When you add or change behaviour, instrument it at the right level:
+
+- `trace` — very frequent, per-call detail (e.g. each parse entry).
+- `debug` — a routine **action being performed** (e.g. inferring a media type).
+- `info` — an **important action that completed**, especially a change to global
+  or shared state (e.g. a MIME-registry `register` / `unregister` / `reset`).
+- `warn` — a **skipped** input or a **defaulted** fallback was applied (e.g. an
+  unknown extension dropped from a media stack, a missing URI scheme defaulted to
+  `file`, a drive letter treated as a Windows path).
+
+A new code path that skips, defaults, or mutates shared state must log it; the
+`log` feature must compile and pass `clippy -D warnings` both on and off.
 
 ## Required checks before committing
 

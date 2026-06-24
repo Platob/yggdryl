@@ -14,7 +14,10 @@ Media (MIME) type detection for the
 ```rust
 use yggdryl_media::{FromInput, MediaType, MimeType, Signature};
 
-// A single MIME type, inferred from an extension or sniffed from magic bytes.
+// A single MIME type, parsed from a full MIME, a short name, an extension, or
+// sniffed from magic bytes.
+assert_eq!(MimeType::from_str("application/json").unwrap(), MimeType::Json);
+assert_eq!(MimeType::from_str("zstd").unwrap(), MimeType::Zstd); // short name
 assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
 assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
 

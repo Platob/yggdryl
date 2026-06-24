@@ -15,6 +15,7 @@
 //! use yggdryl_media::{FromInput, MediaType, MimeType};
 //!
 //! assert_eq!(MimeType::from_str("application/json").unwrap(), MimeType::Json);
+//! assert_eq!(MimeType::from_str("zstd").unwrap(), MimeType::Zstd); // short name
 //! assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
 //! assert_eq!(MimeType::from_magic(b"PK\x03\x04..."), Some(MimeType::Zip));
 //!
@@ -487,6 +488,19 @@ fn is_valid_mime(mime: &str) -> bool {
     }
 }
 
+/// Resolves a short, slash-less name to a [`MimeType`] by matching a file
+/// extension first, then a MIME subtype (both case-insensitive), e.g. `"json"` /
+/// `"gz"` / `"gzip"` → the matching type, `"zstd"` → [`Zstd`](MimeType::Zstd).
+fn resolve_name(name: &str) -> Option<MimeType> {
+    let lower = name.to_ascii_lowercase();
+    MimeType::from_extension(&lower).or_else(|| {
+        BUILTINS
+            .iter()
+            .find(|b| b.mime.rsplit('/').next() == Some(lower.as_str()))
+            .map(|b| (b.new)())
+    })
+}
+
 impl MimeType {
     /// The built-in default for a known variant, or `None` for [`Other`](MimeType::Other).
     fn builtin(&self) -> Option<&'static Builtin> {
@@ -608,7 +622,7 @@ impl MimeType {
         };
         let mut registry = registry().write().unwrap();
         log_event!(
-            debug,
+            info,
             "MimeType::register {mime:?} ({} extensions)",
             entry.extensions.len()
         );
@@ -626,7 +640,7 @@ impl MimeType {
         let before = registry.len();
         registry.retain(|e| e.mime != mime);
         let removed = registry.len() != before;
-        log_event!(debug, "MimeType::unregister {mime:?} (removed: {removed})");
+        log_event!(info, "MimeType::unregister {mime:?} (removed: {removed})");
         removed
     }
 
@@ -636,7 +650,7 @@ impl MimeType {
         let mut registry = registry().write().unwrap();
         *registry = BUILTINS.iter().map(Entry::from_builtin).collect();
         log_event!(
-            debug,
+            info,
             "MimeType::reset_registry ({} built-ins)",
             registry.len()
         );
@@ -655,19 +669,21 @@ impl Default for MimeType {
 impl FromInput for MimeType {
     type Err = MediaError;
 
-    /// Parses a MIME string such as `"text/html"` (any `;parameters` are dropped).
-    /// The essence must be a `type/subtype` pair of valid tokens. Unknown but
-    /// well-formed types become [`Other`](MimeType::Other).
+    /// Parses a MIME string such as `"text/html"` (any `;parameters` are dropped),
+    /// or a short name like `"json"`, `"gzip"` or `"zstd"` (matched as a file
+    /// extension or MIME subtype). A full `type/subtype` must be a valid token
+    /// pair — unknown but well-formed ones become [`Other`](MimeType::Other);
+    /// unknown short names are an error.
     fn from_str(input: &str) -> Result<MimeType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
-        let essence = input
-            .split(';')
-            .next()
-            .unwrap_or(input)
-            .trim()
-            .to_ascii_lowercase();
+        let essence = input.split(';').next().unwrap_or(input).trim();
+        // A slash-less token is a short name (extension or subtype), not a MIME.
+        if !essence.contains('/') {
+            return resolve_name(essence).ok_or_else(|| MediaError::Invalid(input.to_string()));
+        }
+        let essence = essence.to_ascii_lowercase();
         if !is_valid_mime(&essence) {
             return Err(MediaError::Invalid(input.to_string()));
         }
@@ -744,15 +760,18 @@ impl MediaType {
     }
 
     /// Builds the stack from an ordered list of file extensions, keeping those that
-    /// resolve in the registry (unknown extensions are skipped). `["csv", "gz"]`
-    /// yields `[Csv, Gzip]`.
+    /// resolve in the registry (unknown extensions are skipped, with a `warn`).
+    /// `["csv", "gz"]` yields `[Csv, Gzip]`.
     pub fn from_extensions(extensions: &[&str]) -> MediaType {
-        MediaType {
-            types: extensions
-                .iter()
-                .filter_map(|ext| MimeType::from_extension(ext))
-                .collect(),
+        let mut types = Vec::new();
+        for ext in extensions {
+            if let Some(mime) = MimeType::from_extension(ext) {
+                types.push(mime);
+            } else {
+                log_event!(warn, "MediaType: skipped unknown extension {ext:?}");
+            }
         }
+        MediaType { types }
     }
 
     /// Builds a single-type stack from one file extension (empty if unknown).
@@ -765,7 +784,13 @@ impl MediaType {
     /// yields `[Csv, Gzip]`.
     pub fn from_path(path: &str) -> MediaType {
         let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        MediaType::from_extensions(&name_extensions(name))
+        let media = MediaType::from_extensions(&name_extensions(name));
+        log_event!(
+            debug,
+            "MediaType::from_path {path:?} -> {} type(s)",
+            media.types.len()
+        );
+        media
     }
 
     /// The ordered [`MimeType`]s, innermost content first.
@@ -806,10 +831,24 @@ impl FromInput for MediaType {
     type Err = MediaError;
 
     /// Parses a path or file name into its [`MimeType`] stack (see
-    /// [`from_path`](MediaType::from_path)). Only an empty input is an error.
+    /// [`from_path`](MediaType::from_path)), or resolves a bare name like `"gzip"`
+    /// or `"json"` to a single-type stack. Only an empty input is an error.
     fn from_str(input: &str) -> Result<MediaType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
+        }
+        // A bare token (no path separators or dots) is a single MIME name.
+        if !input.contains(['/', '\\', '.']) {
+            return Ok(match resolve_name(input) {
+                Some(mime) => MediaType::new(vec![mime]),
+                None => {
+                    log_event!(
+                        warn,
+                        "MediaType::from_str: unknown name {input:?}, empty stack"
+                    );
+                    MediaType::new(Vec::new())
+                }
+            });
         }
         Ok(MediaType::from_path(input))
     }
@@ -1008,6 +1047,36 @@ mod tests {
         assert_eq!(
             MimeType::from_path("notes").unwrap_or_default().mime(),
             "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn from_str_accepts_short_names() {
+        // Short names resolve via extension or subtype, case-insensitively.
+        assert_eq!(MimeType::from_str("json").unwrap(), MimeType::Json);
+        assert_eq!(MimeType::from_str("gzip").unwrap(), MimeType::Gzip); // extension alias
+        assert_eq!(MimeType::from_str("gz").unwrap(), MimeType::Gzip); // extension
+        assert_eq!(MimeType::from_str("zstd").unwrap(), MimeType::Zstd); // subtype
+        assert_eq!(MimeType::from_str("PNG").unwrap(), MimeType::Png);
+        assert!(MimeType::from_str("nope").is_err());
+        // A full `type/subtype` still parses as before.
+        assert_eq!(
+            MimeType::from_str("application/json").unwrap(),
+            MimeType::Json
+        );
+        // MediaType: a bare name is a single-element stack; paths stay stacks.
+        assert_eq!(
+            MediaType::from_str("gzip").unwrap().types(),
+            [MimeType::Gzip]
+        );
+        assert_eq!(
+            MediaType::from_str("zstd").unwrap().types(),
+            [MimeType::Zstd]
+        );
+        assert!(MediaType::from_str("nope").unwrap().is_empty());
+        assert_eq!(
+            MediaType::from_str("a/b/data.csv.gz").unwrap().types(),
+            [MimeType::Csv, MimeType::Gzip]
         );
     }
 

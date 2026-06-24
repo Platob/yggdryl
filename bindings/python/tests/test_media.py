@@ -48,6 +48,18 @@ def test_mime_invalid_raises():
         yggdryl.MimeType("notamime")
 
 
+def test_from_str_short_names():
+    # Short names resolve via extension or subtype.
+    assert yggdryl.MimeType("json") == yggdryl.MimeType("application/json")
+    assert yggdryl.MimeType("gzip").mime == "application/gzip"
+    assert yggdryl.MimeType("zstd").mime == "application/zstd"
+    with pytest.raises(ValueError):
+        yggdryl.MimeType("nope")
+    # MediaType: a bare name is a single-element stack.
+    assert [t.mime for t in yggdryl.MediaType.from_str("gzip").types] == ["application/gzip"]
+    assert yggdryl.MediaType.from_str("nope").types == []
+
+
 def test_mime_to_from_mapping_and_equality():
     m = yggdryl.MimeType("image/svg+xml")
     assert m.to_mapping() == {"type": "image", "subtype": "svg+xml"}
