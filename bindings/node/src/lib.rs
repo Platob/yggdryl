@@ -6,6 +6,7 @@
 //! Rust crates. All logic lives in the shared core so the Node and Python
 //! bindings stay in lockstep.
 
+mod bytesio;
 mod media;
 mod mime;
 mod uri;

@@ -358,6 +358,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "yggdryl-io",
  "yggdryl-media",
  "yggdryl-url",
  "yggdryl-version",
@@ -368,6 +369,7 @@ name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
  "pyo3",
+ "yggdryl-io",
  "yggdryl-media",
  "yggdryl-url",
  "yggdryl-version",

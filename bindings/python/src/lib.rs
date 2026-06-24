@@ -11,6 +11,7 @@
 // conversion. The lint fires on macro-generated code, so allow it crate-wide.
 #![allow(clippy::useless_conversion)]
 
+mod bytesio;
 mod media;
 mod mime;
 mod uri;
@@ -20,10 +21,12 @@ mod version;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use yggdryl_io::IoError;
 use yggdryl_media::MediaError;
 use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_version::VersionError;
 
+use crate::bytesio::BytesIO;
 use crate::media::MediaType;
 use crate::mime::MimeType;
 use crate::uri::Uri;
@@ -43,6 +46,10 @@ pub(crate) fn version_err(err: VersionError) -> PyErr {
 }
 
 pub(crate) fn media_err(err: MediaError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn io_err(err: IoError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -79,6 +86,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Version>()?;
     m.add_class::<MimeType>()?;
     m.add_class::<MediaType>()?;
+    m.add_class::<BytesIO>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     Ok(())
