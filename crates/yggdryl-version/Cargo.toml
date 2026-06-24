@@ -1,0 +1,28 @@
+[package]
+name = "yggdryl-version"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "A standalone major.minor.patch Version type for yggdryl"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_version"
+path = "src/lib.rs"
+
+[[bench]]
+name = "parse"
+harness = false
+
+[dependencies]
+yggdryl-core.workspace = true
+# Optional, off by default: structured logging via the `log` facade (see
+# yggdryl-media). Without it the crate stays dependency-free.
+log = { version = "0.4", optional = true }
+
+[features]
+log = ["dep:log"]

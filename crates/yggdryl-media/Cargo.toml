@@ -1,0 +1,25 @@
+[package]
+name = "yggdryl-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Media (MIME) type detection from extensions and magic bytes for yggdryl"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_media"
+path = "src/lib.rs"
+
+[dependencies]
+yggdryl-core.workspace = true
+# Optional, off by default: structured logging via the `log` facade. Enabling the
+# `log` feature emits events for global registry changes; without it the crate
+# stays dependency-free.
+log = { version = "0.4", optional = true }
+
+[features]
+log = ["dep:log"]

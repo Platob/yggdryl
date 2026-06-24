@@ -1,0 +1,33 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.so
+*.pyd
+
+# Node
+node_modules/
+*.node
+npm-debug.log*
+yarn-error.log
+.pnpm-debug.log*
+package-lock.json
+# napi-generated loader/types (recreated by `napi build`)
+bindings/node/index.js
+bindings/node/index.d.ts
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

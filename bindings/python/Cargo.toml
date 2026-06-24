@@ -1,0 +1,27 @@
+[package]
+name = "yggdryl-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Python extension for yggdryl, backed by the Rust core"
+publish = false
+
+[lib]
+# The compiled artifact is imported from Python as `yggdryl`.
+name = "yggdryl"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# yggdryl-url re-exports yggdryl-core; yggdryl-version and yggdryl-media provide
+# the Version and MediaType types.
+yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
+yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
+yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
+
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module"]

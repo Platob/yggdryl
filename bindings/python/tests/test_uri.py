@@ -1,0 +1,255 @@
+"""Tests for the yggdryl Python extension.
+
+Run after building the module, e.g. ``maturin develop`` then ``pytest``.
+"""
+
+import pytest
+
+import yggdryl
+
+
+def test_uri_components():
+    uri = yggdryl.Uri("https://example.com/docs?page=2#intro")
+    assert uri.scheme == "https"
+    assert uri.authority == "example.com"
+    assert uri.path == "/docs"
+    assert uri.query == "page=2"
+    assert uri.fragment == "intro"
+
+
+def test_uri_without_authority():
+    uri = yggdryl.Uri.from_str("mailto:alice@example.com")
+    assert uri.scheme == "mailto"
+    assert uri.authority is None
+    assert uri.path == "alice@example.com"
+
+
+def test_uri_str_round_trip():
+    text = "file:///etc/hosts"
+    assert str(yggdryl.Uri(text)) == text
+
+
+def test_uri_invalid_raises():
+    with pytest.raises(ValueError):
+        yggdryl.Uri("1http://x")  # invalid scheme
+
+
+def test_url_components():
+    url = yggdryl.Url("https://user:pw@example.com:8443/api?v=1#top")
+    assert url.scheme == "https"
+    assert url.username == "user"
+    assert url.password == "pw"
+    assert url.host == "example.com"
+    assert url.port == 8443
+    assert url.path == "/api"
+    assert url.query == "v=1"
+    assert url.fragment == "top"
+    assert url.authority == "user:pw@example.com:8443"
+
+
+def test_url_ipv6():
+    url = yggdryl.Url("http://[::1]:8080/status")
+    assert url.host == "::1"
+    assert url.port == 8080
+    assert str(url) == "http://[::1]:8080/status"
+
+
+def test_url_requires_authority():
+    with pytest.raises(ValueError):
+        yggdryl.Url("mailto:alice@example.com")
+
+
+def test_equality_and_hash():
+    a = yggdryl.Url("http://example.com")
+    b = yggdryl.Url("http://example.com")
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+
+
+def test_repr():
+    assert repr(yggdryl.Uri("urn:isbn:0451450523")) == "Uri('urn:isbn:0451450523')"
+
+
+def test_version_components():
+    v = yggdryl.Version.from_str("1.4.2")
+    assert (v.major, v.minor, v.patch) == (1, 4, 2)
+    assert str(v) == "1.4.2"
+
+
+def test_version_defaults_and_ctor():
+    assert yggdryl.Version(2) == yggdryl.Version.from_str("2")
+    assert str(yggdryl.Version(2)) == "2.0.0"
+    assert yggdryl.Version(1, 2, 3).patch == 3
+
+
+def test_version_ordering():
+    assert yggdryl.Version(1, 4, 2) < yggdryl.Version(1, 10, 0)
+    assert yggdryl.Version(2, 0, 0) > yggdryl.Version(1, 99, 99)
+    ordered = sorted([yggdryl.Version(1, 2, 0), yggdryl.Version(0, 9, 9)])
+    assert ordered[0] == yggdryl.Version(0, 9, 9)
+
+
+def test_version_invalid_raises():
+    with pytest.raises(ValueError):
+        yggdryl.Version.from_str("1.x.0")
+
+
+def test_parsing_validates():
+    # Malformed input is always rejected (there is no lenient mode).
+    with pytest.raises(ValueError):
+        yggdryl.Uri("1http:x")  # invalid scheme
+    with pytest.raises(ValueError):
+        yggdryl.Version.from_str("1.2.3.4")  # too many components
+
+
+def test_from_mapping():
+    uri = yggdryl.Uri.from_mapping({"scheme": "https", "authority": "example.com", "path": "/x"})
+    assert str(uri) == "https://example.com/x"
+    url = yggdryl.Url.from_mapping({"scheme": "https", "host": "h", "port": "8443"})
+    assert url.host == "h" and url.port == 8443
+    assert yggdryl.Version.from_mapping({"major": "1", "minor": "4"}) == yggdryl.Version(1, 4)
+
+
+def test_percent_encoding():
+    assert yggdryl.percent_encode("a b/c") == "a%20b%2Fc"
+    assert yggdryl.percent_decode("a%20b%2Fc") == "a b/c"
+    with pytest.raises(ValueError):
+        yggdryl.percent_decode("%zz")
+
+
+def test_from_parts():
+    url = yggdryl.Url.from_parts("https", "example.com", port=8443, username="user", password="pw", path="/api")
+    assert str(url) == "https://user:pw@example.com:8443/api"
+    uri = yggdryl.Uri.from_parts("mailto", path="alice@example.com")
+    assert str(uri) == "mailto:alice@example.com"
+
+
+def test_functional_copy_and_with():
+    base = yggdryl.Url("https://example.com/api")
+    secured = base.with_port(8443).with_username("user")
+    assert str(secured) == "https://user@example.com:8443/api"
+    # original untouched
+    assert str(base) == "https://example.com/api"
+    assert str(yggdryl.Version(1, 0, 0).with_minor(4)) == "1.4.0"
+    assert yggdryl.Uri("https://h/a").copy() == yggdryl.Uri("https://h/a")
+
+
+def test_params_and_add_param():
+    url = yggdryl.Url("https://h/p?a=1&a=2&b=hi")
+    params = url.params()
+    assert params["a"] == ["1", "2"]
+    assert params["b"] == ["hi"]
+    # add_param adds or replaces, multi-value aware
+    updated = url.add_param("a", ["x"]).add_param("c", ["1", "2"])
+    assert updated.params()["a"] == ["x"]
+    assert updated.params()["c"] == ["1", "2"]
+    # with_params percent-encodes
+    built = yggdryl.Uri("https://h/p").with_params({"q": ["a b"]})
+    assert built.query == "q=a%20b"
+
+
+def test_copy_overrides():
+    url = yggdryl.Url("https://example.com/api")
+    assert str(url.copy(port=8443)) == "https://example.com:8443/api"
+    assert str(url.copy()) == "https://example.com/api"
+
+
+def test_url_to_uri():
+    url = yggdryl.Url("https://user@h:8443/p?x=1")
+    uri = url.to_uri()
+    assert isinstance(uri, yggdryl.Uri)
+    assert uri.authority == "user@h:8443"
+
+
+def test_encode_decode_to_string():
+    url = yggdryl.Url("https://h/a%20b?q=x%20y")
+    assert url.to_string() == "https://h/a%20b?q=x%20y"        # encode (default)
+    assert url.to_string(encode=False) == "https://h/a b?q=x y"  # decoded
+    assert str(url) == "https://h/a%20b?q=x%20y"               # str() == encoded
+    # params decode toggle
+    assert url.params()["q"] == ["x y"]
+    assert url.params(decode=False)["q"] == ["x%20y"]
+    # with_params encode toggle
+    built = yggdryl.Uri("https://h/p").with_params({"a": ["b c"]}, encode=False)
+    assert built.query == "a=b c"
+
+
+def test_scheme_ext():
+    uri = yggdryl.Uri("https+zip://h/f")
+    assert uri.scheme == "https+zip"
+    assert uri.scheme_base == "https"
+    assert uri.scheme_ext == ["zip"]
+    assert yggdryl.Uri("https://h").scheme_ext == []
+
+
+def test_uri_url_conversions():
+    url = yggdryl.Url("https://user@h:8443/p?x=1")
+    uri = yggdryl.Uri.from_url(url)
+    assert uri.authority == "user@h:8443"
+    assert url == uri.to_url()
+    assert url == yggdryl.Url.from_uri(uri)
+    with pytest.raises(ValueError):
+        yggdryl.Uri("mailto:a@b").to_url()
+
+
+def test_params_crud():
+    base = yggdryl.Url("https://h/p?a=1&b=2&c=3")
+    assert base.get_param("a") == ["1"]
+    assert base.get_param("z") is None
+    assert base.set_param("a", ["9"]).get_param("a") == ["9"]
+    bulk = base.set_params({"b": ["x"], "d": ["y"]})
+    assert bulk.get_param("b") == ["x"] and bulk.get_param("d") == ["y"]
+    assert base.remove_param("a").get_param("a") is None
+    assert list(base.remove_params(["a", "b"]).params().keys()) == ["c"]
+    assert base.clear_params().query is None
+
+
+def test_direct_param_management():
+    url = yggdryl.Url("https://h/p?a=1&b=2")
+    # read
+    assert url["a"] == ["1"]
+    assert "a" in url and "z" not in url
+    assert url.has_param("b") and not url.has_param("z")
+    with pytest.raises(KeyError):
+        _ = url["z"]
+    # set in place
+    url["a"] = ["9", "10"]
+    assert url["a"] == ["9", "10"]
+    url["c"] = ["x"]
+    assert "c" in url
+    # delete in place
+    del url["a"]
+    assert "a" not in url
+    with pytest.raises(KeyError):
+        del url["a"]
+
+
+def test_to_mapping_round_trip():
+    url = yggdryl.Url("https://h:8443/p?x=1")
+    m = url.to_mapping()
+    assert m["scheme"] == "https" and m["host"] == "h" and m["port"] == "8443"
+    assert yggdryl.Url.from_mapping(m) == url
+    assert yggdryl.Version(1, 4, 2).to_mapping() == {"major": "1", "minor": "4", "patch": "2"}
+
+
+def test_path_accessors():
+    url = yggdryl.Url("https://h/a/b/archive.tar.gz")
+    assert url.parts() == ["a", "b", "archive.tar.gz"]
+    assert url.name() == "archive.tar.gz"
+    assert url.stem() == "archive"
+    assert url.extensions() == ["tar", "gz"]
+    enc = yggdryl.Uri("file:/d/a%20b.txt")
+    assert enc.name() == "a b.txt"
+    assert enc.name(encode=True) == "a%20b.txt"
+
+
+def test_default_file_scheme_and_windows():
+    assert yggdryl.Uri("relative/path").scheme == "file"
+    w = yggdryl.Uri("C:\\Users\\me")
+    assert w.scheme == "file"
+    assert w.path == "/C:/Users/me"
+
+
+def test_module_version():
+    assert isinstance(yggdryl.__version__, str)

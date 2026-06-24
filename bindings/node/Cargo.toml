@@ -1,0 +1,29 @@
+[package]
+name = "yggdryl-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Node.js extension for yggdryl, backed by the Rust core"
+publish = false
+
+[lib]
+# Leave the lib name as the default (`yggdryl_node`) so the napi CLI finds the
+# compiled artifact; the import name (`yggdryl`) comes from `napi.name` in
+# package.json, which produces `yggdryl.<triple>.node`.
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# yggdryl-url re-exports yggdryl-core; yggdryl-version and yggdryl-media provide
+# the Version and MediaType types.
+yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
+yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
+yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
+napi = { version = "2", default-features = false, features = ["napi8"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"

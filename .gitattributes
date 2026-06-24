@@ -1,0 +1,7 @@
+# Normalize all text files to LF in the working tree on every platform. Without
+# this, Windows CI checks out source as CRLF and `cargo fmt --check`
+# (rustfmt.toml sets newline_style = "Unix") fails on otherwise-clean files.
+* text=auto eol=lf
+
+# Compiled native addon — never touch line endings.
+*.node binary
