@@ -2,15 +2,16 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::{Io, LocalPath as CoreLocalPath, Path, Seek};
+use yggdryl_io::{Io, LocalPath as CoreLocalPath, Path, Seek, Whence};
 
 use crate::iostats::IoStats;
 use crate::media::MediaType;
+use crate::url::Url;
 use crate::whence_from;
 
 /// A local filesystem path opened as a byte-IO handle, memory-mapped for
-/// zero-copy direct access. Random (`readAt`) and streamed (`read`) access share
-/// one cursor; `stats` and `mediaType` expose metadata.
+/// zero-copy direct access. Positional (`pread`) and streamed (`read`) access
+/// share one cursor; `stats` and `mediaType` expose metadata.
 #[napi(js_name = "LocalPath")]
 pub struct LocalPath {
     pub(crate) inner: CoreLocalPath,
@@ -32,34 +33,54 @@ impl LocalPath {
         LocalPath::new(location)
     }
 
-    /// Write `data` to `location` on disk (creating or truncating it).
+    /// Write `data` to `location` on disk, auto-creating missing parent
+    /// directories (lazily, only on a missing-parent failure).
     #[napi]
     pub fn write(location: String, data: Buffer) -> Result<()> {
         CoreLocalPath::write(&location, data.as_ref())
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// The resource address as a `Url` (`file://` over the path).
+    #[napi(getter)]
+    pub fn url(&self) -> Url {
+        Url {
+            inner: self.inner.url(),
+        }
+    }
+
     /// Read up to `size` bytes from the cursor; omit `size` or pass a negative
     /// value to read all remaining bytes. Advances the cursor.
     #[napi]
     pub fn read(&mut self, size: Option<i32>) -> Result<Buffer> {
+        let remaining = (self
+            .inner
+            .stats()
+            .map_err(|e| Error::from_reason(e.to_string()))?
+            .size()
+            - self.inner.stream_position()) as usize;
         let size = match size {
-            Some(n) if n >= 0 => Some(n as usize),
-            _ => None,
+            Some(n) if n >= 0 => (n as usize).min(remaining),
+            _ => remaining,
         };
-        self.inner
-            .read_owned(size)
-            .map(Buffer::from)
-            .map_err(|e| Error::from_reason(e.to_string()))
+        let mut buf = vec![0u8; size];
+        let count = self
+            .inner
+            .pread(&mut buf, 0, Whence::Current)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        buf.truncate(count);
+        Ok(Buffer::from(buf))
     }
 
-    /// Read up to `size` bytes at absolute `offset` without moving the cursor.
-    #[napi(js_name = "readAt")]
-    pub fn read_at(&mut self, offset: i64, size: u32) -> Result<Buffer> {
+    /// Positional read of up to `size` bytes at `offset` relative to `whence`
+    /// (`0` start, `1` current, `2` end). With `0`/`2` the cursor is untouched;
+    /// with `1` it is used and advanced.
+    #[napi]
+    pub fn pread(&mut self, size: u32, offset: i64, whence: Option<u8>) -> Result<Buffer> {
         let mut buf = vec![0u8; size as usize];
         let count = self
             .inner
-            .read_at(offset as u64, &mut buf)
+            .pread(&mut buf, offset, whence_from(whence.unwrap_or(0))?)
             .map_err(|e| Error::from_reason(e.to_string()))?;
         buf.truncate(count);
         Ok(Buffer::from(buf))

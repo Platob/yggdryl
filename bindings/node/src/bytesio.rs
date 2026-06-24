@@ -2,8 +2,9 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::BytesIO as CoreBytesIO;
+use yggdryl_io::{BytesIO as CoreBytesIO, Io};
 
+use crate::url::Url;
 use crate::whence_from;
 
 /// A simple in-memory byte buffer with a cursor, modelled on Python's
@@ -49,6 +50,38 @@ impl BytesIO {
     #[napi]
     pub fn write(&mut self, data: Buffer) -> u32 {
         self.inner.write(data.as_ref()) as u32
+    }
+
+    /// The resource address as a `Url` (`mem://<address>`).
+    #[napi(getter)]
+    pub fn url(&self) -> Url {
+        Url {
+            inner: self.inner.url(),
+        }
+    }
+
+    /// Positional read of up to `size` bytes at `offset` relative to `whence`
+    /// (`0` start, `1` current, `2` end). With `0`/`2` the cursor is untouched;
+    /// with `1` it is used and advanced.
+    #[napi]
+    pub fn pread(&mut self, size: u32, offset: i64, whence: Option<u8>) -> Result<Buffer> {
+        let mut buf = vec![0u8; size as usize];
+        let count = self
+            .inner
+            .pread(&mut buf, offset, whence_from(whence.unwrap_or(0))?)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        buf.truncate(count);
+        Ok(Buffer::from(buf))
+    }
+
+    /// Positional write of `data` at `offset` relative to `whence`, returning the
+    /// count written. With `0`/`2` the cursor is untouched; with `1` it advances.
+    #[napi]
+    pub fn pwrite(&mut self, data: Buffer, offset: i64, whence: Option<u8>) -> Result<u32> {
+        self.inner
+            .pwrite(data.as_ref(), offset, whence_from(whence.unwrap_or(0))?)
+            .map(|count| count as u32)
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Move the cursor to `offset` relative to `whence` (`0` start, `1` current,

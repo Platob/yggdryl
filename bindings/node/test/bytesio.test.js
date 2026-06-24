@@ -5,6 +5,21 @@ const { test } = require('node:test')
 const assert = require('node:assert')
 const { BytesIO } = require('..')
 
+test('url, pread and pwrite', () => {
+  const io = new BytesIO(Buffer.from('0123456789'))
+  assert.strictEqual(io.url.scheme, 'mem')
+  io.seek(4)
+  // Positional pread/pwrite leave the cursor put (whence omitted = start).
+  assert.deepStrictEqual(io.pread(2, 6), Buffer.from('67'))
+  assert.strictEqual(io.tell(), 4)
+  assert.strictEqual(io.pwrite(Buffer.from('AB'), 0), 2)
+  assert.deepStrictEqual(io.getValue().subarray(0, 2), Buffer.from('AB'))
+  assert.strictEqual(io.tell(), 4)
+  // Cursor-relative (whence=1) uses and advances the cursor.
+  assert.deepStrictEqual(io.pread(2, 0, 1), Buffer.from('45'))
+  assert.strictEqual(io.tell(), 6)
+})
+
 test('read advances the cursor', () => {
   const io = new BytesIO(Buffer.from('hello world'))
   assert.deepStrictEqual(io.read(5), Buffer.from('hello'))

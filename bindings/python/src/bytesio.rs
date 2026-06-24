@@ -2,8 +2,9 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_io::BytesIO as CoreBytesIO;
+use yggdryl_io::{BytesIO as CoreBytesIO, Io};
 
+use crate::url::Url;
 use crate::{io_err, whence_from};
 
 /// A simple in-memory byte buffer with a cursor, modelled on Python's
@@ -48,6 +49,44 @@ impl BytesIO {
     /// return the count written. Advances the cursor when :attr:`stream`.
     fn write(&mut self, data: Vec<u8>) -> usize {
         self.inner.write(&data)
+    }
+
+    /// The resource address as a :class:`Url` (``mem://<address>``).
+    #[getter]
+    fn url(&self) -> Url {
+        Url {
+            inner: self.inner.url(),
+        }
+    }
+
+    /// Positional read of up to ``size`` bytes at ``offset`` relative to
+    /// ``whence`` (``0`` start, ``1`` current, ``2`` end). With ``0``/``2`` the
+    /// cursor is untouched; with ``1`` it is used and advanced.
+    #[pyo3(signature = (size, offset = 0, whence = 0))]
+    fn pread<'py>(
+        &mut self,
+        py: Python<'py>,
+        size: usize,
+        offset: i64,
+        whence: i64,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let mut buf = vec![0u8; size];
+        let count = self
+            .inner
+            .pread(&mut buf, offset, whence_from(whence)?)
+            .map_err(io_err)?;
+        buf.truncate(count);
+        Ok(PyBytes::new_bound(py, &buf))
+    }
+
+    /// Positional write of ``data`` at ``offset`` relative to ``whence``,
+    /// returning the count written. With ``0``/``2`` the cursor is untouched;
+    /// with ``1`` it is used and advanced.
+    #[pyo3(signature = (data, offset = 0, whence = 0))]
+    fn pwrite(&mut self, data: Vec<u8>, offset: i64, whence: i64) -> PyResult<usize> {
+        self.inner
+            .pwrite(&data, offset, whence_from(whence)?)
+            .map_err(io_err)
     }
 
     /// Move the cursor to ``offset`` relative to ``whence`` (``0`` start, ``1``

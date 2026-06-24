@@ -35,10 +35,14 @@ handle. The layering, smallest to largest:
 
 - `ReadBytes` / `WriteBytes` — byte source/sink primitives (`&[u8]`, `Vec<u8>`).
 - `Seek` — the cursor (`seek` / `stream_position` / `stream_len`).
-- `Io: ReadBytes + Seek` — **the base handle**: `read_at` (positioned read that
-  does not move the cursor), `as_slice` (the zero-copy hook a memory backend
-  overrides), `stats`, and `copy_to` (transfer with a memory fast path). `copy`
-  is the free-function form. `media_type` is lazy and behind the `media` feature.
+- `Io: ReadBytes + Seek` — **the base handle**. Every IO has a `url()` (in-memory
+  ones use `mem://<address>`). It reads/writes at a position via `pread` /
+  `pwrite` — a `Whence` selects positional (`Start`/`End`, cursor untouched, the
+  default) versus cursor-relative (`Current`, uses and advances the cursor);
+  `pwrite` defaults to `Unsupported` (writable backends override it). Plus
+  `as_slice` (the zero-copy hook a memory backend overrides), `stats`, and
+  `copy_to` (transfer with a memory fast path; `copy` is the free fn).
+  `media_type` is lazy and behind the `media` feature.
 - `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
   expensive metadata (`media_type`) discovered lazily and cached.
 - `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
@@ -46,17 +50,18 @@ handle. The layering, smallest to largest:
   dirs lazily** — attempt the write, create the tree only on a `NotFound`
   failure, then retry; never stat the dir up front.
 - `RemotePath: Io` — the URL-addressed cloud sibling of `Path` (flat keys, no dir
-  creation; range reads via `read_at`). **Cloud backends (S3, Azure) are
-  downstream crates that implement `RemotePath` — do not pull network SDKs into
-  `yggdryl-io`.**
+  creation; range reads via `pread`). The address is the universal `Io::url()`.
+  **Cloud backends (S3, Azure) are downstream crates that implement `RemotePath`
+  — do not pull network SDKs into `yggdryl-io`.**
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
   is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
   the *byte* handle — keep them distinct.)
 
-Rules when extending: keep the default build dependency-free (new heavy deps are
-**optional features**, like `log` / `mmap` / `media`); a new memory-resident
-backend must override `as_slice` so the zero-copy `read_at` / `copy_to` paths
-light up; positioned reads go through `read_at`, never by mutating the cursor.
+Rules when extending: the base build depends only on `yggdryl-url` (for the
+universal `Io::url()`); new heavy deps are **optional features** (like `log` /
+`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
+zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
+with `Whence::Start`, never by mutating the cursor.
 
 ### One module per type, everywhere
 

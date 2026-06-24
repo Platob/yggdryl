@@ -352,6 +352,7 @@ dependencies = [
  "log",
  "memmap2",
  "yggdryl-media",
+ "yggdryl-url",
 ]
 
 [[package]]

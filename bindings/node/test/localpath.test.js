@@ -21,11 +21,12 @@ test('open, read, seek and random access', () => {
     assert.strictEqual(io.location, p)
     assert.ok(io.exists())
     assert.strictEqual(io.length, 11)
+    assert.strictEqual(io.url.scheme, 'file')
 
     assert.deepStrictEqual(io.read(5), Buffer.from('hello'))
     assert.strictEqual(io.tell(), 5)
-    // Positioned read leaves the cursor put.
-    assert.deepStrictEqual(io.readAt(6, 5), Buffer.from('world'))
+    // Positional pread leaves the cursor put (size, offset, whence=0).
+    assert.deepStrictEqual(io.pread(5, 6), Buffer.from('world'))
     assert.strictEqual(io.tell(), 5)
     assert.deepStrictEqual(io.getValue(), Buffer.from('hello world'))
     io.seek(0)

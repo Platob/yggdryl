@@ -19,8 +19,10 @@ name = "io"
 harness = false
 
 [dependencies]
-# All three are optional and off by default, so the crate stays dependency-free
-# in the default build:
+# yggdryl-url provides the `Url` type behind the universal `Io::url()` (every IO
+# has an address), so it is a base dependency.
+yggdryl-url = { workspace = true }
+# The rest are optional and off by default:
 #   log    structured logging via the `log` facade (see yggdryl-media);
 #   mmap   memory-mapped, zero-copy local files in `LocalPath` (memmap2);
 #   media  lazy `media_type()` discovery on an `Io`/`Path` (yggdryl-media).

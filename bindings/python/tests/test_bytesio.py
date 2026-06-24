@@ -8,6 +8,22 @@ import pytest
 import yggdryl
 
 
+def test_url_pread_pwrite():
+    io = yggdryl.BytesIO(b"0123456789")
+    # Every IO carries a URL; in-memory uses the mem scheme.
+    assert io.url.scheme == "mem"
+    io.seek(4)
+    # Positional pread/pwrite leave the cursor put (whence=0 default).
+    assert io.pread(2, 6) == b"67"
+    assert io.tell() == 4
+    assert io.pwrite(b"AB", 0) == 2
+    assert io.getvalue()[:2] == b"AB"
+    assert io.tell() == 4
+    # Cursor-relative (whence=1) uses and advances the cursor.
+    assert io.pread(2, 0, 1) == b"45"
+    assert io.tell() == 6
+
+
 def test_read_advances_the_cursor():
     io = yggdryl.BytesIO(b"hello world")
     assert io.read(5) == b"hello"

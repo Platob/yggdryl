@@ -6,10 +6,11 @@ use yggdryl_io::{Io, LocalPath as CoreLocalPath, Path, Seek};
 
 use crate::iostats::IoStats;
 use crate::media::MediaType;
+use crate::url::Url;
 use crate::{io_err, whence_from};
 
 /// A local filesystem path opened as a byte-IO handle, memory-mapped for
-/// zero-copy direct access. Random (:meth:`read_at`) and streamed (:meth:`read`)
+/// zero-copy direct access. Positional (:meth:`pread`) and streamed (:meth:`read`)
 /// access share one cursor; :meth:`stats` and :meth:`media_type` expose metadata.
 #[pyclass(name = "LocalPath", module = "yggdryl")]
 pub struct LocalPath {
@@ -32,33 +33,56 @@ impl LocalPath {
         LocalPath::new(location)
     }
 
-    /// Write ``data`` to ``location`` on disk (creating or truncating it).
+    /// Write ``data`` to ``location`` on disk, auto-creating missing parent
+    /// directories (lazily, only on a missing-parent failure).
     #[staticmethod]
     fn write(location: &str, data: Vec<u8>) -> PyResult<()> {
         CoreLocalPath::write(location, &data).map_err(io_err)
+    }
+
+    /// The resource address as a :class:`Url` (``file://`` over the path).
+    #[getter]
+    fn url(&self) -> Url {
+        Url {
+            inner: self.inner.url(),
+        }
     }
 
     /// Read up to ``size`` bytes from the cursor; ``None`` or a negative ``size``
     /// reads all remaining bytes. Advances the cursor.
     #[pyo3(signature = (size = None))]
     fn read<'py>(&mut self, py: Python<'py>, size: Option<i64>) -> PyResult<Bound<'py, PyBytes>> {
+        let remaining =
+            (self.inner.stats().map_err(io_err)?.size() - self.inner.stream_position()) as usize;
         let size = match size {
-            Some(n) if n >= 0 => Some(n as usize),
-            _ => None,
+            Some(n) if n >= 0 => (n as usize).min(remaining),
+            _ => remaining,
         };
-        let bytes = self.inner.read_owned(size).map_err(io_err)?;
-        Ok(PyBytes::new_bound(py, &bytes))
+        let mut buf = vec![0u8; size];
+        let count = self
+            .inner
+            .pread(&mut buf, 0, yggdryl_io::Whence::Current)
+            .map_err(io_err)?;
+        buf.truncate(count);
+        Ok(PyBytes::new_bound(py, &buf))
     }
 
-    /// Read up to ``size`` bytes at absolute ``offset`` without moving the cursor.
-    fn read_at<'py>(
+    /// Positional read of up to ``size`` bytes at ``offset`` relative to
+    /// ``whence`` (``0`` start, ``1`` current, ``2`` end). With ``0``/``2`` the
+    /// cursor is untouched; with ``1`` it is used and advanced.
+    #[pyo3(signature = (size, offset = 0, whence = 0))]
+    fn pread<'py>(
         &mut self,
         py: Python<'py>,
-        offset: u64,
         size: usize,
+        offset: i64,
+        whence: i64,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let mut buf = vec![0u8; size];
-        let count = self.inner.read_at(offset, &mut buf).map_err(io_err)?;
+        let count = self
+            .inner
+            .pread(&mut buf, offset, whence_from(whence)?)
+            .map_err(io_err)?;
         buf.truncate(count);
         Ok(PyBytes::new_bound(py, &buf))
     }

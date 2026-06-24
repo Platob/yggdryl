@@ -12,9 +12,10 @@
 //! The goal is a **single abstraction** — [`Io`] — that hides *where* bytes come
 //! from. Code that reads Parquet should not care whether the source is a
 //! `Vec<u8>`, a memory-mapped file, or an S3 object: it asks the same handle for
-//! [`read_at`](Io::read_at), [`seek`](Seek::seek), [`stats`](Io::stats) and a
-//! streamed [`read_bytes`](ReadBytes::read_bytes). New backends implement [`Io`]
-//! (and [`Path`] if they name a resource); everything else composes on top.
+//! [`pread`](Io::pread), [`seek`](Seek::seek), [`stats`](Io::stats), its
+//! [`url`](Io::url) and a streamed [`read_bytes`](ReadBytes::read_bytes). New
+//! backends implement [`Io`] (and [`Path`] if they name a resource); everything
+//! else composes on top.
 //!
 //! ## Layers
 //!
@@ -22,11 +23,14 @@
 //!   with `&[u8]` and `Vec<u8>` as the trivial in-memory ends.
 //! - **Cursor** — [`Seek`] adds `seek` / `stream_position` / `stream_len`, so a
 //!   handle supports both streamed and positioned access.
-//! - **The handle** — [`Io`]`: ReadBytes + Seek` is the base buffer: it can
-//!   [`read_at`](Io::read_at) an offset without disturbing the cursor, expose
-//!   its bytes for **zero-copy** transfer via [`as_slice`](Io::as_slice), report
-//!   [`stats`](Io::stats), and [`copy_to`](Io::copy_to) another sink with a
-//!   memory fast path. [`copy`] is the free-function form.
+//! - **The handle** — [`Io`]`: ReadBytes + Seek` is the base buffer: every handle
+//!   has a [`url`](Io::url) (in-memory ones use `mem://<address>`); it reads and
+//!   writes at a position via [`pread`](Io::pread) / [`pwrite`](Io::pwrite) — a
+//!   `whence` chooses positional (cursor untouched, the default) versus
+//!   cursor-relative; it exposes its bytes for **zero-copy** transfer via
+//!   [`as_slice`](Io::as_slice), reports [`stats`](Io::stats), and
+//!   [`copy_to`](Io::copy_to) another sink with a memory fast path. [`copy`] is
+//!   the free-function form.
 //! - **Metadata** — [`IoStats`] holds `size` / `mtime` / `content_type` / `etag`
 //!   eagerly; expensive fields like `media_type` are discovered lazily (only
 //!   when asked, then cached) — see [`Io::media_type`] under the `media` feature.
@@ -41,22 +45,24 @@
 //!   byte handle (e.g. a `Codec<RecordBatch>`); [`Frames`] is the reference
 //!   length-delimited implementation.
 //!
-//! ## Optional features (off by default — the default build is dependency-free)
+//! ## Optional features (off by default; the base build depends only on
+//! `yggdryl-url`, for the universal [`Io::url`])
 //!
 //! - `log` — structured `log` events on the hot paths.
 //! - `mmap` — [`LocalPath`] memory-maps files (zero-copy) instead of reading them.
 //! - `media` — lazy [`media_type`](Io::media_type) discovery via `yggdryl-media`.
 //!
 //! ```
-//! use yggdryl_io::{BytesIO, Io};
+//! use yggdryl_io::{BytesIO, Io, Whence};
 //!
 //! let mut io = BytesIO::from_bytes(b"hello world".to_vec());
-//! // Random access: read a slice at an offset without moving the cursor.
+//! // Positional read at an offset, leaving the cursor untouched.
 //! let mut footer = [0u8; 5];
-//! io.read_at(6, &mut footer).unwrap();
+//! io.pread(&mut footer, 6, Whence::Start).unwrap();
 //! assert_eq!(&footer, b"world");
-//! // Streamed access from the cursor.
+//! // Streamed access from the cursor, plus the handle's URL and size.
 //! assert_eq!(io.read(Some(5)), b"hello");
+//! assert_eq!(io.url().scheme(), "mem");
 //! assert_eq!(io.stats().unwrap().size(), 11);
 //! ```
 
@@ -64,6 +70,8 @@ use std::fmt;
 use std::fs;
 use std::marker::PhantomData;
 use std::time::SystemTime;
+
+use yggdryl_url::Url;
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate is dependency-free by default and pays no runtime cost).
@@ -322,16 +330,46 @@ impl IoStats {
     }
 }
 
+/// Resolves an `(offset, whence)` pair against the current `position` and an
+/// optional total `len` into an absolute byte position — the one place the
+/// cursor / start / end arithmetic lives, shared by [`Seek`] impls and
+/// [`Io::pread`] / [`Io::pwrite`].
+fn resolve(position: u64, len: Option<u64>, offset: i64, whence: Whence) -> Result<u64, IoError> {
+    let base: i64 = match whence {
+        Whence::Start => 0,
+        Whence::Current => position as i64,
+        Whence::End => len.ok_or_else(|| {
+            IoError::Unsupported("offset from end without a known length".to_string())
+        })? as i64,
+    };
+    let target = base
+        .checked_add(offset)
+        .ok_or_else(|| IoError::Invalid(format!("offset {offset} overflows")))?;
+    if target < 0 {
+        return Err(IoError::Invalid(format!(
+            "position {target} is before the start"
+        )));
+    }
+    Ok(target as u64)
+}
+
 /// The base **byte-IO handle**: a [`ReadBytes`] + [`Seek`] source that also knows
-/// its [`stats`](Io::stats), can read at an arbitrary offset, expose its bytes
-/// for zero-copy transfer, and copy itself into a sink.
+/// its [`url`](Io::url) and [`stats`](Io::stats), reads and writes at a position
+/// via [`pread`](Io::pread) / [`pwrite`](Io::pwrite), exposes its bytes for
+/// zero-copy transfer, and copies itself into a sink.
 ///
 /// This is the abstraction Arrow/Parquet-style readers target: implement it once
 /// per backend (memory, file, cloud) and the same reader works everywhere.
-/// Implementors must provide [`stats`](Io::stats); the rest have defaults, but a
-/// memory-resident backend should override [`as_slice`](Io::as_slice) to unlock
-/// the zero-copy fast paths in [`read_at`](Io::read_at) and [`copy_to`](Io::copy_to).
+/// Implementors must provide [`url`](Io::url) and [`stats`](Io::stats); the rest
+/// have defaults, but a memory-resident backend should override
+/// [`as_slice`](Io::as_slice) to unlock the zero-copy fast paths, and a writable
+/// backend should override [`pwrite`](Io::pwrite).
 pub trait Io: ReadBytes + Seek {
+    /// The address of this resource as a [`Url`]. **Every IO has one**: file
+    /// backends use `file`, remote ones their store URL, and an in-memory handle
+    /// the `mem` scheme with its buffer address (e.g. `mem://7f3c…`).
+    fn url(&self) -> Url;
+
     /// Discovers metadata. Cheap fields are eager; see [`IoStats`].
     fn stats(&self) -> Result<IoStats, IoError>;
 
@@ -342,70 +380,58 @@ pub trait Io: ReadBytes + Seek {
         None
     }
 
-    /// Reads up to `buf.len()` bytes starting at absolute `offset`, **without**
-    /// moving the streaming cursor — the positioned-read primitive used for
-    /// footers and column chunks. Returns the count read (short at end of input).
+    /// Positional read into `buf`, starting at `offset` relative to `whence`, and
+    /// returning the count read (short at end of input).
     ///
-    /// The default serves it from [`as_slice`](Io::as_slice) when available,
-    /// otherwise it saves the cursor, seeks, reads, and restores the cursor —
-    /// including on a read error, so a positioned read never displaces the
-    /// streaming cursor.
-    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize, IoError> {
-        if let Some(all) = self.as_slice() {
-            let start = offset.min(all.len() as u64) as usize;
-            let count = buf.len().min(all.len() - start);
-            buf[..count].copy_from_slice(&all[start..start + count]);
-            return Ok(count);
-        }
-        let saved = self.stream_position();
-        self.seek(offset as i64, Whence::Start)?;
-        let mut filled = 0;
-        let mut outcome = Ok(());
-        while filled < buf.len() {
-            match self.read_bytes(&mut buf[filled..]) {
-                Ok(0) => break,
-                Ok(count) => filled += count,
-                Err(error) => {
-                    outcome = Err(error);
-                    break;
-                }
-            }
-        }
-        // Restore the cursor whatever happened, then surface any read error.
-        self.seek(saved as i64, Whence::Start)?;
-        outcome.map(|()| filled)
-    }
-
-    /// Reads up to `size` bytes from the cursor into an owned vector (all
-    /// remaining bytes when `size` is `None`), advancing the cursor — the
-    /// owned-read convenience any handle inherits, used by the bindings.
-    fn read_owned(&mut self, size: Option<usize>) -> Result<Vec<u8>, IoError> {
-        match size {
-            Some(n) => {
-                // Cap the up-front allocation to what is left when the size is
-                // known, so `read(huge)` over a small source does not allocate a
-                // huge zero-filled buffer just to truncate it.
-                let n = match self.stream_len() {
-                    Some(len) => n.min(len.saturating_sub(self.stream_position()) as usize),
-                    None => n,
-                };
-                let mut buf = vec![0u8; n];
-                let mut filled = 0;
-                while filled < n {
-                    match self.read_bytes(&mut buf[filled..])? {
-                        0 => break,
-                        count => filled += count,
+    /// `whence` selects whether the streaming cursor is used: with
+    /// [`Whence::Start`] (the usual default) or [`Whence::End`] the read is purely
+    /// positional and **leaves the cursor untouched** (footers, column chunks);
+    /// with [`Whence::Current`] the cursor is the base and is advanced by the
+    /// bytes read (a streamed read). The default serves it from
+    /// [`as_slice`](Io::as_slice) when available, else seeks and restores.
+    fn pread(&mut self, buf: &mut [u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
+        let start = resolve(self.stream_position(), self.stream_len(), offset, whence)?;
+        let count = if let Some(all) = self.as_slice() {
+            let begin = start.min(all.len() as u64) as usize;
+            let count = buf.len().min(all.len() - begin);
+            buf[..count].copy_from_slice(&all[begin..begin + count]);
+            count
+        } else {
+            let saved = self.stream_position();
+            self.seek(start as i64, Whence::Start)?;
+            let mut filled = 0;
+            let mut outcome = Ok(());
+            while filled < buf.len() {
+                match self.read_bytes(&mut buf[filled..]) {
+                    Ok(0) => break,
+                    Ok(count) => filled += count,
+                    Err(error) => {
+                        outcome = Err(error);
+                        break;
                     }
                 }
-                buf.truncate(filled);
-                Ok(buf)
             }
-            None => {
-                let mut buf = Vec::new();
-                self.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
+            // Restore first, then apply the cursor policy below.
+            self.seek(saved as i64, Whence::Start)?;
+            outcome?;
+            filled
+        };
+        // Only a cursor-relative read moves the cursor; positional reads do not.
+        if matches!(whence, Whence::Current) {
+            self.seek((start + count as u64) as i64, Whence::Start)?;
         }
+        Ok(count)
+    }
+
+    /// Positional write of `bytes`, starting at `offset` relative to `whence`,
+    /// returning the count written — the mirror of [`pread`](Io::pread).
+    ///
+    /// As with `pread`, [`Whence::Current`] uses and advances the cursor while
+    /// [`Whence::Start`] / [`Whence::End`] leave it untouched. The default is
+    /// [`IoError::Unsupported`]; a writable backend overrides it.
+    fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
+        let _ = (bytes, offset, whence);
+        Err(IoError::Unsupported("pwrite".to_string()))
     }
 
     /// Copies every byte from the cursor to the end into `dst`, returning the
@@ -691,12 +717,36 @@ impl Seek for BytesIO {
 }
 
 impl Io for BytesIO {
+    /// `mem://<buffer-address>` — the `mem` scheme with the hex address of the
+    /// backing bytes, so every in-memory handle still has a stable-shape URL.
+    fn url(&self) -> Url {
+        Url::new("mem", format!("{:x}", self.buffer.as_ptr() as usize))
+    }
+
     fn stats(&self) -> Result<IoStats, IoError> {
         Ok(IoStats::new(self.buffer.len() as u64))
     }
 
     fn as_slice(&self) -> Option<&[u8]> {
         Some(&self.buffer)
+    }
+
+    /// Positional write into the buffer, overwriting and zero-filling as needed.
+    /// [`Whence::Current`] advances the cursor; otherwise it is left put.
+    fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
+        let start = resolve(
+            self.position as u64,
+            Some(self.buffer.len() as u64),
+            offset,
+            whence,
+        )? as usize;
+        let saved = self.position;
+        self.position = start;
+        let count = self.put(bytes, true);
+        if !matches!(whence, Whence::Current) {
+            self.position = saved;
+        }
+        Ok(count)
     }
 }
 
@@ -724,26 +774,15 @@ pub trait Path: Io {
 /// A **remote, URL-addressed** named byte resource — the cloud sibling of
 /// [`Path`].
 ///
-/// Object stores (S3, Azure, GCS) and HTTP endpoints are addressed by URL and
-/// have **no directory hierarchy**: keys are flat, so — unlike a [`Path`] — a
-/// write never creates parent directories; the object is created directly.
-/// Reads are range-based through [`Io::read_at`]. Network SDKs are heavy, so
-/// concrete remote paths live in downstream crates that implement this trait;
-/// nothing in `yggdryl-io` pulls them in.
+/// Object stores (S3, Azure, GCS) and HTTP endpoints are addressed by URL (the
+/// universal [`Io::url`]) and have **no directory hierarchy**: keys are flat, so
+/// — unlike a [`Path`] — a write never creates parent directories; the object is
+/// created directly. Reads are range-based through [`Io::pread`]. Network SDKs
+/// are heavy, so concrete remote paths live in downstream crates that implement
+/// this trait; nothing in `yggdryl-io` pulls them in.
 pub trait RemotePath: Io {
-    /// The full remote URL, e.g. `s3://bucket/key` or `https://host/object`.
-    fn url(&self) -> &str;
-
     /// Whether the object currently exists (a metadata / `HEAD` probe).
     fn exists(&self) -> bool;
-
-    /// The store scheme, e.g. `s3`, `az`, `gs` or `https`. The default reads it
-    /// from [`url`](RemotePath::url).
-    fn scheme(&self) -> &str {
-        self.url()
-            .split_once("://")
-            .map_or("", |(scheme, _)| scheme)
-    }
 }
 
 /// How a [`LocalPath`] holds its bytes: a memory map (zero-copy, `mmap` feature)
@@ -768,8 +807,9 @@ impl Backing {
 
 /// A local filesystem [`Path`]: an [`Io`] handle over a file, **memory-mapped**
 /// for zero-copy direct access when the `mmap` feature is on (otherwise the file
-/// is read into a buffer on [`open`](LocalPath::open)). Reads and `read_at` then
-/// never touch the disk again, and [`copy`] hands the mapping straight to a sink.
+/// is read into a buffer on [`open`](LocalPath::open)). Reads and [`pread`](Io::pread)
+/// then never touch the disk again, and [`copy`] hands the mapping straight to a
+/// sink.
 ///
 /// The mapped path is read-only; use the [`write`](LocalPath::write) associated
 /// function for the write side.
@@ -897,6 +937,11 @@ impl Seek for LocalPath {
 }
 
 impl Io for LocalPath {
+    /// `file://<path>` — the `file` scheme over the resource location.
+    fn url(&self) -> Url {
+        Url::new("file", "").with_path(self.location.clone())
+    }
+
     fn stats(&self) -> Result<IoStats, IoError> {
         let mut stats = IoStats::new(self.size);
         if let Some(mtime) = self.mtime {
@@ -1170,27 +1215,43 @@ mod tests {
     }
 
     #[test]
-    fn io_read_at_does_not_move_the_cursor() {
+    fn io_pread_positional_vs_cursor_relative() {
         let mut io = BytesIO::from_bytes(b"0123456789".to_vec());
         io.seek(2, Whence::Start).unwrap();
         let mut buf = [0u8; 4];
-        // Positioned read at offset 6, cursor stays at 2.
-        assert_eq!(io.read_at(6, &mut buf).unwrap(), 4);
+        // Positional (Start): reads at offset 6, cursor stays at 2.
+        assert_eq!(io.pread(&mut buf, 6, Whence::Start).unwrap(), 4);
         assert_eq!(&buf, b"6789");
         assert_eq!(Seek::stream_position(&io), 2);
-        // A read past the end is short.
+        // Cursor-relative (Current): reads from the cursor and advances it.
+        let mut at = [0u8; 3];
+        assert_eq!(io.pread(&mut at, 0, Whence::Current).unwrap(), 3);
+        assert_eq!(&at, b"234");
+        assert_eq!(Seek::stream_position(&io), 5);
+        // A positional read past the end is short and clamps the fill count.
         let mut tail = [0u8; 4];
-        assert_eq!(io.read_at(8, &mut tail).unwrap(), 2);
+        assert_eq!(io.pread(&mut tail, 8, Whence::Start).unwrap(), 2);
         assert_eq!(&tail[..2], b"89");
     }
 
     #[test]
-    fn io_read_owned_reads_from_the_cursor() {
-        let mut io = BytesIO::from_bytes(b"hello world".to_vec());
-        io.seek(6, Whence::Start).unwrap();
-        assert_eq!(io.read_owned(Some(3)).unwrap(), b"wor");
-        assert_eq!(io.read_owned(None).unwrap(), b"ld");
-        assert_eq!(io.read_owned(Some(4)).unwrap(), b"");
+    fn io_pwrite_positional_vs_cursor_relative() {
+        let mut io = BytesIO::from_bytes(b"0123456789".to_vec());
+        io.seek(4, Whence::Start).unwrap();
+        // Positional write leaves the cursor put.
+        assert_eq!(io.pwrite(b"AB", 0, Whence::Start).unwrap(), 2);
+        assert_eq!(&io.getvalue()[..2], b"AB");
+        assert_eq!(Seek::stream_position(&io), 4);
+        // Cursor-relative write advances the cursor.
+        assert_eq!(io.pwrite(b"XY", 0, Whence::Current).unwrap(), 2);
+        assert_eq!(io.tell(), 6);
+        assert_eq!(io.getvalue(), b"AB23XY6789");
+        // A read-only handle reports pwrite as unsupported.
+        let mut ro = Drip(BytesIO::new());
+        assert!(matches!(
+            ro.pwrite(b"x", 0, Whence::Start),
+            Err(IoError::Unsupported(_))
+        ));
     }
 
     #[test]
@@ -1212,7 +1273,7 @@ mod tests {
     }
 
     /// A read-only [`Io`] with no `as_slice`, to exercise the streamed (non
-    /// zero-copy) fallbacks in `read_at` / `copy_to`.
+    /// zero-copy) fallbacks in `pread` / `copy_to`.
     struct Drip(BytesIO);
 
     impl ReadBytes for Drip {
@@ -1231,6 +1292,9 @@ mod tests {
         }
     }
     impl Io for Drip {
+        fn url(&self) -> Url {
+            self.0.url()
+        }
         fn stats(&self) -> Result<IoStats, IoError> {
             self.0.stats()
         }
@@ -1238,11 +1302,11 @@ mod tests {
     }
 
     #[test]
-    fn copy_and_read_at_streamed_fallback() {
+    fn copy_and_pread_streamed_fallback() {
         let mut src = Drip(BytesIO::from_bytes(b"streamed bytes".to_vec()));
-        // read_at via seek/restore on a one-byte-at-a-time reader.
+        // pread via seek/restore on a one-byte-at-a-time reader.
         let mut buf = [0u8; 8];
-        assert_eq!(src.read_at(0, &mut buf).unwrap(), 8);
+        assert_eq!(src.pread(&mut buf, 0, Whence::Start).unwrap(), 8);
         assert_eq!(&buf, b"streamed");
         assert_eq!(Seek::stream_position(&src), 0);
         // copy_to via the chunked loop.
@@ -1251,7 +1315,7 @@ mod tests {
         assert_eq!(dst, b"streamed bytes");
     }
 
-    /// A read-only [`Io`] whose reads always error, to check that `read_at`
+    /// A read-only [`Io`] whose reads always error, to check that `pread`
     /// restores the cursor even when a positioned read fails.
     struct Boom {
         position: u64,
@@ -1271,16 +1335,19 @@ mod tests {
         }
     }
     impl Io for Boom {
+        fn url(&self) -> Url {
+            Url::new("mem", "boom")
+        }
         fn stats(&self) -> Result<IoStats, IoError> {
             Ok(IoStats::new(0))
         }
     }
 
     #[test]
-    fn read_at_restores_cursor_even_on_error() {
+    fn pread_restores_cursor_even_on_error() {
         let mut io = Boom { position: 5 };
         let mut buf = [0u8; 4];
-        assert!(io.read_at(0, &mut buf).is_err());
+        assert!(io.pread(&mut buf, 0, Whence::Start).is_err());
         // The streaming cursor is back where it started despite the failed read.
         assert_eq!(Seek::stream_position(&io), 5);
     }
@@ -1296,10 +1363,12 @@ mod tests {
     }
 
     #[test]
-    fn io_read_owned_caps_to_remaining() {
-        let mut io = BytesIO::from_bytes(b"abc".to_vec());
-        // A huge requested size returns only what is left (no over-allocation).
-        assert_eq!(io.read_owned(Some(1_000_000)).unwrap(), b"abc");
+    fn bytesio_url_is_mem_scheme_with_address() {
+        let io = BytesIO::from_bytes(b"abc".to_vec());
+        let url = io.url();
+        assert_eq!(url.scheme(), "mem");
+        // The host is the buffer's hex address — non-empty.
+        assert!(!url.host().is_empty());
     }
 
     #[test]
@@ -1405,15 +1474,17 @@ mod tests {
         let mut io = LocalPath::open(&path).unwrap();
         assert_eq!(io.location(), path);
         assert!(io.exists());
+        assert_eq!(io.url().scheme(), "file");
+        assert_eq!(io.url().path(), path);
         assert_eq!(io.stats().unwrap().size(), 11);
         assert!(io.stats().unwrap().mtime().is_some());
 
-        // Streamed read advances the cursor; positioned read does not.
+        // Streamed read advances the cursor; positional pread does not.
         let mut head = [0u8; 5];
         io.read_exact(&mut head).unwrap();
         assert_eq!(&head, b"hello");
         let mut tail = [0u8; 5];
-        assert_eq!(io.read_at(6, &mut tail).unwrap(), 5);
+        assert_eq!(io.pread(&mut tail, 6, Whence::Start).unwrap(), 5);
         assert_eq!(&tail, b"world");
         assert_eq!(Seek::stream_position(&io), 5);
 
@@ -1452,17 +1523,18 @@ mod tests {
         // The parent directories do not exist yet; the write creates them.
         LocalPath::write(&nested, b"deep").unwrap();
         let mut io = LocalPath::open(&nested).unwrap();
-        assert_eq!(io.read_owned(None).unwrap(), b"deep");
+        let mut buf = [0u8; 4];
+        assert_eq!(io.pread(&mut buf, 0, Whence::Start).unwrap(), 4);
+        assert_eq!(&buf, b"deep");
         // A second write into the now-existing tree still succeeds.
         LocalPath::write(&nested, b"again").unwrap();
         std::fs::remove_dir_all(&base).ok();
     }
 
     /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as
-    /// an [`Io`] handle and that `scheme` defaults from the URL.
+    /// an [`Io`] handle and carries its remote URL through [`Io::url`].
     struct FakeRemote {
         inner: BytesIO,
-        url: String,
     }
     impl ReadBytes for FakeRemote {
         fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
@@ -1481,6 +1553,9 @@ mod tests {
         }
     }
     impl Io for FakeRemote {
+        fn url(&self) -> Url {
+            Url::new("s3", "bucket").with_path("/key")
+        }
         fn stats(&self) -> Result<IoStats, IoError> {
             self.inner.stats()
         }
@@ -1489,27 +1564,23 @@ mod tests {
         }
     }
     impl RemotePath for FakeRemote {
-        fn url(&self) -> &str {
-            &self.url
-        }
         fn exists(&self) -> bool {
             true
         }
     }
 
     #[test]
-    fn remote_path_scheme_defaults_from_url() {
+    fn remote_path_carries_its_url_and_composes_as_io() {
         let mut remote = FakeRemote {
             inner: BytesIO::from_bytes(b"object".to_vec()),
-            url: "s3://bucket/key".to_string(),
         };
-        assert_eq!(remote.url(), "s3://bucket/key");
-        assert_eq!(remote.scheme(), "s3"); // default, parsed from the URL
+        assert_eq!(remote.url().scheme(), "s3");
+        assert_eq!(remote.url().host(), "bucket");
         assert!(remote.exists());
-        // It is a full Io handle: stats, positioned read, transfer.
+        // It is a full Io handle: stats and positional read.
         assert_eq!(remote.stats().unwrap().size(), 6);
         let mut buf = [0u8; 6];
-        assert_eq!(remote.read_at(0, &mut buf).unwrap(), 6);
+        assert_eq!(remote.pread(&mut buf, 0, Whence::Start).unwrap(), 6);
         assert_eq!(&buf, b"object");
     }
 

@@ -12,9 +12,11 @@ same handle.
 
 - `ReadBytes` / `WriteBytes` — byte source/sink primitives (`&[u8]`, `Vec<u8>`).
 - `Seek` — the cursor: `seek` / `stream_position` / `stream_len`.
-- `Io: ReadBytes + Seek` — the base handle: `read_at` (positioned read that does
-  not move the cursor), `as_slice` (zero-copy hook), `stats`, and `copy_to`
-  (transfer with a memory fast path). `copy` is the free-function form.
+- `Io: ReadBytes + Seek` — the base handle. Every handle has a `url()` (in-memory
+  ones use `mem://<address>`); it reads/writes at a position via `pread` /
+  `pwrite` (a `Whence` selects positional — cursor untouched, the default — vs
+  cursor-relative), exposes `as_slice` (zero-copy hook), reports `stats`, and
+  `copy_to` (transfer with a memory fast path; `copy` is the free fn).
 - `IoStats` — `size` / `mtime` / `content_type` / `etag` eager; `media_type`
   discovered lazily (and cached) under the `media` feature.
 - `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
@@ -27,17 +29,18 @@ same handle.
   is the reference length-delimited codec.
 
 ```rust
-use yggdryl_io::{BytesIO, Io, Seek, Whence};
+use yggdryl_io::{BytesIO, Io, Whence};
 
 let mut io = BytesIO::from_bytes(b"hello world".to_vec());
 
-// Random access: read a slice at an offset without moving the cursor.
+// Positional read at an offset, leaving the cursor untouched.
 let mut footer = [0u8; 5];
-io.read_at(6, &mut footer).unwrap();
+io.pread(&mut footer, 6, Whence::Start).unwrap();
 assert_eq!(&footer, b"world");
 
-// Streamed access from the cursor, plus lazy metadata.
+// Streamed access from the cursor; every handle also has a URL and stats.
 assert_eq!(io.read(Some(5)), b"hello");
+assert_eq!(io.url().scheme(), "mem");
 assert_eq!(io.stats().unwrap().size(), 11);
 ```
 

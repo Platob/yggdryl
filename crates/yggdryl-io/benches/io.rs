@@ -44,8 +44,8 @@ fn main() {
         black_box(io.seek(black_box(1024), Whence::Start).unwrap());
     });
     let mut buf = [0u8; 256];
-    bench("Io::read_at (memory)", 5_000_000, || {
-        black_box(io.read_at(black_box(4096), &mut buf).unwrap());
+    bench("Io::pread (memory, positional)", 5_000_000, || {
+        black_box(io.pread(&mut buf, black_box(4096), Whence::Start).unwrap());
     });
 
     println!("\n== streamed read ==");

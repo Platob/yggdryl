@@ -25,12 +25,13 @@ def test_open_read_seek_and_random_access():
         assert io.location == path
         assert io.exists()
         assert len(io) == 11
+        assert io.url.scheme == "file"
 
         # Streamed read advances the cursor.
         assert io.read(5) == b"hello"
         assert io.tell() == 5
-        # Positioned read leaves the cursor put.
-        assert io.read_at(6, 5) == b"world"
+        # Positional pread leaves the cursor put (size, offset, whence=0).
+        assert io.pread(5, 6) == b"world"
         assert io.tell() == 5
         # getvalue returns the whole file regardless of the cursor.
         assert io.getvalue() == b"hello world"
