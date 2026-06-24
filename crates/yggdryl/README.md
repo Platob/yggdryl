@@ -19,11 +19,14 @@ let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2", true).un
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.port(), Some(8443));
 
-// Multi-valued query params (key -> list of values), percent-decoded.
-assert_eq!(url.params().get("a"), Some(&vec!["1".into(), "2".into()]));
+// Multi-valued query params (key -> list of values); `decode` percent-decodes.
+assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
 
-// Functional builders leave the original untouched.
-let bumped = url.add_param("page", vec!["2".into()]);
+// Functional builders leave the original untouched; `encode` percent-encodes.
+let bumped = url.add_param("page", vec!["2".into()], true);
+
+// Render encoded (default) or decoded for display.
+assert_eq!(bumped.to_str(false), "https://user:pw@example.com:8443/api?a=1&a=2&page=2");
 
 // Construct from parts (no string building) and view a Url as a Uri.
 let made = Url::new("https", "example.com").with_port(443).with_path("/x");

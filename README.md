@@ -29,12 +29,15 @@ yggdryl/
 
 ## The core API
 
-Each type is built with `from_str(value, safe)` (or `from_parts` / `from_mapping`),
-exposes its components as read-only accessors, and reconstructs the original via
-`to_string()` / `str()` / `toString()`. `safe = true` validates fully; `false` is
-a faster, lenient parse. Functional `copy(...)` / `with_*` / `without_*` builders
-return new values without mutating the original. The naming is identical across
-all three languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
+Each type is built with `from_str(value, safe)` (or `from_parts` / `from_mapping`)
+and exposes its components as read-only accessors. `safe = true` validates fully;
+`false` is a faster, lenient parse. Rendering takes an `encode` flag —
+`to_string(encode=true)` (the default, also what `str()` / `toString()` use)
+percent-encodes for transport, `encode=false` decodes for display; both are
+cached. Functional `copy(...)` / `with_*` / `without_*` builders and the
+multi-valued `params` / `with_params` / `add_param` query CRUD all return new
+values without mutating the original. The naming is identical across all three
+languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
 
 ```rust
 use yggdryl::{FromInput, Uri, Url, Version};
@@ -45,7 +48,7 @@ assert_eq!(uri.scheme(), "urn");
 let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2", true)?;
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.port(), Some(8443));
-assert_eq!(url.params().get("a"), Some(&vec!["1".into(), "2".into()]));
+assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
 
 assert!(Version::from_str("1.4.2", true)? < Version::from_str("1.10.0", true)?);
 # Ok::<(), yggdryl::UrlError>(())

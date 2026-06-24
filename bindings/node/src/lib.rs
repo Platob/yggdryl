@@ -162,28 +162,31 @@ impl Uri {
         }
     }
 
-    /// Return the query parsed into a percent-decoded object of key → values.
+    /// Return the query as an object of key -> values; `decode` percent-decodes.
     #[napi(js_name = "params")]
-    pub fn params(&self) -> HashMap<String, Vec<String>> {
-        self.inner.params().into_iter().collect()
+    pub fn params(&self, decode: Option<bool>) -> HashMap<String, Vec<String>> {
+        self.inner
+            .params(decode.unwrap_or(true))
+            .into_iter()
+            .collect()
     }
 
-    /// Return a copy whose query is built from `params` (percent-encoded).
+    /// Return a copy whose query is built from `params`; `encode` percent-encodes.
     #[napi(js_name = "withParams")]
-    pub fn with_params(&self, params: HashMap<String, Vec<String>>) -> Uri {
+    pub fn with_params(&self, params: HashMap<String, Vec<String>>, encode: Option<bool>) -> Uri {
         Uri {
             inner: self
                 .inner
                 .clone()
-                .with_params(&params.into_iter().collect()),
+                .with_params(&params.into_iter().collect(), encode.unwrap_or(true)),
         }
     }
 
     /// Return a copy with `key` set to `values`, adding or replacing it.
     #[napi(js_name = "addParam")]
-    pub fn add_param(&self, key: String, values: Vec<String>) -> Uri {
+    pub fn add_param(&self, key: String, values: Vec<String>, encode: Option<bool>) -> Uri {
         Uri {
-            inner: self.inner.add_param(key, values),
+            inner: self.inner.add_param(key, values, encode.unwrap_or(true)),
         }
     }
 
@@ -212,9 +215,10 @@ impl Uri {
         self.inner.fragment().map(str::to_string)
     }
 
+    /// Render the URI; `encode` (default) percent-encodes, else decodes.
     #[napi(js_name = "toString")]
-    pub fn to_string_js(&self) -> String {
-        self.inner.to_string()
+    pub fn to_string_js(&self, encode: Option<bool>) -> String {
+        self.inner.to_str(encode.unwrap_or(true))
     }
 }
 
@@ -396,28 +400,31 @@ impl Url {
         }
     }
 
-    /// Return the query parsed into a percent-decoded object of key → values.
+    /// Return the query as an object of key -> values; `decode` percent-decodes.
     #[napi(js_name = "params")]
-    pub fn params(&self) -> HashMap<String, Vec<String>> {
-        self.inner.params().into_iter().collect()
+    pub fn params(&self, decode: Option<bool>) -> HashMap<String, Vec<String>> {
+        self.inner
+            .params(decode.unwrap_or(true))
+            .into_iter()
+            .collect()
     }
 
-    /// Return a copy whose query is built from `params` (percent-encoded).
+    /// Return a copy whose query is built from `params`; `encode` percent-encodes.
     #[napi(js_name = "withParams")]
-    pub fn with_params(&self, params: HashMap<String, Vec<String>>) -> Url {
+    pub fn with_params(&self, params: HashMap<String, Vec<String>>, encode: Option<bool>) -> Url {
         Url {
             inner: self
                 .inner
                 .clone()
-                .with_params(&params.into_iter().collect()),
+                .with_params(&params.into_iter().collect(), encode.unwrap_or(true)),
         }
     }
 
     /// Return a copy with `key` set to `values`, adding or replacing it.
     #[napi(js_name = "addParam")]
-    pub fn add_param(&self, key: String, values: Vec<String>) -> Url {
+    pub fn add_param(&self, key: String, values: Vec<String>, encode: Option<bool>) -> Url {
         Url {
-            inner: self.inner.add_param(key, values),
+            inner: self.inner.add_param(key, values, encode.unwrap_or(true)),
         }
     }
 
@@ -474,9 +481,10 @@ impl Url {
         self.inner.authority()
     }
 
+    /// Render the URL; `encode` (default) percent-encodes, else decodes.
     #[napi(js_name = "toString")]
-    pub fn to_string_js(&self) -> String {
-        self.inner.to_string()
+    pub fn to_string_js(&self, encode: Option<bool>) -> String {
+        self.inner.to_str(encode.unwrap_or(true))
     }
 }
 

@@ -153,23 +153,33 @@ impl Uri {
         }
     }
 
-    /// Return the query parsed into a percent-decoded ``dict[str, list[str]]``.
-    fn params(&self) -> Params {
-        self.inner.params()
+    /// Return the query as a ``dict[str, list[str]]``; ``decode`` percent-decodes.
+    #[pyo3(signature = (decode = true))]
+    fn params(&self, decode: bool) -> Params {
+        self.inner.params(decode)
     }
 
-    /// Return a copy whose query is built from ``params`` (percent-encoded).
-    fn with_params(&self, params: Params) -> Self {
+    /// Return a copy whose query is built from ``params``; ``encode`` percent-
+    /// encodes each key and value.
+    #[pyo3(signature = (params, encode = true))]
+    fn with_params(&self, params: Params, encode: bool) -> Self {
         Uri {
-            inner: self.inner.clone().with_params(&params),
+            inner: self.inner.clone().with_params(&params, encode),
         }
     }
 
     /// Return a copy with ``key`` set to ``values``, adding or replacing it.
-    fn add_param(&self, key: String, values: Vec<String>) -> Self {
+    #[pyo3(signature = (key, values, encode = true))]
+    fn add_param(&self, key: String, values: Vec<String>, encode: bool) -> Self {
         Uri {
-            inner: self.inner.add_param(key, values),
+            inner: self.inner.add_param(key, values, encode),
         }
+    }
+
+    /// Render the URI; ``encode`` (default) percent-encodes, else decodes.
+    #[pyo3(signature = (encode = true))]
+    fn to_string(&self, encode: bool) -> String {
+        self.inner.to_str(encode)
     }
 
     #[getter]
@@ -379,23 +389,33 @@ impl Url {
         }
     }
 
-    /// Return the query parsed into a percent-decoded ``dict[str, list[str]]``.
-    fn params(&self) -> Params {
-        self.inner.params()
+    /// Return the query as a ``dict[str, list[str]]``; ``decode`` percent-decodes.
+    #[pyo3(signature = (decode = true))]
+    fn params(&self, decode: bool) -> Params {
+        self.inner.params(decode)
     }
 
-    /// Return a copy whose query is built from ``params`` (percent-encoded).
-    fn with_params(&self, params: Params) -> Self {
+    /// Return a copy whose query is built from ``params``; ``encode`` percent-
+    /// encodes each key and value.
+    #[pyo3(signature = (params, encode = true))]
+    fn with_params(&self, params: Params, encode: bool) -> Self {
         Url {
-            inner: self.inner.clone().with_params(&params),
+            inner: self.inner.clone().with_params(&params, encode),
         }
     }
 
     /// Return a copy with ``key`` set to ``values``, adding or replacing it.
-    fn add_param(&self, key: String, values: Vec<String>) -> Self {
+    #[pyo3(signature = (key, values, encode = true))]
+    fn add_param(&self, key: String, values: Vec<String>, encode: bool) -> Self {
         Url {
-            inner: self.inner.add_param(key, values),
+            inner: self.inner.add_param(key, values, encode),
         }
+    }
+
+    /// Render the URL; ``encode`` (default) percent-encodes, else decodes.
+    #[pyo3(signature = (encode = true))]
+    fn to_string(&self, encode: bool) -> String {
+        self.inner.to_str(encode)
     }
 
     /// Return this URL viewed as a generic :class:`Uri`.

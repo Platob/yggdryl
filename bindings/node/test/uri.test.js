@@ -133,3 +133,13 @@ test('url toUri', () => {
   const uri = new Url('https://user@h:8443/p?x=1').toUri()
   assert.strictEqual(uri.authority, 'user@h:8443')
 })
+
+test('encode/decode toString and params', () => {
+  const url = new Url('https://h/a%20b?q=x%20y', false)
+  assert.strictEqual(url.toString(), 'https://h/a%20b?q=x%20y') // encode (default)
+  assert.strictEqual(url.toString(false), 'https://h/a b?q=x y') // decoded
+  assert.deepStrictEqual(url.params().q, ['x y'])
+  assert.deepStrictEqual(url.params(false).q, ['x%20y'])
+  const built = new Uri('https://h/p').withParams({ a: ['b c'] }, false)
+  assert.strictEqual(built.query, 'a=b c')
+})

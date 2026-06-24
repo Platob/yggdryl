@@ -21,6 +21,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::OnceLock;
 
 /// A set of named components, used by [`FromInput::from_mapping`].
 ///
@@ -35,28 +36,28 @@ pub type Mapping = BTreeMap<String, String>;
 pub type Params = BTreeMap<String, Vec<String>>;
 
 /// The input forms accepted by [`FromInput::from_`].
-pub enum ParseInput<'a> {
+pub enum Input<'a> {
     /// A full string to be parsed, e.g. `"https://example.com"`.
     Str(&'a str),
     /// A [`Mapping`] of already-split components.
     Mapping(&'a Mapping),
 }
 
-impl<'a> From<&'a str> for ParseInput<'a> {
+impl<'a> From<&'a str> for Input<'a> {
     fn from(value: &'a str) -> Self {
-        ParseInput::Str(value)
+        Input::Str(value)
     }
 }
 
-impl<'a> From<&'a String> for ParseInput<'a> {
+impl<'a> From<&'a String> for Input<'a> {
     fn from(value: &'a String) -> Self {
-        ParseInput::Str(value.as_str())
+        Input::Str(value.as_str())
     }
 }
 
-impl<'a> From<&'a Mapping> for ParseInput<'a> {
+impl<'a> From<&'a Mapping> for Input<'a> {
     fn from(value: &'a Mapping) -> Self {
-        ParseInput::Mapping(value)
+        Input::Mapping(value)
     }
 }
 
@@ -64,7 +65,7 @@ impl<'a> From<&'a Mapping> for ParseInput<'a> {
 ///
 /// Implementors provide [`from_str`](FromInput::from_str) and
 /// [`from_mapping`](FromInput::from_mapping); the [`from_`](FromInput::from_) entry
-/// point dispatches over a [`ParseInput`] for free. Every method takes a `safe`
+/// point dispatches over an [`Input`] for free. Every method takes a `safe`
 /// flag — `true` validates the input thoroughly, `false` is a faster, lenient
 /// parse that skips the optional checks.
 pub trait FromInput: Sized {
@@ -77,11 +78,11 @@ pub trait FromInput: Sized {
     /// Parses from a [`Mapping`] of pre-split components.
     fn from_mapping(fields: &Mapping, safe: bool) -> Result<Self, Self::Err>;
 
-    /// Parses from any supported [`ParseInput`] form.
-    fn from_<'a, I: Into<ParseInput<'a>>>(input: I, safe: bool) -> Result<Self, Self::Err> {
+    /// Parses from any supported [`Input`] form.
+    fn from_<'a, I: Into<Input<'a>>>(input: I, safe: bool) -> Result<Self, Self::Err> {
         match input.into() {
-            ParseInput::Str(s) => Self::from_str(s, safe),
-            ParseInput::Mapping(m) => Self::from_mapping(m, safe),
+            Input::Str(s) => Self::from_str(s, safe),
+            Input::Mapping(m) => Self::from_mapping(m, safe),
         }
     }
 }
@@ -201,32 +202,93 @@ fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
-/// Splits a `key=value&key=value2` query into a percent-decoded multimap.
-/// Repeated keys accumulate their values; parts that fail to decode are kept
-/// verbatim.
-fn query_to_params(query: &str) -> Params {
+// Per-component sets of delimiter bytes that are left as-is when encoding a
+// component for output (on top of the always-safe unreserved set).
+const KEEP_AUTHORITY: &[u8] = b":@[]";
+const KEEP_PATH: &[u8] = b"/:@";
+const KEEP_QUERY: &[u8] = b"/:@?&=";
+const KEEP_FRAGMENT: &[u8] = b"/:@?";
+
+/// Percent-encodes `input` for output, preserving the bytes in `keep` (the
+/// component's structural delimiters) and any already-valid `%XX` escape — so it
+/// is idempotent and never double-encodes.
+fn encode_component(input: &str, keep: &[u8]) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let byte = bytes[i];
+        let is_escape = byte == b'%'
+            && bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit())
+            && bytes.get(i + 2).is_some_and(|b| b.is_ascii_hexdigit());
+        if is_escape {
+            out.push_str(&input[i..i + 3]);
+            i += 3;
+        } else {
+            if is_unreserved(byte) || keep.contains(&byte) {
+                out.push(byte as char);
+            } else {
+                out.push('%');
+                out.push(hex_digit(byte >> 4));
+                out.push(hex_digit(byte & 0x0f));
+            }
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Renders a component either percent-encoded (`encode`) or percent-decoded
+/// (best effort), used by `to_str(encode)`.
+fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
+    if encode {
+        encode_component(input, keep)
+    } else {
+        percent_decode(input).unwrap_or_else(|_| input.to_string())
+    }
+}
+
+/// Splits a `key=value&key=value2` query into a multimap. Repeated keys
+/// accumulate their values; when `decode`, each key/value is percent-decoded
+/// (parts that fail to decode are kept verbatim).
+fn query_to_params(query: &str, decode: bool) -> Params {
+    let unescape = |s: &str| {
+        if decode {
+            percent_decode(s).unwrap_or_else(|_| s.to_string())
+        } else {
+            s.to_string()
+        }
+    };
     let mut params = Params::new();
     for pair in query.split('&').filter(|p| !p.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        let key = percent_decode(key).unwrap_or_else(|_| key.to_string());
-        let value = percent_decode(value).unwrap_or_else(|_| value.to_string());
-        params.entry(key).or_default().push(value);
+        params
+            .entry(unescape(key))
+            .or_default()
+            .push(unescape(value));
     }
     params
 }
 
-/// Builds a `key=value&…` query from a [`Params`] multimap, percent-encoding each
-/// part. Keys with several values are emitted once per value; pairs come out in
-/// the map's (sorted) order for a deterministic result.
-fn params_to_query(params: &Params) -> String {
+/// Builds a `key=value&…` query from a [`Params`] multimap. When `encode`, each
+/// key/value is percent-encoded. Keys with several values are emitted once per
+/// value; pairs come out in the map's (sorted) order for a deterministic result.
+fn params_to_query(params: &Params, encode: bool) -> String {
+    let escape = |s: &str| {
+        if encode {
+            percent_encode(s)
+        } else {
+            s.to_string()
+        }
+    };
     let mut pairs = Vec::new();
     for (key, values) in params {
-        let key = percent_encode(key);
+        let key = escape(key);
         if values.is_empty() {
             pairs.push(key);
         } else {
             for value in values {
-                pairs.push(format!("{key}={}", percent_encode(value)));
+                pairs.push(format!("{key}={}", escape(value)));
             }
         }
     }
@@ -320,14 +382,31 @@ fn is_valid_scheme(scheme: &str) -> bool {
 /// assert_eq!(uri.query(), Some("page=2"));
 /// assert_eq!(uri.fragment(), Some("intro"));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub struct Uri {
     scheme: String,
     authority: Option<String>,
     path: String,
     query: Option<String>,
     fragment: Option<String>,
+    // Lazily-computed, cached encoded/decoded renderings (see `to_str`). Excluded
+    // from equality so two URIs with the same components compare equal regardless
+    // of which renderings have been materialised.
+    encoded: OnceLock<String>,
+    decoded: OnceLock<String>,
 }
+
+impl PartialEq for Uri {
+    fn eq(&self, other: &Self) -> bool {
+        self.scheme == other.scheme
+            && self.authority == other.authority
+            && self.path == other.path
+            && self.query == other.query
+            && self.fragment == other.fragment
+    }
+}
+
+impl Eq for Uri {}
 
 impl FromInput for Uri {
     type Err = UriError;
@@ -369,6 +448,7 @@ impl FromInput for Uri {
             path,
             query,
             fragment,
+            ..Default::default()
         };
         if safe {
             uri.validate_encoding()?;
@@ -392,6 +472,7 @@ impl FromInput for Uri {
             path: fields.get("path").cloned().unwrap_or_default(),
             query: fields.get("query").cloned(),
             fragment: fields.get("fragment").cloned(),
+            ..Default::default()
         };
         if safe {
             uri.validate_encoding()?;
@@ -455,6 +536,7 @@ impl Uri {
             path,
             query,
             fragment,
+            ..Default::default()
         }
     }
 
@@ -467,6 +549,7 @@ impl Uri {
             path: path.into(),
             query: None,
             fragment: None,
+            ..Default::default()
         }
     }
 
@@ -486,100 +569,137 @@ impl Uri {
             path: path.unwrap_or_else(|| self.path.clone()),
             query: query.or_else(|| self.query.clone()),
             fragment: fragment.or_else(|| self.fragment.clone()),
+            ..Default::default()
         }
     }
 
     /// Returns a copy with the scheme replaced.
-    pub fn with_scheme(mut self, scheme: impl Into<String>) -> Uri {
-        self.scheme = scheme.into();
-        self
+    pub fn with_scheme(self, scheme: impl Into<String>) -> Uri {
+        Uri::from_parts(
+            scheme.into(),
+            self.authority,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the authority set.
-    pub fn with_authority(mut self, authority: impl Into<String>) -> Uri {
-        self.authority = Some(authority.into());
-        self
+    pub fn with_authority(self, authority: impl Into<String>) -> Uri {
+        Uri::from_parts(
+            self.scheme,
+            Some(authority.into()),
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the authority removed.
-    pub fn without_authority(mut self) -> Uri {
-        self.authority = None;
-        self
+    pub fn without_authority(self) -> Uri {
+        Uri::from_parts(self.scheme, None, self.path, self.query, self.fragment)
     }
 
     /// Returns a copy with the path replaced.
-    pub fn with_path(mut self, path: impl Into<String>) -> Uri {
-        self.path = path.into();
-        self
+    pub fn with_path(self, path: impl Into<String>) -> Uri {
+        Uri::from_parts(
+            self.scheme,
+            self.authority,
+            path.into(),
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the query set.
-    pub fn with_query(mut self, query: impl Into<String>) -> Uri {
-        self.query = Some(query.into());
-        self
+    pub fn with_query(self, query: impl Into<String>) -> Uri {
+        Uri::from_parts(
+            self.scheme,
+            self.authority,
+            self.path,
+            Some(query.into()),
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the query removed.
-    pub fn without_query(mut self) -> Uri {
-        self.query = None;
-        self
+    pub fn without_query(self) -> Uri {
+        Uri::from_parts(self.scheme, self.authority, self.path, None, self.fragment)
     }
 
     /// Returns a copy with the fragment set.
-    pub fn with_fragment(mut self, fragment: impl Into<String>) -> Uri {
-        self.fragment = Some(fragment.into());
-        self
+    pub fn with_fragment(self, fragment: impl Into<String>) -> Uri {
+        Uri::from_parts(
+            self.scheme,
+            self.authority,
+            self.path,
+            self.query,
+            Some(fragment.into()),
+        )
     }
 
     /// Returns a copy with the fragment removed.
-    pub fn without_fragment(mut self) -> Uri {
-        self.fragment = None;
-        self
+    pub fn without_fragment(self) -> Uri {
+        Uri::from_parts(self.scheme, self.authority, self.path, self.query, None)
     }
 
-    /// Returns the query parsed into a percent-decoded [`Params`] multimap.
-    /// An absent query yields an empty map.
-    pub fn params(&self) -> Params {
+    /// Returns the query parsed into a [`Params`] multimap. When `decode`, keys
+    /// and values are percent-decoded. An absent query yields an empty map.
+    pub fn params(&self, decode: bool) -> Params {
         self.query
             .as_deref()
-            .map(query_to_params)
+            .map(|q| query_to_params(q, decode))
             .unwrap_or_default()
     }
 
-    /// Returns a copy whose query is built from `params`, percent-encoding each
-    /// key and value. An empty map clears the query.
-    pub fn with_params(mut self, params: &Params) -> Uri {
-        self.query = if params.is_empty() {
-            None
-        } else {
-            Some(params_to_query(params))
-        };
-        self
+    /// Returns a copy whose query is built from `params`. When `encode`, each key
+    /// and value is percent-encoded. An empty map clears the query.
+    pub fn with_params(self, params: &Params, encode: bool) -> Uri {
+        let query = (!params.is_empty()).then(|| params_to_query(params, encode));
+        Uri::from_parts(self.scheme, self.authority, self.path, query, self.fragment)
     }
 
     /// Returns a copy with `key` set to `values`, adding the parameter if absent
-    /// or replacing its values if present.
-    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>) -> Uri {
-        let mut params = self.params();
+    /// or replacing its values if present. Values are percent-encoded when
+    /// `encode`.
+    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Uri {
+        let mut params = self.params(true);
         params.insert(key.into(), values);
-        self.clone().with_params(&params)
+        self.clone().with_params(&params, encode)
+    }
+
+    /// Renders the URI as a string. When `encode`, each component is percent-
+    /// encoded for transport (idempotent); when not, components are percent-
+    /// decoded for display. Both renderings are cached.
+    pub fn to_str(&self, encode: bool) -> String {
+        let cache = if encode { &self.encoded } else { &self.decoded };
+        cache.get_or_init(|| self.render(encode)).clone()
+    }
+
+    /// Builds the rendering for [`Uri::to_str`].
+    fn render(&self, encode: bool) -> String {
+        let mut out = format!("{}:", self.scheme);
+        if let Some(authority) = &self.authority {
+            out.push_str("//");
+            out.push_str(&render_component(authority, KEEP_AUTHORITY, encode));
+        }
+        out.push_str(&render_component(&self.path, KEEP_PATH, encode));
+        if let Some(query) = &self.query {
+            out.push('?');
+            out.push_str(&render_component(query, KEEP_QUERY, encode));
+        }
+        if let Some(fragment) = &self.fragment {
+            out.push('#');
+            out.push_str(&render_component(fragment, KEEP_FRAGMENT, encode));
+        }
+        out
     }
 }
 
 impl fmt::Display for Uri {
+    /// Renders the encoded form (`to_str(true)`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:", self.scheme)?;
-        if let Some(authority) = &self.authority {
-            write!(f, "//{authority}")?;
-        }
-        write!(f, "{}", self.path)?;
-        if let Some(query) = &self.query {
-            write!(f, "?{query}")?;
-        }
-        if let Some(fragment) = &self.fragment {
-            write!(f, "#{fragment}")?;
-        }
-        Ok(())
+        write!(f, "{}", self.to_str(true))
     }
 }
 
@@ -597,7 +717,7 @@ impl fmt::Display for Uri {
 /// assert_eq!(url.port(), Some(8443));
 /// assert_eq!(url.path(), "/api");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub struct Url {
     scheme: String,
     username: Option<String>,
@@ -607,7 +727,25 @@ pub struct Url {
     path: String,
     query: Option<String>,
     fragment: Option<String>,
+    // Cached encoded/decoded renderings; excluded from equality (see `Uri`).
+    encoded: OnceLock<String>,
+    decoded: OnceLock<String>,
 }
+
+impl PartialEq for Url {
+    fn eq(&self, other: &Self) -> bool {
+        self.scheme == other.scheme
+            && self.username == other.username
+            && self.password == other.password
+            && self.host == other.host
+            && self.port == other.port
+            && self.path == other.path
+            && self.query == other.query
+            && self.fragment == other.fragment
+    }
+}
+
+impl Eq for Url {}
 
 impl FromInput for Url {
     type Err = UrlError;
@@ -646,6 +784,7 @@ impl FromInput for Url {
             path: uri.path,
             query: uri.query,
             fragment: uri.fragment,
+            ..Default::default()
         })
     }
 
@@ -675,6 +814,7 @@ impl FromInput for Url {
             path: fields.get("path").cloned().unwrap_or_default(),
             query: fields.get("query").cloned(),
             fragment: fields.get("fragment").cloned(),
+            ..Default::default()
         };
         if safe {
             for part in [url.path.as_str()]
@@ -774,6 +914,7 @@ impl Url {
             path,
             query,
             fragment,
+            ..Default::default()
         }
     }
 
@@ -781,13 +922,8 @@ impl Url {
     pub fn new(scheme: impl Into<String>, host: impl Into<String>) -> Url {
         Url {
             scheme: scheme.into(),
-            username: None,
-            password: None,
             host: host.into(),
-            port: None,
-            path: String::new(),
-            query: None,
-            fragment: None,
+            ..Default::default()
         }
     }
 
@@ -805,129 +941,269 @@ impl Url {
         query: Option<String>,
         fragment: Option<String>,
     ) -> Url {
-        Url {
-            scheme: scheme.unwrap_or_else(|| self.scheme.clone()),
-            username: username.or_else(|| self.username.clone()),
-            password: password.or_else(|| self.password.clone()),
-            host: host.unwrap_or_else(|| self.host.clone()),
-            port: port.or(self.port),
-            path: path.unwrap_or_else(|| self.path.clone()),
-            query: query.or_else(|| self.query.clone()),
-            fragment: fragment.or_else(|| self.fragment.clone()),
-        }
+        Url::from_parts(
+            scheme.unwrap_or_else(|| self.scheme.clone()),
+            username.or_else(|| self.username.clone()),
+            password.or_else(|| self.password.clone()),
+            host.unwrap_or_else(|| self.host.clone()),
+            port.or(self.port),
+            path.unwrap_or_else(|| self.path.clone()),
+            query.or_else(|| self.query.clone()),
+            fragment.or_else(|| self.fragment.clone()),
+        )
     }
 
     /// Returns a copy with the scheme replaced.
-    pub fn with_scheme(mut self, scheme: impl Into<String>) -> Url {
-        self.scheme = scheme.into();
-        self
+    pub fn with_scheme(self, scheme: impl Into<String>) -> Url {
+        Url::from_parts(
+            scheme.into(),
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the username set.
-    pub fn with_username(mut self, username: impl Into<String>) -> Url {
-        self.username = Some(username.into());
-        self
+    pub fn with_username(self, username: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            Some(username.into()),
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the password set.
-    pub fn with_password(mut self, password: impl Into<String>) -> Url {
-        self.password = Some(password.into());
-        self
+    pub fn with_password(self, password: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            Some(password.into()),
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with username and password removed.
-    pub fn without_userinfo(mut self) -> Url {
-        self.username = None;
-        self.password = None;
-        self
+    pub fn without_userinfo(self) -> Url {
+        Url::from_parts(
+            self.scheme,
+            None,
+            None,
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the host replaced.
-    pub fn with_host(mut self, host: impl Into<String>) -> Url {
-        self.host = host.into();
-        self
+    pub fn with_host(self, host: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            host.into(),
+            self.port,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the port set.
-    pub fn with_port(mut self, port: u16) -> Url {
-        self.port = Some(port);
-        self
+    pub fn with_port(self, port: u16) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            Some(port),
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the port removed.
-    pub fn without_port(mut self) -> Url {
-        self.port = None;
-        self
+    pub fn without_port(self) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            None,
+            self.path,
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the path replaced.
-    pub fn with_path(mut self, path: impl Into<String>) -> Url {
-        self.path = path.into();
-        self
+    pub fn with_path(self, path: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            path.into(),
+            self.query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the query set.
-    pub fn with_query(mut self, query: impl Into<String>) -> Url {
-        self.query = Some(query.into());
-        self
+    pub fn with_query(self, query: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            Some(query.into()),
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the query removed.
-    pub fn without_query(mut self) -> Url {
-        self.query = None;
-        self
+    pub fn without_query(self) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            None,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with the fragment set.
-    pub fn with_fragment(mut self, fragment: impl Into<String>) -> Url {
-        self.fragment = Some(fragment.into());
-        self
+    pub fn with_fragment(self, fragment: impl Into<String>) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            Some(fragment.into()),
+        )
     }
 
     /// Returns a copy with the fragment removed.
-    pub fn without_fragment(mut self) -> Url {
-        self.fragment = None;
-        self
+    pub fn without_fragment(self) -> Url {
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            self.query,
+            None,
+        )
     }
 
-    /// Returns the query parsed into a percent-decoded [`Params`] multimap.
-    /// An absent query yields an empty map.
-    pub fn params(&self) -> Params {
+    /// Returns the query parsed into a [`Params`] multimap. When `decode`, keys
+    /// and values are percent-decoded. An absent query yields an empty map.
+    pub fn params(&self, decode: bool) -> Params {
         self.query
             .as_deref()
-            .map(query_to_params)
+            .map(|q| query_to_params(q, decode))
             .unwrap_or_default()
     }
 
-    /// Returns a copy whose query is built from `params`, percent-encoding each
-    /// key and value. An empty map clears the query.
-    pub fn with_params(mut self, params: &Params) -> Url {
-        self.query = if params.is_empty() {
-            None
-        } else {
-            Some(params_to_query(params))
-        };
-        self
+    /// Returns a copy whose query is built from `params`. When `encode`, each key
+    /// and value is percent-encoded. An empty map clears the query.
+    pub fn with_params(self, params: &Params, encode: bool) -> Url {
+        let query = (!params.is_empty()).then(|| params_to_query(params, encode));
+        Url::from_parts(
+            self.scheme,
+            self.username,
+            self.password,
+            self.host,
+            self.port,
+            self.path,
+            query,
+            self.fragment,
+        )
     }
 
     /// Returns a copy with `key` set to `values`, adding the parameter if absent
-    /// or replacing its values if present.
-    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>) -> Url {
-        let mut params = self.params();
+    /// or replacing its values if present. Values are percent-encoded when
+    /// `encode`.
+    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Url {
+        let mut params = self.params(true);
         params.insert(key.into(), values);
-        self.clone().with_params(&params)
+        self.clone().with_params(&params, encode)
     }
 
     /// Views this URL as a generic [`Uri`] — the "is-a URI" relationship, since
     /// every [`Url`] is a [`Uri`] with a reconstructed authority.
     pub fn to_uri(&self) -> Uri {
-        Uri {
-            scheme: self.scheme.clone(),
-            authority: Some(self.authority()),
-            path: self.path.clone(),
-            query: self.query.clone(),
-            fragment: self.fragment.clone(),
+        Uri::from_parts(
+            self.scheme.clone(),
+            Some(self.authority()),
+            self.path.clone(),
+            self.query.clone(),
+            self.fragment.clone(),
+        )
+    }
+
+    /// Renders the URL as a string. When `encode`, each component is percent-
+    /// encoded for transport (idempotent); when not, components are percent-
+    /// decoded for display. Both renderings are cached.
+    pub fn to_str(&self, encode: bool) -> String {
+        let cache = if encode { &self.encoded } else { &self.decoded };
+        cache.get_or_init(|| self.render(encode)).clone()
+    }
+
+    /// Builds the rendering for [`Url::to_str`].
+    fn render(&self, encode: bool) -> String {
+        let mut out = format!("{}://", self.scheme);
+        if let Some(user) = &self.username {
+            out.push_str(&render_component(user, KEEP_AUTHORITY, encode));
+            if let Some(pw) = &self.password {
+                out.push(':');
+                out.push_str(&render_component(pw, KEEP_AUTHORITY, encode));
+            }
+            out.push('@');
         }
+        push_host(
+            &mut out,
+            &render_component(&self.host, KEEP_AUTHORITY, encode),
+        );
+        if let Some(port) = self.port {
+            out.push(':');
+            out.push_str(&port.to_string());
+        }
+        out.push_str(&render_component(&self.path, KEEP_PATH, encode));
+        if let Some(query) = &self.query {
+            out.push('?');
+            out.push_str(&render_component(query, KEEP_QUERY, encode));
+        }
+        if let Some(fragment) = &self.fragment {
+            out.push('#');
+            out.push_str(&render_component(fragment, KEEP_FRAGMENT, encode));
+        }
+        out
     }
 }
 
@@ -944,16 +1220,9 @@ impl From<Url> for Uri {
 }
 
 impl fmt::Display for Url {
+    /// Renders the encoded form (`to_str(true)`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}://{}", self.scheme, self.authority())?;
-        write!(f, "{}", self.path)?;
-        if let Some(query) = &self.query {
-            write!(f, "?{query}")?;
-        }
-        if let Some(fragment) = &self.fragment {
-            write!(f, "#{fragment}")?;
-        }
-        Ok(())
+        write!(f, "{}", self.to_str(true))
     }
 }
 
@@ -1484,7 +1753,7 @@ mod tests {
     #[test]
     fn params_round_trip_and_multivalue() {
         let url = Url::from_str("https://h/p?a=1&a=2&b=hello%20world", true).unwrap();
-        let params = url.params();
+        let params = url.params(true);
         assert_eq!(
             params.get("a"),
             Some(&vec!["1".to_string(), "2".to_string()])
@@ -1492,15 +1761,32 @@ mod tests {
         assert_eq!(params.get("b"), Some(&vec!["hello world".to_string()]));
 
         // Building a query encodes each part.
-        let built = Uri::new("https", "/p")
-            .with_params(&Params::from([("q".to_string(), vec!["a b".to_string()])]));
+        let built = Uri::new("https", "/p").with_params(
+            &Params::from([("q".to_string(), vec!["a b".to_string()])]),
+            true,
+        );
         assert_eq!(built.query(), Some("q=a%20b"));
 
         // add_param adds a new key or replaces an existing one's values.
-        let updated = built.add_param("q", vec!["x".to_string(), "y".to_string()]);
+        let updated = built.add_param("q", vec!["x".to_string(), "y".to_string()], true);
         assert_eq!(updated.query(), Some("q=x&q=y"));
-        let added = updated.add_param("r", vec!["1".to_string()]);
+        let added = updated.add_param("r", vec!["1".to_string()], true);
         assert_eq!(added.query(), Some("q=x&q=y&r=1"));
+    }
+
+    #[test]
+    fn to_str_encode_decode() {
+        let url = Url::from_str("https://h/a%20b?q=x%20y#f%20g", false).unwrap();
+        // encode=true ensures a transport-safe string (idempotent, no double-encode).
+        assert_eq!(url.to_str(true), "https://h/a%20b?q=x%20y#f%20g");
+        // encode=false decodes each component for display.
+        assert_eq!(url.to_str(false), "https://h/a b?q=x y#f g");
+        // Display uses the encoded form.
+        assert_eq!(url.to_string(), "https://h/a%20b?q=x%20y#f%20g");
+
+        // A space in a freshly-built component is encoded by to_str(true).
+        // (no authority, so a single slash for the path)
+        assert_eq!(Uri::new("https", "/a b").to_str(true), "https:/a%20b");
     }
 
     #[test]

@@ -163,5 +163,18 @@ def test_url_to_uri():
     assert uri.authority == "user@h:8443"
 
 
+def test_encode_decode_to_string():
+    url = yggdryl.Url("https://h/a%20b?q=x%20y", safe=False)
+    assert url.to_string() == "https://h/a%20b?q=x%20y"        # encode (default)
+    assert url.to_string(encode=False) == "https://h/a b?q=x y"  # decoded
+    assert str(url) == "https://h/a%20b?q=x%20y"               # str() == encoded
+    # params decode toggle
+    assert url.params()["q"] == ["x y"]
+    assert url.params(decode=False)["q"] == ["x%20y"]
+    # with_params encode toggle
+    built = yggdryl.Uri("https://h/p").with_params({"a": ["b c"]}, encode=False)
+    assert built.query == "a=b c"
+
+
 def test_module_version():
     assert isinstance(yggdryl.__version__, str)
