@@ -23,14 +23,23 @@ harness = false
 # has an address), so it is a base dependency.
 yggdryl-url = { workspace = true }
 # The rest are optional and off by default:
-#   log    structured logging via the `log` facade (see yggdryl-media);
-#   mmap   memory-mapped, zero-copy local files in `LocalPath` (memmap2);
-#   media  lazy `media_type()` discovery on an `Io`/`Path` (yggdryl-media).
+#   log      structured logging via the `log` facade (see yggdryl-media);
+#   mmap     memory-mapped, zero-copy local files in `LocalPath` (memmap2);
+#   media    lazy `media_type()` discovery on an `Io`/`Path` (yggdryl-media);
+#   gzip     gzip streaming compression for `Compression` (flate2);
+#   zstd     Zstandard streaming compression for `Compression` (zstd);
+#   snappy   Snappy streaming compression for `Compression` (snap).
 log = { version = "0.4", optional = true }
 memmap2 = { version = "0.9", optional = true }
 yggdryl-media = { workspace = true, optional = true }
+flate2 = { version = "1", optional = true }
+zstd = { version = "0.13", optional = true }
+snap = { version = "1", optional = true }
 
 [features]
 log = ["dep:log"]
 mmap = ["dep:memmap2"]
 media = ["dep:yggdryl-media"]
+gzip = ["dep:flate2"]
+zstd = ["dep:zstd"]
+snappy = ["dep:snap"]

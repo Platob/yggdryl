@@ -27,7 +27,7 @@ yggdryl/
 ├── Cargo.toml                  # Cargo workspace
 ├── crates/
 │   ├── yggdryl-core/           # dependency-free foundations (FromInput/ToOutput, encoding)
-│   ├── yggdryl-io/             # byte-IO foundation: read/write/seek/stat bytes (memory, local mmap, cloud), codecs
+│   ├── yggdryl-io/             # byte-IO foundation: read/write/seek/stat bytes (memory, local mmap, cloud), codecs, compression
 │   ├── yggdryl-version/        # standalone Version type
 │   ├── yggdryl-media/          # standalone MediaType (MIME) detection
 │   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core + yggdryl-media

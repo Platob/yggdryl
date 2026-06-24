@@ -21,7 +21,7 @@ path = "src/lib.rs"
 yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
 yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
 yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
-yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media"] }
+yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media", "gzip", "zstd", "snappy"] }
 
 [dependencies.pyo3]
 version = "0.22"

@@ -7,6 +7,7 @@
 //! bindings stay in lockstep.
 
 mod bytesio;
+mod compression;
 mod iostats;
 mod localpath;
 mod media;

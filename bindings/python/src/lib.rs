@@ -12,6 +12,7 @@
 #![allow(clippy::useless_conversion)]
 
 mod bytesio;
+mod compression;
 mod iostats;
 mod localpath;
 mod media;
@@ -29,6 +30,7 @@ use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_version::VersionError;
 
 use crate::bytesio::BytesIO;
+use crate::compression::Compression;
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
 use crate::media::MediaType;
@@ -107,6 +109,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BytesIO>()?;
     m.add_class::<IoStats>()?;
     m.add_class::<LocalPath>()?;
+    m.add_class::<Compression>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     Ok(())

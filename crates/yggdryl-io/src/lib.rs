@@ -52,6 +52,12 @@
 //! - **Typed codecs** — [`Codec<T>`] reads/writes/streams values of `T` over any
 //!   byte handle (e.g. a `Codec<RecordBatch>`); [`Frames`] is the reference
 //!   length-delimited implementation.
+//! - **Compression** — [`Compression`] (gzip / Zstandard / Snappy) wraps any
+//!   handle to compress and decompress **in a streamed way**: an
+//!   [`Encoder`](Compression::encoder) is a [`WriteBytes`] sink, a
+//!   [`Decoder`](Compression::decoder) a [`ReadBytes`] source, with one-shot
+//!   [`compress`](Compression::compress) / [`decompress`](Compression::decompress)
+//!   on top.
 //!
 //! ## Optional features (off by default; the base build depends only on
 //! `yggdryl-url`, for the universal [`Io::url`])
@@ -59,6 +65,9 @@
 //! - `log` — structured `log` events on the hot paths.
 //! - `mmap` — [`LocalPath`] memory-maps files (zero-copy) instead of reading them.
 //! - `media` — lazy [`media_type`](Io::media_type) discovery via `yggdryl-media`.
+//! - `gzip` / `zstd` / `snappy` — the matching [`Compression`] backend (`flate2`
+//!   / `zstd` / `snap`); a codec whose feature is off still parses and names
+//!   itself but cannot encode or decode.
 //!
 //! ```
 //! use yggdryl_io::{BytesIO, Io, Whence};
@@ -1587,6 +1596,355 @@ impl Codec<Vec<u8>> for Frames {
     }
 }
 
+/// A byte-stream **compression codec** — gzip, Zstandard or Snappy — that wraps
+/// any [`Io`] handle (or raw [`ReadBytes`] / [`WriteBytes`]) to compress and
+/// decompress **in a streamed way**, a chunk at a time, never buffering the whole
+/// payload.
+///
+/// [`encoder`](Compression::encoder) wraps a sink so everything written to it is
+/// compressed on the way out (call [`finish`](Encoder::finish) to flush the
+/// trailer); [`decoder`](Compression::decoder) wraps a source so reads
+/// decompress on the way in. [`compress`](Compression::compress) /
+/// [`decompress`](Compression::decompress) are the one-shot `&[u8] -> Vec<u8>`
+/// conveniences built on top.
+///
+/// Each backend is an **optional, off-by-default feature** (`gzip` → `flate2`,
+/// `zstd` → `zstd`, `snappy` → `snap`); a variant whose feature is not compiled
+/// in still parses and names itself, but [`encoder`](Compression::encoder) /
+/// [`decoder`](Compression::decoder) report [`IoError::Unsupported`]. Check
+/// [`is_available`](Compression::is_available) to tell ahead of time.
+/// [`None`](Compression::None) is always available — the `store` identity codec
+/// that passes bytes through unchanged.
+///
+/// ```
+/// use yggdryl_io::Compression;
+///
+/// let codec = Compression::from_str("gzip").unwrap();
+/// assert_eq!(codec.as_str(), "gzip");
+/// assert_eq!(codec.extension(), Some("gz"));
+/// # #[cfg(feature = "gzip")]
+/// # {
+/// let packed = codec.compress(b"hello hello hello").unwrap();
+/// assert_eq!(codec.decompress(&packed).unwrap(), b"hello hello hello");
+/// # }
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Compression {
+    /// No compression: bytes pass through unchanged (the `store` identity codec).
+    /// Always available.
+    #[default]
+    None,
+    /// gzip (RFC 1952), via `flate2` — the `gzip` feature.
+    Gzip,
+    /// Zstandard, via `zstd` — the `zstd` feature.
+    Zstd,
+    /// Snappy frame format, via `snap` — the `snappy` feature.
+    Snappy,
+}
+
+impl Compression {
+    /// Parses a codec name — `none` / `identity` / `store`, `gzip` / `gz`,
+    /// `zstd` / `zst`, `snappy` / `snap` / `sz` (case-insensitive) — returning
+    /// [`IoError::Invalid`] on an unknown one.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<Compression, IoError> {
+        log_event!(trace, "Compression::from_str {value:?}");
+        let codec = match value.trim().to_ascii_lowercase().as_str() {
+            "none" | "identity" | "store" => Compression::None,
+            "gzip" | "gz" => Compression::Gzip,
+            "zstd" | "zst" => Compression::Zstd,
+            "snappy" | "snap" | "sz" => Compression::Snappy,
+            _ => return Err(IoError::Invalid(format!("unknown compression {value:?}"))),
+        };
+        Ok(codec)
+    }
+
+    /// Infers the codec from a file extension (`gz`, `zst`, `sz`, with or without
+    /// a leading dot), or `None` if the extension names no known codec.
+    pub fn from_extension(extension: &str) -> Option<Compression> {
+        let codec = match extension
+            .trim()
+            .trim_start_matches('.')
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "gz" | "gzip" => Compression::Gzip,
+            "zst" | "zstd" => Compression::Zstd,
+            "sz" | "snappy" | "snap" => Compression::Snappy,
+            _ => return None,
+        };
+        Some(codec)
+    }
+
+    /// The canonical codec name (`"none"` / `"gzip"` / `"zstd"` / `"snappy"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Compression::None => "none",
+            Compression::Gzip => "gzip",
+            Compression::Zstd => "zstd",
+            Compression::Snappy => "snappy",
+        }
+    }
+
+    /// The conventional file extension for this codec (`"gz"` / `"zst"` / `"sz"`),
+    /// or `None` for [`None`](Compression::None).
+    pub fn extension(&self) -> Option<&'static str> {
+        match self {
+            Compression::None => None,
+            Compression::Gzip => Some("gz"),
+            Compression::Zstd => Some("zst"),
+            Compression::Snappy => Some("sz"),
+        }
+    }
+
+    /// Whether this codec's backend is compiled in, so
+    /// [`encoder`](Compression::encoder) / [`decoder`](Compression::decoder) will
+    /// work. [`None`](Compression::None) is always available.
+    pub fn is_available(&self) -> bool {
+        match self {
+            Compression::None => true,
+            #[cfg(feature = "gzip")]
+            Compression::Gzip => true,
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => true,
+            #[cfg(feature = "snappy")]
+            Compression::Snappy => true,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        }
+    }
+
+    /// Wraps `sink` in a streaming [`Encoder`]: bytes written to the encoder are
+    /// compressed and forwarded to `sink`. Call [`finish`](Encoder::finish) to
+    /// write the trailer and recover the sink. Returns [`IoError::Unsupported`]
+    /// if the codec's feature is not compiled in.
+    pub fn encoder<W: WriteBytes>(self, sink: W) -> Result<Encoder<W>, IoError> {
+        log_event!(debug, "Compression::{} encoder", self.as_str());
+        let inner = match self {
+            Compression::None => EncoderInner::Store(sink),
+            #[cfg(feature = "gzip")]
+            Compression::Gzip => EncoderInner::Gzip(flate2::write::GzEncoder::new(
+                WriteShim(sink),
+                flate2::Compression::default(),
+            )),
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => EncoderInner::Zstd(
+                zstd::stream::write::Encoder::new(WriteShim(sink), 0).map_err(IoError::from)?,
+            ),
+            #[cfg(feature = "snappy")]
+            Compression::Snappy => {
+                EncoderInner::Snappy(snap::write::FrameEncoder::new(WriteShim(sink)))
+            }
+            #[allow(unreachable_patterns)]
+            other => return Err(other.unavailable()),
+        };
+        Ok(Encoder { inner })
+    }
+
+    /// Wraps `source` in a streaming [`Decoder`]: reads from the decoder pull
+    /// compressed bytes from `source` and yield the decompressed stream. Returns
+    /// [`IoError::Unsupported`] if the codec's feature is not compiled in.
+    pub fn decoder<R: ReadBytes>(self, source: R) -> Result<Decoder<R>, IoError> {
+        log_event!(debug, "Compression::{} decoder", self.as_str());
+        let inner = match self {
+            Compression::None => DecoderInner::Store(source),
+            #[cfg(feature = "gzip")]
+            Compression::Gzip => DecoderInner::Gzip(flate2::read::GzDecoder::new(ReadShim(source))),
+            #[cfg(feature = "zstd")]
+            Compression::Zstd => DecoderInner::Zstd(
+                zstd::stream::read::Decoder::new(ReadShim(source)).map_err(IoError::from)?,
+            ),
+            #[cfg(feature = "snappy")]
+            Compression::Snappy => {
+                DecoderInner::Snappy(snap::read::FrameDecoder::new(ReadShim(source)))
+            }
+            #[allow(unreachable_patterns)]
+            other => return Err(other.unavailable()),
+        };
+        Ok(Decoder { inner })
+    }
+
+    /// Compresses `data` in full, returning the encoded bytes — the one-shot form
+    /// of [`encoder`](Compression::encoder) over an in-memory `Vec<u8>`.
+    pub fn compress(&self, data: &[u8]) -> Result<Vec<u8>, IoError> {
+        let mut encoder = self.encoder(Vec::new())?;
+        encoder.write_all(data)?;
+        encoder.finish()
+    }
+
+    /// Decompresses `data` in full, returning the decoded bytes — the one-shot
+    /// form of [`decoder`](Compression::decoder) over an in-memory slice.
+    pub fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, IoError> {
+        let mut decoder = self.decoder(data)?;
+        let mut out = Vec::new();
+        decoder.read_to_end(&mut out)?;
+        Ok(out)
+    }
+
+    /// The [`IoError::Unsupported`] raised when this codec's feature is off.
+    fn unavailable(&self) -> IoError {
+        log_event!(
+            warn,
+            "Compression::{} unavailable: feature not enabled",
+            self.as_str()
+        );
+        IoError::Unsupported(format!(
+            "{} compression: enable the `{}` cargo feature",
+            self.as_str(),
+            self.as_str()
+        ))
+    }
+}
+
+impl fmt::Display for Compression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Bridges a [`WriteBytes`] sink to [`std::io::Write`], so the streaming
+/// compressors (which speak `std::io`) can push into any [`Io`] handle.
+#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+struct WriteShim<W: WriteBytes>(W);
+
+#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+impl<W: WriteBytes> std::io::Write for WriteShim<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write_bytes(buf).map_err(into_std)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush().map_err(into_std)
+    }
+}
+
+/// Bridges a [`ReadBytes`] source to [`std::io::Read`], so the streaming
+/// decompressors can pull from any [`Io`] handle.
+#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+struct ReadShim<R: ReadBytes>(R);
+
+#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+impl<R: ReadBytes> std::io::Read for ReadShim<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read_bytes(buf).map_err(into_std)
+    }
+}
+
+/// Maps an [`IoError`] back into a [`std::io::Error`] for the `std::io`-based
+/// codecs (the inverse of the crate's `From<std::io::Error>`).
+#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+fn into_std(err: IoError) -> std::io::Error {
+    std::io::Error::other(err.to_string())
+}
+
+/// A streaming compressor returned by [`Compression::encoder`]. Implements
+/// [`WriteBytes`]; everything written is compressed into the wrapped sink. Call
+/// [`finish`](Encoder::finish) to write the trailer and recover the sink.
+pub struct Encoder<W: WriteBytes> {
+    inner: EncoderInner<W>,
+}
+
+// Exactly one variant is ever live and the value is short-lived (built, written,
+// finished), so the codec states are kept inline rather than boxed — that keeps
+// an extra indirection off the per-write streaming path.
+#[allow(clippy::large_enum_variant)]
+enum EncoderInner<W: WriteBytes> {
+    /// Identity: writes pass straight through.
+    Store(W),
+    #[cfg(feature = "gzip")]
+    Gzip(flate2::write::GzEncoder<WriteShim<W>>),
+    #[cfg(feature = "zstd")]
+    Zstd(zstd::stream::write::Encoder<'static, WriteShim<W>>),
+    #[cfg(feature = "snappy")]
+    Snappy(snap::write::FrameEncoder<WriteShim<W>>),
+}
+
+impl<W: WriteBytes> Encoder<W> {
+    /// Finishes the compressed stream — flushing any buffered bytes and writing
+    /// the trailer/checksum — and returns the underlying sink. **Must** be called
+    /// to produce a valid stream.
+    pub fn finish(self) -> Result<W, IoError> {
+        match self.inner {
+            EncoderInner::Store(sink) => Ok(sink),
+            #[cfg(feature = "gzip")]
+            EncoderInner::Gzip(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
+            #[cfg(feature = "zstd")]
+            EncoderInner::Zstd(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
+            #[cfg(feature = "snappy")]
+            EncoderInner::Snappy(encoder) => Ok(encoder
+                .into_inner()
+                .map_err(|err| IoError::Io(err.to_string()))?
+                .0),
+        }
+    }
+}
+
+impl<W: WriteBytes> WriteBytes for Encoder<W> {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
+        match &mut self.inner {
+            EncoderInner::Store(sink) => sink.write_bytes(bytes),
+            #[cfg(feature = "gzip")]
+            EncoderInner::Gzip(encoder) => {
+                std::io::Write::write(encoder, bytes).map_err(IoError::from)
+            }
+            #[cfg(feature = "zstd")]
+            EncoderInner::Zstd(encoder) => {
+                std::io::Write::write(encoder, bytes).map_err(IoError::from)
+            }
+            #[cfg(feature = "snappy")]
+            EncoderInner::Snappy(encoder) => {
+                std::io::Write::write(encoder, bytes).map_err(IoError::from)
+            }
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), IoError> {
+        match &mut self.inner {
+            EncoderInner::Store(sink) => sink.flush(),
+            #[cfg(feature = "gzip")]
+            EncoderInner::Gzip(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
+            #[cfg(feature = "zstd")]
+            EncoderInner::Zstd(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
+            #[cfg(feature = "snappy")]
+            EncoderInner::Snappy(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
+        }
+    }
+}
+
+/// A streaming decompressor returned by [`Compression::decoder`]. Implements
+/// [`ReadBytes`]; reads pull compressed bytes from the wrapped source and yield
+/// the decompressed stream until it drains.
+pub struct Decoder<R: ReadBytes> {
+    inner: DecoderInner<R>,
+}
+
+enum DecoderInner<R: ReadBytes> {
+    /// Identity: reads pass straight through.
+    Store(R),
+    #[cfg(feature = "gzip")]
+    Gzip(flate2::read::GzDecoder<ReadShim<R>>),
+    #[cfg(feature = "zstd")]
+    Zstd(zstd::stream::read::Decoder<'static, std::io::BufReader<ReadShim<R>>>),
+    #[cfg(feature = "snappy")]
+    Snappy(snap::read::FrameDecoder<ReadShim<R>>),
+}
+
+impl<R: ReadBytes> ReadBytes for Decoder<R> {
+    fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        match &mut self.inner {
+            DecoderInner::Store(source) => source.read_bytes(buf),
+            #[cfg(feature = "gzip")]
+            DecoderInner::Gzip(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
+            #[cfg(feature = "zstd")]
+            DecoderInner::Zstd(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
+            #[cfg(feature = "snappy")]
+            DecoderInner::Snappy(decoder) => {
+                std::io::Read::read(decoder, buf).map_err(IoError::from)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2219,6 +2577,84 @@ mod tests {
         assert!(boxed.close().is_ok());
         let mut drip = Drip(BytesIO::new());
         assert!(drip.close().is_ok());
+    }
+
+    #[test]
+    fn compression_parses_names_and_extensions() {
+        assert_eq!(Compression::from_str("gzip").unwrap(), Compression::Gzip);
+        assert_eq!(Compression::from_str("GZ").unwrap(), Compression::Gzip);
+        assert_eq!(Compression::from_str("zst").unwrap(), Compression::Zstd);
+        assert_eq!(
+            Compression::from_str(" snappy ").unwrap(),
+            Compression::Snappy
+        );
+        assert_eq!(Compression::from_str("store").unwrap(), Compression::None);
+        assert!(matches!(
+            Compression::from_str("lzo"),
+            Err(IoError::Invalid(_))
+        ));
+
+        assert_eq!(Compression::from_extension(".gz"), Some(Compression::Gzip));
+        assert_eq!(Compression::from_extension("zst"), Some(Compression::Zstd));
+        assert_eq!(Compression::from_extension("txt"), None);
+
+        assert_eq!(Compression::Gzip.as_str(), "gzip");
+        assert_eq!(Compression::Zstd.extension(), Some("zst"));
+        assert_eq!(Compression::None.extension(), None);
+        assert!(Compression::None.is_available());
+    }
+
+    #[test]
+    fn compression_none_is_an_identity_passthrough() {
+        let codec = Compression::None;
+        assert!(codec.is_available());
+        let payload = b"the quick brown fox";
+        let packed = codec.compress(payload).unwrap();
+        assert_eq!(packed, payload); // store: bytes unchanged
+        assert_eq!(codec.decompress(&packed).unwrap(), payload);
+    }
+
+    #[test]
+    fn compression_unavailable_codec_reports_unsupported() {
+        // A codec whose feature is off cannot build an encoder/decoder, but it
+        // still parses and names itself.
+        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+            if !codec.is_available() {
+                assert!(matches!(codec.compress(b"x"), Err(IoError::Unsupported(_))));
+                assert!(matches!(
+                    codec.decompress(b"x"),
+                    Err(IoError::Unsupported(_))
+                ));
+            }
+        }
+    }
+
+    /// Round-trips each compiled-in codec both one-shot and **streamed** over a
+    /// [`BytesIO`] handle, proving `Compression` composes with `Io`.
+    #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+    #[test]
+    fn compression_round_trips_each_available_codec() {
+        let payload: Vec<u8> = (0..4096u32).map(|n| (n % 251) as u8).collect();
+        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+            if !codec.is_available() {
+                continue;
+            }
+            // One-shot.
+            let packed = codec.compress(&payload).unwrap();
+            assert_eq!(codec.decompress(&packed).unwrap(), payload, "{codec}");
+
+            // Streamed compress into a BytesIO sink…
+            let mut encoder = codec.encoder(BytesIO::new()).unwrap();
+            encoder.write_all(&payload).unwrap();
+            let mut sink = encoder.finish().unwrap();
+            sink.seek(0, Whence::Start).unwrap();
+
+            // …then streamed decompress straight out of that handle.
+            let mut decoder = codec.decoder(sink).unwrap();
+            let mut out = Vec::new();
+            decoder.read_to_end(&mut out).unwrap();
+            assert_eq!(out, payload, "{codec} streamed");
+        }
     }
 
     /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as

@@ -66,10 +66,18 @@ handle. The layering, smallest to largest:
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
   is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
   the *byte* handle — keep them distinct.)
+- `Compression` — the gzip / Zstandard / Snappy (plus `None` identity) byte-stream
+  codec. It wraps any handle to compress/decompress **in a streamed way**: an
+  `encoder(sink)` is a `WriteBytes` (call `finish()` to flush the trailer), a
+  `decoder(source)` a `ReadBytes`, with one-shot `compress` / `decompress` on top.
+  Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
+  feature is off still parses and names itself but reports `Unsupported` on
+  encode/decode (`is_available` tells ahead of time). **All compression logic lives
+  here** — like cloud backends, do not add new codec SDKs elsewhere.
 
 Rules when extending: the base build depends only on `yggdryl-url` (for the
 universal `Io::url()`); new heavy deps are **optional features** (like `log` /
-`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
+`mmap` / `media` / `gzip` / `zstd` / `snappy`). A new memory-resident backend must override `as_slice` so the
 zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
 with `Whence::Start`, never by mutating the cursor.
 
