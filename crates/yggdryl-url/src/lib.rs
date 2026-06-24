@@ -19,14 +19,14 @@ use yggdryl_core::{encode_component, validate_percent_encoding};
 
 // Per-component sets of delimiter bytes that are left as-is when encoding a
 // component for output (on top of the always-safe unreserved set).
-pub const KEEP_AUTHORITY: &[u8] = b":@[]";
-pub const KEEP_PATH: &[u8] = b"/:@";
-pub const KEEP_QUERY: &[u8] = b"/:@?&=";
-pub const KEEP_FRAGMENT: &[u8] = b"/:@?";
+pub(crate) const KEEP_AUTHORITY: &[u8] = b":@[]";
+pub(crate) const KEEP_PATH: &[u8] = b"/:@";
+pub(crate) const KEEP_QUERY: &[u8] = b"/:@?&=";
+pub(crate) const KEEP_FRAGMENT: &[u8] = b"/:@?";
 
 /// Renders a component either percent-encoded (`encode`) or percent-decoded
 /// (best effort), used by `to_str(encode)`.
-pub fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
+pub(crate) fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
     if encode {
         encode_component(input, keep)
     } else {
@@ -37,7 +37,7 @@ pub fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
 /// Splits a `key=value&key=value2` query into a multimap. Repeated keys
 /// accumulate their values; when `decode`, each key/value is percent-decoded
 /// (parts that fail to decode are kept verbatim).
-pub fn query_to_params(query: &str, decode: bool) -> Params {
+pub(crate) fn query_to_params(query: &str, decode: bool) -> Params {
     let unescape = |s: &str| {
         if decode {
             percent_decode(s).unwrap_or_else(|_| s.to_string())
@@ -59,7 +59,7 @@ pub fn query_to_params(query: &str, decode: bool) -> Params {
 /// Builds a `key=value&…` query from a [`Params`] multimap. When `encode`, each
 /// key/value is percent-encoded. Keys with several values are emitted once per
 /// value; pairs come out in the map's (sorted) order for a deterministic result.
-pub fn params_to_query(params: &Params, encode: bool) -> String {
+pub(crate) fn params_to_query(params: &Params, encode: bool) -> String {
     let escape = |s: &str| {
         if encode {
             percent_encode(s)
