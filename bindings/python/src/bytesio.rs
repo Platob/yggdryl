@@ -157,6 +157,27 @@ impl BytesIO {
     /// No-op flush, present for parity with :class:`io.BytesIO`.
     fn flush(&self) {}
 
+    /// No-op close, present for the ``io`` API; the buffer is freed when the
+    /// object is dropped.
+    fn close(&self) {}
+
+    /// Enter a ``with`` block, returning the handle itself.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Exit a ``with`` block. Returns ``False`` so exceptions propagate.
+    #[pyo3(signature = (_exc_type = None, _exc_value = None, _traceback = None))]
+    fn __exit__(
+        &self,
+        _exc_type: Option<PyObject>,
+        _exc_value: Option<PyObject>,
+        _traceback: Option<PyObject>,
+    ) -> bool {
+        self.close();
+        false
+    }
+
     /// Whether reads and writes advance the cursor (Python-stream semantics).
     #[getter]
     fn stream(&self) -> bool {

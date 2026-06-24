@@ -156,6 +156,27 @@ impl LocalPath {
         self.inner.exists()
     }
 
+    /// No-op close, present for the ``io`` API; the mapping is released when the
+    /// object is dropped.
+    fn close(&self) {}
+
+    /// Enter a ``with`` block, returning the handle itself.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Exit a ``with`` block. Returns ``False`` so exceptions propagate.
+    #[pyo3(signature = (_exc_type = None, _exc_value = None, _traceback = None))]
+    fn __exit__(
+        &self,
+        _exc_type: Option<PyObject>,
+        _exc_value: Option<PyObject>,
+        _traceback: Option<PyObject>,
+    ) -> bool {
+        self.close();
+        false
+    }
+
     fn __len__(&self) -> usize {
         self.inner.as_slice().map_or(0, <[u8]>::len)
     }

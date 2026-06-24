@@ -40,6 +40,14 @@ for (const { id, make } of kinds) {
     assert.strictEqual(io.tell(), 0)
   })
 
+  test(`close parity (${id})`, () => {
+    // close() is a no-op (the Node analog of Python's `with` cleanup).
+    const io = make('abcdef')
+    io.close()
+    const child = make('abcdef').open('r')
+    child.close()
+  })
+
   test(`open parity (${id})`, () => {
     // Read open keeps the bytes, carries the stream flag and the mode.
     let child = make('abcdef').open('r', false)

@@ -43,6 +43,16 @@ def test_stream_parity(make):
     assert io.tell() == 0
 
 
+def test_context_manager_parity(make):
+    # The handle itself works as a context manager (`with ... as io`).
+    with make(b"abcdef") as io:
+        assert io.read(3) == b"abc"
+
+    # And so does the BytesIO returned by `open` (Python `with open(...)`).
+    with make(b"abcdef").open("r") as f:
+        assert f.read() == b"abcdef"
+
+
 def test_open_parity(make):
     # Read open keeps the bytes, carries the stream flag and the mode.
     child = make(b"abcdef").open("r", stream=False)

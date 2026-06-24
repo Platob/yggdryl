@@ -160,6 +160,11 @@ impl BytesIO {
     #[napi]
     pub fn flush(&self) {}
 
+    /// No-op close, present for the `io` API; the buffer is freed when the object
+    /// is garbage-collected. (Python exposes this as a `with` context manager.)
+    #[napi]
+    pub fn close(&self) {}
+
     /// The total number of bytes held, regardless of the cursor.
     #[napi(getter)]
     pub fn length(&self) -> u32 {

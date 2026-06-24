@@ -159,6 +159,12 @@ impl LocalPath {
         self.inner.exists()
     }
 
+    /// No-op close, present for the `io` API; the mapping is released when the
+    /// object is garbage-collected. (Python exposes this as a `with` context
+    /// manager.)
+    #[napi]
+    pub fn close(&self) {}
+
     /// The total number of bytes.
     #[napi(getter)]
     pub fn length(&self) -> f64 {
