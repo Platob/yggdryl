@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_url::{
-    percent_decode, percent_encode, FromInput, Mapping, Uri as CoreUri, Url as CoreUrl,
-    Version as CoreVersion,
+    percent_decode, percent_encode, FromInput, Mapping, ToOutput, Uri as CoreUri, Url as CoreUrl,
 };
+use yggdryl_version::Version as CoreVersion;
 
 /// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
 fn to_mapping(fields: HashMap<String, String>) -> Mapping {
@@ -306,6 +306,12 @@ impl Uri {
     #[napi(js_name = "toString")]
     pub fn to_string_js(&self, encode: Option<bool>) -> String {
         self.inner.to_str(encode.unwrap_or(true))
+    }
+
+    /// Render to a component object (the inverse of `fromMapping`).
+    #[napi(js_name = "toMapping")]
+    pub fn to_mapping(&self) -> std::collections::HashMap<String, String> {
+        self.inner.to_mapping().into_iter().collect()
     }
 }
 
@@ -651,6 +657,12 @@ impl Url {
     pub fn to_string_js(&self, encode: Option<bool>) -> String {
         self.inner.to_str(encode.unwrap_or(true))
     }
+
+    /// Render to a component object (the inverse of `fromMapping`).
+    #[napi(js_name = "toMapping")]
+    pub fn to_mapping(&self) -> std::collections::HashMap<String, String> {
+        self.inner.to_mapping().into_iter().collect()
+    }
 }
 
 /// A generic `major.minor.patch` version, ordered numerically.
@@ -720,6 +732,12 @@ impl Version {
         Version {
             inner: self.inner.with_patch(patch as u64),
         }
+    }
+
+    /// Render to a component object (the inverse of `fromMapping`).
+    #[napi(js_name = "toMapping")]
+    pub fn to_mapping(&self) -> std::collections::HashMap<String, String> {
+        self.inner.to_mapping().into_iter().collect()
     }
 
     #[napi(getter)]

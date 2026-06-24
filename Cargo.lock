@@ -338,6 +338,7 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "yggdryl-url",
+ "yggdryl-version",
 ]
 
 [[package]]
@@ -346,10 +347,18 @@ version = "0.1.0"
 dependencies = [
  "pyo3",
  "yggdryl-url",
+ "yggdryl-version",
 ]
 
 [[package]]
 name = "yggdryl-url"
+version = "0.1.0"
+dependencies = [
+ "yggdryl-core",
+]
+
+[[package]]
+name = "yggdryl-version"
 version = "0.1.0"
 dependencies = [
  "yggdryl-core",

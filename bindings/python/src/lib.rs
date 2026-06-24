@@ -14,9 +14,10 @@ use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::wrap_pyfunction;
 use yggdryl_url::{
-    percent_decode, percent_encode, FromInput, Mapping, Params, Uri as CoreUri, UriError,
-    Url as CoreUrl, UrlError, Version as CoreVersion, VersionError,
+    percent_decode, percent_encode, FromInput, Mapping, Params, ToOutput, Uri as CoreUri, UriError,
+    Url as CoreUrl, UrlError,
 };
+use yggdryl_version::{Version as CoreVersion, VersionError};
 
 fn uri_err(err: UriError) -> PyErr {
     PyValueError::new_err(err.to_string())
@@ -282,6 +283,11 @@ impl Uri {
     #[pyo3(signature = (encode = true))]
     fn to_string(&self, encode: bool) -> String {
         self.inner.to_str(encode)
+    }
+
+    /// Render to a component ``dict`` (the inverse of ``from_mapping``).
+    fn to_mapping(&self) -> Mapping {
+        self.inner.to_mapping()
     }
 
     #[getter]
@@ -614,6 +620,11 @@ impl Url {
         self.inner.to_str(encode)
     }
 
+    /// Render to a component ``dict`` (the inverse of ``from_mapping``).
+    fn to_mapping(&self) -> Mapping {
+        self.inner.to_mapping()
+    }
+
     /// Return this URL viewed as a generic :class:`Uri`.
     fn to_uri(&self) -> Uri {
         Uri {
@@ -748,6 +759,11 @@ impl Version {
         Version {
             inner: self.inner.with_patch(patch),
         }
+    }
+
+    /// Render to a component ``dict`` (the inverse of ``from_mapping``).
+    fn to_mapping(&self) -> Mapping {
+        self.inner.to_mapping()
     }
 
     #[getter]

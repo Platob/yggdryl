@@ -226,5 +226,13 @@ def test_direct_param_management():
         del url["a"]
 
 
+def test_to_mapping_round_trip():
+    url = yggdryl.Url("https://h:8443/p?x=1")
+    m = url.to_mapping()
+    assert m["scheme"] == "https" and m["host"] == "h" and m["port"] == "8443"
+    assert yggdryl.Url.from_mapping(m) == url
+    assert yggdryl.Version(1, 4, 2).to_mapping() == {"major": "1", "minor": "4", "patch": "2"}
+
+
 def test_module_version():
     assert isinstance(yggdryl.__version__, str)

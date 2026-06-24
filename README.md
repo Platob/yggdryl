@@ -21,7 +21,8 @@ The core provides three value types:
 yggdryl/
 ├── Cargo.toml                  # Cargo workspace
 ├── crates/
-│   ├── yggdryl-core/           # dependency-free foundations (parse, encoding, Version)
+│   ├── yggdryl-core/           # dependency-free foundations (FromInput/ToOutput, encoding)
+│   ├── yggdryl-version/        # standalone Version type
 │   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core
 └── bindings/
     ├── python/                 # PyO3 + maturin  → `import yggdryl`

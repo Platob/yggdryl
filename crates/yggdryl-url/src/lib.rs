@@ -8,9 +8,9 @@
 //! - [`Url`] is the common subset that always has an authority, decomposed into
 //!   `username`, `password`, `host` and `port`.
 //!
-//! The shared [`FromInput`] trait, [`Version`], the [`Mapping`]/[`Params`] types
-//! and the percent-encoding helpers are re-exported from `yggdryl-core` so a
-//! dependent only needs this crate.
+//! The shared [`FromInput`]/[`ToOutput`] traits, the [`Mapping`]/[`Params`] types
+//! and the percent-encoding helpers are re-exported from `yggdryl-core`. The
+//! `Version` type lives in the separate `yggdryl-version` crate.
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -22,8 +22,8 @@ use yggdryl_core::{
 
 // Re-exported so a dependent only needs `yggdryl-url`.
 pub use yggdryl_core::{
-    percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Params, Version,
-    VersionError,
+    percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Output, Params,
+    ToOutput,
 };
 
 /// Error returned when [`Uri`] parsing cannot interpret its input.
@@ -500,6 +500,31 @@ impl fmt::Display for Uri {
     /// Renders the encoded form (`to_str(true)`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_str(true))
+    }
+}
+
+impl ToOutput for Uri {
+    fn to_str(&self, encode: bool) -> String {
+        Uri::to_str(self, encode)
+    }
+
+    /// The inverse of `from_mapping`: keys `scheme`, `authority`, `path`,
+    /// `query`, `fragment` (only the present components).
+    fn to_mapping(&self) -> Mapping {
+        let mut map = Mapping::from([("scheme".to_string(), self.scheme.clone())]);
+        if let Some(authority) = &self.authority {
+            map.insert("authority".to_string(), authority.clone());
+        }
+        if !self.path.is_empty() {
+            map.insert("path".to_string(), self.path.clone());
+        }
+        if let Some(query) = &self.query {
+            map.insert("query".to_string(), query.clone());
+        }
+        if let Some(fragment) = &self.fragment {
+            map.insert("fragment".to_string(), fragment.clone());
+        }
+        map
     }
 }
 
@@ -1087,6 +1112,40 @@ impl fmt::Display for Url {
     }
 }
 
+impl ToOutput for Url {
+    fn to_str(&self, encode: bool) -> String {
+        Url::to_str(self, encode)
+    }
+
+    /// The inverse of `from_mapping`: keys `scheme`, `host` and any of
+    /// `username`, `password`, `port`, `path`, `query`, `fragment` that are set.
+    fn to_mapping(&self) -> Mapping {
+        let mut map = Mapping::from([
+            ("scheme".to_string(), self.scheme.clone()),
+            ("host".to_string(), self.host.clone()),
+        ]);
+        if let Some(username) = &self.username {
+            map.insert("username".to_string(), username.clone());
+        }
+        if let Some(password) = &self.password {
+            map.insert("password".to_string(), password.clone());
+        }
+        if let Some(port) = self.port {
+            map.insert("port".to_string(), port.to_string());
+        }
+        if !self.path.is_empty() {
+            map.insert("path".to_string(), self.path.clone());
+        }
+        if let Some(query) = &self.query {
+            map.insert("query".to_string(), query.clone());
+        }
+        if let Some(fragment) = &self.fragment {
+            map.insert("fragment".to_string(), fragment.clone());
+        }
+        map
+    }
+}
+
 /// Splits `input` on the first `sep`, returning the part before and the
 /// owned part after (or `None` if `sep` is absent).
 fn split_once_owned(input: &str, sep: char) -> (&str, Option<String>) {
@@ -1214,7 +1273,7 @@ mod tests {
             ("authority".to_string(), "example.com".to_string()),
             ("path".to_string(), "/x".to_string()),
         ]);
-        let uri = Uri::from_(&fields, true).unwrap();
+        let uri = Uri::from_(&fields).unwrap();
         assert_eq!(uri.to_string(), "https://example.com/x");
     }
 
@@ -1313,92 +1372,6 @@ mod tests {
     }
 
     #[test]
-    fn version_parse_full() {
-        let v = Version::from_str("1.4.2", true).unwrap();
-        assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
-    }
-
-    #[test]
-    fn version_parse_partial_defaults_to_zero() {
-        assert_eq!(Version::from_str("2", true).unwrap(), Version::new(2, 0, 0));
-        assert_eq!(
-            Version::from_str("2.5", true).unwrap(),
-            Version::new(2, 5, 0)
-        );
-    }
-
-    #[test]
-    fn version_errors() {
-        assert_eq!(Version::from_str("", true), Err(VersionError::Empty));
-        assert_eq!(
-            Version::from_str("1.2.3.4", true),
-            Err(VersionError::TooManyComponents)
-        );
-        assert_eq!(
-            Version::from_str("1.x.0", true),
-            Err(VersionError::InvalidNumber("x".to_string()))
-        );
-        assert_eq!(
-            Version::from_str("1..0", true),
-            Err(VersionError::InvalidNumber(String::new()))
-        );
-    }
-
-    #[test]
-    fn version_unsafe_is_lenient() {
-        // Fast path ignores extra components and treats junk as zero.
-        assert_eq!(
-            Version::from_str("1.2.3.4", false).unwrap(),
-            Version::new(1, 2, 3)
-        );
-        assert_eq!(
-            Version::from_str("1.x.0", false).unwrap(),
-            Version::new(1, 0, 0)
-        );
-    }
-
-    #[test]
-    fn version_from_mapping() {
-        let fields = Mapping::from([
-            ("major".to_string(), "1".to_string()),
-            ("minor".to_string(), "4".to_string()),
-        ]);
-        assert_eq!(
-            Version::from_mapping(&fields, true).unwrap(),
-            Version::new(1, 4, 0)
-        );
-    }
-
-    #[test]
-    fn version_orders_numerically() {
-        assert!(Version::new(1, 4, 2) < Version::new(1, 10, 0));
-        assert!(Version::new(2, 0, 0) > Version::new(1, 99, 99));
-        let mut versions = [
-            Version::new(1, 2, 0),
-            Version::new(1, 0, 5),
-            Version::new(0, 9, 9),
-        ];
-        versions.sort();
-        assert_eq!(
-            versions,
-            [
-                Version::new(0, 9, 9),
-                Version::new(1, 0, 5),
-                Version::new(1, 2, 0),
-            ]
-        );
-    }
-
-    #[test]
-    fn version_round_trips() {
-        assert_eq!(
-            Version::from_str("1.4.2", true).unwrap().to_string(),
-            "1.4.2"
-        );
-        assert_eq!(Version::from_str("3", true).unwrap().to_string(), "3.0.0");
-    }
-
-    #[test]
     fn uri_constructors_and_builders() {
         let uri = Uri::new("https", "/docs")
             .with_authority("example.com")
@@ -1423,9 +1396,6 @@ mod tests {
         assert_eq!(moved.to_string(), "https://h/b");
         // copy(None, …) is a plain clone.
         assert_eq!(uri.copy(None, None, None, None, None), uri);
-
-        let v = Version::new(1, 4, 2);
-        assert_eq!(v.copy(Some(2), None, None), Version::new(2, 4, 2));
     }
 
     #[test]
@@ -1440,14 +1410,6 @@ mod tests {
         let public = url.clone().without_userinfo().without_port();
         assert_eq!(public.to_string(), "https://example.com/api");
         assert_eq!(url.port(), Some(8443));
-    }
-
-    #[test]
-    fn version_builders() {
-        let v = Version::new(1, 0, 0).with_minor(4).with_patch(2);
-        assert_eq!(v, Version::new(1, 4, 2));
-        assert_eq!(v.with_major(2), Version::new(2, 4, 2));
-        assert_eq!(v, Version::new(1, 4, 2));
     }
 
     #[test]

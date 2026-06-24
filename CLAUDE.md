@@ -8,10 +8,11 @@ looking at from the shape of the code.
 
 ## Architecture
 
-- `crates/yggdryl-core/` — dependency-free foundations (the `FromInput` trait,
-  percent-encoding, `Version`).
-- `crates/yggdryl-url/` — the `Uri`/`Url` types and the canonical tests, built on
-  and re-exporting `yggdryl-core`. **All URL logic lives here.**
+- `crates/yggdryl-core/` — dependency-free foundations: the `FromInput` /
+  `ToOutput` traits and percent-encoding.
+- `crates/yggdryl-version/` — the standalone `Version` type.
+- `crates/yggdryl-url/` — the `Uri`/`Url` types and the canonical URL tests, built
+  on and re-exporting `yggdryl-core`. **All URL logic lives here.**
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.

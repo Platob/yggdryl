@@ -87,9 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: cargo publish (core first, then url)
+      - name: cargo publish (in dependency order)
         run: |
           cargo publish -p yggdryl-core
+          cargo publish -p yggdryl-version
           cargo publish -p yggdryl-url
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

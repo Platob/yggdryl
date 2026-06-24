@@ -134,6 +134,15 @@ test('url toUri', () => {
   assert.strictEqual(uri.authority, 'user@h:8443')
 })
 
+test('toMapping round-trip', () => {
+  const url = new Url('https://h:8443/p?x=1')
+  const m = url.toMapping()
+  assert.strictEqual(m.scheme, 'https')
+  assert.strictEqual(m.port, '8443')
+  assert.strictEqual(Url.fromMapping(m).toString(), url.toString())
+  assert.deepStrictEqual(new Version(1, 4, 2).toMapping(), { major: '1', minor: '4', patch: '2' })
+})
+
 test('scheme extensions', () => {
   const uri = new Uri('https+zip://h/f')
   assert.strictEqual(uri.schemeBase, 'https')

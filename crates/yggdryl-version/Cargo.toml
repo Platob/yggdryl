@@ -1,0 +1,18 @@
+[package]
+name = "yggdryl-version"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "A standalone major.minor.patch Version type for yggdryl"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_version"
+path = "src/lib.rs"
+
+[dependencies]
+yggdryl-core.workspace = true
