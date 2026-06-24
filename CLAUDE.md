@@ -11,8 +11,10 @@ looking at from the shape of the code.
 - `crates/yggdryl-core/` — dependency-free foundations: the `FromInput` /
   `ToOutput` traits and percent-encoding.
 - `crates/yggdryl-version/` — the standalone `Version` type.
-- `crates/yggdryl-media/` — the standalone `MediaType` enum (MIME detection from
-  extensions and magic bytes). **All media-type logic lives here.**
+- `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
+  mutable global registry of extensions/magic bytes) and the `MediaType` stack
+  (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`). **All media-type
+  logic lives here.**
 - `crates/yggdryl-url/` — the `Uri`/`Url` types and the canonical URL tests, built
   on and re-exporting `yggdryl-core` (and `yggdryl-media` for the inferred
   `media_type()` accessor). **All URL logic lives here.**
@@ -27,8 +29,8 @@ small glue file tying them together. Don't grow a single big file.
 
 - Rust: one crate per concern (`yggdryl-core`, `yggdryl-version`,
   `yggdryl-media`, `yggdryl-url`).
-- Each binding: `src/uri.rs`, `src/url.rs`, `src/version.rs`, `src/media.rs` per
-  type, with
+- Each binding: `src/uri.rs`, `src/url.rs`, `src/version.rs`, `src/mime.rs`,
+  `src/media.rs` per type, with
   `src/lib.rs` holding only shared helpers (error conversion, `hash_str`,
   percent-encoding free functions) and the module registration. Per-type
   wrappers keep their `inner` field `pub(crate)` so sibling modules can convert.
@@ -62,8 +64,10 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
-| Media-type inference | `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `MediaType.mime` / `type` / `subtype` / `extension(s)` |
-| Inferred media type on a URI/URL | `media_type()` → `MediaType` or null |
+| Single MIME type | `MimeType` enum; `from_extension(ext)` / `from_magic(bytes)`; `.mime` / `type` / `subtype` / `extension(s)` |
+| Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |
+| Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_path(path)`; `.types` / `first` / `last` |
+| Inferred media type on a URI/URL | `media_type()` → `MediaType` stack or null |
 
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use

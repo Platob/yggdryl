@@ -1,9 +1,10 @@
 //! Python extension for **yggdryl**.
 //!
 //! Thin PyO3 wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`],
-//! [`yggdryl_version::Version`] and [`yggdryl_media::MediaType`]; each type lives
-//! in its own module, mirroring the Rust crates. All logic lives in the shared
-//! core, so the Python and Node bindings behave identically.
+//! [`yggdryl_version::Version`], [`yggdryl_media::MimeType`] and
+//! [`yggdryl_media::MediaType`]; each type lives in its own module, mirroring the
+//! Rust crates. All logic lives in the shared core, so the Python and Node
+//! bindings behave identically.
 
 // The `#[pymethods]` macro injects an `.into()` on returned errors; because our
 // fallible methods already return `PyErr`, clippy flags it as a useless
@@ -11,6 +12,7 @@
 #![allow(clippy::useless_conversion)]
 
 mod media;
+mod mime;
 mod uri;
 mod url;
 mod version;
@@ -23,6 +25,7 @@ use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_version::VersionError;
 
 use crate::media::MediaType;
+use crate::mime::MimeType;
 use crate::uri::Uri;
 use crate::url::Url;
 use crate::version::Version;
@@ -72,6 +75,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Uri>()?;
     m.add_class::<Url>()?;
     m.add_class::<Version>()?;
+    m.add_class::<MimeType>()?;
     m.add_class::<MediaType>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;

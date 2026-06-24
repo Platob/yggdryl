@@ -6,7 +6,7 @@ core. One implementation, three published packages
 ([crates.io](https://crates.io) / [PyPI](https://pypi.org) /
 [npm](https://www.npmjs.com)), so behaviour is identical everywhere.
 
-The core provides four value types:
+The core provides these value types:
 
 - **`Uri`** — the generic [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986)
   shape: `scheme:[//authority]path[?query][#fragment]`.
@@ -14,9 +14,11 @@ The core provides four value types:
   `username`, `password`, `host` and `port`.
 - **`Version`** — a generic `major.minor.patch` version that parses, renders and
   orders numerically.
-- **`MediaType`** — an enum of common MIME types, inferred from a file extension
-  or from magic bytes (Arrow IPC, Parquet, ZIP, gzip, …). `Uri`/`Url` expose an
-  inferred `media_type()`.
+- **`MimeType`** — an enum of common MIME types, inferred from a file extension
+  or from magic bytes (Arrow IPC, Parquet, ZIP, gzip, …). Its extension/magic
+  registry is global and can be extended or trimmed at runtime.
+- **`MediaType`** — an ordered stack of `MimeType`s for layered files, so
+  `data.csv.gz` → `[Csv, Gzip]`. `Uri`/`Url` expose an inferred `media_type()`.
 
 ## Layout
 
@@ -46,17 +48,17 @@ values without mutating the original. The naming is identical across all three
 languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
 
 ```rust
-use yggdryl::{FromInput, MediaType, Uri, Url, Version};
+use yggdryl::{FromInput, MediaType, MimeType, Uri, Url, Version};
 
 let uri = Uri::from_str("urn:isbn:0451450523", true)?;
 assert_eq!(uri.scheme(), "urn");
 
-let url = Url::from_str("https://example.com/data/sales.parquet?a=1&a=2", true)?;
+let url = Url::from_str("https://example.com/data/sales.csv.gz?a=1&a=2", true)?;
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
-// Media type inferred from the path's extension (or sniffed from bytes).
-assert_eq!(url.media_type(), Some(MediaType::Parquet));
-assert_eq!(MediaType::from_magic(b"ARROW1\x00\x00"), Some(MediaType::Arrow));
+// A layered media type, inferred from the path's extensions.
+assert_eq!(url.media_type().unwrap().types(), [MimeType::Csv, MimeType::Gzip]);
+assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
 
 assert!(Version::from_str("1.4.2", true)? < Version::from_str("1.10.0", true)?);
 # Ok::<(), yggdryl::UrlError>(())

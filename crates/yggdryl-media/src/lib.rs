@@ -3,26 +3,31 @@
 //! Media (MIME) type detection for the **yggdryl** project, built on the
 //! [`yggdryl-core`](https://crates.io/crates/yggdryl-core) parsing traits.
 //!
-//! [`MediaType`] is an enum of common media types (with an [`Other`](MediaType::Other)
-//! escape hatch for anything else). It can be parsed from a MIME string, inferred
-//! from a file extension ([`from_extension`](MediaType::from_extension)) or from a
-//! file's leading bytes ([`from_magic`](MediaType::from_magic)) — the latter
-//! recognises container and columnar formats such as Apache Arrow IPC, Parquet,
-//! ZIP and gzip.
+//! - [`MimeType`] is an enum of common, individual MIME types (with an
+//!   [`Other`](MimeType::Other) escape hatch). Each type's canonical string, file
+//!   extensions and magic-byte signatures live in a **global registry** that can
+//!   be extended or trimmed at runtime ([`MimeType::register`] /
+//!   [`MimeType::unregister`]).
+//! - [`MediaType`] is an ordered stack of [`MimeType`]s describing a layered
+//!   file, so `data.csv.gz` becomes `MediaType([MimeType::Csv, MimeType::Gzip])`.
 //!
 //! ```
-//! use yggdryl_media::{FromInput, MediaType};
+//! use yggdryl_media::{FromInput, MediaType, MimeType};
 //!
-//! assert_eq!(MediaType::from_str("application/json", true).unwrap().subtype(), "json");
-//! assert_eq!(MediaType::from_extension("parquet"), Some(MediaType::Parquet));
-//! assert_eq!(MediaType::from_magic(b"PK\x03\x04..."), Some(MediaType::Zip));
+//! assert_eq!(MimeType::from_str("application/json", true).unwrap(), MimeType::Json);
+//! assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
+//! assert_eq!(MimeType::from_magic(b"PK\x03\x04..."), Some(MimeType::Zip));
+//!
+//! let stack = MediaType::from_path("data.csv.gz");
+//! assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
 //! ```
 
 use std::fmt;
+use std::sync::{OnceLock, RwLock};
 
 pub use yggdryl_core::{FromInput, Mapping, ToOutput};
 
-/// Error returned when [`MediaType::from_`] cannot interpret its input.
+/// Error returned when a media or MIME type cannot be interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaError {
     /// The input was empty.
@@ -42,23 +47,23 @@ impl fmt::Display for MediaError {
 
 impl std::error::Error for MediaError {}
 
-/// A common media (MIME) type, or [`Other`](MediaType::Other) for anything not in
+/// A single common MIME type, or [`Other`](MimeType::Other) for anything not in
 /// the built-in registry.
 ///
-/// The canonical MIME string, the file extensions and the magic-byte signatures
-/// for each known variant live in a single registry (see [`MediaType::mime`],
-/// [`MediaType::extensions`], [`MediaType::from_magic`]).
+/// Each variant maps to a canonical MIME string; the associated file extensions
+/// and magic-byte signatures are held in the runtime registry (see
+/// [`MimeType::extensions`], [`MimeType::from_magic`], [`MimeType::register`]).
 ///
 /// ```
-/// use yggdryl_media::MediaType;
+/// use yggdryl_media::MimeType;
 ///
-/// let png = MediaType::Png;
+/// let png = MimeType::Png;
 /// assert_eq!(png.mime(), "image/png");
 /// assert_eq!(png.type_(), "image");
-/// assert_eq!(png.extension(), Some("png"));
+/// assert_eq!(png.extension(), Some("png".to_string()));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MediaType {
+pub enum MimeType {
     // text/*
     /// `text/plain`
     Plain,
@@ -145,44 +150,65 @@ pub enum MediaType {
     Ttf,
     /// `font/otf`
     Otf,
-    /// Any media type outside the built-in registry, holding its `type/subtype`.
+    /// Any MIME type outside the built-in registry, holding its `type/subtype`.
     Other(String),
 }
 
-/// A magic-byte signature: `bytes` expected at a fixed `offset` from the start.
-#[derive(Clone, Copy)]
-struct Signature {
+/// A magic-byte signature: `bytes` expected at a fixed `offset` from the start of
+/// a file. Used to build registry entries for [`MimeType::register`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature {
+    offset: usize,
+    bytes: Vec<u8>,
+}
+
+impl Signature {
+    /// A signature matched at the very start of the data.
+    pub fn prefix(bytes: impl Into<Vec<u8>>) -> Signature {
+        Signature {
+            offset: 0,
+            bytes: bytes.into(),
+        }
+    }
+
+    /// A signature matched at a fixed `offset` from the start.
+    pub fn at(offset: usize, bytes: impl Into<Vec<u8>>) -> Signature {
+        Signature {
+            offset,
+            bytes: bytes.into(),
+        }
+    }
+
+    /// Whether `data` carries this signature at its offset.
+    fn matches(&self, data: &[u8]) -> bool {
+        let end = self.offset + self.bytes.len();
+        data.len() >= end && data[self.offset..end] == self.bytes[..]
+    }
+}
+
+/// A static magic-byte signature, used only to seed [`BUILTINS`].
+struct Magic {
     offset: usize,
     bytes: &'static [u8],
 }
 
-impl Signature {
-    /// Whether `data` carries this signature at its offset.
-    fn matches(&self, data: &[u8]) -> bool {
-        let end = self.offset + self.bytes.len();
-        data.len() >= end && &data[self.offset..end] == self.bytes
-    }
-}
-
-/// One row of the media-type registry: a constructor for the [`MediaType`], its
-/// canonical MIME string, the file extensions that map to it (first is the
-/// canonical one) and the magic-byte signatures that identify it by content.
-#[derive(Clone, Copy)]
-struct Row {
-    new: fn() -> MediaType,
+/// One built-in registry row: a constructor for the [`MimeType`], its canonical
+/// MIME string, default file extensions (first is canonical) and magic bytes.
+struct Builtin {
+    new: fn() -> MimeType,
     mime: &'static str,
     extensions: &'static [&'static str],
-    magic: &'static [Signature],
+    magic: &'static [Magic],
 }
 
-/// Shorthand for one registry row.
-const fn row(
-    new: fn() -> MediaType,
+/// Shorthand for one built-in row.
+const fn builtin(
+    new: fn() -> MimeType,
     mime: &'static str,
     extensions: &'static [&'static str],
-    magic: &'static [Signature],
-) -> Row {
-    Row {
+    magic: &'static [Magic],
+) -> Builtin {
+    Builtin {
         new,
         mime,
         extensions,
@@ -190,219 +216,249 @@ const fn row(
     }
 }
 
-/// Shorthand for a signature at the start of the data.
-const fn sig(bytes: &'static [u8]) -> Signature {
-    Signature { offset: 0, bytes }
+/// Shorthand for a static signature at the start of the data.
+const fn mag(bytes: &'static [u8]) -> Magic {
+    Magic { offset: 0, bytes }
 }
 
-/// Shorthand for a signature at a fixed offset.
-const fn sig_at(offset: usize, bytes: &'static [u8]) -> Signature {
-    Signature { offset, bytes }
+/// Shorthand for a static signature at a fixed offset.
+const fn mag_at(offset: usize, bytes: &'static [u8]) -> Magic {
+    Magic { offset, bytes }
 }
 
-/// The built-in media-type registry — the single source of truth mapping each
-/// known [`MediaType`] to its MIME string, extensions and magic bytes.
-static ROWS: &[Row] = &[
+/// The built-in defaults that seed the runtime registry — the single source of
+/// truth for each known [`MimeType`]'s MIME string, extensions and magic bytes.
+static BUILTINS: &[Builtin] = &[
     // text/*
-    row(
-        || MediaType::Plain,
+    builtin(
+        || MimeType::Plain,
         "text/plain",
         &["txt", "text", "log"],
         &[],
     ),
-    row(|| MediaType::Html, "text/html", &["html", "htm"], &[]),
-    row(|| MediaType::Css, "text/css", &["css"], &[]),
-    row(|| MediaType::Csv, "text/csv", &["csv"], &[]),
-    row(
-        || MediaType::Markdown,
+    builtin(|| MimeType::Html, "text/html", &["html", "htm"], &[]),
+    builtin(|| MimeType::Css, "text/css", &["css"], &[]),
+    builtin(|| MimeType::Csv, "text/csv", &["csv"], &[]),
+    builtin(
+        || MimeType::Markdown,
         "text/markdown",
         &["md", "markdown"],
         &[],
     ),
-    row(
-        || MediaType::JavaScript,
+    builtin(
+        || MimeType::JavaScript,
         "text/javascript",
         &["js", "mjs"],
         &[],
     ),
     // application/*
-    row(|| MediaType::Json, "application/json", &["json"], &[]),
-    row(
-        || MediaType::Xml,
+    builtin(|| MimeType::Json, "application/json", &["json"], &[]),
+    builtin(
+        || MimeType::Xml,
         "application/xml",
         &["xml"],
-        &[sig(b"<?xml")],
+        &[mag(b"<?xml")],
     ),
-    row(
-        || MediaType::Pdf,
+    builtin(
+        || MimeType::Pdf,
         "application/pdf",
         &["pdf"],
-        &[sig(b"%PDF-")],
+        &[mag(b"%PDF-")],
     ),
-    row(
-        || MediaType::Zip,
+    builtin(
+        || MimeType::Zip,
         "application/zip",
         &["zip"],
-        &[sig(b"PK\x03\x04")],
+        &[mag(b"PK\x03\x04")],
     ),
-    row(
-        || MediaType::Gzip,
+    builtin(
+        || MimeType::Gzip,
         "application/gzip",
         &["gz", "gzip"],
-        &[sig(b"\x1f\x8b")],
+        &[mag(b"\x1f\x8b")],
     ),
-    row(
-        || MediaType::Tar,
+    builtin(
+        || MimeType::Tar,
         "application/x-tar",
         &["tar"],
-        &[sig_at(257, b"ustar")],
+        &[mag_at(257, b"ustar")],
     ),
-    row(
-        || MediaType::Bzip2,
+    builtin(
+        || MimeType::Bzip2,
         "application/x-bzip2",
         &["bz2"],
-        &[sig(b"BZh")],
+        &[mag(b"BZh")],
     ),
-    row(
-        || MediaType::Zstd,
+    builtin(
+        || MimeType::Zstd,
         "application/zstd",
         &["zst"],
-        &[sig(b"\x28\xb5\x2f\xfd")],
+        &[mag(b"\x28\xb5\x2f\xfd")],
     ),
-    row(
-        || MediaType::SevenZip,
+    builtin(
+        || MimeType::SevenZip,
         "application/x-7z-compressed",
         &["7z"],
-        &[sig(b"7z\xbc\xaf\x27\x1c")],
+        &[mag(b"7z\xbc\xaf\x27\x1c")],
     ),
-    row(
-        || MediaType::Parquet,
+    builtin(
+        || MimeType::Parquet,
         "application/vnd.apache.parquet",
         &["parquet"],
-        &[sig(b"PAR1")],
+        &[mag(b"PAR1")],
     ),
-    row(
-        || MediaType::Arrow,
+    builtin(
+        || MimeType::Arrow,
         "application/vnd.apache.arrow.file",
         &["arrow", "arrows", "ipc"],
-        &[sig(b"ARROW1")],
+        &[mag(b"ARROW1")],
     ),
-    row(
-        || MediaType::Avro,
+    builtin(
+        || MimeType::Avro,
         "application/vnd.apache.avro",
         &["avro"],
-        &[sig(b"Obj\x01")],
+        &[mag(b"Obj\x01")],
     ),
-    row(
-        || MediaType::Wasm,
+    builtin(
+        || MimeType::Wasm,
         "application/wasm",
         &["wasm"],
-        &[sig(b"\x00asm")],
+        &[mag(b"\x00asm")],
     ),
-    row(
-        || MediaType::Sqlite,
+    builtin(
+        || MimeType::Sqlite,
         "application/vnd.sqlite3",
         &["sqlite", "sqlite3", "db"],
-        &[sig(b"SQLite format 3\x00")],
+        &[mag(b"SQLite format 3\x00")],
     ),
-    row(
-        || MediaType::OctetStream,
+    builtin(
+        || MimeType::OctetStream,
         "application/octet-stream",
         &["bin"],
         &[],
     ),
     // image/*
-    row(
-        || MediaType::Png,
+    builtin(
+        || MimeType::Png,
         "image/png",
         &["png"],
-        &[sig(b"\x89PNG\r\n\x1a\n")],
+        &[mag(b"\x89PNG\r\n\x1a\n")],
     ),
-    row(
-        || MediaType::Jpeg,
+    builtin(
+        || MimeType::Jpeg,
         "image/jpeg",
         &["jpg", "jpeg"],
-        &[sig(b"\xff\xd8\xff")],
+        &[mag(b"\xff\xd8\xff")],
     ),
-    row(
-        || MediaType::Gif,
+    builtin(
+        || MimeType::Gif,
         "image/gif",
         &["gif"],
-        &[sig(b"GIF87a"), sig(b"GIF89a")],
+        &[mag(b"GIF87a"), mag(b"GIF89a")],
     ),
-    row(
-        || MediaType::Webp,
+    builtin(
+        || MimeType::Webp,
         "image/webp",
         &["webp"],
-        &[sig_at(8, b"WEBP")],
+        &[mag_at(8, b"WEBP")],
     ),
-    row(|| MediaType::Bmp, "image/bmp", &["bmp"], &[sig(b"BM")]),
-    row(|| MediaType::Svg, "image/svg+xml", &["svg"], &[]),
-    row(
-        || MediaType::Icon,
+    builtin(|| MimeType::Bmp, "image/bmp", &["bmp"], &[mag(b"BM")]),
+    builtin(|| MimeType::Svg, "image/svg+xml", &["svg"], &[]),
+    builtin(
+        || MimeType::Icon,
         "image/x-icon",
         &["ico"],
-        &[sig(b"\x00\x00\x01\x00")],
+        &[mag(b"\x00\x00\x01\x00")],
     ),
-    row(
-        || MediaType::Tiff,
+    builtin(
+        || MimeType::Tiff,
         "image/tiff",
         &["tif", "tiff"],
-        &[sig(b"II\x2a\x00"), sig(b"MM\x00\x2a")],
+        &[mag(b"II\x2a\x00"), mag(b"MM\x00\x2a")],
     ),
     // audio/*
-    row(|| MediaType::Mp3, "audio/mpeg", &["mp3"], &[sig(b"ID3")]),
-    row(
-        || MediaType::Wav,
+    builtin(|| MimeType::Mp3, "audio/mpeg", &["mp3"], &[mag(b"ID3")]),
+    builtin(
+        || MimeType::Wav,
         "audio/wav",
         &["wav"],
-        &[sig_at(8, b"WAVE")],
+        &[mag_at(8, b"WAVE")],
     ),
-    row(|| MediaType::Flac, "audio/flac", &["flac"], &[sig(b"fLaC")]),
-    row(
-        || MediaType::Ogg,
+    builtin(|| MimeType::Flac, "audio/flac", &["flac"], &[mag(b"fLaC")]),
+    builtin(
+        || MimeType::Ogg,
         "audio/ogg",
         &["ogg", "oga"],
-        &[sig(b"OggS")],
+        &[mag(b"OggS")],
     ),
     // video/*
-    row(
-        || MediaType::Mp4,
+    builtin(
+        || MimeType::Mp4,
         "video/mp4",
         &["mp4", "m4v"],
-        &[sig_at(4, b"ftyp")],
+        &[mag_at(4, b"ftyp")],
     ),
-    row(
-        || MediaType::Webm,
+    builtin(
+        || MimeType::Webm,
         "video/webm",
         &["webm"],
-        &[sig(b"\x1a\x45\xdf\xa3")],
+        &[mag(b"\x1a\x45\xdf\xa3")],
     ),
-    row(
-        || MediaType::Avi,
+    builtin(
+        || MimeType::Avi,
         "video/x-msvideo",
         &["avi"],
-        &[sig_at(8, b"AVI ")],
+        &[mag_at(8, b"AVI ")],
     ),
     // font/*
-    row(|| MediaType::Woff, "font/woff", &["woff"], &[sig(b"wOFF")]),
-    row(
-        || MediaType::Woff2,
+    builtin(|| MimeType::Woff, "font/woff", &["woff"], &[mag(b"wOFF")]),
+    builtin(
+        || MimeType::Woff2,
         "font/woff2",
         &["woff2"],
-        &[sig(b"wOF2")],
+        &[mag(b"wOF2")],
     ),
-    row(
-        || MediaType::Ttf,
+    builtin(
+        || MimeType::Ttf,
         "font/ttf",
         &["ttf"],
-        &[sig(b"\x00\x01\x00\x00")],
+        &[mag(b"\x00\x01\x00\x00")],
     ),
-    row(|| MediaType::Otf, "font/otf", &["otf"], &[sig(b"OTTO")]),
+    builtin(|| MimeType::Otf, "font/otf", &["otf"], &[mag(b"OTTO")]),
 ];
 
-/// Returns `true` for an [RFC 2045](https://www.rfc-editor.org/rfc/rfc2045) token:
-/// a non-empty run of `ALPHA / DIGIT` and the punctuation MIME types may contain.
+/// One mutable registry entry: everything known about one MIME type.
+#[derive(Clone)]
+struct Entry {
+    mime: String,
+    extensions: Vec<String>,
+    magic: Vec<Signature>,
+}
+
+impl Entry {
+    /// Materialises a mutable entry from a built-in default.
+    fn from_builtin(b: &Builtin) -> Entry {
+        Entry {
+            mime: b.mime.to_string(),
+            extensions: b.extensions.iter().map(|s| s.to_string()).collect(),
+            magic: b
+                .magic
+                .iter()
+                .map(|m| Signature::at(m.offset, m.bytes))
+                .collect(),
+        }
+    }
+}
+
+/// The process-global registry, seeded from [`BUILTINS`] on first use.
+static REGISTRY: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
+
+/// Returns the global registry, initialising it with the built-in defaults.
+fn registry() -> &'static RwLock<Vec<Entry>> {
+    REGISTRY.get_or_init(|| RwLock::new(BUILTINS.iter().map(Entry::from_builtin).collect()))
+}
+
+/// Returns `true` for an [RFC 2045](https://www.rfc-editor.org/rfc/rfc2045) token.
 fn is_token(value: &str) -> bool {
     !value.is_empty()
         && value.bytes().all(|b| {
@@ -422,57 +478,54 @@ fn is_valid_mime(mime: &str) -> bool {
     }
 }
 
-impl MediaType {
-    /// The registry row for a known variant, or `None` for [`Other`](MediaType::Other).
-    fn row(&self) -> Option<&'static Row> {
-        if matches!(self, MediaType::Other(_)) {
+impl MimeType {
+    /// The built-in default for a known variant, or `None` for [`Other`](MimeType::Other).
+    fn builtin(&self) -> Option<&'static Builtin> {
+        if matches!(self, MimeType::Other(_)) {
             return None;
         }
-        ROWS.iter().find(|r| (r.new)() == *self)
+        BUILTINS.iter().find(|b| (b.new)() == *self)
     }
 
-    /// Looks up a [`MediaType`] by its (case-insensitive) MIME string, falling
-    /// back to [`Other`](MediaType::Other) for anything unknown.
-    pub fn from_mime(mime: &str) -> MediaType {
+    /// Looks up a [`MimeType`] by its (case-insensitive) MIME string, falling back
+    /// to [`Other`](MimeType::Other) for anything not built in.
+    pub fn from_mime(mime: &str) -> MimeType {
         let mime = mime.to_ascii_lowercase();
-        ROWS.iter()
-            .find(|r| r.mime == mime)
-            .map(|r| (r.new)())
-            .unwrap_or(MediaType::Other(mime))
+        BUILTINS
+            .iter()
+            .find(|b| b.mime == mime)
+            .map(|b| (b.new)())
+            .unwrap_or(MimeType::Other(mime))
     }
 
-    /// Infers a [`MediaType`] from a file `extension` (with or without a leading
-    /// `.`), or `None` if it is not in the registry.
-    pub fn from_extension(extension: &str) -> Option<MediaType> {
+    /// Infers a [`MimeType`] from a file `extension` (with or without a leading
+    /// `.`) via the registry, or `None` if it is not registered.
+    pub fn from_extension(extension: &str) -> Option<MimeType> {
         let ext = extension.trim_start_matches('.').to_ascii_lowercase();
-        ROWS.iter()
-            .find(|r| r.extensions.contains(&ext.as_str()))
-            .map(|r| (r.new)())
+        let registry = registry().read().unwrap();
+        registry
+            .iter()
+            .find(|e| e.extensions.contains(&ext))
+            .map(|e| MimeType::from_mime(&e.mime))
     }
 
-    /// Infers a [`MediaType`] from a file's leading bytes by matching the
-    /// registry's magic-byte signatures, or `None` if none match. Recognises
-    /// container and columnar formats such as Arrow IPC, Parquet, ZIP and gzip.
-    pub fn from_magic(data: &[u8]) -> Option<MediaType> {
-        ROWS.iter()
-            .find(|r| r.magic.iter().any(|s| s.matches(data)))
-            .map(|r| (r.new)())
-    }
-
-    /// Infers a [`MediaType`] from the last `.`-extension of a path's file name,
-    /// or `None` if there is no known extension.
-    pub fn from_path(path: &str) -> Option<MediaType> {
-        let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        let (_, ext) = name.rsplit_once('.')?;
-        MediaType::from_extension(ext)
+    /// Infers a [`MimeType`] from a file's leading bytes by matching the registry's
+    /// magic-byte signatures, or `None` if none match. Recognises container and
+    /// columnar formats such as Arrow IPC, Parquet, ZIP and gzip.
+    pub fn from_magic(data: &[u8]) -> Option<MimeType> {
+        let registry = registry().read().unwrap();
+        registry
+            .iter()
+            .find(|e| e.magic.iter().any(|s| s.matches(data)))
+            .map(|e| MimeType::from_mime(&e.mime))
     }
 
     /// The canonical MIME string, e.g. `"image/png"`. For
-    /// [`Other`](MediaType::Other) this is the stored `type/subtype`.
+    /// [`Other`](MimeType::Other) this is the stored `type/subtype`.
     pub fn mime(&self) -> &str {
         match self {
-            MediaType::Other(mime) => mime,
-            _ => self.row().map(|r| r.mime).unwrap_or(""),
+            MimeType::Other(mime) => mime,
+            _ => self.builtin().map(|b| b.mime).unwrap_or(""),
         }
     }
 
@@ -486,31 +539,72 @@ impl MediaType {
         self.mime().split_once('/').map_or("", |(_, s)| s)
     }
 
-    /// The file extensions associated with this type (the first is canonical);
-    /// empty for [`Other`](MediaType::Other).
-    pub fn extensions(&self) -> &'static [&'static str] {
-        self.row().map_or(&[], |r| r.extensions)
+    /// The file extensions registered for this type (the first is canonical); empty
+    /// if the type has been unregistered or is an unknown [`Other`](MimeType::Other).
+    pub fn extensions(&self) -> Vec<String> {
+        let mime = self.mime();
+        let registry = registry().read().unwrap();
+        registry
+            .iter()
+            .find(|e| e.mime == mime)
+            .map(|e| e.extensions.clone())
+            .unwrap_or_default()
     }
 
     /// The canonical (first) file extension, if any.
-    pub fn extension(&self) -> Option<&'static str> {
-        self.extensions().first().copied()
+    pub fn extension(&self) -> Option<String> {
+        self.extensions().into_iter().next()
     }
 
-    /// Whether this is a registry variant rather than [`Other`](MediaType::Other).
+    /// Whether this is a built-in variant rather than [`Other`](MimeType::Other).
     pub fn is_known(&self) -> bool {
-        !matches!(self, MediaType::Other(_))
+        !matches!(self, MimeType::Other(_))
+    }
+
+    /// Registers (or replaces) a MIME type in the global registry, so subsequent
+    /// [`from_extension`](MimeType::from_extension) /
+    /// [`from_magic`](MimeType::from_magic) lookups recognise it. The change is
+    /// process-wide.
+    pub fn register(mime: &str, extensions: &[&str], magic: &[Signature]) {
+        let mime = mime.to_ascii_lowercase();
+        let entry = Entry {
+            extensions: extensions.iter().map(|s| s.to_ascii_lowercase()).collect(),
+            magic: magic.to_vec(),
+            mime: mime.clone(),
+        };
+        let mut registry = registry().write().unwrap();
+        match registry.iter_mut().find(|e| e.mime == mime) {
+            Some(slot) => *slot = entry,
+            None => registry.push(entry),
+        }
+    }
+
+    /// Removes a MIME type from the global registry by its canonical string,
+    /// returning whether an entry was present. The change is process-wide.
+    pub fn unregister(mime: &str) -> bool {
+        let mime = mime.to_ascii_lowercase();
+        let mut registry = registry().write().unwrap();
+        let before = registry.len();
+        registry.retain(|e| e.mime != mime);
+        registry.len() != before
+    }
+
+    /// Restores the global registry to its built-in defaults, discarding every
+    /// [`register`](MimeType::register) / [`unregister`](MimeType::unregister).
+    pub fn reset_registry() {
+        let mut registry = registry().write().unwrap();
+        *registry = BUILTINS.iter().map(Entry::from_builtin).collect();
     }
 }
 
-impl FromInput for MediaType {
+impl FromInput for MimeType {
     type Err = MediaError;
 
     /// Parses a MIME string such as `"text/html"` (any `;parameters` are dropped).
     /// When `safe`, the essence must be a `type/subtype` pair of valid tokens;
     /// when not `safe`, the input is taken as-is. Unknown but well-formed types
-    /// become [`Other`](MediaType::Other).
-    fn from_str(input: &str, safe: bool) -> Result<MediaType, MediaError> {
+    /// become [`Other`](MimeType::Other).
+    fn from_str(input: &str, safe: bool) -> Result<MimeType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
@@ -523,30 +617,30 @@ impl FromInput for MediaType {
         if safe && !is_valid_mime(&essence) {
             return Err(MediaError::Invalid(input.to_string()));
         }
-        Ok(MediaType::from_mime(&essence))
+        Ok(MimeType::from_mime(&essence))
     }
 
-    /// Builds a [`MediaType`] from a [`Mapping`]. Recognised keys: `type` and
+    /// Builds a [`MimeType`] from a [`Mapping`]. Recognised keys: `type` and
     /// `subtype`. When `safe`, both must be present and valid tokens.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<MediaType, MediaError> {
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<MimeType, MediaError> {
         let type_ = fields.get("type").map_or("", String::as_str);
         let subtype = fields.get("subtype").map_or("", String::as_str);
         let mime = format!("{type_}/{subtype}");
         if safe && !is_valid_mime(&mime) {
             return Err(MediaError::Invalid(mime));
         }
-        Ok(MediaType::from_mime(&mime))
+        Ok(MimeType::from_mime(&mime))
     }
 }
 
-impl fmt::Display for MediaType {
+impl fmt::Display for MimeType {
     /// Renders the canonical MIME string.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.mime())
     }
 }
 
-impl ToOutput for MediaType {
+impl ToOutput for MimeType {
     fn to_str(&self, _encode: bool) -> String {
         self.mime().to_string()
     }
@@ -560,28 +654,135 @@ impl ToOutput for MediaType {
     }
 }
 
+/// An ordered stack of [`MimeType`]s describing a layered file, innermost content
+/// first. Parsing `data.csv.gz` yields `MediaType([MimeType::Csv, MimeType::Gzip])`.
+///
+/// ```
+/// use yggdryl_media::{MediaType, MimeType};
+///
+/// let stack = MediaType::from_path("/tmp/data.csv.gz");
+/// assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
+/// assert_eq!(stack.first(), Some(&MimeType::Csv));
+/// assert_eq!(stack.last(), Some(&MimeType::Gzip));
+/// ```
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct MediaType {
+    types: Vec<MimeType>,
+}
+
+/// Splits a file name into its extensions, e.g. `"a.csv.gz"` → `["csv", "gz"]` and
+/// `".bashrc"` → `[]` (a leading dot starts a dotfile, not an extension).
+fn name_extensions(name: &str) -> Vec<&str> {
+    let after_first_dot = if name.len() > 1 {
+        name[1..].find('.').map(|i| i + 2)
+    } else {
+        None
+    };
+    match after_first_dot {
+        Some(idx) => name[idx..].split('.').filter(|s| !s.is_empty()).collect(),
+        None => Vec::new(),
+    }
+}
+
+impl MediaType {
+    /// Builds a [`MediaType`] from an ordered list of [`MimeType`]s.
+    pub fn new(types: Vec<MimeType>) -> MediaType {
+        MediaType { types }
+    }
+
+    /// Builds the stack from a path's file name, mapping each `.`-extension that
+    /// resolves in the registry (unknown extensions are skipped). `data.csv.gz`
+    /// yields `[Csv, Gzip]`.
+    pub fn from_path(path: &str) -> MediaType {
+        let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+        let types = name_extensions(name)
+            .into_iter()
+            .filter_map(MimeType::from_extension)
+            .collect();
+        MediaType { types }
+    }
+
+    /// The ordered [`MimeType`]s, innermost content first.
+    pub fn types(&self) -> &[MimeType] {
+        &self.types
+    }
+
+    /// The innermost (content) type, e.g. `Csv` for `data.csv.gz`.
+    pub fn first(&self) -> Option<&MimeType> {
+        self.types.first()
+    }
+
+    /// The outermost (container) type, e.g. `Gzip` for `data.csv.gz`.
+    pub fn last(&self) -> Option<&MimeType> {
+        self.types.last()
+    }
+
+    /// The number of types in the stack.
+    pub fn len(&self) -> usize {
+        self.types.len()
+    }
+
+    /// Whether the stack is empty (no known extension was found).
+    pub fn is_empty(&self) -> bool {
+        self.types.is_empty()
+    }
+}
+
+impl FromInput for MediaType {
+    type Err = MediaError;
+
+    /// Parses a path or file name into its [`MimeType`] stack (see
+    /// [`from_path`](MediaType::from_path)). `safe` is accepted for trait
+    /// uniformity; only an empty input is an error.
+    fn from_str(input: &str, _safe: bool) -> Result<MediaType, MediaError> {
+        if input.is_empty() {
+            return Err(MediaError::Empty);
+        }
+        Ok(MediaType::from_path(input))
+    }
+}
+
+impl fmt::Display for MediaType {
+    /// Renders the canonical extension chain, e.g. `"csv.gz"`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str(true))
+    }
+}
+
+impl ToOutput for MediaType {
+    /// Renders the canonical extension chain, e.g. `"csv.gz"` (the inverse of
+    /// [`from_path`](MediaType::from_path) for canonical extensions).
+    fn to_str(&self, _encode: bool) -> String {
+        self.types
+            .iter()
+            .filter_map(MimeType::extension)
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parses_and_splits_mime() {
-        let m = MediaType::from_str("application/json", true).unwrap();
-        assert_eq!(m, MediaType::Json);
+        let m = MimeType::from_str("application/json", true).unwrap();
+        assert_eq!(m, MimeType::Json);
         assert_eq!(m.mime(), "application/json");
         assert_eq!(m.type_(), "application");
         assert_eq!(m.subtype(), "json");
         // Parameters are dropped; case is normalised.
         assert_eq!(
-            MediaType::from_str("Text/HTML; charset=utf-8", true).unwrap(),
-            MediaType::Html
+            MimeType::from_str("Text/HTML; charset=utf-8", true).unwrap(),
+            MimeType::Html
         );
     }
 
     #[test]
     fn unknown_becomes_other() {
-        let m = MediaType::from_str("application/x-custom", true).unwrap();
-        assert_eq!(m, MediaType::Other("application/x-custom".to_string()));
+        let m = MimeType::from_str("application/x-custom", true).unwrap();
+        assert_eq!(m, MimeType::Other("application/x-custom".to_string()));
         assert!(!m.is_known());
         assert_eq!(m.subtype(), "x-custom");
         assert_eq!(m.extension(), None);
@@ -589,89 +790,117 @@ mod tests {
 
     #[test]
     fn errors() {
-        assert_eq!(MediaType::from_str("", true), Err(MediaError::Empty));
+        assert_eq!(MimeType::from_str("", true), Err(MediaError::Empty));
         assert_eq!(
-            MediaType::from_str("notamime", true),
+            MimeType::from_str("notamime", true),
             Err(MediaError::Invalid("notamime".to_string()))
         );
-        // The fast path keeps whatever it is given.
         assert_eq!(
-            MediaType::from_str("notamime", false).unwrap(),
-            MediaType::Other("notamime".to_string())
+            MimeType::from_str("notamime", false).unwrap(),
+            MimeType::Other("notamime".to_string())
         );
     }
 
     #[test]
     fn from_extension_maps_known_types() {
-        assert_eq!(
-            MediaType::from_extension("parquet"),
-            Some(MediaType::Parquet)
-        );
-        assert_eq!(MediaType::from_extension(".GZ"), Some(MediaType::Gzip));
-        assert_eq!(MediaType::from_extension("jpeg"), Some(MediaType::Jpeg));
-        assert_eq!(MediaType::from_extension("nope"), None);
+        assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
+        assert_eq!(MimeType::from_extension(".GZ"), Some(MimeType::Gzip));
+        assert_eq!(MimeType::from_extension("jpeg"), Some(MimeType::Jpeg));
+        assert_eq!(MimeType::from_extension("nope"), None);
     }
 
     #[test]
     fn from_magic_sniffs_content() {
         assert_eq!(
-            MediaType::from_magic(b"PAR1\x15\x04"),
-            Some(MediaType::Parquet)
+            MimeType::from_magic(b"PAR1\x15\x04"),
+            Some(MimeType::Parquet)
         );
         assert_eq!(
-            MediaType::from_magic(b"ARROW1\x00\x00"),
-            Some(MediaType::Arrow)
+            MimeType::from_magic(b"ARROW1\x00\x00"),
+            Some(MimeType::Arrow)
+        );
+        assert_eq!(MimeType::from_magic(b"PK\x03\x04\x14"), Some(MimeType::Zip));
+        assert_eq!(
+            MimeType::from_magic(b"\x1f\x8b\x08\x00"),
+            Some(MimeType::Gzip)
         );
         assert_eq!(
-            MediaType::from_magic(b"PK\x03\x04\x14"),
-            Some(MediaType::Zip)
-        );
-        assert_eq!(
-            MediaType::from_magic(b"\x1f\x8b\x08\x00"),
-            Some(MediaType::Gzip)
-        );
-        assert_eq!(
-            MediaType::from_magic(b"\x89PNG\r\n\x1a\n\x00"),
-            Some(MediaType::Png)
+            MimeType::from_magic(b"\x89PNG\r\n\x1a\n\x00"),
+            Some(MimeType::Png)
         );
         // Offset-based signatures: tar's `ustar` lives at byte 257.
         let mut tar = vec![0u8; 270];
         tar[257..262].copy_from_slice(b"ustar");
-        assert_eq!(MediaType::from_magic(&tar), Some(MediaType::Tar));
-        assert_eq!(MediaType::from_magic(b"not magic"), None);
+        assert_eq!(MimeType::from_magic(&tar), Some(MimeType::Tar));
+        assert_eq!(MimeType::from_magic(b"not magic"), None);
     }
 
     #[test]
-    fn from_path_uses_last_extension() {
+    fn media_type_is_an_ordered_stack() {
+        let stack = MediaType::from_path("data.csv.gz");
+        assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
+        assert_eq!(stack.first(), Some(&MimeType::Csv));
+        assert_eq!(stack.last(), Some(&MimeType::Gzip));
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack.to_str(true), "csv.gz");
+        // Unknown extensions are skipped; nested dirs and dotfiles handled.
         assert_eq!(
-            MediaType::from_path("/data/sales.parquet"),
-            Some(MediaType::Parquet)
+            MediaType::from_path("/srv/dump.bak.parquet").types(),
+            [MimeType::Parquet]
         );
-        // Compound extensions resolve to the outer container.
+        assert!(MediaType::from_path("/etc/.bashrc").is_empty());
+        assert!(MediaType::from_path("/usr/bin/env").is_empty());
+    }
+
+    #[test]
+    fn media_type_explicit_and_round_trip() {
+        let stack = MediaType::new(vec![MimeType::Csv, MimeType::Gzip]);
+        assert_eq!(stack, MediaType::from_path("x.csv.gz"));
         assert_eq!(
-            MediaType::from_path("archive.tar.gz"),
-            Some(MediaType::Gzip)
+            MediaType::from_str("a/b/c.tar.gz", true)
+                .unwrap()
+                .to_str(true),
+            "tar.gz"
         );
-        // Dotfiles and extension-less names have no media type.
-        assert_eq!(MediaType::from_path("/etc/.bashrc"), None);
-        assert_eq!(MediaType::from_path("/usr/bin/env"), None);
+    }
+
+    #[test]
+    fn registry_add_and_remove() {
+        // A custom type is unknown until registered.
+        assert_eq!(MimeType::from_extension("ygg"), None);
+        MimeType::register(
+            "application/x-yggdryl",
+            &["ygg"],
+            &[Signature::prefix(b"YGG1")],
+        );
+        let m = MimeType::from_extension("ygg").unwrap();
+        assert_eq!(m, MimeType::Other("application/x-yggdryl".to_string()));
+        assert_eq!(m.extensions(), vec!["ygg".to_string()]);
+        assert_eq!(
+            MimeType::from_magic(b"YGG1\x00"),
+            Some(MimeType::Other("application/x-yggdryl".to_string()))
+        );
+        // Unregistering removes it again.
+        assert!(MimeType::unregister("application/x-yggdryl"));
+        assert_eq!(MimeType::from_extension("ygg"), None);
+        assert!(!MimeType::unregister("application/x-yggdryl"));
     }
 
     #[test]
     fn round_trips_through_mapping() {
-        let m = MediaType::Svg;
+        let m = MimeType::Svg;
         assert_eq!(m.mime(), "image/svg+xml");
         let map = m.to_mapping();
         assert_eq!(map.get("type"), Some(&"image".to_string()));
         assert_eq!(map.get("subtype"), Some(&"svg+xml".to_string()));
-        assert_eq!(MediaType::from_(&map).unwrap(), m);
+        assert_eq!(MimeType::from_(&map).unwrap(), m);
     }
 
     #[test]
     fn extensions_and_to_str() {
-        assert_eq!(MediaType::Jpeg.extensions(), &["jpg", "jpeg"]);
-        assert_eq!(MediaType::Jpeg.extension(), Some("jpg"));
-        assert!(MediaType::Other("x/y".to_string()).extensions().is_empty());
-        assert_eq!(MediaType::Gzip.to_str(true), "application/gzip");
+        assert_eq!(MimeType::Jpeg.extensions(), vec!["jpg", "jpeg"]);
+        assert_eq!(MimeType::Jpeg.extension(), Some("jpg".to_string()));
+        assert!(MimeType::Other("x/y".to_string()).extensions().is_empty());
+        assert_eq!(MimeType::Gzip.to_str(true), "application/gzip");
     }
 }

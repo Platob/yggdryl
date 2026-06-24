@@ -86,7 +86,7 @@ pub use yggdryl_core::{
     percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Output, Params,
     ToOutput,
 };
-pub use yggdryl_media::{MediaError, MediaType};
+pub use yggdryl_media::{MediaError, MediaType, MimeType, Signature};
 
 /// Error returned when [`Uri`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -659,10 +659,11 @@ impl Uri {
             .collect()
     }
 
-    /// The [`MediaType`] inferred from the path's file extension, or `None` if the
-    /// extension is unknown (or there is none).
+    /// The [`MediaType`] stack inferred from the path's file extensions (e.g.
+    /// `[Csv, Gzip]` for `data.csv.gz`), or `None` if no known extension is found.
     pub fn media_type(&self) -> Option<MediaType> {
-        MediaType::from_path(&self.path)
+        let media = MediaType::from_path(&self.path);
+        (!media.is_empty()).then_some(media)
     }
 }
 
@@ -1300,10 +1301,11 @@ impl Url {
             .collect()
     }
 
-    /// The [`MediaType`] inferred from the path's file extension, or `None` if the
-    /// extension is unknown (or there is none).
+    /// The [`MediaType`] stack inferred from the path's file extensions (e.g.
+    /// `[Csv, Gzip]` for `data.csv.gz`), or `None` if no known extension is found.
     pub fn media_type(&self) -> Option<MediaType> {
-        MediaType::from_path(&self.path)
+        let media = MediaType::from_path(&self.path);
+        (!media.is_empty()).then_some(media)
     }
 }
 
@@ -1453,31 +1455,28 @@ mod tests {
 
     #[test]
     fn media_type_inference() {
-        // Inferred from the path's file extension.
+        // A single extension yields a one-element stack.
         assert_eq!(
             Url::from_str("https://h/a/data.json", true)
                 .unwrap()
-                .media_type(),
-            Some(MediaType::Json)
+                .media_type()
+                .unwrap()
+                .types(),
+            [MimeType::Json]
         );
-        // Compound extensions resolve to the outer container.
+        // Compound extensions yield the ordered stack (content first).
         assert_eq!(
             Uri::from_str("file:/dump/archive.tar.gz", true)
                 .unwrap()
-                .media_type(),
-            Some(MediaType::Gzip)
+                .media_type()
+                .unwrap()
+                .types(),
+            [MimeType::Tar, MimeType::Gzip]
         );
         // No (known) extension yields `None`.
         assert_eq!(
             Url::from_str("https://h/page", true).unwrap().media_type(),
             None
-        );
-        assert_eq!(
-            Uri::from_str("https://h/data.parquet", true)
-                .unwrap()
-                .media_type()
-                .map(|m| m.mime().to_string()),
-            Some("application/vnd.apache.parquet".to_string())
         );
     }
 

@@ -5,27 +5,29 @@ Media (MIME) type detection for the
 [`yggdryl-core`](https://crates.io/crates/yggdryl-core) parsing traits
 (`FromInput` / `ToOutput`).
 
-`MediaType` is an enum of common media types (with an `Other` fallback for
-anything else). It parses from a MIME string, infers from a file extension, or
-sniffs a file's leading bytes — recognising container and columnar formats such
-as Apache Arrow IPC, Parquet, ZIP and gzip.
+- `MimeType` is an enum of common, individual MIME types (with an `Other`
+  fallback). Each type's MIME string, file extensions and magic-byte signatures
+  live in a **global registry** that can be extended or trimmed at runtime.
+- `MediaType` is an ordered stack of `MimeType`s describing a layered file, so
+  `data.csv.gz` becomes `MediaType([MimeType::Csv, MimeType::Gzip])`.
 
 ```rust
-use yggdryl_media::{FromInput, MediaType, ToOutput};
+use yggdryl_media::{FromInput, MediaType, MimeType, Signature};
 
-// From a MIME string (parameters are dropped, case-insensitive).
-assert_eq!(MediaType::from_str("text/html; charset=utf-8", true).unwrap(), MediaType::Html);
+// A single MIME type, inferred from an extension or sniffed from magic bytes.
+assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
+assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
 
-// From a file extension.
-assert_eq!(MediaType::from_extension("parquet"), Some(MediaType::Parquet));
+// A layered file is an ordered stack, innermost content first.
+let stack = MediaType::from_path("data.csv.gz");
+assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
+assert_eq!(stack.first(), Some(&MimeType::Csv));
 
-// From magic bytes (content sniffing).
-assert_eq!(MediaType::from_magic(b"PK\x03\x04..."), Some(MediaType::Zip));
-assert_eq!(MediaType::from_magic(b"ARROW1\x00\x00"), Some(MediaType::Arrow));
-
-// Components and rendering.
-let png = MediaType::Png;
-assert_eq!((png.type_(), png.subtype()), ("image", "png"));
-assert_eq!(png.extension(), Some("png"));
-assert_eq!(png.to_mapping().get("subtype"), Some(&"png".to_string()));
+// The registry is global and mutable.
+MimeType::register("application/x-foo", &["foo"], &[Signature::prefix(b"FOO1")]);
+assert_eq!(
+    MimeType::from_extension("foo"),
+    Some(MimeType::Other("application/x-foo".to_string()))
+);
+MimeType::unregister("application/x-foo");
 ```

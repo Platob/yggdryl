@@ -1,12 +1,13 @@
-//! The `MediaType` pyclass.
+//! The `MediaType` pyclass: an ordered stack of :class:`MimeType`.
 
 use pyo3::prelude::*;
-use yggdryl_media::{FromInput, Mapping, MediaType as CoreMediaType, ToOutput};
+use yggdryl_media::{FromInput, MediaType as CoreMediaType};
 
+use crate::mime::MimeType;
 use crate::{hash_str, media_err};
 
-/// A common media (MIME) type, parsed from a string or inferred from a file
-/// extension or magic bytes.
+/// An ordered stack of :class:`MimeType`, describing a layered file. Parsing
+/// ``data.csv.gz`` yields ``MediaType([MimeType('text/csv'), MimeType('application/gzip')])``.
 #[pyclass(name = "MediaType", module = "yggdryl")]
 #[derive(Clone)]
 pub struct MediaType {
@@ -15,92 +16,75 @@ pub struct MediaType {
 
 #[pymethods]
 impl MediaType {
-    /// Parse a ``type/subtype`` MIME string, raising ``ValueError`` on failure.
-    /// Any ``;parameters`` are dropped; with ``safe=False`` the input is taken
-    /// as-is. Unknown but well-formed types are kept verbatim.
+    /// Build a :class:`MediaType` from an ordered list of :class:`MimeType`.
     #[new]
+    fn new(types: Vec<MimeType>) -> Self {
+        MediaType {
+            inner: CoreMediaType::new(types.into_iter().map(|t| t.inner).collect()),
+        }
+    }
+
+    /// Build the stack from a path's file extensions (innermost content first).
+    #[staticmethod]
+    fn from_path(path: &str) -> Self {
+        MediaType {
+            inner: CoreMediaType::from_path(path),
+        }
+    }
+
+    /// Parse a path or file name into its :class:`MimeType` stack.
+    #[staticmethod]
     #[pyo3(signature = (value, safe = true))]
-    fn new(value: &str, safe: bool) -> PyResult<Self> {
+    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
         CoreMediaType::from_str(value, safe)
             .map(|inner| MediaType { inner })
             .map_err(media_err)
     }
 
-    /// Alias for the constructor.
-    #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        MediaType::new(value, safe)
-    }
-
-    /// Build a :class:`MediaType` from a dict of components (``type``, ``subtype``).
-    #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreMediaType::from_mapping(&fields, safe)
-            .map(|inner| MediaType { inner })
-            .map_err(media_err)
-    }
-
-    /// Infer the media type from a file ``extension``, or ``None`` if unknown.
-    #[staticmethod]
-    fn from_extension(extension: &str) -> Option<Self> {
-        CoreMediaType::from_extension(extension).map(|inner| MediaType { inner })
-    }
-
-    /// Infer the media type from a file's leading ``data`` bytes (magic bytes),
-    /// or ``None`` if none match. Recognises Arrow IPC, Parquet, ZIP, gzip, etc.
-    #[staticmethod]
-    fn from_magic(data: Vec<u8>) -> Option<Self> {
-        CoreMediaType::from_magic(&data).map(|inner| MediaType { inner })
-    }
-
-    /// Infer the media type from a path's file extension, or ``None``.
-    #[staticmethod]
-    fn from_path(path: &str) -> Option<Self> {
-        CoreMediaType::from_path(path).map(|inner| MediaType { inner })
-    }
-
-    /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
-        self.inner.to_mapping()
-    }
-
-    /// The canonical ``type/subtype`` MIME string.
+    /// The ordered :class:`MimeType` list, innermost content first.
     #[getter]
-    fn mime(&self) -> &str {
-        self.inner.mime()
+    fn types(&self) -> Vec<MimeType> {
+        self.inner
+            .types()
+            .iter()
+            .map(|inner| MimeType {
+                inner: inner.clone(),
+            })
+            .collect()
     }
 
-    /// The top-level type, e.g. ``"image"`` for ``image/png``.
+    /// The innermost (content) type, e.g. ``text/csv`` for ``data.csv.gz``.
     #[getter]
-    #[pyo3(name = "type")]
-    fn type_(&self) -> &str {
-        self.inner.type_()
+    fn first(&self) -> Option<MimeType> {
+        self.inner.first().map(|inner| MimeType {
+            inner: inner.clone(),
+        })
     }
 
-    /// The subtype, e.g. ``"png"`` for ``image/png``.
+    /// The outermost (container) type, e.g. ``application/gzip`` for ``data.csv.gz``.
     #[getter]
-    fn subtype(&self) -> &str {
-        self.inner.subtype()
+    fn last(&self) -> Option<MimeType> {
+        self.inner.last().map(|inner| MimeType {
+            inner: inner.clone(),
+        })
     }
 
-    /// The canonical (first) file extension, if any.
-    #[getter]
-    fn extension(&self) -> Option<&str> {
-        self.inner.extension()
+    fn __len__(&self) -> usize {
+        self.inner.len()
     }
 
-    /// The file extensions associated with this type (the first is canonical).
-    #[getter]
-    fn extensions(&self) -> Vec<&str> {
-        self.inner.extensions().to_vec()
+    fn __bool__(&self) -> bool {
+        !self.inner.is_empty()
     }
 
-    /// Whether this is a registry type rather than a fallback ``Other``.
-    #[getter]
-    fn is_known(&self) -> bool {
-        self.inner.is_known()
+    fn __getitem__(&self, index: usize) -> PyResult<MimeType> {
+        self.inner
+            .types()
+            .get(index)
+            .map(|inner| MimeType {
+                inner: inner.clone(),
+            })
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("media type index out of range"))
     }
 
     fn __str__(&self) -> String {
@@ -116,6 +100,6 @@ impl MediaType {
     }
 
     fn __hash__(&self) -> u64 {
-        hash_str(self.inner.mime())
+        hash_str(&self.inner.to_string())
     }
 }

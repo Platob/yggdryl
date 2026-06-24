@@ -1,11 +1,13 @@
 //! Node.js extension for **yggdryl**.
 //!
 //! Thin napi-rs wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`],
-//! [`yggdryl_version::Version`] and [`yggdryl_media::MediaType`]; each type lives
-//! in its own module, mirroring the Rust crates. All logic lives in the shared
-//! core so the Node and Python bindings stay in lockstep.
+//! [`yggdryl_version::Version`], [`yggdryl_media::MimeType`] and
+//! [`yggdryl_media::MediaType`]; each type lives in its own module, mirroring the
+//! Rust crates. All logic lives in the shared core so the Node and Python
+//! bindings stay in lockstep.
 
 mod media;
+mod mime;
 mod uri;
 mod url;
 mod version;
