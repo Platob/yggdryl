@@ -6,7 +6,7 @@ core. One implementation, three published packages
 ([crates.io](https://crates.io) / [PyPI](https://pypi.org) /
 [npm](https://www.npmjs.com)), so behaviour is identical everywhere.
 
-The core provides three value types:
+The core provides four value types:
 
 - **`Uri`** — the generic [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986)
   shape: `scheme:[//authority]path[?query][#fragment]`.
@@ -14,6 +14,9 @@ The core provides three value types:
   `username`, `password`, `host` and `port`.
 - **`Version`** — a generic `major.minor.patch` version that parses, renders and
   orders numerically.
+- **`MediaType`** — an enum of common MIME types, inferred from a file extension
+  or from magic bytes (Arrow IPC, Parquet, ZIP, gzip, …). `Uri`/`Url` expose an
+  inferred `media_type()`.
 
 ## Layout
 
@@ -23,7 +26,8 @@ yggdryl/
 ├── crates/
 │   ├── yggdryl-core/           # dependency-free foundations (FromInput/ToOutput, encoding)
 │   ├── yggdryl-version/        # standalone Version type
-│   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core
+│   ├── yggdryl-media/          # standalone MediaType (MIME) detection
+│   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core + yggdryl-media
 └── bindings/
     ├── python/                 # PyO3 + maturin  → `import yggdryl`
     └── node/                   # napi-rs         → `require('yggdryl')`
@@ -42,15 +46,17 @@ values without mutating the original. The naming is identical across all three
 languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
 
 ```rust
-use yggdryl::{FromInput, Uri, Url, Version};
+use yggdryl::{FromInput, MediaType, Uri, Url, Version};
 
 let uri = Uri::from_str("urn:isbn:0451450523", true)?;
 assert_eq!(uri.scheme(), "urn");
 
-let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2", true)?;
+let url = Url::from_str("https://example.com/data/sales.parquet?a=1&a=2", true)?;
 assert_eq!(url.host(), "example.com");
-assert_eq!(url.port(), Some(8443));
 assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
+// Media type inferred from the path's extension (or sniffed from bytes).
+assert_eq!(url.media_type(), Some(MediaType::Parquet));
+assert_eq!(MediaType::from_magic(b"ARROW1\x00\x00"), Some(MediaType::Arrow));
 
 assert!(Version::from_str("1.4.2", true)? < Version::from_str("1.10.0", true)?);
 # Ok::<(), yggdryl::UrlError>(())

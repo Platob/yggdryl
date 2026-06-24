@@ -4,6 +4,7 @@ use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use yggdryl_url::{FromInput, Mapping, Params, ToOutput, Uri as CoreUri};
 
+use crate::media::MediaType;
 use crate::url::Url;
 use crate::{hash_str, uri_err, url_err};
 
@@ -158,6 +159,11 @@ impl Uri {
     #[pyo3(signature = (encode = false))]
     fn extensions(&self, encode: bool) -> Vec<String> {
         self.inner.extensions(encode)
+    }
+
+    /// The media type inferred from the path's file extension, or ``None``.
+    fn media_type(&self) -> Option<MediaType> {
+        self.inner.media_type().map(|inner| MediaType { inner })
     }
 
     /// Return a copy whose query is built from ``params``; ``encode`` percent-

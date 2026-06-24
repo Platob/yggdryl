@@ -331,12 +331,20 @@ name = "yggdryl-core"
 version = "0.1.0"
 
 [[package]]
+name = "yggdryl-media"
+version = "0.1.0"
+dependencies = [
+ "yggdryl-core",
+]
+
+[[package]]
 name = "yggdryl-node"
 version = "0.1.0"
 dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "yggdryl-media",
  "yggdryl-url",
  "yggdryl-version",
 ]
@@ -346,6 +354,7 @@ name = "yggdryl-python"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+ "yggdryl-media",
  "yggdryl-url",
  "yggdryl-version",
 ]
@@ -355,6 +364,7 @@ name = "yggdryl-url"
 version = "0.1.0"
 dependencies = [
  "yggdryl-core",
+ "yggdryl-media",
 ]
 
 [[package]]

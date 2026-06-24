@@ -1,19 +1,18 @@
 [package]
-name = "yggdryl-url"
+name = "yggdryl-media"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "URI and URL value types for yggdryl, built on yggdryl-core"
+description = "Media (MIME) type detection from extensions and magic bytes for yggdryl"
 keywords.workspace = true
 readme = "README.md"
 
 [lib]
-name = "yggdryl_url"
+name = "yggdryl_media"
 path = "src/lib.rs"
 
 [dependencies]
 yggdryl-core.workspace = true
-yggdryl-media.workspace = true

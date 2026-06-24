@@ -1,15 +1,16 @@
 //! Python extension for **yggdryl**.
 //!
-//! Thin PyO3 wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`] and
-//! [`yggdryl_version::Version`]; each type lives in its own module, mirroring the
-//! Rust crates. All logic lives in the shared core, so the Python and Node
-//! bindings behave identically.
+//! Thin PyO3 wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`],
+//! [`yggdryl_version::Version`] and [`yggdryl_media::MediaType`]; each type lives
+//! in its own module, mirroring the Rust crates. All logic lives in the shared
+//! core, so the Python and Node bindings behave identically.
 
 // The `#[pymethods]` macro injects an `.into()` on returned errors; because our
 // fallible methods already return `PyErr`, clippy flags it as a useless
 // conversion. The lint fires on macro-generated code, so allow it crate-wide.
 #![allow(clippy::useless_conversion)]
 
+mod media;
 mod uri;
 mod url;
 mod version;
@@ -17,9 +18,11 @@ mod version;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use yggdryl_media::MediaError;
 use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_version::VersionError;
 
+use crate::media::MediaType;
 use crate::uri::Uri;
 use crate::url::Url;
 use crate::version::Version;
@@ -33,6 +36,10 @@ pub(crate) fn url_err(err: UrlError) -> PyErr {
 }
 
 pub(crate) fn version_err(err: VersionError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn media_err(err: MediaError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -65,6 +72,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Uri>()?;
     m.add_class::<Url>()?;
     m.add_class::<Version>()?;
+    m.add_class::<MediaType>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     Ok(())

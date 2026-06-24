@@ -6,6 +6,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_url::{FromInput, ToOutput, Uri as CoreUri};
 
+use crate::media::MediaType;
 use crate::to_mapping;
 use crate::url::Url;
 
@@ -172,6 +173,12 @@ impl Uri {
     #[napi]
     pub fn extensions(&self, encode: Option<bool>) -> Vec<String> {
         self.inner.extensions(encode.unwrap_or(false))
+    }
+
+    /// The media type inferred from the path's file extension, or `null`.
+    #[napi(js_name = "mediaType")]
+    pub fn media_type(&self) -> Option<MediaType> {
+        self.inner.media_type().map(|inner| MediaType { inner })
     }
 
     /// Return a copy whose query is built from `params`; `encode` percent-encodes.

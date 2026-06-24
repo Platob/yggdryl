@@ -86,6 +86,7 @@ pub use yggdryl_core::{
     percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Output, Params,
     ToOutput,
 };
+pub use yggdryl_media::{MediaError, MediaType};
 
 /// Error returned when [`Uri`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -656,6 +657,12 @@ impl Uri {
             .into_iter()
             .map(str::to_string)
             .collect()
+    }
+
+    /// The [`MediaType`] inferred from the path's file extension, or `None` if the
+    /// extension is unknown (or there is none).
+    pub fn media_type(&self) -> Option<MediaType> {
+        MediaType::from_path(&self.path)
     }
 }
 
@@ -1292,6 +1299,12 @@ impl Url {
             .map(str::to_string)
             .collect()
     }
+
+    /// The [`MediaType`] inferred from the path's file extension, or `None` if the
+    /// extension is unknown (or there is none).
+    pub fn media_type(&self) -> Option<MediaType> {
+        MediaType::from_path(&self.path)
+    }
 }
 
 impl ToOutput for Url {
@@ -1435,6 +1448,36 @@ mod tests {
         assert_eq!(
             Uri::from_str("file:/x/.bashrc", true).unwrap().stem(false),
             ".bashrc"
+        );
+    }
+
+    #[test]
+    fn media_type_inference() {
+        // Inferred from the path's file extension.
+        assert_eq!(
+            Url::from_str("https://h/a/data.json", true)
+                .unwrap()
+                .media_type(),
+            Some(MediaType::Json)
+        );
+        // Compound extensions resolve to the outer container.
+        assert_eq!(
+            Uri::from_str("file:/dump/archive.tar.gz", true)
+                .unwrap()
+                .media_type(),
+            Some(MediaType::Gzip)
+        );
+        // No (known) extension yields `None`.
+        assert_eq!(
+            Url::from_str("https://h/page", true).unwrap().media_type(),
+            None
+        );
+        assert_eq!(
+            Uri::from_str("https://h/data.parquet", true)
+                .unwrap()
+                .media_type()
+                .map(|m| m.mime().to_string()),
+            Some("application/vnd.apache.parquet".to_string())
         );
     }
 

@@ -91,6 +91,7 @@ jobs:
         run: |
           cargo publish -p yggdryl-core
           cargo publish -p yggdryl-version
+          cargo publish -p yggdryl-media
           cargo publish -p yggdryl-url
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
