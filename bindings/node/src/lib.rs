@@ -1,120 +1,136 @@
 //! Node.js extension for **yggdryl**.
 //!
-//! A thin napi-rs wrapper around [`yggdryl_core::Tree`]; all behaviour lives in
-//! the shared Rust core so the Node and Python bindings stay in lockstep.
+//! Thin napi-rs wrappers around [`yggdryl_core::Uri`] and [`yggdryl_core::Url`];
+//! all parsing lives in the shared Rust core so the Node and Python bindings stay
+//! in lockstep.
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{Tree as CoreTree, TreeError};
+use yggdryl_core::{Uri as CoreUri, Url as CoreUrl};
 
-/// Maps a core [`TreeError`] onto a JavaScript-friendly napi error.
-fn to_napi_err(err: TreeError) -> Error {
-    Error::from_reason(err.to_string())
-}
-
-/// A single leaf returned by [`Tree::leaves`].
-#[napi(object)]
-pub struct Leaf {
-    pub path: String,
-    pub value: f64,
-}
-
-/// A hierarchical, path-addressed tree of numeric values.
-///
-/// Paths are `/`-separated, e.g. `"roots/urdr"`.
+/// A generic RFC 3986 URI: `scheme:[//authority]path[?query][#fragment]`.
 #[napi]
-pub struct Tree {
-    inner: CoreTree,
+pub struct Uri {
+    inner: CoreUri,
 }
 
 #[napi]
-impl Tree {
+impl Uri {
+    /// Parse `value` into a `Uri`, throwing on failure.
     #[napi(constructor)]
-    pub fn new() -> Self {
-        Tree {
-            inner: CoreTree::new(),
-        }
+    pub fn new(value: String) -> Result<Self> {
+        CoreUri::parse(&value)
+            .map(|inner| Uri { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
-    /// Insert `value` at `path`, returning the previous value if any.
-    #[napi]
-    pub fn insert(&mut self, path: String, value: f64) -> Result<Option<f64>> {
-        self.inner.insert(&path, value).map_err(to_napi_err)
+    /// Alias for the constructor.
+    #[napi(factory)]
+    pub fn parse(value: String) -> Result<Self> {
+        Uri::new(value)
     }
 
-    /// Return the value stored at `path`, or `null` if absent.
-    #[napi]
-    pub fn get(&self, path: String) -> Option<f64> {
-        self.inner.get(&path)
+    #[napi(getter)]
+    pub fn scheme(&self) -> String {
+        self.inner.scheme().to_string()
     }
 
-    /// Return `true` if a node exists at `path`.
-    #[napi]
-    pub fn contains(&self, path: String) -> bool {
-        self.inner.contains(&path)
+    #[napi(getter)]
+    pub fn authority(&self) -> Option<String> {
+        self.inner.authority().map(str::to_string)
     }
 
-    /// Remove the node at `path` and its subtree, returning its value if any.
-    #[napi]
-    pub fn remove(&mut self, path: String) -> Result<Option<f64>> {
-        self.inner.remove(&path).map_err(to_napi_err)
+    #[napi(getter)]
+    pub fn path(&self) -> String {
+        self.inner.path().to_string()
     }
 
-    /// Total number of nodes in the tree.
-    #[napi]
-    pub fn count(&self) -> u32 {
-        self.inner.count() as u32
+    #[napi(getter)]
+    pub fn query(&self) -> Option<String> {
+        self.inner.query().map(str::to_string)
     }
 
-    /// Depth of the longest root-to-leaf chain.
-    #[napi]
-    pub fn depth(&self) -> u32 {
-        self.inner.depth() as u32
+    #[napi(getter)]
+    pub fn fragment(&self) -> Option<String> {
+        self.inner.fragment().map(str::to_string)
     }
 
-    /// Sum of every value stored in the tree.
-    #[napi]
-    pub fn sum(&self) -> f64 {
-        self.inner.sum()
-    }
-
-    /// `true` when the tree holds no nodes.
-    #[napi(js_name = "isEmpty")]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// Return every leaf as a `{ path, value }` object, sorted by path.
-    #[napi]
-    pub fn leaves(&self) -> Vec<Leaf> {
-        self.inner
-            .leaves()
-            .into_iter()
-            .map(|(path, value)| Leaf { path, value })
-            .collect()
-    }
-
-    /// Serialize the tree to an Arrow IPC stream `Buffer` (readable by the
-    /// `apache-arrow` package).
-    #[napi(js_name = "toArrowIpc")]
-    pub fn to_arrow_ipc(&self) -> Result<Buffer> {
-        self.inner
-            .to_arrow_ipc()
-            .map(Buffer::from)
-            .map_err(to_napi_err)
-    }
-
-    /// Build a tree from an Arrow IPC stream `Buffer` with `path`/`value` columns.
-    #[napi(js_name = "fromArrowIpc")]
-    pub fn from_arrow_ipc(data: Buffer) -> Result<Tree> {
-        CoreTree::from_arrow_ipc(&data)
-            .map(|inner| Tree { inner })
-            .map_err(to_napi_err)
+    #[napi(js_name = "toString")]
+    pub fn to_string_js(&self) -> String {
+        self.inner.to_string()
     }
 }
 
-impl Default for Tree {
-    fn default() -> Self {
-        Tree::new()
+/// A URL: a URI that always has an authority, split into `username`, `password`,
+/// `host` and `port`.
+#[napi]
+pub struct Url {
+    inner: CoreUrl,
+}
+
+#[napi]
+impl Url {
+    /// Parse `value` into a `Url`, throwing on failure.
+    #[napi(constructor)]
+    pub fn new(value: String) -> Result<Self> {
+        CoreUrl::parse(&value)
+            .map(|inner| Url { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Alias for the constructor.
+    #[napi(factory)]
+    pub fn parse(value: String) -> Result<Self> {
+        Url::new(value)
+    }
+
+    #[napi(getter)]
+    pub fn scheme(&self) -> String {
+        self.inner.scheme().to_string()
+    }
+
+    #[napi(getter)]
+    pub fn username(&self) -> Option<String> {
+        self.inner.username().map(str::to_string)
+    }
+
+    #[napi(getter)]
+    pub fn password(&self) -> Option<String> {
+        self.inner.password().map(str::to_string)
+    }
+
+    #[napi(getter)]
+    pub fn host(&self) -> String {
+        self.inner.host().to_string()
+    }
+
+    #[napi(getter)]
+    pub fn port(&self) -> Option<u16> {
+        self.inner.port()
+    }
+
+    #[napi(getter)]
+    pub fn path(&self) -> String {
+        self.inner.path().to_string()
+    }
+
+    #[napi(getter)]
+    pub fn query(&self) -> Option<String> {
+        self.inner.query().map(str::to_string)
+    }
+
+    #[napi(getter)]
+    pub fn fragment(&self) -> Option<String> {
+        self.inner.fragment().map(str::to_string)
+    }
+
+    #[napi(getter)]
+    pub fn authority(&self) -> String {
+        self.inner.authority()
+    }
+
+    #[napi(js_name = "toString")]
+    pub fn to_string_js(&self) -> String {
+        self.inner.to_string()
     }
 }

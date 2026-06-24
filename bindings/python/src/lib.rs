@@ -1,125 +1,190 @@
 //! Python extension for **yggdryl**.
 //!
-//! A thin PyO3 wrapper around [`yggdryl_core::Tree`]; the heavy lifting lives in
-//! the shared Rust core so the Python and Node bindings behave identically.
+//! Thin PyO3 wrappers around [`yggdryl_core::Uri`] and [`yggdryl_core::Url`]; all
+//! parsing lives in the shared Rust core so the Python and Node bindings behave
+//! identically.
 
 // The `#[pymethods]` macro injects an `.into()` on returned errors; because our
 // fallible methods already return `PyErr`, clippy flags it as a useless
-// conversion. The lint fires on macro-generated code, so it must be allowed at
-// crate level rather than per method.
+// conversion. The lint fires on macro-generated code, so allow it crate-wide.
 #![allow(clippy::useless_conversion)]
 
-use pyo3::exceptions::{PyKeyError, PyValueError};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
-use yggdryl_core::{Tree as CoreTree, TreeError};
+use yggdryl_core::{Uri as CoreUri, UriError, Url as CoreUrl, UrlError};
 
-/// Translates a core [`TreeError`] into the matching Python exception.
-fn to_pyerr(err: TreeError) -> PyErr {
-    match err {
-        TreeError::EmptyPath => PyValueError::new_err("path is empty"),
-        TreeError::NotFound(path) => PyKeyError::new_err(path),
-        TreeError::Arrow(msg) => PyValueError::new_err(msg),
-    }
+fn uri_err(err: UriError) -> PyErr {
+    PyValueError::new_err(err.to_string())
 }
 
-/// A hierarchical, path-addressed tree of numeric values.
-///
-/// Paths are ``/``-separated, e.g. ``"roots/urdr"``.
-#[pyclass(name = "Tree", module = "yggdryl")]
-#[derive(Clone, Default)]
-struct Tree {
-    inner: CoreTree,
+fn url_err(err: UrlError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+/// A generic RFC 3986 URI: ``scheme:[//authority]path[?query][#fragment]``.
+#[pyclass(name = "Uri", module = "yggdryl")]
+#[derive(Clone)]
+struct Uri {
+    inner: CoreUri,
 }
 
 #[pymethods]
-impl Tree {
+impl Uri {
+    /// Parse ``value`` into a :class:`Uri`, raising ``ValueError`` on failure.
     #[new]
-    fn new() -> Self {
-        Tree::default()
+    fn new(value: &str) -> PyResult<Self> {
+        CoreUri::parse(value)
+            .map(|inner| Uri { inner })
+            .map_err(uri_err)
     }
 
-    /// Insert ``value`` at ``path``, returning the previous value if any.
-    fn insert(&mut self, path: &str, value: f64) -> PyResult<Option<f64>> {
-        self.inner.insert(path, value).map_err(to_pyerr)
-    }
-
-    /// Return the value stored at ``path``, or ``None`` if absent.
-    fn get(&self, path: &str) -> Option<f64> {
-        self.inner.get(path)
-    }
-
-    /// Return ``True`` if a node exists at ``path``.
-    fn contains(&self, path: &str) -> bool {
-        self.inner.contains(path)
-    }
-
-    /// Remove the node at ``path`` and its subtree, returning its value if any.
-    fn remove(&mut self, path: &str) -> PyResult<Option<f64>> {
-        self.inner.remove(path).map_err(to_pyerr)
-    }
-
-    /// Total number of nodes in the tree.
-    fn count(&self) -> usize {
-        self.inner.count()
-    }
-
-    /// Depth of the longest root-to-leaf chain.
-    fn depth(&self) -> usize {
-        self.inner.depth()
-    }
-
-    /// Sum of every value stored in the tree.
-    fn sum(&self) -> f64 {
-        self.inner.sum()
-    }
-
-    /// ``True`` when the tree holds no nodes.
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// Return every leaf as a ``(path, value)`` tuple, sorted by path.
-    fn leaves(&self) -> Vec<(String, f64)> {
-        self.inner.leaves()
-    }
-
-    /// Serialize the tree to Arrow IPC stream ``bytes`` (readable by
-    /// ``pyarrow.ipc.open_stream``).
-    fn to_arrow_ipc<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.inner.to_arrow_ipc().map_err(to_pyerr)?;
-        Ok(PyBytes::new_bound(py, &bytes))
-    }
-
-    /// Build a tree from Arrow IPC stream ``bytes`` with ``path``/``value`` columns.
+    /// Alias for the constructor.
     #[staticmethod]
-    fn from_arrow_ipc(data: &[u8]) -> PyResult<Tree> {
-        let inner = CoreTree::from_arrow_ipc(data).map_err(to_pyerr)?;
-        Ok(Tree { inner })
+    fn parse(value: &str) -> PyResult<Self> {
+        Uri::new(value)
     }
 
-    fn __len__(&self) -> usize {
-        self.inner.count()
+    #[getter]
+    fn scheme(&self) -> &str {
+        self.inner.scheme()
     }
 
-    fn __contains__(&self, path: &str) -> bool {
-        self.inner.contains(path)
+    #[getter]
+    fn authority(&self) -> Option<&str> {
+        self.inner.authority()
+    }
+
+    #[getter]
+    fn path(&self) -> &str {
+        self.inner.path()
+    }
+
+    #[getter]
+    fn query(&self) -> Option<&str> {
+        self.inner.query()
+    }
+
+    #[getter]
+    fn fragment(&self) -> Option<&str> {
+        self.inner.fragment()
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_string()
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "Tree(count={}, depth={}, sum={})",
-            self.inner.count(),
-            self.inner.depth(),
-            self.inner.sum()
-        )
+        format!("Uri('{}')", self.inner)
     }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __hash__(&self) -> u64 {
+        hash_str(&self.inner.to_string())
+    }
+}
+
+/// A URL: a URI that always has an authority, split into ``username``,
+/// ``password``, ``host`` and ``port``.
+#[pyclass(name = "Url", module = "yggdryl")]
+#[derive(Clone)]
+struct Url {
+    inner: CoreUrl,
+}
+
+#[pymethods]
+impl Url {
+    /// Parse ``value`` into a :class:`Url`, raising ``ValueError`` on failure.
+    #[new]
+    fn new(value: &str) -> PyResult<Self> {
+        CoreUrl::parse(value)
+            .map(|inner| Url { inner })
+            .map_err(url_err)
+    }
+
+    /// Alias for the constructor.
+    #[staticmethod]
+    fn parse(value: &str) -> PyResult<Self> {
+        Url::new(value)
+    }
+
+    #[getter]
+    fn scheme(&self) -> &str {
+        self.inner.scheme()
+    }
+
+    #[getter]
+    fn username(&self) -> Option<&str> {
+        self.inner.username()
+    }
+
+    #[getter]
+    fn password(&self) -> Option<&str> {
+        self.inner.password()
+    }
+
+    #[getter]
+    fn host(&self) -> &str {
+        self.inner.host()
+    }
+
+    #[getter]
+    fn port(&self) -> Option<u16> {
+        self.inner.port()
+    }
+
+    #[getter]
+    fn path(&self) -> &str {
+        self.inner.path()
+    }
+
+    #[getter]
+    fn query(&self) -> Option<&str> {
+        self.inner.query()
+    }
+
+    #[getter]
+    fn fragment(&self) -> Option<&str> {
+        self.inner.fragment()
+    }
+
+    #[getter]
+    fn authority(&self) -> String {
+        self.inner.authority()
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Url('{}')", self.inner)
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __hash__(&self) -> u64 {
+        hash_str(&self.inner.to_string())
+    }
+}
+
+/// Stable hash of a string for `__hash__`.
+fn hash_str(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// The ``yggdryl`` Python module.
 #[pymodule]
 fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_class::<Tree>()?;
+    m.add_class::<Uri>()?;
+    m.add_class::<Url>()?;
     Ok(())
 }

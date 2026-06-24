@@ -7,8 +7,12 @@ on:
 
 jobs:
   core:
-    name: Rust core
-    runs-on: ubuntu-latest
+    name: Rust core (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,24 +26,33 @@ jobs:
         run: cargo test -p yggdryl
 
   python:
-    name: Python extension
-    runs-on: ubuntu-latest
+    name: Python extension (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install maturin
-        run: pip install maturin pytest
-      - name: Build & install
-        run: maturin develop --manifest-path bindings/python/Cargo.toml
+      - name: Build & install (via maturin build backend)
+        run: pip install ./bindings/python pytest
       - name: Test
         run: pytest bindings/python/tests
 
   node:
-    name: Node extension
-    runs-on: ubuntu-latest
+    name: Node extension (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: bindings/node
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -48,10 +61,7 @@ jobs:
           node-version: "20"
       - name: Install deps
         run: npm install
-        working-directory: bindings/node
       - name: Build
         run: npm run build
-        working-directory: bindings/node
       - name: Test
         run: npm test
-        working-directory: bindings/node

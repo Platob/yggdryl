@@ -17,13 +17,15 @@ maturin build --release
 ```python
 import yggdryl
 
-tree = yggdryl.Tree()
-tree.insert("roots/urdr", 1.0)
-tree.insert("roots/verdandi", 2.0)
-tree.insert("roots/skuld", 3.0)
+uri = yggdryl.Uri("urn:isbn:0451450523")
+print(uri.scheme)              # urn
+print(uri.path)                # isbn:0451450523
 
-print(tree.get("roots/urdr"))  # 1.0
-print(tree.sum())              # 6.0
-print(len(tree))               # 4
-print(tree.leaves())           # [('roots/skuld', 3.0), ('roots/urdr', 1.0), ('roots/verdandi', 2.0)]
+url = yggdryl.Url("https://user:pw@example.com:8443/api?v=1#top")
+print(url.host)                # example.com
+print(url.port)                # 8443
+print(url.username)            # user
+print(str(url))                # https://user:pw@example.com:8443/api?v=1#top
 ```
+
+Invalid input raises `ValueError`.

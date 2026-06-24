@@ -17,17 +17,14 @@ license = "Apache-2.0"
 authors = ["yggdryl contributors"]
 repository = "https://github.com/Platob/yggdryl"
 homepage = "https://github.com/Platob/yggdryl"
-description = "yggdryl — a Rust-core hierarchical tree library with Python and Node extensions"
-keywords = ["tree", "hierarchy", "ffi", "yggdryl"]
+description = "yggdryl — a Rust-core URI/URL library with Python and Node extensions"
+keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 # The Rust core crate. Bindings depend on it under the alias `yggdryl-core`
 # (see each binding's Cargo.toml) so the dependency's extern name doesn't collide
 # with the cdylib they themselves expose as `yggdryl`.
 yggdryl = { path = "crates/yggdryl", version = "0.1.0" }
-# Apache Arrow is the principal data dependency of the core: the tree exchanges
-# its contents as columnar Arrow record batches.
-arrow = "59"
 
 [profile.release]
 lto = true
