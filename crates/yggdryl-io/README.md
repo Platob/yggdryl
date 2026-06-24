@@ -17,7 +17,8 @@ same handle.
   `pwrite` (a `Whence` selects positional — cursor untouched, the default — vs
   cursor-relative), manages storage with `capacity` / `reserve_capacity` /
   `truncate` (`Unsupported` on read-only backends), carries an access `mode`
-  (`Mode`) and optional `parent` and can `open` derived handles, exposes
+  (`Mode`) and optional `parent`, can `open` derived handles and `close` them
+  (idempotent no-op by default), exposes
   `as_slice` (zero-copy hook), reports `stats`, and `copy_to` (transfer with a
   memory fast path; `copy` is the free fn).
 - `Mode` — `Read` / `Write` / `Append` / `ReadWrite`, parsed from Python mode

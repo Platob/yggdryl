@@ -44,8 +44,10 @@ handle. The layering, smallest to largest:
   on read-only backends; `BytesIO` adds the `with_capacity` constructor). Each
   handle carries an access `mode()` (`Mode` — `Read`/`Write`/`Append`/`ReadWrite`,
   parsed from Python strings via `Mode::from_str`) and an optional `parent()`,
-  and can `open()` a derived handle (records the parent, applies mode/stream).
-  Plus `as_slice` (the zero-copy hook a memory backend overrides), `stats`, and
+  and can `open()` a derived handle (records the parent, applies mode/stream)
+  and `close()` it (idempotent; the default is a no-op as memory/mmap backends
+  free their storage on drop). Plus `as_slice` (the zero-copy hook a memory
+  backend overrides), `stats`, and
   `copy_to` (transfer with a memory fast path; `copy` is the free fn).
   `media_type` is lazy and behind the `media` feature. (`Io: …+ Debug + Send +
   Sync` so handles can be boxed as parents and held across threads.)
