@@ -15,8 +15,10 @@ same handle.
 - `Io: ReadBytes + Seek` — the base handle. Every handle has a `url()` (in-memory
   ones use `mem://<address>`); it reads/writes at a position via `pread` /
   `pwrite` (a `Whence` selects positional — cursor untouched, the default — vs
-  cursor-relative), exposes `as_slice` (zero-copy hook), reports `stats`, and
-  `copy_to` (transfer with a memory fast path; `copy` is the free fn).
+  cursor-relative), manages storage with `capacity` / `reserve_capacity` /
+  `truncate` (`Unsupported` on read-only backends), exposes `as_slice` (zero-copy
+  hook), reports `stats`, and `copy_to` (transfer with a memory fast path; `copy`
+  is the free fn).
 - `IoStats` — `kind` (missing / file / directory / other), `size`, `mtime`,
   `content_type`, `etag` eager; `media_type` discovered lazily (and cached) under
   the `media` feature. `LocalPath::stat` classifies a path without opening it.

@@ -5,6 +5,19 @@ const { test } = require('node:test')
 const assert = require('node:assert')
 const { BytesIO } = require('..')
 
+test('capacity, reserve and truncate', () => {
+  const io = BytesIO.withCapacity(64)
+  assert.ok(io.capacity >= 64)
+  io.reserveCapacity(128)
+  assert.ok(io.capacity >= 128)
+  io.write(Buffer.from('abc'))
+  // truncate grows (zero-fill) and shrinks.
+  assert.strictEqual(io.truncate(5), 5)
+  assert.deepStrictEqual(io.getValue(), Buffer.from([0x61, 0x62, 0x63, 0, 0]))
+  assert.strictEqual(io.truncate(2), 2)
+  assert.deepStrictEqual(io.getValue(), Buffer.from('ab'))
+})
+
 test('url, pread and pwrite', () => {
   const io = new BytesIO(Buffer.from('0123456789'))
   assert.strictEqual(io.url.scheme, 'mem')

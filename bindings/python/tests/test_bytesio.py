@@ -8,6 +8,19 @@ import pytest
 import yggdryl
 
 
+def test_capacity_reserve_and_truncate():
+    io = yggdryl.BytesIO.with_capacity(64)
+    assert io.capacity >= 64
+    io.reserve_capacity(128)
+    assert io.capacity >= 128
+    io.write(b"abc")
+    # truncate grows (zero-fill) and shrinks.
+    assert io.truncate(5) == 5
+    assert io.getvalue() == b"abc\x00\x00"
+    assert io.truncate(2) == 2
+    assert io.getvalue() == b"ab"
+
+
 def test_url_pread_pwrite():
     io = yggdryl.BytesIO(b"0123456789")
     # Every IO carries a URL; in-memory uses the mem scheme.

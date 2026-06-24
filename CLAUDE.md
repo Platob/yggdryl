@@ -39,7 +39,9 @@ handle. The layering, smallest to largest:
   ones use `mem://<address>`). It reads/writes at a position via `pread` /
   `pwrite` — a `Whence` selects positional (`Start`/`End`, cursor untouched, the
   default) versus cursor-relative (`Current`, uses and advances the cursor);
-  `pwrite` defaults to `Unsupported` (writable backends override it). Plus
+  `pwrite` defaults to `Unsupported` (writable backends override it). Storage is
+  managed with `capacity` / `reserve_capacity` / `truncate` (also `Unsupported`
+  on read-only backends; `BytesIO` adds the `with_capacity` constructor). Plus
   `as_slice` (the zero-copy hook a memory backend overrides), `stats`, and
   `copy_to` (transfer with a memory fast path; `copy` is the free fn).
   `media_type` is lazy and behind the `media` feature.

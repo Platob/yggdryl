@@ -27,10 +27,12 @@
 //!   has a [`url`](Io::url) (in-memory ones use `mem://<address>`); it reads and
 //!   writes at a position via [`pread`](Io::pread) / [`pwrite`](Io::pwrite) — a
 //!   `whence` chooses positional (cursor untouched, the default) versus
-//!   cursor-relative; it exposes its bytes for **zero-copy** transfer via
-//!   [`as_slice`](Io::as_slice), reports [`stats`](Io::stats), and
-//!   [`copy_to`](Io::copy_to) another sink with a memory fast path. [`copy`] is
-//!   the free-function form.
+//!   cursor-relative; it manages storage with [`capacity`](Io::capacity) /
+//!   [`reserve_capacity`](Io::reserve_capacity) / [`truncate`](Io::truncate)
+//!   (defaulting to `Unsupported` on read-only backends); it exposes its bytes
+//!   for **zero-copy** transfer via [`as_slice`](Io::as_slice), reports
+//!   [`stats`](Io::stats), and [`copy_to`](Io::copy_to) another sink with a
+//!   memory fast path. [`copy`] is the free-function form.
 //! - **Metadata** — [`IoStats`] holds the [`kind`](IoStats::kind)
 //!   ([`Missing`](Kind::Missing) / [`File`](Kind::File) /
 //!   [`Directory`](Kind::Directory)), `size`, `mtime`, `content_type` and `etag`
@@ -501,6 +503,29 @@ pub trait Io: ReadBytes + Seek {
         Err(IoError::Unsupported("pwrite".to_string()))
     }
 
+    /// The number of bytes this handle can hold before it must reallocate. The
+    /// default reports the current length (no spare); a growable backend reports
+    /// its real reserved capacity.
+    fn capacity(&self) -> usize {
+        self.stream_len().unwrap_or(0) as usize
+    }
+
+    /// Reserves room for at least `additional` more bytes beyond the current
+    /// length, so a run of writes need not reallocate repeatedly. The default is
+    /// [`IoError::Unsupported`]; a growable backend overrides it.
+    fn reserve_capacity(&mut self, additional: usize) -> Result<(), IoError> {
+        let _ = additional;
+        Err(IoError::Unsupported("reserve_capacity".to_string()))
+    }
+
+    /// Resizes the resource to exactly `size` bytes — dropping the tail when
+    /// shrinking, zero-filling when growing — and leaves the cursor where it is.
+    /// The default is [`IoError::Unsupported`]; a writable backend overrides it.
+    fn truncate(&mut self, size: u64) -> Result<(), IoError> {
+        let _ = size;
+        Err(IoError::Unsupported("truncate".to_string()))
+    }
+
     /// Copies every byte from the cursor to the end into `dst`, returning the
     /// count. A memory-resident source writes its tail in a single
     /// [`write_all`](WriteBytes::write_all) (zero intermediate copies); otherwise
@@ -597,6 +622,12 @@ impl BytesIO {
     /// Creates an empty buffer with the cursor at `0` and streaming on.
     pub fn new() -> BytesIO {
         BytesIO::from_bytes(Vec::new())
+    }
+
+    /// Creates an empty buffer that can hold `capacity` bytes before
+    /// reallocating — the preallocating constructor for write-heavy use.
+    pub fn with_capacity(capacity: usize) -> BytesIO {
+        BytesIO::from_bytes(Vec::with_capacity(capacity))
     }
 
     /// Wraps existing `bytes`, with the cursor at the start and streaming on.
@@ -703,13 +734,24 @@ impl BytesIO {
         Ok(self.position)
     }
 
-    /// Truncates the buffer to `size` bytes (the current cursor when `None`),
-    /// returning the new length. The cursor is left where it is, as in Python.
+    /// Resizes the buffer to `size` bytes (the current cursor when `None`),
+    /// returning the new length. Shrinks (drops the tail) or grows (zero-fills),
+    /// leaving the cursor where it is, as in Python.
     pub fn truncate(&mut self, size: Option<usize>) -> usize {
         let size = size.unwrap_or(self.position);
         log_event!(debug, "BytesIO::truncate to {size}");
-        self.buffer.truncate(size);
+        self.resize(size);
         self.buffer.len()
+    }
+
+    /// Resizes the backing buffer to exactly `size`, growing (zero-fill) or
+    /// shrinking. Shared by [`truncate`](BytesIO::truncate) and [`Io::truncate`].
+    fn resize(&mut self, size: usize) {
+        if size > self.buffer.len() {
+            self.buffer.resize(size, 0);
+        } else {
+            self.buffer.truncate(size);
+        }
     }
 
     /// Empties the buffer and resets the cursor to `0`.
@@ -814,6 +856,24 @@ impl Io for BytesIO {
             self.position = saved;
         }
         Ok(count)
+    }
+
+    /// The reserved capacity of the backing [`Vec<u8>`].
+    fn capacity(&self) -> usize {
+        self.buffer.capacity()
+    }
+
+    /// Reserves room for `additional` more bytes in the backing buffer.
+    fn reserve_capacity(&mut self, additional: usize) -> Result<(), IoError> {
+        self.buffer.reserve(additional);
+        Ok(())
+    }
+
+    /// Resizes the buffer to `size` bytes (grow zero-fills, shrink drops the
+    /// tail); the cursor is left where it is.
+    fn truncate(&mut self, size: u64) -> Result<(), IoError> {
+        self.resize(size as usize);
+        Ok(())
     }
 }
 
@@ -1342,6 +1402,36 @@ mod tests {
         let mut ro = Drip(BytesIO::new());
         assert!(matches!(
             ro.pwrite(b"x", 0, Whence::Start),
+            Err(IoError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn io_capacity_reserve_and_truncate() {
+        // with_capacity preallocates; capacity tracks the Vec.
+        let mut io = BytesIO::with_capacity(64);
+        assert!(io.capacity() >= 64);
+        io.reserve_capacity(128).unwrap();
+        assert!(io.capacity() >= 128);
+
+        // truncate grows (zero-fills) and shrinks via the Io trait.
+        io.write(b"abc");
+        Io::truncate(&mut io, 5).unwrap();
+        assert_eq!(io.getvalue(), b"abc\0\0");
+        Io::truncate(&mut io, 2).unwrap();
+        assert_eq!(io.getvalue(), b"ab");
+        // The inherent (Python-facing) truncate also grows now.
+        assert_eq!(io.truncate(Some(4)), 4);
+        assert_eq!(io.getvalue(), b"ab\0\0");
+
+        // A read-only handle reports both as unsupported.
+        let mut ro = Drip(BytesIO::new());
+        assert!(matches!(
+            ro.reserve_capacity(8),
+            Err(IoError::Unsupported(_))
+        ));
+        assert!(matches!(
+            Io::truncate(&mut ro, 0),
             Err(IoError::Unsupported(_))
         ));
     }

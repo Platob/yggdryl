@@ -27,6 +27,28 @@ impl BytesIO {
         BytesIO { inner }
     }
 
+    /// Create an empty buffer preallocated to hold `capacity` bytes.
+    #[napi(factory, js_name = "withCapacity")]
+    pub fn with_capacity(capacity: u32) -> Self {
+        BytesIO {
+            inner: CoreBytesIO::with_capacity(capacity as usize),
+        }
+    }
+
+    /// The reserved capacity (bytes the buffer can hold before reallocating).
+    #[napi(getter)]
+    pub fn capacity(&self) -> f64 {
+        self.inner.capacity() as f64
+    }
+
+    /// Reserve room for `additional` more bytes beyond the current length.
+    #[napi(js_name = "reserveCapacity")]
+    pub fn reserve_capacity(&mut self, additional: u32) -> Result<()> {
+        self.inner
+            .reserve_capacity(additional as usize)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
     /// Read up to `size` bytes from the cursor; omit `size` or pass a negative
     /// value to read all remaining bytes. Advances the cursor when `stream`.
     #[napi]

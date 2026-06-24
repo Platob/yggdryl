@@ -111,6 +111,13 @@ impl LocalPath {
         self.inner.stream_position()
     }
 
+    /// The capacity in bytes (the mapped file size; the handle is read-only, so
+    /// :meth:`reserve_capacity` / :meth:`truncate` are unsupported).
+    #[getter]
+    fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
     /// Return the entire file contents as ``bytes``, ignoring the cursor.
     fn getvalue<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_slice().unwrap_or(&[]))

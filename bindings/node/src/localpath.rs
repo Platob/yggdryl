@@ -111,6 +111,13 @@ impl LocalPath {
         self.inner.stream_position() as f64
     }
 
+    /// The capacity in bytes (the mapped file size; the handle is read-only, so
+    /// resizing is unsupported).
+    #[napi(getter)]
+    pub fn capacity(&self) -> f64 {
+        self.inner.capacity() as f64
+    }
+
     /// Return the entire file contents, ignoring the cursor.
     #[napi(js_name = "getValue")]
     pub fn get_value(&self) -> Buffer {

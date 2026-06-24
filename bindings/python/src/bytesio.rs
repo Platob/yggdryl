@@ -28,6 +28,25 @@ impl BytesIO {
         BytesIO { inner }
     }
 
+    /// Create an empty buffer preallocated to hold ``capacity`` bytes.
+    #[staticmethod]
+    fn with_capacity(capacity: usize) -> Self {
+        BytesIO {
+            inner: CoreBytesIO::with_capacity(capacity),
+        }
+    }
+
+    /// The reserved capacity (bytes the buffer can hold before reallocating).
+    #[getter]
+    fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
+    /// Reserve room for ``additional`` more bytes beyond the current length.
+    fn reserve_capacity(&mut self, additional: usize) -> PyResult<()> {
+        self.inner.reserve_capacity(additional).map_err(io_err)
+    }
+
     /// Read up to ``size`` bytes from the cursor; ``None`` or a negative ``size``
     /// reads all remaining bytes. Advances the cursor when :attr:`stream`.
     #[pyo3(signature = (size = None))]
