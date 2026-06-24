@@ -1,0 +1,32 @@
+{
+  "name": "yggdryl",
+  "version": "0.1.0",
+  "description": "yggdryl — a Rust-core hierarchical tree library, exposed to Node.js",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Platob/yggdryl.git"
+  },
+  "homepage": "https://github.com/Platob/yggdryl",
+  "keywords": ["tree", "hierarchy", "rust", "napi", "yggdryl"],
+  "napi": {
+    "name": "yggdryl",
+    "triples": {
+      "defaults": true
+    }
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "files": ["index.js", "index.d.ts", "*.node"]
+}
