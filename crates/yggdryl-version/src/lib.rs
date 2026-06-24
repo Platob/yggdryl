@@ -8,6 +8,15 @@ use std::fmt;
 
 pub use yggdryl_core::{FromInput, Mapping, ToOutput};
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise (so the crate is dependency-free by default and pays no runtime cost).
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+
 /// Error returned when [`Version::from_`] cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionError {
@@ -118,6 +127,7 @@ impl FromInput for Version {
     /// non-negative integer and there may be at most three; omitted components
     /// default to `0`.
     fn from_str(input: &str) -> Result<Version, VersionError> {
+        log_event!(trace, "Version::from_str {input:?}");
         if input.is_empty() {
             return Err(VersionError::Empty);
         }

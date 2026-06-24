@@ -114,11 +114,12 @@ npm test                        # node --test
 
 ### Benchmarks
 
-The hot parsing/rendering paths have a lightweight, dependency-free timing
-benchmark (a `harness = false` binary, no benchmark framework):
+The hot parsing/rendering paths have lightweight, dependency-free timing
+benchmarks (`harness = false` binaries, no benchmark framework):
 
 ```bash
-cargo bench -p yggdryl-url       # prints ns/iter for Uri/Url/MediaType parsing
+cargo bench -p yggdryl-url       # Uri/Url/MediaType parsing, encoding, rendering
+cargo bench -p yggdryl-version   # Version parsing / rendering
 ```
 
 ### Logging (optional)

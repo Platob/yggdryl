@@ -174,6 +174,11 @@ pub fn percent_encode(input: &str) -> String {
 /// assert_eq!(percent_decode("a%20b").unwrap(), "a b");
 /// ```
 pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
+    // Fast path: no escapes means the input is already its own decoding (and is
+    // valid UTF-8 by virtue of being a `&str`), so skip the byte loop entirely.
+    if !input.contains('%') {
+        return Ok(input.to_string());
+    }
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -200,6 +205,10 @@ pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
 /// Validates that every `%` in `input` is followed by two hex digits, used by
 /// parsing.
 pub fn validate_percent_encoding(input: &str) -> Result<(), EncodingError> {
+    // Fast path: nothing to validate without a `%`.
+    if !input.contains('%') {
+        return Ok(());
+    }
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -262,4 +271,59 @@ pub fn encode_component(input: &str, keep: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encode_edge_cases() {
+        // Empty and all-unreserved inputs are returned unchanged.
+        assert_eq!(percent_encode(""), "");
+        assert_eq!(percent_encode("Aa0-._~"), "Aa0-._~");
+        // Multi-byte UTF-8 is encoded byte-by-byte, upper-case hex.
+        assert_eq!(percent_encode("é"), "%C3%A9");
+        assert_eq!(percent_encode("a b"), "a%20b");
+    }
+
+    #[test]
+    fn percent_decode_edge_cases() {
+        // Fast path: no `%` returns the input verbatim.
+        assert_eq!(percent_decode("plain text").unwrap(), "plain text");
+        assert_eq!(percent_decode("").unwrap(), "");
+        // Mixed-case hex digits both decode.
+        assert_eq!(percent_decode("%c3%A9").unwrap(), "é");
+        // Truncated or non-hex escapes error.
+        assert_eq!(
+            percent_decode("a%"),
+            Err(EncodingError::InvalidEscape("a%".to_string()))
+        );
+        assert!(percent_decode("%2").is_err());
+        assert!(percent_decode("%zz").is_err());
+        // A `%` mid-string with valid hex round-trips with encode.
+        assert_eq!(
+            percent_decode(&percent_encode("100%/done")).unwrap(),
+            "100%/done"
+        );
+    }
+
+    #[test]
+    fn validate_percent_encoding_edge_cases() {
+        assert!(validate_percent_encoding("no escapes here").is_ok());
+        assert!(validate_percent_encoding("ok%20ok").is_ok());
+        assert!(validate_percent_encoding("bad%2").is_err());
+        assert!(validate_percent_encoding("bad%gg").is_err());
+        // A trailing `%` is invalid.
+        assert!(validate_percent_encoding("trailing%").is_err());
+    }
+
+    #[test]
+    fn encode_component_is_idempotent() {
+        // An already-encoded escape is preserved (never double-encoded).
+        assert_eq!(encode_component("a%20b", b"/"), "a%20b");
+        // Kept delimiters pass through; others are encoded.
+        assert_eq!(encode_component("/a b", b"/"), "/a%20b");
+        assert_eq!(encode_component("a/b", b""), "a%2Fb");
+    }
 }

@@ -7,7 +7,9 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_url::{FromInput, MediaType, MimeType, Uri, Url};
+use yggdryl_url::{
+    percent_decode, percent_encode, FromInput, Mapping, MediaType, MimeType, Uri, Url,
+};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {
@@ -63,5 +65,27 @@ fn main() {
     let q = Uri::from_str("https://h/p?a=1&a=2&b=hello%20world").unwrap();
     bench("Uri::params(true)", n, || {
         black_box(black_box(&q).params(true));
+    });
+
+    println!("== encoding ==");
+    bench("percent_encode (no special)", n, || {
+        black_box(percent_encode(black_box("plain-path_segment")));
+    });
+    bench("percent_decode (no escape)", n, || {
+        black_box(percent_decode(black_box("plain-path_segment")).unwrap());
+    });
+    bench("percent_decode (escaped)", n, || {
+        black_box(percent_decode(black_box("hello%20world%2Fx")).unwrap());
+    });
+
+    println!("== from_mapping ==");
+    let fields = Mapping::from([
+        ("scheme".to_string(), "https".to_string()),
+        ("host".to_string(), "example.com".to_string()),
+        ("port".to_string(), "8443".to_string()),
+        ("path".to_string(), "/api".to_string()),
+    ]);
+    bench("Url::from_mapping", n, || {
+        black_box(Url::from_mapping(black_box(&fields)).unwrap());
     });
 }
