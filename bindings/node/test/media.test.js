@@ -85,11 +85,22 @@ test('media type explicit construction', () => {
   assert.strictEqual(new MediaType([]).length, 0)
 })
 
+test('convenient from constructors', () => {
+  assert.strictEqual(MimeType.fromPath('data.csv.gz').mime, 'application/gzip')
+  assert.strictEqual(MimeType.fromPath('notes'), null)
+  assert.deepStrictEqual(MediaType.fromExtension('json').types.map((t) => t.mime), ['application/json'])
+  assert.deepStrictEqual(
+    MediaType.fromExtensions(['csv', 'nope', 'gz']).types.map((t) => t.mime),
+    ['text/csv', 'application/gzip'],
+  )
+  assert.ok(MediaType.fromMapping({ path: 'report.csv.gz' }).equals(MediaType.fromPath('report.csv.gz')))
+})
+
 test('uri/url media type', () => {
   assert.deepStrictEqual(new Uri('https://h/a/file.json').mediaType().types.map((t) => t.mime), ['application/json'])
-  assert.deepStrictEqual(
-    new Url('https://h/dump/archive.tar.gz').mediaType().types.map((t) => t.mime),
-    ['application/x-tar', 'application/gzip'],
-  )
+  const url = new Url('https://h/dump/archive.tar.gz')
+  assert.deepStrictEqual(url.mediaType().types.map((t) => t.mime), ['application/x-tar', 'application/gzip'])
+  assert.strictEqual(url.mimeType().mime, 'application/gzip')
   assert.strictEqual(new Uri('https://h/page').mediaType(), null)
+  assert.strictEqual(new Uri('https://h/page').mimeType(), null)
 })

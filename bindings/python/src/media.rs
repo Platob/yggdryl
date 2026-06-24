@@ -1,7 +1,7 @@
 //! The `MediaType` pyclass: an ordered stack of :class:`MimeType`.
 
 use pyo3::prelude::*;
-use yggdryl_media::{FromInput, MediaType as CoreMediaType};
+use yggdryl_media::{FromInput, Mapping, MediaType as CoreMediaType};
 
 use crate::mime::MimeType;
 use crate::{hash_str, media_err};
@@ -39,6 +39,32 @@ impl MediaType {
         CoreMediaType::from_str(value, safe)
             .map(|inner| MediaType { inner })
             .map_err(media_err)
+    }
+
+    /// Build the stack from a dict; reads the ``path`` key (or ``str``).
+    #[staticmethod]
+    #[pyo3(signature = (fields, safe = true))]
+    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
+        CoreMediaType::from_mapping(&fields, safe)
+            .map(|inner| MediaType { inner })
+            .map_err(media_err)
+    }
+
+    /// Build a single-type stack from one file ``extension`` (empty if unknown).
+    #[staticmethod]
+    fn from_extension(extension: &str) -> Self {
+        MediaType {
+            inner: CoreMediaType::from_extension(extension),
+        }
+    }
+
+    /// Build the stack from an ordered list of file ``extensions``.
+    #[staticmethod]
+    fn from_extensions(extensions: Vec<String>) -> Self {
+        let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        MediaType {
+            inner: CoreMediaType::from_extensions(&exts),
+        }
     }
 
     /// The ordered :class:`MimeType` list, innermost content first.

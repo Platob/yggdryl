@@ -520,6 +520,13 @@ impl MimeType {
             .map(|e| MimeType::from_mime(&e.mime))
     }
 
+    /// Infers the outermost [`MimeType`] from a path's last known file extension,
+    /// e.g. `Gzip` for `data.csv.gz`, or `None` if none is known. For the full
+    /// layered view use [`MediaType::from_path`].
+    pub fn from_path(path: &str) -> Option<MimeType> {
+        MediaType::from_path(path).last().cloned()
+    }
+
     /// The canonical MIME string, e.g. `"image/png"`. For
     /// [`Other`](MimeType::Other) this is the stored `type/subtype`.
     pub fn mime(&self) -> &str {
@@ -690,16 +697,29 @@ impl MediaType {
         MediaType { types }
     }
 
+    /// Builds the stack from an ordered list of file extensions, keeping those that
+    /// resolve in the registry (unknown extensions are skipped). `["csv", "gz"]`
+    /// yields `[Csv, Gzip]`.
+    pub fn from_extensions(extensions: &[&str]) -> MediaType {
+        MediaType {
+            types: extensions
+                .iter()
+                .filter_map(|ext| MimeType::from_extension(ext))
+                .collect(),
+        }
+    }
+
+    /// Builds a single-type stack from one file extension (empty if unknown).
+    pub fn from_extension(extension: &str) -> MediaType {
+        MediaType::from_extensions(&[extension])
+    }
+
     /// Builds the stack from a path's file name, mapping each `.`-extension that
     /// resolves in the registry (unknown extensions are skipped). `data.csv.gz`
     /// yields `[Csv, Gzip]`.
     pub fn from_path(path: &str) -> MediaType {
         let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        let types = name_extensions(name)
-            .into_iter()
-            .filter_map(MimeType::from_extension)
-            .collect();
-        MediaType { types }
+        MediaType::from_extensions(&name_extensions(name))
     }
 
     /// The ordered [`MimeType`]s, innermost content first.
@@ -739,6 +759,16 @@ impl FromInput for MediaType {
             return Err(MediaError::Empty);
         }
         Ok(MediaType::from_path(input))
+    }
+
+    /// Builds the stack from a [`Mapping`]; reads the `path` key (falling back to
+    /// `str`) and parses it like [`from_path`](MediaType::from_path).
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<MediaType, MediaError> {
+        let path = fields
+            .get("path")
+            .or_else(|| fields.get("str"))
+            .map_or("", String::as_str);
+        MediaType::from_str(path, safe)
     }
 }
 
@@ -861,6 +891,24 @@ mod tests {
                 .unwrap()
                 .to_str(true),
             "tar.gz"
+        );
+    }
+
+    #[test]
+    fn convenient_from_constructors() {
+        // MimeType: a single (outermost) type from a path.
+        assert_eq!(MimeType::from_path("data.csv.gz"), Some(MimeType::Gzip));
+        assert_eq!(MimeType::from_path("notes"), None);
+        // MediaType: from one or many extensions, and from a mapping.
+        assert_eq!(MediaType::from_extension("json").types(), [MimeType::Json]);
+        assert_eq!(
+            MediaType::from_extensions(&["csv", "nope", "gz"]).types(),
+            [MimeType::Csv, MimeType::Gzip]
+        );
+        let map = Mapping::from([("path".to_string(), "report.csv.gz".to_string())]);
+        assert_eq!(
+            MediaType::from_(&map).unwrap(),
+            MediaType::new(vec![MimeType::Csv, MimeType::Gzip])
         );
     }
 

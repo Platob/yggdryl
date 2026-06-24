@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use yggdryl_url::{FromInput, Mapping, Params, ToOutput, Url as CoreUrl};
 
 use crate::media::MediaType;
+use crate::mime::MimeType;
 use crate::uri::Uri;
 use crate::{hash_str, url_err};
 
@@ -203,9 +204,14 @@ impl Url {
         self.inner.extensions(encode)
     }
 
-    /// The media type inferred from the path's file extension, or ``None``.
+    /// The media type stack inferred from the path's file extensions, or ``None``.
     fn media_type(&self) -> Option<MediaType> {
         self.inner.media_type().map(|inner| MediaType { inner })
+    }
+
+    /// The outermost MIME type inferred from the path's last extension, or ``None``.
+    fn mime_type(&self) -> Option<MimeType> {
+        self.inner.mime_type().map(|inner| MimeType { inner })
     }
 
     /// Return a copy whose query is built from ``params``; ``encode`` percent-

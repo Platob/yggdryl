@@ -7,6 +7,7 @@ use napi_derive::napi;
 use yggdryl_url::{FromInput, ToOutput, Url as CoreUrl};
 
 use crate::media::MediaType;
+use crate::mime::MimeType;
 use crate::to_mapping;
 use crate::uri::Uri;
 
@@ -221,10 +222,16 @@ impl Url {
         self.inner.extensions(encode.unwrap_or(false))
     }
 
-    /// The media type inferred from the path's file extension, or `null`.
+    /// The media type stack inferred from the path's file extensions, or `null`.
     #[napi(js_name = "mediaType")]
     pub fn media_type(&self) -> Option<MediaType> {
         self.inner.media_type().map(|inner| MediaType { inner })
+    }
+
+    /// The outermost MIME type inferred from the path's last extension, or `null`.
+    #[napi(js_name = "mimeType")]
+    pub fn mime_type(&self) -> Option<MimeType> {
+        self.inner.mime_type().map(|inner| MimeType { inner })
     }
 
     /// Return a copy whose query is built from `params`; `encode` percent-encodes.

@@ -56,6 +56,13 @@ impl MimeType {
         CoreMimeType::from_magic(&data).map(|inner| MimeType { inner })
     }
 
+    /// Infer the outermost MIME type from a ``path``'s last known file extension,
+    /// or ``None``. For the full layered view use :meth:`MediaType.from_path`.
+    #[staticmethod]
+    fn from_path(path: &str) -> Option<Self> {
+        CoreMimeType::from_path(path).map(|inner| MimeType { inner })
+    }
+
     /// Register (or replace) a MIME type globally. ``magic`` is a list of byte
     /// prefixes matched at the start of a file. The change is process-wide.
     #[staticmethod]

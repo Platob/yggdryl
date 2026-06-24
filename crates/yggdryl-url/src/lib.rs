@@ -662,8 +662,14 @@ impl Uri {
     /// The [`MediaType`] stack inferred from the path's file extensions (e.g.
     /// `[Csv, Gzip]` for `data.csv.gz`), or `None` if no known extension is found.
     pub fn media_type(&self) -> Option<MediaType> {
-        let media = MediaType::from_path(&self.path);
+        let media = MediaType::from(self);
         (!media.is_empty()).then_some(media)
+    }
+
+    /// The outermost [`MimeType`] inferred from the path's last known file
+    /// extension (e.g. `Gzip` for `data.csv.gz`), or `None`.
+    pub fn mime_type(&self) -> Option<MimeType> {
+        MimeType::from_path(&self.path)
     }
 }
 
@@ -1268,6 +1274,20 @@ impl From<Url> for Uri {
     }
 }
 
+impl From<&Uri> for MediaType {
+    /// Builds the [`MediaType`] stack from the URI's path (see [`Uri::media_type`]).
+    fn from(uri: &Uri) -> MediaType {
+        MediaType::from_path(&uri.path)
+    }
+}
+
+impl From<&Url> for MediaType {
+    /// Builds the [`MediaType`] stack from the URL's path (see [`Url::media_type`]).
+    fn from(url: &Url) -> MediaType {
+        MediaType::from_path(&url.path)
+    }
+}
+
 impl fmt::Display for Url {
     /// Renders the encoded form (`to_str(true)`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1304,8 +1324,14 @@ impl Url {
     /// The [`MediaType`] stack inferred from the path's file extensions (e.g.
     /// `[Csv, Gzip]` for `data.csv.gz`), or `None` if no known extension is found.
     pub fn media_type(&self) -> Option<MediaType> {
-        let media = MediaType::from_path(&self.path);
+        let media = MediaType::from(self);
         (!media.is_empty()).then_some(media)
+    }
+
+    /// The outermost [`MimeType`] inferred from the path's last known file
+    /// extension (e.g. `Gzip` for `data.csv.gz`), or `None`.
+    pub fn mime_type(&self) -> Option<MimeType> {
+        MimeType::from_path(&self.path)
     }
 }
 
@@ -1476,6 +1502,17 @@ mod tests {
         // No (known) extension yields `None`.
         assert_eq!(
             Url::from_str("https://h/page", true).unwrap().media_type(),
+            None
+        );
+        // `mime_type()` is the single outermost type; `From<&Uri>` mirrors it.
+        let uri = Uri::from_str("file:/dump/archive.tar.gz", true).unwrap();
+        assert_eq!(uri.mime_type(), Some(MimeType::Gzip));
+        assert_eq!(
+            MediaType::from(&uri).types(),
+            [MimeType::Tar, MimeType::Gzip]
+        );
+        assert_eq!(
+            Url::from_str("https://h/page", true).unwrap().mime_type(),
             None
         );
     }

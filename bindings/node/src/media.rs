@@ -1,10 +1,13 @@
 //! The `MediaType` napi class: an ordered stack of `MimeType`.
 
+use std::collections::HashMap;
+
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_media::{FromInput, MediaType as CoreMediaType, ToOutput};
 
 use crate::mime::MimeType;
+use crate::to_mapping;
 
 /// An ordered stack of `MimeType`, describing a layered file. Parsing
 /// `data.csv.gz` yields `MediaType([MimeType('text/csv'), MimeType('application/gzip')])`.
@@ -37,6 +40,31 @@ impl MediaType {
         CoreMediaType::from_str(&value, safe.unwrap_or(true))
             .map(|inner| MediaType { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Build the stack from an object; reads the `path` key (or `str`).
+    #[napi(factory, js_name = "fromMapping")]
+    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
+        CoreMediaType::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+            .map(|inner| MediaType { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Build a single-type stack from one file `extension` (empty if unknown).
+    #[napi(factory, js_name = "fromExtension")]
+    pub fn from_extension(extension: String) -> Self {
+        MediaType {
+            inner: CoreMediaType::from_extension(&extension),
+        }
+    }
+
+    /// Build the stack from an ordered list of file `extensions`.
+    #[napi(factory, js_name = "fromExtensions")]
+    pub fn from_extensions(extensions: Vec<String>) -> Self {
+        let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        MediaType {
+            inner: CoreMediaType::from_extensions(&exts),
+        }
     }
 
     /// The ordered `MimeType` list, innermost content first.

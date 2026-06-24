@@ -64,10 +64,10 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
-| Single MIME type | `MimeType` enum; `from_extension(ext)` / `from_magic(bytes)`; `.mime` / `type` / `subtype` / `extension(s)` |
+| Single MIME type | `MimeType` enum; `from_str` / `from_mapping` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
 | Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |
-| Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_path(path)`; `.types` / `first` / `last` |
-| Inferred media type on a URI/URL | `media_type()` → `MediaType` stack or null |
+| Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` |
+| Inferred media/MIME type on a URI/URL | `media_type()` → `MediaType` stack or null; `mime_type()` → outermost `MimeType` or null (Rust also has `MediaType::from(&uri)`) |
 
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use
@@ -99,3 +99,24 @@ cargo test
 ```
 
 All five must pass. Do not bump the version while the base is still being built.
+
+## Code-coherence review (after every implementation)
+
+Once the change compiles and the checks pass, do a final coherence pass before
+committing — treat it as a required step, not an optional polish:
+
+1. **No redundancy** — fold duplicated logic into one place; a new `from_*`
+   should delegate to an existing one (e.g. `from_extension` → `from_extensions`
+   → `from_path`) rather than re-implement it. Don't add a second API that
+   merely restates an existing one.
+2. **Cross-language parity** — the same surface and semantics exist in the Rust
+   core and *both* bindings (adapting only to each language's idioms); a change
+   is never half-applied.
+3. **One concern per file/type** — the new code lives in the right crate/module
+   and mirrors the structure of its neighbours (naming, error handling, doc
+   style, terseness).
+4. **Readability** — names match the conventions table, every public item has a
+   `///` doc, and a reader cannot tell which type they are looking at from the
+   shape of the code.
+
+If any point fails, fix it before committing.

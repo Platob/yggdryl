@@ -18,10 +18,13 @@ use yggdryl_media::{FromInput, MediaType, MimeType, Signature};
 assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
 assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
 
-// A layered file is an ordered stack, innermost content first.
+// A layered file is an ordered stack, innermost content first — build it from a
+// path, a list of extensions, or an explicit list of types.
 let stack = MediaType::from_path("data.csv.gz");
 assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
+assert_eq!(stack, MediaType::from_extensions(&["csv", "gz"]));
 assert_eq!(stack.first(), Some(&MimeType::Csv));
+assert_eq!(MimeType::from_path("data.csv.gz"), Some(MimeType::Gzip)); // outermost
 
 // The registry is global and mutable.
 MimeType::register("application/x-foo", &["foo"], &[Signature::prefix(b"FOO1")]);

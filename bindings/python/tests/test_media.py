@@ -93,9 +93,25 @@ def test_media_type_explicit_construction():
     assert len(yggdryl.MediaType([])) == 0
 
 
+def test_convenient_from_constructors():
+    # MimeType: single outermost type from a path.
+    assert yggdryl.MimeType.from_path("data.csv.gz").mime == "application/gzip"
+    assert yggdryl.MimeType.from_path("notes") is None
+    # MediaType: from one or many extensions, and from a mapping.
+    assert [t.mime for t in yggdryl.MediaType.from_extension("json").types] == ["application/json"]
+    assert [t.mime for t in yggdryl.MediaType.from_extensions(["csv", "nope", "gz"]).types] == [
+        "text/csv",
+        "application/gzip",
+    ]
+    assert yggdryl.MediaType.from_mapping({"path": "report.csv.gz"}) == yggdryl.MediaType.from_path("report.csv.gz")
+
+
 def test_uri_url_media_type():
-    json_stack = yggdryl.Uri("https://h/a/file.json").media_type()
-    assert [t.mime for t in json_stack.types] == ["application/json"]
-    gz_stack = yggdryl.Url("https://h/dump/archive.tar.gz").media_type()
-    assert [t.mime for t in gz_stack.types] == ["application/x-tar", "application/gzip"]
+    uri = yggdryl.Uri("https://h/a/file.json")
+    assert [t.mime for t in uri.media_type().types] == ["application/json"]
+    url = yggdryl.Url("https://h/dump/archive.tar.gz")
+    assert [t.mime for t in url.media_type().types] == ["application/x-tar", "application/gzip"]
+    # Single outermost type via mime_type(); From a Uri/Url struct.
+    assert url.mime_type().mime == "application/gzip"
     assert yggdryl.Uri("https://h/page").media_type() is None
+    assert yggdryl.Uri("https://h/page").mime_type() is None
