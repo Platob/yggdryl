@@ -12,8 +12,10 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
+use pyo3::wrap_pyfunction;
 use yggdryl_core::{
-    Uri as CoreUri, UriError, Url as CoreUrl, UrlError, Version as CoreVersion, VersionError,
+    percent_decode, percent_encode, FromInput, Mapping, Params, Uri as CoreUri, UriError,
+    Url as CoreUrl, UrlError, Version as CoreVersion, VersionError,
 };
 
 fn uri_err(err: UriError) -> PyErr {
@@ -38,17 +40,136 @@ struct Uri {
 #[pymethods]
 impl Uri {
     /// Parse ``value`` into a :class:`Uri`, raising ``ValueError`` on failure.
+    /// With ``safe=False`` the scheme and ``%XX`` escapes are not validated.
     #[new]
-    fn new(value: &str) -> PyResult<Self> {
-        CoreUri::parse(value)
+    #[pyo3(signature = (value, safe = true))]
+    fn new(value: &str, safe: bool) -> PyResult<Self> {
+        CoreUri::from_str(value, safe)
             .map(|inner| Uri { inner })
             .map_err(uri_err)
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    fn parse(value: &str) -> PyResult<Self> {
-        Uri::new(value)
+    #[pyo3(signature = (value, safe = true))]
+    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
+        Uri::new(value, safe)
+    }
+
+    /// Build a :class:`Uri` from a dict of components (``scheme``, ``authority``,
+    /// ``path``, ``query``, ``fragment``).
+    #[staticmethod]
+    #[pyo3(signature = (fields, safe = true))]
+    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
+        CoreUri::from_mapping(&fields, safe)
+            .map(|inner| Uri { inner })
+            .map_err(uri_err)
+    }
+
+    /// Build a :class:`Uri` directly from its parts (no string parsing).
+    #[staticmethod]
+    #[pyo3(signature = (scheme, path = String::new(), authority = None, query = None, fragment = None))]
+    fn from_parts(
+        scheme: String,
+        path: String,
+        authority: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Uri {
+            inner: CoreUri::from_parts(scheme, authority, path, query, fragment),
+        }
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    /// ``copy()`` clones; ``copy(path="/x")`` clones with one field changed.
+    #[pyo3(signature = (scheme = None, authority = None, path = None, query = None, fragment = None))]
+    fn copy(
+        &self,
+        scheme: Option<String>,
+        authority: Option<String>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Uri {
+            inner: self.inner.copy(scheme, authority, path, query, fragment),
+        }
+    }
+
+    /// Return a copy with the scheme replaced.
+    fn with_scheme(&self, scheme: String) -> Self {
+        Uri {
+            inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Return a copy with the authority set.
+    fn with_authority(&self, authority: String) -> Self {
+        Uri {
+            inner: self.inner.clone().with_authority(authority),
+        }
+    }
+
+    /// Return a copy with the authority removed.
+    fn without_authority(&self) -> Self {
+        Uri {
+            inner: self.inner.clone().without_authority(),
+        }
+    }
+
+    /// Return a copy with the path replaced.
+    fn with_path(&self, path: String) -> Self {
+        Uri {
+            inner: self.inner.clone().with_path(path),
+        }
+    }
+
+    /// Return a copy with the query set.
+    fn with_query(&self, query: String) -> Self {
+        Uri {
+            inner: self.inner.clone().with_query(query),
+        }
+    }
+
+    /// Return a copy with the query removed.
+    fn without_query(&self) -> Self {
+        Uri {
+            inner: self.inner.clone().without_query(),
+        }
+    }
+
+    /// Return a copy with the fragment set.
+    fn with_fragment(&self, fragment: String) -> Self {
+        Uri {
+            inner: self.inner.clone().with_fragment(fragment),
+        }
+    }
+
+    /// Return a copy with the fragment removed.
+    fn without_fragment(&self) -> Self {
+        Uri {
+            inner: self.inner.clone().without_fragment(),
+        }
+    }
+
+    /// Return the query parsed into a percent-decoded ``dict[str, list[str]]``.
+    fn params(&self) -> Params {
+        self.inner.params()
+    }
+
+    /// Return a copy whose query is built from ``params`` (percent-encoded).
+    fn with_params(&self, params: Params) -> Self {
+        Uri {
+            inner: self.inner.clone().with_params(&params),
+        }
+    }
+
+    /// Return a copy with ``key`` set to ``values``, adding or replacing it.
+    fn add_param(&self, key: String, values: Vec<String>) -> Self {
+        Uri {
+            inner: self.inner.add_param(key, values),
+        }
     }
 
     #[getter]
@@ -104,17 +225,184 @@ struct Url {
 #[pymethods]
 impl Url {
     /// Parse ``value`` into a :class:`Url`, raising ``ValueError`` on failure.
+    /// With ``safe=False`` the scheme and ``%XX`` escapes are not validated.
     #[new]
-    fn new(value: &str) -> PyResult<Self> {
-        CoreUrl::parse(value)
+    #[pyo3(signature = (value, safe = true))]
+    fn new(value: &str, safe: bool) -> PyResult<Self> {
+        CoreUrl::from_str(value, safe)
             .map(|inner| Url { inner })
             .map_err(url_err)
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    fn parse(value: &str) -> PyResult<Self> {
-        Url::new(value)
+    #[pyo3(signature = (value, safe = true))]
+    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
+        Url::new(value, safe)
+    }
+
+    /// Build a :class:`Url` from a dict of components (``scheme`` and ``host``
+    /// required; ``username``, ``password``, ``port``, ``path``, ``query``,
+    /// ``fragment``).
+    #[staticmethod]
+    #[pyo3(signature = (fields, safe = true))]
+    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
+        CoreUrl::from_mapping(&fields, safe)
+            .map(|inner| Url { inner })
+            .map_err(url_err)
+    }
+
+    /// Build a :class:`Url` directly from its parts (no string parsing).
+    #[staticmethod]
+    #[pyo3(signature = (scheme, host, port = None, username = None, password = None, path = String::new(), query = None, fragment = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn from_parts(
+        scheme: String,
+        host: String,
+        port: Option<u16>,
+        username: Option<String>,
+        password: Option<String>,
+        path: String,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Url {
+            inner: CoreUrl::from_parts(
+                scheme, username, password, host, port, path, query, fragment,
+            ),
+        }
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    /// ``copy()`` clones; ``copy(port=443)`` clones with one field changed.
+    #[pyo3(signature = (scheme = None, username = None, password = None, host = None, port = None, path = None, query = None, fragment = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn copy(
+        &self,
+        scheme: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+        host: Option<String>,
+        port: Option<u16>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Url {
+            inner: self.inner.copy(
+                scheme, username, password, host, port, path, query, fragment,
+            ),
+        }
+    }
+
+    /// Return a copy with the scheme replaced.
+    fn with_scheme(&self, scheme: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Return a copy with the username set.
+    fn with_username(&self, username: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_username(username),
+        }
+    }
+
+    /// Return a copy with the password set.
+    fn with_password(&self, password: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_password(password),
+        }
+    }
+
+    /// Return a copy with username and password removed.
+    fn without_userinfo(&self) -> Self {
+        Url {
+            inner: self.inner.clone().without_userinfo(),
+        }
+    }
+
+    /// Return a copy with the host replaced.
+    fn with_host(&self, host: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_host(host),
+        }
+    }
+
+    /// Return a copy with the port set.
+    fn with_port(&self, port: u16) -> Self {
+        Url {
+            inner: self.inner.clone().with_port(port),
+        }
+    }
+
+    /// Return a copy with the port removed.
+    fn without_port(&self) -> Self {
+        Url {
+            inner: self.inner.clone().without_port(),
+        }
+    }
+
+    /// Return a copy with the path replaced.
+    fn with_path(&self, path: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_path(path),
+        }
+    }
+
+    /// Return a copy with the query set.
+    fn with_query(&self, query: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_query(query),
+        }
+    }
+
+    /// Return a copy with the query removed.
+    fn without_query(&self) -> Self {
+        Url {
+            inner: self.inner.clone().without_query(),
+        }
+    }
+
+    /// Return a copy with the fragment set.
+    fn with_fragment(&self, fragment: String) -> Self {
+        Url {
+            inner: self.inner.clone().with_fragment(fragment),
+        }
+    }
+
+    /// Return a copy with the fragment removed.
+    fn without_fragment(&self) -> Self {
+        Url {
+            inner: self.inner.clone().without_fragment(),
+        }
+    }
+
+    /// Return the query parsed into a percent-decoded ``dict[str, list[str]]``.
+    fn params(&self) -> Params {
+        self.inner.params()
+    }
+
+    /// Return a copy whose query is built from ``params`` (percent-encoded).
+    fn with_params(&self, params: Params) -> Self {
+        Url {
+            inner: self.inner.clone().with_params(&params),
+        }
+    }
+
+    /// Return a copy with ``key`` set to ``values``, adding or replacing it.
+    fn add_param(&self, key: String, values: Vec<String>) -> Self {
+        Url {
+            inner: self.inner.add_param(key, values),
+        }
+    }
+
+    /// Return this URL viewed as a generic :class:`Uri`.
+    fn to_uri(&self) -> Uri {
+        Uri {
+            inner: self.inner.to_uri(),
+        }
     }
 
     #[getter]
@@ -198,11 +486,52 @@ impl Version {
     }
 
     /// Parse a ``major[.minor[.patch]]`` string, raising ``ValueError`` on failure.
+    /// With ``safe=False`` extra components are ignored and junk becomes ``0``.
     #[staticmethod]
-    fn parse(value: &str) -> PyResult<Self> {
-        CoreVersion::parse(value)
+    #[pyo3(signature = (value, safe = true))]
+    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
+        CoreVersion::from_str(value, safe)
             .map(|inner| Version { inner })
             .map_err(version_err)
+    }
+
+    /// Build a :class:`Version` from a dict of components (``major``, ``minor``,
+    /// ``patch``).
+    #[staticmethod]
+    #[pyo3(signature = (fields, safe = true))]
+    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
+        CoreVersion::from_mapping(&fields, safe)
+            .map(|inner| Version { inner })
+            .map_err(version_err)
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    #[pyo3(signature = (major = None, minor = None, patch = None))]
+    fn copy(&self, major: Option<u64>, minor: Option<u64>, patch: Option<u64>) -> Self {
+        Version {
+            inner: self.inner.copy(major, minor, patch),
+        }
+    }
+
+    /// Return a copy with the major component replaced.
+    fn with_major(&self, major: u64) -> Self {
+        Version {
+            inner: self.inner.with_major(major),
+        }
+    }
+
+    /// Return a copy with the minor component replaced.
+    fn with_minor(&self, minor: u64) -> Self {
+        Version {
+            inner: self.inner.with_minor(minor),
+        }
+    }
+
+    /// Return a copy with the patch component replaced.
+    fn with_patch(&self, patch: u64) -> Self {
+        Version {
+            inner: self.inner.with_patch(patch),
+        }
     }
 
     #[getter]
@@ -237,6 +566,20 @@ impl Version {
     }
 }
 
+/// URL-safe percent-encode ``value`` (e.g. a space becomes ``%20``).
+#[pyfunction]
+#[pyo3(name = "percent_encode")]
+fn py_percent_encode(value: &str) -> String {
+    percent_encode(value)
+}
+
+/// Percent-decode ``value``, raising ``ValueError`` on a malformed escape.
+#[pyfunction]
+#[pyo3(name = "percent_decode")]
+fn py_percent_decode(value: &str) -> PyResult<String> {
+    percent_decode(value).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Stable hash of a string for `__hash__`.
 fn hash_str(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -252,5 +595,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Uri>()?;
     m.add_class::<Url>()?;
     m.add_class::<Version>()?;
+    m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
+    m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     Ok(())
 }

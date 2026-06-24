@@ -18,7 +18,7 @@ def test_uri_components():
 
 
 def test_uri_without_authority():
-    uri = yggdryl.Uri.parse("mailto:alice@example.com")
+    uri = yggdryl.Uri.from_str("mailto:alice@example.com")
     assert uri.scheme == "mailto"
     assert uri.authority is None
     assert uri.path == "alice@example.com"
@@ -72,13 +72,13 @@ def test_repr():
 
 
 def test_version_components():
-    v = yggdryl.Version.parse("1.4.2")
+    v = yggdryl.Version.from_str("1.4.2")
     assert (v.major, v.minor, v.patch) == (1, 4, 2)
     assert str(v) == "1.4.2"
 
 
 def test_version_defaults_and_ctor():
-    assert yggdryl.Version(2) == yggdryl.Version.parse("2")
+    assert yggdryl.Version(2) == yggdryl.Version.from_str("2")
     assert str(yggdryl.Version(2)) == "2.0.0"
     assert yggdryl.Version(1, 2, 3).patch == 3
 
@@ -92,7 +92,75 @@ def test_version_ordering():
 
 def test_version_invalid_raises():
     with pytest.raises(ValueError):
-        yggdryl.Version.parse("1.x.0")
+        yggdryl.Version.from_str("1.x.0")
+
+
+def test_safe_flag():
+    # Invalid scheme: rejected when safe, accepted when not.
+    with pytest.raises(ValueError):
+        yggdryl.Uri("1http:x")
+    assert yggdryl.Uri("1http:x", safe=False).scheme == "1http"
+    # Lenient version parse.
+    assert str(yggdryl.Version.from_str("1.2.3.4", safe=False)) == "1.2.3"
+
+
+def test_from_mapping():
+    uri = yggdryl.Uri.from_mapping({"scheme": "https", "authority": "example.com", "path": "/x"})
+    assert str(uri) == "https://example.com/x"
+    url = yggdryl.Url.from_mapping({"scheme": "https", "host": "h", "port": "8443"})
+    assert url.host == "h" and url.port == 8443
+    assert yggdryl.Version.from_mapping({"major": "1", "minor": "4"}) == yggdryl.Version(1, 4)
+
+
+def test_percent_encoding():
+    assert yggdryl.percent_encode("a b/c") == "a%20b%2Fc"
+    assert yggdryl.percent_decode("a%20b%2Fc") == "a b/c"
+    with pytest.raises(ValueError):
+        yggdryl.percent_decode("%zz")
+
+
+def test_from_parts():
+    url = yggdryl.Url.from_parts("https", "example.com", port=8443, username="user", password="pw", path="/api")
+    assert str(url) == "https://user:pw@example.com:8443/api"
+    uri = yggdryl.Uri.from_parts("mailto", path="alice@example.com")
+    assert str(uri) == "mailto:alice@example.com"
+
+
+def test_functional_copy_and_with():
+    base = yggdryl.Url("https://example.com/api")
+    secured = base.with_port(8443).with_username("user")
+    assert str(secured) == "https://user@example.com:8443/api"
+    # original untouched
+    assert str(base) == "https://example.com/api"
+    assert str(yggdryl.Version(1, 0, 0).with_minor(4)) == "1.4.0"
+    assert yggdryl.Uri("https://h/a").copy() == yggdryl.Uri("https://h/a")
+
+
+def test_params_and_add_param():
+    url = yggdryl.Url("https://h/p?a=1&a=2&b=hi")
+    params = url.params()
+    assert params["a"] == ["1", "2"]
+    assert params["b"] == ["hi"]
+    # add_param adds or replaces, multi-value aware
+    updated = url.add_param("a", ["x"]).add_param("c", ["1", "2"])
+    assert updated.params()["a"] == ["x"]
+    assert updated.params()["c"] == ["1", "2"]
+    # with_params percent-encodes
+    built = yggdryl.Uri("https://h/p").with_params({"q": ["a b"]})
+    assert built.query == "q=a%20b"
+
+
+def test_copy_overrides():
+    url = yggdryl.Url("https://example.com/api")
+    assert str(url.copy(port=8443)) == "https://example.com:8443/api"
+    assert str(url.copy()) == "https://example.com/api"
+
+
+def test_url_to_uri():
+    url = yggdryl.Url("https://user@h:8443/p?x=1")
+    uri = url.to_uri()
+    assert isinstance(uri, yggdryl.Uri)
+    assert uri.authority == "user@h:8443"
 
 
 def test_module_version():

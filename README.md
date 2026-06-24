@@ -29,44 +29,46 @@ yggdryl/
 
 ## The core API
 
-Both types parse from a string and expose their components as read-only
-accessors; `to_string()` / `str()` / `toString()` reconstructs the original.
+Each type is built with `from_str(value, safe)` (or `from_parts` / `from_mapping`),
+exposes its components as read-only accessors, and reconstructs the original via
+`to_string()` / `str()` / `toString()`. `safe = true` validates fully; `false` is
+a faster, lenient parse. Functional `copy(...)` / `with_*` / `without_*` builders
+return new values without mutating the original. The naming is identical across
+all three languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
 
 ```rust
-use yggdryl::{Uri, Url};
+use yggdryl::{FromInput, Uri, Url, Version};
 
-let uri = Uri::parse("urn:isbn:0451450523")?;
+let uri = Uri::from_str("urn:isbn:0451450523", true)?;
 assert_eq!(uri.scheme(), "urn");
 
-let url = Url::parse("https://user:pw@example.com:8443/api?v=1#top")?;
+let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2", true)?;
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.port(), Some(8443));
-# Ok::<(), yggdryl::UrlError>(())
-```
+assert_eq!(url.params().get("a"), Some(&vec!["1".into(), "2".into()]));
 
-```rust
-use yggdryl::Version;
-assert!(Version::parse("1.4.2").unwrap() < Version::parse("1.10.0").unwrap());
+assert!(Version::from_str("1.4.2", true)? < Version::from_str("1.10.0", true)?);
+# Ok::<(), yggdryl::UrlError>(())
 ```
 
 ```python
 import yggdryl
-url = yggdryl.Url("https://example.com:8443/api")
-print(url.host, url.port)        # example.com 8443
+url = yggdryl.Url("https://example.com/api").copy(port=8443).add_param("q", ["a b"])
+print(url.host, url.port, url.params())   # example.com 8443 {'q': ['a b']}
 ```
 
 ```javascript
 const { Url } = require('yggdryl')
-const url = new Url('https://example.com:8443/api')
-console.log(url.host, url.port)  // example.com 8443
+const url = new Url('https://example.com/api').copy(null, null, null, null, 8443)
+console.log(url.host, url.port)           // example.com 8443
 ```
 
-| `Uri` | `Url` |
+| `Uri` | `Url` (is-a `Uri` via `to_uri()`) |
 | --- | --- |
 | `scheme` | `scheme` |
 | `authority` | `username` / `password` / `host` / `port` / `authority` |
 | `path` | `path` |
-| `query` | `query` |
+| `query` / `params()` | `query` / `params()` |
 | `fragment` | `fragment` |
 
 ## Building & testing

@@ -1,19 +1,239 @@
 //! # yggdryl
 //!
 //! The pure-Rust core of the **yggdryl** project: small, dependency-free
-//! [`Uri`] and [`Url`] value types.
+//! [`Uri`], [`Url`] and [`Version`] value types.
 //!
 //! - [`Uri`] is the generic [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986)
 //!   shape: `scheme:[//authority]path[?query][#fragment]`.
 //! - [`Url`] is the common subset that always has an authority, decomposed into
 //!   `username`, `password`, `host` and `port`.
+//! - [`Version`] is a generic `major.minor.patch` version.
+//!
+//! All three implement the generic [`FromInput`] trait, which exposes
+//! [`from_str`](FromInput::from_str), [`from_mapping`](FromInput::from_mapping) and
+//! a [`from_`](FromInput::from_) entry point that accepts either form. Every
+//! parse takes a `safe` flag: `true` fully validates the input, `false` is a
+//! faster, lenient parse. URL-safe [`percent_encode`]/[`percent_decode`] round
+//! out the API.
 //!
 //! The Python and Node extensions in the wider project wrap these types so the
 //! behaviour is identical across every language binding.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
-/// Error returned when [`Uri::parse`] cannot interpret its input.
+/// A set of named components, used by [`FromInput::from_mapping`].
+///
+/// Keys are component names (`"scheme"`, `"host"`, `"major"`, …) and values are
+/// their string form. Which keys each type understands is documented on its
+/// [`FromInput`] implementation.
+pub type Mapping = BTreeMap<String, String>;
+
+/// A multi-valued query-parameter map: `key` → list of values, mirroring how a
+/// query string may repeat a key (`?a=1&a=2`). Used by [`Uri::params`] /
+/// [`Url::params`] and friends.
+pub type Params = BTreeMap<String, Vec<String>>;
+
+/// The input forms accepted by [`FromInput::from_`].
+pub enum ParseInput<'a> {
+    /// A full string to be parsed, e.g. `"https://example.com"`.
+    Str(&'a str),
+    /// A [`Mapping`] of already-split components.
+    Mapping(&'a Mapping),
+}
+
+impl<'a> From<&'a str> for ParseInput<'a> {
+    fn from(value: &'a str) -> Self {
+        ParseInput::Str(value)
+    }
+}
+
+impl<'a> From<&'a String> for ParseInput<'a> {
+    fn from(value: &'a String) -> Self {
+        ParseInput::Str(value.as_str())
+    }
+}
+
+impl<'a> From<&'a Mapping> for ParseInput<'a> {
+    fn from(value: &'a Mapping) -> Self {
+        ParseInput::Mapping(value)
+    }
+}
+
+/// A generic parsing interface implemented by [`Uri`], [`Url`] and [`Version`].
+///
+/// Implementors provide [`from_str`](FromInput::from_str) and
+/// [`from_mapping`](FromInput::from_mapping); the [`from_`](FromInput::from_) entry
+/// point dispatches over a [`ParseInput`] for free. Every method takes a `safe`
+/// flag — `true` validates the input thoroughly, `false` is a faster, lenient
+/// parse that skips the optional checks.
+pub trait FromInput: Sized {
+    /// The error produced when parsing fails.
+    type Err;
+
+    /// Parses a full string.
+    fn from_str(input: &str, safe: bool) -> Result<Self, Self::Err>;
+
+    /// Parses from a [`Mapping`] of pre-split components.
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Self, Self::Err>;
+
+    /// Parses from any supported [`ParseInput`] form.
+    fn from_<'a, I: Into<ParseInput<'a>>>(input: I, safe: bool) -> Result<Self, Self::Err> {
+        match input.into() {
+            ParseInput::Str(s) => Self::from_str(s, safe),
+            ParseInput::Mapping(m) => Self::from_mapping(m, safe),
+        }
+    }
+}
+
+/// Error from [`percent_decode`] (and surfaced by `safe` parses).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncodingError {
+    /// A `%` was not followed by two hexadecimal digits.
+    InvalidEscape(String),
+    /// The decoded bytes were not valid UTF-8.
+    InvalidUtf8,
+}
+
+impl fmt::Display for EncodingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EncodingError::InvalidEscape(s) => write!(f, "invalid percent-escape in '{s}'"),
+            EncodingError::InvalidUtf8 => write!(f, "percent-decoded bytes are not valid UTF-8"),
+        }
+    }
+}
+
+impl std::error::Error for EncodingError {}
+
+/// Returns `true` for the RFC 3986 *unreserved* characters, which never need
+/// percent-encoding: `ALPHA / DIGIT / "-" / "." / "_" / "~"`.
+fn is_unreserved(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
+}
+
+/// Percent-encodes `input` (URL-safe): every byte outside the unreserved set is
+/// written as `%XX`, e.g. a space becomes `%20`.
+///
+/// ```
+/// use yggdryl::percent_encode;
+/// assert_eq!(percent_encode("a b/c"), "a%20b%2Fc");
+/// ```
+pub fn percent_encode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for &byte in input.as_bytes() {
+        if is_unreserved(byte) {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(hex_digit(byte >> 4));
+            out.push(hex_digit(byte & 0x0f));
+        }
+    }
+    out
+}
+
+/// Percent-decodes `input`, turning each `%XX` escape back into a byte.
+///
+/// ```
+/// use yggdryl::percent_decode;
+/// assert_eq!(percent_decode("a%20b").unwrap(), "a b");
+/// ```
+pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hi = bytes
+                .get(i + 1)
+                .and_then(|b| hex_value(*b))
+                .ok_or_else(|| EncodingError::InvalidEscape(input.to_string()))?;
+            let lo = bytes
+                .get(i + 2)
+                .and_then(|b| hex_value(*b))
+                .ok_or_else(|| EncodingError::InvalidEscape(input.to_string()))?;
+            out.push(hi << 4 | lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|_| EncodingError::InvalidUtf8)
+}
+
+/// Validates that every `%` in `input` is followed by two hex digits, used by
+/// `safe` parses.
+fn validate_percent_encoding(input: &str) -> Result<(), EncodingError> {
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let ok = bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit())
+                && bytes.get(i + 2).is_some_and(|b| b.is_ascii_hexdigit());
+            if !ok {
+                return Err(EncodingError::InvalidEscape(input.to_string()));
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Maps a nibble (0–15) to its uppercase hex digit.
+fn hex_digit(nibble: u8) -> char {
+    match nibble {
+        0..=9 => (b'0' + nibble) as char,
+        _ => (b'A' + (nibble - 10)) as char,
+    }
+}
+
+/// Maps an ASCII hex digit to its value (0–15), or `None`.
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Splits a `key=value&key=value2` query into a percent-decoded multimap.
+/// Repeated keys accumulate their values; parts that fail to decode are kept
+/// verbatim.
+fn query_to_params(query: &str) -> Params {
+    let mut params = Params::new();
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let key = percent_decode(key).unwrap_or_else(|_| key.to_string());
+        let value = percent_decode(value).unwrap_or_else(|_| value.to_string());
+        params.entry(key).or_default().push(value);
+    }
+    params
+}
+
+/// Builds a `key=value&…` query from a [`Params`] multimap, percent-encoding each
+/// part. Keys with several values are emitted once per value; pairs come out in
+/// the map's (sorted) order for a deterministic result.
+fn params_to_query(params: &Params) -> String {
+    let mut pairs = Vec::new();
+    for (key, values) in params {
+        let key = percent_encode(key);
+        if values.is_empty() {
+            pairs.push(key);
+        } else {
+            for value in values {
+                pairs.push(format!("{key}={}", percent_encode(value)));
+            }
+        }
+    }
+    pairs.join("&")
+}
+
+/// Error returned when [`Uri`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UriError {
     /// The input was empty.
@@ -22,6 +242,8 @@ pub enum UriError {
     MissingScheme,
     /// The scheme contained characters outside `ALPHA *( ALPHA / DIGIT / +-. )`.
     InvalidScheme,
+    /// A `safe` parse found a malformed `%XX` escape.
+    InvalidEncoding(EncodingError),
 }
 
 impl fmt::Display for UriError {
@@ -30,13 +252,20 @@ impl fmt::Display for UriError {
             UriError::Empty => write!(f, "uri is empty"),
             UriError::MissingScheme => write!(f, "uri has no scheme"),
             UriError::InvalidScheme => write!(f, "uri scheme is invalid"),
+            UriError::InvalidEncoding(e) => write!(f, "{e}"),
         }
+    }
+}
+
+impl From<EncodingError> for UriError {
+    fn from(e: EncodingError) -> Self {
+        UriError::InvalidEncoding(e)
     }
 }
 
 impl std::error::Error for UriError {}
 
-/// Error returned when [`Url::parse`] cannot interpret its input.
+/// Error returned when [`Url::from_`] cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlError {
     /// The input was not even a valid [`Uri`].
@@ -82,9 +311,9 @@ fn is_valid_scheme(scheme: &str) -> bool {
 /// `scheme:[//authority]path[?query][#fragment]`.
 ///
 /// ```
-/// use yggdryl::Uri;
+/// use yggdryl::{FromInput, Uri};
 ///
-/// let uri = Uri::parse("https://example.com/docs?page=2#intro").unwrap();
+/// let uri = Uri::from_str("https://example.com/docs?page=2#intro", true).unwrap();
 /// assert_eq!(uri.scheme(), "https");
 /// assert_eq!(uri.authority(), Some("example.com"));
 /// assert_eq!(uri.path(), "/docs");
@@ -100,9 +329,12 @@ pub struct Uri {
     fragment: Option<String>,
 }
 
-impl Uri {
-    /// Parses a string into a [`Uri`].
-    pub fn parse(input: &str) -> Result<Uri, UriError> {
+impl FromInput for Uri {
+    type Err = UriError;
+
+    /// Parses a string into a [`Uri`]. When `safe`, the scheme and any `%XX`
+    /// escapes are validated; otherwise those checks are skipped.
+    fn from_str(input: &str, safe: bool) -> Result<Uri, UriError> {
         if input.is_empty() {
             return Err(UriError::Empty);
         }
@@ -117,7 +349,7 @@ impl Uri {
         if scheme.is_empty() {
             return Err(UriError::MissingScheme);
         }
-        if !is_valid_scheme(scheme) {
+        if safe && !is_valid_scheme(scheme) {
             return Err(UriError::InvalidScheme);
         }
 
@@ -131,13 +363,54 @@ impl Uri {
             None => (None, after.to_string()),
         };
 
-        Ok(Uri {
+        let uri = Uri {
             scheme: scheme.to_string(),
             authority,
             path,
             query,
             fragment,
-        })
+        };
+        if safe {
+            uri.validate_encoding()?;
+        }
+        Ok(uri)
+    }
+
+    /// Builds a [`Uri`] from a [`Mapping`]. Recognised keys: `scheme` (required),
+    /// `authority`, `path`, `query`, `fragment`.
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Uri, UriError> {
+        let scheme = fields.get("scheme").ok_or(UriError::MissingScheme)?;
+        if scheme.is_empty() {
+            return Err(UriError::MissingScheme);
+        }
+        if safe && !is_valid_scheme(scheme) {
+            return Err(UriError::InvalidScheme);
+        }
+        let uri = Uri {
+            scheme: scheme.clone(),
+            authority: fields.get("authority").cloned(),
+            path: fields.get("path").cloned().unwrap_or_default(),
+            query: fields.get("query").cloned(),
+            fragment: fields.get("fragment").cloned(),
+        };
+        if safe {
+            uri.validate_encoding()?;
+        }
+        Ok(uri)
+    }
+}
+
+impl Uri {
+    /// Checks that every component is well-formed percent-encoding.
+    fn validate_encoding(&self) -> Result<(), UriError> {
+        for part in [self.authority.as_deref(), Some(self.path.as_str())]
+            .into_iter()
+            .chain([self.query.as_deref(), self.fragment.as_deref()])
+            .flatten()
+        {
+            validate_percent_encoding(part)?;
+        }
+        Ok(())
     }
 
     /// The scheme, e.g. `"https"`.
@@ -166,6 +439,133 @@ impl Uri {
     }
 }
 
+/// Constructors and functional `with_*` builders.
+impl Uri {
+    /// Builds a [`Uri`] from all of its parts.
+    pub fn from_parts(
+        scheme: String,
+        authority: Option<String>,
+        path: String,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Uri {
+        Uri {
+            scheme,
+            authority,
+            path,
+            query,
+            fragment,
+        }
+    }
+
+    /// Creates a minimal [`Uri`] from a scheme and path (no authority, query or
+    /// fragment).
+    pub fn new(scheme: impl Into<String>, path: impl Into<String>) -> Uri {
+        Uri {
+            scheme: scheme.into(),
+            authority: None,
+            path: path.into(),
+            query: None,
+            fragment: None,
+        }
+    }
+
+    /// Returns a copy of this URI, overriding any component for which `Some` is
+    /// given and keeping `self`'s value otherwise. Call `copy(None, …)` to clone.
+    pub fn copy(
+        &self,
+        scheme: Option<String>,
+        authority: Option<String>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Uri {
+        Uri {
+            scheme: scheme.unwrap_or_else(|| self.scheme.clone()),
+            authority: authority.or_else(|| self.authority.clone()),
+            path: path.unwrap_or_else(|| self.path.clone()),
+            query: query.or_else(|| self.query.clone()),
+            fragment: fragment.or_else(|| self.fragment.clone()),
+        }
+    }
+
+    /// Returns a copy with the scheme replaced.
+    pub fn with_scheme(mut self, scheme: impl Into<String>) -> Uri {
+        self.scheme = scheme.into();
+        self
+    }
+
+    /// Returns a copy with the authority set.
+    pub fn with_authority(mut self, authority: impl Into<String>) -> Uri {
+        self.authority = Some(authority.into());
+        self
+    }
+
+    /// Returns a copy with the authority removed.
+    pub fn without_authority(mut self) -> Uri {
+        self.authority = None;
+        self
+    }
+
+    /// Returns a copy with the path replaced.
+    pub fn with_path(mut self, path: impl Into<String>) -> Uri {
+        self.path = path.into();
+        self
+    }
+
+    /// Returns a copy with the query set.
+    pub fn with_query(mut self, query: impl Into<String>) -> Uri {
+        self.query = Some(query.into());
+        self
+    }
+
+    /// Returns a copy with the query removed.
+    pub fn without_query(mut self) -> Uri {
+        self.query = None;
+        self
+    }
+
+    /// Returns a copy with the fragment set.
+    pub fn with_fragment(mut self, fragment: impl Into<String>) -> Uri {
+        self.fragment = Some(fragment.into());
+        self
+    }
+
+    /// Returns a copy with the fragment removed.
+    pub fn without_fragment(mut self) -> Uri {
+        self.fragment = None;
+        self
+    }
+
+    /// Returns the query parsed into a percent-decoded [`Params`] multimap.
+    /// An absent query yields an empty map.
+    pub fn params(&self) -> Params {
+        self.query
+            .as_deref()
+            .map(query_to_params)
+            .unwrap_or_default()
+    }
+
+    /// Returns a copy whose query is built from `params`, percent-encoding each
+    /// key and value. An empty map clears the query.
+    pub fn with_params(mut self, params: &Params) -> Uri {
+        self.query = if params.is_empty() {
+            None
+        } else {
+            Some(params_to_query(params))
+        };
+        self
+    }
+
+    /// Returns a copy with `key` set to `values`, adding the parameter if absent
+    /// or replacing its values if present.
+    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>) -> Uri {
+        let mut params = self.params();
+        params.insert(key.into(), values);
+        self.clone().with_params(&params)
+    }
+}
+
 impl fmt::Display for Uri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:", self.scheme)?;
@@ -183,20 +583,13 @@ impl fmt::Display for Uri {
     }
 }
 
-impl std::str::FromStr for Uri {
-    type Err = UriError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Uri::parse(s)
-    }
-}
-
 /// A URL: a [`Uri`] that always has an authority, with the authority broken out
 /// into `username`, `password`, `host` and `port`.
 ///
 /// ```
-/// use yggdryl::Url;
+/// use yggdryl::{FromInput, Url};
 ///
-/// let url = Url::parse("https://user:pw@example.com:8443/api?v=1#top").unwrap();
+/// let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top", true).unwrap();
 /// assert_eq!(url.scheme(), "https");
 /// assert_eq!(url.username(), Some("user"));
 /// assert_eq!(url.password(), Some("pw"));
@@ -216,11 +609,13 @@ pub struct Url {
     fragment: Option<String>,
 }
 
-impl Url {
+impl FromInput for Url {
+    type Err = UrlError;
+
     /// Parses a string into a [`Url`]. Requires a scheme, an authority and a
-    /// non-empty host.
-    pub fn parse(input: &str) -> Result<Url, UrlError> {
-        let uri = Uri::parse(input)?;
+    /// non-empty host. `safe` is forwarded to the underlying [`Uri`] parse.
+    fn from_str(input: &str, safe: bool) -> Result<Url, UrlError> {
+        let uri = Uri::from_str(input, safe)?;
         let authority = uri.authority.ok_or(UrlError::MissingAuthority)?;
 
         // Split optional `userinfo@` from `host[:port]`.
@@ -254,6 +649,47 @@ impl Url {
         })
     }
 
+    /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
+    /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Url, UrlError> {
+        let scheme = fields
+            .get("scheme")
+            .ok_or(UrlError::Uri(UriError::MissingScheme))?;
+        if safe && !is_valid_scheme(scheme) {
+            return Err(UrlError::Uri(UriError::InvalidScheme));
+        }
+        let host = fields
+            .get("host")
+            .filter(|h| !h.is_empty())
+            .ok_or(UrlError::MissingHost)?;
+        let port = match fields.get("port") {
+            Some(p) => Some(parse_port(p)?),
+            None => None,
+        };
+        let url = Url {
+            scheme: scheme.clone(),
+            username: fields.get("username").cloned(),
+            password: fields.get("password").cloned(),
+            host: host.clone(),
+            port,
+            path: fields.get("path").cloned().unwrap_or_default(),
+            query: fields.get("query").cloned(),
+            fragment: fields.get("fragment").cloned(),
+        };
+        if safe {
+            for part in [url.path.as_str()]
+                .into_iter()
+                .chain(url.query.as_deref())
+                .chain(url.fragment.as_deref())
+            {
+                validate_percent_encoding(part).map_err(UriError::from)?;
+            }
+        }
+        Ok(url)
+    }
+}
+
+impl Url {
     /// The scheme, e.g. `"https"`.
     pub fn scheme(&self) -> &str {
         &self.scheme
@@ -315,6 +751,198 @@ impl Url {
     }
 }
 
+/// Constructors and functional `with_*` builders.
+impl Url {
+    /// Builds a [`Url`] from all of its parts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        scheme: String,
+        username: Option<String>,
+        password: Option<String>,
+        host: String,
+        port: Option<u16>,
+        path: String,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Url {
+        Url {
+            scheme,
+            username,
+            password,
+            host,
+            port,
+            path,
+            query,
+            fragment,
+        }
+    }
+
+    /// Creates a minimal [`Url`] from a scheme and host.
+    pub fn new(scheme: impl Into<String>, host: impl Into<String>) -> Url {
+        Url {
+            scheme: scheme.into(),
+            username: None,
+            password: None,
+            host: host.into(),
+            port: None,
+            path: String::new(),
+            query: None,
+            fragment: None,
+        }
+    }
+
+    /// Returns a copy of this URL, overriding any component for which `Some` is
+    /// given and keeping `self`'s value otherwise. Call `copy(None, …)` to clone.
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy(
+        &self,
+        scheme: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+        host: Option<String>,
+        port: Option<u16>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Url {
+        Url {
+            scheme: scheme.unwrap_or_else(|| self.scheme.clone()),
+            username: username.or_else(|| self.username.clone()),
+            password: password.or_else(|| self.password.clone()),
+            host: host.unwrap_or_else(|| self.host.clone()),
+            port: port.or(self.port),
+            path: path.unwrap_or_else(|| self.path.clone()),
+            query: query.or_else(|| self.query.clone()),
+            fragment: fragment.or_else(|| self.fragment.clone()),
+        }
+    }
+
+    /// Returns a copy with the scheme replaced.
+    pub fn with_scheme(mut self, scheme: impl Into<String>) -> Url {
+        self.scheme = scheme.into();
+        self
+    }
+
+    /// Returns a copy with the username set.
+    pub fn with_username(mut self, username: impl Into<String>) -> Url {
+        self.username = Some(username.into());
+        self
+    }
+
+    /// Returns a copy with the password set.
+    pub fn with_password(mut self, password: impl Into<String>) -> Url {
+        self.password = Some(password.into());
+        self
+    }
+
+    /// Returns a copy with username and password removed.
+    pub fn without_userinfo(mut self) -> Url {
+        self.username = None;
+        self.password = None;
+        self
+    }
+
+    /// Returns a copy with the host replaced.
+    pub fn with_host(mut self, host: impl Into<String>) -> Url {
+        self.host = host.into();
+        self
+    }
+
+    /// Returns a copy with the port set.
+    pub fn with_port(mut self, port: u16) -> Url {
+        self.port = Some(port);
+        self
+    }
+
+    /// Returns a copy with the port removed.
+    pub fn without_port(mut self) -> Url {
+        self.port = None;
+        self
+    }
+
+    /// Returns a copy with the path replaced.
+    pub fn with_path(mut self, path: impl Into<String>) -> Url {
+        self.path = path.into();
+        self
+    }
+
+    /// Returns a copy with the query set.
+    pub fn with_query(mut self, query: impl Into<String>) -> Url {
+        self.query = Some(query.into());
+        self
+    }
+
+    /// Returns a copy with the query removed.
+    pub fn without_query(mut self) -> Url {
+        self.query = None;
+        self
+    }
+
+    /// Returns a copy with the fragment set.
+    pub fn with_fragment(mut self, fragment: impl Into<String>) -> Url {
+        self.fragment = Some(fragment.into());
+        self
+    }
+
+    /// Returns a copy with the fragment removed.
+    pub fn without_fragment(mut self) -> Url {
+        self.fragment = None;
+        self
+    }
+
+    /// Returns the query parsed into a percent-decoded [`Params`] multimap.
+    /// An absent query yields an empty map.
+    pub fn params(&self) -> Params {
+        self.query
+            .as_deref()
+            .map(query_to_params)
+            .unwrap_or_default()
+    }
+
+    /// Returns a copy whose query is built from `params`, percent-encoding each
+    /// key and value. An empty map clears the query.
+    pub fn with_params(mut self, params: &Params) -> Url {
+        self.query = if params.is_empty() {
+            None
+        } else {
+            Some(params_to_query(params))
+        };
+        self
+    }
+
+    /// Returns a copy with `key` set to `values`, adding the parameter if absent
+    /// or replacing its values if present.
+    pub fn add_param(&self, key: impl Into<String>, values: Vec<String>) -> Url {
+        let mut params = self.params();
+        params.insert(key.into(), values);
+        self.clone().with_params(&params)
+    }
+
+    /// Views this URL as a generic [`Uri`] — the "is-a URI" relationship, since
+    /// every [`Url`] is a [`Uri`] with a reconstructed authority.
+    pub fn to_uri(&self) -> Uri {
+        Uri {
+            scheme: self.scheme.clone(),
+            authority: Some(self.authority()),
+            path: self.path.clone(),
+            query: self.query.clone(),
+            fragment: self.fragment.clone(),
+        }
+    }
+}
+
+impl From<&Url> for Uri {
+    fn from(url: &Url) -> Uri {
+        url.to_uri()
+    }
+}
+
+impl From<Url> for Uri {
+    fn from(url: Url) -> Uri {
+        url.to_uri()
+    }
+}
+
 impl fmt::Display for Url {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}://{}", self.scheme, self.authority())?;
@@ -326,13 +954,6 @@ impl fmt::Display for Url {
             write!(f, "#{fragment}")?;
         }
         Ok(())
-    }
-}
-
-impl std::str::FromStr for Url {
-    type Err = UrlError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Url::parse(s)
     }
 }
 
@@ -386,7 +1007,7 @@ fn push_host(out: &mut String, host: &str) {
     }
 }
 
-/// Error returned when [`Version::parse`] cannot interpret its input.
+/// Error returned when [`Version::from_`] cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionError {
     /// The input was empty.
@@ -420,11 +1041,11 @@ impl std::error::Error for VersionError {}
 /// components; any that are omitted default to `0`.
 ///
 /// ```
-/// use yggdryl::Version;
+/// use yggdryl::{FromInput, Version};
 ///
-/// let v = Version::parse("1.4.2").unwrap();
+/// let v = Version::from_str("1.4.2", true).unwrap();
 /// assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
-/// assert_eq!(Version::parse("2").unwrap(), Version::new(2, 0, 0));
+/// assert_eq!(Version::from_str("2", true).unwrap(), Version::new(2, 0, 0));
 /// assert!(Version::new(1, 4, 2) < Version::new(1, 10, 0));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -444,27 +1065,6 @@ impl Version {
         }
     }
 
-    /// Parses a `major[.minor[.patch]]` string. Omitted components default to `0`.
-    pub fn parse(input: &str) -> Result<Version, VersionError> {
-        if input.is_empty() {
-            return Err(VersionError::Empty);
-        }
-        let mut parts = [0u64; 3];
-        for (index, part) in input.split('.').enumerate() {
-            if index == 3 {
-                return Err(VersionError::TooManyComponents);
-            }
-            parts[index] = part
-                .parse::<u64>()
-                .map_err(|_| VersionError::InvalidNumber(part.to_string()))?;
-        }
-        Ok(Version {
-            major: parts[0],
-            minor: parts[1],
-            patch: parts[2],
-        })
-    }
-
     /// The major component.
     pub fn major(&self) -> u64 {
         self.major
@@ -479,18 +1079,92 @@ impl Version {
     pub fn patch(&self) -> u64 {
         self.patch
     }
+
+    /// Returns a copy of this version, overriding any component for which `Some`
+    /// is given and keeping `self`'s value otherwise. Call `copy(None, …)` to
+    /// clone.
+    pub fn copy(&self, major: Option<u64>, minor: Option<u64>, patch: Option<u64>) -> Version {
+        Version {
+            major: major.unwrap_or(self.major),
+            minor: minor.unwrap_or(self.minor),
+            patch: patch.unwrap_or(self.patch),
+        }
+    }
+
+    /// Returns a copy with the major component replaced.
+    pub fn with_major(mut self, major: u64) -> Version {
+        self.major = major;
+        self
+    }
+
+    /// Returns a copy with the minor component replaced.
+    pub fn with_minor(mut self, minor: u64) -> Version {
+        self.minor = minor;
+        self
+    }
+
+    /// Returns a copy with the patch component replaced.
+    pub fn with_patch(mut self, patch: u64) -> Version {
+        self.patch = patch;
+        self
+    }
+}
+
+impl FromInput for Version {
+    type Err = VersionError;
+
+    /// Parses a `major[.minor[.patch]]` string. When `safe`, every component must
+    /// be a non-negative integer and there may be at most three; when not `safe`,
+    /// extra components are ignored and non-numeric ones become `0`.
+    fn from_str(input: &str, safe: bool) -> Result<Version, VersionError> {
+        if input.is_empty() {
+            return Err(VersionError::Empty);
+        }
+        let mut parts = [0u64; 3];
+        for (index, part) in input.split('.').enumerate() {
+            if index == 3 {
+                if safe {
+                    return Err(VersionError::TooManyComponents);
+                }
+                break;
+            }
+            parts[index] = match part.parse::<u64>() {
+                Ok(n) => n,
+                Err(_) if !safe => 0,
+                Err(_) => return Err(VersionError::InvalidNumber(part.to_string())),
+            };
+        }
+        Ok(Version {
+            major: parts[0],
+            minor: parts[1],
+            patch: parts[2],
+        })
+    }
+
+    /// Builds a [`Version`] from a [`Mapping`]. Recognised keys: `major`, `minor`
+    /// and `patch`; any omitted default to `0`.
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Version, VersionError> {
+        let component = |key: &str| -> Result<u64, VersionError> {
+            match fields.get(key) {
+                Some(value) => match value.parse::<u64>() {
+                    Ok(n) => Ok(n),
+                    Err(_) if !safe => Ok(0),
+                    Err(_) => Err(VersionError::InvalidNumber(value.clone())),
+                },
+                None => Ok(0),
+            }
+        };
+        Ok(Version {
+            major: component("major")?,
+            minor: component("minor")?,
+            patch: component("patch")?,
+        })
+    }
 }
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
-    }
-}
-
-impl std::str::FromStr for Version {
-    type Err = VersionError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Version::parse(s)
     }
 }
 
@@ -500,7 +1174,7 @@ mod tests {
 
     #[test]
     fn uri_full() {
-        let uri = Uri::parse("https://example.com/docs?page=2#intro").unwrap();
+        let uri = Uri::from_str("https://example.com/docs?page=2#intro", true).unwrap();
         assert_eq!(uri.scheme(), "https");
         assert_eq!(uri.authority(), Some("example.com"));
         assert_eq!(uri.path(), "/docs");
@@ -510,7 +1184,7 @@ mod tests {
 
     #[test]
     fn uri_without_authority() {
-        let uri = Uri::parse("mailto:alice@example.com").unwrap();
+        let uri = Uri::from_str("mailto:alice@example.com", true).unwrap();
         assert_eq!(uri.scheme(), "mailto");
         assert_eq!(uri.authority(), None);
         assert_eq!(uri.path(), "alice@example.com");
@@ -518,10 +1192,19 @@ mod tests {
 
     #[test]
     fn uri_errors() {
-        assert_eq!(Uri::parse(""), Err(UriError::Empty));
-        assert_eq!(Uri::parse("no-scheme/path"), Err(UriError::MissingScheme));
-        assert_eq!(Uri::parse(":no-scheme"), Err(UriError::MissingScheme));
-        assert_eq!(Uri::parse("1http://x"), Err(UriError::InvalidScheme));
+        assert_eq!(Uri::from_str("", true), Err(UriError::Empty));
+        assert_eq!(
+            Uri::from_str("no-scheme/path", true),
+            Err(UriError::MissingScheme)
+        );
+        assert_eq!(
+            Uri::from_str(":no-scheme", true),
+            Err(UriError::MissingScheme)
+        );
+        assert_eq!(
+            Uri::from_str("1http://x", true),
+            Err(UriError::InvalidScheme)
+        );
     }
 
     #[test]
@@ -532,13 +1215,43 @@ mod tests {
             "file:///etc/hosts",
             "urn:isbn:0451450523",
         ] {
-            assert_eq!(Uri::parse(input).unwrap().to_string(), input);
+            assert_eq!(Uri::from_str(input, true).unwrap().to_string(), input);
         }
     }
 
     #[test]
+    fn uri_unsafe_skips_scheme_validation() {
+        // An invalid scheme is rejected when safe, accepted when not.
+        assert_eq!(Uri::from_str("1http:x", true), Err(UriError::InvalidScheme));
+        assert_eq!(Uri::from_str("1http:x", false).unwrap().scheme(), "1http");
+    }
+
+    #[test]
+    fn uri_safe_validates_percent_encoding() {
+        assert!(Uri::from_str("http://h/a%zz", true).is_err());
+        // A bad escape is tolerated by the fast path.
+        assert_eq!(
+            Uri::from_str("http://h/a%zz", false).unwrap().path(),
+            "/a%zz"
+        );
+        // Well-formed escapes always pass.
+        assert!(Uri::from_str("http://h/a%20b", true).is_ok());
+    }
+
+    #[test]
+    fn uri_from_mapping() {
+        let fields = Mapping::from([
+            ("scheme".to_string(), "https".to_string()),
+            ("authority".to_string(), "example.com".to_string()),
+            ("path".to_string(), "/x".to_string()),
+        ]);
+        let uri = Uri::from_(&fields, true).unwrap();
+        assert_eq!(uri.to_string(), "https://example.com/x");
+    }
+
+    #[test]
     fn url_full() {
-        let url = Url::parse("https://user:pw@example.com:8443/api?v=1#top").unwrap();
+        let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top", true).unwrap();
         assert_eq!(url.scheme(), "https");
         assert_eq!(url.username(), Some("user"));
         assert_eq!(url.password(), Some("pw"));
@@ -551,7 +1264,7 @@ mod tests {
 
     #[test]
     fn url_minimal() {
-        let url = Url::parse("http://example.com").unwrap();
+        let url = Url::from_str("http://example.com", true).unwrap();
         assert_eq!(url.host(), "example.com");
         assert_eq!(url.port(), None);
         assert_eq!(url.username(), None);
@@ -560,7 +1273,7 @@ mod tests {
 
     #[test]
     fn url_username_only() {
-        let url = Url::parse("ftp://anon@files.example.com/pub").unwrap();
+        let url = Url::from_str("ftp://anon@files.example.com/pub", true).unwrap();
         assert_eq!(url.username(), Some("anon"));
         assert_eq!(url.password(), None);
         assert_eq!(url.host(), "files.example.com");
@@ -568,7 +1281,7 @@ mod tests {
 
     #[test]
     fn url_ipv6() {
-        let url = Url::parse("http://[::1]:8080/status").unwrap();
+        let url = Url::from_str("http://[::1]:8080/status", true).unwrap();
         assert_eq!(url.host(), "::1");
         assert_eq!(url.port(), Some(8080));
         assert_eq!(url.to_string(), "http://[::1]:8080/status");
@@ -577,16 +1290,19 @@ mod tests {
     #[test]
     fn url_errors() {
         assert_eq!(
-            Url::parse("mailto:alice@example.com"),
+            Url::from_str("mailto:alice@example.com", true),
             Err(UrlError::MissingAuthority)
         );
-        assert_eq!(Url::parse("http://user@:80"), Err(UrlError::MissingHost));
+        assert_eq!(
+            Url::from_str("http://user@:80", true),
+            Err(UrlError::MissingHost)
+        );
         assert!(matches!(
-            Url::parse("http://example.com:notaport"),
+            Url::from_str("http://example.com:notaport", true),
             Err(UrlError::InvalidPort(_))
         ));
         assert_eq!(
-            Url::parse("notauri"),
+            Url::from_str("notauri", true),
             Err(UrlError::Uri(UriError::MissingScheme))
         );
     }
@@ -599,42 +1315,88 @@ mod tests {
             "ftp://anon@files.example.com/pub",
             "http://[::1]:8080/status",
         ] {
-            assert_eq!(Url::parse(input).unwrap().to_string(), input);
+            assert_eq!(Url::from_str(input, true).unwrap().to_string(), input);
         }
     }
 
     #[test]
     fn url_authority_is_reconstructed() {
-        let url = Url::parse("https://user:pw@example.com:8443/api").unwrap();
+        let url = Url::from_str("https://user:pw@example.com:8443/api", true).unwrap();
         assert_eq!(url.authority(), "user:pw@example.com:8443");
     }
 
     #[test]
+    fn url_from_mapping() {
+        let fields = Mapping::from([
+            ("scheme".to_string(), "https".to_string()),
+            ("host".to_string(), "example.com".to_string()),
+            ("port".to_string(), "8443".to_string()),
+            ("path".to_string(), "/api".to_string()),
+        ]);
+        let url = Url::from_mapping(&fields, true).unwrap();
+        assert_eq!(url.to_string(), "https://example.com:8443/api");
+
+        let missing_host = Mapping::from([("scheme".to_string(), "https".to_string())]);
+        assert_eq!(
+            Url::from_mapping(&missing_host, true),
+            Err(UrlError::MissingHost)
+        );
+    }
+
+    #[test]
     fn version_parse_full() {
-        let v = Version::parse("1.4.2").unwrap();
+        let v = Version::from_str("1.4.2", true).unwrap();
         assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
     }
 
     #[test]
     fn version_parse_partial_defaults_to_zero() {
-        assert_eq!(Version::parse("2").unwrap(), Version::new(2, 0, 0));
-        assert_eq!(Version::parse("2.5").unwrap(), Version::new(2, 5, 0));
+        assert_eq!(Version::from_str("2", true).unwrap(), Version::new(2, 0, 0));
+        assert_eq!(
+            Version::from_str("2.5", true).unwrap(),
+            Version::new(2, 5, 0)
+        );
     }
 
     #[test]
     fn version_errors() {
-        assert_eq!(Version::parse(""), Err(VersionError::Empty));
+        assert_eq!(Version::from_str("", true), Err(VersionError::Empty));
         assert_eq!(
-            Version::parse("1.2.3.4"),
+            Version::from_str("1.2.3.4", true),
             Err(VersionError::TooManyComponents)
         );
         assert_eq!(
-            Version::parse("1.x.0"),
+            Version::from_str("1.x.0", true),
             Err(VersionError::InvalidNumber("x".to_string()))
         );
         assert_eq!(
-            Version::parse("1..0"),
+            Version::from_str("1..0", true),
             Err(VersionError::InvalidNumber(String::new()))
+        );
+    }
+
+    #[test]
+    fn version_unsafe_is_lenient() {
+        // Fast path ignores extra components and treats junk as zero.
+        assert_eq!(
+            Version::from_str("1.2.3.4", false).unwrap(),
+            Version::new(1, 2, 3)
+        );
+        assert_eq!(
+            Version::from_str("1.x.0", false).unwrap(),
+            Version::new(1, 0, 0)
+        );
+    }
+
+    #[test]
+    fn version_from_mapping() {
+        let fields = Mapping::from([
+            ("major".to_string(), "1".to_string()),
+            ("minor".to_string(), "4".to_string()),
+        ]);
+        assert_eq!(
+            Version::from_mapping(&fields, true).unwrap(),
+            Version::new(1, 4, 0)
         );
     }
 
@@ -660,7 +1422,106 @@ mod tests {
 
     #[test]
     fn version_round_trips() {
-        assert_eq!(Version::parse("1.4.2").unwrap().to_string(), "1.4.2");
-        assert_eq!(Version::parse("3").unwrap().to_string(), "3.0.0");
+        assert_eq!(
+            Version::from_str("1.4.2", true).unwrap().to_string(),
+            "1.4.2"
+        );
+        assert_eq!(Version::from_str("3", true).unwrap().to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn uri_constructors_and_builders() {
+        let uri = Uri::new("https", "/docs")
+            .with_authority("example.com")
+            .with_query("page=2")
+            .with_fragment("intro");
+        assert_eq!(uri.to_string(), "https://example.com/docs?page=2#intro");
+
+        // with_*/without_* leave the original untouched (functional style).
+        let bare = uri.clone().without_query().without_fragment();
+        assert_eq!(bare.to_string(), "https://example.com/docs");
+        assert_eq!(uri.query(), Some("page=2"));
+
+        let from_parts = Uri::from_parts("ftp".into(), Some("h".into()), "/p".into(), None, None);
+        assert_eq!(from_parts.to_string(), "ftp://h/p");
+    }
+
+    #[test]
+    fn copy_overrides_selected_fields() {
+        let uri = Uri::new("https", "/a").with_authority("h");
+        // Override one field; the rest come from `self`.
+        let moved = uri.copy(None, None, Some("/b".into()), None, None);
+        assert_eq!(moved.to_string(), "https://h/b");
+        // copy(None, …) is a plain clone.
+        assert_eq!(uri.copy(None, None, None, None, None), uri);
+
+        let v = Version::new(1, 4, 2);
+        assert_eq!(v.copy(Some(2), None, None), Version::new(2, 4, 2));
+    }
+
+    #[test]
+    fn url_constructors_and_builders() {
+        let url = Url::new("https", "example.com")
+            .with_port(8443)
+            .with_username("user")
+            .with_password("pw")
+            .with_path("/api");
+        assert_eq!(url.to_string(), "https://user:pw@example.com:8443/api");
+
+        let public = url.clone().without_userinfo().without_port();
+        assert_eq!(public.to_string(), "https://example.com/api");
+        assert_eq!(url.port(), Some(8443));
+    }
+
+    #[test]
+    fn version_builders() {
+        let v = Version::new(1, 0, 0).with_minor(4).with_patch(2);
+        assert_eq!(v, Version::new(1, 4, 2));
+        assert_eq!(v.with_major(2), Version::new(2, 4, 2));
+        assert_eq!(v, Version::new(1, 4, 2));
+    }
+
+    #[test]
+    fn params_round_trip_and_multivalue() {
+        let url = Url::from_str("https://h/p?a=1&a=2&b=hello%20world", true).unwrap();
+        let params = url.params();
+        assert_eq!(
+            params.get("a"),
+            Some(&vec!["1".to_string(), "2".to_string()])
+        );
+        assert_eq!(params.get("b"), Some(&vec!["hello world".to_string()]));
+
+        // Building a query encodes each part.
+        let built = Uri::new("https", "/p")
+            .with_params(&Params::from([("q".to_string(), vec!["a b".to_string()])]));
+        assert_eq!(built.query(), Some("q=a%20b"));
+
+        // add_param adds a new key or replaces an existing one's values.
+        let updated = built.add_param("q", vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(updated.query(), Some("q=x&q=y"));
+        let added = updated.add_param("r", vec!["1".to_string()]);
+        assert_eq!(added.query(), Some("q=x&q=y&r=1"));
+    }
+
+    #[test]
+    fn url_is_a_uri() {
+        let url = Url::from_str("https://user@h:8443/p?x=1#f", true).unwrap();
+        let uri: Uri = url.to_uri();
+        assert_eq!(uri.scheme(), "https");
+        assert_eq!(uri.authority(), Some("user@h:8443"));
+        assert_eq!(uri.path(), "/p");
+        assert_eq!(uri.to_string(), "https://user@h:8443/p?x=1#f");
+        // `From` conversions are available too.
+        let via_from = Uri::from(&url);
+        assert_eq!(via_from, uri);
+    }
+
+    #[test]
+    fn percent_encode_decode_round_trip() {
+        assert_eq!(percent_encode("a b/c?d"), "a%20b%2Fc%3Fd");
+        assert_eq!(percent_decode("a%20b%2Fc%3Fd").unwrap(), "a b/c?d");
+        assert_eq!(percent_encode("safe-._~"), "safe-._~");
+        assert!(percent_decode("%zz").is_err());
+        assert!(percent_decode("%2").is_err());
     }
 }

@@ -4,9 +4,31 @@
 //! all parsing lives in the shared Rust core so the Node and Python bindings stay
 //! in lockstep.
 
+use std::collections::HashMap;
+
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{Uri as CoreUri, Url as CoreUrl, Version as CoreVersion};
+use yggdryl_core::{
+    percent_decode, percent_encode, FromInput, Mapping, Uri as CoreUri, Url as CoreUrl,
+    Version as CoreVersion,
+};
+
+/// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
+fn to_mapping(fields: HashMap<String, String>) -> Mapping {
+    fields.into_iter().collect()
+}
+
+/// URL-safe percent-encode `input` (e.g. a space becomes `%20`).
+#[napi(js_name = "percentEncode")]
+pub fn percent_encode_js(input: String) -> String {
+    percent_encode(&input)
+}
+
+/// Percent-decode `input`, throwing on a malformed escape.
+#[napi(js_name = "percentDecode")]
+pub fn percent_decode_js(input: String) -> Result<String> {
+    percent_decode(&input).map_err(|e| Error::from_reason(e.to_string()))
+}
 
 /// A generic RFC 3986 URI: `scheme:[//authority]path[?query][#fragment]`.
 #[napi]
@@ -16,18 +38,153 @@ pub struct Uri {
 
 #[napi]
 impl Uri {
-    /// Parse `value` into a `Uri`, throwing on failure.
+    /// Parse `value` into a `Uri`, throwing on failure. With `safe = false` the
+    /// scheme and `%XX` escapes are not validated.
     #[napi(constructor)]
-    pub fn new(value: String) -> Result<Self> {
-        CoreUri::parse(&value)
+    pub fn new(value: String, safe: Option<bool>) -> Result<Self> {
+        CoreUri::from_str(&value, safe.unwrap_or(true))
             .map(|inner| Uri { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
-    /// Alias for the constructor.
-    #[napi(factory)]
-    pub fn parse(value: String) -> Result<Self> {
-        Uri::new(value)
+    /// Parse a string (alias of the constructor).
+    #[napi(factory, js_name = "fromStr")]
+    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
+        Uri::new(value, safe)
+    }
+
+    /// Build a `Uri` from an object of components (`scheme`, `authority`, `path`,
+    /// `query`, `fragment`).
+    #[napi(factory, js_name = "fromMapping")]
+    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
+        CoreUri::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+            .map(|inner| Uri { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Build a `Uri` directly from its parts (no string parsing).
+    #[napi(factory, js_name = "fromParts")]
+    pub fn from_parts(
+        scheme: String,
+        path: Option<String>,
+        authority: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Uri {
+            inner: CoreUri::from_parts(
+                scheme,
+                authority,
+                path.unwrap_or_default(),
+                query,
+                fragment,
+            ),
+        }
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    /// `copy()` clones; `copy(null, null, '/x')` clones with one field changed.
+    #[napi]
+    pub fn copy(
+        &self,
+        scheme: Option<String>,
+        authority: Option<String>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Uri {
+        Uri {
+            inner: self.inner.copy(scheme, authority, path, query, fragment),
+        }
+    }
+
+    /// Return a copy with the scheme replaced.
+    #[napi(js_name = "withScheme")]
+    pub fn with_scheme(&self, scheme: String) -> Uri {
+        Uri {
+            inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Return a copy with the authority set.
+    #[napi(js_name = "withAuthority")]
+    pub fn with_authority(&self, authority: String) -> Uri {
+        Uri {
+            inner: self.inner.clone().with_authority(authority),
+        }
+    }
+
+    /// Return a copy with the authority removed.
+    #[napi(js_name = "withoutAuthority")]
+    pub fn without_authority(&self) -> Uri {
+        Uri {
+            inner: self.inner.clone().without_authority(),
+        }
+    }
+
+    /// Return a copy with the path replaced.
+    #[napi(js_name = "withPath")]
+    pub fn with_path(&self, path: String) -> Uri {
+        Uri {
+            inner: self.inner.clone().with_path(path),
+        }
+    }
+
+    /// Return a copy with the query set.
+    #[napi(js_name = "withQuery")]
+    pub fn with_query(&self, query: String) -> Uri {
+        Uri {
+            inner: self.inner.clone().with_query(query),
+        }
+    }
+
+    /// Return a copy with the query removed.
+    #[napi(js_name = "withoutQuery")]
+    pub fn without_query(&self) -> Uri {
+        Uri {
+            inner: self.inner.clone().without_query(),
+        }
+    }
+
+    /// Return a copy with the fragment set.
+    #[napi(js_name = "withFragment")]
+    pub fn with_fragment(&self, fragment: String) -> Uri {
+        Uri {
+            inner: self.inner.clone().with_fragment(fragment),
+        }
+    }
+
+    /// Return a copy with the fragment removed.
+    #[napi(js_name = "withoutFragment")]
+    pub fn without_fragment(&self) -> Uri {
+        Uri {
+            inner: self.inner.clone().without_fragment(),
+        }
+    }
+
+    /// Return the query parsed into a percent-decoded object of key → values.
+    #[napi(js_name = "params")]
+    pub fn params(&self) -> HashMap<String, Vec<String>> {
+        self.inner.params().into_iter().collect()
+    }
+
+    /// Return a copy whose query is built from `params` (percent-encoded).
+    #[napi(js_name = "withParams")]
+    pub fn with_params(&self, params: HashMap<String, Vec<String>>) -> Uri {
+        Uri {
+            inner: self
+                .inner
+                .clone()
+                .with_params(&params.into_iter().collect()),
+        }
+    }
+
+    /// Return a copy with `key` set to `values`, adding or replacing it.
+    #[napi(js_name = "addParam")]
+    pub fn add_param(&self, key: String, values: Vec<String>) -> Uri {
+        Uri {
+            inner: self.inner.add_param(key, values),
+        }
     }
 
     #[napi(getter)]
@@ -70,18 +227,206 @@ pub struct Url {
 
 #[napi]
 impl Url {
-    /// Parse `value` into a `Url`, throwing on failure.
+    /// Parse `value` into a `Url`, throwing on failure. With `safe = false` the
+    /// scheme and `%XX` escapes are not validated.
     #[napi(constructor)]
-    pub fn new(value: String) -> Result<Self> {
-        CoreUrl::parse(&value)
+    pub fn new(value: String, safe: Option<bool>) -> Result<Self> {
+        CoreUrl::from_str(&value, safe.unwrap_or(true))
             .map(|inner| Url { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
-    /// Alias for the constructor.
-    #[napi(factory)]
-    pub fn parse(value: String) -> Result<Self> {
-        Url::new(value)
+    /// Parse a string (alias of the constructor).
+    #[napi(factory, js_name = "fromStr")]
+    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
+        Url::new(value, safe)
+    }
+
+    /// Build a `Url` from an object of components (`scheme` and `host` required;
+    /// `username`, `password`, `port`, `path`, `query`, `fragment`).
+    #[napi(factory, js_name = "fromMapping")]
+    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
+        CoreUrl::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+            .map(|inner| Url { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Build a `Url` directly from its parts (no string parsing).
+    #[napi(factory, js_name = "fromParts")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        scheme: String,
+        host: String,
+        port: Option<u16>,
+        username: Option<String>,
+        password: Option<String>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Url {
+            inner: CoreUrl::from_parts(
+                scheme,
+                username,
+                password,
+                host,
+                port,
+                path.unwrap_or_default(),
+                query,
+                fragment,
+            ),
+        }
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    /// `copy()` clones; `copy(null, …, 443)` clones with one field changed.
+    #[napi]
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy(
+        &self,
+        scheme: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+        host: Option<String>,
+        port: Option<u16>,
+        path: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Url {
+        Url {
+            inner: self.inner.copy(
+                scheme, username, password, host, port, path, query, fragment,
+            ),
+        }
+    }
+
+    /// Return a copy with the scheme replaced.
+    #[napi(js_name = "withScheme")]
+    pub fn with_scheme(&self, scheme: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Return a copy with the username set.
+    #[napi(js_name = "withUsername")]
+    pub fn with_username(&self, username: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_username(username),
+        }
+    }
+
+    /// Return a copy with the password set.
+    #[napi(js_name = "withPassword")]
+    pub fn with_password(&self, password: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_password(password),
+        }
+    }
+
+    /// Return a copy with username and password removed.
+    #[napi(js_name = "withoutUserinfo")]
+    pub fn without_userinfo(&self) -> Url {
+        Url {
+            inner: self.inner.clone().without_userinfo(),
+        }
+    }
+
+    /// Return a copy with the host replaced.
+    #[napi(js_name = "withHost")]
+    pub fn with_host(&self, host: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_host(host),
+        }
+    }
+
+    /// Return a copy with the port set.
+    #[napi(js_name = "withPort")]
+    pub fn with_port(&self, port: u16) -> Url {
+        Url {
+            inner: self.inner.clone().with_port(port),
+        }
+    }
+
+    /// Return a copy with the port removed.
+    #[napi(js_name = "withoutPort")]
+    pub fn without_port(&self) -> Url {
+        Url {
+            inner: self.inner.clone().without_port(),
+        }
+    }
+
+    /// Return a copy with the path replaced.
+    #[napi(js_name = "withPath")]
+    pub fn with_path(&self, path: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_path(path),
+        }
+    }
+
+    /// Return a copy with the query set.
+    #[napi(js_name = "withQuery")]
+    pub fn with_query(&self, query: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_query(query),
+        }
+    }
+
+    /// Return a copy with the query removed.
+    #[napi(js_name = "withoutQuery")]
+    pub fn without_query(&self) -> Url {
+        Url {
+            inner: self.inner.clone().without_query(),
+        }
+    }
+
+    /// Return a copy with the fragment set.
+    #[napi(js_name = "withFragment")]
+    pub fn with_fragment(&self, fragment: String) -> Url {
+        Url {
+            inner: self.inner.clone().with_fragment(fragment),
+        }
+    }
+
+    /// Return a copy with the fragment removed.
+    #[napi(js_name = "withoutFragment")]
+    pub fn without_fragment(&self) -> Url {
+        Url {
+            inner: self.inner.clone().without_fragment(),
+        }
+    }
+
+    /// Return the query parsed into a percent-decoded object of key → values.
+    #[napi(js_name = "params")]
+    pub fn params(&self) -> HashMap<String, Vec<String>> {
+        self.inner.params().into_iter().collect()
+    }
+
+    /// Return a copy whose query is built from `params` (percent-encoded).
+    #[napi(js_name = "withParams")]
+    pub fn with_params(&self, params: HashMap<String, Vec<String>>) -> Url {
+        Url {
+            inner: self
+                .inner
+                .clone()
+                .with_params(&params.into_iter().collect()),
+        }
+    }
+
+    /// Return a copy with `key` set to `values`, adding or replacing it.
+    #[napi(js_name = "addParam")]
+    pub fn add_param(&self, key: String, values: Vec<String>) -> Url {
+        Url {
+            inner: self.inner.add_param(key, values),
+        }
+    }
+
+    /// Return this URL viewed as a generic `Uri`.
+    #[napi(js_name = "toUri")]
+    pub fn to_uri(&self) -> Uri {
+        Uri {
+            inner: self.inner.to_uri(),
+        }
     }
 
     #[napi(getter)]
@@ -151,12 +496,57 @@ impl Version {
         }
     }
 
-    /// Parse a `major[.minor[.patch]]` string, throwing on failure.
-    #[napi(factory)]
-    pub fn parse(value: String) -> Result<Self> {
-        CoreVersion::parse(&value)
+    /// Parse a `major[.minor[.patch]]` string, throwing on failure. With
+    /// `safe = false` extra components are ignored and junk becomes `0`.
+    #[napi(factory, js_name = "fromStr")]
+    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
+        CoreVersion::from_str(&value, safe.unwrap_or(true))
             .map(|inner| Version { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Build a `Version` from an object of components (`major`, `minor`, `patch`).
+    #[napi(factory, js_name = "fromMapping")]
+    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
+        CoreVersion::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+            .map(|inner| Version { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Return a copy, overriding any component passed and keeping the rest.
+    #[napi]
+    pub fn copy(&self, major: Option<u32>, minor: Option<u32>, patch: Option<u32>) -> Version {
+        Version {
+            inner: self.inner.copy(
+                major.map(u64::from),
+                minor.map(u64::from),
+                patch.map(u64::from),
+            ),
+        }
+    }
+
+    /// Return a copy with the major component replaced.
+    #[napi(js_name = "withMajor")]
+    pub fn with_major(&self, major: u32) -> Version {
+        Version {
+            inner: self.inner.with_major(major as u64),
+        }
+    }
+
+    /// Return a copy with the minor component replaced.
+    #[napi(js_name = "withMinor")]
+    pub fn with_minor(&self, minor: u32) -> Version {
+        Version {
+            inner: self.inner.with_minor(minor as u64),
+        }
+    }
+
+    /// Return a copy with the patch component replaced.
+    #[napi(js_name = "withPatch")]
+    pub fn with_patch(&self, patch: u32) -> Version {
+        Version {
+            inner: self.inner.with_patch(patch as u64),
+        }
     }
 
     #[napi(getter)]

@@ -2,25 +2,35 @@
 
 The pure-Rust core of [**yggdryl**](https://github.com/Platob/yggdryl).
 
-It implements a hierarchical, path-addressed tree (`Tree`) where each node may
-carry an optional numeric value and any number of named children. The tree can
-also be exchanged as an [Apache Arrow](https://arrow.apache.org/) `RecordBatch`
-or IPC stream. The Python and Node extensions in the wider project are thin
-wrappers around this crate, so the behaviour is identical in every language.
+It provides small, dependency-free value types — [`Uri`], [`Url`] and
+[`Version`] — a generic [`FromInput`] trait, multi-valued query `params`, and
+URL-safe percent-encoding helpers. The Python and Node extensions in the wider
+project are thin wrappers around this crate, so behaviour is identical in every
+language.
 
 ```rust
-use yggdryl::Tree;
+use yggdryl::{FromInput, Params, Uri, Url, Version, percent_encode};
 
-let mut tree = Tree::new();
-tree.insert("roots/urdr", 1.0);
-tree.insert("roots/verdandi", 2.0);
-tree.insert("roots/skuld", 3.0);
+// `from_str(value, safe)` — safe = full validation, false = fast/lenient.
+let uri = Uri::from_str("https://example.com/a%20b?p=2#intro", true).unwrap();
+assert_eq!(uri.scheme(), "https");
 
-assert_eq!(tree.get("roots/urdr"), Some(1.0));
-assert_eq!(tree.sum(), 6.0);
-assert_eq!(tree.count(), 4); // 3 leaves + the `roots` branch
+let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2", true).unwrap();
+assert_eq!(url.host(), "example.com");
+assert_eq!(url.port(), Some(8443));
 
-// Columnar Arrow interchange:
-let batch = tree.to_record_batch();
-assert_eq!(batch.num_rows(), 3);
+// Multi-valued query params (key -> list of values), percent-decoded.
+assert_eq!(url.params().get("a"), Some(&vec!["1".into(), "2".into()]));
+
+// Functional builders leave the original untouched.
+let bumped = url.add_param("page", vec!["2".into()]);
+
+// Construct from parts (no string building) and view a Url as a Uri.
+let made = Url::new("https", "example.com").with_port(443).with_path("/x");
+let as_uri: Uri = made.to_uri();
+
+// Every Version is a `major.minor.patch`; ordering is numeric.
+assert!(Version::from_str("1.4.2", true).unwrap() < Version::from_str("1.10.0", true).unwrap());
+
+assert_eq!(percent_encode("a b"), "a%20b");
 ```
