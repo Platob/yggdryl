@@ -108,12 +108,23 @@ portable source; the Python wheels and Node addons are built per-OS by the
 
 ## Publishing
 
-Each language ships from its own manifest:
+Publishing is automated by `.github/workflows/release.yml`. Pushing a version
+tag builds the per-OS artifacts and publishes to all three registries:
 
-- **Rust** → `cargo publish -p yggdryl` (crates.io) — one portable source crate.
-- **Python** → wheels built per-OS with maturin, then `maturin publish` /
-  `twine upload` (PyPI).
-- **Node** → `napi build` per-OS, then `npm publish` from `bindings/node` (npm).
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+(`workflow_dispatch` runs the build only, so you can dry-run the artifacts
+without publishing.) It needs three repository secrets — Settings → Secrets and
+variables → Actions:
+
+| Secret | Registry |
+| --- | --- |
+| `CARGO_REGISTRY_TOKEN` | crates.io — the `yggdryl` core crate |
+| `PYPI_API_TOKEN` | PyPI — Linux + Windows wheels (+ sdist) |
+| `NPM_TOKEN` | npm — the `yggdryl` addon (both `.node` files bundled) |
 
 ## License
 
