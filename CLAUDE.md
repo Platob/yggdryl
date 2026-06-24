@@ -17,6 +17,27 @@ looking at from the shape of the code.
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.
 
+### One module per type, everywhere
+
+Code is organised the same way in every language: **one file per type**, with a
+small glue file tying them together. Don't grow a single big file.
+
+- Rust: one crate per concern (`yggdryl-core`, `yggdryl-version`, `yggdryl-url`).
+- Each binding: `src/uri.rs`, `src/url.rs`, `src/version.rs` per type, with
+  `src/lib.rs` holding only shared helpers (error conversion, `hash_str`,
+  percent-encoding free functions) and the module registration. Per-type
+  wrappers keep their `inner` field `pub(crate)` so sibling modules can convert.
+
+### Cross-language replication rule
+
+The Rust core is the source of truth, but the languages move together. **When you
+add or change behaviour in Rust, immediately replicate it in the Python and Node
+extensions; when you change an extension, fold the behaviour back into the Rust
+core and the other extension.** Adapt to each language's idioms (Python dunders /
+keyword defaults, JS camelCase / `Option<bool>` defaults) but keep the surface
+and semantics identical, so the three codebases stay coherent and a change is
+never half-applied.
+
 ## Naming conventions (cross-language)
 
 These names are identical in Rust, Python and JS (JS uses camelCase):
