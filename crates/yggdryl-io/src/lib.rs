@@ -532,6 +532,18 @@ pub trait Io: ReadBytes + Seek + fmt::Debug + Send + Sync {
         Mode::Read
     }
 
+    /// Whether the cursor advances on the Python-style read helpers. Defaults to
+    /// `true` (streaming); backends with a togglable cursor override it.
+    fn stream(&self) -> bool {
+        true
+    }
+
+    /// Sets the [`stream`](Io::stream) flag. The default is a no-op (a backend
+    /// without a togglable cursor stays streaming).
+    fn set_stream(&mut self, stream: bool) {
+        let _ = stream;
+    }
+
     /// The handle this one was [`open`](Io::open)ed from, if any — its provenance.
     /// Defaults to `None` (a root handle).
     fn parent(&self) -> Option<&dyn Io> {
@@ -684,6 +696,31 @@ pub fn copy<S: Io + ?Sized>(src: &mut S, dst: &mut dyn WriteBytes) -> Result<u64
     src.copy_to(dst)
 }
 
+/// Reads `data[cursor..end]` (clamped) as an owned vector, advancing `cursor` by
+/// the count read when `advance` (so a cursor past the end stays put). Shared by
+/// the Python-style `read` helpers of [`BytesIO`] and [`LocalPath`], so both
+/// behave identically with streaming on or off.
+fn read_cursor(data: &[u8], cursor: &mut usize, end: usize, advance: bool) -> Vec<u8> {
+    let start = (*cursor).min(data.len());
+    let end = end.clamp(start, data.len());
+    if advance {
+        *cursor += end - start;
+    }
+    data[start..end].to_vec()
+}
+
+/// Reads from `cursor` through the next `\n` (inclusive) or to the end of `data`,
+/// advancing `cursor` when `advance`. Shared `read_line` for [`BytesIO`] and
+/// [`LocalPath`].
+fn read_line_cursor(data: &[u8], cursor: &mut usize, advance: bool) -> Vec<u8> {
+    let start = (*cursor).min(data.len());
+    let end = data[start..]
+        .iter()
+        .position(|&byte| byte == b'\n')
+        .map_or(data.len(), |offset| start + offset + 1);
+    read_cursor(data, cursor, end, advance)
+}
+
 /// A simple in-memory byte buffer with a cursor, modelled on Python's
 /// `io.BytesIO`: it is both a [`ReadBytes`] source and a [`WriteBytes`] sink and
 /// a full [`Io`] handle, so it plugs straight into any [`Codec`] and exposes its
@@ -758,10 +795,20 @@ impl BytesIO {
     /// [`ReadWrite`](Mode::ReadWrite) copy the bytes with the cursor at the start.
     pub fn open(self, mode: Mode, stream: bool) -> BytesIO {
         log_event!(debug, "BytesIO::open mode={mode} stream={stream}");
+        let bytes = self.buffer.clone();
+        BytesIO::derived(bytes, mode, stream, Box::new(self))
+    }
+
+    /// Builds a derived in-memory handle over `bytes`, applying `mode`
+    /// ([`Write`](Mode::Write) truncates, [`Append`](Mode::Append) seeks to the
+    /// end, otherwise the cursor starts at `0`) and `stream`, with `parent`
+    /// recorded. Shared by [`open`](BytesIO::open) and [`LocalPath`]'s
+    /// [`Io::open`].
+    fn derived(bytes: Vec<u8>, mode: Mode, stream: bool, parent: Box<dyn Io>) -> BytesIO {
         let buffer = if mode == Mode::Write {
             Vec::new()
         } else {
-            self.buffer.clone()
+            bytes
         };
         let position = if mode == Mode::Append {
             buffer.len()
@@ -773,7 +820,7 @@ impl BytesIO {
             position,
             stream,
             mode,
-            parent: Some(Box::new(self)),
+            parent: Some(parent),
         }
     }
 
@@ -823,18 +870,13 @@ impl BytesIO {
             Some(n) => self.position.saturating_add(n),
             None => self.buffer.len(),
         };
-        self.take(end, self.stream)
+        read_cursor(&self.buffer, &mut self.position, end, self.stream)
     }
 
     /// Reads from the cursor through the next `\n` (inclusive), or to the end of
     /// the buffer. Advances the cursor when [`stream`](BytesIO::stream).
     pub fn read_line(&mut self) -> Vec<u8> {
-        let start = self.position.min(self.buffer.len());
-        let end = self.buffer[start..]
-            .iter()
-            .position(|&byte| byte == b'\n')
-            .map_or(self.buffer.len(), |offset| start + offset + 1);
-        self.take(end, self.stream)
+        read_line_cursor(&self.buffer, &mut self.position, self.stream)
     }
 
     /// Writes `bytes` at the cursor, overwriting any overlap and extending (zero-
@@ -901,18 +943,6 @@ impl BytesIO {
     /// No-op flush, present for parity with Python's `io` API.
     pub fn flush(&mut self) {}
 
-    /// Reads `[cursor..end]` (clamped to the buffer) as an owned vector, advancing
-    /// the cursor by the count actually read when `advance` (so a cursor seeked
-    /// past the end stays put, as in Python). Shared by the read helpers.
-    fn take(&mut self, end: usize, advance: bool) -> Vec<u8> {
-        let start = self.position.min(self.buffer.len());
-        let end = end.clamp(start, self.buffer.len());
-        if advance {
-            self.position += end - start;
-        }
-        self.buffer[start..end].to_vec()
-    }
-
     /// Writes `bytes` at the cursor, zero-filling any gap and extending as needed,
     /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write)
     /// and the [`WriteBytes`] primitive.
@@ -976,6 +1006,14 @@ impl Io for BytesIO {
 
     fn mode(&self) -> Mode {
         self.mode
+    }
+
+    fn stream(&self) -> bool {
+        self.stream
+    }
+
+    fn set_stream(&mut self, stream: bool) {
+        self.stream = stream;
     }
 
     fn parent(&self) -> Option<&dyn Io> {
@@ -1150,6 +1188,7 @@ pub struct LocalPath {
     stats: IoStats,
     backing: std::sync::OnceLock<Backing>,
     position: usize,
+    stream: bool,
     #[cfg(feature = "media")]
     media: std::sync::OnceLock<Option<yggdryl_media::MediaType>>,
 }
@@ -1169,9 +1208,84 @@ impl LocalPath {
             stats,
             backing: std::sync::OnceLock::new(),
             position: 0,
+            stream: true,
             #[cfg(feature = "media")]
             media: std::sync::OnceLock::new(),
         }
+    }
+
+    /// The lazily memory-mapped (or buffered) bytes, loaded on first access.
+    fn bytes(&self) -> &[u8] {
+        self.backing
+            .get_or_init(|| load_backing(&self.location, &self.stats))
+            .bytes()
+    }
+
+    /// Whether the Python-style [`read`](LocalPath::read) / [`read_line`](LocalPath::read_line)
+    /// helpers advance the cursor (the same flag as [`BytesIO::stream`]).
+    pub fn stream(&self) -> bool {
+        self.stream
+    }
+
+    /// Sets the [`stream`](LocalPath::stream) flag.
+    pub fn set_stream(&mut self, stream: bool) {
+        self.stream = stream;
+    }
+
+    /// The current cursor position.
+    pub fn tell(&self) -> usize {
+        self.position
+    }
+
+    /// The total number of bytes, regardless of the cursor.
+    pub fn len(&self) -> usize {
+        self.stats.size() as usize
+    }
+
+    /// Whether the file holds no bytes.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The number of bytes between the cursor and the end.
+    pub fn remaining(&self) -> usize {
+        self.len().saturating_sub(self.position)
+    }
+
+    /// Borrows the whole (lazily-mapped) contents, ignoring the cursor.
+    pub fn getvalue(&self) -> &[u8] {
+        self.bytes()
+    }
+
+    /// Reads up to `size` bytes from the cursor, or all remaining bytes when
+    /// `size` is `None`. Advances the cursor when [`stream`](LocalPath::stream) —
+    /// matching [`BytesIO::read`].
+    pub fn read(&mut self, size: Option<usize>) -> Vec<u8> {
+        let data = self
+            .backing
+            .get_or_init(|| load_backing(&self.location, &self.stats));
+        let bytes = data.bytes();
+        let end = match size {
+            Some(n) => self.position.saturating_add(n),
+            None => bytes.len(),
+        };
+        read_cursor(bytes, &mut self.position, end, self.stream)
+    }
+
+    /// Reads from the cursor through the next `\n` (inclusive), or to the end.
+    /// Advances the cursor when [`stream`](LocalPath::stream).
+    pub fn read_line(&mut self) -> Vec<u8> {
+        let bytes = self
+            .backing
+            .get_or_init(|| load_backing(&self.location, &self.stats))
+            .bytes();
+        read_line_cursor(bytes, &mut self.position, self.stream)
+    }
+
+    /// Moves the cursor to `offset` relative to `whence`, returning the new
+    /// position — matching [`BytesIO::seek`].
+    pub fn seek(&mut self, offset: i64, whence: Whence) -> Result<usize, IoError> {
+        Seek::seek(self, offset, whence).map(|position| position as usize)
     }
 
     /// Writes `bytes` to this path, creating or truncating the file and
@@ -1264,6 +1378,22 @@ impl Io for LocalPath {
             return Ok(stats.with_media_type(media_type));
         }
         Ok(stats)
+    }
+
+    fn stream(&self) -> bool {
+        self.stream
+    }
+
+    fn set_stream(&mut self, stream: bool) {
+        self.stream = stream;
+    }
+
+    /// Opens an in-memory [`BytesIO`] handle over this file's bytes, recording the
+    /// path as its [`parent`](Io::parent) and applying `mode` / `stream` — so a
+    /// `LocalPath` and a `BytesIO` `open` the same way.
+    fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
+        let bytes = self.as_slice().unwrap_or_default().to_vec();
+        Ok(Box::new(BytesIO::derived(bytes, mode, stream, self)))
     }
 
     fn as_slice(&self) -> Option<&[u8]> {
@@ -1993,6 +2123,80 @@ mod tests {
         // A second write into the now-existing tree still succeeds.
         LocalPath::open(&nested).write(b"again").unwrap();
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    // --- Parity: BytesIO and LocalPath behave the same for `stream` and `open` ---
+
+    /// Asserts the Python-style `read` respects the `stream` flag the same way for
+    /// any handle: streaming advances the cursor, non-streaming leaves it put.
+    /// `$make` rebuilds a fresh handle over `b"abcdef"` each time it is used.
+    macro_rules! assert_stream_parity {
+        ($make:expr) => {{
+            // Streaming (the default): each read advances the cursor.
+            let mut io = $make;
+            assert!(io.stream());
+            assert_eq!(io.read(Some(3)), b"abc");
+            assert_eq!(io.tell(), 3);
+            assert_eq!(io.read(None), b"def");
+            assert_eq!(io.tell(), 6);
+
+            // Non-streaming: the cursor stays put, so reads repeat.
+            let mut io = $make;
+            io.set_stream(false);
+            assert!(!io.stream());
+            assert_eq!(io.read(Some(3)), b"abc");
+            assert_eq!(io.read(Some(3)), b"abc");
+            assert_eq!(io.tell(), 0);
+            // read_line is governed by the same flag.
+            assert_eq!(io.read_line(), b"abcdef");
+            assert_eq!(io.tell(), 0);
+        }};
+    }
+
+    /// Asserts `open` derives a child the same way for any handle: the mode shapes
+    /// the bytes (Write truncates, Append seeks to the end, Read keeps them), and
+    /// the child carries the `stream` flag and a parent.
+    macro_rules! assert_open_parity {
+        ($make:expr) => {{
+            // Read open: child keeps the bytes, carries stream=false and a parent.
+            let child = Io::open(Box::new($make), Mode::Read, false).unwrap();
+            assert_eq!(child.mode(), Mode::Read);
+            assert!(!child.stream());
+            assert_eq!(child.as_slice(), Some(&b"abcdef"[..]));
+            assert!(child.parent().is_some());
+
+            // Write open truncates the child.
+            let child = Io::open(Box::new($make), Mode::Write, true).unwrap();
+            assert_eq!(child.mode(), Mode::Write);
+            assert!(child.stream());
+            assert_eq!(child.as_slice(), Some(&[][..]));
+
+            // Append open keeps the bytes with the cursor at the end.
+            let child = Io::open(Box::new($make), Mode::Append, true).unwrap();
+            assert_eq!(child.mode(), Mode::Append);
+            assert_eq!(Seek::stream_position(&*child), 6);
+            assert_eq!(child.as_slice(), Some(&b"abcdef"[..]));
+        }};
+    }
+
+    #[test]
+    fn bytesio_and_localpath_stream_parity() {
+        assert_stream_parity!(BytesIO::from_bytes(b"abcdef".to_vec()));
+
+        let path = temp_file("stream_parity");
+        LocalPath::open(&path).write(b"abcdef").unwrap();
+        assert_stream_parity!(LocalPath::open(&path));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn bytesio_and_localpath_open_parity() {
+        assert_open_parity!(BytesIO::from_bytes(b"abcdef".to_vec()));
+
+        let path = temp_file("open_parity");
+        LocalPath::open(&path).write(b"abcdef").unwrap();
+        assert_open_parity!(LocalPath::open(&path));
+        std::fs::remove_file(&path).ok();
     }
 
     /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as

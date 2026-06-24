@@ -30,7 +30,9 @@ same handle.
   failing — a missing path reports `kind == Missing`) and memory-maps the file
   *lazily* on first read (zero-copy under the `mmap` feature). Its instance
   `write` auto-creates missing parent dirs *lazily* (only after a `NotFound`
-  failure, then retry — never a stat up front).
+  failure, then retry — never a stat up front). It shares `BytesIO`'s `stream`
+  flag, Python-style `read`/`read_line` and `open` semantics, so the two behave
+  identically.
 - `RemotePath: Io` — the URL-addressed cloud sibling (flat keys, no dir
   creation). Concrete S3 / Azure paths are downstream crates implementing it.
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`

@@ -2,16 +2,18 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::{Io, LocalPath as CoreLocalPath, Path, Seek, Whence};
+use yggdryl_io::{BytesIO as CoreBytesIO, Io, LocalPath as CoreLocalPath, Mode, Path};
 
+use crate::bytesio::BytesIO;
 use crate::iostats::IoStats;
 use crate::media::MediaType;
 use crate::url::Url;
 use crate::whence_from;
 
-/// A local filesystem path opened as a byte-IO handle, memory-mapped for
-/// zero-copy direct access. Positional (`pread`) and streamed (`read`) access
-/// share one cursor; `stats` and `mediaType` expose metadata.
+/// A local filesystem path opened as a byte-IO handle, memory-mapped lazily.
+/// Positional (`pread`) and streamed (`read`) access share one cursor; the
+/// `stream` flag toggles whether `read` advances it (as in `BytesIO`). `stats` /
+/// `mediaType` expose metadata.
 #[napi(js_name = "LocalPath")]
 pub struct LocalPath {
     pub(crate) inner: CoreLocalPath,
@@ -27,12 +29,6 @@ impl LocalPath {
         LocalPath {
             inner: CoreLocalPath::open(&location),
         }
-    }
-
-    /// Alias for the constructor.
-    #[napi(factory)]
-    pub fn open(location: String) -> LocalPath {
-        LocalPath::new(location)
     }
 
     /// Write `data` to this path on disk, auto-creating missing parent
@@ -58,27 +54,39 @@ impl LocalPath {
         self.inner.mode().as_str().to_owned()
     }
 
-    /// Read up to `size` bytes from the cursor; omit `size` or pass a negative
-    /// value to read all remaining bytes. Advances the cursor.
+    /// Whether `read` advances the cursor (the same flag as `BytesIO.stream`).
+    #[napi(getter)]
+    pub fn stream(&self) -> bool {
+        self.inner.stream()
+    }
+
+    #[napi(setter)]
+    pub fn set_stream(&mut self, value: bool) {
+        self.inner.set_stream(value);
+    }
+
+    /// Open an in-memory `BytesIO` over this file's bytes, applying `mode`
+    /// (default `"r"`) and `stream` (default `true`) — a `LocalPath` and a
+    /// `BytesIO` open the same way.
     #[napi]
-    pub fn read(&mut self, size: Option<i32>) -> Result<Buffer> {
-        let remaining = (self
-            .inner
-            .stats()
-            .map_err(|e| Error::from_reason(e.to_string()))?
-            .size()
-            - self.inner.stream_position()) as usize;
-        let size = match size {
-            Some(n) if n >= 0 => (n as usize).min(remaining),
-            _ => remaining,
-        };
-        let mut buf = vec![0u8; size];
-        let count = self
-            .inner
-            .pread(&mut buf, 0, Whence::Current)
+    pub fn open(&self, mode: Option<String>, stream: Option<bool>) -> Result<BytesIO> {
+        let mode = Mode::from_str(mode.as_deref().unwrap_or("r"))
             .map_err(|e| Error::from_reason(e.to_string()))?;
-        buf.truncate(count);
-        Ok(Buffer::from(buf))
+        let parent = CoreBytesIO::from_bytes(self.inner.getvalue().to_vec());
+        Ok(BytesIO {
+            inner: parent.open(mode, stream.unwrap_or(true)),
+        })
+    }
+
+    /// Read up to `size` bytes from the cursor; omit `size` or pass a negative
+    /// value to read all remaining bytes. Advances the cursor when `stream`.
+    #[napi]
+    pub fn read(&mut self, size: Option<i32>) -> Buffer {
+        let size = match size {
+            Some(n) if n >= 0 => Some(n as usize),
+            _ => None,
+        };
+        Buffer::from(self.inner.read(size))
     }
 
     /// Positional read of up to `size` bytes at `offset` relative to `whence`
@@ -108,7 +116,7 @@ impl LocalPath {
     /// The current cursor position.
     #[napi]
     pub fn tell(&self) -> f64 {
-        self.inner.stream_position() as f64
+        self.inner.tell() as f64
     }
 
     /// The capacity in bytes (the mapped file size; the handle is read-only, so

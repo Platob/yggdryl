@@ -2,16 +2,18 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_io::{Io, LocalPath as CoreLocalPath, Path, Seek};
+use yggdryl_io::{BytesIO as CoreBytesIO, Io, LocalPath as CoreLocalPath, Mode, Path};
 
+use crate::bytesio::BytesIO;
 use crate::iostats::IoStats;
 use crate::media::MediaType;
 use crate::url::Url;
 use crate::{io_err, whence_from};
 
-/// A local filesystem path opened as a byte-IO handle, memory-mapped for
-/// zero-copy direct access. Positional (:meth:`pread`) and streamed (:meth:`read`)
-/// access share one cursor; :meth:`stats` and :meth:`media_type` expose metadata.
+/// A local filesystem path opened as a byte-IO handle, memory-mapped lazily.
+/// Positional (:meth:`pread`) and streamed (:meth:`read`) access share one
+/// cursor; the :attr:`stream` flag toggles whether :meth:`read` advances it (as
+/// in :class:`BytesIO`). :meth:`stats` / :meth:`media_type` expose metadata.
 #[pyclass(name = "LocalPath", module = "yggdryl")]
 pub struct LocalPath {
     pub(crate) inner: CoreLocalPath,
@@ -27,12 +29,6 @@ impl LocalPath {
         LocalPath {
             inner: CoreLocalPath::open(location),
         }
-    }
-
-    /// Alias for the constructor.
-    #[staticmethod]
-    fn open(location: &str) -> Self {
-        LocalPath::new(location)
     }
 
     /// Write ``data`` to this path on disk, auto-creating missing parent
@@ -55,23 +51,39 @@ impl LocalPath {
         self.inner.mode().as_str()
     }
 
+    /// Whether :meth:`read` advances the cursor (the same flag as
+    /// :attr:`BytesIO.stream`).
+    #[getter]
+    fn stream(&self) -> bool {
+        self.inner.stream()
+    }
+
+    #[setter]
+    fn set_stream(&mut self, value: bool) {
+        self.inner.set_stream(value);
+    }
+
+    /// Open an in-memory :class:`BytesIO` over this file's bytes, applying
+    /// ``mode`` (default ``"r"``) and ``stream`` (default ``True``) — a
+    /// :class:`LocalPath` and a :class:`BytesIO` open the same way.
+    #[pyo3(signature = (mode = "r", stream = true))]
+    fn open(&self, mode: &str, stream: bool) -> PyResult<BytesIO> {
+        let mode = Mode::from_str(mode).map_err(io_err)?;
+        let parent = CoreBytesIO::from_bytes(self.inner.getvalue().to_vec());
+        Ok(BytesIO {
+            inner: parent.open(mode, stream),
+        })
+    }
+
     /// Read up to ``size`` bytes from the cursor; ``None`` or a negative ``size``
-    /// reads all remaining bytes. Advances the cursor.
+    /// reads all remaining bytes. Advances the cursor when :attr:`stream`.
     #[pyo3(signature = (size = None))]
-    fn read<'py>(&mut self, py: Python<'py>, size: Option<i64>) -> PyResult<Bound<'py, PyBytes>> {
-        let remaining =
-            (self.inner.stats().map_err(io_err)?.size() - self.inner.stream_position()) as usize;
+    fn read<'py>(&mut self, py: Python<'py>, size: Option<i64>) -> Bound<'py, PyBytes> {
         let size = match size {
-            Some(n) if n >= 0 => (n as usize).min(remaining),
-            _ => remaining,
+            Some(n) if n >= 0 => Some(n as usize),
+            _ => None,
         };
-        let mut buf = vec![0u8; size];
-        let count = self
-            .inner
-            .pread(&mut buf, 0, yggdryl_io::Whence::Current)
-            .map_err(io_err)?;
-        buf.truncate(count);
-        Ok(PyBytes::new_bound(py, &buf))
+        PyBytes::new_bound(py, &self.inner.read(size))
     }
 
     /// Positional read of up to ``size`` bytes at ``offset`` relative to
@@ -97,15 +109,15 @@ impl LocalPath {
     /// Move the cursor to ``offset`` relative to ``whence`` (``0`` start, ``1``
     /// current, ``2`` end), returning the new position.
     #[pyo3(signature = (offset, whence = 0))]
-    fn seek(&mut self, offset: i64, whence: i64) -> PyResult<u64> {
+    fn seek(&mut self, offset: i64, whence: i64) -> PyResult<usize> {
         self.inner
             .seek(offset, whence_from(whence)?)
             .map_err(io_err)
     }
 
     /// The current cursor position.
-    fn tell(&self) -> u64 {
-        self.inner.stream_position()
+    fn tell(&self) -> usize {
+        self.inner.tell()
     }
 
     /// The capacity in bytes (the mapped file size; the handle is read-only, so
