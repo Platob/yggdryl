@@ -175,8 +175,8 @@ impl BytesIO {
     }
 
     /// Decompress this buffer's bytes (from the cursor) into a new `BytesIO`.
-    /// `codec` names the codec; when omitted it is inferred from this handle (its
-    /// URL extension, then its stats' media type).
+    /// `codec` names the codec; when omitted it is inferred from this buffer's
+    /// magic bytes (e.g. a gzip header → `gzip`).
     #[napi]
     pub fn decompress(&mut self, codec: Option<String>) -> Result<BytesIO> {
         let codec = match codec {

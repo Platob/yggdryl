@@ -168,7 +168,7 @@ impl BytesIO {
 
     /// Decompress this buffer's bytes (from the cursor) into a new
     /// :class:`BytesIO`. ``codec`` names the codec; when ``None`` it is inferred
-    /// from this handle (its URL extension, then its stats' media type).
+    /// from this buffer's magic bytes (e.g. a gzip header → ``gzip``).
     #[pyo3(signature = (codec = None))]
     fn decompress(&mut self, codec: Option<&str>) -> PyResult<BytesIO> {
         let codec = match codec {

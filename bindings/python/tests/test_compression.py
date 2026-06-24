@@ -78,3 +78,10 @@ def test_io_decompress_infers_codec_from_extension(tmp_path):
     yggdryl.LocalPath(path).write(packed)
     # No codec given -> inferred as gzip from the `.gz` suffix.
     assert yggdryl.LocalPath(path).decompress().getvalue() == payload
+
+
+def test_io_decompress_infers_codec_from_magic_bytes():
+    # An in-memory buffer has no extension, so the codec is sniffed from the
+    # gzip magic bytes.
+    packed = yggdryl.BytesIO(b"sniffed from magic").compress("gzip").getvalue()
+    assert yggdryl.BytesIO(packed).decompress().getvalue() == b"sniffed from magic"

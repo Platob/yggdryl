@@ -19,8 +19,9 @@ decompress **a chunk at a time**, never buffering the whole payload.
 - `CompressIo` — an extension trait, blanket-implemented for every `Io`, adding
   `compress(codec)` and `decompress(codec)` straight onto a handle, returning a
   fresh in-memory `BytesIO`. On `decompress` the codec may be left to inference
-  (`None`): the handle's URL extension first, then (under `media`) its
-  `stats()` media / content type.
+  (`None`): the handle's URL extension first, then (under `media`) its discovered
+  media type — magic bytes for a buffer, the file name for a path — and finally
+  its content type.
 - Inference helpers (under `media`): `from_mime`, `from_media`, `from_stats`.
 
 ```rust

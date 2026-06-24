@@ -74,3 +74,12 @@ test('io decompress infers codec from extension', () => {
   new LocalPath(p).write(packed)
   assert.deepStrictEqual(new LocalPath(p).decompress().getValue(), payload)
 })
+
+test('io decompress infers codec from magic bytes', () => {
+  // An in-memory buffer has no extension, so the codec is sniffed from magic.
+  const packed = new BytesIO(Buffer.from('sniffed from magic')).compress('gzip').getValue()
+  assert.deepStrictEqual(
+    new BytesIO(packed).decompress().getValue(),
+    Buffer.from('sniffed from magic'),
+  )
+})

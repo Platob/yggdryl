@@ -17,7 +17,8 @@
 //! [`decompress`](CompressIo::decompress) straight onto every `Io` handle,
 //! returning a fresh in-memory [`BytesIO`](yggdryl_io::BytesIO). On decompress the
 //! codec may be left to inference — from the handle's URL extension, then (under
-//! the `media` feature) its [`stats`](yggdryl_io::Io::stats) media / content type.
+//! the `media` feature) its discovered media type (magic bytes for a buffer, the
+//! file name for a path) and finally its content type.
 //!
 //! ## Optional features (off by default)
 //!
@@ -319,9 +320,10 @@ pub trait CompressIo: Io {
     }
 
     /// The [`Compression`] inferred for this handle: its URL extension first
-    /// (always available), then its [`stats`](Io::stats) media / content type
-    /// (under the `media` feature). [`Compression::None`] when nothing indicates a
-    /// codec.
+    /// (always available), then its discovered media type — magic bytes for an
+    /// in-memory buffer, the file name for a path — and finally its
+    /// [`stats`](Io::stats) content type (all under the `media` feature).
+    /// [`Compression::None`] when nothing indicates a codec.
     fn compression(&mut self) -> Compression {
         // The URL extension is always available (e.g. `…/data.csv.gz` → gzip).
         let url = self.url();
@@ -330,11 +332,21 @@ pub trait CompressIo: Io {
                 return codec;
             }
         }
-        // Otherwise fall back to the handle's discovered media / content type.
+        // The handle's media type, discovered lazily: this is the magic-byte sniff
+        // for a `BytesIO` (whose `stats()` carries no media type) and the file-name
+        // lookup for a `LocalPath`.
         #[cfg(feature = "media")]
-        if let Ok(stats) = self.stats() {
-            if let Some(codec) = Compression::from_stats(&stats) {
-                return codec;
+        {
+            if let Some(media) = self.media_type() {
+                if let Some(codec) = Compression::from_media(&media) {
+                    return codec;
+                }
+            }
+            // Finally a stats-borne content type (e.g. a cloud `Content-Type`).
+            if let Ok(stats) = self.stats() {
+                if let Some(codec) = Compression::from_stats(&stats) {
+                    return codec;
+                }
             }
         }
         Compression::None
@@ -585,6 +597,19 @@ mod tests {
             let out = packed.decompress(Some(codec)).unwrap();
             assert_eq!(out.getvalue(), &payload[..], "{codec}");
         }
+    }
+
+    /// Decompress with no codec given infers gzip from the **magic bytes** of an
+    /// in-memory `BytesIO` (whose `mem://` URL has no extension and whose `stats()`
+    /// carries no media type), exercising the lazy `media_type()` sniff.
+    #[cfg(all(feature = "gzip", feature = "media"))]
+    #[test]
+    fn io_decompress_infers_codec_from_magic_bytes() {
+        let packed = Compression::Gzip.compress(b"sniffed from magic").unwrap();
+        let mut handle = BytesIO::from_bytes(packed);
+        assert_eq!(handle.compression(), Compression::Gzip);
+        let out = handle.decompress(None).unwrap();
+        assert_eq!(out.getvalue(), b"sniffed from magic");
     }
 
     /// Decompress with no codec given infers gzip from a `.gz` URL extension.
