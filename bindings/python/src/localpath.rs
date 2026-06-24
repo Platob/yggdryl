@@ -58,6 +58,12 @@ impl LocalPath {
         }
     }
 
+    /// The access mode (always ``"r"`` — the mapped handle is read-only).
+    #[getter]
+    fn mode(&self) -> &'static str {
+        self.inner.mode().as_str()
+    }
+
     /// Read up to ``size`` bytes from the cursor; ``None`` or a negative ``size``
     /// reads all remaining bytes. Advances the cursor.
     #[pyo3(signature = (size = None))]

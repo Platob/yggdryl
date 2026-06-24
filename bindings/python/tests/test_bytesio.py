@@ -8,6 +8,27 @@ import pytest
 import yggdryl
 
 
+def test_mode_and_open():
+    io = yggdryl.BytesIO(b"hello")
+    assert io.mode == "r"
+    # Read open keeps the bytes; child carries the mode and stream flag.
+    child = io.open("rb", stream=False)
+    assert child.mode == "r"
+    assert child.getvalue() == b"hello"
+    assert child.stream is False
+    # Write truncates; append (a) positions at the end.
+    assert yggdryl.BytesIO(b"abc").open("w").getvalue() == b""
+    appender = yggdryl.BytesIO(b"abc").open("a")
+    assert appender.mode == "a"
+    assert appender.tell() == 3
+    # `a+`/`r+` are read-write (cursor at the start).
+    rw = yggdryl.BytesIO(b"abc").open("a+")
+    assert rw.mode == "r+"
+    assert rw.tell() == 0
+    with pytest.raises(ValueError):
+        io.open("nope")
+
+
 def test_capacity_reserve_and_truncate():
     io = yggdryl.BytesIO.with_capacity(64)
     assert io.capacity >= 64

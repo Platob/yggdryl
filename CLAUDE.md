@@ -41,10 +41,14 @@ handle. The layering, smallest to largest:
   default) versus cursor-relative (`Current`, uses and advances the cursor);
   `pwrite` defaults to `Unsupported` (writable backends override it). Storage is
   managed with `capacity` / `reserve_capacity` / `truncate` (also `Unsupported`
-  on read-only backends; `BytesIO` adds the `with_capacity` constructor). Plus
-  `as_slice` (the zero-copy hook a memory backend overrides), `stats`, and
+  on read-only backends; `BytesIO` adds the `with_capacity` constructor). Each
+  handle carries an access `mode()` (`Mode` — `Read`/`Write`/`Append`/`ReadWrite`,
+  parsed from Python strings via `Mode::from_str`) and an optional `parent()`,
+  and can `open()` a derived handle (records the parent, applies mode/stream).
+  Plus `as_slice` (the zero-copy hook a memory backend overrides), `stats`, and
   `copy_to` (transfer with a memory fast path; `copy` is the free fn).
-  `media_type` is lazy and behind the `media` feature.
+  `media_type` is lazy and behind the `media` feature. (`Io: …+ Debug + Send +
+  Sync` so handles can be boxed as parents and held across threads.)
 - `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
   expensive metadata (`media_type`) discovered lazily and cached.
 - `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem

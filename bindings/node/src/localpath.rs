@@ -58,6 +58,12 @@ impl LocalPath {
         }
     }
 
+    /// The access mode (always `"r"` — the mapped handle is read-only).
+    #[napi(getter)]
+    pub fn mode(&self) -> String {
+        self.inner.mode().as_str().to_owned()
+    }
+
     /// Read up to `size` bytes from the cursor; omit `size` or pass a negative
     /// value to read all remaining bytes. Advances the cursor.
     #[napi]

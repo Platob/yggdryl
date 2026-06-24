@@ -29,10 +29,12 @@
 //!   `whence` chooses positional (cursor untouched, the default) versus
 //!   cursor-relative; it manages storage with [`capacity`](Io::capacity) /
 //!   [`reserve_capacity`](Io::reserve_capacity) / [`truncate`](Io::truncate)
-//!   (defaulting to `Unsupported` on read-only backends); it exposes its bytes
-//!   for **zero-copy** transfer via [`as_slice`](Io::as_slice), reports
-//!   [`stats`](Io::stats), and [`copy_to`](Io::copy_to) another sink with a
-//!   memory fast path. [`copy`] is the free-function form.
+//!   (defaulting to `Unsupported` on read-only backends); it carries an access
+//!   [`mode`](Io::mode) ([`Mode`]) and an optional [`parent`](Io::parent), and
+//!   [`open`](Io::open)s derived handles; it exposes its bytes for **zero-copy**
+//!   transfer via [`as_slice`](Io::as_slice), reports [`stats`](Io::stats), and
+//!   [`copy_to`](Io::copy_to) another sink with a memory fast path. [`copy`] is
+//!   the free-function form.
 //! - **Metadata** — [`IoStats`] holds the [`kind`](IoStats::kind)
 //!   ([`Missing`](Kind::Missing) / [`File`](Kind::File) /
 //!   [`Directory`](Kind::Directory)), `size`, `mtime`, `content_type` and `etag`
@@ -145,6 +147,87 @@ pub enum Whence {
     Current,
     /// From the end of the buffer (`2`).
     End,
+}
+
+/// The access mode of an [`Io`] handle.
+///
+/// [`from_str`](Mode::from_str) parses the named forms (`read` / `write` /
+/// `append` / `read_write`) and the Python letters (`r`, `w`, `a`, `x`, with an
+/// optional `+` for read-write and ignored `b` / `t` modifiers): e.g. `rb` →
+/// [`Read`](Mode::Read), `r+` → [`ReadWrite`](Mode::ReadWrite), `ab` →
+/// [`Append`](Mode::Append).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// Read only (`r`, `rb`, `read`).
+    #[default]
+    Read,
+    /// Write, truncating any existing content (`w`, `wb`, `x`, `write`).
+    Write,
+    /// Write, positioned at the end (`a`, `ab`, `append`).
+    Append,
+    /// Read and write (`r+`, `w+`, `a+`, `rw`, `read_write`).
+    ReadWrite,
+}
+
+impl Mode {
+    /// Parses a mode string, returning [`IoError::Invalid`] on an unknown one.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<Mode, IoError> {
+        match value.trim() {
+            "read" => return Ok(Mode::Read),
+            "write" => return Ok(Mode::Write),
+            "append" => return Ok(Mode::Append),
+            "read_write" | "readwrite" | "rw" => return Ok(Mode::ReadWrite),
+            _ => {}
+        }
+        // Python letters: a single base letter, an optional `+` for read-write,
+        // and ignored binary / text (`b` / `t`) modifiers.
+        let plus = value.contains('+');
+        let base: Vec<char> = value
+            .trim()
+            .chars()
+            .filter(|c| !matches!(c, 'b' | 't' | '+'))
+            .collect();
+        let mode = match base.as_slice() {
+            [b] if plus && matches!(b, 'r' | 'w' | 'a' | 'x') => Mode::ReadWrite,
+            ['r'] => Mode::Read,
+            ['w'] | ['x'] => Mode::Write,
+            ['a'] => Mode::Append,
+            _ => return Err(IoError::Invalid(format!("unknown mode {value:?}"))),
+        };
+        Ok(mode)
+    }
+
+    /// The canonical short string (`"r"` / `"w"` / `"a"` / `"r+"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Mode::Read => "r",
+            Mode::Write => "w",
+            Mode::Append => "a",
+            Mode::ReadWrite => "r+",
+        }
+    }
+
+    /// Whether reads are allowed.
+    pub fn readable(&self) -> bool {
+        matches!(self, Mode::Read | Mode::ReadWrite)
+    }
+
+    /// Whether writes are allowed.
+    pub fn writable(&self) -> bool {
+        !matches!(self, Mode::Read)
+    }
+
+    /// Whether writes are positioned at the end (append mode).
+    pub fn appends(&self) -> bool {
+        matches!(self, Mode::Append)
+    }
+}
+
+impl fmt::Display for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// A byte **source**: pull raw bytes out of something.
@@ -433,7 +516,7 @@ fn resolve(position: u64, len: Option<u64>, offset: i64, whence: Whence) -> Resu
 /// have defaults, but a memory-resident backend should override
 /// [`as_slice`](Io::as_slice) to unlock the zero-copy fast paths, and a writable
 /// backend should override [`pwrite`](Io::pwrite).
-pub trait Io: ReadBytes + Seek {
+pub trait Io: ReadBytes + Seek + fmt::Debug + Send + Sync {
     /// The address of this resource as a [`Url`]. **Every IO has one**: file
     /// backends use `file`, remote ones their store URL, and an in-memory handle
     /// the `mem` scheme with its buffer address (e.g. `mem://7f3c…`).
@@ -441,6 +524,27 @@ pub trait Io: ReadBytes + Seek {
 
     /// Discovers metadata. Cheap fields are eager; see [`IoStats`].
     fn stats(&self) -> Result<IoStats, IoError>;
+
+    /// The access mode of this handle. Defaults to [`Mode::Read`]; a handle
+    /// produced by [`open`](Io::open) carries the mode it was opened with.
+    fn mode(&self) -> Mode {
+        Mode::Read
+    }
+
+    /// The handle this one was [`open`](Io::open)ed from, if any — its provenance.
+    /// Defaults to `None` (a root handle).
+    fn parent(&self) -> Option<&dyn Io> {
+        None
+    }
+
+    /// Opens a **new** handle from this one, recording `self` as its
+    /// [`parent`](Io::parent) and applying `mode` and `stream`. The default is
+    /// [`IoError::Unsupported`]; backends that support derived handles (e.g.
+    /// [`BytesIO`]) override it.
+    fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
+        let _ = (mode, stream);
+        Err(IoError::Unsupported("open".to_string()))
+    }
 
     /// Borrows the whole backing buffer when this handle is memory-resident,
     /// enabling zero-copy reads and transfers. Streamed backends return `None`
@@ -605,11 +709,13 @@ pub fn copy<S: Io + ?Sized>(src: &mut S, dst: &mut dyn WriteBytes) -> Result<u64
 /// io.seek(6, Whence::Start).unwrap();
 /// assert_eq!(io.read(None), b"world");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct BytesIO {
     buffer: Vec<u8>,
     position: usize,
     stream: bool,
+    mode: Mode,
+    parent: Option<Box<dyn Io>>,
 }
 
 impl Default for BytesIO {
@@ -630,12 +736,43 @@ impl BytesIO {
         BytesIO::from_bytes(Vec::with_capacity(capacity))
     }
 
-    /// Wraps existing `bytes`, with the cursor at the start and streaming on.
+    /// Wraps existing `bytes`, with the cursor at the start, streaming on, mode
+    /// [`Read`](Mode::Read) and no parent.
     pub fn from_bytes(bytes: impl Into<Vec<u8>>) -> BytesIO {
         BytesIO {
             buffer: bytes.into(),
             position: 0,
             stream: true,
+            mode: Mode::Read,
+            parent: None,
+        }
+    }
+
+    /// Opens a new in-memory handle derived from this one, recording `self` as
+    /// the child's [`parent`](Io::parent) and applying `mode` and `stream`.
+    ///
+    /// The child's initial state follows `mode`, as in Python `open`:
+    /// [`Write`](Mode::Write) starts empty (truncated), [`Append`](Mode::Append)
+    /// copies the bytes with the cursor at the end, and [`Read`](Mode::Read) /
+    /// [`ReadWrite`](Mode::ReadWrite) copy the bytes with the cursor at the start.
+    pub fn open(self, mode: Mode, stream: bool) -> BytesIO {
+        log_event!(debug, "BytesIO::open mode={mode} stream={stream}");
+        let buffer = if mode == Mode::Write {
+            Vec::new()
+        } else {
+            self.buffer.clone()
+        };
+        let position = if mode == Mode::Append {
+            buffer.len()
+        } else {
+            0
+        };
+        BytesIO {
+            buffer,
+            position,
+            stream,
+            mode,
+            parent: Some(Box::new(self)),
         }
     }
 
@@ -834,6 +971,19 @@ impl Io for BytesIO {
 
     fn stats(&self) -> Result<IoStats, IoError> {
         Ok(IoStats::new(self.buffer.len() as u64))
+    }
+
+    fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    fn parent(&self) -> Option<&dyn Io> {
+        self.parent.as_deref()
+    }
+
+    /// Opens a derived in-memory handle (see [`BytesIO::open`]).
+    fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
+        Ok(Box::new((*self).open(mode, stream)))
     }
 
     fn as_slice(&self) -> Option<&[u8]> {
@@ -1460,8 +1610,70 @@ mod tests {
         assert_eq!(Seek::stream_position(&src), 11);
     }
 
+    #[test]
+    fn mode_parses_string_forms() {
+        for s in ["r", "rb", "read"] {
+            assert_eq!(Mode::from_str(s).unwrap(), Mode::Read);
+        }
+        for s in ["w", "wb", "x", "write"] {
+            assert_eq!(Mode::from_str(s).unwrap(), Mode::Write);
+        }
+        for s in ["a", "ab", "append"] {
+            assert_eq!(Mode::from_str(s).unwrap(), Mode::Append);
+        }
+        for s in ["r+", "rb+", "w+", "a+", "rw", "read_write"] {
+            assert_eq!(Mode::from_str(s).unwrap(), Mode::ReadWrite);
+        }
+        assert!(Mode::from_str("nope").is_err());
+        // Predicates and canonical strings.
+        assert!(Mode::Read.readable() && !Mode::Read.writable());
+        assert!(Mode::Append.writable() && Mode::Append.appends());
+        assert!(Mode::ReadWrite.readable() && Mode::ReadWrite.writable());
+        assert_eq!(Mode::ReadWrite.to_string(), "r+");
+        assert_eq!(Mode::default(), Mode::Read);
+    }
+
+    #[test]
+    fn open_sets_parent_mode_and_stream() {
+        let parent = BytesIO::from_bytes(b"hello".to_vec());
+        // A root handle has no parent.
+        assert!(parent.parent().is_none());
+        // Default-ish open: read mode keeps the bytes, fresh cursor.
+        let child = parent.open(Mode::Read, true);
+        assert_eq!(child.mode(), Mode::Read);
+        assert!(child.stream());
+        assert_eq!(child.getvalue(), b"hello");
+        // The parent is recorded as provenance.
+        let parent_ref = child.parent().expect("child has a parent");
+        assert_eq!(parent_ref.url().scheme(), "mem");
+
+        // Write mode truncates; append positions at the end.
+        let writer = BytesIO::from_bytes(b"abc".to_vec()).open(Mode::Write, false);
+        assert_eq!(writer.mode(), Mode::Write);
+        assert!(!writer.stream());
+        assert!(writer.is_empty());
+
+        let appender = BytesIO::from_bytes(b"abc".to_vec()).open(Mode::Append, true);
+        assert_eq!(appender.getvalue(), b"abc");
+        assert_eq!(appender.tell(), 3);
+
+        // The trait `open` boxes a derived handle.
+        let boxed = Box::new(BytesIO::from_bytes(b"x".to_vec()));
+        let derived = Io::open(boxed, Mode::ReadWrite, true).unwrap();
+        assert_eq!(derived.mode(), Mode::ReadWrite);
+        assert!(derived.parent().is_some());
+
+        // A backend without an `open` override (Drip) rejects it as unsupported.
+        let ro: Box<dyn Io> = Box::new(Drip(BytesIO::new()));
+        assert!(matches!(
+            ro.open(Mode::Read, true),
+            Err(IoError::Unsupported(_))
+        ));
+    }
+
     /// A read-only [`Io`] with no `as_slice`, to exercise the streamed (non
     /// zero-copy) fallbacks in `pread` / `copy_to`.
+    #[derive(Debug)]
     struct Drip(BytesIO);
 
     impl ReadBytes for Drip {
@@ -1505,6 +1717,7 @@ mod tests {
 
     /// A read-only [`Io`] whose reads always error, to check that `pread`
     /// restores the cursor even when a positioned read fails.
+    #[derive(Debug)]
     struct Boom {
         position: u64,
     }
@@ -1757,6 +1970,7 @@ mod tests {
 
     /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as
     /// an [`Io`] handle and carries its remote URL through [`Io::url`].
+    #[derive(Debug)]
     struct FakeRemote {
         inner: BytesIO,
     }

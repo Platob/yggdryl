@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_io::{BytesIO as CoreBytesIO, Io};
+use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
 use crate::url::Url;
 use crate::{io_err, whence_from};
@@ -76,6 +76,25 @@ impl BytesIO {
         Url {
             inner: self.inner.url(),
         }
+    }
+
+    /// The access mode: ``"r"``, ``"w"``, ``"a"`` or ``"r+"``.
+    #[getter]
+    fn mode(&self) -> &'static str {
+        self.inner.mode().as_str()
+    }
+
+    /// Open a new :class:`BytesIO` derived from this one (a snapshot of the
+    /// current bytes), applying ``mode`` (default ``"r"``) and ``stream``
+    /// (default ``True``). ``mode`` accepts the Python forms (``r`` / ``w`` /
+    /// ``a`` / ``r+`` / ``rb`` / ``a+`` / …): ``w`` truncates, ``a`` appends.
+    #[pyo3(signature = (mode = "r", stream = true))]
+    fn open(&self, mode: &str, stream: bool) -> PyResult<BytesIO> {
+        let mode = Mode::from_str(mode).map_err(io_err)?;
+        let parent = CoreBytesIO::from_bytes(self.inner.getvalue().to_vec());
+        Ok(BytesIO {
+            inner: parent.open(mode, stream),
+        })
     }
 
     /// Positional read of up to ``size`` bytes at ``offset`` relative to

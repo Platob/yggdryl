@@ -16,9 +16,12 @@ same handle.
   ones use `mem://<address>`); it reads/writes at a position via `pread` /
   `pwrite` (a `Whence` selects positional — cursor untouched, the default — vs
   cursor-relative), manages storage with `capacity` / `reserve_capacity` /
-  `truncate` (`Unsupported` on read-only backends), exposes `as_slice` (zero-copy
-  hook), reports `stats`, and `copy_to` (transfer with a memory fast path; `copy`
-  is the free fn).
+  `truncate` (`Unsupported` on read-only backends), carries an access `mode`
+  (`Mode`) and optional `parent` and can `open` derived handles, exposes
+  `as_slice` (zero-copy hook), reports `stats`, and `copy_to` (transfer with a
+  memory fast path; `copy` is the free fn).
+- `Mode` — `Read` / `Write` / `Append` / `ReadWrite`, parsed from Python mode
+  strings (`Mode::from_str`: `r`, `rb`, `a`, `r+`, `w+`, `append`, …).
 - `IoStats` — `kind` (missing / file / directory / other), `size`, `mtime`,
   `content_type`, `etag` eager; `media_type` discovered lazily (and cached) under
   the `media` feature. `LocalPath::stat` classifies a path without opening it.

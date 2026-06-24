@@ -2,7 +2,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::{BytesIO as CoreBytesIO, Io};
+use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
 use crate::url::Url;
 use crate::whence_from;
@@ -80,6 +80,26 @@ impl BytesIO {
         Url {
             inner: self.inner.url(),
         }
+    }
+
+    /// The access mode: `"r"`, `"w"`, `"a"` or `"r+"`.
+    #[napi(getter)]
+    pub fn mode(&self) -> String {
+        self.inner.mode().as_str().to_owned()
+    }
+
+    /// Open a new `BytesIO` derived from this one (a snapshot of the current
+    /// bytes), applying `mode` (default `"r"`) and `stream` (default `true`).
+    /// `mode` accepts the Python forms (`r` / `w` / `a` / `r+` / `rb` / `a+` / …):
+    /// `w` truncates, `a` appends.
+    #[napi]
+    pub fn open(&self, mode: Option<String>, stream: Option<bool>) -> Result<BytesIO> {
+        let mode = Mode::from_str(mode.as_deref().unwrap_or("r"))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        let parent = CoreBytesIO::from_bytes(self.inner.getvalue().to_vec());
+        Ok(BytesIO {
+            inner: parent.open(mode, stream.unwrap_or(true)),
+        })
     }
 
     /// Positional read of up to `size` bytes at `offset` relative to `whence`

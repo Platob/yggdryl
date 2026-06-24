@@ -5,6 +5,21 @@ const { test } = require('node:test')
 const assert = require('node:assert')
 const { BytesIO } = require('..')
 
+test('mode and open', () => {
+  const io = new BytesIO(Buffer.from('hello'))
+  assert.strictEqual(io.mode, 'r')
+  const child = io.open('rb', false)
+  assert.strictEqual(child.mode, 'r')
+  assert.deepStrictEqual(child.getValue(), Buffer.from('hello'))
+  assert.strictEqual(child.stream, false)
+  // Write truncates; append (a) positions at the end.
+  assert.deepStrictEqual(new BytesIO(Buffer.from('abc')).open('w').getValue(), Buffer.from(''))
+  const appender = new BytesIO(Buffer.from('abc')).open('a')
+  assert.strictEqual(appender.mode, 'a')
+  assert.strictEqual(appender.tell(), 3)
+  assert.throws(() => io.open('nope'))
+})
+
 test('capacity, reserve and truncate', () => {
   const io = BytesIO.withCapacity(64)
   assert.ok(io.capacity >= 64)
