@@ -337,6 +337,13 @@ name = "yggdryl-core"
 version = "0.1.1"
 
 [[package]]
+name = "yggdryl-io"
+version = "0.1.1"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "yggdryl-media"
 version = "0.1.1"
 dependencies = [
