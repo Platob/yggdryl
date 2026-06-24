@@ -1,17 +1,17 @@
 [package]
-name = "yggdryl"
+name = "yggdryl-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description.workspace = true
+description = "Dependency-free foundations (parsing, percent-encoding, Version) for yggdryl"
 keywords.workspace = true
 readme = "README.md"
 
 [lib]
-name = "yggdryl"
+name = "yggdryl_core"
 path = "src/lib.rs"
 
 [dependencies]

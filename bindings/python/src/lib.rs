@@ -1,6 +1,6 @@
 //! Python extension for **yggdryl**.
 //!
-//! Thin PyO3 wrappers around [`yggdryl_core::Uri`] and [`yggdryl_core::Url`]; all
+//! Thin PyO3 wrappers around [`yggdryl_url::Uri`] and [`yggdryl_url::Url`]; all
 //! parsing lives in the shared Rust core so the Python and Node bindings behave
 //! identically.
 
@@ -13,7 +13,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::wrap_pyfunction;
-use yggdryl_core::{
+use yggdryl_url::{
     percent_decode, percent_encode, FromInput, Mapping, Params, Uri as CoreUri, UriError,
     Url as CoreUrl, UrlError, Version as CoreVersion, VersionError,
 };

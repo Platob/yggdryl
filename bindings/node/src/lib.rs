@@ -1,6 +1,6 @@
 //! Node.js extension for **yggdryl**.
 //!
-//! Thin napi-rs wrappers around [`yggdryl_core::Uri`] and [`yggdryl_core::Url`];
+//! Thin napi-rs wrappers around [`yggdryl_url::Uri`] and [`yggdryl_url::Url`];
 //! all parsing lives in the shared Rust core so the Node and Python bindings stay
 //! in lockstep.
 
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{
+use yggdryl_url::{
     percent_decode, percent_encode, FromInput, Mapping, Uri as CoreUri, Url as CoreUrl,
     Version as CoreVersion,
 };

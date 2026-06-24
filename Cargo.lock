@@ -327,7 +327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
-name = "yggdryl"
+name = "yggdryl-core"
 version = "0.1.0"
 
 [[package]]
@@ -337,7 +337,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
- "yggdryl",
+ "yggdryl-url",
 ]
 
 [[package]]
@@ -345,5 +345,12 @@ name = "yggdryl-python"
 version = "0.1.0"
 dependencies = [
  "pyo3",
- "yggdryl",
+ "yggdryl-url",
+]
+
+[[package]]
+name = "yggdryl-url"
+version = "0.1.0"
+dependencies = [
+ "yggdryl-core",
 ]

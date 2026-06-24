@@ -8,8 +8,10 @@ looking at from the shape of the code.
 
 ## Architecture
 
-- `crates/yggdryl/` — the pure-Rust core. **All logic and the canonical tests
-  live here.** It has no dependencies.
+- `crates/yggdryl-core/` — dependency-free foundations (the `FromInput` trait,
+  percent-encoding, `Version`).
+- `crates/yggdryl-url/` — the `Uri`/`Url` types and the canonical tests, built on
+  and re-exporting `yggdryl-core`. **All URL logic lives here.**
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.
@@ -58,7 +60,7 @@ Rules:
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p yggdryl
+cargo test
 (cd bindings/python && maturin develop && pytest)
 (cd bindings/node && npm run build && npm test)
 ```

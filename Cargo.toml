@@ -1,14 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/yggdryl",
+    "crates/yggdryl-core",
+    "crates/yggdryl-url",
     "bindings/python",
     "bindings/node",
 ]
-# `cargo build` / `cargo test` with no args only touches the pure-Rust core.
+# `cargo build` / `cargo test` with no args only touches the pure-Rust crates.
 # The Python and Node bindings are built through their own toolchains
 # (maturin / napi) so the default workflow never needs Python or Node headers.
-default-members = ["crates/yggdryl"]
+default-members = ["crates/yggdryl-core", "crates/yggdryl-url"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,10 +22,8 @@ description = "yggdryl — a Rust-core URI/URL library with Python and Node exte
 keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 
 [workspace.dependencies]
-# The Rust core crate. Bindings depend on it under the alias `yggdryl-core`
-# (see each binding's Cargo.toml) so the dependency's extern name doesn't collide
-# with the cdylib they themselves expose as `yggdryl`.
-yggdryl = { path = "crates/yggdryl", version = "0.1.0" }
+yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
+yggdryl-url = { path = "crates/yggdryl-url", version = "0.1.0" }
 
 [profile.release]
 lto = true

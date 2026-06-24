@@ -17,9 +17,8 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# The core crate is named `yggdryl`; alias it to `yggdryl-core` for a stable
-# extern name (`yggdryl_core`) across the bindings.
-yggdryl-core = { package = "yggdryl", path = "../../crates/yggdryl", version = "0.1.0" }
+# yggdryl-url re-exports yggdryl-core, so it is the only yggdryl dependency.
+yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
 napi = { version = "2", default-features = false, features = ["napi8"] }
 napi-derive = "2"
 
