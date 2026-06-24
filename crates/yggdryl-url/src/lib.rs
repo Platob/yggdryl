@@ -65,6 +65,29 @@ pub(crate) fn query_to_params(query: &str, decode: bool) -> Params {
     params
 }
 
+/// Scans a query for a single (decoded) `key`, returning its decoded values, or
+/// `None` if absent. Avoids building the whole [`Params`] map for a one-key
+/// lookup ([`Uri::get_param`] / [`Uri::has_param`]).
+pub(crate) fn query_param(query: &str, key: &str) -> Option<Vec<String>> {
+    // Compare the raw key without allocating unless it carries an escape.
+    let key_matches = |raw: &str| {
+        if raw.contains('%') {
+            percent_decode(raw).is_ok_and(|decoded| decoded == key)
+        } else {
+            raw == key
+        }
+    };
+    let mut values: Option<Vec<String>> = None;
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        if key_matches(k) {
+            let value = percent_decode(v).unwrap_or_else(|_| v.to_string());
+            values.get_or_insert_with(Vec::new).push(value);
+        }
+    }
+    values
+}
+
 /// Builds a `key=value&…` query from a [`Params`] multimap. When `encode`, each
 /// key/value is percent-encoded. Keys with several values are emitted once per
 /// value; pairs come out in the map's (sorted) order for a deterministic result.
@@ -566,12 +589,12 @@ impl Uri {
 
     /// The decoded values of one query parameter, or `None` if absent.
     pub fn get_param(&self, key: &str) -> Option<Vec<String>> {
-        self.params(true).get(key).cloned()
+        self.query.as_deref().and_then(|q| query_param(q, key))
     }
 
     /// Whether the query contains a parameter named `key`.
     pub fn has_param(&self, key: &str) -> bool {
-        self.params(true).contains_key(key)
+        self.get_param(key).is_some()
     }
 
     /// Returns a copy with one parameter created or replaced (single update).
@@ -1247,12 +1270,12 @@ impl Url {
 
     /// The decoded values of one query parameter, or `None` if absent.
     pub fn get_param(&self, key: &str) -> Option<Vec<String>> {
-        self.params(true).get(key).cloned()
+        self.query.as_deref().and_then(|q| query_param(q, key))
     }
 
     /// Whether the query contains a parameter named `key`.
     pub fn has_param(&self, key: &str) -> bool {
-        self.params(true).contains_key(key)
+        self.get_param(key).is_some()
     }
 
     /// Returns a copy with one parameter created or replaced (single update).
@@ -1450,6 +1473,47 @@ fn push_host(out: &mut String, host: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn param_read_edge_cases() {
+        // Encoded key, multi-value, empty value, and a bare flag (no `=`).
+        let u = Uri::from_str("http://h/p?a%20b=1&c=2&c=3&d=&flag").unwrap();
+        assert_eq!(u.get_param("a b"), Some(vec!["1".to_string()])); // key decoded
+        assert_eq!(
+            u.get_param("c"),
+            Some(vec!["2".to_string(), "3".to_string()])
+        );
+        assert_eq!(u.get_param("d"), Some(vec![String::new()])); // empty value
+        assert_eq!(u.get_param("flag"), Some(vec![String::new()])); // no `=`
+        assert_eq!(u.get_param("missing"), None);
+        assert!(u.has_param("a b") && u.has_param("flag") && !u.has_param("missing"));
+        // No query at all.
+        let bare = Uri::from_str("http://h/p").unwrap();
+        assert_eq!(bare.get_param("x"), None);
+        assert!(!bare.has_param("x"));
+        // get_param agrees with the full params() map.
+        assert_eq!(u.get_param("c"), u.params(true).get("c").cloned());
+    }
+
+    #[test]
+    fn path_and_scheme_edge_cases() {
+        // Trailing/leading/double slashes collapse to non-empty segments.
+        let u = Uri::from_str("http://h//a//b/").unwrap();
+        assert_eq!(u.parts(false), vec!["a", "b"]);
+        assert_eq!(u.name(false), "b");
+        // A dotfile has no extensions; its stem keeps the leading dot.
+        let dot = Uri::from_str("file:/etc/.bashrc").unwrap();
+        assert_eq!(dot.stem(false), ".bashrc");
+        assert!(dot.extensions(false).is_empty());
+        // Multi-`+` scheme splits into base + every extension.
+        let s = Uri::from_str("a+b+c://h/p").unwrap();
+        assert_eq!(s.scheme_base(), "a");
+        assert_eq!(s.scheme_ext(), vec!["b", "c"]);
+        // No path -> empty accessors, no panic.
+        let empty = Uri::from_str("mailto:x@y").unwrap();
+        assert_eq!(empty.name(false), "x@y");
+        assert!(empty.parts(false).len() == 1);
+    }
 
     #[test]
     fn uri_edge_cases() {

@@ -62,9 +62,15 @@ fn main() {
     bench("Url::to_str(true)", n, || {
         black_box(black_box(&url).to_str(true));
     });
-    let q = Uri::from_str("https://h/p?a=1&a=2&b=hello%20world").unwrap();
+    let q = Uri::from_str("https://h/p?a=1&a=2&b=hello%20world&c=3&d=4").unwrap();
     bench("Uri::params(true)", n, || {
         black_box(black_box(&q).params(true));
+    });
+    bench("Uri::get_param (hit)", n, || {
+        black_box(black_box(&q).get_param(black_box("b")));
+    });
+    bench("Uri::has_param (miss)", n, || {
+        black_box(black_box(&q).has_param(black_box("zzz")));
     });
 
     println!("== encoding ==");

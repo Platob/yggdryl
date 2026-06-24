@@ -681,7 +681,12 @@ impl FromInput for MimeType {
         let essence = input.split(';').next().unwrap_or(input).trim();
         // A slash-less token is a short name (extension or subtype), not a MIME.
         if !essence.contains('/') {
-            return resolve_name(essence).ok_or_else(|| MediaError::Invalid(input.to_string()));
+            let resolved = resolve_name(essence);
+            log_event!(
+                debug,
+                "MimeType::from_str: short name {essence:?} -> {resolved:?}"
+            );
+            return resolved.ok_or_else(|| MediaError::Invalid(input.to_string()));
         }
         let essence = essence.to_ascii_lowercase();
         if !is_valid_mime(&essence) {
