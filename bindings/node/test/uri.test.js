@@ -154,6 +154,7 @@ test('params CRUD single and bulk', () => {
   const base = new Url('https://h/p?a=1&b=2&c=3')
   assert.deepStrictEqual(base.getParam('a'), ['1'])
   assert.strictEqual(base.getParam('z'), null)
+  assert.ok(base.hasParam('a') && !base.hasParam('z'))
   assert.deepStrictEqual(base.setParam('a', ['9']).getParam('a'), ['9'])
   const bulk = base.setParams({ b: ['x'], d: ['y'] })
   assert.deepStrictEqual(bulk.getParam('d'), ['y'])

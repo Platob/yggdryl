@@ -254,6 +254,12 @@ impl Uri {
         self.inner.get_param(&key)
     }
 
+    /// Whether the query has a parameter named `key`.
+    #[napi(js_name = "hasParam")]
+    pub fn has_param(&self, key: String) -> bool {
+        self.inner.has_param(&key)
+    }
+
     /// Return a copy with one parameter created or replaced (single update).
     #[napi(js_name = "setParam")]
     pub fn set_param(&self, key: String, values: Vec<String>, encode: Option<bool>) -> Uri {
@@ -590,6 +596,12 @@ impl Url {
     #[napi(js_name = "getParam")]
     pub fn get_param(&self, key: String) -> Option<Vec<String>> {
         self.inner.get_param(&key)
+    }
+
+    /// Whether the query has a parameter named `key`.
+    #[napi(js_name = "hasParam")]
+    pub fn has_param(&self, key: String) -> bool {
+        self.inner.has_param(&key)
     }
 
     /// Return a copy with one parameter created or replaced (single update).

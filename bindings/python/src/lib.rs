@@ -9,7 +9,7 @@
 // conversion. The lint fires on macro-generated code, so allow it crate-wide.
 #![allow(clippy::useless_conversion)]
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::wrap_pyfunction;
@@ -207,6 +207,36 @@ impl Uri {
     /// Decoded values of one query parameter, or ``None``.
     fn get_param(&self, key: &str) -> Option<Vec<String>> {
         self.inner.get_param(key)
+    }
+
+    /// Whether the query has a parameter named ``key``.
+    fn has_param(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    /// ``url[key]`` -> the parameter's values (raises ``KeyError`` if absent).
+    fn __getitem__(&self, key: &str) -> PyResult<Vec<String>> {
+        self.inner
+            .get_param(key)
+            .ok_or_else(|| PyKeyError::new_err(key.to_string()))
+    }
+
+    /// ``url[key] = values`` -> set the parameter in place (percent-encoded).
+    fn __setitem__(&mut self, key: String, values: Vec<String>) {
+        self.inner = self.inner.set_param(key, values, true);
+    }
+
+    /// ``del url[key]`` -> remove the parameter in place.
+    fn __delitem__(&mut self, key: &str) -> PyResult<()> {
+        if !self.inner.has_param(key) {
+            return Err(PyKeyError::new_err(key.to_string()));
+        }
+        self.inner = self.inner.remove_param(key, true);
+        Ok(())
     }
 
     /// Return a copy with one parameter created or replaced (single update).
@@ -507,6 +537,36 @@ impl Url {
     /// Decoded values of one query parameter, or ``None``.
     fn get_param(&self, key: &str) -> Option<Vec<String>> {
         self.inner.get_param(key)
+    }
+
+    /// Whether the query has a parameter named ``key``.
+    fn has_param(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    /// ``url[key]`` -> the parameter's values (raises ``KeyError`` if absent).
+    fn __getitem__(&self, key: &str) -> PyResult<Vec<String>> {
+        self.inner
+            .get_param(key)
+            .ok_or_else(|| PyKeyError::new_err(key.to_string()))
+    }
+
+    /// ``url[key] = values`` -> set the parameter in place (percent-encoded).
+    fn __setitem__(&mut self, key: String, values: Vec<String>) {
+        self.inner = self.inner.set_param(key, values, true);
+    }
+
+    /// ``del url[key]`` -> remove the parameter in place.
+    fn __delitem__(&mut self, key: &str) -> PyResult<()> {
+        if !self.inner.has_param(key) {
+            return Err(PyKeyError::new_err(key.to_string()));
+        }
+        self.inner = self.inner.remove_param(key, true);
+        Ok(())
     }
 
     /// Return a copy with one parameter created or replaced (single update).

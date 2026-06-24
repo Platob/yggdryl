@@ -456,6 +456,11 @@ impl Uri {
         self.params(true).get(key).cloned()
     }
 
+    /// Whether the query contains a parameter named `key`.
+    pub fn has_param(&self, key: &str) -> bool {
+        self.params(true).contains_key(key)
+    }
+
     /// Returns a copy with one parameter created or replaced (single update).
     pub fn set_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Uri {
         self.add_param(key, values, encode)
@@ -1023,6 +1028,11 @@ impl Url {
         self.params(true).get(key).cloned()
     }
 
+    /// Whether the query contains a parameter named `key`.
+    pub fn has_param(&self, key: &str) -> bool {
+        self.params(true).contains_key(key)
+    }
+
     /// Returns a copy with one parameter created or replaced (single update).
     pub fn set_param(&self, key: impl Into<String>, values: Vec<String>, encode: bool) -> Url {
         self.add_param(key, values, encode)
@@ -1501,6 +1511,7 @@ mod tests {
         let base = Url::from_str("https://h/p?a=1&b=2&c=3", true).unwrap();
         assert_eq!(base.get_param("a"), Some(vec!["1".to_string()]));
         assert_eq!(base.get_param("z"), None);
+        assert!(base.has_param("a") && !base.has_param("z"));
 
         // single update
         assert_eq!(

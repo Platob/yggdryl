@@ -206,5 +206,25 @@ def test_params_crud():
     assert base.clear_params().query is None
 
 
+def test_direct_param_management():
+    url = yggdryl.Url("https://h/p?a=1&b=2")
+    # read
+    assert url["a"] == ["1"]
+    assert "a" in url and "z" not in url
+    assert url.has_param("b") and not url.has_param("z")
+    with pytest.raises(KeyError):
+        _ = url["z"]
+    # set in place
+    url["a"] = ["9", "10"]
+    assert url["a"] == ["9", "10"]
+    url["c"] = ["x"]
+    assert "c" in url
+    # delete in place
+    del url["a"]
+    assert "a" not in url
+    with pytest.raises(KeyError):
+        del url["a"]
+
+
 def test_module_version():
     assert isinstance(yggdryl.__version__, str)
