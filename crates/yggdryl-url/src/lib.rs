@@ -12,6 +12,7 @@
 //! and the percent-encoding helpers are re-exported from `yggdryl-core`. The
 //! `Version` type lives in the separate `yggdryl-version` crate.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -34,12 +35,12 @@ pub(crate) const KEEP_QUERY: &[u8] = b"/:@?&=";
 pub(crate) const KEEP_FRAGMENT: &[u8] = b"/:@?";
 
 /// Renders a component either percent-encoded (`encode`) or percent-decoded
-/// (best effort), used by `to_str(encode)`.
-pub(crate) fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
+/// (best effort), used by `to_str(encode)`. Borrows `input` when nothing changes.
+pub(crate) fn render_component<'a>(input: &'a str, keep: &[u8], encode: bool) -> Cow<'a, str> {
     if encode {
         encode_component(input, keep)
     } else {
-        percent_decode(input).unwrap_or_else(|_| input.to_string())
+        percent_decode(input).unwrap_or(Cow::Borrowed(input))
     }
 }
 
@@ -47,9 +48,11 @@ pub(crate) fn render_component(input: &str, keep: &[u8], encode: bool) -> String
 /// accumulate their values; when `decode`, each key/value is percent-decoded
 /// (parts that fail to decode are kept verbatim).
 pub(crate) fn query_to_params(query: &str, decode: bool) -> Params {
-    let unescape = |s: &str| {
+    let unescape = |s: &str| -> String {
         if decode {
-            percent_decode(s).unwrap_or_else(|_| s.to_string())
+            percent_decode(s)
+                .map(Cow::into_owned)
+                .unwrap_or_else(|_| s.to_string())
         } else {
             s.to_string()
         }
@@ -81,7 +84,9 @@ pub(crate) fn query_param(query: &str, key: &str) -> Option<Vec<String>> {
     for pair in query.split('&').filter(|p| !p.is_empty()) {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
         if key_matches(k) {
-            let value = percent_decode(v).unwrap_or_else(|_| v.to_string());
+            let value = percent_decode(v)
+                .map(Cow::into_owned)
+                .unwrap_or_else(|_| v.to_string());
             values.get_or_insert_with(Vec::new).push(value);
         }
     }
@@ -644,7 +649,9 @@ fn render_part(part: &str, encode: bool) -> String {
     if encode {
         part.to_string()
     } else {
-        percent_decode(part).unwrap_or_else(|_| part.to_string())
+        percent_decode(part)
+            .map(Cow::into_owned)
+            .unwrap_or_else(|_| part.to_string())
     }
 }
 

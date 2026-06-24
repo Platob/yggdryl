@@ -12,6 +12,7 @@
 //! The `Uri` and `Url` types live in the `yggdryl-url` crate, which builds on
 //! these foundations.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -146,6 +147,14 @@ fn is_unreserved(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
 }
 
+/// Returns `true` if `bytes[i..]` begins with a valid `%XX` escape (a `%`
+/// followed by two hex digits). Shared by the encode/validate scanners.
+fn is_escape_at(bytes: &[u8], i: usize) -> bool {
+    bytes[i] == b'%'
+        && bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit())
+        && bytes.get(i + 2).is_some_and(|b| b.is_ascii_hexdigit())
+}
+
 /// Percent-encodes `input` (URL-safe): every byte outside the unreserved set is
 /// written as `%XX`, e.g. a space becomes `%20`.
 ///
@@ -169,15 +178,18 @@ pub fn percent_encode(input: &str) -> String {
 
 /// Percent-decodes `input`, turning each `%XX` escape back into a byte.
 ///
+/// Zero-copy with a check: when `input` carries no `%`, it is already its own
+/// decoding (and valid UTF-8 by virtue of being a `&str`), so the input is
+/// borrowed unchanged; an allocation happens only when there is something to
+/// decode.
+///
 /// ```
 /// use yggdryl_core::percent_decode;
 /// assert_eq!(percent_decode("a%20b").unwrap(), "a b");
 /// ```
-pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
-    // Fast path: no escapes means the input is already its own decoding (and is
-    // valid UTF-8 by virtue of being a `&str`), so skip the byte loop entirely.
+pub fn percent_decode(input: &str) -> Result<Cow<'_, str>, EncodingError> {
     if !input.contains('%') {
-        return Ok(input.to_string());
+        return Ok(Cow::Borrowed(input));
     }
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -199,13 +211,15 @@ pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
             i += 1;
         }
     }
-    String::from_utf8(out).map_err(|_| EncodingError::InvalidUtf8)
+    String::from_utf8(out)
+        .map(Cow::Owned)
+        .map_err(|_| EncodingError::InvalidUtf8)
 }
 
 /// Validates that every `%` in `input` is followed by two hex digits, used by
 /// parsing.
 pub fn validate_percent_encoding(input: &str) -> Result<(), EncodingError> {
-    // Fast path: nothing to validate without a `%`.
+    // Zero-copy check: nothing to validate without a `%`.
     if !input.contains('%') {
         return Ok(());
     }
@@ -213,9 +227,7 @@ pub fn validate_percent_encoding(input: &str) -> Result<(), EncodingError> {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' {
-            let ok = bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit())
-                && bytes.get(i + 2).is_some_and(|b| b.is_ascii_hexdigit());
-            if !ok {
+            if !is_escape_at(bytes, i) {
                 return Err(EncodingError::InvalidEscape(input.to_string()));
             }
             i += 3;
@@ -247,19 +259,40 @@ fn hex_value(byte: u8) -> Option<u8> {
 /// Percent-encodes `input` for output, preserving the bytes in `keep` (the
 /// component's structural delimiters) and any already-valid `%XX` escape — so it
 /// is idempotent and never double-encodes.
-pub fn encode_component(input: &str, keep: &[u8]) -> String {
+///
+/// Zero-copy with a check: it first scans for the first byte that needs escaping
+/// and borrows `input` unchanged when there is none; only then does it allocate,
+/// copying the already-valid prefix verbatim before encoding the remainder.
+pub fn encode_component<'a>(input: &'a str, keep: &[u8]) -> Cow<'a, str> {
     let bytes = input.as_bytes();
-    let mut out = String::with_capacity(bytes.len());
+    // A byte passes through untouched if it is unreserved, a kept delimiter, or
+    // the start of an already-valid escape (advancing three bytes).
     let mut i = 0;
+    let split = loop {
+        if i >= bytes.len() {
+            break None;
+        }
+        if is_escape_at(bytes, i) {
+            i += 3;
+        } else if is_unreserved(bytes[i]) || keep.contains(&bytes[i]) {
+            i += 1;
+        } else {
+            break Some(i);
+        }
+    };
+    let Some(start) = split else {
+        return Cow::Borrowed(input);
+    };
+
+    let mut out = String::with_capacity(input.len() + 8);
+    out.push_str(&input[..start]);
+    let mut i = start;
     while i < bytes.len() {
-        let byte = bytes[i];
-        let is_escape = byte == b'%'
-            && bytes.get(i + 1).is_some_and(|b| b.is_ascii_hexdigit())
-            && bytes.get(i + 2).is_some_and(|b| b.is_ascii_hexdigit());
-        if is_escape {
+        if is_escape_at(bytes, i) {
             out.push_str(&input[i..i + 3]);
             i += 3;
         } else {
+            let byte = bytes[i];
             if is_unreserved(byte) || keep.contains(&byte) {
                 out.push(byte as char);
             } else {
@@ -270,7 +303,7 @@ pub fn encode_component(input: &str, keep: &[u8]) -> String {
             i += 1;
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 #[cfg(test)]
@@ -316,6 +349,27 @@ mod tests {
         assert!(validate_percent_encoding("bad%gg").is_err());
         // A trailing `%` is invalid.
         assert!(validate_percent_encoding("trailing%").is_err());
+    }
+
+    #[test]
+    fn zero_copy_borrows_when_unchanged() {
+        // No `%` -> decode borrows; an escape forces an owned allocation.
+        assert!(matches!(
+            percent_decode("nothing here"),
+            Ok(Cow::Borrowed(_))
+        ));
+        assert!(matches!(percent_decode("a%20b"), Ok(Cow::Owned(_))));
+        // All-safe (incl. already-valid escapes) -> encode borrows; a byte that
+        // must be escaped forces an owned allocation.
+        assert!(matches!(
+            encode_component("already/safe", b"/"),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(encode_component("a%20b", b""), Cow::Borrowed(_)));
+        assert!(matches!(
+            encode_component("needs space", b""),
+            Cow::Owned(_)
+        ));
     }
 
     #[test]

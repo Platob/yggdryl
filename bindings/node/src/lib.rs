@@ -32,5 +32,7 @@ pub fn percent_encode_js(input: String) -> String {
 /// Percent-decode `input`, throwing on a malformed escape.
 #[napi(js_name = "percentDecode")]
 pub fn percent_decode_js(input: String) -> Result<String> {
-    percent_decode(&input).map_err(|e| Error::from_reason(e.to_string()))
+    percent_decode(&input)
+        .map(|decoded| decoded.into_owned())
+        .map_err(|e| Error::from_reason(e.to_string()))
 }

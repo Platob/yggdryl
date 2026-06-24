@@ -59,8 +59,20 @@ fn main() {
 
     println!("== rendering / query ==");
     let url = Url::from_str("https://user:pw@example.com:8443/api?a=1&a=2#top").unwrap();
-    bench("Url::to_str(true)", n, || {
+    bench("Url::to_str(true) [cached]", n, || {
         black_box(black_box(&url).to_str(true));
+    });
+    // Fresh value each iteration so the render cache never hits; the clean
+    // components are borrowed (not re-allocated) by encode_component.
+    bench("Uri::from_parts + to_str [uncached]", n, || {
+        let u = Uri::from_parts(
+            black_box("https").into(),
+            Some("example.com".into()),
+            "/a/b/c".into(),
+            None,
+            None,
+        );
+        black_box(u.to_str(true));
     });
     let q = Uri::from_str("https://h/p?a=1&a=2&b=hello%20world&c=3&d=4").unwrap();
     bench("Uri::params(true)", n, || {

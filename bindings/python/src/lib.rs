@@ -65,7 +65,9 @@ fn py_percent_encode(value: &str) -> String {
 #[pyfunction]
 #[pyo3(name = "percent_decode")]
 fn py_percent_decode(value: &str) -> PyResult<String> {
-    percent_decode(value).map_err(|e| PyValueError::new_err(e.to_string()))
+    percent_decode(value)
+        .map(|decoded| decoded.into_owned())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// The ``yggdryl`` Python module.

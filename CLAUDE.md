@@ -89,6 +89,26 @@ Rules:
 - **Bindings**: each wrapper method is one or two lines delegating to
   `self.inner`. Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
 
+## Performance: zero-copy with checks
+
+Prefer **borrowing over copying**. A function that returns string data should
+hand back a borrow (`&str`) or a [`Cow`] and allocate **only when the data must
+actually change** — guarded by a cheap up-front check:
+
+- Decode/validate paths (`percent_decode`, `validate_percent_encoding`) check for
+  the trigger byte (`%`) first and return the input untouched when it is absent —
+  no allocation, no second scan.
+- Encode paths (`encode_component`) scan for the first byte that needs escaping;
+  if there is none they return `Cow::Borrowed`, otherwise they allocate once and
+  copy the already-valid prefix verbatim before encoding the rest.
+- Single-key lookups (`query_param`) scan for the one key instead of building the
+  whole `Params` map, and compare the raw bytes without allocating unless an
+  escape forces a decode.
+
+When you add a hot path, ask "does this allocate when nothing changed?" — if so,
+add the check and borrow. Never copy speculatively; never re-scan what a single
+pass can decide.
+
 ## Logging
 
 The Rust crates carry an optional, **off-by-default** `log` feature, emitted only
