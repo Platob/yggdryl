@@ -40,7 +40,8 @@
 //!   [`Directory`](Kind::Directory)), `size`, `mtime`, `content_type` and `etag`
 //!   eagerly; expensive fields like `media_type` are discovered lazily (only
 //!   when asked, then cached) — see [`Io::media_type`] under the `media` feature.
-//!   [`LocalPath::stat`] classifies a path without opening it.
+//!   A [`LocalPath`] holds its `url` / `stats` from construction (statted, not
+//!   mapped, up front).
 //! - **Named resources** — [`Path`]`: Io` is a local, hierarchical location
 //!   (its writes auto-create missing parent dirs *lazily*, on failure, never by
 //!   probing first); [`LocalPath`] is the filesystem backend, memory-mapping the
@@ -1082,125 +1083,135 @@ impl Backing {
     }
 }
 
-/// A local filesystem [`Path`]: an [`Io`] handle over a file, **memory-mapped**
-/// for zero-copy direct access when the `mmap` feature is on (otherwise the file
-/// is read into a buffer on [`open`](LocalPath::open)). Reads and [`pread`](Io::pread)
-/// then never touch the disk again, and [`copy`] hands the mapping straight to a
-/// sink.
+/// Stats `location` into [`IoStats`] (kind / size / mtime), reporting
+/// [`Kind::Missing`] when it is absent or unreachable. Never opens the file.
+fn stat_path(location: &str) -> IoStats {
+    match fs::metadata(location) {
+        Err(_) => IoStats::new(0).with_kind(Kind::Missing),
+        Ok(meta) => {
+            let kind = if meta.is_dir() {
+                Kind::Directory
+            } else if meta.is_file() {
+                Kind::File
+            } else {
+                Kind::Other
+            };
+            let mut stats = IoStats::new(meta.len()).with_kind(kind);
+            if let Ok(mtime) = meta.modified() {
+                stats = stats.with_mtime(mtime);
+            }
+            stats
+        }
+    }
+}
+
+/// Loads the bytes of `location` for reading — memory-mapped under the `mmap`
+/// feature, otherwise buffered. Non-files (and any failure) yield empty bytes.
+fn load_backing(location: &str, stats: &IoStats) -> Backing {
+    if !stats.is_file() {
+        return Backing::Buffered(Vec::new());
+    }
+    #[cfg(feature = "mmap")]
+    {
+        if stats.size() == 0 {
+            return Backing::Buffered(Vec::new());
+        }
+        // SAFETY: we map a file we open read-only here. The standard mmap caveat
+        // applies — external truncation while mapped is undefined — and is the
+        // caller's responsibility for the paths they hand us.
+        match fs::File::open(location).and_then(|file| unsafe { memmap2::Mmap::map(&file) }) {
+            Ok(map) => Backing::Mapped(map),
+            Err(_) => Backing::Buffered(Vec::new()),
+        }
+    }
+    #[cfg(not(feature = "mmap"))]
+    {
+        fs::read(location)
+            .map(Backing::Buffered)
+            .unwrap_or_else(|_| Backing::Buffered(Vec::new()))
+    }
+}
+
+/// A local filesystem [`Path`] **instance**.
 ///
-/// The mapped path is read-only; use the [`write`](LocalPath::write) associated
-/// function for the write side.
+/// [`open`](LocalPath::open) stats `location` up front — so [`url`](Io::url),
+/// [`stats`](Io::stats), the [`kind`](IoStats::kind) and [`location`](Path::location)
+/// are held and ready immediately — and never fails: a missing path yields a
+/// handle whose stats report [`Kind::Missing`]. The file's bytes are
+/// memory-mapped **lazily**, on the first read (zero-copy under the `mmap`
+/// feature, otherwise a buffered read), so a pure stat costs no map.
+///
+/// The mapped view is read-only; use the instance [`write`](LocalPath::write) to
+/// create or overwrite the file.
 #[derive(Debug)]
 pub struct LocalPath {
     location: String,
-    backing: Backing,
+    url: Url,
+    stats: IoStats,
+    backing: std::sync::OnceLock<Backing>,
     position: usize,
-    size: u64,
-    mtime: Option<SystemTime>,
     #[cfg(feature = "media")]
     media: std::sync::OnceLock<Option<yggdryl_media::MediaType>>,
 }
 
 impl LocalPath {
-    /// Opens `location` for reading, memory-mapping it under the `mmap` feature
-    /// (an empty file is held as an empty buffer, since zero-length maps are
-    /// invalid on some platforms). Fails with [`IoError::NotFound`] if missing.
-    pub fn open(location: impl Into<String>) -> Result<LocalPath, IoError> {
+    /// Creates a handle for `location`, statting it up front (so `url` / `stats`
+    /// are held) and deferring the memory-map to the first read. Infallible — a
+    /// missing path is reported through [`stats`](Io::stats) as [`Kind::Missing`].
+    pub fn open(location: impl Into<String>) -> LocalPath {
         let location = location.into();
         log_event!(debug, "LocalPath::open {location:?}");
-        let file = fs::File::open(&location)?;
-        let meta = file.metadata()?;
-        let size = meta.len();
-        let mtime = meta.modified().ok();
-
-        #[cfg(feature = "mmap")]
-        let backing = if size == 0 {
-            Backing::Buffered(Vec::new())
-        } else {
-            // SAFETY: we map a file we just opened for reading. The standard mmap
-            // caveat applies — external truncation while mapped is undefined — and
-            // is the caller's responsibility for the paths they hand us.
-            let map = unsafe { memmap2::Mmap::map(&file)? };
-            Backing::Mapped(map)
-        };
-        #[cfg(not(feature = "mmap"))]
-        let backing = {
-            use std::io::Read;
-            let mut buffer = Vec::with_capacity(size as usize);
-            let mut file = file;
-            file.read_to_end(&mut buffer)?;
-            Backing::Buffered(buffer)
-        };
-
-        Ok(LocalPath {
+        let url = Url::new("file", "").with_path(location.clone());
+        let stats = stat_path(&location);
+        LocalPath {
             location,
-            backing,
+            url,
+            stats,
+            backing: std::sync::OnceLock::new(),
             position: 0,
-            size,
-            mtime,
             #[cfg(feature = "media")]
             media: std::sync::OnceLock::new(),
-        })
+        }
     }
 
-    /// Writes `bytes` to `location` on disk, creating or truncating the file and
+    /// Writes `bytes` to this path, creating or truncating the file and
     /// **auto-creating missing parent directories**.
     ///
     /// This follows the [`Path`] contract: it does *not* stat the directory first.
     /// It writes straight away, and only when the write fails because a parent is
-    /// missing does it create the directory tree once and retry — so the common
-    /// case (the directory already exists) pays nothing.
-    pub fn write(location: &str, bytes: &[u8]) -> Result<(), IoError> {
+    /// missing does it create the tree once and retry. The held
+    /// [`stats`](Io::stats) keep their open-time values; re-[`open`](LocalPath::open)
+    /// to observe the new content.
+    pub fn write(&self, bytes: &[u8]) -> Result<(), IoError> {
         log_event!(
             info,
-            "LocalPath::write {} bytes -> {location:?}",
-            bytes.len()
+            "LocalPath::write {} bytes -> {:?}",
+            bytes.len(),
+            self.location
         );
-        match fs::write(location, bytes) {
+        match fs::write(&self.location, bytes) {
             Ok(()) => Ok(()),
             // The directory was missing: create it once, then retry the write.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = std::path::Path::new(location).parent();
+                let parent = std::path::Path::new(&self.location).parent();
                 if let Some(parent) = parent.filter(|p| !p.as_os_str().is_empty()) {
                     log_event!(debug, "LocalPath::write creating parent dir {parent:?}");
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(location, bytes)?;
+                fs::write(&self.location, bytes)?;
                 Ok(())
             }
             Err(error) => Err(error.into()),
-        }
-    }
-
-    /// Classifies `location` **without opening it**, returning [`IoStats`] whose
-    /// [`kind`](IoStats::kind) is [`Missing`](Kind::Missing) (absent or
-    /// unreachable), [`File`](Kind::File), [`Directory`](Kind::Directory) or
-    /// [`Other`](Kind::Other). Size and mtime are filled in when available. This
-    /// is the cheap "what is at this path?" probe that does not memory-map.
-    pub fn stat(location: &str) -> IoStats {
-        match fs::metadata(location) {
-            Err(_) => IoStats::new(0).with_kind(Kind::Missing),
-            Ok(meta) => {
-                let kind = if meta.is_dir() {
-                    Kind::Directory
-                } else if meta.is_file() {
-                    Kind::File
-                } else {
-                    Kind::Other
-                };
-                let mut stats = IoStats::new(meta.len()).with_kind(kind);
-                if let Ok(mtime) = meta.modified() {
-                    stats = stats.with_mtime(mtime);
-                }
-                stats
-            }
         }
     }
 }
 
 impl ReadBytes for LocalPath {
     fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
-        let data = self.backing.bytes();
+        let data = self
+            .backing
+            .get_or_init(|| load_backing(&self.location, &self.stats))
+            .bytes();
         let start = self.position.min(data.len());
         let count = buf.len().min(data.len() - start);
         buf[..count].copy_from_slice(&data[start..start + count]);
@@ -1211,7 +1222,7 @@ impl ReadBytes for LocalPath {
 
 impl Seek for LocalPath {
     fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
-        let len = self.backing.bytes().len() as i64;
+        let len = self.stats.size() as i64;
         let base = match whence {
             Whence::Start => 0,
             Whence::Current => self.position as i64,
@@ -1234,30 +1245,33 @@ impl Seek for LocalPath {
     }
 
     fn stream_len(&self) -> Option<u64> {
-        Some(self.size)
+        Some(self.stats.size())
     }
 }
 
 impl Io for LocalPath {
-    /// `file://<path>` — the `file` scheme over the resource location.
+    /// `file://<path>` — held since construction.
     fn url(&self) -> Url {
-        Url::new("file", "").with_path(self.location.clone())
+        self.url.clone()
     }
 
+    /// The metadata held since [`open`](LocalPath::open) (plus a lazily-discovered
+    /// `media_type` under the `media` feature).
     fn stats(&self) -> Result<IoStats, IoError> {
-        let mut stats = IoStats::new(self.size);
-        if let Some(mtime) = self.mtime {
-            stats = stats.with_mtime(mtime);
-        }
+        let stats = self.stats.clone();
         #[cfg(feature = "media")]
         if let Some(media_type) = self.media_type() {
-            stats = stats.with_media_type(media_type);
+            return Ok(stats.with_media_type(media_type));
         }
         Ok(stats)
     }
 
     fn as_slice(&self) -> Option<&[u8]> {
-        Some(self.backing.bytes())
+        Some(
+            self.backing
+                .get_or_init(|| load_backing(&self.location, &self.stats))
+                .bytes(),
+        )
     }
 
     /// Infers the media type from the file name (cheap, by extension) and falls
@@ -1271,7 +1285,11 @@ impl Io for LocalPath {
                 if !by_name.is_empty() {
                     Some(by_name)
                 } else {
-                    yggdryl_media::MimeType::from_magic(self.backing.bytes())
+                    let bytes = self
+                        .backing
+                        .get_or_init(|| load_backing(&self.location, &self.stats))
+                        .bytes();
+                    yggdryl_media::MimeType::from_magic(bytes)
                         .map(|mime| yggdryl_media::MediaType::new(vec![mime]))
                 }
             })
@@ -1870,15 +1888,17 @@ mod tests {
     #[test]
     fn local_path_reads_seeks_and_stats() {
         let path = temp_file("read");
-        LocalPath::write(&path, b"hello world").unwrap();
+        LocalPath::open(&path).write(b"hello world").unwrap();
 
-        let mut io = LocalPath::open(&path).unwrap();
+        let mut io = LocalPath::open(&path);
         assert_eq!(io.location(), path);
         assert!(io.exists());
         assert_eq!(io.url().scheme(), "file");
         assert_eq!(io.url().path(), path);
-        assert_eq!(io.stats().unwrap().size(), 11);
-        assert!(io.stats().unwrap().mtime().is_some());
+        let stats = io.stats().unwrap();
+        assert_eq!(stats.size(), 11);
+        assert_eq!(stats.kind(), Kind::File);
+        assert!(stats.mtime().is_some());
 
         // Streamed read advances the cursor; positional pread does not.
         let mut head = [0u8; 5];
@@ -1889,7 +1909,7 @@ mod tests {
         assert_eq!(&tail, b"world");
         assert_eq!(Seek::stream_position(&io), 5);
 
-        // Zero-copy transfer of the whole mapping into memory.
+        // Zero-copy transfer of the whole (lazily-mapped) file into memory.
         io.seek(0, Whence::Start).unwrap();
         let mut dst: Vec<u8> = Vec::new();
         assert_eq!(copy(&mut io, &mut dst).unwrap(), 11);
@@ -1900,16 +1920,22 @@ mod tests {
     }
 
     #[test]
-    fn local_path_missing_is_not_found() {
-        let err = LocalPath::open("/no/such/yggdryl/path").unwrap_err();
-        assert!(matches!(err, IoError::NotFound(_)));
+    fn local_path_missing_reports_kind_and_reads_empty() {
+        let mut io = LocalPath::open("/no/such/yggdryl/path");
+        let stats = io.stats().unwrap();
+        assert_eq!(stats.kind(), Kind::Missing);
+        assert!(!stats.exists());
+        assert!(!io.exists());
+        // Reading a missing path yields nothing.
+        let mut buf = [0u8; 4];
+        assert_eq!(io.read_bytes(&mut buf).unwrap(), 0);
     }
 
     #[test]
     fn local_path_empty_file() {
         let path = temp_file("empty");
-        LocalPath::write(&path, b"").unwrap();
-        let mut io = LocalPath::open(&path).unwrap();
+        LocalPath::open(&path).write(b"").unwrap();
+        let mut io = LocalPath::open(&path);
         assert_eq!(io.stats().unwrap().size(), 0);
         assert_eq!(io.as_slice(), Some(&[][..]));
         let mut buf = [0u8; 4];
@@ -1918,16 +1944,18 @@ mod tests {
     }
 
     #[test]
-    fn local_path_stat_classifies_the_kind() {
+    fn local_path_stats_classify_the_kind() {
         // A missing path.
         let missing = temp_file("stat_missing");
-        assert_eq!(LocalPath::stat(&missing).kind(), Kind::Missing);
-        assert!(!LocalPath::stat(&missing).exists());
+        assert_eq!(
+            LocalPath::open(&missing).stats().unwrap().kind(),
+            Kind::Missing
+        );
 
         // A regular file.
         let file = temp_file("stat_file");
-        LocalPath::write(&file, b"hello").unwrap();
-        let file_stats = LocalPath::stat(&file);
+        LocalPath::open(&file).write(b"hello").unwrap();
+        let file_stats = LocalPath::open(&file).stats().unwrap();
         assert_eq!(file_stats.kind(), Kind::File);
         assert!(file_stats.is_file());
         assert_eq!(file_stats.size(), 5);
@@ -1936,10 +1964,9 @@ mod tests {
         // A directory.
         let dir = temp_file("stat_dir");
         std::fs::create_dir_all(&dir).unwrap();
-        let dir_stats = LocalPath::stat(&dir);
+        let dir_stats = LocalPath::open(&dir).stats().unwrap();
         assert_eq!(dir_stats.kind(), Kind::Directory);
         assert!(dir_stats.is_dir());
-        assert!(dir_stats.exists());
 
         std::fs::remove_file(&file).ok();
         std::fs::remove_dir_all(&dir).ok();
@@ -1958,13 +1985,13 @@ mod tests {
         let base = temp_file("autodir");
         let nested = format!("{base}/a/b/c.bin");
         // The parent directories do not exist yet; the write creates them.
-        LocalPath::write(&nested, b"deep").unwrap();
-        let mut io = LocalPath::open(&nested).unwrap();
+        LocalPath::open(&nested).write(b"deep").unwrap();
+        let mut io = LocalPath::open(&nested);
         let mut buf = [0u8; 4];
         assert_eq!(io.pread(&mut buf, 0, Whence::Start).unwrap(), 4);
         assert_eq!(&buf, b"deep");
         // A second write into the now-existing tree still succeeds.
-        LocalPath::write(&nested, b"again").unwrap();
+        LocalPath::open(&nested).write(b"again").unwrap();
         std::fs::remove_dir_all(&base).ok();
     }
 
@@ -2026,8 +2053,8 @@ mod tests {
     #[test]
     fn local_path_infers_media_type_from_name() {
         let path = format!("{}.csv", temp_file("media"));
-        LocalPath::write(&path, b"a,b,c\n1,2,3\n").unwrap();
-        let io = LocalPath::open(&path).unwrap();
+        LocalPath::open(&path).write(b"a,b,c\n1,2,3\n").unwrap();
+        let io = LocalPath::open(&path);
         let media = io.media_type().expect("csv inferred from extension");
         assert_eq!(media.first().map(|m| m.subtype()), Some("csv"));
         // It is surfaced through stats() too.

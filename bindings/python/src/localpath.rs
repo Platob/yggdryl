@@ -19,35 +19,26 @@ pub struct LocalPath {
 
 #[pymethods]
 impl LocalPath {
-    /// Open ``location`` for reading, raising ``ValueError`` if it is missing.
+    /// Open a handle for ``location``, statting it up front (so :attr:`url` /
+    /// :meth:`stats` are ready). Never raises — a missing path yields a handle
+    /// whose :meth:`stats` report ``kind == "missing"``.
     #[new]
-    fn new(location: &str) -> PyResult<Self> {
-        CoreLocalPath::open(location)
-            .map(|inner| LocalPath { inner })
-            .map_err(io_err)
+    fn new(location: &str) -> Self {
+        LocalPath {
+            inner: CoreLocalPath::open(location),
+        }
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    fn open(location: &str) -> PyResult<Self> {
+    fn open(location: &str) -> Self {
         LocalPath::new(location)
     }
 
-    /// Write ``data`` to ``location`` on disk, auto-creating missing parent
+    /// Write ``data`` to this path on disk, auto-creating missing parent
     /// directories (lazily, only on a missing-parent failure).
-    #[staticmethod]
-    fn write(location: &str, data: Vec<u8>) -> PyResult<()> {
-        CoreLocalPath::write(location, &data).map_err(io_err)
-    }
-
-    /// Classify ``location`` without opening it (see :class:`IoStats`): its
-    /// :attr:`~IoStats.kind` is ``"missing"``, ``"file"``, ``"directory"`` or
-    /// ``"other"``.
-    #[staticmethod]
-    fn stat(location: &str) -> IoStats {
-        IoStats {
-            inner: CoreLocalPath::stat(location),
-        }
+    fn write(&self, data: Vec<u8>) -> PyResult<()> {
+        self.inner.write(&data).map_err(io_err)
     }
 
     /// The resource address as a :class:`Url` (``file://`` over the path).

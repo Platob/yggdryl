@@ -7,14 +7,12 @@ import os
 import shutil
 import tempfile
 
-import pytest
-
 import yggdryl
 
 
 def _temp(name: str, data: bytes) -> str:
     path = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_{name}")
-    yggdryl.LocalPath.write(path, data)
+    yggdryl.LocalPath(path).write(data)
     return path
 
 
@@ -66,15 +64,16 @@ def test_media_type_inferred_from_extension():
         os.remove(path)
 
 
-def test_stat_classifies_kind():
-    # Missing.
+def test_stats_classify_kind():
+    # Missing — the instance is still constructible, with kind "missing".
     missing = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_nope")
-    assert yggdryl.LocalPath.stat(missing).kind == "missing"
-    assert not yggdryl.LocalPath.stat(missing).exists
+    assert yggdryl.LocalPath(missing).stats().kind == "missing"
+    assert not yggdryl.LocalPath(missing).stats().exists
+    assert not yggdryl.LocalPath(missing).exists()
 
     # File.
     f = _temp("kind_file", b"hello")
-    file_stats = yggdryl.LocalPath.stat(f)
+    file_stats = yggdryl.LocalPath(f).stats()
     assert file_stats.kind == "file"
     assert file_stats.is_file and file_stats.exists
     assert file_stats.size == 5
@@ -83,7 +82,7 @@ def test_stat_classifies_kind():
     d = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_kind_dir")
     os.makedirs(d, exist_ok=True)
     try:
-        dir_stats = yggdryl.LocalPath.stat(d)
+        dir_stats = yggdryl.LocalPath(d).stats()
         assert dir_stats.kind == "directory"
         assert dir_stats.is_dir
     finally:
@@ -91,25 +90,12 @@ def test_stat_classifies_kind():
         os.rmdir(d)
 
 
-def test_open_file_stats_kind_is_file():
-    f = _temp("openkind", b"x")
-    try:
-        assert yggdryl.LocalPath(f).stats().kind == "file"
-    finally:
-        os.remove(f)
-
-
-def test_missing_path_raises():
-    with pytest.raises(ValueError):
-        yggdryl.LocalPath("/no/such/yggdryl/path")
-
-
 def test_write_auto_creates_missing_parent_dirs():
     base = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_autodir")
     nested = os.path.join(base, "a", "b", "c.bin")
     try:
         # The parent directories do not exist yet; the write creates them.
-        yggdryl.LocalPath.write(nested, b"deep")
+        yggdryl.LocalPath(nested).write(b"deep")
         assert yggdryl.LocalPath(nested).read() == b"deep"
     finally:
         shutil.rmtree(base, ignore_errors=True)

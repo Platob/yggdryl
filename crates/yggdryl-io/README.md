@@ -24,10 +24,12 @@ same handle.
   strings (`Mode::from_str`: `r`, `rb`, `a`, `r+`, `w+`, `append`, …).
 - `IoStats` — `kind` (missing / file / directory / other), `size`, `mtime`,
   `content_type`, `etag` eager; `media_type` discovered lazily (and cached) under
-  the `media` feature. `LocalPath::stat` classifies a path without opening it.
-- `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
-  backend, memory-mapping the file (zero-copy) under the `mmap` feature. Its
-  writes auto-create missing parent dirs *lazily* (only after a `NotFound`
+  the `media` feature.
+- `Path: Io` — a local, hierarchical resource. `LocalPath` is a filesystem
+  **instance**: `open` stats the path up front (holding `url` / `stats`, never
+  failing — a missing path reports `kind == Missing`) and memory-maps the file
+  *lazily* on first read (zero-copy under the `mmap` feature). Its instance
+  `write` auto-creates missing parent dirs *lazily* (only after a `NotFound`
   failure, then retry — never a stat up front).
 - `RemotePath: Io` — the URL-addressed cloud sibling (flat keys, no dir
   creation). Concrete S3 / Azure paths are downstream crates implementing it.
@@ -50,14 +52,15 @@ assert_eq!(io.url().scheme(), "mem");
 assert_eq!(io.stats().unwrap().size(), 11);
 ```
 
-`LocalPath` is the filesystem `Path`, memory-mapped under `mmap`:
+`LocalPath` is a filesystem `Path` instance — `open` never fails (it stats the
+path), and the file is mapped lazily under `mmap`:
 
 ```rust,ignore
 use yggdryl_io::{copy, Io, LocalPath};
 
-let mut src = LocalPath::open("data.parquet").unwrap();
+let mut src = LocalPath::open("data.parquet"); // infallible: holds url + stats
 let mut buf: Vec<u8> = Vec::new();
-copy(&mut src, &mut buf).unwrap(); // zero-copy hand-off of the mapping
+copy(&mut src, &mut buf).unwrap(); // zero-copy hand-off of the lazily-mapped file
 ```
 
 ## Features (off by default; the base build depends only on `yggdryl-url`)

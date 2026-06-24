@@ -51,10 +51,12 @@ handle. The layering, smallest to largest:
   Sync` so handles can be boxed as parents and held across threads.)
 - `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
   expensive metadata (`media_type`) discovered lazily and cached.
-- `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
-  backend (mmap via the `mmap` feature). Its writes **auto-create missing parent
-  dirs lazily** — attempt the write, create the tree only on a `NotFound`
-  failure, then retry; never stat the dir up front.
+- `Path: Io` — a local, hierarchical resource. `LocalPath` is a filesystem
+  **instance**: `open` is infallible — it stats the path up front (holding
+  `url`/`stats`; a missing path reports `Kind::Missing`) and memory-maps the file
+  **lazily** on first read (mmap via the `mmap` feature). Its instance `write`
+  **auto-creates missing parent dirs lazily** — attempt the write, create the
+  tree only on a `NotFound` failure, then retry; never stat the dir up front.
 - `RemotePath: Io` — the URL-addressed cloud sibling of `Path` (flat keys, no dir
   creation; range reads via `pread`). The address is the universal `Io::url()`.
   **Cloud backends (S3, Azure) are downstream crates that implement `RemotePath`

@@ -19,35 +19,29 @@ pub struct LocalPath {
 
 #[napi]
 impl LocalPath {
-    /// Open `location` for reading, throwing if it is missing.
+    /// Open a handle for `location`, statting it up front (so `url` / `stats` are
+    /// ready). Never throws — a missing path yields a handle whose `stats` report
+    /// `kind === "missing"`.
     #[napi(constructor)]
-    pub fn new(location: String) -> Result<Self> {
-        CoreLocalPath::open(&location)
-            .map(|inner| LocalPath { inner })
-            .map_err(|e| Error::from_reason(e.to_string()))
+    pub fn new(location: String) -> Self {
+        LocalPath {
+            inner: CoreLocalPath::open(&location),
+        }
     }
 
     /// Alias for the constructor.
     #[napi(factory)]
-    pub fn open(location: String) -> Result<LocalPath> {
+    pub fn open(location: String) -> LocalPath {
         LocalPath::new(location)
     }
 
-    /// Write `data` to `location` on disk, auto-creating missing parent
+    /// Write `data` to this path on disk, auto-creating missing parent
     /// directories (lazily, only on a missing-parent failure).
     #[napi]
-    pub fn write(location: String, data: Buffer) -> Result<()> {
-        CoreLocalPath::write(&location, data.as_ref())
+    pub fn write(&self, data: Buffer) -> Result<()> {
+        self.inner
+            .write(data.as_ref())
             .map_err(|e| Error::from_reason(e.to_string()))
-    }
-
-    /// Classify `location` without opening it (see `IoStats`): its `kind` is
-    /// `"missing"`, `"file"`, `"directory"` or `"other"`.
-    #[napi]
-    pub fn stat(location: String) -> IoStats {
-        IoStats {
-            inner: CoreLocalPath::stat(&location),
-        }
     }
 
     /// The resource address as a `Url` (`file://` over the path).
