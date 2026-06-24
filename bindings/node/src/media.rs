@@ -77,6 +77,12 @@ impl MediaType {
         }
     }
 
+    /// Render to a component object (the inverse of `fromMapping`).
+    #[napi(js_name = "toMapping")]
+    pub fn to_mapping(&self) -> HashMap<String, String> {
+        self.inner.to_mapping().into_iter().collect()
+    }
+
     /// The ordered `MimeType` list, innermost content first.
     #[napi(getter)]
     pub fn types(&self) -> Vec<MimeType> {

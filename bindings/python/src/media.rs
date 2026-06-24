@@ -1,7 +1,7 @@
 //! The `MediaType` pyclass: an ordered stack of :class:`MimeType`.
 
 use pyo3::prelude::*;
-use yggdryl_media::{FromInput, Mapping, MediaType as CoreMediaType};
+use yggdryl_media::{FromInput, Mapping, MediaType as CoreMediaType, ToOutput};
 
 use crate::mime::MimeType;
 use crate::{hash_str, media_err};
@@ -75,6 +75,11 @@ impl MediaType {
         MediaType {
             inner: CoreMediaType::default(),
         }
+    }
+
+    /// Render to a component ``dict`` (the inverse of ``from_mapping``).
+    fn to_mapping(&self) -> Mapping {
+        self.inner.to_mapping()
     }
 
     /// The ordered :class:`MimeType` list, innermost content first.

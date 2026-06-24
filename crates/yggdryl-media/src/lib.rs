@@ -785,14 +785,20 @@ impl FromInput for MediaType {
         Ok(MediaType::from_path(input))
     }
 
-    /// Builds the stack from a [`Mapping`]; reads the `path` key (falling back to
-    /// `str`) and parses it like [`from_path`](MediaType::from_path).
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<MediaType, MediaError> {
-        let path = fields
-            .get("path")
-            .or_else(|| fields.get("str"))
-            .map_or("", String::as_str);
-        MediaType::from_str(path, safe)
+    /// Builds the stack from a [`Mapping`]; reads the `types` key, a comma-
+    /// separated list of MIME strings (the inverse of
+    /// [`to_mapping`](MediaType::to_mapping)).
+    fn from_mapping(fields: &Mapping, _safe: bool) -> Result<MediaType, MediaError> {
+        let types = fields
+            .get("types")
+            .map(|list| {
+                list.split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(MimeType::from_mime)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(MediaType::new(types))
     }
 }
 
@@ -812,6 +818,18 @@ impl ToOutput for MediaType {
             .filter_map(MimeType::extension)
             .collect::<Vec<_>>()
             .join(".")
+    }
+
+    /// The inverse of [`from_mapping`](MediaType::from_mapping): a single `types`
+    /// key holding the comma-separated MIME strings (e.g. `"text/csv,application/gzip"`).
+    fn to_mapping(&self) -> Mapping {
+        let types = self
+            .types
+            .iter()
+            .map(MimeType::mime)
+            .collect::<Vec<_>>()
+            .join(",");
+        Mapping::from([("types".to_string(), types)])
     }
 }
 
@@ -951,11 +969,14 @@ mod tests {
             MediaType::from_extensions(&["csv", "nope", "gz"]).types(),
             [MimeType::Csv, MimeType::Gzip]
         );
-        let map = Mapping::from([("path".to_string(), "report.csv.gz".to_string())]);
+        // to_mapping/from_mapping round-trip via the `types` key (MIME list).
+        let stack = MediaType::from_path("a/b.csv.gz");
+        assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
         assert_eq!(
-            MediaType::from_(&map).unwrap(),
-            MediaType::new(vec![MimeType::Csv, MimeType::Gzip])
+            stack.to_mapping().get("types"),
+            Some(&"text/csv,application/gzip".to_string())
         );
+        assert_eq!(MediaType::from_(&stack.to_mapping()).unwrap(), stack);
     }
 
     #[test]

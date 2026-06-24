@@ -106,7 +106,11 @@ def test_convenient_from_constructors():
         "text/csv",
         "application/gzip",
     ]
-    assert yggdryl.MediaType.from_mapping({"path": "report.csv.gz"}) == yggdryl.MediaType.from_path("report.csv.gz")
+    # to_mapping/from_mapping round-trip via the `types` key (MIME list).
+    stack = yggdryl.MediaType.from_path("a/b.csv.gz")
+    assert stack.to_mapping() == {"types": "text/csv,application/gzip"}
+    assert yggdryl.MediaType.from_mapping(stack.to_mapping()) == stack
+    assert yggdryl.MediaType.from_mapping({"types": "text/csv,application/gzip"}) == stack
 
 
 def test_default_octet_stream_fallback():

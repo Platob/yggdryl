@@ -95,7 +95,11 @@ test('convenient from constructors', () => {
     MediaType.fromExtensions(['csv', 'nope', 'gz']).types.map((t) => t.mime),
     ['text/csv', 'application/gzip'],
   )
-  assert.ok(MediaType.fromMapping({ path: 'report.csv.gz' }).equals(MediaType.fromPath('report.csv.gz')))
+  // toMapping/fromMapping round-trip via the `types` key (MIME list).
+  const stack = MediaType.fromPath('a/b.csv.gz')
+  assert.deepStrictEqual(stack.toMapping(), { types: 'text/csv,application/gzip' })
+  assert.ok(MediaType.fromMapping(stack.toMapping()).equals(stack))
+  assert.ok(MediaType.fromMapping({ types: 'text/csv,application/gzip' }).equals(stack))
 })
 
 test('default octet-stream fallback', () => {
