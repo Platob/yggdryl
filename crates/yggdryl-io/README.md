@@ -54,7 +54,7 @@ let mut buf: Vec<u8> = Vec::new();
 copy(&mut src, &mut buf).unwrap(); // zero-copy hand-off of the mapping
 ```
 
-## Features (off by default — the default build is dependency-free)
+## Features (off by default; the base build depends only on `yggdryl-url`)
 
 - `log` — structured `log` events on the hot paths.
 - `mmap` — `LocalPath` memory-maps files (zero-copy) instead of reading them.

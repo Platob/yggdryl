@@ -186,6 +186,7 @@ cargo publish -p yggdryl-core
 cargo publish -p yggdryl-version
 cargo publish -p yggdryl-media
 cargo publish -p yggdryl-url
+cargo publish -p yggdryl-io
 
 # Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)
 maturin build --release -m bindings/python/Cargo.toml --out dist

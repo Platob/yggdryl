@@ -74,7 +74,8 @@ use std::time::SystemTime;
 use yggdryl_url::Url;
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
-/// otherwise (so the crate is dependency-free by default and pays no runtime cost).
+/// otherwise (so the crate pulls no `log` dependency by default and pays no
+/// runtime cost).
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
