@@ -365,6 +365,31 @@ pub trait Io: ReadBytes + Seek {
         Ok(filled)
     }
 
+    /// Reads up to `size` bytes from the cursor into an owned vector (all
+    /// remaining bytes when `size` is `None`), advancing the cursor — the
+    /// owned-read convenience any handle inherits, used by the bindings.
+    fn read_owned(&mut self, size: Option<usize>) -> Result<Vec<u8>, IoError> {
+        match size {
+            Some(n) => {
+                let mut buf = vec![0u8; n];
+                let mut filled = 0;
+                while filled < n {
+                    match self.read_bytes(&mut buf[filled..])? {
+                        0 => break,
+                        count => filled += count,
+                    }
+                }
+                buf.truncate(filled);
+                Ok(buf)
+            }
+            None => {
+                let mut buf = Vec::new();
+                self.read_to_end(&mut buf)?;
+                Ok(buf)
+            }
+        }
+    }
+
     /// Copies every byte from the cursor to the end into `dst`, returning the
     /// count. A memory-resident source writes its tail in a single
     /// [`write_all`](WriteBytes::write_all) (zero intermediate copies); otherwise
@@ -1068,6 +1093,15 @@ mod tests {
         let mut tail = [0u8; 4];
         assert_eq!(io.read_at(8, &mut tail).unwrap(), 2);
         assert_eq!(&tail[..2], b"89");
+    }
+
+    #[test]
+    fn io_read_owned_reads_from_the_cursor() {
+        let mut io = BytesIO::from_bytes(b"hello world".to_vec());
+        io.seek(6, Whence::Start).unwrap();
+        assert_eq!(io.read_owned(Some(3)).unwrap(), b"wor");
+        assert_eq!(io.read_owned(None).unwrap(), b"ld");
+        assert_eq!(io.read_owned(Some(4)).unwrap(), b"");
     }
 
     #[test]

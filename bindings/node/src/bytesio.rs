@@ -2,7 +2,9 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::{BytesIO as CoreBytesIO, Whence};
+use yggdryl_io::BytesIO as CoreBytesIO;
+
+use crate::whence_from;
 
 /// A simple in-memory byte buffer with a cursor, modelled on Python's
 /// `io.BytesIO`: `read` / `write` / `seek` / `tell` / `getValue` / `truncate`,
@@ -11,19 +13,6 @@ use yggdryl_io::{BytesIO as CoreBytesIO, Whence};
 #[napi(js_name = "BytesIO")]
 pub struct BytesIO {
     pub(crate) inner: CoreBytesIO,
-}
-
-/// Maps a `whence` integer (`0` start, `1` current, `2` end) to the core
-/// [`Whence`], throwing on any other value.
-fn whence_from(whence: u8) -> Result<Whence> {
-    match whence {
-        0 => Ok(Whence::Start),
-        1 => Ok(Whence::Current),
-        2 => Ok(Whence::End),
-        other => Err(Error::from_reason(format!(
-            "invalid whence ({other}), expected 0, 1 or 2"
-        ))),
-    }
 }
 
 #[napi]

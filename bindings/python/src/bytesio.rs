@@ -2,9 +2,9 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_io::{BytesIO as CoreBytesIO, Whence};
+use yggdryl_io::BytesIO as CoreBytesIO;
 
-use crate::io_err;
+use crate::{io_err, whence_from};
 
 /// A simple in-memory byte buffer with a cursor, modelled on Python's
 /// :class:`io.BytesIO`: :meth:`read` / :meth:`write` / :meth:`seek` /
@@ -13,19 +13,6 @@ use crate::io_err;
 #[pyclass(name = "BytesIO", module = "yggdryl")]
 pub struct BytesIO {
     pub(crate) inner: CoreBytesIO,
-}
-
-/// Maps a Python ``whence`` integer (``SEEK_SET`` / ``SEEK_CUR`` / ``SEEK_END``)
-/// to the core [`Whence`], raising ``ValueError`` on any other value.
-fn whence_from(whence: i64) -> PyResult<Whence> {
-    match whence {
-        0 => Ok(Whence::Start),
-        1 => Ok(Whence::Current),
-        2 => Ok(Whence::End),
-        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "invalid whence ({other}), expected 0, 1 or 2"
-        ))),
-    }
 }
 
 #[pymethods]
