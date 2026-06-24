@@ -139,7 +139,18 @@ cargo test
 (cd bindings/node && npm run build && npm test)
 ```
 
-All five must pass. Do not bump the version while the base is still being built.
+All five must pass.
+
+## Releasing
+
+The workspace `version` under `[workspace.package]` in the root `Cargo.toml` is the
+single source of truth. To cut a release, bump it and merge to `main`: the
+`Release` workflow detects the new version (no matching `v<version>` tag yet),
+runs the gate, publishes to crates.io / PyPI / npm, then creates the tag and a
+GitHub Release. Inter-crate deps are caret ranges, so a `0.1.x` bump only touches
+that one line (the Python wheels inherit it via `version.workspace = true`; the
+npm `package.json` is synced from it at publish time — keep it in sync locally
+too). Never re-use a published version number; crates.io/npm reject re-uploads.
 
 ## Code-coherence review (after every implementation)
 

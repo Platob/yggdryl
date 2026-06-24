@@ -334,11 +334,11 @@ checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
 name = "yggdryl-core"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "yggdryl-media"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "yggdryl-core",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-node"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "napi",
  "napi-build",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-python"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pyo3",
  "yggdryl-media",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-url"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "yggdryl-core",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-version"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "yggdryl-core",

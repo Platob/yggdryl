@@ -1,6 +1,6 @@
 {
   "name": "yggdryl",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "yggdryl — a Rust-core URI/URL library, exposed to Node.js",
   "main": "index.js",
   "types": "index.d.ts",

@@ -146,21 +146,25 @@ yggdryl-url = { version = "0.1", features = ["log"] }
 CI builds and tests every layer on **Linux** and **Windows**
 (`x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`). The pure-Rust crate is
 portable source; the Python wheels and Node addons are built per-OS by the
-`Build artifacts` workflow (`.github/workflows/release.yml`).
+`Release` workflow (`.github/workflows/release.yml`).
 
 ## Publishing
 
-Publishing is automated by `.github/workflows/release.yml`. Pushing a version
-tag builds the per-OS artifacts and publishes to all three registries:
+Publishing is automated by `.github/workflows/release.yml` and triggered by a
+**version bump on `main`** — there is nothing to tag by hand:
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+1. Bump `version` under `[workspace.package]` in the root `Cargo.toml` (e.g.
+   `0.1.1` → `0.1.2`) and merge to `main`.
+2. The workflow's `check` job compares that version to the existing
+   `v<version>` tags. If it is new, it runs the gate (`fmt` / `clippy` /
+   `cargo test`), builds the per-OS wheels and addons, publishes to crates.io,
+   PyPI and npm, and finally creates the `v<version>` tag and a GitHub Release
+   (with auto-generated notes). If the version is unchanged, only `check` runs.
 
-(`workflow_dispatch` runs the build only, so you can dry-run the artifacts
-without publishing.) It needs three repository secrets — Settings → Secrets and
-variables → Actions:
+crates.io and the Python wheels inherit the version (`version.workspace = true`);
+the npm `package.json` version is synced from the workspace version at publish
+time. `workflow_dispatch` runs the same logic on demand. It needs three
+repository secrets — Settings → Secrets and variables → Actions:
 
 | Secret | Registry |
 | --- | --- |
@@ -176,8 +180,11 @@ publish` are deprecated, so don't reintroduce them.
 If you ever publish outside CI, use the non-deprecated tools:
 
 ```bash
-# Rust
-cargo publish -p yggdryl
+# Rust — publish in dependency order
+cargo publish -p yggdryl-core
+cargo publish -p yggdryl-version
+cargo publish -p yggdryl-media
+cargo publish -p yggdryl-url
 
 # Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)
 maturin build --release -m bindings/python/Cargo.toml --out dist
