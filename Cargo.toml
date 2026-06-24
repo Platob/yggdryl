@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/yggdryl-core",
+    "crates/yggdryl",
     "bindings/python",
     "bindings/node",
 ]
 # `cargo build` / `cargo test` with no args only touches the pure-Rust core.
 # The Python and Node bindings are built through their own toolchains
 # (maturin / napi) so the default workflow never needs Python or Node headers.
-default-members = ["crates/yggdryl-core"]
+default-members = ["crates/yggdryl"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,7 +21,13 @@ description = "yggdryl — a Rust-core hierarchical tree library with Python and
 keywords = ["tree", "hierarchy", "ffi", "yggdryl"]
 
 [workspace.dependencies]
-yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
+# The Rust core crate. Bindings depend on it under the alias `yggdryl-core`
+# (see each binding's Cargo.toml) so the dependency's extern name doesn't collide
+# with the cdylib they themselves expose as `yggdryl`.
+yggdryl = { path = "crates/yggdryl", version = "0.1.0" }
+# Apache Arrow is the principal data dependency of the core: the tree exchanges
+# its contents as columnar Arrow record batches.
+arrow = "59"
 
 [profile.release]
 lto = true

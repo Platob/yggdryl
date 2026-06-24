@@ -1,7 +1,7 @@
 # yggdryl (Python)
 
 Python bindings for [**yggdryl**](https://github.com/Platob/yggdryl), backed by
-the Rust `yggdryl-core` crate.
+the Rust `yggdryl` core crate.
 
 ## Install
 

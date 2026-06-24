@@ -93,6 +93,24 @@ impl Tree {
             .map(|(path, value)| Leaf { path, value })
             .collect()
     }
+
+    /// Serialize the tree to an Arrow IPC stream `Buffer` (readable by the
+    /// `apache-arrow` package).
+    #[napi(js_name = "toArrowIpc")]
+    pub fn to_arrow_ipc(&self) -> Result<Buffer> {
+        self.inner
+            .to_arrow_ipc()
+            .map(Buffer::from)
+            .map_err(to_napi_err)
+    }
+
+    /// Build a tree from an Arrow IPC stream `Buffer` with `path`/`value` columns.
+    #[napi(js_name = "fromArrowIpc")]
+    pub fn from_arrow_ipc(data: Buffer) -> Result<Tree> {
+        CoreTree::from_arrow_ipc(&data)
+            .map(|inner| Tree { inner })
+            .map_err(to_napi_err)
+    }
 }
 
 impl Default for Tree {

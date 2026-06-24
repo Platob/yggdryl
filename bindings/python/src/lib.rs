@@ -11,6 +11,7 @@
 
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use yggdryl_core::{Tree as CoreTree, TreeError};
 
 /// Translates a core [`TreeError`] into the matching Python exception.
@@ -18,6 +19,7 @@ fn to_pyerr(err: TreeError) -> PyErr {
     match err {
         TreeError::EmptyPath => PyValueError::new_err("path is empty"),
         TreeError::NotFound(path) => PyKeyError::new_err(path),
+        TreeError::Arrow(msg) => PyValueError::new_err(msg),
     }
 }
 
@@ -80,6 +82,20 @@ impl Tree {
     /// Return every leaf as a ``(path, value)`` tuple, sorted by path.
     fn leaves(&self) -> Vec<(String, f64)> {
         self.inner.leaves()
+    }
+
+    /// Serialize the tree to Arrow IPC stream ``bytes`` (readable by
+    /// ``pyarrow.ipc.open_stream``).
+    fn to_arrow_ipc<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let bytes = self.inner.to_arrow_ipc().map_err(to_pyerr)?;
+        Ok(PyBytes::new_bound(py, &bytes))
+    }
+
+    /// Build a tree from Arrow IPC stream ``bytes`` with ``path``/``value`` columns.
+    #[staticmethod]
+    fn from_arrow_ipc(data: &[u8]) -> PyResult<Tree> {
+        let inner = CoreTree::from_arrow_ipc(data).map_err(to_pyerr)?;
+        Ok(Tree { inner })
     }
 
     fn __len__(&self) -> usize {

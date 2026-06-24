@@ -65,5 +65,20 @@ def test_empty_path_raises():
         tree.insert("", 1.0)
 
 
+def test_arrow_ipc_round_trip():
+    tree = sample()
+    data = tree.to_arrow_ipc()
+    assert isinstance(data, bytes) and len(data) > 0
+    restored = yggdryl.Tree.from_arrow_ipc(data)
+    assert restored.leaves() == tree.leaves()
+
+
+def test_arrow_ipc_readable_by_pyarrow():
+    pa = pytest.importorskip("pyarrow")
+    batch = pa.ipc.open_stream(sample().to_arrow_ipc()).read_all()
+    assert batch.num_rows == 3
+    assert batch.schema.names == ["path", "value"]
+
+
 def test_version():
     assert isinstance(yggdryl.__version__, str)

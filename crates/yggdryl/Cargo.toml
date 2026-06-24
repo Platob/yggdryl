@@ -1,5 +1,5 @@
 [package]
-name = "yggdryl-core"
+name = "yggdryl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,8 @@ keywords.workspace = true
 readme = "README.md"
 
 [lib]
-name = "yggdryl_core"
+name = "yggdryl"
 path = "src/lib.rs"
 
 [dependencies]
+arrow.workspace = true

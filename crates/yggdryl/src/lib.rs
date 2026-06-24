@@ -1,14 +1,23 @@
-//! # yggdryl-core
+//! # yggdryl
 //!
 //! The pure-Rust core of the **yggdryl** project: a hierarchical, path-addressed
 //! tree. Each [`Node`] may hold an optional numeric value and any number of named
 //! children. Paths are `/`-separated, e.g. `"roots/urdr"`.
 //!
-//! This crate has no dependencies and no FFI; the Python and Node extensions in
-//! the wider project wrap the types defined here so behaviour is identical across
-//! every language binding.
+//! The only dependency is [Apache Arrow](https://arrow.apache.org/): a tree can
+//! exchange its contents as a columnar Arrow [`RecordBatch`] of `path` / `value`
+//! columns (see [`Tree::to_record_batch`] and [`Tree::from_record_batch`]). The
+//! Python and Node extensions in the wider project wrap the types defined here so
+//! behaviour is identical across every language binding.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use arrow::array::{Array, Float64Array, StringArray};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use arrow::ipc::reader::StreamReader;
+use arrow::ipc::writer::StreamWriter;
+use arrow::record_batch::RecordBatch;
 
 /// Error returned by fallible [`Tree`] operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +26,8 @@ pub enum TreeError {
     EmptyPath,
     /// No node exists at the requested path.
     NotFound(String),
+    /// An Arrow record batch did not match the expected `path`/`value` schema.
+    Arrow(String),
 }
 
 impl std::fmt::Display for TreeError {
@@ -24,6 +35,7 @@ impl std::fmt::Display for TreeError {
         match self {
             TreeError::EmptyPath => write!(f, "path is empty"),
             TreeError::NotFound(path) => write!(f, "no node at path '{path}'"),
+            TreeError::Arrow(msg) => write!(f, "arrow conversion failed: {msg}"),
         }
     }
 }
@@ -108,7 +120,7 @@ impl Node {
 /// A hierarchical, path-addressed tree of [`Node`]s.
 ///
 /// ```
-/// use yggdryl_core::Tree;
+/// use yggdryl::Tree;
 ///
 /// let mut tree = Tree::new();
 /// tree.insert("roots/urdr", 1.0);
@@ -219,6 +231,113 @@ impl Tree {
         self.root.collect_leaves("", &mut out);
         out
     }
+
+    /// Serializes the tree's leaves into an Apache Arrow [`RecordBatch`] with two
+    /// columns: `path` (`Utf8`) and `value` (`Float64`), one row per leaf, ordered
+    /// by path. The schema is [`Tree::arrow_schema`].
+    ///
+    /// ```
+    /// use yggdryl::Tree;
+    ///
+    /// let mut tree = Tree::new();
+    /// tree.insert("roots/urdr", 1.0).unwrap();
+    /// tree.insert("roots/skuld", 3.0).unwrap();
+    ///
+    /// let batch = tree.to_record_batch();
+    /// assert_eq!(batch.num_rows(), 2);
+    /// assert_eq!(batch.num_columns(), 2);
+    /// ```
+    pub fn to_record_batch(&self) -> RecordBatch {
+        let leaves = self.leaves();
+        let paths = StringArray::from_iter_values(leaves.iter().map(|(path, _)| path.as_str()));
+        let values = Float64Array::from_iter_values(leaves.iter().map(|(_, value)| *value));
+        // The schema and columns are constructed together, so this never fails.
+        RecordBatch::try_new(arrow_schema(), vec![Arc::new(paths), Arc::new(values)])
+            .expect("path/value columns always match the schema")
+    }
+
+    /// Rebuilds a tree from an Arrow [`RecordBatch`] shaped like
+    /// [`Tree::arrow_schema`]: a `path` (`Utf8`) column and a `value` (`Float64`)
+    /// column. Null paths or values, and columns of the wrong type, yield
+    /// [`TreeError::Arrow`].
+    ///
+    /// Round-trips with [`Tree::to_record_batch`].
+    pub fn from_record_batch(batch: &RecordBatch) -> Result<Tree, TreeError> {
+        let paths = column::<StringArray>(batch, "path")?;
+        let values = column::<Float64Array>(batch, "value")?;
+
+        let mut tree = Tree::new();
+        for row in 0..batch.num_rows() {
+            if paths.is_null(row) || values.is_null(row) {
+                return Err(TreeError::Arrow(format!("null value in row {row}")));
+            }
+            tree.insert(paths.value(row), values.value(row))?;
+        }
+        Ok(tree)
+    }
+
+    /// The Arrow schema used by [`Tree::to_record_batch`] and
+    /// [`Tree::from_record_batch`]: `path: Utf8, value: Float64`.
+    pub fn arrow_schema() -> SchemaRef {
+        arrow_schema()
+    }
+
+    /// Serializes the tree into a self-describing Arrow IPC **stream** (the format
+    /// that `pyarrow.ipc.open_stream` and the JavaScript `apache-arrow` package
+    /// read). This is the wire format the Python and Node bindings exchange.
+    pub fn to_arrow_ipc(&self) -> Result<Vec<u8>, TreeError> {
+        let batch = self.to_record_batch();
+        let mut buffer = Vec::new();
+        let mut writer = StreamWriter::try_new(&mut buffer, &batch.schema())
+            .map_err(|e| TreeError::Arrow(e.to_string()))?;
+        writer
+            .write(&batch)
+            .map_err(|e| TreeError::Arrow(e.to_string()))?;
+        writer
+            .finish()
+            .map_err(|e| TreeError::Arrow(e.to_string()))?;
+        Ok(buffer)
+    }
+
+    /// Rebuilds a tree from Arrow IPC **stream** bytes produced by
+    /// [`Tree::to_arrow_ipc`] (or any writer emitting the `path`/`value` schema).
+    /// Every record batch in the stream is merged into one tree.
+    pub fn from_arrow_ipc(bytes: &[u8]) -> Result<Tree, TreeError> {
+        let reader = StreamReader::try_new(std::io::Cursor::new(bytes), None)
+            .map_err(|e| TreeError::Arrow(e.to_string()))?;
+        let mut tree = Tree::new();
+        for batch in reader {
+            let batch = batch.map_err(|e| TreeError::Arrow(e.to_string()))?;
+            let paths = column::<StringArray>(&batch, "path")?;
+            let values = column::<Float64Array>(&batch, "value")?;
+            for row in 0..batch.num_rows() {
+                if paths.is_null(row) || values.is_null(row) {
+                    return Err(TreeError::Arrow(format!("null value in row {row}")));
+                }
+                tree.insert(paths.value(row), values.value(row))?;
+            }
+        }
+        Ok(tree)
+    }
+}
+
+/// Builds the shared `path: Utf8, value: Float64` Arrow schema.
+fn arrow_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new("path", DataType::Utf8, false),
+        Field::new("value", DataType::Float64, false),
+    ]))
+}
+
+/// Looks a column up by name and downcasts it to the expected Arrow array type,
+/// mapping every failure onto [`TreeError::Arrow`].
+fn column<'a, T: Array + 'static>(batch: &'a RecordBatch, name: &str) -> Result<&'a T, TreeError> {
+    batch
+        .column_by_name(name)
+        .ok_or_else(|| TreeError::Arrow(format!("missing column '{name}'")))?
+        .as_any()
+        .downcast_ref::<T>()
+        .ok_or_else(|| TreeError::Arrow(format!("column '{name}' has the wrong type")))
 }
 
 #[cfg(test)]
@@ -336,5 +455,80 @@ mod tests {
         tree.insert("/a/b/", 5.0).unwrap();
         assert_eq!(tree.get("a/b"), Some(5.0));
         assert_eq!(tree.get("/a/b"), Some(5.0));
+    }
+
+    #[test]
+    fn to_record_batch_columns() {
+        let batch = sample().to_record_batch();
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.schema(), Tree::arrow_schema());
+
+        let paths = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        let values = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        // Rows follow `leaves()` order: sorted by path.
+        assert_eq!(paths.value(0), "roots/skuld");
+        assert_eq!(values.value(0), 3.0);
+    }
+
+    #[test]
+    fn record_batch_round_trip() {
+        let tree = sample();
+        let batch = tree.to_record_batch();
+        let restored = Tree::from_record_batch(&batch).unwrap();
+        assert_eq!(restored, tree);
+        assert_eq!(restored.leaves(), tree.leaves());
+    }
+
+    #[test]
+    fn from_record_batch_rejects_wrong_types() {
+        // Two Float64 columns instead of (Utf8, Float64).
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("path", DataType::Float64, false),
+            Field::new("value", DataType::Float64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Float64Array::from(vec![1.0])),
+                Arc::new(Float64Array::from(vec![2.0])),
+            ],
+        )
+        .unwrap();
+        assert!(matches!(
+            Tree::from_record_batch(&batch),
+            Err(TreeError::Arrow(_))
+        ));
+    }
+
+    #[test]
+    fn empty_tree_round_trips() {
+        let batch = Tree::new().to_record_batch();
+        assert_eq!(batch.num_rows(), 0);
+        assert_eq!(Tree::from_record_batch(&batch).unwrap(), Tree::new());
+    }
+
+    #[test]
+    fn arrow_ipc_round_trip() {
+        let tree = sample();
+        let bytes = tree.to_arrow_ipc().unwrap();
+        assert!(!bytes.is_empty());
+        let restored = Tree::from_arrow_ipc(&bytes).unwrap();
+        assert_eq!(restored, tree);
+    }
+
+    #[test]
+    fn from_arrow_ipc_rejects_garbage() {
+        assert!(matches!(
+            Tree::from_arrow_ipc(b"not arrow"),
+            Err(TreeError::Arrow(_))
+        ));
     }
 }

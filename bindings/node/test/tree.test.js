@@ -51,3 +51,15 @@ test('empty path throws', () => {
   const tree = new Tree()
   assert.throws(() => tree.insert('', 1.0))
 })
+
+test('arrow IPC round-trip', () => {
+  const tree = sample()
+  const buf = tree.toArrowIpc()
+  assert.ok(Buffer.isBuffer(buf) && buf.length > 0)
+  const restored = Tree.fromArrowIpc(buf)
+  assert.deepStrictEqual(restored.leaves(), tree.leaves())
+})
+
+test('fromArrowIpc rejects garbage', () => {
+  assert.throws(() => Tree.fromArrowIpc(Buffer.from('not arrow')))
+})

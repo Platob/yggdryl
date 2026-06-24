@@ -16,7 +16,10 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-yggdryl-core.workspace = true
+# The core crate is named `yggdryl`; alias it to `yggdryl-core` here so its
+# extern name (`yggdryl_core`) doesn't clash with this cdylib, also named
+# `yggdryl`.
+yggdryl-core = { package = "yggdryl", path = "../../crates/yggdryl", version = "0.1.0" }
 
 [dependencies.pyo3]
 version = "0.22"

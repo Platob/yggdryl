@@ -5,7 +5,7 @@ A small, polyglot library built around a **Rust core** with **Python** and
 the world tree — fittingly, the library is a hierarchical, path-addressed tree.
 
 One implementation, three languages: the Python and Node packages are thin FFI
-shims over `yggdryl-core`, so behaviour is identical everywhere.
+shims over the `yggdryl` core crate, so behaviour is identical everywhere.
 
 ## Layout
 
@@ -13,7 +13,7 @@ shims over `yggdryl-core`, so behaviour is identical everywhere.
 yggdryl/
 ├── Cargo.toml                  # Cargo workspace
 ├── crates/
-│   └── yggdryl-core/           # pure-Rust core (no deps, no FFI)
+│   └── yggdryl/                # pure-Rust core (Apache Arrow is the one dep)
 └── bindings/
     ├── python/                 # PyO3 + maturin  → `import yggdryl`
     └── node/                   # napi-rs         → `require('yggdryl')`
