@@ -34,18 +34,16 @@ impl MediaType {
 
     /// Parse a path or file name into its :class:`MimeType` stack.
     #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        CoreMediaType::from_str(value, safe)
+    fn from_str(value: &str) -> PyResult<Self> {
+        CoreMediaType::from_str(value)
             .map(|inner| MediaType { inner })
             .map_err(media_err)
     }
 
     /// Build the stack from a dict; reads the ``path`` key (or ``str``).
     #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreMediaType::from_mapping(&fields, safe)
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreMediaType::from_mapping(&fields)
             .map(|inner| MediaType { inner })
             .map_err(media_err)
     }

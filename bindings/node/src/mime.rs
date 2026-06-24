@@ -19,24 +19,24 @@ pub struct MimeType {
 #[napi]
 impl MimeType {
     /// Parse a `type/subtype` MIME string, throwing on failure. Any `;parameters`
-    /// are dropped; with `safe = false` the input is taken as-is.
+    /// are dropped; unknown but well-formed types are kept verbatim as `Other`.
     #[napi(constructor)]
-    pub fn new(value: String, safe: Option<bool>) -> Result<Self> {
-        CoreMimeType::from_str(&value, safe.unwrap_or(true))
+    pub fn new(value: String) -> Result<Self> {
+        CoreMimeType::from_str(&value)
             .map(|inner| MimeType { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Alias for the constructor.
     #[napi(factory, js_name = "fromStr")]
-    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
-        MimeType::new(value, safe)
+    pub fn from_str(value: String) -> Result<Self> {
+        MimeType::new(value)
     }
 
     /// Build a `MimeType` from an object of components (`type`, `subtype`).
     #[napi(factory, js_name = "fromMapping")]
-    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
-        CoreMimeType::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+    pub fn from_mapping(fields: HashMap<String, String>) -> Result<Self> {
+        CoreMimeType::from_mapping(&to_mapping(fields))
             .map(|inner| MimeType { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }

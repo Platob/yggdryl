@@ -44,9 +44,9 @@ impl std::error::Error for VersionError {}
 /// ```
 /// use yggdryl_version::{FromInput, Version};
 ///
-/// let v = Version::from_str("1.4.2", true).unwrap();
+/// let v = Version::from_str("1.4.2").unwrap();
 /// assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
-/// assert_eq!(Version::from_str("2", true).unwrap(), Version::new(2, 0, 0));
+/// assert_eq!(Version::from_str("2").unwrap(), Version::new(2, 0, 0));
 /// assert!(Version::new(1, 4, 2) < Version::new(1, 10, 0));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,26 +114,21 @@ impl Version {
 impl FromInput for Version {
     type Err = VersionError;
 
-    /// Parses a `major[.minor[.patch]]` string. When `safe`, every component must
-    /// be a non-negative integer and there may be at most three; when not `safe`,
-    /// extra components are ignored and non-numeric ones become `0`.
-    fn from_str(input: &str, safe: bool) -> Result<Version, VersionError> {
+    /// Parses a `major[.minor[.patch]]` string. Every component must be a
+    /// non-negative integer and there may be at most three; omitted components
+    /// default to `0`.
+    fn from_str(input: &str) -> Result<Version, VersionError> {
         if input.is_empty() {
             return Err(VersionError::Empty);
         }
         let mut parts = [0u64; 3];
         for (index, part) in input.split('.').enumerate() {
             if index == 3 {
-                if safe {
-                    return Err(VersionError::TooManyComponents);
-                }
-                break;
+                return Err(VersionError::TooManyComponents);
             }
-            parts[index] = match part.parse::<u64>() {
-                Ok(n) => n,
-                Err(_) if !safe => 0,
-                Err(_) => return Err(VersionError::InvalidNumber(part.to_string())),
-            };
+            parts[index] = part
+                .parse::<u64>()
+                .map_err(|_| VersionError::InvalidNumber(part.to_string()))?;
         }
         Ok(Version {
             major: parts[0],
@@ -144,14 +139,12 @@ impl FromInput for Version {
 
     /// Builds a [`Version`] from a [`Mapping`]. Recognised keys: `major`, `minor`
     /// and `patch`; any omitted default to `0`.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Version, VersionError> {
+    fn from_mapping(fields: &Mapping) -> Result<Version, VersionError> {
         let component = |key: &str| -> Result<u64, VersionError> {
             match fields.get(key) {
-                Some(value) => match value.parse::<u64>() {
-                    Ok(n) => Ok(n),
-                    Err(_) if !safe => Ok(0),
-                    Err(_) => Err(VersionError::InvalidNumber(value.clone())),
-                },
+                Some(value) => value
+                    .parse::<u64>()
+                    .map_err(|_| VersionError::InvalidNumber(value.clone())),
                 None => Ok(0),
             }
         };
@@ -187,43 +180,28 @@ mod tests {
     use super::*;
     #[test]
     fn version_parse_full() {
-        let v = Version::from_str("1.4.2", true).unwrap();
+        let v = Version::from_str("1.4.2").unwrap();
         assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
     }
     #[test]
     fn version_parse_partial_defaults_to_zero() {
-        assert_eq!(Version::from_str("2", true).unwrap(), Version::new(2, 0, 0));
-        assert_eq!(
-            Version::from_str("2.5", true).unwrap(),
-            Version::new(2, 5, 0)
-        );
+        assert_eq!(Version::from_str("2").unwrap(), Version::new(2, 0, 0));
+        assert_eq!(Version::from_str("2.5").unwrap(), Version::new(2, 5, 0));
     }
     #[test]
     fn version_errors() {
-        assert_eq!(Version::from_str("", true), Err(VersionError::Empty));
+        assert_eq!(Version::from_str(""), Err(VersionError::Empty));
         assert_eq!(
-            Version::from_str("1.2.3.4", true),
+            Version::from_str("1.2.3.4"),
             Err(VersionError::TooManyComponents)
         );
         assert_eq!(
-            Version::from_str("1.x.0", true),
+            Version::from_str("1.x.0"),
             Err(VersionError::InvalidNumber("x".to_string()))
         );
         assert_eq!(
-            Version::from_str("1..0", true),
+            Version::from_str("1..0"),
             Err(VersionError::InvalidNumber(String::new()))
-        );
-    }
-    #[test]
-    fn version_unsafe_is_lenient() {
-        // Fast path ignores extra components and treats junk as zero.
-        assert_eq!(
-            Version::from_str("1.2.3.4", false).unwrap(),
-            Version::new(1, 2, 3)
-        );
-        assert_eq!(
-            Version::from_str("1.x.0", false).unwrap(),
-            Version::new(1, 0, 0)
         );
     }
     #[test]
@@ -233,7 +211,7 @@ mod tests {
             ("minor".to_string(), "4".to_string()),
         ]);
         assert_eq!(
-            Version::from_mapping(&fields, true).unwrap(),
+            Version::from_mapping(&fields).unwrap(),
             Version::new(1, 4, 0)
         );
     }
@@ -258,11 +236,8 @@ mod tests {
     }
     #[test]
     fn version_round_trips() {
-        assert_eq!(
-            Version::from_str("1.4.2", true).unwrap().to_string(),
-            "1.4.2"
-        );
-        assert_eq!(Version::from_str("3", true).unwrap().to_string(), "3.0.0");
+        assert_eq!(Version::from_str("1.4.2").unwrap().to_string(), "1.4.2");
+        assert_eq!(Version::from_str("3").unwrap().to_string(), "3.0.0");
     }
     #[test]
     fn version_builders() {

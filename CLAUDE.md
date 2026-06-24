@@ -51,8 +51,8 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 
 | Concept | Name |
 | --- | --- |
-| Construct from a string | `from_str(value, safe)` |
-| Construct from a component mapping | `from_mapping(fields, safe)` |
+| Construct from a string | `from_str(value)` |
+| Construct from a component mapping | `from_mapping(fields)` |
 | Construct from any supported input | `from_` (Rust trait `FromInput`) |
 | Construct from explicit parts | `from_parts(...)` |
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
@@ -73,8 +73,8 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use
   the word "parse").
-- Every `from_*` takes a `safe` boolean: `true` = full validation, `false` =
-  fast, lenient parse. Bindings default `safe` to `true`.
+- Parsing always validates and returns an error / raises on malformed input;
+  there is no lenient mode and no `safe` flag.
 - `with_*` / `without_*` / `copy` are **non-mutating** and return a new value.
 - URL-safe `percent_encode` / `percent_decode` are the only encoding helpers;
   modifiers that build query strings percent-encode their inputs.

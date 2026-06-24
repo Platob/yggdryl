@@ -77,10 +77,10 @@ test('version invalid throws', () => {
   assert.throws(() => Version.fromStr('1.x.0'))
 })
 
-test('safe flag', () => {
-  assert.throws(() => new Uri('1http:x'))
-  assert.strictEqual(new Uri('1http:x', false).scheme, '1http')
-  assert.strictEqual(Version.fromStr('1.2.3.4', false).toString(), '1.2.3')
+test('parsing validates', () => {
+  // Malformed input is always rejected (there is no lenient mode).
+  assert.throws(() => new Uri('1http:x')) // invalid scheme
+  assert.throws(() => Version.fromStr('1.2.3.4')) // too many components
 })
 
 test('from mapping', () => {
@@ -140,7 +140,7 @@ test('path accessors', () => {
   assert.strictEqual(url.name(), 'archive.tar.gz')
   assert.strictEqual(url.stem(), 'archive')
   assert.deepStrictEqual(url.extensions(), ['tar', 'gz'])
-  const enc = Uri.fromStr('file:/d/a%20b.txt', false)
+  const enc = Uri.fromStr('file:/d/a%20b.txt')
   assert.strictEqual(enc.name(), 'a b.txt')
   assert.strictEqual(enc.name(true), 'a%20b.txt')
 })
@@ -191,7 +191,7 @@ test('params CRUD single and bulk', () => {
 })
 
 test('encode/decode toString and params', () => {
-  const url = new Url('https://h/a%20b?q=x%20y', false)
+  const url = new Url('https://h/a%20b?q=x%20y')
   assert.strictEqual(url.toString(), 'https://h/a%20b?q=x%20y') // encode (default)
   assert.strictEqual(url.toString(false), 'https://h/a b?q=x y') // decoded
   assert.deepStrictEqual(url.params().q, ['x y'])

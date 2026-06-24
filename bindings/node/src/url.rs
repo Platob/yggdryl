@@ -20,26 +20,26 @@ pub struct Url {
 
 #[napi]
 impl Url {
-    /// Parse `value` into a `Url`, throwing on failure. With `safe = false` the
-    /// scheme and `%XX` escapes are not validated.
+    /// Parse `value` into a `Url`, throwing on failure. The scheme and any `%XX`
+    /// escapes are validated.
     #[napi(constructor)]
-    pub fn new(value: String, safe: Option<bool>) -> Result<Self> {
-        CoreUrl::from_str(&value, safe.unwrap_or(true))
+    pub fn new(value: String) -> Result<Self> {
+        CoreUrl::from_str(&value)
             .map(|inner| Url { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Parse a string (alias of the constructor).
     #[napi(factory, js_name = "fromStr")]
-    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
-        Url::new(value, safe)
+    pub fn from_str(value: String) -> Result<Self> {
+        Url::new(value)
     }
 
     /// Build a `Url` from an object of components (`scheme` and `host` required;
     /// `username`, `password`, `port`, `path`, `query`, `fragment`).
     #[napi(factory, js_name = "fromMapping")]
-    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
-        CoreUrl::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+    pub fn from_mapping(fields: HashMap<String, String>) -> Result<Self> {
+        CoreUrl::from_mapping(&to_mapping(fields))
             .map(|inner| Url { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }

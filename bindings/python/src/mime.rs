@@ -17,28 +17,25 @@ pub struct MimeType {
 #[pymethods]
 impl MimeType {
     /// Parse a ``type/subtype`` MIME string, raising ``ValueError`` on failure.
-    /// Any ``;parameters`` are dropped; with ``safe=False`` the input is taken
-    /// as-is. Unknown but well-formed types are kept verbatim.
+    /// Any ``;parameters`` are dropped; unknown but well-formed types are kept
+    /// verbatim as ``Other``.
     #[new]
-    #[pyo3(signature = (value, safe = true))]
-    fn new(value: &str, safe: bool) -> PyResult<Self> {
-        CoreMimeType::from_str(value, safe)
+    fn new(value: &str) -> PyResult<Self> {
+        CoreMimeType::from_str(value)
             .map(|inner| MimeType { inner })
             .map_err(media_err)
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        MimeType::new(value, safe)
+    fn from_str(value: &str) -> PyResult<Self> {
+        MimeType::new(value)
     }
 
     /// Build a :class:`MimeType` from a dict of components (``type``, ``subtype``).
     #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreMimeType::from_mapping(&fields, safe)
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreMimeType::from_mapping(&fields)
             .map(|inner| MimeType { inner })
             .map_err(media_err)
     }

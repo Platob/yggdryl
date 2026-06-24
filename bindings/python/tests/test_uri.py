@@ -95,13 +95,12 @@ def test_version_invalid_raises():
         yggdryl.Version.from_str("1.x.0")
 
 
-def test_safe_flag():
-    # Invalid scheme: rejected when safe, accepted when not.
+def test_parsing_validates():
+    # Malformed input is always rejected (there is no lenient mode).
     with pytest.raises(ValueError):
-        yggdryl.Uri("1http:x")
-    assert yggdryl.Uri("1http:x", safe=False).scheme == "1http"
-    # Lenient version parse.
-    assert str(yggdryl.Version.from_str("1.2.3.4", safe=False)) == "1.2.3"
+        yggdryl.Uri("1http:x")  # invalid scheme
+    with pytest.raises(ValueError):
+        yggdryl.Version.from_str("1.2.3.4")  # too many components
 
 
 def test_from_mapping():
@@ -164,7 +163,7 @@ def test_url_to_uri():
 
 
 def test_encode_decode_to_string():
-    url = yggdryl.Url("https://h/a%20b?q=x%20y", safe=False)
+    url = yggdryl.Url("https://h/a%20b?q=x%20y")
     assert url.to_string() == "https://h/a%20b?q=x%20y"        # encode (default)
     assert url.to_string(encode=False) == "https://h/a b?q=x y"  # decoded
     assert str(url) == "https://h/a%20b?q=x%20y"               # str() == encoded
@@ -240,7 +239,7 @@ def test_path_accessors():
     assert url.name() == "archive.tar.gz"
     assert url.stem() == "archive"
     assert url.extensions() == ["tar", "gz"]
-    enc = yggdryl.Uri("file:/d/a%20b.txt", safe=False)
+    enc = yggdryl.Uri("file:/d/a%20b.txt")
     assert enc.name() == "a b.txt"
     assert enc.name(encode=True) == "a%20b.txt"
 

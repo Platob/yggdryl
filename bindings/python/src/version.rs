@@ -25,11 +25,10 @@ impl Version {
     }
 
     /// Parse a ``major[.minor[.patch]]`` string, raising ``ValueError`` on failure.
-    /// With ``safe=False`` extra components are ignored and junk becomes ``0``.
+    /// Components must be non-negative integers (at most three).
     #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        CoreVersion::from_str(value, safe)
+    fn from_str(value: &str) -> PyResult<Self> {
+        CoreVersion::from_str(value)
             .map(|inner| Version { inner })
             .map_err(version_err)
     }
@@ -37,9 +36,8 @@ impl Version {
     /// Build a :class:`Version` from a dict of components (``major``, ``minor``,
     /// ``patch``).
     #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreVersion::from_mapping(&fields, safe)
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreVersion::from_mapping(&fields)
             .map(|inner| Version { inner })
             .map_err(version_err)
     }

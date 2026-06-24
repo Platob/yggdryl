@@ -46,7 +46,6 @@ def test_mime_unknown_other():
 def test_mime_invalid_raises():
     with pytest.raises(ValueError):
         yggdryl.MimeType("notamime")
-    assert yggdryl.MimeType("notamime", safe=False).mime == "notamime"
 
 
 def test_mime_to_from_mapping_and_equality():

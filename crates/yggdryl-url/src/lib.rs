@@ -97,7 +97,7 @@ pub enum UriError {
     MissingScheme,
     /// The scheme contained characters outside `ALPHA *( ALPHA / DIGIT / +-. )`.
     InvalidScheme,
-    /// A `safe` parse found a malformed `%XX` escape.
+    /// A malformed `%XX` escape was found.
     InvalidEncoding(EncodingError),
 }
 
@@ -168,7 +168,7 @@ fn is_valid_scheme(scheme: &str) -> bool {
 /// ```
 /// use yggdryl_url::{FromInput, Uri};
 ///
-/// let uri = Uri::from_str("https://example.com/docs?page=2#intro", true).unwrap();
+/// let uri = Uri::from_str("https://example.com/docs?page=2#intro").unwrap();
 /// assert_eq!(uri.scheme(), "https");
 /// assert_eq!(uri.authority(), Some("example.com"));
 /// assert_eq!(uri.path(), "/docs");
@@ -208,9 +208,9 @@ impl FromInput for Uri {
     ///
     /// Windows-style `\` separators are normalised to `/`. If no scheme is given
     /// the input is treated as a path with the `file` scheme (a single-letter
-    /// "scheme" is read as a Windows drive letter, also `file`). When `safe`, the
-    /// scheme and any `%XX` escapes are validated.
-    fn from_str(input: &str, safe: bool) -> Result<Uri, UriError> {
+    /// "scheme" is read as a Windows drive letter, also `file`). The scheme and
+    /// any `%XX` escapes are validated.
+    fn from_str(input: &str) -> Result<Uri, UriError> {
         if input.is_empty() {
             return Err(UriError::Empty);
         }
@@ -245,7 +245,7 @@ impl FromInput for Uri {
                 };
                 ("file".to_string(), None, path)
             } else {
-                if safe && !is_valid_scheme(raw_scheme) {
+                if !is_valid_scheme(raw_scheme) {
                     return Err(UriError::InvalidScheme);
                 }
                 // The hier-part: an optional `//authority` followed by the path.
@@ -269,22 +269,20 @@ impl FromInput for Uri {
             fragment,
             ..Default::default()
         };
-        if safe {
-            uri.validate_encoding()?;
-        }
+        uri.validate_encoding()?;
         Ok(uri)
     }
 
     /// Builds a [`Uri`] from a [`Mapping`]. Recognised keys: `scheme` (required),
     /// `authority`, `path`, `query`, `fragment`.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Uri, UriError> {
+    fn from_mapping(fields: &Mapping) -> Result<Uri, UriError> {
         // A missing scheme defaults to `file`; an empty one is an error.
         let scheme = match fields.get("scheme") {
             Some(s) if s.is_empty() => return Err(UriError::MissingScheme),
             Some(s) => s.clone(),
             None => "file".to_string(),
         };
-        if safe && !is_valid_scheme(&scheme) {
+        if !is_valid_scheme(&scheme) {
             return Err(UriError::InvalidScheme);
         }
         let uri = Uri {
@@ -295,9 +293,7 @@ impl FromInput for Uri {
             fragment: fields.get("fragment").cloned(),
             ..Default::default()
         };
-        if safe {
-            uri.validate_encoding()?;
-        }
+        uri.validate_encoding()?;
         Ok(uri)
     }
 }
@@ -704,7 +700,7 @@ impl ToOutput for Uri {
 /// ```
 /// use yggdryl_url::{FromInput, Url};
 ///
-/// let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top", true).unwrap();
+/// let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top").unwrap();
 /// assert_eq!(url.scheme(), "https");
 /// assert_eq!(url.username(), Some("user"));
 /// assert_eq!(url.password(), Some("pw"));
@@ -746,17 +742,17 @@ impl FromInput for Url {
     type Err = UrlError;
 
     /// Parses a string into a [`Url`]. Requires a scheme, an authority and a
-    /// non-empty host. `safe` is forwarded to the underlying [`Uri`] parse.
-    fn from_str(input: &str, safe: bool) -> Result<Url, UrlError> {
-        Url::from_uri(&Uri::from_str(input, safe)?)
+    /// non-empty host.
+    fn from_str(input: &str) -> Result<Url, UrlError> {
+        Url::from_uri(&Uri::from_str(input)?)
     }
 
     /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
     /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Url, UrlError> {
+    fn from_mapping(fields: &Mapping) -> Result<Url, UrlError> {
         // A missing scheme defaults to `file`.
         let scheme = fields.get("scheme").map_or("file", String::as_str);
-        if safe && !is_valid_scheme(scheme) {
+        if !is_valid_scheme(scheme) {
             return Err(UrlError::Uri(UriError::InvalidScheme));
         }
         let host = fields
@@ -778,14 +774,12 @@ impl FromInput for Url {
             fragment: fields.get("fragment").cloned(),
             ..Default::default()
         };
-        if safe {
-            for part in [url.path.as_str()]
-                .into_iter()
-                .chain(url.query.as_deref())
-                .chain(url.fragment.as_deref())
-            {
-                validate_percent_encoding(part).map_err(UriError::from)?;
-            }
+        for part in [url.path.as_str()]
+            .into_iter()
+            .chain(url.query.as_deref())
+            .chain(url.fragment.as_deref())
+        {
+            validate_percent_encoding(part).map_err(UriError::from)?;
         }
         Ok(url)
     }
@@ -1425,7 +1419,7 @@ mod tests {
 
     #[test]
     fn uri_full() {
-        let uri = Uri::from_str("https://example.com/docs?page=2#intro", true).unwrap();
+        let uri = Uri::from_str("https://example.com/docs?page=2#intro").unwrap();
         assert_eq!(uri.scheme(), "https");
         assert_eq!(uri.authority(), Some("example.com"));
         assert_eq!(uri.path(), "/docs");
@@ -1435,7 +1429,7 @@ mod tests {
 
     #[test]
     fn uri_without_authority() {
-        let uri = Uri::from_str("mailto:alice@example.com", true).unwrap();
+        let uri = Uri::from_str("mailto:alice@example.com").unwrap();
         assert_eq!(uri.scheme(), "mailto");
         assert_eq!(uri.authority(), None);
         assert_eq!(uri.path(), "alice@example.com");
@@ -1443,38 +1437,30 @@ mod tests {
 
     #[test]
     fn uri_errors() {
-        assert_eq!(Uri::from_str("", true), Err(UriError::Empty));
+        assert_eq!(Uri::from_str(""), Err(UriError::Empty));
         // An empty (but present) scheme is still an error.
-        assert_eq!(
-            Uri::from_str(":no-scheme", true),
-            Err(UriError::MissingScheme)
-        );
-        assert_eq!(
-            Uri::from_str("1http://x", true),
-            Err(UriError::InvalidScheme)
-        );
+        assert_eq!(Uri::from_str(":no-scheme"), Err(UriError::MissingScheme));
+        assert_eq!(Uri::from_str("1http://x"), Err(UriError::InvalidScheme));
     }
 
     #[test]
     fn path_accessors() {
-        let url = Url::from_str("https://h/a/b/archive.tar.gz", true).unwrap();
+        let url = Url::from_str("https://h/a/b/archive.tar.gz").unwrap();
         assert_eq!(url.parts(false), vec!["a", "b", "archive.tar.gz"]);
         assert_eq!(url.name(false), "archive.tar.gz");
         assert_eq!(url.stem(false), "archive");
         assert_eq!(url.extensions(false), vec!["tar", "gz"]);
         // encode flag: decoded by default, kept when true.
-        let enc = Uri::from_str("file:/dir/a%20b.txt", false).unwrap();
+        let enc = Uri::from_str("file:/dir/a%20b.txt").unwrap();
         assert_eq!(enc.name(false), "a b.txt");
         assert_eq!(enc.name(true), "a%20b.txt");
         // no extension and dotfiles.
         assert_eq!(
-            Uri::from_str("file:/x/README", true)
-                .unwrap()
-                .extensions(false),
+            Uri::from_str("file:/x/README").unwrap().extensions(false),
             Vec::<String>::new()
         );
         assert_eq!(
-            Uri::from_str("file:/x/.bashrc", true).unwrap().stem(false),
+            Uri::from_str("file:/x/.bashrc").unwrap().stem(false),
             ".bashrc"
         );
     }
@@ -1483,7 +1469,7 @@ mod tests {
     fn media_type_inference() {
         // A single extension yields a one-element stack.
         assert_eq!(
-            Url::from_str("https://h/a/data.json", true)
+            Url::from_str("https://h/a/data.json")
                 .unwrap()
                 .media_type()
                 .unwrap()
@@ -1492,7 +1478,7 @@ mod tests {
         );
         // Compound extensions yield the ordered stack (content first).
         assert_eq!(
-            Uri::from_str("file:/dump/archive.tar.gz", true)
+            Uri::from_str("file:/dump/archive.tar.gz")
                 .unwrap()
                 .media_type()
                 .unwrap()
@@ -1500,37 +1486,31 @@ mod tests {
             [MimeType::Tar, MimeType::Gzip]
         );
         // No (known) extension yields `None`.
-        assert_eq!(
-            Url::from_str("https://h/page", true).unwrap().media_type(),
-            None
-        );
+        assert_eq!(Url::from_str("https://h/page").unwrap().media_type(), None);
         // `mime_type()` is the single outermost type; `From<&Uri>` mirrors it.
-        let uri = Uri::from_str("file:/dump/archive.tar.gz", true).unwrap();
+        let uri = Uri::from_str("file:/dump/archive.tar.gz").unwrap();
         assert_eq!(uri.mime_type(), Some(MimeType::Gzip));
         assert_eq!(
             MediaType::from(&uri).types(),
             [MimeType::Tar, MimeType::Gzip]
         );
-        assert_eq!(
-            Url::from_str("https://h/page", true).unwrap().mime_type(),
-            None
-        );
+        assert_eq!(Url::from_str("https://h/page").unwrap().mime_type(), None);
     }
 
     #[test]
     fn default_file_scheme_and_windows_paths() {
         // No scheme -> file.
-        let u = Uri::from_str("no-scheme/path", true).unwrap();
+        let u = Uri::from_str("no-scheme/path").unwrap();
         assert_eq!(u.scheme(), "file");
         assert_eq!(u.path(), "no-scheme/path");
         // A `:` after a `/` is part of the path, not a scheme.
-        assert_eq!(Uri::from_str("a/b:c", true).unwrap().scheme(), "file");
+        assert_eq!(Uri::from_str("a/b:c").unwrap().scheme(), "file");
         // Backslashes are normalised to `/`.
-        let w = Uri::from_str("dir\\sub\\file", true).unwrap();
+        let w = Uri::from_str("dir\\sub\\file").unwrap();
         assert_eq!(w.scheme(), "file");
         assert_eq!(w.path(), "dir/sub/file");
         // A drive letter is a Windows path -> file.
-        let d = Uri::from_str("C:\\Users\\me", true).unwrap();
+        let d = Uri::from_str("C:\\Users\\me").unwrap();
         assert_eq!(d.scheme(), "file");
         assert_eq!(d.path(), "/C:/Users/me");
     }
@@ -1543,27 +1523,21 @@ mod tests {
             "file:///etc/hosts",
             "urn:isbn:0451450523",
         ] {
-            assert_eq!(Uri::from_str(input, true).unwrap().to_string(), input);
+            assert_eq!(Uri::from_str(input).unwrap().to_string(), input);
         }
     }
 
     #[test]
-    fn uri_unsafe_skips_scheme_validation() {
-        // An invalid scheme is rejected when safe, accepted when not.
-        assert_eq!(Uri::from_str("1http:x", true), Err(UriError::InvalidScheme));
-        assert_eq!(Uri::from_str("1http:x", false).unwrap().scheme(), "1http");
+    fn uri_validates_scheme() {
+        // An invalid scheme is always rejected.
+        assert_eq!(Uri::from_str("1http:x"), Err(UriError::InvalidScheme));
     }
 
     #[test]
-    fn uri_safe_validates_percent_encoding() {
-        assert!(Uri::from_str("http://h/a%zz", true).is_err());
-        // A bad escape is tolerated by the fast path.
-        assert_eq!(
-            Uri::from_str("http://h/a%zz", false).unwrap().path(),
-            "/a%zz"
-        );
-        // Well-formed escapes always pass.
-        assert!(Uri::from_str("http://h/a%20b", true).is_ok());
+    fn uri_validates_percent_encoding() {
+        // A malformed `%XX` escape is rejected; well-formed escapes pass.
+        assert!(Uri::from_str("http://h/a%zz").is_err());
+        assert!(Uri::from_str("http://h/a%20b").is_ok());
     }
 
     #[test]
@@ -1579,7 +1553,7 @@ mod tests {
 
     #[test]
     fn url_full() {
-        let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top", true).unwrap();
+        let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top").unwrap();
         assert_eq!(url.scheme(), "https");
         assert_eq!(url.username(), Some("user"));
         assert_eq!(url.password(), Some("pw"));
@@ -1592,7 +1566,7 @@ mod tests {
 
     #[test]
     fn url_minimal() {
-        let url = Url::from_str("http://example.com", true).unwrap();
+        let url = Url::from_str("http://example.com").unwrap();
         assert_eq!(url.host(), "example.com");
         assert_eq!(url.port(), None);
         assert_eq!(url.username(), None);
@@ -1601,7 +1575,7 @@ mod tests {
 
     #[test]
     fn url_username_only() {
-        let url = Url::from_str("ftp://anon@files.example.com/pub", true).unwrap();
+        let url = Url::from_str("ftp://anon@files.example.com/pub").unwrap();
         assert_eq!(url.username(), Some("anon"));
         assert_eq!(url.password(), None);
         assert_eq!(url.host(), "files.example.com");
@@ -1609,7 +1583,7 @@ mod tests {
 
     #[test]
     fn url_ipv6() {
-        let url = Url::from_str("http://[::1]:8080/status", true).unwrap();
+        let url = Url::from_str("http://[::1]:8080/status").unwrap();
         assert_eq!(url.host(), "::1");
         assert_eq!(url.port(), Some(8080));
         assert_eq!(url.to_string(), "http://[::1]:8080/status");
@@ -1618,22 +1592,16 @@ mod tests {
     #[test]
     fn url_errors() {
         assert_eq!(
-            Url::from_str("mailto:alice@example.com", true),
+            Url::from_str("mailto:alice@example.com"),
             Err(UrlError::MissingAuthority)
         );
-        assert_eq!(
-            Url::from_str("http://user@:80", true),
-            Err(UrlError::MissingHost)
-        );
+        assert_eq!(Url::from_str("http://user@:80"), Err(UrlError::MissingHost));
         assert!(matches!(
-            Url::from_str("http://example.com:notaport", true),
+            Url::from_str("http://example.com:notaport"),
             Err(UrlError::InvalidPort(_))
         ));
         // No scheme defaults to `file`, but a Url still needs an authority.
-        assert_eq!(
-            Url::from_str("notauri", true),
-            Err(UrlError::MissingAuthority)
-        );
+        assert_eq!(Url::from_str("notauri"), Err(UrlError::MissingAuthority));
     }
 
     #[test]
@@ -1644,13 +1612,13 @@ mod tests {
             "ftp://anon@files.example.com/pub",
             "http://[::1]:8080/status",
         ] {
-            assert_eq!(Url::from_str(input, true).unwrap().to_string(), input);
+            assert_eq!(Url::from_str(input).unwrap().to_string(), input);
         }
     }
 
     #[test]
     fn url_authority_is_reconstructed() {
-        let url = Url::from_str("https://user:pw@example.com:8443/api", true).unwrap();
+        let url = Url::from_str("https://user:pw@example.com:8443/api").unwrap();
         assert_eq!(url.authority(), "user:pw@example.com:8443");
     }
 
@@ -1662,14 +1630,11 @@ mod tests {
             ("port".to_string(), "8443".to_string()),
             ("path".to_string(), "/api".to_string()),
         ]);
-        let url = Url::from_mapping(&fields, true).unwrap();
+        let url = Url::from_mapping(&fields).unwrap();
         assert_eq!(url.to_string(), "https://example.com:8443/api");
 
         let missing_host = Mapping::from([("scheme".to_string(), "https".to_string())]);
-        assert_eq!(
-            Url::from_mapping(&missing_host, true),
-            Err(UrlError::MissingHost)
-        );
+        assert_eq!(Url::from_mapping(&missing_host), Err(UrlError::MissingHost));
     }
 
     #[test]
@@ -1715,7 +1680,7 @@ mod tests {
 
     #[test]
     fn params_round_trip_and_multivalue() {
-        let url = Url::from_str("https://h/p?a=1&a=2&b=hello%20world", true).unwrap();
+        let url = Url::from_str("https://h/p?a=1&a=2&b=hello%20world").unwrap();
         let params = url.params(true);
         assert_eq!(
             params.get("a"),
@@ -1739,22 +1704,22 @@ mod tests {
 
     #[test]
     fn scheme_extensions() {
-        let uri = Uri::from_str("https+zip://h/f", true).unwrap();
+        let uri = Uri::from_str("https+zip://h/f").unwrap();
         assert_eq!(uri.scheme(), "https+zip");
         assert_eq!(uri.scheme_base(), "https");
         assert_eq!(uri.scheme_ext(), vec!["zip"]);
-        let plain = Uri::from_str("https://h", true).unwrap();
+        let plain = Uri::from_str("https://h").unwrap();
         assert_eq!(plain.scheme_base(), "https");
         assert!(plain.scheme_ext().is_empty());
         // works on Url too
-        let url = Url::from_str("git+ssh://h/r", true).unwrap();
+        let url = Url::from_str("git+ssh://h/r").unwrap();
         assert_eq!(url.scheme_base(), "git");
         assert_eq!(url.scheme_ext(), vec!["ssh"]);
     }
 
     #[test]
     fn uri_url_conversions() {
-        let url = Url::from_str("https://user@h:8443/p?x=1", true).unwrap();
+        let url = Url::from_str("https://user@h:8443/p?x=1").unwrap();
         let uri = Uri::from_url(&url);
         assert_eq!(uri.authority(), Some("user@h:8443"));
         // round-trip back to Url
@@ -1762,7 +1727,7 @@ mod tests {
         assert_eq!(back, url);
         // a Uri without authority cannot become a Url
         assert_eq!(
-            Uri::from_str("mailto:a@b", true).unwrap().to_url(),
+            Uri::from_str("mailto:a@b").unwrap().to_url(),
             Err(UrlError::MissingAuthority)
         );
         // Url::from_uri mirrors to_url
@@ -1771,7 +1736,7 @@ mod tests {
 
     #[test]
     fn params_crud_single_and_bulk() {
-        let base = Url::from_str("https://h/p?a=1&b=2&c=3", true).unwrap();
+        let base = Url::from_str("https://h/p?a=1&b=2&c=3").unwrap();
         assert_eq!(base.get_param("a"), Some(vec!["1".to_string()]));
         assert_eq!(base.get_param("z"), None);
         assert!(base.has_param("a") && !base.has_param("z"));
@@ -1806,7 +1771,7 @@ mod tests {
 
     #[test]
     fn to_str_encode_decode() {
-        let url = Url::from_str("https://h/a%20b?q=x%20y#f%20g", false).unwrap();
+        let url = Url::from_str("https://h/a%20b?q=x%20y#f%20g").unwrap();
         // encode=true ensures a transport-safe string (idempotent, no double-encode).
         assert_eq!(url.to_str(true), "https://h/a%20b?q=x%20y#f%20g");
         // encode=false decodes each component for display.
@@ -1821,7 +1786,7 @@ mod tests {
 
     #[test]
     fn url_is_a_uri() {
-        let url = Url::from_str("https://user@h:8443/p?x=1#f", true).unwrap();
+        let url = Url::from_str("https://user@h:8443/p?x=1#f").unwrap();
         let uri: Uri = url.to_uri();
         assert_eq!(uri.scheme(), "https");
         assert_eq!(uri.authority(), Some("user@h:8443"));

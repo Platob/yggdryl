@@ -36,16 +36,16 @@ impl MediaType {
 
     /// Parse a path or file name into its `MimeType` stack.
     #[napi(factory, js_name = "fromStr")]
-    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
-        CoreMediaType::from_str(&value, safe.unwrap_or(true))
+    pub fn from_str(value: String) -> Result<Self> {
+        CoreMediaType::from_str(&value)
             .map(|inner| MediaType { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Build the stack from an object; reads the `path` key (or `str`).
     #[napi(factory, js_name = "fromMapping")]
-    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
-        CoreMediaType::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+    pub fn from_mapping(fields: HashMap<String, String>) -> Result<Self> {
+        CoreMediaType::from_mapping(&to_mapping(fields))
             .map(|inner| MediaType { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }

@@ -20,29 +20,25 @@ pub struct Url {
 #[pymethods]
 impl Url {
     /// Parse ``value`` into a :class:`Url`, raising ``ValueError`` on failure.
-    /// With ``safe=False`` the scheme and ``%XX`` escapes are not validated.
     #[new]
-    #[pyo3(signature = (value, safe = true))]
-    fn new(value: &str, safe: bool) -> PyResult<Self> {
-        CoreUrl::from_str(value, safe)
+    fn new(value: &str) -> PyResult<Self> {
+        CoreUrl::from_str(value)
             .map(|inner| Url { inner })
             .map_err(url_err)
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        Url::new(value, safe)
+    fn from_str(value: &str) -> PyResult<Self> {
+        Url::new(value)
     }
 
     /// Build a :class:`Url` from a dict of components (``scheme`` and ``host``
     /// required; ``username``, ``password``, ``port``, ``path``, ``query``,
     /// ``fragment``).
     #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreUrl::from_mapping(&fields, safe)
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreUrl::from_mapping(&fields)
             .map(|inner| Url { inner })
             .map_err(url_err)
     }

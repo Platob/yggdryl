@@ -24,19 +24,19 @@ impl Version {
         }
     }
 
-    /// Parse a `major[.minor[.patch]]` string, throwing on failure. With
-    /// `safe = false` extra components are ignored and junk becomes `0`.
+    /// Parse a `major[.minor[.patch]]` string, throwing on failure. Components
+    /// must be non-negative integers (at most three).
     #[napi(factory, js_name = "fromStr")]
-    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
-        CoreVersion::from_str(&value, safe.unwrap_or(true))
+    pub fn from_str(value: String) -> Result<Self> {
+        CoreVersion::from_str(&value)
             .map(|inner| Version { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Build a `Version` from an object of components (`major`, `minor`, `patch`).
     #[napi(factory, js_name = "fromMapping")]
-    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
-        CoreVersion::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+    pub fn from_mapping(fields: HashMap<String, String>) -> Result<Self> {
+        CoreVersion::from_mapping(&to_mapping(fields))
             .map(|inner| Version { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }

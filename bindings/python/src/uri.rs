@@ -19,28 +19,24 @@ pub struct Uri {
 #[pymethods]
 impl Uri {
     /// Parse ``value`` into a :class:`Uri`, raising ``ValueError`` on failure.
-    /// With ``safe=False`` the scheme and ``%XX`` escapes are not validated.
     #[new]
-    #[pyo3(signature = (value, safe = true))]
-    fn new(value: &str, safe: bool) -> PyResult<Self> {
-        CoreUri::from_str(value, safe)
+    fn new(value: &str) -> PyResult<Self> {
+        CoreUri::from_str(value)
             .map(|inner| Uri { inner })
             .map_err(uri_err)
     }
 
     /// Alias for the constructor.
     #[staticmethod]
-    #[pyo3(signature = (value, safe = true))]
-    fn from_str(value: &str, safe: bool) -> PyResult<Self> {
-        Uri::new(value, safe)
+    fn from_str(value: &str) -> PyResult<Self> {
+        Uri::new(value)
     }
 
     /// Build a :class:`Uri` from a dict of components (``scheme``, ``authority``,
     /// ``path``, ``query``, ``fragment``).
     #[staticmethod]
-    #[pyo3(signature = (fields, safe = true))]
-    fn from_mapping(fields: Mapping, safe: bool) -> PyResult<Self> {
-        CoreUri::from_mapping(&fields, safe)
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreUri::from_mapping(&fields)
             .map(|inner| Uri { inner })
             .map_err(uri_err)
     }

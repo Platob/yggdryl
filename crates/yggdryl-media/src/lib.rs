@@ -14,7 +14,7 @@
 //! ```
 //! use yggdryl_media::{FromInput, MediaType, MimeType};
 //!
-//! assert_eq!(MimeType::from_str("application/json", true).unwrap(), MimeType::Json);
+//! assert_eq!(MimeType::from_str("application/json").unwrap(), MimeType::Json);
 //! assert_eq!(MimeType::from_extension("parquet"), Some(MimeType::Parquet));
 //! assert_eq!(MimeType::from_magic(b"PK\x03\x04..."), Some(MimeType::Zip));
 //!
@@ -625,10 +625,9 @@ impl FromInput for MimeType {
     type Err = MediaError;
 
     /// Parses a MIME string such as `"text/html"` (any `;parameters` are dropped).
-    /// When `safe`, the essence must be a `type/subtype` pair of valid tokens;
-    /// when not `safe`, the input is taken as-is. Unknown but well-formed types
-    /// become [`Other`](MimeType::Other).
-    fn from_str(input: &str, safe: bool) -> Result<MimeType, MediaError> {
+    /// The essence must be a `type/subtype` pair of valid tokens. Unknown but
+    /// well-formed types become [`Other`](MimeType::Other).
+    fn from_str(input: &str) -> Result<MimeType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
@@ -638,18 +637,18 @@ impl FromInput for MimeType {
             .unwrap_or(input)
             .trim()
             .to_ascii_lowercase();
-        if safe && !is_valid_mime(&essence) {
+        if !is_valid_mime(&essence) {
             return Err(MediaError::Invalid(input.to_string()));
         }
         Ok(MimeType::from_mime(&essence))
     }
 
     /// Builds a [`MimeType`] from a [`Mapping`]. Recognised keys: `type` and
-    /// `subtype`. When `safe`, both must be present and valid tokens.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<MimeType, MediaError> {
+    /// `subtype`; both must be present and valid tokens.
+    fn from_mapping(fields: &Mapping) -> Result<MimeType, MediaError> {
         let type_ = fields.get("type").map_or("", String::as_str);
         let subtype = fields.get("subtype").map_or("", String::as_str);
-        if safe && !is_valid_mime(&format!("{type_}/{subtype}")) {
+        if !is_valid_mime(&format!("{type_}/{subtype}")) {
             return Err(MediaError::Invalid(format!("{type_}/{subtype}")));
         }
         Ok(MimeType::from_parts(type_, subtype))
@@ -776,9 +775,8 @@ impl FromInput for MediaType {
     type Err = MediaError;
 
     /// Parses a path or file name into its [`MimeType`] stack (see
-    /// [`from_path`](MediaType::from_path)). `safe` is accepted for trait
-    /// uniformity; only an empty input is an error.
-    fn from_str(input: &str, _safe: bool) -> Result<MediaType, MediaError> {
+    /// [`from_path`](MediaType::from_path)). Only an empty input is an error.
+    fn from_str(input: &str) -> Result<MediaType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
@@ -788,7 +786,7 @@ impl FromInput for MediaType {
     /// Builds the stack from a [`Mapping`]; reads the `types` key, a comma-
     /// separated list of MIME strings (the inverse of
     /// [`to_mapping`](MediaType::to_mapping)).
-    fn from_mapping(fields: &Mapping, _safe: bool) -> Result<MediaType, MediaError> {
+    fn from_mapping(fields: &Mapping) -> Result<MediaType, MediaError> {
         let types = fields
             .get("types")
             .map(|list| {
@@ -839,21 +837,21 @@ mod tests {
 
     #[test]
     fn parses_and_splits_mime() {
-        let m = MimeType::from_str("application/json", true).unwrap();
+        let m = MimeType::from_str("application/json").unwrap();
         assert_eq!(m, MimeType::Json);
         assert_eq!(m.mime(), "application/json");
         assert_eq!(m.type_(), "application");
         assert_eq!(m.subtype(), "json");
         // Parameters are dropped; case is normalised.
         assert_eq!(
-            MimeType::from_str("Text/HTML; charset=utf-8", true).unwrap(),
+            MimeType::from_str("Text/HTML; charset=utf-8").unwrap(),
             MimeType::Html
         );
     }
 
     #[test]
     fn unknown_becomes_other() {
-        let m = MimeType::from_str("application/x-custom", true).unwrap();
+        let m = MimeType::from_str("application/x-custom").unwrap();
         assert_eq!(m, MimeType::Other("application/x-custom".to_string()));
         assert!(!m.is_known());
         assert_eq!(m.subtype(), "x-custom");
@@ -862,14 +860,15 @@ mod tests {
 
     #[test]
     fn errors() {
-        assert_eq!(MimeType::from_str("", true), Err(MediaError::Empty));
+        assert_eq!(MimeType::from_str(""), Err(MediaError::Empty));
         assert_eq!(
-            MimeType::from_str("notamime", true),
+            MimeType::from_str("notamime"),
             Err(MediaError::Invalid("notamime".to_string()))
         );
+        // A well-formed but unknown type is kept as `Other`.
         assert_eq!(
-            MimeType::from_str("notamime", false).unwrap(),
-            MimeType::Other("notamime".to_string())
+            MimeType::from_str("application/x-unknown").unwrap(),
+            MimeType::Other("application/x-unknown".to_string())
         );
     }
 
@@ -929,9 +928,7 @@ mod tests {
         let stack = MediaType::new(vec![MimeType::Csv, MimeType::Gzip]);
         assert_eq!(stack, MediaType::from_path("x.csv.gz"));
         assert_eq!(
-            MediaType::from_str("a/b/c.tar.gz", true)
-                .unwrap()
-                .to_str(true),
+            MediaType::from_str("a/b/c.tar.gz").unwrap().to_str(true),
             "tar.gz"
         );
     }

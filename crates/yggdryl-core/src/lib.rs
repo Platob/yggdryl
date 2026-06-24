@@ -3,8 +3,8 @@
 //! Dependency-free foundations shared by the **yggdryl** crates:
 //!
 //! - the generic [`FromInput`] parsing trait (with [`Input`], [`Mapping`] and
-//!   [`Params`]) — every parse takes a `safe` flag (`true` validates fully,
-//!   `false` is a faster, lenient parse);
+//!   [`Params`]) — parsing validates its input and returns an error on malformed
+//!   data;
 //! - URL-safe percent-encoding ([`percent_encode`] / [`percent_decode`]) and the
 //!   lower-level component helpers used by [`yggdryl-url`](https://crates.io/crates/yggdryl-url);
 //! - the [`Version`] (`major.minor.patch`) value type.
@@ -56,34 +56,30 @@ impl<'a> From<&'a Mapping> for Input<'a> {
 /// A generic parsing interface implemented by [`Uri`], [`Url`] and [`Version`].
 ///
 /// Implementors provide [`from_str`](FromInput::from_str) and
-/// [`from_mapping`](FromInput::from_mapping), each taking a `safe` flag — `true`
-/// validates the input thoroughly, `false` is a faster, lenient parse. The
-/// [`from_`](FromInput::from_) entry point dispatches over any [`Input`] form and
-/// **always parses safely** (the common default); use `from_str`/`from_mapping`
-/// with `safe = false` for the lenient path.
+/// [`from_mapping`](FromInput::from_mapping); both validate their input fully and
+/// return an error on malformed data. The [`from_`](FromInput::from_) entry point
+/// dispatches over any [`Input`] form.
 pub trait FromInput: Sized {
     /// The error produced when parsing fails.
     type Err;
 
-    /// Parses a full string.
-    fn from_str(input: &str, safe: bool) -> Result<Self, Self::Err>;
+    /// Parses a full string, validating it and returning an error on malformed
+    /// input.
+    fn from_str(input: &str) -> Result<Self, Self::Err>;
 
     /// Parses from a [`Mapping`] of pre-split components. The default reads a
     /// `"str"` entry and delegates to [`from_str`](FromInput::from_str), so a
     /// type only needs `from_str`; [`Uri`], [`Url`] and [`Version`] override this
     /// with a component-based parse that avoids a useless string round-trip.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Self, Self::Err> {
-        Self::from_str(
-            fields.get("str").map(String::as_str).unwrap_or_default(),
-            safe,
-        )
+    fn from_mapping(fields: &Mapping) -> Result<Self, Self::Err> {
+        Self::from_str(fields.get("str").map(String::as_str).unwrap_or_default())
     }
 
-    /// Parses any supported [`Input`] form with full validation (`safe = true`).
+    /// Parses any supported [`Input`] form.
     fn from_<'a, I: Into<Input<'a>>>(input: I) -> Result<Self, Self::Err> {
         match input.into() {
-            Input::Str(s) => Self::from_str(s, true),
-            Input::Mapping(m) => Self::from_mapping(m, true),
+            Input::Str(s) => Self::from_str(s),
+            Input::Mapping(m) => Self::from_mapping(m),
         }
     }
 }
@@ -124,7 +120,7 @@ pub trait ToOutput {
     }
 }
 
-/// Error from [`percent_decode`] (and surfaced by `safe` parses).
+/// Error from [`percent_decode`] (and surfaced by validated parses).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EncodingError {
     /// A `%` was not followed by two hexadecimal digits.
@@ -202,7 +198,7 @@ pub fn percent_decode(input: &str) -> Result<String, EncodingError> {
 }
 
 /// Validates that every `%` in `input` is followed by two hex digits, used by
-/// `safe` parses.
+/// parsing.
 pub fn validate_percent_encoding(input: &str) -> Result<(), EncodingError> {
     let bytes = input.as_bytes();
     let mut i = 0;

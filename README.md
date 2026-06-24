@@ -37,9 +37,9 @@ yggdryl/
 
 ## The core API
 
-Each type is built with `from_str(value, safe)` (or `from_parts` / `from_mapping`)
-and exposes its components as read-only accessors. `safe = true` validates fully;
-`false` is a faster, lenient parse. Rendering takes an `encode` flag —
+Each type is built with `from_str(value)` (or `from_parts` / `from_mapping`)
+and exposes its components as read-only accessors. Parsing always validates and
+returns an error on malformed input. Rendering takes an `encode` flag —
 `to_string(encode=true)` (the default, also what `str()` / `toString()` use)
 percent-encodes for transport, `encode=false` decodes for display; both are
 cached. Functional `copy(...)` / `with_*` / `without_*` builders and the
@@ -50,17 +50,17 @@ languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
 ```rust
 use yggdryl::{FromInput, MediaType, MimeType, Uri, Url, Version};
 
-let uri = Uri::from_str("urn:isbn:0451450523", true)?;
+let uri = Uri::from_str("urn:isbn:0451450523")?;
 assert_eq!(uri.scheme(), "urn");
 
-let url = Url::from_str("https://example.com/data/sales.csv.gz?a=1&a=2", true)?;
+let url = Url::from_str("https://example.com/data/sales.csv.gz?a=1&a=2")?;
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
 // A layered media type, inferred from the path's extensions.
 assert_eq!(url.media_type().unwrap().types(), [MimeType::Csv, MimeType::Gzip]);
 assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
 
-assert!(Version::from_str("1.4.2", true)? < Version::from_str("1.10.0", true)?);
+assert!(Version::from_str("1.4.2")? < Version::from_str("1.10.0")?);
 # Ok::<(), yggdryl::UrlError>(())
 ```
 

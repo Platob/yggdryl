@@ -41,7 +41,6 @@ test('mime unknown other', () => {
 
 test('mime invalid throws', () => {
   assert.throws(() => new MimeType('notamime'))
-  assert.strictEqual(new MimeType('notamime', false).mime, 'notamime')
 })
 
 test('mime to/from mapping and equality', () => {

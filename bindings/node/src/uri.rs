@@ -19,26 +19,26 @@ pub struct Uri {
 
 #[napi]
 impl Uri {
-    /// Parse `value` into a `Uri`, throwing on failure. With `safe = false` the
-    /// scheme and `%XX` escapes are not validated.
+    /// Parse `value` into a `Uri`, throwing on failure. The scheme and any `%XX`
+    /// escapes are validated.
     #[napi(constructor)]
-    pub fn new(value: String, safe: Option<bool>) -> Result<Self> {
-        CoreUri::from_str(&value, safe.unwrap_or(true))
+    pub fn new(value: String) -> Result<Self> {
+        CoreUri::from_str(&value)
             .map(|inner| Uri { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Parse a string (alias of the constructor).
     #[napi(factory, js_name = "fromStr")]
-    pub fn from_str(value: String, safe: Option<bool>) -> Result<Self> {
-        Uri::new(value, safe)
+    pub fn from_str(value: String) -> Result<Self> {
+        Uri::new(value)
     }
 
     /// Build a `Uri` from an object of components (`scheme`, `authority`, `path`,
     /// `query`, `fragment`).
     #[napi(factory, js_name = "fromMapping")]
-    pub fn from_mapping(fields: HashMap<String, String>, safe: Option<bool>) -> Result<Self> {
-        CoreUri::from_mapping(&to_mapping(fields), safe.unwrap_or(true))
+    pub fn from_mapping(fields: HashMap<String, String>) -> Result<Self> {
+        CoreUri::from_mapping(&to_mapping(fields))
             .map(|inner| Uri { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
     }
