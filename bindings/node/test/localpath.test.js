@@ -63,3 +63,15 @@ test('media type inferred from extension', () => {
 test('missing path throws', () => {
   assert.throws(() => new LocalPath('/no/such/yggdryl/path'))
 })
+
+test('write auto-creates missing parent dirs', () => {
+  const base = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_autodir`)
+  const nested = path.join(base, 'a', 'b', 'c.bin')
+  try {
+    // The parent directories do not exist yet; the write creates them.
+    LocalPath.write(nested, Buffer.from('deep'))
+    assert.deepStrictEqual(new LocalPath(nested).read(), Buffer.from('deep'))
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
+})

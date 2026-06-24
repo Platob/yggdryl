@@ -30,10 +30,13 @@
 //! - **Metadata** — [`IoStats`] holds `size` / `mtime` / `content_type` / `etag`
 //!   eagerly; expensive fields like `media_type` are discovered lazily (only
 //!   when asked, then cached) — see [`Io::media_type`] under the `media` feature.
-//! - **Named resources** — [`Path`]`: Io` is a location; [`LocalPath`] is the
-//!   filesystem backend, memory-mapping the file for direct zero-copy access
-//!   when the `mmap` feature is on. Cloud paths (S3, Azure) are downstream crates
-//!   that implement the same [`Path`] trait — no change to this crate is needed.
+//! - **Named resources** — [`Path`]`: Io` is a local, hierarchical location
+//!   (its writes auto-create missing parent dirs *lazily*, on failure, never by
+//!   probing first); [`LocalPath`] is the filesystem backend, memory-mapping the
+//!   file for direct zero-copy access when the `mmap` feature is on.
+//!   [`RemotePath`]`: Io` is the URL-addressed cloud sibling (flat keys, no dir
+//!   creation); concrete S3 / Azure backends are downstream crates that implement
+//!   it — no change to this crate is needed.
 //! - **Typed codecs** — [`Codec<T>`] reads/writes/streams values of `T` over any
 //!   byte handle (e.g. a `Codec<RecordBatch>`); [`Frames`] is the reference
 //!   length-delimited implementation.
@@ -697,16 +700,50 @@ impl Io for BytesIO {
     }
 }
 
-/// A named byte resource — a *location* that is itself an [`Io`] handle once
-/// constructed. [`LocalPath`] is the filesystem implementation; cloud backends
-/// (S3, Azure) live in downstream crates and implement this same trait, so code
-/// written against `&mut dyn Path` works against any of them.
+/// A **local, hierarchical** named byte resource — a *location* in a directory
+/// tree that is itself an [`Io`] handle once constructed. [`LocalPath`] is the
+/// filesystem implementation. For remote object stores see [`RemotePath`].
+///
+/// ## Directory contract (auto-create, lazily)
+///
+/// A `Path` writes into a directory hierarchy, so a write target's parent may not
+/// exist yet. Implementations **auto-create missing parent directories**, but do
+/// so the cheap way: they do *not* check whether the directory exists before
+/// every write. They attempt the write, and only when it fails because a parent
+/// is missing do they create the tree once and retry. The common case (the
+/// directory already exists) therefore pays no `exists` probe — see
+/// [`LocalPath::write`].
 pub trait Path: Io {
-    /// The resource location (a filesystem path or a URL).
+    /// The resource location (a filesystem path).
     fn location(&self) -> &str;
 
     /// Whether the resource currently exists / is reachable.
     fn exists(&self) -> bool;
+}
+
+/// A **remote, URL-addressed** named byte resource — the cloud sibling of
+/// [`Path`].
+///
+/// Object stores (S3, Azure, GCS) and HTTP endpoints are addressed by URL and
+/// have **no directory hierarchy**: keys are flat, so — unlike a [`Path`] — a
+/// write never creates parent directories; the object is created directly.
+/// Reads are range-based through [`Io::read_at`]. Network SDKs are heavy, so
+/// concrete remote paths live in downstream crates that implement this trait;
+/// nothing in `yggdryl-io` pulls them in.
+pub trait RemotePath: Io {
+    /// The full remote URL, e.g. `s3://bucket/key` or `https://host/object`.
+    fn url(&self) -> &str;
+
+    /// Whether the object currently exists (a metadata / `HEAD` probe).
+    fn exists(&self) -> bool;
+
+    /// The store scheme, e.g. `s3`, `az`, `gs` or `https`. The default reads it
+    /// from [`url`](RemotePath::url).
+    fn scheme(&self) -> &str {
+        self.url()
+            .split_once("://")
+            .map_or("", |(scheme, _)| scheme)
+    }
 }
 
 /// How a [`LocalPath`] holds its bytes: a memory map (zero-copy, `mmap` feature)
@@ -789,16 +826,33 @@ impl LocalPath {
         })
     }
 
-    /// Writes `bytes` to `location` on disk, creating or truncating it. The read
-    /// path is a read-only mapping, so this is the companion write side.
+    /// Writes `bytes` to `location` on disk, creating or truncating the file and
+    /// **auto-creating missing parent directories**.
+    ///
+    /// This follows the [`Path`] contract: it does *not* stat the directory first.
+    /// It writes straight away, and only when the write fails because a parent is
+    /// missing does it create the directory tree once and retry — so the common
+    /// case (the directory already exists) pays nothing.
     pub fn write(location: &str, bytes: &[u8]) -> Result<(), IoError> {
         log_event!(
             info,
             "LocalPath::write {} bytes -> {location:?}",
             bytes.len()
         );
-        fs::write(location, bytes)?;
-        Ok(())
+        match fs::write(location, bytes) {
+            Ok(()) => Ok(()),
+            // The directory was missing: create it once, then retry the write.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let parent = std::path::Path::new(location).parent();
+                if let Some(parent) = parent.filter(|p| !p.as_os_str().is_empty()) {
+                    log_event!(debug, "LocalPath::write creating parent dir {parent:?}");
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(location, bytes)?;
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 
@@ -1389,6 +1443,74 @@ mod tests {
         let mut buf = [0u8; 4];
         assert_eq!(io.read_bytes(&mut buf).unwrap(), 0);
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn local_path_write_auto_creates_missing_parent_dirs() {
+        let base = temp_file("autodir");
+        let nested = format!("{base}/a/b/c.bin");
+        // The parent directories do not exist yet; the write creates them.
+        LocalPath::write(&nested, b"deep").unwrap();
+        let mut io = LocalPath::open(&nested).unwrap();
+        assert_eq!(io.read_owned(None).unwrap(), b"deep");
+        // A second write into the now-existing tree still succeeds.
+        LocalPath::write(&nested, b"again").unwrap();
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as
+    /// an [`Io`] handle and that `scheme` defaults from the URL.
+    struct FakeRemote {
+        inner: BytesIO,
+        url: String,
+    }
+    impl ReadBytes for FakeRemote {
+        fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+            self.inner.read_bytes(buf)
+        }
+    }
+    impl Seek for FakeRemote {
+        fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
+            Seek::seek(&mut self.inner, offset, whence)
+        }
+        fn stream_position(&self) -> u64 {
+            Seek::stream_position(&self.inner)
+        }
+        fn stream_len(&self) -> Option<u64> {
+            Seek::stream_len(&self.inner)
+        }
+    }
+    impl Io for FakeRemote {
+        fn stats(&self) -> Result<IoStats, IoError> {
+            self.inner.stats()
+        }
+        fn as_slice(&self) -> Option<&[u8]> {
+            self.inner.as_slice()
+        }
+    }
+    impl RemotePath for FakeRemote {
+        fn url(&self) -> &str {
+            &self.url
+        }
+        fn exists(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn remote_path_scheme_defaults_from_url() {
+        let mut remote = FakeRemote {
+            inner: BytesIO::from_bytes(b"object".to_vec()),
+            url: "s3://bucket/key".to_string(),
+        };
+        assert_eq!(remote.url(), "s3://bucket/key");
+        assert_eq!(remote.scheme(), "s3"); // default, parsed from the URL
+        assert!(remote.exists());
+        // It is a full Io handle: stats, positioned read, transfer.
+        assert_eq!(remote.stats().unwrap().size(), 6);
+        let mut buf = [0u8; 6];
+        assert_eq!(remote.read_at(0, &mut buf).unwrap(), 6);
+        assert_eq!(&buf, b"object");
     }
 
     #[cfg(feature = "media")]

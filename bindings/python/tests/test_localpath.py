@@ -4,6 +4,7 @@ Run after building the module, e.g. ``maturin develop`` then ``pytest``.
 """
 
 import os
+import shutil
 import tempfile
 
 import pytest
@@ -67,3 +68,14 @@ def test_media_type_inferred_from_extension():
 def test_missing_path_raises():
     with pytest.raises(ValueError):
         yggdryl.LocalPath("/no/such/yggdryl/path")
+
+
+def test_write_auto_creates_missing_parent_dirs():
+    base = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_autodir")
+    nested = os.path.join(base, "a", "b", "c.bin")
+    try:
+        # The parent directories do not exist yet; the write creates them.
+        yggdryl.LocalPath.write(nested, b"deep")
+        assert yggdryl.LocalPath(nested).read() == b"deep"
+    finally:
+        shutil.rmtree(base, ignore_errors=True)

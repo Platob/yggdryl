@@ -41,9 +41,14 @@ handle. The layering, smallest to largest:
   is the free-function form. `media_type` is lazy and behind the `media` feature.
 - `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
   expensive metadata (`media_type`) discovered lazily and cached.
-- `Path: Io` — a named resource; `LocalPath` is the filesystem backend (mmap via
-  the `mmap` feature). **Cloud backends (S3, Azure) are downstream crates that
-  implement `Path` — do not pull network SDKs into `yggdryl-io`.**
+- `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
+  backend (mmap via the `mmap` feature). Its writes **auto-create missing parent
+  dirs lazily** — attempt the write, create the tree only on a `NotFound`
+  failure, then retry; never stat the dir up front.
+- `RemotePath: Io` — the URL-addressed cloud sibling of `Path` (flat keys, no dir
+  creation; range reads via `read_at`). **Cloud backends (S3, Azure) are
+  downstream crates that implement `RemotePath` — do not pull network SDKs into
+  `yggdryl-io`.**
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
   is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
   the *byte* handle — keep them distinct.)

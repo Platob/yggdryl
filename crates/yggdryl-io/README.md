@@ -17,9 +17,12 @@ same handle.
   (transfer with a memory fast path). `copy` is the free-function form.
 - `IoStats` — `size` / `mtime` / `content_type` / `etag` eager; `media_type`
   discovered lazily (and cached) under the `media` feature.
-- `Path: Io` — a named resource; `LocalPath` is the filesystem backend,
-  memory-mapping the file (zero-copy) under the `mmap` feature. Cloud paths (S3,
-  Azure) are downstream crates implementing the same `Path` trait.
+- `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
+  backend, memory-mapping the file (zero-copy) under the `mmap` feature. Its
+  writes auto-create missing parent dirs *lazily* (only after a `NotFound`
+  failure, then retry — never a stat up front).
+- `RemotePath: Io` — the URL-addressed cloud sibling (flat keys, no dir
+  creation). Concrete S3 / Azure paths are downstream crates implementing it.
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
   is the reference length-delimited codec.
 
