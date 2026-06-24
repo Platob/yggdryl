@@ -40,6 +40,16 @@ impl LocalPath {
         CoreLocalPath::write(location, &data).map_err(io_err)
     }
 
+    /// Classify ``location`` without opening it (see :class:`IoStats`): its
+    /// :attr:`~IoStats.kind` is ``"missing"``, ``"file"``, ``"directory"`` or
+    /// ``"other"``.
+    #[staticmethod]
+    fn stat(location: &str) -> IoStats {
+        IoStats {
+            inner: CoreLocalPath::stat(location),
+        }
+    }
+
     /// The resource address as a :class:`Url` (``file://`` over the path).
     #[getter]
     fn url(&self) -> Url {

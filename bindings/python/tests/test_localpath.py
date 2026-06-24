@@ -66,6 +66,39 @@ def test_media_type_inferred_from_extension():
         os.remove(path)
 
 
+def test_stat_classifies_kind():
+    # Missing.
+    missing = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_nope")
+    assert yggdryl.LocalPath.stat(missing).kind == "missing"
+    assert not yggdryl.LocalPath.stat(missing).exists
+
+    # File.
+    f = _temp("kind_file", b"hello")
+    file_stats = yggdryl.LocalPath.stat(f)
+    assert file_stats.kind == "file"
+    assert file_stats.is_file and file_stats.exists
+    assert file_stats.size == 5
+
+    # Directory.
+    d = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_kind_dir")
+    os.makedirs(d, exist_ok=True)
+    try:
+        dir_stats = yggdryl.LocalPath.stat(d)
+        assert dir_stats.kind == "directory"
+        assert dir_stats.is_dir
+    finally:
+        os.remove(f)
+        os.rmdir(d)
+
+
+def test_open_file_stats_kind_is_file():
+    f = _temp("openkind", b"x")
+    try:
+        assert yggdryl.LocalPath(f).stats().kind == "file"
+    finally:
+        os.remove(f)
+
+
 def test_missing_path_raises():
     with pytest.raises(ValueError):
         yggdryl.LocalPath("/no/such/yggdryl/path")

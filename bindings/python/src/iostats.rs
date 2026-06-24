@@ -18,6 +18,31 @@ pub struct IoStats {
 
 #[pymethods]
 impl IoStats {
+    /// What the resource is: ``"missing"``, ``"file"``, ``"directory"`` or
+    /// ``"other"``.
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.inner.kind().as_str()
+    }
+
+    /// Whether the resource exists (its :attr:`kind` is not ``"missing"``).
+    #[getter]
+    fn exists(&self) -> bool {
+        self.inner.exists()
+    }
+
+    /// Whether the resource is a regular file (or in-memory blob).
+    #[getter]
+    fn is_file(&self) -> bool {
+        self.inner.is_file()
+    }
+
+    /// Whether the resource is a directory.
+    #[getter]
+    fn is_dir(&self) -> bool {
+        self.inner.is_dir()
+    }
+
     /// The size in bytes.
     #[getter]
     fn size(&self) -> u64 {
@@ -54,6 +79,10 @@ impl IoStats {
     }
 
     fn __repr__(&self) -> String {
-        format!("IoStats(size={})", self.inner.size())
+        format!(
+            "IoStats(kind='{}', size={})",
+            self.inner.kind(),
+            self.inner.size()
+        )
     }
 }

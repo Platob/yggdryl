@@ -31,9 +31,12 @@
 //!   [`as_slice`](Io::as_slice), reports [`stats`](Io::stats), and
 //!   [`copy_to`](Io::copy_to) another sink with a memory fast path. [`copy`] is
 //!   the free-function form.
-//! - **Metadata** — [`IoStats`] holds `size` / `mtime` / `content_type` / `etag`
+//! - **Metadata** — [`IoStats`] holds the [`kind`](IoStats::kind)
+//!   ([`Missing`](Kind::Missing) / [`File`](Kind::File) /
+//!   [`Directory`](Kind::Directory)), `size`, `mtime`, `content_type` and `etag`
 //!   eagerly; expensive fields like `media_type` are discovered lazily (only
 //!   when asked, then cached) — see [`Io::media_type`] under the `media` feature.
+//!   [`LocalPath::stat`] classifies a path without opening it.
 //! - **Named resources** — [`Path`]`: Io` is a local, hierarchical location
 //!   (its writes auto-create missing parent dirs *lazily*, on failure, never by
 //!   probing first); [`LocalPath`] is the filesystem backend, memory-mapping the
@@ -255,12 +258,47 @@ impl WriteBytes for Vec<u8> {
     }
 }
 
-/// Lazily-discovered metadata for an [`Io`] handle: cheap fields (`size`,
+/// What a resource is, as reported by [`IoStats::kind`]: absent, a regular file,
+/// a directory, or some other filesystem entry.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Kind {
+    /// The resource does not exist (or could not be reached).
+    Missing,
+    /// A regular file — or an in-memory byte blob such as a [`BytesIO`].
+    #[default]
+    File,
+    /// A directory.
+    Directory,
+    /// Some other entry (a symlink target, socket, device, …).
+    Other,
+}
+
+impl Kind {
+    /// The lowercase name (`"missing"` / `"file"` / `"directory"` / `"other"`),
+    /// used by the bindings and [`Display`](fmt::Display).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Kind::Missing => "missing",
+            Kind::File => "file",
+            Kind::Directory => "directory",
+            Kind::Other => "other",
+        }
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Lazily-discovered metadata for an [`Io`] handle: cheap fields (`kind`, `size`,
 /// `mtime`, `content_type`, `etag`) are filled eagerly by [`Io::stats`], while
 /// anything expensive (`media_type`, under the `media` feature) is discovered
 /// only on demand — see [`Io::media_type`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IoStats {
+    kind: Kind,
     size: u64,
     mtime: Option<SystemTime>,
     content_type: Option<String>,
@@ -270,12 +308,34 @@ pub struct IoStats {
 }
 
 impl IoStats {
-    /// Creates stats for a resource of `size` bytes, with all other fields unset.
+    /// Creates stats for a [`Kind::File`] of `size` bytes, with all other fields
+    /// unset.
     pub fn new(size: u64) -> IoStats {
         IoStats {
             size,
             ..IoStats::default()
         }
+    }
+
+    /// What the resource is: missing, a file, a directory, or other.
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    /// Whether the resource exists (its [`kind`](IoStats::kind) is not
+    /// [`Kind::Missing`]).
+    pub fn exists(&self) -> bool {
+        self.kind != Kind::Missing
+    }
+
+    /// Whether the resource is a regular file (or in-memory blob).
+    pub fn is_file(&self) -> bool {
+        self.kind == Kind::File
+    }
+
+    /// Whether the resource is a directory.
+    pub fn is_dir(&self) -> bool {
+        self.kind == Kind::Directory
     }
 
     /// The size in bytes.
@@ -303,6 +363,12 @@ impl IoStats {
     #[cfg(feature = "media")]
     pub fn media_type(&self) -> Option<&yggdryl_media::MediaType> {
         self.media_type.as_ref()
+    }
+
+    /// Returns a copy with `kind` set.
+    pub fn with_kind(mut self, kind: Kind) -> IoStats {
+        self.kind = kind;
+        self
     }
 
     /// Returns a copy with `mtime` set.
@@ -895,6 +961,31 @@ impl LocalPath {
             Err(error) => Err(error.into()),
         }
     }
+
+    /// Classifies `location` **without opening it**, returning [`IoStats`] whose
+    /// [`kind`](IoStats::kind) is [`Missing`](Kind::Missing) (absent or
+    /// unreachable), [`File`](Kind::File), [`Directory`](Kind::Directory) or
+    /// [`Other`](Kind::Other). Size and mtime are filled in when available. This
+    /// is the cheap "what is at this path?" probe that does not memory-map.
+    pub fn stat(location: &str) -> IoStats {
+        match fs::metadata(location) {
+            Err(_) => IoStats::new(0).with_kind(Kind::Missing),
+            Ok(meta) => {
+                let kind = if meta.is_dir() {
+                    Kind::Directory
+                } else if meta.is_file() {
+                    Kind::File
+                } else {
+                    Kind::Other
+                };
+                let mut stats = IoStats::new(meta.len()).with_kind(kind);
+                if let Ok(mtime) = meta.modified() {
+                    stats = stats.with_mtime(mtime);
+                }
+                stats
+            }
+        }
+    }
 }
 
 impl ReadBytes for LocalPath {
@@ -1256,10 +1347,16 @@ mod tests {
     }
 
     #[test]
-    fn io_stats_reports_size() {
+    fn io_stats_reports_size_and_kind() {
         let io = BytesIO::from_bytes(b"abcdef".to_vec());
-        assert_eq!(io.stats().unwrap().size(), 6);
-        assert_eq!(io.stats().unwrap().mtime(), None);
+        let stats = io.stats().unwrap();
+        assert_eq!(stats.size(), 6);
+        assert_eq!(stats.mtime(), None);
+        // An in-memory handle is a File.
+        assert_eq!(stats.kind(), Kind::File);
+        assert!(stats.is_file());
+        assert!(!stats.is_dir());
+        assert!(stats.exists());
     }
 
     #[test]
@@ -1515,6 +1612,42 @@ mod tests {
         let mut buf = [0u8; 4];
         assert_eq!(io.read_bytes(&mut buf).unwrap(), 0);
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn local_path_stat_classifies_the_kind() {
+        // A missing path.
+        let missing = temp_file("stat_missing");
+        assert_eq!(LocalPath::stat(&missing).kind(), Kind::Missing);
+        assert!(!LocalPath::stat(&missing).exists());
+
+        // A regular file.
+        let file = temp_file("stat_file");
+        LocalPath::write(&file, b"hello").unwrap();
+        let file_stats = LocalPath::stat(&file);
+        assert_eq!(file_stats.kind(), Kind::File);
+        assert!(file_stats.is_file());
+        assert_eq!(file_stats.size(), 5);
+        assert!(file_stats.mtime().is_some());
+
+        // A directory.
+        let dir = temp_file("stat_dir");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir_stats = LocalPath::stat(&dir);
+        assert_eq!(dir_stats.kind(), Kind::Directory);
+        assert!(dir_stats.is_dir());
+        assert!(dir_stats.exists());
+
+        std::fs::remove_file(&file).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn kind_renders_lowercase_names() {
+        assert_eq!(Kind::Missing.as_str(), "missing");
+        assert_eq!(Kind::File.to_string(), "file");
+        assert_eq!(Kind::Directory.to_string(), "directory");
+        assert_eq!(Kind::default(), Kind::File);
     }
 
     #[test]

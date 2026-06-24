@@ -61,6 +61,31 @@ test('media type inferred from extension', () => {
   }
 })
 
+test('stat classifies kind', () => {
+  const missing = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_nope`)
+  assert.strictEqual(LocalPath.stat(missing).kind, 'missing')
+  assert.strictEqual(LocalPath.stat(missing).exists, false)
+
+  const f = temp('kind_file', 'hello')
+  const d = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_kind_dir`)
+  fs.mkdirSync(d, { recursive: true })
+  try {
+    const fileStats = LocalPath.stat(f)
+    assert.strictEqual(fileStats.kind, 'file')
+    assert.ok(fileStats.isFile && fileStats.exists)
+    assert.strictEqual(fileStats.size, 5)
+
+    const dirStats = LocalPath.stat(d)
+    assert.strictEqual(dirStats.kind, 'directory')
+    assert.ok(dirStats.isDir)
+    // An opened file reports kind "file" too.
+    assert.strictEqual(new LocalPath(f).stats().kind, 'file')
+  } finally {
+    fs.rmSync(f)
+    fs.rmSync(d, { recursive: true, force: true })
+  }
+})
+
 test('missing path throws', () => {
   assert.throws(() => new LocalPath('/no/such/yggdryl/path'))
 })

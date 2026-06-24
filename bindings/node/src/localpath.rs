@@ -41,6 +41,15 @@ impl LocalPath {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Classify `location` without opening it (see `IoStats`): its `kind` is
+    /// `"missing"`, `"file"`, `"directory"` or `"other"`.
+    #[napi]
+    pub fn stat(location: String) -> IoStats {
+        IoStats {
+            inner: CoreLocalPath::stat(&location),
+        }
+    }
+
     /// The resource address as a `Url` (`file://` over the path).
     #[napi(getter)]
     pub fn url(&self) -> Url {

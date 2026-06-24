@@ -17,6 +17,30 @@ pub struct IoStats {
 
 #[napi]
 impl IoStats {
+    /// What the resource is: `"missing"`, `"file"`, `"directory"` or `"other"`.
+    #[napi(getter)]
+    pub fn kind(&self) -> String {
+        self.inner.kind().as_str().to_owned()
+    }
+
+    /// Whether the resource exists (its `kind` is not `"missing"`).
+    #[napi(getter)]
+    pub fn exists(&self) -> bool {
+        self.inner.exists()
+    }
+
+    /// Whether the resource is a regular file (or in-memory blob).
+    #[napi(getter, js_name = "isFile")]
+    pub fn is_file(&self) -> bool {
+        self.inner.is_file()
+    }
+
+    /// Whether the resource is a directory.
+    #[napi(getter, js_name = "isDir")]
+    pub fn is_dir(&self) -> bool {
+        self.inner.is_dir()
+    }
+
     /// The size in bytes.
     #[napi(getter)]
     pub fn size(&self) -> f64 {

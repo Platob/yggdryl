@@ -17,8 +17,9 @@ same handle.
   `pwrite` (a `Whence` selects positional — cursor untouched, the default — vs
   cursor-relative), exposes `as_slice` (zero-copy hook), reports `stats`, and
   `copy_to` (transfer with a memory fast path; `copy` is the free fn).
-- `IoStats` — `size` / `mtime` / `content_type` / `etag` eager; `media_type`
-  discovered lazily (and cached) under the `media` feature.
+- `IoStats` — `kind` (missing / file / directory / other), `size`, `mtime`,
+  `content_type`, `etag` eager; `media_type` discovered lazily (and cached) under
+  the `media` feature. `LocalPath::stat` classifies a path without opening it.
 - `Path: Io` — a local, hierarchical resource; `LocalPath` is the filesystem
   backend, memory-mapping the file (zero-copy) under the `mmap` feature. Its
   writes auto-create missing parent dirs *lazily* (only after a `NotFound`
