@@ -162,27 +162,30 @@ impl LocalPath {
         self.inner.exists()
     }
 
-    /// No-op flush / close, present for the ``io`` API; the mapping is released
-    /// when the object is dropped.
+    /// No-op flush, present for the ``io`` API.
     fn flush(&self) {}
 
-    fn close(&self) {}
+    /// Release the handle (a no-op; the mapping is released on drop). Idempotent.
+    fn close(&mut self) -> PyResult<()> {
+        self.inner.close().map_err(io_err)
+    }
 
     /// Enter a ``with`` block, returning the handle itself.
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
 
-    /// Exit a ``with`` block. Returns ``False`` so exceptions propagate.
+    /// Exit a ``with`` block: close the handle and return ``False`` so any
+    /// exception propagates.
     #[pyo3(signature = (_exc_type = None, _exc_value = None, _traceback = None))]
     fn __exit__(
-        &self,
+        &mut self,
         _exc_type: Option<PyObject>,
         _exc_value: Option<PyObject>,
         _traceback: Option<PyObject>,
-    ) -> bool {
-        self.close();
-        false
+    ) -> PyResult<bool> {
+        self.close()?;
+        Ok(false)
     }
 
     fn __len__(&self) -> usize {

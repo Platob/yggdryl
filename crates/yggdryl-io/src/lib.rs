@@ -559,6 +559,14 @@ pub trait Io: ReadBytes + Seek + fmt::Debug + Send + Sync {
         Err(IoError::Unsupported("open".to_string()))
     }
 
+    /// Releases any resources held by this handle (flushing buffers, closing OS
+    /// handles, finishing a cloud upload, …). The default is a no-op returning
+    /// `Ok(())` — in-memory and memory-mapped backends free their storage on
+    /// drop (RAII). It is **idempotent**: calling it more than once is harmless.
+    fn close(&mut self) -> Result<(), IoError> {
+        Ok(())
+    }
+
     /// Borrows the whole backing buffer when this handle is memory-resident,
     /// enabling zero-copy reads and transfers. Streamed backends return `None`
     /// (the default).
@@ -2197,6 +2205,20 @@ mod tests {
         LocalPath::open(&path).write(b"abcdef").unwrap();
         assert_open_parity!(LocalPath::open(&path));
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn close_is_a_noop_and_idempotent() {
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        assert!(io.close().is_ok());
+        assert!(io.close().is_ok()); // idempotent
+        assert_eq!(io.read(Some(3)), b"abc"); // still usable
+
+        // Available through `dyn Io`, and on the default (read-only) backends.
+        let mut boxed: Box<dyn Io> = Box::new(BytesIO::new());
+        assert!(boxed.close().is_ok());
+        let mut drip = Drip(BytesIO::new());
+        assert!(drip.close().is_ok());
     }
 
     /// A mock [`RemotePath`] over a memory buffer, to check the trait composes as

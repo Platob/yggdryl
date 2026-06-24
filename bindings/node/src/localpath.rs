@@ -170,11 +170,15 @@ impl LocalPath {
         self.inner.exists()
     }
 
-    /// No-op close, present for the `io` API; the mapping is released when the
-    /// object is garbage-collected. (Python exposes this as a `with` context
+    /// Release the handle (a no-op; the mapping is released when the object is
+    /// garbage-collected). Idempotent. (Python exposes this as a `with` context
     /// manager.)
     #[napi]
-    pub fn close(&self) {}
+    pub fn close(&mut self) -> Result<()> {
+        self.inner
+            .close()
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
 
     /// The total number of bytes.
     #[napi(getter)]
