@@ -63,6 +63,16 @@ impl MimeType {
         CoreMimeType::from_path(path).map(|inner| MimeType { inner })
     }
 
+    /// The fallback MIME type, ``application/octet-stream`` — the conventional
+    /// default when no more specific type is known.
+    #[staticmethod]
+    #[allow(clippy::should_implement_trait)]
+    fn default() -> Self {
+        MimeType {
+            inner: CoreMimeType::default(),
+        }
+    }
+
     /// Register (or replace) a MIME type globally. ``magic`` is a list of byte
     /// prefixes matched at the start of a file. The change is process-wide.
     #[staticmethod]

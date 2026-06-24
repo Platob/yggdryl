@@ -96,6 +96,13 @@ test('convenient from constructors', () => {
   assert.ok(MediaType.fromMapping({ path: 'report.csv.gz' }).equals(MediaType.fromPath('report.csv.gz')))
 })
 
+test('default octet-stream fallback', () => {
+  assert.strictEqual(MimeType.default().mime, 'application/octet-stream')
+  assert.deepStrictEqual(MediaType.default().types.map((t) => t.mime), ['application/octet-stream'])
+  // Conventional fallback for failed inference.
+  assert.strictEqual((MimeType.fromPath('notes') ?? MimeType.default()).mime, 'application/octet-stream')
+})
+
 test('uri/url media type', () => {
   assert.deepStrictEqual(new Uri('https://h/a/file.json').mediaType().types.map((t) => t.mime), ['application/json'])
   const url = new Url('https://h/dump/archive.tar.gz')

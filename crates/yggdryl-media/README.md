@@ -33,4 +33,8 @@ assert_eq!(
     Some(MimeType::Other("application/x-foo".to_string()))
 );
 MimeType::unregister("application/x-foo");
+
+// `application/octet-stream` is the default fallback when nothing is inferred.
+assert_eq!(MimeType::default(), MimeType::OctetStream);
+assert_eq!(MimeType::from_path("notes").unwrap_or_default(), MimeType::OctetStream);
 ```

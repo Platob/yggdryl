@@ -106,6 +106,13 @@ def test_convenient_from_constructors():
     assert yggdryl.MediaType.from_mapping({"path": "report.csv.gz"}) == yggdryl.MediaType.from_path("report.csv.gz")
 
 
+def test_default_octet_stream_fallback():
+    assert yggdryl.MimeType.default().mime == "application/octet-stream"
+    assert [t.mime for t in yggdryl.MediaType.default().types] == ["application/octet-stream"]
+    # Conventional fallback for failed inference.
+    assert (yggdryl.MimeType.from_path("notes") or yggdryl.MimeType.default()).mime == "application/octet-stream"
+
+
 def test_uri_url_media_type():
     uri = yggdryl.Uri("https://h/a/file.json")
     assert [t.mime for t in uri.media_type().types] == ["application/json"]

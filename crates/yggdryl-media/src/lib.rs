@@ -604,6 +604,15 @@ impl MimeType {
     }
 }
 
+impl Default for MimeType {
+    /// The fallback type, [`OctetStream`](MimeType::OctetStream)
+    /// (`application/octet-stream`), used when no more specific type is known —
+    /// e.g. `MimeType::from_path(p).unwrap_or_default()`.
+    fn default() -> MimeType {
+        MimeType::OctetStream
+    }
+}
+
 impl FromInput for MimeType {
     type Err = MediaError;
 
@@ -672,7 +681,7 @@ impl ToOutput for MimeType {
 /// assert_eq!(stack.first(), Some(&MimeType::Csv));
 /// assert_eq!(stack.last(), Some(&MimeType::Gzip));
 /// ```
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MediaType {
     types: Vec<MimeType>,
 }
@@ -745,6 +754,14 @@ impl MediaType {
     /// Whether the stack is empty (no known extension was found).
     pub fn is_empty(&self) -> bool {
         self.types.is_empty()
+    }
+}
+
+impl Default for MediaType {
+    /// The fallback stack: a single [`MimeType::OctetStream`]
+    /// (`application/octet-stream`), used when no type can be inferred.
+    fn default() -> MediaType {
+        MediaType::new(vec![MimeType::default()])
     }
 }
 
@@ -891,6 +908,22 @@ mod tests {
                 .unwrap()
                 .to_str(true),
             "tar.gz"
+        );
+    }
+
+    #[test]
+    fn defaults_to_octet_stream() {
+        assert_eq!(MimeType::default(), MimeType::OctetStream);
+        assert_eq!(MimeType::default().mime(), "application/octet-stream");
+        assert_eq!(MediaType::default().types(), [MimeType::OctetStream]);
+        // The conventional fallback for failed inference.
+        assert_eq!(
+            MimeType::from_extension("nope").unwrap_or_default(),
+            MimeType::OctetStream
+        );
+        assert_eq!(
+            MimeType::from_path("notes").unwrap_or_default().mime(),
+            "application/octet-stream"
         );
     }
 

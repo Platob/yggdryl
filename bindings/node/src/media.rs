@@ -67,6 +67,16 @@ impl MediaType {
         }
     }
 
+    /// The fallback stack, a single `application/octet-stream` — the default when
+    /// no type can be inferred.
+    #[napi(factory)]
+    #[allow(clippy::should_implement_trait)]
+    pub fn default() -> MediaType {
+        MediaType {
+            inner: CoreMediaType::default(),
+        }
+    }
+
     /// The ordered `MimeType` list, innermost content first.
     #[napi(getter)]
     pub fn types(&self) -> Vec<MimeType> {
