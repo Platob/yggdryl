@@ -64,7 +64,7 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
-| Single MIME type | `MimeType` enum; `from_str` / `from_mapping` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
+| Single MIME type | `MimeType` enum; `from_str` / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
 | Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |
 | Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` |
 | Inferred media/MIME type on a URI/URL | `media_type()` → `MediaType` stack or null; `mime_type()` → outermost `MimeType` or null (Rust also has `MediaType::from(&uri)`) |

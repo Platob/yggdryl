@@ -86,6 +86,8 @@ test('media type explicit construction', () => {
 })
 
 test('convenient from constructors', () => {
+  assert.ok(MimeType.fromParts('text', 'csv').equals(new MimeType('text/csv')))
+  assert.strictEqual(MimeType.fromParts('application', 'x-foo').mime, 'application/x-foo')
   assert.strictEqual(MimeType.fromPath('data.csv.gz').mime, 'application/gzip')
   assert.strictEqual(MimeType.fromPath('notes'), null)
   assert.deepStrictEqual(MediaType.fromExtension('json').types.map((t) => t.mime), ['application/json'])

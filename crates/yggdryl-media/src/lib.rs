@@ -498,6 +498,14 @@ impl MimeType {
             .unwrap_or(MimeType::Other(mime))
     }
 
+    /// Builds a [`MimeType`] from its `type` and `subtype` parts directly, without
+    /// parsing a combined string — `from_parts("text", "csv")` is
+    /// [`Csv`](MimeType::Csv). A well-formed but unknown pair becomes
+    /// [`Other`](MimeType::Other).
+    pub fn from_parts(type_: &str, subtype: &str) -> MimeType {
+        MimeType::from_mime(&format!("{type_}/{subtype}"))
+    }
+
     /// Infers a [`MimeType`] from a file `extension` (with or without a leading
     /// `.`) via the registry, or `None` if it is not registered.
     pub fn from_extension(extension: &str) -> Option<MimeType> {
@@ -641,11 +649,10 @@ impl FromInput for MimeType {
     fn from_mapping(fields: &Mapping, safe: bool) -> Result<MimeType, MediaError> {
         let type_ = fields.get("type").map_or("", String::as_str);
         let subtype = fields.get("subtype").map_or("", String::as_str);
-        let mime = format!("{type_}/{subtype}");
-        if safe && !is_valid_mime(&mime) {
-            return Err(MediaError::Invalid(mime));
+        if safe && !is_valid_mime(&format!("{type_}/{subtype}")) {
+            return Err(MediaError::Invalid(format!("{type_}/{subtype}")));
         }
-        Ok(MimeType::from_mime(&mime))
+        Ok(MimeType::from_parts(type_, subtype))
     }
 }
 
@@ -929,6 +936,12 @@ mod tests {
 
     #[test]
     fn convenient_from_constructors() {
+        // MimeType: straight from `type`/`subtype` parts, no string parse.
+        assert_eq!(MimeType::from_parts("text", "csv"), MimeType::Csv);
+        assert_eq!(
+            MimeType::from_parts("application", "x-foo"),
+            MimeType::Other("application/x-foo".to_string())
+        );
         // MimeType: a single (outermost) type from a path.
         assert_eq!(MimeType::from_path("data.csv.gz"), Some(MimeType::Gzip));
         assert_eq!(MimeType::from_path("notes"), None);

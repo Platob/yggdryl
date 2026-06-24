@@ -43,6 +43,15 @@ impl MimeType {
             .map_err(media_err)
     }
 
+    /// Build a :class:`MimeType` straight from its ``type`` and ``subtype`` parts,
+    /// without parsing a string, e.g. ``MimeType.from_parts("text", "csv")``.
+    #[staticmethod]
+    fn from_parts(type_: &str, subtype: &str) -> Self {
+        MimeType {
+            inner: CoreMimeType::from_parts(type_, subtype),
+        }
+    }
+
     /// Infer the MIME type from a file ``extension``, or ``None`` if unknown.
     #[staticmethod]
     fn from_extension(extension: &str) -> Option<Self> {

@@ -41,6 +41,15 @@ impl MimeType {
             .map_err(|e| Error::from_reason(e.to_string()))
     }
 
+    /// Build a `MimeType` straight from its `type` and `subtype` parts, without
+    /// parsing a string, e.g. `MimeType.fromParts('text', 'csv')`.
+    #[napi(factory, js_name = "fromParts")]
+    pub fn from_parts(type_: String, subtype: String) -> MimeType {
+        MimeType {
+            inner: CoreMimeType::from_parts(&type_, &subtype),
+        }
+    }
+
     /// Infer the MIME type from a file `extension`, or `null` if unknown.
     #[napi(js_name = "fromExtension")]
     pub fn from_extension(extension: String) -> Option<MimeType> {

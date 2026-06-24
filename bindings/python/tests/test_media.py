@@ -94,6 +94,9 @@ def test_media_type_explicit_construction():
 
 
 def test_convenient_from_constructors():
+    # MimeType: straight from type/subtype parts (no string parse).
+    assert yggdryl.MimeType.from_parts("text", "csv") == yggdryl.MimeType("text/csv")
+    assert yggdryl.MimeType.from_parts("application", "x-foo").mime == "application/x-foo"
     # MimeType: single outermost type from a path.
     assert yggdryl.MimeType.from_path("data.csv.gz").mime == "application/gzip"
     assert yggdryl.MimeType.from_path("notes") is None
