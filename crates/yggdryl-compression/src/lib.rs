@@ -260,6 +260,10 @@ impl Compression {
 
     /// Decompresses `data` in full, returning the decoded bytes — the one-shot
     /// form of [`decoder`](Compression::decoder) over an in-memory slice.
+    ///
+    /// The decoded size is unbounded: a small hostile input can expand greatly
+    /// (a "zip bomb"), so cap or stream untrusted data via
+    /// [`decoder`](Compression::decoder) rather than decoding it whole here.
     pub fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, IoError> {
         let mut decoder = self.decoder(data)?;
         let mut out = Vec::new();
@@ -627,6 +631,37 @@ mod tests {
         let out = handle.decompress(None).unwrap();
         assert_eq!(out.getvalue(), b"inferred payload");
         std::fs::remove_file(&path).ok();
+    }
+
+    /// Corrupt, truncated, or wrong-codec input must surface an error — never
+    /// panic.
+    #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+    #[test]
+    fn corrupt_input_errors_without_panicking() {
+        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+            if !codec.is_available() {
+                continue;
+            }
+            // Random bytes are not a valid stream for any codec.
+            assert!(
+                codec
+                    .decompress(&[0xAB, 0x12, 0xFF, 0x00, 0x99, 0x42])
+                    .is_err(),
+                "{codec} garbage"
+            );
+        }
+
+        // A real stream truncated mid-way (gzip carries a length/CRC trailer).
+        if Compression::Gzip.is_available() {
+            let packed = Compression::Gzip.compress(&vec![7u8; 4096]).unwrap();
+            assert!(Compression::Gzip
+                .decompress(&packed[..packed.len() / 2])
+                .is_err());
+            // Decoding gzip bytes under the wrong codec also errors.
+            if Compression::Zstd.is_available() {
+                assert!(Compression::Zstd.decompress(&packed).is_err());
+            }
+        }
     }
 
     #[cfg(feature = "media")]

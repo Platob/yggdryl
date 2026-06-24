@@ -4,12 +4,18 @@
 //! feature is off is skipped). Uses a plain `main` (the crate sets
 //! `harness = false`) so there is no benchmark-framework dependency; it reports
 //! MiB/s over the *uncompressed* size for both one-shot and streamed paths.
+//!
+//! The payload is a deterministic, **semi-compressible** CSV-like stream (a few
+//! repeated tokens mixed with pseudo-random numbers), so the ratios and speeds
+//! resemble real columnar/log data rather than a trivially compressible cycle.
+//! The streamed (`Io`) benches reuse one handle and `seek(0)` between iterations
+//! so the timing measures the codec, not a per-iteration buffer copy.
 
 use std::hint::black_box;
 use std::time::Instant;
 
 use yggdryl_compression::{CompressIo, Compression};
-use yggdryl_io::BytesIO;
+use yggdryl_io::{BytesIO, Whence};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and reports
 /// throughput in MiB/s relative to `bytes` processed per iteration.
@@ -26,15 +32,30 @@ fn bench(name: &str, iters: u64, bytes: usize, mut f: impl FnMut()) {
     println!("{name:<40} {:>9.1} MiB/s", mib / secs);
 }
 
-fn main() {
-    // A semi-compressible 1 MiB payload: repetitive text with some variation, so
-    // the ratios and speeds resemble real columnar data rather than random noise.
+/// A deterministic ~1 MiB CSV-like payload with moderate (~3-5x) compressibility.
+fn payload() -> Vec<u8> {
     const SIZE: usize = 1 << 20;
-    let payload: Vec<u8> = (0..SIZE)
-        .map(|i| b"yggdryl compresses bytes "[i % 25])
-        .collect();
+    let mut state = 0x2545_F491_4F6C_DD1Du64;
+    let mut out = Vec::with_capacity(SIZE + 64);
+    let mut row = 0u64;
+    while out.len() < SIZE {
+        // A linear-congruential step keeps it deterministic without `rand`.
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let value = (state >> 40) % 100_000;
+        out.extend_from_slice(format!("row,{row},region,eu-west,measure,{value}\n").as_bytes());
+        row += 1;
+    }
+    out.truncate(SIZE);
+    out
+}
 
-    println!("== compression ({} KiB payload) ==", SIZE / 1024);
+fn main() {
+    const SIZE: usize = 1 << 20;
+    let payload = payload();
+
+    println!("== compression ({} KiB CSV-like payload) ==", SIZE / 1024);
     for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
         if !codec.is_available() {
             println!("{:<40} (feature off)", codec.as_str());
@@ -52,18 +73,21 @@ fn main() {
             black_box(codec.decompress(black_box(&packed)).unwrap());
         });
 
-        // Streamed compress / decompress over an `Io` handle (CompressIo).
+        // Streamed compress / decompress over a reused `Io` handle (CompressIo):
+        // `seek(0)` resets the cursor each iteration without copying the buffer.
+        let mut source = BytesIO::from_bytes(payload.clone());
         bench(&format!("{codec} compress (Io stream)"), 200, SIZE, || {
-            let mut src = BytesIO::from_bytes(payload.clone());
-            black_box(src.compress(codec).unwrap());
+            source.seek(0, Whence::Start).unwrap();
+            black_box(source.compress(codec).unwrap());
         });
+        let mut compressed = BytesIO::from_bytes(packed.clone());
         bench(
             &format!("{codec} decompress (Io stream)"),
             200,
             SIZE,
             || {
-                let mut src = BytesIO::from_bytes(packed.clone());
-                black_box(src.decompress(Some(codec)).unwrap());
+                compressed.seek(0, Whence::Start).unwrap();
+                black_box(compressed.decompress(black_box(Some(codec))).unwrap());
             },
         );
     }
