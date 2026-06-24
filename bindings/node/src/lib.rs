@@ -6,7 +6,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{Uri as CoreUri, Url as CoreUrl};
+use yggdryl_core::{Uri as CoreUri, Url as CoreUrl, Version as CoreVersion};
 
 /// A generic RFC 3986 URI: `scheme:[//authority]path[?query][#fragment]`.
 #[napi]
@@ -127,6 +127,67 @@ impl Url {
     #[napi(getter)]
     pub fn authority(&self) -> String {
         self.inner.authority()
+    }
+
+    #[napi(js_name = "toString")]
+    pub fn to_string_js(&self) -> String {
+        self.inner.to_string()
+    }
+}
+
+/// A generic `major.minor.patch` version, ordered numerically.
+#[napi]
+pub struct Version {
+    inner: CoreVersion,
+}
+
+#[napi]
+impl Version {
+    /// Construct from components.
+    #[napi(constructor)]
+    pub fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Version {
+            inner: CoreVersion::new(major as u64, minor as u64, patch as u64),
+        }
+    }
+
+    /// Parse a `major[.minor[.patch]]` string, throwing on failure.
+    #[napi(factory)]
+    pub fn parse(value: String) -> Result<Self> {
+        CoreVersion::parse(&value)
+            .map(|inner| Version { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    #[napi(getter)]
+    pub fn major(&self) -> u32 {
+        self.inner.major() as u32
+    }
+
+    #[napi(getter)]
+    pub fn minor(&self) -> u32 {
+        self.inner.minor() as u32
+    }
+
+    #[napi(getter)]
+    pub fn patch(&self) -> u32 {
+        self.inner.patch() as u32
+    }
+
+    /// Compare with another version: `-1`, `0` or `1`.
+    #[napi]
+    pub fn compare(&self, other: &Version) -> i32 {
+        match self.inner.cmp(&other.inner) {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        }
+    }
+
+    /// `true` if the two versions are equal.
+    #[napi]
+    pub fn equals(&self, other: &Version) -> bool {
+        self.inner == other.inner
     }
 
     #[napi(js_name = "toString")]

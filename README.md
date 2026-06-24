@@ -6,12 +6,14 @@ core. One implementation, three published packages
 ([crates.io](https://crates.io) / [PyPI](https://pypi.org) /
 [npm](https://www.npmjs.com)), so behaviour is identical everywhere.
 
-The core provides two URI value types:
+The core provides three value types:
 
 - **`Uri`** — the generic [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986)
   shape: `scheme:[//authority]path[?query][#fragment]`.
 - **`Url`** — the common subset that always has an authority, decomposed into
   `username`, `password`, `host` and `port`.
+- **`Version`** — a generic `major.minor.patch` version that parses, renders and
+  orders numerically.
 
 ## Layout
 
@@ -40,6 +42,11 @@ let url = Url::parse("https://user:pw@example.com:8443/api?v=1#top")?;
 assert_eq!(url.host(), "example.com");
 assert_eq!(url.port(), Some(8443));
 # Ok::<(), yggdryl::UrlError>(())
+```
+
+```rust
+use yggdryl::Version;
+assert!(Version::parse("1.4.2").unwrap() < Version::parse("1.10.0").unwrap());
 ```
 
 ```python

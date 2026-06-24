@@ -3,7 +3,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert')
-const { Uri, Url } = require('..')
+const { Uri, Url, Version } = require('..')
 
 test('uri components', () => {
   const uri = new Uri('https://example.com/docs?page=2#intro')
@@ -52,4 +52,27 @@ test('url ipv6', () => {
 
 test('url requires authority', () => {
   assert.throws(() => new Url('mailto:alice@example.com'))
+})
+
+test('version components', () => {
+  const v = Version.parse('1.4.2')
+  assert.strictEqual(v.major, 1)
+  assert.strictEqual(v.minor, 4)
+  assert.strictEqual(v.patch, 2)
+  assert.strictEqual(v.toString(), '1.4.2')
+})
+
+test('version constructor and defaults', () => {
+  assert.strictEqual(new Version(2, 0, 0).toString(), '2.0.0')
+  assert.strictEqual(Version.parse('2').toString(), '2.0.0')
+})
+
+test('version compare', () => {
+  assert.strictEqual(new Version(1, 4, 2).compare(new Version(1, 10, 0)), -1)
+  assert.strictEqual(new Version(2, 0, 0).compare(new Version(1, 9, 9)), 1)
+  assert.ok(new Version(1, 2, 3).equals(Version.parse('1.2.3')))
+})
+
+test('version invalid throws', () => {
+  assert.throws(() => Version.parse('1.x.0'))
 })

@@ -71,5 +71,29 @@ def test_repr():
     assert repr(yggdryl.Uri("urn:isbn:0451450523")) == "Uri('urn:isbn:0451450523')"
 
 
-def test_version():
+def test_version_components():
+    v = yggdryl.Version.parse("1.4.2")
+    assert (v.major, v.minor, v.patch) == (1, 4, 2)
+    assert str(v) == "1.4.2"
+
+
+def test_version_defaults_and_ctor():
+    assert yggdryl.Version(2) == yggdryl.Version.parse("2")
+    assert str(yggdryl.Version(2)) == "2.0.0"
+    assert yggdryl.Version(1, 2, 3).patch == 3
+
+
+def test_version_ordering():
+    assert yggdryl.Version(1, 4, 2) < yggdryl.Version(1, 10, 0)
+    assert yggdryl.Version(2, 0, 0) > yggdryl.Version(1, 99, 99)
+    ordered = sorted([yggdryl.Version(1, 2, 0), yggdryl.Version(0, 9, 9)])
+    assert ordered[0] == yggdryl.Version(0, 9, 9)
+
+
+def test_version_invalid_raises():
+    with pytest.raises(ValueError):
+        yggdryl.Version.parse("1.x.0")
+
+
+def test_module_version():
     assert isinstance(yggdryl.__version__, str)

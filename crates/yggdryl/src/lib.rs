@@ -386,6 +386,114 @@ fn push_host(out: &mut String, host: &str) {
     }
 }
 
+/// Error returned when [`Version::parse`] cannot interpret its input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionError {
+    /// The input was empty.
+    Empty,
+    /// More than three dot-separated components were given.
+    TooManyComponents,
+    /// A component was not a non-negative integer.
+    InvalidNumber(String),
+}
+
+impl fmt::Display for VersionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VersionError::Empty => write!(f, "version is empty"),
+            VersionError::TooManyComponents => {
+                write!(f, "version has more than three components")
+            }
+            VersionError::InvalidNumber(part) => {
+                write!(f, "version component '{part}' is not a number")
+            }
+        }
+    }
+}
+
+impl std::error::Error for VersionError {}
+
+/// A generic `major.minor.patch` version.
+///
+/// Ordering is numeric and field-major (`major`, then `minor`, then `patch`), so
+/// `Version`s sort the way you would expect. Parsing accepts one, two or three
+/// components; any that are omitted default to `0`.
+///
+/// ```
+/// use yggdryl::Version;
+///
+/// let v = Version::parse("1.4.2").unwrap();
+/// assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
+/// assert_eq!(Version::parse("2").unwrap(), Version::new(2, 0, 0));
+/// assert!(Version::new(1, 4, 2) < Version::new(1, 10, 0));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Version {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
+impl Version {
+    /// Creates a version from its components.
+    pub fn new(major: u64, minor: u64, patch: u64) -> Version {
+        Version {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    /// Parses a `major[.minor[.patch]]` string. Omitted components default to `0`.
+    pub fn parse(input: &str) -> Result<Version, VersionError> {
+        if input.is_empty() {
+            return Err(VersionError::Empty);
+        }
+        let mut parts = [0u64; 3];
+        for (index, part) in input.split('.').enumerate() {
+            if index == 3 {
+                return Err(VersionError::TooManyComponents);
+            }
+            parts[index] = part
+                .parse::<u64>()
+                .map_err(|_| VersionError::InvalidNumber(part.to_string()))?;
+        }
+        Ok(Version {
+            major: parts[0],
+            minor: parts[1],
+            patch: parts[2],
+        })
+    }
+
+    /// The major component.
+    pub fn major(&self) -> u64 {
+        self.major
+    }
+
+    /// The minor component.
+    pub fn minor(&self) -> u64 {
+        self.minor
+    }
+
+    /// The patch component.
+    pub fn patch(&self) -> u64 {
+        self.patch
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl std::str::FromStr for Version {
+    type Err = VersionError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Version::parse(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,5 +607,60 @@ mod tests {
     fn url_authority_is_reconstructed() {
         let url = Url::parse("https://user:pw@example.com:8443/api").unwrap();
         assert_eq!(url.authority(), "user:pw@example.com:8443");
+    }
+
+    #[test]
+    fn version_parse_full() {
+        let v = Version::parse("1.4.2").unwrap();
+        assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
+    }
+
+    #[test]
+    fn version_parse_partial_defaults_to_zero() {
+        assert_eq!(Version::parse("2").unwrap(), Version::new(2, 0, 0));
+        assert_eq!(Version::parse("2.5").unwrap(), Version::new(2, 5, 0));
+    }
+
+    #[test]
+    fn version_errors() {
+        assert_eq!(Version::parse(""), Err(VersionError::Empty));
+        assert_eq!(
+            Version::parse("1.2.3.4"),
+            Err(VersionError::TooManyComponents)
+        );
+        assert_eq!(
+            Version::parse("1.x.0"),
+            Err(VersionError::InvalidNumber("x".to_string()))
+        );
+        assert_eq!(
+            Version::parse("1..0"),
+            Err(VersionError::InvalidNumber(String::new()))
+        );
+    }
+
+    #[test]
+    fn version_orders_numerically() {
+        assert!(Version::new(1, 4, 2) < Version::new(1, 10, 0));
+        assert!(Version::new(2, 0, 0) > Version::new(1, 99, 99));
+        let mut versions = [
+            Version::new(1, 2, 0),
+            Version::new(1, 0, 5),
+            Version::new(0, 9, 9),
+        ];
+        versions.sort();
+        assert_eq!(
+            versions,
+            [
+                Version::new(0, 9, 9),
+                Version::new(1, 0, 5),
+                Version::new(1, 2, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn version_round_trips() {
+        assert_eq!(Version::parse("1.4.2").unwrap().to_string(), "1.4.2");
+        assert_eq!(Version::parse("3").unwrap().to_string(), "3.0.0");
     }
 }

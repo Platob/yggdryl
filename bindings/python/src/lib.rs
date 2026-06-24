@@ -11,13 +11,20 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use yggdryl_core::{Uri as CoreUri, UriError, Url as CoreUrl, UrlError};
+use pyo3::pyclass::CompareOp;
+use yggdryl_core::{
+    Uri as CoreUri, UriError, Url as CoreUrl, UrlError, Version as CoreVersion, VersionError,
+};
 
 fn uri_err(err: UriError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
 fn url_err(err: UrlError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+fn version_err(err: VersionError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -172,6 +179,64 @@ impl Url {
     }
 }
 
+/// A generic ``major.minor.patch`` version, ordered numerically.
+#[pyclass(name = "Version", module = "yggdryl")]
+#[derive(Clone)]
+struct Version {
+    inner: CoreVersion,
+}
+
+#[pymethods]
+impl Version {
+    /// Construct from components; ``minor`` and ``patch`` default to ``0``.
+    #[new]
+    #[pyo3(signature = (major, minor = 0, patch = 0))]
+    fn new(major: u64, minor: u64, patch: u64) -> Self {
+        Version {
+            inner: CoreVersion::new(major, minor, patch),
+        }
+    }
+
+    /// Parse a ``major[.minor[.patch]]`` string, raising ``ValueError`` on failure.
+    #[staticmethod]
+    fn parse(value: &str) -> PyResult<Self> {
+        CoreVersion::parse(value)
+            .map(|inner| Version { inner })
+            .map_err(version_err)
+    }
+
+    #[getter]
+    fn major(&self) -> u64 {
+        self.inner.major()
+    }
+
+    #[getter]
+    fn minor(&self) -> u64 {
+        self.inner.minor()
+    }
+
+    #[getter]
+    fn patch(&self) -> u64 {
+        self.inner.patch()
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Version('{}')", self.inner)
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        op.matches(self.inner.cmp(&other.inner))
+    }
+
+    fn __hash__(&self) -> u64 {
+        hash_str(&self.inner.to_string())
+    }
+}
+
 /// Stable hash of a string for `__hash__`.
 fn hash_str(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -186,5 +251,6 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<Uri>()?;
     m.add_class::<Url>()?;
+    m.add_class::<Version>()?;
     Ok(())
 }
