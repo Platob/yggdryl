@@ -45,7 +45,7 @@
 //! - `media` — lazy [`media_type`](Io::media_type) discovery via `yggdryl-media`.
 //!
 //! ```
-//! use yggdryl_io::{BytesIO, Io, Seek, Whence};
+//! use yggdryl_io::{BytesIO, Io};
 //!
 //! let mut io = BytesIO::from_bytes(b"hello world".to_vec());
 //! // Random access: read a slice at an offset without moving the cursor.
@@ -344,7 +344,9 @@ pub trait Io: ReadBytes + Seek {
     /// footers and column chunks. Returns the count read (short at end of input).
     ///
     /// The default serves it from [`as_slice`](Io::as_slice) when available,
-    /// otherwise it saves the cursor, seeks, reads, and restores the cursor.
+    /// otherwise it saves the cursor, seeks, reads, and restores the cursor —
+    /// including on a read error, so a positioned read never displaces the
+    /// streaming cursor.
     fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize, IoError> {
         if let Some(all) = self.as_slice() {
             let start = offset.min(all.len() as u64) as usize;
@@ -355,14 +357,20 @@ pub trait Io: ReadBytes + Seek {
         let saved = self.stream_position();
         self.seek(offset as i64, Whence::Start)?;
         let mut filled = 0;
+        let mut outcome = Ok(());
         while filled < buf.len() {
-            match self.read_bytes(&mut buf[filled..])? {
-                0 => break,
-                count => filled += count,
+            match self.read_bytes(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(count) => filled += count,
+                Err(error) => {
+                    outcome = Err(error);
+                    break;
+                }
             }
         }
+        // Restore the cursor whatever happened, then surface any read error.
         self.seek(saved as i64, Whence::Start)?;
-        Ok(filled)
+        outcome.map(|()| filled)
     }
 
     /// Reads up to `size` bytes from the cursor into an owned vector (all
@@ -371,6 +379,13 @@ pub trait Io: ReadBytes + Seek {
     fn read_owned(&mut self, size: Option<usize>) -> Result<Vec<u8>, IoError> {
         match size {
             Some(n) => {
+                // Cap the up-front allocation to what is left when the size is
+                // known, so `read(huge)` over a small source does not allocate a
+                // huge zero-filled buffer just to truncate it.
+                let n = match self.stream_len() {
+                    Some(len) => n.min(len.saturating_sub(self.stream_position()) as usize),
+                    None => n,
+                };
                 let mut buf = vec![0u8; n];
                 let mut filled = 0;
                 while filled < n {
@@ -580,7 +595,9 @@ impl BytesIO {
             Whence::Current => self.position as i64,
             Whence::End => self.buffer.len() as i64,
         };
-        let target = base + offset;
+        let target = base
+            .checked_add(offset)
+            .ok_or_else(|| IoError::Invalid(format!("seek offset {offset} overflows")))?;
         if target < 0 {
             return Err(IoError::Invalid(format!(
                 "seek to {target} is before the start"
@@ -804,7 +821,9 @@ impl Seek for LocalPath {
             Whence::Current => self.position as i64,
             Whence::End => len,
         };
-        let target = base + offset;
+        let target = base
+            .checked_add(offset)
+            .ok_or_else(|| IoError::Invalid(format!("seek offset {offset} overflows")))?;
         if target < 0 {
             return Err(IoError::Invalid(format!(
                 "seek to {target} is before the start"
@@ -979,9 +998,25 @@ impl Codec<Vec<u8>> for Frames {
             }
             filled += count;
         }
+        // Read the payload directly into the output, growing in bounded steps:
+        // an honest frame takes a single allocation and a single copy, while a
+        // malformed prefix (e.g. claiming 4 GiB with no body) fails fast having
+        // reserved at most one step instead of gigabytes up front.
+        const GROWTH_STEP: usize = 1 << 20;
         let len = u32::from_be_bytes(prefix) as usize;
-        let mut payload = vec![0u8; len];
-        reader.read_exact(&mut payload)?;
+        let mut payload = Vec::new();
+        let mut filled = 0;
+        while filled < len {
+            let target = len.min(filled + GROWTH_STEP);
+            payload.resize(target, 0);
+            while filled < target {
+                let count = reader.read_bytes(&mut payload[filled..target])?;
+                if count == 0 {
+                    return Err(IoError::UnexpectedEof);
+                }
+                filled += count;
+            }
+        }
         Ok(Some(payload))
     }
 
@@ -1160,6 +1195,65 @@ mod tests {
         let mut dst: Vec<u8> = Vec::new();
         assert_eq!(copy(&mut src, &mut dst).unwrap(), 14);
         assert_eq!(dst, b"streamed bytes");
+    }
+
+    /// A read-only [`Io`] whose reads always error, to check that `read_at`
+    /// restores the cursor even when a positioned read fails.
+    struct Boom {
+        position: u64,
+    }
+    impl ReadBytes for Boom {
+        fn read_bytes(&mut self, _buf: &mut [u8]) -> Result<usize, IoError> {
+            Err(IoError::Io("boom".to_string()))
+        }
+    }
+    impl Seek for Boom {
+        fn seek(&mut self, offset: i64, _whence: Whence) -> Result<u64, IoError> {
+            self.position = offset as u64;
+            Ok(self.position)
+        }
+        fn stream_position(&self) -> u64 {
+            self.position
+        }
+    }
+    impl Io for Boom {
+        fn stats(&self) -> Result<IoStats, IoError> {
+            Ok(IoStats::new(0))
+        }
+    }
+
+    #[test]
+    fn read_at_restores_cursor_even_on_error() {
+        let mut io = Boom { position: 5 };
+        let mut buf = [0u8; 4];
+        assert!(io.read_at(0, &mut buf).is_err());
+        // The streaming cursor is back where it started despite the failed read.
+        assert_eq!(Seek::stream_position(&io), 5);
+    }
+
+    #[test]
+    fn bytesio_seek_overflow_is_reported_not_panicked() {
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(2, Whence::Start).unwrap();
+        assert!(matches!(
+            io.seek(i64::MAX, Whence::Current),
+            Err(IoError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn io_read_owned_caps_to_remaining() {
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        // A huge requested size returns only what is left (no over-allocation).
+        assert_eq!(io.read_owned(Some(1_000_000)).unwrap(), b"abc");
+    }
+
+    #[test]
+    fn frames_lying_length_fails_fast() {
+        // A prefix claiming ~4 GiB with no body errors immediately, without
+        // reserving gigabytes.
+        let bytes = [0xFFu8, 0xFF, 0xFF, 0xFF];
+        assert_eq!(Frames.read(&mut &bytes[..]), Err(IoError::UnexpectedEof));
     }
 
     #[test]
