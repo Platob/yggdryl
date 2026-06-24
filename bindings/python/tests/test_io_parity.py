@@ -43,6 +43,20 @@ def test_stream_parity(make):
     assert io.tell() == 0
 
 
+def test_stats_and_len_parity(make):
+    io = make(b"abcdef")
+    assert len(io) == 6
+    assert io.stats().size == 6
+    assert io.stats().kind == "file"
+
+
+def test_readline_and_iteration_parity(make):
+    io = make(b"one\ntwo\nthree")
+    assert io.readline() == b"one\n"
+    # Line iteration yields the rest.
+    assert list(io) == [b"two\n", b"three"]
+
+
 def test_context_manager_parity(make):
     # The handle itself works as a context manager (`with ... as io`).
     with make(b"abcdef") as io:

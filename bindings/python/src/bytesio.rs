@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
+use crate::iostats::IoStats;
 use crate::url::Url;
 use crate::{io_err, whence_from};
 
@@ -76,6 +77,15 @@ impl BytesIO {
         Url {
             inner: self.inner.url(),
         }
+    }
+
+    /// Discover this handle's metadata (see :class:`IoStats`): ``kind == "file"``
+    /// and the buffer ``size``.
+    fn stats(&self) -> PyResult<IoStats> {
+        self.inner
+            .stats()
+            .map(|inner| IoStats { inner })
+            .map_err(io_err)
     }
 
     /// The access mode: ``"r"``, ``"w"``, ``"a"`` or ``"r+"``.

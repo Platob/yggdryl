@@ -40,6 +40,21 @@ for (const { id, make } of kinds) {
     assert.strictEqual(io.tell(), 0)
   })
 
+  test(`stats and length parity (${id})`, () => {
+    const io = make('abcdef')
+    assert.strictEqual(io.length, 6)
+    assert.strictEqual(io.stats().size, 6)
+    assert.strictEqual(io.stats().kind, 'file')
+  })
+
+  test(`readLine parity (${id})`, () => {
+    const io = make('one\ntwo\nthree')
+    assert.deepStrictEqual(io.readLine(), Buffer.from('one\n'))
+    assert.deepStrictEqual(io.readLine(), Buffer.from('two\n'))
+    assert.deepStrictEqual(io.readLine(), Buffer.from('three'))
+    assert.deepStrictEqual(io.readLine(), Buffer.from(''))
+  })
+
   test(`close parity (${id})`, () => {
     // close() is a no-op (the Node analog of Python's `with` cleanup).
     const io = make('abcdef')

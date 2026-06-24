@@ -4,6 +4,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
+use crate::iostats::IoStats;
 use crate::url::Url;
 use crate::whence_from;
 
@@ -80,6 +81,16 @@ impl BytesIO {
         Url {
             inner: self.inner.url(),
         }
+    }
+
+    /// Discover this handle's metadata (see `IoStats`): `kind === "file"` and the
+    /// buffer `size`.
+    #[napi]
+    pub fn stats(&self) -> Result<IoStats> {
+        self.inner
+            .stats()
+            .map(|inner| IoStats { inner })
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// The access mode: `"r"`, `"w"`, `"a"` or `"r+"`.

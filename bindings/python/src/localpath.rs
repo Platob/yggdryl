@@ -86,6 +86,12 @@ impl LocalPath {
         PyBytes::new_bound(py, &self.inner.read(size))
     }
 
+    /// Read from the cursor through the next newline (inclusive), or to the end.
+    /// Advances the cursor when :attr:`stream`.
+    fn readline<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.read_line())
+    }
+
     /// Positional read of up to ``size`` bytes at ``offset`` relative to
     /// ``whence`` (``0`` start, ``1`` current, ``2`` end). With ``0``/``2`` the
     /// cursor is untouched; with ``1`` it is used and advanced.
@@ -156,8 +162,10 @@ impl LocalPath {
         self.inner.exists()
     }
 
-    /// No-op close, present for the ``io`` API; the mapping is released when the
-    /// object is dropped.
+    /// No-op flush / close, present for the ``io`` API; the mapping is released
+    /// when the object is dropped.
+    fn flush(&self) {}
+
     fn close(&self) {}
 
     /// Enter a ``with`` block, returning the handle itself.
@@ -178,7 +186,20 @@ impl LocalPath {
     }
 
     fn __len__(&self) -> usize {
-        self.inner.as_slice().map_or(0, <[u8]>::len)
+        self.inner.len()
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(&mut self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        let line = self.inner.read_line();
+        if line.is_empty() {
+            None
+        } else {
+            Some(PyBytes::new_bound(py, &line))
+        }
     }
 
     fn __repr__(&self) -> String {

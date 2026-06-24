@@ -89,6 +89,17 @@ impl LocalPath {
         Buffer::from(self.inner.read(size))
     }
 
+    /// Read from the cursor through the next newline (inclusive), or to the end.
+    /// Advances the cursor when `stream`.
+    #[napi(js_name = "readLine")]
+    pub fn read_line(&mut self) -> Buffer {
+        Buffer::from(self.inner.read_line())
+    }
+
+    /// No-op flush, present for parity with `BytesIO`.
+    #[napi]
+    pub fn flush(&self) {}
+
     /// Positional read of up to `size` bytes at `offset` relative to `whence`
     /// (`0` start, `1` current, `2` end). With `0`/`2` the cursor is untouched;
     /// with `1` it is used and advanced.
@@ -168,6 +179,6 @@ impl LocalPath {
     /// The total number of bytes.
     #[napi(getter)]
     pub fn length(&self) -> f64 {
-        self.inner.as_slice().map_or(0, <[u8]>::len) as f64
+        self.inner.len() as f64
     }
 }
