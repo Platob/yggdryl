@@ -462,6 +462,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "yggdryl-compression"
+version = "0.1.1"
+dependencies = [
+ "flate2",
+ "log",
+ "snap",
+ "yggdryl-io",
+ "yggdryl-media",
+ "zstd",
+]
+
+[[package]]
 name = "yggdryl-core"
 version = "0.1.1"
 
@@ -469,13 +481,10 @@ version = "0.1.1"
 name = "yggdryl-io"
 version = "0.1.1"
 dependencies = [
- "flate2",
  "log",
  "memmap2",
- "snap",
  "yggdryl-media",
  "yggdryl-url",
- "zstd",
 ]
 
 [[package]]
@@ -493,6 +502,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "yggdryl-compression",
  "yggdryl-io",
  "yggdryl-media",
  "yggdryl-url",
@@ -504,6 +514,7 @@ name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
  "pyo3",
+ "yggdryl-compression",
  "yggdryl-io",
  "yggdryl-media",
  "yggdryl-url",

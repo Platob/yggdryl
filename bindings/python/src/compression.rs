@@ -2,8 +2,9 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_io::Compression as CoreCompression;
+use yggdryl_compression::Compression as CoreCompression;
 
+use crate::mime::MimeType;
 use crate::{hash_str, io_err};
 
 /// A byte-stream compression codec — ``gzip``, ``zstd`` or ``snappy`` (or
@@ -40,6 +41,13 @@ impl Compression {
     #[staticmethod]
     fn from_extension(extension: &str) -> Option<Self> {
         CoreCompression::from_extension(extension).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from a :class:`MimeType` (e.g. ``application/gzip`` →
+    /// ``gzip``), or ``None`` if the MIME names no supported codec.
+    #[staticmethod]
+    fn from_mime(mime: &MimeType) -> Option<Self> {
+        CoreCompression::from_mime(&mime.inner).map(|inner| Compression { inner })
     }
 
     /// The canonical codec name (``"none"`` / ``"gzip"`` / ``"zstd"`` /

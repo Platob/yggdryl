@@ -13,6 +13,10 @@ looking at from the shape of the code.
 - `crates/yggdryl-io/` — the **byte-IO foundation**: one set of methods to read,
   write, seek and stat bytes wherever they live (memory, local path, cloud). See
   its dedicated section below. **All byte-IO logic lives here.**
+- `crates/yggdryl-compression/` — the `Compression` codec (gzip / Zstandard /
+  Snappy / `None` identity) that **streams** compress/decompress over any
+  `yggdryl-io` handle, plus the `CompressIo` extension trait. **All compression
+  logic lives here** — do not pull codec SDKs into `yggdryl-io`.
 - `crates/yggdryl-version/` — the standalone `Version` type.
 - `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
   mutable global registry of extensions/magic bytes) and the `MediaType` stack
@@ -65,21 +69,37 @@ handle. The layering, smallest to largest:
   — do not pull network SDKs into `yggdryl-io`.**
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
   is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
-  the *byte* handle — keep them distinct.)
-- `Compression` — the gzip / Zstandard / Snappy (plus `None` identity) byte-stream
-  codec. It wraps any handle to compress/decompress **in a streamed way**: an
-  `encoder(sink)` is a `WriteBytes` (call `finish()` to flush the trailer), a
-  `decoder(source)` a `ReadBytes`, with one-shot `compress` / `decompress` on top.
-  Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
-  feature is off still parses and names itself but reports `Unsupported` on
-  encode/decode (`is_available` tells ahead of time). **All compression logic lives
-  here** — like cloud backends, do not add new codec SDKs elsewhere.
+  the *byte* handle — keep them distinct.) Byte-stream **compression** is a
+  separate concern in `yggdryl-compression` (see its section), not here.
 
 Rules when extending: the base build depends only on `yggdryl-url` (for the
 universal `Io::url()`); new heavy deps are **optional features** (like `log` /
-`mmap` / `media` / `gzip` / `zstd` / `snappy`). A new memory-resident backend must override `as_slice` so the
+`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
 zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
 with `Whence::Start`, never by mutating the cursor.
+
+### `yggdryl-compression` — streamed codecs over `Io`
+
+Compression is layered **on top of** `yggdryl-io`, never inside it (so the IO
+base stays codec-free and the dependency points one way: `yggdryl-compression →
+yggdryl-io`). The shape:
+
+- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
+  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
+  `from_mime` / `from_media` / `from_stats` for inference.
+- `encoder(sink) → Encoder: WriteBytes` (compress-on-write; `finish()` flushes the
+  trailer) and `decoder(source) → Decoder: ReadBytes` (decompress-on-read); the
+  one-shot `compress` / `decompress` build on them. Internal `std::io` shims
+  bridge `ReadBytes`/`WriteBytes` to the `flate2`/`zstd`/`snap` stream codecs.
+- `CompressIo: Io` — a blanket extension trait adding `compress(codec)` /
+  `decompress(codec)` to every handle, returning a fresh `BytesIO`. `decompress`
+  with no codec infers one from the handle's URL extension, then its `stats()`
+  media/content type.
+
+Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
+feature is off still parses and names itself but reports `Unsupported` on
+encode/decode (`is_available` tells ahead of time). `media` adds the
+stats-inference path. When you add a codec, surface it in *both* bindings.
 
 ### One module per type, everywhere
 

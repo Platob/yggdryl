@@ -143,6 +143,7 @@ jobs:
           cargo publish -p yggdryl-media
           cargo publish -p yggdryl-url
           cargo publish -p yggdryl-io
+          cargo publish -p yggdryl-compression
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

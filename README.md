@@ -27,7 +27,8 @@ yggdryl/
 ├── Cargo.toml                  # Cargo workspace
 ├── crates/
 │   ├── yggdryl-core/           # dependency-free foundations (FromInput/ToOutput, encoding)
-│   ├── yggdryl-io/             # byte-IO foundation: read/write/seek/stat bytes (memory, local mmap, cloud), codecs, compression
+│   ├── yggdryl-io/             # byte-IO foundation: read/write/seek/stat bytes (memory, local mmap, cloud), codecs
+│   ├── yggdryl-compression/    # streamed gzip/Zstd/Snappy compression over yggdryl-io handles
 │   ├── yggdryl-version/        # standalone Version type
 │   ├── yggdryl-media/          # standalone MediaType (MIME) detection
 │   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core + yggdryl-media
@@ -187,6 +188,7 @@ cargo publish -p yggdryl-version
 cargo publish -p yggdryl-media
 cargo publish -p yggdryl-url
 cargo publish -p yggdryl-io
+cargo publish -p yggdryl-compression
 
 # Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)
 maturin build --release -m bindings/python/Cargo.toml --out dist

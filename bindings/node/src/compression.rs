@@ -2,7 +2,9 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::Compression as CoreCompression;
+use yggdryl_compression::Compression as CoreCompression;
+
+use crate::mime::MimeType;
 
 /// A byte-stream compression codec — `gzip`, `zstd` or `snappy` (or `none`, the
 /// identity codec) — that compresses and decompresses bytes. The backends are
@@ -35,6 +37,13 @@ impl Compression {
     #[napi(js_name = "fromExtension")]
     pub fn from_extension(extension: String) -> Option<Compression> {
         CoreCompression::from_extension(&extension).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from a `MimeType` (e.g. `application/gzip` → `gzip`), or
+    /// `null` if the MIME names no supported codec.
+    #[napi(js_name = "fromMime")]
+    pub fn from_mime(mime: &MimeType) -> Option<Compression> {
+        CoreCompression::from_mime(&mime.inner).map(|inner| Compression { inner })
     }
 
     /// The canonical codec name (`"none"` / `"gzip"` / `"zstd"` / `"snappy"`).

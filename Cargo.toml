@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/yggdryl-core",
     "crates/yggdryl-io",
+    "crates/yggdryl-compression",
     "crates/yggdryl-version",
     "crates/yggdryl-media",
     "crates/yggdryl-url",
@@ -15,6 +16,7 @@ members = [
 default-members = [
     "crates/yggdryl-core",
     "crates/yggdryl-io",
+    "crates/yggdryl-compression",
     "crates/yggdryl-version",
     "crates/yggdryl-media",
     "crates/yggdryl-url",
@@ -33,6 +35,7 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
 yggdryl-io = { path = "crates/yggdryl-io", version = "0.1.0" }
+yggdryl-compression = { path = "crates/yggdryl-compression", version = "0.1.0" }
 yggdryl-version = { path = "crates/yggdryl-version", version = "0.1.0" }
 yggdryl-media = { path = "crates/yggdryl-media", version = "0.1.0" }
 yggdryl-url = { path = "crates/yggdryl-url", version = "0.1.0" }

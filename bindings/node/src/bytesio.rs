@@ -2,6 +2,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use yggdryl_compression::{CompressIo, Compression as CoreCompression};
 use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
 use crate::iostats::IoStats;
@@ -158,6 +159,37 @@ impl BytesIO {
     #[napi(js_name = "getValue")]
     pub fn get_value(&self) -> Buffer {
         Buffer::from(self.inner.getvalue().to_vec())
+    }
+
+    /// Compress this buffer's bytes (from the cursor) with `codec` — a name like
+    /// `"gzip"` / `"zstd"` / `"snappy"` — into a new `BytesIO`.
+    #[napi]
+    pub fn compress(&mut self, codec: String) -> Result<BytesIO> {
+        let codec =
+            CoreCompression::from_str(&codec).map_err(|e| Error::from_reason(e.to_string()))?;
+        let inner = self
+            .inner
+            .compress(codec)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(BytesIO { inner })
+    }
+
+    /// Decompress this buffer's bytes (from the cursor) into a new `BytesIO`.
+    /// `codec` names the codec; when omitted it is inferred from this handle (its
+    /// URL extension, then its stats' media type).
+    #[napi]
+    pub fn decompress(&mut self, codec: Option<String>) -> Result<BytesIO> {
+        let codec = match codec {
+            Some(name) => Some(
+                CoreCompression::from_str(&name).map_err(|e| Error::from_reason(e.to_string()))?,
+            ),
+            None => None,
+        };
+        let inner = self
+            .inner
+            .decompress(codec)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(BytesIO { inner })
     }
 
     /// Resize the buffer to `size` bytes (the current cursor when omitted),

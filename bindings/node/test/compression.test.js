@@ -3,7 +3,11 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert')
-const { Compression } = require('..')
+const os = require('node:os')
+const path = require('node:path')
+const { Compression, MimeType, BytesIO, LocalPath } = require('..')
+
+let counter = 0
 
 test('parses names and extensions', () => {
   assert.strictEqual(new Compression('gzip').name, 'gzip')
@@ -40,4 +44,33 @@ for (const name of ['gzip', 'zstd', 'snappy']) {
 
 test('toString', () => {
   assert.strictEqual(new Compression('zstd').toString(), 'zstd')
+})
+
+test('fromMime', () => {
+  assert.strictEqual(Compression.fromMime(new MimeType('application/gzip')).name, 'gzip')
+  assert.strictEqual(Compression.fromMime(new MimeType('application/json')), null)
+})
+
+for (const kind of ['bytesio', 'localpath']) {
+  const make = (data) => {
+    if (kind === 'bytesio') return new BytesIO(Buffer.from(data))
+    const p = path.join(os.tmpdir(), `yggdryl_comp_${process.pid}_${counter++}.bin`)
+    new LocalPath(p).write(Buffer.from(data))
+    return new LocalPath(p)
+  }
+
+  test(`io compress/decompress (${kind})`, () => {
+    const payload = Buffer.from(Array.from({ length: 2048 }, (_, i) => i % 251))
+    const packed = make(payload).compress('zstd')
+    assert.ok(packed instanceof BytesIO)
+    assert.deepStrictEqual(packed.decompress('zstd').getValue(), payload)
+  })
+}
+
+test('io decompress infers codec from extension', () => {
+  const payload = Buffer.from('inferred from the .gz extension')
+  const packed = new BytesIO(payload).compress('gzip').getValue()
+  const p = path.join(os.tmpdir(), `yggdryl_comp_${process.pid}_${counter++}.txt.gz`)
+  new LocalPath(p).write(packed)
+  assert.deepStrictEqual(new LocalPath(p).decompress().getValue(), payload)
 })

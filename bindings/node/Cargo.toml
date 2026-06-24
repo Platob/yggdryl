@@ -18,11 +18,13 @@ path = "src/lib.rs"
 
 [dependencies]
 # yggdryl-url re-exports yggdryl-core; yggdryl-version and yggdryl-media provide
-# the Version and MediaType types; yggdryl-io provides the BytesIO buffer.
+# the Version and MediaType types; yggdryl-io provides the BytesIO buffer;
+# yggdryl-compression provides the Compression codec (all backends enabled).
 yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
 yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
 yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
-yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media", "gzip", "zstd", "snappy"] }
+yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media"] }
+yggdryl-compression = { path = "../../crates/yggdryl-compression", version = "0.1.0", features = ["gzip", "zstd", "snappy", "media"] }
 napi = { version = "2", default-features = false, features = ["napi8"] }
 napi-derive = "2"
 

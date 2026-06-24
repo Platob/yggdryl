@@ -37,13 +37,9 @@ same handle.
 - `RemotePath: Io` — the URL-addressed cloud sibling (flat keys, no dir
   creation). Concrete S3 / Azure paths are downstream crates implementing it.
 - `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
-  is the reference length-delimited codec.
-- `Compression` — gzip / Zstandard / Snappy (plus `None` identity) byte-stream
-  compression that wraps any handle **in a streamed way**: `encoder(sink)` is a
-  `WriteBytes` (`finish()` flushes the trailer), `decoder(source)` a `ReadBytes`,
-  with one-shot `compress` / `decompress` on top. Each backend is an optional
-  feature; a codec whose feature is off still parses but reports `Unsupported`
-  (`is_available` checks ahead).
+  is the reference length-delimited codec. Byte-stream **compression** (gzip /
+  Zstd / Snappy) lives in the sibling [`yggdryl-compression`](../yggdryl-compression)
+  crate, which wraps any handle from here.
 
 ```rust
 use yggdryl_io::{BytesIO, Io, Whence};
@@ -72,28 +68,10 @@ let mut buf: Vec<u8> = Vec::new();
 copy(&mut src, &mut buf).unwrap(); // zero-copy hand-off of the lazily-mapped file
 ```
 
-`Compression` round-trips bytes one-shot or streamed over any handle (needs the
-matching feature, e.g. `--features zstd`):
-
-```rust,ignore
-use yggdryl_io::{Compression, WriteBytes};
-
-let codec = Compression::from_str("zstd").unwrap();
-let packed = codec.compress(b"hello hello hello").unwrap();
-assert_eq!(codec.decompress(&packed).unwrap(), b"hello hello hello");
-
-// Or stream into any WriteBytes sink and finish() to flush the trailer.
-let mut encoder = codec.encoder(Vec::new()).unwrap();
-encoder.write_all(b"payload").unwrap();
-let compressed: Vec<u8> = encoder.finish().unwrap();
-```
-
 ## Features (off by default; the base build depends only on `yggdryl-url`)
 
 - `log` — structured `log` events on the hot paths.
 - `mmap` — `LocalPath` memory-maps files (zero-copy) instead of reading them.
 - `media` — lazy `media_type()` discovery via `yggdryl-media`.
-- `gzip` / `zstd` / `snappy` — the matching `Compression` backend (`flate2` /
-  `zstd` / `snap`).
 
 Run the benchmarks with `cargo bench -p yggdryl-io` (add `--features mmap`).

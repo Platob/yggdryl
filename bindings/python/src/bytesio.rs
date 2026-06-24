@@ -2,6 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use yggdryl_compression::{CompressIo, Compression as CoreCompression};
 use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
 
 use crate::iostats::IoStats;
@@ -155,6 +156,27 @@ impl BytesIO {
     /// Return the entire buffer as ``bytes``, ignoring the cursor.
     fn getvalue<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.getvalue())
+    }
+
+    /// Compress this buffer's bytes (from the cursor) with ``codec`` — a name like
+    /// ``"gzip"`` / ``"zstd"`` / ``"snappy"`` — into a new :class:`BytesIO`.
+    fn compress(&mut self, codec: &str) -> PyResult<BytesIO> {
+        let codec = CoreCompression::from_str(codec).map_err(io_err)?;
+        let inner = self.inner.compress(codec).map_err(io_err)?;
+        Ok(BytesIO { inner })
+    }
+
+    /// Decompress this buffer's bytes (from the cursor) into a new
+    /// :class:`BytesIO`. ``codec`` names the codec; when ``None`` it is inferred
+    /// from this handle (its URL extension, then its stats' media type).
+    #[pyo3(signature = (codec = None))]
+    fn decompress(&mut self, codec: Option<&str>) -> PyResult<BytesIO> {
+        let codec = match codec {
+            Some(name) => Some(CoreCompression::from_str(name).map_err(io_err)?),
+            None => None,
+        };
+        let inner = self.inner.decompress(codec).map_err(io_err)?;
+        Ok(BytesIO { inner })
     }
 
     /// Resize the buffer to ``size`` bytes (the current cursor when ``None``),
