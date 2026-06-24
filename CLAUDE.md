@@ -10,6 +10,9 @@ looking at from the shape of the code.
 
 - `crates/yggdryl-core/` — dependency-free foundations: the `FromInput` /
   `ToOutput` traits and percent-encoding.
+- `crates/yggdryl-io/` — the **byte-IO foundation**: one set of methods to read,
+  write, seek and stat bytes wherever they live (memory, local path, cloud). See
+  its dedicated section below. **All byte-IO logic lives here.**
 - `crates/yggdryl-version/` — the standalone `Version` type.
 - `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
   mutable global registry of extensions/magic bytes) and the `MediaType` stack
@@ -21,6 +24,34 @@ looking at from the shape of the code.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.
+
+### `yggdryl-io` — what it aims to be (read before extending it)
+
+The goal is a **single byte-IO abstraction** that hides *where* bytes live, so a
+reader (think Arrow / Parquet) works the same over an in-memory buffer, a
+memory-mapped local file, or a cloud object — mixing **random** access (read a
+footer, a column chunk) with **streamed** access (scan record batches) on one
+handle. The layering, smallest to largest:
+
+- `ReadBytes` / `WriteBytes` — byte source/sink primitives (`&[u8]`, `Vec<u8>`).
+- `Seek` — the cursor (`seek` / `stream_position` / `stream_len`).
+- `Io: ReadBytes + Seek` — **the base handle**: `read_at` (positioned read that
+  does not move the cursor), `as_slice` (the zero-copy hook a memory backend
+  overrides), `stats`, and `copy_to` (transfer with a memory fast path). `copy`
+  is the free-function form. `media_type` is lazy and behind the `media` feature.
+- `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
+  expensive metadata (`media_type`) discovered lazily and cached.
+- `Path: Io` — a named resource; `LocalPath` is the filesystem backend (mmap via
+  the `mmap` feature). **Cloud backends (S3, Azure) are downstream crates that
+  implement `Path` — do not pull network SDKs into `yggdryl-io`.**
+- `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
+  is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
+  the *byte* handle — keep them distinct.)
+
+Rules when extending: keep the default build dependency-free (new heavy deps are
+**optional features**, like `log` / `mmap` / `media`); a new memory-resident
+backend must override `as_slice` so the zero-copy `read_at` / `copy_to` paths
+light up; positioned reads go through `read_at`, never by mutating the cursor.
 
 ### One module per type, everywhere
 

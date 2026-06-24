@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Dependency-free abstract IO contract (read/write bytes and stream values) for yggdryl"
+description = "Abstract byte-IO contract (read/write/seek bytes, stats, transfer) for yggdryl, with in-memory and local-path backends"
 keywords.workspace = true
 readme = "README.md"
 
@@ -14,11 +14,21 @@ readme = "README.md"
 name = "yggdryl_io"
 path = "src/lib.rs"
 
+[[bench]]
+name = "io"
+harness = false
+
 [dependencies]
-# Optional, off by default: structured logging via the `log` facade (see
-# yggdryl-media). Enabling `log` traces read/write/stream calls; without it the
-# crate stays dependency-free.
+# All three are optional and off by default, so the crate stays dependency-free
+# in the default build:
+#   log    structured logging via the `log` facade (see yggdryl-media);
+#   mmap   memory-mapped, zero-copy local files in `LocalPath` (memmap2);
+#   media  lazy `media_type()` discovery on an `Io`/`Path` (yggdryl-media).
 log = { version = "0.4", optional = true }
+memmap2 = { version = "0.9", optional = true }
+yggdryl-media = { workspace = true, optional = true }
 
 [features]
 log = ["dep:log"]
+mmap = ["dep:memmap2"]
+media = ["dep:yggdryl-media"]

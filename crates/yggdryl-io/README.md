@@ -1,41 +1,57 @@
 # yggdryl-io
 
-Dependency-free **IO foundations** for the
-[**yggdryl**](https://github.com/Platob/yggdryl) project: an abstract contract
-for moving typed values across a byte boundary.
+The **byte-IO foundation** for the
+[**yggdryl**](https://github.com/Platob/yggdryl) project: one set of methods to
+read, write, seek and stat bytes **wherever they live** — in memory, on a local
+path, or (via downstream crates) in cloud object storage. It is the base buffer
+layer for columnar formats such as Arrow / Parquet, mixing *random* access (read
+a footer, a column chunk) with *streamed* access (scan record batches) over the
+same handle.
 
-- `ReadBytes` / `WriteBytes` — the byte source and sink primitives, with `&[u8]`
-  and `Vec<u8>` as the built-in in-memory ends.
-- `Io<T>` — the typed contract layered on top: encode a `T` to bytes (`write`)
-  and back (`read`), or read a whole sequence of `T`s as a `stream`.
-- `Frames` — the reference `Io` implementation: length-delimited byte frames,
-  enough to round-trip and stream values out of the box.
-- `BytesIO` — a simple in-memory byte buffer with a cursor, modelled on Python's
-  `io.BytesIO`: `read` / `write` / `seek` / `tell` / `getvalue` / `truncate`,
-  and a `stream` flag that toggles whether the cursor advances.
+## Layers
 
-```rust
-use yggdryl_io::{Frames, Io};
-
-// Encode two frames into a byte sink, then stream them back out.
-let mut sink: Vec<u8> = Vec::new();
-Frames.write(&mut sink, &b"hello".to_vec()).unwrap();
-Frames.write(&mut sink, &b"world".to_vec()).unwrap();
-
-let items: Vec<Vec<u8>> = Frames.stream(&sink[..]).collect::<Result<_, _>>().unwrap();
-assert_eq!(items, vec![b"hello".to_vec(), b"world".to_vec()]);
-```
-
-`BytesIO` is both a `ReadBytes` and a `WriteBytes`, so it drives any `Io` codec:
+- `ReadBytes` / `WriteBytes` — byte source/sink primitives (`&[u8]`, `Vec<u8>`).
+- `Seek` — the cursor: `seek` / `stream_position` / `stream_len`.
+- `Io: ReadBytes + Seek` — the base handle: `read_at` (positioned read that does
+  not move the cursor), `as_slice` (zero-copy hook), `stats`, and `copy_to`
+  (transfer with a memory fast path). `copy` is the free-function form.
+- `IoStats` — `size` / `mtime` / `content_type` / `etag` eager; `media_type`
+  discovered lazily (and cached) under the `media` feature.
+- `Path: Io` — a named resource; `LocalPath` is the filesystem backend,
+  memory-mapping the file (zero-copy) under the `mmap` feature. Cloud paths (S3,
+  Azure) are downstream crates implementing the same `Path` trait.
+- `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
+  is the reference length-delimited codec.
 
 ```rust
-use yggdryl_io::{BytesIO, Whence};
+use yggdryl_io::{BytesIO, Io, Seek, Whence};
 
 let mut io = BytesIO::from_bytes(b"hello world".to_vec());
-assert_eq!(io.read(Some(5)), b"hello");   // cursor now at 5
-io.seek(6, Whence::Start).unwrap();
-assert_eq!(io.read(None), b"world");
+
+// Random access: read a slice at an offset without moving the cursor.
+let mut footer = [0u8; 5];
+io.read_at(6, &mut footer).unwrap();
+assert_eq!(&footer, b"world");
+
+// Streamed access from the cursor, plus lazy metadata.
+assert_eq!(io.read(Some(5)), b"hello");
+assert_eq!(io.stats().unwrap().size(), 11);
 ```
 
-An optional `log` feature (off by default) traces read/write/stream calls; with
-it disabled the crate stays dependency-free.
+`LocalPath` is the filesystem `Path`, memory-mapped under `mmap`:
+
+```rust,ignore
+use yggdryl_io::{copy, Io, LocalPath};
+
+let mut src = LocalPath::open("data.parquet").unwrap();
+let mut buf: Vec<u8> = Vec::new();
+copy(&mut src, &mut buf).unwrap(); // zero-copy hand-off of the mapping
+```
+
+## Features (off by default — the default build is dependency-free)
+
+- `log` — structured `log` events on the hot paths.
+- `mmap` — `LocalPath` memory-maps files (zero-copy) instead of reading them.
+- `media` — lazy `media_type()` discovery via `yggdryl-media`.
+
+Run the benchmarks with `cargo bench -p yggdryl-io` (add `--features mmap`).
