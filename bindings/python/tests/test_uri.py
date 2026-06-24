@@ -31,7 +31,7 @@ def test_uri_str_round_trip():
 
 def test_uri_invalid_raises():
     with pytest.raises(ValueError):
-        yggdryl.Uri("no-scheme/path")
+        yggdryl.Uri("1http://x")  # invalid scheme
 
 
 def test_url_components():
@@ -232,6 +232,24 @@ def test_to_mapping_round_trip():
     assert m["scheme"] == "https" and m["host"] == "h" and m["port"] == "8443"
     assert yggdryl.Url.from_mapping(m) == url
     assert yggdryl.Version(1, 4, 2).to_mapping() == {"major": "1", "minor": "4", "patch": "2"}
+
+
+def test_path_accessors():
+    url = yggdryl.Url("https://h/a/b/archive.tar.gz")
+    assert url.parts() == ["a", "b", "archive.tar.gz"]
+    assert url.name() == "archive.tar.gz"
+    assert url.stem() == "archive"
+    assert url.extensions() == ["tar", "gz"]
+    enc = yggdryl.Uri("file:/d/a%20b.txt", safe=False)
+    assert enc.name() == "a b.txt"
+    assert enc.name(encode=True) == "a%20b.txt"
+
+
+def test_default_file_scheme_and_windows():
+    assert yggdryl.Uri("relative/path").scheme == "file"
+    w = yggdryl.Uri("C:\\Users\\me")
+    assert w.scheme == "file"
+    assert w.path == "/C:/Users/me"
 
 
 def test_module_version():

@@ -27,7 +27,7 @@ test('uri toString round-trip', () => {
 })
 
 test('uri invalid throws', () => {
-  assert.throws(() => new Uri('no-scheme/path'))
+  assert.throws(() => new Uri('1http://x')) // invalid scheme
 })
 
 test('url components', () => {
@@ -132,6 +132,24 @@ test('copy overrides', () => {
 test('url toUri', () => {
   const uri = new Url('https://user@h:8443/p?x=1').toUri()
   assert.strictEqual(uri.authority, 'user@h:8443')
+})
+
+test('path accessors', () => {
+  const url = new Url('https://h/a/b/archive.tar.gz')
+  assert.deepStrictEqual(url.parts(), ['a', 'b', 'archive.tar.gz'])
+  assert.strictEqual(url.name(), 'archive.tar.gz')
+  assert.strictEqual(url.stem(), 'archive')
+  assert.deepStrictEqual(url.extensions(), ['tar', 'gz'])
+  const enc = Uri.fromStr('file:/d/a%20b.txt', false)
+  assert.strictEqual(enc.name(), 'a b.txt')
+  assert.strictEqual(enc.name(true), 'a%20b.txt')
+})
+
+test('default file scheme and windows paths', () => {
+  assert.strictEqual(new Uri('relative/path').scheme, 'file')
+  const w = new Uri('C:\\Users\\me')
+  assert.strictEqual(w.scheme, 'file')
+  assert.strictEqual(w.path, '/C:/Users/me')
 })
 
 test('toMapping round-trip', () => {

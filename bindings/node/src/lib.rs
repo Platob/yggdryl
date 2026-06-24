@@ -171,6 +171,30 @@ impl Uri {
             .collect()
     }
 
+    /// The non-empty path segments; `encode` keeps the percent-encoded form.
+    #[napi]
+    pub fn parts(&self, encode: Option<bool>) -> Vec<String> {
+        self.inner.parts(encode.unwrap_or(false))
+    }
+
+    /// The file name (last path segment).
+    #[napi]
+    pub fn name(&self, encode: Option<bool>) -> String {
+        self.inner.name(encode.unwrap_or(false))
+    }
+
+    /// The file name without its extensions.
+    #[napi]
+    pub fn stem(&self, encode: Option<bool>) -> String {
+        self.inner.stem(encode.unwrap_or(false))
+    }
+
+    /// The file name's extensions, e.g. `["tar", "gz"]`.
+    #[napi]
+    pub fn extensions(&self, encode: Option<bool>) -> Vec<String> {
+        self.inner.extensions(encode.unwrap_or(false))
+    }
+
     /// Return a copy whose query is built from `params`; `encode` percent-encodes.
     #[napi(js_name = "withParams")]
     pub fn with_params(&self, params: HashMap<String, Vec<String>>, encode: Option<bool>) -> Uri {
@@ -500,6 +524,30 @@ impl Url {
             .params(decode.unwrap_or(true))
             .into_iter()
             .collect()
+    }
+
+    /// The non-empty path segments; `encode` keeps the percent-encoded form.
+    #[napi]
+    pub fn parts(&self, encode: Option<bool>) -> Vec<String> {
+        self.inner.parts(encode.unwrap_or(false))
+    }
+
+    /// The file name (last path segment).
+    #[napi]
+    pub fn name(&self, encode: Option<bool>) -> String {
+        self.inner.name(encode.unwrap_or(false))
+    }
+
+    /// The file name without its extensions.
+    #[napi]
+    pub fn stem(&self, encode: Option<bool>) -> String {
+        self.inner.stem(encode.unwrap_or(false))
+    }
+
+    /// The file name's extensions, e.g. `["tar", "gz"]`.
+    #[napi]
+    pub fn extensions(&self, encode: Option<bool>) -> Vec<String> {
+        self.inner.extensions(encode.unwrap_or(false))
     }
 
     /// Return a copy whose query is built from `params`; `encode` percent-encodes.

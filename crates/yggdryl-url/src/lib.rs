@@ -15,10 +15,71 @@
 use std::fmt;
 use std::sync::OnceLock;
 
-use yggdryl_core::{
-    params_to_query, query_to_params, render_component, validate_percent_encoding, KEEP_AUTHORITY,
-    KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
-};
+use yggdryl_core::{encode_component, validate_percent_encoding};
+
+// Per-component sets of delimiter bytes that are left as-is when encoding a
+// component for output (on top of the always-safe unreserved set).
+pub const KEEP_AUTHORITY: &[u8] = b":@[]";
+pub const KEEP_PATH: &[u8] = b"/:@";
+pub const KEEP_QUERY: &[u8] = b"/:@?&=";
+pub const KEEP_FRAGMENT: &[u8] = b"/:@?";
+
+/// Renders a component either percent-encoded (`encode`) or percent-decoded
+/// (best effort), used by `to_str(encode)`.
+pub fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
+    if encode {
+        encode_component(input, keep)
+    } else {
+        percent_decode(input).unwrap_or_else(|_| input.to_string())
+    }
+}
+
+/// Splits a `key=value&key=value2` query into a multimap. Repeated keys
+/// accumulate their values; when `decode`, each key/value is percent-decoded
+/// (parts that fail to decode are kept verbatim).
+pub fn query_to_params(query: &str, decode: bool) -> Params {
+    let unescape = |s: &str| {
+        if decode {
+            percent_decode(s).unwrap_or_else(|_| s.to_string())
+        } else {
+            s.to_string()
+        }
+    };
+    let mut params = Params::new();
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        params
+            .entry(unescape(key))
+            .or_default()
+            .push(unescape(value));
+    }
+    params
+}
+
+/// Builds a `key=value&…` query from a [`Params`] multimap. When `encode`, each
+/// key/value is percent-encoded. Keys with several values are emitted once per
+/// value; pairs come out in the map's (sorted) order for a deterministic result.
+pub fn params_to_query(params: &Params, encode: bool) -> String {
+    let escape = |s: &str| {
+        if encode {
+            percent_encode(s)
+        } else {
+            s.to_string()
+        }
+    };
+    let mut pairs = Vec::new();
+    for (key, values) in params {
+        let key = escape(key);
+        if values.is_empty() {
+            pairs.push(key);
+        } else {
+            for value in values {
+                pairs.push(format!("{key}={}", escape(value)));
+            }
+        }
+    }
+    pairs.join("&")
+}
 
 // Re-exported so a dependent only needs `yggdryl-url`.
 pub use yggdryl_core::{
@@ -142,39 +203,65 @@ impl Eq for Uri {}
 impl FromInput for Uri {
     type Err = UriError;
 
-    /// Parses a string into a [`Uri`]. When `safe`, the scheme and any `%XX`
-    /// escapes are validated; otherwise those checks are skipped.
+    /// Parses a string into a [`Uri`].
+    ///
+    /// Windows-style `\` separators are normalised to `/`. If no scheme is given
+    /// the input is treated as a path with the `file` scheme (a single-letter
+    /// "scheme" is read as a Windows drive letter, also `file`). When `safe`, the
+    /// scheme and any `%XX` escapes are validated.
     fn from_str(input: &str, safe: bool) -> Result<Uri, UriError> {
         if input.is_empty() {
             return Err(UriError::Empty);
         }
+        // Normalise Windows separators so paths use `/` everywhere.
+        let normalized = input.replace('\\', "/");
+        let input = normalized.as_str();
 
         // Peel off the fragment, then the query, from the right.
         let (rest, fragment) = split_once_owned(input, '#');
         let (rest, query) = split_once_owned(rest, '?');
 
-        // The scheme is everything up to the first ':'.
-        let colon = rest.find(':').ok_or(UriError::MissingScheme)?;
-        let scheme = &rest[..colon];
-        if scheme.is_empty() {
-            return Err(UriError::MissingScheme);
-        }
-        if safe && !is_valid_scheme(scheme) {
-            return Err(UriError::InvalidScheme);
-        }
+        // A scheme is a `:` that comes before the first `/`.
+        let colon = rest.find(':');
+        let slash = rest.find('/');
+        let has_scheme = matches!(colon, Some(c) if slash.is_none_or(|s| c < s));
 
-        // The hier-part: an optional `//authority` followed by the path.
-        let after = &rest[colon + 1..];
-        let (authority, path) = match after.strip_prefix("//") {
-            Some(tail) => match tail.find('/') {
-                Some(slash) => (Some(tail[..slash].to_string()), tail[slash..].to_string()),
-                None => (Some(tail.to_string()), String::new()),
-            },
-            None => (None, after.to_string()),
+        let (scheme, authority, path) = if !has_scheme {
+            // No scheme: default to `file`, the whole input is the path.
+            ("file".to_string(), None, rest.to_string())
+        } else {
+            let colon = colon.expect("has_scheme implies a colon");
+            let raw_scheme = &rest[..colon];
+            if raw_scheme.is_empty() {
+                return Err(UriError::MissingScheme);
+            }
+            if raw_scheme.len() == 1 && raw_scheme.as_bytes()[0].is_ascii_alphabetic() {
+                // A single-letter "scheme" is a Windows drive letter, e.g. `C:`.
+                let path = if rest.starts_with('/') {
+                    rest.to_string()
+                } else {
+                    format!("/{rest}")
+                };
+                ("file".to_string(), None, path)
+            } else {
+                if safe && !is_valid_scheme(raw_scheme) {
+                    return Err(UriError::InvalidScheme);
+                }
+                // The hier-part: an optional `//authority` followed by the path.
+                let after = &rest[colon + 1..];
+                let (authority, path) = match after.strip_prefix("//") {
+                    Some(tail) => match tail.find('/') {
+                        Some(s) => (Some(tail[..s].to_string()), tail[s..].to_string()),
+                        None => (Some(tail.to_string()), String::new()),
+                    },
+                    None => (None, after.to_string()),
+                };
+                (raw_scheme.to_string(), authority, path)
+            }
         };
 
         let uri = Uri {
-            scheme: scheme.to_string(),
+            scheme,
             authority,
             path,
             query,
@@ -190,15 +277,17 @@ impl FromInput for Uri {
     /// Builds a [`Uri`] from a [`Mapping`]. Recognised keys: `scheme` (required),
     /// `authority`, `path`, `query`, `fragment`.
     fn from_mapping(fields: &Mapping, safe: bool) -> Result<Uri, UriError> {
-        let scheme = fields.get("scheme").ok_or(UriError::MissingScheme)?;
-        if scheme.is_empty() {
-            return Err(UriError::MissingScheme);
-        }
-        if safe && !is_valid_scheme(scheme) {
+        // A missing scheme defaults to `file`; an empty one is an error.
+        let scheme = match fields.get("scheme") {
+            Some(s) if s.is_empty() => return Err(UriError::MissingScheme),
+            Some(s) => s.clone(),
+            None => "file".to_string(),
+        };
+        if safe && !is_valid_scheme(&scheme) {
             return Err(UriError::InvalidScheme);
         }
         let uri = Uri {
-            scheme: scheme.clone(),
+            scheme,
             authority: fields.get("authority").cloned(),
             path: fields.get("path").cloned().unwrap_or_default(),
             query: fields.get("query").cloned(),
@@ -503,6 +592,73 @@ impl fmt::Display for Uri {
     }
 }
 
+/// Renders one path component: percent-decoded unless `encode` keeps it as-is.
+fn render_part(part: &str, encode: bool) -> String {
+    if encode {
+        part.to_string()
+    } else {
+        percent_decode(part).unwrap_or_else(|_| part.to_string())
+    }
+}
+
+/// Splits a `/`-separated path into its non-empty, rendered segments.
+fn path_parts(path: &str, encode: bool) -> Vec<String> {
+    path.split('/')
+        .filter(|p| !p.is_empty())
+        .map(|p| render_part(p, encode))
+        .collect()
+}
+
+/// The last non-empty path segment (the file name), rendered.
+fn path_name(path: &str, encode: bool) -> String {
+    path.rsplit('/')
+        .find(|p| !p.is_empty())
+        .map(|p| render_part(p, encode))
+        .unwrap_or_default()
+}
+
+/// Splits a file name into `(stem, extensions)` at the first non-leading `.`, so
+/// `"a.tar.gz"` → `("a", ["tar", "gz"])` and `".bashrc"` → `(".bashrc", [])`.
+fn split_stem_ext(name: &str) -> (&str, Vec<&str>) {
+    let dot = if name.len() > 1 {
+        name[1..].find('.').map(|i| i + 1)
+    } else {
+        None
+    };
+    match dot {
+        Some(idx) => (&name[..idx], name[idx + 1..].split('.').collect()),
+        None => (name, Vec::new()),
+    }
+}
+
+/// Path-segment accessors. `encode` (default `false` in the bindings) keeps the
+/// percent-encoded form; otherwise each piece is decoded.
+impl Uri {
+    /// The non-empty `/`-separated path segments.
+    pub fn parts(&self, encode: bool) -> Vec<String> {
+        path_parts(&self.path, encode)
+    }
+
+    /// The file name: the last non-empty path segment.
+    pub fn name(&self, encode: bool) -> String {
+        path_name(&self.path, encode)
+    }
+
+    /// The file name without its extensions.
+    pub fn stem(&self, encode: bool) -> String {
+        split_stem_ext(&self.name(encode)).0.to_string()
+    }
+
+    /// The file name's extensions, e.g. `["tar", "gz"]` for `archive.tar.gz`.
+    pub fn extensions(&self, encode: bool) -> Vec<String> {
+        split_stem_ext(&self.name(encode))
+            .1
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
 impl ToOutput for Uri {
     fn to_str(&self, encode: bool) -> String {
         Uri::to_str(self, encode)
@@ -584,9 +740,8 @@ impl FromInput for Url {
     /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
     /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
     fn from_mapping(fields: &Mapping, safe: bool) -> Result<Url, UrlError> {
-        let scheme = fields
-            .get("scheme")
-            .ok_or(UrlError::Uri(UriError::MissingScheme))?;
+        // A missing scheme defaults to `file`.
+        let scheme = fields.get("scheme").map_or("file", String::as_str);
         if safe && !is_valid_scheme(scheme) {
             return Err(UrlError::Uri(UriError::InvalidScheme));
         }
@@ -599,7 +754,7 @@ impl FromInput for Url {
             None => None,
         };
         let url = Url {
-            scheme: scheme.clone(),
+            scheme: scheme.to_string(),
             username: fields.get("username").cloned(),
             password: fields.get("password").cloned(),
             host: host.clone(),
@@ -1112,6 +1267,33 @@ impl fmt::Display for Url {
     }
 }
 
+/// Path-segment accessors (see [`Uri`] for `encode` semantics).
+impl Url {
+    /// The non-empty `/`-separated path segments.
+    pub fn parts(&self, encode: bool) -> Vec<String> {
+        path_parts(&self.path, encode)
+    }
+
+    /// The file name: the last non-empty path segment.
+    pub fn name(&self, encode: bool) -> String {
+        path_name(&self.path, encode)
+    }
+
+    /// The file name without its extensions.
+    pub fn stem(&self, encode: bool) -> String {
+        split_stem_ext(&self.name(encode)).0.to_string()
+    }
+
+    /// The file name's extensions, e.g. `["tar", "gz"]` for `archive.tar.gz`.
+    pub fn extensions(&self, encode: bool) -> Vec<String> {
+        split_stem_ext(&self.name(encode))
+            .1
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
 impl ToOutput for Url {
     fn to_str(&self, encode: bool) -> String {
         Url::to_str(self, encode)
@@ -1221,10 +1403,7 @@ mod tests {
     #[test]
     fn uri_errors() {
         assert_eq!(Uri::from_str("", true), Err(UriError::Empty));
-        assert_eq!(
-            Uri::from_str("no-scheme/path", true),
-            Err(UriError::MissingScheme)
-        );
+        // An empty (but present) scheme is still an error.
         assert_eq!(
             Uri::from_str(":no-scheme", true),
             Err(UriError::MissingScheme)
@@ -1233,6 +1412,48 @@ mod tests {
             Uri::from_str("1http://x", true),
             Err(UriError::InvalidScheme)
         );
+    }
+
+    #[test]
+    fn path_accessors() {
+        let url = Url::from_str("https://h/a/b/archive.tar.gz", true).unwrap();
+        assert_eq!(url.parts(false), vec!["a", "b", "archive.tar.gz"]);
+        assert_eq!(url.name(false), "archive.tar.gz");
+        assert_eq!(url.stem(false), "archive");
+        assert_eq!(url.extensions(false), vec!["tar", "gz"]);
+        // encode flag: decoded by default, kept when true.
+        let enc = Uri::from_str("file:/dir/a%20b.txt", false).unwrap();
+        assert_eq!(enc.name(false), "a b.txt");
+        assert_eq!(enc.name(true), "a%20b.txt");
+        // no extension and dotfiles.
+        assert_eq!(
+            Uri::from_str("file:/x/README", true)
+                .unwrap()
+                .extensions(false),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            Uri::from_str("file:/x/.bashrc", true).unwrap().stem(false),
+            ".bashrc"
+        );
+    }
+
+    #[test]
+    fn default_file_scheme_and_windows_paths() {
+        // No scheme -> file.
+        let u = Uri::from_str("no-scheme/path", true).unwrap();
+        assert_eq!(u.scheme(), "file");
+        assert_eq!(u.path(), "no-scheme/path");
+        // A `:` after a `/` is part of the path, not a scheme.
+        assert_eq!(Uri::from_str("a/b:c", true).unwrap().scheme(), "file");
+        // Backslashes are normalised to `/`.
+        let w = Uri::from_str("dir\\sub\\file", true).unwrap();
+        assert_eq!(w.scheme(), "file");
+        assert_eq!(w.path(), "dir/sub/file");
+        // A drive letter is a Windows path -> file.
+        let d = Uri::from_str("C:\\Users\\me", true).unwrap();
+        assert_eq!(d.scheme(), "file");
+        assert_eq!(d.path(), "/C:/Users/me");
     }
 
     #[test]
@@ -1329,9 +1550,10 @@ mod tests {
             Url::from_str("http://example.com:notaport", true),
             Err(UrlError::InvalidPort(_))
         ));
+        // No scheme defaults to `file`, but a Url still needs an authority.
         assert_eq!(
             Url::from_str("notauri", true),
-            Err(UrlError::Uri(UriError::MissingScheme))
+            Err(UrlError::MissingAuthority)
         );
     }
 

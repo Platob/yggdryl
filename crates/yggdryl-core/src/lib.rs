@@ -68,8 +68,16 @@ pub trait FromInput: Sized {
     /// Parses a full string.
     fn from_str(input: &str, safe: bool) -> Result<Self, Self::Err>;
 
-    /// Parses from a [`Mapping`] of pre-split components.
-    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Self, Self::Err>;
+    /// Parses from a [`Mapping`] of pre-split components. The default reads a
+    /// `"str"` entry and delegates to [`from_str`](FromInput::from_str), so a
+    /// type only needs `from_str`; [`Uri`], [`Url`] and [`Version`] override this
+    /// with a component-based parse that avoids a useless string round-trip.
+    fn from_mapping(fields: &Mapping, safe: bool) -> Result<Self, Self::Err> {
+        Self::from_str(
+            fields.get("str").map(String::as_str).unwrap_or_default(),
+            safe,
+        )
+    }
 
     /// Parses any supported [`Input`] form with full validation (`safe = true`).
     fn from_<'a, I: Into<Input<'a>>>(input: I) -> Result<Self, Self::Err> {
@@ -97,8 +105,13 @@ pub trait ToOutput {
     /// Renders to a string. `encode` controls percent-encoding where relevant.
     fn to_str(&self, encode: bool) -> String;
 
-    /// Renders to a component [`Mapping`].
-    fn to_mapping(&self) -> Mapping;
+    /// Renders to a component [`Mapping`]. The default wraps the string form under
+    /// a `"str"` key (the inverse of the default [`from_mapping`](FromInput::from_mapping));
+    /// [`Uri`], [`Url`] and [`Version`] override it with real component maps that
+    /// avoid a useless string serialization.
+    fn to_mapping(&self) -> Mapping {
+        Mapping::from([("str".to_string(), self.to_str(true))])
+    }
 
     /// Renders to any [`Output`] form: a [`Mapping`] when `as_mapping`, otherwise
     /// the string form (whose encoding is controlled by `encode`).
@@ -226,13 +239,6 @@ fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
-// Per-component sets of delimiter bytes that are left as-is when encoding a
-// component for output (on top of the always-safe unreserved set).
-pub const KEEP_AUTHORITY: &[u8] = b":@[]";
-pub const KEEP_PATH: &[u8] = b"/:@";
-pub const KEEP_QUERY: &[u8] = b"/:@?&=";
-pub const KEEP_FRAGMENT: &[u8] = b"/:@?";
-
 /// Percent-encodes `input` for output, preserving the bytes in `keep` (the
 /// component's structural delimiters) and any already-valid `%XX` escape — so it
 /// is idempotent and never double-encodes.
@@ -260,61 +266,4 @@ pub fn encode_component(input: &str, keep: &[u8]) -> String {
         }
     }
     out
-}
-
-/// Renders a component either percent-encoded (`encode`) or percent-decoded
-/// (best effort), used by `to_str(encode)`.
-pub fn render_component(input: &str, keep: &[u8], encode: bool) -> String {
-    if encode {
-        encode_component(input, keep)
-    } else {
-        percent_decode(input).unwrap_or_else(|_| input.to_string())
-    }
-}
-
-/// Splits a `key=value&key=value2` query into a multimap. Repeated keys
-/// accumulate their values; when `decode`, each key/value is percent-decoded
-/// (parts that fail to decode are kept verbatim).
-pub fn query_to_params(query: &str, decode: bool) -> Params {
-    let unescape = |s: &str| {
-        if decode {
-            percent_decode(s).unwrap_or_else(|_| s.to_string())
-        } else {
-            s.to_string()
-        }
-    };
-    let mut params = Params::new();
-    for pair in query.split('&').filter(|p| !p.is_empty()) {
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        params
-            .entry(unescape(key))
-            .or_default()
-            .push(unescape(value));
-    }
-    params
-}
-
-/// Builds a `key=value&…` query from a [`Params`] multimap. When `encode`, each
-/// key/value is percent-encoded. Keys with several values are emitted once per
-/// value; pairs come out in the map's (sorted) order for a deterministic result.
-pub fn params_to_query(params: &Params, encode: bool) -> String {
-    let escape = |s: &str| {
-        if encode {
-            percent_encode(s)
-        } else {
-            s.to_string()
-        }
-    };
-    let mut pairs = Vec::new();
-    for (key, values) in params {
-        let key = escape(key);
-        if values.is_empty() {
-            pairs.push(key);
-        } else {
-            for value in values {
-                pairs.push(format!("{key}={}", escape(value)));
-            }
-        }
-    }
-    pairs.join("&")
 }

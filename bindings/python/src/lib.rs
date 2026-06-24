@@ -160,6 +160,30 @@ impl Uri {
         self.inner.params(decode)
     }
 
+    /// The non-empty path segments; ``encode`` keeps the percent-encoded form.
+    #[pyo3(signature = (encode = false))]
+    fn parts(&self, encode: bool) -> Vec<String> {
+        self.inner.parts(encode)
+    }
+
+    /// The file name (last path segment).
+    #[pyo3(signature = (encode = false))]
+    fn name(&self, encode: bool) -> String {
+        self.inner.name(encode)
+    }
+
+    /// The file name without its extensions.
+    #[pyo3(signature = (encode = false))]
+    fn stem(&self, encode: bool) -> String {
+        self.inner.stem(encode)
+    }
+
+    /// The file name's extensions, e.g. ``["tar", "gz"]``.
+    #[pyo3(signature = (encode = false))]
+    fn extensions(&self, encode: bool) -> Vec<String> {
+        self.inner.extensions(encode)
+    }
+
     /// Return a copy whose query is built from ``params``; ``encode`` percent-
     /// encodes each key and value.
     #[pyo3(signature = (params, encode = true))]
@@ -501,6 +525,30 @@ impl Url {
     #[pyo3(signature = (decode = true))]
     fn params(&self, decode: bool) -> Params {
         self.inner.params(decode)
+    }
+
+    /// The non-empty path segments; ``encode`` keeps the percent-encoded form.
+    #[pyo3(signature = (encode = false))]
+    fn parts(&self, encode: bool) -> Vec<String> {
+        self.inner.parts(encode)
+    }
+
+    /// The file name (last path segment).
+    #[pyo3(signature = (encode = false))]
+    fn name(&self, encode: bool) -> String {
+        self.inner.name(encode)
+    }
+
+    /// The file name without its extensions.
+    #[pyo3(signature = (encode = false))]
+    fn stem(&self, encode: bool) -> String {
+        self.inner.stem(encode)
+    }
+
+    /// The file name's extensions, e.g. ``["tar", "gz"]``.
+    #[pyo3(signature = (encode = false))]
+    fn extensions(&self, encode: bool) -> Vec<String> {
+        self.inner.extensions(encode)
     }
 
     /// Return a copy whose query is built from ``params``; ``encode`` percent-
