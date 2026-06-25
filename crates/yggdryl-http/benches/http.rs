@@ -211,6 +211,86 @@ fn main() {
             black_box(response.bytes().unwrap());
         }
     });
+
+    #[cfg(feature = "http2")]
+    http2_vs_http1();
+}
+
+/// Serves `payload` forever over h2c (cleartext HTTP/2) on a localhost port,
+/// handling each connection on the tokio runtime. Used to compare the h2 transport
+/// against the blocking h1 one. Only built with the `http2` feature.
+#[cfg(feature = "http2")]
+fn serve_h2c(payload: Vec<u8>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let payload = std::sync::Arc::new(payload);
+    thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                let payload = payload.clone();
+                tokio::spawn(async move {
+                    stream.set_nodelay(true).ok(); // avoid Nagle/delayed-ACK stalls
+                    let io = hyper_util::rt::TokioIo::new(stream);
+                    let service = hyper::service::service_fn(move |_req| {
+                        let payload = payload.clone();
+                        async move {
+                            Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                                http_body_util::Full::new(hyper::body::Bytes::from(
+                                    (*payload).clone(),
+                                )),
+                            ))
+                        }
+                    });
+                    hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                        .serve_connection(io, service)
+                        .await
+                        .ok();
+                });
+            }
+        });
+    });
+    url
+}
+
+/// Compares the h2 transport against the pooled h1 one on a localhost download.
+/// The h2 path opens a fresh connection per request (no QUIC/h2 pooling yet), so
+/// this surfaces that cost against keep-alive h1.
+#[cfg(feature = "http2")]
+fn http2_vs_http1() {
+    const SIZE: usize = 64 * 1024;
+    let payload = vec![5u8; SIZE];
+    let h1_url = serve(payload.clone(), 0);
+    let h2_url = serve_h2c(payload.clone());
+    let session = HttpSession::new();
+    println!(
+        "\n== HTTP/1.1 (pooled) vs HTTP/2 (h2c) download ({} KiB) ==",
+        SIZE / 1024
+    );
+    bench("h1 GET (pooled keep-alive)", 200, SIZE, || {
+        black_box(session.get(&h1_url).unwrap().bytes().unwrap());
+    });
+    bench("h2c GET (new conn each)", 200, SIZE, || {
+        let request = HttpRequest::get(&h2_url)
+            .unwrap()
+            .with_http_version(HttpVersion::Http2);
+        black_box(
+            session
+                .send(request, false, false, false)
+                .unwrap()
+                .bytes()
+                .unwrap(),
+        );
+    });
 }
 
 /// CPU-only paths that need no server: base-URL resolution (the RFC 3986

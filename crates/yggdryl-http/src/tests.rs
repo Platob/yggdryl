@@ -1656,6 +1656,85 @@ fn no_content_204_drains_empty() {
     assert_eq!(response.bytes().unwrap(), b"");
 }
 
+/// Spawns a persistent localhost h2c (cleartext HTTP/2) server that accepts any
+/// number of connections and routes by path: `/status/<code>` returns that status,
+/// `/redirect` returns a 302 to `/echo`, and anything else echoes `METHOD path
+/// body`. Returns the base URL and a shared counter of requests served (to assert
+/// concurrency). The server thread runs until the test process exits. Hermetic.
+#[cfg(feature = "http2")]
+fn serve_h2c() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let count = Arc::new(AtomicUsize::new(0));
+    let served = count.clone();
+    thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                let served = served.clone();
+                tokio::spawn(async move {
+                    let io = hyper_util::rt::TokioIo::new(stream);
+                    let service = hyper::service::service_fn(
+                        move |req: hyper::Request<hyper::body::Incoming>| {
+                            let served = served.clone();
+                            async move {
+                                served.fetch_add(1, Ordering::SeqCst);
+                                let method = req.method().clone();
+                                let path = req.uri().path().to_string();
+                                let body = http_body_util::BodyExt::collect(req.into_body())
+                                    .await
+                                    .map(|collected| collected.to_bytes())
+                                    .unwrap_or_default();
+                                let response = if let Some(code) = path.strip_prefix("/status/") {
+                                    hyper::Response::builder()
+                                        .status(code.parse::<u16>().unwrap_or(500))
+                                        .body(http_body_util::Full::new(hyper::body::Bytes::from(
+                                            "status",
+                                        )))
+                                        .unwrap()
+                                } else if path == "/redirect" {
+                                    hyper::Response::builder()
+                                        .status(302)
+                                        .header("location", "/echo")
+                                        .body(http_body_util::Full::new(hyper::body::Bytes::new()))
+                                        .unwrap()
+                                } else {
+                                    let echoed = format!(
+                                        "{method} {path} {}",
+                                        String::from_utf8_lossy(&body)
+                                    );
+                                    hyper::Response::new(http_body_util::Full::new(
+                                        hyper::body::Bytes::from(echoed),
+                                    ))
+                                };
+                                Ok::<_, std::convert::Infallible>(response)
+                            }
+                        },
+                    );
+                    hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                        .serve_connection(io, service)
+                        .await
+                        .ok();
+                });
+            }
+        });
+    });
+    (url, count)
+}
+
 /// Hermetic HTTP/2 over cleartext (h2c, prior knowledge): a localhost hyper h2
 /// server answers one connection, and the client — pinned to `HttpVersion::Http2`
 /// against an `http://` URL — speaks h2c and reports the negotiated version. No
@@ -1732,6 +1811,104 @@ fn http2_feature_marks_http2_available() {
     assert!(HttpVersion::Http2.is_available());
 }
 
+/// A POST with a request body works over HTTP/2 — the body reaches the server.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_post_body_roundtrip() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::post(&format!("{url}/echo"))
+                .unwrap()
+                .with_body(b"the-h2-body".to_vec())
+                .with_http_version(HttpVersion::Http2),
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"POST /echo the-h2-body");
+}
+
+/// A 4xx/5xx over HTTP/2 is a normal response (not a transport error), and
+/// `raise_error` turns it into [`HttpError::Status`] — the same as the h1 path.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_error_status_is_a_normal_response() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let session = HttpSession::new();
+    let request = || {
+        HttpRequest::get(&format!("{url}/status/503"))
+            .unwrap()
+            .with_http_version(HttpVersion::Http2)
+    };
+    // raise_error = false: the 503 comes back as a normal response.
+    let response = session.send(request(), false, false, false).unwrap();
+    assert_eq!(response.status(), 503);
+    assert!(!response.ok());
+    // raise_error = true: it becomes an error carrying the status.
+    match session.send(request(), true, false, false) {
+        Err(HttpError::Status(503)) => {}
+        Err(other) => panic!("expected Status(503), got {other:?}"),
+        Ok(_) => panic!("expected an error, got a response"),
+    }
+}
+
+/// A 302 over HTTP/2 re-joins the redirect loop and is followed to the target,
+/// exactly like the h1 path (302 on GET keeps GET).
+#[cfg(feature = "http2")]
+#[test]
+fn http2_follows_a_redirect() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&format!("{url}/redirect"))
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+            true,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    // Followed to /echo as a GET (302 keeps the method here, dropping any body).
+    assert_eq!(response.bytes().unwrap(), b"GET /echo ");
+}
+
+/// `send_many` runs many HTTP/2 requests concurrently over the shared transport
+/// runtime; every one is served and succeeds.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_send_many_concurrent() {
+    use crate::HttpVersion;
+    use std::sync::atomic::Ordering;
+
+    let (url, count) = serve_h2c();
+    let session = HttpSession::new();
+    const N: usize = 12;
+    let requests: Vec<HttpRequest> = (0..N)
+        .map(|index| {
+            HttpRequest::get(&format!("{url}/echo/{index}"))
+                .unwrap()
+                .with_http_version(HttpVersion::Http2)
+        })
+        .collect();
+    let batches: Vec<HttpResponseBatch> = session.send_many(requests).collect();
+    let mut ok = 0;
+    for batch in batches {
+        for result in batch.into_results() {
+            assert_eq!(result.unwrap().status(), 200);
+            ok += 1;
+        }
+    }
+    assert_eq!(ok, N);
+    assert_eq!(count.load(Ordering::SeqCst), N);
+}
+
 /// Spawns a localhost quinn + h3 server on an ephemeral UDP port that serves
 /// exactly one request (echoing `METHOD path`) using `cert_der`/`key_der`, then
 /// idles. Returns the bound port and the server thread handle. Hermetic — UDP
@@ -1770,7 +1947,27 @@ fn serve_one_h3(
                 .unwrap();
             if let Ok(Some(resolver)) = h3_conn.accept().await {
                 let (req, mut stream) = resolver.resolve_request().await.unwrap();
-                let body = format!("{} {}", req.method(), req.uri().path());
+                // Read the request body (if any) so a POST can be echoed back.
+                let mut request_body = Vec::new();
+                while let Ok(Some(mut chunk)) = stream.recv_data().await {
+                    use bytes::Buf;
+                    while chunk.has_remaining() {
+                        let bytes = chunk.chunk();
+                        request_body.extend_from_slice(bytes);
+                        let len = bytes.len();
+                        chunk.advance(len);
+                    }
+                }
+                let body = if request_body.is_empty() {
+                    format!("{} {}", req.method(), req.uri().path())
+                } else {
+                    format!(
+                        "{} {} {}",
+                        req.method(),
+                        req.uri().path(),
+                        String::from_utf8_lossy(&request_body)
+                    )
+                };
                 let response = http::Response::builder().status(200).body(()).unwrap();
                 stream.send_response(response).await.unwrap();
                 stream.send_data(bytes::Bytes::from(body)).await.unwrap();
@@ -1836,6 +2033,36 @@ fn http3_trusts_an_installed_ca_certificate() {
     let response = session.send(request, false, false, false).unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// A POST with a request body works over HTTP/3 — the body reaches the server.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_post_body_roundtrip() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let (port, server) = serve_one_h3(
+        issued.cert.der().clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
+    let url = format!("https://localhost:{port}/submit");
+    let response = HttpSession::new()
+        .with_verify(false)
+        .send(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body(b"the-h3-body".to_vec())
+                .with_http_version(HttpVersion::Http3),
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"POST /submit the-h3-body");
     server.join().unwrap();
 }
 

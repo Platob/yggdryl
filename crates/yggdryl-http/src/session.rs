@@ -813,7 +813,7 @@ impl HttpSession {
                 method: request.method,
                 url: &url,
                 headers: &headers,
-                body: body.clone(),
+                body: &body,
                 prefer,
                 verify: self.verify,
                 ca_certs: &self.ca_certs,

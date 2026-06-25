@@ -75,7 +75,7 @@ pub(crate) struct AsyncRequest<'a> {
     pub(crate) method: Method,
     pub(crate) url: &'a Url,
     pub(crate) headers: &'a HttpHeaders,
-    pub(crate) body: Vec<u8>,
+    pub(crate) body: &'a [u8],
     pub(crate) prefer: HttpVersion,
     /// Whether to verify the server's TLS certificate (mirrors the session's
     /// [`verify`](crate::HttpSession::verify); `false` accepts any certificate).
@@ -477,7 +477,7 @@ fn build_request(
         builder = builder.header("host", &authority);
     }
     builder
-        .body(Full::new(Bytes::from(request.body.clone())))
+        .body(Full::new(Bytes::copy_from_slice(request.body)))
         .map_err(|err| HttpError::InvalidHeader(err.to_string()))
 }
 
@@ -606,7 +606,7 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
             .map_err(|err| HttpError::Transport(err.to_string()))?;
         if !request.body.is_empty() {
             stream
-                .send_data(bytes::Bytes::from(request.body.clone()))
+                .send_data(bytes::Bytes::copy_from_slice(request.body))
                 .await
                 .map_err(|err| HttpError::Transport(err.to_string()))?;
         }
