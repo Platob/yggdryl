@@ -5,7 +5,7 @@
 //! to resolve a (possibly relative) `Location` against the current URL, and how a
 //! given status reshapes the next request's method and body.
 
-use yggdryl_url::Url;
+use yggdryl_core::Url;
 
 use crate::error::HttpError;
 use crate::method::Method;

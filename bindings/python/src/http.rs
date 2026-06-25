@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use yggdryl_core::{LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
     HttpSession as CoreHttpSession, Method,
 };
-use yggdryl_io::{LocalPath as CoreLocalPath, Path};
 
 use crate::bytesio::BytesIO;
 use crate::http_err;

@@ -1,9 +1,7 @@
-//! # yggdryl-compression
-//!
 //! Streamed byte **compression** — gzip, Zstandard or Snappy — layered on top of
-//! the [`yggdryl-io`](yggdryl_io) handle abstraction. A [`Compression`] codec
-//! wraps any [`Io`](yggdryl_io::Io) handle to compress and decompress **a chunk
-//! at a time**, never buffering the whole payload:
+//! the [`Io`](crate::Io) handle abstraction. A [`Compression`] codec wraps any
+//! [`Io`](crate::Io) handle to compress and decompress **a chunk at a time**,
+//! never buffering the whole payload:
 //!
 //! - [`encoder`](Compression::encoder) wraps a sink so everything written is
 //!   compressed on the way out ([`finish`](Encoder::finish) flushes the trailer);
@@ -14,22 +12,10 @@
 //!
 //! The [`CompressIo`] extension trait adds [`compress`](CompressIo::compress) /
 //! [`decompress`](CompressIo::decompress) straight onto every `Io` handle,
-//! returning a fresh in-memory [`BytesIO`](yggdryl_io::BytesIO). On decompress the
-//! codec may be left to inference — from the handle's URL extension, then (under
-//! the `media` feature) its discovered media type (magic bytes for a buffer, the
-//! file name for a path) and finally its content type.
-//!
-//! ## Optional features (off by default)
-//!
-//! - `gzip` / `zstd` / `snappy` — the matching backend (`flate2` / `zstd` /
-//!   `snap`). A codec whose feature is off still parses and names itself but
-//!   reports [`IoError::Unsupported`] on encode/decode; check
-//!   [`is_available`](Compression::is_available) ahead of time.
-//! - `media` — infer a codec from an `Io`'s MIME / media type via `yggdryl-media`.
-//! - `log` — structured `log` events on the hot paths.
+//! returning a fresh in-memory [`BytesIO`](crate::BytesIO).
 //!
 //! ```
-//! use yggdryl_compression::Compression;
+//! use yggdryl_core::Compression;
 //!
 //! let codec = Compression::from_str("gzip").unwrap();
 //! assert_eq!(codec.as_str(), "gzip");
@@ -43,17 +29,15 @@
 
 use std::fmt;
 
-use yggdryl_io::{copy, BytesIO, Io, IoError, IoStats, Url, Whence};
+use crate::io::{copy, BytesIO, Io, IoError, Whence};
+#[allow(unused_imports)]
+use crate::log_event;
 
-/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
-/// otherwise (so the crate pulls no `log` dependency by default and pays no
-/// runtime cost).
-macro_rules! log_event {
-    ($level:ident, $($arg:tt)+) => {{
-        #[cfg(feature = "log")]
-        log::$level!($($arg)+);
-    }};
-}
+mod codec;
+
+pub use codec::{Decoder, Encoder};
+
+use codec::{DecoderInner, EncoderInner};
 
 /// A byte-stream **compression codec** — gzip, Zstandard or Snappy — that wraps
 /// any [`Io`] handle to compress and
@@ -122,12 +106,12 @@ impl Compression {
         Some(codec)
     }
 
-    /// Maps a single [`MimeType`](yggdryl_media::MimeType) to its codec — the
-    /// "optional MIME type to get compression" entry point — or `None` if the MIME
-    /// names no supported codec. Only present under the `media` feature.
+    /// Maps a single [`MimeType`](crate::MimeType) to its codec — the "optional
+    /// MIME type to get compression" entry point — or `None` if the MIME names no
+    /// supported codec. Only present under the `media` feature.
     #[cfg(feature = "media")]
-    pub fn from_mime(mime: &yggdryl_media::MimeType) -> Option<Compression> {
-        use yggdryl_media::MimeType;
+    pub fn from_mime(mime: &crate::MimeType) -> Option<Compression> {
+        use crate::MimeType;
         match mime {
             MimeType::Gzip => Some(Compression::Gzip),
             MimeType::Zstd => Some(Compression::Zstd),
@@ -135,20 +119,20 @@ impl Compression {
         }
     }
 
-    /// Infers the codec from a layered [`MediaType`](yggdryl_media::MediaType)
-    /// stack — its outermost (container) MIME, e.g. `Gzip` for `data.csv.gz`. Only
-    /// present under the `media` feature.
+    /// Infers the codec from a layered [`MediaType`](crate::MediaType) stack — its
+    /// outermost (container) MIME, e.g. `Gzip` for `data.csv.gz`. Only present
+    /// under the `media` feature.
     #[cfg(feature = "media")]
-    pub fn from_media(media: &yggdryl_media::MediaType) -> Option<Compression> {
+    pub fn from_media(media: &crate::MediaType) -> Option<Compression> {
         media.last().and_then(Compression::from_mime)
     }
 
-    /// Infers the codec from an [`IoStats`](yggdryl_io::IoStats): its discovered
-    /// media type first, then its transport content type. Returns `None` when
-    /// neither names a codec. Only present under the `media` feature — this is the
-    /// signal [`CompressIo::decompress`] uses when no codec is given.
+    /// Infers the codec from an [`IoStats`](crate::IoStats): its discovered media
+    /// type first, then its transport content type. Returns `None` when neither
+    /// names a codec. Only present under the `media` feature — this is the signal
+    /// [`CompressIo::decompress`] uses when no codec is given.
     #[cfg(feature = "media")]
-    pub fn from_stats(stats: &yggdryl_io::IoStats) -> Option<Compression> {
+    pub fn from_stats(stats: &crate::IoStats) -> Option<Compression> {
         if let Some(media) = stats.media_type() {
             if let Some(codec) = Compression::from_media(media) {
                 return Some(codec);
@@ -156,7 +140,7 @@ impl Compression {
         }
         stats
             .content_type()
-            .and_then(|content_type| yggdryl_media::MimeType::from_str(content_type).ok())
+            .and_then(|content_type| crate::MimeType::from_str(content_type).ok())
             .and_then(|mime| Compression::from_mime(&mime))
     }
 
@@ -208,16 +192,17 @@ impl Compression {
             Compression::None => EncoderInner::Store(sink),
             #[cfg(feature = "gzip")]
             Compression::Gzip => EncoderInner::Gzip(flate2::write::GzEncoder::new(
-                WriteShim(sink),
+                codec::WriteShim(sink),
                 flate2::Compression::default(),
             )),
             #[cfg(feature = "zstd")]
             Compression::Zstd => EncoderInner::Zstd(
-                zstd::stream::write::Encoder::new(WriteShim(sink), 0).map_err(IoError::from)?,
+                zstd::stream::write::Encoder::new(codec::WriteShim(sink), 0)
+                    .map_err(IoError::from)?,
             ),
             #[cfg(feature = "snappy")]
             Compression::Snappy => {
-                EncoderInner::Snappy(snap::write::FrameEncoder::new(WriteShim(sink)))
+                EncoderInner::Snappy(snap::write::FrameEncoder::new(codec::WriteShim(sink)))
             }
             #[allow(unreachable_patterns)]
             other => return Err(other.unavailable()),
@@ -233,14 +218,16 @@ impl Compression {
         let inner = match self {
             Compression::None => DecoderInner::Store(source),
             #[cfg(feature = "gzip")]
-            Compression::Gzip => DecoderInner::Gzip(flate2::read::GzDecoder::new(ReadShim(source))),
+            Compression::Gzip => {
+                DecoderInner::Gzip(flate2::read::GzDecoder::new(codec::ReadShim(source)))
+            }
             #[cfg(feature = "zstd")]
             Compression::Zstd => DecoderInner::Zstd(
-                zstd::stream::read::Decoder::new(ReadShim(source)).map_err(IoError::from)?,
+                zstd::stream::read::Decoder::new(codec::ReadShim(source)).map_err(IoError::from)?,
             ),
             #[cfg(feature = "snappy")]
             Compression::Snappy => {
-                DecoderInner::Snappy(snap::read::FrameDecoder::new(ReadShim(source)))
+                DecoderInner::Snappy(snap::read::FrameDecoder::new(codec::ReadShim(source)))
             }
             #[allow(unreachable_patterns)]
             other => return Err(other.unavailable()),
@@ -270,6 +257,7 @@ impl Compression {
     }
 
     /// The [`IoError::Unsupported`] raised when this codec's feature is off.
+    #[allow(dead_code)]
     fn unavailable(&self) -> IoError {
         log_event!(
             warn,
@@ -356,201 +344,6 @@ pub trait CompressIo: Io {
 }
 
 impl<T: Io + ?Sized> CompressIo for T {}
-
-/// Bridges an [`Io`] sink to [`std::io::Write`], so the streaming compressors
-/// (which speak `std::io`) can push into any handle.
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-struct WriteShim<W: Io>(W);
-
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-impl<W: Io> std::io::Write for WriteShim<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.write(buf).map_err(into_std)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Io::flush(&mut self.0).map_err(into_std)
-    }
-}
-
-/// Bridges an [`Io`] source to [`std::io::Read`], so the streaming decompressors
-/// can pull from any handle.
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-struct ReadShim<R: Io>(R);
-
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-impl<R: Io> std::io::Read for ReadShim<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.read(buf).map_err(into_std)
-    }
-}
-
-/// Maps an [`IoError`] back into a [`std::io::Error`] for the `std::io`-based
-/// codecs (the inverse of `yggdryl-io`'s `From<std::io::Error>`).
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-fn into_std(err: IoError) -> std::io::Error {
-    std::io::Error::other(err.to_string())
-}
-
-/// A streaming compressor returned by [`Compression::encoder`]. A write-only
-/// [`Io`] handle: everything written is compressed into the wrapped sink. Call
-/// [`finish`](Encoder::finish) to write the trailer and recover the sink.
-pub struct Encoder<W: Io> {
-    inner: EncoderInner<W>,
-}
-
-// Exactly one variant is ever live and the value is short-lived (built, written,
-// finished), so the codec states are kept inline rather than boxed — that keeps
-// an extra indirection off the per-write streaming path.
-#[allow(clippy::large_enum_variant)]
-enum EncoderInner<W: Io> {
-    /// Identity: writes pass straight through.
-    Store(W),
-    #[cfg(feature = "gzip")]
-    Gzip(flate2::write::GzEncoder<WriteShim<W>>),
-    #[cfg(feature = "zstd")]
-    Zstd(zstd::stream::write::Encoder<'static, WriteShim<W>>),
-    #[cfg(feature = "snappy")]
-    Snappy(snap::write::FrameEncoder<WriteShim<W>>),
-}
-
-impl<W: Io> Encoder<W> {
-    /// Finishes the compressed stream — flushing any buffered bytes and writing
-    /// the trailer/checksum — and returns the underlying sink. **Must** be called
-    /// to produce a valid stream.
-    pub fn finish(self) -> Result<W, IoError> {
-        match self.inner {
-            EncoderInner::Store(sink) => Ok(sink),
-            #[cfg(feature = "gzip")]
-            EncoderInner::Gzip(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
-            #[cfg(feature = "zstd")]
-            EncoderInner::Zstd(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
-            #[cfg(feature = "snappy")]
-            EncoderInner::Snappy(encoder) => Ok(encoder
-                .into_inner()
-                .map_err(|err| IoError::Io(err.to_string()))?
-                .0),
-        }
-    }
-}
-
-impl<W: Io> fmt::Debug for Encoder<W> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Encoder").finish_non_exhaustive()
-    }
-}
-
-impl<W: Io> Io for Encoder<W> {
-    /// A synthetic in-memory address — an encoder is a transient streaming adapter.
-    fn url(&self) -> Url {
-        Url::new("mem", "encoder")
-    }
-
-    fn stats(&self) -> Result<IoStats, IoError> {
-        Ok(IoStats::new(0))
-    }
-
-    fn seek(&mut self, _offset: i64, _whence: Whence) -> Result<u64, IoError> {
-        Err(IoError::Unsupported(
-            "seek on a streaming encoder (it is write-only and forward-only)".to_string(),
-        ))
-    }
-
-    fn stream_position(&self) -> u64 {
-        0
-    }
-
-    /// Compresses `bytes` into the wrapped sink, returning the count consumed.
-    fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
-        match &mut self.inner {
-            EncoderInner::Store(sink) => sink.write(bytes),
-            #[cfg(feature = "gzip")]
-            EncoderInner::Gzip(encoder) => {
-                std::io::Write::write(encoder, bytes).map_err(IoError::from)
-            }
-            #[cfg(feature = "zstd")]
-            EncoderInner::Zstd(encoder) => {
-                std::io::Write::write(encoder, bytes).map_err(IoError::from)
-            }
-            #[cfg(feature = "snappy")]
-            EncoderInner::Snappy(encoder) => {
-                std::io::Write::write(encoder, bytes).map_err(IoError::from)
-            }
-        }
-    }
-
-    fn flush(&mut self) -> Result<(), IoError> {
-        match &mut self.inner {
-            EncoderInner::Store(sink) => Io::flush(sink),
-            #[cfg(feature = "gzip")]
-            EncoderInner::Gzip(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
-            #[cfg(feature = "zstd")]
-            EncoderInner::Zstd(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
-            #[cfg(feature = "snappy")]
-            EncoderInner::Snappy(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
-        }
-    }
-}
-
-/// A streaming decompressor returned by [`Compression::decoder`]. A read-only
-/// [`Io`] handle: reads pull compressed bytes from the wrapped source and yield
-/// the decompressed stream until it drains.
-pub struct Decoder<R: Io> {
-    inner: DecoderInner<R>,
-}
-
-enum DecoderInner<R: Io> {
-    /// Identity: reads pass straight through.
-    Store(R),
-    #[cfg(feature = "gzip")]
-    Gzip(flate2::read::GzDecoder<ReadShim<R>>),
-    #[cfg(feature = "zstd")]
-    Zstd(zstd::stream::read::Decoder<'static, std::io::BufReader<ReadShim<R>>>),
-    #[cfg(feature = "snappy")]
-    Snappy(snap::read::FrameDecoder<ReadShim<R>>),
-}
-
-impl<R: Io> fmt::Debug for Decoder<R> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Decoder").finish_non_exhaustive()
-    }
-}
-
-impl<R: Io> Io for Decoder<R> {
-    /// A synthetic in-memory address — a decoder is a transient streaming adapter.
-    fn url(&self) -> Url {
-        Url::new("mem", "decoder")
-    }
-
-    fn stats(&self) -> Result<IoStats, IoError> {
-        Ok(IoStats::new(0))
-    }
-
-    fn seek(&mut self, _offset: i64, _whence: Whence) -> Result<u64, IoError> {
-        Err(IoError::Unsupported(
-            "seek on a streaming decoder (it is read-only and forward-only)".to_string(),
-        ))
-    }
-
-    fn stream_position(&self) -> u64 {
-        0
-    }
-
-    /// Decompresses into `buf` from the wrapped source, returning the count read.
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
-        match &mut self.inner {
-            DecoderInner::Store(source) => source.read(buf),
-            #[cfg(feature = "gzip")]
-            DecoderInner::Gzip(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
-            #[cfg(feature = "zstd")]
-            DecoderInner::Zstd(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
-            #[cfg(feature = "snappy")]
-            DecoderInner::Snappy(decoder) => {
-                std::io::Read::read(decoder, buf).map_err(IoError::from)
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -676,7 +469,7 @@ mod tests {
         raw.write_all(b"inferred payload").unwrap();
         std::fs::write(&path, raw.finish().unwrap()).unwrap();
 
-        let mut handle = yggdryl_io::LocalPath::open(path.to_str().unwrap());
+        let mut handle = crate::LocalPath::open(path.to_str().unwrap());
         assert_eq!(handle.compression(), Compression::Gzip);
         let out = handle.decompress(None).unwrap();
         assert_eq!(out.getvalue(), b"inferred payload");
@@ -717,8 +510,7 @@ mod tests {
     #[cfg(feature = "media")]
     #[test]
     fn infers_codec_from_mime_and_stats() {
-        use yggdryl_io::IoStats;
-        use yggdryl_media::{MediaType, MimeType};
+        use crate::{IoStats, MediaType, MimeType};
 
         assert_eq!(
             Compression::from_mime(&MimeType::Gzip),

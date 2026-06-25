@@ -1,12 +1,12 @@
 //! Lightweight timing benchmark for `Version` parsing/rendering.
 //!
-//! Run with `cargo bench -p yggdryl-version`. Uses a plain `main` (the crate
+//! Run with `cargo bench -p yggdryl-core --bench version`. Uses a plain `main` (the crate
 //! sets `harness = false`) so there is no benchmark-framework dependency.
 
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_version::{ToOutput, Version};
+use yggdryl_core::{ToOutput, Version};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {

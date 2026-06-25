@@ -1,8 +1,8 @@
 //! Node.js extension for **yggdryl**.
 //!
-//! Thin napi-rs wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`],
-//! [`yggdryl_version::Version`], [`yggdryl_media::MimeType`] and
-//! [`yggdryl_media::MediaType`]; each type lives in its own module, mirroring the
+//! Thin napi-rs wrappers around [`yggdryl_core::Uri`]/[`yggdryl_core::Url`],
+//! [`yggdryl_core::Version`], [`yggdryl_core::MimeType`] and
+//! [`yggdryl_core::MediaType`]; each type lives in its own module, mirroring the
 //! Rust crates. All logic lives in the shared core so the Node and Python
 //! bindings stay in lockstep.
 
@@ -21,8 +21,8 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_io::Whence;
-use yggdryl_url::{percent_decode, percent_encode, Mapping};
+use yggdryl_core::Whence;
+use yggdryl_core::{percent_decode, percent_encode, Mapping};
 
 /// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
 pub(crate) fn to_mapping(fields: HashMap<String, String>) -> Mapping {

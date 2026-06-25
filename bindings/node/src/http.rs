@@ -10,8 +10,8 @@ use std::sync::Arc;
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
+use yggdryl_core::{LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, Method};
-use yggdryl_io::{LocalPath as CoreLocalPath, Path};
 
 use crate::localpath::LocalPath;
 

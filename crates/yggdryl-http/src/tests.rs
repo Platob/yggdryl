@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use yggdryl_io::{BytesIO, Io, Whence};
+use yggdryl_core::{BytesIO, Io, Whence};
 
 use crate::{HttpError, HttpRequest, HttpResponseBatch, HttpSession, Method, RetryConfig};
 
@@ -73,7 +73,7 @@ fn io_factory_opens_an_http_url() {
     let (url, _rx) = serve_once(ok_reply("text/plain", b"factory body"));
     // Building a session registers http/https with the yggdryl-io factory.
     let _session = HttpSession::new();
-    let mut body = yggdryl_io::from_str(&url).unwrap();
+    let mut body = yggdryl_core::from_str(&url).unwrap();
     let mut out = Vec::new();
     body.read_to_end(&mut out).unwrap();
     assert_eq!(out, b"factory body");
@@ -250,9 +250,7 @@ fn buffered_send_drains_the_body_and_releases_the_connection() {
 #[test]
 fn gzip_response_is_decoded_transparently() {
     let body = b"this body was gzip-encoded on the wire".to_vec();
-    let packed = yggdryl_compression::Compression::Gzip
-        .compress(&body)
-        .unwrap();
+    let packed = yggdryl_core::Compression::Gzip.compress(&body).unwrap();
     let mut reply = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         packed.len()
@@ -273,7 +271,7 @@ fn response_mime_type_from_content_type() {
     let response = HttpSession::new().get(&url).unwrap();
     assert_eq!(
         response.mime_type(),
-        Some(yggdryl_media::MimeType::from_str("application/json").unwrap())
+        Some(yggdryl_core::MimeType::from_str("application/json").unwrap())
     );
 }
 
@@ -1135,7 +1133,7 @@ fn redirect_loop_errors() {
     let result = session.send(
         HttpRequest::from_url(
             Method::Get,
-            yggdryl_url::Url::from_str(&format!("{url}/loop")).unwrap(),
+            yggdryl_core::Url::from_str(&format!("{url}/loop")).unwrap(),
         ),
         false,
         true,
@@ -1257,7 +1255,7 @@ fn an_expired_cookie_is_not_sent() {
 fn a_secure_cookie_is_withheld_over_http() {
     // A Secure cookie set over the (test) http connection must not be sent back
     // over plain http — the domain matches but the scheme rule withholds it.
-    let url = yggdryl_url::Url::from_str("https://example.com/").unwrap();
+    let url = yggdryl_core::Url::from_str("https://example.com/").unwrap();
     let mut jar = crate::HttpCookies::new();
     let mut headers = crate::HttpHeaders::new();
     headers.insert("set-cookie", "tok=v; Path=/; Secure");
@@ -1265,6 +1263,6 @@ fn a_secure_cookie_is_withheld_over_http() {
     // Over https the cookie is offered.
     assert_eq!(jar.header_for(&url).as_deref(), Some("tok=v"));
     // Over plain http to the same host it is withheld.
-    let http = yggdryl_url::Url::from_str("http://example.com/").unwrap();
+    let http = yggdryl_core::Url::from_str("http://example.com/").unwrap();
     assert_eq!(jar.header_for(&http), None);
 }

@@ -1,8 +1,8 @@
 //! Python extension for **yggdryl**.
 //!
-//! Thin PyO3 wrappers around [`yggdryl_url::Uri`]/[`yggdryl_url::Url`],
-//! [`yggdryl_version::Version`], [`yggdryl_media::MimeType`] and
-//! [`yggdryl_media::MediaType`]; each type lives in its own module, mirroring the
+//! Thin PyO3 wrappers around [`yggdryl_core::Uri`]/[`yggdryl_core::Url`],
+//! [`yggdryl_core::Version`], [`yggdryl_core::MimeType`] and
+//! [`yggdryl_core::MediaType`]; each type lives in its own module, mirroring the
 //! Rust crates. All logic lives in the shared core, so the Python and Node
 //! bindings behave identically.
 
@@ -25,11 +25,11 @@ mod version;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use yggdryl_core::MediaError;
+use yggdryl_core::VersionError;
+use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
+use yggdryl_core::{IoError, Whence};
 use yggdryl_http::HttpError;
-use yggdryl_io::{IoError, Whence};
-use yggdryl_media::MediaError;
-use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
-use yggdryl_version::VersionError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
@@ -66,7 +66,7 @@ pub(crate) fn http_err(err: HttpError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
-/// Converts a `serde_json::Value` (from [`yggdryl_io::Io::json`]) into the
+/// Converts a `serde_json::Value` (from [`yggdryl_core::Io::json`]) into the
 /// matching Python object, so JSON is parsed in Rust and handed back natively.
 pub(crate) fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyObject {
     use pyo3::types::{PyDict, PyList};

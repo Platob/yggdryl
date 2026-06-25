@@ -740,20 +740,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
-name = "yggdryl-compression"
+name = "yggdryl-core"
 version = "0.1.1"
 dependencies = [
  "flate2",
  "log",
+ "memmap2",
+ "serde_json",
  "snap",
- "yggdryl-io",
- "yggdryl-media",
  "zstd",
 ]
-
-[[package]]
-name = "yggdryl-core"
-version = "0.1.1"
 
 [[package]]
 name = "yggdryl-http"
@@ -761,28 +757,6 @@ version = "0.1.1"
 dependencies = [
  "log",
  "ureq",
- "yggdryl-compression",
- "yggdryl-io",
- "yggdryl-media",
- "yggdryl-url",
-]
-
-[[package]]
-name = "yggdryl-io"
-version = "0.1.1"
-dependencies = [
- "log",
- "memmap2",
- "serde_json",
- "yggdryl-media",
- "yggdryl-url",
-]
-
-[[package]]
-name = "yggdryl-media"
-version = "0.1.1"
-dependencies = [
- "log",
  "yggdryl-core",
 ]
 
@@ -794,12 +768,8 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "serde_json",
- "yggdryl-compression",
+ "yggdryl-core",
  "yggdryl-http",
- "yggdryl-io",
- "yggdryl-media",
- "yggdryl-url",
- "yggdryl-version",
 ]
 
 [[package]]
@@ -808,29 +778,8 @@ version = "0.1.1"
 dependencies = [
  "pyo3",
  "serde_json",
- "yggdryl-compression",
+ "yggdryl-core",
  "yggdryl-http",
- "yggdryl-io",
- "yggdryl-media",
- "yggdryl-url",
- "yggdryl-version",
-]
-
-[[package]]
-name = "yggdryl-url"
-version = "0.1.1"
-dependencies = [
- "log",
- "yggdryl-core",
- "yggdryl-media",
-]
-
-[[package]]
-name = "yggdryl-version"
-version = "0.1.1"
-dependencies = [
- "log",
- "yggdryl-core",
 ]
 
 [[package]]

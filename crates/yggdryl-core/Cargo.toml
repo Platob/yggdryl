@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Dependency-free foundations (parsing, percent-encoding, Version) for yggdryl"
+description = "Consolidated foundations for yggdryl: parsing, percent-encoding, Version, MIME/media types, URI/URL, byte-IO and streamed compression"
 keywords.workspace = true
 readme = "README.md"
 
@@ -14,4 +14,49 @@ readme = "README.md"
 name = "yggdryl_core"
 path = "src/lib.rs"
 
+[[bench]]
+name = "version"
+harness = false
+
+[[bench]]
+name = "url"
+harness = false
+
+[[bench]]
+name = "io"
+harness = false
+
+[[bench]]
+name = "compression"
+harness = false
+
 [dependencies]
+# All heavy dependencies are optional and off by default (except the compression
+# codec backends, on by `default`):
+#   log    structured logging via the `log` facade;
+#   mmap   memory-mapped, zero-copy local files in `LocalPath` (memmap2);
+#   json   `Io::json()` — a zero-copy parse of a handle's bytes (serde_json);
+#   gzip / zstd / snappy   the matching streamed compression backend.
+log = { version = "0.4", optional = true }
+memmap2 = { version = "0.9", optional = true }
+serde_json = { version = "1", optional = true }
+flate2 = { version = "1", optional = true }
+zstd = { version = "0.13", optional = true }
+snap = { version = "1", optional = true }
+
+[features]
+# The common compression codecs ship on by default; opt out with
+# `default-features = false` for a codec-free build (each variant then parses and
+# names itself but reports `Unsupported` on encode/decode).
+default = ["gzip", "zstd", "snappy"]
+log = ["dep:log"]
+mmap = ["dep:memmap2"]
+# The `media` module is always compiled (the URL types reference it
+# unconditionally, no extra dependency); this feature only gates the
+# `media_type()` / `from_mime` / `from_media` / `from_stats` accessors on the
+# `Io` / `Path` / compression layers.
+media = []
+json = ["dep:serde_json"]
+gzip = ["dep:flate2"]
+zstd = ["dep:zstd"]
+snappy = ["dep:snap"]

@@ -2,8 +2,8 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_compression::{CompressIo, Compression as CoreCompression};
-use yggdryl_io::{BytesIO as CoreBytesIO, Io, Mode};
+use yggdryl_core::{BytesIO as CoreBytesIO, Io, Mode};
+use yggdryl_core::{CompressIo, Compression as CoreCompression};
 
 use crate::iostats::IoStats;
 use crate::url::Url;

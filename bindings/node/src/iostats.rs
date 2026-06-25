@@ -3,7 +3,7 @@
 use std::time::UNIX_EPOCH;
 
 use napi_derive::napi;
-use yggdryl_io::IoStats as CoreIoStats;
+use yggdryl_core::IoStats as CoreIoStats;
 
 use crate::media::MediaType;
 

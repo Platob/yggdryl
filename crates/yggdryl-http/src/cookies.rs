@@ -2,7 +2,7 @@
 
 use crate::headers::HttpHeaders;
 use crate::time::now_secs;
-use yggdryl_url::Url;
+use yggdryl_core::Url;
 
 /// One stored cookie, as parsed from a `Set-Cookie` response header.
 ///
@@ -13,7 +13,7 @@ use yggdryl_url::Url;
 ///
 /// ```
 /// use yggdryl_http::Cookie;
-/// use yggdryl_url::Url;
+/// use yggdryl_core::Url;
 ///
 /// let url = Url::from_str("https://example.com/app").unwrap();
 /// let cookie = Cookie::from_set_cookie("sid=abc; Path=/; Secure", &url).unwrap();
@@ -193,7 +193,7 @@ impl Cookie {
 ///
 /// ```
 /// use yggdryl_http::{HttpCookies, HttpHeaders};
-/// use yggdryl_url::Url;
+/// use yggdryl_core::Url;
 ///
 /// let url = Url::from_str("https://example.com/").unwrap();
 /// let mut jar = HttpCookies::new();

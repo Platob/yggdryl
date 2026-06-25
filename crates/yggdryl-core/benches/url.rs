@@ -1,13 +1,13 @@
 //! Lightweight timing benchmarks for the hot parsing/rendering paths.
 //!
-//! Run with `cargo bench -p yggdryl-url`. Uses a plain `main` (the crate sets
+//! Run with `cargo bench -p yggdryl-core --bench url`. Uses a plain `main` (the crate sets
 //! `harness = false`) so there is no benchmark-framework dependency; it reports
 //! nanoseconds per iteration using a fixed iteration count.
 
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_url::{percent_decode, percent_encode, Mapping, MediaType, MimeType, Uri, Url};
+use yggdryl_core::{percent_decode, percent_encode, Mapping, MediaType, MimeType, Uri, Url};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {

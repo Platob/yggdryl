@@ -2,7 +2,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_compression::Compression as CoreCompression;
+use yggdryl_core::Compression as CoreCompression;
 
 use crate::mime::MimeType;
 

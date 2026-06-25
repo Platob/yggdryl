@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use yggdryl_io::{BytesIO, Io};
+use yggdryl_core::{BytesIO, Io};
 
 use crate::bridge::IoBridge;
 use crate::cookies::{Cookie, HttpCookies};
@@ -63,7 +63,7 @@ impl HttpSession {
 
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
         // Plug http/https into the yggdryl-io factory the first time a session is
-        // built, so `yggdryl_io::from_str("https://…")` works once this crate links.
+        // built, so `yggdryl_core::from_str("https://…")` works once this crate links.
         crate::factory::register();
         let max_pool = max_pool.max(1);
         let agent = build_agent(max_pool);
@@ -149,7 +149,7 @@ impl HttpSession {
     /// path `"/"`, so it is sent on matching requests. Ignores an empty `name`.
     pub fn set_cookie(
         &self,
-        url: &yggdryl_url::Url,
+        url: &yggdryl_core::Url,
         name: impl Into<String>,
         value: impl Into<String>,
     ) {
@@ -237,7 +237,7 @@ impl HttpSession {
     /// `stream` (`true` for the verb helpers and [`request`](HttpSession::request))
     /// keeps the live [`HttpStream`] as the body, read lazily/seekably off the
     /// connection; `false` drains the body into an in-memory
-    /// [`BytesIO`](yggdryl_io::BytesIO) before returning, releasing the connection
+    /// [`BytesIO`](yggdryl_core::BytesIO) before returning, releasing the connection
     /// immediately — the same accessors expose either body.
     pub fn send(
         &self,

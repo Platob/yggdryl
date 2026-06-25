@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use yggdryl_io::IoError;
+use yggdryl_core::IoError;
 
 /// The error type for every [`HttpSession`](crate::HttpSession) /
 /// [`HttpRequest`](crate::HttpRequest) / [`HttpResponse`](crate::HttpResponse)

@@ -1,7 +1,7 @@
 //! The [`HttpResponse`] — it holds all the logic to read its body from the server.
 
-use yggdryl_io::{BytesIO, Io};
-use yggdryl_url::Url;
+use yggdryl_core::Url;
+use yggdryl_core::{BytesIO, Io};
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
@@ -10,7 +10,7 @@ use crate::time::Instant;
 /// A received HTTP response, modelled on `requests.Response`. It **holds the logic
 /// to read its body from the server**: the body is a [`Box<dyn Io>`](Io) — a live
 /// [`HttpStream`](crate::HttpStream) when streamed, or an in-memory
-/// [`BytesIO`](yggdryl_io::BytesIO) when buffered — read lazily through
+/// [`BytesIO`](yggdryl_core::BytesIO) when buffered — read lazily through
 /// [`reader`](HttpResponse::reader) and drained by [`bytes`](HttpResponse::bytes)
 /// / [`text`](HttpResponse::text) / [`into_bytesio`](HttpResponse::into_bytesio),
 /// or taken whole with [`into_io`](HttpResponse::into_io) for seekable access.
@@ -31,7 +31,7 @@ pub struct HttpResponse {
 impl HttpResponse {
     /// Assembles a response from its status, URL, response headers, the body
     /// [`Io`] (a live [`HttpStream`](crate::HttpStream) or a buffered
-    /// [`BytesIO`](yggdryl_io::BytesIO)) and its timing (`sent_at` when the
+    /// [`BytesIO`](yggdryl_core::BytesIO)) and its timing (`sent_at` when the
     /// request was dispatched, `received_at` shared with the body's stream).
     pub(crate) fn new(
         status: u16,
@@ -59,7 +59,7 @@ impl HttpResponse {
 
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
     /// live [`HttpStream`](crate::HttpStream) when streamed, the buffered
-    /// [`BytesIO`](yggdryl_io::BytesIO) when not — for seekable access.
+    /// [`BytesIO`](yggdryl_core::BytesIO) when not — for seekable access.
     pub fn into_io(self) -> Box<dyn Io> {
         self.body
     }
@@ -129,9 +129,9 @@ impl HttpResponse {
     /// The response media type, inferred from its `Content-Type`. Only present
     /// under the `media` feature.
     #[cfg(feature = "media")]
-    pub fn mime_type(&self) -> Option<yggdryl_media::MimeType> {
+    pub fn mime_type(&self) -> Option<yggdryl_core::MimeType> {
         self.content_type()
-            .and_then(|content_type| yggdryl_media::MimeType::from_str(content_type).ok())
+            .and_then(|content_type| yggdryl_core::MimeType::from_str(content_type).ok())
     }
 
     /// Consumes the response and returns its body as a streaming [`Io`] source.
@@ -146,10 +146,8 @@ impl HttpResponse {
             // undecoded body never trips over a moved value.
             let codec = headers
                 .get("content-encoding")
-                .and_then(|encoding| yggdryl_compression::Compression::from_str(encoding).ok())
-                .filter(|codec| {
-                    *codec != yggdryl_compression::Compression::None && codec.is_available()
-                });
+                .and_then(|encoding| yggdryl_core::Compression::from_str(encoding).ok())
+                .filter(|codec| *codec != yggdryl_core::Compression::None && codec.is_available());
             if let Some(codec) = codec {
                 log_event!(debug, "HttpResponse::reader decoding {codec}");
                 return match codec.decoder(body) {

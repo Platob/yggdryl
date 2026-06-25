@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_compression::Compression as CoreCompression;
+use yggdryl_core::Compression as CoreCompression;
 
 use crate::mime::MimeType;
 use crate::{hash_str, io_err};

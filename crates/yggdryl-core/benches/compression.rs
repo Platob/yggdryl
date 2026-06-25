@@ -1,6 +1,6 @@
 //! Lightweight throughput benchmarks for the compression codecs.
 //!
-//! Run with `cargo bench -p yggdryl-compression --all-features` (a codec whose
+//! Run with `cargo bench -p yggdryl-core --bench compression --all-features` (a codec whose
 //! feature is off is skipped). Uses a plain `main` (the crate sets
 //! `harness = false`) so there is no benchmark-framework dependency; it reports
 //! MiB/s over the *uncompressed* size for both one-shot and streamed paths.
@@ -14,8 +14,8 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_compression::{CompressIo, Compression};
-use yggdryl_io::{BytesIO, Whence};
+use yggdryl_core::{BytesIO, Whence};
+use yggdryl_core::{CompressIo, Compression};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and reports
 /// throughput in MiB/s relative to `bytes` processed per iteration.
