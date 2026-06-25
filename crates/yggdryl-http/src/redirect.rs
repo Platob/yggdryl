@@ -90,14 +90,18 @@ fn resolve_relative(base_path: &str, target: &str) -> String {
 
 /// Builds the next request for a redirect, applying RFC 7231 method/body
 /// semantics for `status` and stripping per-host-sensitive headers on a
-/// cross-host hop. Returns `None` when the redirect cannot be followed safely —
-/// a 307/308 whose body is a non-replayable stream — so the caller returns the
-/// 3xx response untouched rather than corrupting state.
+/// cross-host hop. `replayable` reports whether the *original* request body
+/// could be re-sent (it is `false` for a single-shot stream, which `body` has
+/// already been downgraded to [`Body::Empty`]). Returns `None` when the redirect
+/// cannot be followed safely — a 307/308 whose original body was a non-replayable
+/// stream — so the caller returns the 3xx response untouched rather than
+/// re-dispatching with a silently emptied body.
 pub(crate) fn next_request(
     previous: &HttpRequest,
     target: Url,
     status: u16,
     body: Body,
+    replayable: bool,
 ) -> Option<HttpRequest> {
     let cross_host = !same_origin(&previous.url, &target);
     let (method, body) = match status {
@@ -110,7 +114,7 @@ pub(crate) fn next_request(
         // 307/308: preserve method and body — but only a replayable body can be
         // re-sent; a consumed stream cannot, so refuse the hop.
         307 | 308 => {
-            if !body.replayable() {
+            if !replayable {
                 log_event!(
                     warn,
                     "not following {status} redirect: streamed body is single-shot"

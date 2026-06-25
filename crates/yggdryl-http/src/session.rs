@@ -263,11 +263,12 @@ impl HttpSession {
                 )));
             }
 
-            // Add the jar's Cookie header before dispatch (unless the request set
-            // one itself), then dispatch this single hop.
-            self.apply_cookies(&mut request);
-            // Capture the request shape and a replayable body copy *before*
-            // dispatch consumes it, so a 307/308 hop can preserve method + body.
+            // Snapshot the request shape *before* the jar's Cookie is applied, so a
+            // later hop re-derives the Cookie for its own host instead of resending
+            // this hop's value. A user-set per-request Cookie is already in the
+            // headers here and is preserved. Also capture the body's replayability
+            // and a replayable copy now, before dispatch consumes the body, so a
+            // 307/308 hop can preserve method + body (and refuse a consumed stream).
             let previous = HttpRequest {
                 method: request.method,
                 url: request.url.clone(),
@@ -275,8 +276,12 @@ impl HttpSession {
                 body: Body::Empty,
                 allow_redirect,
             };
+            let replayable = request.body.replayable();
             let replay_body = request.body.replay_copy();
 
+            // Add the jar's Cookie header before dispatch (unless the request set
+            // one itself), then dispatch this single hop.
+            self.apply_cookies(&mut request);
             let response = self.dispatch(request, keep_alive, stream)?;
             sent_at.get_or_insert(response.sent_at());
             let status = response.status();
@@ -303,7 +308,7 @@ impl HttpSession {
             }
 
             let target = redirect::resolve(&previous.url, &location)?;
-            match redirect::next_request(&previous, target, status, replay_body) {
+            match redirect::next_request(&previous, target, status, replay_body, replayable) {
                 Some(next) => {
                     // Drain/close the intermediate body to release its connection,
                     // then continue with the next hop.

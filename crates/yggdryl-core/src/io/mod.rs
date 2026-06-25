@@ -562,7 +562,7 @@ pub trait Io: fmt::Debug + Send + Sync {
 
     /// Drains from the cursor to the end, appending every byte to `out` and
     /// returning how many were read. A memory-resident handle hands over its tail
-    /// in one copy; otherwise it streams in 64 KiB chunks.
+    /// in one copy; otherwise it streams in 1 MiB chunks.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
         if self.as_slice().is_some() {
             let copied = {
@@ -631,7 +631,7 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// Copies every byte from the cursor to the end into `dst`, returning the
     /// count. A memory-resident source writes its tail in a single
     /// [`write_all`](Io::write_all) (zero intermediate copies); otherwise it streams
-    /// in 64 KiB chunks. See also the free [`copy`] function.
+    /// in 1 MiB chunks. See also the free [`copy`] function.
     fn copy_to(&mut self, dst: &mut dyn Io) -> Result<u64, IoError> {
         if self.as_slice().is_some() {
             // Fast path: hand the remaining slice straight to the sink, then
@@ -711,7 +711,7 @@ fn scheme_registry() -> &'static RwLock<HashMap<String, SchemeOpener>> {
 /// Registers `opener` as the [`Io`] factory for a URL `scheme` (lower-cased), so
 /// [`from_uri`] dispatches that scheme to it. Idempotent per scheme (the latest
 /// registration wins). This is how `yggdryl-http` plugs `http`/`https` into the
-/// universal [`from_str`] factory without `yggdryl-io` depending on it.
+/// universal [`from_str`] factory without `yggdryl-core` depending on it.
 pub fn register_scheme(scheme: &str, opener: SchemeOpener) {
     log_event!(info, "Io::register_scheme {scheme}");
     scheme_registry()

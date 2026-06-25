@@ -1252,6 +1252,50 @@ fn an_expired_cookie_is_not_sent() {
 }
 
 #[test]
+fn redirect_307_with_a_streamed_body_returns_the_3xx() {
+    // A 307 must preserve method *and* body, but a streamed (single-shot) body
+    // cannot be replayed — so the 3xx is returned untouched rather than
+    // re-dispatched with a silently emptied body.
+    let (url, _rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(307, "Temporary Redirect", "/again")),
+        Box::new(|_| ok_reply("text/plain", b"unreachable")),
+    ]);
+    let session = HttpSession::new();
+    let response = session
+        .send(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body_io(BytesIO::from_bytes(b"streamed".to_vec())),
+            false,
+            true,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 307);
+    assert_eq!(response.header("location"), Some("/again"));
+}
+
+#[test]
+fn a_cookie_set_by_a_redirect_is_re_derived_on_the_next_hop() {
+    // The redirecting response sets a cookie; the followed hop (same host) must
+    // send *that* cookie, not carry a stale value from the first hop.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| {
+            let mut reply = b"HTTP/1.1 302 Found\r\nLocation: /next\r\nSet-Cookie: sid=fromredirect; Path=/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+            reply.extend_from_slice(b"");
+            reply
+        }),
+        Box::new(|_| ok_reply("text/plain", b"done")),
+    ]);
+    let session = HttpSession::new();
+    let response = session.get(&url).unwrap();
+    assert_eq!(response.status(), 200);
+    let _first = rx.recv().unwrap();
+    let second = rx.recv().unwrap().to_lowercase();
+    assert!(second.contains("cookie: sid=fromredirect"), "{second}");
+}
+
+#[test]
 fn a_secure_cookie_is_withheld_over_http() {
     // A Secure cookie set over the (test) http connection must not be sent back
     // over plain http — the domain matches but the scheme rule withholds it.
