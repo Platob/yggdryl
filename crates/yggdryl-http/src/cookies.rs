@@ -283,7 +283,7 @@ impl HttpCookies {
         if matched.is_empty() {
             return None;
         }
-        matched.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
+        matched.sort_by_key(|cookie| std::cmp::Reverse(cookie.path.len()));
         // Write straight into one reused String (no Vec<String> + join).
         let mut header = String::new();
         for cookie in matched {
