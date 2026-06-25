@@ -85,6 +85,19 @@ fn main() {
         black_box(Io::read(&mut io, &mut chunk).unwrap());
     });
 
+    // Append-heavy writes: build a 1 MiB buffer from 4 KiB chunks, reusing the
+    // sink's capacity each round (clear keeps it). This exercises the amortized
+    // grow path — the appended region is written once, never zero-filled first.
+    println!("\n== streamed write (append, 1 MiB in 4 KiB chunks) ==");
+    let chunk = vec![9u8; 4096];
+    let mut sink = BytesIO::with_capacity(1024 * 1024);
+    bench_throughput("Io::write append loop", 4000, 1024 * 1024, || {
+        sink.clear();
+        for _ in 0..256 {
+            black_box(Io::write(&mut sink, black_box(&chunk)).unwrap());
+        }
+    });
+
     // Reuse the source (rewind with seek) and the destination (clear keeps its
     // capacity) so the timed work is the transfer itself, not a 4 MiB clone.
     println!("\n== transfer (4 MiB, source reused) ==");

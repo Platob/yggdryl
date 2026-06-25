@@ -1027,6 +1027,30 @@ mod tests {
     }
 
     #[test]
+    fn bytesio_write_grows_amortized_overlap_append_and_empty() {
+        // A spanning write overwrites the overlap in place and appends the tail
+        // (the appended region is written once, never zero-filled then overwritten).
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(2, Whence::Start).unwrap();
+        assert_eq!(io.write(b"CDEF").unwrap(), 4);
+        assert_eq!(io.getvalue(), b"abCDEF");
+        // Pure append from the end grows the buffer.
+        assert_eq!(io.write(b"gh").unwrap(), 2);
+        assert_eq!(io.getvalue(), b"abCDEFgh");
+        // A write fully within the buffer only overwrites (no growth).
+        io.seek(0, Whence::Start).unwrap();
+        let cap_before = io.capacity();
+        io.write(b"AB").unwrap();
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+        assert_eq!(io.capacity(), cap_before);
+        // An empty write is a no-op even when seeked past the end — it must NOT
+        // grow/zero-fill the buffer (matching Python's BytesIO).
+        io.seek(100, Whence::Start).unwrap();
+        assert_eq!(io.write(b"").unwrap(), 0);
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+    }
+
+    #[test]
     fn bytesio_write_far_past_end_errors_without_huge_alloc() {
         // Seeking to a legal-but-astronomical position then writing must not try to
         // resize the buffer to exabytes (abort) — it errors instead.

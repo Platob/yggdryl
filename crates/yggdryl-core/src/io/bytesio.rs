@@ -252,7 +252,18 @@ impl BytesIO {
     /// end (a legal Python operation), so a write there would otherwise resize the
     /// buffer to an astronomical length and abort the process. The extent is capped
     /// at [`isize::MAX`] (the `Vec` allocation limit), returning [`IoError::Invalid`].
+    ///
+    /// Growth is **amortized** and never redundantly zero-filled: the bytes that
+    /// extend past the end are appended with [`Vec::extend_from_slice`] (which grows
+    /// the capacity geometrically, like `push`), so a sequence of appends is `O(n)`
+    /// overall and the freshly-grown region is written once — not memset to zero and
+    /// then overwritten. Only a genuine gap left by seeking past the end is
+    /// zero-filled. An empty write is a no-op (it never grows the buffer, matching
+    /// Python's `BytesIO`).
     fn put(&mut self, bytes: &[u8], advance: bool) -> Result<usize, IoError> {
+        if bytes.is_empty() {
+            return Ok(0);
+        }
         let start = self.position;
         let end = start
             .checked_add(bytes.len())
@@ -263,10 +274,19 @@ impl BytesIO {
                     bytes.len()
                 ))
             })?;
-        if self.buffer.len() < end {
-            self.buffer.resize(end, 0);
+        let len = self.buffer.len();
+        if start <= len {
+            // Overwrite the overlap with existing bytes in place, then append the
+            // remainder — growing geometrically with no zero-fill of the new region.
+            let overlap = len.min(end) - start;
+            self.buffer[start..start + overlap].copy_from_slice(&bytes[..overlap]);
+            self.buffer.extend_from_slice(&bytes[overlap..]);
+        } else {
+            // The cursor sits past the end: zero-fill only the gap `[len, start)`,
+            // then append the bytes (never zero-filling the region we then write).
+            self.buffer.resize(start, 0);
+            self.buffer.extend_from_slice(bytes);
         }
-        self.buffer[start..end].copy_from_slice(bytes);
         if advance {
             self.position = end;
         }
