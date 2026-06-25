@@ -372,6 +372,13 @@ impl ReadBytes for HttpBody {
     fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         self.inner.read_bytes(buf)
     }
+
+    /// Drains into `out` via the inner reader's own `read_to_end`, so an
+    /// undecoded body flows once off the socket (see [`ReadAdapter`]) instead of
+    /// bouncing through a stack buffer.
+    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
+        self.inner.read_to_end(out)
+    }
 }
 
 /// A received HTTP response, modelled on `requests.Response`: a status, headers,
@@ -504,7 +511,10 @@ impl HttpResponse {
     /// Drains the body into a `Vec<u8>` (decompressing under the `compression`
     /// feature).
     pub fn bytes(self) -> Result<Vec<u8>, HttpError> {
-        let mut out = Vec::new();
+        // Pre-size from Content-Length when present (a hint; a compressed body
+        // expands past it, an empty one wastes nothing).
+        let hint = self.content_length().unwrap_or(0).min(64 * 1024 * 1024) as usize;
+        let mut out = Vec::with_capacity(hint);
         self.reader().read_to_end(&mut out)?;
         Ok(out)
     }
@@ -1283,6 +1293,12 @@ struct ReadAdapter<R: std::io::Read>(R);
 impl<R: std::io::Read> ReadBytes for ReadAdapter<R> {
     fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         self.0.read(buf).map_err(IoError::from)
+    }
+
+    /// Drains straight off the transport into `out` with one copy, via the inner
+    /// reader's `std::io::Read::read_to_end` (no intermediate stack buffer).
+    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
+        std::io::Read::read_to_end(&mut self.0, out).map_err(IoError::from)
     }
 }
 
