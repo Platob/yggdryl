@@ -184,15 +184,42 @@ fn raise_for_status_flags_errors() {
 
 #[test]
 fn get_raises_on_error_status_by_default() {
+    // A 404 is not retried, so a single-shot server suffices; get() raises.
     let reply =
-        b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-            .to_vec();
+        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
     let (url, _rx) = serve_once(reply);
-    // get() uses raise_error = true, so a 500 is an error.
     assert!(matches!(
         HttpSession::new().get(&url),
-        Err(HttpError::Status(500))
+        Err(HttpError::Status(404))
     ));
+}
+
+#[test]
+fn retries_a_500_once_then_surfaces_it() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+    let hits = Arc::new(AtomicU32::new(0));
+    let counter = hits.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = stream;
+            let _ = read_request(&mut stream);
+            counter.fetch_add(1, Ordering::SeqCst);
+            let _ = stream.write_all(
+                b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
+    let session = HttpSession::new().with_retry(RetryConfig {
+        max_retries: 3,
+        base_delay: Duration::from_millis(1),
+        max_delay: Duration::from_millis(2),
+    });
+    // A 500 is retried exactly once (not the full max_retries), then surfaced.
+    assert!(matches!(session.get(&url), Err(HttpError::Status(500))));
+    assert_eq!(hits.load(Ordering::SeqCst), 2); // initial + one retry
 }
 
 #[test]

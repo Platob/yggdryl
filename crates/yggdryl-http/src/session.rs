@@ -328,7 +328,9 @@ impl HttpSession {
             match outcome {
                 Ok(response) => {
                     let status = response.status().as_u16();
-                    if attempt < self.retry.max_retries && self.retry.retryable_status(status) {
+                    if attempt < self.retry.max_retries
+                        && self.retry.retryable_status(status, attempt)
+                    {
                         let delay = self
                             .retry
                             .backoff(attempt, HttpHeaders::from(response.headers()).retry_after());

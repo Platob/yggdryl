@@ -371,6 +371,14 @@ impl IoStats {
     }
 }
 
+/// The streaming-transfer chunk size — **1 MiB**, heap-allocated. The streamed
+/// [`read_to_end`](Io::read_to_end) / [`copy_to`](Io::copy_to) loops move a
+/// megabyte at a time (not the OS-pipe-sized 4–64 KiB), which is the sweet spot
+/// for the large columnar payloads (Parquet / CSV / JSON) this crate underpins:
+/// far fewer syscalls / FFI hops per gigabyte, with a buffer small enough to stay
+/// cache-resident.
+pub const STREAM_CHUNK: usize = 1024 * 1024;
+
 /// Resolves an `(offset, whence)` pair against the current `position` and an
 /// optional total `len` into an absolute byte position — the one place the
 /// cursor / start / end arithmetic lives, shared by [`Io::seek`] and
@@ -602,7 +610,7 @@ pub trait Io: fmt::Debug + Send + Sync {
             self.seek(0, Whence::End)?;
             return Ok(copied);
         }
-        let mut chunk = [0u8; 64 * 1024];
+        let mut chunk = vec![0u8; STREAM_CHUNK];
         let mut total = 0;
         loop {
             let count = self.read(&mut chunk)?;
@@ -676,7 +684,7 @@ pub trait Io: fmt::Debug + Send + Sync {
             self.seek(0, Whence::End)?;
             return Ok(copied);
         }
-        let mut chunk = [0u8; 64 * 1024];
+        let mut chunk = vec![0u8; STREAM_CHUNK];
         let mut copied = 0u64;
         loop {
             let count = self.read(&mut chunk)?;

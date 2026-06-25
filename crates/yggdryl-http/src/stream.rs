@@ -167,7 +167,9 @@ impl HttpStream {
             match outcome {
                 Ok(response) => {
                     let status = response.status().as_u16();
-                    if attempt < self.retry.max_retries && self.retry.retryable_status(status) {
+                    if attempt < self.retry.max_retries
+                        && self.retry.retryable_status(status, attempt)
+                    {
                         let delay = self
                             .retry
                             .backoff(attempt, HttpHeaders::from(response.headers()).retry_after());
@@ -429,7 +431,7 @@ impl Io for HttpStream {
         }
         while self.remaining() != Some(0) {
             let base = out.len();
-            out.resize(base + 64 * 1024, 0);
+            out.resize(base + yggdryl_io::STREAM_CHUNK, 0);
             let count = self.read_live(&mut out[base..])?;
             out.truncate(base + count);
             if count == 0 {
