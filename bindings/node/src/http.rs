@@ -275,6 +275,8 @@ impl HttpSession {
         http_version: Option<String>,
         verify: Option<bool>,
         proxy: Option<String>,
+        ca_cert: Option<Buffer>,
+        ca_cert_file: Option<String>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -301,6 +303,12 @@ impl HttpSession {
         }
         if let Some(proxy) = proxy {
             inner = inner.with_proxy(&proxy).map_err(to_napi)?;
+        }
+        if let Some(ca_cert) = ca_cert {
+            inner = inner.with_ca_cert(&ca_cert).map_err(to_napi)?;
+        }
+        if let Some(ca_cert_file) = ca_cert_file {
+            inner = inner.with_ca_cert_file(&ca_cert_file).map_err(to_napi)?;
         }
         Ok(HttpSession {
             inner: Arc::new(inner),
@@ -339,6 +347,14 @@ impl HttpSession {
     #[napi(getter)]
     pub fn proxy(&self) -> Option<String> {
         self.inner.proxy()
+    }
+
+    /// The number of installed CA certificates (`0` means the default trust store is
+    /// used). Install certificates with the `caCert` / `caCertFile` constructor
+    /// arguments.
+    #[napi(getter, js_name = "caCertCount")]
+    pub fn ca_cert_count(&self) -> u32 {
+        self.inner.ca_cert_count() as u32
     }
 
     /// The session's cookies as an object of `name` to `value` (the jar snapshot —

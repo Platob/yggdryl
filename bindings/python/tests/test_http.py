@@ -178,6 +178,32 @@ def test_http_version_negotiation(base_url):
         session.request("GET", base_url + "/", http_version="3")
 
 
+# A self-signed certificate (PEM), used to exercise the CA installer.
+_CA_FIXTURE = b"""-----BEGIN CERTIFICATE-----
+MIIBQjCB9aADAgECAhQuzAiSQcN9LmU+b23fQ4OnlJr4nzAFBgMrZXAwFzEVMBMG
+A1UEAwwMeWdnZHJ5bC10ZXN0MB4XDTI2MDYyNTE4MDczOFoXDTM2MDYyMjE4MDcz
+OFowFzEVMBMGA1UEAwwMeWdnZHJ5bC10ZXN0MCowBQYDK2VwAyEAxQDw21VJgXZq
+oYc6cXjHtCyGS+Xhu4OzPcRqzez2t8yjUzBRMB0GA1UdDgQWBBS8VDtYTuBsTuVe
+Cc9+2uF8BKgWHzAfBgNVHSMEGDAWgBS8VDtYTuBsTuVeCc9+2uF8BKgWHzAPBgNV
+HRMBAf8EBTADAQH/MAUGAytlcANBAKXArPIcky5wHp+VgiKw954G3+1I1PQzmpfJ
+r9/00T2PpD5GwhdzsrH/liNZug/eMW7w38c0zU0A05lLhgZEIAM=
+-----END CERTIFICATE-----
+"""
+
+
+def test_ca_cert_installer():
+    # No CA installed by default; installing one (PEM) is reported.
+    assert yggdryl.HttpSession().ca_cert_count == 0
+    assert yggdryl.HttpSession(ca_cert=_CA_FIXTURE).ca_cert_count == 1
+    # Undecodable PEM and empty input are rejected at install time.
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(
+            ca_cert=b"-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----"
+        )
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(ca_cert=b"")
+
+
 def test_verify_and_proxy_options():
     # TLS verification is on by default; it can be disabled (insecure).
     assert yggdryl.HttpSession().verify is True

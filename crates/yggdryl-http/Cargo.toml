@@ -51,6 +51,9 @@ quinn = { version = "0.11.11", default-features = false, features = ["runtime-to
 h3 = { version = "0.0.8", default-features = false, optional = true }
 h3-quinn = { version = "0.0.10", default-features = false, optional = true }
 bytes = { version = "1", optional = true }
+# Parses PEM CA-certificate bundles for `with_ca_cert` (the cert installer); a raw
+# DER certificate is taken as-is, so this is the only TLS dep the base build needs.
+rustls-pemfile = { version = "2", default-features = false, features = ["std"] }
 
 [features]
 # `compression` (auto `Content-Encoding` decode) ships on by default so a plain

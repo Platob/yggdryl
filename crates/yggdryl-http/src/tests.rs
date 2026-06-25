@@ -1457,6 +1457,27 @@ fn verify_and_proxy_are_configurable() {
     assert!(HttpSession::new().with_proxy("not a url").is_err());
 }
 
+#[test]
+fn with_ca_cert_parses_pem_and_der_and_rejects_garbage() {
+    // A real (self-signed) certificate in both DER and PEM form installs.
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let der = issued.cert.der().to_vec();
+    let pem = issued.cert.pem();
+
+    let from_der = HttpSession::new().with_ca_cert(&der).unwrap();
+    assert_eq!(from_der.ca_cert_count(), 1);
+    let from_pem = HttpSession::new().with_ca_cert(pem.as_bytes()).unwrap();
+    assert_eq!(from_pem.ca_cert_count(), 1);
+    // Installs accumulate.
+    assert_eq!(from_pem.with_ca_cert(&der).unwrap().ca_cert_count(), 2);
+
+    // Garbage PEM (no decodable certificate) and empty input are rejected.
+    assert!(HttpSession::new()
+        .with_ca_cert(b"-----BEGIN CERTIFICATE-----\nnot-base64\n-----END CERTIFICATE-----")
+        .is_err());
+    assert!(HttpSession::new().with_ca_cert(b"").is_err());
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn http_data_types_serde_round_trip() {
@@ -1709,25 +1730,17 @@ fn http2_feature_marks_http2_available() {
     assert!(HttpVersion::Http2.is_available());
 }
 
-/// Hermetic HTTP/3 over QUIC: a localhost quinn + h3 server with a self-signed
-/// certificate answers one request, and the client — pinned to `HttpVersion::Http3`
-/// with `verify=false` to accept the self-signed cert — speaks QUIC and reports the
-/// negotiated version. UDP loopback only, no network.
+/// Spawns a localhost quinn + h3 server on an ephemeral UDP port that serves
+/// exactly one request (echoing `METHOD path`) using `cert_der`/`key_der`, then
+/// idles. Returns the bound port and the server thread handle. Hermetic — UDP
+/// loopback, no network.
 #[cfg(feature = "http3")]
-#[test]
-fn http3_quic_roundtrip_with_self_signed_cert() {
-    use crate::HttpVersion;
-    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
-
-    // A self-signed certificate + key for "localhost".
-    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-    let cert_der = issued.cert.der().clone();
-    let key_der = PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der());
-
-    // Bind a quinn h3 server on an ephemeral UDP port, hand the port back, then
-    // serve exactly one request before idling.
+fn serve_one_h3(
+    cert_der: tokio_rustls::rustls::pki_types::CertificateDer<'static>,
+    key_der: tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer<'static>,
+) -> (u16, std::thread::JoinHandle<()>) {
     let (port_tx, port_rx) = std::sync::mpsc::channel();
-    let server = thread::spawn(move || {
+    let handle = thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
@@ -1765,8 +1778,23 @@ fn http3_quic_roundtrip_with_self_signed_cert() {
             endpoint.wait_idle().await;
         });
     });
+    (port_rx.recv().unwrap(), handle)
+}
 
-    let port = port_rx.recv().unwrap();
+/// Hermetic HTTP/3 over QUIC: the client — pinned to `HttpVersion::Http3` with
+/// `verify=false` to accept the self-signed cert — speaks QUIC and reports the
+/// negotiated version.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_quic_roundtrip_with_self_signed_cert() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let (port, server) = serve_one_h3(
+        issued.cert.der().clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
     let url = format!("https://localhost:{port}/echo");
     // verify=false accepts the self-signed certificate.
     let session = HttpSession::new().with_verify(false);
@@ -1776,6 +1804,35 @@ fn http3_quic_roundtrip_with_self_signed_cert() {
     let response = session.send(request, false, false, false).unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.negotiated_version(), HttpVersion::Http3);
+    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// The certificate installer end-to-end: installing the server's self-signed
+/// certificate as a trusted CA lets the client verify it with verification **on**
+/// (no `verify=false`), over HTTP/3.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_trusts_an_installed_ca_certificate() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_der = issued.cert.der().clone();
+    let (port, server) = serve_one_h3(
+        cert_der.clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
+    let url = format!("https://localhost:{port}/echo");
+    // Install the server's certificate as a trusted CA; verification stays ON.
+    let session = HttpSession::new().with_ca_cert(cert_der.as_ref()).unwrap();
+    assert_eq!(session.ca_cert_count(), 1);
+    assert!(session.verify());
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http3);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
     assert_eq!(response.bytes().unwrap(), b"GET /echo");
     server.join().unwrap();
 }

@@ -80,6 +80,9 @@ pub(crate) struct AsyncRequest<'a> {
     /// Whether to verify the server's TLS certificate (mirrors the session's
     /// [`verify`](crate::HttpSession::verify); `false` accepts any certificate).
     pub(crate) verify: bool,
+    /// Installed CA certificates (DER) that replace the default trust store when
+    /// non-empty (mirrors the session's CA installer).
+    pub(crate) ca_certs: &'a [Vec<u8>],
 }
 
 /// The buffered result of an async round-trip: status, response headers, the whole
@@ -225,19 +228,30 @@ fn root_store() -> Arc<tokio_rustls::rustls::RootCertStore> {
         .clone()
 }
 
-/// Builds a rustls [`ClientConfig`] offering `alpn`, verifying the certificate
-/// against the shared [`root_store`] unless `verify` is `false` (which trusts any
-/// certificate and logs a warning). The expensive root store is shared, so this is
-/// cheap to call per connection.
-fn client_config(alpn: Vec<Vec<u8>>, verify: bool) -> ClientConfig {
+/// Builds a rustls [`ClientConfig`] offering `alpn`. When `verify` is on the
+/// certificate is checked against the installed `ca_certs` if any are given
+/// (replacing the defaults, like the session's CA installer), else the shared
+/// [`root_store`]; `verify` off trusts any certificate (and logs a warning). The
+/// shared root store keeps the common path cheap per connection.
+fn client_config(alpn: Vec<Vec<u8>>, verify: bool, ca_certs: &[Vec<u8>]) -> ClientConfig {
+    use tokio_rustls::rustls::pki_types::CertificateDer;
+    use tokio_rustls::rustls::RootCertStore;
+
     let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
     let builder = ClientConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
         .expect("rustls ring provider supports the default protocol versions");
     let mut config = if verify {
-        builder
-            .with_root_certificates(root_store())
-            .with_no_client_auth()
+        let roots = if ca_certs.is_empty() {
+            root_store()
+        } else {
+            let mut store = RootCertStore::empty();
+            for der in ca_certs {
+                store.add(CertificateDer::from(der.clone())).ok();
+            }
+            Arc::new(store)
+        };
+        builder.with_root_certificates(roots).with_no_client_auth()
     } else {
         log_event!(
             warn,
@@ -322,7 +336,7 @@ async fn h2_send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
         } else {
             vec![b"h2".to_vec(), b"http/1.1".to_vec()]
         };
-        let tls = tls_connect(tcp, &host, alpn, request.verify).await?;
+        let tls = tls_connect(tcp, &host, alpn, request.verify, request.ca_certs).await?;
         let h2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
         if h2 {
             h2_request(tls, request).await
@@ -488,6 +502,7 @@ async fn tls_connect<S>(
     host: &str,
     alpn: Vec<Vec<u8>>,
     verify: bool,
+    ca_certs: &[Vec<u8>],
 ) -> Result<tokio_rustls::client::TlsStream<S>, HttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -495,7 +510,7 @@ where
     use tokio_rustls::rustls::pki_types::ServerName;
     use tokio_rustls::TlsConnector;
 
-    let connector = TlsConnector::from(Arc::new(client_config(alpn, verify)));
+    let connector = TlsConnector::from(Arc::new(client_config(alpn, verify, ca_certs)));
     let server_name = ServerName::try_from(host.to_string())
         .map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
     connector.connect(server_name, stream).await.map_err(|err| {
@@ -540,7 +555,7 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
 
     // A QUIC client endpoint bound to an ephemeral local UDP port, using a rustls
     // config that offers only ALPN `h3`.
-    let tls = client_config(vec![b"h3".to_vec()], request.verify);
+    let tls = client_config(vec![b"h3".to_vec()], request.verify, request.ca_certs);
     let quic = quinn::crypto::rustls::QuicClientConfig::try_from(tls)
         .map_err(|err| HttpError::Transport(err.to_string()))?;
     let bind: std::net::SocketAddr = if addr.is_ipv6() {

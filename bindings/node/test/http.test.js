@@ -144,6 +144,28 @@ test('setBaseUrl configures the shared singleton', async () => {
   }
 })
 
+const CA_FIXTURE = `-----BEGIN CERTIFICATE-----
+MIIBQjCB9aADAgECAhQuzAiSQcN9LmU+b23fQ4OnlJr4nzAFBgMrZXAwFzEVMBMG
+A1UEAwwMeWdnZHJ5bC10ZXN0MB4XDTI2MDYyNTE4MDczOFoXDTM2MDYyMjE4MDcz
+OFowFzEVMBMGA1UEAwwMeWdnZHJ5bC10ZXN0MCowBQYDK2VwAyEAxQDw21VJgXZq
+oYc6cXjHtCyGS+Xhu4OzPcRqzez2t8yjUzBRMB0GA1UdDgQWBBS8VDtYTuBsTuVe
+Cc9+2uF8BKgWHzAfBgNVHSMEGDAWgBS8VDtYTuBsTuVeCc9+2uF8BKgWHzAPBgNV
+HRMBAf8EBTADAQH/MAUGAytlcANBAKXArPIcky5wHp+VgiKw954G3+1I1PQzmpfJ
+r9/00T2PpD5GwhdzsrH/liNZug/eMW7w38c0zU0A05lLhgZEIAM=
+-----END CERTIFICATE-----
+`
+
+test('CA certificate installer', () => {
+  assert.strictEqual(new HttpSession().caCertCount, 0)
+  const args = [undefined, undefined, undefined, undefined, undefined, undefined, undefined]
+  const trusted = new HttpSession(...args, Buffer.from(CA_FIXTURE))
+  assert.strictEqual(trusted.caCertCount, 1)
+  // Undecodable PEM is rejected at install time.
+  assert.throws(() =>
+    new HttpSession(...args, Buffer.from('-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----')),
+  )
+})
+
 test('verify and proxy options', () => {
   assert.strictEqual(new HttpSession().verify, true)
   const insecure = new HttpSession(undefined, undefined, undefined, undefined, undefined, false)

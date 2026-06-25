@@ -25,7 +25,12 @@ use crate::version::HttpVersion;
 /// layer, which owns method/body/cookie/security semantics. `verify` toggles
 /// TLS certificate verification (disabling it logs a warning — connections become
 /// insecure), and `proxy` routes requests through an HTTP/SOCKS proxy when set.
-fn build_agent(max_pool: usize, verify: bool, proxy: Option<ureq::Proxy>) -> ureq::Agent {
+fn build_agent(
+    max_pool: usize,
+    verify: bool,
+    proxy: Option<ureq::Proxy>,
+    ca_certs: &[Vec<u8>],
+) -> ureq::Agent {
     let mut builder = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
@@ -42,8 +47,49 @@ fn build_agent(max_pool: usize, verify: bool, proxy: Option<ureq::Proxy>) -> ure
                 .disable_verification(true)
                 .build(),
         );
+    } else if !ca_certs.is_empty() {
+        // Installed CA certificates *replace* the default trust store (like
+        // `requests`' `verify=<bundle>`): the session trusts exactly these.
+        let certs: Vec<ureq::tls::Certificate> = ca_certs
+            .iter()
+            .map(|der| ureq::tls::Certificate::from_der(der).to_owned())
+            .collect();
+        builder = builder.tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::new_with_certs(&certs))
+                .build(),
+        );
     }
     builder.build().into()
+}
+
+/// Parses CA certificate input into DER blobs: a PEM bundle (one or more
+/// `-----BEGIN CERTIFICATE-----` blocks) yields each certificate, while a raw DER
+/// certificate is taken as a single blob. Errors on empty / certificate-free input.
+fn parse_ca_certs(input: &[u8]) -> Result<Vec<Vec<u8>>, HttpError> {
+    const PEM_MARKER: &[u8] = b"-----BEGIN ";
+    if input
+        .windows(PEM_MARKER.len())
+        .any(|window| window == PEM_MARKER)
+    {
+        let mut reader = std::io::BufReader::new(input);
+        let ders: Vec<Vec<u8>> = rustls_pemfile::certs(&mut reader)
+            .filter_map(Result::ok)
+            .map(|der| der.as_ref().to_vec())
+            .collect();
+        if ders.is_empty() {
+            return Err(HttpError::InvalidHeader(
+                "no PEM certificate found in the CA input".into(),
+            ));
+        }
+        Ok(ders)
+    } else if input.is_empty() {
+        Err(HttpError::InvalidHeader(
+            "empty CA certificate input".into(),
+        ))
+    } else {
+        Ok(vec![input.to_vec()])
+    }
 }
 
 /// Resolves a requested [`HttpVersion`] to the version the transport will actually
@@ -109,6 +155,9 @@ pub struct HttpSession {
     /// process environment (`HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`, honouring
     /// `NO_PROXY`); override with [`with_proxy`](HttpSession::with_proxy).
     proxy: Option<ureq::Proxy>,
+    /// Installed CA certificates (DER), trusted **in place of** the default store
+    /// when non-empty (see [`with_ca_cert`](HttpSession::with_ca_cert)).
+    ca_certs: Vec<Vec<u8>>,
 }
 
 impl HttpSession {
@@ -177,7 +226,8 @@ impl HttpSession {
         // Pick up a proxy from the environment by default (HTTPS_PROXY / HTTP_PROXY
         // / ALL_PROXY, honouring NO_PROXY), like `requests` / curl.
         let proxy = ureq::Proxy::try_from_env();
-        let agent = build_agent(max_pool, verify, proxy.clone());
+        let ca_certs: Vec<Vec<u8>> = Vec::new();
+        let agent = build_agent(max_pool, verify, proxy.clone(), &ca_certs);
         let max_concurrency = 8;
         HttpSession {
             agent,
@@ -193,6 +243,7 @@ impl HttpSession {
             http_version: HttpVersion::Auto,
             verify,
             proxy,
+            ca_certs,
         }
     }
 
@@ -243,7 +294,7 @@ impl HttpSession {
     /// [`HttpError`] carries a hint pointing here.
     pub fn with_verify(mut self, verify: bool) -> HttpSession {
         self.verify = verify;
-        self.agent = build_agent(self.max_pool, verify, self.proxy.clone());
+        self.agent = build_agent(self.max_pool, verify, self.proxy.clone(), &self.ca_certs);
         self
     }
 
@@ -261,7 +312,12 @@ impl HttpSession {
     pub fn with_proxy(mut self, url: &str) -> Result<HttpSession, HttpError> {
         let proxy = ureq::Proxy::new(url).map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
         self.proxy = Some(proxy);
-        self.agent = build_agent(self.max_pool, self.verify, self.proxy.clone());
+        self.agent = build_agent(
+            self.max_pool,
+            self.verify,
+            self.proxy.clone(),
+            &self.ca_certs,
+        );
         Ok(self)
     }
 
@@ -269,13 +325,51 @@ impl HttpSession {
     /// connect directly. Rebuilds the agent.
     pub fn without_proxy(mut self) -> HttpSession {
         self.proxy = None;
-        self.agent = build_agent(self.max_pool, self.verify, None);
+        self.agent = build_agent(self.max_pool, self.verify, None, &self.ca_certs);
         self
     }
 
     /// The proxy URL all requests route through, if one is set.
     pub fn proxy(&self) -> Option<String> {
         self.proxy.as_ref().map(|proxy| proxy.uri().to_string())
+    }
+
+    /// Installs trusted CA certificate(s) from `cert` — a PEM bundle (one or more
+    /// `-----BEGIN CERTIFICATE-----` blocks) or a single DER certificate —
+    /// rebuilding the agent. This is the **secure** way to reach a self-signed or
+    /// internal host: the server's certificate is verified against the installed CA
+    /// instead of turning verification off.
+    ///
+    /// Installed certificates **replace** the default trust store (the Mozilla root
+    /// set), matching `requests`' `verify=<bundle>`: once any CA is installed the
+    /// session trusts *only* the installed ones, so install the public bundle too if
+    /// the session must also reach public hosts. Calls accumulate. Applies to every
+    /// transport (HTTP/1.1, HTTP/2 and HTTP/3). Returns [`HttpError::InvalidHeader`]
+    /// if no certificate is found in `cert`.
+    pub fn with_ca_cert(mut self, cert: &[u8]) -> Result<HttpSession, HttpError> {
+        let ders = parse_ca_certs(cert)?;
+        log_event!(info, "installing {} CA certificate(s)", ders.len());
+        self.ca_certs.extend(ders);
+        self.agent = build_agent(
+            self.max_pool,
+            self.verify,
+            self.proxy.clone(),
+            &self.ca_certs,
+        );
+        Ok(self)
+    }
+
+    /// Installs trusted CA certificate(s) read from the file at `path` (PEM or DER),
+    /// the file-based form of [`with_ca_cert`](HttpSession::with_ca_cert).
+    pub fn with_ca_cert_file(self, path: &str) -> Result<HttpSession, HttpError> {
+        let bytes = std::fs::read(path).map_err(|err| HttpError::Io(err.into()))?;
+        self.with_ca_cert(&bytes)
+    }
+
+    /// The number of CA certificates installed on this session (`0` means the
+    /// default trust store is in use).
+    pub fn ca_cert_count(&self) -> usize {
+        self.ca_certs.len()
     }
 
     /// Resolves a request `target` against the session's [`base_url`](HttpSession::base_url):
@@ -315,7 +409,7 @@ impl HttpSession {
     /// pools keep more keep-alive connections warm (skipping TLS handshakes).
     pub fn with_pool_size(mut self, max_pool: usize) -> HttpSession {
         let max_pool = max_pool.max(1);
-        self.agent = build_agent(max_pool, self.verify, self.proxy.clone());
+        self.agent = build_agent(max_pool, self.verify, self.proxy.clone(), &self.ca_certs);
         self.max_pool = max_pool;
         self
     }
@@ -679,6 +773,7 @@ impl HttpSession {
                 body: body.clone(),
                 prefer,
                 verify: self.verify,
+                ca_certs: &self.ca_certs,
             });
             match raw {
                 Ok(raw) => {

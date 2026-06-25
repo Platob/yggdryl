@@ -233,7 +233,10 @@ shape:
   dependencies of the `http2`/`http3` features only**; `transport.rs` is
   `#[cfg(any(feature = "http2", feature = "http3"))]`, so the default build stays the
   lean blocking `ureq` client. TLS verification follows the session's `verify` flag
-  (a rustls `NoVerify` certifier when off); a proxy applies to the `ureq` h1 path.
+  (a rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file`
+  installs custom CA certificates (PEM/DER) that **replace** the default trust store
+  across all transports (the secure alternative to `verify=false`, like `requests`'
+  `verify=<bundle>`); a proxy applies to the `ureq` h1 path.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`

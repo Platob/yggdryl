@@ -281,7 +281,7 @@ impl HttpSession {
     /// that relative targets resolve against, and a default ``http_version``
     /// (``"auto"`` / ``"1.1"`` / ``"2"`` / ``"3"``) for requests that do not pin one.
     #[new]
-    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None, verify = true, proxy = None))]
+    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None, verify = true, proxy = None, ca_cert = None, ca_cert_file = None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         user_agent: Option<String>,
@@ -291,6 +291,8 @@ impl HttpSession {
         http_version: Option<&str>,
         verify: bool,
         proxy: Option<&str>,
+        ca_cert: Option<Vec<u8>>,
+        ca_cert_file: Option<&str>,
     ) -> PyResult<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -316,6 +318,12 @@ impl HttpSession {
         }
         if let Some(proxy) = proxy {
             inner = inner.with_proxy(proxy).map_err(http_err)?;
+        }
+        if let Some(ca_cert) = ca_cert {
+            inner = inner.with_ca_cert(&ca_cert).map_err(http_err)?;
+        }
+        if let Some(ca_cert_file) = ca_cert_file {
+            inner = inner.with_ca_cert_file(ca_cert_file).map_err(http_err)?;
         }
         Ok(HttpSession { inner })
     }
@@ -352,6 +360,14 @@ impl HttpSession {
     #[getter]
     fn proxy(&self) -> Option<String> {
         self.inner.proxy()
+    }
+
+    /// The number of installed CA certificates (``0`` means the default trust store
+    /// is used). Install certificates with the ``ca_cert`` / ``ca_cert_file``
+    /// constructor arguments.
+    #[getter]
+    fn ca_cert_count(&self) -> usize {
+        self.inner.ca_cert_count()
     }
 
     /// The session's cookies as a ``dict`` of ``name`` to ``value`` (the jar
