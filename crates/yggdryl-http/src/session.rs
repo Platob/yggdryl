@@ -503,6 +503,12 @@ impl HttpSession {
         // own, else inherits the session default. A pinned version with no wired
         // transport errors here, before any bytes leave, rather than downgrading.
         let requested = request.http_version.unwrap_or(self.http_version);
+        // HTTP/2 (and Auto negotiating h2 over TLS) goes through the optional async
+        // transport; the buffered response then re-joins the redirect/cookie loop.
+        #[cfg(feature = "http2")]
+        if let Some(prefer) = crate::transport::route_for(requested, &request.url) {
+            return self.dispatch_async(request, prefer);
+        }
         let negotiated = negotiate_version(requested)?;
         let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
         if !keep_alive {
@@ -568,6 +574,75 @@ impl HttpSession {
             received_at,
             negotiated,
         ))
+    }
+
+    /// Dispatches one hop over the optional async HTTP/2 transport, buffering the
+    /// response (its body is a seekable [`BytesIO`](yggdryl_core::BytesIO)). The
+    /// request body is read into memory first, so it stays replayable across the
+    /// retry loop; transient statuses are retried under the session's
+    /// [`RetryConfig`], the same policy the HTTP/1.1 path uses.
+    #[cfg(feature = "http2")]
+    fn dispatch_async(
+        &self,
+        request: HttpRequest,
+        prefer: crate::version::HttpVersion,
+    ) -> Result<HttpResponse, HttpError> {
+        // Buffer the body once up front (the h2 path does not stream uploads yet).
+        let body = match request.body {
+            Body::Empty => Vec::new(),
+            Body::Bytes(bytes) => bytes,
+            Body::Reader(mut io) | Body::Io(mut io) => {
+                let mut buffer = Vec::new();
+                io.read_to_end(&mut buffer)?;
+                buffer
+            }
+        };
+        let url = request.url;
+        let headers = request.headers;
+        let mut attempt = 0u32;
+        loop {
+            let sent_at = now_secs();
+            let raw = crate::transport::send(crate::transport::AsyncRequest {
+                method: request.method,
+                url: &url,
+                headers: &headers,
+                body: body.clone(),
+                prefer,
+            });
+            match raw {
+                Ok(raw) => {
+                    if attempt < self.retry.max_retries
+                        && self.retry.retryable_status(raw.status, attempt)
+                    {
+                        std::thread::sleep(self.retry.backoff(attempt, raw.headers.retry_after()));
+                        attempt += 1;
+                        continue;
+                    }
+                    let received_at = Instant::new();
+                    received_at.stamp_once();
+                    let body_io: Box<dyn Io> = Box::new(BytesIO::from_bytes(raw.body));
+                    return Ok(HttpResponse::new(
+                        raw.status,
+                        url,
+                        raw.headers,
+                        body_io,
+                        sent_at,
+                        received_at,
+                        raw.version,
+                    ));
+                }
+                // The buffered body is replayable, so a transport error retries up to
+                // the cap (an idempotent re-dispatch on a fresh connection).
+                Err(err) => {
+                    if attempt < self.retry.max_retries {
+                        std::thread::sleep(self.retry.backoff(attempt, None));
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(err);
+                }
+            }
+        }
     }
 
     /// Stamps `sent_at` from the first dispatch on the final `response` and applies

@@ -217,15 +217,34 @@ shape:
 - Retries cover replayable bodies (none/bytes) and all `HttpStream` range
   fetches; a streamed (reader/`Io`) request body is single-shot.
 
+- **Protocol version** (`HttpVersion`, `version.rs`) — the HTTP version is tunable:
+  pin one per session (`with_http_version`) or per request, default `Auto`. The
+  blocking `ureq` transport always covers **HTTP/1.1**; the optional `http2` feature
+  adds an async **HTTP/2** transport in `transport.rs` (hyper over a small
+  current-thread tokio runtime + tokio-rustls), routed from `dispatch` when a
+  request negotiates h2 (`https` ALPN, or h2c for cleartext) — the response then
+  re-joins the same redirect/cookie/retry loop, so every verb works unchanged
+  whatever the protocol. `HttpResponse::negotiated_version()` reports what was
+  actually spoken; `Auto` over TLS does a real ALPN `h2`/`http/1.1` fallback. A
+  pinned version with no wired transport (`Http3`, or `Http2` without the feature)
+  errors with `HttpError::Unsupported` rather than downgrading silently. **The async
+  SDKs (`hyper`/`tokio`/`tokio-rustls`) are dependencies of the `http2` feature
+  only**; `transport.rs` is `#[cfg(feature = "http2")]`, so the default build stays
+  the lean blocking `ureq` client.
+
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`
-for `Method` / `HttpHeaders` / `Cookie` / `HttpCookies` / `RetryConfig`, and
-transitively the core value types — a live request/response body is deliberately
-not serialisable), `log`. The base depends on
+for `Method` / `HttpVersion` / `HttpHeaders` / `Cookie` / `HttpCookies` /
+`RetryConfig`, and transitively the core value types — a live request/response body
+is deliberately not serialisable), `http2` (the async HTTP/2 transport above;
+`http3` stays a reserved placeholder), `log`. The base depends on
 `yggdryl-core`'s `json` feature so `Io::json()` is available on every handle. **All
-HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
-**hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /
-mid-stream drops, no network). In the bindings the blocking call must not stall
+HTTP logic lives here; `ureq` stays a dependency of this crate only** (the HTTP/2
+SDKs are gated behind `http2`). Unit tests are **hermetic** (a localhost
+`TcpListener` that serves HEAD / `Range` / 429 / mid-stream drops; the h2c case runs
+a localhost hyper HTTP/2 server — still no network). A separate, `#[ignore]`d
+`tests/integration.rs` covers the versions and ALPN fallback against real public
+endpoints, opt-in via `--ignored` (needs direct egress; not run in CI). In the bindings the blocking call must not stall
 the host runtime: Python releases the GIL (`allow_threads`), Node runs the
 request on the libuv pool and returns a `Promise` (so Node's surface is async,
 the one idiomatic divergence from the sync Rust/Python API). Bindings pass our

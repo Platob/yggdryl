@@ -28,7 +28,7 @@ use crate::error::HttpError;
 /// assert_eq!(HttpVersion::from_str("h2").unwrap(), HttpVersion::Http2);
 /// assert_eq!(HttpVersion::Http2.alpn(), Some("h2"));
 /// assert_eq!(HttpVersion::Http11.as_str(), "HTTP/1.1");
-/// assert!(!HttpVersion::Http2.is_available()); // no transport yet
+/// assert!(HttpVersion::Http11.is_available()); // always wired
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -104,12 +104,16 @@ impl HttpVersion {
 
     /// Whether a transport for this version is wired into this build.
     /// [`Auto`](HttpVersion::Auto) and [`Http11`](HttpVersion::Http11) are always
-    /// available; [`Http2`](HttpVersion::Http2) and [`Http3`](HttpVersion::Http3)
-    /// are not yet implemented (this will report `true` for them once their async
-    /// transports land). Pinning an unavailable version errors at dispatch rather
+    /// available; [`Http2`](HttpVersion::Http2) is available only with the `http2`
+    /// feature (its hyper/tokio transport), and [`Http3`](HttpVersion::Http3) is not
+    /// yet implemented. Pinning an unavailable version errors at dispatch rather
     /// than silently downgrading — check this first to choose ahead of time.
     pub fn is_available(&self) -> bool {
-        matches!(self, HttpVersion::Auto | HttpVersion::Http11)
+        match self {
+            HttpVersion::Auto | HttpVersion::Http11 => true,
+            HttpVersion::Http2 => cfg!(feature = "http2"),
+            HttpVersion::Http3 => false,
+        }
     }
 }
 

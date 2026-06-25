@@ -1380,29 +1380,41 @@ fn http_version_parses_names_and_alpn() {
     assert_eq!(HttpVersion::from_alpn("h3"), Some(HttpVersion::Http3));
     assert_eq!(HttpVersion::from_alpn("spdy/3"), None);
 
-    // Only HTTP/1.1 (and Auto, which negotiates to it) is wired today.
+    // HTTP/1.1 and Auto are always wired; HTTP/2 only with the `http2` transport
+    // feature; HTTP/3 is never available yet.
     assert!(HttpVersion::Http11.is_available());
     assert!(HttpVersion::Auto.is_available());
-    assert!(!HttpVersion::Http2.is_available());
+    assert_eq!(HttpVersion::Http2.is_available(), cfg!(feature = "http2"));
     assert!(!HttpVersion::Http3.is_available());
 }
 
 #[test]
-fn negotiated_version_is_http11_and_pinning_an_unwired_version_errors() {
+fn negotiated_version_reports_http11_for_a_normal_request() {
     use crate::HttpVersion;
     let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
-    // A normal request negotiates (Auto) down to the only wired transport, and the
+    // A normal request negotiates (Auto) down to the HTTP/1.1 transport, and the
     // response reports the version it was delivered over.
     let session = HttpSession::new();
     let response = session
         .send(HttpRequest::get(&url).unwrap(), false, false, false)
         .unwrap();
     assert_eq!(response.negotiated_version(), HttpVersion::Http11);
+    // The session-level default is carried (a getter, regardless of transport).
+    let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    assert_eq!(h2_session.http_version(), HttpVersion::Http2);
+}
 
-    // Pinning HTTP/2 (no transport yet) errors before any bytes leave, naming the
-    // alternative, rather than silently downgrading.
-    let (url2, _rx2) = serve_once(ok_reply("text/plain", b"ok"));
-    let pinned = HttpRequest::get(&url2)
+/// Without the `http2` feature, pinning HTTP/2 has no transport, so it errors with
+/// an actionable [`HttpError::Unsupported`] before any bytes leave — never a silent
+/// downgrade. (With the feature on it instead routes to the async transport, which
+/// the h2c test covers.)
+#[cfg(not(feature = "http2"))]
+#[test]
+fn pinning_an_unwired_http2_errors() {
+    use crate::HttpVersion;
+    let session = HttpSession::new();
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
+    let pinned = HttpRequest::get(&url)
         .unwrap()
         .with_http_version(HttpVersion::Http2);
     let err = match session.send(pinned, false, false, false) {
@@ -1411,13 +1423,11 @@ fn negotiated_version_is_http11_and_pinning_an_unwired_version_errors() {
     };
     assert!(matches!(err, HttpError::Unsupported(_)), "{err:?}");
     assert!(err.to_string().contains("HTTP/2"), "{err}");
-
-    // A session-level default applies to requests that do not pin their own.
+    // A session-level Http2 default fails the same way on every request.
     let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
-    assert_eq!(h2_session.http_version(), HttpVersion::Http2);
-    let (url3, _rx3) = serve_once(ok_reply("text/plain", b"ok"));
+    let (url2, _rx2) = serve_once(ok_reply("text/plain", b"ok"));
     assert!(h2_session
-        .send(HttpRequest::get(&url3).unwrap(), false, false, false)
+        .send(HttpRequest::get(&url2).unwrap(), false, false, false)
         .is_err());
 }
 
@@ -1595,4 +1605,67 @@ fn no_content_204_drains_empty() {
         .unwrap();
     assert_eq!(response.status(), 204);
     assert_eq!(response.bytes().unwrap(), b"");
+}
+
+/// Hermetic HTTP/2 over cleartext (h2c, prior knowledge): a localhost hyper h2
+/// server answers one connection, and the client — pinned to `HttpVersion::Http2`
+/// against an `http://` URL — speaks h2c and reports the negotiated version. No
+/// TLS, no network. Exercises the optional async transport end-to-end.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
+    use crate::HttpVersion;
+    use std::net::TcpListener;
+
+    // Bind synchronously to learn the port, then serve one h2c connection on a
+    // background current-thread tokio runtime.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/echo");
+
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(
+                |req: hyper::Request<hyper::body::Incoming>| async move {
+                    // Echo the request method + path so the client can assert shape.
+                    let body = format!("{} {}", req.method(), req.uri().path());
+                    Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(hyper::body::Bytes::from(body)),
+                    ))
+                },
+            );
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let session = HttpSession::new();
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http2);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
+    // The response reports it was delivered over HTTP/2 (h2c).
+    assert_eq!(response.negotiated_version(), HttpVersion::Http2);
+    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// With the `http2` transport compiled in, `HttpVersion::Http2` is available and a
+/// cleartext `Auto` request still uses HTTP/1.1 (h2c is not assumed without a pin).
+#[cfg(feature = "http2")]
+#[test]
+fn http2_feature_marks_http2_available() {
+    use crate::HttpVersion;
+    assert!(HttpVersion::Http2.is_available());
 }

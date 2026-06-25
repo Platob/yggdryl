@@ -33,9 +33,10 @@
 //! session ([`HttpSession::with_http_version`]) or per request
 //! ([`HttpRequest::with_http_version`]), and read the one a response was delivered
 //! over via [`HttpResponse::negotiated_version`]. [`HttpVersion::Auto`] (the
-//! default) negotiates the best available; only HTTP/1.1 is wired today, so pinning
-//! [`HttpVersion::Http2`] / [`HttpVersion::Http3`] errors with
-//! [`HttpError::Unsupported`] until their transports land.
+//! default) negotiates the best available. HTTP/1.1 is always wired (the blocking
+//! `ureq` transport); the `http2` feature adds a real HTTP/2 transport (so `Auto`
+//! negotiates `h2` over TLS ALPN). [`HttpVersion::Http3`] — and `Http2` without the
+//! feature — error with [`HttpError::Unsupported`] rather than downgrade silently.
 //!
 //! ```no_run
 //! use yggdryl_http::{HttpSession, HttpRequest};
@@ -63,9 +64,12 @@
 //!   [`HttpVersion`], [`HttpHeaders`], [`Cookie`], [`HttpCookies`],
 //!   [`RetryConfig`]) and, transitively, the core value types; a live
 //!   request/response body is deliberately not serialisable.
-//! - `http2` / `http3` — reserved (inert) placeholders for the forthcoming async
-//!   `h2` / `h3` (QUIC) transports; selectable via [`HttpVersion`] but unavailable
-//!   until the transports themselves land.
+//! - `http2` — the optional async **HTTP/2** transport (hyper + a small
+//!   current-thread tokio runtime + tokio-rustls). With it on,
+//!   [`HttpVersion::Http2`] speaks h2 (TLS ALPN for `https`, h2c for cleartext) and
+//!   [`HttpVersion::Auto`] negotiates `h2`/`http/1.1` over TLS; off, those error.
+//! - `http3` — reserved (inert) placeholder for the forthcoming `h3` (QUIC)
+//!   transport; [`HttpVersion::Http3`] is selectable but unavailable until it lands.
 //! - `log` — structured `log` events on the request path.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
@@ -90,6 +94,8 @@ mod retry;
 mod session;
 mod stream;
 mod time;
+#[cfg(feature = "http2")]
+mod transport;
 mod version;
 
 pub use cookies::{Cookie, HttpCookies};
