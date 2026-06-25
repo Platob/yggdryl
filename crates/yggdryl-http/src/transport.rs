@@ -247,7 +247,16 @@ fn client_config(alpn: Vec<Vec<u8>>, verify: bool, ca_certs: &[Vec<u8>]) -> Clie
         } else {
             let mut store = RootCertStore::empty();
             for der in ca_certs {
-                store.add(CertificateDer::from(der.clone())).ok();
+                if store.add(CertificateDer::from(der.clone())).is_err() {
+                    log_event!(warn, "an installed CA certificate was rejected by rustls");
+                }
+            }
+            if store.is_empty() {
+                log_event!(
+                    warn,
+                    "all installed CA certificates were rejected; no roots are trusted, so \
+                     every TLS connection will fail"
+                );
             }
             Arc::new(store)
         };
@@ -258,6 +267,14 @@ fn client_config(alpn: Vec<Vec<u8>>, verify: bool, ca_certs: &[Vec<u8>]) -> Clie
             "TLS certificate verification is DISABLED (verify=false) for the async \
              transport; the connection is insecure"
         );
+        if !ca_certs.is_empty() {
+            log_event!(
+                warn,
+                "verify=false ignores the {} installed CA certificate(s); keep verify=true \
+                 to validate against them",
+                ca_certs.len()
+            );
+        }
         builder
             .dangerous()
             .with_custom_certificate_verifier(Arc::new(NoVerify(provider)))
@@ -640,17 +657,21 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
     result
 }
 
-/// Adds the self-signed-certificate hint to a QUIC connect error when verification
-/// is on (a QUIC handshake failure is most often an untrusted certificate).
+/// Wraps a QUIC connect error, adding the self-signed-certificate hint only when
+/// verification is on **and** the failure looks certificate/TLS-related (a timeout
+/// or a refused/unreachable peer is reported plainly, not as a cert problem).
 #[cfg(feature = "http3")]
 fn h3_tls_hint(message: String, verify: bool) -> HttpError {
-    if verify {
+    let lower = message.to_ascii_lowercase();
+    let cert_related =
+        lower.contains("cert") || lower.contains("tls") || lower.contains("unknownissuer");
+    if verify && cert_related {
         HttpError::Transport(format!(
             "quic/tls error: {message}; if this host uses a self-signed or internal \
              certificate, install its CA or set verify=false (insecure) to skip verification"
         ))
     } else {
-        HttpError::Transport(message)
+        HttpError::Transport(format!("quic error: {message}"))
     }
 }
 

@@ -1471,10 +1471,12 @@ fn with_ca_cert_parses_pem_and_der_and_rejects_garbage() {
     // Installs accumulate.
     assert_eq!(from_pem.with_ca_cert(&der).unwrap().ca_cert_count(), 2);
 
-    // Garbage PEM (no decodable certificate) and empty input are rejected.
+    // Garbage PEM (no decodable certificate), structurally-invalid DER, and empty
+    // input are all rejected at install time.
     assert!(HttpSession::new()
         .with_ca_cert(b"-----BEGIN CERTIFICATE-----\nnot-base64\n-----END CERTIFICATE-----")
         .is_err());
+    assert!(HttpSession::new().with_ca_cert(b"not-a-der-cert").is_err());
     assert!(HttpSession::new().with_ca_cert(b"").is_err());
 }
 

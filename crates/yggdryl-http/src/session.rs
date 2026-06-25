@@ -42,6 +42,14 @@ fn build_agent(
             warn,
             "TLS certificate verification is DISABLED (verify=false); connections are insecure"
         );
+        if !ca_certs.is_empty() {
+            log_event!(
+                warn,
+                "verify=false ignores the {} installed CA certificate(s); keep verify=true \
+                 to validate against them",
+                ca_certs.len()
+            );
+        }
         builder = builder.tls_config(
             ureq::tls::TlsConfig::builder()
                 .disable_verification(true)
@@ -65,31 +73,66 @@ fn build_agent(
 
 /// Parses CA certificate input into DER blobs: a PEM bundle (one or more
 /// `-----BEGIN CERTIFICATE-----` blocks) yields each certificate, while a raw DER
-/// certificate is taken as a single blob. Errors on empty / certificate-free input.
+/// certificate is taken as a single blob. Each blob is structurally validated as a
+/// DER X.509 certificate, so a malformed cert is rejected **here** (once) rather
+/// than silently dropped by one transport's trust store. Errors on empty /
+/// certificate-free / malformed input.
 fn parse_ca_certs(input: &[u8]) -> Result<Vec<Vec<u8>>, HttpError> {
     const PEM_MARKER: &[u8] = b"-----BEGIN ";
-    if input
+    let ders: Vec<Vec<u8>> = if input
         .windows(PEM_MARKER.len())
         .any(|window| window == PEM_MARKER)
     {
         let mut reader = std::io::BufReader::new(input);
-        let ders: Vec<Vec<u8>> = rustls_pemfile::certs(&mut reader)
+        rustls_pemfile::certs(&mut reader)
             .filter_map(Result::ok)
             .map(|der| der.as_ref().to_vec())
-            .collect();
-        if ders.is_empty() {
-            return Err(HttpError::InvalidHeader(
-                "no PEM certificate found in the CA input".into(),
-            ));
-        }
-        Ok(ders)
+            .collect()
     } else if input.is_empty() {
-        Err(HttpError::InvalidHeader(
+        return Err(HttpError::InvalidHeader(
             "empty CA certificate input".into(),
-        ))
+        ));
     } else {
-        Ok(vec![input.to_vec()])
+        vec![input.to_vec()]
+    };
+    if ders.is_empty() {
+        return Err(HttpError::InvalidHeader(
+            "no certificate found in the CA input".into(),
+        ));
     }
+    if let Some(index) = ders.iter().position(|der| !looks_like_der_cert(der)) {
+        return Err(HttpError::InvalidHeader(format!(
+            "CA certificate #{} is not a valid DER X.509 certificate",
+            index + 1
+        )));
+    }
+    Ok(ders)
+}
+
+/// Whether `der` is structurally a DER X.509 certificate: an ASN.1 `SEQUENCE`
+/// (tag `0x30`) whose definite length covers the blob exactly. A cheap check that
+/// rejects obvious garbage at install time (full validation is the TLS layer's job).
+fn looks_like_der_cert(der: &[u8]) -> bool {
+    if der.first() != Some(&0x30) {
+        return false;
+    }
+    let rest = &der[1..];
+    let (length, header) = match rest.first() {
+        Some(&first) if first < 0x80 => (first as usize, 1), // short form
+        Some(&first) => {
+            // Long form: low 7 bits are the count of subsequent length bytes.
+            let count = (first & 0x7f) as usize;
+            if count == 0 || count > 4 || rest.len() < 1 + count {
+                return false;
+            }
+            let length = rest[1..1 + count]
+                .iter()
+                .fold(0usize, |acc, &byte| (acc << 8) | byte as usize);
+            (length, 1 + count)
+        }
+        None => return false,
+    };
+    rest.len() == header + length
 }
 
 /// Resolves a requested [`HttpVersion`] to the version the transport will actually
