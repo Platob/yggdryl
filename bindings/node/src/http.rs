@@ -11,9 +11,28 @@ use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
 use yggdryl_http::{HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, Method};
+use yggdryl_io::{LocalPath as CoreLocalPath, Path};
+
+use crate::localpath::LocalPath;
 
 fn to_napi(err: yggdryl_http::HttpError) -> Error {
     Error::from_reason(err.to_string())
+}
+
+/// A request body: raw bytes, or a `LocalPath` streamed straight off disk.
+enum BodyArg {
+    Empty,
+    Bytes(Vec<u8>),
+    File(String),
+}
+
+/// Extracts a body argument (a `Buffer`, or a `LocalPath` to stream from disk).
+fn body_arg(body: Option<Either<Buffer, &LocalPath>>) -> BodyArg {
+    match body {
+        None => BodyArg::Empty,
+        Some(Either::A(buffer)) => BodyArg::Bytes(buffer.to_vec()),
+        Some(Either::B(path)) => BodyArg::File(path.inner.location().to_string()),
+    }
 }
 
 /// The data drained from a response on the worker thread, before it is handed
@@ -31,7 +50,7 @@ pub struct RequestTask {
     method: Method,
     url: String,
     headers: Vec<(String, String)>,
-    body: Option<Vec<u8>>,
+    body: BodyArg,
     raise_error: bool,
 }
 
@@ -42,9 +61,11 @@ impl Task for RequestTask {
     fn compute(&mut self) -> Result<ResponseData> {
         let mut request = CoreHttpRequest::new(self.method, &self.url).map_err(to_napi)?;
         request = request.with_headers(std::mem::take(&mut self.headers));
-        if let Some(body) = self.body.take() {
-            request = request.with_body(body);
-        }
+        request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
+            BodyArg::Empty => request,
+            BodyArg::Bytes(bytes) => request.with_body(bytes),
+            BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
+        };
         let response = self
             .session
             .request(request, self.raise_error)
@@ -177,7 +198,7 @@ impl HttpSession {
         method: Method,
         url: String,
         headers: Vec<(String, String)>,
-        body: Option<Vec<u8>>,
+        body: BodyArg,
         raise_error: bool,
     ) -> AsyncTask<RequestTask> {
         AsyncTask::new(RequestTask {
@@ -193,60 +214,62 @@ impl HttpSession {
     /// `GET url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn get(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Get, url, Vec::new(), None, true)
+        self.task(Method::Get, url, Vec::new(), BodyArg::Empty, true)
     }
 
     /// `HEAD url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn head(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Head, url, Vec::new(), None, true)
+        self.task(Method::Head, url, Vec::new(), BodyArg::Empty, true)
     }
 
     /// `DELETE url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn delete(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Delete, url, Vec::new(), None, true)
+        self.task(Method::Delete, url, Vec::new(), BodyArg::Empty, true)
     }
 
-    /// `POST url` with an optional byte `body` (raises on a 4xx/5xx status).
+    /// `POST url` with an optional `body` — a `Buffer` or a `LocalPath` streamed
+    /// straight off disk (raises on a 4xx/5xx status).
     #[napi]
-    pub fn post(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Post,
-            url,
-            Vec::new(),
-            body.map(|b| b.to_vec()),
-            true,
-        )
+    pub fn post(
+        &self,
+        url: String,
+        body: Option<Either<Buffer, &LocalPath>>,
+    ) -> AsyncTask<RequestTask> {
+        self.task(Method::Post, url, Vec::new(), body_arg(body), true)
     }
 
-    /// `PUT url` with a byte `body` (raises on a 4xx/5xx status).
+    /// `PUT url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
     #[napi]
-    pub fn put(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(Method::Put, url, Vec::new(), body.map(|b| b.to_vec()), true)
+    pub fn put(
+        &self,
+        url: String,
+        body: Option<Either<Buffer, &LocalPath>>,
+    ) -> AsyncTask<RequestTask> {
+        self.task(Method::Put, url, Vec::new(), body_arg(body), true)
     }
 
-    /// `PATCH url` with a byte `body` (raises on a 4xx/5xx status).
+    /// `PATCH url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
     #[napi]
-    pub fn patch(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Patch,
-            url,
-            Vec::new(),
-            body.map(|b| b.to_vec()),
-            true,
-        )
+    pub fn patch(
+        &self,
+        url: String,
+        body: Option<Either<Buffer, &LocalPath>>,
+    ) -> AsyncTask<RequestTask> {
+        self.task(Method::Patch, url, Vec::new(), body_arg(body), true)
     }
 
-    /// Issue an arbitrary `method` request, with optional `headers` and `body`.
-    /// `raiseError` (default `true`) throws on a 4xx/5xx status.
+    /// Issue an arbitrary `method` request, with optional `headers` and `body`
+    /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
+    /// 4xx/5xx status.
     #[napi]
     pub fn request(
         &self,
         method: String,
         url: String,
         headers: Option<HashMap<String, String>>,
-        body: Option<Buffer>,
+        body: Option<Either<Buffer, &LocalPath>>,
         raise_error: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
         let method = Method::from_str(&method).map_err(to_napi)?;
@@ -257,7 +280,7 @@ impl HttpSession {
             method,
             url,
             headers,
-            body.map(|b| b.to_vec()),
+            body_arg(body),
             raise_error.unwrap_or(true),
         ))
     }

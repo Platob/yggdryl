@@ -8,8 +8,46 @@ use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
     HttpSession as CoreHttpSession, Method,
 };
+use yggdryl_io::{LocalPath as CoreLocalPath, Path};
 
+use crate::bytesio::BytesIO;
 use crate::http_err;
+use crate::localpath::LocalPath;
+
+/// A request body extracted from a Python argument: raw `bytes`, or one of our
+/// `Io` handles (a `LocalPath` streams straight off disk; a `BytesIO`'s bytes are
+/// taken). `Send`, so it crosses into the GIL-released worker.
+enum BodyArg {
+    Empty,
+    Bytes(Vec<u8>),
+    File(String),
+}
+
+/// Extracts a body argument: an `Io` handle is preferred (streamed), else bytes.
+fn extract_body(body: Option<&Bound<'_, PyAny>>) -> PyResult<BodyArg> {
+    let Some(object) = body else {
+        return Ok(BodyArg::Empty);
+    };
+    if object.is_none() {
+        return Ok(BodyArg::Empty);
+    }
+    if let Ok(path) = object.extract::<PyRef<LocalPath>>() {
+        return Ok(BodyArg::File(path.inner.location().to_string()));
+    }
+    if let Ok(buffer) = object.extract::<PyRef<BytesIO>>() {
+        return Ok(BodyArg::Bytes(buffer.inner.getvalue().to_vec()));
+    }
+    Ok(BodyArg::Bytes(object.extract::<Vec<u8>>()?))
+}
+
+/// Applies a [`BodyArg`] to a request — a `File` streams from disk via `Io`.
+fn apply_body(request: CoreHttpRequest, body: BodyArg) -> CoreHttpRequest {
+    match body {
+        BodyArg::Empty => request,
+        BodyArg::Bytes(bytes) => request.with_body(bytes),
+        BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
+    }
+}
 
 /// A received HTTP response, modelled on :class:`requests.Response`. The body is
 /// read eagerly (and decompressed) when the response is returned, so
@@ -159,30 +197,53 @@ impl HttpSession {
         self.run(py, |session| session.delete(url))
     }
 
-    /// ``POST url`` with an optional byte ``body``.
+    /// ``POST url`` with an optional ``body`` — ``bytes`` or one of our `Io`
+    /// handles (a :class:`LocalPath` streams the upload straight off disk).
     #[pyo3(signature = (url, body = None))]
-    fn post(&self, py: Python<'_>, url: &str, body: Option<Vec<u8>>) -> PyResult<HttpResponse> {
-        let body = body.unwrap_or_default();
-        self.run(py, move |session| session.post(url, body))
+    fn post(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        body: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<HttpResponse> {
+        let body = extract_body(body.as_ref())?;
+        self.run(py, move |session| {
+            session.request(apply_body(CoreHttpRequest::post(url)?, body), true)
+        })
     }
 
-    /// ``PUT url`` with a byte ``body``.
+    /// ``PUT url`` with a ``body`` — ``bytes`` or an `Io` handle.
     #[pyo3(signature = (url, body = None))]
-    fn put(&self, py: Python<'_>, url: &str, body: Option<Vec<u8>>) -> PyResult<HttpResponse> {
-        let body = body.unwrap_or_default();
-        self.run(py, move |session| session.put(url, body))
+    fn put(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        body: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<HttpResponse> {
+        let body = extract_body(body.as_ref())?;
+        self.run(py, move |session| {
+            session.request(apply_body(CoreHttpRequest::put(url)?, body), true)
+        })
     }
 
-    /// ``PATCH url`` with a byte ``body``.
+    /// ``PATCH url`` with a ``body`` — ``bytes`` or an `Io` handle.
     #[pyo3(signature = (url, body = None))]
-    fn patch(&self, py: Python<'_>, url: &str, body: Option<Vec<u8>>) -> PyResult<HttpResponse> {
-        let body = body.unwrap_or_default();
-        self.run(py, move |session| session.patch(url, body))
+    fn patch(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        body: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<HttpResponse> {
+        let body = extract_body(body.as_ref())?;
+        self.run(py, move |session| {
+            session.request(apply_body(CoreHttpRequest::patch(url)?, body), true)
+        })
     }
 
     /// Issue an arbitrary ``method`` request, with optional ``headers`` and
-    /// ``body``. ``raise_error`` (default ``True``) raises ``ValueError`` on a
-    /// 4xx/5xx status; pass ``False`` to receive the response whatever its status.
+    /// ``body`` (``bytes`` or an `Io` handle). ``raise_error`` (default ``True``)
+    /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
+    /// response whatever its status.
     #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true))]
     fn request(
         &self,
@@ -190,18 +251,17 @@ impl HttpSession {
         method: &str,
         url: &str,
         headers: Option<HashMap<String, String>>,
-        body: Option<Vec<u8>>,
+        body: Option<Bound<'_, PyAny>>,
         raise_error: bool,
     ) -> PyResult<HttpResponse> {
         let method = Method::from_str(method).map_err(http_err)?;
+        let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
             let mut request = CoreHttpRequest::new(method, url)?;
             if let Some(headers) = headers {
                 request = request.with_headers(headers);
             }
-            if let Some(body) = body {
-                request = request.with_body(body);
-            }
+            request = apply_body(request, body);
             session.request(request, raise_error)
         })
     }

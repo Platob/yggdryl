@@ -72,6 +72,15 @@ test('http session against a localhost server', async () => {
 
     const deleted = await session.request('DELETE', base + '/thing')
     assert.strictEqual(deleted.status, 204)
+
+    // Pass a LocalPath (an Io handle) as the body: streamed off disk, echoed.
+    const { LocalPath } = require('..')
+    const os = require('node:os')
+    const path = require('node:path')
+    const p = path.join(os.tmpdir(), `yggdryl_upload_${process.pid}.bin`)
+    new LocalPath(p).write(Buffer.from('file-streamed-upload'))
+    const uploaded = await session.put(base + '/up', new LocalPath(p))
+    assert.deepStrictEqual(uploaded.content, Buffer.from('file-streamed-upload'))
   } finally {
     server.close()
   }
