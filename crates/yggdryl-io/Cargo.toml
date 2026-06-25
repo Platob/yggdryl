@@ -29,8 +29,11 @@ yggdryl-url = { workspace = true }
 log = { version = "0.4", optional = true }
 memmap2 = { version = "0.9", optional = true }
 yggdryl-media = { workspace = true, optional = true }
+# `json` adds `Io::json()` — a zero-copy parse of the handle's bytes.
+serde_json = { version = "1", optional = true }
 
 [features]
 log = ["dep:log"]
 mmap = ["dep:memmap2"]
 media = ["dep:yggdryl-media"]
+json = ["dep:serde_json"]

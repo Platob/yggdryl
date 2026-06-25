@@ -87,11 +87,15 @@ def test_default_and_request_headers(base_url):
 
 def test_404_and_raise_for_status(base_url):
     session = yggdryl.HttpSession()
-    response = session.get(base_url + "/missing")
+    # raise_error=False returns the 404 response instead of raising.
+    response = session.request("GET", base_url + "/missing", raise_error=False)
     assert response.status == 404
     assert response.ok is False
     with pytest.raises(ValueError):
         response.raise_for_status()
+    # The verb helpers raise by default.
+    with pytest.raises(ValueError):
+        session.get(base_url + "/missing")
 
 
 def test_arbitrary_method(base_url):

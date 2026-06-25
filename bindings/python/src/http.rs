@@ -181,8 +181,9 @@ impl HttpSession {
     }
 
     /// Issue an arbitrary ``method`` request, with optional ``headers`` and
-    /// ``body``.
-    #[pyo3(signature = (method, url, headers = None, body = None))]
+    /// ``body``. ``raise_error`` (default ``True``) raises ``ValueError`` on a
+    /// 4xx/5xx status; pass ``False`` to receive the response whatever its status.
+    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true))]
     fn request(
         &self,
         py: Python<'_>,
@@ -190,6 +191,7 @@ impl HttpSession {
         url: &str,
         headers: Option<HashMap<String, String>>,
         body: Option<Vec<u8>>,
+        raise_error: bool,
     ) -> PyResult<HttpResponse> {
         let method = Method::from_str(method).map_err(http_err)?;
         self.run(py, move |session| {
@@ -200,7 +202,7 @@ impl HttpSession {
             if let Some(body) = body {
                 request = request.with_body(body);
             }
-            session.request(request)
+            session.request(request, raise_error)
         })
     }
 }

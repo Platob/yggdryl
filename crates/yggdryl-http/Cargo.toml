@@ -15,9 +15,10 @@ name = "yggdryl_http"
 path = "src/lib.rs"
 
 [dependencies]
-# The byte-IO foundation: response bodies stream as `ReadBytes`, request bodies
-# can stream from any `Io` handle, and buffered bodies land in a `BytesIO`.
-yggdryl-io = { workspace = true }
+# The byte-IO foundation: response bodies stream as `ReadBytes` or a seekable
+# `HttpStream: Io`, request bodies stream from any `Io` handle, and buffered
+# bodies land in a `BytesIO`. `json` lights up `Io::json()` on every handle.
+yggdryl-io = { workspace = true, features = ["json"] }
 # Requests carry a `Url`, built with the shared URL type (query params, etc.).
 yggdryl-url = { workspace = true }
 # The blocking HTTP transport. `rustls` gives TLS; ureq's own gzip/brotli are
@@ -40,5 +41,5 @@ compression = [
     "yggdryl-compression/zstd",
     "yggdryl-compression/snappy",
 ]
-media = ["dep:yggdryl-media"]
+media = ["dep:yggdryl-media", "yggdryl-io/media"]
 log = ["dep:log"]

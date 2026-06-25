@@ -63,10 +63,12 @@ test('http session against a localhost server', async () => {
     const overridden = await withDefault.request('GET', base + '/', { 'X-Echo': 'from-request' })
     assert.strictEqual(overridden.header('x-echo-back'), 'from-request')
 
-    const notFound = await session.get(base + '/missing')
+    // raiseError=false returns the 404 response; the verb helpers reject.
+    const notFound = await session.request('GET', base + '/missing', undefined, undefined, false)
     assert.strictEqual(notFound.status, 404)
     assert.strictEqual(notFound.ok, false)
     assert.throws(() => notFound.raiseForStatus())
+    await assert.rejects(session.get(base + '/missing'))
 
     const deleted = await session.request('DELETE', base + '/thing')
     assert.strictEqual(deleted.status, 204)

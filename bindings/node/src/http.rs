@@ -32,6 +32,7 @@ pub struct RequestTask {
     url: String,
     headers: Vec<(String, String)>,
     body: Option<Vec<u8>>,
+    raise_error: bool,
 }
 
 impl Task for RequestTask {
@@ -44,7 +45,10 @@ impl Task for RequestTask {
         if let Some(body) = self.body.take() {
             request = request.with_body(body);
         }
-        let response = self.session.request(request).map_err(to_napi)?;
+        let response = self
+            .session
+            .request(request, self.raise_error)
+            .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
         let headers = response.headers().to_vec();
@@ -174,6 +178,7 @@ impl HttpSession {
         url: String,
         headers: Vec<(String, String)>,
         body: Option<Vec<u8>>,
+        raise_error: bool,
     ) -> AsyncTask<RequestTask> {
         AsyncTask::new(RequestTask {
             session: self.inner.clone(),
@@ -181,46 +186,60 @@ impl HttpSession {
             url,
             headers,
             body,
+            raise_error,
         })
     }
 
-    /// `GET url`.
+    /// `GET url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn get(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Get, url, Vec::new(), None)
+        self.task(Method::Get, url, Vec::new(), None, true)
     }
 
-    /// `HEAD url`.
+    /// `HEAD url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn head(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Head, url, Vec::new(), None)
+        self.task(Method::Head, url, Vec::new(), None, true)
     }
 
-    /// `DELETE url`.
+    /// `DELETE url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn delete(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Delete, url, Vec::new(), None)
+        self.task(Method::Delete, url, Vec::new(), None, true)
     }
 
-    /// `POST url` with an optional byte `body`.
+    /// `POST url` with an optional byte `body` (raises on a 4xx/5xx status).
     #[napi]
     pub fn post(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(Method::Post, url, Vec::new(), body.map(|b| b.to_vec()))
+        self.task(
+            Method::Post,
+            url,
+            Vec::new(),
+            body.map(|b| b.to_vec()),
+            true,
+        )
     }
 
-    /// `PUT url` with a byte `body`.
+    /// `PUT url` with a byte `body` (raises on a 4xx/5xx status).
     #[napi]
     pub fn put(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(Method::Put, url, Vec::new(), body.map(|b| b.to_vec()))
+        self.task(Method::Put, url, Vec::new(), body.map(|b| b.to_vec()), true)
     }
 
-    /// `PATCH url` with a byte `body`.
+    /// `PATCH url` with a byte `body` (raises on a 4xx/5xx status).
     #[napi]
     pub fn patch(&self, url: String, body: Option<Buffer>) -> AsyncTask<RequestTask> {
-        self.task(Method::Patch, url, Vec::new(), body.map(|b| b.to_vec()))
+        self.task(
+            Method::Patch,
+            url,
+            Vec::new(),
+            body.map(|b| b.to_vec()),
+            true,
+        )
     }
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`.
+    /// `raiseError` (default `true`) throws on a 4xx/5xx status.
     #[napi]
     pub fn request(
         &self,
@@ -228,11 +247,18 @@ impl HttpSession {
         url: String,
         headers: Option<HashMap<String, String>>,
         body: Option<Buffer>,
+        raise_error: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
         let method = Method::from_str(&method).map_err(to_napi)?;
         let headers = headers
             .map(|map| map.into_iter().collect())
             .unwrap_or_default();
-        Ok(self.task(method, url, headers, body.map(|b| b.to_vec())))
+        Ok(self.task(
+            method,
+            url,
+            headers,
+            body.map(|b| b.to_vec()),
+            raise_error.unwrap_or(true),
+        ))
     }
 }

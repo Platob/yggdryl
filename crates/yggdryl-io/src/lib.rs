@@ -61,6 +61,7 @@
 //! - `log` — structured `log` events on the hot paths.
 //! - `mmap` — [`LocalPath`] memory-maps files (zero-copy) instead of reading them.
 //! - `media` — lazy [`media_type`](Io::media_type) discovery via `yggdryl-media`.
+//! - `json` — [`Io::json`] parses a handle's bytes (zero-copy off [`as_slice`](Io::as_slice)).
 //!
 //! ```
 //! use yggdryl_io::{BytesIO, Io, Whence};
@@ -716,6 +717,21 @@ pub trait Io: ReadBytes + Seek + fmt::Debug + Send + Sync {
         let head = self.as_slice()?;
         yggdryl_media::MimeType::from_magic(head)
             .map(|mime| yggdryl_media::MediaType::new(vec![mime]))
+    }
+
+    /// Parses the handle's full contents as JSON. A memory-resident backend is
+    /// parsed **zero-copy** straight off its [`as_slice`](Io::as_slice); any other
+    /// backend (e.g. an HTTP stream) is drained once and parsed. Only present
+    /// under the `json` feature.
+    #[cfg(feature = "json")]
+    fn json(&mut self) -> Result<serde_json::Value, IoError> {
+        if let Some(all) = self.as_slice() {
+            return serde_json::from_slice(all)
+                .map_err(|err| IoError::Invalid(format!("json: {err}")));
+        }
+        let mut buf = Vec::new();
+        self.read_to_end(&mut buf)?;
+        serde_json::from_slice(&buf).map_err(|err| IoError::Invalid(format!("json: {err}")))
     }
 }
 
@@ -1682,6 +1698,18 @@ mod tests {
         io.clear();
         assert!(io.is_empty());
         assert_eq!(io.tell(), 0);
+    }
+
+    #[cfg(feature = "json")]
+    #[test]
+    fn bytesio_json_parses_zero_copy() {
+        let mut io = BytesIO::from_bytes(br#"{"n":42,"xs":[1,2]}"#.to_vec());
+        let value = io.json().unwrap();
+        assert_eq!(value["n"].as_u64(), Some(42));
+        assert_eq!(value["xs"][1].as_u64(), Some(2));
+        // Malformed JSON is an error, not a panic.
+        let mut bad = BytesIO::from_bytes(b"{not json".to_vec());
+        assert!(matches!(bad.json(), Err(IoError::Invalid(_))));
     }
 
     #[test]

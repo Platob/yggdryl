@@ -112,25 +112,40 @@ A small **blocking** HTTP client shaped after Python's `requests`, layered on
 gzip/brotli left off so decompression goes through `yggdryl-compression`). The
 shape:
 
-- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` plus default
-  headers, with `get`/`head`/`delete`/`post`/`put`/`patch` and `request`. A
-  4xx/5xx status is a normal response (`http_status_as_error(false)`); per-request
-  headers override session defaults.
+- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent`, default
+  headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size` (80). Every
+  send funnels through `prepare` (merge defaults; per-request headers win) then
+  `request(req, raise_error)` — `raise_error` defaults to `true` on the verb
+  helpers (`get`/`post`/…), raising on a 4xx/5xx. `stream(req)` opens an
+  `HttpStream`; `send_many(reqs)` is a lazy iterator of `HttpResponseBatch`,
+  running each batch up to `max_concurrency` at a time (scoped threads).
 - `HttpRequest` — a `Method` + `Url` + headers + body builder (`with_header` /
-  `with_param` / `with_body` / `with_body_reader`). `with_body_reader` streams the
-  upload from any `ReadBytes`/`Io` handle (no buffering).
+  `with_param` / `with_body` / `with_body_reader` / `with_body_io`). `with_body_io`
+  is the preferred upload: the handle's `stream_len` sets `Content-Length` and the
+  bytes stream straight off the `Io` (a file is never buffered).
 - `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. The body
-  is lazy: `reader()` is a `ReadBytes` source (decoded under `compression`), while
-  `bytes`/`text`/`into_bytesio` drain it. `std::io`↔`ReadBytes` shims bridge the
-  transport both ways.
+  is lazy: `reader()` is a `ReadBytes` source (decoded under `compression`),
+  `bytes`/`text`/`into_bytesio` drain it.
+- `HttpStream: Io` — a seekable HTTP body. A `HEAD` makes size / content type /
+  media discoverable; bytes are then fetched lazily in **4 MiB windows** via
+  `Range` (sequential `read`) or one-off ranges (`pread`, footer reads). Reads
+  retry transient statuses (429/502/503/504, honouring `Retry-After`) and
+  **resume from the cursor** on a dropped connection (each window is an
+  idempotent range request). This is the canonical "remote `Io`".
+- Retries cover replayable bodies (none/bytes) and all `HttpStream` window
+  fetches; a streamed (reader/`Io`) request body is single-shot.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
-on the codec backends), `media` (`mime_type()`), `log`. **All HTTP logic lives
-here; `ureq` stays a dependency of this crate only.** Tests are **hermetic** (a
-localhost `TcpListener`, no network). In the bindings the blocking call must not
-stall the host runtime: Python releases the GIL (`allow_threads`), Node runs the
+on the codec backends), `media` (`mime_type()`), `log`. The base depends on
+`yggdryl-io`'s `json` feature so `Io::json()` is available on every handle. **All
+HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
+**hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /
+mid-stream drops, no network). In the bindings the blocking call must not stall
+the host runtime: Python releases the GIL (`allow_threads`), Node runs the
 request on the libuv pool and returns a `Promise` (so Node's surface is async,
-the one idiomatic divergence from the sync Rust/Python API).
+the one idiomatic divergence from the sync Rust/Python API). Bindings pass our
+`Io` instances as bodies — never serialized `bytes` — per the Io-centralisation
+rule above.
 
 ### One module per type, everywhere
 
@@ -218,6 +233,24 @@ actually change** — guarded by a cheap up-front check:
 When you add a hot path, ask "does this allocate when nothing changed?" — if so,
 add the check and borrow. Never copy speculatively; never re-scan what a single
 pass can decide.
+
+### All byte access goes through `Io`
+
+**Centralise every byte/memory access behind the [`Io`] trait** — it is the one
+place that fully manages where bytes live and how they move, so it is where
+zero-copy wins live. A new source (cloud object, HTTP body, …) implements `Io`
+and overrides `as_slice` when it is memory-resident, so `pread` / `copy_to` /
+`json` / media-sniffing all light up the zero-copy path for free; a partly-cached
+source (e.g. `HttpStream`'s 4 MiB window) keeps its buffer management inside the
+`Io` impl and never leaks raw buffers to callers. Operations that consume bytes
+(`json`, compression, codecs, HTTP bodies) take an `Io`/`ReadBytes`, never a
+pre-collected `Vec` — so the data is read once, lazily, and copied at most once.
+
+This extends to the **bindings**: a Python/JS wrapper that needs bytes should
+accept and pass our `Io` instances (`BytesIO` / `LocalPath` / `HttpStream`), not
+serialized `bytes`, so a large body or upload streams through Rust and is never
+materialised in the host language. Prefer `Io.json()` (parsed in Rust) over
+handing raw bytes back across the FFI boundary.
 
 ## Logging
 
