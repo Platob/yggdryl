@@ -21,8 +21,7 @@ language.
 
     ```toml
     # Cargo.toml — pull only the crates you need
-    yggdryl-io = "0.1"
-    yggdryl-compression = "0.1"
+    yggdryl-core = "0.1"
     yggdryl-http = "0.1"
     ```
 
@@ -77,7 +76,7 @@ language.
 === "Rust"
 
     ```rust
-    use yggdryl_compression::Compression;
+    use yggdryl_core::Compression;
     let gz = Compression::from_str("zstd")?;
     let packed = gz.compress(b"hello world")?;
     ```
@@ -97,7 +96,7 @@ language.
 
     ```rust
     use yggdryl_http::{HttpSession, HttpRequest};
-    use yggdryl_io::{Io, Whence};
+    use yggdryl_core::{Io, Whence};
     let mut s = HttpSession::new()
         .send(HttpRequest::get("https://example.com/big.parquet")?, false, true, true)?
         .into_io();

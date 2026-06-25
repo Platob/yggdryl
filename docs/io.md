@@ -35,7 +35,7 @@ large columnar payloads (Parquet / CSV / JSON) this stack underpins.
 - *(downstream)* cloud object stores implement `RemotePath: Io`.
 
 ```rust
-use yggdryl_io::{BytesIO, Io, Whence};
+use yggdryl_core::{BytesIO, Io, Whence};
 
 let mut io = BytesIO::from_bytes(b"0123456789".to_vec());
 let mut tail = [0u8; 4];

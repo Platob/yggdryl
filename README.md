@@ -55,15 +55,21 @@ comparison, memory figures, and the one spot the C `zlib` decoder still leads.
 
 ## What's inside
 
-| crate | what it is |
+Two crates: **`yggdryl-core`** (all the data types + byte IO + compression) and
+**`yggdryl-http`** (the network client), each split into one-file-per-type modules.
+
+| `yggdryl-core` module | what it is |
 | --- | --- |
-| **`yggdryl-io`** | the one byte-IO trait `Io` — read/write/seek/`pread`/`pwrite` over memory (`BytesIO`), local mmap (`LocalPath`) or cloud; codecs; the `from_str`/`from_url` factory |
-| **`yggdryl-compression`** | streamed gzip / Zstd / Snappy (on by default) — encoders/decoders are themselves `Io` handles |
-| **`yggdryl-http`** | a `requests`-like blocking client: pooling, retries with resume-on-drop, a **seekable** response body, `send_many`, cookies, redirects |
-| **`yggdryl-url`** | `Uri` / `Url` (RFC 3986) with query CRUD and inferred media types |
-| **`yggdryl-media`** | `MimeType` / `MediaType` from extension or magic bytes |
-| **`yggdryl-version`** | a standalone `Version` type |
-| **`yggdryl-core`** | dependency-free foundations (`ToOutput`, `Mapping`/`Params`, percent-encoding) |
+| **`io`** | the one byte-IO trait `Io` — read/write/seek/`pread`/`pwrite` over memory (`BytesIO`), local mmap (`LocalPath`) or cloud; codecs; the `from_str`/`from_url` factory |
+| **`compression`** | streamed gzip / Zstd / Snappy (on by default) — encoders/decoders are themselves `Io` handles |
+| **`url`** | `Uri` / `Url` (RFC 3986) with query CRUD and inferred media types |
+| **`media`** | `MimeType` / `MediaType` from extension or magic bytes |
+| **`version`** | a standalone `Version` type |
+| `encoding` / `mapping` / `output` | dependency-free foundations (`ToOutput`, `Mapping`/`Params`, percent-encoding) |
+
+**`yggdryl-http`** — a `requests`-like blocking client built on `yggdryl-core`:
+pooling, retries with resume-on-drop, a **seekable** response body, `send_many`,
+cookies, redirects.
 
 Bindings live under `bindings/python` (PyO3 + maturin → `import yggdryl`) and
 `bindings/node` (napi-rs → `require('yggdryl')`). Every type is built with
@@ -118,11 +124,11 @@ framework) plus same-code comparisons against the host-language stalwarts — se
 the [`benchmarks/`](benchmarks/) folder for the methodology and full tables.
 
 ```bash
-cargo bench -p yggdryl-io                    # Io: cursor, pread, copy, codecs
-cargo bench -p yggdryl-compression --all-features   # gzip/zstd/snappy, one-shot vs Io-stream
+cargo bench -p yggdryl-core --bench io                    # Io: cursor, pread, copy, codecs
+cargo bench -p yggdryl-core --bench compression --all-features   # gzip/zstd/snappy, one-shot vs Io-stream
 cargo bench -p yggdryl-http --all-features   # download, footer pread, send_many
-cargo bench -p yggdryl-url                   # Uri/Url/MediaType parsing, encoding
-cargo bench -p yggdryl-version               # Version parsing / rendering
+cargo bench -p yggdryl-core --bench url                   # Uri/Url/MediaType parsing, encoding
+cargo bench -p yggdryl-core --bench version               # Version parsing / rendering
 
 # Same high-level code, yggdryl vs requests / stdlib gzip / Node http+zlib
 python3 benchmarks/compare.py
@@ -141,12 +147,12 @@ pip install mkdocs-material && mkdocs serve   # preview at http://127.0.0.1:8000
 
 ### Logging (optional)
 
-`yggdryl-url` and `yggdryl-media` have an optional `log` feature (off by default,
-so the crates stay dependency-free). Enable it to emit `log` events — parse
-traces and global MIME-registry changes — through any `log` backend:
+`yggdryl-core` has an optional `log` feature (off by default, so the crate stays
+dependency-free). Enable it to emit `log` events — parse traces, global
+MIME-registry changes, scheme registration — through any `log` backend:
 
 ```toml
-yggdryl-url = { version = "0.1", features = ["log"] }
+yggdryl-core = { version = "0.1", features = ["log"] }
 ```
 
 ## Why this shape?
@@ -199,11 +205,6 @@ If you ever publish outside CI, use the non-deprecated tools:
 ```bash
 # Rust — publish in dependency order
 cargo publish -p yggdryl-core
-cargo publish -p yggdryl-version
-cargo publish -p yggdryl-media
-cargo publish -p yggdryl-url
-cargo publish -p yggdryl-io
-cargo publish -p yggdryl-compression
 cargo publish -p yggdryl-http
 
 # Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)

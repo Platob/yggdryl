@@ -42,8 +42,8 @@ them as ratios, not absolutes, and re-run them yourself.
 
 ```bash
 # Rust core
-cargo bench -p yggdryl-io
-cargo bench -p yggdryl-compression --all-features
+cargo bench -p yggdryl-core --bench io
+cargo bench -p yggdryl-core --bench compression --all-features
 cargo bench -p yggdryl-http --all-features
 
 # Same code vs the host-language stalwarts
