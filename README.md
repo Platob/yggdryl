@@ -65,7 +65,7 @@ Two crates: **`yggdryl-core`** (all the data types + byte IO + compression) and
 | **`url`** | `Uri` / `Url` (RFC 3986) with query CRUD and inferred media types |
 | **`media`** | `MimeType` / `MediaType` from extension or magic bytes |
 | **`version`** | a standalone `Version` type |
-| `encoding` / `mapping` / `output` | dependency-free foundations (`ToOutput`, `Mapping`/`Params`, percent-encoding) |
+| `encoding` / `mapping` | dependency-free foundations (`Mapping`/`Params`, percent-encoding) |
 
 **`yggdryl-http`** — a `requests`-like blocking client built on `yggdryl-core`:
 pooling, retries with resume-on-drop, a **seekable** response body, `send_many`,

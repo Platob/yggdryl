@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{ToOutput, Version as CoreVersion};
+use yggdryl_core::Version as CoreVersion;
 
 use crate::to_mapping;
 

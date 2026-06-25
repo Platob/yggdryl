@@ -10,9 +10,7 @@ use crate::url::{
     build_query, is_valid_scheme, path_name, path_parts, query_param, query_to_params,
     render_component, split_stem_ext, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
 };
-use crate::{
-    validate_percent_encoding, Mapping, MediaType, MimeType, Params, ToOutput, Uri, UriError,
-};
+use crate::{validate_percent_encoding, Mapping, MediaType, MimeType, Params, Uri, UriError};
 
 /// Error returned when [`Url`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -718,14 +716,12 @@ impl Url {
     }
 }
 
-impl ToOutput for Url {
-    fn to_str(&self, encode: bool) -> String {
-        Url::to_str(self, encode)
-    }
-
+/// Component rendering (the inherent [`to_str`](Url::to_str) lives with the other
+/// builders above).
+impl Url {
     /// The inverse of `from_mapping`: keys `scheme`, `host` and any of
     /// `username`, `password`, `port`, `path`, `query`, `fragment` that are set.
-    fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> Mapping {
         let mut map = Mapping::from([
             ("scheme".to_string(), self.scheme.clone()),
             ("host".to_string(), self.host.clone()),

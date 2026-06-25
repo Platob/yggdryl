@@ -11,8 +11,7 @@ use crate::url::{
     render_component, split_stem_ext, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
 };
 use crate::{
-    validate_percent_encoding, EncodingError, Mapping, MediaType, MimeType, Params, ToOutput, Url,
-    UrlError,
+    validate_percent_encoding, EncodingError, Mapping, MediaType, MimeType, Params, Url, UrlError,
 };
 
 /// Error returned when [`Uri`] parsing cannot interpret its input.
@@ -558,14 +557,12 @@ impl Uri {
     }
 }
 
-impl ToOutput for Uri {
-    fn to_str(&self, encode: bool) -> String {
-        Uri::to_str(self, encode)
-    }
-
+/// Component rendering (the inherent [`to_str`](Uri::to_str) lives with the other
+/// builders above).
+impl Uri {
     /// The inverse of `from_mapping`: keys `scheme`, `authority`, `path`,
     /// `query`, `fragment` (only the present components).
-    fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> Mapping {
         let mut map = Mapping::from([("scheme".to_string(), self.scheme.clone())]);
         if let Some(authority) = &self.authority {
             map.insert("authority".to_string(), authority.clone());

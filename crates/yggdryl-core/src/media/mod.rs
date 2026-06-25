@@ -52,7 +52,6 @@ impl std::error::Error for MediaError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ToOutput;
 
     #[test]
     fn mime_edge_cases() {

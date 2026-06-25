@@ -16,10 +16,10 @@ per type** — each concern is a module (or module directory) under
 `yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
 its concern wholly — do not scatter a concern's logic across modules:
 
-- `encoding.rs` / `mapping.rs` / `output.rs` — dependency-free foundations: the
-  `ToOutput` rendering trait, the `Mapping` / `Params` component maps and
-  percent-encoding (each type pairs these with its own inherent `from_str` /
-  `from_mapping` parsers).
+- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Mapping` /
+  `Params` component maps and percent-encoding. Each value type pairs its own
+  inherent `from_str` / `from_mapping` parsers with inherent `to_str` /
+  `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
 - `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
   types, backed by a mutable global registry of extensions/magic bytes) and the

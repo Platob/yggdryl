@@ -4,7 +4,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::{Mapping, ToOutput};
+use crate::Mapping;
 
 /// Error returned when [`Version`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,12 +157,17 @@ impl fmt::Display for Version {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
-impl ToOutput for Version {
-    fn to_str(&self, _encode: bool) -> String {
+/// Rendering: the inverse of the `from_str` / `from_mapping` parsers.
+impl Version {
+    /// Renders to its canonical `"major.minor.patch"` string (the `encode` flag is
+    /// irrelevant for a version).
+    pub fn to_str(&self, _encode: bool) -> String {
         self.to_string()
     }
 
-    fn to_mapping(&self) -> Mapping {
+    /// Renders to a component [`Mapping`] (`major` / `minor` / `patch`) — the
+    /// inverse of [`from_mapping`](Version::from_mapping).
+    pub fn to_mapping(&self) -> Mapping {
         Mapping::from([
             ("major".to_string(), self.major.to_string()),
             ("minor".to_string(), self.minor.to_string()),

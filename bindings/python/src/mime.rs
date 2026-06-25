@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, MimeType as CoreMimeType, Signature, ToOutput};
+use yggdryl_core::{Mapping, MimeType as CoreMimeType, Signature};
 
 use crate::{hash_str, media_err};
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{MediaType as CoreMediaType, ToOutput};
+use yggdryl_core::MediaType as CoreMediaType;
 
 use crate::mime::MimeType;
 use crate::to_mapping;

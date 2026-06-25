@@ -7,7 +7,7 @@ use std::sync::{OnceLock, RwLock};
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::media::MediaType;
-use crate::{Mapping, MediaError, ToOutput};
+use crate::{Mapping, MediaError};
 
 /// A single common MIME type, or [`Other`](MimeType::Other) for anything not in
 /// the built-in registry.
@@ -667,13 +667,15 @@ impl fmt::Display for MimeType {
     }
 }
 
-impl ToOutput for MimeType {
-    fn to_str(&self, _encode: bool) -> String {
+/// Component rendering: the inverse of the `from_str` / `from_mapping` parsers.
+impl MimeType {
+    /// Renders to the canonical MIME string (the `encode` flag is irrelevant).
+    pub fn to_str(&self, _encode: bool) -> String {
         self.mime().to_string()
     }
 
     /// The inverse of `from_mapping`: keys `type` and `subtype`.
-    fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> Mapping {
         Mapping::from([
             ("type".to_string(), self.type_().to_string()),
             ("subtype".to_string(), self.subtype().to_string()),
