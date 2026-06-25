@@ -58,7 +58,17 @@ impl From<IoError> for HttpError {
 
 impl From<ureq::Error> for HttpError {
     fn from(err: ureq::Error) -> HttpError {
-        HttpError::Transport(err.to_string())
+        match &err {
+            // A TLS / certificate failure gets an actionable hint: the usual cause
+            // is a self-signed or internal certificate, fixable by trusting its CA
+            // or (insecurely) turning verification off.
+            ureq::Error::Tls(message) => HttpError::Transport(format!(
+                "tls error: {message}; if this host uses a self-signed or internal \
+                 certificate, install its CA or set verify=false (insecure) to skip \
+                 verification"
+            )),
+            _ => HttpError::Transport(err.to_string()),
+        }
     }
 }
 

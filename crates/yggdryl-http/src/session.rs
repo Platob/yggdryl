@@ -22,15 +22,28 @@ use crate::version::HttpVersion;
 /// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
 /// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
 /// (`max_redirects(0)`) so the 3xx surfaces to our [`redirect`](crate::redirect)
-/// layer, which owns method/body/cookie/security semantics.
-fn build_agent(max_pool: usize) -> ureq::Agent {
-    ureq::Agent::config_builder()
+/// layer, which owns method/body/cookie/security semantics. `verify` toggles
+/// TLS certificate verification (disabling it logs a warning — connections become
+/// insecure), and `proxy` routes requests through an HTTP/SOCKS proxy when set.
+fn build_agent(max_pool: usize, verify: bool, proxy: Option<ureq::Proxy>) -> ureq::Agent {
+    let mut builder = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .max_idle_connections(max_pool)
         .max_idle_connections_per_host(max_pool)
-        .build()
-        .into()
+        .proxy(proxy);
+    if !verify {
+        log_event!(
+            warn,
+            "TLS certificate verification is DISABLED (verify=false); connections are insecure"
+        );
+        builder = builder.tls_config(
+            ureq::tls::TlsConfig::builder()
+                .disable_verification(true)
+                .build(),
+        );
+    }
+    builder.build().into()
 }
 
 /// Resolves a requested [`HttpVersion`] to the version the transport will actually
@@ -88,6 +101,14 @@ pub struct HttpSession {
     /// The default HTTP protocol [`version`](HttpVersion) for requests that do not
     /// pin one ([`Auto`](HttpVersion::Auto) negotiates the best available).
     http_version: HttpVersion,
+    /// Whether TLS certificate verification is performed (default `true`). When
+    /// `false`, certificates are not validated (insecure) and a warning is logged —
+    /// for self-signed / internal hosts only.
+    verify: bool,
+    /// An optional HTTP/SOCKS proxy all requests route through. Defaults to the
+    /// process environment (`HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`, honouring
+    /// `NO_PROXY`); override with [`with_proxy`](HttpSession::with_proxy).
+    proxy: Option<ureq::Proxy>,
 }
 
 impl HttpSession {
@@ -152,7 +173,11 @@ impl HttpSession {
         // built, so `yggdryl_core::from_str("https://…")` works once this crate links.
         crate::factory::register();
         let max_pool = max_pool.max(1);
-        let agent = build_agent(max_pool);
+        let verify = true;
+        // Pick up a proxy from the environment by default (HTTPS_PROXY / HTTP_PROXY
+        // / ALL_PROXY, honouring NO_PROXY), like `requests` / curl.
+        let proxy = ureq::Proxy::try_from_env();
+        let agent = build_agent(max_pool, verify, proxy.clone());
         let max_concurrency = 8;
         HttpSession {
             agent,
@@ -166,6 +191,8 @@ impl HttpSession {
             cookies: Mutex::new(HttpCookies::new()),
             base_url: None,
             http_version: HttpVersion::Auto,
+            verify,
+            proxy,
         }
     }
 
@@ -208,6 +235,49 @@ impl HttpSession {
         self.http_version
     }
 
+    /// Sets whether TLS certificate verification is performed (default `true`),
+    /// rebuilding the agent. Passing `false` **disables** verification (and logs a
+    /// warning): connections to *any* host are accepted regardless of certificate —
+    /// use it only for a self-signed or internal host you trust. When verification
+    /// is left on and a certificate cannot be validated, the resulting
+    /// [`HttpError`] carries a hint pointing here.
+    pub fn with_verify(mut self, verify: bool) -> HttpSession {
+        self.verify = verify;
+        self.agent = build_agent(self.max_pool, verify, self.proxy.clone());
+        self
+    }
+
+    /// Whether TLS certificate verification is performed.
+    pub fn verify(&self) -> bool {
+        self.verify
+    }
+
+    /// Routes all requests through the proxy at `url` (e.g. `http://host:8080`,
+    /// `socks5://host:1080`), rebuilding the agent. Returns
+    /// [`HttpError::InvalidUrl`] if the proxy URL is malformed. By default a session
+    /// already adopts the environment's proxy (`HTTPS_PROXY` / `HTTP_PROXY` /
+    /// `ALL_PROXY`, honouring `NO_PROXY`); call [`without_proxy`](HttpSession::without_proxy)
+    /// to ignore it.
+    pub fn with_proxy(mut self, url: &str) -> Result<HttpSession, HttpError> {
+        let proxy = ureq::Proxy::new(url).map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
+        self.proxy = Some(proxy);
+        self.agent = build_agent(self.max_pool, self.verify, self.proxy.clone());
+        Ok(self)
+    }
+
+    /// Clears any proxy (including one picked up from the environment), so requests
+    /// connect directly. Rebuilds the agent.
+    pub fn without_proxy(mut self) -> HttpSession {
+        self.proxy = None;
+        self.agent = build_agent(self.max_pool, self.verify, None);
+        self
+    }
+
+    /// The proxy URL all requests route through, if one is set.
+    pub fn proxy(&self) -> Option<String> {
+        self.proxy.as_ref().map(|proxy| proxy.uri().to_string())
+    }
+
     /// Resolves a request `target` against the session's [`base_url`](HttpSession::base_url):
     /// an absolute URL (one with a scheme) is parsed and used unchanged, while a
     /// relative reference (`/path`, `name`, `//host/p`) is joined onto the base by
@@ -245,7 +315,7 @@ impl HttpSession {
     /// pools keep more keep-alive connections warm (skipping TLS handshakes).
     pub fn with_pool_size(mut self, max_pool: usize) -> HttpSession {
         let max_pool = max_pool.max(1);
-        self.agent = build_agent(max_pool);
+        self.agent = build_agent(max_pool, self.verify, self.proxy.clone());
         self.max_pool = max_pool;
         self
     }
@@ -608,6 +678,7 @@ impl HttpSession {
                 headers: &headers,
                 body: body.clone(),
                 prefer,
+                verify: self.verify,
             });
             match raw {
                 Ok(raw) => {

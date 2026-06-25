@@ -61,6 +61,9 @@ pub(crate) struct AsyncRequest<'a> {
     pub(crate) headers: &'a HttpHeaders,
     pub(crate) body: Vec<u8>,
     pub(crate) prefer: HttpVersion,
+    /// Whether to verify the server's TLS certificate (mirrors the session's
+    /// [`verify`](crate::HttpSession::verify); `false` accepts any certificate).
+    pub(crate) verify: bool,
 }
 
 /// The buffered result of an async round-trip: status, response headers, the whole
@@ -138,7 +141,7 @@ async fn send_async(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
     if is_tls {
         // Offer h2 alone when pinned, h2+http/1.1 when negotiating (Auto).
         let h2_only = request.prefer == HttpVersion::Http2;
-        let tls = tls_connect(tcp, &host, h2_only).await?;
+        let tls = tls_connect(tcp, &host, h2_only, request.verify).await?;
         let h2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
         if h2 {
             h2_request(tls, request).await
@@ -301,25 +304,98 @@ async fn collect(
     })
 }
 
+/// A rustls certificate verifier that accepts **any** certificate — used only when
+/// the session sets `verify=false`. Signatures are still checked (so the handshake
+/// is well-formed); only the certificate *trust chain* is skipped.
+#[derive(Debug)]
+struct NoVerify(Arc<tokio_rustls::rustls::crypto::CryptoProvider>);
+
+impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerify {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[tokio_rustls::rustls::pki_types::CertificateDer<'_>],
+        _server_name: &tokio_rustls::rustls::pki_types::ServerName<'_>,
+        _ocsp: &[u8],
+        _now: tokio_rustls::rustls::pki_types::UnixTime,
+    ) -> Result<tokio_rustls::rustls::client::danger::ServerCertVerified, tokio_rustls::rustls::Error>
+    {
+        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        tokio_rustls::rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        tokio_rustls::rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
+}
+
 /// The rustls [`ClientConfig`](tokio_rustls::rustls::ClientConfig) for a given ALPN
-/// offer, built once and reused: assembling the webpki root store is not free, so
-/// each of the two offers (`h2`-only when pinned, `h2`,`http/1.1` when negotiating)
-/// is cached behind a `OnceLock`.
-fn tls_config(h2_only: bool) -> Arc<tokio_rustls::rustls::ClientConfig> {
+/// offer and verification mode. The four combinations are built once and reused:
+/// assembling the webpki root store is not free. A `verify=false` config (which
+/// trusts any certificate) logs a warning the first time it is built.
+fn tls_config(h2_only: bool, verify: bool) -> Arc<tokio_rustls::rustls::ClientConfig> {
     use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 
-    static H2_ONLY: OnceLock<Arc<ClientConfig>> = OnceLock::new();
-    static NEGOTIATE: OnceLock<Arc<ClientConfig>> = OnceLock::new();
-    let slot = if h2_only { &H2_ONLY } else { &NEGOTIATE };
+    static CONFIGS: [OnceLock<Arc<ClientConfig>>; 4] = [
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+    ];
+    let slot = &CONFIGS[(h2_only as usize) | ((verify as usize) << 1)];
     slot.get_or_init(|| {
-        let mut roots = RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
-        let mut config = ClientConfig::builder_with_provider(provider)
+        let builder = ClientConfig::builder_with_provider(provider.clone())
             .with_safe_default_protocol_versions()
-            .expect("rustls ring provider supports the default protocol versions")
-            .with_root_certificates(roots)
-            .with_no_client_auth();
+            .expect("rustls ring provider supports the default protocol versions");
+        let mut config = if verify {
+            let mut roots = RootCertStore::empty();
+            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+            builder.with_root_certificates(roots).with_no_client_auth()
+        } else {
+            log_event!(
+                warn,
+                "TLS certificate verification is DISABLED (verify=false) for the http2 \
+                 transport; connections are insecure"
+            );
+            builder
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoVerify(provider)))
+                .with_no_client_auth()
+        };
         config.alpn_protocols = if h2_only {
             vec![b"h2".to_vec()]
         } else {
@@ -331,12 +407,13 @@ fn tls_config(h2_only: bool) -> Arc<tokio_rustls::rustls::ClientConfig> {
 }
 
 /// Wraps `stream` in a rustls TLS session for `host`, offering `h2` alone (when
-/// `h2_only`) or `h2`,`http/1.1` (when negotiating). The negotiated ALPN id is read
-/// back by the caller.
+/// `h2_only`) or `h2`,`http/1.1` (when negotiating), verifying the certificate
+/// unless `verify` is `false`. The negotiated ALPN id is read back by the caller.
 async fn tls_connect<S>(
     stream: S,
     host: &str,
     h2_only: bool,
+    verify: bool,
 ) -> Result<tokio_rustls::client::TlsStream<S>, HttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -344,11 +421,19 @@ where
     use tokio_rustls::rustls::pki_types::ServerName;
     use tokio_rustls::TlsConnector;
 
-    let connector = TlsConnector::from(tls_config(h2_only));
+    let connector = TlsConnector::from(tls_config(h2_only, verify));
     let server_name = ServerName::try_from(host.to_string())
         .map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
-    connector
-        .connect(server_name, stream)
-        .await
-        .map_err(|err| HttpError::Transport(err.to_string()))
+    connector.connect(server_name, stream).await.map_err(|err| {
+        // A TLS handshake failure with verification on is usually an untrusted cert;
+        // give the same actionable hint the h1 path does.
+        if verify {
+            HttpError::Transport(format!(
+                "tls error: {err}; if this host uses a self-signed or internal certificate, \
+                 install its CA or set verify=false (insecure) to skip verification"
+            ))
+        } else {
+            HttpError::Transport(err.to_string())
+        }
+    })
 }

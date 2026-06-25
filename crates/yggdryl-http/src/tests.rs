@@ -1431,6 +1431,32 @@ fn pinning_an_unwired_http2_errors() {
         .is_err());
 }
 
+#[test]
+fn verify_and_proxy_are_configurable() {
+    // TLS verification is on by default and can be turned off (rebuilding the agent).
+    let session = HttpSession::new();
+    assert!(session.verify());
+    let insecure = HttpSession::new().with_verify(false);
+    assert!(!insecure.verify());
+
+    // The proxy can be set explicitly and cleared; `without_proxy` ignores any the
+    // environment supplied.
+    let proxied = HttpSession::new()
+        .with_proxy("http://127.0.0.1:8080")
+        .unwrap();
+    assert!(
+        proxied
+            .proxy()
+            .as_deref()
+            .is_some_and(|uri| uri.contains("127.0.0.1:8080")),
+        "{:?}",
+        proxied.proxy()
+    );
+    assert!(proxied.without_proxy().proxy().is_none());
+    // A malformed proxy URL is rejected.
+    assert!(HttpSession::new().with_proxy("not a url").is_err());
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn http_data_types_serde_round_trip() {
