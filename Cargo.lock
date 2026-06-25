@@ -240,6 +240,8 @@ dependencies = [
  "napi-derive",
  "napi-sys",
  "once_cell",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -791,6 +793,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "serde_json",
  "yggdryl-compression",
  "yggdryl-http",
  "yggdryl-io",
@@ -804,6 +807,7 @@ name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
  "pyo3",
+ "serde_json",
  "yggdryl-compression",
  "yggdryl-http",
  "yggdryl-io",

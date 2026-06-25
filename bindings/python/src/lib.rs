@@ -66,6 +66,41 @@ pub(crate) fn http_err(err: HttpError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
+/// Converts a `serde_json::Value` (from [`yggdryl_io::Io::json`]) into the
+/// matching Python object, so JSON is parsed in Rust and handed back natively.
+pub(crate) fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyObject {
+    use pyo3::types::{PyDict, PyList};
+    use serde_json::Value;
+    match value {
+        Value::Null => py.None(),
+        Value::Bool(b) => b.into_py(py),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into_py(py)
+            } else if let Some(u) = n.as_u64() {
+                u.into_py(py)
+            } else {
+                n.as_f64().unwrap_or(f64::NAN).into_py(py)
+            }
+        }
+        Value::String(s) => s.into_py(py),
+        Value::Array(items) => {
+            let list = PyList::empty_bound(py);
+            for item in items {
+                let _ = list.append(json_to_py(py, item));
+            }
+            list.into()
+        }
+        Value::Object(map) => {
+            let dict = PyDict::new_bound(py);
+            for (key, value) in map {
+                let _ = dict.set_item(key, json_to_py(py, value));
+            }
+            dict.into()
+        }
+    }
+}
+
 /// Maps a Python ``whence`` integer (``SEEK_SET`` / ``SEEK_CUR`` / ``SEEK_END``)
 /// to the core [`Whence`], raising ``ValueError`` on any other value. Shared by
 /// the seekable IO types.

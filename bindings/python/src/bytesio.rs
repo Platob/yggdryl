@@ -158,6 +158,12 @@ impl BytesIO {
         PyBytes::new_bound(py, self.inner.getvalue())
     }
 
+    /// Parse the buffer's bytes as JSON (in Rust), returning the Python object.
+    fn json(&mut self, py: Python<'_>) -> PyResult<PyObject> {
+        let value = self.inner.json().map_err(io_err)?;
+        Ok(crate::json_to_py(py, &value))
+    }
+
     /// Compress this buffer's bytes (from the cursor) with ``codec`` — a name like
     /// ``"gzip"`` / ``"zstd"`` / ``"snappy"`` — into a new :class:`BytesIO`.
     fn compress(&mut self, codec: &str) -> PyResult<BytesIO> {

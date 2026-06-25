@@ -161,6 +161,14 @@ impl BytesIO {
         Buffer::from(self.inner.getvalue().to_vec())
     }
 
+    /// Parse the buffer's bytes as JSON (in Rust), returning the JS value.
+    #[napi]
+    pub fn json(&mut self) -> Result<serde_json::Value> {
+        self.inner
+            .json()
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
     /// Compress this buffer's bytes (from the cursor) with `codec` — a name like
     /// `"gzip"` / `"zstd"` / `"snappy"` — into a new `BytesIO`.
     #[napi]

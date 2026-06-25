@@ -22,9 +22,11 @@ path = "src/lib.rs"
 yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
 yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
 yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
-yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media"] }
+yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media", "json"] }
 yggdryl-compression = { path = "../../crates/yggdryl-compression", version = "0.1.0", features = ["gzip", "zstd", "snappy", "media"] }
 yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
+# Converts the `serde_json::Value` from `Io::json()` into Python objects.
+serde_json = "1"
 
 [dependencies.pyo3]
 version = "0.22"
