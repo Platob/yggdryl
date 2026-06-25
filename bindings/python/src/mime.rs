@@ -1,6 +1,7 @@
 //! The `MimeType` pyclass and the global registry hooks.
 
 use pyo3::prelude::*;
+use pyo3::types::PyType;
 use yggdryl_core::{Mapping, MimeType as CoreMimeType, Signature, ToOutput};
 
 use crate::{hash_str, media_err};
@@ -157,5 +158,13 @@ impl MimeType {
 
     fn __hash__(&self) -> u64 {
         hash_str(self.inner.mime())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the MIME string.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (String,)) {
+        (
+            py.get_type_bound::<Self>(),
+            (self.inner.mime().to_string(),),
+        )
     }
 }

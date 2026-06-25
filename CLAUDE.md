@@ -104,9 +104,24 @@ handle. The layering, smallest to largest:
 
 Rules when extending: the `io` module builds on the `url` / `encoding` modules (for
 the universal `Io::url()`); new heavy deps are **optional features** (like `log` /
-`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
-zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
-with `Whence::Start`, never by mutating the cursor.
+`mmap` / `media` / `serde`). A new memory-resident backend must override `as_slice`
+so the zero-copy `pread` / `copy_to` paths light up; positional reads go through
+`pread` with `Whence::Start`, never by mutating the cursor.
+
+### Serialization — a cross-cutting optional concern
+
+Every value type is **serializable**, but the mechanism is idiomatic per language
+(adapt to each, keep the semantics identical). In Rust it is the off-by-default
+`serde` feature: value types with a canonical string render to **that string**
+(`Version` → `"1.4.2"`, `Url` → `"https://…"`, `MimeType` → `"image/png"`,
+`Compression` → `"gzip"`), `MediaType` to a **sequence of MIME strings**
+(lossless), and the plain enums/structs (`Mode` / `Whence` / `Kind` / `IoStats` /
+`Signature`) `derive`. The bindings surface the same: **Python** implements
+`__reduce__` (so `pickle` / `copy` reconstruct through the existing constructors),
+**Node** implements `toJSON()` + a static `fromJSON()` (used by `JSON.stringify`).
+Live/stream resources (`Io` handles, an HTTP body, `HttpSession`) are **not**
+serialised. When you add a type, add its serde impl and replicate the pickle /
+`toJSON` surface in both bindings.
 
 ### The `compression` module — streamed codecs over `Io`
 
@@ -155,7 +170,12 @@ shape:
   keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
   threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
-  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`).
+  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). A process-wide
+  **shared singleton** `HttpSession::shared()` (an `OnceLock`) backs the crate-level
+  `get`/`head`/`post`/`put`/`patch`/`delete`/`request` **module functions**, the
+  `requests.get(...)` equivalent. The bindings mirror this with module-level verbs
+  over a shared session (Node has no `delete` verb — a JS reserved word — so use
+  `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
@@ -194,7 +214,10 @@ shape:
   fetches; a streamed (reader/`Io`) request body is single-shot.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
-on the codec backends), `media` (`mime_type()`), `log`. The base depends on
+on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`
+for `Method` / `HttpHeaders` / `Cookie` / `HttpCookies` / `RetryConfig`, and
+transitively the core value types — a live request/response body is deliberately
+not serialisable), `log`. The base depends on
 `yggdryl-core`'s `json` feature so `Io::json()` is available on every handle. **All
 HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
 **hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /

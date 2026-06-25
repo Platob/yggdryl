@@ -22,6 +22,7 @@ use yggdryl_core::Url;
 /// assert!(cookie.secure());
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cookie {
     name: String,
     value: String,
@@ -203,6 +204,7 @@ impl Cookie {
 /// assert_eq!(jar.header_for(&url).as_deref(), Some("sid=abc"));
 /// ```
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HttpCookies {
     cookies: Vec<Cookie>,
 }

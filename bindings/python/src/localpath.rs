@@ -1,7 +1,7 @@
 //! The `LocalPath` pyclass.
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::{BytesIO as CoreBytesIO, Io, LocalPath as CoreLocalPath, Mode, Path};
 use yggdryl_core::{CompressIo, Compression as CoreCompression};
 
@@ -236,5 +236,14 @@ impl LocalPath {
 
     fn __repr__(&self) -> String {
         format!("LocalPath({:?})", self.inner.location())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the file location
+    /// (the path is re-opened on unpickling).
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (String,)) {
+        (
+            py.get_type_bound::<Self>(),
+            (self.inner.location().to_string(),),
+        )
     }
 }

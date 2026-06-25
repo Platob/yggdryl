@@ -590,6 +590,22 @@ impl From<&Uri> for MediaType {
     }
 }
 
+/// Serialises as the encoded URI string, the inverse of [`Uri::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Uri {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Uri {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Uri, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Uri::from_str(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Splits `input` on the first `sep`, returning the part before and the
 /// owned part after (or `None` if `sep` is absent).
 fn split_once_owned(input: &str, sep: char) -> (&str, Option<String>) {

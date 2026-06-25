@@ -84,7 +84,9 @@ pub use method::Method;
 pub use request::HttpRequest;
 pub use response::HttpResponse;
 pub use retry::RetryConfig;
-pub use session::{HttpResponseBatch, HttpSession, SendMany};
+pub use session::{
+    delete, get, head, patch, post, put, request, HttpResponseBatch, HttpSession, SendMany,
+};
 pub use stream::HttpStream;
 
 #[cfg(test)]

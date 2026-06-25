@@ -185,3 +185,20 @@ impl ToOutput for MediaType {
         Mapping::from([("types".to_string(), types)])
     }
 }
+
+/// Serialises as a sequence of MIME strings (e.g. `["text/csv","application/gzip"]`)
+/// — lossless, since each [`MimeType`] round-trips through its canonical string.
+#[cfg(feature = "serde")]
+impl serde::Serialize for MediaType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(&self.types)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MediaType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<MediaType, D::Error> {
+        let types = <Vec<MimeType> as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(MediaType::new(types))
+    }
+}

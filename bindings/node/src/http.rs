@@ -5,7 +5,7 @@
 //! answer normally).
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
@@ -17,6 +17,39 @@ use crate::localpath::LocalPath;
 
 fn to_napi(err: yggdryl_http::HttpError) -> Error {
     Error::from_reason(err.to_string())
+}
+
+/// The process-wide shared session that backs the module-level `get` / `post` / …
+/// verbs (the singleton mirroring Python's `requests` default session). It carries
+/// the default configuration and a shared cookie jar.
+fn shared_session() -> Arc<CoreHttpSession> {
+    static SHARED: OnceLock<Arc<CoreHttpSession>> = OnceLock::new();
+    SHARED
+        .get_or_init(|| Arc::new(CoreHttpSession::new()))
+        .clone()
+}
+
+/// Builds a [`RequestTask`] over the shared session singleton.
+#[allow(clippy::too_many_arguments)]
+fn shared_task(
+    method: Method,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: BodyArg,
+    raise_error: bool,
+    keep_alive: bool,
+    allow_redirect: bool,
+) -> AsyncTask<RequestTask> {
+    AsyncTask::new(RequestTask {
+        session: shared_session(),
+        method,
+        url,
+        headers,
+        body,
+        raise_error,
+        keep_alive,
+        allow_redirect,
+    })
 }
 
 /// A request body: raw bytes, or a `LocalPath` streamed straight off disk.
@@ -412,4 +445,108 @@ impl HttpSession {
             allow_redirect.unwrap_or(true),
         ))
     }
+}
+
+/// `GET url` via the process-wide shared `HttpSession` singleton (the
+/// `requests.get` equivalent — rejects on a 4xx/5xx status).
+#[napi(js_name = "get")]
+pub fn http_get(url: String) -> AsyncTask<RequestTask> {
+    shared_task(
+        Method::Get,
+        url,
+        Vec::new(),
+        BodyArg::Empty,
+        true,
+        true,
+        true,
+    )
+}
+
+/// `HEAD url` via the shared session singleton (rejects on a 4xx/5xx status).
+#[napi(js_name = "head")]
+pub fn http_head(url: String) -> AsyncTask<RequestTask> {
+    shared_task(
+        Method::Head,
+        url,
+        Vec::new(),
+        BodyArg::Empty,
+        true,
+        true,
+        true,
+    )
+}
+
+// NOTE: there is intentionally no module-level `delete` verb — `delete` is a JS
+// reserved word the napi-generated `index.js` cannot bind at module scope. Use
+// `request('DELETE', url)` (or the `HttpSession.delete` method) instead.
+
+/// `POST url` with an optional `body` (a `Buffer` or `LocalPath`) via the shared
+/// session singleton.
+#[napi(js_name = "post")]
+pub fn http_post(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
+    shared_task(
+        Method::Post,
+        url,
+        Vec::new(),
+        body_arg(body),
+        true,
+        true,
+        true,
+    )
+}
+
+/// `PUT url` with a `body` via the shared session singleton.
+#[napi(js_name = "put")]
+pub fn http_put(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
+    shared_task(
+        Method::Put,
+        url,
+        Vec::new(),
+        body_arg(body),
+        true,
+        true,
+        true,
+    )
+}
+
+/// `PATCH url` with a `body` via the shared session singleton.
+#[napi(js_name = "patch")]
+pub fn http_patch(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
+    shared_task(
+        Method::Patch,
+        url,
+        Vec::new(),
+        body_arg(body),
+        true,
+        true,
+        true,
+    )
+}
+
+/// Issue an arbitrary `method` request via the shared session singleton (same
+/// arguments as `HttpSession.request`).
+#[napi(js_name = "request")]
+#[allow(clippy::too_many_arguments)]
+pub fn http_request(
+    method: String,
+    url: String,
+    headers: Option<HashMap<String, String>>,
+    body: Option<Either<Buffer, &LocalPath>>,
+    raise_error: Option<bool>,
+    keep_alive: Option<bool>,
+    allow_redirect: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    let method = Method::from_str(&method).map_err(to_napi)?;
+    let headers = headers
+        .map(|map| map.into_iter().collect())
+        .unwrap_or_default();
+    Ok(shared_task(
+        method,
+        url,
+        headers,
+        body_arg(body),
+        raise_error.unwrap_or(true),
+        keep_alive.unwrap_or(true),
+        allow_redirect.unwrap_or(true),
+    ))
 }

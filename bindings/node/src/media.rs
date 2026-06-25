@@ -134,4 +134,28 @@ impl MediaType {
     pub fn to_string_js(&self) -> String {
         self.inner.to_str(true)
     }
+
+    /// Serialise to JSON as the array of canonical MIME strings, e.g.
+    /// `["text/csv","application/gzip"]` (used by `JSON.stringify`) — lossless, the
+    /// inverse of `fromJSON`.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> Vec<String> {
+        self.inner
+            .types()
+            .iter()
+            .map(|mime| mime.mime().to_string())
+            .collect()
+    }
+
+    /// Reconstruct from the array of MIME strings produced by `toJSON`.
+    #[napi(factory, js_name = "fromJSON")]
+    pub fn from_json(types: Vec<String>) -> Self {
+        let inner = CoreMediaType::new(
+            types
+                .iter()
+                .map(|mime| yggdryl_core::MimeType::from_mime(mime))
+                .collect(),
+        );
+        MediaType { inner }
+    }
 }

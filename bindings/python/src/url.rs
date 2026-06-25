@@ -2,6 +2,7 @@
 
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
+use pyo3::types::PyType;
 use yggdryl_core::{Mapping, Params, ToOutput, Url as CoreUrl};
 
 use crate::media::MediaType;
@@ -398,5 +399,10 @@ impl Url {
 
     fn __hash__(&self) -> u64 {
         hash_str(&self.inner.to_string())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the encoded string.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (String,)) {
+        (py.get_type_bound::<Self>(), (self.inner.to_string(),))
     }
 }

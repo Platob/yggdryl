@@ -1356,3 +1356,48 @@ fn a_secure_cookie_is_withheld_over_http() {
     let http = yggdryl_core::Url::from_str("http://example.com/").unwrap();
     assert_eq!(jar.header_for(&http), None);
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn http_data_types_serde_round_trip() {
+    use crate::{Cookie, HttpCookies, HttpHeaders};
+
+    // Method serialises as its variant name and parses back.
+    let method = Method::Post;
+    assert_eq!(
+        serde_json::from_str::<Method>(&serde_json::to_string(&method).unwrap()).unwrap(),
+        method
+    );
+
+    // RetryConfig round-trips its whole policy.
+    let retry = RetryConfig::default();
+    let back: RetryConfig = serde_json::from_str(&serde_json::to_string(&retry).unwrap()).unwrap();
+    assert_eq!(back.max_retries, retry.max_retries);
+    assert_eq!(back.base_delay, retry.base_delay);
+
+    // Headers preserve order and casing.
+    let mut headers = HttpHeaders::new();
+    headers.insert("Content-Type", "text/plain");
+    headers.insert("X-Trace", "abc");
+    assert_eq!(
+        serde_json::from_str::<HttpHeaders>(&serde_json::to_string(&headers).unwrap()).unwrap(),
+        headers
+    );
+
+    // The cookie jar round-trips, so a session's cookies can be persisted.
+    let url = yggdryl_core::Url::from_str("https://example.com/").unwrap();
+    let jar = HttpCookies::new().with_cookie(Cookie::new("sid", "abc", &url).unwrap());
+    let back: HttpCookies = serde_json::from_str(&serde_json::to_string(&jar).unwrap()).unwrap();
+    assert_eq!(
+        back.get("sid").map(|c| c.value().to_string()),
+        Some("abc".to_string())
+    );
+}
+
+#[test]
+fn shared_session_is_a_singleton() {
+    // Every call hands back the same pooled session instance.
+    let a = HttpSession::shared();
+    let b = HttpSession::shared();
+    assert!(std::ptr::eq(a, b));
+}

@@ -2,6 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
+use pyo3::types::PyType;
 use yggdryl_core::{Mapping, ToOutput, Version as CoreVersion};
 
 use crate::{hash_str, version_err};
@@ -105,5 +106,13 @@ impl Version {
 
     fn __hash__(&self) -> u64 {
         hash_str(&self.inner.to_string())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing through the constructor.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (u64, u64, u64)) {
+        (
+            py.get_type_bound::<Self>(),
+            (self.inner.major(), self.inner.minor(), self.inner.patch()),
+        )
     }
 }

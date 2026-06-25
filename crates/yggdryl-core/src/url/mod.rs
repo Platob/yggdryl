@@ -646,4 +646,37 @@ mod tests {
         assert!(percent_decode("%zz").is_err());
         assert!(percent_decode("%2").is_err());
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn uri_url_media_serde_round_trip() {
+        // A Uri / Url serialise as their encoded string and parse back.
+        let uri = Uri::from_str("https://example.com/docs?page=2#intro").unwrap();
+        let json = serde_json::to_string(&uri).unwrap();
+        assert_eq!(json, "\"https://example.com/docs?page=2#intro\"");
+        assert_eq!(serde_json::from_str::<Uri>(&json).unwrap(), uri);
+
+        let url = Url::from_str("https://user:pw@h:8443/api?v=1#t").unwrap();
+        assert_eq!(
+            serde_json::from_str::<Url>(&serde_json::to_string(&url).unwrap()).unwrap(),
+            url
+        );
+
+        // A MimeType serialises as its canonical MIME string (Other round-trips).
+        for mime in [
+            MimeType::Png,
+            MimeType::Json,
+            MimeType::Other("text/foo".into()),
+        ] {
+            let json = serde_json::to_string(&mime).unwrap();
+            assert_eq!(json, format!("\"{}\"", mime.mime()));
+            assert_eq!(serde_json::from_str::<MimeType>(&json).unwrap(), mime);
+        }
+
+        // A MediaType serialises as a sequence of MIME strings (lossless).
+        let media = MediaType::new(vec![MimeType::Csv, MimeType::Gzip]);
+        let json = serde_json::to_string(&media).unwrap();
+        assert_eq!(json, "[\"text/csv\",\"application/gzip\"]");
+        assert_eq!(serde_json::from_str::<MediaType>(&json).unwrap(), media);
+    }
 }

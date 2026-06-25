@@ -119,6 +119,7 @@ pub enum MimeType {
 /// A magic-byte signature: `bytes` expected at a fixed `offset` from the start of
 /// a file. Used to build registry entries for [`MimeType::register`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Signature {
     offset: usize,
     bytes: Vec<u8>,
@@ -677,5 +678,22 @@ impl ToOutput for MimeType {
             ("type".to_string(), self.type_().to_string()),
             ("subtype".to_string(), self.subtype().to_string()),
         ])
+    }
+}
+
+/// Serialises as the canonical MIME string, the inverse of
+/// [`MimeType::from_mime`] (which round-trips [`Other`](MimeType::Other) too).
+#[cfg(feature = "serde")]
+impl serde::Serialize for MimeType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.mime())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MimeType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<MimeType, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(MimeType::from_mime(&raw))
     }
 }

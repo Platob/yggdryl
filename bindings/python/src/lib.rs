@@ -33,7 +33,10 @@ use yggdryl_http::HttpError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
-use crate::http::{HttpResponse, HttpSession};
+use crate::http::{
+    http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, HttpResponse,
+    HttpSession,
+};
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
 use crate::media::MediaType;
@@ -175,5 +178,14 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     m.add_function(wrap_pyfunction!(py_open, m)?)?;
+    // Module-level HTTP verbs backed by the shared `HttpSession` singleton,
+    // mirroring `requests.get(...)` and friends.
+    m.add_function(wrap_pyfunction!(http_get, m)?)?;
+    m.add_function(wrap_pyfunction!(http_head, m)?)?;
+    m.add_function(wrap_pyfunction!(http_delete, m)?)?;
+    m.add_function(wrap_pyfunction!(http_post, m)?)?;
+    m.add_function(wrap_pyfunction!(http_put, m)?)?;
+    m.add_function(wrap_pyfunction!(http_patch, m)?)?;
+    m.add_function(wrap_pyfunction!(http_request, m)?)?;
     Ok(())
 }

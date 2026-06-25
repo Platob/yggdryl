@@ -100,6 +100,7 @@ impl From<std::io::Error> for IoError {
 /// Where a [`Io::seek`] offset is measured from, mirroring the `whence` values
 /// of Python's `io` module (`SEEK_SET` / `SEEK_CUR` / `SEEK_END`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Whence {
     /// From the start of the buffer (`0`).
     #[default]
@@ -118,6 +119,7 @@ pub enum Whence {
 /// [`Read`](Mode::Read), `r+` → [`ReadWrite`](Mode::ReadWrite), `ab` →
 /// [`Append`](Mode::Append).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Mode {
     /// Read only (`r`, `rb`, `read`).
     #[default]
@@ -194,6 +196,7 @@ impl fmt::Display for Mode {
 /// What a resource is, as reported by [`IoStats::kind`]: absent, a regular file,
 /// a directory, or some other filesystem entry.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Kind {
     /// The resource does not exist (or could not be reached).
     Missing,
@@ -230,6 +233,7 @@ impl fmt::Display for Kind {
 /// anything expensive (`media_type`, under the `media` feature) is discovered
 /// only on demand — see [`Io::media_type`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IoStats {
     kind: Kind,
     size: u64,
@@ -1147,6 +1151,29 @@ mod tests {
         assert_eq!(copy(&mut src, &mut dst).unwrap(), 5);
         assert_eq!(dst.getvalue(), b"world");
         assert_eq!(Io::stream_position(&src), 11);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn io_enums_and_stats_serde_round_trip() {
+        for mode in [Mode::Read, Mode::Write, Mode::Append, Mode::ReadWrite] {
+            let json = serde_json::to_string(&mode).unwrap();
+            assert_eq!(serde_json::from_str::<Mode>(&json).unwrap(), mode);
+        }
+        for whence in [Whence::Start, Whence::Current, Whence::End] {
+            let json = serde_json::to_string(&whence).unwrap();
+            assert_eq!(serde_json::from_str::<Whence>(&json).unwrap(), whence);
+        }
+        for kind in [Kind::Missing, Kind::File, Kind::Directory, Kind::Other] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(serde_json::from_str::<Kind>(&json).unwrap(), kind);
+        }
+        let stats = IoStats::new(42)
+            .with_kind(Kind::File)
+            .with_content_type("text/csv")
+            .with_etag("abc");
+        let json = serde_json::to_string(&stats).unwrap();
+        assert_eq!(serde_json::from_str::<IoStats>(&json).unwrap(), stats);
     }
 
     #[test]

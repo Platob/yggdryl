@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use yggdryl_core::{BytesIO, Io};
 
@@ -59,6 +59,23 @@ impl HttpSession {
     /// concurrency of 8 and a batch size of 80 (`max_concurrency * 10`).
     pub fn new() -> HttpSession {
         HttpSession::with_config(RetryConfig::default(), DEFAULT_POOL)
+    }
+
+    /// The process-wide **shared** session, created on first use and reused
+    /// thereafter — the singleton that backs the module-level [`get`] / [`post`] /
+    /// … convenience functions, mirroring how Python's `requests` keeps a default
+    /// session. It carries the default configuration (16-connection pool, default
+    /// retry policy, a shared cookie jar); reach for an explicit [`new`](HttpSession::new)
+    /// when you need per-client headers, cookies or tuning.
+    ///
+    /// ```no_run
+    /// use yggdryl_http::HttpSession;
+    /// // Two calls return the same pooled session (and share its cookie jar).
+    /// let body = HttpSession::shared().get("https://example.com").unwrap();
+    /// ```
+    pub fn shared() -> &'static HttpSession {
+        static SHARED: OnceLock<HttpSession> = OnceLock::new();
+        SHARED.get_or_init(HttpSession::new)
     }
 
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
@@ -641,4 +658,44 @@ impl IntoIterator for HttpResponseBatch {
     fn into_iter(self) -> Self::IntoIter {
         self.results.into_iter()
     }
+}
+
+/// Module-level convenience verbs that dispatch through the process-wide
+/// [`HttpSession::shared`] singleton, mirroring `requests.get(...)` and friends.
+/// Each raises on a 4xx/5xx status, keeps the connection alive and buffers no
+/// more than the streamed [`HttpResponse`] does — for per-client configuration
+/// build an explicit [`HttpSession`] instead.
+pub fn get(url: &str) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().get(url)
+}
+
+/// `HEAD url` via the shared session (raises on a 4xx/5xx status).
+pub fn head(url: &str) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().head(url)
+}
+
+/// `DELETE url` via the shared session (raises on a 4xx/5xx status).
+pub fn delete(url: &str) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().delete(url)
+}
+
+/// `POST url` with an in-memory byte body via the shared session.
+pub fn post(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().post(url, body)
+}
+
+/// `PUT url` with an in-memory byte body via the shared session.
+pub fn put(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().put(url, body)
+}
+
+/// `PATCH url` with an in-memory byte body via the shared session.
+pub fn patch(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().patch(url, body)
+}
+
+/// Sends an arbitrary [`HttpRequest`] via the shared session (keep-alive,
+/// streamed), raising on a 4xx/5xx when `raise_error`.
+pub fn request(request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().request(request, raise_error)
 }

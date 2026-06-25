@@ -94,3 +94,23 @@ test('setCookie seeds the jar', () => {
   session.setCookie('http://example.com/', 'sid', 'abc123')
   assert.strictEqual(session.cookies.sid, 'abc123')
 })
+
+test('module-level verbs use the shared session', async () => {
+  const yggdryl = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const got = await yggdryl.get(base + '/')
+    assert.strictEqual(got.status, 200)
+    assert.strictEqual(got.text(), 'hello world')
+
+    const posted = await yggdryl.post(base + '/submit', Buffer.from('ping'))
+    assert.deepStrictEqual(posted.content, Buffer.from('ping'))
+
+    // DELETE has no module-level verb (JS reserved word); use request().
+    const deleted = await yggdryl.request('DELETE', base + '/thing')
+    assert.strictEqual(deleted.status, 204)
+  } finally {
+    server.close()
+  }
+})

@@ -1,7 +1,7 @@
 //! The `BytesIO` pyclass.
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::{BytesIO as CoreBytesIO, Io, Mode};
 use yggdryl_core::{CompressIo, Compression as CoreCompression};
 
@@ -253,6 +253,15 @@ impl BytesIO {
             self.inner.len(),
             self.inner.tell(),
             self.inner.stream()
+        )
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the buffer's bytes
+    /// (the cursor resets to the start, like a fresh :class:`BytesIO`).
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (Bound<'py, PyBytes>,)) {
+        (
+            py.get_type_bound::<Self>(),
+            (PyBytes::new_bound(py, self.inner.getvalue()),),
         )
     }
 }

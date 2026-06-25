@@ -23,6 +23,7 @@ use std::time::Duration;
 /// assert!(headers.contains("CONTENT-TYPE"));
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HttpHeaders {
     entries: Vec<(String, String)>,
 }

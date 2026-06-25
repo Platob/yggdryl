@@ -1,6 +1,7 @@
 //! The `MediaType` pyclass: an ordered stack of :class:`MimeType`.
 
 use pyo3::prelude::*;
+use pyo3::types::PyType;
 use yggdryl_core::{Mapping, MediaType as CoreMediaType, ToOutput};
 
 use crate::mime::MimeType;
@@ -140,5 +141,11 @@ impl MediaType {
 
     fn __hash__(&self) -> u64 {
         hash_str(&self.inner.to_string())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the :class:`MimeType`
+    /// stack (each element pickles through its own ``__reduce__``).
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (Vec<MimeType>,)) {
+        (py.get_type_bound::<Self>(), (self.types(),))
     }
 }

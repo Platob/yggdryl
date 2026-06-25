@@ -30,7 +30,10 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 # Optional and off by default:
 #   compression  auto-decode a `Content-Encoding` body via yggdryl-core's codecs;
 #   media        expose the response `mime_type()` via yggdryl-core's media types;
+#   serde        `Serialize`/`Deserialize` for the data types (Method, headers,
+#                cookies, retry config) and, transitively, the core value types;
 #   log          structured logging via the `log` facade.
+serde = { version = "1", optional = true, features = ["derive"] }
 log = { version = "0.4", optional = true }
 
 [features]
@@ -46,4 +49,12 @@ compression = [
     "yggdryl-core/snappy",
 ]
 media = ["yggdryl-core/media"]
+# `serde` also turns on the core's `serde` feature, so the embedded value types
+# (`Url`, `Method` strings, …) serialise too. A live request/response body streams
+# off a connection and is deliberately not serialisable.
+serde = ["dep:serde", "yggdryl-core/serde"]
 log = ["dep:log", "yggdryl-core/log"]
+
+[dev-dependencies]
+# Round-trip the `serde` impls through a concrete format in the tests.
+serde_json = { version = "1" }

@@ -655,6 +655,22 @@ impl From<&Url> for MediaType {
     }
 }
 
+/// Serialises as the encoded URL string, the inverse of [`Url::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Url {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Url {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Url, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Url::from_str(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 impl fmt::Display for Url {
     /// Renders the encoded form, writing the cached rendering directly (no clone).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -171,6 +171,23 @@ impl ToOutput for Version {
     }
 }
 
+/// Serialises as the canonical `"major.minor.patch"` string, the inverse of
+/// [`Version::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Version {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Version {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Version, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Version::from_str(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +294,14 @@ mod tests {
         let m = v.to_mapping();
         assert_eq!(m.get("minor"), Some(&"4".to_string()));
         assert_eq!(Version::from_mapping(&m).unwrap(), v);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn version_serde_round_trips_as_a_string() {
+        let v = Version::new(1, 4, 2);
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"1.4.2\"");
+        assert_eq!(serde_json::from_str::<Version>(&json).unwrap(), v);
     }
 }

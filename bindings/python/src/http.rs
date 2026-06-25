@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::{LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
@@ -64,6 +64,28 @@ pub struct HttpResponse {
 
 #[pymethods]
 impl HttpResponse {
+    /// Construct a response explicitly (useful for tests/mocks and for
+    /// ``pickle``). ``headers`` is a list of ``(name, value)`` pairs.
+    #[new]
+    #[pyo3(signature = (status, url, headers = None, body = None, sent_at = 0.0, received_at = 0.0))]
+    fn new(
+        status: u16,
+        url: String,
+        headers: Option<Vec<(String, String)>>,
+        body: Option<Vec<u8>>,
+        sent_at: f64,
+        received_at: f64,
+    ) -> Self {
+        HttpResponse {
+            status,
+            url,
+            headers: headers.unwrap_or_default(),
+            body: body.unwrap_or_default(),
+            sent_at,
+            received_at,
+        }
+    }
+
     /// The HTTP status code.
     #[getter]
     fn status(&self) -> u16 {
@@ -142,6 +164,36 @@ impl HttpResponse {
     fn __repr__(&self) -> String {
         format!("HttpResponse(status={}, url={:?})", self.status, self.url)
     }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing through the constructor —
+    /// the buffered body and metadata are carried verbatim.
+    #[allow(clippy::type_complexity)]
+    fn __reduce__<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> (
+        Bound<'py, PyType>,
+        (
+            u16,
+            String,
+            Vec<(String, String)>,
+            Bound<'py, PyBytes>,
+            f64,
+            f64,
+        ),
+    ) {
+        (
+            py.get_type_bound::<Self>(),
+            (
+                self.status,
+                self.url.clone(),
+                self.headers.clone(),
+                PyBytes::new_bound(py, &self.body),
+                self.sent_at,
+                self.received_at,
+            ),
+        )
+    }
 }
 
 /// A connection-pooling HTTP client, like :class:`requests.Session`.
@@ -150,41 +202,52 @@ pub struct HttpSession {
     inner: CoreHttpSession,
 }
 
+/// Issues a request via `build` and drains the response body — all while the GIL
+/// is **released** (`allow_threads`), so a Python server thread can answer a
+/// blocking request without deadlocking — then buffers it into an [`HttpResponse`].
+/// Shared by [`HttpSession`]'s methods and the module-level [`get`] / [`post`] / …
+/// functions (which build over the shared singleton).
+fn buffer_response(
+    py: Python<'_>,
+    build: impl FnOnce() -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
+) -> PyResult<HttpResponse> {
+    let (status, url, headers, body, sent_at, received_at) = py
+        .allow_threads(|| {
+            // The closures issue a buffered (`stream = false`) send, so the body
+            // is drained inside `send` and `received_at` is already stamped here.
+            let response = build()?;
+            let status = response.status();
+            let url = response.url().to_string();
+            let headers = response
+                .headers()
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect::<Vec<_>>();
+            let sent_at = response.sent_at();
+            let received_at = response.received_at();
+            let body = response.bytes()?;
+            Ok::<_, yggdryl_http::HttpError>((status, url, headers, body, sent_at, received_at))
+        })
+        .map_err(http_err)?;
+    Ok(HttpResponse {
+        status,
+        url,
+        headers,
+        body,
+        sent_at,
+        received_at,
+    })
+}
+
 impl HttpSession {
-    /// Runs `build` to issue a request and drains the response body — all while
-    /// the GIL is **released** (`allow_threads`), so a Python server thread can
-    /// answer a blocking request without deadlocking — then buffers the result.
+    /// Runs `build` over this session's inner client and buffers the response
+    /// (see [`buffer_response`]).
     fn run(
         &self,
         py: Python<'_>,
         build: impl FnOnce(&CoreHttpSession) -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
     ) -> PyResult<HttpResponse> {
-        let (status, url, headers, body, sent_at, received_at) = py
-            .allow_threads(|| {
-                // The closures issue a buffered (`stream = false`) send, so the body
-                // is drained inside `send` and `received_at` is already stamped here.
-                let response = build(&self.inner)?;
-                let status = response.status();
-                let url = response.url().to_string();
-                let headers = response
-                    .headers()
-                    .iter()
-                    .map(|(name, value)| (name.to_string(), value.to_string()))
-                    .collect::<Vec<_>>();
-                let sent_at = response.sent_at();
-                let received_at = response.received_at();
-                let body = response.bytes()?;
-                Ok::<_, yggdryl_http::HttpError>((status, url, headers, body, sent_at, received_at))
-            })
-            .map_err(http_err)?;
-        Ok(HttpResponse {
-            status,
-            url,
-            headers,
-            body,
-            sent_at,
-            received_at,
-        })
+        buffer_response(py, || build(&self.inner))
     }
 }
 
@@ -352,4 +415,117 @@ impl HttpSession {
             session.send(request, raise_error, keep_alive, false)
         })
     }
+}
+
+/// ``GET url`` via the process-wide shared :class:`HttpSession` singleton (the
+/// ``requests.get`` equivalent — raises on a 4xx/5xx status).
+#[pyfunction]
+#[pyo3(name = "get")]
+pub fn http_get(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(CoreHttpRequest::get(url)?, true, true, false)
+    })
+}
+
+/// ``HEAD url`` via the shared session singleton (raises on a 4xx/5xx status).
+#[pyfunction]
+#[pyo3(name = "head")]
+pub fn http_head(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(CoreHttpRequest::head(url)?, true, true, false)
+    })
+}
+
+/// ``DELETE url`` via the shared session singleton (raises on a 4xx/5xx status).
+#[pyfunction]
+#[pyo3(name = "delete")]
+pub fn http_delete(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(CoreHttpRequest::delete(url)?, true, true, false)
+    })
+}
+
+/// ``POST url`` with an optional ``body`` (``bytes`` or an `Io` handle) via the
+/// shared session singleton.
+#[pyfunction]
+#[pyo3(name = "post", signature = (url, body = None))]
+pub fn http_post(
+    py: Python<'_>,
+    url: &str,
+    body: Option<Bound<'_, PyAny>>,
+) -> PyResult<HttpResponse> {
+    let body = extract_body(body.as_ref())?;
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(
+            apply_body(CoreHttpRequest::post(url)?, body),
+            true,
+            true,
+            false,
+        )
+    })
+}
+
+/// ``PUT url`` with a ``body`` via the shared session singleton.
+#[pyfunction]
+#[pyo3(name = "put", signature = (url, body = None))]
+pub fn http_put(
+    py: Python<'_>,
+    url: &str,
+    body: Option<Bound<'_, PyAny>>,
+) -> PyResult<HttpResponse> {
+    let body = extract_body(body.as_ref())?;
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(
+            apply_body(CoreHttpRequest::put(url)?, body),
+            true,
+            true,
+            false,
+        )
+    })
+}
+
+/// ``PATCH url`` with a ``body`` via the shared session singleton.
+#[pyfunction]
+#[pyo3(name = "patch", signature = (url, body = None))]
+pub fn http_patch(
+    py: Python<'_>,
+    url: &str,
+    body: Option<Bound<'_, PyAny>>,
+) -> PyResult<HttpResponse> {
+    let body = extract_body(body.as_ref())?;
+    buffer_response(py, move || {
+        CoreHttpSession::shared().send(
+            apply_body(CoreHttpRequest::patch(url)?, body),
+            true,
+            true,
+            false,
+        )
+    })
+}
+
+/// Issue an arbitrary ``method`` request via the shared session singleton (same
+/// arguments as :meth:`HttpSession.request`).
+#[pyfunction]
+#[pyo3(name = "request", signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true, allow_redirect = true))]
+#[allow(clippy::too_many_arguments)]
+pub fn http_request(
+    py: Python<'_>,
+    method: &str,
+    url: &str,
+    headers: Option<HashMap<String, String>>,
+    body: Option<Bound<'_, PyAny>>,
+    raise_error: bool,
+    keep_alive: bool,
+    allow_redirect: bool,
+) -> PyResult<HttpResponse> {
+    let method = Method::from_str(method).map_err(http_err)?;
+    let body = extract_body(body.as_ref())?;
+    buffer_response(py, move || {
+        let mut request = CoreHttpRequest::new(method, url)?.with_allow_redirect(allow_redirect);
+        if let Some(headers) = headers {
+            request = request.with_headers(headers);
+        }
+        request = apply_body(request, body);
+        CoreHttpSession::shared().send(request, raise_error, keep_alive, false)
+    })
 }

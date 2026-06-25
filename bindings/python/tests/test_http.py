@@ -126,3 +126,13 @@ def test_set_cookie_seeds_the_jar():
     session = yggdryl.HttpSession()
     session.set_cookie("http://example.com/", "sid", "abc123")
     assert session.cookies["sid"] == "abc123"
+
+
+def test_module_level_verbs_use_the_shared_session(base_url):
+    # The module-level verbs dispatch through the process-wide shared session,
+    # like requests.get(...).
+    response = yggdryl.get(base_url + "/")
+    assert response.status == 200
+    assert response.text() == "hello world"
+    assert yggdryl.post(base_url + "/submit", b"ping").content == b"ping"
+    assert yggdryl.request("DELETE", base_url + "/thing").status == 204
