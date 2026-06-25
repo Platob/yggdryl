@@ -14,6 +14,10 @@ readme = "README.md"
 name = "yggdryl_http"
 path = "src/lib.rs"
 
+[[bench]]
+name = "http"
+harness = false
+
 [dependencies]
 # The byte-IO foundation: response bodies stream as `ReadBytes` or a seekable
 # `HttpStream: Io`, request bodies stream from any `Io` handle, and buffered
