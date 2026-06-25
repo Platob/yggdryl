@@ -45,10 +45,16 @@ pub trait RemotePath: Io {
 
 /// How a [`LocalPath`] holds its bytes: a memory map (zero-copy, `mmap` feature)
 /// or an eagerly-read buffer.
+///
+/// Memory-mapping is **disabled on Windows** even with the `mmap` feature: a
+/// Windows mapping holds a `user-mapped section` lock on the file, which blocks a
+/// later truncate/overwrite ([`std::io::Error`] os 1224) and can hide a fresh
+/// write from a subsequent read. Windows therefore always takes the buffered
+/// (`fs::read`) path; other platforms map as usual.
 #[derive(Debug)]
 enum Backing {
     Buffered(Vec<u8>),
-    #[cfg(feature = "mmap")]
+    #[cfg(all(feature = "mmap", not(windows)))]
     Mapped(memmap2::Mmap),
 }
 
@@ -57,7 +63,7 @@ impl Backing {
     fn bytes(&self) -> &[u8] {
         match self {
             Backing::Buffered(buffer) => buffer,
-            #[cfg(feature = "mmap")]
+            #[cfg(all(feature = "mmap", not(windows)))]
             Backing::Mapped(map) => map,
         }
     }
@@ -86,12 +92,13 @@ fn stat_path(location: &str) -> IoStats {
 }
 
 /// Loads the bytes of `location` for reading — memory-mapped under the `mmap`
-/// feature, otherwise buffered. Non-files (and any failure) yield empty bytes.
+/// feature (except on Windows, see [`Backing`]), otherwise buffered. Non-files
+/// (and any failure) yield empty bytes.
 fn load_backing(location: &str, stats: &IoStats) -> Backing {
     if !stats.is_file() {
         return Backing::Buffered(Vec::new());
     }
-    #[cfg(feature = "mmap")]
+    #[cfg(all(feature = "mmap", not(windows)))]
     {
         if stats.size() == 0 {
             return Backing::Buffered(Vec::new());
@@ -104,7 +111,9 @@ fn load_backing(location: &str, stats: &IoStats) -> Backing {
             Err(_) => Backing::Buffered(Vec::new()),
         }
     }
-    #[cfg(not(feature = "mmap"))]
+    // Buffered path: no `mmap` feature, or on Windows where mapping would lock the
+    // file against later writes.
+    #[cfg(not(all(feature = "mmap", not(windows))))]
     {
         fs::read(location)
             .map(Backing::Buffered)
