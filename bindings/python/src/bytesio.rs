@@ -188,10 +188,11 @@ impl BytesIO {
     }
 
     /// Resize the buffer to ``size`` bytes (the current cursor when ``None``),
-    /// returning the new length. The cursor is left where it is.
+    /// returning the new length. The cursor is left where it is. Raises
+    /// ``ValueError`` when growing past the addressable range.
     #[pyo3(signature = (size = None))]
-    fn truncate(&mut self, size: Option<usize>) -> usize {
-        self.inner.truncate(size)
+    fn truncate(&mut self, size: Option<usize>) -> PyResult<usize> {
+        self.inner.truncate(size).map_err(io_err)
     }
 
     /// No-op flush, present for parity with :class:`io.BytesIO`.

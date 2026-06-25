@@ -685,7 +685,9 @@ impl Url {
     /// assert_eq!(base.join(["d", "e f"]).path(), "/a/b/d/e%20f");
     /// ```
     pub fn join(&self, reference: impl JoinInput) -> Url {
-        let path = join_path(&self.path, reference.to_reference().as_ref());
+        // A `Url` always has an authority, so the RFC 3986 §5.2.3 empty-path rule
+        // applies (an authority-only base roots the reference).
+        let path = join_path(&self.path, reference.to_reference().as_ref(), true);
         Url::from_parts(
             self.scheme.clone(),
             self.username.clone(),

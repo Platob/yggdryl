@@ -1059,7 +1059,7 @@ mod tests {
     fn bytesio_truncate_and_clear() {
         let mut io = BytesIO::from_bytes(b"abcdef".to_vec());
         io.seek(3, Whence::Start).unwrap();
-        assert_eq!(io.truncate(None), 3);
+        assert_eq!(io.truncate(None).unwrap(), 3);
         assert_eq!(io.getvalue(), b"abc");
         io.clear();
         assert!(io.is_empty());
@@ -1143,7 +1143,7 @@ mod tests {
         Io::truncate(&mut io, 2).unwrap();
         assert_eq!(io.getvalue(), b"ab");
         // The inherent (Python-facing) truncate also grows now.
-        assert_eq!(io.truncate(Some(4)), 4);
+        assert_eq!(io.truncate(Some(4)).unwrap(), 4);
         assert_eq!(io.getvalue(), b"ab\0\0");
 
         // A read-only handle reports both as unsupported.
@@ -1155,6 +1155,22 @@ mod tests {
         assert!(matches!(
             Io::truncate(&mut ro, 0),
             Err(IoError::Unsupported(_))
+        ));
+
+        // A grow past the addressable range errors instead of aborting on the
+        // allocation (the sibling of the write-extent guard).
+        let mut huge = BytesIO::new();
+        assert!(matches!(
+            Io::truncate(&mut huge, u64::MAX),
+            Err(IoError::Invalid(_))
+        ));
+        assert!(matches!(
+            huge.truncate(Some(usize::MAX)),
+            Err(IoError::Invalid(_))
+        ));
+        assert!(matches!(
+            huge.reserve_capacity(usize::MAX),
+            Err(IoError::Invalid(_))
         ));
     }
 

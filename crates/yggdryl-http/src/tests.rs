@@ -1479,6 +1479,9 @@ fn cross_domain_set_cookie_is_rejected() {
     let sub = yggdryl_core::Url::from_str("https://www.example.com/").unwrap();
     let cookie = Cookie::from_set_cookie("x=1; Domain=example.com", &sub).unwrap();
     assert_eq!(cookie.domain(), "example.com");
+    // A single-label `Domain` equal to the request host (e.g. localhost) is allowed.
+    let local = yggdryl_core::Url::from_str("http://localhost/").unwrap();
+    assert!(Cookie::from_set_cookie("x=1; Domain=localhost", &local).is_some());
 }
 
 #[test]
@@ -1492,4 +1495,33 @@ fn cookie_header_orders_by_descending_path_length() {
     jar.set_from_response(&url, &headers);
     // The longer path (`/app`) is listed first (RFC 6265 §5.4).
     assert_eq!(jar.header_for(&url).as_deref(), Some("b=2; a=1"));
+}
+
+#[test]
+fn head_response_with_content_length_drains_empty() {
+    // A HEAD reply advertises Content-Length but sends no body. Draining it must
+    // yield an empty body, not an UnexpectedEof — the body size is zero for HEAD
+    // regardless of the header (the binding path drains buffered during send).
+    let reply = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\nConnection: close\r\n\r\n".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::head(&url).unwrap(), false, true, false)
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"");
+}
+
+#[test]
+fn no_content_204_drains_empty() {
+    // 204 No Content (and 304) carry no body even with a Content-Length header.
+    let reply =
+        b"HTTP/1.1 204 No Content\r\nContent-Length: 5\r\nConnection: close\r\n\r\n".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::get(&url).unwrap(), false, true, false)
+        .unwrap();
+    assert_eq!(response.status(), 204);
+    assert_eq!(response.bytes().unwrap(), b"");
 }

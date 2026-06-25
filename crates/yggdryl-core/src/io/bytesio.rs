@@ -208,22 +208,31 @@ impl BytesIO {
 
     /// Resizes the buffer to `size` bytes (the current cursor when `None`),
     /// returning the new length. Shrinks (drops the tail) or grows (zero-fills),
-    /// leaving the cursor where it is, as in Python.
-    pub fn truncate(&mut self, size: Option<usize>) -> usize {
+    /// leaving the cursor where it is, as in Python. Errors (rather than aborting on
+    /// a giant allocation) when growing past the addressable range.
+    pub fn truncate(&mut self, size: Option<usize>) -> Result<usize, IoError> {
         let size = size.unwrap_or(self.position);
         log_event!(debug, "BytesIO::truncate to {size}");
-        self.resize(size);
-        self.buffer.len()
+        self.resize(size)?;
+        Ok(self.buffer.len())
     }
 
     /// Resizes the backing buffer to exactly `size`, growing (zero-fill) or
     /// shrinking. Shared by [`truncate`](BytesIO::truncate) and [`Io::truncate`].
-    fn resize(&mut self, size: usize) {
+    /// Caps a grow at [`isize::MAX`] (the `Vec` allocation limit), returning
+    /// [`IoError::Invalid`] rather than letting `Vec::resize` abort the process.
+    fn resize(&mut self, size: usize) -> Result<(), IoError> {
         if size > self.buffer.len() {
+            if size > isize::MAX as usize {
+                return Err(IoError::Invalid(format!(
+                    "resize to {size} bytes exceeds the addressable buffer range"
+                )));
+            }
             self.buffer.resize(size, 0);
         } else {
             self.buffer.truncate(size);
         }
+        Ok(())
     }
 
     /// Empties the buffer and resets the cursor to `0`.
@@ -347,16 +356,31 @@ impl Io for BytesIO {
         self.buffer.capacity()
     }
 
-    /// Reserves room for `additional` more bytes in the backing buffer.
+    /// Reserves room for `additional` more bytes in the backing buffer. Errors
+    /// (rather than aborting) when the requested capacity exceeds the addressable
+    /// range.
     fn reserve_capacity(&mut self, additional: usize) -> Result<(), IoError> {
+        if self
+            .buffer
+            .len()
+            .checked_add(additional)
+            .is_none_or(|needed| needed > isize::MAX as usize)
+        {
+            return Err(IoError::Invalid(format!(
+                "reserve of {additional} bytes exceeds the addressable buffer range"
+            )));
+        }
         self.buffer.reserve(additional);
         Ok(())
     }
 
     /// Resizes the buffer to `size` bytes (grow zero-fills, shrink drops the
-    /// tail); the cursor is left where it is.
+    /// tail); the cursor is left where it is. Errors when growing past the
+    /// addressable range rather than aborting on the allocation.
     fn truncate(&mut self, size: u64) -> Result<(), IoError> {
-        self.resize(size as usize);
-        Ok(())
+        let size = usize::try_from(size).map_err(|_| {
+            IoError::Invalid(format!("truncate to {size} exceeds the addressable range"))
+        })?;
+        self.resize(size)
     }
 }

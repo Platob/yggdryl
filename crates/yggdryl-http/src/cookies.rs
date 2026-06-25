@@ -155,7 +155,12 @@ impl Cookie {
         // suffix `Domain` (e.g. `Domain=com`, which would scope to every `.com`).
         let request_host = request_url.host().to_ascii_lowercase();
         if let Some(domain) = &domain {
-            if !domain.contains('.') || !domain_match(&request_host, domain, false) {
+            // A single-label (public-suffix-like) `Domain` such as `com` is rejected
+            // — except when it is exactly the request host (e.g. `localhost` or an
+            // intranet single-label host), which is always a legitimate same-host
+            // Domain. Otherwise the host must domain-match the `Domain`.
+            let dotless_non_host = !domain.contains('.') && *domain != request_host;
+            if dotless_non_host || !domain_match(&request_host, domain, false) {
                 log_event!(
                     warn,
                     "rejecting Set-Cookie {name:?}: Domain={domain:?} not allowed for host {request_host:?}"

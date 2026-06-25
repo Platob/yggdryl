@@ -24,8 +24,9 @@ pub(crate) fn is_redirect(status: u16) -> bool {
 /// [`Url`], handling an absolute URL, a network-path reference (`//host/p`), an
 /// absolute path (`/p`) and a relative path. The path's `.` / `..` dot-segments
 /// are removed (RFC 3986 §5.2.4) via [`Url::join`], and a `#fragment` is split off
-/// the path rather than embedded in it. Returns [`HttpError::InvalidUrl`] when the
-/// result cannot be parsed.
+/// the path rather than embedded in it. An absolute or scheme-relative `Location`
+/// that fails to parse returns [`HttpError::InvalidUrl`]; a path reference is
+/// resolved structurally against the base authority.
 pub(crate) fn resolve(base: &Url, location: &str) -> Result<Url, HttpError> {
     let location = location.trim();
     if location.is_empty() {

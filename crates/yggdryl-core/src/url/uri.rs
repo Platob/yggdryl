@@ -533,7 +533,11 @@ impl Uri {
     /// assert_eq!(base.join("/abs").path(), "/abs");
     /// ```
     pub fn join(&self, reference: impl JoinInput) -> Uri {
-        let path = join_path(&self.path, reference.to_reference().as_ref());
+        let path = join_path(
+            &self.path,
+            reference.to_reference().as_ref(),
+            self.authority.is_some(),
+        );
         Uri::from_parts(
             self.scheme.clone(),
             self.authority.clone(),

@@ -452,13 +452,14 @@ impl HttpSession {
             request.headers.set("connection", "close");
         }
         let url = request.url.clone();
+        let method = request.method;
         log_event!(
             debug,
             "HttpSession::dispatch {} {url} keep_alive={keep_alive} stream={stream}",
-            request.method.as_str()
+            method.as_str()
         );
         let raw = self.execute(
-            request.method,
+            method,
             url.to_string().as_str(),
             &request.headers,
             request.body,
@@ -468,7 +469,15 @@ impl HttpSession {
         let sent_at = now_secs();
         let status = raw.status().as_u16();
         let response_headers = HttpHeaders::from(raw.headers());
-        let size = response_headers.content_size();
+        // A HEAD response, and 204 No Content / 304 Not Modified, carry no message
+        // body even when they echo a `Content-Length` — so the body size is zero
+        // regardless of the header. This keeps the short-body truncation guard in
+        // `HttpStream` from firing on a legitimately empty body.
+        let size = if method == Method::Head || matches!(status, 204 | 304) {
+            Some(0)
+        } else {
+            response_headers.content_size()
+        };
         let content_type = response_headers.get("content-type").map(str::to_string);
         let received_at = Instant::new();
         let mut http_stream = HttpStream::from_response(

@@ -244,11 +244,17 @@ impl<T: JoinInput + ?Sized> JoinInput for &T {
 /// dot-segments (RFC 3986 §5.2). A `reference` starting with `/` replaces `base`;
 /// an empty `reference` keeps `base` (resolved); otherwise `reference` is merged
 /// after `base`'s last `/` (§5.2.3) before [`remove_dot_segments`] runs.
-pub(crate) fn join_path(base: &str, reference: &str) -> String {
+/// `has_authority` enables the §5.2.3 rule that an authority-bearing base with an
+/// empty path merges as `"/" + reference` (so `http://h`.join(`b`) is `/b`,
+/// not `b`).
+pub(crate) fn join_path(base: &str, reference: &str, has_authority: bool) -> String {
     let merged = if reference.starts_with('/') {
         Cow::Borrowed(reference)
     } else if reference.is_empty() {
         Cow::Borrowed(base)
+    } else if has_authority && base.is_empty() {
+        // RFC 3986 §5.2.3: an authority with an empty base path roots the reference.
+        Cow::Owned(format!("/{reference}"))
     } else {
         match base.rfind('/') {
             // Keep `base` up to and including its last '/', then append the reference.
@@ -261,23 +267,29 @@ pub(crate) fn join_path(base: &str, reference: &str) -> String {
 }
 
 /// RFC 3986 §5.2.4 `remove_dot_segments`, segment-wise over the raw (percent-
-/// encoded) path. `.` / `..` are matched literally — a percent-encoded `%2E` is a
-/// real segment, not a dot-segment. Preserves whether the path was absolute and
-/// whether it ended at a directory boundary (a trailing `/`, `/.` or `/..`).
+/// encoded) path. Only the complete `.` and `..` segments are removed — `.` is
+/// dropped and `..` ascends one real segment; a percent-encoded `%2E` is a real
+/// segment, not a dot-segment, and **empty segments (`//`) are preserved** (an
+/// object-store key `a//b` differs from `a/b`). Whether the path was absolute and
+/// whether it ended at a directory boundary (a trailing `/`, `/.`, `/..`) are
+/// preserved. One deliberate deviation from strict §5.2.4: a *relative* path keeps
+/// its leading `..` (`../../x` stays), since it cannot climb above an unknown base;
+/// an *absolute* path clamps `..` at the root.
 pub(crate) fn remove_dot_segments(path: &str) -> String {
     let absolute = path.starts_with('/');
-    // A path ending in a complete `.`/`..`/empty segment denotes a directory, so
-    // the resolved path keeps a trailing '/'.
-    let trailing = path.ends_with('/')
-        || path.ends_with("/.")
-        || path.ends_with("/..")
-        || path == "."
-        || path == "..";
+    // Strip the leading '/' for absolute paths: the root is re-added at the end, so
+    // the empty segment it would otherwise produce never enters the loop and a `//`
+    // elsewhere in the path is the only source of preserved empty segments.
+    let body = if absolute { &path[1..] } else { path };
+    // A path ending in a complete `.`/`..` segment denotes a directory whose
+    // trailing slash the removed segment must leave behind (a trailing `/` already
+    // carries its own empty segment, so it is not flagged here).
+    let dir_suffix = body.ends_with("/.") || body.ends_with("/..") || body == "." || body == "..";
 
     let mut out: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
+    for segment in body.split('/') {
         match segment {
-            "" | "." => continue,
+            "." => continue,
             ".." => match out.last() {
                 // A relative path may keep leading `..` (it cannot climb above an
                 // unknown base); an absolute one discards `..` at the root.
@@ -291,6 +303,7 @@ pub(crate) fn remove_dot_segments(path: &str) -> String {
                     out.pop();
                 }
             },
+            // Empty (`""` from `//`) and normal segments are kept verbatim.
             other => out.push(other),
         }
     }
@@ -299,7 +312,7 @@ pub(crate) fn remove_dot_segments(path: &str) -> String {
     if absolute {
         result.insert(0, '/');
     }
-    if trailing && !result.is_empty() && result != "/" && !result.ends_with('/') {
+    if dir_suffix && !result.ends_with('/') {
         result.push('/');
     }
     result
@@ -816,8 +829,9 @@ mod tests {
             Url::from_str("https://h/a/b/").unwrap().join("d").path(),
             "/a/b/d"
         );
-        // 12. internal empty segments ("//") collapse
-        assert_eq!(b.join("d//e").path(), "/a/b/d/e");
+        // 12. internal empty segments ("//") are preserved (RFC 3986 §5.2.4 removes
+        //     only `.`/`..`; `a//b` is a distinct object-store key from `a/b`).
+        assert_eq!(b.join("d//e").path(), "/a/b/d//e");
         // 13. array of segments is percent-encoded and '/'-joined
         assert_eq!(b.join(["d", "e f"]).path(), "/a/b/d/e%20f");
         // 14. a slash *inside* a slice element is data -> "%2F", one segment
@@ -847,6 +861,14 @@ mod tests {
         // 22. authority (userinfo/host/port) is preserved across a join
         let auth = Url::from_str("https://u:pw@h:8443/a/b/c").unwrap();
         assert_eq!(auth.join("../x").to_string(), "https://u:pw@h:8443/a/x");
+        // 23. RFC 3986 §5.2.3: an authority-only base (empty path) roots the
+        //     reference rather than concatenating it onto the host.
+        let rootless = Url::from_str("https://h").unwrap();
+        assert_eq!(rootless.join("b").to_string(), "https://h/b");
+        assert_eq!(rootless.join("foo/bar").path(), "/foo/bar");
+        assert_eq!(rootless.join("../foo").path(), "/foo");
+        // The same rule holds for a Uri with an authority but an empty path.
+        assert_eq!(Uri::from_str("https://h").unwrap().join("b").path(), "/b");
     }
 
     #[test]
@@ -860,6 +882,12 @@ mod tests {
         assert_eq!(remove_dot_segments("/"), "/");
         assert_eq!(remove_dot_segments(""), "");
         assert_eq!(remove_dot_segments("/a/.."), "/");
+        // Empty segments ("//") are preserved (not collapsed).
+        assert_eq!(remove_dot_segments("/a//b"), "/a//b");
+        assert_eq!(remove_dot_segments("//"), "//");
+        assert_eq!(remove_dot_segments("/a//b/../c"), "/a//c");
+        // Trailing `.`/`..` leave a directory slash.
+        assert_eq!(remove_dot_segments("/a/b/."), "/a/b/");
     }
 
     #[cfg(feature = "serde")]

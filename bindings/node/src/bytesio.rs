@@ -205,10 +205,14 @@ impl BytesIO {
     }
 
     /// Resize the buffer to `size` bytes (the current cursor when omitted),
-    /// returning the new length. The cursor is left where it is.
+    /// returning the new length. The cursor is left where it is. Throws when
+    /// growing past the addressable range.
     #[napi]
-    pub fn truncate(&mut self, size: Option<u32>) -> u32 {
-        self.inner.truncate(size.map(|s| s as usize)) as u32
+    pub fn truncate(&mut self, size: Option<u32>) -> Result<u32> {
+        self.inner
+            .truncate(size.map(|s| s as usize))
+            .map(|len| len as u32)
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// No-op flush, present for parity with Python's `io.BytesIO`.

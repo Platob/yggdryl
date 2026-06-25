@@ -317,10 +317,15 @@ impl Io for LocalPath {
     /// Opens an in-memory [`BytesIO`] handle over this file's bytes, recording the
     /// path as its [`parent`](Io::parent) and applying `mode` / `stream` — so a
     /// `LocalPath` and a `BytesIO` `open` the same way.
+    ///
+    /// Note: because the derived handle is an in-memory [`BytesIO`], opening for
+    /// [`Read`](Mode::Read), [`Append`](Mode::Append) or [`ReadWrite`](Mode::ReadWrite)
+    /// buffers the whole file in memory (O(size) RAM) — only [`Write`](Mode::Write),
+    /// which truncates, avoids the copy.
     fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
         // `Mode::Write` truncates to empty, so mapping and copying the whole file
-        // (potentially multi-GB) into a Vec would be pure waste — only read/append
-        // modes need the existing bytes.
+        // (potentially multi-GB) into a Vec would be pure waste — only the read /
+        // append / read-write modes need the existing bytes.
         let bytes = if mode == Mode::Write {
             Vec::new()
         } else {
