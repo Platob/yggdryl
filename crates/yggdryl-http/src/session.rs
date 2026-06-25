@@ -631,10 +631,12 @@ impl HttpSession {
                         raw.version,
                     ));
                 }
-                // The buffered body is replayable, so a transport error retries up to
-                // the cap (an idempotent re-dispatch on a fresh connection).
+                // The buffered body is replayable, so a *transient* transport error
+                // retries up to the cap (a fresh-connection re-dispatch). Deterministic
+                // failures (Unsupported / InvalidUrl / a decoded status) are returned
+                // at once — retrying them only adds pointless backoff.
                 Err(err) => {
-                    if attempt < self.retry.max_retries {
+                    if attempt < self.retry.max_retries && matches!(err, HttpError::Transport(_)) {
                         std::thread::sleep(self.retry.backoff(attempt, None));
                         attempt += 1;
                         continue;

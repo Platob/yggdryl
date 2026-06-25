@@ -1043,11 +1043,32 @@ mod tests {
         io.write(b"AB").unwrap();
         assert_eq!(io.getvalue(), b"ABCDEFgh");
         assert_eq!(io.capacity(), cap_before);
-        // An empty write is a no-op even when seeked past the end — it must NOT
-        // grow/zero-fill the buffer (matching Python's BytesIO).
+        // An empty write is a no-op — within the buffer it changes nothing…
+        io.seek(2, Whence::Start).unwrap();
+        let cap = io.capacity();
+        assert_eq!(io.write(b"").unwrap(), 0);
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+        assert_eq!(io.capacity(), cap);
+        assert_eq!(io.tell(), 2);
+        // …and even when seeked past the end it must NOT grow/zero-fill the buffer
+        // (matching Python's BytesIO).
         io.seek(100, Whence::Start).unwrap();
         assert_eq!(io.write(b"").unwrap(), 0);
         assert_eq!(io.getvalue(), b"ABCDEFgh");
+    }
+
+    #[test]
+    fn bytesio_empty_pwrite_is_a_noop_and_preserves_the_cursor() {
+        let mut io = BytesIO::from_bytes(b"abcdef".to_vec());
+        io.seek(3, Whence::Start).unwrap();
+        // A positional empty pwrite writes nothing and leaves the cursor put.
+        assert_eq!(io.pwrite(b"", 1, Whence::Start).unwrap(), 0);
+        assert_eq!(io.getvalue(), b"abcdef");
+        assert_eq!(io.stream_position(), 3);
+        // A past-the-end positional empty pwrite does not grow the buffer either.
+        assert_eq!(io.pwrite(b"", 50, Whence::Start).unwrap(), 0);
+        assert_eq!(io.getvalue(), b"abcdef");
+        assert_eq!(io.stream_position(), 3);
     }
 
     #[test]

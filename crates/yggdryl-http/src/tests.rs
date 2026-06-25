@@ -1622,7 +1622,8 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let addr = listener.local_addr().unwrap();
-    let url = format!("http://{addr}/echo");
+    // A query and a fragment: the query must reach the server, the fragment must not.
+    let url = format!("http://{addr}/echo?x=1#frag");
 
     let server = thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -1635,8 +1636,14 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
             let io = hyper_util::rt::TokioIo::new(stream);
             let service = hyper::service::service_fn(
                 |req: hyper::Request<hyper::body::Incoming>| async move {
-                    // Echo the request method + path so the client can assert shape.
-                    let body = format!("{} {}", req.method(), req.uri().path());
+                    // Echo the method + full request target (path?query) so the client
+                    // can assert the wire shape — including that no fragment leaked.
+                    let target = req
+                        .uri()
+                        .path_and_query()
+                        .map(|pq| pq.as_str().to_string())
+                        .unwrap_or_default();
+                    let body = format!("{} {target}", req.method());
                     Ok::<_, std::convert::Infallible>(hyper::Response::new(
                         http_body_util::Full::new(hyper::body::Bytes::from(body)),
                     ))
@@ -1657,7 +1664,8 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
     assert_eq!(response.status(), 200);
     // The response reports it was delivered over HTTP/2 (h2c).
     assert_eq!(response.negotiated_version(), HttpVersion::Http2);
-    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    // The query reached the server; the fragment was stripped before the wire.
+    assert_eq!(response.bytes().unwrap(), b"GET /echo?x=1");
     server.join().unwrap();
 }
 

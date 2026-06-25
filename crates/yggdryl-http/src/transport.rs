@@ -16,10 +16,15 @@
 //! - `http` (cleartext) + pinned `h2` → h2c (HTTP/2 with prior knowledge).
 //!
 //! The h2 path **buffers** the response body into memory (the returned body is a
-//! seekable [`BytesIO`](yggdryl_core::BytesIO)); streaming an h2 body is a later
-//! refinement. Request bodies are buffered too, so they are replayable on a retry.
+//! seekable [`BytesIO`](yggdryl_core::BytesIO)); streaming an h2 body — and a
+//! per-response size cap (none yet, as on the buffered HTTP/1.1 path) — are later
+//! refinements. Request bodies are buffered too, so they are replayable on a retry.
+//! A coarse [`REQUEST_TIMEOUT`] bounds the whole round-trip so a stalled server
+//! cannot pin the calling thread indefinitely. No HTTP `CONNECT` proxy support yet:
+//! the transport connects directly, so it needs direct outbound egress.
 
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -86,8 +91,13 @@ fn runtime() -> &'static Runtime {
     })
 }
 
+/// A coarse safety backstop on a single h2 round-trip, so a black-hole server
+/// (accepts the socket but never completes TLS / never answers) cannot pin the
+/// calling thread forever. It bounds the whole connect→TLS→request→body sequence.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// Runs one async request to completion on the transport runtime, blocking the
-/// calling thread until the response is buffered.
+/// calling thread until the response is buffered (or [`REQUEST_TIMEOUT`] elapses).
 pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
     log_event!(
         debug,
@@ -96,7 +106,15 @@ pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> 
         request.url,
         request.prefer
     );
-    runtime().block_on(send_async(request))
+    runtime().block_on(async {
+        match tokio::time::timeout(REQUEST_TIMEOUT, send_async(request)).await {
+            Ok(result) => result,
+            Err(_) => Err(HttpError::Transport(format!(
+                "http2 request timed out after {}s",
+                REQUEST_TIMEOUT.as_secs()
+            ))),
+        }
+    })
 }
 
 /// Opens the connection (h2c / TLS+ALPN), speaks the negotiated protocol and
@@ -119,11 +137,8 @@ async fn send_async(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
 
     if is_tls {
         // Offer h2 alone when pinned, h2+http/1.1 when negotiating (Auto).
-        let alpn = match request.prefer {
-            HttpVersion::Http2 => vec![b"h2".to_vec()],
-            _ => vec![b"h2".to_vec(), b"http/1.1".to_vec()],
-        };
-        let tls = tls_connect(tcp, &host, alpn).await?;
+        let h2_only = request.prefer == HttpVersion::Http2;
+        let tls = tls_connect(tcp, &host, h2_only).await?;
         let h2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
         if h2 {
             h2_request(tls, request).await
@@ -209,17 +224,37 @@ where
     result
 }
 
-/// Builds the `hyper` request from our prepared one. `with_host` adds a `Host`
-/// header (HTTP/1.1 needs it; HTTP/2 derives `:authority` from the URI instead).
+/// Builds the `hyper` request from our prepared one, assembling the URI from
+/// explicit parts so it carries **no userinfo and no fragment**: a fragment must
+/// never go on the wire, and userinfo in an HTTP/2 `:authority` is illegal.
+/// `with_host` adds a `Host` header (HTTP/1.1 needs it; HTTP/2 derives `:authority`
+/// from the URI instead).
 fn build_request(
     request: &AsyncRequest<'_>,
     with_host: bool,
 ) -> Result<hyper::Request<Full<Bytes>>, HttpError> {
-    let uri: hyper::Uri = request
-        .url
-        .to_string()
-        .parse()
-        .map_err(|err: hyper::http::uri::InvalidUri| HttpError::InvalidUrl(err.to_string()))?;
+    let url = request.url;
+    // `host[:port]` only — never `user:pw@`.
+    let authority = match url.port() {
+        Some(port) => format!("{}:{}", url.host(), port),
+        None => url.host().to_string(),
+    };
+    // Path (defaulting to `/`) plus query, but never the fragment.
+    let path = if url.path().is_empty() {
+        "/"
+    } else {
+        url.path()
+    };
+    let path_and_query = match url.query() {
+        Some(query) if !query.is_empty() => format!("{path}?{query}"),
+        _ => path.to_string(),
+    };
+    let uri = hyper::Uri::builder()
+        .scheme(url.scheme())
+        .authority(authority.as_str())
+        .path_and_query(path_and_query)
+        .build()
+        .map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
     let mut builder = hyper::Request::builder()
         .method(request.method.as_str())
         .uri(uri);
@@ -231,12 +266,7 @@ fn build_request(
         builder = builder.header(name, value);
     }
     if with_host && !has_host {
-        let host = request.url.host();
-        let authority = match request.url.port() {
-            Some(port) => format!("{host}:{port}"),
-            None => host.to_string(),
-        };
-        builder = builder.header("host", authority);
+        builder = builder.header("host", &authority);
     }
     builder
         .body(Full::new(Bytes::from(request.body.clone())))
@@ -271,30 +301,50 @@ async fn collect(
     })
 }
 
-/// Wraps `stream` in a rustls TLS session for `host`, offering `alpn` and trusting
-/// the webpki root set. The negotiated ALPN id is read back by the caller.
+/// The rustls [`ClientConfig`](tokio_rustls::rustls::ClientConfig) for a given ALPN
+/// offer, built once and reused: assembling the webpki root store is not free, so
+/// each of the two offers (`h2`-only when pinned, `h2`,`http/1.1` when negotiating)
+/// is cached behind a `OnceLock`.
+fn tls_config(h2_only: bool) -> Arc<tokio_rustls::rustls::ClientConfig> {
+    use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+
+    static H2_ONLY: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    static NEGOTIATE: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    let slot = if h2_only { &H2_ONLY } else { &NEGOTIATE };
+    slot.get_or_init(|| {
+        let mut roots = RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
+        let mut config = ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .expect("rustls ring provider supports the default protocol versions")
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        config.alpn_protocols = if h2_only {
+            vec![b"h2".to_vec()]
+        } else {
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        };
+        Arc::new(config)
+    })
+    .clone()
+}
+
+/// Wraps `stream` in a rustls TLS session for `host`, offering `h2` alone (when
+/// `h2_only`) or `h2`,`http/1.1` (when negotiating). The negotiated ALPN id is read
+/// back by the caller.
 async fn tls_connect<S>(
     stream: S,
     host: &str,
-    alpn: Vec<Vec<u8>>,
+    h2_only: bool,
 ) -> Result<tokio_rustls::client::TlsStream<S>, HttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     use tokio_rustls::rustls::pki_types::ServerName;
-    use tokio_rustls::rustls::{ClientConfig, RootCertStore};
     use tokio_rustls::TlsConnector;
 
-    let mut roots = RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let provider = Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
-    let mut config = ClientConfig::builder_with_provider(provider)
-        .with_safe_default_protocol_versions()
-        .map_err(|err| HttpError::Transport(err.to_string()))?
-        .with_root_certificates(roots)
-        .with_no_client_auth();
-    config.alpn_protocols = alpn;
-    let connector = TlsConnector::from(Arc::new(config));
+    let connector = TlsConnector::from(tls_config(h2_only));
     let server_name = ServerName::try_from(host.to_string())
         .map_err(|err| HttpError::InvalidUrl(err.to_string()))?;
     connector

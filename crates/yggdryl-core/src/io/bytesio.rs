@@ -11,8 +11,8 @@ use crate::Url;
 ///
 /// A `BytesIO` owns a [`Vec<u8>`] and a `position` cursor; [`seek`](BytesIO::seek)
 /// / [`tell`](BytesIO::tell) move and read that cursor, [`getvalue`](BytesIO::getvalue)
-/// borrows the whole buffer, and writes past the end zero-fill the gap (as in
-/// Python).
+/// borrows the whole buffer, and a non-empty write past the end zero-fills the gap
+/// while an empty write is a no-op (as in Python).
 ///
 /// The [`stream`](BytesIO::stream) flag governs the **Python-style** helpers
 /// [`read`](BytesIO::read) / [`read_line`](BytesIO::read_line) /
@@ -284,6 +284,9 @@ impl BytesIO {
         } else {
             // The cursor sits past the end: zero-fill only the gap `[len, start)`,
             // then append the bytes (never zero-filling the region we then write).
+            // Reserve the whole extent up front so the gap-fill and the append grow
+            // the buffer at most once.
+            self.buffer.reserve(end - len);
             self.buffer.resize(start, 0);
             self.buffer.extend_from_slice(bytes);
         }
