@@ -741,7 +741,7 @@ pub fn register_scheme(scheme: &str, opener: SchemeOpener) {
 pub fn from_uri(uri: &Uri) -> Result<Box<dyn Io>, IoError> {
     let scheme = uri.scheme().to_ascii_lowercase();
     match scheme.as_str() {
-        "file" | "" => Ok(Box::new(LocalPath::open(uri.path()))),
+        "file" | "" => Ok(Box::new(LocalPath::from_uri(uri))),
         "mem" => Err(IoError::Unsupported(
             "mem:// handles cannot be reopened from a URL — keep the BytesIO".to_string(),
         )),
@@ -1851,6 +1851,20 @@ mod tests {
         handle.read_to_end(&mut buf).unwrap();
         assert_eq!(buf, b"hi");
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn local_path_from_uri_folds_windows_drive_authority() {
+        // `file://C:/dir/file` parses the drive `C:` as the authority; fold it
+        // back into the location so the drive letter is not lost.
+        let uri = Uri::from_str("file://C:/dir/file").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "C:/dir/file");
+        // A well-formed `file:///C:/dir/file` keeps the leading-slash drive path.
+        let uri = Uri::from_str("file:///C:/dir/file").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "/C:/dir/file");
+        // A POSIX path (empty authority) is opened unchanged.
+        let uri = Uri::from_str("file:///tmp/x").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "/tmp/x");
     }
 
     #[test]

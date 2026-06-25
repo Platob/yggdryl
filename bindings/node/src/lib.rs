@@ -70,7 +70,7 @@ pub fn open(location: String) -> Result<crate::localpath::LocalPath> {
         yggdryl_core::Uri::from_str(&location).map_err(|e| Error::from_reason(e.to_string()))?;
     match uri.scheme() {
         "file" | "" => Ok(crate::localpath::LocalPath {
-            inner: yggdryl_core::LocalPath::open(uri.path()),
+            inner: yggdryl_core::LocalPath::from_uri(&uri),
         }),
         other => Err(Error::from_reason(format!(
             "no local Io handle for scheme {other:?}; use HttpSession for http/https"

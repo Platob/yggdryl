@@ -187,6 +187,30 @@ impl LocalPath {
         }
     }
 
+    /// Opens a handle from a parsed [`Uri`], folding a Windows drive-letter
+    /// authority back into the filesystem location.
+    ///
+    /// A `file://C:/dir/file` URL parses the drive `C:` as the **authority** and
+    /// `/dir/file` as the path, so opening [`path`](Uri::path) alone would lose the
+    /// drive. This rejoins them into `C:/dir/file`. A well-formed `file:///C:/…`
+    /// (or a POSIX `file:///path`) has an empty authority and opens
+    /// [`path`](Uri::path) unchanged — the leading-slash drive form is handled by
+    /// [`native_location`] at the filesystem boundary.
+    pub fn from_uri(uri: &crate::Uri) -> LocalPath {
+        let path = uri.path();
+        let location = match uri.authority() {
+            Some(drive)
+                if drive.len() == 2
+                    && drive.as_bytes()[0].is_ascii_alphabetic()
+                    && drive.as_bytes()[1] == b':' =>
+            {
+                format!("{drive}{path}")
+            }
+            _ => path.to_string(),
+        };
+        LocalPath::open(location)
+    }
+
     /// The lazily memory-mapped (or buffered) bytes, loaded on first access.
     fn bytes(&self) -> &[u8] {
         self.backing

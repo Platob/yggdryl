@@ -152,7 +152,7 @@ fn py_open(location: &str) -> PyResult<LocalPath> {
     let uri = yggdryl_core::Uri::from_str(location).map_err(uri_err)?;
     match uri.scheme() {
         "file" | "" => Ok(LocalPath {
-            inner: yggdryl_core::LocalPath::open(uri.path()),
+            inner: yggdryl_core::LocalPath::from_uri(&uri),
         }),
         other => Err(PyValueError::new_err(format!(
             "no local Io handle for scheme {other:?}; use HttpSession for http/https"
