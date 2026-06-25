@@ -1,0 +1,57 @@
+site_name: yggdryl
+site_description: One streaming byte-IO core (Io / compression / HTTP) for Rust, Python and Node — same code, near-Rust speed.
+site_url: https://platob.github.io/yggdryl/
+repo_url: https://github.com/Platob/yggdryl
+repo_name: Platob/yggdryl
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Guide:
+      - Byte IO (the Io trait): io.md
+      - Compression: compression.md
+      - HTTP: http.md
+  - Benchmarks: benchmarks.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Platob/yggdryl
