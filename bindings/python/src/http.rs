@@ -58,6 +58,8 @@ pub struct HttpResponse {
     url: String,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
+    sent_at: f64,
+    received_at: f64,
 }
 
 #[pymethods]
@@ -78,6 +80,19 @@ impl HttpResponse {
     #[getter]
     fn url(&self) -> &str {
         &self.url
+    }
+
+    /// UTC Unix-epoch seconds when the request was dispatched (``0.0`` if unset).
+    #[getter]
+    fn sent_at(&self) -> f64 {
+        self.sent_at
+    }
+
+    /// UTC Unix-epoch seconds when the connection finished delivering the body
+    /// (``0.0`` if unset).
+    #[getter]
+    fn received_at(&self) -> f64 {
+        self.received_at
     }
 
     /// The response headers as a ``dict`` (lower-cased names).
@@ -144,14 +159,22 @@ impl HttpSession {
         py: Python<'_>,
         build: impl FnOnce(&CoreHttpSession) -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
     ) -> PyResult<HttpResponse> {
-        let (status, url, headers, body) = py
+        let (status, url, headers, body, sent_at, received_at) = py
             .allow_threads(|| {
+                // The closures issue a buffered (`stream = false`) send, so the body
+                // is drained inside `send` and `received_at` is already stamped here.
                 let response = build(&self.inner)?;
                 let status = response.status();
                 let url = response.url().to_string();
-                let headers = response.headers().to_vec();
+                let headers = response
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect::<Vec<_>>();
+                let sent_at = response.sent_at();
+                let received_at = response.received_at();
                 let body = response.bytes()?;
-                Ok::<_, yggdryl_http::HttpError>((status, url, headers, body))
+                Ok::<_, yggdryl_http::HttpError>((status, url, headers, body, sent_at, received_at))
             })
             .map_err(http_err)?;
         Ok(HttpResponse {
@@ -159,6 +182,8 @@ impl HttpSession {
             url,
             headers,
             body,
+            sent_at,
+            received_at,
         })
     }
 }
@@ -184,17 +209,23 @@ impl HttpSession {
 
     /// ``GET url``.
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| session.get(url))
+        self.run(py, |session| {
+            session.send(CoreHttpRequest::get(url)?, true, true, false)
+        })
     }
 
     /// ``HEAD url``.
     fn head(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| session.head(url))
+        self.run(py, |session| {
+            session.send(CoreHttpRequest::head(url)?, true, true, false)
+        })
     }
 
     /// ``DELETE url``.
     fn delete(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| session.delete(url))
+        self.run(py, |session| {
+            session.send(CoreHttpRequest::delete(url)?, true, true, false)
+        })
     }
 
     /// ``POST url`` with an optional ``body`` — ``bytes`` or one of our `Io`
@@ -208,7 +239,12 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.request(apply_body(CoreHttpRequest::post(url)?, body), true)
+            session.send(
+                apply_body(CoreHttpRequest::post(url)?, body),
+                true,
+                true,
+                false,
+            )
         })
     }
 
@@ -222,7 +258,12 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.request(apply_body(CoreHttpRequest::put(url)?, body), true)
+            session.send(
+                apply_body(CoreHttpRequest::put(url)?, body),
+                true,
+                true,
+                false,
+            )
         })
     }
 
@@ -236,7 +277,12 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.request(apply_body(CoreHttpRequest::patch(url)?, body), true)
+            session.send(
+                apply_body(CoreHttpRequest::patch(url)?, body),
+                true,
+                true,
+                false,
+            )
         })
     }
 
@@ -245,7 +291,8 @@ impl HttpSession {
     /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
     /// response whatever its status. ``keep_alive`` (default ``True``) pools the
     /// connection for reuse (skipping the next TLS handshake); pass ``False`` to
-    /// close it after the response.
+    /// close it after the response. The body is always buffered (the response
+    /// exposes :attr:`content` repeatedly), so the connection is released at once.
     #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true))]
     #[allow(clippy::too_many_arguments)]
     fn request(
@@ -266,7 +313,7 @@ impl HttpSession {
                 request = request.with_headers(headers);
             }
             request = apply_body(request, body);
-            session.send(request, raise_error, keep_alive)
+            session.send(request, raise_error, keep_alive, false)
         })
     }
 }

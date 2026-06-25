@@ -7,7 +7,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_io::{copy, BytesIO, Codec, Frames, Io, ReadBytes, Whence};
+use yggdryl_io::{copy, BytesIO, Codec, Frames, Io, Whence};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {
@@ -49,10 +49,10 @@ fn main() {
     });
 
     println!("\n== streamed read ==");
-    bench("ReadBytes::read_bytes (4 KiB)", 2_000_000, || {
+    bench("Io::read (4 KiB)", 2_000_000, || {
         io.seek(0, Whence::Start).unwrap();
         let mut chunk = [0u8; 4096];
-        black_box(io.read_bytes(&mut chunk).unwrap());
+        black_box(Io::read(&mut io, &mut chunk).unwrap());
     });
 
     // Reuse the source (rewind with seek) and the destination (clear keeps its
@@ -60,9 +60,9 @@ fn main() {
     println!("\n== transfer (4 MiB, source reused) ==");
     let payload = vec![7u8; 4 * 1024 * 1024];
     let mut src = BytesIO::from_bytes(payload.clone());
-    let mut dst: Vec<u8> = Vec::with_capacity(payload.len());
+    let mut dst = BytesIO::with_capacity(payload.len());
     bench_throughput(
-        "copy: BytesIO -> Vec (zero-copy)",
+        "copy: BytesIO -> BytesIO (zero-copy)",
         2000,
         payload.len(),
         || {
@@ -71,30 +71,32 @@ fn main() {
             black_box(copy(&mut src, &mut dst).unwrap());
         },
     );
+    let mut drained: Vec<u8> = Vec::with_capacity(payload.len());
     bench_throughput(
         "read_to_end: BytesIO -> Vec (chunked)",
         2000,
         payload.len(),
         || {
             src.seek(0, Whence::Start).unwrap();
-            dst.clear();
-            black_box(src.read_to_end(&mut dst).unwrap());
+            drained.clear();
+            black_box(src.read_to_end(&mut drained).unwrap());
         },
     );
 
     println!("\n== codec ==");
     let frame = vec![3u8; 256];
     bench("Frames::write (256 B)", 2_000_000, || {
-        let mut sink: Vec<u8> = Vec::with_capacity(260);
+        let mut sink = BytesIO::with_capacity(260);
         Frames.write(&mut sink, &frame).unwrap();
-        black_box(&sink);
+        black_box(sink.len());
     });
-    let mut encoded: Vec<u8> = Vec::new();
+    let mut encoded = BytesIO::new();
     for _ in 0..1024 {
         Frames.write(&mut encoded, &frame).unwrap();
     }
     bench("Frames::stream (1024 frames)", 20_000, || {
-        let count = Frames.stream(&encoded[..]).filter(|r| r.is_ok()).count();
+        encoded.seek(0, Whence::Start).unwrap();
+        let count = Frames.stream(&mut encoded).filter(|r| r.is_ok()).count();
         black_box(count);
     });
 }

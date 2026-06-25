@@ -19,10 +19,10 @@ name = "compression"
 harness = false
 
 [dependencies]
-# The byte-IO foundation: `ReadBytes` / `WriteBytes` / `Io` / `IoStats` and the
-# shared `IoError`. Compression wraps these handles, so it is a base dependency.
+# The byte-IO foundation: the `Io` handle / `IoStats` and the shared `IoError`.
+# Compression wraps these handles, so it is a base dependency.
 yggdryl-io = { workspace = true }
-# The rest are optional and off by default:
+# The codec backends — the common three are on by `default` (see `[features]`):
 #   gzip     gzip streaming compression (flate2);
 #   zstd     Zstandard streaming compression (zstd);
 #   snappy   Snappy streaming compression (snap);
@@ -35,6 +35,10 @@ yggdryl-media = { workspace = true, optional = true }
 log = { version = "0.4", optional = true }
 
 [features]
+# The common compression codecs ship on by default; opt out with
+# `default-features = false` for a codec-free build (each variant then parses and
+# names itself but reports `Unsupported` on encode/decode).
+default = ["gzip", "zstd", "snappy"]
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
 snappy = ["dep:snap"]

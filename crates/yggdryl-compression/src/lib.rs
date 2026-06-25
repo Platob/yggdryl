@@ -2,8 +2,7 @@
 //!
 //! Streamed byte **compression** — gzip, Zstandard or Snappy — layered on top of
 //! the [`yggdryl-io`](yggdryl_io) handle abstraction. A [`Compression`] codec
-//! wraps any [`Io`](yggdryl_io::Io) handle (or raw [`ReadBytes`](yggdryl_io::ReadBytes)
-//! / [`WriteBytes`](yggdryl_io::WriteBytes)) to compress and decompress **a chunk
+//! wraps any [`Io`](yggdryl_io::Io) handle to compress and decompress **a chunk
 //! at a time**, never buffering the whole payload:
 //!
 //! - [`encoder`](Compression::encoder) wraps a sink so everything written is
@@ -44,7 +43,7 @@
 
 use std::fmt;
 
-use yggdryl_io::{copy, BytesIO, Io, IoError, ReadBytes, Whence, WriteBytes};
+use yggdryl_io::{copy, BytesIO, Io, IoError, IoStats, Url, Whence};
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate pulls no `log` dependency by default and pays no
@@ -57,7 +56,7 @@ macro_rules! log_event {
 }
 
 /// A byte-stream **compression codec** — gzip, Zstandard or Snappy — that wraps
-/// any [`Io`] handle (or raw [`ReadBytes`] / [`WriteBytes`]) to compress and
+/// any [`Io`] handle to compress and
 /// decompress **in a streamed way**, a chunk at a time, never buffering the whole
 /// payload.
 ///
@@ -204,7 +203,7 @@ impl Compression {
     /// compressed and forwarded to `sink`. Call [`finish`](Encoder::finish) to
     /// write the trailer and recover the sink. Returns [`IoError::Unsupported`]
     /// if the codec's feature is not compiled in.
-    pub fn encoder<W: WriteBytes>(self, sink: W) -> Result<Encoder<W>, IoError> {
+    pub fn encoder<W: Io>(self, sink: W) -> Result<Encoder<W>, IoError> {
         log_event!(debug, "Compression::{} encoder", self.as_str());
         let inner = match self {
             Compression::None => EncoderInner::Store(sink),
@@ -230,7 +229,7 @@ impl Compression {
     /// Wraps `source` in a streaming [`Decoder`]: reads from the decoder pull
     /// compressed bytes from `source` and yield the decompressed stream. Returns
     /// [`IoError::Unsupported`] if the codec's feature is not compiled in.
-    pub fn decoder<R: ReadBytes>(self, source: R) -> Result<Decoder<R>, IoError> {
+    pub fn decoder<R: Io>(self, source: R) -> Result<Decoder<R>, IoError> {
         log_event!(debug, "Compression::{} decoder", self.as_str());
         let inner = match self {
             Compression::None => DecoderInner::Store(source),
@@ -251,21 +250,21 @@ impl Compression {
     }
 
     /// Compresses `data` in full, returning the encoded bytes — the one-shot form
-    /// of [`encoder`](Compression::encoder) over an in-memory `Vec<u8>`.
+    /// of [`encoder`](Compression::encoder) over an in-memory [`BytesIO`].
     pub fn compress(&self, data: &[u8]) -> Result<Vec<u8>, IoError> {
-        let mut encoder = self.encoder(Vec::new())?;
+        let mut encoder = self.encoder(BytesIO::with_capacity(data.len()))?;
         encoder.write_all(data)?;
-        encoder.finish()
+        Ok(encoder.finish()?.getvalue().to_vec())
     }
 
     /// Decompresses `data` in full, returning the decoded bytes — the one-shot
-    /// form of [`decoder`](Compression::decoder) over an in-memory slice.
+    /// form of [`decoder`](Compression::decoder) over an in-memory [`BytesIO`].
     ///
     /// The decoded size is unbounded: a small hostile input can expand greatly
     /// (a "zip bomb"), so cap or stream untrusted data via
     /// [`decoder`](Compression::decoder) rather than decoding it whole here.
     pub fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, IoError> {
-        let mut decoder = self.decoder(data)?;
+        let mut decoder = self.decoder(BytesIO::from_bytes(data.to_vec()))?;
         let mut out = Vec::new();
         decoder.read_to_end(&mut out)?;
         Ok(out)
@@ -359,31 +358,31 @@ pub trait CompressIo: Io {
 
 impl<T: Io + ?Sized> CompressIo for T {}
 
-/// Bridges a [`WriteBytes`] sink to [`std::io::Write`], so the streaming
-/// compressors (which speak `std::io`) can push into any [`Io`] handle.
+/// Bridges an [`Io`] sink to [`std::io::Write`], so the streaming compressors
+/// (which speak `std::io`) can push into any handle.
 #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-struct WriteShim<W: WriteBytes>(W);
+struct WriteShim<W: Io>(W);
 
 #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-impl<W: WriteBytes> std::io::Write for WriteShim<W> {
+impl<W: Io> std::io::Write for WriteShim<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.write_bytes(buf).map_err(into_std)
+        self.0.write(buf).map_err(into_std)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.0.flush().map_err(into_std)
+        Io::flush(&mut self.0).map_err(into_std)
     }
 }
 
-/// Bridges a [`ReadBytes`] source to [`std::io::Read`], so the streaming
-/// decompressors can pull from any [`Io`] handle.
+/// Bridges an [`Io`] source to [`std::io::Read`], so the streaming decompressors
+/// can pull from any handle.
 #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-struct ReadShim<R: ReadBytes>(R);
+struct ReadShim<R: Io>(R);
 
 #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
-impl<R: ReadBytes> std::io::Read for ReadShim<R> {
+impl<R: Io> std::io::Read for ReadShim<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.read_bytes(buf).map_err(into_std)
+        self.0.read(buf).map_err(into_std)
     }
 }
 
@@ -394,10 +393,10 @@ fn into_std(err: IoError) -> std::io::Error {
     std::io::Error::other(err.to_string())
 }
 
-/// A streaming compressor returned by [`Compression::encoder`]. Implements
-/// [`WriteBytes`]; everything written is compressed into the wrapped sink. Call
+/// A streaming compressor returned by [`Compression::encoder`]. A write-only
+/// [`Io`] handle: everything written is compressed into the wrapped sink. Call
 /// [`finish`](Encoder::finish) to write the trailer and recover the sink.
-pub struct Encoder<W: WriteBytes> {
+pub struct Encoder<W: Io> {
     inner: EncoderInner<W>,
 }
 
@@ -405,7 +404,7 @@ pub struct Encoder<W: WriteBytes> {
 // finished), so the codec states are kept inline rather than boxed — that keeps
 // an extra indirection off the per-write streaming path.
 #[allow(clippy::large_enum_variant)]
-enum EncoderInner<W: WriteBytes> {
+enum EncoderInner<W: Io> {
     /// Identity: writes pass straight through.
     Store(W),
     #[cfg(feature = "gzip")]
@@ -416,7 +415,7 @@ enum EncoderInner<W: WriteBytes> {
     Snappy(snap::write::FrameEncoder<WriteShim<W>>),
 }
 
-impl<W: WriteBytes> Encoder<W> {
+impl<W: Io> Encoder<W> {
     /// Finishes the compressed stream — flushing any buffered bytes and writing
     /// the trailer/checksum — and returns the underlying sink. **Must** be called
     /// to produce a valid stream.
@@ -436,10 +435,36 @@ impl<W: WriteBytes> Encoder<W> {
     }
 }
 
-impl<W: WriteBytes> WriteBytes for Encoder<W> {
-    fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
+impl<W: Io> fmt::Debug for Encoder<W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Encoder").finish_non_exhaustive()
+    }
+}
+
+impl<W: Io> Io for Encoder<W> {
+    /// A synthetic in-memory address — an encoder is a transient streaming adapter.
+    fn url(&self) -> Url {
+        Url::new("mem", "encoder")
+    }
+
+    fn stats(&self) -> Result<IoStats, IoError> {
+        Ok(IoStats::new(0))
+    }
+
+    fn seek(&mut self, _offset: i64, _whence: Whence) -> Result<u64, IoError> {
+        Err(IoError::Unsupported(
+            "seek on a streaming encoder (it is write-only and forward-only)".to_string(),
+        ))
+    }
+
+    fn stream_position(&self) -> u64 {
+        0
+    }
+
+    /// Compresses `bytes` into the wrapped sink, returning the count consumed.
+    fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
         match &mut self.inner {
-            EncoderInner::Store(sink) => sink.write_bytes(bytes),
+            EncoderInner::Store(sink) => sink.write(bytes),
             #[cfg(feature = "gzip")]
             EncoderInner::Gzip(encoder) => {
                 std::io::Write::write(encoder, bytes).map_err(IoError::from)
@@ -457,7 +482,7 @@ impl<W: WriteBytes> WriteBytes for Encoder<W> {
 
     fn flush(&mut self) -> Result<(), IoError> {
         match &mut self.inner {
-            EncoderInner::Store(sink) => sink.flush(),
+            EncoderInner::Store(sink) => Io::flush(sink),
             #[cfg(feature = "gzip")]
             EncoderInner::Gzip(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
             #[cfg(feature = "zstd")]
@@ -468,14 +493,14 @@ impl<W: WriteBytes> WriteBytes for Encoder<W> {
     }
 }
 
-/// A streaming decompressor returned by [`Compression::decoder`]. Implements
-/// [`ReadBytes`]; reads pull compressed bytes from the wrapped source and yield
+/// A streaming decompressor returned by [`Compression::decoder`]. A read-only
+/// [`Io`] handle: reads pull compressed bytes from the wrapped source and yield
 /// the decompressed stream until it drains.
-pub struct Decoder<R: ReadBytes> {
+pub struct Decoder<R: Io> {
     inner: DecoderInner<R>,
 }
 
-enum DecoderInner<R: ReadBytes> {
+enum DecoderInner<R: Io> {
     /// Identity: reads pass straight through.
     Store(R),
     #[cfg(feature = "gzip")]
@@ -486,10 +511,36 @@ enum DecoderInner<R: ReadBytes> {
     Snappy(snap::read::FrameDecoder<ReadShim<R>>),
 }
 
-impl<R: ReadBytes> ReadBytes for Decoder<R> {
-    fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+impl<R: Io> fmt::Debug for Decoder<R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Decoder").finish_non_exhaustive()
+    }
+}
+
+impl<R: Io> Io for Decoder<R> {
+    /// A synthetic in-memory address — a decoder is a transient streaming adapter.
+    fn url(&self) -> Url {
+        Url::new("mem", "decoder")
+    }
+
+    fn stats(&self) -> Result<IoStats, IoError> {
+        Ok(IoStats::new(0))
+    }
+
+    fn seek(&mut self, _offset: i64, _whence: Whence) -> Result<u64, IoError> {
+        Err(IoError::Unsupported(
+            "seek on a streaming decoder (it is read-only and forward-only)".to_string(),
+        ))
+    }
+
+    fn stream_position(&self) -> u64 {
+        0
+    }
+
+    /// Decompresses into `buf` from the wrapped source, returning the count read.
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         match &mut self.inner {
-            DecoderInner::Store(source) => source.read_bytes(buf),
+            DecoderInner::Store(source) => source.read(buf),
             #[cfg(feature = "gzip")]
             DecoderInner::Gzip(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
             #[cfg(feature = "zstd")]

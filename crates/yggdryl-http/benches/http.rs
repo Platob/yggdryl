@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Instant;
 
 use yggdryl_http::{HttpRequest, HttpResponseBatch, HttpSession};
-use yggdryl_io::ReadBytes;
+use yggdryl_io::Io;
 
 /// Reads one request off the stream, returning `(is_head, optional range)`.
 fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
@@ -125,8 +125,9 @@ fn main() {
     });
     bench("HttpStream windowed read_to_end", 20, SIZE, || {
         let mut stream = session
-            .stream(HttpRequest::get(&url).unwrap(), true)
-            .unwrap();
+            .send(HttpRequest::get(&url).unwrap(), false, true, true)
+            .unwrap()
+            .into_io();
         let mut out = Vec::with_capacity(SIZE);
         stream.read_to_end(&mut out).unwrap();
         black_box(out);
@@ -142,10 +143,13 @@ fn main() {
     let start = Instant::now();
     for _ in 0..footer_reqs {
         let mut stream = session
-            .stream(HttpRequest::get(&url).unwrap(), true)
-            .unwrap();
+            .send(HttpRequest::get(&url).unwrap(), false, true, true)
+            .unwrap()
+            .into_io();
         let mut footer = [0u8; 16];
-        yggdryl_io::Io::pread(&mut stream, &mut footer, -16, yggdryl_io::Whence::End).unwrap();
+        stream
+            .pread(&mut footer, -16, yggdryl_io::Whence::End)
+            .unwrap();
         black_box(footer);
     }
     println!(
@@ -178,7 +182,7 @@ fn main() {
     bench("keep_alive=true  (pooled reuse)", 6, M, || {
         for _ in 0..M {
             let response = session
-                .send(HttpRequest::get(&tiny).unwrap(), false, true)
+                .send(HttpRequest::get(&tiny).unwrap(), false, true, true)
                 .unwrap();
             black_box(response.bytes().unwrap());
         }
@@ -186,7 +190,7 @@ fn main() {
     bench("keep_alive=false (reconnect each)", 6, M, || {
         for _ in 0..M {
             let response = session
-                .send(HttpRequest::get(&tiny).unwrap(), false, false)
+                .send(HttpRequest::get(&tiny).unwrap(), false, false, true)
                 .unwrap();
             black_box(response.bytes().unwrap());
         }

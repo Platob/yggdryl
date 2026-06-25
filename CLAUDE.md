@@ -41,24 +41,31 @@ memory-mapped local file, or a cloud object — mixing **random** access (read a
 footer, a column chunk) with **streamed** access (scan record batches) on one
 handle. The layering, smallest to largest:
 
-- `ReadBytes` / `WriteBytes` — byte source/sink primitives (`&[u8]`, `Vec<u8>`).
-- `Seek` — the cursor (`seek` / `stream_position` / `stream_len`).
-- `Io: ReadBytes + Seek` — **the base handle**. Every IO has a `url()` (in-memory
-  ones use `mem://<address>`). It reads/writes at a position via `pread` /
-  `pwrite` — a `Whence` selects positional (`Start`/`End`, cursor untouched, the
-  default) versus cursor-relative (`Current`, uses and advances the cursor);
-  `pwrite` defaults to `Unsupported` (writable backends override it). Storage is
-  managed with `capacity` / `reserve_capacity` / `truncate` (also `Unsupported`
-  on read-only backends; `BytesIO` adds the `with_capacity` constructor). Each
-  handle carries an access `mode()` (`Mode` — `Read`/`Write`/`Append`/`ReadWrite`,
-  parsed from Python strings via `Mode::from_str`) and an optional `parent()`,
-  and can `open()` a derived handle (records the parent, applies mode/stream)
-  and `close()` it (idempotent; the default is a no-op as memory/mmap backends
-  free their storage on drop). Plus `as_slice` (the zero-copy hook a memory
-  backend overrides), `stats`, and
-  `copy_to` (transfer with a memory fast path; `copy` is the free fn).
-  `media_type` is lazy and behind the `media` feature. (`Io: …+ Debug + Send +
-  Sync` so handles can be boxed as parents and held across threads.)
+- `Io` — **the one byte-IO trait**; there are no separate `ReadBytes` / `WriteBytes`
+  / `Seek` traits (they were folded in). Every IO has a `url()` (in-memory ones use
+  `mem://<address>`). It carries a **cursor** (`seek` / `stream_position` /
+  `stream_len`), does **streamed** access with `read` / `write` (advance the cursor;
+  `read` is the source primitive a memory backend gets free from `as_slice`, `write`
+  defaults to `Unsupported`), and **random** access with `pread` / `pwrite` — a
+  `Whence` selects positional (`Start`/`End`, cursor untouched) versus cursor-relative
+  (`Current`, the same as `read`/`write`, advancing the cursor); the default `pread`
+  serves zero-copy from `as_slice` or, on a seekable streamed backend, seeks-reads-
+  restores, while `pwrite` defaults to `Unsupported`. `read_exact` / `read_to_end` /
+  `write_all` / `flush` are provided on top. Storage is managed with `capacity` /
+  `reserve_capacity` / `truncate` (`Unsupported` on read-only backends; `BytesIO`
+  adds the `with_capacity` constructor). Each handle carries an access `mode()`
+  (`Mode` — `Read`/`Write`/`Append`/`ReadWrite`, parsed from Python strings via
+  `Mode::from_str`) and an optional `parent()`, and can `open()` a derived handle
+  (records the parent, applies mode/stream) and `close()` it (idempotent; the default
+  is a no-op as memory/mmap backends free their storage on drop). Plus `as_slice`
+  (the zero-copy hook a memory backend overrides), `stats`, and `copy_to` (transfer
+  into another `Io` with a memory fast path; `copy` is the free fn). `media_type` is
+  lazy and behind the `media` feature. (`Io: Debug + Send + Sync` so handles can be
+  boxed as parents and held across threads; a blanket `impl Io for &mut T` lets a
+  borrowed handle be passed by value to an adapter.) A **streamed** backend (an HTTP
+  body, a compression `Decoder`) overrides `read` (and `pread` if it supports
+  positioning); a **memory-resident** one overrides `as_slice` so the zero-copy paths
+  light up for free.
 - `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
   expensive metadata (`media_type`) discovered lazily and cached.
 - `Path: Io` — a local, hierarchical resource. `LocalPath` is a filesystem
@@ -71,9 +78,9 @@ handle. The layering, smallest to largest:
   creation; range reads via `pread`). The address is the universal `Io::url()`.
   **Cloud backends (S3, Azure) are downstream crates that implement `RemotePath`
   — do not pull network SDKs into `yggdryl-io`.**
-- `Codec<T>` — typed read/write/stream of values over any byte handle; `Frames`
-  is the reference length-delimited codec. (`Codec` is the *value* coder; `Io` is
-  the *byte* handle — keep them distinct.) Byte-stream **compression** is a
+- `Codec<T>` — typed read/write/stream of values over any `&mut dyn Io` handle;
+  `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
+  `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
   separate concern in `yggdryl-compression` (see its section), not here.
 
 Rules when extending: the base build depends only on `yggdryl-url` (for the
@@ -91,10 +98,12 @@ yggdryl-io`). The shape:
 - `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
   `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
   `from_mime` / `from_media` / `from_stats` for inference.
-- `encoder(sink) → Encoder: WriteBytes` (compress-on-write; `finish()` flushes the
-  trailer) and `decoder(source) → Decoder: ReadBytes` (decompress-on-read); the
-  one-shot `compress` / `decompress` build on them. Internal `std::io` shims
-  bridge `ReadBytes`/`WriteBytes` to the `flate2`/`zstd`/`snap` stream codecs.
+- `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
+  flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
+  Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
+  so a decoder composes straight into an HTTP body. The one-shot `compress` /
+  `decompress` build on them over a `BytesIO`. Internal `std::io` shims bridge `Io`'s
+  `read`/`write` to the `flate2`/`zstd`/`snap` stream codecs.
 - `CompressIo: Io` — a blanket extension trait adding `compress(codec)` /
   `decompress(codec)` to every handle, returning a fresh `BytesIO`. `decompress`
   with no codec infers one from the handle's URL extension, then its `stats()`
@@ -112,27 +121,42 @@ A small **blocking** HTTP client shaped after Python's `requests`, layered on
 gzip/brotli left off so decompression goes through `yggdryl-compression`). The
 shape:
 
-- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent`, default
-  headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size` (80). Every
-  send funnels through `prepare` (merge defaults; per-request headers win) then
-  `request(req, raise_error)` — `raise_error` defaults to `true` on the verb
-  helpers (`get`/`post`/…), raising on a 4xx/5xx. `stream(req)` opens an
-  `HttpStream`; `send_many(reqs)` is a lazy iterator of `HttpResponseBatch`,
-  running each batch up to `max_concurrency` at a time (scoped threads).
-- `HttpRequest` — a `Method` + `Url` + headers + body builder (`with_header` /
+- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
+  pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
+  handshake), default headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size`
+  (80). **Every request funnels through the one method** `send(req, raise_error,
+  keep_alive, stream)` — there is no separate `stream()` method. It `prepare`s the
+  request (merge defaults; per-request headers win, case-insensitively), runs it with
+  the retry policy, and returns an `HttpResponse` holding the body. `raise_error`
+  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; `keep_alive` pools
+  the connection (a pool-saturation safeguard forces `Connection: close` on streams
+  past the pool size); `stream` (`true` by default) keeps the body a **live
+  `HttpStream`** read lazily, while `false` drains it into a `BytesIO` during `send`
+  so the connection is released at once. `request(req, raise_error)` is the
+  keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
+  `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
+  threads).
+- `HttpHeaders` — the case-insensitive header map all three of `HttpSession`,
+  `HttpRequest`, `HttpResponse` and `HttpStream` use; CRUD (`get` / `get_all` /
+  `set` / `insert` / `remove` / `contains` / `iter` / `from_mapping`) plus the
+  HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
+  `Content-Length`). **All header logic lives here.**
+- `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
   `with_param` / `with_body` / `with_body_reader` / `with_body_io`). `with_body_io`
   is the preferred upload: the handle's `stream_len` sets `Content-Length` and the
   bytes stream straight off the `Io` (a file is never buffered).
-- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. The body
-  is lazy: `reader()` is a `ReadBytes` source (decoded under `compression`),
-  `bytes`/`text`/`into_bytesio` drain it.
-- `HttpStream: Io` — a seekable HTTP body. A `HEAD` makes size / content type /
-  media discoverable; bytes are then fetched lazily in **4 MiB windows** via
-  `Range` (sequential `read`) or one-off ranges (`pread`, footer reads). Reads
-  retry transient statuses (429/502/503/504, honouring `Retry-After`) and
-  **resume from the cursor** on a dropped connection (each window is an
-  idempotent range request). This is the canonical "remote `Io`".
-- Retries cover replayable bodies (none/bytes) and all `HttpStream` window
+- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
+  body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
+  `reader()` is the decoded body `Io` (decompressed under `compression`),
+  `bytes`/`text`/`into_bytesio` drain it, `into_io` takes the whole body.
+- `HttpStream: Io` — the seekable HTTP body that **streams off the held connection**:
+  sequential `read` pulls bytes straight off the socket on demand, keeping only a
+  sliding 4 MiB cache for short seek-backs, while `pread` (footer / column-chunk) and
+  a seek-back past the cache re-open a one-off `Range` on a pooled connection. Reads
+  retry transient statuses (429/502/503/504, honouring `Retry-After`) and **resume
+  from the cursor** on a dropped connection (each range request is idempotent); the
+  connection is released on EOF or `close()`. This is the canonical "remote `Io`".
+- Retries cover replayable bodies (none/bytes) and all `HttpStream` range
   fetches; a streamed (reader/`Io`) request body is single-shot.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns

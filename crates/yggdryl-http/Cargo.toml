@@ -19,9 +19,9 @@ name = "http"
 harness = false
 
 [dependencies]
-# The byte-IO foundation: response bodies stream as `ReadBytes` or a seekable
-# `HttpStream: Io`, request bodies stream from any `Io` handle, and buffered
-# bodies land in a `BytesIO`. `json` lights up `Io::json()` on every handle.
+# The byte-IO foundation: a response body is a `Box<dyn Io>` (a seekable
+# `HttpStream` when streamed, a `BytesIO` when buffered), request bodies stream
+# from any `Io` handle. `json` lights up `Io::json()` on every handle.
 yggdryl-io = { workspace = true, features = ["json"] }
 # Requests carry a `Url`, built with the shared URL type (query params, etc.).
 yggdryl-url = { workspace = true }
@@ -37,6 +37,10 @@ yggdryl-media = { workspace = true, optional = true }
 log = { version = "0.4", optional = true }
 
 [features]
+# `compression` (auto `Content-Encoding` decode) ships on by default so a plain
+# `get()` transparently decompresses, like `requests`; opt out with
+# `default-features = false`.
+default = ["compression"]
 # Enabling `compression` turns on the gzip/zstd/snappy backends too, so a
 # `Content-Encoding` response actually decodes.
 compression = [

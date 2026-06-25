@@ -42,6 +42,8 @@ pub struct ResponseData {
     url: String,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
+    sent_at: f64,
+    received_at: f64,
 }
 
 /// The blocking request, run on the libuv thread pool by napi.
@@ -67,19 +69,29 @@ impl Task for RequestTask {
             BodyArg::Bytes(bytes) => request.with_body(bytes),
             BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
         };
+        // A buffered (`stream = false`) send drains the body now and releases the
+        // connection, so `received_at` is already stamped before `bytes()`.
         let response = self
             .session
-            .send(request, self.raise_error, self.keep_alive)
+            .send(request, self.raise_error, self.keep_alive, false)
             .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
-        let headers = response.headers().to_vec();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
+        let sent_at = response.sent_at();
+        let received_at = response.received_at();
         let body = response.bytes().map_err(to_napi)?;
         Ok(ResponseData {
             status,
             url,
             headers,
             body,
+            sent_at,
+            received_at,
         })
     }
 
@@ -89,6 +101,8 @@ impl Task for RequestTask {
             url: output.url,
             headers: output.headers,
             body: output.body,
+            sent_at: output.sent_at,
+            received_at: output.received_at,
         })
     }
 }
@@ -101,6 +115,8 @@ pub struct HttpResponse {
     url: String,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
+    sent_at: f64,
+    received_at: f64,
 }
 
 #[napi]
@@ -121,6 +137,19 @@ impl HttpResponse {
     #[napi(getter)]
     pub fn url(&self) -> String {
         self.url.clone()
+    }
+
+    /// UTC Unix-epoch seconds when the request was dispatched (`0.0` if unset).
+    #[napi(getter, js_name = "sentAt")]
+    pub fn sent_at(&self) -> f64 {
+        self.sent_at
+    }
+
+    /// UTC Unix-epoch seconds when the connection finished delivering the body
+    /// (`0.0` if unset).
+    #[napi(getter, js_name = "receivedAt")]
+    pub fn received_at(&self) -> f64 {
+        self.received_at
     }
 
     /// The response headers as an object (lower-cased names).
