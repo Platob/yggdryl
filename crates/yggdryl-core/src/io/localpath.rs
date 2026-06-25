@@ -69,10 +69,30 @@ impl Backing {
     }
 }
 
+/// The OS-native filesystem path for `location`. URL parsing yields a Windows
+/// drive path in the form `/C:/dir/file` (a leading `/` before the drive letter,
+/// from `file:///C:/…`), but `/C:/…` is **not** a valid Windows path while `C:/…`
+/// is — so on Windows the leading slash before a `X:` drive letter is stripped.
+/// On other platforms, and for non-drive paths, the location is returned verbatim.
+fn native_location(location: &str) -> &str {
+    #[cfg(windows)]
+    {
+        let bytes = location.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0] == b'/'
+            && bytes[1].is_ascii_alphabetic()
+            && bytes[2] == b':'
+        {
+            return &location[1..];
+        }
+    }
+    location
+}
+
 /// Stats `location` into [`IoStats`] (kind / size / mtime), reporting
 /// [`Kind::Missing`] when it is absent or unreachable. Never opens the file.
 fn stat_path(location: &str) -> IoStats {
-    match fs::metadata(location) {
+    match fs::metadata(native_location(location)) {
         Err(_) => IoStats::new(0).with_kind(Kind::Missing),
         Ok(meta) => {
             let kind = if meta.is_dir() {
@@ -106,7 +126,9 @@ fn load_backing(location: &str, stats: &IoStats) -> Backing {
         // SAFETY: we map a file we open read-only here. The standard mmap caveat
         // applies — external truncation while mapped is undefined — and is the
         // caller's responsibility for the paths they hand us.
-        match fs::File::open(location).and_then(|file| unsafe { memmap2::Mmap::map(&file) }) {
+        match fs::File::open(native_location(location))
+            .and_then(|file| unsafe { memmap2::Mmap::map(&file) })
+        {
             Ok(map) => Backing::Mapped(map),
             Err(_) => Backing::Buffered(Vec::new()),
         }
@@ -115,7 +137,7 @@ fn load_backing(location: &str, stats: &IoStats) -> Backing {
     // file against later writes.
     #[cfg(not(all(feature = "mmap", not(windows))))]
     {
-        fs::read(location)
+        fs::read(native_location(location))
             .map(Backing::Buffered)
             .unwrap_or_else(|_| Backing::Buffered(Vec::new()))
     }
@@ -254,16 +276,17 @@ impl LocalPath {
             bytes.len(),
             self.location
         );
-        match fs::write(&self.location, bytes) {
+        let location = native_location(&self.location);
+        match fs::write(location, bytes) {
             Ok(()) => Ok(()),
             // The directory was missing: create it once, then retry the write.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = std::path::Path::new(&self.location).parent();
+                let parent = std::path::Path::new(location).parent();
                 if let Some(parent) = parent.filter(|p| !p.as_os_str().is_empty()) {
                     log_event!(debug, "LocalPath::write creating parent dir {parent:?}");
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(&self.location, bytes)?;
+                fs::write(location, bytes)?;
                 Ok(())
             }
             Err(error) => Err(error.into()),
@@ -379,6 +402,6 @@ impl Path for LocalPath {
     }
 
     fn exists(&self) -> bool {
-        std::path::Path::new(&self.location).exists()
+        std::path::Path::new(native_location(&self.location)).exists()
     }
 }
