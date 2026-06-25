@@ -209,6 +209,11 @@ Rules:
 - **Errors**: one `enum` per type (`UriError`, `UrlError`, …) implementing
   `Display` + `std::error::Error`, with `From` conversions between layers. Core
   errors map to `ValueError` (Python) / thrown `Error` (Node).
+  **Make error messages actionable**: when the fix is knowable, say it in the
+  message — name the missing feature (`enable the \`gzip\` cargo feature`), the
+  expected input (`expected 0, 1 or 2`), or the offending value (`unknown mode
+  "rw+"`). A reader should learn *how to fix it* from the message, not just that
+  it failed.
 - **Docs**: every public item has a `///` doc comment; types carry a runnable
   doctest. Match the existing terse style.
 - **Bindings**: each wrapper method is one or two lines delegating to

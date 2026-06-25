@@ -243,8 +243,11 @@ impl HttpSession {
     /// Issue an arbitrary ``method`` request, with optional ``headers`` and
     /// ``body`` (``bytes`` or an `Io` handle). ``raise_error`` (default ``True``)
     /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
-    /// response whatever its status.
-    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true))]
+    /// response whatever its status. ``keep_alive`` (default ``True``) pools the
+    /// connection for reuse (skipping the next TLS handshake); pass ``False`` to
+    /// close it after the response.
+    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true))]
+    #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
         py: Python<'_>,
@@ -253,6 +256,7 @@ impl HttpSession {
         headers: Option<HashMap<String, String>>,
         body: Option<Bound<'_, PyAny>>,
         raise_error: bool,
+        keep_alive: bool,
     ) -> PyResult<HttpResponse> {
         let method = Method::from_str(method).map_err(http_err)?;
         let body = extract_body(body.as_ref())?;
@@ -262,7 +266,7 @@ impl HttpSession {
                 request = request.with_headers(headers);
             }
             request = apply_body(request, body);
-            session.request(request, raise_error)
+            session.send(request, raise_error, keep_alive)
         })
     }
 }

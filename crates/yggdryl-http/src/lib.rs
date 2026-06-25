@@ -15,10 +15,12 @@
 //! [`LocalPath`](yggdryl_io::LocalPath) never loads the file into memory.
 //!
 //! For random access there is [`HttpStream`], a seekable [`Io`](yggdryl_io::Io)
-//! whose size is discoverable up front and whose bytes are fetched lazily in
-//! 4 MiB windows via `Range` requests — with transient-failure retries and
-//! cursor resume on a dropped connection. [`HttpSession::send_many`] runs an
-//! iterator of requests concurrently in batches.
+//! that **streams off a held connection** — sequential reads pull straight off the
+//! socket, keeping only a sliding 4 MiB cache for short seek-backs, while a
+//! pread / seek-back / forward jump reopens a `Range` request on a pooled
+//! connection. It retries transient failures and **resumes from the cursor** after
+//! a dropped connection, releasing the connection on EOF (or [`close`](Io::close)).
+//! [`HttpSession::send_many`] runs an iterator of requests concurrently in batches.
 //!
 //! ```no_run
 //! use yggdryl_http::{HttpSession, HttpRequest};
@@ -29,7 +31,7 @@
 //!
 //! // A seekable, lazily-fetched remote Io.
 //! use yggdryl_io::{Io, Whence};
-//! let mut stream = session.stream(HttpRequest::get("https://example.com/data").unwrap()).unwrap();
+//! let mut stream = session.stream(HttpRequest::get("https://example.com/data").unwrap(), true).unwrap();
 //! let mut footer = [0u8; 8];
 //! stream.pread(&mut footer, -8, Whence::End).unwrap(); // read the tail, one range request
 //! ```
@@ -44,6 +46,8 @@
 //! - `log` — structured `log` events on the request path.
 
 use std::fmt;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use yggdryl_io::{BytesIO, Io, IoError, ReadBytes, Seek, Whence};
@@ -374,27 +378,38 @@ impl ReadBytes for HttpBody {
     }
 
     /// Drains into `out` via the inner reader's own `read_to_end`, so an
-    /// undecoded body flows once off the socket (see [`ReadAdapter`]) instead of
-    /// bouncing through a stack buffer.
+    /// undecoded body flows once off the socket (the [`HttpStream`] streams
+    /// straight into `out`) instead of bouncing through a stack buffer.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
         self.inner.read_to_end(out)
     }
 }
 
-/// A received HTTP response, modelled on `requests.Response`: a status, headers,
-/// and a body that is read lazily.
+/// A received HTTP response, modelled on `requests.Response`. Its body is a live
+/// [`HttpStream`] over the held connection, read lazily — drained by
+/// [`bytes`](HttpResponse::bytes) / [`text`](HttpResponse::text), or taken whole
+/// with [`into_stream`](HttpResponse::into_stream) for seekable access.
 pub struct HttpResponse {
     status: u16,
     url: Url,
     headers: Vec<(String, String)>,
-    body: ureq::Body,
+    stream: HttpStream,
 }
 
 impl HttpResponse {
-    fn from_ureq(response: ureq::http::Response<ureq::Body>, url: Url) -> HttpResponse {
-        let (parts, body) = response.into_parts();
-        let headers = parts
-            .headers
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        response: ureq::http::Response<ureq::Body>,
+        agent: ureq::Agent,
+        url: Url,
+        request_headers: Vec<(String, String)>,
+        retry: RetryConfig,
+        keep_alive: bool,
+        held: Arc<AtomicUsize>,
+    ) -> HttpResponse {
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
             .iter()
             .map(|(name, value)| {
                 (
@@ -403,12 +418,27 @@ impl HttpResponse {
                 )
             })
             .collect();
+        let stream = HttpStream::from_response(
+            response,
+            agent,
+            url.clone(),
+            request_headers,
+            retry,
+            keep_alive,
+            held,
+        );
         HttpResponse {
-            status: parts.status.as_u16(),
+            status,
             url,
             headers,
-            body,
+            stream,
         }
+    }
+
+    /// Consumes the response, returning its body as a seekable [`HttpStream`] over
+    /// the held connection.
+    pub fn into_stream(self) -> HttpStream {
+        self.stream
     }
 
     /// The HTTP status code.
@@ -477,13 +507,14 @@ impl HttpResponse {
     /// source. Under the `compression` feature a `Content-Encoding` of gzip / zstd
     /// / snappy is decoded transparently.
     pub fn reader(self) -> HttpBody {
-        let HttpResponse { headers, body, .. } = self;
-        let raw = ReadAdapter(body.into_reader());
+        let HttpResponse {
+            headers, stream, ..
+        } = self;
 
         #[cfg(feature = "compression")]
         {
-            // Resolve the codec before touching `raw`, so the fall-through to the
-            // undecoded body never trips over a moved value.
+            // Resolve the codec before touching `stream`, so the fall-through to
+            // the undecoded body never trips over a moved value.
             let codec = header_value(&headers, "content-encoding")
                 .and_then(|encoding| yggdryl_compression::Compression::from_str(encoding).ok())
                 .filter(|codec| {
@@ -491,7 +522,7 @@ impl HttpResponse {
                 });
             if let Some(codec) = codec {
                 log_event!(debug, "HttpResponse::reader decoding {codec}");
-                return match codec.decoder(raw) {
+                return match codec.decoder(stream) {
                     Ok(decoder) => HttpBody {
                         inner: Box::new(decoder),
                     },
@@ -504,7 +535,7 @@ impl HttpResponse {
         #[cfg(not(feature = "compression"))]
         let _ = &headers;
         HttpBody {
-            inner: Box::new(raw),
+            inner: Box::new(stream),
         }
     }
 
@@ -549,23 +580,42 @@ pub struct HttpSession {
     retry: RetryConfig,
     max_concurrency: usize,
     batch_size: usize,
+    /// The idle-connection pool size — reused (keep-alive) connections skip the
+    /// TLS handshake on the next request to the same host.
+    max_pool: usize,
+    /// The live count of open [`HttpStream`]s (held connections), so extra streams
+    /// past the pool size can drop keep-alive and not starve the pool.
+    held: Arc<AtomicUsize>,
 }
 
+/// The default idle-connection pool size.
+const DEFAULT_POOL: usize = 16;
+
 impl HttpSession {
-    /// Creates a session with a fresh connection pool, default retry policy, a
+    /// Creates a session with a pooled connection (default 16 idle connections,
+    /// reused without re-doing the TLS handshake), default retry policy, a
     /// concurrency of 8 and a batch size of 80 (`max_concurrency * 10`).
     pub fn new() -> HttpSession {
+        HttpSession::with_config(RetryConfig::default(), DEFAULT_POOL)
+    }
+
+    fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
+        let max_pool = max_pool.max(1);
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
+            .max_idle_connections(max_pool)
+            .max_idle_connections_per_host(max_pool)
             .build()
             .into();
         let max_concurrency = 8;
         HttpSession {
             agent,
             headers: Vec::new(),
-            retry: RetryConfig::default(),
+            retry,
             max_concurrency,
             batch_size: max_concurrency * 10,
+            max_pool,
+            held: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -598,6 +648,30 @@ impl HttpSession {
     pub fn with_batch_size(mut self, batch_size: usize) -> HttpSession {
         self.batch_size = batch_size.max(1);
         self
+    }
+
+    /// Sets the idle-connection pool size (rebuilding the pooled agent). Larger
+    /// pools keep more keep-alive connections warm (skipping TLS handshakes).
+    pub fn with_pool_size(mut self, max_pool: usize) -> HttpSession {
+        let max_pool = max_pool.max(1);
+        self.agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .max_idle_connections(max_pool)
+            .max_idle_connections_per_host(max_pool)
+            .build()
+            .into();
+        self.max_pool = max_pool;
+        self
+    }
+
+    /// The idle-connection pool size.
+    pub fn pool_size(&self) -> usize {
+        self.max_pool
+    }
+
+    /// The number of [`HttpStream`]s currently holding a connection open.
+    pub fn open_streams(&self) -> usize {
+        self.held.load(Ordering::SeqCst)
     }
 
     /// The session's default headers.
@@ -668,66 +742,71 @@ impl HttpSession {
         }
     }
 
-    /// Sends a [`prepare`](HttpSession::prepare)d request with the retry policy.
-    /// When `raise_error` is `true` a 4xx/5xx status becomes an
-    /// [`HttpError::Status`] (the `requests` `raise_for_status` default); pass
-    /// `false` to receive the response whatever its status.
-    pub fn request(
+    /// **The one place every request is sent.** [`prepare`](HttpSession::prepare)s
+    /// the request, runs it with the retry policy, and returns an [`HttpResponse`]
+    /// whose body is a live [`HttpStream`] over the held connection.
+    ///
+    /// `raise_error` (`true` for the verb helpers) turns a 4xx/5xx status into an
+    /// [`HttpError::Status`]. `keep_alive` keeps the connection pooled for reuse;
+    /// `false` sends `Connection: close`. As a pool safeguard, once more than
+    /// [`pool_size`](HttpSession::pool_size) streams are already open, a new one
+    /// drops keep-alive regardless, so streaming reads never starve the pool.
+    pub fn send(
         &self,
         request: HttpRequest,
         raise_error: bool,
+        keep_alive: bool,
     ) -> Result<HttpResponse, HttpError> {
-        let request = self.prepare(request);
+        let mut request = self.prepare(request);
+        let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
+        if !keep_alive {
+            request
+                .headers
+                .push(("connection".to_string(), "close".to_string()));
+        }
         let url = request.url.clone();
         log_event!(
             debug,
-            "HttpSession::request {} {url}",
+            "HttpSession::send {} {url} keep_alive={keep_alive}",
             request.method.as_str()
         );
-        let response = self.execute(
+        let raw = self.execute(
             request.method,
             url.to_string().as_str(),
             &request.headers,
             request.body,
         )?;
-        let response = HttpResponse::from_ureq(response, url);
-        if raise_error {
-            response.raise_for_status()
-        } else {
-            Ok(response)
+        let response = HttpResponse::build(
+            raw,
+            self.agent.clone(),
+            url,
+            request.headers,
+            self.retry.clone(),
+            keep_alive,
+            self.held.clone(),
+        );
+        if raise_error && response.status >= 400 {
+            // Drop closes the held connection; the error carries the status.
+            return Err(HttpError::Status(response.status));
         }
+        Ok(response)
     }
 
-    /// Opens a seekable [`HttpStream`] over a resource: a `HEAD` discovers its
-    /// size / content type, then bytes are fetched lazily in 4 MiB windows via
-    /// `Range` requests (only when read). The request supplies the URL and any
-    /// headers (e.g. auth); its method/body are ignored.
-    pub fn stream(&self, request: HttpRequest) -> Result<HttpStream, HttpError> {
-        let request = self.prepare(request);
-        let url_string = request.url.to_string();
-        let head = self.execute(Method::Head, &url_string, &request.headers, Body::Empty)?;
-        let headers = head.headers();
-        let size = header_u64(headers, "content-length");
-        let content_type = header_string(headers, "content-type");
-        let ranges = header_string(headers, "accept-ranges")
-            .map(|value| value.eq_ignore_ascii_case("bytes"))
-            .unwrap_or(false);
-        log_event!(
-            debug,
-            "HttpStream::open {url_string} size={size:?} ranges={ranges}"
-        );
-        Ok(HttpStream {
-            agent: self.agent.clone(),
-            url: request.url,
-            headers: request.headers,
-            retry: self.retry.clone(),
-            size,
-            content_type,
-            ranges,
-            position: 0,
-            window_start: 0,
-            window: Vec::new(),
-        })
+    /// Sends a request, raising on a 4xx/5xx when `raise_error` (a keep-alive
+    /// [`send`](HttpSession::send)).
+    pub fn request(
+        &self,
+        request: HttpRequest,
+        raise_error: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.send(request, raise_error, true)
+    }
+
+    /// Opens a seekable [`HttpStream`] over a resource by sending `request` and
+    /// taking the held connection as the stream — bytes are then streamed off it
+    /// on demand. `keep_alive` pools the connection for reuse.
+    pub fn stream(&self, request: HttpRequest, keep_alive: bool) -> Result<HttpStream, HttpError> {
+        Ok(self.send(request, false, keep_alive)?.into_stream())
     }
 
     /// Sends an iterator of requests concurrently, **streamed** in batches of
@@ -932,29 +1011,76 @@ impl IntoIterator for HttpResponseBatch {
     }
 }
 
-/// A seekable, lazily-fetched [`Io`] over an HTTP resource: a `HEAD` makes its
-/// size and content type discoverable up front, then bytes are pulled on demand
-/// in **4 MiB windows** via `Range` requests — random access (`pread`, a footer
-/// read) issues a one-off range, while sequential [`read`](ReadBytes) walks the
-/// window. Reads retry transient failures and **resume from the cursor** on a
-/// dropped connection (each window is an independent, idempotent range request).
+/// A seekable [`Io`] over an HTTP resource that **streams off a held
+/// connection** rather than collecting the body: sequential [`read`](ReadBytes)
+/// pulls bytes straight off the socket on demand, keeping only a sliding 4 MiB
+/// cache for short seek-backs. Random access (`pread`, a footer read) or a
+/// seek-back past the cache re-opens a `Range` request on a pooled connection.
+/// The connection is released to the pool on EOF (or closed, with no keep-alive),
+/// and [`close`](Io::close) drops it eagerly. A connection lost mid-stream is
+/// reconnected and **resumed from the cursor**.
 pub struct HttpStream {
     agent: ureq::Agent,
     url: Url,
     headers: Vec<(String, String)>,
     retry: RetryConfig,
+    /// When `false`, requests carry `Connection: close` so the socket is not
+    /// pooled (the pool-saturation safeguard sets this on extra streams).
+    keep_alive: bool,
     size: Option<u64>,
     content_type: Option<String>,
-    ranges: bool,
+    /// The live response-body reader, positioned at `reader_pos`. `None` once the
+    /// stream is closed, exhausted, or awaiting a (re)open for `position`.
+    reader: Option<Box<dyn std::io::Read + Send + Sync>>,
+    reader_pos: u64,
+    /// A sliding cache of recently-streamed bytes for short seek-backs, never
+    /// larger than `CACHE_LIMIT`.
+    cache: Vec<u8>,
+    cache_start: u64,
     position: u64,
-    window_start: u64,
-    window: Vec<u8>,
+    closed: bool,
+    /// Shared count of live streams (held connections) for the pool safeguard.
+    held: Arc<AtomicUsize>,
 }
 
-/// The window size for sequential [`HttpStream`] reads (4 MiB).
-const WINDOW_SIZE: u64 = 4 * 1024 * 1024;
+/// The most recently-streamed bytes [`HttpStream`] keeps for a seek-back (4 MiB).
+const CACHE_LIMIT: usize = 4 * 1024 * 1024;
 
 impl HttpStream {
+    /// Builds a stream from a freshly-received response, holding its live body as
+    /// the connection at offset 0.
+    fn from_response(
+        response: ureq::http::Response<ureq::Body>,
+        agent: ureq::Agent,
+        url: Url,
+        headers: Vec<(String, String)>,
+        retry: RetryConfig,
+        keep_alive: bool,
+        held: Arc<AtomicUsize>,
+    ) -> HttpStream {
+        let size = response_size(response.headers());
+        let content_type = header_string(response.headers(), "content-type");
+        let reader: Box<dyn std::io::Read + Send + Sync> =
+            Box::new(response.into_body().into_reader());
+        held.fetch_add(1, Ordering::SeqCst);
+        HttpStream {
+            agent,
+            url,
+            headers,
+            retry,
+            keep_alive,
+            size,
+            content_type,
+            reader: Some(reader),
+            reader_pos: 0,
+            cache: Vec::new(),
+            cache_start: 0,
+            position: 0,
+            closed: false,
+            held,
+        }
+    }
+
     /// The total size in bytes, if the server reported it.
     pub fn size(&self) -> Option<u64> {
         self.size
@@ -965,28 +1091,145 @@ impl HttpStream {
         self.content_type.as_deref()
     }
 
-    /// Whether the server advertised `Accept-Ranges: bytes`.
-    pub fn supports_ranges(&self) -> bool {
-        self.ranges
+    /// Closes the held connection eagerly (idempotent); further reads return EOF.
+    pub fn close(&mut self) {
+        self.reader = None;
+        self.closed = true;
     }
 
-    /// Fetches `[start, start+len)` into a fresh `Vec` (pre-sized) — the windowed
-    /// form used by [`read_bytes`](HttpStream::read_bytes) and [`pread`](Io::pread).
+    /// The number of bytes still readable from `position`, if the size is known.
+    fn remaining(&self) -> Option<u64> {
+        self.size.map(|size| size.saturating_sub(self.position))
+    }
+
+    /// Records end-of-input on an unknown-size stream and releases the socket.
+    fn on_eof(&mut self) {
+        if self.size.is_none() {
+            self.size = Some(self.position);
+        }
+        self.reader = None; // exhausted: return the connection to the pool
+    }
+
+    /// (Re)opens a `Range` request from `start`, replacing the live reader — used
+    /// to seek back past the cache, jump forward, or resume after a drop.
+    fn open_at(&mut self, start: u64) -> Result<(), IoError> {
+        let (size, reader) = self.request_reader(start)?;
+        if self.size.is_none() {
+            self.size = size;
+        }
+        self.reader = reader;
+        self.reader_pos = start;
+        self.cache.clear();
+        self.cache_start = start;
+        Ok(())
+    }
+
+    /// Issues `GET <url>` with `Range: bytes=start-` (and `Connection: close` when
+    /// not keep-alive), retrying transient statuses and reconnecting on error.
+    /// Returns the total size (if newly learnt) and the live reader, or `None`
+    /// reader at a clean EOF (`416`).
+    #[allow(clippy::type_complexity)]
+    fn request_reader(
+        &self,
+        start: u64,
+    ) -> Result<(Option<u64>, Option<Box<dyn std::io::Read + Send + Sync>>), IoError> {
+        let url = self.url.to_string();
+        let range = format!("bytes={start}-");
+        let mut attempt = 0u32;
+        loop {
+            let mut builder = ureq::http::Request::builder()
+                .method("GET")
+                .uri(url.as_str());
+            for (name, value) in &self.headers {
+                builder = builder.header(name, value);
+            }
+            builder = builder.header("range", range.as_str());
+            if !self.keep_alive {
+                builder = builder.header("connection", "close");
+            }
+            let outcome = builder
+                .body(ureq::SendBody::none())
+                .map_err(|err| IoError::Io(err.to_string()))
+                .and_then(|request| {
+                    self.agent
+                        .run(request)
+                        .map_err(|err| IoError::Io(err.to_string()))
+                });
+            match outcome {
+                Ok(response) => {
+                    let status = response.status().as_u16();
+                    if attempt < self.retry.max_retries && self.retry.retryable_status(status) {
+                        let delay = self.retry.backoff(attempt, retry_after(response.headers()));
+                        attempt += 1;
+                        std::thread::sleep(delay);
+                        continue;
+                    }
+                    if status == 416 {
+                        return Ok((None, None)); // range past the end: clean EOF
+                    }
+                    if status >= 400 {
+                        return Err(IoError::Io(format!(
+                            "http status {status} fetching a range (check the URL and that the resource still exists)"
+                        )));
+                    }
+                    if status == 200 && start > 0 {
+                        return Err(IoError::Unsupported(
+                            "server ignored the Range request (it does not support range reads)"
+                                .to_string(),
+                        ));
+                    }
+                    let size = response_size(response.headers());
+                    let reader: Box<dyn std::io::Read + Send + Sync> =
+                        Box::new(response.into_body().into_reader());
+                    return Ok((size, Some(reader)));
+                }
+                Err(error) => {
+                    if attempt < self.retry.max_retries {
+                        let delay = self.retry.backoff(attempt, None);
+                        log_event!(warn, "HttpStream reconnect after error: {error}");
+                        attempt += 1;
+                        std::thread::sleep(delay);
+                        continue;
+                    }
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    /// Reads off the live connection into `buf`, reconnecting (resuming the range
+    /// from `reader_pos`) if the connection drops, up to the retry limit.
+    fn read_live(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        let mut attempt = 0u32;
+        loop {
+            let result = match self.reader.as_mut() {
+                Some(reader) => std::io::Read::read(reader, buf),
+                None => return Ok(0),
+            };
+            match result {
+                Ok(count) => return Ok(count),
+                Err(_error) if attempt < self.retry.max_retries => {
+                    attempt += 1;
+                    std::thread::sleep(self.retry.backoff(attempt - 1, None));
+                    log_event!(
+                        warn,
+                        "HttpStream reconnect mid-stream at {} (attempt {attempt})",
+                        self.reader_pos
+                    );
+                    self.open_at(self.reader_pos)?; // resume from the cursor
+                    continue;
+                }
+                Err(error) => return Err(IoError::from(error)),
+            }
+        }
+    }
+
+    /// Fetches exactly `[start, start+len)` into a fresh `Vec` via a one-off
+    /// `Range` request — used by [`pread`](Io::pread), leaving the live reader
+    /// untouched.
     fn fetch_range(&self, start: u64, len: u64) -> Result<Vec<u8>, IoError> {
-        let mut out = Vec::with_capacity(len.min(WINDOW_SIZE) as usize);
-        self.fetch_range_into(start, len, &mut out)?;
-        Ok(out)
-    }
-
-    /// Fetches `[start, start+len)`, **appending** the bytes to `out` (one copy,
-    /// straight off the socket) and returning the count appended. Retries
-    /// transient statuses and reconnects on a lost connection; a body cut
-    /// mid-stream is resumed by truncating `out` back and re-fetching the range.
-    /// A `416 Range Not Satisfiable` (read past the end of an unknown-size
-    /// resource) is a clean end of input, returning `0`.
-    fn fetch_range_into(&self, start: u64, len: u64, out: &mut Vec<u8>) -> Result<usize, IoError> {
         if len == 0 {
-            return Ok(0);
+            return Ok(Vec::new());
         }
         let end = start
             .checked_add(len)
@@ -994,12 +1237,10 @@ impl HttpStream {
             .ok_or_else(|| IoError::Invalid("range offset overflow".to_string()))?;
         let url = self.url.to_string();
         let range = format!("bytes={start}-{end}");
-        let base = out.len();
+        let mut out = Vec::with_capacity(len.min(CACHE_LIMIT as u64) as usize);
         let mut attempt = 0u32;
         loop {
-            // Discard any bytes a previous (failed) attempt appended, so a resume
-            // never double-writes.
-            out.truncate(base);
+            out.clear();
             let mut builder = ureq::http::Request::builder()
                 .method("GET")
                 .uri(url.as_str());
@@ -1024,33 +1265,28 @@ impl HttpStream {
                         std::thread::sleep(delay);
                         continue;
                     }
-                    // 416: the range starts at/after the end — a clean EOF.
                     if status == 416 {
-                        return Ok(0);
+                        return Ok(Vec::new());
                     }
                     if status >= 400 {
                         return Err(IoError::Io(format!("http status {status}")));
                     }
-                    // 200 means the server ignored the range and sent the whole body.
                     if status == 200 && start > 0 {
                         return Err(IoError::Unsupported(
-                            "server does not support Range requests".to_string(),
+                            "server ignored the Range request (it does not support range reads)"
+                                .to_string(),
                         ));
                     }
                     let mut reader = response.body_mut().as_reader();
-                    match std::io::Read::read_to_end(&mut reader, out) {
+                    match std::io::Read::read_to_end(&mut reader, &mut out) {
                         Ok(_) => {
-                            // A 200 returned the whole body; keep only the window.
                             if status == 200 {
-                                out.truncate(base + len as usize);
+                                out.truncate(len as usize);
                             }
-                            return Ok(out.len() - base);
+                            return Ok(out);
                         }
-                        // A body cut mid-stream (dropped connection): resume the
-                        // range (the truncate at the loop top discards the partial).
                         Err(_error) if attempt < self.retry.max_retries => {
                             let delay = self.retry.backoff(attempt, None);
-                            log_event!(warn, "HttpStream resume mid-body after {_error}");
                             attempt += 1;
                             std::thread::sleep(delay);
                             continue;
@@ -1061,7 +1297,6 @@ impl HttpStream {
                 Err(error) => {
                     if attempt < self.retry.max_retries {
                         let delay = self.retry.backoff(attempt, None);
-                        log_event!(warn, "HttpStream reconnect after error: {error}");
                         attempt += 1;
                         std::thread::sleep(delay);
                         continue;
@@ -1071,18 +1306,11 @@ impl HttpStream {
             }
         }
     }
+}
 
-    /// The number of bytes still readable from `position`, if the size is known.
-    fn remaining(&self) -> Option<u64> {
-        self.size.map(|size| size.saturating_sub(self.position))
-    }
-
-    /// Records end-of-input discovered on an unknown-size stream, so later reads
-    /// short-circuit instead of re-issuing a doomed range request.
-    fn mark_eof(&mut self) {
-        if self.size.is_none() {
-            self.size = Some(self.position);
-        }
+impl Drop for HttpStream {
+    fn drop(&mut self) {
+        self.held.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -1092,64 +1320,81 @@ impl fmt::Debug for HttpStream {
             .field("url", &self.url.to_string())
             .field("size", &self.size)
             .field("position", &self.position)
-            .field("window", &(self.window_start, self.window.len()))
+            .field("reader_pos", &self.reader_pos)
+            .field("cache", &(self.cache_start, self.cache.len()))
+            .field("closed", &self.closed)
             .finish()
     }
 }
 
 impl ReadBytes for HttpStream {
     fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
-        if buf.is_empty() || self.remaining() == Some(0) {
+        if buf.is_empty() || self.closed || self.remaining() == Some(0) {
             return Ok(0);
         }
-        let in_window = self.position >= self.window_start
-            && self.position < self.window_start + self.window.len() as u64;
-        if !in_window {
-            let len = self.remaining().map_or(WINDOW_SIZE, |r| r.min(WINDOW_SIZE));
-            let bytes = self.fetch_range(self.position, len)?;
-            if bytes.is_empty() {
-                self.mark_eof();
-                return Ok(0);
-            }
-            self.window_start = self.position;
-            self.window = bytes;
+        // A short seek-back is served from the sliding cache.
+        let cache_end = self.cache_start + self.cache.len() as u64;
+        if self.position >= self.cache_start && self.position < cache_end {
+            let offset = (self.position - self.cache_start) as usize;
+            let available = &self.cache[offset..];
+            let count = buf.len().min(available.len());
+            buf[..count].copy_from_slice(&available[..count]);
+            self.position += count as u64;
+            return Ok(count);
         }
-        let offset = (self.position - self.window_start) as usize;
-        let available = &self.window[offset..];
-        let count = buf.len().min(available.len());
-        buf[..count].copy_from_slice(&available[..count]);
+        // Otherwise stream off the live connection (re-opening if the cursor moved
+        // off the reader).
+        if self.reader.is_none() || self.reader_pos != self.position {
+            self.open_at(self.position)?;
+        }
+        let count = self.read_live(buf)?;
+        if count == 0 {
+            self.on_eof();
+            return Ok(0);
+        }
+        self.cache.extend_from_slice(&buf[..count]);
+        if self.cache.len() > CACHE_LIMIT {
+            let evict = self.cache.len() - CACHE_LIMIT;
+            self.cache.drain(..evict);
+            self.cache_start += evict as u64;
+        }
+        self.reader_pos += count as u64;
         self.position += count as u64;
         Ok(count)
     }
 
-    /// Drains the rest of the stream straight into `out`, a whole window at a
-    /// time — bytes flow once, off the socket into `out`, skipping the per-call
-    /// window copy that a generic `read_to_end` loop would incur.
+    /// Drains the rest of the stream straight into `out`, reading whole chunks off
+    /// the connection into `out`'s own buffer (one copy), reconnecting on a drop.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
-        // Serve whatever the current window already holds first.
-        let mut total = 0;
-        let cached = self.position >= self.window_start
-            && self.position < self.window_start + self.window.len() as u64;
-        if cached {
-            let offset = (self.position - self.window_start) as usize;
-            out.extend_from_slice(&self.window[offset..]);
-            total += self.window.len() - offset;
-            self.position += (self.window.len() - offset) as u64;
+        if self.closed {
+            return Ok(0);
         }
-        // Then append each remaining window directly into `out`.
+        let start_len = out.len();
+        // Serve any cached tail first.
+        let cache_end = self.cache_start + self.cache.len() as u64;
+        if self.position >= self.cache_start && self.position < cache_end {
+            let offset = (self.position - self.cache_start) as usize;
+            out.extend_from_slice(&self.cache[offset..]);
+            self.position += (self.cache.len() - offset) as u64;
+        }
+        if self.remaining() != Some(0)
+            && (self.reader.is_none() || self.reader_pos != self.position)
+        {
+            self.open_at(self.position)?;
+        }
         while self.remaining() != Some(0) {
-            let len = self.remaining().map_or(WINDOW_SIZE, |r| r.min(WINDOW_SIZE));
-            let count = self.fetch_range_into(self.position, len, out)?;
+            let base = out.len();
+            out.resize(base + 64 * 1024, 0);
+            let count = self.read_live(&mut out[base..])?;
+            out.truncate(base + count);
             if count == 0 {
-                self.mark_eof();
+                self.on_eof();
                 break;
             }
+            self.reader_pos += count as u64;
             self.position += count as u64;
-            total += count;
         }
-        // The window no longer mirrors `position`.
-        self.window.clear();
-        Ok(total)
+        Ok(out.len() - start_len)
     }
 }
 
@@ -1158,10 +1403,12 @@ impl Seek for HttpStream {
         let base = match whence {
             Whence::Start => 0i64,
             Whence::Current => self.position as i64,
-            Whence::End => self
-                .size
-                .ok_or_else(|| IoError::Unsupported("seek from end: unknown size".to_string()))?
-                as i64,
+            Whence::End => self.size.ok_or_else(|| {
+                IoError::Unsupported(
+                    "seek from end needs a known size (the server sent no Content-Length)"
+                        .to_string(),
+                )
+            })? as i64,
         };
         let target = base
             .checked_add(offset)
@@ -1200,17 +1447,25 @@ impl Io for HttpStream {
         Ok(stats)
     }
 
-    /// A positional read via a one-off `Range` request, leaving the window and —
-    /// for [`Whence::Start`]/[`Whence::End`] — the cursor untouched, so a footer
-    /// or header can be discovered without disturbing a sequential scan.
+    /// Releases the held connection (idempotent); further reads return EOF.
+    fn close(&mut self) -> Result<(), IoError> {
+        HttpStream::close(self);
+        Ok(())
+    }
+
+    /// A positional read via a one-off `Range` request, leaving the live reader
+    /// and — for [`Whence::Start`]/[`Whence::End`] — the cursor untouched, so a
+    /// footer can be read without disturbing a sequential scan.
     fn pread(&mut self, buf: &mut [u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
         let base = match whence {
             Whence::Start => 0i64,
             Whence::Current => self.position as i64,
-            Whence::End => self
-                .size
-                .ok_or_else(|| IoError::Unsupported("pread from end: unknown size".to_string()))?
-                as i64,
+            Whence::End => self.size.ok_or_else(|| {
+                IoError::Unsupported(
+                    "pread from end needs a known size (the server sent no Content-Length)"
+                        .to_string(),
+                )
+            })? as i64,
         };
         let start = base
             .checked_add(offset)
@@ -1275,6 +1530,19 @@ fn retry_after(headers: &ureq::http::HeaderMap) -> Option<Duration> {
         .map(Duration::from_secs)
 }
 
+/// The total resource size from a response: the total in a `Content-Range`
+/// (`bytes a-b/total`) when present, else `Content-Length`.
+fn response_size(headers: &ureq::http::HeaderMap) -> Option<u64> {
+    if let Some(range) = header_string(headers, "content-range") {
+        if let Some((_, total)) = range.rsplit_once('/') {
+            if let Ok(total) = total.trim().parse() {
+                return Some(total);
+            }
+        }
+    }
+    header_u64(headers, "content-length")
+}
+
 /// Bridges a [`ReadBytes`] request body to [`std::io::Read`] for the transport.
 struct ReadBridge(Box<dyn ReadBytes + Send>);
 
@@ -1283,22 +1551,6 @@ impl std::io::Read for ReadBridge {
         self.0
             .read_bytes(buf)
             .map_err(|err| std::io::Error::other(err.to_string()))
-    }
-}
-
-/// Adapts the transport's [`std::io::Read`] response body to [`ReadBytes`], the
-/// hook that lets a response stream over the yggdryl-io abstraction.
-struct ReadAdapter<R: std::io::Read>(R);
-
-impl<R: std::io::Read> ReadBytes for ReadAdapter<R> {
-    fn read_bytes(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
-        self.0.read(buf).map_err(IoError::from)
-    }
-
-    /// Drains straight off the transport into `out` with one copy, via the inner
-    /// reader's `std::io::Read::read_to_end` (no intermediate stack buffer).
-    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
-        std::io::Read::read_to_end(&mut self.0, out).map_err(IoError::from)
     }
 }
 
@@ -1556,44 +1808,65 @@ mod tests {
             .and_then(|value| value.trim().strip_prefix("bytes="))
             .and_then(|spec| {
                 let (start, end) = spec.split_once('-')?;
-                Some((start.parse().ok()?, end.parse().ok()?))
+                // An open-ended range (`bytes=5000-`) has an empty end: treat it as
+                // "to the end" (the server clamps to the payload length).
+                let end = if end.is_empty() {
+                    u64::MAX
+                } else {
+                    end.parse().ok()?
+                };
+                Some((start.parse().ok()?, end))
             });
         Some((method, path, range))
     }
 
     /// A looping server that serves `payload` with HEAD + `Range` (206) support.
+    /// Each connection runs on its own thread and serves **multiple** requests
+    /// (HTTP/1.1 keep-alive), so it exercises the pooled-connection reuse path.
     fn serve_ranges(payload: Vec<u8>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
+        let payload = std::sync::Arc::new(payload);
         thread::spawn(move || {
-            for stream in listener.incoming() {
-                let mut stream = match stream {
-                    Ok(stream) => stream,
-                    Err(_) => continue,
-                };
-                let Some((method, _path, range)) = read_request(&mut stream) else {
-                    continue;
-                };
-                let total = payload.len();
-                if method == "HEAD" {
-                    let head = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
-                    );
-                    let _ = stream.write_all(head.as_bytes());
-                } else if let Some((start, end)) = range {
-                    let end = (end as usize).min(total.saturating_sub(1));
-                    let slice = &payload[start as usize..=end];
-                    let header = format!(
-                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
-                        slice.len()
-                    );
-                    let _ = stream.write_all(header.as_bytes());
-                    let _ = stream.write_all(slice);
-                } else {
-                    let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {total}\r\n\r\n");
-                    let _ = stream.write_all(header.as_bytes());
-                    let _ = stream.write_all(&payload);
-                }
+            for stream in listener.incoming().flatten() {
+                let payload = payload.clone();
+                thread::spawn(move || {
+                    let mut stream = stream;
+                    let _ = stream.set_nodelay(true);
+                    let total = payload.len();
+                    // Keep serving requests on this connection until the peer
+                    // closes it or asks to (`Connection: close`).
+                    while let Some((method, _path, range)) = read_request(&mut stream) {
+                        if method == "HEAD" {
+                            let head = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                            );
+                            if stream.write_all(head.as_bytes()).is_err() {
+                                break;
+                            }
+                        } else if let Some((start, end)) = range {
+                            let end = (end as usize).min(total.saturating_sub(1));
+                            let slice = &payload[start as usize..=end];
+                            let header = format!(
+                                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
+                                slice.len()
+                            );
+                            if stream.write_all(header.as_bytes()).is_err()
+                                || stream.write_all(slice).is_err()
+                            {
+                                break;
+                            }
+                        } else {
+                            let header =
+                                format!("HTTP/1.1 200 OK\r\nContent-Length: {total}\r\n\r\n");
+                            if stream.write_all(header.as_bytes()).is_err()
+                                || stream.write_all(&payload).is_err()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                });
             }
         });
         url
@@ -1608,9 +1881,10 @@ mod tests {
         let payload = stream_payload();
         let url = serve_ranges(payload.clone());
         let session = HttpSession::new();
-        let mut stream = session.stream(HttpRequest::get(&url).unwrap()).unwrap();
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
         assert_eq!(stream.size(), Some(payload.len() as u64));
-        assert!(stream.supports_ranges());
         let mut out = Vec::new();
         stream.read_to_end(&mut out).unwrap();
         assert_eq!(out, payload);
@@ -1622,7 +1896,7 @@ mod tests {
         let payload = stream_payload();
         let url = serve_ranges(payload.clone());
         let mut stream = HttpSession::new()
-            .stream(HttpRequest::get(&url).unwrap())
+            .stream(HttpRequest::get(&url).unwrap(), true)
             .unwrap();
 
         // Seek then sequential read.
@@ -1645,7 +1919,7 @@ mod tests {
         let payload = stream_payload();
         let url = serve_ranges(payload.clone());
         let stream = HttpSession::new()
-            .stream(HttpRequest::get(&url).unwrap())
+            .stream(HttpRequest::get(&url).unwrap(), true)
             .unwrap();
         assert_eq!(stream.url().scheme(), "http");
         let stats = stream.stats().unwrap();
@@ -1702,21 +1976,18 @@ mod tests {
                 let request = read_request(&mut stream);
                 let n = counter.fetch_add(1, Ordering::SeqCst);
                 let total = served.len();
-                if n == 0 && request.as_ref().is_some_and(|(m, ..)| m == "HEAD") {
-                    let head = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
-                    );
-                    let _ = stream.write_all(head.as_bytes());
-                } else if n == 1 {
-                    // First range GET: send a truncated body, then drop the socket.
+                if n == 0 {
+                    // Initial streaming GET (no Range): promise the full body via
+                    // Content-Length but send only a prefix, then drop the socket —
+                    // the client sees a truncated body mid-stream.
                     let header = format!(
-                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-{}/{total}\r\nContent-Length: {total}\r\n\r\n",
-                        total - 1
+                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
                     );
                     let _ = stream.write_all(header.as_bytes());
                     let _ = stream.write_all(&served[..100]); // far short of Content-Length
                                                               // stream dropped here -> client sees a truncated/aborted body
                 } else if let Some((_, _, Some((start, end)))) = request {
+                    // Resume: serve the requested range to the end.
                     let end = (end as usize).min(total - 1);
                     let slice = &served[start as usize..=end];
                     let header = format!(
@@ -1733,11 +2004,13 @@ mod tests {
             base_delay: Duration::from_millis(1),
             max_delay: Duration::from_millis(5),
         });
-        let mut stream = session.stream(HttpRequest::get(&url).unwrap()).unwrap();
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
         let mut out = Vec::new();
         stream.read_to_end(&mut out).unwrap();
         assert_eq!(out, payload); // resumed and completed despite the mid-stream drop
-        assert!(hits.load(Ordering::SeqCst) >= 3); // HEAD, dropped GET, resumed GET
+        assert!(hits.load(Ordering::SeqCst) >= 2); // dropped streaming GET, then resumed range GET
     }
 
     #[test]
@@ -1758,53 +2031,263 @@ mod tests {
         }
     }
 
-    /// A server whose `HEAD` advertises no `Content-Length` (size unknown) and
-    /// answers `Range` with 206, or 416 once the range starts past the end.
+    /// A server that never advertises a `Content-Length` (size unknown): a plain
+    /// `GET` streams the whole body then closes the socket (close-delimited), and a
+    /// `Range` request answers 206 from the offset, or 416 once it starts past the
+    /// end. Each connection is one-shot (closed after the reply) so the unknown
+    /// size is delimited by the close.
     fn serve_unknown_size(payload: Vec<u8>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
+        let payload = std::sync::Arc::new(payload);
         thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                let mut stream = stream;
-                let Some((method, _path, range)) = read_request(&mut stream) else {
-                    continue;
-                };
-                let total = payload.len();
-                if method == "HEAD" {
-                    let _ = stream.write_all(
-                        b"HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
-                    );
-                } else if let Some((start, end)) = range {
-                    if start as usize >= total {
-                        let _ = stream.write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                    } else {
-                        let end = (end as usize).min(total - 1);
-                        let slice = &payload[start as usize..=end];
-                        let header = format!(
-                            "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                            slice.len()
+                let payload = payload.clone();
+                thread::spawn(move || {
+                    let mut stream = stream;
+                    let _ = stream.set_nodelay(true);
+                    let Some((method, _path, range)) = read_request(&mut stream) else {
+                        return;
+                    };
+                    let total = payload.len();
+                    if method == "HEAD" {
+                        let _ = stream.write_all(
+                            b"HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
                         );
-                        let _ = stream.write_all(header.as_bytes());
-                        let _ = stream.write_all(slice);
+                    } else if let Some((start, end)) = range {
+                        if start as usize >= total {
+                            let _ = stream.write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        } else {
+                            let end = (end as usize).min(total - 1);
+                            let slice = &payload[start as usize..=end];
+                            let header = format!(
+                                "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                slice.len()
+                            );
+                            let _ = stream.write_all(header.as_bytes());
+                            let _ = stream.write_all(slice);
+                        }
+                    } else {
+                        // Plain GET, no range: stream the whole body with no
+                        // Content-Length and close — the client learns the size at
+                        // EOF (the socket close).
+                        let _ = stream.write_all(
+                            b"HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                        );
+                        let _ = stream.write_all(&payload);
                     }
-                }
+                });
             }
         });
         url
     }
 
     #[test]
-    fn httpstream_unknown_size_reads_to_eof_via_416() {
+    fn httpstream_unknown_size_reads_to_eof() {
         let payload = stream_payload();
         let url = serve_unknown_size(payload.clone());
         let mut stream = HttpSession::new()
-            .stream(HttpRequest::get(&url).unwrap())
+            .stream(HttpRequest::get(&url).unwrap(), false)
             .unwrap();
         assert_eq!(stream.size(), None); // size not advertised
         let mut out = Vec::new();
         stream.read_to_end(&mut out).unwrap();
-        assert_eq!(out, payload); // 416 ends the read cleanly
+        assert_eq!(out, payload); // the close-delimited body ends the read cleanly
         assert_eq!(stream.size(), Some(payload.len() as u64)); // discovered at EOF
+    }
+
+    #[test]
+    fn httpstream_range_past_end_is_clean_eof_via_416() {
+        use yggdryl_io::Io;
+        let payload = stream_payload();
+        let url = serve_unknown_size(payload.clone());
+        let mut stream = HttpSession::new()
+            .stream(HttpRequest::get(&url).unwrap(), false)
+            .unwrap();
+        // Size is unknown, so the past-the-end guard can't short-circuit: the
+        // request is issued and the server's 416 surfaces as a clean 0-byte read.
+        let mut buf = [0u8; 16];
+        let n = stream
+            .pread(&mut buf, payload.len() as i64, Whence::Start)
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn httpstream_close_releases_the_connection_and_reads_eof() {
+        use yggdryl_io::Io;
+        let payload = stream_payload();
+        let url = serve_ranges(payload);
+        let session = HttpSession::new();
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
+        assert_eq!(session.open_streams(), 1); // the stream holds one connection
+        let mut head = [0u8; 16];
+        assert_eq!(stream.read_bytes(&mut head).unwrap(), 16);
+        Io::close(&mut stream).unwrap();
+        let mut more = [0u8; 16];
+        assert_eq!(stream.read_bytes(&mut more).unwrap(), 0); // closed -> clean EOF
+        drop(stream);
+        assert_eq!(session.open_streams(), 0); // connection released on drop
+    }
+
+    #[test]
+    fn keep_alive_false_sends_connection_close() {
+        let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+        HttpSession::new()
+            .send(HttpRequest::get(&url).unwrap(), false, false)
+            .unwrap();
+        let request = String::from_utf8(rx.recv().unwrap())
+            .unwrap()
+            .to_lowercase();
+        assert!(request.contains("connection: close"), "{request}");
+    }
+
+    #[test]
+    fn keep_alive_true_does_not_close_the_connection() {
+        let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+        HttpSession::new()
+            .send(HttpRequest::get(&url).unwrap(), false, true)
+            .unwrap();
+        let request = String::from_utf8(rx.recv().unwrap())
+            .unwrap()
+            .to_lowercase();
+        assert!(!request.contains("connection: close"), "{request}");
+    }
+
+    #[test]
+    fn pool_safeguard_closes_extra_streams_when_saturated() {
+        use std::sync::{Arc, Mutex};
+        // Records every request line/headers, replying 200 with the payload.
+        let payload = stream_payload();
+        let served = payload.clone();
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let recorder = seen.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let served = served.clone();
+                let recorder = recorder.clone();
+                thread::spawn(move || {
+                    let mut stream = stream;
+                    let _ = stream.set_nodelay(true);
+                    let mut buf = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !buf.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte) {
+                            Ok(0) | Err(_) => return,
+                            Ok(_) => buf.push(byte[0]),
+                        }
+                    }
+                    recorder
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&buf).into_owned());
+                    let header = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n\r\n",
+                        served.len()
+                    );
+                    let _ = stream.write_all(header.as_bytes());
+                    let _ = stream.write_all(&served);
+                });
+            }
+        });
+        // A pool that holds a single keep-alive connection.
+        let session = HttpSession::new().with_pool_size(1);
+        assert_eq!(session.pool_size(), 1);
+        // The first stream fills the pool; the second is over capacity, so the
+        // safeguard forces it to close (it must not starve the keep-alive pool).
+        let s1 = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
+        let s2 = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
+        assert_eq!(session.open_streams(), 2);
+        drop(s1);
+        drop(s2);
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        let closing = seen
+            .iter()
+            .filter(|r| r.to_lowercase().contains("connection: close"))
+            .count();
+        assert_eq!(
+            closing, 1,
+            "exactly the over-capacity stream closes: {seen:?}"
+        );
+    }
+
+    #[test]
+    fn keep_alive_requests_release_the_connection_on_eof() {
+        let url = serve_ranges(stream_payload());
+        let session = HttpSession::new();
+        for _ in 0..5 {
+            // Each drained response returns its connection to the pool (EOF), so no
+            // stream is left holding one between requests.
+            let _ = session.get(&url).unwrap().bytes().unwrap();
+            assert_eq!(session.open_streams(), 0);
+        }
+    }
+
+    #[test]
+    fn httpstream_reconnects_through_multiple_drops() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        let payload = stream_payload();
+        let served = payload.clone();
+        let hits = Arc::new(AtomicU32::new(0));
+        let counter = hits.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let request = read_request(&mut stream);
+                let n = counter.fetch_add(1, Ordering::SeqCst);
+                let total = served.len();
+                // The resume cursor is the start of the requested range (0 first).
+                let start = match &request {
+                    Some((_, _, Some((start, _)))) => *start as usize,
+                    _ => 0,
+                };
+                let header = if start == 0 {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                    )
+                } else {
+                    format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{}/{total}\r\nContent-Length: {}\r\n\r\n",
+                        total - 1,
+                        total - start
+                    )
+                };
+                let _ = stream.write_all(header.as_bytes());
+                if n < 3 {
+                    // Truncate the body 1000 bytes in, then drop — forcing a fresh
+                    // mid-stream reconnect each time.
+                    let chunk_end = (start + 1000).min(total);
+                    let _ = stream.write_all(&served[start..chunk_end]);
+                } else {
+                    // Finally serve the remainder in full.
+                    let _ = stream.write_all(&served[start..]);
+                }
+            }
+        });
+        let session = HttpSession::new().with_retry(RetryConfig {
+            max_retries: 10,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(5),
+        });
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).unwrap();
+        assert_eq!(out, payload); // resumed through every drop and completed
+        assert!(hits.load(Ordering::SeqCst) >= 4); // 3 truncated drops, then the full tail
     }
 
     #[test]

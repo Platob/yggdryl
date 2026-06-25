@@ -52,6 +52,7 @@ pub struct RequestTask {
     headers: Vec<(String, String)>,
     body: BodyArg,
     raise_error: bool,
+    keep_alive: bool,
 }
 
 impl Task for RequestTask {
@@ -68,7 +69,7 @@ impl Task for RequestTask {
         };
         let response = self
             .session
-            .request(request, self.raise_error)
+            .send(request, self.raise_error, self.keep_alive)
             .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
@@ -193,6 +194,7 @@ impl HttpSession {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn task(
         &self,
         method: Method,
@@ -200,6 +202,7 @@ impl HttpSession {
         headers: Vec<(String, String)>,
         body: BodyArg,
         raise_error: bool,
+        keep_alive: bool,
     ) -> AsyncTask<RequestTask> {
         AsyncTask::new(RequestTask {
             session: self.inner.clone(),
@@ -208,25 +211,26 @@ impl HttpSession {
             headers,
             body,
             raise_error,
+            keep_alive,
         })
     }
 
     /// `GET url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn get(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Get, url, Vec::new(), BodyArg::Empty, true)
+        self.task(Method::Get, url, Vec::new(), BodyArg::Empty, true, true)
     }
 
     /// `HEAD url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn head(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Head, url, Vec::new(), BodyArg::Empty, true)
+        self.task(Method::Head, url, Vec::new(), BodyArg::Empty, true, true)
     }
 
     /// `DELETE url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn delete(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Delete, url, Vec::new(), BodyArg::Empty, true)
+        self.task(Method::Delete, url, Vec::new(), BodyArg::Empty, true, true)
     }
 
     /// `POST url` with an optional `body` — a `Buffer` or a `LocalPath` streamed
@@ -237,7 +241,7 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Post, url, Vec::new(), body_arg(body), true)
+        self.task(Method::Post, url, Vec::new(), body_arg(body), true, true)
     }
 
     /// `PUT url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
@@ -247,7 +251,7 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Put, url, Vec::new(), body_arg(body), true)
+        self.task(Method::Put, url, Vec::new(), body_arg(body), true, true)
     }
 
     /// `PATCH url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
@@ -257,12 +261,13 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Patch, url, Vec::new(), body_arg(body), true)
+        self.task(Method::Patch, url, Vec::new(), body_arg(body), true, true)
     }
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
-    /// 4xx/5xx status.
+    /// 4xx/5xx status. `keepAlive` (default `true`) pools the connection for reuse
+    /// (skipping the next TLS handshake); pass `false` to close it after.
     #[napi]
     pub fn request(
         &self,
@@ -271,6 +276,7 @@ impl HttpSession {
         headers: Option<HashMap<String, String>>,
         body: Option<Either<Buffer, &LocalPath>>,
         raise_error: Option<bool>,
+        keep_alive: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
         let method = Method::from_str(&method).map_err(to_napi)?;
         let headers = headers
@@ -282,6 +288,7 @@ impl HttpSession {
             headers,
             body_arg(body),
             raise_error.unwrap_or(true),
+            keep_alive.unwrap_or(true),
         ))
     }
 }

@@ -55,33 +55,39 @@ fn serve(payload: Vec<u8>, latency_ms: u64) -> String {
                 let mut stream = stream;
                 let _ = stream.set_nodelay(true); // avoid Nagle/delayed-ACK stalls
                 let total = payload.len();
-                let Some((is_head, range)) = read_request(&mut stream) else {
-                    return;
-                };
-                if latency_ms > 0 {
-                    thread::sleep(std::time::Duration::from_millis(latency_ms));
-                }
-                if is_head {
-                    // HEAD: headers only, no body.
-                    let header = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
-                    );
-                    let _ = stream.write_all(header.as_bytes());
-                } else if let Some((start, end)) = range {
-                    let end = (end as usize).min(total.saturating_sub(1));
-                    let slice = &payload[start as usize..=end];
-                    let header = format!(
-                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
-                        slice.len()
-                    );
-                    let _ = stream.write_all(header.as_bytes());
-                    let _ = stream.write_all(slice);
-                } else {
-                    let header = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
-                    );
-                    let _ = stream.write_all(header.as_bytes());
-                    let _ = stream.write_all(&payload);
+                // Keep serving requests on this connection (HTTP/1.1 keep-alive) so
+                // the pooled-connection-reuse path is exercised.
+                while let Some((is_head, range)) = read_request(&mut stream) {
+                    if latency_ms > 0 {
+                        thread::sleep(std::time::Duration::from_millis(latency_ms));
+                    }
+                    let wrote = if is_head {
+                        // HEAD: headers only, no body.
+                        let header = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                        );
+                        stream.write_all(header.as_bytes())
+                    } else if let Some((start, end)) = range {
+                        let end = (end as usize).min(total.saturating_sub(1));
+                        let slice = &payload[start as usize..=end];
+                        let header = format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
+                            slice.len()
+                        );
+                        stream
+                            .write_all(header.as_bytes())
+                            .and_then(|()| stream.write_all(slice))
+                    } else {
+                        let header = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                        );
+                        stream
+                            .write_all(header.as_bytes())
+                            .and_then(|()| stream.write_all(&payload))
+                    };
+                    if wrote.is_err() {
+                        break;
+                    }
                 }
             });
         }
@@ -118,7 +124,9 @@ fn main() {
         black_box(handle);
     });
     bench("HttpStream windowed read_to_end", 20, SIZE, || {
-        let mut stream = session.stream(HttpRequest::get(&url).unwrap()).unwrap();
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
         let mut out = Vec::with_capacity(SIZE);
         stream.read_to_end(&mut out).unwrap();
         black_box(out);
@@ -133,13 +141,15 @@ fn main() {
     let footer_reqs = 200u64;
     let start = Instant::now();
     for _ in 0..footer_reqs {
-        let mut stream = session.stream(HttpRequest::get(&url).unwrap()).unwrap();
+        let mut stream = session
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
         let mut footer = [0u8; 16];
         yggdryl_io::Io::pread(&mut stream, &mut footer, -16, yggdryl_io::Whence::End).unwrap();
         black_box(footer);
     }
     println!(
-        "HttpStream pread footer                  {:>7.2} ms/read (HEAD+1 range, no full download)",
+        "HttpStream pread footer                  {:>7.2} ms/read (one Range request, no full download)",
         start.elapsed().as_secs_f64() / footer_reqs as f64 * 1e3
     );
 
@@ -158,5 +168,27 @@ fn main() {
             (0..N).map(|_| HttpRequest::get(&small).unwrap()).collect();
         let batches: Vec<HttpResponseBatch> = session.send_many(requests).collect();
         black_box(batches);
+    });
+
+    // Connection pooling: a keep-alive session reuses one warm connection across
+    // requests, while keep_alive=false reconnects (a fresh TCP/TLS setup) each time.
+    let tiny = serve(b"x".to_vec(), 0);
+    const M: usize = 200;
+    println!("\n== {M} tiny requests: pooled keep-alive vs reconnect-each ==");
+    bench("keep_alive=true  (pooled reuse)", 6, M, || {
+        for _ in 0..M {
+            let response = session
+                .send(HttpRequest::get(&tiny).unwrap(), false, true)
+                .unwrap();
+            black_box(response.bytes().unwrap());
+        }
+    });
+    bench("keep_alive=false (reconnect each)", 6, M, || {
+        for _ in 0..M {
+            let response = session
+                .send(HttpRequest::get(&tiny).unwrap(), false, false)
+                .unwrap();
+            black_box(response.bytes().unwrap());
+        }
     });
 }
