@@ -13,6 +13,7 @@
 
 mod bytesio;
 mod compression;
+mod http;
 mod iostats;
 mod localpath;
 mod media;
@@ -24,6 +25,7 @@ mod version;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use yggdryl_http::HttpError;
 use yggdryl_io::{IoError, Whence};
 use yggdryl_media::MediaError;
 use yggdryl_url::{percent_decode, percent_encode, UriError, UrlError};
@@ -31,6 +33,7 @@ use yggdryl_version::VersionError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
+use crate::http::{HttpResponse, HttpSession};
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
 use crate::media::MediaType;
@@ -56,6 +59,10 @@ pub(crate) fn media_err(err: MediaError) -> PyErr {
 }
 
 pub(crate) fn io_err(err: IoError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn http_err(err: HttpError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -110,6 +117,8 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<IoStats>()?;
     m.add_class::<LocalPath>()?;
     m.add_class::<Compression>()?;
+    m.add_class::<HttpSession>()?;
+    m.add_class::<HttpResponse>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     Ok(())

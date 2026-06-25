@@ -8,6 +8,7 @@
 
 mod bytesio;
 mod compression;
+mod http;
 mod iostats;
 mod localpath;
 mod media;

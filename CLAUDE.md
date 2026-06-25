@@ -17,6 +17,10 @@ looking at from the shape of the code.
   Snappy / `None` identity) that **streams** compress/decompress over any
   `yggdryl-io` handle, plus the `CompressIo` extension trait. **All compression
   logic lives here** — do not pull codec SDKs into `yggdryl-io`.
+- `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
+  (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
+  `yggdryl-io` abstraction**. **All HTTP logic lives here** — the transport SDK
+  (`ureq`) is a dependency of this crate only. See its section below.
 - `crates/yggdryl-version/` — the standalone `Version` type.
 - `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
   mutable global registry of extensions/magic bytes) and the `MediaType` stack
@@ -100,6 +104,33 @@ Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whos
 feature is off still parses and names itself but reports `Unsupported` on
 encode/decode (`is_available` tells ahead of time). `media` adds the
 stats-inference path. When you add a codec, surface it in *both* bindings.
+
+### `yggdryl-http` — a requests-like client streaming over `Io`
+
+A small **blocking** HTTP client shaped after Python's `requests`, layered on
+`yggdryl-io` (and `yggdryl-url`); the transport is `ureq` (rustls TLS, its own
+gzip/brotli left off so decompression goes through `yggdryl-compression`). The
+shape:
+
+- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` plus default
+  headers, with `get`/`head`/`delete`/`post`/`put`/`patch` and `request`. A
+  4xx/5xx status is a normal response (`http_status_as_error(false)`); per-request
+  headers override session defaults.
+- `HttpRequest` — a `Method` + `Url` + headers + body builder (`with_header` /
+  `with_param` / `with_body` / `with_body_reader`). `with_body_reader` streams the
+  upload from any `ReadBytes`/`Io` handle (no buffering).
+- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. The body
+  is lazy: `reader()` is a `ReadBytes` source (decoded under `compression`), while
+  `bytes`/`text`/`into_bytesio` drain it. `std::io`↔`ReadBytes` shims bridge the
+  transport both ways.
+
+Optional features: `compression` (auto `Content-Encoding` decode — it also turns
+on the codec backends), `media` (`mime_type()`), `log`. **All HTTP logic lives
+here; `ureq` stays a dependency of this crate only.** Tests are **hermetic** (a
+localhost `TcpListener`, no network). In the bindings the blocking call must not
+stall the host runtime: Python releases the GIL (`allow_threads`), Node runs the
+request on the libuv pool and returns a `Promise` (so Node's surface is async,
+the one idiomatic divergence from the sync Rust/Python API).
 
 ### One module per type, everywhere
 
