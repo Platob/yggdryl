@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Instant;
 
 use yggdryl_core::{Io, Url};
-use yggdryl_http::{HttpHeaders, HttpRequest, HttpResponseBatch, HttpSession};
+use yggdryl_http::{HttpHeaders, HttpRequest, HttpResponseBatch, HttpSession, HttpVersion};
 
 /// Reads one request off the stream, returning `(is_head, optional range)`.
 fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
@@ -256,6 +256,15 @@ fn cpu_paths() {
     )]);
     bench_ns("retry_after (HTTP-date)", n, || {
         black_box(black_box(&retry_date).retry_after());
+    });
+
+    // Protocol-version selection, on the per-request path (parsed from a string in
+    // the bindings, matched on every dispatch to choose the transport).
+    bench_ns("HttpVersion::from_str (h2)", n, || {
+        black_box(HttpVersion::from_str(black_box("h2")).unwrap());
+    });
+    bench_ns("HttpVersion::from_alpn (h3)", n, || {
+        black_box(HttpVersion::from_alpn(black_box("h3")));
     });
     println!();
 }

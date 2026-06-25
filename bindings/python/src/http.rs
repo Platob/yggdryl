@@ -281,13 +281,16 @@ impl HttpSession {
     /// that relative targets resolve against, and a default ``http_version``
     /// (``"auto"`` / ``"1.1"`` / ``"2"`` / ``"3"``) for requests that do not pin one.
     #[new]
-    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None))]
+    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None, verify = true, proxy = None))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         user_agent: Option<String>,
         headers: Option<HashMap<String, String>>,
         max_redirects: Option<usize>,
         base_url: Option<&str>,
         http_version: Option<&str>,
+        verify: bool,
+        proxy: Option<&str>,
     ) -> PyResult<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -307,6 +310,12 @@ impl HttpSession {
         }
         if let Some(http_version) = http_version {
             inner = inner.with_http_version(HttpVersion::from_str(http_version).map_err(http_err)?);
+        }
+        if !verify {
+            inner = inner.with_verify(false);
+        }
+        if let Some(proxy) = proxy {
+            inner = inner.with_proxy(proxy).map_err(http_err)?;
         }
         Ok(HttpSession { inner })
     }
@@ -329,6 +338,20 @@ impl HttpSession {
     #[getter]
     fn http_version(&self) -> &str {
         self.inner.http_version().as_str()
+    }
+
+    /// Whether TLS certificate verification is performed (``False`` accepts any
+    /// certificate — insecure, for self-signed / internal hosts).
+    #[getter]
+    fn verify(&self) -> bool {
+        self.inner.verify()
+    }
+
+    /// The proxy URL all requests route through, or ``None`` (defaults to the
+    /// environment's ``HTTPS_PROXY`` / ``HTTP_PROXY`` / ``ALL_PROXY``).
+    #[getter]
+    fn proxy(&self) -> Option<String> {
+        self.inner.proxy()
     }
 
     /// The session's cookies as a ``dict`` of ``name`` to ``value`` (the jar

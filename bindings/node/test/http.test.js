@@ -144,6 +144,19 @@ test('setBaseUrl configures the shared singleton', async () => {
   }
 })
 
+test('verify and proxy options', () => {
+  assert.strictEqual(new HttpSession().verify, true)
+  const insecure = new HttpSession(undefined, undefined, undefined, undefined, undefined, false)
+  assert.strictEqual(insecure.verify, false)
+  const proxied = new HttpSession(
+    undefined, undefined, undefined, undefined, undefined, undefined, 'http://127.0.0.1:8080',
+  )
+  assert.ok(proxied.proxy.includes('127.0.0.1:8080'))
+  assert.throws(
+    () => new HttpSession(undefined, undefined, undefined, undefined, undefined, undefined, 'not a url'),
+  )
+})
+
 test('http version negotiation', async () => {
   const { server, port } = await startServer()
   const base = `http://127.0.0.1:${port}`

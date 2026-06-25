@@ -266,12 +266,15 @@ impl HttpSession {
     /// `httpVersion` (`"auto"` / `"1.1"` / `"2"` / `"3"`) for requests that do not
     /// pin one.
     #[napi(constructor)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_agent: Option<String>,
         headers: Option<HashMap<String, String>>,
         max_redirects: Option<u32>,
         base_url: Option<String>,
         http_version: Option<String>,
+        verify: Option<bool>,
+        proxy: Option<String>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -292,6 +295,12 @@ impl HttpSession {
         }
         if let Some(http_version) = http_version {
             inner = inner.with_http_version(HttpVersion::from_str(&http_version).map_err(to_napi)?);
+        }
+        if verify == Some(false) {
+            inner = inner.with_verify(false);
+        }
+        if let Some(proxy) = proxy {
+            inner = inner.with_proxy(&proxy).map_err(to_napi)?;
         }
         Ok(HttpSession {
             inner: Arc::new(inner),
@@ -316,6 +325,20 @@ impl HttpSession {
     #[napi(getter, js_name = "httpVersion")]
     pub fn http_version(&self) -> String {
         self.inner.http_version().as_str().to_string()
+    }
+
+    /// Whether TLS certificate verification is performed (`false` accepts any
+    /// certificate — insecure, for self-signed / internal hosts).
+    #[napi(getter)]
+    pub fn verify(&self) -> bool {
+        self.inner.verify()
+    }
+
+    /// The proxy URL all requests route through, or `null` (defaults to the
+    /// environment's `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY`).
+    #[napi(getter)]
+    pub fn proxy(&self) -> Option<String> {
+        self.inner.proxy()
     }
 
     /// The session's cookies as an object of `name` to `value` (the jar snapshot —

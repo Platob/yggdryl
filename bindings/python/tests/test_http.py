@@ -176,3 +176,14 @@ def test_http_version_negotiation(base_url):
     # The per-request override raises the same way.
     with pytest.raises(ValueError):
         session.request("GET", base_url + "/", http_version="3")
+
+
+def test_verify_and_proxy_options():
+    # TLS verification is on by default; it can be disabled (insecure).
+    assert yggdryl.HttpSession().verify is True
+    assert yggdryl.HttpSession(verify=False).verify is False
+    # A proxy can be set explicitly (reported back); a bad proxy URL raises.
+    proxied = yggdryl.HttpSession(proxy="http://127.0.0.1:8080")
+    assert "127.0.0.1:8080" in proxied.proxy
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(proxy="not a url")
