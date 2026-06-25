@@ -318,7 +318,14 @@ impl Io for LocalPath {
     /// path as its [`parent`](Io::parent) and applying `mode` / `stream` — so a
     /// `LocalPath` and a `BytesIO` `open` the same way.
     fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
-        let bytes = self.as_slice().unwrap_or_default().to_vec();
+        // `Mode::Write` truncates to empty, so mapping and copying the whole file
+        // (potentially multi-GB) into a Vec would be pure waste — only read/append
+        // modes need the existing bytes.
+        let bytes = if mode == Mode::Write {
+            Vec::new()
+        } else {
+            self.as_slice().unwrap_or_default().to_vec()
+        };
         Ok(Box::new(BytesIO::derived(bytes, mode, stream, self)))
     }
 

@@ -67,9 +67,11 @@ impl BytesIO {
     }
 
     /// Write ``data`` at the cursor (overwriting and zero-filling as needed) and
-    /// return the count written. Advances the cursor when :attr:`stream`.
-    fn write(&mut self, data: Vec<u8>) -> usize {
-        self.inner.write(&data)
+    /// return the count written. Advances the cursor when :attr:`stream`. Raises
+    /// ``ValueError`` if the write would extend the buffer past the addressable
+    /// range (e.g. after seeking near the maximum past the end).
+    fn write(&mut self, data: Vec<u8>) -> PyResult<usize> {
+        self.inner.write(&data).map_err(io_err)
     }
 
     /// The resource address as a :class:`Url` (``mem://<address>``).

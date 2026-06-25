@@ -12,8 +12,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Instant;
 
-use yggdryl_core::Io;
-use yggdryl_http::{HttpRequest, HttpResponseBatch, HttpSession};
+use yggdryl_core::{Io, Url};
+use yggdryl_http::{HttpHeaders, HttpRequest, HttpResponseBatch, HttpSession};
 
 /// Reads one request off the stream, returning `(is_head, optional range)`.
 fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
@@ -112,7 +112,23 @@ fn bench(name: &str, iters: u64, bytes: usize, mut f: impl FnMut()) {
     );
 }
 
+/// Times `f` over `iters` iterations (after a warm-up) and prints ns/iter, for the
+/// CPU-only paths (URL resolve, header parsing) that move no payload.
+fn bench_ns(name: &str, iters: u64, mut f: impl FnMut()) {
+    for _ in 0..iters / 10 + 1 {
+        f();
+    }
+    let start = Instant::now();
+    for _ in 0..iters {
+        f();
+    }
+    let per = start.elapsed().as_nanos() as f64 / iters as f64;
+    println!("{name:<40} {per:>9.1} ns/iter");
+}
+
 fn main() {
+    cpu_paths();
+
     const SIZE: usize = 8 * 1024 * 1024; // 8 MiB, so HttpStream uses two 4 MiB windows
     let payload: Vec<u8> = (0..SIZE).map(|i| (i % 251) as u8).collect();
     let url = serve(payload.clone(), 0);
@@ -195,4 +211,51 @@ fn main() {
             black_box(response.bytes().unwrap());
         }
     });
+}
+
+/// CPU-only paths that need no server: base-URL resolution (the RFC 3986
+/// relative-reference join the redirect layer also runs) and header parsing.
+fn cpu_paths() {
+    println!("== url resolve / header parsing (CPU only) ==");
+    let based = HttpSession::new()
+        .with_base_url(Url::from_str("https://api.example.com/v1/users/").unwrap());
+    let n = 2_000_000;
+    bench_ns("resolve_url (relative segment)", n, || {
+        black_box(based.resolve_url(black_box("profile")).unwrap());
+    });
+    bench_ns("resolve_url (dot-segments ../)", n, || {
+        black_box(based.resolve_url(black_box("../../v2/orders")).unwrap());
+    });
+    bench_ns("resolve_url (absolute, no join)", n, || {
+        black_box(
+            based
+                .resolve_url(black_box("https://other.example.com/x"))
+                .unwrap(),
+        );
+    });
+
+    // Header parsing: content_size prefers the Content-Range total over
+    // Content-Length; retry_after parses both the delta-seconds and HTTP-date forms.
+    let range_headers = HttpHeaders::from_mapping([
+        (
+            "Content-Range".to_string(),
+            "bytes 0-1023/8388608".to_string(),
+        ),
+        ("Content-Length".to_string(), "1024".to_string()),
+    ]);
+    bench_ns("content_size (Content-Range total)", n, || {
+        black_box(black_box(&range_headers).content_size());
+    });
+    let retry_secs = HttpHeaders::from_mapping([("Retry-After".to_string(), "120".to_string())]);
+    bench_ns("retry_after (delta seconds)", n, || {
+        black_box(black_box(&retry_secs).retry_after());
+    });
+    let retry_date = HttpHeaders::from_mapping([(
+        "Retry-After".to_string(),
+        "Wed, 21 Oct 2026 07:28:00 GMT".to_string(),
+    )]);
+    bench_ns("retry_after (HTTP-date)", n, || {
+        black_box(black_box(&retry_date).retry_after());
+    });
+    println!();
 }

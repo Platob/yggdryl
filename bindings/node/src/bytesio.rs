@@ -70,10 +70,14 @@ impl BytesIO {
     }
 
     /// Write `data` at the cursor (overwriting and zero-filling as needed) and
-    /// return the count written. Advances the cursor when `stream`.
+    /// return the count written. Advances the cursor when `stream`. Throws if the
+    /// write would extend the buffer past the addressable range.
     #[napi]
-    pub fn write(&mut self, data: Buffer) -> u32 {
-        self.inner.write(data.as_ref()) as u32
+    pub fn write(&mut self, data: Buffer) -> Result<u32> {
+        self.inner
+            .write(data.as_ref())
+            .map(|count| count as u32)
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// The resource address as a `Url` (`mem://<address>`).

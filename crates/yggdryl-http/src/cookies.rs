@@ -148,8 +148,23 @@ impl Cookie {
             Some(seconds) => Some(now_secs() + seconds),
             None => expires,
         };
+
+        // RFC 6265 §5.3 steps 5-6: a server may only set a `Domain` it
+        // domain-matches. Reject a cross-domain `Domain` (cookie injection — e.g.
+        // a.evil.com sending `Domain=example.com`) and a single-label / public-
+        // suffix `Domain` (e.g. `Domain=com`, which would scope to every `.com`).
+        let request_host = request_url.host().to_ascii_lowercase();
+        if let Some(domain) = &domain {
+            if !domain.contains('.') || !domain_match(&request_host, domain, false) {
+                log_event!(
+                    warn,
+                    "rejecting Set-Cookie {name:?}: Domain={domain:?} not allowed for host {request_host:?}"
+                );
+                return None;
+            }
+        }
         let host_only = domain.is_none();
-        let domain = domain.unwrap_or_else(|| request_url.host().to_ascii_lowercase());
+        let domain = domain.unwrap_or(request_host);
 
         Some(Cookie {
             name: name.to_string(),
@@ -250,19 +265,31 @@ impl HttpCookies {
     /// The `Cookie:` header value for `url` — every non-expired cookie whose
     /// domain-match, path-match and `Secure` rule apply, joined `"k=v; k2=v2"` —
     /// or `None` when nothing matches. Expired cookies are dropped as a side effect.
+    ///
+    /// Cookies with a longer `Path` are listed first (RFC 6265 §5.4); a stable
+    /// sort keeps insertion order for equal-length paths.
     pub fn header_for(&mut self, url: &Url) -> Option<String> {
         self.cookies.retain(|cookie| !cookie.is_expired());
-        let pairs: Vec<String> = self
+        let mut matched: Vec<&Cookie> = self
             .cookies
             .iter()
             .filter(|cookie| cookie.matches(url))
-            .map(|cookie| format!("{}={}", cookie.name, cookie.value))
             .collect();
-        if pairs.is_empty() {
-            None
-        } else {
-            Some(pairs.join("; "))
+        if matched.is_empty() {
+            return None;
         }
+        matched.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
+        // Write straight into one reused String (no Vec<String> + join).
+        let mut header = String::new();
+        for cookie in matched {
+            if !header.is_empty() {
+                header.push_str("; ");
+            }
+            header.push_str(&cookie.name);
+            header.push('=');
+            header.push_str(&cookie.value);
+        }
+        Some(header)
     }
 
     /// The first stored cookie named `name` (case-sensitive, per RFC 6265), if any.

@@ -1438,3 +1438,58 @@ fn base_url_resolves_relative_targets() {
     assert!(plain.resolve_url("relative").is_err());
     assert!(plain.resolve_url("https://h/p").is_ok());
 }
+
+#[test]
+fn redirect_resolve_normalizes_dot_segments_and_fragment() {
+    use crate::redirect;
+    let base = yggdryl_core::Url::from_str("https://h/v1/users/42").unwrap();
+    // `../` ascends and is normalized (no literal "/v1/users/../other").
+    assert_eq!(
+        redirect::resolve(&base, "../other").unwrap().path(),
+        "/v1/other"
+    );
+    assert_eq!(
+        redirect::resolve(&base, "./x").unwrap().path(),
+        "/v1/users/x"
+    );
+    // An absolute path's own dot-segments resolve too.
+    assert_eq!(redirect::resolve(&base, "/a/../b").unwrap().path(), "/b");
+    // A `#fragment` is split off the path, not embedded in it.
+    let r = redirect::resolve(&base, "/p#frag").unwrap();
+    assert_eq!(r.path(), "/p");
+    assert_eq!(r.fragment(), Some("frag"));
+    // A relative redirect with a query keeps the path and sets the query; it does
+    // not inherit the base's (absent) query/fragment.
+    let r2 = redirect::resolve(&base, "next?x=1").unwrap();
+    assert_eq!(r2.path(), "/v1/users/next");
+    assert_eq!(r2.query(), Some("x=1"));
+}
+
+#[test]
+fn cross_domain_set_cookie_is_rejected() {
+    use crate::Cookie;
+    let evil = yggdryl_core::Url::from_str("https://a.evil.test/").unwrap();
+    // A `Domain` the response host does not domain-match is rejected (injection).
+    assert!(Cookie::from_set_cookie("x=1; Domain=example.com", &evil).is_none());
+    // A single-label / public-suffix `Domain` is rejected.
+    assert!(Cookie::from_set_cookie("x=1; Domain=test", &evil).is_none());
+    // A host-only cookie (no `Domain`) is always accepted.
+    assert!(Cookie::from_set_cookie("y=2; Path=/", &evil).is_some());
+    // A `Domain` that is a parent of the response host is accepted.
+    let sub = yggdryl_core::Url::from_str("https://www.example.com/").unwrap();
+    let cookie = Cookie::from_set_cookie("x=1; Domain=example.com", &sub).unwrap();
+    assert_eq!(cookie.domain(), "example.com");
+}
+
+#[test]
+fn cookie_header_orders_by_descending_path_length() {
+    use crate::{HttpCookies, HttpHeaders};
+    let url = yggdryl_core::Url::from_str("https://h/app/page").unwrap();
+    let mut jar = HttpCookies::new();
+    let mut headers = HttpHeaders::new();
+    headers.insert("set-cookie", "a=1; Path=/");
+    headers.insert("set-cookie", "b=2; Path=/app");
+    jar.set_from_response(&url, &headers);
+    // The longer path (`/app`) is listed first (RFC 6265 §5.4).
+    assert_eq!(jar.header_for(&url).as_deref(), Some("b=2; a=1"));
+}

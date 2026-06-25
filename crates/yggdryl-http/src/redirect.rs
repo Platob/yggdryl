@@ -22,8 +22,10 @@ pub(crate) fn is_redirect(status: u16) -> bool {
 
 /// Resolves a `Location` value against the request URL `base` into an absolute
 /// [`Url`], handling an absolute URL, a network-path reference (`//host/p`), an
-/// absolute path (`/p`) and a relative path. Returns [`HttpError::InvalidUrl`]
-/// when the result cannot be parsed.
+/// absolute path (`/p`) and a relative path. The path's `.` / `..` dot-segments
+/// are removed (RFC 3986 §5.2.4) via [`Url::join`], and a `#fragment` is split off
+/// the path rather than embedded in it. Returns [`HttpError::InvalidUrl`] when the
+/// result cannot be parsed.
 pub(crate) fn resolve(base: &Url, location: &str) -> Result<Url, HttpError> {
     let location = location.trim();
     if location.is_empty() {
@@ -40,23 +42,29 @@ pub(crate) fn resolve(base: &Url, location: &str) -> Result<Url, HttpError> {
         let candidate = format!("{}://{rest}", base.scheme());
         return Url::from_str(&candidate).map_err(|err| HttpError::InvalidUrl(err.to_string()));
     }
-    // Otherwise it is a path reference resolved against the base authority. Split
-    // off the query so it replaces (not appends to) the base query.
-    let (path, query) = match location.split_once('?') {
-        Some((path, query)) => (path, Some(query.to_string())),
-        None => (location, None),
-    };
-    let resolved_path = if path.starts_with('/') {
-        path.to_string()
-    } else {
-        resolve_relative(base.path(), path)
-    };
-    let mut next = base.clone().with_path(resolved_path);
-    next = match query {
-        Some(query) => next.with_query(query),
-        None => next.without_query(),
-    };
+    // A path reference resolved against the base authority. Split off the fragment
+    // then the query (so neither lands inside the path), and resolve the path's
+    // dot-segments through `Url::join`. `join` drops the base query/fragment, so a
+    // reference without one does not inherit the base's — exactly the redirect rule.
+    let (location, fragment) = split_off(location, '#');
+    let (path, query) = split_off(location, '?');
+    let mut next = base.join(path);
+    if let Some(query) = query {
+        next = next.with_query(query);
+    }
+    if let Some(fragment) = fragment {
+        next = next.with_fragment(fragment);
+    }
     Ok(next)
+}
+
+/// Splits `input` on the first `sep`, returning the part before and the owned part
+/// after (or `None` if `sep` is absent).
+fn split_off(input: &str, sep: char) -> (&str, Option<String>) {
+    match input.split_once(sep) {
+        Some((head, tail)) => (head, Some(tail.to_string())),
+        None => (input, None),
+    }
 }
 
 /// Whether two URLs share an origin (scheme + host + port, the default port
@@ -75,17 +83,6 @@ fn effective_port(url: &Url) -> Option<u16> {
         "https" => Some(443),
         _ => None,
     })
-}
-
-/// Resolves a relative reference `target` against the base request `path`,
-/// dropping the base's last segment (everything after the final `/`) per RFC 3986.
-fn resolve_relative(base_path: &str, target: &str) -> String {
-    let directory = match base_path.rfind('/') {
-        Some(index) => &base_path[..=index],
-        None => "/",
-    };
-    let directory = if directory.is_empty() { "/" } else { directory };
-    format!("{directory}{target}")
 }
 
 /// Builds the next request for a redirect, applying RFC 7231 method/body

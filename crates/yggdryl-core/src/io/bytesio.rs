@@ -170,7 +170,11 @@ impl BytesIO {
     /// Writes `bytes` at the cursor, overwriting any overlap and extending (zero-
     /// filling any gap) as needed. Returns the count written and advances the
     /// cursor when [`stream`](BytesIO::stream).
-    pub fn write(&mut self, bytes: &[u8]) -> usize {
+    ///
+    /// Errors with [`IoError::Invalid`] when the write would extend the buffer past
+    /// the addressable range (e.g. after seeking near [`i64::MAX`] past the end),
+    /// rather than attempting a multi-exabyte allocation.
+    pub fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
         log_event!(
             trace,
             "BytesIO::write {} bytes at {}",
@@ -232,11 +236,24 @@ impl BytesIO {
     pub fn flush(&mut self) {}
 
     /// Writes `bytes` at the cursor, zero-filling any gap and extending as needed,
-    /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write)
-    /// and [`Io::write`].
-    fn put(&mut self, bytes: &[u8], advance: bool) -> usize {
+    /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write),
+    /// [`Io::write`] and [`Io::pwrite`].
+    ///
+    /// Guards the write extent: the cursor may be seeked arbitrarily far past the
+    /// end (a legal Python operation), so a write there would otherwise resize the
+    /// buffer to an astronomical length and abort the process. The extent is capped
+    /// at [`isize::MAX`] (the `Vec` allocation limit), returning [`IoError::Invalid`].
+    fn put(&mut self, bytes: &[u8], advance: bool) -> Result<usize, IoError> {
         let start = self.position;
-        let end = start + bytes.len();
+        let end = start
+            .checked_add(bytes.len())
+            .filter(|&end| end <= isize::MAX as usize)
+            .ok_or_else(|| {
+                IoError::Invalid(format!(
+                    "write of {} bytes at offset {start} exceeds the addressable buffer range",
+                    bytes.len()
+                ))
+            })?;
         if self.buffer.len() < end {
             self.buffer.resize(end, 0);
         }
@@ -244,7 +261,7 @@ impl BytesIO {
         if advance {
             self.position = end;
         }
-        bytes.len()
+        Ok(bytes.len())
     }
 }
 
@@ -299,25 +316,30 @@ impl Io for BytesIO {
 
     /// Writes `bytes` at the cursor, advancing it — the in-memory streamed write.
     fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
-        Ok(self.put(bytes, true))
+        self.put(bytes, true)
     }
 
     /// Positional write into the buffer, overwriting and zero-filling as needed.
     /// [`Whence::Current`] advances the cursor; otherwise it is left put.
     fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
-        let start = resolve(
+        let resolved = resolve(
             self.position as u64,
             Some(self.buffer.len() as u64),
             offset,
             whence,
-        )? as usize;
+        )?;
+        // Narrow the u64 position to an index; on a 32-bit target an offset beyond
+        // the address space is an error, not a silent wraparound.
+        let start = usize::try_from(resolved).map_err(|_| {
+            IoError::Invalid(format!("offset {resolved} exceeds the addressable range"))
+        })?;
         let saved = self.position;
         self.position = start;
         let count = self.put(bytes, true);
         if !matches!(whence, Whence::Current) {
             self.position = saved;
         }
-        Ok(count)
+        count
     }
 
     /// The reserved capacity of the backing [`Vec<u8>`].

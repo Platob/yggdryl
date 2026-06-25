@@ -528,9 +528,11 @@ pub trait Io: fmt::Debug + Send + Sync {
                     }
                 }
             }
-            // Restore first, then apply the cursor policy below.
-            self.seek(saved as i64, Whence::Start)?;
+            // Restore the cursor, but surface the original read error first: a
+            // failed restore must never mask the real read failure.
+            let restored = self.seek(saved as i64, Whence::Start);
             outcome?;
+            restored?;
             filled
         };
         // Only a cursor-relative read moves the cursor; positional reads do not.
@@ -568,13 +570,17 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// returning how many were read. A memory-resident handle hands over its tail
     /// in one copy; otherwise it streams in 1 MiB chunks.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
-        if self.as_slice().is_some() {
-            let copied = {
-                let all = self.as_slice().unwrap();
+        // Probe the slice once (the match arm scopes the borrow so the trailing
+        // `seek` can take `&mut self`).
+        let fast = match self.as_slice() {
+            Some(all) => {
                 let start = (self.stream_position() as usize).min(all.len());
                 out.extend_from_slice(&all[start..]);
-                all.len() - start
-            };
+                Some(all.len() - start)
+            }
+            None => None,
+        };
+        if let Some(copied) = fast {
             self.seek(0, Whence::End)?;
             return Ok(copied);
         }
@@ -637,17 +643,20 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// [`write_all`](Io::write_all) (zero intermediate copies); otherwise it streams
     /// in 1 MiB chunks. See also the free [`copy`] function.
     fn copy_to(&mut self, dst: &mut dyn Io) -> Result<u64, IoError> {
-        if self.as_slice().is_some() {
-            // Fast path: hand the remaining slice straight to the sink, then
-            // advance our cursor to the end. The inner block scopes the borrow of
-            // `self` so the trailing `seek` can take `&mut self`.
-            let copied = {
-                let all = self.as_slice().unwrap();
+        // Fast path: hand the remaining slice straight to the sink (zero
+        // intermediate copies). The match arm scopes the `&self` borrow so the
+        // trailing `seek` can take `&mut self`; the slice is probed only once.
+        let fast = match self.as_slice() {
+            Some(all) => {
                 let start = self.stream_position().min(all.len() as u64) as usize;
                 let tail = &all[start..];
+                let copied = tail.len() as u64;
                 dst.write_all(tail)?;
-                tail.len() as u64
-            };
+                Some(copied)
+            }
+            None => None,
+        };
+        if let Some(copied) = fast {
             log_event!(trace, "Io::copy_to fast path, {copied} bytes");
             self.seek(0, Whence::End)?;
             return Ok(copied);
@@ -1010,11 +1019,31 @@ mod tests {
     fn bytesio_write_overwrites_and_zero_fills() {
         let mut io = BytesIO::from_bytes(b"abc".to_vec());
         io.seek(1, Whence::Start).unwrap();
-        assert_eq!(io.write(b"XY"), 2);
+        assert_eq!(io.write(b"XY").unwrap(), 2);
         assert_eq!(io.getvalue(), b"aXY");
         io.seek(5, Whence::Start).unwrap();
-        io.write(b"Z");
+        io.write(b"Z").unwrap();
         assert_eq!(io.getvalue(), b"aXY\0\0Z");
+    }
+
+    #[test]
+    fn bytesio_write_far_past_end_errors_without_huge_alloc() {
+        // Seeking to a legal-but-astronomical position then writing must not try to
+        // resize the buffer to exabytes (abort) — it errors instead.
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(i64::MAX, Whence::Start).unwrap();
+        assert!(matches!(io.write(b"x"), Err(IoError::Invalid(_))));
+        // The same guard applies to a positional pwrite at a huge offset.
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        assert!(matches!(
+            io.pwrite(b"x", i64::MAX, Whence::Start),
+            Err(IoError::Invalid(_))
+        ));
+        // A modest past-end write still works (zero-fills the gap).
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(5, Whence::Start).unwrap();
+        assert_eq!(io.write(b"Z").unwrap(), 1);
+        assert_eq!(io.getvalue(), b"abc\0\0Z");
     }
 
     #[test]
@@ -1108,7 +1137,7 @@ mod tests {
         assert!(io.capacity() >= 128);
 
         // truncate grows (zero-fills) and shrinks via the Io trait.
-        io.write(b"abc");
+        io.write(b"abc").unwrap();
         Io::truncate(&mut io, 5).unwrap();
         assert_eq!(io.getvalue(), b"abc\0\0");
         Io::truncate(&mut io, 2).unwrap();
