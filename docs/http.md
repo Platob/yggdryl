@@ -2,7 +2,7 @@
 
 A blocking, `requests`-like HTTP client whose bodies **stream over [`Io`](io.md)**.
 The transport is `ureq` (rustls TLS); decompression goes through
-[yggdryl-compression](compression.md), on by default.
+[compression](compression.md), on by default.
 
 ## The session
 

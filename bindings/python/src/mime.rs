@@ -1,7 +1,7 @@
 //! The `MimeType` pyclass and the global registry hooks.
 
 use pyo3::prelude::*;
-use yggdryl_media::{Mapping, MimeType as CoreMimeType, Signature, ToOutput};
+use yggdryl_core::{Mapping, MimeType as CoreMimeType, Signature, ToOutput};
 
 use crate::{hash_str, media_err};
 

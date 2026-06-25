@@ -4,7 +4,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use yggdryl_io::{Io, IoError, IoStats, Url, Whence};
+use yggdryl_core::{Io, IoError, IoStats, Url, Whence};
 
 use crate::headers::HttpHeaders;
 use crate::retry::{RetryConfig, CACHE_LIMIT};
@@ -327,7 +327,7 @@ impl Io for HttpStream {
     }
 
     fn stats(&self) -> Result<IoStats, IoError> {
-        let mut stats = IoStats::new(self.size.unwrap_or(0)).with_kind(yggdryl_io::Kind::File);
+        let mut stats = IoStats::new(self.size.unwrap_or(0)).with_kind(yggdryl_core::Kind::File);
         if let Some(content_type) = &self.content_type {
             stats = stats.with_content_type(content_type.clone());
         }
@@ -429,7 +429,7 @@ impl Io for HttpStream {
         }
         while self.remaining() != Some(0) {
             let base = out.len();
-            out.resize(base + yggdryl_io::STREAM_CHUNK, 0);
+            out.resize(base + yggdryl_core::STREAM_CHUNK, 0);
             let count = self.read_live(&mut out[base..])?;
             out.truncate(base + count);
             if count == 0 {
@@ -489,10 +489,10 @@ impl Io for HttpStream {
     }
 
     #[cfg(feature = "media")]
-    fn media_type(&self) -> Option<yggdryl_media::MediaType> {
+    fn media_type(&self) -> Option<yggdryl_core::MediaType> {
         let content_type = self.content_type.as_ref()?;
-        yggdryl_media::MimeType::from_str(content_type)
+        yggdryl_core::MimeType::from_str(content_type)
             .ok()
-            .map(|mime| yggdryl_media::MediaType::new(vec![mime]))
+            .map(|mime| yggdryl_core::MediaType::new(vec![mime]))
     }
 }

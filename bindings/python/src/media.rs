@@ -1,7 +1,7 @@
 //! The `MediaType` pyclass: an ordered stack of :class:`MimeType`.
 
 use pyo3::prelude::*;
-use yggdryl_media::{Mapping, MediaType as CoreMediaType, ToOutput};
+use yggdryl_core::{Mapping, MediaType as CoreMediaType, ToOutput};
 
 use crate::mime::MimeType;
 use crate::{hash_str, media_err};

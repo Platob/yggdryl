@@ -8,33 +8,44 @@ looking at from the shape of the code.
 
 ## Architecture
 
-- `crates/yggdryl-core/` — dependency-free foundations: the `ToOutput` rendering
-  trait, the `Mapping` / `Params` component maps and percent-encoding (each type
-  pairs these with its own inherent `from_str` / `from_mapping` parsers).
-- `crates/yggdryl-io/` — the **byte-IO foundation**: one set of methods to read,
-  write, seek and stat bytes wherever they live (memory, local path, cloud). See
-  its dedicated section below. **All byte-IO logic lives here.**
-- `crates/yggdryl-compression/` — the `Compression` codec (gzip / Zstandard /
-  Snappy / `None` identity) that **streams** compress/decompress over any
-  `yggdryl-io` handle, plus the `CompressIo` extension trait. **All compression
-  logic lives here** — do not pull codec SDKs into `yggdryl-io`.
+The workspace is **two crates**: `yggdryl-core` (all the data types + byte IO +
+compression) and `yggdryl-http` (the network client). `yggdryl-core` is **one file
+per type** — each concern is a module (or module directory) under
+`crates/yggdryl-core/src/`, with `lib.rs` as glue (a shared `log_event!` macro,
+`mod` declarations, and `pub use` re-exports of every type at the crate root, so
+`yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
+its concern wholly — do not scatter a concern's logic across modules:
+
+- `encoding.rs` / `mapping.rs` / `output.rs` — dependency-free foundations: the
+  `ToOutput` rendering trait, the `Mapping` / `Params` component maps and
+  percent-encoding (each type pairs these with its own inherent `from_str` /
+  `from_mapping` parsers).
+- `version.rs` — the standalone `Version` type.
+- `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
+  types, backed by a mutable global registry of extensions/magic bytes) and the
+  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`).
+  **All media-type logic lives here.**
+- `url/` (`mod` + `uri.rs` + `url.rs`) — the `Uri`/`Url` types and the canonical URL
+  tests, built on `encoding`/`mapping` (and `media` for the inferred `media_type()`
+  accessor). **All URL logic lives here.**
+- `io/` (`mod` + `bytesio.rs` + `localpath.rs` + `codec.rs`) — the **byte-IO
+  foundation**: one set of methods to read, write, seek and stat bytes wherever they
+  live (memory, local path, cloud). See its dedicated section below. **All byte-IO
+  logic lives here.**
+- `compression/` (`mod` + `codec.rs`) — the `Compression` codec (gzip / Zstandard /
+  Snappy / `None` identity) that **streams** compress/decompress over any `Io`
+  handle, plus the `CompressIo` extension trait. **All compression logic lives
+  here** — do not pull codec SDKs into the `io` module.
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
   (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
-  `yggdryl-io` abstraction**. **All HTTP logic lives here** — the transport SDK
-  (`ureq`) is a dependency of this crate only. See its section below.
-- `crates/yggdryl-version/` — the standalone `Version` type.
-- `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
-  mutable global registry of extensions/magic bytes) and the `MediaType` stack
-  (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`). **All media-type
-  logic lives here.**
-- `crates/yggdryl-url/` — the `Uri`/`Url` types and the canonical URL tests, built
-  on and re-exporting `yggdryl-core` (and `yggdryl-media` for the inferred
-  `media_type()` accessor). **All URL logic lives here.**
+  `yggdryl-core` `Io` abstraction**. **All HTTP logic lives here** — the transport
+  SDK (`ureq`) is a dependency of this crate only. Already split one-file-per-type
+  under `crates/yggdryl-http/src/`. See its section below.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.
 
-### `yggdryl-io` — what it aims to be (read before extending it)
+### The `io` module — what it aims to be (read before extending it)
 
 The goal is a **single byte-IO abstraction** that hides *where* bytes live, so a
 reader (think Arrow / Parquet) works the same over an in-memory buffer, a
@@ -78,23 +89,30 @@ handle. The layering, smallest to largest:
 - `RemotePath: Io` — the URL-addressed cloud sibling of `Path` (flat keys, no dir
   creation; range reads via `pread`). The address is the universal `Io::url()`.
   **Cloud backends (S3, Azure) are downstream crates that implement `RemotePath`
-  — do not pull network SDKs into `yggdryl-io`.**
+  — do not pull network SDKs into the `io` module.**
 - `Codec<T>` — typed read/write/stream of values over any `&mut dyn Io` handle;
   `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
   `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
-  separate concern in `yggdryl-compression` (see its section), not here.
+  separate concern in the `compression` module (see its section), not here.
+- The **factory** `from_str` / `from_url` / `from_uri` returns the right
+  `Box<dyn Io>` for a location, dispatching on the URL scheme: a bare path / `file://`
+  opens a `LocalPath`; any other scheme is looked up in the `register_scheme` registry
+  (a global `OnceLock<RwLock<…>>`, like the MimeType registry) so downstream crates
+  plug in without the `io` module depending on them — `yggdryl-http` registers
+  `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their schemes
+  later. `mem://` and unregistered schemes return an actionable `Unsupported`.
 
-Rules when extending: the base build depends only on `yggdryl-url` (for the
-universal `Io::url()`); new heavy deps are **optional features** (like `log` /
+Rules when extending: the `io` module builds on the `url` / `encoding` modules (for
+the universal `Io::url()`); new heavy deps are **optional features** (like `log` /
 `mmap` / `media`). A new memory-resident backend must override `as_slice` so the
 zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
 with `Whence::Start`, never by mutating the cursor.
 
-### `yggdryl-compression` — streamed codecs over `Io`
+### The `compression` module — streamed codecs over `Io`
 
-Compression is layered **on top of** `yggdryl-io`, never inside it (so the IO
-base stays codec-free and the dependency points one way: `yggdryl-compression →
-yggdryl-io`). The shape:
+Compression is layered **on top of** the `io` module, never inside it (so the IO
+base stays codec-free and the dependency points one way — `compression` builds on
+`io`, never the reverse). The shape:
 
 - `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
   `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
@@ -118,8 +136,8 @@ stats-inference path. When you add a codec, surface it in *both* bindings.
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
 A small **blocking** HTTP client shaped after Python's `requests`, layered on
-`yggdryl-io` (and `yggdryl-url`); the transport is `ureq` (rustls TLS, its own
-gzip/brotli left off so decompression goes through `yggdryl-compression`). The
+`yggdryl-core` (its `io` / `url`); the transport is `ureq` (rustls TLS, its own
+gzip/brotli left off so decompression goes through `yggdryl-core`'s `compression`). The
 shape:
 
 - `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
@@ -136,16 +154,31 @@ shape:
   so the connection is released at once. `request(req, raise_error)` is the
   keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
-  threads).
+  threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
+  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`).
+- `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
+  (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
+  (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
+  `Cookie:` value. **All cookie logic lives here.** The session feeds every
+  response's `Set-Cookie` in and adds the matching `Cookie` before each dispatch.
+- **Redirects** (`redirect.rs`, crate-internal): `send` follows 3xx with a `Location`
+  when the request's `allow_redirect` (default `true`) is set and the hop is under
+  `max_redirects`. 303 → GET (drop body); 301/302 on POST → GET; 307/308 preserve
+  method **and** body but only if replayable, else the 3xx is returned. Loops are
+  detected (a `(method, url)` set); a cross-origin hop (scheme+host+**port** differ)
+  strips `Authorization` and per-request `Cookie`. `ureq`'s own redirect following is
+  off — our layer owns it.
 - `HttpHeaders` — the case-insensitive header map all three of `HttpSession`,
   `HttpRequest`, `HttpResponse` and `HttpStream` use; CRUD (`get` / `get_all` /
   `set` / `insert` / `remove` / `contains` / `iter` / `from_mapping`) plus the
   HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
   `Content-Length`). **All header logic lives here.**
 - `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
-  `with_param` / `with_body` / `with_body_reader` / `with_body_io`). `with_body_io`
-  is the preferred upload: the handle's `stream_len` sets `Content-Length` and the
-  bytes stream straight off the `Io` (a file is never buffered).
+  `with_param` / `with_body` / `with_body_reader` / `with_body_io` /
+  `with_allow_redirect`). `with_body_io` is the preferred upload: the handle's
+  `stream_len` sets `Content-Length` and the bytes stream straight off the `Io` (a
+  file is never buffered). `with_allow_redirect(false)` opts a request out of the
+  redirect loop (returning the 3xx).
 - `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
   body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
   `reader()` is the decoded body `Io` (decompressed under `compression`),
@@ -162,7 +195,7 @@ shape:
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `log`. The base depends on
-`yggdryl-io`'s `json` feature so `Io::json()` is available on every handle. **All
+`yggdryl-core`'s `json` feature so `Io::json()` is available on every handle. **All
 HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
 **hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /
 mid-stream drops, no network). In the bindings the blocking call must not stall
@@ -177,8 +210,8 @@ rule above.
 Code is organised the same way in every language: **one file per type**, with a
 small glue file tying them together. Don't grow a single big file.
 
-- Rust: one crate per concern (`yggdryl-core`, `yggdryl-version`,
-  `yggdryl-media`, `yggdryl-url`).
+- Rust: one module per concern in `yggdryl-core` (`version`, `media`, `url`,
+  `io`, `compression`), plus the separate `yggdryl-http` crate.
 - Each binding: `src/uri.rs`, `src/url.rs`, `src/version.rs`, `src/mime.rs`,
   `src/media.rs` per type, with
   `src/lib.rs` holding only shared helpers (error conversion, `hash_str`,
@@ -320,10 +353,11 @@ The workspace `version` under `[workspace.package]` in the root `Cargo.toml` is 
 single source of truth. To cut a release, bump it and merge to `main`: the
 `Release` workflow detects the new version (no matching `v<version>` tag yet),
 runs the gate, publishes to crates.io / PyPI / npm, then creates the tag and a
-GitHub Release. Inter-crate deps are caret ranges, so a `0.1.x` bump only touches
-that one line (the Python wheels inherit it via `version.workspace = true`; the
-npm `package.json` is synced from it at publish time — keep it in sync locally
-too). Never re-use a published version number; crates.io/npm reject re-uploads.
+GitHub Release. `yggdryl-http`'s dependency on `yggdryl-core` is a caret range, so a
+`0.1.x` bump only touches that one line (the Python wheels inherit it via
+`version.workspace = true`; the npm `package.json` is synced from it at publish time
+— keep it in sync locally too). Never re-use a published version number;
+crates.io/npm reject re-uploads.
 
 ## Code-coherence review (after every implementation)
 

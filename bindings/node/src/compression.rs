@@ -2,8 +2,10 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_compression::Compression as CoreCompression;
+use yggdryl_core::Compression as CoreCompression;
 
+use crate::iostats::IoStats;
+use crate::media::MediaType;
 use crate::mime::MimeType;
 
 /// A byte-stream compression codec — `gzip`, `zstd` or `snappy` (or `none`, the
@@ -44,6 +46,20 @@ impl Compression {
     #[napi(js_name = "fromMime")]
     pub fn from_mime(mime: &MimeType) -> Option<Compression> {
         CoreCompression::from_mime(&mime.inner).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from a layered `MediaType` stack — its outermost (container)
+    /// MIME, e.g. `gzip` for `data.csv.gz` — or `null`.
+    #[napi(js_name = "fromMedia")]
+    pub fn from_media(media: &MediaType) -> Option<Compression> {
+        CoreCompression::from_media(&media.inner).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from an `IoStats` — its discovered media type first, then
+    /// its transport content type — or `null` if neither names a codec.
+    #[napi(js_name = "fromStats")]
+    pub fn from_stats(stats: &IoStats) -> Option<Compression> {
+        CoreCompression::from_stats(&stats.inner).map(|inner| Compression { inner })
     }
 
     /// The canonical codec name (`"none"` / `"gzip"` / `"zstd"` / `"snappy"`).

@@ -1,9 +1,9 @@
 //! Adapters bridging an [`Io`] body to the transport's [`std::io::Read`], and a
 //! deferred-error body for the decoder path.
 
-use yggdryl_io::Io;
+use yggdryl_core::Io;
 #[cfg(feature = "compression")]
-use yggdryl_io::{IoError, IoStats, Url, Whence};
+use yggdryl_core::{IoError, IoStats, Url, Whence};
 
 /// Bridges an [`Io`] request body to [`std::io::Read`] for the transport, so the
 /// bytes stream straight off the handle. The request framing (whether a known

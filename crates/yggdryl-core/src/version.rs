@@ -1,21 +1,10 @@
-//! # yggdryl-version
-//!
-//! A standalone `major.minor.patch` [`Version`] type for the **yggdryl**
-//! project, built on the [`yggdryl-core`](https://crates.io/crates/yggdryl-core)
-//! foundations.
+//! The standalone `major.minor.patch` [`Version`] value type.
 
 use std::fmt;
 
-pub use yggdryl_core::{Mapping, ToOutput};
-
-/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
-/// otherwise (so the crate is dependency-free by default and pays no runtime cost).
-macro_rules! log_event {
-    ($level:ident, $($arg:tt)+) => {{
-        #[cfg(feature = "log")]
-        log::$level!($($arg)+);
-    }};
-}
+#[allow(unused_imports)]
+use crate::log_event;
+use crate::{Mapping, ToOutput};
 
 /// Error returned when [`Version`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +40,7 @@ impl std::error::Error for VersionError {}
 /// components; any that are omitted default to `0`.
 ///
 /// ```
-/// use yggdryl_version::Version;
+/// use yggdryl_core::Version;
 ///
 /// let v = Version::from_str("1.4.2").unwrap();
 /// assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));

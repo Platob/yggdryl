@@ -1,13 +1,6 @@
-//! # yggdryl-io
-//!
-//! The byte-IO foundation for the **yggdryl** project: one set of methods to
-//! read, write, seek and stat bytes, **wherever they live** — in memory, on a
-//! local path, or (via downstream crates) in cloud object storage. It is the
-//! base buffer layer that columnar formats such as Arrow / Parquet sit on,
-//! mixing *random* access (read a footer, a column chunk) with *streamed*
-//! access (scan record batches) over the same handle.
-//!
-//! ## What this crate is for (read this first if you are extending it)
+//! The byte-IO foundation: one set of methods to read, write, seek and stat
+//! bytes, **wherever they live** — in memory, on a local path, or (via downstream
+//! crates) in cloud object storage.
 //!
 //! The goal is a **single abstraction** — [`Io`] — that hides *where* bytes come
 //! from. Code that reads Parquet should not care whether the source is an
@@ -16,53 +9,19 @@
 //! [`stats`](Io::stats) and its [`url`](Io::url). New backends implement [`Io`]
 //! (and [`Path`] if they name a resource); everything else composes on top.
 //!
-//! ## Layers
-//!
-//! - **The handle** — [`Io`] is the one byte-IO trait: every handle has a
-//!   [`url`](Io::url) (in-memory ones use `mem://<address>`); it carries a cursor
-//!   moved with [`seek`](Io::seek) / [`stream_position`](Io::stream_position), does
-//!   the **streamed** read/write with [`read`](Io::read) / [`write`](Io::write)
-//!   (advancing the cursor), and **random** access with [`pread`](Io::pread) /
-//!   [`pwrite`](Io::pwrite) — a `whence` chooses positional (cursor untouched) versus
-//!   cursor-relative ([`Whence::Current`], the streamed case). [`BytesIO`] is the
-//!   trivial in-memory backend. It manages storage with [`capacity`](Io::capacity) /
-//!   [`reserve_capacity`](Io::reserve_capacity) / [`truncate`](Io::truncate)
-//!   (defaulting to `Unsupported` on read-only backends); it carries an access
-//!   [`mode`](Io::mode) ([`Mode`]) and an optional [`parent`](Io::parent), and
-//!   [`open`](Io::open)s derived handles; it exposes its bytes for **zero-copy**
-//!   transfer via [`as_slice`](Io::as_slice), reports [`stats`](Io::stats), and
-//!   [`copy_to`](Io::copy_to) another sink with a memory fast path. [`copy`] is
-//!   the free-function form.
-//! - **Metadata** — [`IoStats`] holds the [`kind`](IoStats::kind)
-//!   ([`Missing`](Kind::Missing) / [`File`](Kind::File) /
-//!   [`Directory`](Kind::Directory)), `size`, `mtime`, `content_type` and `etag`
-//!   eagerly; expensive fields like `media_type` are discovered lazily (only
-//!   when asked, then cached) — see [`Io::media_type`] under the `media` feature.
-//!   A [`LocalPath`] holds its `url` / `stats` from construction (statted, not
-//!   mapped, up front).
+//! - **The handle** — [`Io`] is the one byte-IO trait; [`BytesIO`] is the trivial
+//!   in-memory backend.
+//! - **Metadata** — [`IoStats`] holds the [`kind`](IoStats::kind), `size`, `mtime`,
+//!   `content_type` and `etag` eagerly; `media_type` is discovered lazily under
+//!   the `media` feature.
 //! - **Named resources** — [`Path`]`: Io` is a local, hierarchical location
-//!   (its writes auto-create missing parent dirs *lazily*, on failure, never by
-//!   probing first); [`LocalPath`] is the filesystem backend, memory-mapping the
-//!   file for direct zero-copy access when the `mmap` feature is on.
-//!   [`RemotePath`]`: Io` is the URL-addressed cloud sibling (flat keys, no dir
-//!   creation); concrete S3 / Azure backends are downstream crates that implement
-//!   it — no change to this crate is needed.
-//! - **Typed codecs** — [`Codec<T>`] reads/writes/streams values of `T` over any
-//!   byte handle (e.g. a `Codec<RecordBatch>`); [`Frames`] is the reference
-//!   length-delimited implementation. Byte-stream **compression** (gzip / Zstd /
-//!   Snappy) lives in the sibling `yggdryl-compression` crate, which wraps any
-//!   handle from here.
-//!
-//! ## Optional features (off by default; the base build depends only on
-//! `yggdryl-url`, for the universal [`Io::url`])
-//!
-//! - `log` — structured `log` events on the hot paths.
-//! - `mmap` — [`LocalPath`] memory-maps files (zero-copy) instead of reading them.
-//! - `media` — lazy [`media_type`](Io::media_type) discovery via `yggdryl-media`.
-//! - `json` — [`Io::json`] parses a handle's bytes (zero-copy off [`as_slice`](Io::as_slice)).
+//!   ([`LocalPath`] is the filesystem backend); [`RemotePath`]`: Io` is the
+//!   URL-addressed cloud sibling.
+//! - **Typed codecs** — [`Codec<T>`] reads/writes/streams values of `T`; [`Frames`]
+//!   is the reference length-delimited implementation.
 //!
 //! ```
-//! use yggdryl_io::{BytesIO, Io, Whence};
+//! use yggdryl_core::{BytesIO, Io, Whence};
 //!
 //! let mut io = BytesIO::from_bytes(b"hello world".to_vec());
 //! // Positional read at an offset, leaving the cursor untouched.
@@ -77,22 +36,20 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::fs;
-use std::marker::PhantomData;
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
-pub use yggdryl_url::{Uri, Url};
+#[allow(unused_imports)]
+use crate::log_event;
+use crate::{Uri, Url};
 
-/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
-/// otherwise (so the crate pulls no `log` dependency by default and pays no
-/// runtime cost).
-macro_rules! log_event {
-    ($level:ident, $($arg:tt)+) => {{
-        #[cfg(feature = "log")]
-        log::$level!($($arg)+);
-    }};
-}
+mod bytesio;
+mod codec;
+mod localpath;
+
+pub use bytesio::BytesIO;
+pub use codec::{Codec, Frames, Stream};
+pub use localpath::{LocalPath, Path, RemotePath};
 
 /// Error returned by every [`Io`] and
 /// [`Codec`] operation.
@@ -280,7 +237,7 @@ pub struct IoStats {
     content_type: Option<String>,
     etag: Option<String>,
     #[cfg(feature = "media")]
-    media_type: Option<yggdryl_media::MediaType>,
+    media_type: Option<crate::MediaType>,
 }
 
 impl IoStats {
@@ -337,7 +294,7 @@ impl IoStats {
     /// The discovered media type, if it has been filled in (see
     /// [`Io::media_type`]). Only present under the `media` feature.
     #[cfg(feature = "media")]
-    pub fn media_type(&self) -> Option<&yggdryl_media::MediaType> {
+    pub fn media_type(&self) -> Option<&crate::MediaType> {
         self.media_type.as_ref()
     }
 
@@ -367,7 +324,7 @@ impl IoStats {
 
     /// Returns a copy with the discovered `media_type` set.
     #[cfg(feature = "media")]
-    pub fn with_media_type(mut self, media_type: yggdryl_media::MediaType) -> IoStats {
+    pub fn with_media_type(mut self, media_type: crate::MediaType) -> IoStats {
         self.media_type = Some(media_type);
         self
     }
@@ -385,7 +342,12 @@ pub const STREAM_CHUNK: usize = 1024 * 1024;
 /// optional total `len` into an absolute byte position — the one place the
 /// cursor / start / end arithmetic lives, shared by [`Io::seek`] and
 /// [`Io::pread`] / [`Io::pwrite`].
-fn resolve(position: u64, len: Option<u64>, offset: i64, whence: Whence) -> Result<u64, IoError> {
+pub(crate) fn resolve(
+    position: u64,
+    len: Option<u64>,
+    offset: i64,
+    whence: Whence,
+) -> Result<u64, IoError> {
     let base: i64 = match whence {
         Whence::Start => 0,
         Whence::Current => position as i64,
@@ -600,7 +562,7 @@ pub trait Io: fmt::Debug + Send + Sync {
 
     /// Drains from the cursor to the end, appending every byte to `out` and
     /// returning how many were read. A memory-resident handle hands over its tail
-    /// in one copy; otherwise it streams in 64 KiB chunks.
+    /// in one copy; otherwise it streams in 1 MiB chunks.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
         if self.as_slice().is_some() {
             let copied = {
@@ -669,7 +631,7 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// Copies every byte from the cursor to the end into `dst`, returning the
     /// count. A memory-resident source writes its tail in a single
     /// [`write_all`](Io::write_all) (zero intermediate copies); otherwise it streams
-    /// in 64 KiB chunks. See also the free [`copy`] function.
+    /// in 1 MiB chunks. See also the free [`copy`] function.
     fn copy_to(&mut self, dst: &mut dyn Io) -> Result<u64, IoError> {
         if self.as_slice().is_some() {
             // Fast path: hand the remaining slice straight to the sink, then
@@ -705,10 +667,9 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// Path-backed handles override this to use the file name (and cache it).
     /// Only present under the `media` feature.
     #[cfg(feature = "media")]
-    fn media_type(&self) -> Option<yggdryl_media::MediaType> {
+    fn media_type(&self) -> Option<crate::MediaType> {
         let head = self.as_slice()?;
-        yggdryl_media::MimeType::from_magic(head)
-            .map(|mime| yggdryl_media::MediaType::new(vec![mime]))
+        crate::MimeType::from_magic(head).map(|mime| crate::MediaType::new(vec![mime]))
     }
 
     /// Parses the handle's full contents as JSON. A memory-resident backend is
@@ -750,7 +711,7 @@ fn scheme_registry() -> &'static RwLock<HashMap<String, SchemeOpener>> {
 /// Registers `opener` as the [`Io`] factory for a URL `scheme` (lower-cased), so
 /// [`from_uri`] dispatches that scheme to it. Idempotent per scheme (the latest
 /// registration wins). This is how `yggdryl-http` plugs `http`/`https` into the
-/// universal [`from_str`] factory without `yggdryl-io` depending on it.
+/// universal [`from_str`] factory without `yggdryl-core` depending on it.
 pub fn register_scheme(scheme: &str, opener: SchemeOpener) {
     log_event!(info, "Io::register_scheme {scheme}");
     scheme_registry()
@@ -794,14 +755,15 @@ pub fn from_url(url: &Url) -> Result<Box<dyn Io>, IoError> {
 /// [`from_uri`]). The one-line "give me a handle for this location" entry point.
 ///
 /// ```
-/// use yggdryl_io::{from_str, Io};
+/// use yggdryl_core::{from_str, Io};
 ///
 /// // A bare path resolves to a local file handle.
 /// let handle = from_str("/etc/hostname");
 /// assert!(handle.is_ok());
 /// ```
 pub fn from_str(input: &str) -> Result<Box<dyn Io>, IoError> {
-    let uri = Uri::from_str(input).map_err(|err| IoError::Invalid(format!("invalid location: {err}")))?;
+    let uri =
+        Uri::from_str(input).map_err(|err| IoError::Invalid(format!("invalid location: {err}")))?;
     from_uri(&uri)
 }
 
@@ -879,7 +841,7 @@ impl<T: Io + ?Sized> Io for &mut T {
         (**self).copy_to(dst)
     }
     #[cfg(feature = "media")]
-    fn media_type(&self) -> Option<yggdryl_media::MediaType> {
+    fn media_type(&self) -> Option<crate::MediaType> {
         (**self).media_type()
     }
     #[cfg(feature = "json")]
@@ -962,7 +924,7 @@ impl<T: Io + ?Sized> Io for Box<T> {
         (**self).copy_to(dst)
     }
     #[cfg(feature = "media")]
-    fn media_type(&self) -> Option<yggdryl_media::MediaType> {
+    fn media_type(&self) -> Option<crate::MediaType> {
         (**self).media_type()
     }
     #[cfg(feature = "json")]
@@ -975,7 +937,7 @@ impl<T: Io + ?Sized> Io for Box<T> {
 /// the count read when `advance` (so a cursor past the end stays put). Shared by
 /// the Python-style `read` helpers of [`BytesIO`] and [`LocalPath`], so both
 /// behave identically with streaming on or off.
-fn read_cursor(data: &[u8], cursor: &mut usize, end: usize, advance: bool) -> Vec<u8> {
+pub(crate) fn read_cursor(data: &[u8], cursor: &mut usize, end: usize, advance: bool) -> Vec<u8> {
     let start = (*cursor).min(data.len());
     let end = end.clamp(start, data.len());
     if advance {
@@ -987,839 +949,13 @@ fn read_cursor(data: &[u8], cursor: &mut usize, end: usize, advance: bool) -> Ve
 /// Reads from `cursor` through the next `\n` (inclusive) or to the end of `data`,
 /// advancing `cursor` when `advance`. Shared `read_line` for [`BytesIO`] and
 /// [`LocalPath`].
-fn read_line_cursor(data: &[u8], cursor: &mut usize, advance: bool) -> Vec<u8> {
+pub(crate) fn read_line_cursor(data: &[u8], cursor: &mut usize, advance: bool) -> Vec<u8> {
     let start = (*cursor).min(data.len());
     let end = data[start..]
         .iter()
         .position(|&byte| byte == b'\n')
         .map_or(data.len(), |offset| start + offset + 1);
     read_cursor(data, cursor, end, advance)
-}
-
-/// A simple in-memory byte buffer with a cursor, modelled on Python's
-/// `io.BytesIO`: a read/write [`Io`] handle, so it plugs straight into any
-/// [`Codec`] and exposes its bytes for zero-copy [`copy`].
-///
-/// A `BytesIO` owns a [`Vec<u8>`] and a `position` cursor; [`seek`](BytesIO::seek)
-/// / [`tell`](BytesIO::tell) move and read that cursor, [`getvalue`](BytesIO::getvalue)
-/// borrows the whole buffer, and writes past the end zero-fill the gap (as in
-/// Python).
-///
-/// The [`stream`](BytesIO::stream) flag governs the **Python-style** helpers
-/// [`read`](BytesIO::read) / [`read_line`](BytesIO::read_line) /
-/// [`write`](BytesIO::write): when `true` (the default) they advance the cursor,
-/// replicating Python's stateful streaming; when `false` the cursor stays put
-/// for random access. The lower-level [`Io::read`] / [`Io::write`] primitives
-/// always advance, so codecs work whatever the flag.
-///
-/// ```
-/// use yggdryl_io::{BytesIO, Whence};
-///
-/// let mut io = BytesIO::from_bytes(b"hello world".to_vec());
-/// assert_eq!(io.read(Some(5)), b"hello");
-/// assert_eq!(io.tell(), 5);
-/// io.seek(6, Whence::Start).unwrap();
-/// assert_eq!(io.read(None), b"world");
-/// ```
-#[derive(Debug)]
-pub struct BytesIO {
-    buffer: Vec<u8>,
-    position: usize,
-    stream: bool,
-    mode: Mode,
-    parent: Option<Box<dyn Io>>,
-}
-
-impl Default for BytesIO {
-    fn default() -> BytesIO {
-        BytesIO::new()
-    }
-}
-
-impl BytesIO {
-    /// Creates an empty buffer with the cursor at `0` and streaming on.
-    pub fn new() -> BytesIO {
-        BytesIO::from_bytes(Vec::new())
-    }
-
-    /// Creates an empty buffer that can hold `capacity` bytes before
-    /// reallocating — the preallocating constructor for write-heavy use.
-    pub fn with_capacity(capacity: usize) -> BytesIO {
-        BytesIO::from_bytes(Vec::with_capacity(capacity))
-    }
-
-    /// Wraps existing `bytes`, with the cursor at the start, streaming on, mode
-    /// [`Read`](Mode::Read) and no parent.
-    pub fn from_bytes(bytes: impl Into<Vec<u8>>) -> BytesIO {
-        BytesIO {
-            buffer: bytes.into(),
-            position: 0,
-            stream: true,
-            mode: Mode::Read,
-            parent: None,
-        }
-    }
-
-    /// Opens a new in-memory handle derived from this one, recording `self` as
-    /// the child's [`parent`](Io::parent) and applying `mode` and `stream`.
-    ///
-    /// The child's initial state follows `mode`, as in Python `open`:
-    /// [`Write`](Mode::Write) starts empty (truncated), [`Append`](Mode::Append)
-    /// copies the bytes with the cursor at the end, and [`Read`](Mode::Read) /
-    /// [`ReadWrite`](Mode::ReadWrite) copy the bytes with the cursor at the start.
-    pub fn open(self, mode: Mode, stream: bool) -> BytesIO {
-        log_event!(debug, "BytesIO::open mode={mode} stream={stream}");
-        let bytes = self.buffer.clone();
-        BytesIO::derived(bytes, mode, stream, Box::new(self))
-    }
-
-    /// Builds a derived in-memory handle over `bytes`, applying `mode`
-    /// ([`Write`](Mode::Write) truncates, [`Append`](Mode::Append) seeks to the
-    /// end, otherwise the cursor starts at `0`) and `stream`, with `parent`
-    /// recorded. Shared by [`open`](BytesIO::open) and [`LocalPath`]'s
-    /// [`Io::open`].
-    fn derived(bytes: Vec<u8>, mode: Mode, stream: bool, parent: Box<dyn Io>) -> BytesIO {
-        let buffer = if mode == Mode::Write {
-            Vec::new()
-        } else {
-            bytes
-        };
-        let position = if mode == Mode::Append {
-            buffer.len()
-        } else {
-            0
-        };
-        BytesIO {
-            buffer,
-            position,
-            stream,
-            mode,
-            parent: Some(parent),
-        }
-    }
-
-    /// Whether the Python-style [`read`](BytesIO::read) / [`read_line`](BytesIO::read_line)
-    /// / [`write`](BytesIO::write) helpers advance the cursor.
-    pub fn stream(&self) -> bool {
-        self.stream
-    }
-
-    /// Sets the [`stream`](BytesIO::stream) flag.
-    pub fn set_stream(&mut self, stream: bool) {
-        log_event!(debug, "BytesIO::set_stream {stream}");
-        self.stream = stream;
-    }
-
-    /// The current cursor position.
-    pub fn tell(&self) -> usize {
-        self.position
-    }
-
-    /// The total number of bytes held, regardless of the cursor.
-    pub fn len(&self) -> usize {
-        self.buffer.len()
-    }
-
-    /// Whether the buffer holds no bytes.
-    pub fn is_empty(&self) -> bool {
-        self.buffer.is_empty()
-    }
-
-    /// The number of bytes between the cursor and the end of the buffer.
-    pub fn remaining(&self) -> usize {
-        self.buffer.len().saturating_sub(self.position)
-    }
-
-    /// Borrows the whole buffer, ignoring the cursor (the inverse of
-    /// [`from_bytes`](BytesIO::from_bytes)).
-    pub fn getvalue(&self) -> &[u8] {
-        &self.buffer
-    }
-
-    /// Reads up to `size` bytes from the cursor, or all remaining bytes when
-    /// `size` is `None`. Advances the cursor when [`stream`](BytesIO::stream).
-    pub fn read(&mut self, size: Option<usize>) -> Vec<u8> {
-        log_event!(trace, "BytesIO::read {size:?} at {}", self.position);
-        let end = match size {
-            Some(n) => self.position.saturating_add(n),
-            None => self.buffer.len(),
-        };
-        read_cursor(&self.buffer, &mut self.position, end, self.stream)
-    }
-
-    /// Reads from the cursor through the next `\n` (inclusive), or to the end of
-    /// the buffer. Advances the cursor when [`stream`](BytesIO::stream).
-    pub fn read_line(&mut self) -> Vec<u8> {
-        read_line_cursor(&self.buffer, &mut self.position, self.stream)
-    }
-
-    /// Writes `bytes` at the cursor, overwriting any overlap and extending (zero-
-    /// filling any gap) as needed. Returns the count written and advances the
-    /// cursor when [`stream`](BytesIO::stream).
-    pub fn write(&mut self, bytes: &[u8]) -> usize {
-        log_event!(
-            trace,
-            "BytesIO::write {} bytes at {}",
-            bytes.len(),
-            self.position
-        );
-        self.put(bytes, self.stream)
-    }
-
-    /// Moves the cursor to `offset` relative to `whence`, returning the new
-    /// position. Seeking past the end is allowed (a later write zero-fills the
-    /// gap); seeking before the start fails with [`IoError::Invalid`].
-    pub fn seek(&mut self, offset: i64, whence: Whence) -> Result<usize, IoError> {
-        log_event!(trace, "BytesIO::seek {offset} from {whence:?}");
-        let base = match whence {
-            Whence::Start => 0,
-            Whence::Current => self.position as i64,
-            Whence::End => self.buffer.len() as i64,
-        };
-        let target = base
-            .checked_add(offset)
-            .ok_or_else(|| IoError::Invalid(format!("seek offset {offset} overflows")))?;
-        if target < 0 {
-            return Err(IoError::Invalid(format!(
-                "seek to {target} is before the start"
-            )));
-        }
-        self.position = target as usize;
-        Ok(self.position)
-    }
-
-    /// Resizes the buffer to `size` bytes (the current cursor when `None`),
-    /// returning the new length. Shrinks (drops the tail) or grows (zero-fills),
-    /// leaving the cursor where it is, as in Python.
-    pub fn truncate(&mut self, size: Option<usize>) -> usize {
-        let size = size.unwrap_or(self.position);
-        log_event!(debug, "BytesIO::truncate to {size}");
-        self.resize(size);
-        self.buffer.len()
-    }
-
-    /// Resizes the backing buffer to exactly `size`, growing (zero-fill) or
-    /// shrinking. Shared by [`truncate`](BytesIO::truncate) and [`Io::truncate`].
-    fn resize(&mut self, size: usize) {
-        if size > self.buffer.len() {
-            self.buffer.resize(size, 0);
-        } else {
-            self.buffer.truncate(size);
-        }
-    }
-
-    /// Empties the buffer and resets the cursor to `0`.
-    pub fn clear(&mut self) {
-        self.buffer.clear();
-        self.position = 0;
-    }
-
-    /// No-op flush, present for parity with Python's `io` API.
-    pub fn flush(&mut self) {}
-
-    /// Writes `bytes` at the cursor, zero-filling any gap and extending as needed,
-    /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write)
-    /// and [`Io::write`].
-    fn put(&mut self, bytes: &[u8], advance: bool) -> usize {
-        let start = self.position;
-        let end = start + bytes.len();
-        if self.buffer.len() < end {
-            self.buffer.resize(end, 0);
-        }
-        self.buffer[start..end].copy_from_slice(bytes);
-        if advance {
-            self.position = end;
-        }
-        bytes.len()
-    }
-}
-
-impl Io for BytesIO {
-    /// `mem://<buffer-address>` — the `mem` scheme with the hex address of the
-    /// backing bytes, so every in-memory handle still has a stable-shape URL.
-    fn url(&self) -> Url {
-        Url::new("mem", format!("{:x}", self.buffer.as_ptr() as usize))
-    }
-
-    fn stats(&self) -> Result<IoStats, IoError> {
-        Ok(IoStats::new(self.buffer.len() as u64))
-    }
-
-    /// Delegates to the Python-style [`seek`](BytesIO::seek), widening to `u64`.
-    fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
-        BytesIO::seek(self, offset, whence).map(|position| position as u64)
-    }
-
-    fn stream_position(&self) -> u64 {
-        self.position as u64
-    }
-
-    fn stream_len(&self) -> Option<u64> {
-        Some(self.buffer.len() as u64)
-    }
-
-    fn mode(&self) -> Mode {
-        self.mode
-    }
-
-    fn stream(&self) -> bool {
-        self.stream
-    }
-
-    fn set_stream(&mut self, stream: bool) {
-        self.stream = stream;
-    }
-
-    fn parent(&self) -> Option<&dyn Io> {
-        self.parent.as_deref()
-    }
-
-    /// Opens a derived in-memory handle (see [`BytesIO::open`]).
-    fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
-        Ok(Box::new((*self).open(mode, stream)))
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(&self.buffer)
-    }
-
-    /// Writes `bytes` at the cursor, advancing it — the in-memory streamed write.
-    fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
-        Ok(self.put(bytes, true))
-    }
-
-    /// Positional write into the buffer, overwriting and zero-filling as needed.
-    /// [`Whence::Current`] advances the cursor; otherwise it is left put.
-    fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
-        let start = resolve(
-            self.position as u64,
-            Some(self.buffer.len() as u64),
-            offset,
-            whence,
-        )? as usize;
-        let saved = self.position;
-        self.position = start;
-        let count = self.put(bytes, true);
-        if !matches!(whence, Whence::Current) {
-            self.position = saved;
-        }
-        Ok(count)
-    }
-
-    /// The reserved capacity of the backing [`Vec<u8>`].
-    fn capacity(&self) -> usize {
-        self.buffer.capacity()
-    }
-
-    /// Reserves room for `additional` more bytes in the backing buffer.
-    fn reserve_capacity(&mut self, additional: usize) -> Result<(), IoError> {
-        self.buffer.reserve(additional);
-        Ok(())
-    }
-
-    /// Resizes the buffer to `size` bytes (grow zero-fills, shrink drops the
-    /// tail); the cursor is left where it is.
-    fn truncate(&mut self, size: u64) -> Result<(), IoError> {
-        self.resize(size as usize);
-        Ok(())
-    }
-}
-
-/// A **local, hierarchical** named byte resource — a *location* in a directory
-/// tree that is itself an [`Io`] handle once constructed. [`LocalPath`] is the
-/// filesystem implementation. For remote object stores see [`RemotePath`].
-///
-/// ## Directory contract (auto-create, lazily)
-///
-/// A `Path` writes into a directory hierarchy, so a write target's parent may not
-/// exist yet. Implementations **auto-create missing parent directories**, but do
-/// so the cheap way: they do *not* check whether the directory exists before
-/// every write. They attempt the write, and only when it fails because a parent
-/// is missing do they create the tree once and retry. The common case (the
-/// directory already exists) therefore pays no `exists` probe — see
-/// [`LocalPath::write`].
-pub trait Path: Io {
-    /// The resource location (a filesystem path).
-    fn location(&self) -> &str;
-
-    /// Whether the resource currently exists / is reachable.
-    fn exists(&self) -> bool;
-}
-
-/// A **remote, URL-addressed** named byte resource — the cloud sibling of
-/// [`Path`].
-///
-/// Object stores (S3, Azure, GCS) and HTTP endpoints are addressed by URL (the
-/// universal [`Io::url`]) and have **no directory hierarchy**: keys are flat, so
-/// — unlike a [`Path`] — a write never creates parent directories; the object is
-/// created directly. Reads are range-based through [`Io::pread`]. Network SDKs
-/// are heavy, so concrete remote paths live in downstream crates that implement
-/// this trait; nothing in `yggdryl-io` pulls them in.
-pub trait RemotePath: Io {
-    /// Whether the object currently exists (a metadata / `HEAD` probe).
-    fn exists(&self) -> bool;
-}
-
-/// How a [`LocalPath`] holds its bytes: a memory map (zero-copy, `mmap` feature)
-/// or an eagerly-read buffer.
-#[derive(Debug)]
-enum Backing {
-    Buffered(Vec<u8>),
-    #[cfg(feature = "mmap")]
-    Mapped(memmap2::Mmap),
-}
-
-impl Backing {
-    /// The backing bytes, however they are held.
-    fn bytes(&self) -> &[u8] {
-        match self {
-            Backing::Buffered(buffer) => buffer,
-            #[cfg(feature = "mmap")]
-            Backing::Mapped(map) => map,
-        }
-    }
-}
-
-/// Stats `location` into [`IoStats`] (kind / size / mtime), reporting
-/// [`Kind::Missing`] when it is absent or unreachable. Never opens the file.
-fn stat_path(location: &str) -> IoStats {
-    match fs::metadata(location) {
-        Err(_) => IoStats::new(0).with_kind(Kind::Missing),
-        Ok(meta) => {
-            let kind = if meta.is_dir() {
-                Kind::Directory
-            } else if meta.is_file() {
-                Kind::File
-            } else {
-                Kind::Other
-            };
-            let mut stats = IoStats::new(meta.len()).with_kind(kind);
-            if let Ok(mtime) = meta.modified() {
-                stats = stats.with_mtime(mtime);
-            }
-            stats
-        }
-    }
-}
-
-/// Loads the bytes of `location` for reading — memory-mapped under the `mmap`
-/// feature, otherwise buffered. Non-files (and any failure) yield empty bytes.
-fn load_backing(location: &str, stats: &IoStats) -> Backing {
-    if !stats.is_file() {
-        return Backing::Buffered(Vec::new());
-    }
-    #[cfg(feature = "mmap")]
-    {
-        if stats.size() == 0 {
-            return Backing::Buffered(Vec::new());
-        }
-        // SAFETY: we map a file we open read-only here. The standard mmap caveat
-        // applies — external truncation while mapped is undefined — and is the
-        // caller's responsibility for the paths they hand us.
-        match fs::File::open(location).and_then(|file| unsafe { memmap2::Mmap::map(&file) }) {
-            Ok(map) => Backing::Mapped(map),
-            Err(_) => Backing::Buffered(Vec::new()),
-        }
-    }
-    #[cfg(not(feature = "mmap"))]
-    {
-        fs::read(location)
-            .map(Backing::Buffered)
-            .unwrap_or_else(|_| Backing::Buffered(Vec::new()))
-    }
-}
-
-/// A local filesystem [`Path`] **instance**.
-///
-/// [`open`](LocalPath::open) stats `location` up front — so [`url`](Io::url),
-/// [`stats`](Io::stats), the [`kind`](IoStats::kind) and [`location`](Path::location)
-/// are held and ready immediately — and never fails: a missing path yields a
-/// handle whose stats report [`Kind::Missing`]. The file's bytes are
-/// memory-mapped **lazily**, on the first read (zero-copy under the `mmap`
-/// feature, otherwise a buffered read), so a pure stat costs no map.
-///
-/// The mapped view is read-only; use the instance [`write`](LocalPath::write) to
-/// create or overwrite the file.
-#[derive(Debug)]
-pub struct LocalPath {
-    location: String,
-    url: Url,
-    stats: IoStats,
-    backing: std::sync::OnceLock<Backing>,
-    position: usize,
-    stream: bool,
-    #[cfg(feature = "media")]
-    media: std::sync::OnceLock<Option<yggdryl_media::MediaType>>,
-}
-
-impl LocalPath {
-    /// Creates a handle for `location`, statting it up front (so `url` / `stats`
-    /// are held) and deferring the memory-map to the first read. Infallible — a
-    /// missing path is reported through [`stats`](Io::stats) as [`Kind::Missing`].
-    pub fn open(location: impl Into<String>) -> LocalPath {
-        let location = location.into();
-        log_event!(debug, "LocalPath::open {location:?}");
-        let url = Url::new("file", "").with_path(location.clone());
-        let stats = stat_path(&location);
-        LocalPath {
-            location,
-            url,
-            stats,
-            backing: std::sync::OnceLock::new(),
-            position: 0,
-            stream: true,
-            #[cfg(feature = "media")]
-            media: std::sync::OnceLock::new(),
-        }
-    }
-
-    /// The lazily memory-mapped (or buffered) bytes, loaded on first access.
-    fn bytes(&self) -> &[u8] {
-        self.backing
-            .get_or_init(|| load_backing(&self.location, &self.stats))
-            .bytes()
-    }
-
-    /// Whether the Python-style [`read`](LocalPath::read) / [`read_line`](LocalPath::read_line)
-    /// helpers advance the cursor (the same flag as [`BytesIO::stream`]).
-    pub fn stream(&self) -> bool {
-        self.stream
-    }
-
-    /// Sets the [`stream`](LocalPath::stream) flag.
-    pub fn set_stream(&mut self, stream: bool) {
-        self.stream = stream;
-    }
-
-    /// The current cursor position.
-    pub fn tell(&self) -> usize {
-        self.position
-    }
-
-    /// The total number of bytes, regardless of the cursor.
-    pub fn len(&self) -> usize {
-        self.stats.size() as usize
-    }
-
-    /// Whether the file holds no bytes.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// The number of bytes between the cursor and the end.
-    pub fn remaining(&self) -> usize {
-        self.len().saturating_sub(self.position)
-    }
-
-    /// Borrows the whole (lazily-mapped) contents, ignoring the cursor.
-    pub fn getvalue(&self) -> &[u8] {
-        self.bytes()
-    }
-
-    /// Reads up to `size` bytes from the cursor, or all remaining bytes when
-    /// `size` is `None`. Advances the cursor when [`stream`](LocalPath::stream) —
-    /// matching [`BytesIO::read`].
-    pub fn read(&mut self, size: Option<usize>) -> Vec<u8> {
-        let data = self
-            .backing
-            .get_or_init(|| load_backing(&self.location, &self.stats));
-        let bytes = data.bytes();
-        let end = match size {
-            Some(n) => self.position.saturating_add(n),
-            None => bytes.len(),
-        };
-        read_cursor(bytes, &mut self.position, end, self.stream)
-    }
-
-    /// Reads from the cursor through the next `\n` (inclusive), or to the end.
-    /// Advances the cursor when [`stream`](LocalPath::stream).
-    pub fn read_line(&mut self) -> Vec<u8> {
-        let bytes = self
-            .backing
-            .get_or_init(|| load_backing(&self.location, &self.stats))
-            .bytes();
-        read_line_cursor(bytes, &mut self.position, self.stream)
-    }
-
-    /// Moves the cursor to `offset` relative to `whence`, returning the new
-    /// position — matching [`BytesIO::seek`].
-    pub fn seek(&mut self, offset: i64, whence: Whence) -> Result<usize, IoError> {
-        Io::seek(self, offset, whence).map(|position| position as usize)
-    }
-
-    /// Writes `bytes` to this path, creating or truncating the file and
-    /// **auto-creating missing parent directories**.
-    ///
-    /// This follows the [`Path`] contract: it does *not* stat the directory first.
-    /// It writes straight away, and only when the write fails because a parent is
-    /// missing does it create the tree once and retry. The held
-    /// [`stats`](Io::stats) keep their open-time values; re-[`open`](LocalPath::open)
-    /// to observe the new content.
-    pub fn write(&self, bytes: &[u8]) -> Result<(), IoError> {
-        log_event!(
-            info,
-            "LocalPath::write {} bytes -> {:?}",
-            bytes.len(),
-            self.location
-        );
-        match fs::write(&self.location, bytes) {
-            Ok(()) => Ok(()),
-            // The directory was missing: create it once, then retry the write.
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = std::path::Path::new(&self.location).parent();
-                if let Some(parent) = parent.filter(|p| !p.as_os_str().is_empty()) {
-                    log_event!(debug, "LocalPath::write creating parent dir {parent:?}");
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&self.location, bytes)?;
-                Ok(())
-            }
-            Err(error) => Err(error.into()),
-        }
-    }
-}
-
-impl Io for LocalPath {
-    /// `file://<path>` — held since construction.
-    fn url(&self) -> Url {
-        self.url.clone()
-    }
-
-    /// The metadata held since [`open`](LocalPath::open) (plus a lazily-discovered
-    /// `media_type` under the `media` feature).
-    fn stats(&self) -> Result<IoStats, IoError> {
-        let stats = self.stats.clone();
-        #[cfg(feature = "media")]
-        if let Some(media_type) = self.media_type() {
-            return Ok(stats.with_media_type(media_type));
-        }
-        Ok(stats)
-    }
-
-    fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
-        let len = self.stats.size() as i64;
-        let base = match whence {
-            Whence::Start => 0,
-            Whence::Current => self.position as i64,
-            Whence::End => len,
-        };
-        let target = base
-            .checked_add(offset)
-            .ok_or_else(|| IoError::Invalid(format!("seek offset {offset} overflows")))?;
-        if target < 0 {
-            return Err(IoError::Invalid(format!(
-                "seek to {target} is before the start"
-            )));
-        }
-        self.position = target as usize;
-        Ok(self.position as u64)
-    }
-
-    fn stream_position(&self) -> u64 {
-        self.position as u64
-    }
-
-    fn stream_len(&self) -> Option<u64> {
-        Some(self.stats.size())
-    }
-
-    fn stream(&self) -> bool {
-        self.stream
-    }
-
-    fn set_stream(&mut self, stream: bool) {
-        self.stream = stream;
-    }
-
-    /// Opens an in-memory [`BytesIO`] handle over this file's bytes, recording the
-    /// path as its [`parent`](Io::parent) and applying `mode` / `stream` — so a
-    /// `LocalPath` and a `BytesIO` `open` the same way.
-    fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
-        let bytes = self.as_slice().unwrap_or_default().to_vec();
-        Ok(Box::new(BytesIO::derived(bytes, mode, stream, self)))
-    }
-
-    fn as_slice(&self) -> Option<&[u8]> {
-        Some(
-            self.backing
-                .get_or_init(|| load_backing(&self.location, &self.stats))
-                .bytes(),
-        )
-    }
-
-    /// Infers the media type from the file name (cheap, by extension) and falls
-    /// back to sniffing the mapped magic bytes; the result is cached so repeated
-    /// calls are free.
-    #[cfg(feature = "media")]
-    fn media_type(&self) -> Option<yggdryl_media::MediaType> {
-        self.media
-            .get_or_init(|| {
-                let by_name = yggdryl_media::MediaType::from_path(&self.location);
-                if !by_name.is_empty() {
-                    Some(by_name)
-                } else {
-                    let bytes = self
-                        .backing
-                        .get_or_init(|| load_backing(&self.location, &self.stats))
-                        .bytes();
-                    yggdryl_media::MimeType::from_magic(bytes)
-                        .map(|mime| yggdryl_media::MediaType::new(vec![mime]))
-                }
-            })
-            .clone()
-    }
-}
-
-impl Path for LocalPath {
-    fn location(&self) -> &str {
-        &self.location
-    }
-
-    fn exists(&self) -> bool {
-        std::path::Path::new(&self.location).exists()
-    }
-}
-
-/// The abstract **typed codec**: read and write values of `T` across the byte
-/// primitives, in one of three shapes.
-///
-/// An implementor provides exactly two methods — [`read_opt`](Codec::read_opt),
-/// which decodes one `T` (or `None` at a clean end of input), and
-/// [`write`](Codec::write), which encodes one `T`. The rest is derived:
-///
-/// - single value — [`read`](Codec::read), which turns a clean end of input into
-///   an [`IoError::UnexpectedEof`];
-/// - many values — [`stream`](Codec::stream), an iterator that reads until the
-///   source drains.
-///
-/// A codec composes with any [`Io`] handle: a `Codec<RecordBatch>` reads batches
-/// straight out of a [`BytesIO`], a [`LocalPath`], or a cloud path alike — they are
-/// all [`Io`], the one byte handle.
-///
-/// ```
-/// use yggdryl_io::{BytesIO, Codec, Frames, Io, Whence};
-///
-/// let mut io = BytesIO::new();
-/// Frames.write(&mut io, &b"payload".to_vec()).unwrap();
-/// io.seek(0, Whence::Start).unwrap();
-/// assert_eq!(Frames.read(&mut io).unwrap(), b"payload".to_vec());
-/// ```
-pub trait Codec<T> {
-    /// Reads the next value, or `Ok(None)` when the source is cleanly drained at
-    /// a value boundary. This is the one read primitive an implementor defines.
-    fn read_opt(&self, reader: &mut dyn Io) -> Result<Option<T>, IoError>;
-
-    /// Writes one value to the sink.
-    fn write(&self, writer: &mut dyn Io, value: &T) -> Result<(), IoError>;
-
-    /// Reads exactly one value, treating a clean end of input as an error.
-    fn read(&self, reader: &mut dyn Io) -> Result<T, IoError> {
-        self.read_opt(reader)?.ok_or(IoError::UnexpectedEof)
-    }
-
-    /// Returns an iterator that reads values from `reader` until it drains,
-    /// yielding `Result<T, IoError>` for each.
-    fn stream<R: Io>(&self, reader: R) -> Stream<'_, Self, R, T>
-    where
-        Self: Sized,
-    {
-        Stream {
-            codec: self,
-            reader,
-            _marker: PhantomData,
-        }
-    }
-}
-
-/// Iterator returned by [`Codec::stream`]: pulls one value per step from a
-/// borrowed codec and an owned byte source, ending when the source is cleanly
-/// drained.
-pub struct Stream<'codec, C, R, T> {
-    codec: &'codec C,
-    reader: R,
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<C, R, T> Iterator for Stream<'_, C, R, T>
-where
-    C: Codec<T>,
-    R: Io,
-{
-    type Item = Result<T, IoError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.codec.read_opt(&mut self.reader) {
-            Ok(Some(value)) => Some(Ok(value)),
-            Ok(None) => None,
-            Err(error) => Some(Err(error)),
-        }
-    }
-}
-
-/// The reference [`Codec`] implementation: **length-delimited byte frames**.
-///
-/// Each value is written as a big-endian `u32` byte length followed by that many
-/// payload bytes, so frames pack back to back and a [`stream`](Codec::stream)
-/// reads them out one at a time until the source drains.
-///
-/// ```
-/// use yggdryl_io::{BytesIO, Codec, Frames};
-///
-/// let mut sink = BytesIO::new();
-/// Frames.write(&mut sink, &b"hi".to_vec()).unwrap();
-/// assert_eq!(sink.getvalue(), &[0, 0, 0, 2, b'h', b'i']);
-/// ```
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Frames;
-
-impl Codec<Vec<u8>> for Frames {
-    fn read_opt(&self, reader: &mut dyn Io) -> Result<Option<Vec<u8>>, IoError> {
-        log_event!(trace, "Frames::read_opt");
-        // Read the 4-byte length prefix. Zero bytes at the very start is a clean
-        // end of the stream; a partial prefix is a truncated frame.
-        let mut prefix = [0u8; 4];
-        let mut filled = 0;
-        while filled < prefix.len() {
-            let count = reader.read(&mut prefix[filled..])?;
-            if count == 0 {
-                if filled == 0 {
-                    log_event!(debug, "Frames::read_opt reached end of stream");
-                    return Ok(None);
-                }
-                return Err(IoError::UnexpectedEof);
-            }
-            filled += count;
-        }
-        // Read the payload directly into the output, growing in bounded steps:
-        // an honest frame takes a single allocation and a single copy, while a
-        // malformed prefix (e.g. claiming 4 GiB with no body) fails fast having
-        // reserved at most one step instead of gigabytes up front.
-        const GROWTH_STEP: usize = 1 << 20;
-        let len = u32::from_be_bytes(prefix) as usize;
-        let mut payload = Vec::new();
-        let mut filled = 0;
-        while filled < len {
-            let target = len.min(filled + GROWTH_STEP);
-            payload.resize(target, 0);
-            while filled < target {
-                let count = reader.read(&mut payload[filled..target])?;
-                if count == 0 {
-                    return Err(IoError::UnexpectedEof);
-                }
-                filled += count;
-            }
-        }
-        Ok(Some(payload))
-    }
-
-    fn write(&self, writer: &mut dyn Io, value: &Vec<u8>) -> Result<(), IoError> {
-        log_event!(trace, "Frames::write {} bytes", value.len());
-        let len = u32::try_from(value.len())
-            .map_err(|_| IoError::Invalid(format!("frame of {} bytes exceeds u32", value.len())))?;
-        writer.write_all(&len.to_be_bytes())?;
-        writer.write_all(value)?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -2602,7 +1738,10 @@ mod tests {
 
     #[test]
     fn from_str_rejects_mem_and_unknown_schemes() {
-        assert!(matches!(from_str("mem://abc"), Err(IoError::Unsupported(_))));
+        assert!(matches!(
+            from_str("mem://abc"),
+            Err(IoError::Unsupported(_))
+        ));
         assert!(matches!(
             from_str("ftp://host/x"),
             Err(IoError::Unsupported(_))

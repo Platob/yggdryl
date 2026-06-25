@@ -9,7 +9,7 @@ top of [`Io`](io.md). The codecs ship **on by default**; opt out with
 `Compression` is `None` / `Gzip` / `Zstd` / `Snappy`:
 
 ```rust
-use yggdryl_compression::Compression;
+use yggdryl_core::Compression;
 
 let codec = Compression::from_str("zstd")?;      // "gzip"/"gz", "zstd"/"zst", "snappy"/"snap"/"sz"
 assert_eq!(codec.as_str(), "zstd");
@@ -30,8 +30,8 @@ without buffering the whole payload — the `Io`-stream path measures identical 
 the one-shot path (zero abstraction overhead).
 
 ```rust
-use yggdryl_compression::{Compression, CompressIo};
-use yggdryl_io::{BytesIO, Io};
+use yggdryl_core::{Compression, CompressIo};
+use yggdryl_core::{BytesIO, Io};
 
 // `compress` / `decompress` are added to *every* Io handle.
 let mut data = BytesIO::from_bytes(b"a long, very repetitive payload ".repeat(64));

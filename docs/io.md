@@ -34,8 +34,14 @@ large columnar payloads (Parquet / CSV / JSON) this stack underpins.
 - **`HttpStream`** — a seekable remote body (see [HTTP](http.md)).
 - *(downstream)* cloud object stores implement `RemotePath: Io`.
 
+The `from_str` / `from_url` / `from_uri` **factory** picks the backend for a
+location by URL scheme — a bare path or `file://` opens a `LocalPath`, `http` /
+`https` a remote body. The bindings surface its local branch as a module-level
+`open(location)` (Python `yggdryl.open(path)`, Node `open(path)`); remote schemes
+go through `HttpSession`.
+
 ```rust
-use yggdryl_io::{BytesIO, Io, Whence};
+use yggdryl_core::{BytesIO, Io, Whence};
 
 let mut io = BytesIO::from_bytes(b"0123456789".to_vec());
 let mut tail = [0u8; 4];

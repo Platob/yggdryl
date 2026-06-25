@@ -1,19 +1,36 @@
 //! The connection-pooling [`HttpSession`] and the concurrent [`send_many`] support.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use yggdryl_io::{BytesIO, Io};
+use yggdryl_core::{BytesIO, Io};
 
 use crate::bridge::IoBridge;
+use crate::cookies::{Cookie, HttpCookies};
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
+use crate::redirect::{self, DEFAULT_MAX_REDIRECTS};
 use crate::request::{Body, HttpRequest};
 use crate::response::HttpResponse;
 use crate::retry::{RetryConfig, DEFAULT_POOL};
 use crate::stream::HttpStream;
 use crate::time::{now_secs, Instant};
+
+/// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
+/// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
+/// (`max_redirects(0)`) so the 3xx surfaces to our [`redirect`](crate::redirect)
+/// layer, which owns method/body/cookie/security semantics.
+fn build_agent(max_pool: usize) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .max_idle_connections(max_pool)
+        .max_idle_connections_per_host(max_pool)
+        .build()
+        .into()
+}
 
 /// A connection-pooling HTTP client, like `requests.Session`: it reuses
 /// connections across requests and carries default headers applied to each.
@@ -29,6 +46,11 @@ pub struct HttpSession {
     /// The live count of open [`HttpStream`]s (held connections), so extra streams
     /// past the pool size can drop keep-alive and not starve the pool.
     held: Arc<AtomicUsize>,
+    /// The maximum number of 3xx redirect hops followed before erroring.
+    max_redirects: usize,
+    /// The RFC 6265 cookie jar, consulted before every dispatch and fed every
+    /// response's `Set-Cookie`. Behind a [`Mutex`] since the session is shared `&self`.
+    cookies: Mutex<HttpCookies>,
 }
 
 impl HttpSession {
@@ -40,13 +62,11 @@ impl HttpSession {
     }
 
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
+        // Plug http/https into the yggdryl-io factory the first time a session is
+        // built, so `yggdryl_core::from_str("https://…")` works once this crate links.
+        crate::factory::register();
         let max_pool = max_pool.max(1);
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_idle_connections(max_pool)
-            .max_idle_connections_per_host(max_pool)
-            .build()
-            .into();
+        let agent = build_agent(max_pool);
         let max_concurrency = 8;
         HttpSession {
             agent,
@@ -56,6 +76,8 @@ impl HttpSession {
             batch_size: max_concurrency * 10,
             max_pool,
             held: Arc::new(AtomicUsize::new(0)),
+            max_redirects: DEFAULT_MAX_REDIRECTS,
+            cookies: Mutex::new(HttpCookies::new()),
         }
     }
 
@@ -94,12 +116,7 @@ impl HttpSession {
     /// pools keep more keep-alive connections warm (skipping TLS handshakes).
     pub fn with_pool_size(mut self, max_pool: usize) -> HttpSession {
         let max_pool = max_pool.max(1);
-        self.agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_idle_connections(max_pool)
-            .max_idle_connections_per_host(max_pool)
-            .build()
-            .into();
+        self.agent = build_agent(max_pool);
         self.max_pool = max_pool;
         self
     }
@@ -107,6 +124,41 @@ impl HttpSession {
     /// The idle-connection pool size.
     pub fn pool_size(&self) -> usize {
         self.max_pool
+    }
+
+    /// Sets the maximum number of 3xx redirect hops [`send`](HttpSession::send)
+    /// follows before raising [`HttpError::TooManyRedirects`] (default `10`). A
+    /// per-request opt-out is [`HttpRequest::with_allow_redirect`].
+    pub fn with_max_redirects(mut self, max_redirects: usize) -> HttpSession {
+        self.max_redirects = max_redirects;
+        self
+    }
+
+    /// The maximum number of 3xx redirect hops followed per request.
+    pub fn max_redirects(&self) -> usize {
+        self.max_redirects
+    }
+
+    /// A snapshot of the session's RFC 6265 cookie jar (cloned out from behind the
+    /// mutex), so a caller can inspect the stored cookies.
+    pub fn cookies(&self) -> HttpCookies {
+        self.cookies.lock().expect("cookie jar poisoned").clone()
+    }
+
+    /// Seeds a cookie into the session jar, scoped to `url`'s host (host-only) and
+    /// path `"/"`, so it is sent on matching requests. Ignores an empty `name`.
+    pub fn set_cookie(
+        &self,
+        url: &yggdryl_core::Url,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) {
+        if let Some(cookie) = Cookie::new(name, value, url) {
+            self.cookies
+                .lock()
+                .expect("cookie jar poisoned")
+                .set(cookie);
+        }
     }
 
     /// The number of [`HttpStream`]s currently holding a connection open.
@@ -169,6 +221,7 @@ impl HttpSession {
             url: request.url,
             headers,
             body: request.body,
+            allow_redirect: request.allow_redirect,
         }
     }
 
@@ -184,7 +237,7 @@ impl HttpSession {
     /// `stream` (`true` for the verb helpers and [`request`](HttpSession::request))
     /// keeps the live [`HttpStream`] as the body, read lazily/seekably off the
     /// connection; `false` drains the body into an in-memory
-    /// [`BytesIO`](yggdryl_io::BytesIO) before returning, releasing the connection
+    /// [`BytesIO`](yggdryl_core::BytesIO) before returning, releasing the connection
     /// immediately — the same accessors expose either body.
     pub fn send(
         &self,
@@ -194,14 +247,116 @@ impl HttpSession {
         stream: bool,
     ) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
+        // `sent_at` reflects the *first* dispatch across a redirect chain.
+        let mut sent_at: Option<f64> = None;
+        // Loop detection: a `(method, url)` seen twice is a cycle (RFC says stop).
+        let mut visited: HashSet<(Method, String)> = HashSet::new();
+
+        for hop in 0.. {
+            let allow_redirect = request.allow_redirect;
+            let key = (request.method, request.url.to_string());
+            if !visited.insert(key) {
+                return Err(HttpError::TooManyRedirects(format!(
+                    "redirect loop revisiting {} {}",
+                    request.method.as_str(),
+                    request.url
+                )));
+            }
+
+            // Snapshot the request shape *before* the jar's Cookie is applied, so a
+            // later hop re-derives the Cookie for its own host instead of resending
+            // this hop's value. A user-set per-request Cookie is already in the
+            // headers here and is preserved. Also capture the body's replayability
+            // and a replayable copy now, before dispatch consumes the body, so a
+            // 307/308 hop can preserve method + body (and refuse a consumed stream).
+            let previous = HttpRequest {
+                method: request.method,
+                url: request.url.clone(),
+                headers: request.headers.clone(),
+                body: Body::Empty,
+                allow_redirect,
+            };
+            let replayable = request.body.replayable();
+            let replay_body = request.body.replay_copy();
+
+            // Add the jar's Cookie header before dispatch (unless the request set
+            // one itself), then dispatch this single hop.
+            self.apply_cookies(&mut request);
+            let response = self.dispatch(request, keep_alive, stream)?;
+            sent_at.get_or_insert(response.sent_at());
+            let status = response.status();
+
+            // Ingest any Set-Cookie before deciding the next hop.
+            self.cookies
+                .lock()
+                .expect("cookie jar poisoned")
+                .set_from_response(response.url(), response.headers());
+
+            // Follow a redirect only when allowed, within the hop limit, and the
+            // 3xx carries a Location.
+            let location = response.headers().get("location").map(str::to_string);
+            let should_follow = allow_redirect && redirect::is_redirect(status);
+            let Some(location) = location.filter(|_| should_follow) else {
+                // Final response: stamp the first dispatch and apply `raise_error`.
+                return self.finalize(response, sent_at, raise_error);
+            };
+            if hop >= self.max_redirects {
+                return Err(HttpError::TooManyRedirects(format!(
+                    "exceeded max_redirects ({}) following {status}",
+                    self.max_redirects
+                )));
+            }
+
+            let target = redirect::resolve(&previous.url, &location)?;
+            match redirect::next_request(&previous, target, status, replay_body, replayable) {
+                Some(next) => {
+                    // Drain/close the intermediate body to release its connection,
+                    // then continue with the next hop.
+                    drop(response);
+                    log_event!(debug, "following {status} redirect to {}", next.url());
+                    request = next;
+                }
+                // A 307/308 with a non-replayable (already consumed) body cannot be
+                // re-sent: stop and return the 3xx itself rather than corrupt state.
+                None => return self.finalize(response, sent_at, raise_error),
+            }
+        }
+        unreachable!("the redirect loop returns or errors before exhausting usize")
+    }
+
+    /// Adds the cookie jar's `Cookie` header to `request` unless it already carries
+    /// one (a per-request `Cookie` wins, like any explicit header).
+    fn apply_cookies(&self, request: &mut HttpRequest) {
+        if request.headers.contains("cookie") {
+            return;
+        }
+        if let Some(value) = self
+            .cookies
+            .lock()
+            .expect("cookie jar poisoned")
+            .header_for(&request.url)
+        {
+            request.headers.insert("cookie", value);
+        }
+    }
+
+    /// Dispatches a single hop (no redirect handling): runs the retry loop and
+    /// builds the [`HttpResponse`] over a streamed or buffered body, exactly the
+    /// pre-redirect [`send`](HttpSession::send) behaviour.
+    fn dispatch(
+        &self,
+        mut request: HttpRequest,
+        keep_alive: bool,
+        stream: bool,
+    ) -> Result<HttpResponse, HttpError> {
         let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
         if !keep_alive {
-            request.headers.insert("connection", "close");
+            request.headers.set("connection", "close");
         }
         let url = request.url.clone();
         log_event!(
             debug,
-            "HttpSession::send {} {url} keep_alive={keep_alive} stream={stream}",
+            "HttpSession::dispatch {} {url} keep_alive={keep_alive} stream={stream}",
             request.method.as_str()
         );
         let raw = self.execute(
@@ -240,7 +395,28 @@ impl HttpSession {
             http_stream.read_to_end(&mut buffer)?;
             Box::new(BytesIO::from_bytes(buffer))
         };
-        let response = HttpResponse::new(status, url, response_headers, body, sent_at, received_at);
+        Ok(HttpResponse::new(
+            status,
+            url,
+            response_headers,
+            body,
+            sent_at,
+            received_at,
+        ))
+    }
+
+    /// Stamps `sent_at` from the first dispatch on the final `response` and applies
+    /// `raise_error` to it (the only response that error-raises).
+    fn finalize(
+        &self,
+        mut response: HttpResponse,
+        sent_at: Option<f64>,
+        raise_error: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        if let Some(sent_at) = sent_at {
+            response.set_sent_at(sent_at);
+        }
+        let status = response.status();
         if raise_error && status >= 400 {
             // Drop closes the held connection; the error carries the status.
             return Err(HttpError::Status(status));

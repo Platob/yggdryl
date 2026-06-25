@@ -1,7 +1,7 @@
 //! The [`HttpRequest`] builder and its private [`Body`].
 
-use yggdryl_io::Io;
-use yggdryl_url::Url;
+use yggdryl_core::Io;
+use yggdryl_core::Url;
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
@@ -16,7 +16,7 @@ pub(crate) enum Body {
     /// A streamed body pulled from any [`Io`] handle, sent without buffering.
     Reader(Box<dyn Io>),
     /// A streamed body from an [`Io`] handle: its
-    /// [`stream_len`](yggdryl_io::Io::stream_len) sets `Content-Length` (so the
+    /// [`stream_len`](yggdryl_core::Io::stream_len) sets `Content-Length` (so the
     /// upload is framed, not chunked) and the bytes flow straight off the handle —
     /// never collected into memory.
     Io(Box<dyn Io>),
@@ -26,6 +26,16 @@ impl Body {
     /// Whether the body can be re-sent on a retry (no consumed reader).
     pub(crate) fn replayable(&self) -> bool {
         matches!(self, Body::Empty | Body::Bytes(_))
+    }
+
+    /// A re-sendable copy of a replayable body (for a redirect re-dispatch), or
+    /// [`Body::Empty`] for a single-shot streamed body that cannot be replayed.
+    pub(crate) fn replay_copy(&self) -> Body {
+        match self {
+            Body::Empty => Body::Empty,
+            Body::Bytes(bytes) => Body::Bytes(bytes.clone()),
+            Body::Reader(_) | Body::Io(_) => Body::Empty,
+        }
     }
 }
 
@@ -40,6 +50,9 @@ pub struct HttpRequest {
     pub(crate) url: Url,
     pub(crate) headers: HttpHeaders,
     pub(crate) body: Body,
+    /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
+    /// request (default `true`).
+    pub(crate) allow_redirect: bool,
 }
 
 impl HttpRequest {
@@ -52,6 +65,7 @@ impl HttpRequest {
             url,
             headers: HttpHeaders::new(),
             body: Body::Empty,
+            allow_redirect: true,
         })
     }
 
@@ -62,6 +76,7 @@ impl HttpRequest {
             url,
             headers: HttpHeaders::new(),
             body: Body::Empty,
+            allow_redirect: true,
         }
     }
 
@@ -127,7 +142,7 @@ impl HttpRequest {
     }
 
     /// Sets a **streamed** body pulled from any [`Io`] handle — e.g. a
-    /// [`LocalPath`](yggdryl_io::LocalPath) or [`BytesIO`](yggdryl_io::BytesIO) —
+    /// [`LocalPath`](yggdryl_core::LocalPath) or [`BytesIO`](yggdryl_core::BytesIO) —
     /// so a large upload is never buffered into memory.
     pub fn with_body_reader<R: Io + 'static>(mut self, reader: R) -> HttpRequest {
         self.body = Body::Reader(Box::new(reader));
@@ -139,6 +154,14 @@ impl HttpRequest {
     /// read straight off the handle (a file is never loaded into memory).
     pub fn with_body_io<I: Io + 'static>(mut self, io: I) -> HttpRequest {
         self.body = Body::Io(Box::new(io));
+        self
+    }
+
+    /// Sets whether [`send`](crate::HttpSession::send) follows 3xx redirects for
+    /// this request (default `true`). With `false` a redirect is returned as the
+    /// 3xx response itself.
+    pub fn with_allow_redirect(mut self, allow_redirect: bool) -> HttpRequest {
+        self.allow_redirect = allow_redirect;
         self
     }
 
@@ -155,5 +178,11 @@ impl HttpRequest {
     /// The request headers, in insertion order.
     pub fn headers(&self) -> &HttpHeaders {
         &self.headers
+    }
+
+    /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
+    /// request.
+    pub fn allow_redirect(&self) -> bool {
+        self.allow_redirect
     }
 }

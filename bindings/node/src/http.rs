@@ -10,8 +10,8 @@ use std::sync::Arc;
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
+use yggdryl_core::{LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, Method};
-use yggdryl_io::{LocalPath as CoreLocalPath, Path};
 
 use crate::localpath::LocalPath;
 
@@ -55,6 +55,7 @@ pub struct RequestTask {
     body: BodyArg,
     raise_error: bool,
     keep_alive: bool,
+    allow_redirect: bool,
 }
 
 impl Task for RequestTask {
@@ -62,7 +63,9 @@ impl Task for RequestTask {
     type JsValue = HttpResponse;
 
     fn compute(&mut self) -> Result<ResponseData> {
-        let mut request = CoreHttpRequest::new(self.method, &self.url).map_err(to_napi)?;
+        let mut request = CoreHttpRequest::new(self.method, &self.url)
+            .map_err(to_napi)?
+            .with_allow_redirect(self.allow_redirect);
         request = request.with_headers(std::mem::take(&mut self.headers));
         request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
             BodyArg::Empty => request,
@@ -205,10 +208,14 @@ pub struct HttpSession {
 
 #[napi]
 impl HttpSession {
-    /// Create a session, optionally with a default `userAgent` and default
-    /// `headers` sent with every request.
+    /// Create a session, optionally with a default `userAgent`, default `headers`
+    /// sent with every request, and a `maxRedirects` cap on 3xx hops followed.
     #[napi(constructor)]
-    pub fn new(user_agent: Option<String>, headers: Option<HashMap<String, String>>) -> Self {
+    pub fn new(
+        user_agent: Option<String>,
+        headers: Option<HashMap<String, String>>,
+        max_redirects: Option<u32>,
+    ) -> Self {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
             inner = inner.with_user_agent(user_agent);
@@ -218,9 +225,39 @@ impl HttpSession {
                 inner = inner.with_header(key, value);
             }
         }
+        if let Some(max_redirects) = max_redirects {
+            inner = inner.with_max_redirects(max_redirects as usize);
+        }
         HttpSession {
             inner: Arc::new(inner),
         }
+    }
+
+    /// The maximum number of 3xx redirect hops followed per request.
+    #[napi(getter, js_name = "maxRedirects")]
+    pub fn max_redirects(&self) -> u32 {
+        self.inner.max_redirects() as u32
+    }
+
+    /// The session's cookies as an object of `name` to `value` (the jar snapshot —
+    /// last value wins for a repeated name).
+    #[napi(getter)]
+    pub fn cookies(&self) -> HashMap<String, String> {
+        self.inner
+            .cookies()
+            .iter()
+            .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+            .collect()
+    }
+
+    /// Seed a cookie into the session jar, scoped to `url`'s host (host-only) and
+    /// path `"/"`, so it is sent on matching requests.
+    #[napi(js_name = "setCookie")]
+    pub fn set_cookie(&self, url: String, name: String, value: String) -> Result<()> {
+        let url =
+            yggdryl_core::Url::from_str(&url).map_err(|e| Error::from_reason(e.to_string()))?;
+        self.inner.set_cookie(&url, name, value);
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -232,6 +269,7 @@ impl HttpSession {
         body: BodyArg,
         raise_error: bool,
         keep_alive: bool,
+        allow_redirect: bool,
     ) -> AsyncTask<RequestTask> {
         AsyncTask::new(RequestTask {
             session: self.inner.clone(),
@@ -241,25 +279,50 @@ impl HttpSession {
             body,
             raise_error,
             keep_alive,
+            allow_redirect,
         })
     }
 
     /// `GET url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn get(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Get, url, Vec::new(), BodyArg::Empty, true, true)
+        self.task(
+            Method::Get,
+            url,
+            Vec::new(),
+            BodyArg::Empty,
+            true,
+            true,
+            true,
+        )
     }
 
     /// `HEAD url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn head(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Head, url, Vec::new(), BodyArg::Empty, true, true)
+        self.task(
+            Method::Head,
+            url,
+            Vec::new(),
+            BodyArg::Empty,
+            true,
+            true,
+            true,
+        )
     }
 
     /// `DELETE url` (raises on a 4xx/5xx status).
     #[napi]
     pub fn delete(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(Method::Delete, url, Vec::new(), BodyArg::Empty, true, true)
+        self.task(
+            Method::Delete,
+            url,
+            Vec::new(),
+            BodyArg::Empty,
+            true,
+            true,
+            true,
+        )
     }
 
     /// `POST url` with an optional `body` — a `Buffer` or a `LocalPath` streamed
@@ -270,7 +333,15 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Post, url, Vec::new(), body_arg(body), true, true)
+        self.task(
+            Method::Post,
+            url,
+            Vec::new(),
+            body_arg(body),
+            true,
+            true,
+            true,
+        )
     }
 
     /// `PUT url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
@@ -280,7 +351,15 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Put, url, Vec::new(), body_arg(body), true, true)
+        self.task(
+            Method::Put,
+            url,
+            Vec::new(),
+            body_arg(body),
+            true,
+            true,
+            true,
+        )
     }
 
     /// `PATCH url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
@@ -290,14 +369,25 @@ impl HttpSession {
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
     ) -> AsyncTask<RequestTask> {
-        self.task(Method::Patch, url, Vec::new(), body_arg(body), true, true)
+        self.task(
+            Method::Patch,
+            url,
+            Vec::new(),
+            body_arg(body),
+            true,
+            true,
+            true,
+        )
     }
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
     /// 4xx/5xx status. `keepAlive` (default `true`) pools the connection for reuse
     /// (skipping the next TLS handshake); pass `false` to close it after.
+    /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
+    /// `maxRedirects`); pass `false` to receive the 3xx response itself.
     #[napi]
+    #[allow(clippy::too_many_arguments)]
     pub fn request(
         &self,
         method: String,
@@ -306,6 +396,7 @@ impl HttpSession {
         body: Option<Either<Buffer, &LocalPath>>,
         raise_error: Option<bool>,
         keep_alive: Option<bool>,
+        allow_redirect: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
         let method = Method::from_str(&method).map_err(to_napi)?;
         let headers = headers
@@ -318,6 +409,7 @@ impl HttpSession {
             body_arg(body),
             raise_error.unwrap_or(true),
             keep_alive.unwrap_or(true),
+            allow_redirect.unwrap_or(true),
         ))
     }
 }

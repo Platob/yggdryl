@@ -24,7 +24,7 @@ folder and in each crate's `benches/`.
 
 ## 1. The Rust core (`cargo bench`)
 
-### Byte IO — the unified `Io` trait (`cargo bench -p yggdryl-io`)
+### Byte IO — the unified `Io` trait (`cargo bench -p yggdryl-core --bench io`)
 
 | operation | result |
 | --- | --- |
@@ -39,7 +39,7 @@ The single `Io` trait carries reads, writes and the cursor; a memory-resident
 backend serves `read`/`pread` straight off `as_slice`, so positional access is a
 slice copy and a transfer is one `memcpy`.
 
-### Compression — streamed codecs over `Io` (`cargo bench -p yggdryl-compression`)
+### Compression — streamed codecs over `Io` (`cargo bench -p yggdryl-core --bench compression`)
 
 | codec | ratio | compress | decompress | `Io`-stream decompress |
 | --- | --- | --- | --- | --- |
@@ -143,8 +143,8 @@ Rust in one call, and additionally offers `zstd`/`snappy`, a seekable body and
 
 ```bash
 # Rust core (true ceiling, no FFI)
-cargo bench -p yggdryl-io
-cargo bench -p yggdryl-compression --all-features
+cargo bench -p yggdryl-core --bench io
+cargo bench -p yggdryl-core --bench compression --all-features
 cargo bench -p yggdryl-http --all-features
 
 # Python — same code vs requests / gzip (+ memory)

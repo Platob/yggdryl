@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use yggdryl_core::{LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
     HttpSession as CoreHttpSession, Method,
 };
-use yggdryl_io::{LocalPath as CoreLocalPath, Path};
 
 use crate::bytesio::BytesIO;
 use crate::http_err;
@@ -193,8 +193,12 @@ impl HttpSession {
     /// Create a session, optionally with a default ``user_agent`` and default
     /// ``headers`` sent with every request.
     #[new]
-    #[pyo3(signature = (*, user_agent = None, headers = None))]
-    fn new(user_agent: Option<String>, headers: Option<HashMap<String, String>>) -> Self {
+    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None))]
+    fn new(
+        user_agent: Option<String>,
+        headers: Option<HashMap<String, String>>,
+        max_redirects: Option<usize>,
+    ) -> Self {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
             inner = inner.with_user_agent(user_agent);
@@ -204,7 +208,35 @@ impl HttpSession {
                 inner = inner.with_header(key, value);
             }
         }
+        if let Some(max_redirects) = max_redirects {
+            inner = inner.with_max_redirects(max_redirects);
+        }
         HttpSession { inner }
+    }
+
+    /// The maximum number of 3xx redirect hops followed per request.
+    #[getter]
+    fn max_redirects(&self) -> usize {
+        self.inner.max_redirects()
+    }
+
+    /// The session's cookies as a ``dict`` of ``name`` to ``value`` (the jar
+    /// snapshot — last value wins for a repeated name).
+    #[getter]
+    fn cookies(&self) -> HashMap<String, String> {
+        self.inner
+            .cookies()
+            .iter()
+            .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+            .collect()
+    }
+
+    /// Seed a cookie into the session jar, scoped to ``url``'s host (host-only)
+    /// and path ``"/"``, so it is sent on matching requests.
+    fn set_cookie(&self, url: &str, name: String, value: String) -> PyResult<()> {
+        let url = yggdryl_core::Url::from_str(url).map_err(crate::url_err)?;
+        self.inner.set_cookie(&url, name, value);
+        Ok(())
     }
 
     /// ``GET url``.
@@ -291,9 +323,11 @@ impl HttpSession {
     /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
     /// response whatever its status. ``keep_alive`` (default ``True``) pools the
     /// connection for reuse (skipping the next TLS handshake); pass ``False`` to
-    /// close it after the response. The body is always buffered (the response
+    /// close it after the response. ``allow_redirect`` (default ``True``) follows
+    /// 3xx redirects (up to the session's ``max_redirects``); pass ``False`` to
+    /// receive the 3xx response itself. The body is always buffered (the response
     /// exposes :attr:`content` repeatedly), so the connection is released at once.
-    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true))]
+    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true, allow_redirect = true))]
     #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
@@ -304,11 +338,13 @@ impl HttpSession {
         body: Option<Bound<'_, PyAny>>,
         raise_error: bool,
         keep_alive: bool,
+        allow_redirect: bool,
     ) -> PyResult<HttpResponse> {
         let method = Method::from_str(method).map_err(http_err)?;
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            let mut request = CoreHttpRequest::new(method, url)?;
+            let mut request =
+                CoreHttpRequest::new(method, url)?.with_allow_redirect(allow_redirect);
             if let Some(headers) = headers {
                 request = request.with_headers(headers);
             }

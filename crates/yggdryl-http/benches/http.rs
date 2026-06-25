@@ -12,8 +12,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Instant;
 
+use yggdryl_core::Io;
 use yggdryl_http::{HttpRequest, HttpResponseBatch, HttpSession};
-use yggdryl_io::Io;
 
 /// Reads one request off the stream, returning `(is_head, optional range)`.
 fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
@@ -148,7 +148,7 @@ fn main() {
             .into_io();
         let mut footer = [0u8; 16];
         stream
-            .pread(&mut footer, -16, yggdryl_io::Whence::End)
+            .pread(&mut footer, -16, yggdryl_core::Whence::End)
             .unwrap();
         black_box(footer);
     }
