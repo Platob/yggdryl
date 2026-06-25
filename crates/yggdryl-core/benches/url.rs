@@ -110,4 +110,28 @@ fn main() {
     bench("Url::from_mapping", n, || {
         black_box(Url::from_mapping(black_box(&fields)).unwrap());
     });
+
+    println!("== path join ==");
+    let base = Uri::from_str("https://example.com/api/v1/users").unwrap();
+    bench("Uri::join (single segment)", n, || {
+        black_box(black_box(&base).join(black_box("profile")));
+    });
+    bench("Uri::join (absolute path)", n, || {
+        black_box(black_box(&base).join(black_box("/api/v2/orders")));
+    });
+    bench("Uri::join (many segments)", n, || {
+        black_box(black_box(&base).join(black_box("reports/2026/q2/summary.csv")));
+    });
+    // "../" dot-segment removal — the RFC 3986 §5.2.4 remove_dot_segments walk.
+    bench("Uri::join (dot-segments ../)", n, || {
+        black_box(black_box(&base).join(black_box("../../v3/../v4/items")));
+    });
+    // A segment array: each element is percent-encoded then '/'-joined.
+    bench("Uri::join (segment array)", n, || {
+        black_box(black_box(&base).join(black_box(["a b", "c%2Fd", "e f"])));
+    });
+    let url_base = Url::from_str("https://user:pw@example.com:8443/api/v1/users").unwrap();
+    bench("Url::join (dot-segments ../)", n, || {
+        black_box(black_box(&url_base).join(black_box("../../v3/../v4/items")));
+    });
 }

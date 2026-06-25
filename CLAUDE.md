@@ -273,6 +273,7 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Add/replace one parameter | `add_param(key, values, encode=true)` |
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
+| Join a path reference | `join(reference)` on `Uri`/`Url` — RFC 3986 §5.2.4 dot-segment resolution (`./`, `../`, leading-`/` replace); `reference` is a path string (verbatim), a segment sequence (`["a","b"]`, each percent-encoded), or another `Uri`/`Url` (via the `JoinInput` trait); non-mutating, drops query/fragment |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
 | Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
 | Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |

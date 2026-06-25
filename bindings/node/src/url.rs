@@ -396,6 +396,21 @@ impl Url {
         self.inner.to_mapping().into_iter().collect()
     }
 
+    /// Join a relative reference onto the path (RFC 3986 dot-segment resolution).
+    /// `reference` is a path string (`"a/b"`, `"../x"`, `"/abs"`), an array of
+    /// segments (each percent-encoded and `/`-joined), or another `Url` (its path
+    /// is used; to join against a `Uri`, pass its `.toString()`). The query and
+    /// fragment are dropped; the authority is preserved.
+    #[napi]
+    pub fn join(&self, reference: Either3<String, Vec<String>, &Url>) -> Url {
+        let inner = match reference {
+            Either3::A(value) => self.inner.join(value.as_str()),
+            Either3::B(segments) => self.inner.join(segments.as_slice()),
+            Either3::C(url) => self.inner.join(&url.inner),
+        };
+        Url { inner }
+    }
+
     /// Serialise to JSON as the encoded URL string (used by `JSON.stringify`).
     /// `fromJSON` is the inverse.
     #[napi(js_name = "toJSON")]

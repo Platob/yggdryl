@@ -10,6 +10,17 @@ use crate::mime::MimeType;
 use crate::url::Url;
 use crate::{hash_str, uri_err, url_err};
 
+/// A reference accepted by :meth:`Uri.join` — a path string, a list of segments,
+/// or another :class:`Uri` / :class:`Url`. ``Str`` is tried first so a plain
+/// string is never coerced to a one-character segment list.
+#[derive(FromPyObject)]
+enum JoinArg {
+    Str(String),
+    Segments(Vec<String>),
+    Uri(Uri),
+    Url(Url),
+}
+
 /// A generic RFC 3986 URI: ``scheme:[//authority]path[?query][#fragment]``.
 #[pyclass(name = "Uri", module = "yggdryl")]
 #[derive(Clone)]
@@ -286,6 +297,21 @@ impl Uri {
         Uri {
             inner: self.inner.clear_params(),
         }
+    }
+
+    /// Join a relative reference onto the path (RFC 3986 dot-segment resolution).
+    /// ``reference`` is a path string (``"a/b"``, ``"../x"``, ``"/abs"``), a list
+    /// of segments (each percent-encoded and ``/``-joined), or another
+    /// :class:`Uri` / :class:`Url` (its path is used). The query and fragment are
+    /// dropped (the location has changed).
+    fn join(&self, reference: JoinArg) -> Self {
+        let inner = match reference {
+            JoinArg::Str(value) => self.inner.join(value.as_str()),
+            JoinArg::Segments(segments) => self.inner.join(segments.as_slice()),
+            JoinArg::Uri(uri) => self.inner.join(&uri.inner),
+            JoinArg::Url(url) => self.inner.join(&url.inner),
+        };
+        Uri { inner }
     }
 
     /// Render the URI; ``encode`` (default) percent-encodes, else decodes.

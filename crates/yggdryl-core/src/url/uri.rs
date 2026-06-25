@@ -7,8 +7,9 @@ use std::sync::OnceLock;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::url::{
-    build_query, is_valid_scheme, path_name, path_parts, query_param, query_to_params,
-    render_component, split_stem_ext, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
+    build_query, is_valid_scheme, join_path, path_name, path_parts, query_param, query_to_params,
+    render_component, split_stem_ext, JoinInput, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH,
+    KEEP_QUERY,
 };
 use crate::{
     validate_percent_encoding, EncodingError, Mapping, MediaType, MimeType, Params, Url, UrlError,
@@ -506,6 +507,40 @@ impl Uri {
     /// Returns a copy with the entire query removed.
     pub fn clear_params(&self) -> Uri {
         self.cloned_with_query(None)
+    }
+}
+
+/// Path joining (RFC 3986 §5.2 reference resolution on the path component).
+impl Uri {
+    /// Returns a copy whose path is `reference` resolved against `self`'s path,
+    /// applying RFC 3986 §5.2.4 dot-segment removal. A `reference` starting with
+    /// `/` replaces the path outright; otherwise it is merged relative to the last
+    /// `/` of `self`'s path, then `.` / `..` segments are resolved. The query and
+    /// fragment are dropped (the location has changed).
+    ///
+    /// `reference` may be a path string (`"a/b"`, `"../x"`, `"/abs"`), a sequence
+    /// of segments (`["a", "b"]`, each percent-encoded and `/`-joined), or another
+    /// reference whose path is used — see [`JoinInput`]. String references are kept
+    /// verbatim (already-encoded); slice segments are percent-encoded.
+    ///
+    /// ```
+    /// use yggdryl_core::Uri;
+    ///
+    /// let base = Uri::from_str("https://h/a/b/c").unwrap();
+    /// assert_eq!(base.join("d").path(), "/a/b/d");
+    /// assert_eq!(base.join("../../x").path(), "/x"); // climbs two parents
+    /// assert_eq!(base.join(["d", "e"]).path(), "/a/b/d/e");
+    /// assert_eq!(base.join("/abs").path(), "/abs");
+    /// ```
+    pub fn join(&self, reference: impl JoinInput) -> Uri {
+        let path = join_path(&self.path, reference.to_reference().as_ref());
+        Uri::from_parts(
+            self.scheme.clone(),
+            self.authority.clone(),
+            path,
+            None,
+            None,
+        )
     }
 }
 

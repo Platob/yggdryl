@@ -49,7 +49,7 @@ pub use version::{Version, VersionError};
 
 pub use media::{MediaError, MediaType, MimeType, Signature};
 
-pub use url::{Uri, UriError, Url, UrlError};
+pub use url::{JoinInput, Uri, UriError, Url, UrlError};
 
 pub use io::{
     copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,

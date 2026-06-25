@@ -7,8 +7,9 @@ use std::sync::OnceLock;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::url::{
-    build_query, is_valid_scheme, path_name, path_parts, query_param, query_to_params,
-    render_component, split_stem_ext, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
+    build_query, is_valid_scheme, join_path, path_name, path_parts, query_param, query_to_params,
+    render_component, split_stem_ext, JoinInput, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH,
+    KEEP_QUERY,
 };
 use crate::{validate_percent_encoding, Mapping, MediaType, MimeType, Params, Uri, UriError};
 
@@ -666,6 +667,35 @@ impl<'de> serde::Deserialize<'de> for Url {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Url, D::Error> {
         let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
         Url::from_str(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Path joining (see [`Uri::join`]).
+impl Url {
+    /// Returns a copy whose path is `reference` resolved against `self`'s path
+    /// (RFC 3986 §5.2.4). See [`Uri::join`] for the input forms (a path string, a
+    /// sequence of segments, or another reference) and semantics; the authority
+    /// (userinfo / host / port) is preserved, the query and fragment dropped.
+    ///
+    /// ```
+    /// use yggdryl_core::Url;
+    ///
+    /// let base = Url::from_str("https://user@h:8443/a/b/c?k=v#f").unwrap();
+    /// assert_eq!(base.join("../x").to_string(), "https://user@h:8443/a/x");
+    /// assert_eq!(base.join(["d", "e f"]).path(), "/a/b/d/e%20f");
+    /// ```
+    pub fn join(&self, reference: impl JoinInput) -> Url {
+        let path = join_path(&self.path, reference.to_reference().as_ref());
+        Url::from_parts(
+            self.scheme.clone(),
+            self.username.clone(),
+            self.password.clone(),
+            self.host.clone(),
+            self.port,
+            path,
+            None,
+            None,
+        )
     }
 }
 

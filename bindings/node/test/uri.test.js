@@ -199,3 +199,18 @@ test('encode/decode toString and params', () => {
   const built = new Uri('https://h/p').withParams({ a: ['b c'] }, false)
   assert.strictEqual(built.query, 'a=b c')
 })
+
+test('join resolves relative paths', () => {
+  const base = new Url('https://h/a/b/c')
+  assert.strictEqual(base.join('d').path, '/a/b/d')
+  assert.strictEqual(base.join('../x').path, '/a/x')
+  assert.strictEqual(base.join('../../x').path, '/x')
+  assert.strictEqual(base.join('/abs').path, '/abs')
+  // Array of segments: each percent-encoded, '/' inside an element is data.
+  assert.strictEqual(base.join(['d', 'e f']).path, '/a/b/d/e%20f')
+  assert.strictEqual(base.join(['a/b']).path, '/a/b/a%2Fb')
+  // Joining drops self's query/fragment.
+  assert.strictEqual(new Url('https://h/a/b/c?k=v#f').join('../x').toString(), 'https://h/a/x')
+  // Another Url reference's path is used.
+  assert.strictEqual(base.join(new Url('https://x/q/r')).path, '/q/r')
+})
