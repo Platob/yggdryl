@@ -18,12 +18,18 @@ path = "src/lib.rs"
 
 [dependencies]
 # yggdryl-url re-exports yggdryl-core; yggdryl-version and yggdryl-media provide
-# the Version and MediaType types.
+# the Version and MediaType types; yggdryl-io provides the BytesIO buffer;
+# yggdryl-compression provides the Compression codec (all backends enabled).
 yggdryl-url = { path = "../../crates/yggdryl-url", version = "0.1.0" }
 yggdryl-version = { path = "../../crates/yggdryl-version", version = "0.1.0" }
 yggdryl-media = { path = "../../crates/yggdryl-media", version = "0.1.0" }
-napi = { version = "2", default-features = false, features = ["napi8"] }
+yggdryl-io = { path = "../../crates/yggdryl-io", version = "0.1.0", features = ["mmap", "media", "json"] }
+yggdryl-compression = { path = "../../crates/yggdryl-compression", version = "0.1.0", features = ["gzip", "zstd", "snappy", "media"] }
+yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
+# `serde-json` lets `Io::json()`'s `serde_json::Value` cross to JS as an object.
+napi = { version = "2", default-features = false, features = ["napi8", "serde-json"] }
 napi-derive = "2"
+serde_json = "1"
 
 [build-dependencies]
 napi-build = "2"

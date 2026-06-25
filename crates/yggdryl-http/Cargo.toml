@@ -1,0 +1,53 @@
+[package]
+name = "yggdryl-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Blocking HTTP client (session/request/response, requests-like) that streams bodies over the yggdryl-io abstraction"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_http"
+path = "src/lib.rs"
+
+[[bench]]
+name = "http"
+harness = false
+
+[dependencies]
+# The byte-IO foundation: a response body is a `Box<dyn Io>` (a seekable
+# `HttpStream` when streamed, a `BytesIO` when buffered), request bodies stream
+# from any `Io` handle. `json` lights up `Io::json()` on every handle.
+yggdryl-io = { workspace = true, features = ["json"] }
+# Requests carry a `Url`, built with the shared URL type (query params, etc.).
+yggdryl-url = { workspace = true }
+# The blocking HTTP transport. `rustls` gives TLS; ureq's own gzip/brotli are
+# left off so decompression goes through `yggdryl-compression` (our abstraction).
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+# The rest are optional and off by default:
+#   compression  auto-decode a `Content-Encoding` body via yggdryl-compression;
+#   media        expose the response `mime_type()` via yggdryl-media;
+#   log          structured logging via the `log` facade.
+yggdryl-compression = { workspace = true, optional = true }
+yggdryl-media = { workspace = true, optional = true }
+log = { version = "0.4", optional = true }
+
+[features]
+# `compression` (auto `Content-Encoding` decode) ships on by default so a plain
+# `get()` transparently decompresses, like `requests`; opt out with
+# `default-features = false`.
+default = ["compression"]
+# Enabling `compression` turns on the gzip/zstd/snappy backends too, so a
+# `Content-Encoding` response actually decodes.
+compression = [
+    "dep:yggdryl-compression",
+    "yggdryl-compression/gzip",
+    "yggdryl-compression/zstd",
+    "yggdryl-compression/snappy",
+]
+media = ["dep:yggdryl-media", "yggdryl-io/media"]
+log = ["dep:log"]

@@ -22,8 +22,20 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy (yggdryl-io, all features)
+        run: cargo clippy -p yggdryl-io --all-targets --all-features -- -D warnings
+      - name: Clippy (yggdryl-compression, all features)
+        run: cargo clippy -p yggdryl-compression --all-targets --all-features -- -D warnings
+      - name: Clippy (yggdryl-http, all features)
+        run: cargo clippy -p yggdryl-http --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test
+      - name: Test (yggdryl-io, all features)
+        run: cargo test -p yggdryl-io --all-features
+      - name: Test (yggdryl-compression, all features)
+        run: cargo test -p yggdryl-compression --all-features
+      - name: Test (yggdryl-http, all features)
+        run: cargo test -p yggdryl-http --all-features
 
   python:
     name: Python extension (${{ matrix.os }})

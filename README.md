@@ -1,88 +1,87 @@
 # yggdryl
 
-A small, polyglot library built **Rust-first**: a dependency-free Rust core
-defines the types, and thin **Python** and **Node.js** wrappers expose that same
-core. One implementation, three published packages
-([crates.io](https://crates.io) / [PyPI](https://pypi.org) /
-[npm](https://www.npmjs.com)), so behaviour is identical everywhere.
+**One streaming byte-IO core — `Io`, compression and HTTP — for Rust, Python and
+Node.** Write the same high-level code in any of the three languages and get
+near-Rust throughput, because all the work happens in a dependency-light Rust core
+and the bindings are thin wrappers that **never copy your bytes through the host
+language**.
 
-The core provides these value types:
+📖 **[Documentation → platob.github.io/yggdryl](https://platob.github.io/yggdryl/)**
+ · 📊 **[Benchmarks](benchmarks/)** · one implementation, three packages
+([crates.io](https://crates.io) / [PyPI](https://pypi.org) / [npm](https://www.npmjs.com)).
 
-- **`Uri`** — the generic [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986)
-  shape: `scheme:[//authority]path[?query][#fragment]`.
-- **`Url`** — the common subset that always has an authority, decomposed into
-  `username`, `password`, `host` and `port`.
-- **`Version`** — a generic `major.minor.patch` version that parses, renders and
-  orders numerically.
-- **`MimeType`** — an enum of common MIME types, inferred from a file extension
-  or from magic bytes (Arrow IPC, Parquet, ZIP, gzip, …). Its extension/magic
-  registry is global and can be extended or trimmed at runtime.
-- **`MediaType`** — an ordered stack of `MimeType`s for layered files, so
-  `data.csv.gz` → `[Csv, Gzip]`. `Uri`/`Url` expose an inferred `media_type()`.
-
-## Layout
-
+```python
+# Python — looks like requests, runs in Rust
+import yggdryl
+data = yggdryl.HttpSession().get("https://example.com/data.csv.gz").content
 ```
-yggdryl/
-├── Cargo.toml                  # Cargo workspace
-├── crates/
-│   ├── yggdryl-core/           # dependency-free foundations (FromInput/ToOutput, encoding)
-│   ├── yggdryl-version/        # standalone Version type
-│   ├── yggdryl-media/          # standalone MediaType (MIME) detection
-│   └── yggdryl-url/            # Uri/Url, built on (and re-exporting) yggdryl-core + yggdryl-media
-└── bindings/
-    ├── python/                 # PyO3 + maturin  → `import yggdryl`
-    └── node/                   # napi-rs         → `require('yggdryl')`
+```javascript
+// Node — looks like fetch/axios, runs in Rust
+const { HttpSession } = require("yggdryl");
+const data = (await new HttpSession().get("https://example.com/data.csv.gz")).content;
+```
+```rust
+// Rust — the core
+let data = yggdryl_http::HttpSession::new().get("https://example.com/data.csv.gz")?.bytes()?;
 ```
 
-## The core API
+## Why
 
-Each type is built with `from_str(value)` (or `from_parts` / `from_mapping`)
-and exposes its components as read-only accessors. Parsing always validates and
-returns an error on malformed input. Rendering takes an `encode` flag —
-`to_string(encode=true)` (the default, also what `str()` / `toString()` use)
-percent-encodes for transport, `encode=false` decodes for display; both are
-cached. Functional `copy(...)` / `with_*` / `without_*` builders and the
-multi-valued `params` / `with_params` / `add_param` query CRUD all return new
-values without mutating the original. The naming is identical across all three
-languages (JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md).
+A reader (Arrow / Parquet / CSV / JSON) should not care **where** its bytes live —
+memory, a memory-mapped file, or a remote HTTP object — nor whether they arrive
+**random** (a footer, a column chunk) or **streamed** (scan record batches).
+yggdryl unifies all of it behind **one trait, `Io`**, and builds compression and a
+`requests`-like HTTP client on top, each handle composing with the next with **at
+most one copy** of the data.
+
+## Performance — same code, real gains
+
+Measured on one developer machine (localhost, no real network) — ratios, not
+absolutes; reproduce with [`benchmarks/`](benchmarks/) and `cargo bench`.
+
+| workload | yggdryl | host-language baseline | speedup |
+| --- | --- | --- | --- |
+| HTTP GET, small body + latency (Python) | 0.53 ms | `requests` 0.83 ms | **1.6×** |
+| HTTP GET, 8 MiB throughput (Python) | 912 MiB/s | `requests` 530 MiB/s | **1.7×** |
+| gzip compress (Python) | 14 MiB/s | stdlib `gzip` 9 MiB/s | **1.5×** |
+| `zstd` / `snappy` codecs | ✅ built in | ❌ not in stdlib | — |
+| `copy` BytesIO → BytesIO (Rust core) | **8.4 GiB/s** | — | zero-copy |
+| `HttpStream` windowed read (Rust core) | **1.35 GiB/s** | — | streamed |
+| footer via `pread` (one Range request) | **0.44 ms** | full download | no download |
+| `send_many` vs sequential (Rust core) | **≈6×** | — | concurrent |
+
+See **[benchmarks/README.md](benchmarks/README.md)** for the full tables, the Node
+comparison, memory figures, and the one spot the C `zlib` decoder still leads.
+
+## What's inside
+
+| crate | what it is |
+| --- | --- |
+| **`yggdryl-io`** | the one byte-IO trait `Io` — read/write/seek/`pread`/`pwrite` over memory (`BytesIO`), local mmap (`LocalPath`) or cloud; codecs; the `from_str`/`from_url` factory |
+| **`yggdryl-compression`** | streamed gzip / Zstd / Snappy (on by default) — encoders/decoders are themselves `Io` handles |
+| **`yggdryl-http`** | a `requests`-like blocking client: pooling, retries with resume-on-drop, a **seekable** response body, `send_many`, cookies, redirects |
+| **`yggdryl-url`** | `Uri` / `Url` (RFC 3986) with query CRUD and inferred media types |
+| **`yggdryl-media`** | `MimeType` / `MediaType` from extension or magic bytes |
+| **`yggdryl-version`** | a standalone `Version` type |
+| **`yggdryl-core`** | dependency-free foundations (`ToOutput`, `Mapping`/`Params`, percent-encoding) |
+
+Bindings live under `bindings/python` (PyO3 + maturin → `import yggdryl`) and
+`bindings/node` (napi-rs → `require('yggdryl')`). Every type is built with
+`from_str(value)` (or `from_parts` / `from_mapping`), validates on parse, and
+exposes read-only accessors; the naming is identical across all three languages
+(JS uses camelCase) — see [`CLAUDE.md`](CLAUDE.md) and the
+[docs](https://platob.github.io/yggdryl/).
 
 ```rust
-use yggdryl::{FromInput, MediaType, MimeType, Uri, Url, Version};
-
-let uri = Uri::from_str("urn:isbn:0451450523")?;
-assert_eq!(uri.scheme(), "urn");
+use yggdryl::{MediaType, MimeType, Uri, Url, Version};
 
 let url = Url::from_str("https://example.com/data/sales.csv.gz?a=1&a=2")?;
 assert_eq!(url.host(), "example.com");
-assert_eq!(url.params(true).get("a"), Some(&vec!["1".into(), "2".into()]));
 // A layered media type, inferred from the path's extensions.
 assert_eq!(url.media_type().unwrap().types(), [MimeType::Csv, MimeType::Gzip]);
-assert_eq!(MimeType::from_magic(b"ARROW1\x00\x00"), Some(MimeType::Arrow));
-
 assert!(Version::from_str("1.4.2")? < Version::from_str("1.10.0")?);
 # Ok::<(), yggdryl::UrlError>(())
 ```
-
-```python
-import yggdryl
-url = yggdryl.Url("https://example.com/api").copy(port=8443).add_param("q", ["a b"])
-print(url.host, url.port, url.params())   # example.com 8443 {'q': ['a b']}
-```
-
-```javascript
-const { Url } = require('yggdryl')
-const url = new Url('https://example.com/api').copy(null, null, null, null, 8443)
-console.log(url.host, url.port)           // example.com 8443
-```
-
-| `Uri` | `Url` (is-a `Uri` via `to_uri()`) |
-| --- | --- |
-| `scheme` | `scheme` |
-| `authority` | `username` / `password` / `host` / `port` / `authority` |
-| `path` | `path` |
-| `query` / `params()` | `query` / `params()` |
-| `fragment` | `fragment` |
 
 ## Building & testing
 
@@ -114,12 +113,30 @@ npm test                        # node --test
 
 ### Benchmarks
 
-The hot parsing/rendering paths have lightweight, dependency-free timing
-benchmarks (`harness = false` binaries, no benchmark framework):
+Lightweight, dependency-free timing benchmarks (`harness = false` binaries, no
+framework) plus same-code comparisons against the host-language stalwarts — see
+the [`benchmarks/`](benchmarks/) folder for the methodology and full tables.
 
 ```bash
-cargo bench -p yggdryl-url       # Uri/Url/MediaType parsing, encoding, rendering
-cargo bench -p yggdryl-version   # Version parsing / rendering
+cargo bench -p yggdryl-io                    # Io: cursor, pread, copy, codecs
+cargo bench -p yggdryl-compression --all-features   # gzip/zstd/snappy, one-shot vs Io-stream
+cargo bench -p yggdryl-http --all-features   # download, footer pread, send_many
+cargo bench -p yggdryl-url                   # Uri/Url/MediaType parsing, encoding
+cargo bench -p yggdryl-version               # Version parsing / rendering
+
+# Same high-level code, yggdryl vs requests / stdlib gzip / Node http+zlib
+python3 benchmarks/compare.py
+node benchmarks/compare.mjs
+```
+
+### Documentation site
+
+The docs site is built with MkDocs (Material) and published to
+[platob.github.io/yggdryl](https://platob.github.io/yggdryl/) on every push to
+`main`:
+
+```bash
+pip install mkdocs-material && mkdocs serve   # preview at http://127.0.0.1:8000
 ```
 
 ### Logging (optional)
@@ -185,6 +202,9 @@ cargo publish -p yggdryl-core
 cargo publish -p yggdryl-version
 cargo publish -p yggdryl-media
 cargo publish -p yggdryl-url
+cargo publish -p yggdryl-io
+cargo publish -p yggdryl-compression
+cargo publish -p yggdryl-http
 
 # Python — build wheel + sdist, then upload with twine (NOT `maturin upload`)
 maturin build --release -m bindings/python/Cargo.toml --out dist

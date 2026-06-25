@@ -2,7 +2,7 @@
 
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
-use yggdryl_url::{FromInput, Mapping, Params, ToOutput, Uri as CoreUri};
+use yggdryl_url::{Mapping, Params, ToOutput, Uri as CoreUri};
 
 use crate::media::MediaType;
 use crate::mime::MimeType;

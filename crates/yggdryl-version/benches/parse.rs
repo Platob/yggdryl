@@ -6,7 +6,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_version::{FromInput, ToOutput, Version};
+use yggdryl_version::{ToOutput, Version};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {

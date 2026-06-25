@@ -8,8 +8,20 @@ looking at from the shape of the code.
 
 ## Architecture
 
-- `crates/yggdryl-core/` — dependency-free foundations: the `FromInput` /
-  `ToOutput` traits and percent-encoding.
+- `crates/yggdryl-core/` — dependency-free foundations: the `ToOutput` rendering
+  trait, the `Mapping` / `Params` component maps and percent-encoding (each type
+  pairs these with its own inherent `from_str` / `from_mapping` parsers).
+- `crates/yggdryl-io/` — the **byte-IO foundation**: one set of methods to read,
+  write, seek and stat bytes wherever they live (memory, local path, cloud). See
+  its dedicated section below. **All byte-IO logic lives here.**
+- `crates/yggdryl-compression/` — the `Compression` codec (gzip / Zstandard /
+  Snappy / `None` identity) that **streams** compress/decompress over any
+  `yggdryl-io` handle, plus the `CompressIo` extension trait. **All compression
+  logic lives here** — do not pull codec SDKs into `yggdryl-io`.
+- `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
+  (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
+  `yggdryl-io` abstraction**. **All HTTP logic lives here** — the transport SDK
+  (`ureq`) is a dependency of this crate only. See its section below.
 - `crates/yggdryl-version/` — the standalone `Version` type.
 - `crates/yggdryl-media/` — the `MimeType` enum (single MIME types, backed by a
   mutable global registry of extensions/magic bytes) and the `MediaType` stack
@@ -21,6 +33,144 @@ looking at from the shape of the code.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the core; they contain no
   logic. Anything added to the core must be surfaced in *both* bindings.
+
+### `yggdryl-io` — what it aims to be (read before extending it)
+
+The goal is a **single byte-IO abstraction** that hides *where* bytes live, so a
+reader (think Arrow / Parquet) works the same over an in-memory buffer, a
+memory-mapped local file, or a cloud object — mixing **random** access (read a
+footer, a column chunk) with **streamed** access (scan record batches) on one
+handle. The layering, smallest to largest:
+
+- `Io` — **the one byte-IO trait**; there are no separate `ReadBytes` / `WriteBytes`
+  / `Seek` traits (they were folded in). Every IO has a `url()` (in-memory ones use
+  `mem://<address>`). It carries a **cursor** (`seek` / `stream_position` /
+  `stream_len`), does **streamed** access with `read` / `write` (advance the cursor;
+  `read` is the source primitive a memory backend gets free from `as_slice`, `write`
+  defaults to `Unsupported`), and **random** access with `pread` / `pwrite` — a
+  `Whence` selects positional (`Start`/`End`, cursor untouched) versus cursor-relative
+  (`Current`, the same as `read`/`write`, advancing the cursor); the default `pread`
+  serves zero-copy from `as_slice` or, on a seekable streamed backend, seeks-reads-
+  restores, while `pwrite` defaults to `Unsupported`. `read_exact` / `read_to_end` /
+  `write_all` / `flush` are provided on top. Storage is managed with `capacity` /
+  `reserve_capacity` / `truncate` (`Unsupported` on read-only backends; `BytesIO`
+  adds the `with_capacity` constructor). Each handle carries an access `mode()`
+  (`Mode` — `Read`/`Write`/`Append`/`ReadWrite`, parsed from Python strings via
+  `Mode::from_str`) and an optional `parent()`, and can `open()` a derived handle
+  (records the parent, applies mode/stream) and `close()` it (idempotent; the default
+  is a no-op as memory/mmap backends free their storage on drop). Plus `as_slice`
+  (the zero-copy hook a memory backend overrides), `stats`, and `copy_to` (transfer
+  into another `Io` with a memory fast path; `copy` is the free fn). `media_type` is
+  lazy and behind the `media` feature. (`Io: Debug + Send + Sync` so handles can be
+  boxed as parents and held across threads; a blanket `impl Io for &mut T` lets a
+  borrowed handle be passed by value to an adapter.) A **streamed** backend (an HTTP
+  body, a compression `Decoder`) overrides `read` (and `pread` if it supports
+  positioning); a **memory-resident** one overrides `as_slice` so the zero-copy paths
+  light up for free.
+- `IoStats` — cheap metadata eager (`size`/`mtime`/`content_type`/`etag`),
+  expensive metadata (`media_type`) discovered lazily and cached.
+- `Path: Io` — a local, hierarchical resource. `LocalPath` is a filesystem
+  **instance**: `open` is infallible — it stats the path up front (holding
+  `url`/`stats`; a missing path reports `Kind::Missing`) and memory-maps the file
+  **lazily** on first read (mmap via the `mmap` feature). Its instance `write`
+  **auto-creates missing parent dirs lazily** — attempt the write, create the
+  tree only on a `NotFound` failure, then retry; never stat the dir up front.
+- `RemotePath: Io` — the URL-addressed cloud sibling of `Path` (flat keys, no dir
+  creation; range reads via `pread`). The address is the universal `Io::url()`.
+  **Cloud backends (S3, Azure) are downstream crates that implement `RemotePath`
+  — do not pull network SDKs into `yggdryl-io`.**
+- `Codec<T>` — typed read/write/stream of values over any `&mut dyn Io` handle;
+  `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
+  `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
+  separate concern in `yggdryl-compression` (see its section), not here.
+
+Rules when extending: the base build depends only on `yggdryl-url` (for the
+universal `Io::url()`); new heavy deps are **optional features** (like `log` /
+`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
+zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
+with `Whence::Start`, never by mutating the cursor.
+
+### `yggdryl-compression` — streamed codecs over `Io`
+
+Compression is layered **on top of** `yggdryl-io`, never inside it (so the IO
+base stays codec-free and the dependency points one way: `yggdryl-compression →
+yggdryl-io`). The shape:
+
+- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
+  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
+  `from_mime` / `from_media` / `from_stats` for inference.
+- `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
+  flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
+  Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
+  so a decoder composes straight into an HTTP body. The one-shot `compress` /
+  `decompress` build on them over a `BytesIO`. Internal `std::io` shims bridge `Io`'s
+  `read`/`write` to the `flate2`/`zstd`/`snap` stream codecs.
+- `CompressIo: Io` — a blanket extension trait adding `compress(codec)` /
+  `decompress(codec)` to every handle, returning a fresh `BytesIO`. `decompress`
+  with no codec infers one from the handle's URL extension, then its `stats()`
+  media/content type.
+
+Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
+feature is off still parses and names itself but reports `Unsupported` on
+encode/decode (`is_available` tells ahead of time). `media` adds the
+stats-inference path. When you add a codec, surface it in *both* bindings.
+
+### `yggdryl-http` — a requests-like client streaming over `Io`
+
+A small **blocking** HTTP client shaped after Python's `requests`, layered on
+`yggdryl-io` (and `yggdryl-url`); the transport is `ureq` (rustls TLS, its own
+gzip/brotli left off so decompression goes through `yggdryl-compression`). The
+shape:
+
+- `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
+  pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
+  handshake), default headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size`
+  (80). **Every request funnels through the one method** `send(req, raise_error,
+  keep_alive, stream)` — there is no separate `stream()` method. It `prepare`s the
+  request (merge defaults; per-request headers win, case-insensitively), runs it with
+  the retry policy, and returns an `HttpResponse` holding the body. `raise_error`
+  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; `keep_alive` pools
+  the connection (a pool-saturation safeguard forces `Connection: close` on streams
+  past the pool size); `stream` (`true` by default) keeps the body a **live
+  `HttpStream`** read lazily, while `false` drains it into a `BytesIO` during `send`
+  so the connection is released at once. `request(req, raise_error)` is the
+  keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
+  `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
+  threads).
+- `HttpHeaders` — the case-insensitive header map all three of `HttpSession`,
+  `HttpRequest`, `HttpResponse` and `HttpStream` use; CRUD (`get` / `get_all` /
+  `set` / `insert` / `remove` / `contains` / `iter` / `from_mapping`) plus the
+  HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
+  `Content-Length`). **All header logic lives here.**
+- `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
+  `with_param` / `with_body` / `with_body_reader` / `with_body_io`). `with_body_io`
+  is the preferred upload: the handle's `stream_len` sets `Content-Length` and the
+  bytes stream straight off the `Io` (a file is never buffered).
+- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
+  body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
+  `reader()` is the decoded body `Io` (decompressed under `compression`),
+  `bytes`/`text`/`into_bytesio` drain it, `into_io` takes the whole body.
+- `HttpStream: Io` — the seekable HTTP body that **streams off the held connection**:
+  sequential `read` pulls bytes straight off the socket on demand, keeping only a
+  sliding 4 MiB cache for short seek-backs, while `pread` (footer / column-chunk) and
+  a seek-back past the cache re-open a one-off `Range` on a pooled connection. Reads
+  retry transient statuses (429/502/503/504, honouring `Retry-After`) and **resume
+  from the cursor** on a dropped connection (each range request is idempotent); the
+  connection is released on EOF or `close()`. This is the canonical "remote `Io`".
+- Retries cover replayable bodies (none/bytes) and all `HttpStream` range
+  fetches; a streamed (reader/`Io`) request body is single-shot.
+
+Optional features: `compression` (auto `Content-Encoding` decode — it also turns
+on the codec backends), `media` (`mime_type()`), `log`. The base depends on
+`yggdryl-io`'s `json` feature so `Io::json()` is available on every handle. **All
+HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
+**hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /
+mid-stream drops, no network). In the bindings the blocking call must not stall
+the host runtime: Python releases the GIL (`allow_threads`), Node runs the
+request on the libuv pool and returns a `Promise` (so Node's surface is async,
+the one idiomatic divergence from the sync Rust/Python API). Bindings pass our
+`Io` instances as bodies — never serialized `bytes` — per the Io-centralisation
+rule above.
 
 ### One module per type, everywhere
 
@@ -84,6 +234,11 @@ Rules:
 - **Errors**: one `enum` per type (`UriError`, `UrlError`, …) implementing
   `Display` + `std::error::Error`, with `From` conversions between layers. Core
   errors map to `ValueError` (Python) / thrown `Error` (Node).
+  **Make error messages actionable**: when the fix is knowable, say it in the
+  message — name the missing feature (`enable the \`gzip\` cargo feature`), the
+  expected input (`expected 0, 1 or 2`), or the offending value (`unknown mode
+  "rw+"`). A reader should learn *how to fix it* from the message, not just that
+  it failed.
 - **Docs**: every public item has a `///` doc comment; types carry a runnable
   doctest. Match the existing terse style.
 - **Bindings**: each wrapper method is one or two lines delegating to
@@ -108,6 +263,24 @@ actually change** — guarded by a cheap up-front check:
 When you add a hot path, ask "does this allocate when nothing changed?" — if so,
 add the check and borrow. Never copy speculatively; never re-scan what a single
 pass can decide.
+
+### All byte access goes through `Io`
+
+**Centralise every byte/memory access behind the [`Io`] trait** — it is the one
+place that fully manages where bytes live and how they move, so it is where
+zero-copy wins live. A new source (cloud object, HTTP body, …) implements `Io`
+and overrides `as_slice` when it is memory-resident, so `pread` / `copy_to` /
+`json` / media-sniffing all light up the zero-copy path for free; a partly-cached
+source (e.g. `HttpStream`'s 4 MiB window) keeps its buffer management inside the
+`Io` impl and never leaks raw buffers to callers. Operations that consume bytes
+(`json`, compression, codecs, HTTP bodies) take an `Io`/`ReadBytes`, never a
+pre-collected `Vec` — so the data is read once, lazily, and copied at most once.
+
+This extends to the **bindings**: a Python/JS wrapper that needs bytes should
+accept and pass our `Io` instances (`BytesIO` / `LocalPath` / `HttpStream`), not
+serialized `bytes`, so a large body or upload streams through Rust and is never
+materialised in the host language. Prefer `Io.json()` (parsed in Rust) over
+handing raw bytes back across the FFI boundary.
 
 ## Logging
 

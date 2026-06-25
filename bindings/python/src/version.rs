@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
-use yggdryl_version::{FromInput, Mapping, ToOutput, Version as CoreVersion};
+use yggdryl_version::{Mapping, ToOutput, Version as CoreVersion};
 
 use crate::{hash_str, version_err};
 

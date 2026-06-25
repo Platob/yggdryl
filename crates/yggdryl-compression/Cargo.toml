@@ -1,0 +1,48 @@
+[package]
+name = "yggdryl-compression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Streamed byte compression (gzip, Zstandard, Snappy) over the yggdryl-io handle abstraction"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_compression"
+path = "src/lib.rs"
+
+[[bench]]
+name = "compression"
+harness = false
+
+[dependencies]
+# The byte-IO foundation: the `Io` handle / `IoStats` and the shared `IoError`.
+# Compression wraps these handles, so it is a base dependency.
+yggdryl-io = { workspace = true }
+# The codec backends — the common three are on by `default` (see `[features]`):
+#   gzip     gzip streaming compression (flate2);
+#   zstd     Zstandard streaming compression (zstd);
+#   snappy   Snappy streaming compression (snap);
+#   media    infer a codec from an `Io`'s MIME / media type (yggdryl-media);
+#   log      structured logging via the `log` facade (see yggdryl-media).
+flate2 = { version = "1", optional = true }
+zstd = { version = "0.13", optional = true }
+snap = { version = "1", optional = true }
+yggdryl-media = { workspace = true, optional = true }
+log = { version = "0.4", optional = true }
+
+[features]
+# The common compression codecs ship on by default; opt out with
+# `default-features = false` for a codec-free build (each variant then parses and
+# names itself but reports `Unsupported` on encode/decode).
+default = ["gzip", "zstd", "snappy"]
+gzip = ["dep:flate2"]
+zstd = ["dep:zstd"]
+snappy = ["dep:snap"]
+# Codec inference from an `Io`'s stats needs the media type, so pull in the
+# matching `yggdryl-io/media` accessor alongside `yggdryl-media`.
+media = ["dep:yggdryl-media", "yggdryl-io/media"]
+log = ["dep:log"]
