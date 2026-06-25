@@ -62,9 +62,12 @@ macro_rules! log_event {
 }
 
 mod bridge;
+mod cookies;
 mod error;
+mod factory;
 mod headers;
 mod method;
+mod redirect;
 mod request;
 mod response;
 mod retry;
@@ -72,7 +75,9 @@ mod session;
 mod stream;
 mod time;
 
+pub use cookies::{Cookie, HttpCookies};
 pub use error::HttpError;
+pub use factory::register;
 pub use headers::HttpHeaders;
 pub use method::Method;
 pub use request::HttpRequest;

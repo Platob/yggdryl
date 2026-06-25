@@ -51,6 +51,12 @@ impl HttpResponse {
         }
     }
 
+    /// Overwrites the dispatch timestamp — used so a redirected response reports
+    /// the **first** hop's `sent_at`, not the final hop's.
+    pub(crate) fn set_sent_at(&mut self, sent_at: f64) {
+        self.sent_at = sent_at;
+    }
+
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
     /// live [`HttpStream`](crate::HttpStream) when streamed, the buffered
     /// [`BytesIO`](yggdryl_io::BytesIO) when not — for seekable access.

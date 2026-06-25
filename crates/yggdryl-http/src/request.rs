@@ -27,6 +27,16 @@ impl Body {
     pub(crate) fn replayable(&self) -> bool {
         matches!(self, Body::Empty | Body::Bytes(_))
     }
+
+    /// A re-sendable copy of a replayable body (for a redirect re-dispatch), or
+    /// [`Body::Empty`] for a single-shot streamed body that cannot be replayed.
+    pub(crate) fn replay_copy(&self) -> Body {
+        match self {
+            Body::Empty => Body::Empty,
+            Body::Bytes(bytes) => Body::Bytes(bytes.clone()),
+            Body::Reader(_) | Body::Io(_) => Body::Empty,
+        }
+    }
 }
 
 /// A builder for one HTTP request: a [`Method`], a [`Url`], headers, and an
@@ -40,6 +50,9 @@ pub struct HttpRequest {
     pub(crate) url: Url,
     pub(crate) headers: HttpHeaders,
     pub(crate) body: Body,
+    /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
+    /// request (default `true`).
+    pub(crate) allow_redirect: bool,
 }
 
 impl HttpRequest {
@@ -52,6 +65,7 @@ impl HttpRequest {
             url,
             headers: HttpHeaders::new(),
             body: Body::Empty,
+            allow_redirect: true,
         })
     }
 
@@ -62,6 +76,7 @@ impl HttpRequest {
             url,
             headers: HttpHeaders::new(),
             body: Body::Empty,
+            allow_redirect: true,
         }
     }
 
@@ -142,6 +157,14 @@ impl HttpRequest {
         self
     }
 
+    /// Sets whether [`send`](crate::HttpSession::send) follows 3xx redirects for
+    /// this request (default `true`). With `false` a redirect is returned as the
+    /// 3xx response itself.
+    pub fn with_allow_redirect(mut self, allow_redirect: bool) -> HttpRequest {
+        self.allow_redirect = allow_redirect;
+        self
+    }
+
     /// The request method.
     pub fn method(&self) -> Method {
         self.method
@@ -155,5 +178,11 @@ impl HttpRequest {
     /// The request headers, in insertion order.
     pub fn headers(&self) -> &HttpHeaders {
         &self.headers
+    }
+
+    /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
+    /// request.
+    pub fn allow_redirect(&self) -> bool {
+        self.allow_redirect
     }
 }

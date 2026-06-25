@@ -23,6 +23,10 @@ pub enum HttpError {
     Decode(String),
     /// An underlying byte-IO error while streaming the body.
     Io(IoError),
+    /// More than the session's `max_redirects` 3xx hops were followed (carries the
+    /// limit), or a redirect chain looped back to a `(method, url)` already visited
+    /// (carries the repeated URL).
+    TooManyRedirects(String),
 }
 
 impl fmt::Display for HttpError {
@@ -34,6 +38,7 @@ impl fmt::Display for HttpError {
             HttpError::Status(code) => write!(f, "http status {code}"),
             HttpError::Decode(what) => write!(f, "decode error: {what}"),
             HttpError::Io(err) => write!(f, "io error: {err}"),
+            HttpError::TooManyRedirects(what) => write!(f, "too many redirects: {what}"),
         }
     }
 }

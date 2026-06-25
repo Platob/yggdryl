@@ -801,7 +801,8 @@ pub fn from_url(url: &Url) -> Result<Box<dyn Io>, IoError> {
 /// assert!(handle.is_ok());
 /// ```
 pub fn from_str(input: &str) -> Result<Box<dyn Io>, IoError> {
-    let uri = Uri::from_str(input).map_err(|err| IoError::Invalid(format!("invalid location: {err}")))?;
+    let uri =
+        Uri::from_str(input).map_err(|err| IoError::Invalid(format!("invalid location: {err}")))?;
     from_uri(&uri)
 }
 
@@ -2602,7 +2603,10 @@ mod tests {
 
     #[test]
     fn from_str_rejects_mem_and_unknown_schemes() {
-        assert!(matches!(from_str("mem://abc"), Err(IoError::Unsupported(_))));
+        assert!(matches!(
+            from_str("mem://abc"),
+            Err(IoError::Unsupported(_))
+        ));
         assert!(matches!(
             from_str("ftp://host/x"),
             Err(IoError::Unsupported(_))

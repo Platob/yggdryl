@@ -5,7 +5,7 @@ use std::fmt;
 use crate::error::HttpError;
 
 /// An HTTP request method.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Method {
     /// `GET` — the default.
     #[default]

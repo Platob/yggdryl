@@ -83,6 +83,13 @@ handle. The layering, smallest to largest:
   `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
   `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
   separate concern in `yggdryl-compression` (see its section), not here.
+- The **factory** `from_str` / `from_url` / `from_uri` returns the right
+  `Box<dyn Io>` for a location, dispatching on the URL scheme: a bare path / `file://`
+  opens a `LocalPath`; any other scheme is looked up in the `register_scheme` registry
+  (a global `OnceLock<RwLock<…>>`, like the MimeType registry) so downstream crates
+  plug in without `yggdryl-io` depending on them — `yggdryl-http` registers
+  `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their schemes
+  later. `mem://` and unregistered schemes return an actionable `Unsupported`.
 
 Rules when extending: the base build depends only on `yggdryl-url` (for the
 universal `Io::url()`); new heavy deps are **optional features** (like `log` /
@@ -136,16 +143,31 @@ shape:
   so the connection is released at once. `request(req, raise_error)` is the
   keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
-  threads).
+  threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
+  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`).
+- `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
+  (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
+  (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
+  `Cookie:` value. **All cookie logic lives here.** The session feeds every
+  response's `Set-Cookie` in and adds the matching `Cookie` before each dispatch.
+- **Redirects** (`redirect.rs`, crate-internal): `send` follows 3xx with a `Location`
+  when the request's `allow_redirect` (default `true`) is set and the hop is under
+  `max_redirects`. 303 → GET (drop body); 301/302 on POST → GET; 307/308 preserve
+  method **and** body but only if replayable, else the 3xx is returned. Loops are
+  detected (a `(method, url)` set); a cross-origin hop (scheme+host+**port** differ)
+  strips `Authorization` and per-request `Cookie`. `ureq`'s own redirect following is
+  off — our layer owns it.
 - `HttpHeaders` — the case-insensitive header map all three of `HttpSession`,
   `HttpRequest`, `HttpResponse` and `HttpStream` use; CRUD (`get` / `get_all` /
   `set` / `insert` / `remove` / `contains` / `iter` / `from_mapping`) plus the
   HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
   `Content-Length`). **All header logic lives here.**
 - `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
-  `with_param` / `with_body` / `with_body_reader` / `with_body_io`). `with_body_io`
-  is the preferred upload: the handle's `stream_len` sets `Content-Length` and the
-  bytes stream straight off the `Io` (a file is never buffered).
+  `with_param` / `with_body` / `with_body_reader` / `with_body_io` /
+  `with_allow_redirect`). `with_body_io` is the preferred upload: the handle's
+  `stream_len` sets `Content-Length` and the bytes stream straight off the `Io` (a
+  file is never buffered). `with_allow_redirect(false)` opts a request out of the
+  redirect loop (returning the 3xx).
 - `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
   body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
   `reader()` is the decoded body `Io` (decompressed under `compression`),

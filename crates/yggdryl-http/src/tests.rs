@@ -69,6 +69,17 @@ fn method_parses_and_names() {
 }
 
 #[test]
+fn io_factory_opens_an_http_url() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"factory body"));
+    // Building a session registers http/https with the yggdryl-io factory.
+    let _session = HttpSession::new();
+    let mut body = yggdryl_io::from_str(&url).unwrap();
+    let mut out = Vec::new();
+    body.read_to_end(&mut out).unwrap();
+    assert_eq!(out, b"factory body");
+}
+
+#[test]
 fn get_reads_status_headers_and_text() {
     let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
     let session = HttpSession::new().with_user_agent("yggdryl-http-test");
@@ -968,4 +979,292 @@ fn io_json_parses_a_response_body() {
     assert_eq!(value["a"].as_u64(), Some(1));
     assert_eq!(value["b"][0].as_u64(), Some(2));
     assert_eq!(value["b"][1].as_u64(), Some(3));
+}
+
+// ---------------------------------------------------------------------------
+// Redirect following + cookie jar (hermetic, scripted localhost server)
+// ---------------------------------------------------------------------------
+
+/// A reply builder, given the raw request text the server received (so a redirect
+/// reply can echo state). Returns the raw bytes to write back.
+type Reply = Box<dyn Fn(&str) -> Vec<u8> + Send>;
+
+/// Spawns a localhost server that answers each accepted connection with the next
+/// scripted `reply` in order (one request per connection — every reply uses
+/// `Connection: close`), forwarding each received request's text on the channel.
+/// Hermetic: nothing leaves the loopback interface.
+fn serve_script(replies: Vec<Reply>) -> (String, std::sync::mpsc::Receiver<String>) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        let mut replies = replies.into_iter();
+        for stream in listener.incoming().flatten() {
+            let Some(reply) = replies.next() else { break };
+            let mut stream = stream;
+            stream
+                .set_read_timeout(Some(Duration::from_millis(200)))
+                .ok();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 4096];
+            // Read until the header terminator, then drain any pending body.
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        request.extend_from_slice(&buf[..count]);
+                        if request.windows(4).any(|w| w == b"\r\n\r\n")
+                            && !request_has_pending_body(&request)
+                        {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let text = String::from_utf8_lossy(&request).into_owned();
+            tx.send(text.clone()).ok();
+            let _ = stream.write_all(&reply(&text));
+            let _ = stream.flush();
+        }
+    });
+    (url, rx)
+}
+
+/// Whether a request still has body bytes outstanding (a Content-Length larger
+/// than the bytes already after the header terminator), so the server keeps
+/// reading instead of replying mid-upload.
+fn request_has_pending_body(request: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(request);
+    let Some((head, body)) = text.split_once("\r\n\r\n") else {
+        return false;
+    };
+    let length = head.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.trim()
+            .eq_ignore_ascii_case("content-length")
+            .then(|| value.trim().parse::<usize>().ok())
+            .flatten()
+    });
+    matches!(length, Some(length) if body.len() < length)
+}
+
+/// A `301`/`302`/`303`/`307`/`308` reply pointing at `location`.
+fn redirect_reply(status: u16, reason: &str, location: &str) -> Vec<u8> {
+    format!(
+        "HTTP/1.1 {status} {reason}\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    )
+    .into_bytes()
+}
+
+#[test]
+fn redirect_chain_lands_on_200() {
+    // /a -> /b -> 200, all on the same host; the final URL and body reflect /b.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(302, "Found", "/b")),
+        Box::new(|_| ok_reply("text/plain", b"arrived")),
+    ]);
+    let session = HttpSession::new();
+    let response = session.get(&url).unwrap();
+    assert_eq!(response.status(), 200);
+    let final_url = response.url().to_string();
+    assert_eq!(response.text().unwrap(), "arrived");
+    assert!(final_url.ends_with("/b"), "{final_url}");
+    // First hop requested `/`, second `/b`.
+    assert!(rx.recv().unwrap().starts_with("GET / HTTP/1.1"));
+    assert!(rx.recv().unwrap().starts_with("GET /b HTTP/1.1"));
+}
+
+#[test]
+fn redirect_301_downgrades_post_to_get() {
+    // A 301 on a POST follows as a bodyless GET (the de-facto browser behaviour).
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(301, "Moved Permanently", "/next")),
+        Box::new(|_| ok_reply("text/plain", b"ok")),
+    ]);
+    let session = HttpSession::new();
+    let response = session
+        .request(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body(b"payload".to_vec()),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let first = rx.recv().unwrap();
+    assert!(first.starts_with("POST / HTTP/1.1"), "{first}");
+    assert!(first.contains("payload"), "{first}");
+    let second = rx.recv().unwrap();
+    assert!(second.starts_with("GET /next HTTP/1.1"), "{second}");
+    assert!(!second.contains("payload"), "{second}");
+}
+
+#[test]
+fn redirect_307_preserves_post_and_body() {
+    // A 307 preserves the method and replays the (in-memory) body.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(307, "Temporary Redirect", "/again")),
+        Box::new(|_| ok_reply("text/plain", b"ok")),
+    ]);
+    let session = HttpSession::new();
+    let response = session
+        .request(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body(b"keep-me".to_vec()),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let _first = rx.recv().unwrap();
+    let second = rx.recv().unwrap();
+    assert!(second.starts_with("POST /again HTTP/1.1"), "{second}");
+    assert!(second.contains("keep-me"), "{second}");
+}
+
+#[test]
+fn redirect_loop_errors() {
+    // /loop -> /loop forever: detected as a loop and surfaced as an error.
+    let (url, _rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(302, "Found", "/loop")),
+        Box::new(|_| redirect_reply(302, "Found", "/loop")),
+        Box::new(|_| redirect_reply(302, "Found", "/loop")),
+    ]);
+    let session = HttpSession::new();
+    let result = session.send(
+        HttpRequest::from_url(
+            Method::Get,
+            yggdryl_url::Url::from_str(&format!("{url}/loop")).unwrap(),
+        ),
+        false,
+        true,
+        false,
+    );
+    assert!(
+        matches!(result, Err(HttpError::TooManyRedirects(_))),
+        "expected TooManyRedirects, got {}",
+        result.map(|response| response.status()).unwrap_or(0)
+    );
+}
+
+#[test]
+fn allow_redirect_false_returns_the_3xx() {
+    // With redirects disabled the 3xx is returned untouched.
+    let (url, _rx) = serve_script(vec![Box::new(|_| {
+        redirect_reply(302, "Found", "/somewhere")
+    })]);
+    let session = HttpSession::new();
+    let response = session
+        .send(
+            HttpRequest::get(&url).unwrap().with_allow_redirect(false),
+            false,
+            true,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 302);
+    assert_eq!(response.header("location"), Some("/somewhere"));
+}
+
+#[test]
+fn exceeding_max_redirects_errors() {
+    let (url, _rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(302, "Found", "/1")),
+        Box::new(|_| redirect_reply(302, "Found", "/2")),
+        Box::new(|_| redirect_reply(302, "Found", "/3")),
+    ]);
+    let session = HttpSession::new().with_max_redirects(1);
+    let result = session.send(HttpRequest::get(&url).unwrap(), false, true, false);
+    assert!(
+        matches!(result, Err(HttpError::TooManyRedirects(_))),
+        "expected TooManyRedirects, got {}",
+        result.map(|response| response.status()).unwrap_or(0)
+    );
+}
+
+#[test]
+fn cross_host_redirect_strips_authorization() {
+    // The first host redirects to a *different* host; the Authorization header
+    // must not be carried across (the second host never sees it).
+    let (host_b, rx_b) = serve_script(vec![Box::new(|_| ok_reply("text/plain", b"b"))]);
+    let location = format!("{host_b}/secure");
+    let (host_a, rx_a) = serve_script(vec![Box::new(move |_| {
+        redirect_reply(302, "Found", &location)
+    })]);
+    let session = HttpSession::new();
+    let response = session
+        .request(
+            HttpRequest::get(&host_a)
+                .unwrap()
+                .with_header("authorization", "Bearer secret"),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let first = rx_a.recv().unwrap().to_lowercase();
+    assert!(first.contains("authorization: bearer secret"), "{first}");
+    let second = rx_b.recv().unwrap().to_lowercase();
+    assert!(
+        !second.contains("authorization"),
+        "second hop leaked auth: {second}"
+    );
+}
+
+#[test]
+fn set_cookie_is_sent_back_on_a_follow_up_request() {
+    // First response sets a cookie; the next request to the same host sends it.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| {
+            let mut reply = b"HTTP/1.1 200 OK\r\nSet-Cookie: sid=abc123; Path=/\r\nContent-Length: 2\r\nConnection: close\r\n\r\n".to_vec();
+            reply.extend_from_slice(b"ok");
+            reply
+        }),
+        Box::new(|_| ok_reply("text/plain", b"second")),
+    ]);
+    let session = HttpSession::new();
+    session.get(&url).unwrap();
+    let _first = rx.recv().unwrap();
+    assert!(session.cookies().get("sid").is_some());
+    session.get(&url).unwrap();
+    let second = rx.recv().unwrap().to_lowercase();
+    assert!(second.contains("cookie: sid=abc123"), "{second}");
+}
+
+#[test]
+fn an_expired_cookie_is_not_sent() {
+    // A Max-Age=0 cookie expires at once, so it is never sent on the next request.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| {
+            let mut reply = b"HTTP/1.1 200 OK\r\nSet-Cookie: gone=x; Path=/; Max-Age=0\r\nContent-Length: 2\r\nConnection: close\r\n\r\n".to_vec();
+            reply.extend_from_slice(b"ok");
+            reply
+        }),
+        Box::new(|_| ok_reply("text/plain", b"second")),
+    ]);
+    let session = HttpSession::new();
+    session.get(&url).unwrap();
+    let _first = rx.recv().unwrap();
+    session.get(&url).unwrap();
+    let second = rx.recv().unwrap().to_lowercase();
+    assert!(
+        !second.contains("cookie:"),
+        "expired cookie was sent: {second}"
+    );
+}
+
+#[test]
+fn a_secure_cookie_is_withheld_over_http() {
+    // A Secure cookie set over the (test) http connection must not be sent back
+    // over plain http — the domain matches but the scheme rule withholds it.
+    let url = yggdryl_url::Url::from_str("https://example.com/").unwrap();
+    let mut jar = crate::HttpCookies::new();
+    let mut headers = crate::HttpHeaders::new();
+    headers.insert("set-cookie", "tok=v; Path=/; Secure");
+    jar.set_from_response(&url, &headers);
+    // Over https the cookie is offered.
+    assert_eq!(jar.header_for(&url).as_deref(), Some("tok=v"));
+    // Over plain http to the same host it is withheld.
+    let http = yggdryl_url::Url::from_str("http://example.com/").unwrap();
+    assert_eq!(jar.header_for(&http), None);
 }
