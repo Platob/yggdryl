@@ -761,11 +761,29 @@ impl<T: Io + ?Sized> Io for &mut T {
     fn as_slice(&self) -> Option<&[u8]> {
         (**self).as_slice()
     }
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        (**self).read(buf)
+    }
+    fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
+        (**self).write(bytes)
+    }
     fn pread(&mut self, buf: &mut [u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
         (**self).pread(buf, offset, whence)
     }
     fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
         (**self).pwrite(bytes, offset, whence)
+    }
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), IoError> {
+        (**self).read_exact(buf)
+    }
+    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
+        (**self).read_to_end(out)
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), IoError> {
+        (**self).write_all(bytes)
+    }
+    fn flush(&mut self) -> Result<(), IoError> {
+        (**self).flush()
     }
     fn capacity(&self) -> usize {
         (**self).capacity()
@@ -838,8 +856,17 @@ impl<T: Io + ?Sized> Io for Box<T> {
     fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
         (**self).pwrite(bytes, offset, whence)
     }
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), IoError> {
+        (**self).read_exact(buf)
+    }
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
         (**self).read_to_end(out)
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), IoError> {
+        (**self).write_all(bytes)
+    }
+    fn flush(&mut self) -> Result<(), IoError> {
+        (**self).flush()
     }
     fn capacity(&self) -> usize {
         (**self).capacity()
@@ -2004,6 +2031,64 @@ mod tests {
         let mut dst = BytesIO::new();
         assert_eq!(copy(&mut src, &mut dst).unwrap(), 14);
         assert_eq!(dst.getvalue(), b"streamed bytes");
+    }
+
+    #[test]
+    fn blanket_impls_forward_a_streamed_read_override() {
+        // A `Drip` overrides `read` and has no `as_slice`. A generic consumer that
+        // takes `R: Io` BY VALUE (exactly how `Compression::decoder` takes a
+        // `&mut *self`) instantiates the `&mut T` / `Box<T>` blanket impls — which
+        // must forward `read`/`read_to_end` to the override, not fall back to the
+        // default (`as_slice` → Unsupported on a streamed backend).
+        fn drain<R: Io>(mut source: R) -> Vec<u8> {
+            let mut out = Vec::new();
+            source.read_to_end(&mut out).unwrap();
+            out
+        }
+        let mut by_ref = Drip(BytesIO::from_bytes(b"abc".to_vec()));
+        assert_eq!(drain(&mut by_ref), b"abc"); // &mut Drip: Io via the blanket impl
+        assert_eq!(
+            drain(Box::new(Drip(BytesIO::from_bytes(b"xy".to_vec()))) as Box<dyn Io>),
+            b"xy" // Box<dyn Io>: Io via the blanket impl
+        );
+    }
+
+    #[test]
+    fn drip_is_read_only() {
+        let mut drip = Drip(BytesIO::from_bytes(b"ro".to_vec()));
+        assert!(matches!(drip.write(b"x"), Err(IoError::Unsupported(_))));
+        assert!(matches!(
+            drip.pwrite(b"x", 0, Whence::Start),
+            Err(IoError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn read_and_pread_edge_cases() {
+        let mut io = BytesIO::from_bytes(b"0123456789".to_vec());
+        // A zero-length read returns 0 and leaves the cursor put.
+        assert_eq!(Io::read(&mut io, &mut []).unwrap(), 0);
+        assert_eq!(Io::stream_position(&io), 0);
+        // pread(Current) advances the cursor by the bytes read, short at the end.
+        io.seek(8, Whence::Start).unwrap();
+        let mut four = [0u8; 4];
+        assert_eq!(io.pread(&mut four, 0, Whence::Current).unwrap(), 2);
+        assert_eq!(&four[..2], b"89");
+        assert_eq!(Io::stream_position(&io), 10);
+        // pread(Current) past the end returns 0 and keeps the (past-end) cursor.
+        io.seek(100, Whence::Start).unwrap();
+        assert_eq!(io.pread(&mut four, 0, Whence::Current).unwrap(), 0);
+        assert_eq!(Io::stream_position(&io), 100);
+        // read_to_end past the end appends nothing.
+        let mut tail = Vec::new();
+        assert_eq!(io.read_to_end(&mut tail).unwrap(), 0);
+        assert!(tail.is_empty());
+        // A cursor-relative read before the start is rejected.
+        io.seek(0, Whence::Start).unwrap();
+        assert!(matches!(
+            io.pread(&mut four, -1, Whence::Current),
+            Err(IoError::Invalid(_))
+        ));
     }
 
     /// A read-only [`Io`] whose reads always error, to check that `pread`

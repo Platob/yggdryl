@@ -158,6 +158,20 @@ impl HttpHeaders {
         }
         self.get_u64("content-length")
     }
+
+    /// The first byte offset of a `Content-Range` (`bytes a-b/total` → `a`), used to
+    /// confirm a `206` resumed from the byte we asked for.
+    pub fn content_range_start(&self) -> Option<u64> {
+        self.get("content-range")?
+            .trim()
+            .strip_prefix("bytes")?
+            .trim_start()
+            .split(['-', '/'])
+            .next()?
+            .trim()
+            .parse()
+            .ok()
+    }
 }
 
 impl From<&ureq::http::HeaderMap> for HttpHeaders {

@@ -62,10 +62,9 @@ impl HttpStream {
         keep_alive: bool,
         held: Arc<AtomicUsize>,
         received_at: Instant,
+        size: Option<u64>,
+        content_type: Option<String>,
     ) -> HttpStream {
-        let response_headers = HttpHeaders::from(response.headers());
-        let size = response_headers.content_size();
-        let content_type = response_headers.get("content-type").map(str::to_string);
         let reader: Box<dyn std::io::Read + Send + Sync> =
             Box::new(response.into_body().into_reader());
         held.fetch_add(1, Ordering::SeqCst);
@@ -189,6 +188,19 @@ impl HttpStream {
                             "server ignored the Range request (it does not support range reads)"
                                 .to_string(),
                         ));
+                    }
+                    // A 206 must resume from exactly the byte we asked for; a server
+                    // that answers a different range would corrupt the stream.
+                    if status == 206 {
+                        if let Some(got) =
+                            HttpHeaders::from(response.headers()).content_range_start()
+                        {
+                            if got != start {
+                                return Err(IoError::Io(format!(
+                                    "server resumed at byte {got}, not the requested {start} (range reads are unreliable here)"
+                                )));
+                            }
+                        }
                     }
                     return Ok(Some(response));
                 }

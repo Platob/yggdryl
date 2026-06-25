@@ -210,10 +210,13 @@ impl HttpSession {
             &request.headers,
             request.body,
         )?;
-        // The response headers are back: stamp the dispatch instant.
+        // The response headers are back: stamp the dispatch instant. Parse them
+        // once here and hand the derived size / content-type to the stream.
         let sent_at = now_secs();
         let status = raw.status().as_u16();
         let response_headers = HttpHeaders::from(raw.headers());
+        let size = response_headers.content_size();
+        let content_type = response_headers.get("content-type").map(str::to_string);
         let received_at = Instant::new();
         let mut http_stream = HttpStream::from_response(
             raw,
@@ -224,6 +227,8 @@ impl HttpSession {
             keep_alive,
             self.held.clone(),
             received_at.clone(),
+            size,
+            content_type,
         );
         // Buffered mode drains the body now (releasing the connection and stamping
         // `received_at` via the drain); streamed mode keeps the live stream as the

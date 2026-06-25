@@ -502,6 +502,108 @@ fn httpstream_resumes_after_a_dropped_connection() {
 }
 
 #[test]
+fn httpstream_rejects_a_reconnect_to_the_wrong_range() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+    let payload = stream_payload();
+    let served = payload.clone();
+    let hits = Arc::new(AtomicU32::new(0));
+    let counter = hits.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let _ = read_request(&mut stream);
+            let n = counter.fetch_add(1, Ordering::SeqCst);
+            let total = served.len();
+            if n == 0 {
+                // Truncated streaming GET, then drop, forcing a resume from byte 100.
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                );
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&served[..100]);
+            } else {
+                // Misbehave: answer the resume Range with a 206 that starts at byte
+                // 0, not the requested 100 — the client must reject this.
+                let header = format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-{}/{total}\r\nContent-Length: {total}\r\n\r\n",
+                    total - 1
+                );
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&served);
+            }
+        }
+    });
+    let session = HttpSession::new().with_retry(RetryConfig {
+        max_retries: 2,
+        base_delay: Duration::from_millis(1),
+        max_delay: Duration::from_millis(2),
+    });
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+    let mut out = Vec::new();
+    // The resume served the wrong offset, so the read fails rather than silently
+    // returning corrupted bytes.
+    assert!(stream.read_to_end(&mut out).is_err());
+}
+
+#[test]
+fn httpstream_pread_during_an_active_stream() {
+    let payload = stream_payload();
+    let url = serve_ranges(payload.clone());
+    let session = HttpSession::new();
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+
+    // Read 1000 bytes off the live stream.
+    let mut head = [0u8; 1000];
+    let mut filled = 0;
+    while filled < head.len() {
+        filled += stream.read(&mut head[filled..]).unwrap();
+    }
+    assert_eq!(&head[..], &payload[..1000]);
+
+    // A positional footer pread does not disturb the cursor (still 1000)…
+    let mut footer = [0u8; 10];
+    let n = stream.pread(&mut footer, -10, Whence::End).unwrap();
+    assert_eq!(&footer[..n], &payload[payload.len() - 10..]);
+    assert_eq!(stream.stream_position(), 1000);
+
+    // …and the live stream continues correctly from where it left off.
+    let mut more = [0u8; 500];
+    let mut got = 0;
+    while got < more.len() {
+        got += stream.read(&mut more[got..]).unwrap();
+    }
+    assert_eq!(&more[..], &payload[1000..1500]);
+}
+
+#[test]
+fn httpstream_cache_evicts_and_seek_back_refetches() {
+    // A payload larger than the 4 MiB cache, so a long read evicts the early bytes
+    // and a seek back to them must re-fetch via a Range request.
+    let payload: Vec<u8> = (0..5 * 1024 * 1024u32).map(|n| (n % 251) as u8).collect();
+    let url = serve_ranges(payload.clone());
+    let session = HttpSession::new();
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+
+    // Drain the whole 5 MiB so the first megabyte is evicted from the 4 MiB cache.
+    let mut out = Vec::new();
+    stream.read_to_end(&mut out).unwrap();
+    assert_eq!(out, payload);
+
+    // Seek back into the evicted region and read — a fresh Range fetch returns the
+    // correct bytes despite the cache no longer holding them.
+    stream.seek(1024, Whence::Start).unwrap();
+    let mut back = [0u8; 64];
+    let mut filled = 0;
+    while filled < back.len() {
+        filled += stream.read(&mut back[filled..]).unwrap();
+    }
+    assert_eq!(&back[..], &payload[1024..1024 + 64]);
+}
+
+#[test]
 fn send_many_streams_batches() {
     let url = serve_ranges(b"hello".to_vec());
     let session = HttpSession::new()
