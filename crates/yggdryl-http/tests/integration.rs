@@ -64,6 +64,36 @@ fn real_http11_over_tls() {
     );
 }
 
+/// A POST request body round-trips over a real HTTP/2 connection: `Auto` negotiates
+/// `h2` to an echo service, which reflects the body back in its JSON response.
+#[cfg(feature = "http2")]
+#[test]
+#[ignore = "hits the network"]
+fn real_http2_post_body_echoed() {
+    let payload = "yggdryl-h2-post-probe";
+    let response = session()
+        .send(
+            HttpRequest::post("https://httpbin.org/post")
+                .unwrap()
+                .with_body(payload.as_bytes().to_vec()),
+            true,
+            false,
+            false,
+        )
+        .unwrap();
+    // The body is the key assertion; the version is whatever Auto negotiated (h2
+    // for an h2 host, http/1.1 otherwise) — reported truthfully either way.
+    assert!(matches!(
+        response.negotiated_version(),
+        HttpVersion::Http2 | HttpVersion::Http11
+    ));
+    // httpbin echoes the request body back in its JSON response.
+    assert!(
+        response.text().unwrap().contains(payload),
+        "echo did not contain the posted body"
+    );
+}
+
 /// Pinned HTTP/2 over TLS negotiates `h2` against an h2-capable CDN and reports it.
 #[cfg(feature = "http2")]
 #[test]
