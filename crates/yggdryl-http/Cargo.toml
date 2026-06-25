@@ -30,8 +30,8 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 # Optional and off by default:
 #   compression  auto-decode a `Content-Encoding` body via yggdryl-core's codecs;
 #   media        expose the response `mime_type()` via yggdryl-core's media types;
-#   serde        `Serialize`/`Deserialize` for the data types (Method, headers,
-#                cookies, retry config) and, transitively, the core value types;
+#   serde        `Serialize`/`Deserialize` for the data types (Method, HttpVersion,
+#                headers, cookies, retry config) and, transitively, the core types;
 #   log          structured logging via the `log` facade.
 serde = { version = "1", optional = true, features = ["derive"] }
 log = { version = "0.4", optional = true }
@@ -53,6 +53,12 @@ media = ["yggdryl-core/media"]
 # (`Url`, `Method` strings, …) serialise too. A live request/response body streams
 # off a connection and is deliberately not serialisable.
 serde = ["dep:serde", "yggdryl-core/serde"]
+# Reserved (inert) placeholders for the forthcoming async HTTP/2 (`h2`) and HTTP/3
+# (`h3` over QUIC) transports. They gate no code yet, so enabling one has no effect:
+# `HttpVersion::Http2`/`Http3` parse and name themselves but stay unavailable until
+# the transport itself is implemented (not merely until the flag is set).
+http2 = []
+http3 = []
 log = ["dep:log", "yggdryl-core/log"]
 
 [dev-dependencies]

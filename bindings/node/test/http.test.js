@@ -143,3 +143,28 @@ test('setBaseUrl configures the shared singleton', async () => {
     server.close()
   }
 })
+
+test('http version negotiation', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    // The session default is "auto"; a response reports HTTP/1.1 (the only wired
+    // transport today).
+    const session = new HttpSession()
+    assert.strictEqual(session.httpVersion, 'auto')
+    const r = await session.get(base + '/')
+    assert.strictEqual(r.httpVersion, 'HTTP/1.1')
+
+    // A session can default to a version…
+    const pinned = new HttpSession(undefined, undefined, undefined, undefined, '2')
+    assert.strictEqual(pinned.httpVersion, 'HTTP/2')
+    // …but pinning HTTP/2 (no transport yet) rejects rather than downgrading.
+    await assert.rejects(pinned.get(base + '/'))
+    // The per-request override rejects the same way.
+    await assert.rejects(
+      session.request('GET', base + '/', undefined, undefined, undefined, undefined, undefined, '3'),
+    )
+  } finally {
+    server.close()
+  }
+})

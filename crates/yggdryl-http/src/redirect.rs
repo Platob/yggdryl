@@ -151,5 +151,6 @@ pub(crate) fn next_request(
         headers,
         body,
         allow_redirect: previous.allow_redirect,
+        http_version: previous.http_version,
     })
 }

@@ -6,6 +6,7 @@ use yggdryl_core::{BytesIO, Io};
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::time::Instant;
+use crate::version::HttpVersion;
 
 /// A received HTTP response, modelled on `requests.Response`. It **holds the logic
 /// to read its body from the server**: the body is a [`Box<dyn Io>`](Io) — a live
@@ -26,13 +27,15 @@ pub struct HttpResponse {
     body: Box<dyn Io>,
     sent_at: f64,
     received_at: Instant,
+    negotiated: HttpVersion,
 }
 
 impl HttpResponse {
     /// Assembles a response from its status, URL, response headers, the body
     /// [`Io`] (a live [`HttpStream`](crate::HttpStream) or a buffered
-    /// [`BytesIO`](yggdryl_core::BytesIO)) and its timing (`sent_at` when the
-    /// request was dispatched, `received_at` shared with the body's stream).
+    /// [`BytesIO`](yggdryl_core::BytesIO)), its timing (`sent_at` when the request
+    /// was dispatched, `received_at` shared with the body's stream) and the
+    /// `negotiated` protocol version the hop was delivered over.
     pub(crate) fn new(
         status: u16,
         url: Url,
@@ -40,6 +43,7 @@ impl HttpResponse {
         body: Box<dyn Io>,
         sent_at: f64,
         received_at: Instant,
+        negotiated: HttpVersion,
     ) -> HttpResponse {
         HttpResponse {
             status,
@@ -48,6 +52,7 @@ impl HttpResponse {
             body,
             sent_at,
             received_at,
+            negotiated,
         }
     }
 
@@ -87,6 +92,16 @@ impl HttpResponse {
     /// The final request URL (after any redirects the transport followed).
     pub fn url(&self) -> &Url {
         &self.url
+    }
+
+    /// The HTTP protocol [`version`](HttpVersion) the response was actually
+    /// delivered over — the result of negotiating the request's pinned version (or
+    /// the session default) against the wired transports. Today this is always
+    /// [`Http11`](HttpVersion::Http11); it will reflect a negotiated
+    /// [`Http2`](HttpVersion::Http2) / [`Http3`](HttpVersion::Http3) once those
+    /// transports land.
+    pub fn negotiated_version(&self) -> HttpVersion {
+        self.negotiated
     }
 
     /// When the request was dispatched (the response headers came back), as UTC

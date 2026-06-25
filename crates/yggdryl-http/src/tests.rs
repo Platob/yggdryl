@@ -1357,16 +1357,87 @@ fn a_secure_cookie_is_withheld_over_http() {
     assert_eq!(jar.header_for(&http), None);
 }
 
+#[test]
+fn http_version_parses_names_and_alpn() {
+    use crate::HttpVersion;
+    // Selectors parse case-insensitively across the common spellings.
+    for value in ["auto", "AUTO", "negotiate", ""] {
+        assert_eq!(HttpVersion::from_str(value).unwrap(), HttpVersion::Auto);
+    }
+    for value in ["1.1", "http/1.1", "H1", "http11"] {
+        assert_eq!(HttpVersion::from_str(value).unwrap(), HttpVersion::Http11);
+    }
+    assert_eq!(HttpVersion::from_str("h2").unwrap(), HttpVersion::Http2);
+    assert_eq!(HttpVersion::from_str("http/3").unwrap(), HttpVersion::Http3);
+    // An unknown selector names the accepted values.
+    let err = HttpVersion::from_str("spdy").unwrap_err();
+    assert!(err.to_string().contains("expected auto"), "{err}");
+
+    // Names, ALPN ids and the round-trip back from an ALPN id.
+    assert_eq!(HttpVersion::Http11.as_str(), "HTTP/1.1");
+    assert_eq!(HttpVersion::Http2.alpn(), Some("h2"));
+    assert_eq!(HttpVersion::Auto.alpn(), None);
+    assert_eq!(HttpVersion::from_alpn("h3"), Some(HttpVersion::Http3));
+    assert_eq!(HttpVersion::from_alpn("spdy/3"), None);
+
+    // Only HTTP/1.1 (and Auto, which negotiates to it) is wired today.
+    assert!(HttpVersion::Http11.is_available());
+    assert!(HttpVersion::Auto.is_available());
+    assert!(!HttpVersion::Http2.is_available());
+    assert!(!HttpVersion::Http3.is_available());
+}
+
+#[test]
+fn negotiated_version_is_http11_and_pinning_an_unwired_version_errors() {
+    use crate::HttpVersion;
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
+    // A normal request negotiates (Auto) down to the only wired transport, and the
+    // response reports the version it was delivered over.
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::get(&url).unwrap(), false, false, false)
+        .unwrap();
+    assert_eq!(response.negotiated_version(), HttpVersion::Http11);
+
+    // Pinning HTTP/2 (no transport yet) errors before any bytes leave, naming the
+    // alternative, rather than silently downgrading.
+    let (url2, _rx2) = serve_once(ok_reply("text/plain", b"ok"));
+    let pinned = HttpRequest::get(&url2)
+        .unwrap()
+        .with_http_version(HttpVersion::Http2);
+    let err = match session.send(pinned, false, false, false) {
+        Ok(_) => panic!("pinning an unwired HTTP/2 should error"),
+        Err(err) => err,
+    };
+    assert!(matches!(err, HttpError::Unsupported(_)), "{err:?}");
+    assert!(err.to_string().contains("HTTP/2"), "{err}");
+
+    // A session-level default applies to requests that do not pin their own.
+    let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    assert_eq!(h2_session.http_version(), HttpVersion::Http2);
+    let (url3, _rx3) = serve_once(ok_reply("text/plain", b"ok"));
+    assert!(h2_session
+        .send(HttpRequest::get(&url3).unwrap(), false, false, false)
+        .is_err());
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn http_data_types_serde_round_trip() {
-    use crate::{Cookie, HttpCookies, HttpHeaders};
+    use crate::{Cookie, HttpCookies, HttpHeaders, HttpVersion};
 
     // Method serialises as its variant name and parses back.
     let method = Method::Post;
     assert_eq!(
         serde_json::from_str::<Method>(&serde_json::to_string(&method).unwrap()).unwrap(),
         method
+    );
+
+    // HttpVersion round-trips its variant name.
+    let version = HttpVersion::Http2;
+    assert_eq!(
+        serde_json::from_str::<HttpVersion>(&serde_json::to_string(&version).unwrap()).unwrap(),
+        version
     );
 
     // RetryConfig round-trips its whole policy.

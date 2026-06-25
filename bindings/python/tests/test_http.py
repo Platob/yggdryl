@@ -157,3 +157,22 @@ def test_set_base_url_configures_the_shared_singleton(base_url):
     finally:
         # Reset the singleton so other tests' module verbs use absolute URLs.
         yggdryl.set_base_url("http://127.0.0.1:1")
+
+
+def test_http_version_negotiation(base_url):
+    # The session default is "auto"; a response reports the negotiated version,
+    # which is HTTP/1.1 (the only wired transport today).
+    session = yggdryl.HttpSession()
+    assert session.http_version == "auto"
+    response = session.get(base_url + "/")
+    assert response.http_version == "HTTP/1.1"
+
+    # A session can default to a specific version…
+    pinned = yggdryl.HttpSession(http_version="2")
+    assert pinned.http_version == "HTTP/2"
+    # …but pinning HTTP/2 (no transport yet) raises rather than downgrading.
+    with pytest.raises(ValueError):
+        pinned.get(base_url + "/")
+    # The per-request override raises the same way.
+    with pytest.raises(ValueError):
+        session.request("GET", base_url + "/", http_version="3")

@@ -29,6 +29,14 @@
 //! Header logic is centralised in the case-insensitive [`HttpHeaders`] type, which
 //! every request, response and stream carries.
 //!
+//! The HTTP protocol version is tunable through [`HttpVersion`]: pin one per
+//! session ([`HttpSession::with_http_version`]) or per request
+//! ([`HttpRequest::with_http_version`]), and read the one a response was delivered
+//! over via [`HttpResponse::negotiated_version`]. [`HttpVersion::Auto`] (the
+//! default) negotiates the best available; only HTTP/1.1 is wired today, so pinning
+//! [`HttpVersion::Http2`] / [`HttpVersion::Http3`] errors with
+//! [`HttpError::Unsupported`] until their transports land.
+//!
 //! ```no_run
 //! use yggdryl_http::{HttpSession, HttpRequest};
 //!
@@ -51,6 +59,13 @@
 //!   auto-decompresses.
 //! - `media` — expose the response's [`mime_type`](HttpResponse::mime_type) and
 //!   [`HttpStream`]'s media type.
+//! - `serde` — `Serialize`/`Deserialize` for the data types ([`Method`],
+//!   [`HttpVersion`], [`HttpHeaders`], [`Cookie`], [`HttpCookies`],
+//!   [`RetryConfig`]) and, transitively, the core value types; a live
+//!   request/response body is deliberately not serialisable.
+//! - `http2` / `http3` — reserved (inert) placeholders for the forthcoming async
+//!   `h2` / `h3` (QUIC) transports; selectable via [`HttpVersion`] but unavailable
+//!   until the transports themselves land.
 //! - `log` — structured `log` events on the request path.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
@@ -75,6 +90,7 @@ mod retry;
 mod session;
 mod stream;
 mod time;
+mod version;
 
 pub use cookies::{Cookie, HttpCookies};
 pub use error::HttpError;
@@ -88,6 +104,7 @@ pub use session::{
     delete, get, head, patch, post, put, request, HttpResponseBatch, HttpSession, SendMany,
 };
 pub use stream::HttpStream;
+pub use version::HttpVersion;
 
 #[cfg(test)]
 mod tests;

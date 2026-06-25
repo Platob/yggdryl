@@ -17,6 +17,7 @@ use crate::response::HttpResponse;
 use crate::retry::{RetryConfig, DEFAULT_POOL};
 use crate::stream::HttpStream;
 use crate::time::{now_secs, Instant};
+use crate::version::HttpVersion;
 
 /// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
 /// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
@@ -30,6 +31,35 @@ fn build_agent(max_pool: usize) -> ureq::Agent {
         .max_idle_connections_per_host(max_pool)
         .build()
         .into()
+}
+
+/// Resolves a requested [`HttpVersion`] to the version the transport will actually
+/// speak, or errors when a pinned version has no wired transport.
+///
+/// [`Auto`](HttpVersion::Auto) negotiates: today only the HTTP/1.1 transport
+/// (`ureq`) is wired, so it resolves to [`Http11`](HttpVersion::Http11); once the
+/// h2/h3 transports land, `Auto` will offer their ALPN ids and adopt the server's
+/// choice. [`Http11`](HttpVersion::Http11) is used as-is. A pinned
+/// [`Http2`](HttpVersion::Http2) / [`Http3`](HttpVersion::Http3) whose transport is
+/// not yet [`available`](HttpVersion::is_available) returns
+/// [`HttpError::Unsupported`] rather than silently downgrading.
+fn negotiate_version(requested: HttpVersion) -> Result<HttpVersion, HttpError> {
+    let negotiated = match requested {
+        HttpVersion::Auto | HttpVersion::Http11 => HttpVersion::Http11,
+        available if available.is_available() => available,
+        pinned => {
+            log_event!(
+                warn,
+                "pinned http version {pinned} has no wired transport; rejecting"
+            );
+            return Err(HttpError::Unsupported(format!(
+                "{pinned} was requested but only HTTP/1.1 is wired today; its transport \
+                 is not yet implemented — use HttpVersion::Auto or Http11"
+            )));
+        }
+    };
+    log_event!(debug, "negotiated http version {requested} -> {negotiated}");
+    Ok(negotiated)
 }
 
 /// A connection-pooling HTTP client, like `requests.Session`: it reuses
@@ -55,6 +85,9 @@ pub struct HttpSession {
     /// resolved against it (like `requests`'s session prefix / `httpx`'s `base_url`),
     /// while an absolute URL is used unchanged. `None` requires absolute targets.
     base_url: Option<Url>,
+    /// The default HTTP protocol [`version`](HttpVersion) for requests that do not
+    /// pin one ([`Auto`](HttpVersion::Auto) negotiates the best available).
+    http_version: HttpVersion,
 }
 
 impl HttpSession {
@@ -132,6 +165,7 @@ impl HttpSession {
             max_redirects: DEFAULT_MAX_REDIRECTS,
             cookies: Mutex::new(HttpCookies::new()),
             base_url: None,
+            http_version: HttpVersion::Auto,
         }
     }
 
@@ -156,6 +190,22 @@ impl HttpSession {
     /// The session's base URL, if one is set.
     pub fn base_url(&self) -> Option<&Url> {
         self.base_url.as_ref()
+    }
+
+    /// Sets the default HTTP protocol [`version`](HttpVersion) for requests that do
+    /// not pin one of their own ([`HttpRequest::with_http_version`]). The default is
+    /// [`Auto`](HttpVersion::Auto), which negotiates the best available transport.
+    /// Pinning a version with no wired transport makes [`send`](HttpSession::send)
+    /// error with [`HttpError::Unsupported`] rather than silently downgrade.
+    pub fn with_http_version(mut self, http_version: HttpVersion) -> HttpSession {
+        self.http_version = http_version;
+        self
+    }
+
+    /// The session's default HTTP protocol [`version`](HttpVersion) (used by any
+    /// request that does not pin its own).
+    pub fn http_version(&self) -> HttpVersion {
+        self.http_version
     }
 
     /// Resolves a request `target` against the session's [`base_url`](HttpSession::base_url):
@@ -320,6 +370,7 @@ impl HttpSession {
             headers,
             body: request.body,
             allow_redirect: request.allow_redirect,
+            http_version: request.http_version,
         }
     }
 
@@ -373,6 +424,7 @@ impl HttpSession {
                 headers: request.headers.clone(),
                 body: Body::Empty,
                 allow_redirect,
+                http_version: request.http_version,
             };
             let replayable = request.body.replayable();
             let replay_body = request.body.replay_copy();
@@ -447,6 +499,11 @@ impl HttpSession {
         keep_alive: bool,
         stream: bool,
     ) -> Result<HttpResponse, HttpError> {
+        // Resolve and negotiate the protocol version up front: a request pins its
+        // own, else inherits the session default. A pinned version with no wired
+        // transport errors here, before any bytes leave, rather than downgrading.
+        let requested = request.http_version.unwrap_or(self.http_version);
+        let negotiated = negotiate_version(requested)?;
         let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
         if !keep_alive {
             request.headers.set("connection", "close");
@@ -509,6 +566,7 @@ impl HttpSession {
             body,
             sent_at,
             received_at,
+            negotiated,
         ))
     }
 

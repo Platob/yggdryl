@@ -11,7 +11,9 @@ use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
 use yggdryl_core::{LocalPath as CoreLocalPath, Path, Url as CoreUrl};
-use yggdryl_http::{HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, Method};
+use yggdryl_http::{
+    HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, HttpVersion, Method,
+};
 
 use crate::localpath::LocalPath;
 
@@ -36,6 +38,7 @@ fn shared_task(
     raise_error: bool,
     keep_alive: bool,
     allow_redirect: bool,
+    http_version: Option<HttpVersion>,
 ) -> AsyncTask<RequestTask> {
     AsyncTask::new(RequestTask {
         session: shared_session(),
@@ -46,6 +49,7 @@ fn shared_task(
         raise_error,
         keep_alive,
         allow_redirect,
+        http_version,
     })
 }
 
@@ -74,6 +78,7 @@ pub struct ResponseData {
     body: Vec<u8>,
     sent_at: f64,
     received_at: f64,
+    http_version: String,
 }
 
 /// The blocking request, run on the libuv thread pool by napi.
@@ -86,6 +91,7 @@ pub struct RequestTask {
     raise_error: bool,
     keep_alive: bool,
     allow_redirect: bool,
+    http_version: Option<HttpVersion>,
 }
 
 impl Task for RequestTask {
@@ -98,6 +104,9 @@ impl Task for RequestTask {
         let url = self.session.resolve_url(&self.url).map_err(to_napi)?;
         let mut request =
             CoreHttpRequest::from_url(self.method, url).with_allow_redirect(self.allow_redirect);
+        if let Some(http_version) = self.http_version {
+            request = request.with_http_version(http_version);
+        }
         request = request.with_headers(std::mem::take(&mut self.headers));
         request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
             BodyArg::Empty => request,
@@ -119,6 +128,7 @@ impl Task for RequestTask {
             .collect();
         let sent_at = response.sent_at();
         let received_at = response.received_at();
+        let http_version = response.negotiated_version().as_str().to_string();
         let body = response.bytes().map_err(to_napi)?;
         Ok(ResponseData {
             status,
@@ -127,6 +137,7 @@ impl Task for RequestTask {
             body,
             sent_at,
             received_at,
+            http_version,
         })
     }
 
@@ -138,6 +149,7 @@ impl Task for RequestTask {
             body: output.body,
             sent_at: output.sent_at,
             received_at: output.received_at,
+            http_version: output.http_version,
         })
     }
 }
@@ -152,6 +164,7 @@ pub struct HttpResponse {
     body: Vec<u8>,
     sent_at: f64,
     received_at: f64,
+    http_version: String,
 }
 
 #[napi]
@@ -172,6 +185,13 @@ impl HttpResponse {
     #[napi(getter)]
     pub fn url(&self) -> String {
         self.url.clone()
+    }
+
+    /// The HTTP protocol version the response was delivered over (e.g.
+    /// `"HTTP/1.1"`).
+    #[napi(getter, js_name = "httpVersion")]
+    pub fn http_version(&self) -> String {
+        self.http_version.clone()
     }
 
     /// UTC Unix-epoch seconds when the request was dispatched (`0.0` if unset).
@@ -241,14 +261,17 @@ pub struct HttpSession {
 #[napi]
 impl HttpSession {
     /// Create a session, optionally with a default `userAgent`, default `headers`
-    /// sent with every request, a `maxRedirects` cap on 3xx hops followed, and a
-    /// `baseUrl` that relative request targets resolve against.
+    /// sent with every request, a `maxRedirects` cap on 3xx hops followed, a
+    /// `baseUrl` that relative request targets resolve against, and a default
+    /// `httpVersion` (`"auto"` / `"1.1"` / `"2"` / `"3"`) for requests that do not
+    /// pin one.
     #[napi(constructor)]
     pub fn new(
         user_agent: Option<String>,
         headers: Option<HashMap<String, String>>,
         max_redirects: Option<u32>,
         base_url: Option<String>,
+        http_version: Option<String>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -267,6 +290,9 @@ impl HttpSession {
                 CoreUrl::from_str(&base_url).map_err(|e| Error::from_reason(e.to_string()))?;
             inner = inner.with_base_url(base);
         }
+        if let Some(http_version) = http_version {
+            inner = inner.with_http_version(HttpVersion::from_str(&http_version).map_err(to_napi)?);
+        }
         Ok(HttpSession {
             inner: Arc::new(inner),
         })
@@ -283,6 +309,13 @@ impl HttpSession {
     #[napi(getter, js_name = "baseUrl")]
     pub fn base_url(&self) -> Option<String> {
         self.inner.base_url().map(ToString::to_string)
+    }
+
+    /// The session's default HTTP protocol version (e.g. `"auto"`, `"HTTP/1.1"`)
+    /// applied to requests that do not pin their own.
+    #[napi(getter, js_name = "httpVersion")]
+    pub fn http_version(&self) -> String {
+        self.inner.http_version().as_str().to_string()
     }
 
     /// The session's cookies as an object of `name` to `value` (the jar snapshot —
@@ -316,6 +349,7 @@ impl HttpSession {
         raise_error: bool,
         keep_alive: bool,
         allow_redirect: bool,
+        http_version: Option<HttpVersion>,
     ) -> AsyncTask<RequestTask> {
         AsyncTask::new(RequestTask {
             session: self.inner.clone(),
@@ -326,6 +360,7 @@ impl HttpSession {
             raise_error,
             keep_alive,
             allow_redirect,
+            http_version,
         })
     }
 
@@ -340,6 +375,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -354,6 +390,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -368,6 +405,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -387,6 +425,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -405,6 +444,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -423,6 +463,7 @@ impl HttpSession {
             true,
             true,
             true,
+            None,
         )
     }
 
@@ -432,6 +473,8 @@ impl HttpSession {
     /// (skipping the next TLS handshake); pass `false` to close it after.
     /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
     /// `maxRedirects`); pass `false` to receive the 3xx response itself.
+    /// `httpVersion` (e.g. `"2"`) pins the protocol version for this request,
+    /// overriding the session default.
     #[napi]
     #[allow(clippy::too_many_arguments)]
     pub fn request(
@@ -443,8 +486,12 @@ impl HttpSession {
         raise_error: Option<bool>,
         keep_alive: Option<bool>,
         allow_redirect: Option<bool>,
+        http_version: Option<String>,
     ) -> Result<AsyncTask<RequestTask>> {
         let method = Method::from_str(&method).map_err(to_napi)?;
+        let http_version = http_version
+            .map(|value| HttpVersion::from_str(&value).map_err(to_napi))
+            .transpose()?;
         let headers = headers
             .map(|map| map.into_iter().collect())
             .unwrap_or_default();
@@ -456,6 +503,7 @@ impl HttpSession {
             raise_error.unwrap_or(true),
             keep_alive.unwrap_or(true),
             allow_redirect.unwrap_or(true),
+            http_version,
         ))
     }
 }
@@ -472,6 +520,7 @@ pub fn http_get(url: String) -> AsyncTask<RequestTask> {
         true,
         true,
         true,
+        None,
     )
 }
 
@@ -486,6 +535,7 @@ pub fn http_head(url: String) -> AsyncTask<RequestTask> {
         true,
         true,
         true,
+        None,
     )
 }
 
@@ -505,6 +555,7 @@ pub fn http_post(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Async
         true,
         true,
         true,
+        None,
     )
 }
 
@@ -519,6 +570,7 @@ pub fn http_put(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncT
         true,
         true,
         true,
+        None,
     )
 }
 
@@ -533,6 +585,7 @@ pub fn http_patch(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Asyn
         true,
         true,
         true,
+        None,
     )
 }
 
@@ -548,8 +601,12 @@ pub fn http_request(
     raise_error: Option<bool>,
     keep_alive: Option<bool>,
     allow_redirect: Option<bool>,
+    http_version: Option<String>,
 ) -> Result<AsyncTask<RequestTask>> {
     let method = Method::from_str(&method).map_err(to_napi)?;
+    let http_version = http_version
+        .map(|value| HttpVersion::from_str(&value).map_err(to_napi))
+        .transpose()?;
     let headers = headers
         .map(|map| map.into_iter().collect())
         .unwrap_or_default();
@@ -561,6 +618,7 @@ pub fn http_request(
         raise_error.unwrap_or(true),
         keep_alive.unwrap_or(true),
         allow_redirect.unwrap_or(true),
+        http_version,
     ))
 }
 

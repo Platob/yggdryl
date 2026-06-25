@@ -53,13 +53,19 @@ def test_iostats_pickle_round_trips():
 
 def test_http_response_pickle_round_trips():
     response = yggdryl.HttpResponse(
-        200, "https://example.com/", [("content-type", "text/plain")], b"body"
+        200,
+        "https://example.com/",
+        [("content-type", "text/plain")],
+        b"body",
+        http_version="HTTP/2",
     )
     restored = pickle.loads(pickle.dumps(response))
     assert restored.status == 200
     assert restored.url == "https://example.com/"
     assert restored.content == b"body"
     assert restored.header("content-type") == "text/plain"
+    # The negotiated protocol version round-trips too (default is "HTTP/1.1").
+    assert restored.http_version == "HTTP/2"
 
 
 def test_module_level_http_verbs_exist():
