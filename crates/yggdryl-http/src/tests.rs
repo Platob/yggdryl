@@ -1669,7 +1669,9 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
                         .path_and_query()
                         .map(|pq| pq.as_str().to_string())
                         .unwrap_or_default();
-                    let body = format!("{} {target}", req.method());
+                    // Also report whether a (hop-by-hop) Connection header leaked.
+                    let conn = req.headers().contains_key("connection");
+                    let body = format!("{} {target} conn={conn}", req.method());
                     Ok::<_, std::convert::Infallible>(hyper::Response::new(
                         http_body_util::Full::new(hyper::body::Bytes::from(body)),
                     ))
@@ -1685,13 +1687,16 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
     let session = HttpSession::new();
     let request = HttpRequest::get(&url)
         .unwrap()
+        // A hop-by-hop header the client must strip before the h2 wire.
+        .with_header("connection", "keep-alive")
         .with_http_version(HttpVersion::Http2);
     let response = session.send(request, false, false, false).unwrap();
     assert_eq!(response.status(), 200);
     // The response reports it was delivered over HTTP/2 (h2c).
     assert_eq!(response.negotiated_version(), HttpVersion::Http2);
-    // The query reached the server; the fragment was stripped before the wire.
-    assert_eq!(response.bytes().unwrap(), b"GET /echo?x=1");
+    // The query reached the server, the fragment was stripped before the wire, and
+    // the hop-by-hop Connection header was not forwarded.
+    assert_eq!(response.bytes().unwrap(), b"GET /echo?x=1 conn=false");
     server.join().unwrap();
 }
 

@@ -274,6 +274,24 @@ fn wire_parts(url: &Url) -> (String, String) {
     (authority, path_and_query)
 }
 
+/// Whether `name` is a connection-specific (hop-by-hop) header that is **malformed**
+/// over HTTP/2 and HTTP/3 (RFC 9113 §8.2.2 / RFC 9114 §4.2) — a compliant server
+/// treats such a header as a stream error — so it must not be forwarded on those
+/// protocols. `te` is only legal with the value `trailers`, which we never send, so
+/// it is dropped wholesale.
+fn is_hop_by_hop(name: &str) -> bool {
+    [
+        "connection",
+        "keep-alive",
+        "proxy-connection",
+        "transfer-encoding",
+        "upgrade",
+        "te",
+    ]
+    .iter()
+    .any(|header| name.eq_ignore_ascii_case(header))
+}
+
 // ---------------------------------------------------------------------------
 // HTTP/2 (and the Auto http/1.1 fallback) over hyper.
 // ---------------------------------------------------------------------------
@@ -413,6 +431,14 @@ fn build_request(
     for (name, value) in request.headers.iter() {
         if name.eq_ignore_ascii_case("host") {
             has_host = true;
+            // HTTP/2 derives `:authority` from the URI; a literal Host is redundant.
+            // HTTP/1.1 (with_host) needs it, so keep it there.
+            if !with_host {
+                continue;
+            }
+        } else if !with_host && is_hop_by_hop(name) {
+            // Hop-by-hop headers are malformed over HTTP/2; never forward them.
+            continue;
         }
         builder = builder.header(name, value);
     }
@@ -590,7 +616,11 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
     .await;
 
     driver.abort();
-    // Close the endpoint's socket promptly (we do not pool QUIC connections yet).
+    // Queue a CONNECTION_CLOSE and drop the endpoint (we do not pool QUIC
+    // connections yet). This is best-effort: the body is already fully buffered, so
+    // we do not `wait_idle()` to flush the close frame — a server learns of the
+    // close via its idle timeout at worst, and we avoid adding teardown latency to
+    // every request.
     endpoint.close(0u32.into(), b"done");
     result
 }
@@ -625,9 +655,9 @@ fn build_h3_request(request: &AsyncRequest<'_>) -> Result<http::Request<()>, Htt
         .method(request.method.as_str())
         .uri(uri);
     for (name, value) in request.headers.iter() {
-        // HTTP/3 (like h2) derives `:authority` from the URI; a literal Host header
-        // is redundant and some servers reject it, so drop it.
-        if name.eq_ignore_ascii_case("host") {
+        // HTTP/3 derives `:authority` from the URI (a literal Host is redundant and
+        // rejected by some servers), and hop-by-hop headers are malformed over h3.
+        if name.eq_ignore_ascii_case("host") || is_hop_by_hop(name) {
             continue;
         }
         builder = builder.header(name, value);
