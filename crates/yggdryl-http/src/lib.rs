@@ -1124,17 +1124,18 @@ impl HttpStream {
         Ok(())
     }
 
-    /// Issues `GET <url>` with `Range: bytes=start-` (and `Connection: close` when
-    /// not keep-alive), retrying transient statuses and reconnecting on error.
-    /// Returns the total size (if newly learnt) and the live reader, or `None`
-    /// reader at a clean EOF (`416`).
-    #[allow(clippy::type_complexity)]
-    fn request_reader(
+    /// Issues a ranged `GET <url>` (with `Connection: close` when `close`),
+    /// retrying transient statuses and reconnecting on a transport error. Returns
+    /// the response, or `None` at a clean EOF (`416`). `start` is the range's first
+    /// byte, used only to reject a server that ignores the range (`200` to a
+    /// non-zero offset). The single place a `Range` request is built and classified.
+    fn ranged_get(
         &self,
+        range: &str,
         start: u64,
-    ) -> Result<(Option<u64>, Option<Box<dyn std::io::Read + Send + Sync>>), IoError> {
+        close: bool,
+    ) -> Result<Option<ureq::http::Response<ureq::Body>>, IoError> {
         let url = self.url.to_string();
-        let range = format!("bytes={start}-");
         let mut attempt = 0u32;
         loop {
             let mut builder = ureq::http::Request::builder()
@@ -1143,8 +1144,8 @@ impl HttpStream {
             for (name, value) in &self.headers {
                 builder = builder.header(name, value);
             }
-            builder = builder.header("range", range.as_str());
-            if !self.keep_alive {
+            builder = builder.header("range", range);
+            if close {
                 builder = builder.header("connection", "close");
             }
             let outcome = builder
@@ -1165,7 +1166,7 @@ impl HttpStream {
                         continue;
                     }
                     if status == 416 {
-                        return Ok((None, None)); // range past the end: clean EOF
+                        return Ok(None); // range past the end: clean EOF
                     }
                     if status >= 400 {
                         return Err(IoError::Io(format!(
@@ -1178,10 +1179,7 @@ impl HttpStream {
                                 .to_string(),
                         ));
                     }
-                    let size = response_size(response.headers());
-                    let reader: Box<dyn std::io::Read + Send + Sync> =
-                        Box::new(response.into_body().into_reader());
-                    return Ok((size, Some(reader)));
+                    return Ok(Some(response));
                 }
                 Err(error) => {
                     if attempt < self.retry.max_retries {
@@ -1193,6 +1191,25 @@ impl HttpStream {
                     }
                     return Err(error);
                 }
+            }
+        }
+    }
+
+    /// Opens a streaming reader from `start` via an open-ended `Range` (and
+    /// `Connection: close` when not keep-alive). Returns the total size (if newly
+    /// learnt) and the live reader, or `None` reader at a clean EOF (`416`).
+    #[allow(clippy::type_complexity)]
+    fn request_reader(
+        &self,
+        start: u64,
+    ) -> Result<(Option<u64>, Option<Box<dyn std::io::Read + Send + Sync>>), IoError> {
+        match self.ranged_get(&format!("bytes={start}-"), start, !self.keep_alive)? {
+            None => Ok((None, None)),
+            Some(response) => {
+                let size = response_size(response.headers());
+                let reader: Box<dyn std::io::Read + Send + Sync> =
+                    Box::new(response.into_body().into_reader());
+                Ok((size, Some(reader)))
             }
         }
     }
@@ -1235,74 +1252,28 @@ impl HttpStream {
             .checked_add(len)
             .and_then(|end| end.checked_sub(1))
             .ok_or_else(|| IoError::Invalid("range offset overflow".to_string()))?;
-        let url = self.url.to_string();
         let range = format!("bytes={start}-{end}");
-        let mut out = Vec::with_capacity(len.min(CACHE_LIMIT as u64) as usize);
         let mut attempt = 0u32;
         loop {
-            out.clear();
-            let mut builder = ureq::http::Request::builder()
-                .method("GET")
-                .uri(url.as_str());
-            for (name, value) in &self.headers {
-                builder = builder.header(name, value);
-            }
-            builder = builder.header("range", range.as_str());
-            let outcome = builder
-                .body(ureq::SendBody::none())
-                .map_err(|err| IoError::Io(err.to_string()))
-                .and_then(|request| {
-                    self.agent
-                        .run(request)
-                        .map_err(|err| IoError::Io(err.to_string()))
-                });
-            match outcome {
-                Ok(mut response) => {
-                    let status = response.status().as_u16();
-                    if attempt < self.retry.max_retries && self.retry.retryable_status(status) {
-                        let delay = self.retry.backoff(attempt, retry_after(response.headers()));
-                        attempt += 1;
-                        std::thread::sleep(delay);
-                        continue;
+            let Some(mut response) = self.ranged_get(&range, start, false)? else {
+                return Ok(Vec::new()); // 416: range past the end
+            };
+            let truncate = response.status().as_u16() == 200; // a non-range body needs trimming
+            let mut out = Vec::with_capacity(len.min(CACHE_LIMIT as u64) as usize);
+            let mut reader = response.body_mut().as_reader();
+            match std::io::Read::read_to_end(&mut reader, &mut out) {
+                Ok(_) => {
+                    if truncate {
+                        out.truncate(len as usize);
                     }
-                    if status == 416 {
-                        return Ok(Vec::new());
-                    }
-                    if status >= 400 {
-                        return Err(IoError::Io(format!("http status {status}")));
-                    }
-                    if status == 200 && start > 0 {
-                        return Err(IoError::Unsupported(
-                            "server ignored the Range request (it does not support range reads)"
-                                .to_string(),
-                        ));
-                    }
-                    let mut reader = response.body_mut().as_reader();
-                    match std::io::Read::read_to_end(&mut reader, &mut out) {
-                        Ok(_) => {
-                            if status == 200 {
-                                out.truncate(len as usize);
-                            }
-                            return Ok(out);
-                        }
-                        Err(_error) if attempt < self.retry.max_retries => {
-                            let delay = self.retry.backoff(attempt, None);
-                            attempt += 1;
-                            std::thread::sleep(delay);
-                            continue;
-                        }
-                        Err(error) => return Err(IoError::from(error)),
-                    }
+                    return Ok(out);
                 }
-                Err(error) => {
-                    if attempt < self.retry.max_retries {
-                        let delay = self.retry.backoff(attempt, None);
-                        attempt += 1;
-                        std::thread::sleep(delay);
-                        continue;
-                    }
-                    return Err(error);
+                // The connection dropped mid-body: re-issue the whole range request.
+                Err(_error) if attempt < self.retry.max_retries => {
+                    attempt += 1;
+                    std::thread::sleep(self.retry.backoff(attempt - 1, None));
                 }
+                Err(error) => return Err(IoError::from(error)),
             }
         }
     }
@@ -1910,6 +1881,43 @@ mod tests {
         let n = stream.pread(&mut footer, -20, Whence::End).unwrap();
         assert_eq!(&footer[..n], &payload[payload.len() - 20..]);
         assert_eq!(Seek::stream_position(&stream), 5100);
+
+        // A Whence::Current pread *does* advance the cursor by what it read.
+        let mut take = [0u8; 30];
+        let n = stream.pread(&mut take, 0, Whence::Current).unwrap();
+        assert_eq!(&take[..n], &payload[5100..5130]);
+        assert_eq!(Seek::stream_position(&stream), 5130);
+    }
+
+    #[test]
+    fn httpstream_short_seek_back_is_served_from_the_cache() {
+        let payload = stream_payload();
+        let url = serve_ranges(payload.clone());
+        let mut stream = HttpSession::new()
+            .stream(HttpRequest::get(&url).unwrap(), true)
+            .unwrap();
+
+        // Stream the first 2000 bytes, filling the sliding cache.
+        let mut head = [0u8; 2000];
+        let mut filled = 0;
+        while filled < head.len() {
+            let n = stream.read_bytes(&mut head[filled..]).unwrap();
+            assert_ne!(n, 0);
+            filled += n;
+        }
+        assert_eq!(&head[..], &payload[..2000]);
+
+        // Seek back into the cached region and re-read — no new request needed.
+        stream.seek(500, Whence::Start).unwrap();
+        let mut again = [0u8; 100];
+        stream.read_bytes(&mut again).unwrap();
+        assert_eq!(&again[..], &payload[500..600]);
+
+        // Seek forward (still cached) and read, then continue to the end.
+        stream.seek(1500, Whence::Start).unwrap();
+        let mut rest = Vec::new();
+        stream.read_to_end(&mut rest).unwrap();
+        assert_eq!(rest, payload[1500..]);
     }
 
     #[cfg(feature = "media")]
