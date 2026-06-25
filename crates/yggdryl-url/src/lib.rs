@@ -8,9 +8,9 @@
 //! - [`Url`] is the common subset that always has an authority, decomposed into
 //!   `username`, `password`, `host` and `port`.
 //!
-//! The shared [`FromInput`]/[`ToOutput`] traits, the [`Mapping`]/[`Params`] types
-//! and the percent-encoding helpers are re-exported from `yggdryl-core`. The
-//! `Version` type lives in the separate `yggdryl-version` crate.
+//! The shared [`ToOutput`] trait, the [`Mapping`]/[`Params`] types and the
+//! percent-encoding helpers are re-exported from `yggdryl-core`. The `Version`
+//! type lives in the separate `yggdryl-version` crate.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -127,8 +127,7 @@ fn build_query(params: &Params, encode: bool) -> Option<String> {
 
 // Re-exported so a dependent only needs `yggdryl-url`.
 pub use yggdryl_core::{
-    percent_decode, percent_encode, EncodingError, FromInput, Input, Mapping, Output, Params,
-    ToOutput,
+    percent_decode, percent_encode, EncodingError, Mapping, Output, Params, ToOutput,
 };
 pub use yggdryl_media::{MediaError, MediaType, MimeType, Signature};
 
@@ -164,7 +163,7 @@ impl From<EncodingError> for UriError {
 
 impl std::error::Error for UriError {}
 
-/// Error returned when [`Url::from_`] cannot interpret its input.
+/// Error returned when [`Url`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlError {
     /// The input was not even a valid [`Uri`].
@@ -210,7 +209,7 @@ fn is_valid_scheme(scheme: &str) -> bool {
 /// `scheme:[//authority]path[?query][#fragment]`.
 ///
 /// ```
-/// use yggdryl_url::{FromInput, Uri};
+/// use yggdryl_url::Uri;
 ///
 /// let uri = Uri::from_str("https://example.com/docs?page=2#intro").unwrap();
 /// assert_eq!(uri.scheme(), "https");
@@ -245,16 +244,16 @@ impl PartialEq for Uri {
 
 impl Eq for Uri {}
 
-impl FromInput for Uri {
-    type Err = UriError;
-
+/// String/mapping parsers.
+impl Uri {
     /// Parses a string into a [`Uri`].
     ///
     /// Windows-style `\` separators are normalised to `/`. If no scheme is given
     /// the input is treated as a path with the `file` scheme (a single-letter
     /// "scheme" is read as a Windows drive letter, also `file`). The scheme and
     /// any `%XX` escapes are validated.
-    fn from_str(input: &str) -> Result<Uri, UriError> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<Uri, UriError> {
         log_event!(trace, "Uri::from_str {input:?}");
         if input.is_empty() {
             return Err(UriError::Empty);
@@ -334,7 +333,7 @@ impl FromInput for Uri {
 
     /// Builds a [`Uri`] from a [`Mapping`]. Recognised keys: `scheme` (required),
     /// `authority`, `path`, `query`, `fragment`.
-    fn from_mapping(fields: &Mapping) -> Result<Uri, UriError> {
+    pub fn from_mapping(fields: &Mapping) -> Result<Uri, UriError> {
         // A missing scheme defaults to `file`; an empty one is an error.
         let scheme = match fields.get("scheme") {
             Some(s) if s.is_empty() => return Err(UriError::MissingScheme),
@@ -787,7 +786,7 @@ impl ToOutput for Uri {
 /// into `username`, `password`, `host` and `port`.
 ///
 /// ```
-/// use yggdryl_url::{FromInput, Url};
+/// use yggdryl_url::Url;
 ///
 /// let url = Url::from_str("https://user:pw@example.com:8443/api?v=1#top").unwrap();
 /// assert_eq!(url.scheme(), "https");
@@ -827,19 +826,19 @@ impl PartialEq for Url {
 
 impl Eq for Url {}
 
-impl FromInput for Url {
-    type Err = UrlError;
-
+/// String/mapping parsers.
+impl Url {
     /// Parses a string into a [`Url`]. Requires a scheme, an authority and a
     /// non-empty host.
-    fn from_str(input: &str) -> Result<Url, UrlError> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<Url, UrlError> {
         log_event!(trace, "Url::from_str {input:?}");
         Url::from_uri(&Uri::from_str(input)?)
     }
 
     /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
     /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
-    fn from_mapping(fields: &Mapping) -> Result<Url, UrlError> {
+    pub fn from_mapping(fields: &Mapping) -> Result<Url, UrlError> {
         // A missing scheme defaults to `file`.
         let scheme = match fields.get("scheme") {
             Some(s) => s.as_str(),
@@ -1751,7 +1750,7 @@ mod tests {
             ("authority".to_string(), "example.com".to_string()),
             ("path".to_string(), "/x".to_string()),
         ]);
-        let uri = Uri::from_(&fields).unwrap();
+        let uri = Uri::from_mapping(&fields).unwrap();
         assert_eq!(uri.to_string(), "https://example.com/x");
     }
 

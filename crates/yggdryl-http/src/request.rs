@@ -1,7 +1,7 @@
 //! The [`HttpRequest`] builder and its private [`Body`].
 
 use yggdryl_io::Io;
-use yggdryl_url::{FromInput, Url};
+use yggdryl_url::Url;
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;

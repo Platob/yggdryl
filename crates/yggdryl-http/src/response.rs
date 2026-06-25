@@ -1,8 +1,6 @@
 //! The [`HttpResponse`] — it holds all the logic to read its body from the server.
 
 use yggdryl_io::{BytesIO, Io};
-#[cfg(feature = "media")]
-use yggdryl_url::FromInput;
 use yggdryl_url::Url;
 
 use crate::error::HttpError;

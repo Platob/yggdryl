@@ -5,8 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl_io::{Io, IoError, IoStats, Url, Whence};
-#[cfg(feature = "media")]
-use yggdryl_url::FromInput;
 
 use crate::headers::HttpHeaders;
 use crate::retry::{RetryConfig, CACHE_LIMIT};

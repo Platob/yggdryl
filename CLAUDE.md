@@ -8,8 +8,9 @@ looking at from the shape of the code.
 
 ## Architecture
 
-- `crates/yggdryl-core/` — dependency-free foundations: the `FromInput` /
-  `ToOutput` traits and percent-encoding.
+- `crates/yggdryl-core/` — dependency-free foundations: the `ToOutput` rendering
+  trait, the `Mapping` / `Params` component maps and percent-encoding (each type
+  pairs these with its own inherent `from_str` / `from_mapping` parsers).
 - `crates/yggdryl-io/` — the **byte-IO foundation**: one set of methods to read,
   write, seek and stat bytes wherever they live (memory, local path, cloud). See
   its dedicated section below. **All byte-IO logic lives here.**

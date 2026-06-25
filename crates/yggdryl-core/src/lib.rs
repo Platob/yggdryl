@@ -2,9 +2,9 @@
 //!
 //! Dependency-free foundations shared by the **yggdryl** crates:
 //!
-//! - the generic [`FromInput`] parsing trait (with [`Input`], [`Mapping`] and
-//!   [`Params`]) — parsing validates its input and returns an error on malformed
-//!   data;
+//! - the [`Mapping`] / [`Params`] component maps and the [`ToOutput`] rendering
+//!   trait — each type pairs them with inherent `from_str` / `from_mapping`
+//!   parsers that validate their input and return an error on malformed data;
 //! - URL-safe percent-encoding ([`percent_encode`] / [`percent_decode`]) and the
 //!   lower-level component helpers used by [`yggdryl-url`](https://crates.io/crates/yggdryl-url);
 //! - the [`Version`] (`major.minor.patch`) value type.
@@ -16,11 +16,11 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// A set of named components, used by [`FromInput::from_mapping`].
+/// A set of named components, used by each type's `from_mapping` parser.
 ///
 /// Keys are component names (`"scheme"`, `"host"`, `"major"`, …) and values are
 /// their string form. Which keys each type understands is documented on its
-/// [`FromInput`] implementation.
+/// inherent `from_mapping` method.
 pub type Mapping = BTreeMap<String, String>;
 
 /// A multi-valued query-parameter map: `key` → list of values, mirroring how a
@@ -28,64 +28,7 @@ pub type Mapping = BTreeMap<String, String>;
 /// [`Url::params`] and friends.
 pub type Params = BTreeMap<String, Vec<String>>;
 
-/// The input forms accepted by [`FromInput::from_`].
-pub enum Input<'a> {
-    /// A full string to be parsed, e.g. `"https://example.com"`.
-    Str(&'a str),
-    /// A [`Mapping`] of already-split components.
-    Mapping(&'a Mapping),
-}
-
-impl<'a> From<&'a str> for Input<'a> {
-    fn from(value: &'a str) -> Self {
-        Input::Str(value)
-    }
-}
-
-impl<'a> From<&'a String> for Input<'a> {
-    fn from(value: &'a String) -> Self {
-        Input::Str(value.as_str())
-    }
-}
-
-impl<'a> From<&'a Mapping> for Input<'a> {
-    fn from(value: &'a Mapping) -> Self {
-        Input::Mapping(value)
-    }
-}
-
-/// A generic parsing interface implemented by [`Uri`], [`Url`] and [`Version`].
-///
-/// Implementors provide [`from_str`](FromInput::from_str) and
-/// [`from_mapping`](FromInput::from_mapping); both validate their input fully and
-/// return an error on malformed data. The [`from_`](FromInput::from_) entry point
-/// dispatches over any [`Input`] form.
-pub trait FromInput: Sized {
-    /// The error produced when parsing fails.
-    type Err;
-
-    /// Parses a full string, validating it and returning an error on malformed
-    /// input.
-    fn from_str(input: &str) -> Result<Self, Self::Err>;
-
-    /// Parses from a [`Mapping`] of pre-split components. The default reads a
-    /// `"str"` entry and delegates to [`from_str`](FromInput::from_str), so a
-    /// type only needs `from_str`; [`Uri`], [`Url`] and [`Version`] override this
-    /// with a component-based parse that avoids a useless string round-trip.
-    fn from_mapping(fields: &Mapping) -> Result<Self, Self::Err> {
-        Self::from_str(fields.get("str").map(String::as_str).unwrap_or_default())
-    }
-
-    /// Parses any supported [`Input`] form.
-    fn from_<'a, I: Into<Input<'a>>>(input: I) -> Result<Self, Self::Err> {
-        match input.into() {
-            Input::Str(s) => Self::from_str(s),
-            Input::Mapping(m) => Self::from_mapping(m),
-        }
-    }
-}
-
-/// The output forms produced by [`ToOutput`], mirroring [`Input`].
+/// The output forms produced by [`ToOutput`].
 pub enum Output {
     /// A rendered string, e.g. `"https://example.com"`.
     Str(String),
@@ -93,19 +36,19 @@ pub enum Output {
     Mapping(Mapping),
 }
 
-/// The inverse of [`FromInput`]: render a value back into a string or a component
-/// [`Mapping`]. Implemented by [`Uri`], [`Url`] and [`Version`].
+/// The inverse of a type's `from_str` / `from_mapping` parsers: render a value
+/// back into a string or a component [`Mapping`]. Implemented by [`Uri`], [`Url`]
+/// and [`Version`].
 ///
-/// `to_mapping` is the inverse of [`FromInput::from_mapping`], so
-/// `T::from_(&value.to_mapping())` round-trips.
+/// `to_mapping` is the inverse of each type's `from_mapping`, so
+/// `T::from_mapping(&value.to_mapping())` round-trips.
 pub trait ToOutput {
     /// Renders to a string. `encode` controls percent-encoding where relevant.
     fn to_str(&self, encode: bool) -> String;
 
     /// Renders to a component [`Mapping`]. The default wraps the string form under
-    /// a `"str"` key (the inverse of the default [`from_mapping`](FromInput::from_mapping));
-    /// [`Uri`], [`Url`] and [`Version`] override it with real component maps that
-    /// avoid a useless string serialization.
+    /// a `"str"` key; [`Uri`], [`Url`] and [`Version`] override it with real
+    /// component maps that avoid a useless string serialization.
     fn to_mapping(&self) -> Mapping {
         Mapping::from([("str".to_string(), self.to_str(true))])
     }

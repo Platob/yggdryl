@@ -149,7 +149,6 @@ impl Compression {
     /// signal [`CompressIo::decompress`] uses when no codec is given.
     #[cfg(feature = "media")]
     pub fn from_stats(stats: &yggdryl_io::IoStats) -> Option<Compression> {
-        use yggdryl_media::FromInput;
         if let Some(media) = stats.media_type() {
             if let Some(codec) = Compression::from_media(media) {
                 return Some(codec);
@@ -719,7 +718,7 @@ mod tests {
     #[test]
     fn infers_codec_from_mime_and_stats() {
         use yggdryl_io::IoStats;
-        use yggdryl_media::{FromInput, MediaType, MimeType};
+        use yggdryl_media::{MediaType, MimeType};
 
         assert_eq!(
             Compression::from_mime(&MimeType::Gzip),

@@ -1,7 +1,7 @@
 //! # yggdryl-media
 //!
 //! Media (MIME) type detection for the **yggdryl** project, built on the
-//! [`yggdryl-core`](https://crates.io/crates/yggdryl-core) parsing traits.
+//! [`yggdryl-core`](https://crates.io/crates/yggdryl-core) foundations.
 //!
 //! - [`MimeType`] is an enum of common, individual MIME types (with an
 //!   [`Other`](MimeType::Other) escape hatch). Each type's canonical string, file
@@ -12,7 +12,7 @@
 //!   file, so `data.csv.gz` becomes `MediaType([MimeType::Csv, MimeType::Gzip])`.
 //!
 //! ```
-//! use yggdryl_media::{FromInput, MediaType, MimeType};
+//! use yggdryl_media::{MediaType, MimeType};
 //!
 //! assert_eq!(MimeType::from_str("application/json").unwrap(), MimeType::Json);
 //! assert_eq!(MimeType::from_str("zstd").unwrap(), MimeType::Zstd); // short name
@@ -26,7 +26,7 @@
 use std::fmt;
 use std::sync::{OnceLock, RwLock};
 
-pub use yggdryl_core::{FromInput, Mapping, ToOutput};
+pub use yggdryl_core::{Mapping, ToOutput};
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate is dependency-free by default and pays no runtime cost).
@@ -666,15 +666,15 @@ impl Default for MimeType {
     }
 }
 
-impl FromInput for MimeType {
-    type Err = MediaError;
-
+/// String/mapping parsers.
+impl MimeType {
     /// Parses a MIME string such as `"text/html"` (any `;parameters` are dropped),
     /// or a short name like `"json"`, `"gzip"` or `"zstd"` (matched as a file
     /// extension or MIME subtype). A full `type/subtype` must be a valid token
     /// pair — unknown but well-formed ones become [`Other`](MimeType::Other);
     /// unknown short names are an error.
-    fn from_str(input: &str) -> Result<MimeType, MediaError> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<MimeType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
@@ -697,7 +697,7 @@ impl FromInput for MimeType {
 
     /// Builds a [`MimeType`] from a [`Mapping`]. Recognised keys: `type` and
     /// `subtype`; both must be present and valid tokens.
-    fn from_mapping(fields: &Mapping) -> Result<MimeType, MediaError> {
+    pub fn from_mapping(fields: &Mapping) -> Result<MimeType, MediaError> {
         let type_ = fields.get("type").map_or("", String::as_str);
         let subtype = fields.get("subtype").map_or("", String::as_str);
         if !is_valid_mime(&format!("{type_}/{subtype}")) {
@@ -832,13 +832,13 @@ impl Default for MediaType {
     }
 }
 
-impl FromInput for MediaType {
-    type Err = MediaError;
-
+/// String/mapping parsers.
+impl MediaType {
     /// Parses a path or file name into its [`MimeType`] stack (see
     /// [`from_path`](MediaType::from_path)), or resolves a bare name like `"gzip"`
     /// or `"json"` to a single-type stack. Only an empty input is an error.
-    fn from_str(input: &str) -> Result<MediaType, MediaError> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<MediaType, MediaError> {
         if input.is_empty() {
             return Err(MediaError::Empty);
         }
@@ -861,7 +861,7 @@ impl FromInput for MediaType {
     /// Builds the stack from a [`Mapping`]; reads the `types` key, a comma-
     /// separated list of MIME strings (the inverse of
     /// [`to_mapping`](MediaType::to_mapping)).
-    fn from_mapping(fields: &Mapping) -> Result<MediaType, MediaError> {
+    pub fn from_mapping(fields: &Mapping) -> Result<MediaType, MediaError> {
         let types = fields
             .get("types")
             .map(|list| {
@@ -1109,7 +1109,7 @@ mod tests {
             stack.to_mapping().get("types"),
             Some(&"text/csv,application/gzip".to_string())
         );
-        assert_eq!(MediaType::from_(&stack.to_mapping()).unwrap(), stack);
+        assert_eq!(MediaType::from_mapping(&stack.to_mapping()).unwrap(), stack);
     }
 
     #[test]
@@ -1141,7 +1141,7 @@ mod tests {
         let map = m.to_mapping();
         assert_eq!(map.get("type"), Some(&"image".to_string()));
         assert_eq!(map.get("subtype"), Some(&"svg+xml".to_string()));
-        assert_eq!(MimeType::from_(&map).unwrap(), m);
+        assert_eq!(MimeType::from_mapping(&map).unwrap(), m);
     }
 
     #[test]

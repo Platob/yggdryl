@@ -7,8 +7,6 @@ use std::thread;
 use std::time::Duration;
 
 use yggdryl_io::{BytesIO, Io, Whence};
-#[cfg(feature = "media")]
-use yggdryl_url::FromInput;
 
 use crate::{HttpError, HttpRequest, HttpResponseBatch, HttpSession, Method, RetryConfig};
 

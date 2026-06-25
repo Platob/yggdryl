@@ -2,11 +2,11 @@
 //!
 //! A standalone `major.minor.patch` [`Version`] type for the **yggdryl**
 //! project, built on the [`yggdryl-core`](https://crates.io/crates/yggdryl-core)
-//! parsing traits.
+//! foundations.
 
 use std::fmt;
 
-pub use yggdryl_core::{FromInput, Mapping, ToOutput};
+pub use yggdryl_core::{Mapping, ToOutput};
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate is dependency-free by default and pays no runtime cost).
@@ -17,7 +17,7 @@ macro_rules! log_event {
     }};
 }
 
-/// Error returned when [`Version::from_`] cannot interpret its input.
+/// Error returned when [`Version`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionError {
     /// The input was empty.
@@ -51,7 +51,7 @@ impl std::error::Error for VersionError {}
 /// components; any that are omitted default to `0`.
 ///
 /// ```
-/// use yggdryl_version::{FromInput, Version};
+/// use yggdryl_version::Version;
 ///
 /// let v = Version::from_str("1.4.2").unwrap();
 /// assert_eq!((v.major(), v.minor(), v.patch()), (1, 4, 2));
@@ -118,15 +118,12 @@ impl Version {
         self.patch = patch;
         self
     }
-}
-
-impl FromInput for Version {
-    type Err = VersionError;
 
     /// Parses a `major[.minor[.patch]]` string. Every component must be a
     /// non-negative integer and there may be at most three; omitted components
     /// default to `0`.
-    fn from_str(input: &str) -> Result<Version, VersionError> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<Version, VersionError> {
         log_event!(trace, "Version::from_str {input:?}");
         if input.is_empty() {
             return Err(VersionError::Empty);
@@ -149,7 +146,7 @@ impl FromInput for Version {
 
     /// Builds a [`Version`] from a [`Mapping`]. Recognised keys: `major`, `minor`
     /// and `patch`; any omitted default to `0`.
-    fn from_mapping(fields: &Mapping) -> Result<Version, VersionError> {
+    pub fn from_mapping(fields: &Mapping) -> Result<Version, VersionError> {
         let component = |key: &str| -> Result<u64, VersionError> {
             match fields.get(key) {
                 Some(value) => value
@@ -290,6 +287,6 @@ mod tests {
         assert_eq!(v.to_str(true), "1.4.2");
         let m = v.to_mapping();
         assert_eq!(m.get("minor"), Some(&"4".to_string()));
-        assert_eq!(Version::from_(&m).unwrap(), v);
+        assert_eq!(Version::from_mapping(&m).unwrap(), v);
     }
 }
