@@ -1,16 +1,20 @@
 # yggdryl — benchmarks
 
-Numbers for the **yggdryl** byte-IO / compression / HTTP stack, measured two ways:
+Numbers for the **yggdryl** byte-IO / compression / HTTP stack, measured in
+**speed and memory**, three ways:
 
 1. **The Rust core** (`cargo bench`) — the library's true ceiling, with no FFI in
    the path. This is what you get from Rust, and what the bindings stream through.
 2. **From Python** (`python3 benchmarks/compare.py`) — the *same high-level code*
    run through yggdryl and through the Python stalwarts (`requests`, the stdlib
-   `gzip`), on the same in-process server / in-memory payload.
+   `gzip`), on the same in-process server / in-memory payload, plus peak-heap
+   (`tracemalloc`) memory figures.
+3. **From Node** (`node benchmarks/compare.mjs`) — the same against Node's built-in
+   `http` client and `zlib`.
 
 All figures are from one developer machine (localhost, no real network); treat
-them as ratios, not absolutes, and re-run them yourself — both harnesses are in
-this folder and in each crate's `benches/`.
+them as ratios, not absolutes, and re-run them yourself — every harness is in this
+folder and in each crate's `benches/`.
 
 > Honesty first: yggdryl is not faster at *everything*. The wins below are real
 > and reproduced here; the one place the Python stdlib still leads (gzip
@@ -100,18 +104,54 @@ is breadth, not raw gzip-decode speed:
 `zstd` compresses to the same size as gzip **~10× faster**, and both ship with the
 default wheel — no extra `pip install`.
 
+### Memory — peak host-heap for the same result
+
+`tracemalloc` peak heap held while producing the identical output. yggdryl runs
+the bulk work in Rust and hands one buffer across the FFI, so the host heap stays
+flatter than the pure-Python path with its intermediate objects:
+
+| workload | yggdryl | Python stdlib |
+| --- | --- | --- |
+| gzip compress (peak heap) | ~0.1 MiB | ~5 MiB |
+| gzip decompress (peak heap) | ~7 MiB | ~12 MiB |
+
+The deeper win is **streaming**: in the Rust core an `HttpStream` reads a
+multi-gigabyte object in a bounded 4 MiB window and `pread`s a footer with one
+`Range` request — never holding the whole body in memory at all.
+
+---
+
+## 3. From Node — same code, two backends (`benchmarks/compare.mjs`)
+
+The same workloads against Node's built-in `http` client and `zlib`.
+
+| workload | yggdryl | node built-in | speedup |
+| --- | --- | --- | --- |
+| HTTP GET small body (latency) | *run it* | `node:http` | — |
+| HTTP GET 8 MiB (throughput) | *run it* | `node:http` | — |
+| gzip compress | *run it* | `node:zlib` | — |
+| `zstd` / `snappy` | ✅ built in | ❌ no `node:zlib` equivalent | — |
+
+Run `node benchmarks/compare.mjs` to fill the table on your machine (Node's HTTP
+client returns the body in chunks you `Buffer.concat`; yggdryl returns it from
+Rust in one call, and additionally offers `zstd`/`snappy`, a seekable body and
+`send_many`).
+
 ---
 
 ## Reproduce
 
 ```bash
-# Rust core
+# Rust core (true ceiling, no FFI)
 cargo bench -p yggdryl-io
 cargo bench -p yggdryl-compression --all-features
 cargo bench -p yggdryl-http --all-features
 
-# Python, same code vs requests / gzip
-(cd bindings/python && maturin develop)   # build the wheel into the active env
-pip install requests
+# Python — same code vs requests / gzip (+ memory)
+(cd bindings/python && maturin develop) && pip install requests
 python3 benchmarks/compare.py
+
+# Node — same code vs node:http / node:zlib
+(cd bindings/node && npm run build)
+node benchmarks/compare.mjs
 ```

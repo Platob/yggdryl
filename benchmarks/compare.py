@@ -15,6 +15,7 @@ import gzip
 import socket
 import threading
 import time
+import tracemalloc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import yggdryl
@@ -174,6 +175,54 @@ def compression_bench():
         )
 
 
+def peak_mib(fn):
+    """Peak Python-heap allocation (MiB) for one call to `fn`, via tracemalloc."""
+    fn()  # warm any import/codepath caches out of the measurement
+    tracemalloc.start()
+    fn()
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return peak / (1024 * 1024)
+
+
+# ------------------------------------------------------------------------- memory
+def memory_bench():
+    """Peak heap held while producing the same result. yggdryl does the bulk work
+    in Rust and hands one buffer across the FFI, so the host heap stays flat where
+    the pure-Python path balloons with intermediate objects."""
+    payload = (
+        "col_a,col_b,col_c\n"
+        + "".join(f"{i},{i * 2},value_{i % 97}\n" for i in range(150_000))
+    ).encode()
+    gz = yggdryl.Compression.from_str("gzip")
+    packed_yg = gz.compress(payload)
+    packed_py = gzip.compress(payload)
+
+    rows = [
+        (
+            "gzip compress (peak heap)",
+            f"{peak_mib(lambda: gz.compress(payload)):.2f} MiB",
+            f"{peak_mib(lambda: gzip.compress(payload)):.2f} MiB",
+        ),
+        (
+            "gzip decompress (peak heap)",
+            f"{peak_mib(lambda: gz.decompress(packed_yg)):.2f} MiB",
+            f"{peak_mib(lambda: gzip.decompress(packed_py)):.2f} MiB",
+        ),
+    ]
+    table(
+        "Memory — peak host-heap for the same result",
+        ["workload", "yggdryl", "Python stdlib"],
+        rows,
+    )
+    print(
+        "\n_The deeper memory win is **streaming**: in the Rust core an `HttpStream` "
+        "reads a multi-gigabyte object in a bounded 4 MiB window and `pread`s a "
+        "footer with one Range request (`cargo bench -p yggdryl-http`), never "
+        "holding the whole body — see the Rust-core numbers below._"
+    )
+
+
 if __name__ == "__main__":
     print("# yggdryl vs Python — same code, measured\n")
     print(
@@ -185,3 +234,4 @@ if __name__ == "__main__":
     )
     http_bench()
     compression_bench()
+    memory_bench()
