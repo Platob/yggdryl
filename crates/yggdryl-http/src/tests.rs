@@ -1395,9 +1395,46 @@ fn http_data_types_serde_round_trip() {
 }
 
 #[test]
-fn shared_session_is_a_singleton() {
-    // Every call hands back the same pooled session instance.
+fn shared_session_singleton_and_set() {
+    // Every call hands back the same pooled session (the same `Arc`)…
     let a = HttpSession::shared();
     let b = HttpSession::shared();
-    assert!(std::ptr::eq(a, b));
+    assert!(std::sync::Arc::ptr_eq(&a, &b));
+    // …until `set_shared` replaces it — here with one carrying a base URL, so the
+    // module-level verbs resolve relative targets against it.
+    let base = yggdryl_core::Url::from_str("https://api.example.com/v1/").unwrap();
+    HttpSession::set_shared(HttpSession::new().with_base_url(base));
+    let c = HttpSession::shared();
+    assert_eq!(
+        c.base_url().map(ToString::to_string),
+        Some("https://api.example.com/v1/".to_string())
+    );
+    assert!(!std::sync::Arc::ptr_eq(&a, &c));
+}
+
+#[test]
+fn base_url_resolves_relative_targets() {
+    let base = yggdryl_core::Url::from_str("https://api.example.com/v1/").unwrap();
+    let session = HttpSession::new().with_base_url(base);
+    // A bare name joins onto the base path; an absolute path replaces it.
+    assert_eq!(
+        session.resolve_url("users").unwrap().to_string(),
+        "https://api.example.com/v1/users"
+    );
+    assert_eq!(
+        session.resolve_url("/users").unwrap().to_string(),
+        "https://api.example.com/users"
+    );
+    // An absolute URL bypasses the base entirely.
+    assert_eq!(
+        session
+            .resolve_url("https://other.test/x")
+            .unwrap()
+            .to_string(),
+        "https://other.test/x"
+    );
+    // With no base URL a relative target is an error; an absolute one parses.
+    let plain = HttpSession::new();
+    assert!(plain.resolve_url("relative").is_err());
+    assert!(plain.resolve_url("https://h/p").is_ok());
 }

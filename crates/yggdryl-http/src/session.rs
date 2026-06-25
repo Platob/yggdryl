@@ -2,9 +2,9 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-use yggdryl_core::{BytesIO, Io};
+use yggdryl_core::{BytesIO, Io, Url};
 
 use crate::bridge::IoBridge;
 use crate::cookies::{Cookie, HttpCookies};
@@ -51,6 +51,10 @@ pub struct HttpSession {
     /// The RFC 6265 cookie jar, consulted before every dispatch and fed every
     /// response's `Set-Cookie`. Behind a [`Mutex`] since the session is shared `&self`.
     cookies: Mutex<HttpCookies>,
+    /// An optional base URL: a relative request target (a path, or a bare name) is
+    /// resolved against it (like `requests`'s session prefix / `httpx`'s `base_url`),
+    /// while an absolute URL is used unchanged. `None` requires absolute targets.
+    base_url: Option<Url>,
 }
 
 impl HttpSession {
@@ -68,14 +72,46 @@ impl HttpSession {
     /// retry policy, a shared cookie jar); reach for an explicit [`new`](HttpSession::new)
     /// when you need per-client headers, cookies or tuning.
     ///
+    /// Returns a clone of the shared `Arc`, so the same pooled session (and cookie
+    /// jar) is reused across calls. Replace it with [`set_shared`](HttpSession::set_shared)
+    /// — e.g. to give the module-level verbs a [`base_url`](HttpSession::base_url).
+    ///
     /// ```no_run
     /// use yggdryl_http::HttpSession;
     /// // Two calls return the same pooled session (and share its cookie jar).
     /// let body = HttpSession::shared().get("https://example.com").unwrap();
     /// ```
-    pub fn shared() -> &'static HttpSession {
-        static SHARED: OnceLock<HttpSession> = OnceLock::new();
-        SHARED.get_or_init(HttpSession::new)
+    pub fn shared() -> Arc<HttpSession> {
+        HttpSession::shared_slot()
+            .read()
+            .expect("shared session poisoned")
+            .clone()
+    }
+
+    /// Replaces the process-wide [`shared`](HttpSession::shared) singleton, so the
+    /// module-level [`get`] / [`post`] / … verbs use `session` from now on — the way
+    /// to give them a [`base_url`](HttpSession::with_base_url) or default headers.
+    /// In-flight requests holding the previous `Arc` are unaffected.
+    ///
+    /// ```no_run
+    /// use yggdryl_http::HttpSession;
+    /// use yggdryl_core::Url;
+    /// HttpSession::set_shared(
+    ///     HttpSession::new().with_base_url(Url::from_str("https://api.example.com").unwrap()),
+    /// );
+    /// // `yggdryl_http::get("/users")` now resolves against the base URL.
+    /// ```
+    pub fn set_shared(session: HttpSession) {
+        *HttpSession::shared_slot()
+            .write()
+            .expect("shared session poisoned") = Arc::new(session);
+    }
+
+    /// The storage backing [`shared`](HttpSession::shared) — a replaceable `Arc`
+    /// behind an `RwLock`, initialised with a default session on first access.
+    fn shared_slot() -> &'static RwLock<Arc<HttpSession>> {
+        static SHARED: OnceLock<RwLock<Arc<HttpSession>>> = OnceLock::new();
+        SHARED.get_or_init(|| RwLock::new(Arc::new(HttpSession::new())))
     }
 
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
@@ -95,6 +131,7 @@ impl HttpSession {
             held: Arc::new(AtomicUsize::new(0)),
             max_redirects: DEFAULT_MAX_REDIRECTS,
             cookies: Mutex::new(HttpCookies::new()),
+            base_url: None,
         }
     }
 
@@ -107,6 +144,31 @@ impl HttpSession {
     /// Sets the default `User-Agent` header.
     pub fn with_user_agent(self, user_agent: impl Into<String>) -> HttpSession {
         self.with_header("user-agent", user_agent)
+    }
+
+    /// Sets a base URL that relative request targets resolve against (see
+    /// [`resolve_url`](HttpSession::resolve_url) and [`base_url`](HttpSession::base_url)).
+    pub fn with_base_url(mut self, base_url: Url) -> HttpSession {
+        self.base_url = Some(base_url);
+        self
+    }
+
+    /// The session's base URL, if one is set.
+    pub fn base_url(&self) -> Option<&Url> {
+        self.base_url.as_ref()
+    }
+
+    /// Resolves a request `target` against the session's [`base_url`](HttpSession::base_url):
+    /// an absolute URL (one with a scheme) is parsed and used unchanged, while a
+    /// relative reference (`/path`, `name`, `//host/p`) is joined onto the base by
+    /// the same RFC 3986 rules a `Location` redirect uses. With no base URL the
+    /// target must be absolute, else [`HttpError::InvalidUrl`] is returned. This is
+    /// the one place the verb helpers turn a target string into a [`Url`].
+    pub fn resolve_url(&self, target: &str) -> Result<Url, HttpError> {
+        match &self.base_url {
+            Some(base) => redirect::resolve(base, target),
+            None => Url::from_str(target).map_err(|err| HttpError::InvalidUrl(err.to_string())),
+        }
     }
 
     /// Sets the [`RetryConfig`] for transient failures.
@@ -198,34 +260,53 @@ impl HttpSession {
         self.batch_size
     }
 
-    /// `GET url` (raises on a 4xx/5xx status).
+    /// `GET url` (raises on a 4xx/5xx status). `url` is resolved against the
+    /// session's [`base_url`](HttpSession::base_url) when one is set.
     pub fn get(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::get(url)?, true)
+        self.request(
+            HttpRequest::from_url(Method::Get, self.resolve_url(url)?),
+            true,
+        )
     }
 
     /// `HEAD url` (raises on a 4xx/5xx status).
     pub fn head(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::head(url)?, true)
+        self.request(
+            HttpRequest::from_url(Method::Head, self.resolve_url(url)?),
+            true,
+        )
     }
 
     /// `DELETE url` (raises on a 4xx/5xx status).
     pub fn delete(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::delete(url)?, true)
+        self.request(
+            HttpRequest::from_url(Method::Delete, self.resolve_url(url)?),
+            true,
+        )
     }
 
     /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn post(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::post(url)?.with_body(body), true)
+        self.request(
+            HttpRequest::from_url(Method::Post, self.resolve_url(url)?).with_body(body),
+            true,
+        )
     }
 
     /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn put(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::put(url)?.with_body(body), true)
+        self.request(
+            HttpRequest::from_url(Method::Put, self.resolve_url(url)?).with_body(body),
+            true,
+        )
     }
 
     /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn patch(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(HttpRequest::patch(url)?.with_body(body), true)
+        self.request(
+            HttpRequest::from_url(Method::Patch, self.resolve_url(url)?).with_body(body),
+            true,
+        )
     }
 
     /// Merges the session's default headers into `request` (a per-request header

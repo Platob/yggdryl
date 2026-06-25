@@ -34,8 +34,8 @@ use yggdryl_http::HttpError;
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
 use crate::http::{
-    http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, HttpResponse,
-    HttpSession,
+    http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url,
+    HttpResponse, HttpSession,
 };
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
@@ -187,5 +187,6 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(http_put, m)?)?;
     m.add_function(wrap_pyfunction!(http_patch, m)?)?;
     m.add_function(wrap_pyfunction!(http_request, m)?)?;
+    m.add_function(wrap_pyfunction!(set_base_url, m)?)?;
     Ok(())
 }

@@ -136,3 +136,24 @@ def test_module_level_verbs_use_the_shared_session(base_url):
     assert response.text() == "hello world"
     assert yggdryl.post(base_url + "/submit", b"ping").content == b"ping"
     assert yggdryl.request("DELETE", base_url + "/thing").status == 204
+
+
+def test_base_url_resolves_relative_targets(base_url):
+    session = yggdryl.HttpSession(base_url=base_url + "/")
+    assert session.base_url == base_url + "/"
+    # A relative target is joined onto the base; the echo server returns the path.
+    assert session.get("path/here").header("x-echo-back") == ""
+    assert session.get("path/here").status == 200
+    # An absolute URL bypasses the base.
+    assert session.get(base_url + "/").status == 200
+
+
+def test_set_base_url_configures_the_shared_singleton(base_url):
+    # Point the shared singleton at the test server, then call a module verb with
+    # a relative path.
+    yggdryl.set_base_url(base_url + "/")
+    try:
+        assert yggdryl.get("/").text() == "hello world"
+    finally:
+        # Reset the singleton so other tests' module verbs use absolute URLs.
+        yggdryl.set_base_url("http://127.0.0.1:1")

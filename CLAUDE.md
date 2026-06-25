@@ -170,12 +170,16 @@ shape:
   keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
   threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
-  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). A process-wide
-  **shared singleton** `HttpSession::shared()` (an `OnceLock`) backs the crate-level
+  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). An optional
+  **`base_url`** (`with_base_url`) prefixes requests: the verb helpers run their
+  target through `resolve_url`, so a relative reference (`/path`, `name`) joins onto
+  the base (same RFC 3986 rules as a `Location` redirect) while an absolute URL is
+  used unchanged. A process-wide **shared singleton** `HttpSession::shared()` (a
+  replaceable `Arc` behind an `RwLock`, swapped by `set_shared`) backs the crate-level
   `get`/`head`/`post`/`put`/`patch`/`delete`/`request` **module functions**, the
   `requests.get(...)` equivalent. The bindings mirror this with module-level verbs
-  over a shared session (Node has no `delete` verb — a JS reserved word — so use
-  `request('DELETE', …)`).
+  over the shared session and a `set_base_url` to configure it (Node has no `delete`
+  verb — a JS reserved word — so use `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the

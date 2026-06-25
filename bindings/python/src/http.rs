@@ -256,12 +256,13 @@ impl HttpSession {
     /// Create a session, optionally with a default ``user_agent`` and default
     /// ``headers`` sent with every request.
     #[new]
-    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None))]
+    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None))]
     fn new(
         user_agent: Option<String>,
         headers: Option<HashMap<String, String>>,
         max_redirects: Option<usize>,
-    ) -> Self {
+        base_url: Option<&str>,
+    ) -> PyResult<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
             inner = inner.with_user_agent(user_agent);
@@ -274,13 +275,24 @@ impl HttpSession {
         if let Some(max_redirects) = max_redirects {
             inner = inner.with_max_redirects(max_redirects);
         }
-        HttpSession { inner }
+        if let Some(base_url) = base_url {
+            inner =
+                inner.with_base_url(yggdryl_core::Url::from_str(base_url).map_err(crate::url_err)?);
+        }
+        Ok(HttpSession { inner })
     }
 
     /// The maximum number of 3xx redirect hops followed per request.
     #[getter]
     fn max_redirects(&self) -> usize {
         self.inner.max_redirects()
+    }
+
+    /// The session's base URL (relative request targets resolve against it), or
+    /// ``None``.
+    #[getter]
+    fn base_url(&self) -> Option<String> {
+        self.inner.base_url().map(ToString::to_string)
     }
 
     /// The session's cookies as a ``dict`` of ``name`` to ``value`` (the jar
@@ -302,24 +314,27 @@ impl HttpSession {
         Ok(())
     }
 
-    /// ``GET url``.
+    /// ``GET url`` (resolved against the session's ``base_url`` when set).
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
-            session.send(CoreHttpRequest::get(url)?, true, true, false)
+            let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
+            session.send(request, true, true, false)
         })
     }
 
     /// ``HEAD url``.
     fn head(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
-            session.send(CoreHttpRequest::head(url)?, true, true, false)
+            let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
+            session.send(request, true, true, false)
         })
     }
 
     /// ``DELETE url``.
     fn delete(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
-            session.send(CoreHttpRequest::delete(url)?, true, true, false)
+            let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
+            session.send(request, true, true, false)
         })
     }
 
@@ -334,12 +349,8 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.send(
-                apply_body(CoreHttpRequest::post(url)?, body),
-                true,
-                true,
-                false,
-            )
+            let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
+            session.send(apply_body(request, body), true, true, false)
         })
     }
 
@@ -353,12 +364,8 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.send(
-                apply_body(CoreHttpRequest::put(url)?, body),
-                true,
-                true,
-                false,
-            )
+            let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
+            session.send(apply_body(request, body), true, true, false)
         })
     }
 
@@ -372,12 +379,8 @@ impl HttpSession {
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            session.send(
-                apply_body(CoreHttpRequest::patch(url)?, body),
-                true,
-                true,
-                false,
-            )
+            let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
+            session.send(apply_body(request, body), true, true, false)
         })
     }
 
@@ -406,8 +409,8 @@ impl HttpSession {
         let method = Method::from_str(method).map_err(http_err)?;
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
-            let mut request =
-                CoreHttpRequest::new(method, url)?.with_allow_redirect(allow_redirect);
+            let mut request = CoreHttpRequest::from_url(method, session.resolve_url(url)?)
+                .with_allow_redirect(allow_redirect);
             if let Some(headers) = headers {
                 request = request.with_headers(headers);
             }
@@ -418,12 +421,16 @@ impl HttpSession {
 }
 
 /// ``GET url`` via the process-wide shared :class:`HttpSession` singleton (the
-/// ``requests.get`` equivalent — raises on a 4xx/5xx status).
+/// ``requests.get`` equivalent — raises on a 4xx/5xx status). ``url`` is resolved
+/// against the shared session's ``base_url`` when one is set (see
+/// :func:`set_base_url`).
 #[pyfunction]
 #[pyo3(name = "get")]
 pub fn http_get(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(CoreHttpRequest::get(url)?, true, true, false)
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
+        session.send(request, true, true, false)
     })
 }
 
@@ -432,7 +439,9 @@ pub fn http_get(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
 #[pyo3(name = "head")]
 pub fn http_head(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(CoreHttpRequest::head(url)?, true, true, false)
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
+        session.send(request, true, true, false)
     })
 }
 
@@ -441,7 +450,9 @@ pub fn http_head(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
 #[pyo3(name = "delete")]
 pub fn http_delete(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(CoreHttpRequest::delete(url)?, true, true, false)
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
+        session.send(request, true, true, false)
     })
 }
 
@@ -456,12 +467,9 @@ pub fn http_post(
 ) -> PyResult<HttpResponse> {
     let body = extract_body(body.as_ref())?;
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(
-            apply_body(CoreHttpRequest::post(url)?, body),
-            true,
-            true,
-            false,
-        )
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
+        session.send(apply_body(request, body), true, true, false)
     })
 }
 
@@ -475,12 +483,9 @@ pub fn http_put(
 ) -> PyResult<HttpResponse> {
     let body = extract_body(body.as_ref())?;
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(
-            apply_body(CoreHttpRequest::put(url)?, body),
-            true,
-            true,
-            false,
-        )
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
+        session.send(apply_body(request, body), true, true, false)
     })
 }
 
@@ -494,13 +499,21 @@ pub fn http_patch(
 ) -> PyResult<HttpResponse> {
     let body = extract_body(body.as_ref())?;
     buffer_response(py, move || {
-        CoreHttpSession::shared().send(
-            apply_body(CoreHttpRequest::patch(url)?, body),
-            true,
-            true,
-            false,
-        )
+        let session = CoreHttpSession::shared();
+        let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
+        session.send(apply_body(request, body), true, true, false)
     })
+}
+
+/// Configure the process-wide shared :class:`HttpSession` singleton with a
+/// ``base_url`` (replacing it), so the module-level verbs resolve relative targets
+/// — e.g. ``set_base_url("https://api.example.com")`` then ``get("/users")``.
+#[pyfunction]
+#[pyo3(name = "set_base_url")]
+pub fn set_base_url(base_url: &str) -> PyResult<()> {
+    let base = yggdryl_core::Url::from_str(base_url).map_err(crate::url_err)?;
+    CoreHttpSession::set_shared(CoreHttpSession::new().with_base_url(base));
+    Ok(())
 }
 
 /// Issue an arbitrary ``method`` request via the shared session singleton (same
@@ -521,11 +534,13 @@ pub fn http_request(
     let method = Method::from_str(method).map_err(http_err)?;
     let body = extract_body(body.as_ref())?;
     buffer_response(py, move || {
-        let mut request = CoreHttpRequest::new(method, url)?.with_allow_redirect(allow_redirect);
+        let session = CoreHttpSession::shared();
+        let mut request = CoreHttpRequest::from_url(method, session.resolve_url(url)?)
+            .with_allow_redirect(allow_redirect);
         if let Some(headers) = headers {
             request = request.with_headers(headers);
         }
         request = apply_body(request, body);
-        CoreHttpSession::shared().send(request, raise_error, keep_alive, false)
+        session.send(request, raise_error, keep_alive, false)
     })
 }

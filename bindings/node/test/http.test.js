@@ -114,3 +114,32 @@ test('module-level verbs use the shared session', async () => {
     server.close()
   }
 })
+
+test('baseUrl resolves relative targets', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession(undefined, undefined, undefined, base + '/')
+    assert.strictEqual(session.baseUrl, base + '/')
+    // A relative target reaches the server (the echo handler replies 200).
+    assert.strictEqual((await session.get('some/path')).status, 200)
+    // An absolute URL bypasses the base.
+    assert.strictEqual((await session.get(base + '/')).status, 200)
+  } finally {
+    server.close()
+  }
+})
+
+test('setBaseUrl configures the shared singleton', async () => {
+  const yggdryl = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    yggdryl.setBaseUrl(base + '/')
+    assert.strictEqual((await yggdryl.get('/')).text(), 'hello world')
+  } finally {
+    // Reset so other tests' absolute-URL module verbs are unaffected.
+    yggdryl.setBaseUrl('http://127.0.0.1:1')
+    server.close()
+  }
+})

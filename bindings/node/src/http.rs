@@ -5,12 +5,12 @@
 //! answer normally).
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
-use yggdryl_core::{LocalPath as CoreLocalPath, Path};
+use yggdryl_core::{LocalPath as CoreLocalPath, Path, Url as CoreUrl};
 use yggdryl_http::{HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, Method};
 
 use crate::localpath::LocalPath;
@@ -20,13 +20,10 @@ fn to_napi(err: yggdryl_http::HttpError) -> Error {
 }
 
 /// The process-wide shared session that backs the module-level `get` / `post` / …
-/// verbs (the singleton mirroring Python's `requests` default session). It carries
-/// the default configuration and a shared cookie jar.
+/// verbs (the singleton mirroring Python's `requests` default session). Replaceable
+/// with `setBaseUrl` to give those verbs a base URL.
 fn shared_session() -> Arc<CoreHttpSession> {
-    static SHARED: OnceLock<Arc<CoreHttpSession>> = OnceLock::new();
-    SHARED
-        .get_or_init(|| Arc::new(CoreHttpSession::new()))
-        .clone()
+    CoreHttpSession::shared()
 }
 
 /// Builds a [`RequestTask`] over the shared session singleton.
@@ -96,9 +93,11 @@ impl Task for RequestTask {
     type JsValue = HttpResponse;
 
     fn compute(&mut self) -> Result<ResponseData> {
-        let mut request = CoreHttpRequest::new(self.method, &self.url)
-            .map_err(to_napi)?
-            .with_allow_redirect(self.allow_redirect);
+        // Resolve the target against the session's base URL (the single point all
+        // verbs — instance and module-level — funnel through), then build it.
+        let url = self.session.resolve_url(&self.url).map_err(to_napi)?;
+        let mut request =
+            CoreHttpRequest::from_url(self.method, url).with_allow_redirect(self.allow_redirect);
         request = request.with_headers(std::mem::take(&mut self.headers));
         request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
             BodyArg::Empty => request,
@@ -242,13 +241,15 @@ pub struct HttpSession {
 #[napi]
 impl HttpSession {
     /// Create a session, optionally with a default `userAgent`, default `headers`
-    /// sent with every request, and a `maxRedirects` cap on 3xx hops followed.
+    /// sent with every request, a `maxRedirects` cap on 3xx hops followed, and a
+    /// `baseUrl` that relative request targets resolve against.
     #[napi(constructor)]
     pub fn new(
         user_agent: Option<String>,
         headers: Option<HashMap<String, String>>,
         max_redirects: Option<u32>,
-    ) -> Self {
+        base_url: Option<String>,
+    ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
             inner = inner.with_user_agent(user_agent);
@@ -261,15 +262,27 @@ impl HttpSession {
         if let Some(max_redirects) = max_redirects {
             inner = inner.with_max_redirects(max_redirects as usize);
         }
-        HttpSession {
-            inner: Arc::new(inner),
+        if let Some(base_url) = base_url {
+            let base =
+                CoreUrl::from_str(&base_url).map_err(|e| Error::from_reason(e.to_string()))?;
+            inner = inner.with_base_url(base);
         }
+        Ok(HttpSession {
+            inner: Arc::new(inner),
+        })
     }
 
     /// The maximum number of 3xx redirect hops followed per request.
     #[napi(getter, js_name = "maxRedirects")]
     pub fn max_redirects(&self) -> u32 {
         self.inner.max_redirects() as u32
+    }
+
+    /// The session's base URL (relative request targets resolve against it), or
+    /// `null`.
+    #[napi(getter, js_name = "baseUrl")]
+    pub fn base_url(&self) -> Option<String> {
+        self.inner.base_url().map(ToString::to_string)
     }
 
     /// The session's cookies as an object of `name` to `value` (the jar snapshot —
@@ -549,4 +562,14 @@ pub fn http_request(
         keep_alive.unwrap_or(true),
         allow_redirect.unwrap_or(true),
     ))
+}
+
+/// Configure the process-wide shared `HttpSession` singleton with a `baseUrl`
+/// (replacing it), so the module-level verbs resolve relative targets — e.g.
+/// `setBaseUrl("https://api.example.com")` then `get("/users")`.
+#[napi(js_name = "setBaseUrl")]
+pub fn set_base_url(base_url: String) -> Result<()> {
+    let base = CoreUrl::from_str(&base_url).map_err(|e| Error::from_reason(e.to_string()))?;
+    CoreHttpSession::set_shared(CoreHttpSession::new().with_base_url(base));
+    Ok(())
 }
