@@ -75,12 +75,14 @@
 //! assert_eq!(io.stats().unwrap().size(), 11);
 //! ```
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::marker::PhantomData;
+use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
-pub use yggdryl_url::Url;
+pub use yggdryl_url::{Uri, Url};
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate pulls no `log` dependency by default and pays no
@@ -730,6 +732,77 @@ pub trait Io: fmt::Debug + Send + Sync {
 /// between two IO implementations (e.g. a [`LocalPath`] into a [`BytesIO`]).
 pub fn copy<S: Io + ?Sized>(src: &mut S, dst: &mut dyn Io) -> Result<u64, IoError> {
     src.copy_to(dst)
+}
+
+/// Opens a backend for a [`Uri`] scheme, returning the [`Io`] handle — the entry a
+/// downstream crate registers with [`register_scheme`] so [`from_uri`] / [`from_url`]
+/// / [`from_str`] can hand back its handle (e.g. `yggdryl-http` registers
+/// `http`/`https`, cloud crates their store schemes).
+pub type SchemeOpener = fn(&Uri) -> Result<Box<dyn Io>, IoError>;
+
+/// The scheme → opener registry, seeded empty (the `file` scheme is handled inline
+/// by [`from_uri`]); downstream crates add their schemes via [`register_scheme`].
+fn scheme_registry() -> &'static RwLock<HashMap<String, SchemeOpener>> {
+    static REGISTRY: OnceLock<RwLock<HashMap<String, SchemeOpener>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Registers `opener` as the [`Io`] factory for a URL `scheme` (lower-cased), so
+/// [`from_uri`] dispatches that scheme to it. Idempotent per scheme (the latest
+/// registration wins). This is how `yggdryl-http` plugs `http`/`https` into the
+/// universal [`from_str`] factory without `yggdryl-io` depending on it.
+pub fn register_scheme(scheme: &str, opener: SchemeOpener) {
+    log_event!(info, "Io::register_scheme {scheme}");
+    scheme_registry()
+        .write()
+        .unwrap()
+        .insert(scheme.to_ascii_lowercase(), opener);
+}
+
+/// Opens the right [`Io`] backend for a [`Uri`], dispatching on its scheme: `file`
+/// (or a bare path, which parses to the `file` scheme) opens a [`LocalPath`]; any
+/// other scheme is looked up in the [`register_scheme`] registry (e.g. `http` /
+/// `https` once `yggdryl-http` is linked, cloud stores later). An unknown scheme is
+/// an [`IoError::Unsupported`] that names how to enable it.
+pub fn from_uri(uri: &Uri) -> Result<Box<dyn Io>, IoError> {
+    let scheme = uri.scheme().to_ascii_lowercase();
+    match scheme.as_str() {
+        "file" | "" => Ok(Box::new(LocalPath::open(uri.path()))),
+        "mem" => Err(IoError::Unsupported(
+            "mem:// handles cannot be reopened from a URL — keep the BytesIO".to_string(),
+        )),
+        other => {
+            let opener = scheme_registry().read().unwrap().get(other).copied();
+            match opener {
+                Some(opener) => opener(uri),
+                None => Err(IoError::Unsupported(format!(
+                    "no Io backend registered for scheme {other:?} (enable yggdryl-http for http/https; cloud stores are downstream crates)"
+                ))),
+            }
+        }
+    }
+}
+
+/// Opens the right [`Io`] backend for a [`Url`] — the [`from_uri`] dispatch over a
+/// fully-authoritative URL.
+pub fn from_url(url: &Url) -> Result<Box<dyn Io>, IoError> {
+    from_uri(&Uri::from_url(url))
+}
+
+/// Opens the right [`Io`] backend for a string: a bare path or `file://` URL opens
+/// a [`LocalPath`], a scheme URL dispatches to its registered backend (see
+/// [`from_uri`]). The one-line "give me a handle for this location" entry point.
+///
+/// ```
+/// use yggdryl_io::{from_str, Io};
+///
+/// // A bare path resolves to a local file handle.
+/// let handle = from_str("/etc/hostname");
+/// assert!(handle.is_ok());
+/// ```
+pub fn from_str(input: &str) -> Result<Box<dyn Io>, IoError> {
+    let uri = Uri::from_str(input).map_err(|err| IoError::Invalid(format!("invalid location: {err}")))?;
+    from_uri(&uri)
 }
 
 /// A `&mut` to any handle is itself a handle, so a borrowed [`Io`] can be handed
@@ -2513,5 +2586,38 @@ mod tests {
         let io = BytesIO::from_bytes(b"\x1f\x8b\x08\x00rest".to_vec());
         let media = io.media_type().expect("gzip magic");
         assert_eq!(media.first().map(|m| m.subtype()), Some("gzip"));
+    }
+
+    #[test]
+    fn from_str_opens_a_local_path() {
+        let path = temp_file("factory");
+        LocalPath::open(&path).write(b"hi").unwrap();
+        let mut handle = from_str(&path).unwrap();
+        assert_eq!(handle.url().scheme(), "file");
+        let mut buf = Vec::new();
+        handle.read_to_end(&mut buf).unwrap();
+        assert_eq!(buf, b"hi");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn from_str_rejects_mem_and_unknown_schemes() {
+        assert!(matches!(from_str("mem://abc"), Err(IoError::Unsupported(_))));
+        assert!(matches!(
+            from_str("ftp://host/x"),
+            Err(IoError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn register_scheme_dispatches_to_the_opener() {
+        fn opener(_uri: &Uri) -> Result<Box<dyn Io>, IoError> {
+            Ok(Box::new(BytesIO::from_bytes(b"registered".to_vec())))
+        }
+        register_scheme("xtest", opener);
+        let mut handle = from_str("xtest://anywhere/x").unwrap();
+        let mut buf = Vec::new();
+        handle.read_to_end(&mut buf).unwrap();
+        assert_eq!(buf, b"registered");
     }
 }
