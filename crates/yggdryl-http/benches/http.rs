@@ -15,17 +15,19 @@ use std::time::Instant;
 use yggdryl_http::{HttpRequest, HttpResponseBatch, HttpSession};
 use yggdryl_io::ReadBytes;
 
-/// Reads one request off the stream, returning an optional `(start, end)` range.
-fn read_range(stream: &mut std::net::TcpStream) -> Option<(u64, u64)> {
+/// Reads one request off the stream, returning `(is_head, optional range)`.
+fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
     let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    while !buf.ends_with(b"\r\n\r\n") {
-        match stream.read(&mut byte) {
+    let mut chunk = [0u8; 256];
+    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+        match stream.read(&mut chunk) {
             Ok(0) | Err(_) => return None,
-            Ok(_) => buf.push(byte[0]),
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
         }
     }
-    String::from_utf8_lossy(&buf)
+    let text = String::from_utf8_lossy(&buf);
+    let is_head = text.starts_with("HEAD ");
+    let range = text
         .lines()
         .find_map(|line| {
             line.strip_prefix("Range: ")
@@ -35,7 +37,8 @@ fn read_range(stream: &mut std::net::TcpStream) -> Option<(u64, u64)> {
         .and_then(|spec| {
             let (start, end) = spec.split_once('-')?;
             Some((start.parse().ok()?, end.parse().ok()?))
-        })
+        });
+    Some((is_head, range))
 }
 
 /// Serves `payload` forever with HEAD + `Range` (206) support, handling each
@@ -50,29 +53,35 @@ fn serve(payload: Vec<u8>, latency_ms: u64) -> String {
             let payload = payload.clone();
             thread::spawn(move || {
                 let mut stream = stream;
+                let _ = stream.set_nodelay(true); // avoid Nagle/delayed-ACK stalls
                 let total = payload.len();
-                let range = read_range(&mut stream);
+                let Some((is_head, range)) = read_request(&mut stream) else {
+                    return;
+                };
                 if latency_ms > 0 {
                     thread::sleep(std::time::Duration::from_millis(latency_ms));
                 }
-                match range {
-                    Some((start, end)) => {
-                        let end = (end as usize).min(total.saturating_sub(1));
-                        let slice = &payload[start as usize..=end];
-                        let header = format!(
-                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
-                            slice.len()
-                        );
-                        let _ = stream.write_all(header.as_bytes());
-                        let _ = stream.write_all(slice);
-                    }
-                    None => {
-                        let header = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
-                        );
-                        let _ = stream.write_all(header.as_bytes());
-                        let _ = stream.write_all(&payload);
-                    }
+                if is_head {
+                    // HEAD: headers only, no body.
+                    let header = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                    );
+                    let _ = stream.write_all(header.as_bytes());
+                } else if let Some((start, end)) = range {
+                    let end = (end as usize).min(total.saturating_sub(1));
+                    let slice = &payload[start as usize..=end];
+                    let header = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{total}\r\nContent-Length: {}\r\n\r\n",
+                        slice.len()
+                    );
+                    let _ = stream.write_all(header.as_bytes());
+                    let _ = stream.write_all(slice);
+                } else {
+                    let header = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nAccept-Ranges: bytes\r\n\r\n"
+                    );
+                    let _ = stream.write_all(header.as_bytes());
+                    let _ = stream.write_all(&payload);
                 }
             });
         }
@@ -114,6 +123,25 @@ fn main() {
         stream.read_to_end(&mut out).unwrap();
         black_box(out);
     });
+
+    // HttpStream's strength: random access. Read a 16-byte "footer" with a single
+    // Range request instead of downloading the whole resource.
+    println!(
+        "\n== random access (16-byte footer of {} MiB) ==",
+        SIZE / 1024 / 1024
+    );
+    let footer_reqs = 200u64;
+    let start = Instant::now();
+    for _ in 0..footer_reqs {
+        let mut stream = session.stream(HttpRequest::get(&url).unwrap()).unwrap();
+        let mut footer = [0u8; 16];
+        yggdryl_io::Io::pread(&mut stream, &mut footer, -16, yggdryl_io::Whence::End).unwrap();
+        black_box(footer);
+    }
+    println!(
+        "HttpStream pread footer                  {:>7.2} ms/read (HEAD+1 range, no full download)",
+        start.elapsed().as_secs_f64() / footer_reqs as f64 * 1e3
+    );
 
     // Many small requests with 5 ms of simulated latency each: concurrent
     // send_many should beat the sequential loop roughly by the concurrency factor.

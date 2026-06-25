@@ -960,16 +960,36 @@ impl HttpStream {
         self.ranges
     }
 
-    /// Fetches `[start, start+len)` with the retry policy — retrying transient
-    /// statuses and reconnecting (resuming the same range) on a lost connection.
+    /// Fetches `[start, start+len)` into a fresh `Vec` (pre-sized) — the windowed
+    /// form used by [`read_bytes`](HttpStream::read_bytes) and [`pread`](Io::pread).
     fn fetch_range(&self, start: u64, len: u64) -> Result<Vec<u8>, IoError> {
+        let mut out = Vec::with_capacity(len.min(WINDOW_SIZE) as usize);
+        self.fetch_range_into(start, len, &mut out)?;
+        Ok(out)
+    }
+
+    /// Fetches `[start, start+len)`, **appending** the bytes to `out` (one copy,
+    /// straight off the socket) and returning the count appended. Retries
+    /// transient statuses and reconnects on a lost connection; a body cut
+    /// mid-stream is resumed by truncating `out` back and re-fetching the range.
+    /// A `416 Range Not Satisfiable` (read past the end of an unknown-size
+    /// resource) is a clean end of input, returning `0`.
+    fn fetch_range_into(&self, start: u64, len: u64, out: &mut Vec<u8>) -> Result<usize, IoError> {
         if len == 0 {
-            return Ok(Vec::new());
+            return Ok(0);
         }
+        let end = start
+            .checked_add(len)
+            .and_then(|end| end.checked_sub(1))
+            .ok_or_else(|| IoError::Invalid("range offset overflow".to_string()))?;
         let url = self.url.to_string();
-        let range = format!("bytes={}-{}", start, start + len - 1);
+        let range = format!("bytes={start}-{end}");
+        let base = out.len();
         let mut attempt = 0u32;
         loop {
+            // Discard any bytes a previous (failed) attempt appended, so a resume
+            // never double-writes.
+            out.truncate(base);
             let mut builder = ureq::http::Request::builder()
                 .method("GET")
                 .uri(url.as_str());
@@ -994,6 +1014,10 @@ impl HttpStream {
                         std::thread::sleep(delay);
                         continue;
                     }
+                    // 416: the range starts at/after the end — a clean EOF.
+                    if status == 416 {
+                        return Ok(0);
+                    }
                     if status >= 400 {
                         return Err(IoError::Io(format!("http status {status}")));
                     }
@@ -1004,16 +1028,16 @@ impl HttpStream {
                         ));
                     }
                     let mut reader = response.body_mut().as_reader();
-                    let mut out = Vec::new();
-                    match std::io::Read::read_to_end(&mut reader, &mut out) {
+                    match std::io::Read::read_to_end(&mut reader, out) {
                         Ok(_) => {
+                            // A 200 returned the whole body; keep only the window.
                             if status == 200 {
-                                out.truncate(len as usize);
+                                out.truncate(base + len as usize);
                             }
-                            return Ok(out);
+                            return Ok(out.len() - base);
                         }
-                        // A body cut mid-stream (dropped connection): re-fetch the
-                        // same range — i.e. resume from the cursor.
+                        // A body cut mid-stream (dropped connection): resume the
+                        // range (the truncate at the loop top discards the partial).
                         Err(_error) if attempt < self.retry.max_retries => {
                             let delay = self.retry.backoff(attempt, None);
                             log_event!(warn, "HttpStream resume mid-body after {_error}");
@@ -1042,6 +1066,14 @@ impl HttpStream {
     fn remaining(&self) -> Option<u64> {
         self.size.map(|size| size.saturating_sub(self.position))
     }
+
+    /// Records end-of-input discovered on an unknown-size stream, so later reads
+    /// short-circuit instead of re-issuing a doomed range request.
+    fn mark_eof(&mut self) {
+        if self.size.is_none() {
+            self.size = Some(self.position);
+        }
+    }
 }
 
 impl fmt::Debug for HttpStream {
@@ -1066,6 +1098,7 @@ impl ReadBytes for HttpStream {
             let len = self.remaining().map_or(WINDOW_SIZE, |r| r.min(WINDOW_SIZE));
             let bytes = self.fetch_range(self.position, len)?;
             if bytes.is_empty() {
+                self.mark_eof();
                 return Ok(0);
             }
             self.window_start = self.position;
@@ -1077,6 +1110,36 @@ impl ReadBytes for HttpStream {
         buf[..count].copy_from_slice(&available[..count]);
         self.position += count as u64;
         Ok(count)
+    }
+
+    /// Drains the rest of the stream straight into `out`, a whole window at a
+    /// time — bytes flow once, off the socket into `out`, skipping the per-call
+    /// window copy that a generic `read_to_end` loop would incur.
+    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
+        // Serve whatever the current window already holds first.
+        let mut total = 0;
+        let cached = self.position >= self.window_start
+            && self.position < self.window_start + self.window.len() as u64;
+        if cached {
+            let offset = (self.position - self.window_start) as usize;
+            out.extend_from_slice(&self.window[offset..]);
+            total += self.window.len() - offset;
+            self.position += (self.window.len() - offset) as u64;
+        }
+        // Then append each remaining window directly into `out`.
+        while self.remaining() != Some(0) {
+            let len = self.remaining().map_or(WINDOW_SIZE, |r| r.min(WINDOW_SIZE));
+            let count = self.fetch_range_into(self.position, len, out)?;
+            if count == 0 {
+                self.mark_eof();
+                break;
+            }
+            self.position += count as u64;
+            total += count;
+        }
+        // The window no longer mirrors `position`.
+        self.window.clear();
+        Ok(total)
     }
 }
 
@@ -1677,6 +1740,84 @@ mod tests {
                 assert_eq!(result.unwrap().status(), 200);
             }
         }
+    }
+
+    /// A server whose `HEAD` advertises no `Content-Length` (size unknown) and
+    /// answers `Range` with 206, or 416 once the range starts past the end.
+    fn serve_unknown_size(payload: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut stream = stream;
+                let Some((method, _path, range)) = read_request(&mut stream) else {
+                    continue;
+                };
+                let total = payload.len();
+                if method == "HEAD" {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                    );
+                } else if let Some((start, end)) = range {
+                    if start as usize >= total {
+                        let _ = stream.write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    } else {
+                        let end = (end as usize).min(total - 1);
+                        let slice = &payload[start as usize..=end];
+                        let header = format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            slice.len()
+                        );
+                        let _ = stream.write_all(header.as_bytes());
+                        let _ = stream.write_all(slice);
+                    }
+                }
+            }
+        });
+        url
+    }
+
+    #[test]
+    fn httpstream_unknown_size_reads_to_eof_via_416() {
+        let payload = stream_payload();
+        let url = serve_unknown_size(payload.clone());
+        let mut stream = HttpSession::new()
+            .stream(HttpRequest::get(&url).unwrap())
+            .unwrap();
+        assert_eq!(stream.size(), None); // size not advertised
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out).unwrap();
+        assert_eq!(out, payload); // 416 ends the read cleanly
+        assert_eq!(stream.size(), Some(payload.len() as u64)); // discovered at EOF
+    }
+
+    #[test]
+    fn retry_exhaustion_surfaces_the_error_status() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut stream = stream;
+                let _ = read_request(&mut stream);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+        let session = HttpSession::new().with_retry(RetryConfig {
+            max_retries: 2,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(2),
+        });
+        // After exhausting retries the persistent 503 is returned, and get() raises.
+        assert!(matches!(session.get(&url), Err(HttpError::Status(503))));
+    }
+
+    #[test]
+    fn send_many_handles_an_empty_iterator() {
+        let session = HttpSession::new();
+        let batches: Vec<HttpResponseBatch> = session.send_many(Vec::new()).collect();
+        assert!(batches.is_empty());
     }
 
     #[test]
