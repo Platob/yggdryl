@@ -136,7 +136,7 @@ impl Cookie {
                 "secure" => secure = true,
                 "httponly" => http_only = true,
                 "max-age" => max_age = attr_value.parse::<f64>().ok(),
-                "expires" => expires = parse_http_date(attr_value),
+                "expires" => expires = crate::time::parse_http_date(attr_value),
                 _ => {} // unknown attributes are ignored (RFC 6265 §5.2)
             }
         }
@@ -339,70 +339,4 @@ fn path_match(request_path: &str, cookie_path: &str) -> bool {
 /// subdomain domain-match).
 fn is_ip_literal(host: &str) -> bool {
     host.parse::<std::net::IpAddr>().is_ok()
-}
-
-/// Parses an HTTP date (the three RFC 7231 formats) to Unix-epoch seconds,
-/// dependency-free. Returns `None` on any unparseable input — the cookie then
-/// keeps whatever expiry it already had (commonly a session cookie).
-fn parse_http_date(value: &str) -> Option<f64> {
-    // IMF-fixdate / RFC 850: "Sun, 06 Nov 1994 08:49:37 GMT" /
-    // "Sunday, 06-Nov-94 08:49:37 GMT". asctime: "Sun Nov  6 08:49:37 1994".
-    let value = value.trim();
-    let (day, month, year, time) = if let Some(rest) = value.split_once(", ") {
-        // IMF-fixdate or RFC 850 — split the date portion on space or `-`.
-        let date = rest.1;
-        let mut fields = date.split([' ', '-']).filter(|field| !field.is_empty());
-        let day = fields.next()?;
-        let month = fields.next()?;
-        let year = fields.next()?;
-        let time = fields.next()?;
-        (day, month, year, time)
-    } else {
-        // asctime: "Sun Nov  6 08:49:37 1994".
-        let mut fields = value.split_whitespace();
-        let _weekday = fields.next()?;
-        let month = fields.next()?;
-        let day = fields.next()?;
-        let time = fields.next()?;
-        let year = fields.next()?;
-        (day, month, year, time)
-    };
-
-    let day: i64 = day.parse().ok()?;
-    let month = month_index(month)?;
-    let mut year: i64 = year.parse().ok()?;
-    if year < 100 {
-        // Two-digit years (RFC 850): 70–99 → 1900s, else 2000s (RFC 6265 §5.1.1).
-        year += if year >= 70 { 1900 } else { 2000 };
-    }
-    let mut time_fields = time.split(':');
-    let hour: i64 = time_fields.next()?.parse().ok()?;
-    let minute: i64 = time_fields.next()?.parse().ok()?;
-    let second: i64 = time_fields.next().unwrap_or("0").parse().ok()?;
-
-    Some(civil_to_epoch(year, month, day, hour, minute, second) as f64)
-}
-
-/// Month abbreviation (`Jan`…`Dec`) to a 1-based index.
-fn month_index(name: &str) -> Option<i64> {
-    let months = [
-        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
-    ];
-    let name = name.get(..3)?.to_ascii_lowercase();
-    months
-        .iter()
-        .position(|month| *month == name)
-        .map(|index| index as i64 + 1)
-}
-
-/// Converts a proleptic-Gregorian civil date-time (UTC) to Unix-epoch seconds,
-/// using Howard Hinnant's `days_from_civil` algorithm (no `chrono` dependency).
-fn civil_to_epoch(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = if year >= 0 { year } else { year - 399 } / 400;
-    let year_of_era = year - era * 400;
-    let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    let days = era * 146097 + day_of_era - 719468;
-    days * 86400 + hour * 3600 + minute * 60 + second
 }

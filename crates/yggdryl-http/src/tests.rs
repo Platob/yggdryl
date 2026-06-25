@@ -1122,6 +1122,33 @@ fn redirect_307_preserves_post_and_body() {
 }
 
 #[test]
+fn redirect_dropping_the_body_strips_entity_headers() {
+    // A 303 (and a POST->GET downgrade) drops the body; the entity headers that
+    // described it must not linger on the now-bodyless GET.
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| redirect_reply(303, "See Other", "/done")),
+        Box::new(|_| ok_reply("text/plain", b"ok")),
+    ]);
+    let session = HttpSession::new();
+    let response = session
+        .request(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_header("content-type", "application/json")
+                .with_body(b"{\"a\":1}".to_vec()),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let _first = rx.recv().unwrap();
+    let second = rx.recv().unwrap().to_lowercase();
+    assert!(second.starts_with("get /done http/1.1"), "{second}");
+    assert!(!second.contains("content-type"), "{second}");
+    assert!(!second.contains("content-length"), "{second}");
+    assert!(!second.contains("{\"a\":1}"), "{second}");
+}
+
+#[test]
 fn redirect_loop_errors() {
     // /loop -> /loop forever: detected as a loop and surfaced as an error.
     let (url, _rx) = serve_script(vec![
@@ -1293,6 +1320,25 @@ fn a_cookie_set_by_a_redirect_is_re_derived_on_the_next_hop() {
     let _first = rx.recv().unwrap();
     let second = rx.recv().unwrap().to_lowercase();
     assert!(second.contains("cookie: sid=fromredirect"), "{second}");
+}
+
+#[test]
+fn retry_after_accepts_both_delta_seconds_and_http_date() {
+    // Delta-seconds form.
+    let mut headers = crate::HttpHeaders::new();
+    headers.insert("retry-after", "120");
+    assert_eq!(headers.retry_after(), Some(Duration::from_secs(120)));
+
+    // A far-future HTTP-date yields a positive (and large) delay from now.
+    let mut future = crate::HttpHeaders::new();
+    future.insert("retry-after", "Wed, 21 Oct 2099 07:28:00 GMT");
+    let delay = future.retry_after().expect("date form should parse");
+    assert!(delay > Duration::from_secs(60 * 60 * 24 * 365), "{delay:?}");
+
+    // A past HTTP-date clamps to zero rather than going negative.
+    let mut past = crate::HttpHeaders::new();
+    past.insert("retry-after", "Wed, 21 Oct 2015 07:28:00 GMT");
+    assert_eq!(past.retry_after(), Some(Duration::ZERO));
 }
 
 #[test]

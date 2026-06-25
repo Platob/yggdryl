@@ -55,3 +55,20 @@ pub fn percent_decode_js(input: String) -> Result<String> {
         .map(|decoded| decoded.into_owned())
         .map_err(|e| Error::from_reason(e.to_string()))
 }
+
+/// Open a byte-IO handle for `location`, dispatching on its URL scheme (the core
+/// `Io` factory): a bare path or `file://` URL opens a `LocalPath`. Remote schemes
+/// (`http` / `https`) are served by `HttpSession`; any other scheme throws.
+#[napi]
+pub fn open(location: String) -> Result<crate::localpath::LocalPath> {
+    let uri =
+        yggdryl_core::Uri::from_str(&location).map_err(|e| Error::from_reason(e.to_string()))?;
+    match uri.scheme() {
+        "file" | "" => Ok(crate::localpath::LocalPath {
+            inner: yggdryl_core::LocalPath::open(uri.path()),
+        }),
+        other => Err(Error::from_reason(format!(
+            "no local Io handle for scheme {other:?}; use HttpSession for http/https"
+        ))),
+    }
+}

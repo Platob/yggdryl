@@ -231,6 +231,14 @@ impl HttpSession {
             .collect()
     }
 
+    /// Seed a cookie into the session jar, scoped to ``url``'s host (host-only)
+    /// and path ``"/"``, so it is sent on matching requests.
+    fn set_cookie(&self, url: &str, name: String, value: String) -> PyResult<()> {
+        let url = yggdryl_core::Url::from_str(url).map_err(crate::url_err)?;
+        self.inner.set_cookie(&url, name, value);
+        Ok(())
+    }
+
     /// ``GET url``.
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {

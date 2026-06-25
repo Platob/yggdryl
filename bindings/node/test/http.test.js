@@ -88,3 +88,9 @@ test('http session against a localhost server', async () => {
     server.close()
   }
 })
+
+test('setCookie seeds the jar', () => {
+  const session = new HttpSession()
+  session.setCookie('http://example.com/', 'sid', 'abc123')
+  assert.strictEqual(session.cookies.sid, 'abc123')
+})

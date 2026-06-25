@@ -51,6 +51,18 @@ test('fromMime', () => {
   assert.strictEqual(Compression.fromMime(new MimeType('application/json')), null)
 })
 
+test('fromMedia', () => {
+  const { MediaType } = require('..')
+  assert.strictEqual(Compression.fromMedia(MediaType.fromStr('csv.gz')).name, 'gzip')
+  assert.strictEqual(Compression.fromMedia(MediaType.fromStr('csv')), null)
+})
+
+test('fromStats', () => {
+  const p = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_stats.csv.gz`)
+  new LocalPath(p).write(Buffer.from('col\n1\n'))
+  assert.strictEqual(Compression.fromStats(new LocalPath(p).stats()).name, 'gzip')
+})
+
 for (const kind of ['bytesio', 'localpath']) {
   const make = (data) => {
     if (kind === 'bytesio') return new BytesIO(Buffer.from(data))

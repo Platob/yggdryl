@@ -250,6 +250,16 @@ impl HttpSession {
             .collect()
     }
 
+    /// Seed a cookie into the session jar, scoped to `url`'s host (host-only) and
+    /// path `"/"`, so it is sent on matching requests.
+    #[napi(js_name = "setCookie")]
+    pub fn set_cookie(&self, url: String, name: String, value: String) -> Result<()> {
+        let url =
+            yggdryl_core::Url::from_str(&url).map_err(|e| Error::from_reason(e.to_string()))?;
+        self.inner.set_cookie(&url, name, value);
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn task(
         &self,

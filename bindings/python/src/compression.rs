@@ -4,6 +4,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use yggdryl_core::Compression as CoreCompression;
 
+use crate::iostats::IoStats;
+use crate::media::MediaType;
 use crate::mime::MimeType;
 use crate::{hash_str, io_err};
 
@@ -48,6 +50,20 @@ impl Compression {
     #[staticmethod]
     fn from_mime(mime: &MimeType) -> Option<Self> {
         CoreCompression::from_mime(&mime.inner).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from a layered :class:`MediaType` stack — its outermost
+    /// (container) MIME, e.g. ``gzip`` for ``data.csv.gz`` — or ``None``.
+    #[staticmethod]
+    fn from_media(media: &MediaType) -> Option<Self> {
+        CoreCompression::from_media(&media.inner).map(|inner| Compression { inner })
+    }
+
+    /// Infer the codec from an :class:`IoStats` — its discovered media type first,
+    /// then its transport content type — or ``None`` if neither names a codec.
+    #[staticmethod]
+    fn from_stats(stats: &IoStats) -> Option<Self> {
+        CoreCompression::from_stats(&stats.inner).map(|inner| Compression { inner })
     }
 
     /// The canonical codec name (``"none"`` / ``"gzip"`` / ``"zstd"`` /

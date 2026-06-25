@@ -6,13 +6,22 @@ const assert = require('node:assert')
 const os = require('node:os')
 const path = require('node:path')
 const fs = require('node:fs')
-const { LocalPath } = require('..')
+const { LocalPath, open } = require('..')
 
 function temp(name, data) {
   const p = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_${name}`)
   new LocalPath(p).write(Buffer.from(data))
   return p
 }
+
+test('open factory dispatches on scheme', () => {
+  const p = temp('factory', 'by-the-factory')
+  // A bare path (and a file:// URL) resolves to a LocalPath handle.
+  assert.deepStrictEqual(open(p).getValue(), Buffer.from('by-the-factory'))
+  assert.deepStrictEqual(open('file://' + p).getValue(), Buffer.from('by-the-factory'))
+  // A remote scheme is served by HttpSession, not this factory.
+  assert.throws(() => open('https://example.com/x'))
+})
 
 test('open, read, seek and random access', () => {
   const p = temp('read', 'hello world')

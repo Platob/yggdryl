@@ -16,6 +16,23 @@ def _temp(name: str, data: bytes) -> str:
     return path
 
 
+def test_open_factory_dispatches_on_scheme():
+    path = _temp("factory", b"by-the-factory")
+    try:
+        # A bare path (and a file:// URL) resolves to a LocalPath handle.
+        io = yggdryl.open(path)
+        assert isinstance(io, yggdryl.LocalPath)
+        assert io.getvalue() == b"by-the-factory"
+        assert yggdryl.open("file://" + path).getvalue() == b"by-the-factory"
+        # A remote scheme is served by HttpSession, not this factory.
+        import pytest
+
+        with pytest.raises(ValueError):
+            yggdryl.open("https://example.com/x")
+    finally:
+        os.remove(path)
+
+
 def test_open_read_seek_and_random_access():
     path = _temp("read", b"hello world")
     try:

@@ -141,9 +141,19 @@ impl HttpHeaders {
         self.get(name).and_then(|value| value.trim().parse().ok())
     }
 
-    /// The `Retry-After` delay (given in seconds), if present and valid.
+    /// The `Retry-After` delay, if present and valid. Accepts both RFC 7231 forms:
+    /// a delta in seconds (`Retry-After: 120`) and an absolute HTTP-date
+    /// (`Retry-After: Wed, 21 Oct 2015 07:28:00 GMT`), the latter returned as the
+    /// non-negative delay from now (a past date yields `Duration::ZERO`).
     pub fn retry_after(&self) -> Option<Duration> {
-        self.get_u64("retry-after").map(Duration::from_secs)
+        let value = self.get("retry-after")?.trim();
+        if let Ok(seconds) = value.parse::<u64>() {
+            return Some(Duration::from_secs(seconds));
+        }
+        let when = crate::time::parse_http_date(value)?;
+        Some(Duration::from_secs_f64(
+            (when - crate::time::now_secs()).max(0.0),
+        ))
     }
 
     /// The total resource size: the total in a `Content-Range`

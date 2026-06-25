@@ -54,6 +54,19 @@ def test_from_mime():
     assert yggdryl.Compression.from_mime(yggdryl.MimeType("application/json")) is None
 
 
+def test_from_media():
+    # The outermost (container) MIME of a layered stack names the codec.
+    assert yggdryl.Compression.from_media(yggdryl.MediaType.from_str("csv.gz")).name == "gzip"
+    assert yggdryl.Compression.from_media(yggdryl.MediaType.from_str("csv")) is None
+
+
+def test_from_stats(tmp_path):
+    path = str(tmp_path / "data.csv.gz")
+    yggdryl.LocalPath(path).write(b"col\n1\n")
+    stats = yggdryl.LocalPath(path).stats()
+    assert yggdryl.Compression.from_stats(stats).name == "gzip"
+
+
 @pytest.mark.parametrize("kind", ["bytesio", "localpath"])
 def test_io_compress_decompress(tmp_path, kind):
     payload = bytes((i % 251) for i in range(2048))

@@ -120,3 +120,9 @@ def test_io_body_upload_from_localpath(base_url, tmp_path):
     yggdryl.LocalPath(path).write(b"file-streamed-upload")
     response = yggdryl.HttpSession().put(base_url + "/up", yggdryl.LocalPath(path))
     assert response.content == b"file-streamed-upload"
+
+
+def test_set_cookie_seeds_the_jar():
+    session = yggdryl.HttpSession()
+    session.set_cookie("http://example.com/", "sid", "abc123")
+    assert session.cookies["sid"] == "abc123"

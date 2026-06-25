@@ -127,6 +127,14 @@ pub(crate) fn next_request(
     };
 
     let mut headers = previous.headers.clone();
+    if matches!(body, Body::Empty) {
+        // The body was dropped (303, or a 301/302 POST->GET downgrade): the entity
+        // headers that described it must not linger on the now-bodyless request.
+        headers.remove("content-type");
+        headers.remove("content-length");
+        headers.remove("content-encoding");
+        headers.remove("transfer-encoding");
+    }
     if cross_host {
         // RFC: do not leak credentials across hosts. The jar re-derives any
         // Cookie for the new host on its own, so drop a per-request one too.

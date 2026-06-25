@@ -139,6 +139,24 @@ fn py_percent_decode(value: &str) -> PyResult<String> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Open a byte-IO handle for ``location``, dispatching on its URL scheme (the
+/// core ``Io`` factory): a bare path or ``file://`` URL opens a
+/// :class:`LocalPath`. Remote schemes (``http`` / ``https``) are served by
+/// :class:`HttpSession`; any other scheme raises ``ValueError``.
+#[pyfunction]
+#[pyo3(name = "open")]
+fn py_open(location: &str) -> PyResult<LocalPath> {
+    let uri = yggdryl_core::Uri::from_str(location).map_err(uri_err)?;
+    match uri.scheme() {
+        "file" | "" => Ok(LocalPath {
+            inner: yggdryl_core::LocalPath::open(uri.path()),
+        }),
+        other => Err(PyValueError::new_err(format!(
+            "no local Io handle for scheme {other:?}; use HttpSession for http/https"
+        ))),
+    }
+}
+
 /// The ``yggdryl`` Python module.
 #[pymodule]
 fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -156,5 +174,6 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HttpResponse>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
+    m.add_function(wrap_pyfunction!(py_open, m)?)?;
     Ok(())
 }
