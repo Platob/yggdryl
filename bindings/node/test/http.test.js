@@ -52,6 +52,9 @@ test('http session against a localhost server', async () => {
     assert.deepStrictEqual(r.content, Buffer.from('hello world'))
     assert.strictEqual(r.contentType, 'text/plain')
     assert.ok(r.url.startsWith('http://127.0.0.1'))
+    // The buffered convenience API stamps both timestamps (dispatch, then EOF).
+    assert.ok(r.sentAt > 0)
+    assert.ok(r.receivedAt >= r.sentAt)
 
     const posted = await session.post(base + '/submit', Buffer.from('ping-payload'))
     assert.strictEqual(posted.status, 201)

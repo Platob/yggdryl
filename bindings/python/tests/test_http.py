@@ -104,6 +104,15 @@ def test_arbitrary_method(base_url):
     assert response.status == 204
 
 
+def test_response_timestamps(base_url):
+    session = yggdryl.HttpSession()
+    response = session.get(base_url + "/")
+    # The buffered convenience API drains during send, so both stamps are set:
+    # dispatched first, the body fully received at or after that instant.
+    assert response.sent_at > 0.0
+    assert response.received_at >= response.sent_at
+
+
 def test_io_body_upload_from_localpath(base_url, tmp_path):
     # Pass a LocalPath (an Io handle) as the body: it streams off disk, never
     # collected into Python — the server echoes the bytes back.
