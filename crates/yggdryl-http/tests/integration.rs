@@ -90,8 +90,23 @@ fn real_auto_negotiates_and_falls_back() {
     ));
 }
 
-/// HTTP/3 is not implemented: pinning it errors rather than silently downgrading,
-/// whatever the server supports (Cloudflare advertises h3, but we do not speak it).
+/// Pinned HTTP/3 over QUIC negotiates `h3` against an h3-capable CDN and reports it.
+/// (Cloudflare/Google advertise and serve HTTP/3.)
+#[cfg(feature = "http3")]
+#[test]
+#[ignore = "hits the network"]
+fn real_http3_over_quic() {
+    let request = HttpRequest::get("https://www.cloudflare.com/")
+        .unwrap()
+        .with_http_version(HttpVersion::Http3);
+    let response = session().send(request, false, false, false).unwrap();
+    assert!(response.status() >= 200);
+    assert_eq!(response.negotiated_version(), HttpVersion::Http3);
+}
+
+/// Without the `http3` feature, pinning HTTP/3 errors rather than silently
+/// downgrading, whatever the server supports.
+#[cfg(not(feature = "http3"))]
 #[test]
 #[ignore = "hits the network"]
 fn real_http3_pin_is_unsupported() {

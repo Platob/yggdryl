@@ -35,8 +35,9 @@
 //! over via [`HttpResponse::negotiated_version`]. [`HttpVersion::Auto`] (the
 //! default) negotiates the best available. HTTP/1.1 is always wired (the blocking
 //! `ureq` transport); the `http2` feature adds a real HTTP/2 transport (so `Auto`
-//! negotiates `h2` over TLS ALPN). [`HttpVersion::Http3`] — and `Http2` without the
-//! feature — error with [`HttpError::Unsupported`] rather than downgrade silently.
+//! negotiates `h2` over TLS ALPN) and the `http3` feature a real HTTP/3-over-QUIC
+//! transport. A pinned version whose feature is off errors with
+//! [`HttpError::Unsupported`] rather than downgrade silently.
 //!
 //! ```no_run
 //! use yggdryl_http::{HttpSession, HttpRequest};
@@ -65,11 +66,12 @@
 //!   [`RetryConfig`]) and, transitively, the core value types; a live
 //!   request/response body is deliberately not serialisable.
 //! - `http2` — the optional async **HTTP/2** transport (hyper + a small
-//!   current-thread tokio runtime + tokio-rustls). With it on,
+//!   multi-threaded tokio runtime + tokio-rustls). With it on,
 //!   [`HttpVersion::Http2`] speaks h2 (TLS ALPN for `https`, h2c for cleartext) and
 //!   [`HttpVersion::Auto`] negotiates `h2`/`http/1.1` over TLS; off, those error.
-//! - `http3` — reserved (inert) placeholder for the forthcoming `h3` (QUIC)
-//!   transport; [`HttpVersion::Http3`] is selectable but unavailable until it lands.
+//! - `http3` — the optional async **HTTP/3** transport (quinn + h3 over QUIC). With
+//!   it on, [`HttpVersion::Http3`] speaks h3 over `https` (TLS ALPN `h3`); off, it
+//!   errors. Shares the tokio runtime and TLS stack with `http2`.
 //! - `log` — structured `log` events on the request path.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
@@ -94,7 +96,7 @@ mod retry;
 mod session;
 mod stream;
 mod time;
-#[cfg(feature = "http2")]
+#[cfg(any(feature = "http2", feature = "http3"))]
 mod transport;
 mod version;
 

@@ -573,9 +573,9 @@ impl HttpSession {
         // own, else inherits the session default. A pinned version with no wired
         // transport errors here, before any bytes leave, rather than downgrading.
         let requested = request.http_version.unwrap_or(self.http_version);
-        // HTTP/2 (and Auto negotiating h2 over TLS) goes through the optional async
-        // transport; the buffered response then re-joins the redirect/cookie loop.
-        #[cfg(feature = "http2")]
+        // HTTP/2 / HTTP/3 (and Auto negotiating h2 over TLS) go through the optional
+        // async transport; the buffered response then re-joins the redirect/cookie loop.
+        #[cfg(any(feature = "http2", feature = "http3"))]
         if let Some(prefer) = crate::transport::route_for(requested, &request.url) {
             return self.dispatch_async(request, prefer);
         }
@@ -651,7 +651,7 @@ impl HttpSession {
     /// request body is read into memory first, so it stays replayable across the
     /// retry loop; transient statuses are retried under the session's
     /// [`RetryConfig`], the same policy the HTTP/1.1 path uses.
-    #[cfg(feature = "http2")]
+    #[cfg(any(feature = "http2", feature = "http3"))]
     fn dispatch_async(
         &self,
         request: HttpRequest,

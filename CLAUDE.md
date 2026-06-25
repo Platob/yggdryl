@@ -221,28 +221,32 @@ shape:
   pin one per session (`with_http_version`) or per request, default `Auto`. The
   blocking `ureq` transport always covers **HTTP/1.1**; the optional `http2` feature
   adds an async **HTTP/2** transport in `transport.rs` (hyper over a small
-  current-thread tokio runtime + tokio-rustls), routed from `dispatch` when a
-  request negotiates h2 (`https` ALPN, or h2c for cleartext) — the response then
-  re-joins the same redirect/cookie/retry loop, so every verb works unchanged
-  whatever the protocol. `HttpResponse::negotiated_version()` reports what was
-  actually spoken; `Auto` over TLS does a real ALPN `h2`/`http/1.1` fallback. A
-  pinned version with no wired transport (`Http3`, or `Http2` without the feature)
-  errors with `HttpError::Unsupported` rather than downgrading silently. **The async
-  SDKs (`hyper`/`tokio`/`tokio-rustls`) are dependencies of the `http2` feature
-  only**; `transport.rs` is `#[cfg(feature = "http2")]`, so the default build stays
-  the lean blocking `ureq` client.
+  multi-threaded tokio runtime + tokio-rustls) and the optional `http3` feature an
+  async **HTTP/3-over-QUIC** transport (quinn + h3), both routed from `dispatch`
+  when a request negotiates that protocol (`https` ALPN — h2c for cleartext h2; h3
+  is TLS-only) — the response then re-joins the same redirect/cookie/retry loop, so
+  every verb works unchanged whatever the protocol. `HttpResponse::negotiated_version()`
+  reports what was actually spoken; `Auto` over TLS does a real ALPN `h2`/`http/1.1`
+  fallback. A pinned version whose transport feature is off errors with
+  `HttpError::Unsupported` rather than downgrading silently. **The async SDKs
+  (`hyper` for h2, `quinn`/`h3` for h3, sharing `tokio`/`tokio-rustls`) are
+  dependencies of the `http2`/`http3` features only**; `transport.rs` is
+  `#[cfg(any(feature = "http2", feature = "http3"))]`, so the default build stays the
+  lean blocking `ureq` client. TLS verification follows the session's `verify` flag
+  (a rustls `NoVerify` certifier when off); a proxy applies to the `ureq` h1 path.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`
 for `Method` / `HttpVersion` / `HttpHeaders` / `Cookie` / `HttpCookies` /
 `RetryConfig`, and transitively the core value types — a live request/response body
-is deliberately not serialisable), `http2` (the async HTTP/2 transport above;
-`http3` stays a reserved placeholder), `log`. The base depends on
+is deliberately not serialisable), `http2` / `http3` (the async HTTP/2 and
+HTTP/3-over-QUIC transports above), `log`. The base depends on
 `yggdryl-core`'s `json` feature so `Io::json()` is available on every handle. **All
 HTTP logic lives here; `ureq` stays a dependency of this crate only** (the HTTP/2
 SDKs are gated behind `http2`). Unit tests are **hermetic** (a localhost
 `TcpListener` that serves HEAD / `Range` / 429 / mid-stream drops; the h2c case runs
-a localhost hyper HTTP/2 server — still no network). A separate, `#[ignore]`d
+a localhost hyper HTTP/2 server, and the h3 case a localhost quinn + h3 QUIC server
+with an `rcgen` self-signed cert over UDP loopback — still no network). A separate, `#[ignore]`d
 `tests/integration.rs` covers the versions and ALPN fallback against real public
 endpoints, opt-in via `--ignored` (needs direct egress; not run in CI). In the bindings the blocking call must not stall
 the host runtime: Python releases the GIL (`allow_threads`), Node runs the

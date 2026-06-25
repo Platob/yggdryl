@@ -1380,12 +1380,12 @@ fn http_version_parses_names_and_alpn() {
     assert_eq!(HttpVersion::from_alpn("h3"), Some(HttpVersion::Http3));
     assert_eq!(HttpVersion::from_alpn("spdy/3"), None);
 
-    // HTTP/1.1 and Auto are always wired; HTTP/2 only with the `http2` transport
-    // feature; HTTP/3 is never available yet.
+    // HTTP/1.1 and Auto are always wired; HTTP/2 and HTTP/3 only with their
+    // respective transport features.
     assert!(HttpVersion::Http11.is_available());
     assert!(HttpVersion::Auto.is_available());
     assert_eq!(HttpVersion::Http2.is_available(), cfg!(feature = "http2"));
-    assert!(!HttpVersion::Http3.is_available());
+    assert_eq!(HttpVersion::Http3.is_available(), cfg!(feature = "http3"));
 }
 
 #[test]
@@ -1702,4 +1702,83 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
 fn http2_feature_marks_http2_available() {
     use crate::HttpVersion;
     assert!(HttpVersion::Http2.is_available());
+}
+
+/// Hermetic HTTP/3 over QUIC: a localhost quinn + h3 server with a self-signed
+/// certificate answers one request, and the client — pinned to `HttpVersion::Http3`
+/// with `verify=false` to accept the self-signed cert — speaks QUIC and reports the
+/// negotiated version. UDP loopback only, no network.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_quic_roundtrip_with_self_signed_cert() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    // A self-signed certificate + key for "localhost".
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_der = issued.cert.der().clone();
+    let key_der = PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der());
+
+    // Bind a quinn h3 server on an ephemeral UDP port, hand the port back, then
+    // serve exactly one request before idling.
+    let (port_tx, port_rx) = std::sync::mpsc::channel();
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let provider =
+                std::sync::Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
+            let mut tls = tokio_rustls::rustls::ServerConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_no_client_auth()
+                .with_single_cert(vec![cert_der], key_der.into())
+                .unwrap();
+            tls.alpn_protocols = vec![b"h3".to_vec()];
+            let quic = quinn::crypto::rustls::QuicServerConfig::try_from(tls).unwrap();
+            let config = quinn::ServerConfig::with_crypto(std::sync::Arc::new(quic));
+            let endpoint = quinn::Endpoint::server(config, "127.0.0.1:0".parse().unwrap()).unwrap();
+            port_tx.send(endpoint.local_addr().unwrap().port()).unwrap();
+
+            let incoming = endpoint.accept().await.unwrap();
+            let connection = incoming.await.unwrap();
+            let mut h3_conn = h3::server::Connection::new(h3_quinn::Connection::new(connection))
+                .await
+                .unwrap();
+            if let Ok(Some(resolver)) = h3_conn.accept().await {
+                let (req, mut stream) = resolver.resolve_request().await.unwrap();
+                let body = format!("{} {}", req.method(), req.uri().path());
+                let response = http::Response::builder().status(200).body(()).unwrap();
+                stream.send_response(response).await.unwrap();
+                stream.send_data(bytes::Bytes::from(body)).await.unwrap();
+                stream.finish().await.unwrap();
+            }
+            // Let the client read and close before the endpoint drops.
+            endpoint.wait_idle().await;
+        });
+    });
+
+    let port = port_rx.recv().unwrap();
+    let url = format!("https://localhost:{port}/echo");
+    // verify=false accepts the self-signed certificate.
+    let session = HttpSession::new().with_verify(false);
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http3);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.negotiated_version(), HttpVersion::Http3);
+    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// With the `http3` transport compiled in, `HttpVersion::Http3` is available.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_feature_marks_http3_available() {
+    use crate::HttpVersion;
+    assert!(HttpVersion::Http3.is_available());
 }

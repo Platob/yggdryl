@@ -104,15 +104,15 @@ impl HttpVersion {
 
     /// Whether a transport for this version is wired into this build.
     /// [`Auto`](HttpVersion::Auto) and [`Http11`](HttpVersion::Http11) are always
-    /// available; [`Http2`](HttpVersion::Http2) is available only with the `http2`
-    /// feature (its hyper/tokio transport), and [`Http3`](HttpVersion::Http3) is not
-    /// yet implemented. Pinning an unavailable version errors at dispatch rather
-    /// than silently downgrading — check this first to choose ahead of time.
+    /// available; [`Http2`](HttpVersion::Http2) needs the `http2` feature (its
+    /// hyper/tokio transport) and [`Http3`](HttpVersion::Http3) the `http3` feature
+    /// (its quinn/h3 QUIC transport). Pinning an unavailable version errors at
+    /// dispatch rather than silently downgrading — check this first to choose ahead.
     pub fn is_available(&self) -> bool {
         match self {
             HttpVersion::Auto | HttpVersion::Http11 => true,
             HttpVersion::Http2 => cfg!(feature = "http2"),
-            HttpVersion::Http3 => false,
+            HttpVersion::Http3 => cfg!(feature = "http3"),
         }
     }
 }
