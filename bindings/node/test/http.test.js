@@ -94,3 +94,112 @@ test('setCookie seeds the jar', () => {
   session.setCookie('http://example.com/', 'sid', 'abc123')
   assert.strictEqual(session.cookies.sid, 'abc123')
 })
+
+test('module-level verbs use the shared session', async () => {
+  const yggdryl = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const got = await yggdryl.get(base + '/')
+    assert.strictEqual(got.status, 200)
+    assert.strictEqual(got.text(), 'hello world')
+
+    const posted = await yggdryl.post(base + '/submit', Buffer.from('ping'))
+    assert.deepStrictEqual(posted.content, Buffer.from('ping'))
+
+    // DELETE has no module-level verb (JS reserved word); use request().
+    const deleted = await yggdryl.request('DELETE', base + '/thing')
+    assert.strictEqual(deleted.status, 204)
+  } finally {
+    server.close()
+  }
+})
+
+test('baseUrl resolves relative targets', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession(undefined, undefined, undefined, base + '/')
+    assert.strictEqual(session.baseUrl, base + '/')
+    // A relative target reaches the server (the echo handler replies 200).
+    assert.strictEqual((await session.get('some/path')).status, 200)
+    // An absolute URL bypasses the base.
+    assert.strictEqual((await session.get(base + '/')).status, 200)
+  } finally {
+    server.close()
+  }
+})
+
+test('setBaseUrl configures the shared singleton', async () => {
+  const yggdryl = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    yggdryl.setBaseUrl(base + '/')
+    assert.strictEqual((await yggdryl.get('/')).text(), 'hello world')
+  } finally {
+    // Reset so other tests' absolute-URL module verbs are unaffected.
+    yggdryl.setBaseUrl('http://127.0.0.1:1')
+    server.close()
+  }
+})
+
+const CA_FIXTURE = `-----BEGIN CERTIFICATE-----
+MIIBQjCB9aADAgECAhQuzAiSQcN9LmU+b23fQ4OnlJr4nzAFBgMrZXAwFzEVMBMG
+A1UEAwwMeWdnZHJ5bC10ZXN0MB4XDTI2MDYyNTE4MDczOFoXDTM2MDYyMjE4MDcz
+OFowFzEVMBMGA1UEAwwMeWdnZHJ5bC10ZXN0MCowBQYDK2VwAyEAxQDw21VJgXZq
+oYc6cXjHtCyGS+Xhu4OzPcRqzez2t8yjUzBRMB0GA1UdDgQWBBS8VDtYTuBsTuVe
+Cc9+2uF8BKgWHzAfBgNVHSMEGDAWgBS8VDtYTuBsTuVeCc9+2uF8BKgWHzAPBgNV
+HRMBAf8EBTADAQH/MAUGAytlcANBAKXArPIcky5wHp+VgiKw954G3+1I1PQzmpfJ
+r9/00T2PpD5GwhdzsrH/liNZug/eMW7w38c0zU0A05lLhgZEIAM=
+-----END CERTIFICATE-----
+`
+
+test('CA certificate installer', () => {
+  assert.strictEqual(new HttpSession().caCertCount, 0)
+  const args = [undefined, undefined, undefined, undefined, undefined, undefined, undefined]
+  const trusted = new HttpSession(...args, Buffer.from(CA_FIXTURE))
+  assert.strictEqual(trusted.caCertCount, 1)
+  // Undecodable PEM is rejected at install time.
+  assert.throws(() =>
+    new HttpSession(...args, Buffer.from('-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----')),
+  )
+})
+
+test('verify and proxy options', () => {
+  assert.strictEqual(new HttpSession().verify, true)
+  const insecure = new HttpSession(undefined, undefined, undefined, undefined, undefined, false)
+  assert.strictEqual(insecure.verify, false)
+  const proxied = new HttpSession(
+    undefined, undefined, undefined, undefined, undefined, undefined, 'http://127.0.0.1:8080',
+  )
+  assert.ok(proxied.proxy.includes('127.0.0.1:8080'))
+  assert.throws(
+    () => new HttpSession(undefined, undefined, undefined, undefined, undefined, undefined, 'not a url'),
+  )
+})
+
+test('http version negotiation', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    // The session default is "auto"; a response reports HTTP/1.1 (the only wired
+    // transport today).
+    const session = new HttpSession()
+    assert.strictEqual(session.httpVersion, 'auto')
+    const r = await session.get(base + '/')
+    assert.strictEqual(r.httpVersion, 'HTTP/1.1')
+
+    // A session can default to a version…
+    const pinned = new HttpSession(undefined, undefined, undefined, undefined, '2')
+    assert.strictEqual(pinned.httpVersion, 'HTTP/2')
+    // …but pinning HTTP/2 (no transport yet) rejects rather than downgrading.
+    await assert.rejects(pinned.get(base + '/'))
+    // The per-request override rejects the same way.
+    await assert.rejects(
+      session.request('GET', base + '/', undefined, undefined, undefined, undefined, undefined, '3'),
+    )
+  } finally {
+    server.close()
+  }
+})

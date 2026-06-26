@@ -1,7 +1,7 @@
 //! The `BytesIO` pyclass.
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::{BytesIO as CoreBytesIO, Io, Mode};
 use yggdryl_core::{CompressIo, Compression as CoreCompression};
 
@@ -67,9 +67,11 @@ impl BytesIO {
     }
 
     /// Write ``data`` at the cursor (overwriting and zero-filling as needed) and
-    /// return the count written. Advances the cursor when :attr:`stream`.
-    fn write(&mut self, data: Vec<u8>) -> usize {
-        self.inner.write(&data)
+    /// return the count written. Advances the cursor when :attr:`stream`. Raises
+    /// ``ValueError`` if the write would extend the buffer past the addressable
+    /// range (e.g. after seeking near the maximum past the end).
+    fn write(&mut self, data: Vec<u8>) -> PyResult<usize> {
+        self.inner.write(&data).map_err(io_err)
     }
 
     /// The resource address as a :class:`Url` (``mem://<address>``).
@@ -186,10 +188,11 @@ impl BytesIO {
     }
 
     /// Resize the buffer to ``size`` bytes (the current cursor when ``None``),
-    /// returning the new length. The cursor is left where it is.
+    /// returning the new length. The cursor is left where it is. Raises
+    /// ``ValueError`` when growing past the addressable range.
     #[pyo3(signature = (size = None))]
-    fn truncate(&mut self, size: Option<usize>) -> usize {
-        self.inner.truncate(size)
+    fn truncate(&mut self, size: Option<usize>) -> PyResult<usize> {
+        self.inner.truncate(size).map_err(io_err)
     }
 
     /// No-op flush, present for parity with :class:`io.BytesIO`.
@@ -253,6 +256,15 @@ impl BytesIO {
             self.inner.len(),
             self.inner.tell(),
             self.inner.stream()
+        )
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the buffer's bytes
+    /// (the cursor resets to the start, like a fresh :class:`BytesIO`).
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (Bound<'py, PyBytes>,)) {
+        (
+            py.get_type_bound::<Self>(),
+            (PyBytes::new_bound(py, self.inner.getvalue()),),
         )
     }
 }

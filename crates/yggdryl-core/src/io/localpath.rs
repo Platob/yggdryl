@@ -45,10 +45,16 @@ pub trait RemotePath: Io {
 
 /// How a [`LocalPath`] holds its bytes: a memory map (zero-copy, `mmap` feature)
 /// or an eagerly-read buffer.
+///
+/// Memory-mapping is **disabled on Windows** even with the `mmap` feature: a
+/// Windows mapping holds a `user-mapped section` lock on the file, which blocks a
+/// later truncate/overwrite ([`std::io::Error`] os 1224) and can hide a fresh
+/// write from a subsequent read. Windows therefore always takes the buffered
+/// (`fs::read`) path; other platforms map as usual.
 #[derive(Debug)]
 enum Backing {
     Buffered(Vec<u8>),
-    #[cfg(feature = "mmap")]
+    #[cfg(all(feature = "mmap", not(windows)))]
     Mapped(memmap2::Mmap),
 }
 
@@ -57,16 +63,36 @@ impl Backing {
     fn bytes(&self) -> &[u8] {
         match self {
             Backing::Buffered(buffer) => buffer,
-            #[cfg(feature = "mmap")]
+            #[cfg(all(feature = "mmap", not(windows)))]
             Backing::Mapped(map) => map,
         }
     }
 }
 
+/// The OS-native filesystem path for `location`. URL parsing yields a Windows
+/// drive path in the form `/C:/dir/file` (a leading `/` before the drive letter,
+/// from `file:///C:/…`), but `/C:/…` is **not** a valid Windows path while `C:/…`
+/// is — so on Windows the leading slash before a `X:` drive letter is stripped.
+/// On other platforms, and for non-drive paths, the location is returned verbatim.
+fn native_location(location: &str) -> &str {
+    #[cfg(windows)]
+    {
+        let bytes = location.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0] == b'/'
+            && bytes[1].is_ascii_alphabetic()
+            && bytes[2] == b':'
+        {
+            return &location[1..];
+        }
+    }
+    location
+}
+
 /// Stats `location` into [`IoStats`] (kind / size / mtime), reporting
 /// [`Kind::Missing`] when it is absent or unreachable. Never opens the file.
 fn stat_path(location: &str) -> IoStats {
-    match fs::metadata(location) {
+    match fs::metadata(native_location(location)) {
         Err(_) => IoStats::new(0).with_kind(Kind::Missing),
         Ok(meta) => {
             let kind = if meta.is_dir() {
@@ -86,12 +112,13 @@ fn stat_path(location: &str) -> IoStats {
 }
 
 /// Loads the bytes of `location` for reading — memory-mapped under the `mmap`
-/// feature, otherwise buffered. Non-files (and any failure) yield empty bytes.
+/// feature (except on Windows, see [`Backing`]), otherwise buffered. Non-files
+/// (and any failure) yield empty bytes.
 fn load_backing(location: &str, stats: &IoStats) -> Backing {
     if !stats.is_file() {
         return Backing::Buffered(Vec::new());
     }
-    #[cfg(feature = "mmap")]
+    #[cfg(all(feature = "mmap", not(windows)))]
     {
         if stats.size() == 0 {
             return Backing::Buffered(Vec::new());
@@ -99,14 +126,18 @@ fn load_backing(location: &str, stats: &IoStats) -> Backing {
         // SAFETY: we map a file we open read-only here. The standard mmap caveat
         // applies — external truncation while mapped is undefined — and is the
         // caller's responsibility for the paths they hand us.
-        match fs::File::open(location).and_then(|file| unsafe { memmap2::Mmap::map(&file) }) {
+        match fs::File::open(native_location(location))
+            .and_then(|file| unsafe { memmap2::Mmap::map(&file) })
+        {
             Ok(map) => Backing::Mapped(map),
             Err(_) => Backing::Buffered(Vec::new()),
         }
     }
-    #[cfg(not(feature = "mmap"))]
+    // Buffered path: no `mmap` feature, or on Windows where mapping would lock the
+    // file against later writes.
+    #[cfg(not(all(feature = "mmap", not(windows))))]
     {
-        fs::read(location)
+        fs::read(native_location(location))
             .map(Backing::Buffered)
             .unwrap_or_else(|_| Backing::Buffered(Vec::new()))
     }
@@ -154,6 +185,30 @@ impl LocalPath {
             #[cfg(feature = "media")]
             media: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Opens a handle from a parsed [`Uri`], folding a Windows drive-letter
+    /// authority back into the filesystem location.
+    ///
+    /// A `file://C:/dir/file` URL parses the drive `C:` as the **authority** and
+    /// `/dir/file` as the path, so opening [`path`](Uri::path) alone would lose the
+    /// drive. This rejoins them into `C:/dir/file`. A well-formed `file:///C:/…`
+    /// (or a POSIX `file:///path`) has an empty authority and opens
+    /// [`path`](Uri::path) unchanged — the leading-slash drive form is handled by
+    /// [`native_location`] at the filesystem boundary.
+    pub fn from_uri(uri: &crate::Uri) -> LocalPath {
+        let path = uri.path();
+        let location = match uri.authority() {
+            Some(drive)
+                if drive.len() == 2
+                    && drive.as_bytes()[0].is_ascii_alphabetic()
+                    && drive.as_bytes()[1] == b':' =>
+            {
+                format!("{drive}{path}")
+            }
+            _ => path.to_string(),
+        };
+        LocalPath::open(location)
     }
 
     /// The lazily memory-mapped (or buffered) bytes, loaded on first access.
@@ -245,16 +300,17 @@ impl LocalPath {
             bytes.len(),
             self.location
         );
-        match fs::write(&self.location, bytes) {
+        let location = native_location(&self.location);
+        match fs::write(location, bytes) {
             Ok(()) => Ok(()),
             // The directory was missing: create it once, then retry the write.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let parent = std::path::Path::new(&self.location).parent();
+                let parent = std::path::Path::new(location).parent();
                 if let Some(parent) = parent.filter(|p| !p.as_os_str().is_empty()) {
                     log_event!(debug, "LocalPath::write creating parent dir {parent:?}");
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(&self.location, bytes)?;
+                fs::write(location, bytes)?;
                 Ok(())
             }
             Err(error) => Err(error.into()),
@@ -317,8 +373,20 @@ impl Io for LocalPath {
     /// Opens an in-memory [`BytesIO`] handle over this file's bytes, recording the
     /// path as its [`parent`](Io::parent) and applying `mode` / `stream` — so a
     /// `LocalPath` and a `BytesIO` `open` the same way.
+    ///
+    /// Note: because the derived handle is an in-memory [`BytesIO`], opening for
+    /// [`Read`](Mode::Read), [`Append`](Mode::Append) or [`ReadWrite`](Mode::ReadWrite)
+    /// buffers the whole file in memory (O(size) RAM) — only [`Write`](Mode::Write),
+    /// which truncates, avoids the copy.
     fn open(self: Box<Self>, mode: Mode, stream: bool) -> Result<Box<dyn Io>, IoError> {
-        let bytes = self.as_slice().unwrap_or_default().to_vec();
+        // `Mode::Write` truncates to empty, so mapping and copying the whole file
+        // (potentially multi-GB) into a Vec would be pure waste — only the read /
+        // append / read-write modes need the existing bytes.
+        let bytes = if mode == Mode::Write {
+            Vec::new()
+        } else {
+            self.as_slice().unwrap_or_default().to_vec()
+        };
         Ok(Box::new(BytesIO::derived(bytes, mode, stream, self)))
     }
 
@@ -358,6 +426,6 @@ impl Path for LocalPath {
     }
 
     fn exists(&self) -> bool {
-        std::path::Path::new(&self.location).exists()
+        std::path::Path::new(native_location(&self.location)).exists()
     }
 }

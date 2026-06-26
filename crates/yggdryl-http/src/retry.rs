@@ -16,6 +16,7 @@ pub(crate) const CACHE_LIMIT: usize = 4 * 1024 * 1024;
 /// a streamed [`HttpStream`](crate::HttpStream) from its current cursor via a
 /// `Range` re-request.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RetryConfig {
     /// Maximum number of retries after the first attempt (default `3`).
     pub max_retries: u32,

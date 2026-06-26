@@ -2,12 +2,24 @@
 
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
-use yggdryl_core::{Mapping, Params, ToOutput, Url as CoreUrl};
+use pyo3::types::PyType;
+use yggdryl_core::{Mapping, Params, Url as CoreUrl};
 
 use crate::media::MediaType;
 use crate::mime::MimeType;
 use crate::uri::Uri;
 use crate::{hash_str, url_err};
+
+/// A reference accepted by :meth:`Url.join` — a path string, a list of segments,
+/// or another :class:`Uri` / :class:`Url`. ``Str`` is tried first so a plain
+/// string is never coerced to a one-character segment list.
+#[derive(FromPyObject)]
+enum JoinArg {
+    Str(String),
+    Segments(Vec<String>),
+    Uri(Uri),
+    Url(Url),
+}
 
 /// A URL: a URI that always has an authority, split into ``username``,
 /// ``password``, ``host`` and ``port``.
@@ -321,6 +333,21 @@ impl Url {
         }
     }
 
+    /// Join a relative reference onto the path (RFC 3986 dot-segment resolution).
+    /// ``reference`` is a path string (``"a/b"``, ``"../x"``, ``"/abs"``), a list
+    /// of segments (each percent-encoded and ``/``-joined), or another
+    /// :class:`Uri` / :class:`Url` (its path is used). The query and fragment are
+    /// dropped. The authority (userinfo / host / port) is preserved.
+    fn join(&self, reference: JoinArg) -> Self {
+        let inner = match reference {
+            JoinArg::Str(value) => self.inner.join(value.as_str()),
+            JoinArg::Segments(segments) => self.inner.join(segments.as_slice()),
+            JoinArg::Uri(uri) => self.inner.join(&uri.inner),
+            JoinArg::Url(url) => self.inner.join(&url.inner),
+        };
+        Url { inner }
+    }
+
     /// Render the URL; ``encode`` (default) percent-encodes, else decodes.
     #[pyo3(signature = (encode = true))]
     fn to_string(&self, encode: bool) -> String {
@@ -398,5 +425,10 @@ impl Url {
 
     fn __hash__(&self) -> u64 {
         hash_str(&self.inner.to_string())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the encoded string.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (String,)) {
+        (py.get_type_bound::<Self>(), (self.inner.to_string(),))
     }
 }

@@ -9,8 +9,9 @@ this one.
 
 It provides:
 
-- the `Mapping` / `Params` component maps and the `ToOutput` rendering trait,
-  plus URL-safe percent-encoding (`percent_encode` / `percent_decode`) and the
+- the `Mapping` / `Params` component maps (each value type renders back via its
+  own inherent `to_str` / `to_mapping`), plus URL-safe percent-encoding
+  (`percent_encode` / `percent_decode`) and the
   lower-level component helpers — parsing validates its input and returns an
   error on malformed data;
 - the `Version` (`major.minor.patch`) value type, numerically ordered;

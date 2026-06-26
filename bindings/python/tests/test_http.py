@@ -126,3 +126,90 @@ def test_set_cookie_seeds_the_jar():
     session = yggdryl.HttpSession()
     session.set_cookie("http://example.com/", "sid", "abc123")
     assert session.cookies["sid"] == "abc123"
+
+
+def test_module_level_verbs_use_the_shared_session(base_url):
+    # The module-level verbs dispatch through the process-wide shared session,
+    # like requests.get(...).
+    response = yggdryl.get(base_url + "/")
+    assert response.status == 200
+    assert response.text() == "hello world"
+    assert yggdryl.post(base_url + "/submit", b"ping").content == b"ping"
+    assert yggdryl.request("DELETE", base_url + "/thing").status == 204
+
+
+def test_base_url_resolves_relative_targets(base_url):
+    session = yggdryl.HttpSession(base_url=base_url + "/")
+    assert session.base_url == base_url + "/"
+    # A relative target is joined onto the base; the echo server returns the path.
+    assert session.get("path/here").header("x-echo-back") == ""
+    assert session.get("path/here").status == 200
+    # An absolute URL bypasses the base.
+    assert session.get(base_url + "/").status == 200
+
+
+def test_set_base_url_configures_the_shared_singleton(base_url):
+    # Point the shared singleton at the test server, then call a module verb with
+    # a relative path.
+    yggdryl.set_base_url(base_url + "/")
+    try:
+        assert yggdryl.get("/").text() == "hello world"
+    finally:
+        # Reset the singleton so other tests' module verbs use absolute URLs.
+        yggdryl.set_base_url("http://127.0.0.1:1")
+
+
+def test_http_version_negotiation(base_url):
+    # The session default is "auto"; a response reports the negotiated version,
+    # which is HTTP/1.1 (the only wired transport today).
+    session = yggdryl.HttpSession()
+    assert session.http_version == "auto"
+    response = session.get(base_url + "/")
+    assert response.http_version == "HTTP/1.1"
+
+    # A session can default to a specific version…
+    pinned = yggdryl.HttpSession(http_version="2")
+    assert pinned.http_version == "HTTP/2"
+    # …but pinning HTTP/2 (no transport yet) raises rather than downgrading.
+    with pytest.raises(ValueError):
+        pinned.get(base_url + "/")
+    # The per-request override raises the same way.
+    with pytest.raises(ValueError):
+        session.request("GET", base_url + "/", http_version="3")
+
+
+# A self-signed certificate (PEM), used to exercise the CA installer.
+_CA_FIXTURE = b"""-----BEGIN CERTIFICATE-----
+MIIBQjCB9aADAgECAhQuzAiSQcN9LmU+b23fQ4OnlJr4nzAFBgMrZXAwFzEVMBMG
+A1UEAwwMeWdnZHJ5bC10ZXN0MB4XDTI2MDYyNTE4MDczOFoXDTM2MDYyMjE4MDcz
+OFowFzEVMBMGA1UEAwwMeWdnZHJ5bC10ZXN0MCowBQYDK2VwAyEAxQDw21VJgXZq
+oYc6cXjHtCyGS+Xhu4OzPcRqzez2t8yjUzBRMB0GA1UdDgQWBBS8VDtYTuBsTuVe
+Cc9+2uF8BKgWHzAfBgNVHSMEGDAWgBS8VDtYTuBsTuVeCc9+2uF8BKgWHzAPBgNV
+HRMBAf8EBTADAQH/MAUGAytlcANBAKXArPIcky5wHp+VgiKw954G3+1I1PQzmpfJ
+r9/00T2PpD5GwhdzsrH/liNZug/eMW7w38c0zU0A05lLhgZEIAM=
+-----END CERTIFICATE-----
+"""
+
+
+def test_ca_cert_installer():
+    # No CA installed by default; installing one (PEM) is reported.
+    assert yggdryl.HttpSession().ca_cert_count == 0
+    assert yggdryl.HttpSession(ca_cert=_CA_FIXTURE).ca_cert_count == 1
+    # Undecodable PEM and empty input are rejected at install time.
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(
+            ca_cert=b"-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----"
+        )
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(ca_cert=b"")
+
+
+def test_verify_and_proxy_options():
+    # TLS verification is on by default; it can be disabled (insecure).
+    assert yggdryl.HttpSession().verify is True
+    assert yggdryl.HttpSession(verify=False).verify is False
+    # A proxy can be set explicitly (reported back); a bad proxy URL raises.
+    proxied = yggdryl.HttpSession(proxy="http://127.0.0.1:8080")
+    assert "127.0.0.1:8080" in proxied.proxy
+    with pytest.raises(ValueError):
+        yggdryl.HttpSession(proxy="not a url")

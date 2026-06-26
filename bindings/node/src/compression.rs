@@ -106,4 +106,17 @@ impl Compression {
     pub fn to_js_string(&self) -> String {
         self.inner.to_string()
     }
+
+    /// Serialise to JSON as the codec name (used by `JSON.stringify`). `fromJSON`
+    /// is the inverse.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> String {
+        self.inner.as_str().to_string()
+    }
+
+    /// Reconstruct from the value produced by `toJSON`.
+    #[napi(factory, js_name = "fromJSON")]
+    pub fn from_json(value: String) -> Result<Self> {
+        Compression::new(value)
+    }
 }

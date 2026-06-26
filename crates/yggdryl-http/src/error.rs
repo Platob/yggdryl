@@ -27,6 +27,10 @@ pub enum HttpError {
     /// limit), or a redirect chain looped back to a `(method, url)` already visited
     /// (carries the repeated URL).
     TooManyRedirects(String),
+    /// A requested capability has no implementation in this build — e.g. an
+    /// [`HttpVersion`](crate::HttpVersion) was pinned whose transport is not yet
+    /// wired. The message names the unavailable feature and the alternative.
+    Unsupported(String),
 }
 
 impl fmt::Display for HttpError {
@@ -39,6 +43,7 @@ impl fmt::Display for HttpError {
             HttpError::Decode(what) => write!(f, "decode error: {what}"),
             HttpError::Io(err) => write!(f, "io error: {err}"),
             HttpError::TooManyRedirects(what) => write!(f, "too many redirects: {what}"),
+            HttpError::Unsupported(what) => write!(f, "unsupported: {what}"),
         }
     }
 }
@@ -53,7 +58,17 @@ impl From<IoError> for HttpError {
 
 impl From<ureq::Error> for HttpError {
     fn from(err: ureq::Error) -> HttpError {
-        HttpError::Transport(err.to_string())
+        match &err {
+            // A TLS / certificate failure gets an actionable hint: the usual cause
+            // is a self-signed or internal certificate, fixable by trusting its CA
+            // or (insecurely) turning verification off.
+            ureq::Error::Tls(message) => HttpError::Transport(format!(
+                "tls error: {message}; if this host uses a self-signed or internal \
+                 certificate, install its CA or set verify=false (insecure) to skip \
+                 verification"
+            )),
+            _ => HttpError::Transport(err.to_string()),
+        }
     }
 }
 

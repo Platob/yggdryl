@@ -29,6 +29,16 @@
 //! Header logic is centralised in the case-insensitive [`HttpHeaders`] type, which
 //! every request, response and stream carries.
 //!
+//! The HTTP protocol version is tunable through [`HttpVersion`]: pin one per
+//! session ([`HttpSession::with_http_version`]) or per request
+//! ([`HttpRequest::with_http_version`]), and read the one a response was delivered
+//! over via [`HttpResponse::negotiated_version`]. [`HttpVersion::Auto`] (the
+//! default) negotiates the best available. HTTP/1.1 is always wired (the blocking
+//! `ureq` transport); the `http2` feature adds a real HTTP/2 transport (so `Auto`
+//! negotiates `h2` over TLS ALPN) and the `http3` feature a real HTTP/3-over-QUIC
+//! transport. A pinned version whose feature is off errors with
+//! [`HttpError::Unsupported`] rather than downgrade silently.
+//!
 //! ```no_run
 //! use yggdryl_http::{HttpSession, HttpRequest};
 //!
@@ -51,6 +61,17 @@
 //!   auto-decompresses.
 //! - `media` — expose the response's [`mime_type`](HttpResponse::mime_type) and
 //!   [`HttpStream`]'s media type.
+//! - `serde` — `Serialize`/`Deserialize` for the data types ([`Method`],
+//!   [`HttpVersion`], [`HttpHeaders`], [`Cookie`], [`HttpCookies`],
+//!   [`RetryConfig`]) and, transitively, the core value types; a live
+//!   request/response body is deliberately not serialisable.
+//! - `http2` — the optional async **HTTP/2** transport (hyper + a small
+//!   multi-threaded tokio runtime + tokio-rustls). With it on,
+//!   [`HttpVersion::Http2`] speaks h2 (TLS ALPN for `https`, h2c for cleartext) and
+//!   [`HttpVersion::Auto`] negotiates `h2`/`http/1.1` over TLS; off, those error.
+//! - `http3` — the optional async **HTTP/3** transport (quinn + h3 over QUIC). With
+//!   it on, [`HttpVersion::Http3`] speaks h3 over `https` (TLS ALPN `h3`); off, it
+//!   errors. Shares the tokio runtime and TLS stack with `http2`.
 //! - `log` — structured `log` events on the request path.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
@@ -75,6 +96,9 @@ mod retry;
 mod session;
 mod stream;
 mod time;
+#[cfg(any(feature = "http2", feature = "http3"))]
+mod transport;
+mod version;
 
 pub use cookies::{Cookie, HttpCookies};
 pub use error::HttpError;
@@ -84,8 +108,11 @@ pub use method::Method;
 pub use request::HttpRequest;
 pub use response::HttpResponse;
 pub use retry::RetryConfig;
-pub use session::{HttpResponseBatch, HttpSession, SendMany};
+pub use session::{
+    delete, get, head, patch, post, put, request, HttpResponseBatch, HttpSession, SendMany,
+};
 pub use stream::HttpStream;
+pub use version::HttpVersion;
 
 #[cfg(test)]
 mod tests;

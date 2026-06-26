@@ -7,12 +7,12 @@ use std::sync::OnceLock;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::url::{
-    build_query, is_valid_scheme, path_name, path_parts, query_param, query_to_params,
-    render_component, split_stem_ext, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH, KEEP_QUERY,
+    build_query, is_valid_scheme, join_path, path_name, path_parts, query_param, query_to_params,
+    render_component, split_stem_ext, JoinInput, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH,
+    KEEP_QUERY,
 };
 use crate::{
-    validate_percent_encoding, EncodingError, Mapping, MediaType, MimeType, Params, ToOutput, Url,
-    UrlError,
+    validate_percent_encoding, EncodingError, Mapping, MediaType, MimeType, Params, Url, UrlError,
 };
 
 /// Error returned when [`Uri`] parsing cannot interpret its input.
@@ -510,6 +510,44 @@ impl Uri {
     }
 }
 
+/// Path joining (RFC 3986 §5.2 reference resolution on the path component).
+impl Uri {
+    /// Returns a copy whose path is `reference` resolved against `self`'s path,
+    /// applying RFC 3986 §5.2.4 dot-segment removal. A `reference` starting with
+    /// `/` replaces the path outright; otherwise it is merged relative to the last
+    /// `/` of `self`'s path, then `.` / `..` segments are resolved. The query and
+    /// fragment are dropped (the location has changed).
+    ///
+    /// `reference` may be a path string (`"a/b"`, `"../x"`, `"/abs"`), a sequence
+    /// of segments (`["a", "b"]`, each percent-encoded and `/`-joined), or another
+    /// reference whose path is used — see [`JoinInput`]. String references are kept
+    /// verbatim (already-encoded); slice segments are percent-encoded.
+    ///
+    /// ```
+    /// use yggdryl_core::Uri;
+    ///
+    /// let base = Uri::from_str("https://h/a/b/c").unwrap();
+    /// assert_eq!(base.join("d").path(), "/a/b/d");
+    /// assert_eq!(base.join("../../x").path(), "/x"); // climbs two parents
+    /// assert_eq!(base.join(["d", "e"]).path(), "/a/b/d/e");
+    /// assert_eq!(base.join("/abs").path(), "/abs");
+    /// ```
+    pub fn join(&self, reference: impl JoinInput) -> Uri {
+        let path = join_path(
+            &self.path,
+            reference.to_reference().as_ref(),
+            self.authority.is_some(),
+        );
+        Uri::from_parts(
+            self.scheme.clone(),
+            self.authority.clone(),
+            path,
+            None,
+            None,
+        )
+    }
+}
+
 impl fmt::Display for Uri {
     /// Renders the encoded form, writing the cached rendering directly (no clone).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -558,14 +596,12 @@ impl Uri {
     }
 }
 
-impl ToOutput for Uri {
-    fn to_str(&self, encode: bool) -> String {
-        Uri::to_str(self, encode)
-    }
-
+/// Component rendering (the inherent [`to_str`](Uri::to_str) lives with the other
+/// builders above).
+impl Uri {
     /// The inverse of `from_mapping`: keys `scheme`, `authority`, `path`,
     /// `query`, `fragment` (only the present components).
-    fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> Mapping {
         let mut map = Mapping::from([("scheme".to_string(), self.scheme.clone())]);
         if let Some(authority) = &self.authority {
             map.insert("authority".to_string(), authority.clone());
@@ -587,6 +623,22 @@ impl From<&Uri> for MediaType {
     /// Builds the [`MediaType`] stack from the URI's path (see [`Uri::media_type`]).
     fn from(uri: &Uri) -> MediaType {
         MediaType::from_path(&uri.path)
+    }
+}
+
+/// Serialises as the encoded URI string, the inverse of [`Uri::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Uri {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Uri {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Uri, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Uri::from_str(&raw).map_err(serde::de::Error::custom)
     }
 }
 

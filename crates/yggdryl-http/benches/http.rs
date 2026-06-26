@@ -12,8 +12,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Instant;
 
-use yggdryl_core::Io;
-use yggdryl_http::{HttpRequest, HttpResponseBatch, HttpSession};
+use yggdryl_core::{Io, Url};
+use yggdryl_http::{HttpHeaders, HttpRequest, HttpResponseBatch, HttpSession, HttpVersion};
 
 /// Reads one request off the stream, returning `(is_head, optional range)`.
 fn read_request(stream: &mut std::net::TcpStream) -> Option<(bool, Option<(u64, u64)>)> {
@@ -112,7 +112,23 @@ fn bench(name: &str, iters: u64, bytes: usize, mut f: impl FnMut()) {
     );
 }
 
+/// Times `f` over `iters` iterations (after a warm-up) and prints ns/iter, for the
+/// CPU-only paths (URL resolve, header parsing) that move no payload.
+fn bench_ns(name: &str, iters: u64, mut f: impl FnMut()) {
+    for _ in 0..iters / 10 + 1 {
+        f();
+    }
+    let start = Instant::now();
+    for _ in 0..iters {
+        f();
+    }
+    let per = start.elapsed().as_nanos() as f64 / iters as f64;
+    println!("{name:<40} {per:>9.1} ns/iter");
+}
+
 fn main() {
+    cpu_paths();
+
     const SIZE: usize = 8 * 1024 * 1024; // 8 MiB, so HttpStream uses two 4 MiB windows
     let payload: Vec<u8> = (0..SIZE).map(|i| (i % 251) as u8).collect();
     let url = serve(payload.clone(), 0);
@@ -195,4 +211,140 @@ fn main() {
             black_box(response.bytes().unwrap());
         }
     });
+
+    #[cfg(feature = "http2")]
+    http2_vs_http1();
+}
+
+/// Serves `payload` forever over h2c (cleartext HTTP/2) on a localhost port,
+/// handling each connection on the tokio runtime. Used to compare the h2 transport
+/// against the blocking h1 one. Only built with the `http2` feature.
+#[cfg(feature = "http2")]
+fn serve_h2c(payload: Vec<u8>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let payload = std::sync::Arc::new(payload);
+    thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                let payload = payload.clone();
+                tokio::spawn(async move {
+                    stream.set_nodelay(true).ok(); // avoid Nagle/delayed-ACK stalls
+                    let io = hyper_util::rt::TokioIo::new(stream);
+                    let service = hyper::service::service_fn(move |_req| {
+                        let payload = payload.clone();
+                        async move {
+                            Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                                http_body_util::Full::new(hyper::body::Bytes::from(
+                                    (*payload).clone(),
+                                )),
+                            ))
+                        }
+                    });
+                    hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                        .serve_connection(io, service)
+                        .await
+                        .ok();
+                });
+            }
+        });
+    });
+    url
+}
+
+/// Compares the h2 transport against the pooled h1 one on a localhost download.
+/// The h2 path opens a fresh connection per request (no QUIC/h2 pooling yet), so
+/// this surfaces that cost against keep-alive h1.
+#[cfg(feature = "http2")]
+fn http2_vs_http1() {
+    const SIZE: usize = 64 * 1024;
+    let payload = vec![5u8; SIZE];
+    let h1_url = serve(payload.clone(), 0);
+    let h2_url = serve_h2c(payload.clone());
+    let session = HttpSession::new();
+    println!(
+        "\n== HTTP/1.1 (pooled) vs HTTP/2 (h2c) download ({} KiB) ==",
+        SIZE / 1024
+    );
+    bench("h1 GET (pooled keep-alive)", 200, SIZE, || {
+        black_box(session.get(&h1_url).unwrap().bytes().unwrap());
+    });
+    bench("h2c GET (new conn each)", 200, SIZE, || {
+        let request = HttpRequest::get(&h2_url)
+            .unwrap()
+            .with_http_version(HttpVersion::Http2);
+        black_box(
+            session
+                .send(request, false, false, false)
+                .unwrap()
+                .bytes()
+                .unwrap(),
+        );
+    });
+}
+
+/// CPU-only paths that need no server: base-URL resolution (the RFC 3986
+/// relative-reference join the redirect layer also runs) and header parsing.
+fn cpu_paths() {
+    println!("== url resolve / header parsing (CPU only) ==");
+    let based = HttpSession::new()
+        .with_base_url(Url::from_str("https://api.example.com/v1/users/").unwrap());
+    let n = 2_000_000;
+    bench_ns("resolve_url (relative segment)", n, || {
+        black_box(based.resolve_url(black_box("profile")).unwrap());
+    });
+    bench_ns("resolve_url (dot-segments ../)", n, || {
+        black_box(based.resolve_url(black_box("../../v2/orders")).unwrap());
+    });
+    bench_ns("resolve_url (absolute, no join)", n, || {
+        black_box(
+            based
+                .resolve_url(black_box("https://other.example.com/x"))
+                .unwrap(),
+        );
+    });
+
+    // Header parsing: content_size prefers the Content-Range total over
+    // Content-Length; retry_after parses both the delta-seconds and HTTP-date forms.
+    let range_headers = HttpHeaders::from_mapping([
+        (
+            "Content-Range".to_string(),
+            "bytes 0-1023/8388608".to_string(),
+        ),
+        ("Content-Length".to_string(), "1024".to_string()),
+    ]);
+    bench_ns("content_size (Content-Range total)", n, || {
+        black_box(black_box(&range_headers).content_size());
+    });
+    let retry_secs = HttpHeaders::from_mapping([("Retry-After".to_string(), "120".to_string())]);
+    bench_ns("retry_after (delta seconds)", n, || {
+        black_box(black_box(&retry_secs).retry_after());
+    });
+    let retry_date = HttpHeaders::from_mapping([(
+        "Retry-After".to_string(),
+        "Wed, 21 Oct 2026 07:28:00 GMT".to_string(),
+    )]);
+    bench_ns("retry_after (HTTP-date)", n, || {
+        black_box(black_box(&retry_date).retry_after());
+    });
+
+    // Protocol-version selection, on the per-request path (parsed from a string in
+    // the bindings, matched on every dispatch to choose the transport).
+    bench_ns("HttpVersion::from_str (h2)", n, || {
+        black_box(HttpVersion::from_str(black_box("h2")).unwrap());
+    });
+    bench_ns("HttpVersion::from_alpn (h3)", n, || {
+        black_box(HttpVersion::from_alpn(black_box("h3")));
+    });
+    println!();
 }

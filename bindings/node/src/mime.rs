@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{MimeType as CoreMimeType, Signature, ToOutput};
+use yggdryl_core::{MimeType as CoreMimeType, Signature};
 
 use crate::to_mapping;
 
@@ -156,5 +156,18 @@ impl MimeType {
     #[napi(js_name = "toString")]
     pub fn to_string_js(&self) -> String {
         self.inner.mime().to_string()
+    }
+
+    /// Serialise to JSON as the canonical MIME string (used by `JSON.stringify`).
+    /// `fromJSON` is the inverse (an unknown `Other` round-trips verbatim).
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> String {
+        self.inner.mime().to_string()
+    }
+
+    /// Reconstruct from the value produced by `toJSON`.
+    #[napi(factory, js_name = "fromJSON")]
+    pub fn from_json(value: String) -> Result<Self> {
+        MimeType::new(value)
     }
 }

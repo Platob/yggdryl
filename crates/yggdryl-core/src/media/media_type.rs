@@ -6,7 +6,7 @@ use std::fmt;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::media::mime::resolve_name;
-use crate::{Mapping, MediaError, MimeType, ToOutput};
+use crate::{Mapping, MediaError, MimeType};
 
 /// An ordered stack of [`MimeType`]s describing a layered file, innermost content
 /// first. Parsing `data.csv.gz` yields `MediaType([MimeType::Csv, MimeType::Gzip])`.
@@ -162,10 +162,11 @@ impl fmt::Display for MediaType {
     }
 }
 
-impl ToOutput for MediaType {
+/// Component rendering: the inverse of the `from_str` / `from_mapping` parsers.
+impl MediaType {
     /// Renders the canonical extension chain, e.g. `"csv.gz"` (the inverse of
     /// [`from_path`](MediaType::from_path) for canonical extensions).
-    fn to_str(&self, _encode: bool) -> String {
+    pub fn to_str(&self, _encode: bool) -> String {
         self.types
             .iter()
             .filter_map(MimeType::extension)
@@ -175,7 +176,7 @@ impl ToOutput for MediaType {
 
     /// The inverse of [`from_mapping`](MediaType::from_mapping): a single `types`
     /// key holding the comma-separated MIME strings (e.g. `"text/csv,application/gzip"`).
-    fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> Mapping {
         let types = self
             .types
             .iter()
@@ -183,5 +184,22 @@ impl ToOutput for MediaType {
             .collect::<Vec<_>>()
             .join(",");
         Mapping::from([("types".to_string(), types)])
+    }
+}
+
+/// Serialises as a sequence of MIME strings (e.g. `["text/csv","application/gzip"]`)
+/// — lossless, since each [`MimeType`] round-trips through its canonical string.
+#[cfg(feature = "serde")]
+impl serde::Serialize for MediaType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(&self.types)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MediaType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<MediaType, D::Error> {
+        let types = <Vec<MimeType> as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(MediaType::new(types))
     }
 }

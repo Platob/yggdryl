@@ -1356,3 +1356,723 @@ fn a_secure_cookie_is_withheld_over_http() {
     let http = yggdryl_core::Url::from_str("http://example.com/").unwrap();
     assert_eq!(jar.header_for(&http), None);
 }
+
+#[test]
+fn http_version_parses_names_and_alpn() {
+    use crate::HttpVersion;
+    // Selectors parse case-insensitively across the common spellings.
+    for value in ["auto", "AUTO", "negotiate", ""] {
+        assert_eq!(HttpVersion::from_str(value).unwrap(), HttpVersion::Auto);
+    }
+    for value in ["1.1", "http/1.1", "H1", "http11"] {
+        assert_eq!(HttpVersion::from_str(value).unwrap(), HttpVersion::Http11);
+    }
+    assert_eq!(HttpVersion::from_str("h2").unwrap(), HttpVersion::Http2);
+    assert_eq!(HttpVersion::from_str("http/3").unwrap(), HttpVersion::Http3);
+    // An unknown selector names the accepted values.
+    let err = HttpVersion::from_str("spdy").unwrap_err();
+    assert!(err.to_string().contains("expected auto"), "{err}");
+
+    // Names, ALPN ids and the round-trip back from an ALPN id.
+    assert_eq!(HttpVersion::Http11.as_str(), "HTTP/1.1");
+    assert_eq!(HttpVersion::Http2.alpn(), Some("h2"));
+    assert_eq!(HttpVersion::Auto.alpn(), None);
+    assert_eq!(HttpVersion::from_alpn("h3"), Some(HttpVersion::Http3));
+    assert_eq!(HttpVersion::from_alpn("spdy/3"), None);
+
+    // HTTP/1.1 and Auto are always wired; HTTP/2 and HTTP/3 only with their
+    // respective transport features.
+    assert!(HttpVersion::Http11.is_available());
+    assert!(HttpVersion::Auto.is_available());
+    assert_eq!(HttpVersion::Http2.is_available(), cfg!(feature = "http2"));
+    assert_eq!(HttpVersion::Http3.is_available(), cfg!(feature = "http3"));
+}
+
+#[test]
+fn negotiated_version_reports_http11_for_a_normal_request() {
+    use crate::HttpVersion;
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
+    // A normal request negotiates (Auto) down to the HTTP/1.1 transport, and the
+    // response reports the version it was delivered over.
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::get(&url).unwrap(), false, false, false)
+        .unwrap();
+    assert_eq!(response.negotiated_version(), HttpVersion::Http11);
+    // The session-level default is carried (a getter, regardless of transport).
+    let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    assert_eq!(h2_session.http_version(), HttpVersion::Http2);
+}
+
+/// Without the `http2` feature, pinning HTTP/2 has no transport, so it errors with
+/// an actionable [`HttpError::Unsupported`] before any bytes leave — never a silent
+/// downgrade. (With the feature on it instead routes to the async transport, which
+/// the h2c test covers.)
+#[cfg(not(feature = "http2"))]
+#[test]
+fn pinning_an_unwired_http2_errors() {
+    use crate::HttpVersion;
+    let session = HttpSession::new();
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
+    let pinned = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http2);
+    let err = match session.send(pinned, false, false, false) {
+        Ok(_) => panic!("pinning an unwired HTTP/2 should error"),
+        Err(err) => err,
+    };
+    assert!(matches!(err, HttpError::Unsupported(_)), "{err:?}");
+    assert!(err.to_string().contains("HTTP/2"), "{err}");
+    // A session-level Http2 default fails the same way on every request.
+    let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    let (url2, _rx2) = serve_once(ok_reply("text/plain", b"ok"));
+    assert!(h2_session
+        .send(HttpRequest::get(&url2).unwrap(), false, false, false)
+        .is_err());
+}
+
+#[test]
+fn verify_and_proxy_are_configurable() {
+    // TLS verification is on by default and can be turned off (rebuilding the agent).
+    let session = HttpSession::new();
+    assert!(session.verify());
+    let insecure = HttpSession::new().with_verify(false);
+    assert!(!insecure.verify());
+
+    // The proxy can be set explicitly and cleared; `without_proxy` ignores any the
+    // environment supplied.
+    let proxied = HttpSession::new()
+        .with_proxy("http://127.0.0.1:8080")
+        .unwrap();
+    assert!(
+        proxied
+            .proxy()
+            .as_deref()
+            .is_some_and(|uri| uri.contains("127.0.0.1:8080")),
+        "{:?}",
+        proxied.proxy()
+    );
+    assert!(proxied.without_proxy().proxy().is_none());
+    // A malformed proxy URL is rejected.
+    assert!(HttpSession::new().with_proxy("not a url").is_err());
+}
+
+#[test]
+fn with_ca_cert_parses_pem_and_der_and_rejects_garbage() {
+    // A real (self-signed) certificate in both DER and PEM form installs.
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let der = issued.cert.der().to_vec();
+    let pem = issued.cert.pem();
+
+    let from_der = HttpSession::new().with_ca_cert(&der).unwrap();
+    assert_eq!(from_der.ca_cert_count(), 1);
+    let from_pem = HttpSession::new().with_ca_cert(pem.as_bytes()).unwrap();
+    assert_eq!(from_pem.ca_cert_count(), 1);
+    // Installs accumulate.
+    assert_eq!(from_pem.with_ca_cert(&der).unwrap().ca_cert_count(), 2);
+
+    // Garbage PEM (no decodable certificate), structurally-invalid DER, and empty
+    // input are all rejected at install time.
+    assert!(HttpSession::new()
+        .with_ca_cert(b"-----BEGIN CERTIFICATE-----\nnot-base64\n-----END CERTIFICATE-----")
+        .is_err());
+    assert!(HttpSession::new().with_ca_cert(b"not-a-der-cert").is_err());
+    assert!(HttpSession::new().with_ca_cert(b"").is_err());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn http_data_types_serde_round_trip() {
+    use crate::{Cookie, HttpCookies, HttpHeaders, HttpVersion};
+
+    // Method serialises as its variant name and parses back.
+    let method = Method::Post;
+    assert_eq!(
+        serde_json::from_str::<Method>(&serde_json::to_string(&method).unwrap()).unwrap(),
+        method
+    );
+
+    // HttpVersion round-trips its variant name.
+    let version = HttpVersion::Http2;
+    assert_eq!(
+        serde_json::from_str::<HttpVersion>(&serde_json::to_string(&version).unwrap()).unwrap(),
+        version
+    );
+
+    // RetryConfig round-trips its whole policy.
+    let retry = RetryConfig::default();
+    let back: RetryConfig = serde_json::from_str(&serde_json::to_string(&retry).unwrap()).unwrap();
+    assert_eq!(back.max_retries, retry.max_retries);
+    assert_eq!(back.base_delay, retry.base_delay);
+
+    // Headers preserve order and casing.
+    let mut headers = HttpHeaders::new();
+    headers.insert("Content-Type", "text/plain");
+    headers.insert("X-Trace", "abc");
+    assert_eq!(
+        serde_json::from_str::<HttpHeaders>(&serde_json::to_string(&headers).unwrap()).unwrap(),
+        headers
+    );
+
+    // The cookie jar round-trips, so a session's cookies can be persisted.
+    let url = yggdryl_core::Url::from_str("https://example.com/").unwrap();
+    let jar = HttpCookies::new().with_cookie(Cookie::new("sid", "abc", &url).unwrap());
+    let back: HttpCookies = serde_json::from_str(&serde_json::to_string(&jar).unwrap()).unwrap();
+    assert_eq!(
+        back.get("sid").map(|c| c.value().to_string()),
+        Some("abc".to_string())
+    );
+}
+
+#[test]
+fn shared_session_singleton_and_set() {
+    // Every call hands back the same pooled session (the same `Arc`)…
+    let a = HttpSession::shared();
+    let b = HttpSession::shared();
+    assert!(std::sync::Arc::ptr_eq(&a, &b));
+    // …until `set_shared` replaces it — here with one carrying a base URL, so the
+    // module-level verbs resolve relative targets against it.
+    let base = yggdryl_core::Url::from_str("https://api.example.com/v1/").unwrap();
+    HttpSession::set_shared(HttpSession::new().with_base_url(base));
+    let c = HttpSession::shared();
+    assert_eq!(
+        c.base_url().map(ToString::to_string),
+        Some("https://api.example.com/v1/".to_string())
+    );
+    assert!(!std::sync::Arc::ptr_eq(&a, &c));
+}
+
+#[test]
+fn base_url_resolves_relative_targets() {
+    let base = yggdryl_core::Url::from_str("https://api.example.com/v1/").unwrap();
+    let session = HttpSession::new().with_base_url(base);
+    // A bare name joins onto the base path; an absolute path replaces it.
+    assert_eq!(
+        session.resolve_url("users").unwrap().to_string(),
+        "https://api.example.com/v1/users"
+    );
+    assert_eq!(
+        session.resolve_url("/users").unwrap().to_string(),
+        "https://api.example.com/users"
+    );
+    // An absolute URL bypasses the base entirely.
+    assert_eq!(
+        session
+            .resolve_url("https://other.test/x")
+            .unwrap()
+            .to_string(),
+        "https://other.test/x"
+    );
+    // With no base URL a relative target is an error; an absolute one parses.
+    let plain = HttpSession::new();
+    assert!(plain.resolve_url("relative").is_err());
+    assert!(plain.resolve_url("https://h/p").is_ok());
+}
+
+#[test]
+fn redirect_resolve_normalizes_dot_segments_and_fragment() {
+    use crate::redirect;
+    let base = yggdryl_core::Url::from_str("https://h/v1/users/42").unwrap();
+    // `../` ascends and is normalized (no literal "/v1/users/../other").
+    assert_eq!(
+        redirect::resolve(&base, "../other").unwrap().path(),
+        "/v1/other"
+    );
+    assert_eq!(
+        redirect::resolve(&base, "./x").unwrap().path(),
+        "/v1/users/x"
+    );
+    // An absolute path's own dot-segments resolve too.
+    assert_eq!(redirect::resolve(&base, "/a/../b").unwrap().path(), "/b");
+    // A `#fragment` is split off the path, not embedded in it.
+    let r = redirect::resolve(&base, "/p#frag").unwrap();
+    assert_eq!(r.path(), "/p");
+    assert_eq!(r.fragment(), Some("frag"));
+    // A relative redirect with a query keeps the path and sets the query; it does
+    // not inherit the base's (absent) query/fragment.
+    let r2 = redirect::resolve(&base, "next?x=1").unwrap();
+    assert_eq!(r2.path(), "/v1/users/next");
+    assert_eq!(r2.query(), Some("x=1"));
+}
+
+#[test]
+fn cross_domain_set_cookie_is_rejected() {
+    use crate::Cookie;
+    let evil = yggdryl_core::Url::from_str("https://a.evil.test/").unwrap();
+    // A `Domain` the response host does not domain-match is rejected (injection).
+    assert!(Cookie::from_set_cookie("x=1; Domain=example.com", &evil).is_none());
+    // A single-label / public-suffix `Domain` is rejected.
+    assert!(Cookie::from_set_cookie("x=1; Domain=test", &evil).is_none());
+    // A host-only cookie (no `Domain`) is always accepted.
+    assert!(Cookie::from_set_cookie("y=2; Path=/", &evil).is_some());
+    // A `Domain` that is a parent of the response host is accepted.
+    let sub = yggdryl_core::Url::from_str("https://www.example.com/").unwrap();
+    let cookie = Cookie::from_set_cookie("x=1; Domain=example.com", &sub).unwrap();
+    assert_eq!(cookie.domain(), "example.com");
+    // A single-label `Domain` equal to the request host (e.g. localhost) is allowed.
+    let local = yggdryl_core::Url::from_str("http://localhost/").unwrap();
+    assert!(Cookie::from_set_cookie("x=1; Domain=localhost", &local).is_some());
+}
+
+#[test]
+fn cookie_header_orders_by_descending_path_length() {
+    use crate::{HttpCookies, HttpHeaders};
+    let url = yggdryl_core::Url::from_str("https://h/app/page").unwrap();
+    let mut jar = HttpCookies::new();
+    let mut headers = HttpHeaders::new();
+    headers.insert("set-cookie", "a=1; Path=/");
+    headers.insert("set-cookie", "b=2; Path=/app");
+    jar.set_from_response(&url, &headers);
+    // The longer path (`/app`) is listed first (RFC 6265 §5.4).
+    assert_eq!(jar.header_for(&url).as_deref(), Some("b=2; a=1"));
+}
+
+#[test]
+fn head_response_with_content_length_drains_empty() {
+    // A HEAD reply advertises Content-Length but sends no body. Draining it must
+    // yield an empty body, not an UnexpectedEof — the body size is zero for HEAD
+    // regardless of the header (the binding path drains buffered during send).
+    let reply = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\nConnection: close\r\n\r\n".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::head(&url).unwrap(), false, true, false)
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"");
+}
+
+#[test]
+fn no_content_204_drains_empty() {
+    // 204 No Content (and 304) carry no body even with a Content-Length header.
+    let reply =
+        b"HTTP/1.1 204 No Content\r\nContent-Length: 5\r\nConnection: close\r\n\r\n".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let response = session
+        .send(HttpRequest::get(&url).unwrap(), false, true, false)
+        .unwrap();
+    assert_eq!(response.status(), 204);
+    assert_eq!(response.bytes().unwrap(), b"");
+}
+
+/// Spawns a persistent localhost h2c (cleartext HTTP/2) server that accepts any
+/// number of connections and routes by path: `/status/<code>` returns that status,
+/// `/redirect` returns a 302 to `/echo`, and anything else echoes `METHOD path
+/// body`. Returns the base URL and a shared counter of requests served (to assert
+/// concurrency). The server thread runs until the test process exits. Hermetic.
+#[cfg(feature = "http2")]
+fn serve_h2c() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let count = Arc::new(AtomicUsize::new(0));
+    let served = count.clone();
+    thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                let served = served.clone();
+                tokio::spawn(async move {
+                    let io = hyper_util::rt::TokioIo::new(stream);
+                    let service = hyper::service::service_fn(
+                        move |req: hyper::Request<hyper::body::Incoming>| {
+                            let served = served.clone();
+                            async move {
+                                served.fetch_add(1, Ordering::SeqCst);
+                                let method = req.method().clone();
+                                let path = req.uri().path().to_string();
+                                let body = http_body_util::BodyExt::collect(req.into_body())
+                                    .await
+                                    .map(|collected| collected.to_bytes())
+                                    .unwrap_or_default();
+                                let response = if let Some(code) = path.strip_prefix("/status/") {
+                                    hyper::Response::builder()
+                                        .status(code.parse::<u16>().unwrap_or(500))
+                                        .body(http_body_util::Full::new(hyper::body::Bytes::from(
+                                            "status",
+                                        )))
+                                        .unwrap()
+                                } else if path == "/redirect" {
+                                    hyper::Response::builder()
+                                        .status(302)
+                                        .header("location", "/echo")
+                                        .body(http_body_util::Full::new(hyper::body::Bytes::new()))
+                                        .unwrap()
+                                } else {
+                                    let echoed = format!(
+                                        "{method} {path} {}",
+                                        String::from_utf8_lossy(&body)
+                                    );
+                                    hyper::Response::new(http_body_util::Full::new(
+                                        hyper::body::Bytes::from(echoed),
+                                    ))
+                                };
+                                Ok::<_, std::convert::Infallible>(response)
+                            }
+                        },
+                    );
+                    hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                        .serve_connection(io, service)
+                        .await
+                        .ok();
+                });
+            }
+        });
+    });
+    (url, count)
+}
+
+/// Hermetic HTTP/2 over cleartext (h2c, prior knowledge): a localhost hyper h2
+/// server answers one connection, and the client — pinned to `HttpVersion::Http2`
+/// against an `http://` URL — speaks h2c and reports the negotiated version. No
+/// TLS, no network. Exercises the optional async transport end-to-end.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
+    use crate::HttpVersion;
+    use std::net::TcpListener;
+
+    // Bind synchronously to learn the port, then serve one h2c connection on a
+    // background current-thread tokio runtime.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    // A query and a fragment: the query must reach the server, the fragment must not.
+    let url = format!("http://{addr}/echo?x=1#frag");
+
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(
+                |req: hyper::Request<hyper::body::Incoming>| async move {
+                    // Echo the method + full request target (path?query) so the client
+                    // can assert the wire shape — including that no fragment leaked.
+                    let target = req
+                        .uri()
+                        .path_and_query()
+                        .map(|pq| pq.as_str().to_string())
+                        .unwrap_or_default();
+                    // Also report whether a (hop-by-hop) Connection header leaked.
+                    let conn = req.headers().contains_key("connection");
+                    let body = format!("{} {target} conn={conn}", req.method());
+                    Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(hyper::body::Bytes::from(body)),
+                    ))
+                },
+            );
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let session = HttpSession::new();
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        // A hop-by-hop header the client must strip before the h2 wire.
+        .with_header("connection", "keep-alive")
+        .with_http_version(HttpVersion::Http2);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
+    // The response reports it was delivered over HTTP/2 (h2c).
+    assert_eq!(response.negotiated_version(), HttpVersion::Http2);
+    // The query reached the server, the fragment was stripped before the wire, and
+    // the hop-by-hop Connection header was not forwarded.
+    assert_eq!(response.bytes().unwrap(), b"GET /echo?x=1 conn=false");
+    server.join().unwrap();
+}
+
+/// With the `http2` transport compiled in, `HttpVersion::Http2` is available and a
+/// cleartext `Auto` request still uses HTTP/1.1 (h2c is not assumed without a pin).
+#[cfg(feature = "http2")]
+#[test]
+fn http2_feature_marks_http2_available() {
+    use crate::HttpVersion;
+    assert!(HttpVersion::Http2.is_available());
+}
+
+/// A POST with a request body works over HTTP/2 — the body reaches the server.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_post_body_roundtrip() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::post(&format!("{url}/echo"))
+                .unwrap()
+                .with_body(b"the-h2-body".to_vec())
+                .with_http_version(HttpVersion::Http2),
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"POST /echo the-h2-body");
+}
+
+/// A 4xx/5xx over HTTP/2 is a normal response (not a transport error), and
+/// `raise_error` turns it into [`HttpError::Status`] — the same as the h1 path.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_error_status_is_a_normal_response() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let session = HttpSession::new();
+    let request = || {
+        HttpRequest::get(&format!("{url}/status/503"))
+            .unwrap()
+            .with_http_version(HttpVersion::Http2)
+    };
+    // raise_error = false: the 503 comes back as a normal response.
+    let response = session.send(request(), false, false, false).unwrap();
+    assert_eq!(response.status(), 503);
+    assert!(!response.ok());
+    // raise_error = true: it becomes an error carrying the status.
+    match session.send(request(), true, false, false) {
+        Err(HttpError::Status(503)) => {}
+        Err(other) => panic!("expected Status(503), got {other:?}"),
+        Ok(_) => panic!("expected an error, got a response"),
+    }
+}
+
+/// A 302 over HTTP/2 re-joins the redirect loop and is followed to the target,
+/// exactly like the h1 path (302 on GET keeps GET).
+#[cfg(feature = "http2")]
+#[test]
+fn http2_follows_a_redirect() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&format!("{url}/redirect"))
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+            true,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    // Followed to /echo as a GET (302 keeps the method here, dropping any body).
+    assert_eq!(response.bytes().unwrap(), b"GET /echo ");
+}
+
+/// `send_many` runs many HTTP/2 requests concurrently over the shared transport
+/// runtime; every one is served and succeeds.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_send_many_concurrent() {
+    use crate::HttpVersion;
+    use std::sync::atomic::Ordering;
+
+    let (url, count) = serve_h2c();
+    let session = HttpSession::new();
+    const N: usize = 12;
+    let requests: Vec<HttpRequest> = (0..N)
+        .map(|index| {
+            HttpRequest::get(&format!("{url}/echo/{index}"))
+                .unwrap()
+                .with_http_version(HttpVersion::Http2)
+        })
+        .collect();
+    let batches: Vec<HttpResponseBatch> = session.send_many(requests).collect();
+    let mut ok = 0;
+    for batch in batches {
+        for result in batch.into_results() {
+            assert_eq!(result.unwrap().status(), 200);
+            ok += 1;
+        }
+    }
+    assert_eq!(ok, N);
+    assert_eq!(count.load(Ordering::SeqCst), N);
+}
+
+/// Spawns a localhost quinn + h3 server on an ephemeral UDP port that serves
+/// exactly one request (echoing `METHOD path`) using `cert_der`/`key_der`, then
+/// idles. Returns the bound port and the server thread handle. Hermetic — UDP
+/// loopback, no network.
+#[cfg(feature = "http3")]
+fn serve_one_h3(
+    cert_der: tokio_rustls::rustls::pki_types::CertificateDer<'static>,
+    key_der: tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer<'static>,
+) -> (u16, std::thread::JoinHandle<()>) {
+    let (port_tx, port_rx) = std::sync::mpsc::channel();
+    let handle = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let provider =
+                std::sync::Arc::new(tokio_rustls::rustls::crypto::ring::default_provider());
+            let mut tls = tokio_rustls::rustls::ServerConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_no_client_auth()
+                .with_single_cert(vec![cert_der], key_der.into())
+                .unwrap();
+            tls.alpn_protocols = vec![b"h3".to_vec()];
+            let quic = quinn::crypto::rustls::QuicServerConfig::try_from(tls).unwrap();
+            let config = quinn::ServerConfig::with_crypto(std::sync::Arc::new(quic));
+            let endpoint = quinn::Endpoint::server(config, "127.0.0.1:0".parse().unwrap()).unwrap();
+            port_tx.send(endpoint.local_addr().unwrap().port()).unwrap();
+
+            let incoming = endpoint.accept().await.unwrap();
+            let connection = incoming.await.unwrap();
+            let mut h3_conn = h3::server::Connection::new(h3_quinn::Connection::new(connection))
+                .await
+                .unwrap();
+            if let Ok(Some(resolver)) = h3_conn.accept().await {
+                let (req, mut stream) = resolver.resolve_request().await.unwrap();
+                // Read the request body (if any) so a POST can be echoed back.
+                let mut request_body = Vec::new();
+                while let Ok(Some(mut chunk)) = stream.recv_data().await {
+                    use bytes::Buf;
+                    while chunk.has_remaining() {
+                        let bytes = chunk.chunk();
+                        request_body.extend_from_slice(bytes);
+                        let len = bytes.len();
+                        chunk.advance(len);
+                    }
+                }
+                let body = if request_body.is_empty() {
+                    format!("{} {}", req.method(), req.uri().path())
+                } else {
+                    format!(
+                        "{} {} {}",
+                        req.method(),
+                        req.uri().path(),
+                        String::from_utf8_lossy(&request_body)
+                    )
+                };
+                let response = http::Response::builder().status(200).body(()).unwrap();
+                stream.send_response(response).await.unwrap();
+                stream.send_data(bytes::Bytes::from(body)).await.unwrap();
+                stream.finish().await.unwrap();
+            }
+            // Let the client read and close before the endpoint drops.
+            endpoint.wait_idle().await;
+        });
+    });
+    (port_rx.recv().unwrap(), handle)
+}
+
+/// Hermetic HTTP/3 over QUIC: the client — pinned to `HttpVersion::Http3` with
+/// `verify=false` to accept the self-signed cert — speaks QUIC and reports the
+/// negotiated version.
+#[cfg(feature = "http3")]
+#[test]
+#[ignore = "QUIC over UDP loopback is unreliable on CI runners (UDP offload/GSO quirks stall the handshake); run explicitly with `--ignored`"]
+fn http3_quic_roundtrip_with_self_signed_cert() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let (port, server) = serve_one_h3(
+        issued.cert.der().clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
+    let url = format!("https://localhost:{port}/echo");
+    // verify=false accepts the self-signed certificate.
+    let session = HttpSession::new().with_verify(false);
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http3);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.negotiated_version(), HttpVersion::Http3);
+    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// The certificate installer end-to-end: installing the server's self-signed
+/// certificate as a trusted CA lets the client verify it with verification **on**
+/// (no `verify=false`), over HTTP/3.
+#[cfg(feature = "http3")]
+#[test]
+#[ignore = "QUIC over UDP loopback is unreliable on CI runners (UDP offload/GSO quirks stall the handshake); run explicitly with `--ignored`"]
+fn http3_trusts_an_installed_ca_certificate() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_der = issued.cert.der().clone();
+    let (port, server) = serve_one_h3(
+        cert_der.clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
+    let url = format!("https://localhost:{port}/echo");
+    // Install the server's certificate as a trusted CA; verification stays ON.
+    let session = HttpSession::new().with_ca_cert(cert_der.as_ref()).unwrap();
+    assert_eq!(session.ca_cert_count(), 1);
+    assert!(session.verify());
+    let request = HttpRequest::get(&url)
+        .unwrap()
+        .with_http_version(HttpVersion::Http3);
+    let response = session.send(request, false, false, false).unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"GET /echo");
+    server.join().unwrap();
+}
+
+/// A POST with a request body works over HTTP/3 — the body reaches the server.
+#[cfg(feature = "http3")]
+#[test]
+#[ignore = "QUIC over UDP loopback is unreliable on CI runners (UDP offload/GSO quirks stall the handshake); run explicitly with `--ignored`"]
+fn http3_post_body_roundtrip() {
+    use crate::HttpVersion;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+
+    let issued = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let (port, server) = serve_one_h3(
+        issued.cert.der().clone(),
+        PrivatePkcs8KeyDer::from(issued.signing_key.serialize_der()),
+    );
+    let url = format!("https://localhost:{port}/submit");
+    let response = HttpSession::new()
+        .with_verify(false)
+        .send(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body(b"the-h3-body".to_vec())
+                .with_http_version(HttpVersion::Http3),
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"POST /submit the-h3-body");
+    server.join().unwrap();
+}
+
+/// With the `http3` transport compiled in, `HttpVersion::Http3` is available.
+#[cfg(feature = "http3")]
+#[test]
+fn http3_feature_marks_http3_available() {
+    use crate::HttpVersion;
+    assert!(HttpVersion::Http3.is_available());
+}

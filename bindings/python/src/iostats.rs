@@ -1,9 +1,11 @@
 //! The `IoStats` pyclass.
 
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use yggdryl_core::IoStats as CoreIoStats;
+use pyo3::types::PyType;
+use yggdryl_core::{IoStats as CoreIoStats, Kind};
 
 use crate::media::MediaType;
 
@@ -18,6 +20,42 @@ pub struct IoStats {
 
 #[pymethods]
 impl IoStats {
+    /// Construct stats explicitly. ``kind`` is one of ``"missing"`` / ``"file"`` /
+    /// ``"directory"`` / ``"other"``; ``mtime`` is Unix-epoch seconds. The lazily-
+    /// discovered ``media_type`` is not set here.
+    #[new]
+    #[pyo3(signature = (size = 0, kind = "file", mtime = None, content_type = None, etag = None))]
+    fn new(
+        size: u64,
+        kind: &str,
+        mtime: Option<f64>,
+        content_type: Option<String>,
+        etag: Option<String>,
+    ) -> PyResult<Self> {
+        let kind = match kind {
+            "missing" => Kind::Missing,
+            "file" => Kind::File,
+            "directory" => Kind::Directory,
+            "other" => Kind::Other,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown kind {other:?}, expected 'missing', 'file', 'directory' or 'other'"
+                )))
+            }
+        };
+        let mut inner = CoreIoStats::new(size).with_kind(kind);
+        if let Some(seconds) = mtime {
+            inner = inner.with_mtime(UNIX_EPOCH + Duration::from_secs_f64(seconds));
+        }
+        if let Some(content_type) = content_type {
+            inner = inner.with_content_type(content_type);
+        }
+        if let Some(etag) = etag {
+            inner = inner.with_etag(etag);
+        }
+        Ok(IoStats { inner })
+    }
+
     /// What the resource is: ``"missing"``, ``"file"``, ``"directory"`` or
     /// ``"other"``.
     #[getter]
@@ -83,6 +121,39 @@ impl IoStats {
             "IoStats(kind='{}', size={})",
             self.inner.kind(),
             self.inner.size()
+        )
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing through the constructor
+    /// (the lazily-discovered ``media_type`` is not carried).
+    #[allow(clippy::type_complexity)]
+    fn __reduce__<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> (
+        Bound<'py, PyType>,
+        (
+            u64,
+            &'static str,
+            Option<f64>,
+            Option<String>,
+            Option<String>,
+        ),
+    ) {
+        let mtime = self
+            .inner
+            .mtime()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|since| since.as_secs_f64());
+        (
+            py.get_type_bound::<Self>(),
+            (
+                self.inner.size(),
+                self.inner.kind().as_str(),
+                mtime,
+                self.inner.content_type().map(str::to_string),
+                self.inner.etag().map(str::to_string),
+            ),
         )
     }
 }

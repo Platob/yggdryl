@@ -253,3 +253,31 @@ def test_default_file_scheme_and_windows():
 
 def test_module_version():
     assert isinstance(yggdryl.__version__, str)
+
+
+def test_join_relative_paths():
+    base = yggdryl.Url("https://h/a/b/c")
+    assert base.join("d").path == "/a/b/d"
+    assert base.join("d/e").path == "/a/b/d/e"
+    assert base.join("../x").path == "/a/x"
+    assert base.join("../../x").path == "/x"
+    assert base.join("./x").path == "/a/b/x"
+    assert base.join("/abs/y").path == "/abs/y"
+    # A list of segments is percent-encoded and '/'-joined; a '/' inside an
+    # element is data.
+    assert base.join(["d", "e f"]).path == "/a/b/d/e%20f"
+    assert base.join(["a/b"]).path == "/a/b/a%2Fb"
+    # Joining drops self's query/fragment.
+    assert str(yggdryl.Url("https://h/a/b/c?k=v#f").join("../x")) == "https://h/a/x"
+    # Another reference's path is used.
+    assert base.join(yggdryl.Uri("file:../z")).path == "/a/z"
+    # The authority is preserved.
+    auth = yggdryl.Url("https://u:pw@h:8443/a/b/c")
+    assert str(auth.join("../x")) == "https://u:pw@h:8443/a/x"
+
+
+def test_join_uri_form():
+    base = yggdryl.Uri("https://h/a/b/c")
+    assert base.join("../x").path == "/a/x"
+    # A plain string is never coerced to a one-char segment list.
+    assert base.join("xy").path == "/a/b/xy"

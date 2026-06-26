@@ -3,9 +3,10 @@
 //! The consolidated foundations of the **yggdryl** project. One crate now holds
 //! what used to be five:
 //!
-//! - the [`Mapping`] / [`Params`] component maps and the [`ToOutput`] rendering
-//!   trait, plus URL-safe percent-encoding ([`percent_encode`] /
-//!   [`percent_decode`]) and the component helpers;
+//! - the [`Mapping`] / [`Params`] component maps, plus URL-safe percent-encoding
+//!   ([`percent_encode`] / [`percent_decode`]) and the component helpers (each
+//!   value type pairs its `from_str` / `from_mapping` parsers with inherent
+//!   `to_str` / `to_mapping` renderers);
 //! - the [`Version`] (`major.minor.patch`) value type;
 //! - the [`MimeType`] enum (backed by a mutable global registry) and the
 //!   [`MediaType`] extension stack;
@@ -32,7 +33,6 @@ pub(crate) use log_event;
 
 mod encoding;
 mod mapping;
-mod output;
 mod version;
 
 mod media;
@@ -45,12 +45,11 @@ pub use encoding::{
     encode_component, percent_decode, percent_encode, validate_percent_encoding, EncodingError,
 };
 pub use mapping::{Mapping, Params};
-pub use output::{Output, ToOutput};
 pub use version::{Version, VersionError};
 
 pub use media::{MediaError, MediaType, MimeType, Signature};
 
-pub use url::{Uri, UriError, Url, UrlError};
+pub use url::{JoinInput, Uri, UriError, Url, UrlError};
 
 pub use io::{
     copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,

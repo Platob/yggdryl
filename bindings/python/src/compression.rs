@@ -1,7 +1,7 @@
 //! The `Compression` pyclass.
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::Compression as CoreCompression;
 
 use crate::iostats::IoStats;
@@ -116,5 +116,13 @@ impl Compression {
 
     fn __hash__(&self) -> u64 {
         hash_str(self.inner.as_str())
+    }
+
+    /// Support ``pickle`` / ``copy`` by reconstructing from the codec name.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (String,)) {
+        (
+            py.get_type_bound::<Self>(),
+            (self.inner.as_str().to_string(),),
+        )
     }
 }

@@ -17,6 +17,11 @@ mod uri;
 mod url;
 mod version;
 
+// Re-export the module-level HTTP verbs (backed by the shared `HttpSession`
+// singleton) so they are part of the crate's public surface — napi exports them
+// to JS regardless, this just keeps plain `cargo` from flagging them unused.
+pub use http::{http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url};
+
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
@@ -65,7 +70,7 @@ pub fn open(location: String) -> Result<crate::localpath::LocalPath> {
         yggdryl_core::Uri::from_str(&location).map_err(|e| Error::from_reason(e.to_string()))?;
     match uri.scheme() {
         "file" | "" => Ok(crate::localpath::LocalPath {
-            inner: yggdryl_core::LocalPath::open(uri.path()),
+            inner: yggdryl_core::LocalPath::from_uri(&uri),
         }),
         other => Err(Error::from_reason(format!(
             "no local Io handle for scheme {other:?}; use HttpSession for http/https"

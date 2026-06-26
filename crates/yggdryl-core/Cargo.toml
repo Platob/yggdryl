@@ -36,13 +36,19 @@ harness = false
 #   log    structured logging via the `log` facade;
 #   mmap   memory-mapped, zero-copy local files in `LocalPath` (memmap2);
 #   json   `Io::json()` — a zero-copy parse of a handle's bytes (serde_json);
+#   serde  `Serialize` / `Deserialize` for every value type (string-based);
 #   gzip / zstd / snappy   the matching streamed compression backend.
 log = { version = "0.4", optional = true }
 memmap2 = { version = "0.9", optional = true }
+serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.13", optional = true }
 snap = { version = "1", optional = true }
+
+[dev-dependencies]
+# Round-trip the `serde` impls through a concrete format in the tests.
+serde_json = { version = "1" }
 
 [features]
 # The common compression codecs ship on by default; opt out with
@@ -57,6 +63,10 @@ mmap = ["dep:memmap2"]
 # `Io` / `Path` / compression layers.
 media = []
 json = ["dep:serde_json"]
+# `Serialize` / `Deserialize` for every value type. Each renders to its canonical
+# string (a `Url` is `"https://…"`, a `MimeType` is `"image/png"`); the plain
+# enums / structs (`Mode`, `Whence`, `Kind`, `IoStats`, `Signature`) derive.
+serde = ["dep:serde"]
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
 snappy = ["dep:snap"]

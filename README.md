@@ -65,11 +65,18 @@ Two crates: **`yggdryl-core`** (all the data types + byte IO + compression) and
 | **`url`** | `Uri` / `Url` (RFC 3986) with query CRUD and inferred media types |
 | **`media`** | `MimeType` / `MediaType` from extension or magic bytes |
 | **`version`** | a standalone `Version` type |
-| `encoding` / `mapping` / `output` | dependency-free foundations (`ToOutput`, `Mapping`/`Params`, percent-encoding) |
+| `encoding` / `mapping` | dependency-free foundations (`Mapping`/`Params`, percent-encoding) |
 
 **`yggdryl-http`** — a `requests`-like blocking client built on `yggdryl-core`:
 pooling, retries with resume-on-drop, a **seekable** response body, `send_many`,
-cookies, redirects.
+cookies, redirects. A process-wide **shared session** (`HttpSession::shared()`)
+backs module-level `get` / `post` / … verbs, the `requests.get(...)` equivalent
+(in Python and Node too).
+
+**Serialization** — every value type is serializable, idiomatically per language:
+an optional `serde` feature in Rust (a `Url` is `"https://…"`, a `MediaType` an
+array of MIME strings), `pickle` / `copy` in Python, and `toJSON()` / `fromJSON()`
+in Node.
 
 Bindings live under `bindings/python` (PyO3 + maturin → `import yggdryl`) and
 `bindings/node` (napi-rs → `require('yggdryl')`). Every type is built with

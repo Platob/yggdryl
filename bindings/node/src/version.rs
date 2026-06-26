@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{ToOutput, Version as CoreVersion};
+use yggdryl_core::Version as CoreVersion;
 
 use crate::to_mapping;
 
@@ -117,5 +117,18 @@ impl Version {
     #[napi(js_name = "toString")]
     pub fn to_string_js(&self) -> String {
         self.inner.to_string()
+    }
+
+    /// Serialise to JSON as the canonical `"major.minor.patch"` string (used by
+    /// `JSON.stringify`). `fromJSON` is the inverse.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> String {
+        self.inner.to_string()
+    }
+
+    /// Reconstruct from the value produced by `toJSON`.
+    #[napi(factory, js_name = "fromJSON")]
+    pub fn from_json(value: String) -> Result<Self> {
+        Version::from_str(value)
     }
 }

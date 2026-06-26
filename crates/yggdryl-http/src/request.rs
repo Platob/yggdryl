@@ -6,6 +6,7 @@ use yggdryl_core::Url;
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
+use crate::version::HttpVersion;
 
 /// The body carried by an [`HttpRequest`].
 pub(crate) enum Body {
@@ -53,6 +54,9 @@ pub struct HttpRequest {
     /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
     /// request (default `true`).
     pub(crate) allow_redirect: bool,
+    /// The pinned HTTP protocol version for this request, or `None` to inherit the
+    /// session's [`http_version`](crate::HttpSession::http_version).
+    pub(crate) http_version: Option<HttpVersion>,
 }
 
 impl HttpRequest {
@@ -66,6 +70,7 @@ impl HttpRequest {
             headers: HttpHeaders::new(),
             body: Body::Empty,
             allow_redirect: true,
+            http_version: None,
         })
     }
 
@@ -77,6 +82,7 @@ impl HttpRequest {
             headers: HttpHeaders::new(),
             body: Body::Empty,
             allow_redirect: true,
+            http_version: None,
         }
     }
 
@@ -165,6 +171,15 @@ impl HttpRequest {
         self
     }
 
+    /// Pins the HTTP protocol [`version`](HttpVersion) for this request, overriding
+    /// the session's default. [`send`](crate::HttpSession::send) errors with
+    /// [`HttpError::Unsupported`] if the pinned version has no wired transport (e.g.
+    /// [`Http2`](HttpVersion::Http2) today) rather than silently downgrading.
+    pub fn with_http_version(mut self, http_version: HttpVersion) -> HttpRequest {
+        self.http_version = Some(http_version);
+        self
+    }
+
     /// The request method.
     pub fn method(&self) -> Method {
         self.method
@@ -184,5 +199,12 @@ impl HttpRequest {
     /// request.
     pub fn allow_redirect(&self) -> bool {
         self.allow_redirect
+    }
+
+    /// The pinned HTTP protocol [`version`](HttpVersion) for this request, or
+    /// `None` when it inherits the session's
+    /// [`http_version`](crate::HttpSession::http_version).
+    pub fn http_version(&self) -> Option<HttpVersion> {
+        self.http_version
     }
 }

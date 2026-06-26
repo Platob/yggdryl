@@ -394,6 +394,13 @@ impl Io for HttpStream {
         }
         let count = self.read_live(buf)?;
         if count == 0 {
+            // A clean EOF while a known-size body still has bytes outstanding is a
+            // truncated response (the peer closed mid-body) — surface it rather
+            // than silently returning a short body. An unknown-size body (size
+            // `None`) ends normally here.
+            if self.remaining().is_some_and(|left| left > 0) {
+                return Err(IoError::UnexpectedEof);
+            }
             self.on_eof();
             return Ok(0);
         }
@@ -433,6 +440,11 @@ impl Io for HttpStream {
             let count = self.read_live(&mut out[base..])?;
             out.truncate(base + count);
             if count == 0 {
+                // A clean EOF with bytes still outstanding on a known-size body is
+                // a truncated response — error rather than returning short.
+                if self.remaining().is_some_and(|left| left > 0) {
+                    return Err(IoError::UnexpectedEof);
+                }
                 self.on_eof();
                 break;
             }

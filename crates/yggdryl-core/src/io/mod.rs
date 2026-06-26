@@ -100,6 +100,7 @@ impl From<std::io::Error> for IoError {
 /// Where a [`Io::seek`] offset is measured from, mirroring the `whence` values
 /// of Python's `io` module (`SEEK_SET` / `SEEK_CUR` / `SEEK_END`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Whence {
     /// From the start of the buffer (`0`).
     #[default]
@@ -118,6 +119,7 @@ pub enum Whence {
 /// [`Read`](Mode::Read), `r+` → [`ReadWrite`](Mode::ReadWrite), `ab` →
 /// [`Append`](Mode::Append).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Mode {
     /// Read only (`r`, `rb`, `read`).
     #[default]
@@ -194,6 +196,7 @@ impl fmt::Display for Mode {
 /// What a resource is, as reported by [`IoStats::kind`]: absent, a regular file,
 /// a directory, or some other filesystem entry.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Kind {
     /// The resource does not exist (or could not be reached).
     Missing,
@@ -230,6 +233,7 @@ impl fmt::Display for Kind {
 /// anything expensive (`media_type`, under the `media` feature) is discovered
 /// only on demand — see [`Io::media_type`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IoStats {
     kind: Kind,
     size: u64,
@@ -524,9 +528,11 @@ pub trait Io: fmt::Debug + Send + Sync {
                     }
                 }
             }
-            // Restore first, then apply the cursor policy below.
-            self.seek(saved as i64, Whence::Start)?;
+            // Restore the cursor, but surface the original read error first: a
+            // failed restore must never mask the real read failure.
+            let restored = self.seek(saved as i64, Whence::Start);
             outcome?;
+            restored?;
             filled
         };
         // Only a cursor-relative read moves the cursor; positional reads do not.
@@ -564,13 +570,17 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// returning how many were read. A memory-resident handle hands over its tail
     /// in one copy; otherwise it streams in 1 MiB chunks.
     fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
-        if self.as_slice().is_some() {
-            let copied = {
-                let all = self.as_slice().unwrap();
+        // Probe the slice once (the match arm scopes the borrow so the trailing
+        // `seek` can take `&mut self`).
+        let fast = match self.as_slice() {
+            Some(all) => {
                 let start = (self.stream_position() as usize).min(all.len());
                 out.extend_from_slice(&all[start..]);
-                all.len() - start
-            };
+                Some(all.len() - start)
+            }
+            None => None,
+        };
+        if let Some(copied) = fast {
             self.seek(0, Whence::End)?;
             return Ok(copied);
         }
@@ -633,17 +643,20 @@ pub trait Io: fmt::Debug + Send + Sync {
     /// [`write_all`](Io::write_all) (zero intermediate copies); otherwise it streams
     /// in 1 MiB chunks. See also the free [`copy`] function.
     fn copy_to(&mut self, dst: &mut dyn Io) -> Result<u64, IoError> {
-        if self.as_slice().is_some() {
-            // Fast path: hand the remaining slice straight to the sink, then
-            // advance our cursor to the end. The inner block scopes the borrow of
-            // `self` so the trailing `seek` can take `&mut self`.
-            let copied = {
-                let all = self.as_slice().unwrap();
+        // Fast path: hand the remaining slice straight to the sink (zero
+        // intermediate copies). The match arm scopes the `&self` borrow so the
+        // trailing `seek` can take `&mut self`; the slice is probed only once.
+        let fast = match self.as_slice() {
+            Some(all) => {
                 let start = self.stream_position().min(all.len() as u64) as usize;
                 let tail = &all[start..];
+                let copied = tail.len() as u64;
                 dst.write_all(tail)?;
-                tail.len() as u64
-            };
+                Some(copied)
+            }
+            None => None,
+        };
+        if let Some(copied) = fast {
             log_event!(trace, "Io::copy_to fast path, {copied} bytes");
             self.seek(0, Whence::End)?;
             return Ok(copied);
@@ -728,7 +741,7 @@ pub fn register_scheme(scheme: &str, opener: SchemeOpener) {
 pub fn from_uri(uri: &Uri) -> Result<Box<dyn Io>, IoError> {
     let scheme = uri.scheme().to_ascii_lowercase();
     match scheme.as_str() {
-        "file" | "" => Ok(Box::new(LocalPath::open(uri.path()))),
+        "file" | "" => Ok(Box::new(LocalPath::from_uri(uri))),
         "mem" => Err(IoError::Unsupported(
             "mem:// handles cannot be reopened from a URL — keep the BytesIO".to_string(),
         )),
@@ -1006,11 +1019,76 @@ mod tests {
     fn bytesio_write_overwrites_and_zero_fills() {
         let mut io = BytesIO::from_bytes(b"abc".to_vec());
         io.seek(1, Whence::Start).unwrap();
-        assert_eq!(io.write(b"XY"), 2);
+        assert_eq!(io.write(b"XY").unwrap(), 2);
         assert_eq!(io.getvalue(), b"aXY");
         io.seek(5, Whence::Start).unwrap();
-        io.write(b"Z");
+        io.write(b"Z").unwrap();
         assert_eq!(io.getvalue(), b"aXY\0\0Z");
+    }
+
+    #[test]
+    fn bytesio_write_grows_amortized_overlap_append_and_empty() {
+        // A spanning write overwrites the overlap in place and appends the tail
+        // (the appended region is written once, never zero-filled then overwritten).
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(2, Whence::Start).unwrap();
+        assert_eq!(io.write(b"CDEF").unwrap(), 4);
+        assert_eq!(io.getvalue(), b"abCDEF");
+        // Pure append from the end grows the buffer.
+        assert_eq!(io.write(b"gh").unwrap(), 2);
+        assert_eq!(io.getvalue(), b"abCDEFgh");
+        // A write fully within the buffer only overwrites (no growth).
+        io.seek(0, Whence::Start).unwrap();
+        let cap_before = io.capacity();
+        io.write(b"AB").unwrap();
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+        assert_eq!(io.capacity(), cap_before);
+        // An empty write is a no-op — within the buffer it changes nothing…
+        io.seek(2, Whence::Start).unwrap();
+        let cap = io.capacity();
+        assert_eq!(io.write(b"").unwrap(), 0);
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+        assert_eq!(io.capacity(), cap);
+        assert_eq!(io.tell(), 2);
+        // …and even when seeked past the end it must NOT grow/zero-fill the buffer
+        // (matching Python's BytesIO).
+        io.seek(100, Whence::Start).unwrap();
+        assert_eq!(io.write(b"").unwrap(), 0);
+        assert_eq!(io.getvalue(), b"ABCDEFgh");
+    }
+
+    #[test]
+    fn bytesio_empty_pwrite_is_a_noop_and_preserves_the_cursor() {
+        let mut io = BytesIO::from_bytes(b"abcdef".to_vec());
+        io.seek(3, Whence::Start).unwrap();
+        // A positional empty pwrite writes nothing and leaves the cursor put.
+        assert_eq!(io.pwrite(b"", 1, Whence::Start).unwrap(), 0);
+        assert_eq!(io.getvalue(), b"abcdef");
+        assert_eq!(io.stream_position(), 3);
+        // A past-the-end positional empty pwrite does not grow the buffer either.
+        assert_eq!(io.pwrite(b"", 50, Whence::Start).unwrap(), 0);
+        assert_eq!(io.getvalue(), b"abcdef");
+        assert_eq!(io.stream_position(), 3);
+    }
+
+    #[test]
+    fn bytesio_write_far_past_end_errors_without_huge_alloc() {
+        // Seeking to a legal-but-astronomical position then writing must not try to
+        // resize the buffer to exabytes (abort) — it errors instead.
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(i64::MAX, Whence::Start).unwrap();
+        assert!(matches!(io.write(b"x"), Err(IoError::Invalid(_))));
+        // The same guard applies to a positional pwrite at a huge offset.
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        assert!(matches!(
+            io.pwrite(b"x", i64::MAX, Whence::Start),
+            Err(IoError::Invalid(_))
+        ));
+        // A modest past-end write still works (zero-fills the gap).
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        io.seek(5, Whence::Start).unwrap();
+        assert_eq!(io.write(b"Z").unwrap(), 1);
+        assert_eq!(io.getvalue(), b"abc\0\0Z");
     }
 
     #[test]
@@ -1026,7 +1104,7 @@ mod tests {
     fn bytesio_truncate_and_clear() {
         let mut io = BytesIO::from_bytes(b"abcdef".to_vec());
         io.seek(3, Whence::Start).unwrap();
-        assert_eq!(io.truncate(None), 3);
+        assert_eq!(io.truncate(None).unwrap(), 3);
         assert_eq!(io.getvalue(), b"abc");
         io.clear();
         assert!(io.is_empty());
@@ -1104,13 +1182,13 @@ mod tests {
         assert!(io.capacity() >= 128);
 
         // truncate grows (zero-fills) and shrinks via the Io trait.
-        io.write(b"abc");
+        io.write(b"abc").unwrap();
         Io::truncate(&mut io, 5).unwrap();
         assert_eq!(io.getvalue(), b"abc\0\0");
         Io::truncate(&mut io, 2).unwrap();
         assert_eq!(io.getvalue(), b"ab");
         // The inherent (Python-facing) truncate also grows now.
-        assert_eq!(io.truncate(Some(4)), 4);
+        assert_eq!(io.truncate(Some(4)).unwrap(), 4);
         assert_eq!(io.getvalue(), b"ab\0\0");
 
         // A read-only handle reports both as unsupported.
@@ -1122,6 +1200,22 @@ mod tests {
         assert!(matches!(
             Io::truncate(&mut ro, 0),
             Err(IoError::Unsupported(_))
+        ));
+
+        // A grow past the addressable range errors instead of aborting on the
+        // allocation (the sibling of the write-extent guard).
+        let mut huge = BytesIO::new();
+        assert!(matches!(
+            Io::truncate(&mut huge, u64::MAX),
+            Err(IoError::Invalid(_))
+        ));
+        assert!(matches!(
+            huge.truncate(Some(usize::MAX)),
+            Err(IoError::Invalid(_))
+        ));
+        assert!(matches!(
+            huge.reserve_capacity(usize::MAX),
+            Err(IoError::Invalid(_))
         ));
     }
 
@@ -1147,6 +1241,29 @@ mod tests {
         assert_eq!(copy(&mut src, &mut dst).unwrap(), 5);
         assert_eq!(dst.getvalue(), b"world");
         assert_eq!(Io::stream_position(&src), 11);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn io_enums_and_stats_serde_round_trip() {
+        for mode in [Mode::Read, Mode::Write, Mode::Append, Mode::ReadWrite] {
+            let json = serde_json::to_string(&mode).unwrap();
+            assert_eq!(serde_json::from_str::<Mode>(&json).unwrap(), mode);
+        }
+        for whence in [Whence::Start, Whence::Current, Whence::End] {
+            let json = serde_json::to_string(&whence).unwrap();
+            assert_eq!(serde_json::from_str::<Whence>(&json).unwrap(), whence);
+        }
+        for kind in [Kind::Missing, Kind::File, Kind::Directory, Kind::Other] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(serde_json::from_str::<Kind>(&json).unwrap(), kind);
+        }
+        let stats = IoStats::new(42)
+            .with_kind(Kind::File)
+            .with_content_type("text/csv")
+            .with_etag("abc");
+        let json = serde_json::to_string(&stats).unwrap();
+        assert_eq!(serde_json::from_str::<IoStats>(&json).unwrap(), stats);
     }
 
     #[test]
@@ -1734,6 +1851,20 @@ mod tests {
         handle.read_to_end(&mut buf).unwrap();
         assert_eq!(buf, b"hi");
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn local_path_from_uri_folds_windows_drive_authority() {
+        // `file://C:/dir/file` parses the drive `C:` as the authority; fold it
+        // back into the location so the drive letter is not lost.
+        let uri = Uri::from_str("file://C:/dir/file").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "C:/dir/file");
+        // A well-formed `file:///C:/dir/file` keeps the leading-slash drive path.
+        let uri = Uri::from_str("file:///C:/dir/file").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "/C:/dir/file");
+        // A POSIX path (empty authority) is opened unchanged.
+        let uri = Uri::from_str("file:///tmp/x").unwrap();
+        assert_eq!(LocalPath::from_uri(&uri).location(), "/tmp/x");
     }
 
     #[test]

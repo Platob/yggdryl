@@ -11,8 +11,8 @@ use crate::Url;
 ///
 /// A `BytesIO` owns a [`Vec<u8>`] and a `position` cursor; [`seek`](BytesIO::seek)
 /// / [`tell`](BytesIO::tell) move and read that cursor, [`getvalue`](BytesIO::getvalue)
-/// borrows the whole buffer, and writes past the end zero-fill the gap (as in
-/// Python).
+/// borrows the whole buffer, and a non-empty write past the end zero-fills the gap
+/// while an empty write is a no-op (as in Python).
 ///
 /// The [`stream`](BytesIO::stream) flag governs the **Python-style** helpers
 /// [`read`](BytesIO::read) / [`read_line`](BytesIO::read_line) /
@@ -170,7 +170,11 @@ impl BytesIO {
     /// Writes `bytes` at the cursor, overwriting any overlap and extending (zero-
     /// filling any gap) as needed. Returns the count written and advances the
     /// cursor when [`stream`](BytesIO::stream).
-    pub fn write(&mut self, bytes: &[u8]) -> usize {
+    ///
+    /// Errors with [`IoError::Invalid`] when the write would extend the buffer past
+    /// the addressable range (e.g. after seeking near [`i64::MAX`] past the end),
+    /// rather than attempting a multi-exabyte allocation.
+    pub fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
         log_event!(
             trace,
             "BytesIO::write {} bytes at {}",
@@ -204,22 +208,31 @@ impl BytesIO {
 
     /// Resizes the buffer to `size` bytes (the current cursor when `None`),
     /// returning the new length. Shrinks (drops the tail) or grows (zero-fills),
-    /// leaving the cursor where it is, as in Python.
-    pub fn truncate(&mut self, size: Option<usize>) -> usize {
+    /// leaving the cursor where it is, as in Python. Errors (rather than aborting on
+    /// a giant allocation) when growing past the addressable range.
+    pub fn truncate(&mut self, size: Option<usize>) -> Result<usize, IoError> {
         let size = size.unwrap_or(self.position);
         log_event!(debug, "BytesIO::truncate to {size}");
-        self.resize(size);
-        self.buffer.len()
+        self.resize(size)?;
+        Ok(self.buffer.len())
     }
 
     /// Resizes the backing buffer to exactly `size`, growing (zero-fill) or
     /// shrinking. Shared by [`truncate`](BytesIO::truncate) and [`Io::truncate`].
-    fn resize(&mut self, size: usize) {
+    /// Caps a grow at [`isize::MAX`] (the `Vec` allocation limit), returning
+    /// [`IoError::Invalid`] rather than letting `Vec::resize` abort the process.
+    fn resize(&mut self, size: usize) -> Result<(), IoError> {
         if size > self.buffer.len() {
+            if size > isize::MAX as usize {
+                return Err(IoError::Invalid(format!(
+                    "resize to {size} bytes exceeds the addressable buffer range"
+                )));
+            }
             self.buffer.resize(size, 0);
         } else {
             self.buffer.truncate(size);
         }
+        Ok(())
     }
 
     /// Empties the buffer and resets the cursor to `0`.
@@ -232,19 +245,55 @@ impl BytesIO {
     pub fn flush(&mut self) {}
 
     /// Writes `bytes` at the cursor, zero-filling any gap and extending as needed,
-    /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write)
-    /// and [`Io::write`].
-    fn put(&mut self, bytes: &[u8], advance: bool) -> usize {
-        let start = self.position;
-        let end = start + bytes.len();
-        if self.buffer.len() < end {
-            self.buffer.resize(end, 0);
+    /// moving the cursor past them when `advance`. Shared by [`write`](BytesIO::write),
+    /// [`Io::write`] and [`Io::pwrite`].
+    ///
+    /// Guards the write extent: the cursor may be seeked arbitrarily far past the
+    /// end (a legal Python operation), so a write there would otherwise resize the
+    /// buffer to an astronomical length and abort the process. The extent is capped
+    /// at [`isize::MAX`] (the `Vec` allocation limit), returning [`IoError::Invalid`].
+    ///
+    /// Growth is **amortized** and never redundantly zero-filled: the bytes that
+    /// extend past the end are appended with [`Vec::extend_from_slice`] (which grows
+    /// the capacity geometrically, like `push`), so a sequence of appends is `O(n)`
+    /// overall and the freshly-grown region is written once — not memset to zero and
+    /// then overwritten. Only a genuine gap left by seeking past the end is
+    /// zero-filled. An empty write is a no-op (it never grows the buffer, matching
+    /// Python's `BytesIO`).
+    fn put(&mut self, bytes: &[u8], advance: bool) -> Result<usize, IoError> {
+        if bytes.is_empty() {
+            return Ok(0);
         }
-        self.buffer[start..end].copy_from_slice(bytes);
+        let start = self.position;
+        let end = start
+            .checked_add(bytes.len())
+            .filter(|&end| end <= isize::MAX as usize)
+            .ok_or_else(|| {
+                IoError::Invalid(format!(
+                    "write of {} bytes at offset {start} exceeds the addressable buffer range",
+                    bytes.len()
+                ))
+            })?;
+        let len = self.buffer.len();
+        if start <= len {
+            // Overwrite the overlap with existing bytes in place, then append the
+            // remainder — growing geometrically with no zero-fill of the new region.
+            let overlap = len.min(end) - start;
+            self.buffer[start..start + overlap].copy_from_slice(&bytes[..overlap]);
+            self.buffer.extend_from_slice(&bytes[overlap..]);
+        } else {
+            // The cursor sits past the end: zero-fill only the gap `[len, start)`,
+            // then append the bytes (never zero-filling the region we then write).
+            // Reserve the whole extent up front so the gap-fill and the append grow
+            // the buffer at most once.
+            self.buffer.reserve(end - len);
+            self.buffer.resize(start, 0);
+            self.buffer.extend_from_slice(bytes);
+        }
         if advance {
             self.position = end;
         }
-        bytes.len()
+        Ok(bytes.len())
     }
 }
 
@@ -299,25 +348,30 @@ impl Io for BytesIO {
 
     /// Writes `bytes` at the cursor, advancing it — the in-memory streamed write.
     fn write(&mut self, bytes: &[u8]) -> Result<usize, IoError> {
-        Ok(self.put(bytes, true))
+        self.put(bytes, true)
     }
 
     /// Positional write into the buffer, overwriting and zero-filling as needed.
     /// [`Whence::Current`] advances the cursor; otherwise it is left put.
     fn pwrite(&mut self, bytes: &[u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
-        let start = resolve(
+        let resolved = resolve(
             self.position as u64,
             Some(self.buffer.len() as u64),
             offset,
             whence,
-        )? as usize;
+        )?;
+        // Narrow the u64 position to an index; on a 32-bit target an offset beyond
+        // the address space is an error, not a silent wraparound.
+        let start = usize::try_from(resolved).map_err(|_| {
+            IoError::Invalid(format!("offset {resolved} exceeds the addressable range"))
+        })?;
         let saved = self.position;
         self.position = start;
         let count = self.put(bytes, true);
         if !matches!(whence, Whence::Current) {
             self.position = saved;
         }
-        Ok(count)
+        count
     }
 
     /// The reserved capacity of the backing [`Vec<u8>`].
@@ -325,16 +379,31 @@ impl Io for BytesIO {
         self.buffer.capacity()
     }
 
-    /// Reserves room for `additional` more bytes in the backing buffer.
+    /// Reserves room for `additional` more bytes in the backing buffer. Errors
+    /// (rather than aborting) when the requested capacity exceeds the addressable
+    /// range.
     fn reserve_capacity(&mut self, additional: usize) -> Result<(), IoError> {
+        if self
+            .buffer
+            .len()
+            .checked_add(additional)
+            .is_none_or(|needed| needed > isize::MAX as usize)
+        {
+            return Err(IoError::Invalid(format!(
+                "reserve of {additional} bytes exceeds the addressable buffer range"
+            )));
+        }
         self.buffer.reserve(additional);
         Ok(())
     }
 
     /// Resizes the buffer to `size` bytes (grow zero-fills, shrink drops the
-    /// tail); the cursor is left where it is.
+    /// tail); the cursor is left where it is. Errors when growing past the
+    /// addressable range rather than aborting on the allocation.
     fn truncate(&mut self, size: u64) -> Result<(), IoError> {
-        self.resize(size as usize);
-        Ok(())
+        let size = usize::try_from(size).map_err(|_| {
+            IoError::Invalid(format!("truncate to {size} exceeds the addressable range"))
+        })?;
+        self.resize(size)
     }
 }

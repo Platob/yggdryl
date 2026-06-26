@@ -6,6 +6,7 @@ use crate::error::HttpError;
 
 /// An HTTP request method.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Method {
     /// `GET` — the default.
     #[default]

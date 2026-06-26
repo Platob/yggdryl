@@ -4,7 +4,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::{Mapping, ToOutput};
+use crate::Mapping;
 
 /// Error returned when [`Version`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,17 +157,39 @@ impl fmt::Display for Version {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
-impl ToOutput for Version {
-    fn to_str(&self, _encode: bool) -> String {
+/// Rendering: the inverse of the `from_str` / `from_mapping` parsers.
+impl Version {
+    /// Renders to its canonical `"major.minor.patch"` string (the `encode` flag is
+    /// irrelevant for a version).
+    pub fn to_str(&self, _encode: bool) -> String {
         self.to_string()
     }
 
-    fn to_mapping(&self) -> Mapping {
+    /// Renders to a component [`Mapping`] (`major` / `minor` / `patch`) — the
+    /// inverse of [`from_mapping`](Version::from_mapping).
+    pub fn to_mapping(&self) -> Mapping {
         Mapping::from([
             ("major".to_string(), self.major.to_string()),
             ("minor".to_string(), self.minor.to_string()),
             ("patch".to_string(), self.patch.to_string()),
         ])
+    }
+}
+
+/// Serialises as the canonical `"major.minor.patch"` string, the inverse of
+/// [`Version::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Version {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Version {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Version, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Version::from_str(&raw).map_err(serde::de::Error::custom)
     }
 }
 
@@ -277,5 +299,14 @@ mod tests {
         let m = v.to_mapping();
         assert_eq!(m.get("minor"), Some(&"4".to_string()));
         assert_eq!(Version::from_mapping(&m).unwrap(), v);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn version_serde_round_trips_as_a_string() {
+        let v = Version::new(1, 4, 2);
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"1.4.2\"");
+        assert_eq!(serde_json::from_str::<Version>(&json).unwrap(), v);
     }
 }

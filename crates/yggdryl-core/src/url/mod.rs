@@ -165,6 +165,159 @@ pub(crate) fn split_stem_ext(name: &str) -> (&str, Vec<&str>) {
     }
 }
 
+/// Anything that can be joined onto a [`Uri`] / [`Url`] path by
+/// [`Uri::join`](crate::Uri::join) / [`Url::join`](crate::Url::join): a path string
+/// (`"a/b"`, `"../x"`, `"/abs"`, used verbatim), a sequence of segments (`["a",
+/// "b"]` / `Vec<String>`, each percent-encoded and `/`-joined so a `/` *inside* an
+/// element stays one segment), or another reference (its `path()` is used).
+///
+/// The distinction that matters: a **string** is a *path* (its `/` are separators
+/// and `.`/`..` are dot-segments); a **slice element** is a single *segment* (its
+/// `/` is data and becomes `%2F`). This is the one-true-way to add a literal
+/// segment that contains a slash.
+pub trait JoinInput {
+    /// Renders this input to a single relative-reference string (segments already
+    /// `/`-joined; not yet dot-segment-resolved). Borrows when nothing changes.
+    fn to_reference(&self) -> Cow<'_, str>;
+}
+
+/// Percent-encodes each segment (a `/` inside becomes `%2F`) and `/`-joins them.
+fn encode_segments<S: AsRef<str>>(segments: &[S]) -> String {
+    segments
+        .iter()
+        .map(|segment| percent_encode(segment.as_ref()))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+impl JoinInput for str {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self)
+    }
+}
+
+impl JoinInput for String {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.as_str())
+    }
+}
+
+impl<S: AsRef<str>> JoinInput for [S] {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Owned(encode_segments(self))
+    }
+}
+
+impl<S: AsRef<str>, const N: usize> JoinInput for [S; N] {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Owned(encode_segments(self))
+    }
+}
+
+impl<S: AsRef<str>> JoinInput for Vec<S> {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Owned(encode_segments(self))
+    }
+}
+
+impl JoinInput for Uri {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.path())
+    }
+}
+
+impl JoinInput for Url {
+    fn to_reference(&self) -> Cow<'_, str> {
+        Cow::Borrowed(self.path())
+    }
+}
+
+/// A reference to a join input is itself one, so `&str`, `&[..]`, `&Vec`, `&Uri`
+/// and `&Url` all join without an explicit borrow on the value form.
+impl<T: JoinInput + ?Sized> JoinInput for &T {
+    fn to_reference(&self) -> Cow<'_, str> {
+        (**self).to_reference()
+    }
+}
+
+/// Joins `reference` onto `base` (both raw, percent-encoded paths) and resolves
+/// dot-segments (RFC 3986 §5.2). A `reference` starting with `/` replaces `base`;
+/// an empty `reference` keeps `base` (resolved); otherwise `reference` is merged
+/// after `base`'s last `/` (§5.2.3) before [`remove_dot_segments`] runs.
+/// `has_authority` enables the §5.2.3 rule that an authority-bearing base with an
+/// empty path merges as `"/" + reference` (so `http://h`.join(`b`) is `/b`,
+/// not `b`).
+pub(crate) fn join_path(base: &str, reference: &str, has_authority: bool) -> String {
+    let merged = if reference.starts_with('/') {
+        Cow::Borrowed(reference)
+    } else if reference.is_empty() {
+        Cow::Borrowed(base)
+    } else if has_authority && base.is_empty() {
+        // RFC 3986 §5.2.3: an authority with an empty base path roots the reference.
+        Cow::Owned(format!("/{reference}"))
+    } else {
+        match base.rfind('/') {
+            // Keep `base` up to and including its last '/', then append the reference.
+            Some(i) => Cow::Owned(format!("{}{reference}", &base[..=i])),
+            // A base with no '/' contributes no directory: the reference stands alone.
+            None => Cow::Borrowed(reference),
+        }
+    };
+    remove_dot_segments(&merged)
+}
+
+/// RFC 3986 §5.2.4 `remove_dot_segments`, segment-wise over the raw (percent-
+/// encoded) path. Only the complete `.` and `..` segments are removed — `.` is
+/// dropped and `..` ascends one real segment; a percent-encoded `%2E` is a real
+/// segment, not a dot-segment, and **empty segments (`//`) are preserved** (an
+/// object-store key `a//b` differs from `a/b`). Whether the path was absolute and
+/// whether it ended at a directory boundary (a trailing `/`, `/.`, `/..`) are
+/// preserved. One deliberate deviation from strict §5.2.4: a *relative* path keeps
+/// its leading `..` (`../../x` stays), since it cannot climb above an unknown base;
+/// an *absolute* path clamps `..` at the root.
+pub(crate) fn remove_dot_segments(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    // Strip the leading '/' for absolute paths: the root is re-added at the end, so
+    // the empty segment it would otherwise produce never enters the loop and a `//`
+    // elsewhere in the path is the only source of preserved empty segments.
+    let body = if absolute { &path[1..] } else { path };
+    // A path ending in a complete `.`/`..` segment denotes a directory whose
+    // trailing slash the removed segment must leave behind (a trailing `/` already
+    // carries its own empty segment, so it is not flagged here).
+    let dir_suffix = body.ends_with("/.") || body.ends_with("/..") || body == "." || body == "..";
+
+    let mut out: Vec<&str> = Vec::new();
+    for segment in body.split('/') {
+        match segment {
+            "." => continue,
+            ".." => match out.last() {
+                // A relative path may keep leading `..` (it cannot climb above an
+                // unknown base); an absolute one discards `..` at the root.
+                None => {
+                    if !absolute {
+                        out.push("..");
+                    }
+                }
+                Some(&"..") => out.push(".."),
+                Some(_) => {
+                    out.pop();
+                }
+            },
+            // Empty (`""` from `//`) and normal segments are kept verbatim.
+            other => out.push(other),
+        }
+    }
+
+    let mut result = out.join("/");
+    if absolute {
+        result.insert(0, '/');
+    }
+    if dir_suffix && !result.ends_with('/') {
+        result.push('/');
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{percent_decode, percent_encode};
@@ -645,5 +798,128 @@ mod tests {
         assert_eq!(percent_encode("safe-._~"), "safe-._~");
         assert!(percent_decode("%zz").is_err());
         assert!(percent_decode("%2").is_err());
+    }
+
+    #[test]
+    fn join_dot_segments_and_inputs() {
+        let b = Url::from_str("https://h/a/b/c").unwrap();
+
+        // 1. plain relative segment, merged at last '/'
+        assert_eq!(b.join("d").path(), "/a/b/d");
+        // 2. multi-segment relative path
+        assert_eq!(b.join("d/e").path(), "/a/b/d/e");
+        // 3. single parent
+        assert_eq!(b.join("../x").path(), "/a/x");
+        // 4. stacked parents "../../"
+        assert_eq!(b.join("../../x").path(), "/x");
+        // 5. ".." past root on an absolute path clamps at "/"
+        assert_eq!(b.join("../../../../x").path(), "/x");
+        // 6. current-dir "." is a no-op segment
+        assert_eq!(b.join("./x").path(), "/a/b/x");
+        // 7. leading '/' replaces the whole path
+        assert_eq!(b.join("/abs/y").path(), "/abs/y");
+        // 8. trailing "." yields a directory (trailing slash)
+        assert_eq!(b.join("d/.").path(), "/a/b/d/");
+        // 9. trailing ".." yields the parent as a directory
+        assert_eq!(b.join("d/..").path(), "/a/b/");
+        // 10. empty reference keeps the (resolved) base path
+        assert_eq!(b.join("").path(), "/a/b/c");
+        // 11. a base with a trailing slash appends without dropping a segment
+        assert_eq!(
+            Url::from_str("https://h/a/b/").unwrap().join("d").path(),
+            "/a/b/d"
+        );
+        // 12. internal empty segments ("//") are preserved (RFC 3986 §5.2.4 removes
+        //     only `.`/`..`; `a//b` is a distinct object-store key from `a/b`).
+        assert_eq!(b.join("d//e").path(), "/a/b/d//e");
+        // 13. array of segments is percent-encoded and '/'-joined
+        assert_eq!(b.join(["d", "e f"]).path(), "/a/b/d/e%20f");
+        // 14. a slash *inside* a slice element is data -> "%2F", one segment
+        assert_eq!(b.join(["a/b"]).path(), "/a/b/a%2Fb");
+        // 15. joining drops self's query/fragment (the location changed)
+        let withq = Url::from_str("https://h/a/b/c?k=v#f").unwrap();
+        assert_eq!(withq.join("../x").to_string(), "https://h/a/x");
+        // 16. a relative base (Uri, no leading '/') keeps leading ".." (can't climb)
+        let rel = Uri::from_str("file:a/b").unwrap(); // path "a/b"
+        assert_eq!(rel.join("../../x").path(), "../x");
+        // 17. an absolute reference with its own dot-segments still resolves
+        assert_eq!(b.join("/p/../q").path(), "/q");
+        // 18. an already-encoded segment in a string reference is not double-encoded
+        assert_eq!(b.join("a%20b").path(), "/a/b/a%20b");
+        // 19. Vec<String> form joins
+        assert_eq!(
+            b.join(vec!["x".to_string(), "y".to_string()]).path(),
+            "/a/b/x/y"
+        );
+        // 20. &[&str] slice and &Vec references work via the blanket impl
+        assert_eq!(b.join(&["d", "e"][..]).path(), "/a/b/d/e");
+        let segs = vec!["m".to_string(), "n".to_string()];
+        assert_eq!(b.join(&segs).path(), "/a/b/m/n");
+        // 21. joining against another reference uses its path
+        let other = Uri::from_str("file:../z").unwrap(); // path "../z"
+        assert_eq!(b.join(&other).path(), "/a/z");
+        // 22. authority (userinfo/host/port) is preserved across a join
+        let auth = Url::from_str("https://u:pw@h:8443/a/b/c").unwrap();
+        assert_eq!(auth.join("../x").to_string(), "https://u:pw@h:8443/a/x");
+        // 23. RFC 3986 §5.2.3: an authority-only base (empty path) roots the
+        //     reference rather than concatenating it onto the host.
+        let rootless = Url::from_str("https://h").unwrap();
+        assert_eq!(rootless.join("b").to_string(), "https://h/b");
+        assert_eq!(rootless.join("foo/bar").path(), "/foo/bar");
+        assert_eq!(rootless.join("../foo").path(), "/foo");
+        // The same rule holds for a Uri with an authority but an empty path.
+        assert_eq!(Uri::from_str("https://h").unwrap().join("b").path(), "/b");
+    }
+
+    #[test]
+    fn remove_dot_segments_unit() {
+        use super::remove_dot_segments;
+        assert_eq!(remove_dot_segments("/a/b/../c"), "/a/c");
+        assert_eq!(remove_dot_segments("/a/./b"), "/a/b");
+        assert_eq!(remove_dot_segments("/../../a"), "/a"); // absolute drops leading ..
+        assert_eq!(remove_dot_segments("../../a"), "../../a"); // relative keeps them
+        assert_eq!(remove_dot_segments("/a/b/"), "/a/b/");
+        assert_eq!(remove_dot_segments("/"), "/");
+        assert_eq!(remove_dot_segments(""), "");
+        assert_eq!(remove_dot_segments("/a/.."), "/");
+        // Empty segments ("//") are preserved (not collapsed).
+        assert_eq!(remove_dot_segments("/a//b"), "/a//b");
+        assert_eq!(remove_dot_segments("//"), "//");
+        assert_eq!(remove_dot_segments("/a//b/../c"), "/a//c");
+        // Trailing `.`/`..` leave a directory slash.
+        assert_eq!(remove_dot_segments("/a/b/."), "/a/b/");
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn uri_url_media_serde_round_trip() {
+        // A Uri / Url serialise as their encoded string and parse back.
+        let uri = Uri::from_str("https://example.com/docs?page=2#intro").unwrap();
+        let json = serde_json::to_string(&uri).unwrap();
+        assert_eq!(json, "\"https://example.com/docs?page=2#intro\"");
+        assert_eq!(serde_json::from_str::<Uri>(&json).unwrap(), uri);
+
+        let url = Url::from_str("https://user:pw@h:8443/api?v=1#t").unwrap();
+        assert_eq!(
+            serde_json::from_str::<Url>(&serde_json::to_string(&url).unwrap()).unwrap(),
+            url
+        );
+
+        // A MimeType serialises as its canonical MIME string (Other round-trips).
+        for mime in [
+            MimeType::Png,
+            MimeType::Json,
+            MimeType::Other("text/foo".into()),
+        ] {
+            let json = serde_json::to_string(&mime).unwrap();
+            assert_eq!(json, format!("\"{}\"", mime.mime()));
+            assert_eq!(serde_json::from_str::<MimeType>(&json).unwrap(), mime);
+        }
+
+        // A MediaType serialises as a sequence of MIME strings (lossless).
+        let media = MediaType::new(vec![MimeType::Csv, MimeType::Gzip]);
+        let json = serde_json::to_string(&media).unwrap();
+        assert_eq!(json, "[\"text/csv\",\"application/gzip\"]");
+        assert_eq!(serde_json::from_str::<MediaType>(&json).unwrap(), media);
     }
 }

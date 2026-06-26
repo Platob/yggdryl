@@ -278,6 +278,23 @@ impl fmt::Display for Compression {
     }
 }
 
+/// Serialises as the canonical codec name, the inverse of
+/// [`Compression::from_str`].
+#[cfg(feature = "serde")]
+impl serde::Serialize for Compression {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Compression {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Compression, D::Error> {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Compression::from_str(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Compression-aware extension methods for every [`Io`] handle: compress or
 /// decompress a handle's bytes (from its cursor) into a fresh in-memory
 /// [`BytesIO`], using [`Compression`]'s streaming codecs internally. Blanket-
@@ -529,5 +546,20 @@ mod tests {
             Compression::from_stats(&by_content),
             Some(Compression::Zstd)
         );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn compression_serde_round_trips_as_a_name() {
+        for codec in [
+            Compression::None,
+            Compression::Gzip,
+            Compression::Zstd,
+            Compression::Snappy,
+        ] {
+            let json = serde_json::to_string(&codec).unwrap();
+            assert_eq!(json, format!("\"{}\"", codec.as_str()));
+            assert_eq!(serde_json::from_str::<Compression>(&json).unwrap(), codec);
+        }
     }
 }

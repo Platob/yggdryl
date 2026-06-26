@@ -33,7 +33,10 @@ use yggdryl_http::HttpError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
-use crate::http::{HttpResponse, HttpSession};
+use crate::http::{
+    http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url,
+    HttpResponse, HttpSession,
+};
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
 use crate::media::MediaType;
@@ -149,7 +152,7 @@ fn py_open(location: &str) -> PyResult<LocalPath> {
     let uri = yggdryl_core::Uri::from_str(location).map_err(uri_err)?;
     match uri.scheme() {
         "file" | "" => Ok(LocalPath {
-            inner: yggdryl_core::LocalPath::open(uri.path()),
+            inner: yggdryl_core::LocalPath::from_uri(&uri),
         }),
         other => Err(PyValueError::new_err(format!(
             "no local Io handle for scheme {other:?}; use HttpSession for http/https"
@@ -175,5 +178,15 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
     m.add_function(wrap_pyfunction!(py_open, m)?)?;
+    // Module-level HTTP verbs backed by the shared `HttpSession` singleton,
+    // mirroring `requests.get(...)` and friends.
+    m.add_function(wrap_pyfunction!(http_get, m)?)?;
+    m.add_function(wrap_pyfunction!(http_head, m)?)?;
+    m.add_function(wrap_pyfunction!(http_delete, m)?)?;
+    m.add_function(wrap_pyfunction!(http_post, m)?)?;
+    m.add_function(wrap_pyfunction!(http_put, m)?)?;
+    m.add_function(wrap_pyfunction!(http_patch, m)?)?;
+    m.add_function(wrap_pyfunction!(http_request, m)?)?;
+    m.add_function(wrap_pyfunction!(set_base_url, m)?)?;
     Ok(())
 }

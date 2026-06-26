@@ -16,10 +16,10 @@ per type** — each concern is a module (or module directory) under
 `yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
 its concern wholly — do not scatter a concern's logic across modules:
 
-- `encoding.rs` / `mapping.rs` / `output.rs` — dependency-free foundations: the
-  `ToOutput` rendering trait, the `Mapping` / `Params` component maps and
-  percent-encoding (each type pairs these with its own inherent `from_str` /
-  `from_mapping` parsers).
+- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Mapping` /
+  `Params` component maps and percent-encoding. Each value type pairs its own
+  inherent `from_str` / `from_mapping` parsers with inherent `to_str` /
+  `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
 - `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
   types, backed by a mutable global registry of extensions/magic bytes) and the
@@ -104,9 +104,24 @@ handle. The layering, smallest to largest:
 
 Rules when extending: the `io` module builds on the `url` / `encoding` modules (for
 the universal `Io::url()`); new heavy deps are **optional features** (like `log` /
-`mmap` / `media`). A new memory-resident backend must override `as_slice` so the
-zero-copy `pread` / `copy_to` paths light up; positional reads go through `pread`
-with `Whence::Start`, never by mutating the cursor.
+`mmap` / `media` / `serde`). A new memory-resident backend must override `as_slice`
+so the zero-copy `pread` / `copy_to` paths light up; positional reads go through
+`pread` with `Whence::Start`, never by mutating the cursor.
+
+### Serialization — a cross-cutting optional concern
+
+Every value type is **serializable**, but the mechanism is idiomatic per language
+(adapt to each, keep the semantics identical). In Rust it is the off-by-default
+`serde` feature: value types with a canonical string render to **that string**
+(`Version` → `"1.4.2"`, `Url` → `"https://…"`, `MimeType` → `"image/png"`,
+`Compression` → `"gzip"`), `MediaType` to a **sequence of MIME strings**
+(lossless), and the plain enums/structs (`Mode` / `Whence` / `Kind` / `IoStats` /
+`Signature`) `derive`. The bindings surface the same: **Python** implements
+`__reduce__` (so `pickle` / `copy` reconstruct through the existing constructors),
+**Node** implements `toJSON()` + a static `fromJSON()` (used by `JSON.stringify`).
+Live/stream resources (`Io` handles, an HTTP body, `HttpSession`) are **not**
+serialised. When you add a type, add its serde impl and replicate the pickle /
+`toJSON` surface in both bindings.
 
 ### The `compression` module — streamed codecs over `Io`
 
@@ -155,7 +170,16 @@ shape:
   keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
   threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
-  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`).
+  10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). An optional
+  **`base_url`** (`with_base_url`) prefixes requests: the verb helpers run their
+  target through `resolve_url`, so a relative reference (`/path`, `name`) joins onto
+  the base (same RFC 3986 rules as a `Location` redirect) while an absolute URL is
+  used unchanged. A process-wide **shared singleton** `HttpSession::shared()` (a
+  replaceable `Arc` behind an `RwLock`, swapped by `set_shared`) backs the crate-level
+  `get`/`head`/`post`/`put`/`patch`/`delete`/`request` **module functions**, the
+  `requests.get(...)` equivalent. The bindings mirror this with module-level verbs
+  over the shared session and a `set_base_url` to configure it (Node has no `delete`
+  verb — a JS reserved word — so use `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
@@ -193,12 +217,41 @@ shape:
 - Retries cover replayable bodies (none/bytes) and all `HttpStream` range
   fetches; a streamed (reader/`Io`) request body is single-shot.
 
+- **Protocol version** (`HttpVersion`, `version.rs`) — the HTTP version is tunable:
+  pin one per session (`with_http_version`) or per request, default `Auto`. The
+  blocking `ureq` transport always covers **HTTP/1.1**; the optional `http2` feature
+  adds an async **HTTP/2** transport in `transport.rs` (hyper over a small
+  multi-threaded tokio runtime + tokio-rustls) and the optional `http3` feature an
+  async **HTTP/3-over-QUIC** transport (quinn + h3), both routed from `dispatch`
+  when a request negotiates that protocol (`https` ALPN — h2c for cleartext h2; h3
+  is TLS-only) — the response then re-joins the same redirect/cookie/retry loop, so
+  every verb works unchanged whatever the protocol. `HttpResponse::negotiated_version()`
+  reports what was actually spoken; `Auto` over TLS does a real ALPN `h2`/`http/1.1`
+  fallback. A pinned version whose transport feature is off errors with
+  `HttpError::Unsupported` rather than downgrading silently. **The async SDKs
+  (`hyper` for h2, `quinn`/`h3` for h3, sharing `tokio`/`tokio-rustls`) are
+  dependencies of the `http2`/`http3` features only**; `transport.rs` is
+  `#[cfg(any(feature = "http2", feature = "http3"))]`, so the default build stays the
+  lean blocking `ureq` client. TLS verification follows the session's `verify` flag
+  (a rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file`
+  installs custom CA certificates (PEM/DER) that **replace** the default trust store
+  across all transports (the secure alternative to `verify=false`, like `requests`'
+  `verify=<bundle>`); a proxy applies to the `ureq` h1 path.
+
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
-on the codec backends), `media` (`mime_type()`), `log`. The base depends on
+on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`
+for `Method` / `HttpVersion` / `HttpHeaders` / `Cookie` / `HttpCookies` /
+`RetryConfig`, and transitively the core value types — a live request/response body
+is deliberately not serialisable), `http2` / `http3` (the async HTTP/2 and
+HTTP/3-over-QUIC transports above), `log`. The base depends on
 `yggdryl-core`'s `json` feature so `Io::json()` is available on every handle. **All
-HTTP logic lives here; `ureq` stays a dependency of this crate only.** Tests are
-**hermetic** (a localhost `TcpListener` that serves HEAD / `Range` / 429 /
-mid-stream drops, no network). In the bindings the blocking call must not stall
+HTTP logic lives here; `ureq` stays a dependency of this crate only** (the HTTP/2
+SDKs are gated behind `http2`). Unit tests are **hermetic** (a localhost
+`TcpListener` that serves HEAD / `Range` / 429 / mid-stream drops; the h2c case runs
+a localhost hyper HTTP/2 server, and the h3 case a localhost quinn + h3 QUIC server
+with an `rcgen` self-signed cert over UDP loopback — still no network). A separate, `#[ignore]`d
+`tests/integration.rs` covers the versions and ALPN fallback against real public
+endpoints, opt-in via `--ignored` (needs direct egress; not run in CI). In the bindings the blocking call must not stall
 the host runtime: Python releases the GIL (`allow_threads`), Node runs the
 request on the libuv pool and returns a `Promise` (so Node's surface is async,
 the one idiomatic divergence from the sync Rust/Python API). Bindings pass our
@@ -246,6 +299,7 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Add/replace one parameter | `add_param(key, values, encode=true)` |
 | Query-param CRUD | `get_param` / `set_param` / `set_params` (bulk) / `remove_param` / `remove_params` (bulk) / `clear_params` |
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
+| Join a path reference | `join(reference)` on `Uri`/`Url` — RFC 3986 §5.2.4 dot-segment resolution (`./`, `../`, leading-`/` replace); `reference` is a path string (verbatim), a segment sequence (`["a","b"]`, each percent-encoded), or another `Uri`/`Url` (via the `JoinInput` trait); non-mutating, drops query/fragment |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
 | Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
 | Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |

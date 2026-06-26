@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{ToOutput, Uri as CoreUri};
+use yggdryl_core::Uri as CoreUri;
 
 use crate::media::MediaType;
 use crate::mime::MimeType;
@@ -329,5 +329,33 @@ impl Uri {
     #[napi(js_name = "toMapping")]
     pub fn to_mapping(&self) -> std::collections::HashMap<String, String> {
         self.inner.to_mapping().into_iter().collect()
+    }
+
+    /// Join a relative reference onto the path (RFC 3986 dot-segment resolution).
+    /// `reference` is a path string (`"a/b"`, `"../x"`, `"/abs"`), an array of
+    /// segments (each percent-encoded and `/`-joined), or another `Uri` (its path
+    /// is used; to join against a `Url`, pass its `.toString()`). The query and
+    /// fragment are dropped.
+    #[napi]
+    pub fn join(&self, reference: Either3<String, Vec<String>, &Uri>) -> Uri {
+        let inner = match reference {
+            Either3::A(value) => self.inner.join(value.as_str()),
+            Either3::B(segments) => self.inner.join(segments.as_slice()),
+            Either3::C(uri) => self.inner.join(&uri.inner),
+        };
+        Uri { inner }
+    }
+
+    /// Serialise to JSON as the encoded URI string (used by `JSON.stringify`).
+    /// `fromJSON` is the inverse.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> String {
+        self.inner.to_string()
+    }
+
+    /// Reconstruct from the value produced by `toJSON`.
+    #[napi(factory, js_name = "fromJSON")]
+    pub fn from_json(value: String) -> Result<Self> {
+        Uri::new(value)
     }
 }
