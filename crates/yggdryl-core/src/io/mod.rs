@@ -989,6 +989,25 @@ mod tests {
     }
 
     #[test]
+    fn bytesio_from_str_reads_a_file_else_encodes_utf8() {
+        // A string that is not a path is taken verbatim as UTF-8.
+        assert_eq!(BytesIO::from_str("héllo").getvalue(), "héllo".as_bytes());
+        assert!(BytesIO::from_str("").is_empty());
+
+        // A string that names an existing file is read in as its bytes.
+        let path = std::env::temp_dir().join("yggdryl_bytesio_from_str.bin");
+        std::fs::write(&path, b"file contents \x00\x01\x02").unwrap();
+        let io = BytesIO::from_str(path.to_str().unwrap());
+        assert_eq!(io.getvalue(), b"file contents \x00\x01\x02");
+        std::fs::remove_file(&path).ok();
+
+        // A directory is not a file, so its path is encoded literally.
+        let dir = std::env::temp_dir();
+        let dir_str = dir.to_str().unwrap();
+        assert_eq!(BytesIO::from_str(dir_str).getvalue(), dir_str.as_bytes());
+    }
+
+    #[test]
     fn bytesio_without_stream_keeps_the_cursor_fixed() {
         let mut io = BytesIO::from_bytes(b"abcdef".to_vec());
         io.set_stream(false);

@@ -18,14 +18,39 @@ pub struct BytesIO {
     pub(crate) inner: CoreBytesIO,
 }
 
+/// Constructor input: a ``str`` (an existing file is read in, else the text is
+/// UTF-8 encoded) or raw ``bytes``.
+#[derive(FromPyObject)]
+enum BytesInit {
+    Str(String),
+    Bytes(Vec<u8>),
+}
+
 #[pymethods]
 impl BytesIO {
-    /// Construct from optional ``initial`` bytes, with the cursor at the start.
-    /// ``stream`` (keyword-only, default ``True``) toggles cursor advancement.
+    /// Construct from optional ``initial`` contents — ``bytes`` taken verbatim, or
+    /// a ``str`` resolved through :meth:`from_str` (an existing file is read in,
+    /// else the text is UTF-8 encoded). ``stream`` (keyword-only, default
+    /// ``True``) toggles cursor advancement.
     #[new]
-    #[pyo3(signature = (initial = Vec::new(), *, stream = true))]
-    fn new(initial: Vec<u8>, stream: bool) -> Self {
-        let mut inner = CoreBytesIO::from_bytes(initial);
+    #[pyo3(signature = (initial = None, *, stream = true))]
+    fn new(initial: Option<BytesInit>, stream: bool) -> Self {
+        let mut inner = match initial {
+            Some(BytesInit::Str(value)) => CoreBytesIO::from_str(&value),
+            Some(BytesInit::Bytes(bytes)) => CoreBytesIO::from_bytes(bytes),
+            None => CoreBytesIO::new(),
+        };
+        inner.set_stream(stream);
+        BytesIO { inner }
+    }
+
+    /// Build from a string: if ``value`` names an existing file, read its bytes;
+    /// otherwise UTF-8-encode the string as the contents. ``stream`` (keyword-only,
+    /// default ``True``) toggles cursor advancement.
+    #[staticmethod]
+    #[pyo3(signature = (value, *, stream = true))]
+    fn from_str(value: &str, stream: bool) -> Self {
+        let mut inner = CoreBytesIO::from_str(value);
         inner.set_stream(stream);
         BytesIO { inner }
     }

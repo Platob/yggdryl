@@ -20,11 +20,26 @@ pub struct BytesIO {
 
 #[napi]
 impl BytesIO {
-    /// Construct from optional `initial` bytes, with the cursor at the start.
-    /// `stream` (default `true`) toggles cursor advancement.
+    /// Construct from optional `initial` contents — a `Buffer` taken verbatim, or a
+    /// `string` resolved through `fromStr` (an existing file is read in, else the
+    /// text is UTF-8 encoded). `stream` (default `true`) toggles cursor advancement.
     #[napi(constructor)]
-    pub fn new(initial: Option<Buffer>, stream: Option<bool>) -> Self {
-        let mut inner = CoreBytesIO::from_bytes(initial.map(|b| b.to_vec()).unwrap_or_default());
+    pub fn new(initial: Option<Either<String, Buffer>>, stream: Option<bool>) -> Self {
+        let mut inner = match initial {
+            Some(Either::A(value)) => CoreBytesIO::from_str(&value),
+            Some(Either::B(buffer)) => CoreBytesIO::from_bytes(buffer.to_vec()),
+            None => CoreBytesIO::new(),
+        };
+        inner.set_stream(stream.unwrap_or(true));
+        BytesIO { inner }
+    }
+
+    /// Build from a string: if `value` names an existing file, read its bytes;
+    /// otherwise UTF-8-encode the string as the contents. `stream` (default `true`)
+    /// toggles cursor advancement.
+    #[napi(factory, js_name = "fromStr")]
+    pub fn from_str(value: String, stream: Option<bool>) -> Self {
+        let mut inner = CoreBytesIO::from_str(&value);
         inner.set_stream(stream.unwrap_or(true));
         BytesIO { inner }
     }

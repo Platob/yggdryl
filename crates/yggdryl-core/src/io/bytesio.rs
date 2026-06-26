@@ -69,6 +69,34 @@ impl BytesIO {
         }
     }
 
+    /// Builds a buffer from a string: if `value` names an existing file its bytes
+    /// are **read in**, otherwise the string is taken **verbatim as its UTF-8
+    /// bytes**. The file-or-literal split lets a caller pass either a path or
+    /// in-line content through one entry point.
+    ///
+    /// ```
+    /// use yggdryl_core::BytesIO;
+    ///
+    /// // Not a path -> the string's own UTF-8 bytes.
+    /// assert_eq!(BytesIO::from_str("hello").getvalue(), b"hello");
+    /// ```
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> BytesIO {
+        // An existing file -> its bytes; anything else -> the string's UTF-8 bytes.
+        if std::path::Path::new(value).is_file() {
+            if let Ok(bytes) = std::fs::read(value) {
+                log_event!(
+                    debug,
+                    "BytesIO::from_str read file {value:?} ({} bytes)",
+                    bytes.len()
+                );
+                return BytesIO::from_bytes(bytes);
+            }
+        }
+        log_event!(trace, "BytesIO::from_str literal ({} bytes)", value.len());
+        BytesIO::from_bytes(value.as_bytes().to_vec())
+    }
+
     /// Opens a new in-memory handle derived from this one, recording `self` as
     /// the child's [`parent`](Io::parent) and applying `mode` and `stream`.
     ///

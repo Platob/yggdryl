@@ -3,7 +3,27 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert')
+const os = require('node:os')
+const path = require('node:path')
+const fs = require('node:fs')
 const { BytesIO } = require('..')
+
+test('fromStr reads a file else utf8-encodes', () => {
+  // A plain string is taken verbatim as UTF-8, via the constructor or fromStr.
+  assert.deepStrictEqual(new BytesIO('héllo').getValue(), Buffer.from('héllo', 'utf8'))
+  assert.deepStrictEqual(BytesIO.fromStr('héllo').getValue(), Buffer.from('héllo', 'utf8'))
+  // Buffers still work unchanged.
+  assert.deepStrictEqual(new BytesIO(Buffer.from('raw')).getValue(), Buffer.from('raw'))
+  assert.deepStrictEqual(new BytesIO().getValue(), Buffer.from(''))
+
+  // A string naming an existing file is read in as its bytes.
+  const p = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_from_str.bin`)
+  fs.writeFileSync(p, Buffer.from([0x66, 0x69, 0x6c, 0x65, 0x00, 0x01, 0x02]))
+  assert.deepStrictEqual(new BytesIO(p).getValue(), Buffer.from([0x66, 0x69, 0x6c, 0x65, 0x00, 0x01, 0x02]))
+  assert.deepStrictEqual(BytesIO.fromStr(p).getValue(), Buffer.from([0x66, 0x69, 0x6c, 0x65, 0x00, 0x01, 0x02]))
+  // stream flag still applies on the string path.
+  assert.strictEqual(new BytesIO('abc', false).stream, false)
+})
 
 test('mode and open', () => {
   const io = new BytesIO(Buffer.from('hello'))

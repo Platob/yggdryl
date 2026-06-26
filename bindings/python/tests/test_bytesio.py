@@ -8,6 +8,23 @@ import pytest
 import yggdryl
 
 
+def test_from_str_reads_file_else_utf8(tmp_path):
+    # A plain string is taken verbatim as UTF-8, via the constructor or from_str.
+    assert yggdryl.BytesIO("héllo").getvalue() == "héllo".encode()
+    assert yggdryl.BytesIO.from_str("héllo").getvalue() == "héllo".encode()
+    # bytes still work unchanged.
+    assert yggdryl.BytesIO(b"raw\x00bytes").getvalue() == b"raw\x00bytes"
+    assert yggdryl.BytesIO().getvalue() == b""
+
+    # A string naming an existing file is read in as its bytes.
+    path = tmp_path / "data.bin"
+    path.write_bytes(b"file contents \x00\x01\x02")
+    assert yggdryl.BytesIO(str(path)).getvalue() == b"file contents \x00\x01\x02"
+    assert yggdryl.BytesIO.from_str(str(path)).getvalue() == b"file contents \x00\x01\x02"
+    # stream flag still applies on the string path.
+    assert yggdryl.BytesIO("abc", stream=False).stream is False
+
+
 def test_mode_and_open():
     io = yggdryl.BytesIO(b"hello")
     assert io.mode == "r"

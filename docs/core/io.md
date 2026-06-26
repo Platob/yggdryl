@@ -91,6 +91,42 @@ fixed position.
     assert_eq!(io.url().scheme(), "mem");      // every Io has a URL
     ```
 
+## Build a `BytesIO` from a string
+
+A `BytesIO` can be built straight from a string: if it **names an existing file**
+its bytes are read in, otherwise the string is taken **verbatim as UTF-8** content.
+The constructors accept a string or raw bytes; `from_str` is the explicit named
+form (Rust only constructs from a string this way — `from_bytes` is the bytes form).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    yggdryl.BytesIO("hello").getvalue()             # b"hello" (UTF-8 of the text)
+    yggdryl.BytesIO.from_str("data.csv").getvalue() # the file's bytes, if it exists
+    yggdryl.BytesIO(b"\x00\x01").getvalue()         # raw bytes, unchanged
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { BytesIO } = require("yggdryl");
+
+    new BytesIO("hello").getValue();             // Buffer "hello" (UTF-8 of the text)
+    BytesIO.fromStr("data.csv").getValue();      // the file's bytes, if it exists
+    new BytesIO(Buffer.from([0, 1])).getValue(); // raw bytes, unchanged
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::BytesIO;
+
+    assert_eq!(BytesIO::from_str("hello").getvalue(), b"hello"); // UTF-8 of the text
+    // BytesIO::from_str("data.csv") reads the file's bytes when it exists.
+    ```
+
 ## Random access — read a footer with `pread`
 
 `pread` reads at an offset without moving the cursor, so a footer or a column
