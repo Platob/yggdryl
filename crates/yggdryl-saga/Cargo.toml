@@ -19,10 +19,15 @@ path = "src/lib.rs"
 # crate is Arrow-native (the schema types convert to/from `arrow-schema` at zero
 # cost); opt out with `default-features = false` for a dependency-free type system
 # that still parses, renders and compares schemas.
-#   arrow  zero-copy conversions to/from `arrow-schema`'s DataType / Field;
-#   serde  `Serialize` / `Deserialize` for every schema type (structural, lossless);
-#   log    structured logging via the `log` facade.
+#   arrow      zero-copy conversions to/from `arrow-schema`'s DataType / Field;
+#   dataframe  the eager Arrow-backed `DataFrame` / `ArrayColumn` (RecordBatch +
+#              array/select/cast kernels);
+#   serde      `Serialize` / `Deserialize` for every schema type (structural, lossless);
+#   log        structured logging via the `log` facade.
 arrow-schema = { version = "59", optional = true }
+arrow-array = { version = "59", optional = true }
+arrow-select = { version = "59", optional = true }
+arrow-cast = { version = "59", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 log = { version = "0.4", optional = true }
 
@@ -33,7 +38,10 @@ serde_json = "1"
 [features]
 # Arrow conversions are on by default; drop them for a pure-Rust, dependency-free
 # build (`default-features = false`).
-default = ["arrow"]
+default = ["arrow", "dataframe"]
 arrow = ["dep:arrow-schema"]
+# The eager Arrow-backed frame engine; implies `arrow` and pulls the columnar
+# kernels (array / select / cast).
+dataframe = ["arrow", "dep:arrow-array", "dep:arrow-select", "dep:arrow-cast"]
 serde = ["dep:serde"]
 log = ["dep:log"]

@@ -49,8 +49,11 @@ backing will satisfy, so eager and lazy implementations share one surface:
   its column's type, so `Frame::filter` can **push it down** into typed storage
   (`ParquetFrame`, `CsvFrame`).
 
-The concrete eager/lazy frame implementations are intentionally **not built yet** —
-this layer nails the shared contract (and the typed-pushdown machinery) first.
+The first concrete backing is built: the eager, Arrow-`RecordBatch`-backed
+`DataFrame` / `ArrayColumn` (the on-by-default `dataframe` feature). Projection and
+row-slicing are zero-copy, and `filter` types the predicate's literals against the
+schema before evaluating it. A lazy frame and file sources (`ParquetFrame`,
+`CsvFrame`) come next.
 
 Every value type pairs a canonical-string `from_str` / `to_str` round-trip with, under
 the on-by-default `arrow` feature, infallible `to_arrow()` / `from_arrow()`

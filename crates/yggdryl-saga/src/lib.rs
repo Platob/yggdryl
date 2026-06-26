@@ -27,6 +27,11 @@
 //! - [`Frame`] — a tabular frame: `select` / `filter` / column access over a
 //!   common [`Schema`], whether the rows are in memory or still a plan.
 //!
+//! The first concrete backing (the on-by-default `dataframe` feature) is the eager,
+//! Arrow-`RecordBatch`-backed [`DataFrame`] / [`ArrayColumn`]: projection and
+//! row-slicing are zero-copy, and `filter` types the predicate's literals against
+//! the schema before evaluating it.
+//!
 //! …and the **filtering layer** they consume:
 //!
 //! - [`Scalar`] — a typed literal; [`cast`](Scalar::cast) types an untyped
@@ -80,6 +85,11 @@ mod scalar;
 mod column;
 mod frame;
 
+#[cfg(feature = "dataframe")]
+mod array_column;
+#[cfg(feature = "dataframe")]
+mod dataframe;
+
 pub use datatype::{
     DataType, DataTypeError, IntervalUnit, LogicalType, NestedType, PrimitiveType, TimeUnit,
     UnionMode,
@@ -94,3 +104,8 @@ pub use scalar::Scalar;
 
 pub use column::{Column, ColumnError};
 pub use frame::{Frame, FrameError, FrameHandle};
+
+#[cfg(feature = "dataframe")]
+pub use array_column::ArrayColumn;
+#[cfg(feature = "dataframe")]
+pub use dataframe::DataFrame;
