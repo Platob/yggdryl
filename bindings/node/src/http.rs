@@ -33,6 +33,17 @@ fn shared_session() -> Arc<CoreHttpSession> {
     CoreHttpSession::shared()
 }
 
+/// The shared per-host session for a request `data`'s URL host (the singleton a
+/// prebuilt request / response dispatches through when no session is given,
+/// mirroring the Rust core's `HttpRequest::send`). Falls back to the global shared
+/// session if the URL cannot be parsed.
+fn host_session(data: &RequestData) -> Arc<CoreHttpSession> {
+    match CoreUrl::from_str(&data.url) {
+        Ok(url) => CoreHttpSession::shared_for(url.host()),
+        Err(_) => shared_session(),
+    }
+}
+
 /// Builds a [`RequestTask`] from the full set of verb arguments, parsing the
 /// JS-typed inputs (method, HTTP version, basic-auth pair). The single place every
 /// verb — instance and module-level — turns its signature args into a task.
@@ -314,13 +325,13 @@ impl HttpRequest {
         self.data.http_version.clone()
     }
 
-    /// Dispatch this request through the process-wide shared session, returning a
-    /// `Promise<HttpResponse>`. `raiseError` (default `true`) rejects on a 4xx/5xx
-    /// status.
+    /// Dispatch this request through the shared per-host session (the singleton for
+    /// the request URL's host), returning a `Promise<HttpResponse>`. `raiseError`
+    /// (default `true`) rejects on a 4xx/5xx status.
     #[napi(js_name = "send")]
     pub fn send_request(&self, raise_error: Option<bool>) -> Result<AsyncTask<RequestTask>> {
         self.data
-            .task(shared_session(), raise_error.unwrap_or(true))
+            .task(host_session(&self.data), raise_error.unwrap_or(true))
     }
 
     /// An independent copy of this request.
@@ -508,14 +519,14 @@ impl HttpResponse {
         self.request.clone().map(|data| HttpRequest { data })
     }
 
-    /// Dispatch this response's `request` through the shared session, returning a
-    /// `Promise<HttpResponse>` — how an **unsent** response (a verb called with
-    /// `send=false`) is sent later. `raiseError` (default `true`) rejects on a
-    /// 4xx/5xx status.
+    /// Dispatch this response's `request` through the shared per-host session,
+    /// returning a `Promise<HttpResponse>` — how an **unsent** response (a verb
+    /// called with `send=false`) is sent later. `raiseError` (default `true`) rejects
+    /// on a 4xx/5xx status.
     #[napi(js_name = "send")]
     pub fn send_response(&self, raise_error: Option<bool>) -> Result<AsyncTask<RequestTask>> {
         match &self.request {
-            Some(data) => data.task(shared_session(), raise_error.unwrap_or(true)),
+            Some(data) => data.task(host_session(data), raise_error.unwrap_or(true)),
             None => Err(Error::from_reason(
                 "this response carries no request to send",
             )),
@@ -627,8 +638,15 @@ impl HttpResponse {
     }
 
     /// The raw response body as a native `Buffer` (already decompressed). This is a
-    /// **cheap ref-counted clone** of the one buffer drained at receive time — the
-    /// payload bytes are not copied again — so reading it (repeatedly) is free.
+    /// **cheap ref-counted view** of the one buffer drained at receive time — the
+    /// payload bytes are not copied again, so reading it (repeatedly) is free.
+    ///
+    /// Because it is a view, every `content` read (and `text` / `json` / `io`) shares
+    /// the same memory: **do not mutate the returned `Buffer` in place** — that would
+    /// corrupt the other accessors. Copy it first (`Buffer.from(res.content)`) if you
+    /// need a mutable, independent buffer. (Python's `content` returns an independent
+    /// immutable `bytes`, so this caveat is Node-only — `Buffer` is mutable where
+    /// `bytes` is not.)
     #[napi(getter)]
     pub fn content(&self) -> Buffer {
         self.body.clone()

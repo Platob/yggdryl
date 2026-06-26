@@ -442,8 +442,12 @@ impl Io for HttpResponse {
         self.body.as_slice()
     }
 
+    /// The response's layered media type — the **inherent**
+    /// [`media_type`](HttpResponse::media_type) (combining `Content-Type` with
+    /// `Content-Encoding`), so reading it through `dyn Io` agrees with the direct
+    /// accessor rather than seeing only the body stream's `Content-Type`.
     #[cfg(feature = "media")]
     fn media_type(&self) -> Option<yggdryl_core::MediaType> {
-        self.body.media_type()
+        HttpResponse::media_type(self)
     }
 }

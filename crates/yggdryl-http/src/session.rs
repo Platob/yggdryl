@@ -29,6 +29,12 @@ use crate::version::HttpVersion;
 /// [`with_read_timeout`](HttpSession::with_read_timeout) for genuinely slow endpoints.
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The cap on the per-host [`shared_for`](HttpSession::shared_for) registry: once it
+/// grows past this many hosts, idle entries (referenced only by the registry) are
+/// evicted before a new host is added, so a many-host workload cannot leak sessions
+/// and their pools without bound.
+const MAX_HOST_SESSIONS: usize = 256;
+
 /// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
 /// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
 /// (`max_redirects(0)`) so the 3xx surfaces to our [`redirect`](crate::redirect)
@@ -333,8 +339,19 @@ impl HttpSession {
     /// [`Io`](yggdryl_core::Io) factory, and the session a returned
     /// [`HttpResponse`] carries — [`HttpResponse::session`](crate::HttpResponse::session)).
     /// An empty `host` falls back to the global [`shared`](HttpSession::shared)
-    /// session. Each per-host session is a fresh default client (its own pool and
-    /// cookie jar).
+    /// session.
+    ///
+    /// Each per-host session **inherits the global [`shared`](HttpSession::shared)
+    /// session's configuration** (default headers, auth, TLS `verify` / CA certs,
+    /// proxy, retry, redirects, protocol version and a cookie-jar snapshot — via
+    /// [`copy`](HttpSession::copy)) at the moment it is first created, with its own
+    /// connection pool. So configuring the shared session up front (e.g.
+    /// [`set_shared`](HttpSession::set_shared) with a default auth header or custom
+    /// CA) propagates to per-host sessions; a `set_shared` *after* a host session
+    /// already exists does not retro-apply. The registry is **bounded**: when it
+    /// grows past [`MAX_HOST_SESSIONS`] the idle entries (those no live response or
+    /// request still references) are evicted, so a many-host workload cannot leak
+    /// sessions/pools without bound.
     pub fn shared_for(host: &str) -> Arc<HttpSession> {
         if host.is_empty() {
             return HttpSession::shared();
@@ -345,11 +362,32 @@ impl HttpSession {
             return session.clone();
         }
         let mut sessions = registry.write().expect("host sessions poisoned");
-        // Re-check under the write lock so two racing callers share one session.
-        sessions
-            .entry(key)
-            .or_insert_with(|| Arc::new(HttpSession::new()))
-            .clone()
+        if let Some(session) = sessions.get(&key) {
+            // Another caller created it between dropping the read lock and acquiring
+            // the write lock — share theirs.
+            return session.clone();
+        }
+        // Bound the registry: before adding a new host, drop the idle entries (kept
+        // alive only by the map itself, strong_count == 1) once over the cap, so a
+        // many-host workload reuses warm sessions without growing without limit.
+        if sessions.len() >= MAX_HOST_SESSIONS {
+            sessions.retain(|_, session| Arc::strong_count(session) > 1);
+        }
+        // Seed each per-host session from the global shared config (its own pool).
+        let session = Arc::new(HttpSession::shared().copy());
+        sessions.insert(key, session.clone());
+        session
+    }
+
+    /// Discards all cached per-host [`shared_for`](HttpSession::shared_for) sessions
+    /// (closing their pools); the next [`shared_for`](HttpSession::shared_for) for a
+    /// host rebuilds it from the current [`shared`](HttpSession::shared) config. Use
+    /// after reconfiguring the shared session, or to release pooled connections.
+    pub fn clear_host_sessions() {
+        HttpSession::host_registry()
+            .write()
+            .expect("host sessions poisoned")
+            .clear();
     }
 
     /// The per-host shared-session registry (`host` → pooled singleton), backing
@@ -1105,7 +1143,9 @@ impl HttpSession {
         if let Some(sent_at) = sent_at {
             response.set_sent_at(sent_at);
         }
-        response.set_session(HttpSession::shared_for(response.url().host()));
+        // Key the attached session on the *origin* request's host (the request the
+        // response carries and will re-send), not the post-redirect final host.
+        response.set_session(HttpSession::shared_for(origin.url().host()));
         response.set_request(origin.copy());
         let status = response.status();
         if raise_error && status >= 400 {

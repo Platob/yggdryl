@@ -204,6 +204,43 @@ fn responses_share_one_session_per_host() {
 }
 
 #[test]
+fn clear_host_sessions_drops_the_cached_per_host_sessions() {
+    let first = HttpSession::shared_for("clearme.example");
+    // Reused while cached.
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &HttpSession::shared_for("clearme.example")
+    ));
+    HttpSession::clear_host_sessions();
+    // After clearing, the host is rebuilt fresh (a different Arc).
+    assert!(!std::sync::Arc::ptr_eq(
+        &first,
+        &HttpSession::shared_for("clearme.example")
+    ));
+}
+
+/// Under `media`, a response's layered media type combines `Content-Type` with
+/// `Content-Encoding`, and reading it through `dyn Io` agrees with the inherent
+/// accessor (rather than seeing only the body stream's `Content-Type`).
+#[cfg(feature = "media")]
+#[test]
+fn io_media_type_matches_the_inherent_combiner() {
+    let body = b"x";
+    let mut reply = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )
+    .into_bytes();
+    reply.extend_from_slice(body);
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url, true).unwrap();
+    let inherent = response.media_type();
+    let via_io = Io::media_type(&response);
+    assert!(inherent.is_some());
+    assert_eq!(inherent, via_io);
+}
+
+#[test]
 fn post_sends_method_headers_and_body() {
     let (url, rx) = serve_once(ok_reply("application/json", b"{}"));
     let session = HttpSession::new();

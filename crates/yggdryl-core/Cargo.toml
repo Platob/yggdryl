@@ -43,7 +43,7 @@ memmap2 = { version = "0.9", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
 # `zlib-rs` is the pure-Rust zlib-rs backend (via `libz-rs-sys`): near-native
-# deflate/inflate throughput, ~10x faster compress than the default `miniz_oxide`
+# deflate/inflate throughput, ~3x faster compress than the default `miniz_oxide`
 # and matching C zlib on decompress, with no C compiler / cmake build dependency
 # (so the wheels / npm builds stay pure-Rust). `default-features = false` drops the
 # slower `miniz_oxide` backend.

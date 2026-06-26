@@ -94,8 +94,9 @@ handle. The layering, smallest to largest:
   `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
   `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
   separate concern in the `compression` module (see its section), not here.
-- The **factory** `from_str` / `from_url` / `from_uri` (the abstract "`Io::open` a
-  location") returns the right `Box<dyn Io>` for a location, dispatching on the URL
+- The **factory** `from_str` / `from_url` / `from_uri` (the location-open factory —
+  distinct from the `Io::open` *method*, which derives a child handle) returns the
+  right `Box<dyn Io>` for a location, dispatching on the URL
   scheme: a bare path / `file://` opens a `LocalPath`; `http`/`https` send a `GET` and
   return the live `HttpResponse` (itself an `Io`); any other scheme is looked up in the
   `register_scheme` registry (a global `OnceLock<RwLock<…>>`, like the MimeType registry)
@@ -212,11 +213,16 @@ shape:
   `requests.get(...)` equivalent. Alongside it, **`HttpSession::shared_for(host)`** keeps
   one pooled singleton **per hostname** (a global `host → Arc<HttpSession>` registry):
   this is the session a request is dispatched through when none is given —
-  `HttpRequest::send`, the `http`/`https` `Io` factory, and the session a returned
-  `HttpResponse` carries (`response.session()`) — so a session is shared by host, never
-  copied per request. The bindings mirror the module-level verbs over the shared session
-  and a `set_base_url` to configure it (Node has no `delete` verb — a JS reserved word —
-  so use `request('DELETE', …)`).
+  `HttpRequest::send`, the `http`/`https` `Io` factory, the bindings' `request.send` /
+  `response.send`, and the session a returned `HttpResponse` carries
+  (`response.session()`) — so a session is shared by host, never copied per request.
+  Each per-host session is **seeded from the global `shared()` config** (default headers,
+  auth, TLS/CA, proxy, retry, redirects, version — via `copy()`) at first use, so
+  configuring `shared()` (`set_shared`) up front propagates to per-host sessions; the
+  registry is **bounded** (`MAX_HOST_SESSIONS`, idle entries evicted) and resettable with
+  `clear_host_sessions()`. The bindings mirror the module-level verbs over the shared
+  session and a `set_base_url` to configure it (Node has no `delete` verb — a JS reserved
+  word — so use `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the

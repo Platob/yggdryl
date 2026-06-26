@@ -231,14 +231,14 @@ impl HttpRequest {
         self.http_version.as_deref()
     }
 
-    /// Dispatch this request through the process-wide shared session and return the
-    /// :class:`HttpResponse`. ``raise_error`` (default ``True``) raises on a
-    /// 4xx/5xx status.
+    /// Dispatch this request through the shared per-host session (the singleton for
+    /// the request URL's host) and return the :class:`HttpResponse`. ``raise_error``
+    /// (default ``True``) raises on a 4xx/5xx status.
     #[pyo3(signature = (raise_error = true))]
     fn send(&self, py: Python<'_>, raise_error: bool) -> PyResult<HttpResponse> {
         let request = self.to_core()?;
-        let shared = CoreHttpSession::shared();
-        run_verb(py, &shared, request, self.body.clone(), raise_error, true)
+        let session = CoreHttpSession::shared_for(request.url().host());
+        run_verb(py, &session, request, self.body.clone(), raise_error, true)
     }
 
     /// An independent copy of this request.
