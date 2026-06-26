@@ -52,6 +52,9 @@ nav:
   - Saga (dataframe):
       - DataType: saga/datatype.md
       - Field: saga/field.md
+      - Schema: saga/schema.md
+      - Column (trait): saga/column.md
+      - Frame (trait): saga/frame.md
   - Benchmarks: benchmarks.md
 
 markdown_extensions:

@@ -20,9 +20,27 @@ It provides:
   - `NestedType` — types carrying child `Field`s (`List`, `Struct`, `Map`,
     `Union`, `Dictionary`, `RunEndEncoded`, …);
 - `Field` — a named, nullable `DataType` with metadata: the column header and the
-  child element of every nested type.
+  child element of every nested type;
+- `Schema` — an ordered list of `Field`s with metadata (the arrow-`Schema`
+  equivalent).
 
-Every type pairs a canonical-string `from_str` / `to_str` round-trip with, under
+On top of that vocabulary sit the **base traits** every future frame and column
+backing will satisfy, so eager and lazy implementations share one surface:
+
+- `Column` — a single named, typed column, **materialized or lazy**: identity
+  (`name` / `data_type` / `is_nullable`) is always known, `len()` is `Option`
+  (unknown for an unevaluated lazy column), and `rename` / `cast` / `slice` /
+  `head` / `tail` compose;
+- `Frame` — a tabular frame: `select` / `drop` / `filter` / `limit` / column
+  access over a common `Schema`, with structural defaults (`width`,
+  `column_names`, `drop`, …) derived from the schema so an implementor supplies
+  only the essentials. A generic `fn pipeline<F: Frame>(f: F)` runs over any
+  backing.
+
+The concrete eager/lazy frame implementations are intentionally **not built yet** —
+this layer nails the shared contract first.
+
+Every value type pairs a canonical-string `from_str` / `to_str` round-trip with, under
 the on-by-default `arrow` feature, infallible `to_arrow()` / `from_arrow()`
 conversions. Our `DataType` is a *total partition* of `arrow_schema::DataType`, so
 the bridge is a lossless bijection in both directions.

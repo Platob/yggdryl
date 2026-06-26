@@ -15,9 +15,17 @@
 //!   - [`NestedType`] — types that carry child [`Field`]s (`List`, `Struct`,
 //!     `Map`, `Union`, `Dictionary`, …).
 //! - [`Field`] is a named, nullable [`DataType`] with metadata — the column
-//!   header.
+//!   header; [`Schema`] is an ordered list of them.
 //!
-//! Every type pairs a canonical-string [`from_str`](DataType::from_str) /
+//! On top of that vocabulary sit the **base traits** that every future frame and
+//! column backing will satisfy, so eager and lazy implementations share one
+//! surface:
+//!
+//! - [`Column`] — a single named, typed column, materialized or lazy;
+//! - [`Frame`] — a tabular frame: `select` / `filter` / column access over a
+//!   common [`Schema`], whether the rows are in memory or still a plan.
+//!
+//! Every value type pairs a canonical-string [`from_str`](DataType::from_str) /
 //! [`to_str`](DataType::to_str) round-trip with, under the on-by-default `arrow`
 //! feature, infallible conversions to and from the matching `arrow-schema` type
 //! ([`to_arrow`](DataType::to_arrow) / [`from_arrow`](DataType::from_arrow)). Our
@@ -50,9 +58,17 @@ mod parse;
 
 mod datatype;
 mod field;
+mod schema;
+
+mod column;
+mod frame;
 
 pub use datatype::{
     DataType, DataTypeError, IntervalUnit, LogicalType, NestedType, PrimitiveType, TimeUnit,
     UnionMode,
 };
 pub use field::{Field, FieldError};
+pub use schema::{Schema, SchemaError};
+
+pub use column::{Column, ColumnError};
+pub use frame::{Frame, FrameError};
