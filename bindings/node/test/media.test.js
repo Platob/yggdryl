@@ -86,6 +86,19 @@ test('media type is ordered stack', () => {
   assert.strictEqual(stack.toString(), 'csv.gz')
 })
 
+test('tgz compound and newly-added mime types', () => {
+  // `.tgz` is tar+gzip — the same stack as `.tar.gz`.
+  const tgz = MediaType.fromPath('app.tgz').types.map((t) => t.mime)
+  assert.deepStrictEqual(tgz, ['application/x-tar', 'application/gzip'])
+  assert.deepStrictEqual(tgz, MediaType.fromPath('app.tar.gz').types.map((t) => t.mime))
+  // A selection of newly-added common MIME types resolve by extension / magic.
+  assert.strictEqual(MimeType.fromExtension('yaml').mime, 'application/yaml')
+  assert.strictEqual(MimeType.fromExtension('toml').mime, 'application/toml')
+  assert.strictEqual(MimeType.fromExtension('avif').mime, 'image/avif')
+  assert.strictEqual(MimeType.fromExtension('mkv').mime, 'video/x-matroska')
+  assert.strictEqual(MimeType.fromMagic(Buffer.from('\xfd7zXZ\x00\x00', 'binary')).mime, 'application/x-xz')
+})
+
 test('media type explicit construction', () => {
   const stack = new MediaType([new MimeType('text/csv'), new MimeType('application/gzip')])
   assert.ok(stack.equals(MediaType.fromPath('x.csv.gz')))

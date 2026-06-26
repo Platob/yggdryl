@@ -44,7 +44,7 @@
 //!
 //! let session = HttpSession::new().with_user_agent("yggdryl-http/0.1");
 //! // Verbs raise on a 4xx/5xx by default; pass `false` to keep the response.
-//! let body = session.get("https://example.com").unwrap().text().unwrap();
+//! let body = session.get("https://example.com", true).unwrap().text().unwrap();
 //!
 //! // A seekable, lazily-fetched remote Io (stream = true keeps the live connection).
 //! use yggdryl_core::{Io, Whence};

@@ -288,14 +288,15 @@ impl HttpRequest {
         }
     }
 
-    /// Sends this request through the process-wide shared
-    /// [`HttpSession`](crate::HttpSession::shared) and returns the
-    /// [`HttpResponse`] — the self-contained entry point, so a request needs no
-    /// session reference to fetch a response. `raise_error` turns a 4xx/5xx status
-    /// into an [`HttpError::Status`]. For a custom-configured client (its own pool,
-    /// TLS, proxy, default headers) send it through that session instead with
+    /// Sends this request through the shared per-host
+    /// [`HttpSession`](crate::HttpSession::shared_for) (the singleton for the
+    /// request URL's host) and returns the [`HttpResponse`] — the self-contained
+    /// entry point, so a request needs no session reference to fetch a response.
+    /// `raise_error` turns a 4xx/5xx status into an [`HttpError::Status`]. For a
+    /// custom-configured client (its own pool, TLS, proxy, default headers) send it
+    /// through that session instead with
     /// [`HttpSession::send`](crate::HttpSession::send).
     pub fn send(self, raise_error: bool) -> Result<HttpResponse, HttpError> {
-        HttpSession::shared().send(self, raise_error)
+        HttpSession::shared_for(self.url.host()).send(self, raise_error)
     }
 }

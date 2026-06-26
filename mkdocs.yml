@@ -26,17 +26,29 @@ theme:
     - navigation.sections
     - navigation.top
     - navigation.tracking
+    # Language tabs (=== "Python" / "Node" / "Rust") sync across the whole page and
+    # persist the choice — pick a language once and every snippet follows.
+    - content.tabs.link
     - content.code.copy
     - content.code.annotate
     - toc.follow
 
+# The docs tree mirrors the code tree (one page per concern / module) so code and
+# documentation map 1:1 — see CLAUDE.md "Documentation".
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
-  - Guide:
-      - Byte IO (the Io trait): io.md
-      - Compression: compression.md
-      - HTTP: http.md
+  - Getting started: getting-started.md
+  - Core:
+      - Version: core/version.md
+      - Media types (MIME): core/media.md
+      - URI & URL: core/url.md
+      - Byte IO (the Io trait): core/io.md
+      - Compression: core/compression.md
+  - HTTP:
+      - Session & verbs: http/session.md
+      - Request & Response: http/request-response.md
+      - Streaming body: http/stream.md
+      - Cookies: http/cookies.md
   - Benchmarks: benchmarks.md
 
 markdown_extensions:

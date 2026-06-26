@@ -84,12 +84,160 @@ fn io_factory_opens_an_http_url() {
 fn get_reads_status_headers_and_text() {
     let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
     let session = HttpSession::new().with_user_agent("yggdryl-http-test");
-    let response = session.get(&url).unwrap();
+    let response = session.get(&url, true).unwrap();
     assert_eq!(response.status(), 200);
     assert!(response.ok());
     assert_eq!(response.content_type(), Some("text/plain"));
     assert_eq!(response.content_length(), Some(11));
     assert_eq!(response.text().unwrap(), "hello world");
+}
+
+#[test]
+fn verb_with_send_false_returns_an_unsent_response_holding_the_request() {
+    // A verb called with `send = false` makes no network call: it returns an
+    // *unsent* response carrying the prepared request. No server is started, so a
+    // dispatch here would fail — the test passing proves none happened.
+    let session = HttpSession::new().with_user_agent("yggdryl-http-test");
+    let unsent = session
+        .get("http://127.0.0.1:1/never-dispatched", false)
+        .unwrap();
+    assert!(!unsent.is_sent());
+    assert_eq!(unsent.status(), 0);
+    // An unsent placeholder is not a success — `ok()` must not treat status 0 as 2xx.
+    assert!(!unsent.ok());
+    let request = unsent
+        .request()
+        .expect("an unsent response carries its request");
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(
+        request.url().to_string(),
+        "http://127.0.0.1:1/never-dispatched"
+    );
+    // `prepare` merged the session default header into the embedded request.
+    assert_eq!(
+        request.headers().get("user-agent"),
+        Some("yggdryl-http-test")
+    );
+}
+
+#[test]
+fn unsent_response_can_be_dispatched_later_through_the_session() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
+    let session = HttpSession::new();
+    // Build without sending, then dispatch the prepared request explicitly.
+    let request = session
+        .get(&url, false)
+        .unwrap()
+        .into_request()
+        .expect("the unsent response carries its request");
+    let response = session.request(request, true, true).unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text().unwrap(), "hello world");
+}
+
+#[test]
+fn unsent_response_send_dispatches_via_the_shared_session() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
+    // `HttpResponse::send` runs the embedded request through the shared session.
+    let response = crate::get(&url, false).unwrap().send(true).unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text().unwrap(), "hello world");
+}
+
+#[test]
+fn a_sent_response_reports_the_request_that_produced_it() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
+    let session = HttpSession::new().with_user_agent("yggdryl-http-test");
+    let response = session.get(&url, true).unwrap();
+    assert!(response.is_sent());
+    let request = response
+        .request()
+        .expect("a sent response keeps its request");
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(request.url().to_string(), url);
+    assert_eq!(
+        request.headers().get("user-agent"),
+        Some("yggdryl-http-test")
+    );
+}
+
+#[test]
+fn http_response_is_an_io_handle() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
+    let mut response = HttpSession::new().get(&url, true).unwrap();
+    // The response is itself an `Io`: read its (raw) body straight off it.
+    let mut body = Vec::new();
+    response.read_to_end(&mut body).unwrap();
+    assert_eq!(body, b"hello world");
+}
+
+#[test]
+fn io_open_factory_returns_a_readable_http_response() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"open me"));
+    let _session = HttpSession::new(); // registers http/https with the io factory
+                                       // `from_str` (Io::open) GETs the URL and hands back the response as an `Io`.
+    let mut handle = yggdryl_core::from_str(&url).unwrap();
+    let mut body = Vec::new();
+    handle.read_to_end(&mut body).unwrap();
+    assert_eq!(body, b"open me");
+}
+
+#[test]
+fn responses_share_one_session_per_host() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"x"));
+    let response = HttpSession::new().get(&url, true).unwrap();
+    let host = response.url().host().to_string();
+    // The attached session is the per-host shared singleton, not a copy.
+    assert!(std::sync::Arc::ptr_eq(
+        &response.session(),
+        &HttpSession::shared_for(&host)
+    ));
+    // The same host reuses one session; a different host gets its own.
+    assert!(std::sync::Arc::ptr_eq(
+        &HttpSession::shared_for("shared.example"),
+        &HttpSession::shared_for("shared.example")
+    ));
+    assert!(!std::sync::Arc::ptr_eq(
+        &HttpSession::shared_for("shared.example"),
+        &HttpSession::shared_for("other.example")
+    ));
+}
+
+#[test]
+fn clear_host_sessions_drops_the_cached_per_host_sessions() {
+    let first = HttpSession::shared_for("clearme.example");
+    // Reused while cached.
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &HttpSession::shared_for("clearme.example")
+    ));
+    HttpSession::clear_host_sessions();
+    // After clearing, the host is rebuilt fresh (a different Arc).
+    assert!(!std::sync::Arc::ptr_eq(
+        &first,
+        &HttpSession::shared_for("clearme.example")
+    ));
+}
+
+/// Under `media`, a response's layered media type combines `Content-Type` with
+/// `Content-Encoding`, and reading it through `dyn Io` agrees with the inherent
+/// accessor (rather than seeing only the body stream's `Content-Type`).
+#[cfg(feature = "media")]
+#[test]
+fn io_media_type_matches_the_inherent_combiner() {
+    let body = b"x";
+    let mut reply = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )
+    .into_bytes();
+    reply.extend_from_slice(body);
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url, true).unwrap();
+    let inherent = response.media_type();
+    let via_io = Io::media_type(&response);
+    assert!(inherent.is_some());
+    assert_eq!(inherent, via_io);
 }
 
 #[test]
@@ -169,7 +317,7 @@ fn session_auth_applies_and_request_auth_overrides() {
     // A session-level credential is sent by default …
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     let session = HttpSession::new().with_bearer_auth("session-token");
-    session.get(&url).unwrap();
+    session.get(&url, true).unwrap();
     let request = String::from_utf8(rx.recv().unwrap()).unwrap();
     assert!(
         request.contains("authorization: Bearer session-token"),
@@ -232,7 +380,7 @@ fn io_body_sets_content_length_and_streams() {
 fn response_body_streams_into_a_bytesio() {
     let (url, _rx) = serve_once(ok_reply("application/octet-stream", &vec![7u8; 5000]));
     let session = HttpSession::new();
-    let handle = session.get(&url).unwrap().into_bytesio().unwrap();
+    let handle = session.get(&url, true).unwrap().into_bytesio().unwrap();
     assert_eq!(handle.len(), 5000);
 }
 
@@ -261,7 +409,7 @@ fn get_raises_on_error_status_by_default() {
         b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
     let (url, _rx) = serve_once(reply);
     assert!(matches!(
-        HttpSession::new().get(&url),
+        HttpSession::new().get(&url, true),
         Err(HttpError::Status(404))
     ));
 }
@@ -290,7 +438,10 @@ fn retries_a_500_once_then_surfaces_it() {
         max_delay: Duration::from_millis(2),
     });
     // A 500 is retried exactly once (not the full max_retries), then surfaced.
-    assert!(matches!(session.get(&url), Err(HttpError::Status(500))));
+    assert!(matches!(
+        session.get(&url, true),
+        Err(HttpError::Status(500))
+    ));
     assert_eq!(hits.load(Ordering::SeqCst), 2); // initial + one retry
 }
 
@@ -323,7 +474,7 @@ fn gzip_response_is_decoded_transparently() {
     reply.extend_from_slice(&packed);
 
     let (url, _rx) = serve_once(reply);
-    let response = HttpSession::new().get(&url).unwrap();
+    let response = HttpSession::new().get(&url, true).unwrap();
     assert_eq!(response.content_encoding(), Some("gzip"));
     assert_eq!(response.text().unwrap(), String::from_utf8(body).unwrap());
 }
@@ -343,7 +494,7 @@ fn brotli_response_is_decoded_transparently() {
     reply.extend_from_slice(&packed);
 
     let (url, _rx) = serve_once(reply);
-    let response = HttpSession::new().get(&url).unwrap();
+    let response = HttpSession::new().get(&url, true).unwrap();
     assert_eq!(response.content_encoding(), Some("br"));
     #[cfg(feature = "media")]
     {
@@ -370,14 +521,14 @@ fn brotli_response_is_decoded_transparently() {
 #[test]
 fn response_mime_type_from_content_type() {
     let (url, _rx) = serve_once(ok_reply("application/json", b"{}"));
-    let response = HttpSession::new().get(&url).unwrap();
+    let response = HttpSession::new().get(&url, true).unwrap();
     assert_eq!(
         response.mime_type(),
         Some(yggdryl_core::MimeType::from_str("application/json").unwrap())
     );
     // The layered media-type accessor returns the same outer type as a stack.
     let (url, _rx) = serve_once(ok_reply("text/csv", b"a,b\n1,2\n"));
-    let response = HttpSession::new().get(&url).unwrap();
+    let response = HttpSession::new().get(&url, true).unwrap();
     assert_eq!(
         response.media_type().map(|m| m.types().to_vec()),
         Some(vec![yggdryl_core::MimeType::from_str("text/csv").unwrap()])
@@ -588,7 +739,7 @@ fn retries_429_then_succeeds() {
         base_delay: Duration::from_millis(1),
         max_delay: Duration::from_millis(5),
     });
-    let response = session.get(&url).unwrap();
+    let response = session.get(&url, true).unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(hits.load(Ordering::SeqCst), 3); // two 429s, then 200
 }
@@ -1014,7 +1165,7 @@ fn keep_alive_requests_release_the_connection_on_eof() {
     for _ in 0..5 {
         // Each drained response returns its connection to the pool (EOF), so no
         // stream is left holding one between requests.
-        let _ = session.get(&url).unwrap().bytes().unwrap();
+        let _ = session.get(&url, true).unwrap().bytes().unwrap();
         assert_eq!(session.open_streams(), 0);
     }
 }
@@ -1094,7 +1245,10 @@ fn retry_exhaustion_surfaces_the_error_status() {
         max_delay: Duration::from_millis(2),
     });
     // After exhausting retries the persistent 503 is returned, and get() raises.
-    assert!(matches!(session.get(&url), Err(HttpError::Status(503))));
+    assert!(matches!(
+        session.get(&url, true),
+        Err(HttpError::Status(503))
+    ));
 }
 
 #[test]
@@ -1144,7 +1298,7 @@ fn timing_received_at_is_unset_until_a_streamed_body_drains() {
 fn io_json_parses_a_response_body() {
     let (url, _rx) = serve_once(ok_reply("application/json", br#"{"a":1,"b":[2,3]}"#));
     let mut handle = HttpSession::new()
-        .get(&url)
+        .get(&url, true)
         .unwrap()
         .into_bytesio()
         .unwrap();
@@ -1238,7 +1392,7 @@ fn redirect_chain_lands_on_200() {
         Box::new(|_| ok_reply("text/plain", b"arrived")),
     ]);
     let session = HttpSession::new();
-    let response = session.get(&url).unwrap();
+    let response = session.get(&url, true).unwrap();
     assert_eq!(response.status(), 200);
     let final_url = response.url().to_string();
     assert_eq!(response.text().unwrap(), "arrived");
@@ -1419,10 +1573,10 @@ fn set_cookie_is_sent_back_on_a_follow_up_request() {
         Box::new(|_| ok_reply("text/plain", b"second")),
     ]);
     let session = HttpSession::new();
-    session.get(&url).unwrap();
+    session.get(&url, true).unwrap();
     let _first = rx.recv().unwrap();
     assert!(session.cookies().get("sid").is_some());
-    session.get(&url).unwrap();
+    session.get(&url, true).unwrap();
     let second = rx.recv().unwrap().to_lowercase();
     assert!(second.contains("cookie: sid=abc123"), "{second}");
 }
@@ -1439,9 +1593,9 @@ fn an_expired_cookie_is_not_sent() {
         Box::new(|_| ok_reply("text/plain", b"second")),
     ]);
     let session = HttpSession::new();
-    session.get(&url).unwrap();
+    session.get(&url, true).unwrap();
     let _first = rx.recv().unwrap();
-    session.get(&url).unwrap();
+    session.get(&url, true).unwrap();
     let second = rx.recv().unwrap().to_lowercase();
     assert!(
         !second.contains("cookie:"),
@@ -1484,7 +1638,7 @@ fn a_cookie_set_by_a_redirect_is_re_derived_on_the_next_hop() {
         Box::new(|_| ok_reply("text/plain", b"done")),
     ]);
     let session = HttpSession::new();
-    let response = session.get(&url).unwrap();
+    let response = session.get(&url, true).unwrap();
     assert_eq!(response.status(), 200);
     let _first = rx.recv().unwrap();
     let second = rx.recv().unwrap().to_lowercase();

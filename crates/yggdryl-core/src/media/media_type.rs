@@ -24,6 +24,26 @@ pub struct MediaType {
     types: Vec<MimeType>,
 }
 
+/// Expands a **compound archive extension** into its layered parts, so a single
+/// token like `tgz` resolves to the same stack as `tar.gz`: `tgz`/`taz` →
+/// `[tar, gz]`, `tbz`/`tbz2`/`tb2` → `[tar, bz2]`, `txz` → `[tar, xz]`, `tzst` →
+/// `[tar, zst]`. Any other extension passes through unchanged. (The canonical
+/// rendering of the resulting stack is the dotted chain, e.g. `tar.gz`, not the
+/// contracted `tgz`.)
+fn expand_extension(extension: &str) -> Vec<&str> {
+    match extension
+        .trim_start_matches('.')
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "tgz" | "taz" => vec!["tar", "gz"],
+        "tbz" | "tbz2" | "tb2" => vec!["tar", "bz2"],
+        "txz" => vec!["tar", "xz"],
+        "tzst" => vec!["tar", "zst"],
+        _ => vec![extension],
+    }
+}
+
 /// Splits a file name into its extensions, e.g. `"a.csv.gz"` → `["csv", "gz"]` and
 /// `".bashrc"` → `[]` (a leading dot starts a dotfile, not an extension).
 fn name_extensions(name: &str) -> Vec<&str> {
@@ -46,14 +66,17 @@ impl MediaType {
 
     /// Builds the stack from an ordered list of file extensions, keeping those that
     /// resolve in the registry (unknown extensions are skipped, with a `warn`).
-    /// `["csv", "gz"]` yields `[Csv, Gzip]`.
+    /// `["csv", "gz"]` yields `[Csv, Gzip]`. A **compound archive extension** is
+    /// expanded first — `["tgz"]` yields `[Tar, Gzip]` (see [`expand_extension`]).
     pub fn from_extensions(extensions: &[&str]) -> MediaType {
         let mut types = Vec::new();
         for ext in extensions {
-            if let Some(mime) = MimeType::from_extension(ext) {
-                types.push(mime);
-            } else {
-                log_event!(warn, "MediaType: skipped unknown extension {ext:?}");
+            for part in expand_extension(ext) {
+                if let Some(mime) = MimeType::from_extension(part) {
+                    types.push(mime);
+                } else {
+                    log_event!(warn, "MediaType: skipped unknown extension {part:?}");
+                }
             }
         }
         MediaType { types }

@@ -22,9 +22,12 @@ its concern wholly — do not scatter a concern's logic across modules:
   `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
 - `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
-  types, backed by a mutable global registry of extensions/magic bytes) and the
-  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`).
-  **All media-type logic lives here.**
+  types, backed by a mutable global registry of extensions/magic bytes — add a common
+  type by appending one `builtin(...)` row to `BUILTINS`, keeping a specific magic
+  *before* a broader one, e.g. AVIF's `ftypavif` before MP4's `ftyp`) and the
+  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`;
+  **compound archive extensions** like `.tgz`/`.tbz2`/`.txz`/`.tzst` expand to
+  `[Tar, <codec>]` via `expand_extension`). **All media-type logic lives here.**
 - `url/` (`mod` + `uri.rs` + `url.rs`) — the `Uri`/`Url` types and the canonical URL
   tests, built on `encoding`/`mapping` (and `media` for the inferred `media_type()`
   accessor). **All URL logic lives here.**
@@ -94,13 +97,15 @@ handle. The layering, smallest to largest:
   `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
   `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
   separate concern in the `compression` module (see its section), not here.
-- The **factory** `from_str` / `from_url` / `from_uri` returns the right
-  `Box<dyn Io>` for a location, dispatching on the URL scheme: a bare path / `file://`
-  opens a `LocalPath`; any other scheme is looked up in the `register_scheme` registry
-  (a global `OnceLock<RwLock<…>>`, like the MimeType registry) so downstream crates
-  plug in without the `io` module depending on them — `yggdryl-http` registers
-  `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their schemes
-  later. `mem://` and unregistered schemes return an actionable `Unsupported`.
+- The **factory** `from_str` / `from_url` / `from_uri` (the location-open factory —
+  distinct from the `Io::open` *method*, which derives a child handle) returns the
+  right `Box<dyn Io>` for a location, dispatching on the URL
+  scheme: a bare path / `file://` opens a `LocalPath`; `http`/`https` send a `GET` and
+  return the live `HttpResponse` (itself an `Io`); any other scheme is looked up in the
+  `register_scheme` registry (a global `OnceLock<RwLock<…>>`, like the MimeType registry)
+  so downstream crates plug in without the `io` module depending on them — `yggdryl-http`
+  registers `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their
+  schemes later. `mem://` and unregistered schemes return an actionable `Unsupported`.
 
 Rules when extending: the `io` module builds on the `url` / `encoding` modules (for
 the universal `Io::url()`); new heavy deps are **optional features** (like `log` /
@@ -129,12 +134,14 @@ Compression is layered **on top of** the `io` module, never inside it (so the IO
 base stays codec-free and the dependency points one way — `compression` builds on
 `io`, never the reverse). The shape:
 
-- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (HTTP
-  `Content-Encoding: br`); `from_str` / `from_extension` / `as_str` / `extension` /
-  `is_available`, and (under `media`) `from_mime` / `from_media` / `from_stats` for
-  inference plus `mime()` (the inverse of `from_mime`, used to add an encoding layer to
-  a media type). Brotli has no magic bytes, so it is recognised by the `.br` extension /
-  `application/x-brotli` MIME only, never by content sniffing.
+- `Compression` — `None` / `Gzip` / `Deflate` (zlib, HTTP `Content-Encoding: deflate`)
+  / `Zstd` / `Snappy` / `Brotli` (HTTP `Content-Encoding: br`); `from_str` /
+  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
+  `from_mime` / `from_media` / `from_stats` for inference plus `mime()` (the inverse of
+  `from_mime`, used to add an encoding layer to a media type). `Deflate` is the zlib
+  format (RFC 1950) and shares the `gzip` feature/`flate2` backend; like `Snappy` it has
+  no registered file MIME. Brotli has no magic bytes, so it is recognised by the `.br`
+  extension / `application/x-brotli` MIME only, never by content sniffing.
 - `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
   flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
   Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
@@ -149,7 +156,11 @@ base stays codec-free and the dependency points one way — `compression` builds
 Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`/`brotli`, all on by
 `default`); a variant whose feature is off still parses and names itself but reports
 `Unsupported` on encode/decode (`is_available` tells ahead of time). `media` adds the
-stats-inference path. When you add a codec, surface it in *both* bindings.
+stats-inference path. **`gzip` uses `flate2`'s pure-Rust `zlib-rs` backend** (not the
+default `miniz_oxide`): near-C-zlib throughput (~3x faster compress, matching decompress)
+with **no C compiler / cmake build dependency**, so the wheels / npm builds stay
+pure-Rust — keep `default-features = false` + `features = ["zlib-rs"]` on the `flate2`
+dep. When you add a codec, surface it in *both* bindings.
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
@@ -166,16 +177,31 @@ shape:
   (`prepare` merges its defaults) and **run** them (`session.send(request, raise_error)`).
   Keep this shape when extending: new request behaviour lives on `HttpRequest`, new
   client configuration on `HttpSession`; don't add a second send path.
+- **The verb helpers centralise on `prepare` → `HttpRequest` and `send(request)` →
+  `HttpResponse`, and always return an `HttpResponse`.** `get`/`head`/`delete`/`post`/
+  `put`/`patch`/`request` take a **`send` flag** (default `true`): with `send` the
+  request is dispatched; with `send` `false` no network call is made and an **unsent**
+  `HttpResponse` is returned — `is_sent()` is `false`, the status is `0`, the body
+  empty — carrying the prepared request via `response.request()`, dispatchable later
+  with `response.send(raise_error)` (through the shared session). Every response
+  **holds the request that produced it** (`response.request()`, like
+  `requests.Response.request`). The bindings configure the whole request from the
+  verb's signature args (kwargs in Python, options in Node: `headers` / `params` /
+  `basic_auth` / `bearer_auth` / `allow_redirect` / `keep_alive` / `http_version` /
+  `raise_error` / `send`); Rust keeps lean verbs (`url`/`body` + `send`) and richer
+  configuration on the `HttpRequest` builder, per the per-language idiom rule.
 - `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
   pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
   handshake; idle connections past the keep-alive TTL are dropped), default headers, a
   `RetryConfig`, a `read_timeout` (`with_read_timeout`, default 120s — errors with a hint
   when the server sends no data for that long), `max_concurrency` (8) and `batch_size`
-  (80). **Every request funnels through the one method** `send(req, raise_error)` — there
+  (80). **Every dispatch funnels through the one method** `send(req, raise_error)` — there
   is no `stream` flag (the body is **always** a live `HttpStream`, which handles buffering
-  and random access itself) and no separate `request()`/`stream()` method. It `prepare`s
-  the request (merge defaults; per-request headers win, case-insensitively), runs it with
-  the retry policy, and returns an `HttpResponse` holding the live body. `raise_error`
+  and random access itself) and no separate `stream()` method; the verb helpers
+  (`get`/`post`/…/`request`) all build a request and delegate to `send` through a private
+  `run_verb` (so `request(req, raise_error, send)` is a verb, not a second send path). It
+  `prepare`s the request (merge defaults; per-request headers win, case-insensitively), runs
+  it with the retry policy, and returns an `HttpResponse` holding the live body. `raise_error`
   (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; connection reuse is the
   request's own **keep-alive idle TTL** in seconds (`with_keep_alive(seconds)`, default 300
   — `0` → `Connection: close`; a pool-saturation safeguard still forces `close` on streams
@@ -189,9 +215,19 @@ shape:
   used unchanged. A process-wide **shared singleton** `HttpSession::shared()` (a
   replaceable `Arc` behind an `RwLock`, swapped by `set_shared`) backs the crate-level
   `get`/`head`/`post`/`put`/`patch`/`delete`/`request` **module functions**, the
-  `requests.get(...)` equivalent. The bindings mirror this with module-level verbs
-  over the shared session and a `set_base_url` to configure it (Node has no `delete`
-  verb — a JS reserved word — so use `request('DELETE', …)`).
+  `requests.get(...)` equivalent. Alongside it, **`HttpSession::shared_for(host)`** keeps
+  one pooled singleton **per hostname** (a global `host → Arc<HttpSession>` registry):
+  this is the session a request is dispatched through when none is given —
+  `HttpRequest::send`, the `http`/`https` `Io` factory, the bindings' `request.send` /
+  `response.send`, and the session a returned `HttpResponse` carries
+  (`response.session()`) — so a session is shared by host, never copied per request.
+  Each per-host session is **seeded from the global `shared()` config** (default headers,
+  auth, TLS/CA, proxy, retry, redirects, version — via `copy()`) at first use, so
+  configuring `shared()` (`set_shared`) up front propagates to per-host sessions; the
+  registry is **bounded** (`MAX_HOST_SESSIONS`, idle entries evicted) and resettable with
+  `clear_host_sessions()`. The bindings mirror the module-level verbs over the shared
+  session and a `set_base_url` to configure it (Node has no `delete` verb — a JS reserved
+  word — so use `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
@@ -230,7 +266,16 @@ shape:
   reads `mime_type` (from `Content-Type`), `media_type` (**combines `Content-Type` with
   `Content-Encoding`** — a gzipped CSV is `[Csv, Gzip]`, like a `data.csv.gz` path; under
   `media`) and `compression` (the codec named by `Content-Encoding`, under
-  `compression`). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
+  `compression`). It also **holds the request that produced it** (`request()`, like
+  `requests.Response.request`) and reports whether it was dispatched (`is_sent()` —
+  `false` for the unsent placeholder a verb returns with `send=false`, status `0`).
+  It **carries the shared per-host [`session`](HttpSession::shared_for) it belongs to**
+  (`session()` — a `shared_for(host)` singleton, never a per-response copy); `send(raise_error)`
+  re-dispatches its request through that session (how an unsent response is sent later).
+  **`HttpResponse` is itself an `Io`** (delegating to its body, the `HttpStream`), so a
+  response reads/seeks/`pread`s like any byte source — the `http`/`https` `Io` factory
+  (`from_str`/`Io::open`) hands a sent response straight back. It **holds the live body**
+  as a `Box<dyn Io>` (the `HttpStream`):
   `reader()` is the decoded body `Io` (decompressed under `compression`),
   `bytes`/`text`/`json`/`into_bytesio` drain it (`text`/`json` decompress transparently
   first), `read_all` drains and returns the `received_at` finish time together (used by
@@ -425,6 +470,45 @@ When you add or change behaviour, instrument it at the right level:
 A new code path that skips, defaults, or mutates shared state must log it; the
 `log` feature must compile and pass `clippy -D warnings` both on and off.
 
+## Documentation
+
+User-facing docs live in **`docs/`** as a **MkDocs Material** site (config:
+`mkdocs.yml`), published to **GitHub Pages** (https://platob.github.io/yggdryl/) by
+the `Docs` workflow (`.github/workflows/docs.yml`) on every push to `main` that
+touches `docs/**` or `mkdocs.yml`. Benchmark numbers/results live in
+`benchmarks/README.md` (organised by theme), surfaced on the docs `Benchmarks` page.
+
+**The docs tree mirrors the code tree** — one page per concern/module, so code and
+documentation map 1:1 and a reader can find the doc for any type by its module:
+
+| code | doc page |
+| --- | --- |
+| `yggdryl-core/src/version.rs` | `docs/core/version.md` |
+| `yggdryl-core/src/media/` | `docs/core/media.md` |
+| `yggdryl-core/src/url/` | `docs/core/url.md` |
+| `yggdryl-core/src/io/` | `docs/core/io.md` |
+| `yggdryl-core/src/compression/` | `docs/core/compression.md` |
+| `yggdryl-http/src/session.rs` | `docs/http/session.md` |
+| `yggdryl-http/src/{request,response}.rs` | `docs/http/request-response.md` |
+| `yggdryl-http/src/stream.rs` | `docs/http/stream.md` |
+| `yggdryl-http/src/cookies.rs` | `docs/http/cookies.md` |
+
+Rules (treat them like the cross-language replication rule — a change is not done
+until the docs match):
+
+- **When you add or change behaviour, update the matching doc page** in the same
+  commit, keeping the code↔doc mapping above intact. A new module/type gets a new
+  page added to the `nav` in `mkdocs.yml` mirroring its code location.
+- **Every code example is a synced language tab block**, in this order and with
+  these exact labels (so Material's linked tabs switch the whole page at once):
+  `=== "Python"` then `=== "Node"` then `=== "Rust"` (4-space-indented fenced
+  block under each). Never write raw, one-after-another per-language sections.
+- Keep examples **accurate to the current API** (the same surface the bindings
+  expose); prefer copy-runnable snippets.
+- **Doc build check** (add it to the gate when you touched docs):
+  `pip install mkdocs-material && mkdocs build --strict` must pass (strict catches
+  broken links and missing nav pages).
+
 ## Required checks before committing
 
 ```bash
@@ -433,9 +517,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test
 (cd bindings/python && maturin develop && pytest)
 (cd bindings/node && npm run build && npm test)
+mkdocs build --strict   # when docs/ or mkdocs.yml changed (pip install mkdocs-material)
 ```
 
-All five must pass.
+All must pass.
 
 ## Releasing
 
@@ -472,5 +557,9 @@ committing — treat it as a required step, not an optional polish:
 4. **Readability** — names match the conventions table, every public item has a
    `///` doc, and a reader cannot tell which type they are looking at from the
    shape of the code.
+5. **Docs in sync** — the matching `docs/` page (per the code↔doc mapping in
+   [Documentation](#documentation)) reflects the new/changed behaviour, with
+   synced Python/Node/Rust language tabs; `benchmarks/README.md` is updated if the
+   numbers moved.
 
 If any point fails, fix it before committing.

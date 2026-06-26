@@ -82,6 +82,8 @@ pub(crate) enum EncoderInner<W: Io> {
     Store(W),
     #[cfg(feature = "gzip")]
     Gzip(flate2::write::GzEncoder<WriteShim<W>>),
+    #[cfg(feature = "gzip")]
+    Deflate(flate2::write::ZlibEncoder<WriteShim<W>>),
     #[cfg(feature = "zstd")]
     Zstd(zstd::stream::write::Encoder<'static, WriteShim<W>>),
     #[cfg(feature = "snappy")]
@@ -99,6 +101,8 @@ impl<W: Io> Encoder<W> {
             EncoderInner::Store(sink) => Ok(sink),
             #[cfg(feature = "gzip")]
             EncoderInner::Gzip(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
+            #[cfg(feature = "gzip")]
+            EncoderInner::Deflate(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
             #[cfg(feature = "zstd")]
             EncoderInner::Zstd(encoder) => Ok(encoder.finish().map_err(IoError::from)?.0),
             #[cfg(feature = "snappy")]
@@ -146,6 +150,10 @@ impl<W: Io> Io for Encoder<W> {
             EncoderInner::Gzip(encoder) => {
                 std::io::Write::write(encoder, bytes).map_err(IoError::from)
             }
+            #[cfg(feature = "gzip")]
+            EncoderInner::Deflate(encoder) => {
+                std::io::Write::write(encoder, bytes).map_err(IoError::from)
+            }
             #[cfg(feature = "zstd")]
             EncoderInner::Zstd(encoder) => {
                 std::io::Write::write(encoder, bytes).map_err(IoError::from)
@@ -166,6 +174,8 @@ impl<W: Io> Io for Encoder<W> {
             EncoderInner::Store(sink) => Io::flush(sink),
             #[cfg(feature = "gzip")]
             EncoderInner::Gzip(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
+            #[cfg(feature = "gzip")]
+            EncoderInner::Deflate(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
             #[cfg(feature = "zstd")]
             EncoderInner::Zstd(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
             #[cfg(feature = "snappy")]
@@ -191,6 +201,8 @@ pub(crate) enum DecoderInner<R: Io> {
     Store(R),
     #[cfg(feature = "gzip")]
     Gzip(flate2::read::GzDecoder<ReadShim<R>>),
+    #[cfg(feature = "gzip")]
+    Deflate(flate2::read::ZlibDecoder<ReadShim<R>>),
     #[cfg(feature = "zstd")]
     Zstd(zstd::stream::read::Decoder<'static, std::io::BufReader<ReadShim<R>>>),
     #[cfg(feature = "snappy")]
@@ -231,6 +243,10 @@ impl<R: Io> Io for Decoder<R> {
             DecoderInner::Store(source) => source.read(buf),
             #[cfg(feature = "gzip")]
             DecoderInner::Gzip(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
+            #[cfg(feature = "gzip")]
+            DecoderInner::Deflate(decoder) => {
+                std::io::Read::read(decoder, buf).map_err(IoError::from)
+            }
             #[cfg(feature = "zstd")]
             DecoderInner::Zstd(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
             #[cfg(feature = "snappy")]

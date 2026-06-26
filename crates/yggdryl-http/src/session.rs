@@ -29,6 +29,12 @@ use crate::version::HttpVersion;
 /// [`with_read_timeout`](HttpSession::with_read_timeout) for genuinely slow endpoints.
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The cap on the per-host [`shared_for`](HttpSession::shared_for) registry: once it
+/// grows past this many hosts, idle entries (referenced only by the registry) are
+/// evicted before a new host is added, so a many-host workload cannot leak sessions
+/// and their pools without bound.
+const MAX_HOST_SESSIONS: usize = 256;
+
 /// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
 /// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
 /// (`max_redirects(0)`) so the 3xx surfaces to our [`redirect`](crate::redirect)
@@ -290,7 +296,7 @@ impl HttpSession {
     /// ```no_run
     /// use yggdryl_http::HttpSession;
     /// // Two calls return the same pooled session (and share its cookie jar).
-    /// let body = HttpSession::shared().get("https://example.com").unwrap();
+    /// let body = HttpSession::shared().get("https://example.com", true).unwrap();
     /// ```
     pub fn shared() -> Arc<HttpSession> {
         HttpSession::shared_slot()
@@ -323,6 +329,73 @@ impl HttpSession {
     fn shared_slot() -> &'static RwLock<Arc<HttpSession>> {
         static SHARED: OnceLock<RwLock<Arc<HttpSession>>> = OnceLock::new();
         SHARED.get_or_init(|| RwLock::new(Arc::new(HttpSession::new())))
+    }
+
+    /// The process-wide **shared session for `host`** — one pooled singleton per
+    /// hostname, created on first use and reused thereafter, so connections to a
+    /// host are pooled together and a session is never copied per request. This is
+    /// the session a request is dispatched through when none is given explicitly
+    /// (see [`HttpRequest::send`](crate::HttpRequest::send), the `http`/`https`
+    /// [`Io`](yggdryl_core::Io) factory, and the session a returned
+    /// [`HttpResponse`] carries — [`HttpResponse::session`](crate::HttpResponse::session)).
+    /// An empty `host` falls back to the global [`shared`](HttpSession::shared)
+    /// session.
+    ///
+    /// Each per-host session **inherits the global [`shared`](HttpSession::shared)
+    /// session's configuration** (default headers, auth, TLS `verify` / CA certs,
+    /// proxy, retry, redirects, protocol version and a cookie-jar snapshot — via
+    /// [`copy`](HttpSession::copy)) at the moment it is first created, with its own
+    /// connection pool. So configuring the shared session up front (e.g.
+    /// [`set_shared`](HttpSession::set_shared) with a default auth header or custom
+    /// CA) propagates to per-host sessions; a `set_shared` *after* a host session
+    /// already exists does not retro-apply. The registry is **bounded**: when it
+    /// grows past [`MAX_HOST_SESSIONS`] the idle entries (those no live response or
+    /// request still references) are evicted, so a many-host workload cannot leak
+    /// sessions/pools without bound.
+    pub fn shared_for(host: &str) -> Arc<HttpSession> {
+        if host.is_empty() {
+            return HttpSession::shared();
+        }
+        let registry = HttpSession::host_registry();
+        let key = host.to_ascii_lowercase();
+        if let Some(session) = registry.read().expect("host sessions poisoned").get(&key) {
+            return session.clone();
+        }
+        let mut sessions = registry.write().expect("host sessions poisoned");
+        if let Some(session) = sessions.get(&key) {
+            // Another caller created it between dropping the read lock and acquiring
+            // the write lock — share theirs.
+            return session.clone();
+        }
+        // Bound the registry: before adding a new host, drop the idle entries (kept
+        // alive only by the map itself, strong_count == 1) once over the cap, so a
+        // many-host workload reuses warm sessions without growing without limit.
+        if sessions.len() >= MAX_HOST_SESSIONS {
+            sessions.retain(|_, session| Arc::strong_count(session) > 1);
+        }
+        // Seed each per-host session from the global shared config (its own pool).
+        let session = Arc::new(HttpSession::shared().copy());
+        sessions.insert(key, session.clone());
+        session
+    }
+
+    /// Discards all cached per-host [`shared_for`](HttpSession::shared_for) sessions
+    /// (closing their pools); the next [`shared_for`](HttpSession::shared_for) for a
+    /// host rebuilds it from the current [`shared`](HttpSession::shared) config. Use
+    /// after reconfiguring the shared session, or to release pooled connections.
+    pub fn clear_host_sessions() {
+        HttpSession::host_registry()
+            .write()
+            .expect("host sessions poisoned")
+            .clear();
+    }
+
+    /// The per-host shared-session registry (`host` → pooled singleton), backing
+    /// [`shared_for`](HttpSession::shared_for).
+    fn host_registry() -> &'static RwLock<std::collections::HashMap<String, Arc<HttpSession>>> {
+        static HOSTS: OnceLock<RwLock<std::collections::HashMap<String, Arc<HttpSession>>>> =
+            OnceLock::new();
+        HOSTS.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
     }
 
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
@@ -653,53 +726,116 @@ impl HttpSession {
         self.batch_size
     }
 
+    /// Either dispatches `request` (when `send`) returning the response, or — when
+    /// `send` is `false` — returns an **unsent** [`HttpResponse`] carrying the
+    /// prepared request (no network call). The single place the verb helpers below
+    /// honour the `send` flag, keeping them centred on
+    /// [`prepare`](HttpSession::prepare) → [`HttpRequest`] and
+    /// [`send`](HttpSession::send) → [`HttpResponse`].
+    fn run_verb(
+        &self,
+        request: HttpRequest,
+        raise_error: bool,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        if send {
+            self.send(request, raise_error)
+        } else {
+            Ok(HttpResponse::unsent(self.prepare(request)))
+        }
+    }
+
     /// `GET url` (raises on a 4xx/5xx status). `url` is resolved against the
-    /// session's [`base_url`](HttpSession::base_url) when one is set.
-    pub fn get(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// session's [`base_url`](HttpSession::base_url) when one is set. With `send`
+    /// the request is dispatched and the [`HttpResponse`] returned; with `send`
+    /// `false` an **unsent** response carrying the prepared request is returned
+    /// instead (send it later with [`HttpResponse::send`]).
+    pub fn get(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Get, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `HEAD url` (raises on a 4xx/5xx status).
-    pub fn head(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `HEAD url` (raises on a 4xx/5xx status); see [`get`](HttpSession::get) for
+    /// the `send` flag.
+    pub fn head(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Head, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `DELETE url` (raises on a 4xx/5xx status).
-    pub fn delete(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `DELETE url` (raises on a 4xx/5xx status); see [`get`](HttpSession::get) for
+    /// the `send` flag.
+    pub fn delete(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Delete, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn post(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn post(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Post, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
     }
 
-    /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn put(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn put(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Put, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
     }
 
-    /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn patch(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn patch(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Patch, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
+    }
+
+    /// Either dispatches `request` (when `send`) returning the [`HttpResponse`], or
+    /// — when `send` is `false` — returns an **unsent** response carrying the
+    /// prepared request. The arbitrary-request counterpart of the verb helpers,
+    /// centred on the same [`prepare`](HttpSession::prepare) /
+    /// [`send`](HttpSession::send) pair. `raise_error` turns a 4xx/5xx status into
+    /// an [`HttpError::Status`].
+    pub fn request(
+        &self,
+        request: HttpRequest,
+        raise_error: bool,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(request, raise_error, send)
     }
 
     /// Merges the session's default headers into `request` (a per-request header
@@ -736,6 +872,12 @@ impl HttpSession {
     /// separate buffered mode.
     pub fn send(&self, request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
+        // Keep a copy of the prepared request (before the redirect loop and any
+        // transport-level headers) to embed in the final response, so it reports
+        // the *originating* request — for a redirected response this is the request
+        // that entered the chain, not the final hop. A streamed body is not
+        // duplicable, so the copy carries none — see [`HttpRequest::copy`].
+        let origin = request.copy();
         // `sent_at` reflects the *first* dispatch across a redirect chain.
         let mut sent_at: Option<f64> = None;
         // Loop detection: a `(method, url)` seen twice is a cycle (RFC says stop).
@@ -789,7 +931,7 @@ impl HttpSession {
             let should_follow = allow_redirect && redirect::is_redirect(status);
             let Some(location) = location.filter(|_| should_follow) else {
                 // Final response: stamp the first dispatch and apply `raise_error`.
-                return self.finalize(response, sent_at, raise_error);
+                return self.finalize(response, sent_at, raise_error, &origin);
             };
             if hop >= self.max_redirects {
                 return Err(HttpError::TooManyRedirects(format!(
@@ -809,7 +951,7 @@ impl HttpSession {
                 }
                 // A 307/308 with a non-replayable (already consumed) body cannot be
                 // re-sent: stop and return the 3xx itself rather than corrupt state.
-                None => return self.finalize(response, sent_at, raise_error),
+                None => return self.finalize(response, sent_at, raise_error, &origin),
             }
         }
         unreachable!("the redirect loop returns or errors before exhausting usize")
@@ -987,17 +1129,24 @@ impl HttpSession {
         }
     }
 
-    /// Stamps `sent_at` from the first dispatch on the final `response` and applies
-    /// `raise_error` to it (the only response that error-raises).
+    /// Stamps `sent_at` from the first dispatch on the final `response`, embeds the
+    /// originating `origin` request and the shared per-host session (so the response
+    /// reports what produced it and can re-dispatch), and applies `raise_error` to it
+    /// (the only response that error-raises).
     fn finalize(
         &self,
         mut response: HttpResponse,
         sent_at: Option<f64>,
         raise_error: bool,
+        origin: &HttpRequest,
     ) -> Result<HttpResponse, HttpError> {
         if let Some(sent_at) = sent_at {
             response.set_sent_at(sent_at);
         }
+        // Key the attached session on the *origin* request's host (the request the
+        // response carries and will re-send), not the post-redirect final host.
+        response.set_session(HttpSession::shared_for(origin.url().host()));
+        response.set_request(origin.copy());
         let status = response.status();
         if raise_error && status >= 400 {
             // Drop closes the held connection; the error carries the status.
@@ -1219,39 +1368,46 @@ impl IntoIterator for HttpResponseBatch {
 /// [`HttpSession::shared`] singleton, mirroring `requests.get(...)` and friends.
 /// Each raises on a 4xx/5xx status, keeps the connection alive and buffers no
 /// more than the streamed [`HttpResponse`] does — for per-client configuration
-/// build an explicit [`HttpSession`] instead.
-pub fn get(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().get(url)
+/// build an explicit [`HttpSession`] instead. With `send` `false` the verb
+/// returns an **unsent** response carrying the prepared request (no network call;
+/// see [`HttpSession::get`]).
+pub fn get(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().get(url, send)
 }
 
 /// `HEAD url` via the shared session (raises on a 4xx/5xx status).
-pub fn head(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().head(url)
+pub fn head(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().head(url, send)
 }
 
 /// `DELETE url` via the shared session (raises on a 4xx/5xx status).
-pub fn delete(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().delete(url)
+pub fn delete(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().delete(url, send)
 }
 
 /// `POST url` with an in-memory byte body via the shared session.
-pub fn post(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().post(url, body)
+pub fn post(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().post(url, body, send)
 }
 
 /// `PUT url` with an in-memory byte body via the shared session.
-pub fn put(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().put(url, body)
+pub fn put(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().put(url, body, send)
 }
 
 /// `PATCH url` with an in-memory byte body via the shared session.
-pub fn patch(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().patch(url, body)
+pub fn patch(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().patch(url, body, send)
 }
 
-/// Sends an arbitrary [`HttpRequest`] via the shared session (streamed; connection
-/// reuse follows the request's [`keep_alive`](HttpRequest::keep_alive) flag, default
-/// `false`), raising on a 4xx/5xx when `raise_error`.
-pub fn request(request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().send(request, raise_error)
+/// Dispatches an arbitrary [`HttpRequest`] via the shared session (streamed;
+/// connection reuse follows the request's [`keep_alive`](HttpRequest::keep_alive)),
+/// raising on a 4xx/5xx when `raise_error`. With `send` `false` it returns an
+/// **unsent** response carrying the prepared request instead of dispatching.
+pub fn request(
+    request: HttpRequest,
+    raise_error: bool,
+    send: bool,
+) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().request(request, raise_error, send)
 }

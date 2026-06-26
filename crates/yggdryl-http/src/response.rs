@@ -1,10 +1,14 @@
 //! The [`HttpResponse`] — it holds all the logic to read its body from the server.
 
+use std::sync::Arc;
+
 use yggdryl_core::Url;
-use yggdryl_core::{BytesIO, Io};
+use yggdryl_core::{BytesIO, Io, IoError, IoStats, Whence};
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
+use crate::request::HttpRequest;
+use crate::session::HttpSession;
 use crate::time::Instant;
 use crate::version::HttpVersion;
 
@@ -20,6 +24,20 @@ use crate::version::HttpVersion;
 /// was dispatched) and [`received_at`](HttpResponse::received_at) (when the
 /// connection finished — the body reaching EOF or being closed), both UTC
 /// Unix-epoch seconds, `0.0` until set.
+///
+/// It **holds the [`request`](HttpResponse::request) that produced it** (the
+/// originating prepared request, similar to `requests.Response.request`), so the
+/// method / URL / headers can always be read back. A verb called with `send =
+/// false` returns an **unsent** response — [`is_sent`](HttpResponse::is_sent) is
+/// `false`, the status is `0` and the body empty — that carries only the prepared
+/// request; dispatch it later with [`send`](HttpResponse::send).
+///
+/// It is itself an [`Io`] handle (delegating to its body, the live
+/// [`HttpStream`](crate::HttpStream)), so a response reads/seeks like any other
+/// byte source — the `http`/`https` [`Io`](yggdryl_core::Io) factory hands one back
+/// directly. It also carries the **shared per-host [`session`](HttpResponse::session)**
+/// it belongs to (a [`shared_for`](HttpSession::shared_for) singleton, never a
+/// copy), used by [`send`](HttpResponse::send) to re-dispatch its request.
 pub struct HttpResponse {
     status: u16,
     url: Url,
@@ -28,6 +46,13 @@ pub struct HttpResponse {
     sent_at: f64,
     received_at: Instant,
     negotiated: HttpVersion,
+    /// The request that produced this response (the prepared request, before any
+    /// transport-level headers). `None` only for a bare response built without one.
+    request: Option<HttpRequest>,
+    /// The shared per-host [`HttpSession`] this response belongs to (its
+    /// [`shared_for`](HttpSession::shared_for) singleton). `None` until attached, in
+    /// which case [`session`](HttpResponse::session) resolves it from the URL host.
+    session: Option<Arc<HttpSession>>,
 }
 
 impl HttpResponse {
@@ -53,6 +78,31 @@ impl HttpResponse {
             sent_at,
             received_at,
             negotiated,
+            request: None,
+            session: None,
+        }
+    }
+
+    /// Builds an **unsent** response: a placeholder that carries only the prepared
+    /// `request` (it has not been dispatched). The status is `0`, the body empty
+    /// and [`is_sent`](HttpResponse::is_sent) `false`. Returned by a verb called
+    /// with `send = false` so the caller can inspect the request via
+    /// [`request`](HttpResponse::request) and dispatch it later with
+    /// [`send`](HttpResponse::send).
+    pub(crate) fn unsent(request: HttpRequest) -> HttpResponse {
+        let url = request.url().clone();
+        let negotiated = request.http_version().unwrap_or(HttpVersion::Auto);
+        let session = HttpSession::shared_for(url.host());
+        HttpResponse {
+            status: 0,
+            url,
+            headers: HttpHeaders::new(),
+            body: Box::new(BytesIO::from_bytes(Vec::new())),
+            sent_at: 0.0,
+            received_at: Instant::new(),
+            negotiated,
+            request: Some(request),
+            session: Some(session),
         }
     }
 
@@ -60,6 +110,28 @@ impl HttpResponse {
     /// the **first** hop's `sent_at`, not the final hop's.
     pub(crate) fn set_sent_at(&mut self, sent_at: f64) {
         self.sent_at = sent_at;
+    }
+
+    /// Attaches the originating `request` (a copy of the prepared request), so the
+    /// response can report what produced it. Set by [`HttpSession::send`].
+    pub(crate) fn set_request(&mut self, request: HttpRequest) {
+        self.request = Some(request);
+    }
+
+    /// Attaches the shared per-host [`session`](HttpResponse::session) this response
+    /// belongs to. Set by [`HttpSession::send`] from the request's host.
+    pub(crate) fn set_session(&mut self, session: Arc<HttpSession>) {
+        self.session = Some(session);
+    }
+
+    /// The shared per-host [`HttpSession`] this response belongs to — the
+    /// [`shared_for`](HttpSession::shared_for) singleton for the response URL's host
+    /// (never a per-response copy). [`send`](HttpResponse::send) re-dispatches
+    /// through it.
+    pub fn session(&self) -> Arc<HttpSession> {
+        self.session
+            .clone()
+            .unwrap_or_else(|| HttpSession::shared_for(self.url.host()))
     }
 
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
@@ -82,9 +154,55 @@ impl HttpResponse {
         self.status
     }
 
-    /// Whether the status is below 400 (the `requests` definition of "ok").
+    /// Whether the response is a success: it was actually dispatched
+    /// ([`is_sent`](HttpResponse::is_sent)) **and** its status is below 400 (the
+    /// `requests` definition of "ok"). An **unsent** placeholder (status `0`) is
+    /// therefore *not* ok, so `if response.ok()` never treats a never-sent response
+    /// as a 2xx success.
     pub fn ok(&self) -> bool {
-        self.status < 400
+        self.is_sent() && self.status < 400
+    }
+
+    /// Whether this response was actually dispatched. `false` for the **unsent**
+    /// placeholder a verb returns with `send = false` (status `0`, empty body),
+    /// which carries only the prepared [`request`](HttpResponse::request).
+    pub fn is_sent(&self) -> bool {
+        self.status != 0
+    }
+
+    /// The request that produced this response — the **prepared, originating**
+    /// request (method, URL, headers and settings), similar to
+    /// `requests.Response.request`. After a redirect chain it is the *original*
+    /// request that entered the chain (not the final hop), so its method/URL may
+    /// differ from [`url`](HttpResponse::url). `None` only for a bare response built
+    /// without one.
+    pub fn request(&self) -> Option<&HttpRequest> {
+        self.request.as_ref()
+    }
+
+    /// Consumes the response, returning the originating [`request`](HttpResponse::request).
+    pub fn into_request(self) -> Option<HttpRequest> {
+        self.request
+    }
+
+    /// Dispatches this response's [`request`](HttpResponse::request) through its
+    /// attached shared per-host [`session`](HttpResponse::session) and returns the
+    /// resulting response. This is how an **unsent** response (one returned by a verb
+    /// with `send = false`) is sent later; on an already-sent response it replays the
+    /// originating request. `raise_error` turns a 4xx/5xx status into an
+    /// [`HttpError::Status`]. Errors with [`HttpError::Unsupported`] if the response
+    /// carries no request. (Replaying an *already-sent* request whose body was a
+    /// one-shot stream re-sends it with an empty body, since a streamed body cannot
+    /// be duplicated — see [`HttpRequest::copy`](crate::HttpRequest::copy); an unsent
+    /// response keeps its full body.)
+    pub fn send(self, raise_error: bool) -> Result<HttpResponse, HttpError> {
+        let session = self.session();
+        match self.request {
+            Some(request) => session.send(request, raise_error),
+            None => Err(HttpError::Unsupported(
+                "this response carries no request to send".into(),
+            )),
+        }
     }
 
     /// Returns an error ([`HttpError::Status`]) if the status is 4xx or 5xx,
@@ -261,5 +379,75 @@ impl HttpResponse {
     /// [`Io`] over the (decompressed) response.
     pub fn into_bytesio(self) -> Result<BytesIO, HttpError> {
         Ok(BytesIO::from_bytes(self.bytes()?))
+    }
+}
+
+impl std::fmt::Debug for HttpResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpResponse")
+            .field("status", &self.status)
+            .field("url", &self.url.to_string())
+            .field("negotiated", &self.negotiated)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A response **is** an [`Io`] handle: every byte operation delegates to its body
+/// (the live [`HttpStream`](crate::HttpStream) or buffered
+/// [`BytesIO`](yggdryl_core::BytesIO)), so a returned response reads, seeks and
+/// `pread`s like any other source — the raw, undecoded body (use
+/// [`reader`](HttpResponse::reader) for transparent `Content-Encoding` decoding).
+impl Io for HttpResponse {
+    fn url(&self) -> Url {
+        self.url.clone()
+    }
+
+    fn stats(&self) -> Result<IoStats, IoError> {
+        self.body.stats()
+    }
+
+    fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
+        self.body.seek(offset, whence)
+    }
+
+    fn stream_position(&self) -> u64 {
+        self.body.stream_position()
+    }
+
+    fn stream_len(&self) -> Option<u64> {
+        self.body.stream_len()
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        self.body.read(buf)
+    }
+
+    fn read_to_end(&mut self, out: &mut Vec<u8>) -> Result<usize, IoError> {
+        self.body.read_to_end(out)
+    }
+
+    fn pread(&mut self, buf: &mut [u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
+        self.body.pread(buf, offset, whence)
+    }
+
+    fn flush(&mut self) -> Result<(), IoError> {
+        self.body.flush()
+    }
+
+    fn close(&mut self) -> Result<(), IoError> {
+        self.body.close()
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        self.body.as_slice()
+    }
+
+    /// The response's layered media type — the **inherent**
+    /// [`media_type`](HttpResponse::media_type) (combining `Content-Type` with
+    /// `Content-Encoding`), so reading it through `dyn Io` agrees with the direct
+    /// accessor rather than seeing only the body stream's `Content-Type`.
+    #[cfg(feature = "media")]
+    fn media_type(&self) -> Option<yggdryl_core::MediaType> {
+        HttpResponse::media_type(self)
     }
 }

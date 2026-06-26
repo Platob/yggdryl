@@ -173,6 +173,77 @@ mod tests {
     }
 
     #[test]
+    fn compound_archive_extensions_expand() {
+        // `.tgz` is tar+gzip — the same stack as `.tar.gz`.
+        assert_eq!(
+            MediaType::from_path("releases/app.tgz").types(),
+            [MimeType::Tar, MimeType::Gzip]
+        );
+        assert_eq!(
+            MediaType::from_extension("tgz").types(),
+            [MimeType::Tar, MimeType::Gzip]
+        );
+        assert_eq!(
+            MediaType::from_path("a.tar.gz").types(),
+            MediaType::from_path("a.tgz").types()
+        );
+        // The other contractions.
+        assert_eq!(
+            MediaType::from_path("a.tbz2").types(),
+            [MimeType::Tar, MimeType::Bzip2]
+        );
+        assert_eq!(
+            MediaType::from_path("a.txz").types(),
+            [MimeType::Tar, MimeType::Xz]
+        );
+        assert_eq!(
+            MediaType::from_path("a.tzst").types(),
+            [MimeType::Tar, MimeType::Zstd]
+        );
+        // Canonical rendering is the dotted chain, not the contraction.
+        assert_eq!(MediaType::from_path("a.tgz").to_str(true), "tar.gz");
+    }
+
+    #[test]
+    fn newly_added_common_mime_types() {
+        for (ext, mime) in [
+            ("yaml", "application/yaml"),
+            ("yml", "application/yaml"),
+            ("toml", "application/toml"),
+            ("jsonl", "application/x-ndjson"),
+            ("xz", "application/x-xz"),
+            ("lz4", "application/x-lz4"),
+            ("avif", "image/avif"),
+            ("heic", "image/heic"),
+            ("aac", "audio/aac"),
+            ("mkv", "video/x-matroska"),
+            (
+                "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            ("epub", "application/epub+zip"),
+        ] {
+            assert_eq!(
+                MimeType::from_extension(ext).map(|m| m.mime().to_string()),
+                Some(mime.to_string()),
+                "{ext}"
+            );
+        }
+        // Magic-byte sniffing for the formats that carry a signature.
+        assert_eq!(
+            MimeType::from_magic(b"\xfd7zXZ\x00\x00"),
+            Some(MimeType::Xz)
+        );
+        assert_eq!(
+            MimeType::from_magic(b"\x04\x22\x4d\x18\x00"),
+            Some(MimeType::Lz4)
+        );
+        let mut avif = vec![0u8; 16];
+        avif[4..12].copy_from_slice(b"ftypavif");
+        assert_eq!(MimeType::from_magic(&avif), Some(MimeType::Avif));
+    }
+
+    #[test]
     fn media_type_explicit_and_round_trip() {
         let stack = MediaType::new(vec![MimeType::Csv, MimeType::Gzip]);
         assert_eq!(stack, MediaType::from_path("x.csv.gz"));

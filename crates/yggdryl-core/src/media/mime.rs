@@ -115,6 +115,41 @@ pub enum MimeType {
     Ttf,
     /// `font/otf`
     Otf,
+    // text / data
+    /// `application/yaml` (`.yaml` / `.yml`)
+    Yaml,
+    /// `application/toml` (`.toml`)
+    Toml,
+    /// `application/x-ndjson` — newline-delimited JSON (`.ndjson` / `.jsonl`)
+    Ndjson,
+    /// `application/rtf` (`.rtf`)
+    Rtf,
+    // compression / archives
+    /// `application/x-xz` (`.xz`)
+    Xz,
+    /// `application/x-lz4` (`.lz4`)
+    Lz4,
+    // documents (OOXML / EPUB are ZIP containers, so recognised by extension)
+    /// `application/epub+zip` (`.epub`)
+    Epub,
+    /// `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`)
+    Docx,
+    /// `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (`.xlsx`)
+    Xlsx,
+    /// `application/vnd.openxmlformats-officedocument.presentationml.presentation` (`.pptx`)
+    Pptx,
+    // image
+    /// `image/avif` (`.avif`)
+    Avif,
+    /// `image/heic` (`.heic` / `.heif`)
+    Heic,
+    // audio / video
+    /// `audio/aac` (`.aac`)
+    Aac,
+    /// `audio/opus` (`.opus`)
+    Opus,
+    /// `video/x-matroska` (`.mkv`)
+    Matroska,
     /// Any MIME type outside the built-in registry, holding its `type/subtype`.
     Other(String),
 }
@@ -349,6 +384,16 @@ static BUILTINS: &[Builtin] = &[
         &["tif", "tiff"],
         &[mag(b"II\x2a\x00"), mag(b"MM\x00\x2a")],
     ),
+    // AVIF carries an `ftyp` box with the `avif` brand — matched before MP4's
+    // generic `ftyp` magic below. HEIC's brand varies, so it is recognised by
+    // extension only (a bare `ftyp` would clash with MP4).
+    builtin(
+        || MimeType::Avif,
+        "image/avif",
+        &["avif"],
+        &[mag_at(4, b"ftypavif")],
+    ),
+    builtin(|| MimeType::Heic, "image/heic", &["heic", "heif"], &[]),
     // audio/*
     builtin(|| MimeType::Mp3, "audio/mpeg", &["mp3"], &[mag(b"ID3")]),
     builtin(
@@ -398,6 +443,60 @@ static BUILTINS: &[Builtin] = &[
         &[mag(b"\x00\x01\x00\x00")],
     ),
     builtin(|| MimeType::Otf, "font/otf", &["otf"], &[mag(b"OTTO")]),
+    // text / data
+    builtin(|| MimeType::Yaml, "application/yaml", &["yaml", "yml"], &[]),
+    builtin(|| MimeType::Toml, "application/toml", &["toml"], &[]),
+    builtin(
+        || MimeType::Ndjson,
+        "application/x-ndjson",
+        &["ndjson", "jsonl"],
+        &[],
+    ),
+    builtin(
+        || MimeType::Rtf,
+        "application/rtf",
+        &["rtf"],
+        &[mag(b"{\\rtf")],
+    ),
+    // compression / archives
+    builtin(
+        || MimeType::Xz,
+        "application/x-xz",
+        &["xz"],
+        &[mag(b"\xfd7zXZ\x00")],
+    ),
+    builtin(
+        || MimeType::Lz4,
+        "application/x-lz4",
+        &["lz4"],
+        &[mag(b"\x04\x22\x4d\x18")],
+    ),
+    // documents — OOXML / EPUB are ZIP containers (PK magic), so the ZIP magic is
+    // intentionally left off here and they are recognised by extension only.
+    builtin(|| MimeType::Epub, "application/epub+zip", &["epub"], &[]),
+    builtin(
+        || MimeType::Docx,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        &["docx"],
+        &[],
+    ),
+    builtin(
+        || MimeType::Xlsx,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        &["xlsx"],
+        &[],
+    ),
+    builtin(
+        || MimeType::Pptx,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        &["pptx"],
+        &[],
+    ),
+    // audio / video — AAC (ADTS), Opus (Ogg container) and Matroska (EBML, shared
+    // with WebM) are recognised by extension to avoid ambiguous magic matches.
+    builtin(|| MimeType::Aac, "audio/aac", &["aac"], &[]),
+    builtin(|| MimeType::Opus, "audio/opus", &["opus"], &[]),
+    builtin(|| MimeType::Matroska, "video/x-matroska", &["mkv"], &[]),
 ];
 
 /// One mutable registry entry: everything known about one MIME type.

@@ -6,8 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyType};
 use yggdryl_core::{BytesIO as CoreBytesIO, LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{
-    HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
-    HttpSession as CoreHttpSession, HttpVersion, Method,
+    HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, HttpVersion, Method,
 };
 
 use crate::bytesio::BytesIO;
@@ -16,8 +15,10 @@ use crate::localpath::LocalPath;
 
 /// A request body extracted from a Python argument: raw `bytes`, or one of our
 /// `Io` handles (a `LocalPath` streams straight off disk; a `BytesIO`'s bytes are
-/// taken). `Send`, so it crosses into the GIL-released worker.
-enum BodyArg {
+/// taken). `Send`, so it crosses into the GIL-released worker; `Clone`, so a copy
+/// is kept for the response's :attr:`request`.
+#[derive(Clone)]
+pub(crate) enum BodyArg {
     Empty,
     Bytes(Vec<u8>),
     File(String),
@@ -49,6 +50,284 @@ fn apply_body(request: CoreHttpRequest, body: BodyArg) -> CoreHttpRequest {
     }
 }
 
+/// Builds a core request from the full set of verb arguments — the single place
+/// the bindings assemble a request from signature args (so every verb configures
+/// the request the same way). `session` resolves the target against its
+/// ``base_url`` when given; otherwise the URL must be absolute.
+#[allow(clippy::too_many_arguments)]
+fn build_core_request(
+    session: Option<&CoreHttpSession>,
+    method: Method,
+    url: &str,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    body: BodyArg,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+) -> PyResult<CoreHttpRequest> {
+    let url = match session {
+        Some(session) => session.resolve_url(url).map_err(http_err)?,
+        None => yggdryl_core::Url::from_str(url).map_err(crate::url_err)?,
+    };
+    let mut request = CoreHttpRequest::from_url(method, url)
+        .with_allow_redirect(allow_redirect)
+        .with_keep_alive(keep_alive);
+    if let Some(http_version) = http_version {
+        request = request.with_http_version(HttpVersion::from_str(http_version).map_err(http_err)?);
+    }
+    if let Some(headers) = headers {
+        request = request.with_headers(headers);
+    }
+    if let Some(params) = params {
+        for (key, value) in params {
+            request = request.with_param(key, value);
+        }
+    }
+    if let Some((username, password)) = basic_auth {
+        request = request.with_basic_auth(&username, &password);
+    }
+    if let Some(token) = bearer_auth {
+        request = request.with_bearer_auth(&token);
+    }
+    Ok(apply_body(request, body))
+}
+
+/// A built HTTP request, modelled on :class:`requests.PreparedRequest`. It is what
+/// a verb returns when ``send=False`` (via :attr:`HttpResponse.request`), and can
+/// be dispatched on its own with :meth:`send`.
+#[pyclass(name = "HttpRequest", module = "yggdryl")]
+#[derive(Clone)]
+pub struct HttpRequest {
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    pub(crate) body: BodyArg,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<String>,
+}
+
+impl HttpRequest {
+    /// Snapshots a core request (after it was prepared) into the binding type,
+    /// keeping the binding's own `body` (the core copy may have dropped a stream).
+    fn from_core(request: &CoreHttpRequest, body: BodyArg) -> HttpRequest {
+        HttpRequest {
+            method: request.method().as_str().to_string(),
+            url: request.url().to_string(),
+            headers: request
+                .headers()
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+            body,
+            allow_redirect: request.allow_redirect(),
+            keep_alive: request.keep_alive(),
+            http_version: request.http_version().map(|v| v.as_str().to_string()),
+        }
+    }
+
+    /// Rebuilds the core request from this snapshot (its URL is already absolute),
+    /// ready to dispatch.
+    fn to_core(&self) -> PyResult<CoreHttpRequest> {
+        let method = Method::from_str(&self.method).map_err(http_err)?;
+        let url = yggdryl_core::Url::from_str(&self.url).map_err(crate::url_err)?;
+        let mut request = CoreHttpRequest::from_url(method, url)
+            .with_headers(self.headers.clone())
+            .with_allow_redirect(self.allow_redirect)
+            .with_keep_alive(self.keep_alive);
+        if let Some(http_version) = &self.http_version {
+            request =
+                request.with_http_version(HttpVersion::from_str(http_version).map_err(http_err)?);
+        }
+        Ok(apply_body(request, self.body.clone()))
+    }
+}
+
+#[pymethods]
+impl HttpRequest {
+    /// Build a request explicitly: ``method`` and ``url`` plus the same optional
+    /// ``headers`` / ``params`` / ``basic_auth`` / ``bearer_auth`` /
+    /// ``allow_redirect`` / ``keep_alive`` / ``http_version`` the verbs accept.
+    /// ``body`` is ``bytes`` or one of our `Io` handles (a :class:`LocalPath`
+    /// streams off disk).
+    #[new]
+    #[pyo3(signature = (method, url, headers = None, body = None, *, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        method: &str,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+        body: Option<Bound<'_, PyAny>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+    ) -> PyResult<HttpRequest> {
+        let method = Method::from_str(method).map_err(http_err)?;
+        let body = extract_body(body.as_ref())?;
+        let request = build_core_request(
+            None,
+            method,
+            url,
+            headers,
+            params,
+            body.clone(),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        Ok(HttpRequest::from_core(&request, body))
+    }
+
+    /// The request method (e.g. ``"GET"``).
+    #[getter]
+    fn method(&self) -> &str {
+        &self.method
+    }
+
+    /// The request URL.
+    #[getter]
+    fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// The request headers as a ``dict`` (lower-cased names).
+    #[getter]
+    fn headers(&self) -> HashMap<String, String> {
+        self.headers.iter().cloned().collect()
+    }
+
+    /// Look up a header by name (case-insensitive).
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    /// Whether :meth:`HttpSession.send` follows 3xx redirects for this request.
+    #[getter]
+    fn allow_redirect(&self) -> bool {
+        self.allow_redirect
+    }
+
+    /// The keep-alive idle TTL in seconds (``0.0`` disables pooling).
+    #[getter]
+    fn keep_alive(&self) -> f64 {
+        self.keep_alive
+    }
+
+    /// The pinned HTTP protocol version (e.g. ``"HTTP/2"``), or ``None`` to inherit
+    /// the session default.
+    #[getter]
+    fn http_version(&self) -> Option<&str> {
+        self.http_version.as_deref()
+    }
+
+    /// Dispatch this request through the shared per-host session (the singleton for
+    /// the request URL's host) and return the :class:`HttpResponse`. ``raise_error``
+    /// (default ``True``) raises on a 4xx/5xx status.
+    #[pyo3(signature = (raise_error = true))]
+    fn send(&self, py: Python<'_>, raise_error: bool) -> PyResult<HttpResponse> {
+        let request = self.to_core()?;
+        let session = CoreHttpSession::shared_for(request.url().host());
+        run_verb(py, &session, request, self.body.clone(), raise_error, true)
+    }
+
+    /// An independent copy of this request.
+    fn copy(&self) -> HttpRequest {
+        self.clone()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("HttpRequest(method={:?}, url={:?})", self.method, self.url)
+    }
+}
+
+/// Runs a verb: with ``send`` the `request` is dispatched through `session` (GIL
+/// released) and the body buffered; without, it is prepared and returned as an
+/// **unsent** :class:`HttpResponse` carrying the request. Always returns a binding
+/// `HttpResponse` — the single place the bindings honour the `send` flag, mirroring
+/// the core's ``prepare`` → request / ``send`` → response split.
+fn run_verb(
+    py: Python<'_>,
+    session: &CoreHttpSession,
+    request: CoreHttpRequest,
+    body: BodyArg,
+    raise_error: bool,
+    send: bool,
+) -> PyResult<HttpResponse> {
+    let (status, url, headers, resp_body, sent_at, received_at, http_version, request_spec) = py
+        .allow_threads(move || -> Result<_, yggdryl_http::HttpError> {
+            if send {
+                let response = session.send(request, raise_error)?;
+                let status = response.status();
+                let url = response.url().to_string();
+                let headers = response
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect::<Vec<_>>();
+                let sent_at = response.sent_at();
+                let http_version = response.negotiated_version().as_str().to_string();
+                let request_spec = response
+                    .request()
+                    .map(|request| HttpRequest::from_core(request, body));
+                let (resp_body, received_at) = response.read_all()?;
+                Ok((
+                    status,
+                    url,
+                    headers,
+                    resp_body,
+                    sent_at,
+                    received_at,
+                    http_version,
+                    request_spec,
+                ))
+            } else {
+                let prepared = session.prepare(request);
+                let url = prepared.url().to_string();
+                // Match the core's `HttpResponse::unsent`: an undispatched request
+                // reports its own pinned version, else `Auto` (not the session
+                // default, which negotiation has not yet resolved).
+                let http_version = prepared
+                    .http_version()
+                    .unwrap_or(HttpVersion::Auto)
+                    .as_str()
+                    .to_string();
+                let request_spec = Some(HttpRequest::from_core(&prepared, body));
+                Ok((
+                    0,
+                    url,
+                    Vec::new(),
+                    Vec::new(),
+                    0.0,
+                    0.0,
+                    http_version,
+                    request_spec,
+                ))
+            }
+        })
+        .map_err(http_err)?;
+    Ok(HttpResponse {
+        status,
+        url,
+        headers,
+        body: resp_body,
+        sent_at,
+        received_at,
+        http_version,
+        request: request_spec,
+    })
+}
+
 /// A received HTTP response, modelled on :class:`requests.Response`. The body is
 /// read eagerly (and decompressed) when the response is returned, so
 /// :attr:`content` / :meth:`text` are cheap to read repeatedly.
@@ -61,6 +340,9 @@ pub struct HttpResponse {
     sent_at: f64,
     received_at: f64,
     http_version: String,
+    /// The request that produced this response (``requests.Response.request``).
+    /// An *unsent* response (a verb called with ``send=False``) carries only this.
+    request: Option<HttpRequest>,
 }
 
 #[pymethods]
@@ -87,19 +369,53 @@ impl HttpResponse {
             sent_at,
             received_at,
             http_version: http_version.unwrap_or_else(|| HttpVersion::Http11.as_str().to_string()),
+            request: None,
         }
     }
 
-    /// The HTTP status code.
+    /// The HTTP status code (``0`` for an unsent response).
     #[getter]
     fn status(&self) -> u16 {
         self.status
     }
 
-    /// Whether the status is below 400 (the ``requests`` definition of "ok").
+    /// Whether the response is a success: it was actually dispatched
+    /// (:attr:`is_sent`) **and** its status is below 400 (the ``requests``
+    /// definition of "ok"). An **unsent** placeholder (status ``0``) is *not* ok.
     #[getter]
     fn ok(&self) -> bool {
-        self.status < 400
+        self.status != 0 && self.status < 400
+    }
+
+    /// Whether this response was actually dispatched. ``False`` for the **unsent**
+    /// placeholder a verb returns with ``send=False`` (status ``0``, empty body),
+    /// which carries only the prepared :attr:`request`.
+    #[getter]
+    fn is_sent(&self) -> bool {
+        self.status != 0
+    }
+
+    /// The originating prepared request that produced this response (similar to
+    /// :attr:`requests.Response.request`), or ``None``. After a redirect it is the
+    /// *original* request, not the final hop, so its method/URL may differ from
+    /// :attr:`url`.
+    #[getter]
+    fn request(&self) -> Option<HttpRequest> {
+        self.request.clone()
+    }
+
+    /// Dispatch this response's :attr:`request` through the shared session and
+    /// return the resulting response — how an **unsent** response (a verb called
+    /// with ``send=False``) is sent later. ``raise_error`` (default ``True``) raises
+    /// on a 4xx/5xx status.
+    #[pyo3(signature = (raise_error = true))]
+    fn send(&self, py: Python<'_>, raise_error: bool) -> PyResult<HttpResponse> {
+        match &self.request {
+            Some(request) => request.send(py, raise_error),
+            None => Err(pyo3::exceptions::PyValueError::new_err(
+                "this response carries no request to send",
+            )),
+        }
     }
 
     /// The final request URL.
@@ -245,7 +561,10 @@ impl HttpResponse {
     }
 
     /// Support ``pickle`` / ``copy`` by reconstructing through the constructor —
-    /// the buffered body and metadata are carried verbatim.
+    /// the buffered body and metadata are carried verbatim. The embedded
+    /// :attr:`request` is **not** preserved (it belongs to a live exchange, like the
+    /// rule that a request/response body is not serialised), so a restored response
+    /// has ``request == None``.
     #[allow(clippy::type_complexity)]
     fn __reduce__<'py>(
         &self,
@@ -281,65 +600,6 @@ impl HttpResponse {
 #[pyclass(name = "HttpSession", module = "yggdryl")]
 pub struct HttpSession {
     inner: CoreHttpSession,
-}
-
-/// Issues a request via `build` and drains the response body — all while the GIL
-/// is **released** (`allow_threads`), so a Python server thread can answer a
-/// blocking request without deadlocking — then buffers it into an [`HttpResponse`].
-/// Shared by [`HttpSession`]'s methods and the module-level [`get`] / [`post`] / …
-/// functions (which build over the shared singleton).
-fn buffer_response(
-    py: Python<'_>,
-    build: impl FnOnce() -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
-) -> PyResult<HttpResponse> {
-    let (status, url, headers, body, sent_at, received_at, http_version) = py
-        .allow_threads(|| {
-            // Every send streams; we drain the body here (off the GIL) into an
-            // owned buffer so `content` / `text` are cheap to read repeatedly.
-            // `read_all` drains and reports `received_at` (stamped at EOF) together.
-            let response = build()?;
-            let status = response.status();
-            let url = response.url().to_string();
-            let headers = response
-                .headers()
-                .iter()
-                .map(|(name, value)| (name.to_string(), value.to_string()))
-                .collect::<Vec<_>>();
-            let sent_at = response.sent_at();
-            let http_version = response.negotiated_version().as_str().to_string();
-            let (body, received_at) = response.read_all()?;
-            Ok::<_, yggdryl_http::HttpError>((
-                status,
-                url,
-                headers,
-                body,
-                sent_at,
-                received_at,
-                http_version,
-            ))
-        })
-        .map_err(http_err)?;
-    Ok(HttpResponse {
-        status,
-        url,
-        headers,
-        body,
-        sent_at,
-        received_at,
-        http_version,
-    })
-}
-
-impl HttpSession {
-    /// Runs `build` over this session's inner client and buffers the response
-    /// (see [`buffer_response`]).
-    fn run(
-        &self,
-        py: Python<'_>,
-        build: impl FnOnce(&CoreHttpSession) -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
-    ) -> PyResult<HttpResponse> {
-        buffer_response(py, || build(&self.inner))
-    }
 }
 
 #[pymethods]
@@ -490,88 +750,226 @@ impl HttpSession {
         Ok(())
     }
 
-    /// ``GET url`` (resolved against the session's ``base_url`` when set).
-    fn get(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| {
-            let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
-            session.send(request, true)
-        })
+    /// ``GET url`` (resolved against the session's ``base_url`` when set),
+    /// configured from the optional ``headers`` / ``params`` / ``basic_auth`` /
+    /// ``bearer_auth`` / ``allow_redirect`` / ``keep_alive`` / ``http_version``.
+    /// ``raise_error`` (default ``True``) raises on a 4xx/5xx status. With
+    /// ``send=False`` no request is dispatched: an **unsent** :class:`HttpResponse`
+    /// carrying the prepared :attr:`~HttpResponse.request` is returned (send it
+    /// later with :meth:`HttpResponse.send`).
+    #[pyo3(signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
+    fn get(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
+    ) -> PyResult<HttpResponse> {
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Get,
+            url,
+            headers,
+            params,
+            BodyArg::Empty,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, BodyArg::Empty, raise_error, send)
     }
 
-    /// ``HEAD url``.
-    fn head(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| {
-            let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
-            session.send(request, true)
-        })
+    /// ``HEAD url`` — same options as :meth:`get`.
+    #[pyo3(signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
+    fn head(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
+    ) -> PyResult<HttpResponse> {
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Head,
+            url,
+            headers,
+            params,
+            BodyArg::Empty,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, BodyArg::Empty, raise_error, send)
     }
 
-    /// ``DELETE url``.
-    fn delete(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-        self.run(py, |session| {
-            let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
-            session.send(request, true)
-        })
+    /// ``DELETE url`` — same options as :meth:`get`.
+    #[pyo3(signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
+    fn delete(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
+    ) -> PyResult<HttpResponse> {
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Delete,
+            url,
+            headers,
+            params,
+            BodyArg::Empty,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, BodyArg::Empty, raise_error, send)
     }
 
     /// ``POST url`` with an optional ``body`` — ``bytes`` or one of our `Io`
-    /// handles (a :class:`LocalPath` streams the upload straight off disk).
-    #[pyo3(signature = (url, body = None))]
+    /// handles (a :class:`LocalPath` streams the upload straight off disk) — and the
+    /// same options as :meth:`get`.
+    #[pyo3(signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
     fn post(
         &self,
         py: Python<'_>,
         url: &str,
         body: Option<Bound<'_, PyAny>>,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
-        self.run(py, move |session| {
-            let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true)
-        })
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Post,
+            url,
+            headers,
+            params,
+            body.clone(),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, body, raise_error, send)
     }
 
-    /// ``PUT url`` with a ``body`` — ``bytes`` or an `Io` handle.
-    #[pyo3(signature = (url, body = None))]
+    /// ``PUT url`` with a ``body`` — same options as :meth:`post`.
+    #[pyo3(signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
     fn put(
         &self,
         py: Python<'_>,
         url: &str,
         body: Option<Bound<'_, PyAny>>,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
-        self.run(py, move |session| {
-            let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true)
-        })
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Put,
+            url,
+            headers,
+            params,
+            body.clone(),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, body, raise_error, send)
     }
 
-    /// ``PATCH url`` with a ``body`` — ``bytes`` or an `Io` handle.
-    #[pyo3(signature = (url, body = None))]
+    /// ``PATCH url`` with a ``body`` — same options as :meth:`post`.
+    #[pyo3(signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+    #[allow(clippy::too_many_arguments)]
     fn patch(
         &self,
         py: Python<'_>,
         url: &str,
         body: Option<Bound<'_, PyAny>>,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
+        allow_redirect: bool,
+        keep_alive: f64,
+        http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
     ) -> PyResult<HttpResponse> {
         let body = extract_body(body.as_ref())?;
-        self.run(py, move |session| {
-            let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true)
-        })
+        let request = build_core_request(
+            Some(&self.inner),
+            Method::Patch,
+            url,
+            headers,
+            params,
+            body.clone(),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, body, raise_error, send)
     }
 
-    /// Issue an arbitrary ``method`` request, with optional ``headers`` and
-    /// ``body`` (``bytes`` or an `Io` handle). ``raise_error`` (default ``True``)
-    /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
-    /// response whatever its status. ``keep_alive`` is the keep-alive idle TTL in
-    /// seconds (default 300 — 5 minutes; ``0`` sends ``Connection: close``).
-    /// ``allow_redirect`` (default ``True``) follows
-    /// 3xx redirects (up to the session's ``max_redirects``); pass ``False`` to
-    /// receive the 3xx response itself. ``http_version`` (e.g. ``"2"``) pins the
-    /// protocol version for this request, overriding the session default. The body
-    /// is always buffered (the response exposes :attr:`content` repeatedly), so the
-    /// connection is released at once.
-    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = 300.0, allow_redirect = true, http_version = None))]
+    /// Issue an arbitrary ``method`` request, configured from ``headers`` /
+    /// ``body`` (``bytes`` or an `Io` handle) / ``params`` / ``basic_auth`` /
+    /// ``bearer_auth`` / ``allow_redirect`` / ``keep_alive`` / ``http_version``.
+    /// ``raise_error`` (default ``True``) raises ``ValueError`` on a 4xx/5xx status;
+    /// pass ``False`` to receive the response whatever its status. With
+    /// ``send=False`` the prepared request is returned as an **unsent** response
+    /// (see :meth:`get`).
+    #[pyo3(signature = (method, url, headers = None, body = None, *, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
     #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
@@ -580,114 +978,269 @@ impl HttpSession {
         url: &str,
         headers: Option<HashMap<String, String>>,
         body: Option<Bound<'_, PyAny>>,
-        raise_error: bool,
-        keep_alive: f64,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
         allow_redirect: bool,
+        keep_alive: f64,
         http_version: Option<&str>,
+        raise_error: bool,
+        send: bool,
     ) -> PyResult<HttpResponse> {
         let method = Method::from_str(method).map_err(http_err)?;
-        let http_version = http_version
-            .map(|value| HttpVersion::from_str(value).map_err(http_err))
-            .transpose()?;
         let body = extract_body(body.as_ref())?;
-        self.run(py, move |session| {
-            let mut request = CoreHttpRequest::from_url(method, session.resolve_url(url)?)
-                .with_allow_redirect(allow_redirect);
-            if let Some(http_version) = http_version {
-                request = request.with_http_version(http_version);
-            }
-            if let Some(headers) = headers {
-                request = request.with_headers(headers);
-            }
-            request = apply_body(request, body);
-            session.send(request.with_keep_alive(keep_alive), raise_error)
-        })
+        let request = build_core_request(
+            Some(&self.inner),
+            method,
+            url,
+            headers,
+            params,
+            body.clone(),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+        )?;
+        run_verb(py, &self.inner, request, body, raise_error, send)
+    }
+
+    /// Dispatch a prebuilt :class:`HttpRequest` through this session — the
+    /// centralised ``send(request) -> HttpResponse`` entry point (the dispatch
+    /// primitive, always sent; build without sending via a verb's ``send=False``).
+    /// ``raise_error`` (default ``True``) raises on a 4xx/5xx status.
+    #[pyo3(signature = (request, *, raise_error = true))]
+    fn send(
+        &self,
+        py: Python<'_>,
+        request: PyRef<'_, HttpRequest>,
+        raise_error: bool,
+    ) -> PyResult<HttpResponse> {
+        let core = request.to_core()?;
+        run_verb(
+            py,
+            &self.inner,
+            core,
+            request.body.clone(),
+            raise_error,
+            true,
+        )
     }
 }
 
 /// ``GET url`` via the process-wide shared :class:`HttpSession` singleton (the
 /// ``requests.get`` equivalent — raises on a 4xx/5xx status). ``url`` is resolved
 /// against the shared session's ``base_url`` when one is set (see
-/// :func:`set_base_url`).
+/// :func:`set_base_url`). Takes the same options as :meth:`HttpSession.get`,
+/// including ``send=False`` to return an **unsent** response.
 #[pyfunction]
-#[pyo3(name = "get")]
-pub fn http_get(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
-        session.send(request, true)
-    })
+#[pyo3(name = "get", signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
+pub fn http_get(
+    py: Python<'_>,
+    url: &str,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
+) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
+    let request = build_core_request(
+        Some(&session),
+        Method::Get,
+        url,
+        headers,
+        params,
+        BodyArg::Empty,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, BodyArg::Empty, raise_error, send)
 }
 
-/// ``HEAD url`` via the shared session singleton (raises on a 4xx/5xx status).
+/// ``HEAD url`` via the shared session singleton — same options as :func:`get`.
 #[pyfunction]
-#[pyo3(name = "head")]
-pub fn http_head(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
-        session.send(request, true)
-    })
+#[pyo3(name = "head", signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
+pub fn http_head(
+    py: Python<'_>,
+    url: &str,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
+) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
+    let request = build_core_request(
+        Some(&session),
+        Method::Head,
+        url,
+        headers,
+        params,
+        BodyArg::Empty,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, BodyArg::Empty, raise_error, send)
 }
 
-/// ``DELETE url`` via the shared session singleton (raises on a 4xx/5xx status).
+/// ``DELETE url`` via the shared session singleton — same options as :func:`get`.
 #[pyfunction]
-#[pyo3(name = "delete")]
-pub fn http_delete(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
-        session.send(request, true)
-    })
+#[pyo3(name = "delete", signature = (url, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
+pub fn http_delete(
+    py: Python<'_>,
+    url: &str,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
+) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
+    let request = build_core_request(
+        Some(&session),
+        Method::Delete,
+        url,
+        headers,
+        params,
+        BodyArg::Empty,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, BodyArg::Empty, raise_error, send)
 }
 
 /// ``POST url`` with an optional ``body`` (``bytes`` or an `Io` handle) via the
-/// shared session singleton.
+/// shared session singleton — same options as :meth:`HttpSession.post`.
 #[pyfunction]
-#[pyo3(name = "post", signature = (url, body = None))]
+#[pyo3(name = "post", signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
 pub fn http_post(
     py: Python<'_>,
     url: &str,
     body: Option<Bound<'_, PyAny>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
 ) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
     let body = extract_body(body.as_ref())?;
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true)
-    })
+    let request = build_core_request(
+        Some(&session),
+        Method::Post,
+        url,
+        headers,
+        params,
+        body.clone(),
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, body, raise_error, send)
 }
 
 /// ``PUT url`` with a ``body`` via the shared session singleton.
 #[pyfunction]
-#[pyo3(name = "put", signature = (url, body = None))]
+#[pyo3(name = "put", signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
 pub fn http_put(
     py: Python<'_>,
     url: &str,
     body: Option<Bound<'_, PyAny>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
 ) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
     let body = extract_body(body.as_ref())?;
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true)
-    })
+    let request = build_core_request(
+        Some(&session),
+        Method::Put,
+        url,
+        headers,
+        params,
+        body.clone(),
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, body, raise_error, send)
 }
 
 /// ``PATCH url`` with a ``body`` via the shared session singleton.
 #[pyfunction]
-#[pyo3(name = "patch", signature = (url, body = None))]
+#[pyo3(name = "patch", signature = (url, body = None, *, headers = None, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
+#[allow(clippy::too_many_arguments)]
 pub fn http_patch(
     py: Python<'_>,
     url: &str,
     body: Option<Bound<'_, PyAny>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
 ) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
     let body = extract_body(body.as_ref())?;
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true)
-    })
+    let request = build_core_request(
+        Some(&session),
+        Method::Patch,
+        url,
+        headers,
+        params,
+        body.clone(),
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, body, raise_error, send)
 }
 
 /// Configure the process-wide shared :class:`HttpSession` singleton with a
@@ -702,9 +1255,9 @@ pub fn set_base_url(base_url: &str) -> PyResult<()> {
 }
 
 /// Issue an arbitrary ``method`` request via the shared session singleton (same
-/// arguments as :meth:`HttpSession.request`).
+/// arguments as :meth:`HttpSession.request`, including ``send=False``).
 #[pyfunction]
-#[pyo3(name = "request", signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = 300.0, allow_redirect = true, http_version = None))]
+#[pyo3(name = "request", signature = (method, url, headers = None, body = None, *, params = None, basic_auth = None, bearer_auth = None, allow_redirect = true, keep_alive = 300.0, http_version = None, raise_error = true, send = true))]
 #[allow(clippy::too_many_arguments)]
 pub fn http_request(
     py: Python<'_>,
@@ -712,27 +1265,30 @@ pub fn http_request(
     url: &str,
     headers: Option<HashMap<String, String>>,
     body: Option<Bound<'_, PyAny>>,
-    raise_error: bool,
-    keep_alive: f64,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
     allow_redirect: bool,
+    keep_alive: f64,
     http_version: Option<&str>,
+    raise_error: bool,
+    send: bool,
 ) -> PyResult<HttpResponse> {
+    let session = CoreHttpSession::shared();
     let method = Method::from_str(method).map_err(http_err)?;
-    let http_version = http_version
-        .map(|value| HttpVersion::from_str(value).map_err(http_err))
-        .transpose()?;
     let body = extract_body(body.as_ref())?;
-    buffer_response(py, move || {
-        let session = CoreHttpSession::shared();
-        let mut request = CoreHttpRequest::from_url(method, session.resolve_url(url)?)
-            .with_allow_redirect(allow_redirect);
-        if let Some(http_version) = http_version {
-            request = request.with_http_version(http_version);
-        }
-        if let Some(headers) = headers {
-            request = request.with_headers(headers);
-        }
-        request = apply_body(request, body);
-        session.send(request.with_keep_alive(keep_alive), raise_error)
-    })
+    let request = build_core_request(
+        Some(&session),
+        method,
+        url,
+        headers,
+        params,
+        body.clone(),
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+    )?;
+    run_verb(py, &session, request, body, raise_error, send)
 }

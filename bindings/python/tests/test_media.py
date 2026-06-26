@@ -96,6 +96,19 @@ def test_media_type_is_ordered_stack():
     assert str(stack) == "csv.gz"
 
 
+def test_tgz_compound_and_new_mime_types():
+    # `.tgz` is tar+gzip — the same stack as `.tar.gz`.
+    tgz = [t.mime for t in yggdryl.MediaType.from_path("app.tgz").types]
+    assert tgz == ["application/x-tar", "application/gzip"]
+    assert tgz == [t.mime for t in yggdryl.MediaType.from_path("app.tar.gz").types]
+    # A selection of newly-added common MIME types resolve by extension.
+    assert yggdryl.MimeType.from_extension("yaml").mime == "application/yaml"
+    assert yggdryl.MimeType.from_extension("toml").mime == "application/toml"
+    assert yggdryl.MimeType.from_extension("avif").mime == "image/avif"
+    assert yggdryl.MimeType.from_extension("mkv").mime == "video/x-matroska"
+    assert yggdryl.MimeType.from_magic(b"\xfd7zXZ\x00\x00").mime == "application/x-xz"
+
+
 def test_media_type_explicit_construction():
     stack = yggdryl.MediaType([yggdryl.MimeType("text/csv"), yggdryl.MimeType("application/gzip")])
     assert stack == yggdryl.MediaType.from_path("x.csv.gz")
