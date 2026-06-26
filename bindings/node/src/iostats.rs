@@ -1,9 +1,10 @@
 //! The `IoStats` napi class.
 
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::IoStats as CoreIoStats;
+use yggdryl_core::{IoStats as CoreIoStats, Kind};
 
 use crate::media::MediaType;
 
@@ -17,6 +18,41 @@ pub struct IoStats {
 
 #[napi]
 impl IoStats {
+    /// Construct stats explicitly. `kind` is one of `"missing"` / `"file"` /
+    /// `"directory"` / `"other"` (default `"file"`); `mtime` is Unix-epoch seconds.
+    /// The lazily-discovered `mediaType` is not set here.
+    #[napi(constructor)]
+    pub fn new(
+        size: Option<f64>,
+        kind: Option<String>,
+        mtime: Option<f64>,
+        content_type: Option<String>,
+        etag: Option<String>,
+    ) -> Result<Self> {
+        let kind = match kind.as_deref().unwrap_or("file") {
+            "missing" => Kind::Missing,
+            "file" => Kind::File,
+            "directory" => Kind::Directory,
+            "other" => Kind::Other,
+            other => {
+                return Err(Error::from_reason(format!(
+                    "unknown kind {other:?}, expected 'missing', 'file', 'directory' or 'other'"
+                )))
+            }
+        };
+        let mut inner = CoreIoStats::new(size.unwrap_or(0.0) as u64).with_kind(kind);
+        if let Some(seconds) = mtime {
+            inner = inner.with_mtime(UNIX_EPOCH + Duration::from_secs_f64(seconds));
+        }
+        if let Some(content_type) = content_type {
+            inner = inner.with_content_type(content_type);
+        }
+        if let Some(etag) = etag {
+            inner = inner.with_etag(etag);
+        }
+        Ok(IoStats { inner })
+    }
+
     /// What the resource is: `"missing"`, `"file"`, `"directory"` or `"other"`.
     #[napi(getter)]
     pub fn kind(&self) -> String {

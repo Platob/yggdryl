@@ -106,3 +106,19 @@ test('write auto-creates missing parent dirs', () => {
     fs.rmSync(base, { recursive: true, force: true })
   }
 })
+
+test('cachedStats get/set', () => {
+  const { IoStats } = require('..')
+  const p = path.join(os.tmpdir(), `yggdryl_node_${process.pid}_cached.bin`)
+  new LocalPath(p).write(Buffer.from('hello'))
+  try {
+    const lp = new LocalPath(p)
+    // Held since construction -> always present for a path.
+    assert.strictEqual(lp.cachedStats().size, 5)
+    lp.setStats(new IoStats(7, 'file', undefined, 'text/plain'))
+    assert.strictEqual(lp.cachedStats().contentType, 'text/plain')
+    assert.strictEqual(lp.stats().contentType, 'text/plain')
+  } finally {
+    fs.rmSync(p, { force: true })
+  }
+})

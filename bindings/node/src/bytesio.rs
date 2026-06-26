@@ -6,6 +6,7 @@ use yggdryl_core::{BytesIO as CoreBytesIO, Io, Mode};
 use yggdryl_core::{CompressIo, Compression as CoreCompression};
 
 use crate::iostats::IoStats;
+use crate::media::MediaType;
 use crate::url::Url;
 use crate::whence_from;
 
@@ -23,14 +24,23 @@ impl BytesIO {
     /// Construct from optional `initial` contents — a `Buffer` taken verbatim, or a
     /// `string` resolved through `fromStr` (an existing file is read in, else the
     /// text is UTF-8 encoded). `stream` (default `true`) toggles cursor advancement.
+    /// `mediaType` seeds the cached `mediaType` so it is not inferred from the magic
+    /// bytes.
     #[napi(constructor)]
-    pub fn new(initial: Option<Either<String, Buffer>>, stream: Option<bool>) -> Self {
+    pub fn new(
+        initial: Option<Either<String, Buffer>>,
+        stream: Option<bool>,
+        media_type: Option<&MediaType>,
+    ) -> Self {
         let mut inner = match initial {
             Some(Either::A(value)) => CoreBytesIO::from_str(&value),
             Some(Either::B(buffer)) => CoreBytesIO::from_bytes(buffer.to_vec()),
             None => CoreBytesIO::new(),
         };
         inner.set_stream(stream.unwrap_or(true));
+        if let Some(media_type) = media_type {
+            inner = inner.with_media_type(media_type.inner.clone());
+        }
         BytesIO { inner }
     }
 
@@ -104,13 +114,36 @@ impl BytesIO {
     }
 
     /// Discover this handle's metadata (see `IoStats`): `kind === "file"` and the
-    /// buffer `size`.
+    /// buffer `size`. The live byte count always wins; any `setStats` override
+    /// supplies the rest and the cached `mediaType` is folded in.
     #[napi]
     pub fn stats(&self) -> Result<IoStats> {
         self.inner
             .stats()
             .map(|inner| IoStats { inner })
             .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// The `MediaType` of this buffer — inferred from the magic bytes once and
+    /// **cached**, or the one seeded via the `mediaType` constructor argument.
+    /// `null` when no type can be inferred.
+    #[napi(getter, js_name = "mediaType")]
+    pub fn media_type(&self) -> Option<MediaType> {
+        self.inner.media_type().map(|inner| MediaType { inner })
+    }
+
+    /// The cached `IoStats` if one has been installed with `setStats`, else `null`
+    /// — the *get* side of the stats cache.
+    #[napi(js_name = "cachedStats")]
+    pub fn cached_stats(&self) -> Option<IoStats> {
+        self.inner.cached_stats().map(|inner| IoStats { inner })
+    }
+
+    /// Install `stats` as this handle's cached metadata — the *set* side. The live
+    /// byte count still wins in `stats`; the slot supplies the rest.
+    #[napi(js_name = "setStats")]
+    pub fn set_stats(&mut self, stats: &IoStats) {
+        self.inner.set_stats(stats.inner.clone());
     }
 
     /// The access mode: `"r"`, `"w"`, `"a"` or `"r+"`.

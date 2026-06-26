@@ -116,3 +116,18 @@ def test_write_auto_creates_missing_parent_dirs():
         assert yggdryl.LocalPath(nested).read() == b"deep"
     finally:
         shutil.rmtree(base, ignore_errors=True)
+
+
+def test_cached_stats_get_set():
+    f = os.path.join(tempfile.gettempdir(), f"yggdryl_py_{os.getpid()}_cached.bin")
+    yggdryl.LocalPath(f).write(b"hello")
+    try:
+        lp = yggdryl.LocalPath(f)
+        # Held since construction -> always present for a path.
+        assert lp.cached_stats().size == 5
+        # Override and read it back through the cache peek and stats().
+        lp.set_stats(yggdryl.IoStats(size=7, content_type="text/plain"))
+        assert lp.cached_stats().content_type == "text/plain"
+        assert lp.stats().content_type == "text/plain"
+    finally:
+        os.remove(f)

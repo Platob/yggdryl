@@ -25,6 +25,33 @@ test('fromStr reads a file else utf8-encodes', () => {
   assert.strictEqual(new BytesIO('abc', false).stream, false)
 })
 
+test('media type cached and seeded', () => {
+  const { MediaType } = require('..')
+  // Inferred from the gzip magic bytes, cached on the handle.
+  const io = new BytesIO(Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]))
+  assert.strictEqual(io.mediaType.first.mime, 'application/gzip')
+  // The inferred type is folded into stats() too.
+  assert.ok(io.stats().mediaType.equals(io.mediaType))
+  // Seed via the constructor param (3rd arg) — returned without sniffing.
+  const csv = MediaType.fromStr('text/csv')
+  const seeded = new BytesIO(Buffer.from('no magic here'), undefined, csv)
+  assert.ok(seeded.mediaType.equals(csv))
+  // Nothing inferable -> null.
+  assert.strictEqual(new BytesIO(Buffer.from('no magic here')).mediaType, null)
+})
+
+test('stats cache get/set', () => {
+  const { IoStats } = require('..')
+  const io = new BytesIO(Buffer.from('abc'))
+  assert.strictEqual(io.cachedStats(), null)
+  io.setStats(new IoStats(0, 'file', undefined, 'application/json'))
+  assert.strictEqual(io.cachedStats().contentType, 'application/json')
+  // The live byte count wins over the cached size; the cache supplies the rest.
+  const stats = io.stats()
+  assert.strictEqual(stats.size, 3)
+  assert.strictEqual(stats.contentType, 'application/json')
+})
+
 test('mode and open', () => {
   const io = new BytesIO(Buffer.from('hello'))
   assert.strictEqual(io.mode, 'r')
