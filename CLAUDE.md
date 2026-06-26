@@ -389,7 +389,7 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` / `category` |
 | MIME category | `Category` enum (`blob` default / `directory` / `tabular` / `code` / `codec`); `from_str` / `as_str`; `MimeType.category()` reads it from the registry |
 | Global MIME registry | `MimeType.register(mime, extensions, magic, category=blob)` / `unregister(mime)` / `reset_registry()` |
-| Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` |
+| Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` / `category` (outermost layer's, `blob` default) |
 | Inferred media/MIME type on a URI/URL | `media_type()` → `MediaType` stack or null; `mime_type()` → outermost `MimeType` or null (Rust also has `MediaType::from(&uri)`) |
 | Octet-stream fallback | `MimeType.default()` = `application/octet-stream`; `MediaType.default()` = `[OctetStream]` (Rust `Default`, so `from_*(...).unwrap_or_default()`) |
 

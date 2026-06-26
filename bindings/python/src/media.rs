@@ -109,6 +109,14 @@ impl MediaType {
         })
     }
 
+    /// The category of the outermost layer (like :attr:`MimeType.category`):
+    /// ``"codec"`` for ``data.csv.gz`` but ``"tabular"`` for ``data.csv``. An empty
+    /// stack is ``"blob"`` (the default).
+    #[getter]
+    fn category(&self) -> &'static str {
+        self.inner.category().as_str()
+    }
+
     fn __len__(&self) -> usize {
         self.inner.len()
     }

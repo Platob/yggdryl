@@ -382,6 +382,17 @@ mod tests {
         assert_eq!(Category::from_str("compression").unwrap(), Category::Codec);
         assert_eq!(Category::Codec.as_str(), "codec");
         assert!(Category::from_str("nope").is_err());
+        // A MediaType reports its outermost layer's category (like `mime_type`).
+        assert_eq!(
+            MediaType::from_path("data.csv").category(),
+            Category::Tabular
+        );
+        assert_eq!(
+            MediaType::from_path("data.csv.gz").category(),
+            Category::Codec
+        );
+        assert_eq!(MediaType::default().category(), Category::Blob);
+        assert_eq!(MediaType::new(vec![]).category(), Category::Blob);
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::fmt;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::media::mime::resolve_name;
-use crate::{Mapping, MediaError, MimeType};
+use crate::{Category, Mapping, MediaError, MimeType};
 
 /// An ordered stack of [`MimeType`]s describing a layered file, innermost content
 /// first. Parsing `data.csv.gz` yields `MediaType([MimeType::Csv, MimeType::Gzip])`.
@@ -124,6 +124,14 @@ impl MediaType {
     /// Whether the stack is empty (no known extension was found).
     pub fn is_empty(&self) -> bool {
         self.types.is_empty()
+    }
+
+    /// The [`Category`] of the outermost layer — the same layer
+    /// [`last`](MediaType::last) (and a path's `mime_type`) reports: `Codec` for
+    /// `data.csv.gz` (gzip) but `Tabular` for `data.csv`. An empty stack is
+    /// [`Category::Blob`] (the default).
+    pub fn category(&self) -> Category {
+        self.last().map(MimeType::category).unwrap_or_default()
     }
 }
 

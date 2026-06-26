@@ -110,6 +110,10 @@ def test_category_and_language_mime_types():
         m = yggdryl.MimeType.from_extension(ext)
         assert m.mime == mime, ext
         assert m.category == "code", ext
+    # A MediaType reports its outermost layer's category.
+    assert yggdryl.MediaType.from_path("data.csv").category == "tabular"
+    assert yggdryl.MediaType.from_path("data.csv.gz").category == "codec"
+    assert yggdryl.MediaType([]).category == "blob"
     # An unknown category name is rejected with an actionable error.
     with pytest.raises(ValueError):
         yggdryl.MimeType.register("application/x-bad", ["bad"], category="nope")

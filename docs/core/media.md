@@ -303,7 +303,9 @@ the registered type reports.
 
 A `MediaType` is an ordered stack of `MimeType`s, innermost content first. Build it
 from a path, one extension, or many; `first`/`last` pick the content and container
-ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
+ends, `category` reports the outermost layer's [category](#category-what-a-type-is)
+(`codec` for `data.csv.gz`, `tabular` for `data.csv`), and rendering produces the
+canonical dotted extension chain (`csv.gz`).
 
 === "Python"
 
@@ -312,6 +314,7 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
     assert [t.mime for t in stack.types] == ["text/csv", "application/gzip"]
     assert stack.first.mime == "text/csv"
     assert stack.last.mime == "application/gzip"
+    assert stack.category == "codec"   # the outermost layer (gzip)
     assert len(stack) == 2
     assert str(stack) == "csv.gz"
 
@@ -330,6 +333,7 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
     stack.types.map((t) => t.mime); // ["text/csv", "application/gzip"]
     stack.first.mime;               // "text/csv"
     stack.last.mime;                // "application/gzip"
+    stack.category;                 // "codec" (the outermost layer, gzip)
     stack.length;                   // 2
     stack.toString();               // "csv.gz"
 
@@ -341,12 +345,13 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
 === "Rust"
 
     ```rust
-    use yggdryl_core::{MediaType, MimeType};
+    use yggdryl_core::{Category, MediaType, MimeType};
 
     let stack = MediaType::from_path("data.csv.gz");
     assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
     assert_eq!(stack.first(), Some(&MimeType::Csv));
     assert_eq!(stack.last(), Some(&MimeType::Gzip));
+    assert_eq!(stack.category(), Category::Codec); // the outermost layer (gzip)
     assert_eq!(stack.len(), 2);
     assert_eq!(stack.to_str(true), "csv.gz");
 

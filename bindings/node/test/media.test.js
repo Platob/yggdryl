@@ -101,6 +101,10 @@ test('category and language mime types', () => {
     assert.strictEqual(m.mime, mime, ext)
     assert.strictEqual(m.category, 'code', ext)
   }
+  // A MediaType reports its outermost layer's category.
+  assert.strictEqual(MediaType.fromPath('data.csv').category, 'tabular')
+  assert.strictEqual(MediaType.fromPath('data.csv.gz').category, 'codec')
+  assert.strictEqual(new MediaType([]).category, 'blob')
   // An unknown category name is rejected with an actionable error.
   assert.throws(() => MimeType.register('application/x-bad', ['bad'], undefined, 'nope'))
 })
