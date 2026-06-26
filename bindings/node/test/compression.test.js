@@ -32,15 +32,22 @@ test('none is identity', () => {
   assert.deepStrictEqual(codec.decompress(payload), payload)
 })
 
-for (const name of ['gzip', 'zstd', 'snappy']) {
+for (const name of ['gzip', 'deflate', 'zstd', 'snappy']) {
   test(`round-trips ${name}`, () => {
     const codec = new Compression(name)
-    assert.strictEqual(codec.isAvailable, true) // the addon enables all three backends
+    assert.strictEqual(codec.isAvailable, true) // the addon enables all backends
     const payload = Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 251))
     const packed = codec.compress(payload)
     assert.deepStrictEqual(codec.decompress(packed), payload)
   })
 }
+
+test('deflate / zlib / zz alias the zlib codec', () => {
+  for (const alias of ['deflate', 'zlib', 'zz']) {
+    assert.strictEqual(Compression.fromStr(alias).name, 'deflate')
+  }
+  assert.strictEqual(new Compression('deflate').extension, 'zz')
+})
 
 test('toString', () => {
   assert.strictEqual(new Compression('zstd').toString(), 'zstd')

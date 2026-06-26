@@ -66,6 +66,10 @@ pub enum Compression {
     None,
     /// gzip (RFC 1952), via `flate2` — the `gzip` feature.
     Gzip,
+    /// zlib / DEFLATE (RFC 1950, the zlib wrapper around a DEFLATE stream), via
+    /// `flate2` — shares the `gzip` feature. Its HTTP `Content-Encoding` token is
+    /// `deflate` (which, per common server practice, is the zlib format).
+    Deflate,
     /// Zstandard, via `zstd` — the `zstd` feature.
     Zstd,
     /// Snappy frame format, via `snap` — the `snappy` feature.
@@ -85,6 +89,7 @@ impl Compression {
         let codec = match value.trim().to_ascii_lowercase().as_str() {
             "none" | "identity" | "store" => Compression::None,
             "gzip" | "gz" => Compression::Gzip,
+            "deflate" | "zlib" | "zz" => Compression::Deflate,
             "zstd" | "zst" => Compression::Zstd,
             "snappy" | "snap" | "sz" => Compression::Snappy,
             "br" | "brotli" => Compression::Brotli,
@@ -103,6 +108,7 @@ impl Compression {
             .as_str()
         {
             "gz" | "gzip" => Compression::Gzip,
+            "zz" | "zlib" | "deflate" => Compression::Deflate,
             "zst" | "zstd" => Compression::Zstd,
             "sz" | "snappy" | "snap" => Compression::Snappy,
             "br" | "brotli" => Compression::Brotli,
@@ -170,6 +176,7 @@ impl Compression {
         match self {
             Compression::None => "none",
             Compression::Gzip => "gzip",
+            Compression::Deflate => "deflate",
             Compression::Zstd => "zstd",
             Compression::Snappy => "snappy",
             Compression::Brotli => "brotli",
@@ -182,6 +189,7 @@ impl Compression {
         match self {
             Compression::None => None,
             Compression::Gzip => Some("gz"),
+            Compression::Deflate => Some("zz"),
             Compression::Zstd => Some("zst"),
             Compression::Snappy => Some("sz"),
             Compression::Brotli => Some("br"),
@@ -196,6 +204,8 @@ impl Compression {
             Compression::None => true,
             #[cfg(feature = "gzip")]
             Compression::Gzip => true,
+            #[cfg(feature = "gzip")]
+            Compression::Deflate => true,
             #[cfg(feature = "zstd")]
             Compression::Zstd => true,
             #[cfg(feature = "snappy")]
@@ -217,6 +227,11 @@ impl Compression {
             Compression::None => EncoderInner::Store(sink),
             #[cfg(feature = "gzip")]
             Compression::Gzip => EncoderInner::Gzip(flate2::write::GzEncoder::new(
+                codec::WriteShim(sink),
+                flate2::Compression::default(),
+            )),
+            #[cfg(feature = "gzip")]
+            Compression::Deflate => EncoderInner::Deflate(flate2::write::ZlibEncoder::new(
                 codec::WriteShim(sink),
                 flate2::Compression::default(),
             )),
@@ -253,6 +268,10 @@ impl Compression {
             #[cfg(feature = "gzip")]
             Compression::Gzip => {
                 DecoderInner::Gzip(flate2::read::GzDecoder::new(codec::ReadShim(source)))
+            }
+            #[cfg(feature = "gzip")]
+            Compression::Deflate => {
+                DecoderInner::Deflate(flate2::read::ZlibDecoder::new(codec::ReadShim(source)))
             }
             #[cfg(feature = "zstd")]
             Compression::Zstd => DecoderInner::Zstd(
@@ -491,6 +510,7 @@ mod tests {
         let payload: Vec<u8> = (0..4096u32).map(|n| (n % 251) as u8).collect();
         for codec in [
             Compression::Gzip,
+            Compression::Deflate,
             Compression::Zstd,
             Compression::Snappy,
             Compression::Brotli,
@@ -514,6 +534,31 @@ mod tests {
             decoder.read_to_end(&mut out).unwrap();
             assert_eq!(out, payload, "{codec} streamed");
         }
+    }
+
+    /// `deflate` (the HTTP `Content-Encoding` token) / `zlib` / `zz` all name the
+    /// zlib codec, which round-trips and names itself `deflate`.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn deflate_names_and_round_trips() {
+        for name in ["deflate", "zlib", "zz", "DEFLATE"] {
+            assert_eq!(Compression::from_str(name).unwrap(), Compression::Deflate);
+        }
+        assert_eq!(
+            Compression::from_extension("zz"),
+            Some(Compression::Deflate)
+        );
+        let codec = Compression::Deflate;
+        assert_eq!(codec.as_str(), "deflate");
+        assert_eq!(codec.extension(), Some("zz"));
+        assert!(codec.is_available());
+        let payload = b"deflate me, deflate me, deflate me".repeat(64);
+        assert_eq!(
+            codec
+                .decompress(&codec.compress(&payload).unwrap())
+                .unwrap(),
+            payload
+        );
     }
 
     /// The `CompressIo` extension trait round-trips an `Io` handle into a

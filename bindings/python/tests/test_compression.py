@@ -37,13 +37,21 @@ def test_none_is_identity():
     assert codec.decompress(payload) == payload
 
 
-@pytest.mark.parametrize("name", ["gzip", "zstd", "snappy", "brotli"])
+@pytest.mark.parametrize("name", ["gzip", "deflate", "zstd", "snappy", "brotli"])
 def test_round_trips_each_codec(name):
     codec = yggdryl.Compression(name)
-    assert codec.is_available is True  # the wheel enables all three backends
+    assert codec.is_available is True  # the wheel enables all backends
     payload = bytes((i % 251) for i in range(4096))
     packed = codec.compress(payload)
     assert codec.decompress(packed) == payload
+
+
+def test_deflate_zlib_aliases():
+    # `deflate` (the HTTP Content-Encoding token), `zlib` and `zz` all name the
+    # zlib codec, which calls itself `deflate` with extension `zz`.
+    for alias in ("deflate", "zlib", "zz"):
+        assert yggdryl.Compression(alias).name == "deflate"
+    assert yggdryl.Compression("deflate").extension == "zz"
 
 
 def test_equality_and_repr():

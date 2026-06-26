@@ -22,9 +22,12 @@ its concern wholly — do not scatter a concern's logic across modules:
   `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
 - `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
-  types, backed by a mutable global registry of extensions/magic bytes) and the
-  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`).
-  **All media-type logic lives here.**
+  types, backed by a mutable global registry of extensions/magic bytes — add a common
+  type by appending one `builtin(...)` row to `BUILTINS`, keeping a specific magic
+  *before* a broader one, e.g. AVIF's `ftypavif` before MP4's `ftyp`) and the
+  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`;
+  **compound archive extensions** like `.tgz`/`.tbz2`/`.txz`/`.tzst` expand to
+  `[Tar, <codec>]` via `expand_extension`). **All media-type logic lives here.**
 - `url/` (`mod` + `uri.rs` + `url.rs`) — the `Uri`/`Url` types and the canonical URL
   tests, built on `encoding`/`mapping` (and `media` for the inferred `media_type()`
   accessor). **All URL logic lives here.**
@@ -131,12 +134,14 @@ Compression is layered **on top of** the `io` module, never inside it (so the IO
 base stays codec-free and the dependency points one way — `compression` builds on
 `io`, never the reverse). The shape:
 
-- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (HTTP
-  `Content-Encoding: br`); `from_str` / `from_extension` / `as_str` / `extension` /
-  `is_available`, and (under `media`) `from_mime` / `from_media` / `from_stats` for
-  inference plus `mime()` (the inverse of `from_mime`, used to add an encoding layer to
-  a media type). Brotli has no magic bytes, so it is recognised by the `.br` extension /
-  `application/x-brotli` MIME only, never by content sniffing.
+- `Compression` — `None` / `Gzip` / `Deflate` (zlib, HTTP `Content-Encoding: deflate`)
+  / `Zstd` / `Snappy` / `Brotli` (HTTP `Content-Encoding: br`); `from_str` /
+  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
+  `from_mime` / `from_media` / `from_stats` for inference plus `mime()` (the inverse of
+  `from_mime`, used to add an encoding layer to a media type). `Deflate` is the zlib
+  format (RFC 1950) and shares the `gzip` feature/`flate2` backend; like `Snappy` it has
+  no registered file MIME. Brotli has no magic bytes, so it is recognised by the `.br`
+  extension / `application/x-brotli` MIME only, never by content sniffing.
 - `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
   flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
   Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
