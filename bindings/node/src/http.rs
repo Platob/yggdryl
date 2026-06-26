@@ -10,7 +10,12 @@ use std::sync::Arc;
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
-use yggdryl_core::{LocalPath as CoreLocalPath, Path, Url as CoreUrl};
+use yggdryl_core::{
+    BytesIO as CoreBytesIO, Compression as CoreCompression, LocalPath as CoreLocalPath,
+    MimeType as CoreMimeType, Path, Url as CoreUrl,
+};
+
+use crate::bytesio::BytesIO;
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, HttpVersion, Method,
 };
@@ -36,7 +41,7 @@ fn shared_task(
     headers: Vec<(String, String)>,
     body: BodyArg,
     raise_error: bool,
-    keep_alive: bool,
+    keep_alive: f64,
     allow_redirect: bool,
     http_version: Option<HttpVersion>,
 ) -> AsyncTask<RequestTask> {
@@ -89,7 +94,7 @@ pub struct RequestTask {
     headers: Vec<(String, String)>,
     body: BodyArg,
     raise_error: bool,
-    keep_alive: bool,
+    keep_alive: f64,
     allow_redirect: bool,
     http_version: Option<HttpVersion>,
 }
@@ -107,17 +112,19 @@ impl Task for RequestTask {
         if let Some(http_version) = self.http_version {
             request = request.with_http_version(http_version);
         }
-        request = request.with_headers(std::mem::take(&mut self.headers));
+        request = request
+            .with_keep_alive(self.keep_alive)
+            .with_headers(std::mem::take(&mut self.headers));
         request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
             BodyArg::Empty => request,
             BodyArg::Bytes(bytes) => request.with_body(bytes),
             BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
         };
-        // A buffered (`stream = false`) send drains the body now and releases the
-        // connection, so `received_at` is already stamped before `bytes()`.
+        // Every send streams; we drain the body here (off the event loop) into an
+        // owned buffer, decompressed, so `content` / `text` / `json` are cheap.
         let response = self
             .session
-            .send(request, self.raise_error, self.keep_alive, false)
+            .send(request, self.raise_error)
             .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
@@ -127,9 +134,9 @@ impl Task for RequestTask {
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect();
         let sent_at = response.sent_at();
-        let received_at = response.received_at();
         let http_version = response.negotiated_version().as_str().to_string();
-        let body = response.bytes().map_err(to_napi)?;
+        // Every send streams; drain here, capturing `received_at` (stamped at EOF).
+        let (body, received_at) = response.read_all().map_err(to_napi)?;
         Ok(ResponseData {
             status,
             url,
@@ -228,16 +235,80 @@ impl HttpResponse {
         self.header("content-type".to_string())
     }
 
-    /// The raw response body.
+    /// The `Content-Encoding` header, if present.
+    #[napi(getter, js_name = "contentEncoding")]
+    pub fn content_encoding(&self) -> Option<String> {
+        self.header("content-encoding".to_string())
+    }
+
+    /// The single MIME type inferred from `Content-Type` (e.g. `"text/csv"`).
+    #[napi(getter, js_name = "mimeType")]
+    pub fn mime_type(&self) -> Option<String> {
+        self.content_type()
+            .and_then(|ct| CoreMimeType::from_str(&ct).ok())
+            .map(|mime| mime.to_string())
+    }
+
+    /// The layered media type **combining `Content-Type` with `Content-Encoding`** as
+    /// an array of MIME strings: the content type is inner, the transfer encoding
+    /// outer — e.g. a gzipped CSV reads as `["text/csv", "application/gzip"]`.
+    #[napi(getter, js_name = "mediaType")]
+    pub fn media_type(&self) -> Option<Vec<String>> {
+        let mut types: Vec<String> = self
+            .content_type()
+            .and_then(|ct| CoreMimeType::from_str(&ct).ok())
+            .map(|mime| mime.to_string())
+            .into_iter()
+            .collect();
+        if let Some(mime) = self
+            .content_encoding()
+            .and_then(|enc| CoreCompression::from_str(&enc).ok())
+            .and_then(|codec| codec.mime())
+        {
+            types.push(mime.to_string());
+        }
+        (!types.is_empty()).then_some(types)
+    }
+
+    /// The compression codec named by `Content-Encoding` (`"gzip"` / `"zstd"` /
+    /// `"snappy"` / `"brotli"`), or `null`. The body is already decoded — `content`
+    /// / `text` / `json` are the decompressed payload.
+    #[napi(getter)]
+    pub fn compression(&self) -> Option<String> {
+        self.content_encoding()
+            .and_then(|enc| CoreCompression::from_str(&enc).ok())
+            .filter(|codec| *codec != CoreCompression::None)
+            .map(|codec| codec.as_str().to_string())
+    }
+
+    /// The decompressed body as a yggdryl `BytesIO` handle — the **performant**
+    /// accessor: it stays a Rust-backed, seekable byte buffer, so you can `json()` /
+    /// `decompress()` / `read` it (or pass it to another yggdryl call) without copying
+    /// the bytes into JS. Use `content` for a native `Buffer` when an API needs one.
+    #[napi(getter)]
+    pub fn io(&self) -> BytesIO {
+        BytesIO {
+            inner: CoreBytesIO::from_bytes(self.body.clone()),
+        }
+    }
+
+    /// The raw response body as a native `Buffer` (already decompressed; a copy out
+    /// of Rust — prefer `io` for further Rust-side work).
     #[napi(getter)]
     pub fn content(&self) -> Buffer {
         Buffer::from(self.body.clone())
     }
 
-    /// The response body decoded as UTF-8 text.
+    /// The response body decoded as UTF-8 text (already decompressed).
     #[napi]
     pub fn text(&self) -> Result<String> {
         String::from_utf8(self.body.clone()).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// The response body parsed as JSON (already decompressed).
+    #[napi]
+    pub fn json(&self) -> Result<serde_json::Value> {
+        serde_json::from_slice(&self.body).map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Throw if the status is 4xx/5xx, otherwise do nothing — the `requests`
@@ -265,6 +336,11 @@ impl HttpSession {
     /// `baseUrl` that relative request targets resolve against, and a default
     /// `httpVersion` (`"auto"` / `"1.1"` / `"2"` / `"3"`) for requests that do not
     /// pin one.
+    ///
+    /// `basicAuth` (a `[username, password]` pair) or `bearerAuth` (a token) set a
+    /// default `Authorization` header on every request (HTTP Basic / Bearer); it is
+    /// stripped on a cross-origin redirect. `readTimeout` (seconds, default 120)
+    /// errors if the server sends no data for that long; `0` removes the bound.
     #[napi(constructor)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -277,6 +353,9 @@ impl HttpSession {
         proxy: Option<String>,
         ca_cert: Option<Buffer>,
         ca_cert_file: Option<String>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        read_timeout: Option<f64>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -310,9 +389,39 @@ impl HttpSession {
         if let Some(ca_cert_file) = ca_cert_file {
             inner = inner.with_ca_cert_file(&ca_cert_file).map_err(to_napi)?;
         }
+        if let Some(basic_auth) = basic_auth {
+            let [username, password] = basic_auth.as_slice() else {
+                return Err(Error::from_reason(
+                    "basicAuth expects a [username, password] pair",
+                ));
+            };
+            inner = inner.with_basic_auth(username, password);
+        }
+        if let Some(bearer_auth) = bearer_auth {
+            inner = inner.with_bearer_auth(&bearer_auth);
+        }
+        if let Some(read_timeout) = read_timeout {
+            inner = inner.with_read_timeout(read_timeout);
+        }
         Ok(HttpSession {
             inner: Arc::new(inner),
         })
+    }
+
+    /// The read timeout in seconds (a request errors if the server sends no data
+    /// for this long; `0` means unbounded).
+    #[napi(getter, js_name = "readTimeout")]
+    pub fn read_timeout(&self) -> f64 {
+        self.inner.read_timeout()
+    }
+
+    /// An independent copy of this session — same configuration and a snapshot of
+    /// the cookie jar, but its own fresh connection pool.
+    #[napi]
+    pub fn copy(&self) -> HttpSession {
+        HttpSession {
+            inner: Arc::new(self.inner.copy()),
+        }
     }
 
     /// The maximum number of 3xx redirect hops followed per request.
@@ -386,7 +495,7 @@ impl HttpSession {
         headers: Vec<(String, String)>,
         body: BodyArg,
         raise_error: bool,
-        keep_alive: bool,
+        keep_alive: f64,
         allow_redirect: bool,
         http_version: Option<HttpVersion>,
     ) -> AsyncTask<RequestTask> {
@@ -412,7 +521,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -427,7 +536,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -442,7 +551,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -462,7 +571,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -481,7 +590,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -500,7 +609,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -508,8 +617,8 @@ impl HttpSession {
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
-    /// 4xx/5xx status. `keepAlive` (default `true`) pools the connection for reuse
-    /// (skipping the next TLS handshake); pass `false` to close it after.
+    /// 4xx/5xx status. `keepAlive` is the keep-alive idle TTL in seconds (default
+    /// 300 — 5 minutes; `0` sends `Connection: close`).
     /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
     /// `maxRedirects`); pass `false` to receive the 3xx response itself.
     /// `httpVersion` (e.g. `"2"`) pins the protocol version for this request,
@@ -523,7 +632,7 @@ impl HttpSession {
         headers: Option<HashMap<String, String>>,
         body: Option<Either<Buffer, &LocalPath>>,
         raise_error: Option<bool>,
-        keep_alive: Option<bool>,
+        keep_alive: Option<f64>,
         allow_redirect: Option<bool>,
         http_version: Option<String>,
     ) -> Result<AsyncTask<RequestTask>> {
@@ -540,7 +649,7 @@ impl HttpSession {
             headers,
             body_arg(body),
             raise_error.unwrap_or(true),
-            keep_alive.unwrap_or(true),
+            keep_alive.unwrap_or(300.0),
             allow_redirect.unwrap_or(true),
             http_version,
         ))
@@ -557,7 +666,7 @@ pub fn http_get(url: String) -> AsyncTask<RequestTask> {
         Vec::new(),
         BodyArg::Empty,
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -572,7 +681,7 @@ pub fn http_head(url: String) -> AsyncTask<RequestTask> {
         Vec::new(),
         BodyArg::Empty,
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -592,7 +701,7 @@ pub fn http_post(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Async
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -607,7 +716,7 @@ pub fn http_put(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncT
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -622,7 +731,7 @@ pub fn http_patch(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Asyn
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -638,7 +747,7 @@ pub fn http_request(
     headers: Option<HashMap<String, String>>,
     body: Option<Either<Buffer, &LocalPath>>,
     raise_error: Option<bool>,
-    keep_alive: Option<bool>,
+    keep_alive: Option<f64>,
     allow_redirect: Option<bool>,
     http_version: Option<String>,
 ) -> Result<AsyncTask<RequestTask>> {
@@ -655,7 +764,7 @@ pub fn http_request(
         headers,
         body_arg(body),
         raise_error.unwrap_or(true),
-        keep_alive.unwrap_or(true),
+        keep_alive.unwrap_or(300.0),
         allow_redirect.unwrap_or(true),
         http_version,
     ))

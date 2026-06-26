@@ -70,6 +70,9 @@ pub enum Compression {
     Zstd,
     /// Snappy frame format, via `snap` — the `snappy` feature.
     Snappy,
+    /// Brotli (RFC 7932), via `brotli` — the `brotli` feature. Its HTTP
+    /// `Content-Encoding` token is `br`.
+    Brotli,
 }
 
 impl Compression {
@@ -84,6 +87,7 @@ impl Compression {
             "gzip" | "gz" => Compression::Gzip,
             "zstd" | "zst" => Compression::Zstd,
             "snappy" | "snap" | "sz" => Compression::Snappy,
+            "br" | "brotli" => Compression::Brotli,
             _ => return Err(IoError::Invalid(format!("unknown compression {value:?}"))),
         };
         Ok(codec)
@@ -101,6 +105,7 @@ impl Compression {
             "gz" | "gzip" => Compression::Gzip,
             "zst" | "zstd" => Compression::Zstd,
             "sz" | "snappy" | "snap" => Compression::Snappy,
+            "br" | "brotli" => Compression::Brotli,
             _ => return None,
         };
         Some(codec)
@@ -115,6 +120,22 @@ impl Compression {
         match mime {
             MimeType::Gzip => Some(Compression::Gzip),
             MimeType::Zstd => Some(Compression::Zstd),
+            MimeType::Brotli => Some(Compression::Brotli),
+            _ => None,
+        }
+    }
+
+    /// The [`MimeType`](crate::MimeType) this codec is carried as — the inverse of
+    /// [`from_mime`](Compression::from_mime). `None` for [`None`](Compression::None)
+    /// and `Snappy` (which has no registered MIME). Only present under the `media`
+    /// feature.
+    #[cfg(feature = "media")]
+    pub fn mime(&self) -> Option<crate::MimeType> {
+        use crate::MimeType;
+        match self {
+            Compression::Gzip => Some(MimeType::Gzip),
+            Compression::Zstd => Some(MimeType::Zstd),
+            Compression::Brotli => Some(MimeType::Brotli),
             _ => None,
         }
     }
@@ -151,6 +172,7 @@ impl Compression {
             Compression::Gzip => "gzip",
             Compression::Zstd => "zstd",
             Compression::Snappy => "snappy",
+            Compression::Brotli => "brotli",
         }
     }
 
@@ -162,6 +184,7 @@ impl Compression {
             Compression::Gzip => Some("gz"),
             Compression::Zstd => Some("zst"),
             Compression::Snappy => Some("sz"),
+            Compression::Brotli => Some("br"),
         }
     }
 
@@ -177,6 +200,8 @@ impl Compression {
             Compression::Zstd => true,
             #[cfg(feature = "snappy")]
             Compression::Snappy => true,
+            #[cfg(feature = "brotli")]
+            Compression::Brotli => true,
             #[allow(unreachable_patterns)]
             _ => false,
         }
@@ -204,6 +229,14 @@ impl Compression {
             Compression::Snappy => {
                 EncoderInner::Snappy(snap::write::FrameEncoder::new(codec::WriteShim(sink)))
             }
+            #[cfg(feature = "brotli")]
+            // buffer 4 KiB, quality 6 (a balanced speed/ratio default), window 22.
+            Compression::Brotli => EncoderInner::Brotli(brotli::CompressorWriter::new(
+                codec::WriteShim(sink),
+                4096,
+                6,
+                22,
+            )),
             #[allow(unreachable_patterns)]
             other => return Err(other.unavailable()),
         };
@@ -228,6 +261,10 @@ impl Compression {
             #[cfg(feature = "snappy")]
             Compression::Snappy => {
                 DecoderInner::Snappy(snap::read::FrameDecoder::new(codec::ReadShim(source)))
+            }
+            #[cfg(feature = "brotli")]
+            Compression::Brotli => {
+                DecoderInner::Brotli(brotli::Decompressor::new(codec::ReadShim(source), 4096))
             }
             #[allow(unreachable_patterns)]
             other => return Err(other.unavailable()),
@@ -375,6 +412,11 @@ mod tests {
             Compression::from_str(" snappy ").unwrap(),
             Compression::Snappy
         );
+        assert_eq!(Compression::from_str("br").unwrap(), Compression::Brotli);
+        assert_eq!(
+            Compression::from_str("brotli").unwrap(),
+            Compression::Brotli
+        );
         assert_eq!(Compression::from_str("store").unwrap(), Compression::None);
         assert!(matches!(
             Compression::from_str("lzo"),
@@ -383,12 +425,27 @@ mod tests {
 
         assert_eq!(Compression::from_extension(".gz"), Some(Compression::Gzip));
         assert_eq!(Compression::from_extension("zst"), Some(Compression::Zstd));
+        assert_eq!(Compression::from_extension("br"), Some(Compression::Brotli));
         assert_eq!(Compression::from_extension("txt"), None);
 
         assert_eq!(Compression::Gzip.as_str(), "gzip");
         assert_eq!(Compression::Zstd.extension(), Some("zst"));
         assert_eq!(Compression::None.extension(), None);
         assert!(Compression::None.is_available());
+    }
+
+    #[cfg(feature = "media")]
+    #[test]
+    fn mime_is_the_inverse_of_from_mime() {
+        use crate::MimeType;
+        for codec in [Compression::Gzip, Compression::Zstd, Compression::Brotli] {
+            let mime = codec.mime().unwrap();
+            assert_eq!(Compression::from_mime(&mime), Some(codec));
+        }
+        // Snappy / None have no registered MIME.
+        assert_eq!(Compression::Snappy.mime(), None);
+        assert_eq!(Compression::None.mime(), None);
+        assert_eq!(Compression::Brotli.mime(), Some(MimeType::Brotli));
     }
 
     #[test]
@@ -405,7 +462,12 @@ mod tests {
     fn unavailable_codec_reports_unsupported() {
         // A codec whose feature is off cannot build an encoder/decoder, but it
         // still parses and names itself.
-        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+        for codec in [
+            Compression::Gzip,
+            Compression::Zstd,
+            Compression::Snappy,
+            Compression::Brotli,
+        ] {
             if !codec.is_available() {
                 assert!(matches!(codec.compress(b"x"), Err(IoError::Unsupported(_))));
                 assert!(matches!(
@@ -418,11 +480,21 @@ mod tests {
 
     /// Round-trips each compiled-in codec both one-shot and **streamed** over a
     /// [`BytesIO`] handle, proving `Compression` composes with `Io`.
-    #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+    #[cfg(any(
+        feature = "gzip",
+        feature = "zstd",
+        feature = "snappy",
+        feature = "brotli"
+    ))]
     #[test]
     fn round_trips_each_available_codec() {
         let payload: Vec<u8> = (0..4096u32).map(|n| (n % 251) as u8).collect();
-        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+        for codec in [
+            Compression::Gzip,
+            Compression::Zstd,
+            Compression::Snappy,
+            Compression::Brotli,
+        ] {
             if !codec.is_available() {
                 continue;
             }
@@ -446,11 +518,21 @@ mod tests {
 
     /// The `CompressIo` extension trait round-trips an `Io` handle into a
     /// compressed `BytesIO` and back.
-    #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+    #[cfg(any(
+        feature = "gzip",
+        feature = "zstd",
+        feature = "snappy",
+        feature = "brotli"
+    ))]
     #[test]
     fn io_compress_then_decompress_round_trips() {
         let payload: Vec<u8> = (0..2048u32).map(|n| (n % 251) as u8).collect();
-        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+        for codec in [
+            Compression::Gzip,
+            Compression::Zstd,
+            Compression::Snappy,
+            Compression::Brotli,
+        ] {
             if !codec.is_available() {
                 continue;
             }
@@ -495,10 +577,20 @@ mod tests {
 
     /// Corrupt, truncated, or wrong-codec input must surface an error — never
     /// panic.
-    #[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+    #[cfg(any(
+        feature = "gzip",
+        feature = "zstd",
+        feature = "snappy",
+        feature = "brotli"
+    ))]
     #[test]
     fn corrupt_input_errors_without_panicking() {
-        for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+        for codec in [
+            Compression::Gzip,
+            Compression::Zstd,
+            Compression::Snappy,
+            Compression::Brotli,
+        ] {
             if !codec.is_available() {
                 continue;
             }

@@ -41,17 +41,17 @@ absolutes; reproduce with [`benchmarks/`](benchmarks/) and `cargo bench`.
 
 | workload | yggdryl | host-language baseline | speedup |
 | --- | --- | --- | --- |
-| HTTP GET, small body + latency (Python) | 0.53 ms | `requests` 0.83 ms | **1.6×** |
-| HTTP GET, 8 MiB throughput (Python) | 912 MiB/s | `requests` 530 MiB/s | **1.7×** |
-| gzip compress (Python) | 14 MiB/s | stdlib `gzip` 9 MiB/s | **1.5×** |
-| `zstd` / `snappy` codecs | ✅ built in | ❌ not in stdlib | — |
+| HTTP GET, small body + latency (Python) | 0.20 ms | `requests` 0.74 ms · `httpx` 0.61 ms | **3.6×** |
+| HTTP GET, 8 MiB throughput (Python) | 1353 MiB/s | `requests` 590 MiB/s · `httpx` 748 MiB/s | **2.3×** |
+| gzip compress (Python) | 18 MiB/s | stdlib `gzip` 11 MiB/s | **1.6×** |
+| `zstd` / `snappy` / `brotli` codecs | ✅ built in | ❌ not in stdlib | — |
 | `copy` BytesIO → BytesIO (Rust core) | **8.4 GiB/s** | — | zero-copy |
 | `HttpStream` windowed read (Rust core) | **1.35 GiB/s** | — | streamed |
-| footer via `pread` (one Range request) | **0.44 ms** | full download | no download |
+| footer via `pread` (one Range request) | **0.28 ms** | full download | no download |
 | `send_many` vs sequential (Rust core) | **≈6×** | — | concurrent |
 
 See **[benchmarks/README.md](benchmarks/README.md)** for the full tables, the Node
-comparison, memory figures, and the one spot the C `zlib` decoder still leads.
+comparison, memory figures, and the one spot the native `http`/`zlib` still leads.
 
 ## What's inside
 

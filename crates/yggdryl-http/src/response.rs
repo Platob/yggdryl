@@ -63,10 +63,18 @@ impl HttpResponse {
     }
 
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
-    /// live [`HttpStream`](crate::HttpStream) when streamed, the buffered
-    /// [`BytesIO`](yggdryl_core::BytesIO) when not — for seekable access.
+    /// live [`HttpStream`](crate::HttpStream) — for seekable access.
     pub fn into_io(self) -> Box<dyn Io> {
         self.body
+    }
+
+    /// A mutable handle to the **raw** body [`Io`] (the live
+    /// [`HttpStream`](crate::HttpStream)), to read or seek it in place without
+    /// consuming the response. This is the undecoded body; for transparent
+    /// `Content-Encoding` decoding use [`reader`](HttpResponse::reader) /
+    /// [`bytes`](HttpResponse::bytes), which consume the response.
+    pub fn body_mut(&mut self) -> &mut dyn Io {
+        &mut *self.body
     }
 
     /// The HTTP status code.
@@ -141,12 +149,45 @@ impl HttpResponse {
         self.headers.get("content-encoding")
     }
 
-    /// The response media type, inferred from its `Content-Type`. Only present
-    /// under the `media` feature.
+    /// The response's single MIME type, inferred from its `Content-Type`. Only
+    /// present under the `media` feature.
     #[cfg(feature = "media")]
     pub fn mime_type(&self) -> Option<yggdryl_core::MimeType> {
         self.content_type()
             .and_then(|content_type| yggdryl_core::MimeType::from_str(content_type).ok())
+    }
+
+    /// The response's layered [`MediaType`](yggdryl_core::MediaType) stack,
+    /// **combining `Content-Type` with `Content-Encoding`**: the content MIME is the
+    /// inner type and the transfer encoding (`gzip` / `zstd` / `br`) the outer layer,
+    /// so a gzipped CSV (`Content-Type: text/csv`, `Content-Encoding: gzip`) reads as
+    /// `[Csv, Gzip]` — exactly like the media type of a `data.csv.gz` path. Only
+    /// present under the `media` feature.
+    #[cfg(feature = "media")]
+    pub fn media_type(&self) -> Option<yggdryl_core::MediaType> {
+        let mut types: Vec<yggdryl_core::MimeType> = self.mime_type().into_iter().collect();
+        if let Some(encoding) = self.content_encoding() {
+            if let Some(mime) = yggdryl_core::Compression::from_str(encoding)
+                .ok()
+                .and_then(|codec| codec.mime())
+            {
+                types.push(mime);
+            }
+        }
+        (!types.is_empty()).then(|| yggdryl_core::MediaType::new(types))
+    }
+
+    /// The [`Compression`](yggdryl_core::Compression) codec named by the response's
+    /// `Content-Encoding` header (`gzip` / `zstd` / `snappy` / `br`), or `None` when
+    /// the header is absent or `identity`. This is the codec
+    /// [`reader`](HttpResponse::reader) / [`bytes`](HttpResponse::bytes) /
+    /// [`text`](HttpResponse::text) / [`json`](HttpResponse::json) transparently
+    /// decode. Only present under the `compression` feature.
+    #[cfg(feature = "compression")]
+    pub fn compression(&self) -> Option<yggdryl_core::Compression> {
+        self.content_encoding()
+            .and_then(|encoding| yggdryl_core::Compression::from_str(encoding).ok())
+            .filter(|codec| *codec != yggdryl_core::Compression::None)
     }
 
     /// Consumes the response and returns its body as a streaming [`Io`] source.
@@ -187,10 +228,33 @@ impl HttpResponse {
         Ok(out)
     }
 
-    /// Drains the body and decodes it as UTF-8 text.
+    /// Drains the (decoded) body into a `Vec<u8>` **and** returns the
+    /// [`received_at`](HttpResponse::received_at) timestamp stamped as the body
+    /// reached EOF — captured in one move, since draining consumes the response.
+    /// The buffering bindings use this so the finish time reflects the full read.
+    pub fn read_all(self) -> Result<(Vec<u8>, f64), HttpError> {
+        let received_at = self.received_at.clone();
+        let bytes = self.bytes()?;
+        Ok((bytes, received_at.get()))
+    }
+
+    /// Drains the body and decodes it as UTF-8 text. The body is **transparently
+    /// decompressed** first (under the `compression` feature) per its
+    /// `Content-Encoding`, so the text is always the decoded payload.
     pub fn text(self) -> Result<String, HttpError> {
         let bytes = self.bytes()?;
         String::from_utf8(bytes).map_err(|err| HttpError::Decode(err.to_string()))
+    }
+
+    /// Drains the body and parses it as JSON, returning a
+    /// [`serde_json::Value`](yggdryl_core::serde_json::Value). The body is
+    /// **transparently decompressed** first (under the `compression` feature) per
+    /// its `Content-Encoding`, and parsed in Rust off the decoded stream — so the
+    /// bytes are read once and never crossed back across an FFI boundary.
+    pub fn json(self) -> Result<yggdryl_core::serde_json::Value, HttpError> {
+        self.reader()
+            .json()
+            .map_err(|err| HttpError::Decode(err.to_string()))
     }
 
     /// Drains the body into an in-memory [`BytesIO`] handle — a seekable

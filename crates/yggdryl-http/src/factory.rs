@@ -14,7 +14,7 @@ fn open(uri: &Uri) -> Result<Box<dyn Io>, IoError> {
     let url = uri.to_string();
     let request = HttpRequest::get(&url).map_err(|err| IoError::Invalid(err.to_string()))?;
     let response = HttpSession::new()
-        .send(request, true, true, true)
+        .send(request, true)
         .map_err(|err| IoError::Io(err.to_string()))?;
     Ok(response.into_io())
 }

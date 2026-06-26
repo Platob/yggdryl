@@ -7,13 +7,20 @@ name = "yggdryl"
 version = "0.1.0"
 description = "yggdryl — a Rust-core URI/URL library, exposed to Python"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.7"
 license = { text = "Apache-2.0" }
 authors = [{ name = "yggdryl contributors" }]
 keywords = ["uri", "url", "parser", "rust", "yggdryl"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: Apache Software License",
 ]
 

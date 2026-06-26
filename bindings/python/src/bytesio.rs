@@ -160,6 +160,20 @@ impl BytesIO {
         PyBytes::new_bound(py, self.inner.getvalue())
     }
 
+    /// ``bytes(handle)`` — the whole buffer as native ``bytes`` (a copy across the
+    /// FFI boundary; prefer staying on this handle for Rust-side work).
+    fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        self.getvalue(py)
+    }
+
+    /// Convert to a standard-library :class:`io.BytesIO`, for code that expects the
+    /// native file-like object. Copies the bytes out of Rust.
+    fn to_bytes_io<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let io = py.import_bound("io")?;
+        let data = PyBytes::new_bound(py, self.inner.getvalue());
+        io.getattr("BytesIO")?.call1((data,))
+    }
+
     /// Parse the buffer's bytes as JSON (in Rust), returning the Python object.
     fn json(&mut self, py: Python<'_>) -> PyResult<PyObject> {
         let value = self.inner.json().map_err(io_err)?;

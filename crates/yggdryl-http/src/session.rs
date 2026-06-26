@@ -3,8 +3,12 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::Duration;
 
-use yggdryl_core::{BytesIO, Io, Url};
+use yggdryl_core::{Io, Url};
+// Buffering a body into a `BytesIO` now only happens on the async (h2/h3) path.
+#[cfg(any(feature = "http2", feature = "http3"))]
+use yggdryl_core::BytesIO;
 
 use crate::bridge::IoBridge;
 use crate::cookies::{Cookie, HttpCookies};
@@ -12,12 +16,18 @@ use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
 use crate::redirect::{self, DEFAULT_MAX_REDIRECTS};
-use crate::request::{Body, HttpRequest};
+use crate::request::{Body, HttpRequest, DEFAULT_KEEP_ALIVE};
 use crate::response::HttpResponse;
 use crate::retry::{RetryConfig, DEFAULT_POOL};
 use crate::stream::HttpStream;
 use crate::time::{now_secs, Instant};
 use crate::version::HttpVersion;
+
+/// The default read timeout: a request errors if the server sends no response (or
+/// stalls mid-body) for this long. Two minutes — generous, but bounded so a dead
+/// server cannot hang the caller forever. Raise it with
+/// [`with_read_timeout`](HttpSession::with_read_timeout) for genuinely slow endpoints.
+const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Builds the pooled `ureq` agent: statuses are surfaced (not errors), the idle
 /// pool is sized to `max_pool`, and **ureq's own redirect following is disabled**
@@ -30,12 +40,22 @@ fn build_agent(
     verify: bool,
     proxy: Option<ureq::Proxy>,
     ca_certs: &[Vec<u8>],
+    read_timeout: Duration,
 ) -> ureq::Agent {
+    // A zero TTL means "unbounded" — pass `None` so ureq applies no timeout (a
+    // `Some(ZERO)` would instead time out immediately).
+    let recv_timeout = (!read_timeout.is_zero()).then_some(read_timeout);
     let mut builder = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .max_idle_connections(max_pool)
         .max_idle_connections_per_host(max_pool)
+        // Drop a pooled connection left idle longer than the keep-alive TTL.
+        .max_idle_age(DEFAULT_KEEP_ALIVE)
+        // Bound the wait for the response head and each body read, so a stalled
+        // server surfaces a timeout instead of hanging the caller.
+        .timeout_recv_response(recv_timeout)
+        .timeout_recv_body(recv_timeout)
         .proxy(proxy);
     if !verify {
         log_event!(
@@ -65,6 +85,16 @@ fn build_agent(
         builder = builder.tls_config(
             ureq::tls::TlsConfig::builder()
                 .root_certs(ureq::tls::RootCerts::new_with_certs(&certs))
+                .build(),
+        );
+    } else {
+        // Default trust store: the **OS-native** certificate store (Windows
+        // SChannel, macOS Security framework, Linux system bundle) via the platform
+        // verifier, so the session honours certificates the host already trusts
+        // (corporate roots, OS updates) instead of a bundled Mozilla snapshot.
+        builder = builder.tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
                 .build(),
         );
     }
@@ -201,6 +231,10 @@ pub struct HttpSession {
     /// Installed CA certificates (DER), trusted **in place of** the default store
     /// when non-empty (see [`with_ca_cert`](HttpSession::with_ca_cert)).
     ca_certs: Vec<Vec<u8>>,
+    /// The read timeout: a request errors if the server sends no response (or
+    /// stalls mid-body) for this long (default 2 minutes). Set with
+    /// [`with_read_timeout`](HttpSession::with_read_timeout).
+    read_timeout: Duration,
 }
 
 impl HttpSession {
@@ -209,6 +243,37 @@ impl HttpSession {
     /// concurrency of 8 and a batch size of 80 (`max_concurrency * 10`).
     pub fn new() -> HttpSession {
         HttpSession::with_config(RetryConfig::default(), DEFAULT_POOL)
+    }
+
+    /// An independent copy of this session — same configuration (default headers,
+    /// retry policy, timeouts, pool size, base URL, protocol version, TLS settings)
+    /// and a snapshot of the current cookie jar, but its **own** fresh connection
+    /// pool. The two sessions share nothing afterwards.
+    pub fn copy(&self) -> HttpSession {
+        let cookies = self.cookies.lock().expect("cookie jar poisoned").clone();
+        HttpSession {
+            agent: build_agent(
+                self.max_pool,
+                self.verify,
+                self.proxy.clone(),
+                &self.ca_certs,
+                self.read_timeout,
+            ),
+            headers: self.headers.clone(),
+            retry: self.retry.clone(),
+            max_concurrency: self.max_concurrency,
+            batch_size: self.batch_size,
+            max_pool: self.max_pool,
+            held: Arc::new(AtomicUsize::new(0)),
+            max_redirects: self.max_redirects,
+            cookies: Mutex::new(cookies),
+            base_url: self.base_url.clone(),
+            http_version: self.http_version,
+            verify: self.verify,
+            proxy: self.proxy.clone(),
+            ca_certs: self.ca_certs.clone(),
+            read_timeout: self.read_timeout,
+        }
     }
 
     /// The process-wide **shared** session, created on first use and reused
@@ -270,7 +335,8 @@ impl HttpSession {
         // / ALL_PROXY, honouring NO_PROXY), like `requests` / curl.
         let proxy = ureq::Proxy::try_from_env();
         let ca_certs: Vec<Vec<u8>> = Vec::new();
-        let agent = build_agent(max_pool, verify, proxy.clone(), &ca_certs);
+        let read_timeout = DEFAULT_READ_TIMEOUT;
+        let agent = build_agent(max_pool, verify, proxy.clone(), &ca_certs, read_timeout);
         let max_concurrency = 8;
         HttpSession {
             agent,
@@ -287,6 +353,7 @@ impl HttpSession {
             verify,
             proxy,
             ca_certs,
+            read_timeout,
         }
     }
 
@@ -299,6 +366,29 @@ impl HttpSession {
     /// Sets the default `User-Agent` header.
     pub fn with_user_agent(self, user_agent: impl Into<String>) -> HttpSession {
         self.with_header("user-agent", user_agent)
+    }
+
+    /// Sets a default `Authorization` header to HTTP Basic credentials
+    /// (`Basic base64(username:password)`, RFC 7617) sent with every request,
+    /// like `requests`' `Session.auth = (user, pass)`. As a default header it is
+    /// merged under any per-request `Authorization` and stripped on a cross-origin
+    /// redirect, so credentials never leak to another host.
+    pub fn with_basic_auth(mut self, username: &str, password: &str) -> HttpSession {
+        self.headers.set(
+            "authorization",
+            crate::auth::basic_auth_header(username, password),
+        );
+        self
+    }
+
+    /// Sets a default `Authorization` header to an HTTP Bearer token
+    /// (`Bearer <token>`, RFC 6750) sent with every request. Like
+    /// [`with_basic_auth`](HttpSession::with_basic_auth) it is a default header:
+    /// per-request overrides win and a cross-origin redirect strips it.
+    pub fn with_bearer_auth(mut self, token: &str) -> HttpSession {
+        self.headers
+            .set("authorization", crate::auth::bearer_auth_header(token));
+        self
     }
 
     /// Sets a base URL that relative request targets resolve against (see
@@ -337,7 +427,13 @@ impl HttpSession {
     /// [`HttpError`] carries a hint pointing here.
     pub fn with_verify(mut self, verify: bool) -> HttpSession {
         self.verify = verify;
-        self.agent = build_agent(self.max_pool, verify, self.proxy.clone(), &self.ca_certs);
+        self.agent = build_agent(
+            self.max_pool,
+            verify,
+            self.proxy.clone(),
+            &self.ca_certs,
+            self.read_timeout,
+        );
         self
     }
 
@@ -360,6 +456,7 @@ impl HttpSession {
             self.verify,
             self.proxy.clone(),
             &self.ca_certs,
+            self.read_timeout,
         );
         Ok(self)
     }
@@ -368,7 +465,13 @@ impl HttpSession {
     /// connect directly. Rebuilds the agent.
     pub fn without_proxy(mut self) -> HttpSession {
         self.proxy = None;
-        self.agent = build_agent(self.max_pool, self.verify, None, &self.ca_certs);
+        self.agent = build_agent(
+            self.max_pool,
+            self.verify,
+            None,
+            &self.ca_certs,
+            self.read_timeout,
+        );
         self
     }
 
@@ -398,6 +501,7 @@ impl HttpSession {
             self.verify,
             self.proxy.clone(),
             &self.ca_certs,
+            self.read_timeout,
         );
         Ok(self)
     }
@@ -434,6 +538,32 @@ impl HttpSession {
         self
     }
 
+    /// Sets the read timeout in `seconds` (default 120 — 2 minutes), rebuilding the
+    /// agent. A request errors if the server sends no response head, or stalls
+    /// mid-body, for this long. Raise it for genuinely slow endpoints (a large
+    /// server-side computation, a slow file generation); `0` (or negative) removes
+    /// the bound entirely (a stalled server can then hang the caller indefinitely).
+    pub fn with_read_timeout(mut self, seconds: f64) -> HttpSession {
+        self.read_timeout = if seconds > 0.0 {
+            Duration::from_secs_f64(seconds)
+        } else {
+            Duration::ZERO
+        };
+        self.agent = build_agent(
+            self.max_pool,
+            self.verify,
+            self.proxy.clone(),
+            &self.ca_certs,
+            self.read_timeout,
+        );
+        self
+    }
+
+    /// The read timeout in seconds (`0.0` means unbounded).
+    pub fn read_timeout(&self) -> f64 {
+        self.read_timeout.as_secs_f64()
+    }
+
     /// Sets the maximum number of concurrent requests in [`send_many`](HttpSession::send_many)
     /// (and resets the batch size to `max_concurrency * 10`).
     pub fn with_max_concurrency(mut self, max_concurrency: usize) -> HttpSession {
@@ -452,7 +582,13 @@ impl HttpSession {
     /// pools keep more keep-alive connections warm (skipping TLS handshakes).
     pub fn with_pool_size(mut self, max_pool: usize) -> HttpSession {
         let max_pool = max_pool.max(1);
-        self.agent = build_agent(max_pool, self.verify, self.proxy.clone(), &self.ca_certs);
+        self.agent = build_agent(
+            max_pool,
+            self.verify,
+            self.proxy.clone(),
+            &self.ca_certs,
+            self.read_timeout,
+        );
         self.max_pool = max_pool;
         self
     }
@@ -520,7 +656,7 @@ impl HttpSession {
     /// `GET url` (raises on a 4xx/5xx status). `url` is resolved against the
     /// session's [`base_url`](HttpSession::base_url) when one is set.
     pub fn get(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Get, self.resolve_url(url)?),
             true,
         )
@@ -528,7 +664,7 @@ impl HttpSession {
 
     /// `HEAD url` (raises on a 4xx/5xx status).
     pub fn head(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Head, self.resolve_url(url)?),
             true,
         )
@@ -536,7 +672,7 @@ impl HttpSession {
 
     /// `DELETE url` (raises on a 4xx/5xx status).
     pub fn delete(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Delete, self.resolve_url(url)?),
             true,
         )
@@ -544,7 +680,7 @@ impl HttpSession {
 
     /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn post(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Post, self.resolve_url(url)?).with_body(body),
             true,
         )
@@ -552,7 +688,7 @@ impl HttpSession {
 
     /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn put(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Put, self.resolve_url(url)?).with_body(body),
             true,
         )
@@ -560,7 +696,7 @@ impl HttpSession {
 
     /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn patch(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.request(
+        self.send(
             HttpRequest::from_url(Method::Patch, self.resolve_url(url)?).with_body(body),
             true,
         )
@@ -577,6 +713,7 @@ impl HttpSession {
             headers,
             body: request.body,
             allow_redirect: request.allow_redirect,
+            keep_alive: request.keep_alive,
             http_version: request.http_version,
         }
     }
@@ -585,23 +722,19 @@ impl HttpSession {
     /// the request, runs it with the retry policy, and returns an [`HttpResponse`].
     ///
     /// `raise_error` (`true` for the verb helpers) turns a 4xx/5xx status into an
-    /// [`HttpError::Status`]. `keep_alive` keeps the connection pooled for reuse;
-    /// `false` sends `Connection: close`. As a pool safeguard, once more than
+    /// [`HttpError::Status`]. Connection reuse follows the request's keep-alive idle
+    /// TTL ([`keep_alive`](HttpRequest::keep_alive), default 5 minutes; `0` →
+    /// `Connection: close`). As a pool safeguard, once more than
     /// [`pool_size`](HttpSession::pool_size) streams are already open, a new one
     /// drops keep-alive regardless, so streaming reads never starve the pool.
     ///
-    /// `stream` (`true` for the verb helpers and [`request`](HttpSession::request))
-    /// keeps the live [`HttpStream`] as the body, read lazily/seekably off the
-    /// connection; `false` drains the body into an in-memory
-    /// [`BytesIO`](yggdryl_core::BytesIO) before returning, releasing the connection
-    /// immediately — the same accessors expose either body.
-    pub fn send(
-        &self,
-        request: HttpRequest,
-        raise_error: bool,
-        keep_alive: bool,
-        stream: bool,
-    ) -> Result<HttpResponse, HttpError> {
+    /// The body is **always streamed**: the response holds the live
+    /// [`HttpStream`], read lazily/seekably off the connection and drained on
+    /// demand by [`bytes`](HttpResponse::bytes) / [`text`](HttpResponse::text) /
+    /// [`into_io`](HttpResponse::into_io). `HttpStream` handles buffering and
+    /// random access itself (a sliding cache, `Range` requests), so there is no
+    /// separate buffered mode.
+    pub fn send(&self, request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
         // `sent_at` reflects the *first* dispatch across a redirect chain.
         let mut sent_at: Option<f64> = None;
@@ -631,6 +764,7 @@ impl HttpSession {
                 headers: request.headers.clone(),
                 body: Body::Empty,
                 allow_redirect,
+                keep_alive: request.keep_alive,
                 http_version: request.http_version,
             };
             let replayable = request.body.replayable();
@@ -639,7 +773,7 @@ impl HttpSession {
             // Add the jar's Cookie header before dispatch (unless the request set
             // one itself), then dispatch this single hop.
             self.apply_cookies(&mut request);
-            let response = self.dispatch(request, keep_alive, stream)?;
+            let response = self.dispatch(request)?;
             sent_at.get_or_insert(response.sent_at());
             let status = response.status();
 
@@ -700,12 +834,7 @@ impl HttpSession {
     /// Dispatches a single hop (no redirect handling): runs the retry loop and
     /// builds the [`HttpResponse`] over a streamed or buffered body, exactly the
     /// pre-redirect [`send`](HttpSession::send) behaviour.
-    fn dispatch(
-        &self,
-        mut request: HttpRequest,
-        keep_alive: bool,
-        stream: bool,
-    ) -> Result<HttpResponse, HttpError> {
+    fn dispatch(&self, mut request: HttpRequest) -> Result<HttpResponse, HttpError> {
         // Resolve and negotiate the protocol version up front: a request pins its
         // own, else inherits the session default. A pinned version with no wired
         // transport errors here, before any bytes leave, rather than downgrading.
@@ -717,15 +846,23 @@ impl HttpSession {
             return self.dispatch_async(request, prefer);
         }
         let negotiated = negotiate_version(requested)?;
-        let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
-        if !keep_alive {
+        let keep_alive =
+            !request.keep_alive.is_zero() && self.held.load(Ordering::SeqCst) < self.max_pool;
+        if keep_alive {
+            // Advertise the idle TTL the caller asked for (a client hint; the local
+            // pool also evicts on the agent's `max_idle_age`).
+            request.headers.set(
+                "keep-alive",
+                format!("timeout={}", request.keep_alive.as_secs()),
+            );
+        } else {
             request.headers.set("connection", "close");
         }
         let url = request.url.clone();
         let method = request.method;
         log_event!(
             debug,
-            "HttpSession::dispatch {} {url} keep_alive={keep_alive} stream={stream}",
+            "HttpSession::dispatch {} {url} keep_alive={keep_alive}",
             method.as_str()
         );
         let raw = self.execute(
@@ -750,7 +887,7 @@ impl HttpSession {
         };
         let content_type = response_headers.get("content-type").map(str::to_string);
         let received_at = Instant::new();
-        let mut http_stream = HttpStream::from_response(
+        let http_stream = HttpStream::from_response(
             raw,
             self.agent.clone(),
             url.clone(),
@@ -762,16 +899,10 @@ impl HttpSession {
             size,
             content_type,
         );
-        // Buffered mode drains the body now (releasing the connection and stamping
-        // `received_at` via the drain); streamed mode keeps the live stream as the
-        // body, stamping `received_at` later when the caller drains or closes it.
-        let body: Box<dyn Io> = if stream {
-            Box::new(http_stream)
-        } else {
-            let mut buffer = Vec::new();
-            http_stream.read_to_end(&mut buffer)?;
-            Box::new(BytesIO::from_bytes(buffer))
-        };
+        // The live stream is the body: `received_at` is stamped later, when the
+        // caller drains or closes it. `HttpStream` itself handles buffering and
+        // random access (sliding cache, `Range` requests).
+        let body: Box<dyn Io> = Box::new(http_stream);
         Ok(HttpResponse::new(
             status,
             url,
@@ -875,16 +1006,6 @@ impl HttpSession {
         Ok(response)
     }
 
-    /// Sends a request, raising on a 4xx/5xx when `raise_error` (a keep-alive,
-    /// streamed [`send`](HttpSession::send)).
-    pub fn request(
-        &self,
-        request: HttpRequest,
-        raise_error: bool,
-    ) -> Result<HttpResponse, HttpError> {
-        self.send(request, raise_error, true, true)
-    }
-
     /// Sends an iterator of requests concurrently, **streamed** in batches of
     /// [`batch_size`](HttpSession::batch_size) (each running up to
     /// [`max_concurrency`](HttpSession::max_concurrency) at a time) and yielding
@@ -915,7 +1036,7 @@ impl HttpSession {
             let wave_results: Vec<Result<HttpResponse, HttpError>> = std::thread::scope(|scope| {
                 let handles: Vec<_> = wave
                     .into_iter()
-                    .map(|request| scope.spawn(move || self.request(request, false)))
+                    .map(|request| scope.spawn(move || self.send(request, false)))
                     .collect();
                 handles
                     .into_iter()
@@ -1128,8 +1249,9 @@ pub fn patch(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpEr
     HttpSession::shared().patch(url, body)
 }
 
-/// Sends an arbitrary [`HttpRequest`] via the shared session (keep-alive,
-/// streamed), raising on a 4xx/5xx when `raise_error`.
+/// Sends an arbitrary [`HttpRequest`] via the shared session (streamed; connection
+/// reuse follows the request's [`keep_alive`](HttpRequest::keep_alive) flag, default
+/// `false`), raising on a 4xx/5xx when `raise_error`.
 pub fn request(request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().request(request, raise_error)
+    HttpSession::shared().send(request, raise_error)
 }

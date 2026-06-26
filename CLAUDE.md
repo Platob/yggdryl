@@ -129,9 +129,12 @@ Compression is layered **on top of** the `io` module, never inside it (so the IO
 base stays codec-free and the dependency points one way — `compression` builds on
 `io`, never the reverse). The shape:
 
-- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
-  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
-  `from_mime` / `from_media` / `from_stats` for inference.
+- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (HTTP
+  `Content-Encoding: br`); `from_str` / `from_extension` / `as_str` / `extension` /
+  `is_available`, and (under `media`) `from_mime` / `from_media` / `from_stats` for
+  inference plus `mime()` (the inverse of `from_mime`, used to add an encoding layer to
+  a media type). Brotli has no magic bytes, so it is recognised by the `.br` extension /
+  `application/x-brotli` MIME only, never by content sniffing.
 - `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
   flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
   Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
@@ -143,9 +146,9 @@ base stays codec-free and the dependency points one way — `compression` builds
   with no codec infers one from the handle's URL extension, then its `stats()`
   media/content type.
 
-Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
-feature is off still parses and names itself but reports `Unsupported` on
-encode/decode (`is_available` tells ahead of time). `media` adds the
+Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`/`brotli`, all on by
+`default`); a variant whose feature is off still parses and names itself but reports
+`Unsupported` on encode/decode (`is_available` tells ahead of time). `media` adds the
 stats-inference path. When you add a codec, surface it in *both* bindings.
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
@@ -155,19 +158,28 @@ A small **blocking** HTTP client shaped after Python's `requests`, layered on
 gzip/brotli left off so decompression goes through `yggdryl-core`'s `compression`). The
 shape:
 
+- **Transactions are centralised on `HttpRequest` / `HttpResponse`; `HttpSession` is
+  a defaulting factory + transport.** A request is *self-sufficient*: `request.send(raise_error)`
+  dispatches it through the process-wide shared session and returns an `HttpResponse`
+  — no session reference needed. A custom-configured client (its own pool, TLS, proxy,
+  default headers) is an `HttpSession`, whose job is to **build** requests
+  (`prepare` merges its defaults) and **run** them (`session.send(request, raise_error)`).
+  Keep this shape when extending: new request behaviour lives on `HttpRequest`, new
+  client configuration on `HttpSession`; don't add a second send path.
 - `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
   pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
-  handshake), default headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size`
-  (80). **Every request funnels through the one method** `send(req, raise_error,
-  keep_alive, stream)` — there is no separate `stream()` method. It `prepare`s the
-  request (merge defaults; per-request headers win, case-insensitively), runs it with
-  the retry policy, and returns an `HttpResponse` holding the body. `raise_error`
-  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; `keep_alive` pools
-  the connection (a pool-saturation safeguard forces `Connection: close` on streams
-  past the pool size); `stream` (`true` by default) keeps the body a **live
-  `HttpStream`** read lazily, while `false` drains it into a `BytesIO` during `send`
-  so the connection is released at once. `request(req, raise_error)` is the
-  keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
+  handshake; idle connections past the keep-alive TTL are dropped), default headers, a
+  `RetryConfig`, a `read_timeout` (`with_read_timeout`, default 120s — errors with a hint
+  when the server sends no data for that long), `max_concurrency` (8) and `batch_size`
+  (80). **Every request funnels through the one method** `send(req, raise_error)` — there
+  is no `stream` flag (the body is **always** a live `HttpStream`, which handles buffering
+  and random access itself) and no separate `request()`/`stream()` method. It `prepare`s
+  the request (merge defaults; per-request headers win, case-insensitively), runs it with
+  the retry policy, and returns an `HttpResponse` holding the live body. `raise_error`
+  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; connection reuse is the
+  request's own **keep-alive idle TTL** in seconds (`with_keep_alive(seconds)`, default 300
+  — `0` → `Connection: close`; a pool-saturation safeguard still forces `close` on streams
+  past the pool size). `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
   threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
   10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). An optional
@@ -198,15 +210,35 @@ shape:
   HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
   `Content-Length`). **All header logic lives here.**
 - `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
-  `with_param` / `with_body` / `with_body_reader` / `with_body_io` /
-  `with_allow_redirect`). `with_body_io` is the preferred upload: the handle's
-  `stream_len` sets `Content-Length` and the bytes stream straight off the `Io` (a
-  file is never buffered). `with_allow_redirect(false)` opts a request out of the
-  redirect loop (returning the 3xx).
-- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
-  body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
+  `with_param` / `with_basic_auth` / `with_bearer_auth` / `with_body` /
+  `with_body_reader` / `with_body_io` / `with_allow_redirect` / `with_keep_alive`), plus
+  `send(raise_error)` (dispatch via the shared session) and `copy()` (an independent
+  copy; a streamed body can't be duplicated, so the copy carries none).
+  `with_keep_alive(seconds)` sets the keep-alive idle TTL (default 300; `0` →
+  `Connection: close`). `with_body_io` is the preferred upload: the handle's
+  `stream_len` sets `Content-Length` and the bytes stream straight off the `Io` (a file
+  is never buffered). `with_allow_redirect(false)` opts a request out of the redirect
+  loop (returning the 3xx).
+- **Authentication** (`auth.rs`, crate-internal) — `with_basic_auth(user, pass)` and
+  `with_bearer_auth(token)` on both `HttpRequest` and `HttpSession` set the
+  `Authorization` header (HTTP Basic, RFC 7617, with a dependency-free base64 encoder;
+  Bearer, RFC 6750). Session-level auth is a default header, so a per-request value
+  overrides it and a cross-origin redirect strips it. The bindings surface it as the
+  session `basic_auth`/`bearer_auth` (Python kwargs) / `basicAuth`/`bearerAuth` (Node
+  options).
+- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`, plus the typed
+  reads `mime_type` (from `Content-Type`), `media_type` (**combines `Content-Type` with
+  `Content-Encoding`** — a gzipped CSV is `[Csv, Gzip]`, like a `data.csv.gz` path; under
+  `media`) and `compression` (the codec named by `Content-Encoding`, under
+  `compression`). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
   `reader()` is the decoded body `Io` (decompressed under `compression`),
-  `bytes`/`text`/`into_bytesio` drain it, `into_io` takes the whole body.
+  `bytes`/`text`/`json`/`into_bytesio` drain it (`text`/`json` decompress transparently
+  first), `read_all` drains and returns the `received_at` finish time together (used by
+  the buffering bindings), `body_mut` borrows the raw body to read/seek in place,
+  `into_io` takes the whole body. In the **bindings** the decoded body is exposed as a
+  yggdryl `BytesIO` handle (`response.io`) — the performant, Rust-backed byte result you
+  `json()`/`decompress()` without an FFI copy — while `content` (native `bytes`/`Buffer`)
+  and `BytesIO`'s `__bytes__` / `to_bytes_io()` are the on-demand native converters.
 - `HttpStream: Io` — the seekable HTTP body that **streams off the held connection**:
   sequential `read` pulls bytes straight off the socket on demand, keeping only a
   sliding 4 MiB cache for short seek-backs, while `pread` (footer / column-chunk) and
@@ -232,11 +264,15 @@ shape:
   (`hyper` for h2, `quinn`/`h3` for h3, sharing `tokio`/`tokio-rustls`) are
   dependencies of the `http2`/`http3` features only**; `transport.rs` is
   `#[cfg(any(feature = "http2", feature = "http3"))]`, so the default build stays the
-  lean blocking `ureq` client. TLS verification follows the session's `verify` flag
-  (a rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file`
-  installs custom CA certificates (PEM/DER) that **replace** the default trust store
-  across all transports (the secure alternative to `verify=false`, like `requests`'
-  `verify=<bundle>`); a proxy applies to the `ureq` h1 path.
+  lean blocking `ureq` client. **The default trust store is the OS-native certificate
+  store** (Windows SChannel, macOS Security framework, Linux system bundle) via ureq's
+  `platform-verifier` (`RootCerts::PlatformVerifier`), so corporate/OS roots are
+  honoured out of the box. TLS verification follows the session's `verify` flag (a
+  rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file` installs
+  custom CA certificates (PEM/DER) that **replace** that store (the secure alternative
+  to `verify=false`, like `requests`' `verify=<bundle>`); a proxy applies to the `ureq`
+  h1 path. A `read_timeout` (`with_read_timeout`, default 120s) bounds the wait for
+  server data via ureq's recv timeouts, surfacing an actionable error.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`
@@ -412,6 +448,11 @@ GitHub Release. `yggdryl-http`'s dependency on `yggdryl-core` is a caret range, 
 `version.workspace = true`; the npm `package.json` is synced from it at publish time
 — keep it in sync locally too). Never re-use a published version number;
 crates.io/npm reject re-uploads.
+
+The Python extension is built against PyO3's **stable ABI** (`abi3-py37`), so one
+`cp37-abi3` wheel per OS/arch covers every CPython from **3.7** up
+(`requires-python = ">=3.7"`) — don't build a wheel per interpreter version. Keep
+new binding code within the limited API (the PyO3 `*_bound` helpers already are).
 
 ## Code-coherence review (after every implementation)
 

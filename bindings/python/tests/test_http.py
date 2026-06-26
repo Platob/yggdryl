@@ -28,9 +28,23 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/missing":
             return self._reply(404, b"nope")
-        # Echo a custom request header back so the client can assert on it.
+        if self.path == "/brotli":
+            # A Brotli-compressed JSON body, advertised via Content-Encoding: br.
+            body = b'{"msg":"brotli over the wire","n":7}'
+            packed = yggdryl.Compression("br").compress(body)
+            return self._reply(
+                200,
+                packed,
+                content_type="application/json",
+                extra={"Content-Encoding": "br"},
+            )
+        # Echo a custom request header (and any Authorization) back so the client
+        # can assert on it.
         echo = self.headers.get("X-Echo", "")
-        self._reply(200, b"hello world", extra={"X-Echo-Back": echo})
+        auth = self.headers.get("Authorization", "")
+        self._reply(
+            200, b"hello world", extra={"X-Echo-Back": echo, "X-Auth-Back": auth}
+        )
 
     def _echo_body(self, status):
         length = int(self.headers.get("Content-Length", 0))
@@ -83,6 +97,18 @@ def test_default_and_request_headers(base_url):
 
     response = session.request("GET", base_url + "/", headers={"X-Echo": "from-request"})
     assert response.header("x-echo-back") == "from-request"
+
+
+def test_basic_and_bearer_auth(base_url):
+    # `basic_auth=(user, pass)` sends a default HTTP Basic Authorization header.
+    session = yggdryl.HttpSession(basic_auth=("Aladdin", "open sesame"))
+    assert (
+        session.get(base_url + "/").header("x-auth-back")
+        == "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+    )
+    # `bearer_auth=token` sends a Bearer token instead.
+    session = yggdryl.HttpSession(bearer_auth="tok-123")
+    assert session.get(base_url + "/").header("x-auth-back") == "Bearer tok-123"
 
 
 def test_404_and_raise_for_status(base_url):
@@ -202,6 +228,44 @@ def test_ca_cert_installer():
         )
     with pytest.raises(ValueError):
         yggdryl.HttpSession(ca_cert=b"")
+
+
+def test_brotli_response_auto_decodes_with_json_and_accessors(base_url):
+    session = yggdryl.HttpSession()
+    response = session.get(base_url + "/brotli")
+    # text/json/content are the decompressed payload; accessors report the codec.
+    assert response.content_encoding == "br"
+    assert response.compression == "brotli"
+    assert response.mime_type == "application/json"
+    # media_type combines Content-Type + Content-Encoding (inner → outer).
+    assert response.media_type == ["application/json", "application/x-brotli"]
+    assert response.json() == {"msg": "brotli over the wire", "n": 7}
+
+    # The performant byte result is a yggdryl BytesIO handle — parse it in Rust with
+    # no native copy. Native converters produce bytes / io.BytesIO on demand.
+    import io as _io
+
+    handle = response.io
+    assert isinstance(handle, yggdryl.BytesIO)
+    assert handle.json() == {"msg": "brotli over the wire", "n": 7}
+    assert bytes(handle) == response.content
+    native = handle.to_bytes_io()
+    assert isinstance(native, _io.BytesIO)
+    assert native.getvalue() == response.content
+
+
+def test_read_timeout_keep_alive_and_copy(base_url):
+    # The read timeout defaults to 120s and is configurable.
+    assert yggdryl.HttpSession().read_timeout == 120.0
+    assert yggdryl.HttpSession(read_timeout=5).read_timeout == 5.0
+    # keep_alive is now a TTL in seconds; 0 closes the connection. A request still
+    # succeeds whichever the value.
+    session = yggdryl.HttpSession()
+    assert session.request("GET", base_url + "/", keep_alive=0).status == 200
+    assert session.request("GET", base_url + "/", keep_alive=30).status == 200
+    # copy() is independent: configuration is carried, the original is unchanged.
+    clone = yggdryl.HttpSession(read_timeout=9).copy()
+    assert clone.read_timeout == 9.0
 
 
 def test_verify_and_proxy_options():

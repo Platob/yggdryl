@@ -107,10 +107,24 @@ impl HttpStream {
         self.size.map(|size| size.saturating_sub(self.position))
     }
 
-    /// Records end-of-input on an unknown-size stream and releases the socket.
+    /// Records end-of-input and releases the held connection — back to the pool
+    /// when keep-alive, or closed when the request carried `Connection: close`.
+    /// Called the moment the body is fully drained (a known-size body reaching its
+    /// last byte, or an unknown-size body hitting a socket EOF), so the connection
+    /// is freed at EOF rather than lingering until the stream is dropped. An
+    /// unknown-size stream also learns its total size here.
     fn on_eof(&mut self) {
         if self.size.is_none() {
             self.size = Some(self.position);
+        }
+        // Let the underlying reader observe its own EOF before we drop it: a
+        // content-length body read to its last byte hasn't yet seen the trailing
+        // zero-read, and ureq only recycles a keep-alive socket once the body is
+        // marked complete. The reader is at EOF here, so this returns 0 without
+        // touching the socket.
+        if let Some(reader) = self.reader.as_mut() {
+            let mut sink = [0u8; 1];
+            let _ = std::io::Read::read(reader, &mut sink);
         }
         self.reader = None; // exhausted: return the connection to the pool
         self.received_at.stamp_once();
@@ -371,9 +385,10 @@ impl Io for HttpStream {
     /// the cursor — the streamed read primitive.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         if buf.is_empty() || self.closed || self.remaining() == Some(0) {
-            // A fully-drained known-size body is done: mark the connection done.
+            // A fully-drained known-size body is done: release the held connection
+            // at EOF (to the pool, or closed when not keep-alive).
             if self.remaining() == Some(0) {
-                self.received_at.stamp_once();
+                self.on_eof();
             }
             return Ok(0);
         }
@@ -412,6 +427,11 @@ impl Io for HttpStream {
         }
         self.reader_pos += count as u64;
         self.position += count as u64;
+        if self.remaining() == Some(0) {
+            // The last bytes of a known-size body just arrived: release the
+            // connection at EOF rather than holding it until the stream drops.
+            self.on_eof();
+        }
         Ok(count)
     }
 
@@ -452,8 +472,9 @@ impl Io for HttpStream {
             self.position += count as u64;
         }
         // The loop exits once the body is fully drained (known size) or hit EOF:
-        // either way the connection is done.
-        self.received_at.stamp_once();
+        // either way the connection is done — release it (to the pool, or closed
+        // when not keep-alive) rather than holding it until the stream drops.
+        self.on_eof();
         Ok(out.len() - start_len)
     }
 

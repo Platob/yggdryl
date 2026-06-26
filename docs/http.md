@@ -1,29 +1,98 @@
 # HTTP
 
 A blocking, `requests`-like HTTP client whose bodies **stream over [`Io`](io.md)**.
-The transport is `ureq` (rustls TLS); decompression goes through
-[compression](compression.md), on by default.
+The transport is `ureq` (rustls TLS, trusting the **OS-native certificate store** by
+default); decompression goes through [compression](compression.md), on by default.
 
-## The session
+## Decoding & content type
 
-`HttpSession` is a pooled client. **Every request funnels through one method:**
+`text()` and `json()` (and `bytes()`) **transparently decompress** the body per its
+`Content-Encoding` — `gzip` / `zstd` / `snappy` / `brotli` (`br`) — so you always read
+the decoded payload. The response also exposes `compression()` (the codec named by
+`Content-Encoding`), `mime_type()`, `media_type()` — which **combines `Content-Type`
+with `Content-Encoding`**, so a gzipped CSV reads as `["text/csv", "application/gzip"]`
+— and `content_type` / `content_encoding`.
 
-```rust
-session.send(request, raise_error, keep_alive, stream) -> HttpResponse
+In the bindings the decoded body is a yggdryl **`BytesIO` handle** via `response.io`:
+the performant byte result that stays Rust-backed, so `io.json()` / `io.decompress()` /
+`io.read()` run with no copy into the host language. `content` (native `bytes` /
+`Buffer`) — and, on `BytesIO`, `bytes(handle)` / `to_bytes_io()` in Python — are the
+on-demand native converters.
+
+```python
+r = yggdryl.HttpSession().get("https://example.com/data.json")  # served `Content-Encoding: br`
+r.compression       # "brotli"
+r.media_type        # ["application/json", "application/x-brotli"]
+data = r.io.json()  # decompressed and parsed in Rust, no bytes copied into Python
 ```
 
-- `raise_error` (`true` on the verb helpers `get`/`post`/…) turns a 4xx/5xx into an error.
-- `keep_alive` pools the connection so the next request skips the TLS handshake.
-- `stream` (`true` by default) keeps the body a **live, seekable `HttpStream`**; `false`
-  drains it into memory during `send`, releasing the connection at once.
+## Request in, response out
+
+A **request is the transaction**: build an `HttpRequest`, and it is self-sufficient
+to fetch its `HttpResponse`.
+
+```rust
+let body = HttpRequest::get("https://example.com")?.send(true)?.text()?;  // raise on 4xx/5xx
+```
+
+`request.send(raise_error)` dispatches through the process-wide shared session.
+`HttpSession` is the **defaulting factory + transport**: it carries the pool, TLS,
+proxy, retry policy and default headers, builds requests with `prepare`, and runs
+them with `session.send(request, raise_error)` — use it when you need a
+custom-configured client. The body is **always streamed**: `HttpStream` itself
+handles buffering and random access (a sliding cache, `Range` requests), so there
+is no `stream` flag — drain it with `bytes()` / `text()` / `into_io()`.
+
+```rust
+session.send(request, raise_error) -> HttpResponse   // raise on a 4xx/5xx
+```
 
 `send_many(requests)` runs an iterator of requests concurrently in batches, lazily.
+
+### Connection reuse & timeouts
+
+Connection reuse is a per-request **keep-alive idle TTL** in seconds:
+`request.with_keep_alive(seconds)` (default 300 — 5 minutes) pools the connection
+so the next request skips the TLS handshake; `0` sends `Connection: close`,
+releasing the socket the moment the body drains. A pooled connection idle past its
+TTL is dropped.
+
+`session.with_read_timeout(seconds)` (default 120) errors if the server sends no
+data for that long, with a hint to raise it for genuinely slow endpoints; `0`
+removes the bound.
+
+Both `HttpRequest` and `HttpSession` have a `copy()` that returns an independent
+instance (a session copy gets its own fresh pool and a snapshot of the cookie jar).
 
 ```python
 import yggdryl
 s = yggdryl.HttpSession(headers={"accept": "application/json"})
 r = s.get("https://httpbin.org/get")
 print(r.status, r.headers, r.sent_at, r.received_at)   # request/response timestamps
+```
+
+## Authentication
+
+`with_basic_auth(username, password)` and `with_bearer_auth(token)` set the
+`Authorization` header — HTTP Basic (`Basic base64(user:pass)`, RFC 7617) or
+Bearer (`Bearer <token>`, RFC 6750). They exist on both `HttpRequest` (per
+request) and `HttpSession` (a default on every request, like `requests`'
+`Session.auth`). A session-level credential is a default header, so a per-request
+`Authorization` overrides it and a **cross-origin redirect strips it** — credentials
+never leak to another host.
+
+```python
+import yggdryl
+# Session-wide credentials (Python kwargs / Node options).
+s = yggdryl.HttpSession(basic_auth=("user", "pass"))      # or bearer_auth="token"
+s.get("https://httpbin.org/basic-auth/user/pass")
+```
+
+```javascript
+const { HttpSession } = require("yggdryl");
+// basicAuth is a [username, password] pair; bearerAuth is a token.
+const opts = Array(9).fill(undefined);
+const s = new HttpSession(...opts, ["user", "pass"]); // or (...opts, undefined, "token")
 ```
 
 ## Streaming & random access

@@ -16,6 +16,15 @@ function startServer() {
         res.end('nope')
         return
       }
+      if (req.url === '/brotli') {
+        // A Brotli-compressed JSON body advertised via Content-Encoding: br.
+        const { Compression } = require('..')
+        const body = Buffer.from('{"msg":"brotli over the wire","n":7}')
+        const packed = Compression.fromStr('br').compress(body)
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Encoding': 'br' })
+        res.end(Buffer.from(packed))
+        return
+      }
       const chunks = []
       req.on('data', (c) => chunks.push(c))
       req.on('end', () => {
@@ -24,6 +33,7 @@ function startServer() {
           res.writeHead(200, {
             'Content-Type': 'text/plain',
             'X-Echo-Back': req.headers['x-echo'] || '',
+            'X-Auth-Back': req.headers['authorization'] || '',
           })
           res.end('hello world')
         } else if (req.method === 'DELETE') {
@@ -130,6 +140,25 @@ test('baseUrl resolves relative targets', async () => {
   }
 })
 
+test('basicAuth and bearerAuth set a default Authorization header', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  const opts = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]
+  try {
+    // basicAuth: a [username, password] pair.
+    const basic = new HttpSession(...opts, ['Aladdin', 'open sesame'])
+    assert.strictEqual(
+      (await basic.get(base + '/')).header('x-auth-back'),
+      'Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==',
+    )
+    // bearerAuth: a token.
+    const bearer = new HttpSession(...opts, undefined, 'tok-123')
+    assert.strictEqual((await bearer.get(base + '/')).header('x-auth-back'), 'Bearer tok-123')
+  } finally {
+    server.close()
+  }
+})
+
 test('setBaseUrl configures the shared singleton', async () => {
   const yggdryl = require('..')
   const { server, port } = await startServer()
@@ -164,6 +193,51 @@ test('CA certificate installer', () => {
   assert.throws(() =>
     new HttpSession(...args, Buffer.from('-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----')),
   )
+})
+
+test('brotli response auto-decodes with json and accessors', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const r = await new HttpSession().get(base + '/brotli')
+    assert.strictEqual(r.contentEncoding, 'br')
+    assert.strictEqual(r.compression, 'brotli')
+    assert.strictEqual(r.mimeType, 'application/json')
+    // mediaType combines Content-Type + Content-Encoding (inner → outer).
+    assert.deepStrictEqual(r.mediaType, ['application/json', 'application/x-brotli'])
+    assert.deepStrictEqual(r.json(), { msg: 'brotli over the wire', n: 7 })
+
+    // The performant byte result is a yggdryl BytesIO handle — parse it in Rust with
+    // no native copy; `content` gives a native Buffer when needed.
+    const handle = r.io
+    assert.deepStrictEqual(handle.json(), { msg: 'brotli over the wire', n: 7 })
+    assert.deepStrictEqual(handle.getValue(), r.content)
+  } finally {
+    server.close()
+  }
+})
+
+test('readTimeout, keepAlive seconds and copy', async () => {
+  // readTimeout defaults to 120s and is the 12th constructor option.
+  assert.strictEqual(new HttpSession().readTimeout, 120)
+  const opts = Array(11).fill(undefined)
+  assert.strictEqual(new HttpSession(...opts, 5).readTimeout, 5)
+  // copy() carries configuration into an independent session.
+  assert.strictEqual(new HttpSession(...opts, 9).copy().readTimeout, 9)
+
+  // keepAlive is a TTL in seconds; a request succeeds whatever the value.
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession()
+    // request(method, url, headers, body, raiseError, keepAlive, ...)
+    const closed = await session.request('GET', base + '/', undefined, undefined, false, 0)
+    assert.strictEqual(closed.status, 200)
+    const pooled = await session.request('GET', base + '/', undefined, undefined, false, 30)
+    assert.strictEqual(pooled.status, 200)
+  } finally {
+    server.close()
+  }
 })
 
 test('verify and proxy options', () => {

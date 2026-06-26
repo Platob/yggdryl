@@ -26,4 +26,7 @@ serde_json = "1"
 
 [dependencies.pyo3]
 version = "0.22"
-features = ["extension-module"]
+# `abi3-py37` builds against the stable ABI (the limited API), so a single wheel
+# (`cp37-abi3`) is forward-compatible with every CPython from 3.7 up — one build
+# per OS/arch instead of one per interpreter version.
+features = ["extension-module", "abi3-py37"]

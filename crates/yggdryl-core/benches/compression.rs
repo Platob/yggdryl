@@ -56,7 +56,12 @@ fn main() {
     let payload = payload();
 
     println!("== compression ({} KiB CSV-like payload) ==", SIZE / 1024);
-    for codec in [Compression::Gzip, Compression::Zstd, Compression::Snappy] {
+    for codec in [
+        Compression::Gzip,
+        Compression::Zstd,
+        Compression::Snappy,
+        Compression::Brotli,
+    ] {
         if !codec.is_available() {
             println!("{:<40} (feature off)", codec.as_str());
             continue;

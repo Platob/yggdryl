@@ -56,6 +56,9 @@ pub enum MimeType {
     Bzip2,
     /// `application/zstd`
     Zstd,
+    /// `application/x-brotli` (HTTP `Content-Encoding: br`). A raw Brotli stream
+    /// carries no magic bytes, so it is recognised by extension (`.br`) only.
+    Brotli,
     /// `application/x-7z-compressed`
     SevenZip,
     /// `application/vnd.apache.parquet`
@@ -257,6 +260,13 @@ static BUILTINS: &[Builtin] = &[
         "application/zstd",
         &["zst"],
         &[mag(b"\x28\xb5\x2f\xfd")],
+    ),
+    builtin(
+        // Brotli has no magic bytes — recognised by the `.br` extension alone.
+        || MimeType::Brotli,
+        "application/x-brotli",
+        &["br", "brotli"],
+        &[],
     ),
     builtin(
         || MimeType::SevenZip,
