@@ -813,6 +813,70 @@ fn httpstream_close_releases_the_connection_and_reads_eof() {
 }
 
 #[test]
+fn httpstream_releases_connection_to_the_pool_at_eof() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    // A keep-alive server that serves many requests per socket and counts how many
+    // TCP connections it accepts.
+    let payload = b"0123456789ABCDEF".to_vec(); // a 16-byte known-size body
+    let body = payload.clone();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let counter = accepted.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        for conn in listener.incoming().flatten() {
+            counter.fetch_add(1, Ordering::SeqCst);
+            let body = body.clone();
+            thread::spawn(move || {
+                let mut conn = conn;
+                conn.set_read_timeout(Some(Duration::from_millis(500))).ok();
+                let mut pending = Vec::new();
+                let mut buf = [0u8; 4096];
+                loop {
+                    // Read one request (headers terminate the keep-alive turn).
+                    while !pending.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match conn.read(&mut buf) {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => pending.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    pending.clear();
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n\r\n",
+                        body.len()
+                    );
+                    if conn.write_all(reply.as_bytes()).is_err() || conn.write_all(&body).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+
+    let session = HttpSession::new();
+    // Stream the first body fully to EOF, but keep the stream object alive.
+    let mut s1 = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+    let mut out = Vec::new();
+    s1.read_to_end(&mut out).unwrap();
+    assert_eq!(out, payload);
+    // At EOF the connection went back to the pool, so a second streamed request
+    // reuses it — even though `s1` has not been dropped. Without the
+    // release-at-EOF behaviour `s1` would pin its socket and force a 2nd connection.
+    let mut s2 = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+    let mut out2 = Vec::new();
+    s2.read_to_end(&mut out2).unwrap();
+    assert_eq!(out2, payload);
+    assert_eq!(
+        accepted.load(Ordering::SeqCst),
+        1,
+        "the pooled connection should be reused after the first body hit EOF"
+    );
+    drop(s1);
+    drop(s2);
+}
+
+#[test]
 fn keep_alive_false_sends_connection_close() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     HttpSession::new()
