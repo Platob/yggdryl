@@ -8,10 +8,11 @@ use crate::iostats::IoStats;
 use crate::media::MediaType;
 use crate::mime::MimeType;
 
-/// A byte-stream compression codec — `gzip`, `zstd` or `snappy` (or `none`, the
-/// identity codec) — that compresses and decompresses bytes. The backends are
-/// optional Cargo features in the core, so a codec may parse and name itself yet
-/// report `isAvailable` `false` when its backend was not compiled in.
+/// A byte-stream compression codec — `gzip`, `deflate` (zlib), `zstd`, `snappy`
+/// or `brotli` (or `none`, the identity codec) — that compresses and decompresses
+/// bytes. The backends are optional Cargo features in the core, so a codec may
+/// parse and name itself yet report `isAvailable` `false` when its backend was
+/// not compiled in.
 #[napi]
 pub struct Compression {
     pub(crate) inner: CoreCompression,
@@ -19,8 +20,9 @@ pub struct Compression {
 
 #[napi]
 impl Compression {
-    /// Parse a codec name — `none` / `identity` / `store`, `gzip` / `gz`, `zstd` /
-    /// `zst`, `snappy` / `snap` / `sz` — throwing on an unknown one.
+    /// Parse a codec name — `none` / `identity` / `store`, `gzip` / `gz`,
+    /// `deflate` / `zlib` / `zz`, `zstd` / `zst`, `snappy` / `snap` / `sz`,
+    /// `brotli` / `br` — throwing on an unknown one.
     #[napi(constructor)]
     pub fn new(value: String) -> Result<Self> {
         CoreCompression::from_str(&value)
@@ -62,14 +64,23 @@ impl Compression {
         CoreCompression::from_stats(&stats.inner).map(|inner| Compression { inner })
     }
 
-    /// The canonical codec name (`"none"` / `"gzip"` / `"zstd"` / `"snappy"`).
+    /// The `MimeType` this codec is carried as — the inverse of `fromMime`, used to
+    /// add an encoding layer to a media type. `null` for the identity codec and
+    /// `deflate` / `snappy` (which have no registered MIME).
+    #[napi]
+    pub fn mime(&self) -> Option<MimeType> {
+        self.inner.mime().map(|inner| MimeType { inner })
+    }
+
+    /// The canonical codec name (`"none"` / `"gzip"` / `"deflate"` / `"zstd"` /
+    /// `"snappy"` / `"brotli"`).
     #[napi(getter)]
     pub fn name(&self) -> &'static str {
         self.inner.as_str()
     }
 
-    /// The conventional file extension (`"gz"` / `"zst"` / `"sz"`), or `null` for
-    /// the identity codec.
+    /// The conventional file extension (`"gz"` / `"zz"` / `"zst"` / `"sz"` /
+    /// `"br"`), or `null` for the identity codec.
     #[napi(getter)]
     pub fn extension(&self) -> Option<&'static str> {
         self.inner.extension()

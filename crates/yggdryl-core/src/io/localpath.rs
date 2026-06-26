@@ -335,6 +335,19 @@ impl Io for LocalPath {
         Ok(stats)
     }
 
+    /// The metadata held since [`open`](LocalPath::open) — always present (a
+    /// `LocalPath` stats its location up front), so this is the cheap peek that
+    /// skips the lazy `media_type` discovery [`stats`](Io::stats) folds in.
+    fn cached_stats(&self) -> Option<IoStats> {
+        Some(self.stats.clone())
+    }
+
+    /// Replaces the held metadata, so later [`stats`](Io::stats) calls return
+    /// `stats` instead of the open-time snapshot.
+    fn set_stats(&mut self, stats: IoStats) {
+        self.stats = stats;
+    }
+
     fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
         let len = self.stats.size() as i64;
         let base = match whence {

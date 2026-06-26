@@ -302,6 +302,13 @@ impl IoStats {
         self.media_type.as_ref()
     }
 
+    /// Returns a copy with `size` set — used to refresh a cached stat against a
+    /// backend whose length is live (e.g. an in-memory [`BytesIO`]).
+    pub fn with_size(mut self, size: u64) -> IoStats {
+        self.size = size;
+        self
+    }
+
     /// Returns a copy with `kind` set.
     pub fn with_kind(mut self, kind: Kind) -> IoStats {
         self.kind = kind;
@@ -397,7 +404,29 @@ pub trait Io: fmt::Debug + Send + Sync {
     fn url(&self) -> Url;
 
     /// Discovers metadata. Cheap fields are eager; see [`IoStats`].
+    ///
+    /// Backends that memoize their metadata serve it through a cache — peek it with
+    /// [`cached_stats`](Io::cached_stats) and seed/override it with
+    /// [`set_stats`](Io::set_stats), so an expensive discovery (a `HEAD`, a media
+    /// sniff) happens at most once and a caller who already knows the metadata can
+    /// install it up front.
     fn stats(&self) -> Result<IoStats, IoError>;
+
+    /// The **cached** [`IoStats`] for this handle, if it memoizes them — the *get*
+    /// side of the stats cache. `None` by default (a backend without a cache
+    /// recomputes in [`stats`](Io::stats) every call); caching backends
+    /// ([`BytesIO`], [`LocalPath`]) return their held value.
+    fn cached_stats(&self) -> Option<IoStats> {
+        None
+    }
+
+    /// Installs `stats` as this handle's cached metadata — the *set* side. Later
+    /// [`stats`](Io::stats) calls reuse it (so a caller who already knows a handle's
+    /// content type / media type can attach them and skip rediscovery). The default
+    /// is a no-op for non-caching backends; caching backends override it.
+    fn set_stats(&mut self, stats: IoStats) {
+        let _ = stats;
+    }
 
     /// Moves the cursor to `offset` relative to `whence`, returning the new
     /// absolute position. Seeking before the start fails with [`IoError::Invalid`];
@@ -790,6 +819,12 @@ impl<T: Io + ?Sized> Io for &mut T {
     fn stats(&self) -> Result<IoStats, IoError> {
         (**self).stats()
     }
+    fn cached_stats(&self) -> Option<IoStats> {
+        (**self).cached_stats()
+    }
+    fn set_stats(&mut self, stats: IoStats) {
+        (**self).set_stats(stats)
+    }
     fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
         (**self).seek(offset, whence)
     }
@@ -872,6 +907,12 @@ impl<T: Io + ?Sized> Io for Box<T> {
     }
     fn stats(&self) -> Result<IoStats, IoError> {
         (**self).stats()
+    }
+    fn cached_stats(&self) -> Option<IoStats> {
+        (**self).cached_stats()
+    }
+    fn set_stats(&mut self, stats: IoStats) {
+        (**self).set_stats(stats)
     }
     fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
         (**self).seek(offset, whence)
@@ -986,6 +1027,25 @@ mod tests {
         // Reading at the end yields nothing and the cursor stays put.
         assert_eq!(io.read(None), b"");
         assert_eq!(io.tell(), 11);
+    }
+
+    #[test]
+    fn bytesio_from_str_reads_a_file_else_encodes_utf8() {
+        // A string that is not a path is taken verbatim as UTF-8.
+        assert_eq!(BytesIO::from_str("héllo").getvalue(), "héllo".as_bytes());
+        assert!(BytesIO::from_str("").is_empty());
+
+        // A string that names an existing file is read in as its bytes.
+        let path = std::env::temp_dir().join("yggdryl_bytesio_from_str.bin");
+        std::fs::write(&path, b"file contents \x00\x01\x02").unwrap();
+        let io = BytesIO::from_str(path.to_str().unwrap());
+        assert_eq!(io.getvalue(), b"file contents \x00\x01\x02");
+        std::fs::remove_file(&path).ok();
+
+        // A directory is not a file, so its path is encoded literally.
+        let dir = std::env::temp_dir();
+        let dir_str = dir.to_str().unwrap();
+        assert_eq!(BytesIO::from_str(dir_str).getvalue(), dir_str.as_bytes());
     }
 
     #[test]
@@ -1230,6 +1290,64 @@ mod tests {
         assert!(stats.is_file());
         assert!(!stats.is_dir());
         assert!(stats.exists());
+    }
+
+    #[test]
+    fn io_stats_cache_get_set_keeps_size_live() {
+        let mut io = BytesIO::from_bytes(b"abc".to_vec());
+        // Nothing cached until installed.
+        assert!(io.cached_stats().is_none());
+        // Install a metadata override (content type); the get side reads it back.
+        io.set_stats(IoStats::new(0).with_content_type("application/json"));
+        assert_eq!(
+            io.cached_stats().unwrap().content_type(),
+            Some("application/json")
+        );
+        // stats() merges the override but the live byte count wins over the cache.
+        let stats = io.stats().unwrap();
+        assert_eq!(stats.size(), 3);
+        assert_eq!(stats.content_type(), Some("application/json"));
+        // A later write is reflected — the size is never frozen by the cache.
+        io.seek(0, Whence::End).unwrap();
+        io.write(b"de").unwrap();
+        assert_eq!(io.stats().unwrap().size(), 5);
+    }
+
+    #[cfg(feature = "media")]
+    #[test]
+    fn bytesio_caches_inferred_media_type_and_accepts_a_seed() {
+        use crate::{MediaType, MimeType};
+        // Inferred from the gzip magic bytes, then folded into stats.
+        let io = BytesIO::from_bytes(vec![0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        let inferred = io.media_type().unwrap();
+        assert_eq!(inferred.first(), Some(&MimeType::Gzip));
+        let stats = io.stats().unwrap();
+        assert_eq!(stats.media_type(), Some(&inferred));
+
+        // A seeded media type is returned without sniffing — even over bytes that
+        // would not sniff to it.
+        let csv = MediaType::from_str("text/csv").unwrap();
+        let seeded =
+            BytesIO::from_bytes(b"plain text, no magic".to_vec()).with_media_type(csv.clone());
+        assert_eq!(seeded.media_type(), Some(csv.clone()));
+        assert_eq!(seeded.stats().unwrap().media_type(), Some(&csv));
+    }
+
+    #[test]
+    fn local_path_cached_stats_get_set() {
+        let path = temp_file("cachedstats");
+        std::fs::write(&path, b"hello").unwrap();
+        let mut io = LocalPath::open(&path);
+        // Held since open — always present for a path.
+        assert_eq!(io.cached_stats().unwrap().size(), 5);
+        // Override and read it back through both the cache peek and stats().
+        io.set_stats(IoStats::new(7).with_content_type("text/plain"));
+        assert_eq!(
+            io.cached_stats().unwrap().content_type(),
+            Some("text/plain")
+        );
+        assert_eq!(io.stats().unwrap().content_type(), Some("text/plain"));
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

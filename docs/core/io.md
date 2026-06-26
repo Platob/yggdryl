@@ -22,6 +22,7 @@ Every handle knows its `url()` and `stats()`, carries a cursor moved with
 | storage | `capacity()`, `reserve_capacity(n)`, `truncate(n)` |
 | lifecycle | `open(mode, stream)`, `close()` |
 | metadata | `media_type()` *(feature `media`)*, `json()` *(feature `json`)* |
+| stats cache | `cached_stats()` *(get)*, `set_stats(stats)` *(set)* |
 
 `Whence::Current` (`1`) uses and **advances** the cursor — a streamed read/write;
 `Whence::Start` (`0`) and `Whence::End` (`2`) are purely positional and **leave
@@ -89,6 +90,111 @@ fixed position.
     io.seek(6, Whence::Start)?;
     assert_eq!(Io::stream_position(&io), 6);
     assert_eq!(io.url().scheme(), "mem");      // every Io has a URL
+    ```
+
+## Build a `BytesIO` from a string
+
+A `BytesIO` can be built straight from a string: if it **names an existing file**
+its bytes are read in, otherwise the string is taken **verbatim as UTF-8** content.
+The constructors accept a string or raw bytes; `from_str` is the explicit named
+form (Rust only constructs from a string this way — `from_bytes` is the bytes form).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    yggdryl.BytesIO("hello").getvalue()             # b"hello" (UTF-8 of the text)
+    yggdryl.BytesIO.from_str("data.csv").getvalue() # the file's bytes, if it exists
+    yggdryl.BytesIO(b"\x00\x01").getvalue()         # raw bytes, unchanged
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { BytesIO } = require("yggdryl");
+
+    new BytesIO("hello").getValue();             // Buffer "hello" (UTF-8 of the text)
+    BytesIO.fromStr("data.csv").getValue();      // the file's bytes, if it exists
+    new BytesIO(Buffer.from([0, 1])).getValue(); // raw bytes, unchanged
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::BytesIO;
+
+    assert_eq!(BytesIO::from_str("hello").getvalue(), b"hello"); // UTF-8 of the text
+    // BytesIO::from_str("data.csv") reads the file's bytes when it exists.
+    ```
+
+## Cached metadata — stats & media type
+
+`stats()` discovers metadata, and the expensive parts (a media-type sniff, a
+remote `HEAD`) are **memoized** so they happen at most once. Two accessors expose
+that cache: `cached_stats()` peeks it (the *get* side — `null` when nothing is
+cached) and `set_stats(stats)` installs it (the *set* side), so a caller who
+already knows a handle's content type or media type can attach it and skip
+rediscovery. For an in-memory `BytesIO` the **live byte count always wins** over a
+cached size, so writes are still reflected.
+
+A `BytesIO` also **caches its inferred media type**: the magic bytes are sniffed
+once on the first `media_type` access and reused. When you already know the type,
+pass it in at construction to skip the sniff entirely.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    io = yggdryl.BytesIO(bytes([0x1F, 0x8B, 0x08, 0x00]))  # gzip magic
+    io.media_type.first.mime         # "application/gzip" — sniffed once, cached
+
+    # Put the type in instead of inferring it.
+    csv = yggdryl.MediaType.from_str("text/csv")
+    typed = yggdryl.BytesIO(b"a,b,c\n1,2,3\n", media_type=csv)
+
+    # Attach / peek cached metadata; the live size is never frozen.
+    io.set_stats(yggdryl.IoStats(content_type="application/json"))
+    io.cached_stats().content_type   # "application/json"
+    io.stats().size                  # live byte count
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { BytesIO, MediaType, IoStats } = require("yggdryl");
+
+    const io = new BytesIO(Buffer.from([0x1f, 0x8b, 0x08, 0x00])); // gzip magic
+    io.mediaType.first.mime;         // "application/gzip" — sniffed once, cached
+
+    // Put the type in instead of inferring it (3rd constructor arg).
+    const csv = MediaType.fromStr("text/csv");
+    const typed = new BytesIO(Buffer.from("a,b,c\n1,2,3\n"), undefined, csv);
+
+    // Attach / peek cached metadata; the live size is never frozen.
+    io.setStats(new IoStats(0, "file", undefined, "application/json"));
+    io.cachedStats().contentType;    // "application/json"
+    io.stats().size;                 // live byte count
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{BytesIO, Io, IoStats, MediaType, MimeType};
+
+    let io = BytesIO::from_bytes(vec![0x1f, 0x8b, 0x08, 0x00]); // gzip magic
+    assert_eq!(io.media_type().unwrap().first(), Some(&MimeType::Gzip));
+
+    // Put the type in instead of inferring it.
+    let csv = MediaType::from_str("text/csv")?;
+    let _typed = BytesIO::from_bytes(b"a,b,c\n".to_vec()).with_media_type(csv);
+
+    // Attach / peek cached metadata (cached_stats = get, set_stats = set).
+    let mut io = BytesIO::from_bytes(b"abc".to_vec());
+    io.set_stats(IoStats::new(0).with_content_type("application/json"));
+    assert_eq!(io.cached_stats().unwrap().content_type(), Some("application/json"));
+    assert_eq!(io.stats().unwrap().size(), 3); // live byte count, never frozen
     ```
 
 ## Random access — read a footer with `pread`

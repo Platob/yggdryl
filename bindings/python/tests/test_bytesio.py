@@ -8,6 +8,49 @@ import pytest
 import yggdryl
 
 
+def test_from_str_reads_file_else_utf8(tmp_path):
+    # A plain string is taken verbatim as UTF-8, via the constructor or from_str.
+    assert yggdryl.BytesIO("héllo").getvalue() == "héllo".encode()
+    assert yggdryl.BytesIO.from_str("héllo").getvalue() == "héllo".encode()
+    # bytes still work unchanged.
+    assert yggdryl.BytesIO(b"raw\x00bytes").getvalue() == b"raw\x00bytes"
+    assert yggdryl.BytesIO().getvalue() == b""
+
+    # A string naming an existing file is read in as its bytes.
+    path = tmp_path / "data.bin"
+    path.write_bytes(b"file contents \x00\x01\x02")
+    assert yggdryl.BytesIO(str(path)).getvalue() == b"file contents \x00\x01\x02"
+    assert yggdryl.BytesIO.from_str(str(path)).getvalue() == b"file contents \x00\x01\x02"
+    # stream flag still applies on the string path.
+    assert yggdryl.BytesIO("abc", stream=False).stream is False
+
+
+def test_media_type_cached_and_seeded():
+    # Inferred from the gzip magic bytes, cached on the handle.
+    io = yggdryl.BytesIO(bytes([0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]))
+    assert io.media_type.first.mime == "application/gzip"
+    # The inferred type is folded into stats() too.
+    assert io.stats().media_type == io.media_type
+    # Seed it through the constructor param — returned without sniffing.
+    csv = yggdryl.MediaType.from_str("text/csv")
+    seeded = yggdryl.BytesIO(b"no magic here", media_type=csv)
+    assert seeded.media_type == csv
+    # Nothing inferable -> None.
+    assert yggdryl.BytesIO(b"no magic here").media_type is None
+
+
+def test_stats_cache_get_set():
+    io = yggdryl.BytesIO(b"abc")
+    # Nothing cached until installed.
+    assert io.cached_stats() is None
+    io.set_stats(yggdryl.IoStats(content_type="application/json"))
+    assert io.cached_stats().content_type == "application/json"
+    # The live byte count wins over the cached size; the cache supplies the rest.
+    stats = io.stats()
+    assert stats.size == 3
+    assert stats.content_type == "application/json"
+
+
 def test_mode_and_open():
     io = yggdryl.BytesIO(b"hello")
     assert io.mode == "r"

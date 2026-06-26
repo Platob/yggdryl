@@ -180,6 +180,18 @@ impl LocalPath {
         self.inner.media_type().map(|inner| MediaType { inner })
     }
 
+    /// The cached :class:`IoStats` — held since construction for a path, so always
+    /// present — the *get* side of the stats cache.
+    fn cached_stats(&self) -> Option<IoStats> {
+        self.inner.cached_stats().map(|inner| IoStats { inner })
+    }
+
+    /// Install ``stats`` as this handle's cached metadata, replacing the open-time
+    /// snapshot — the *set* side.
+    fn set_stats(&mut self, stats: &IoStats) {
+        self.inner.set_stats(stats.inner.clone());
+    }
+
     /// The file location.
     #[getter]
     fn location(&self) -> &str {

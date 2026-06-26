@@ -198,6 +198,20 @@ impl LocalPath {
         self.inner.media_type().map(|inner| MediaType { inner })
     }
 
+    /// The cached `IoStats` — held since construction for a path, so always present
+    /// — the *get* side of the stats cache.
+    #[napi(js_name = "cachedStats")]
+    pub fn cached_stats(&self) -> Option<IoStats> {
+        self.inner.cached_stats().map(|inner| IoStats { inner })
+    }
+
+    /// Install `stats` as this handle's cached metadata, replacing the open-time
+    /// snapshot — the *set* side.
+    #[napi(js_name = "setStats")]
+    pub fn set_stats(&mut self, stats: &IoStats) {
+        self.inner.set_stats(stats.inner.clone());
+    }
+
     /// The file location.
     #[napi(getter)]
     pub fn location(&self) -> String {

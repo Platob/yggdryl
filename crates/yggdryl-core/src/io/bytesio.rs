@@ -37,6 +37,14 @@ pub struct BytesIO {
     stream: bool,
     mode: Mode,
     parent: Option<Box<dyn Io>>,
+    /// Settable, memoized metadata — the [`Io::cached_stats`] / [`Io::set_stats`]
+    /// cache. The live byte count always wins in [`stats`](Io::stats); the slot
+    /// carries the other fields (content type, etag, media type, …).
+    stats: Option<IoStats>,
+    /// The lazily-inferred (or pre-seeded via [`with_media_type`](BytesIO::with_media_type))
+    /// media type, sniffed from the magic bytes at most once.
+    #[cfg(feature = "media")]
+    media: std::sync::OnceLock<Option<crate::MediaType>>,
 }
 
 impl Default for BytesIO {
@@ -66,7 +74,50 @@ impl BytesIO {
             stream: true,
             mode: Mode::Read,
             parent: None,
+            stats: None,
+            #[cfg(feature = "media")]
+            media: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Builds a buffer from a string: if `value` names an existing file its bytes
+    /// are **read in**, otherwise the string is taken **verbatim as its UTF-8
+    /// bytes**. The file-or-literal split lets a caller pass either a path or
+    /// in-line content through one entry point.
+    ///
+    /// ```
+    /// use yggdryl_core::BytesIO;
+    ///
+    /// // Not a path -> the string's own UTF-8 bytes.
+    /// assert_eq!(BytesIO::from_str("hello").getvalue(), b"hello");
+    /// ```
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> BytesIO {
+        // An existing file -> its bytes; anything else -> the string's UTF-8 bytes.
+        if std::path::Path::new(value).is_file() {
+            if let Ok(bytes) = std::fs::read(value) {
+                log_event!(
+                    debug,
+                    "BytesIO::from_str read file {value:?} ({} bytes)",
+                    bytes.len()
+                );
+                return BytesIO::from_bytes(bytes);
+            }
+        }
+        log_event!(trace, "BytesIO::from_str literal ({} bytes)", value.len());
+        BytesIO::from_bytes(value.as_bytes().to_vec())
+    }
+
+    /// Returns this buffer with its `media_type` pre-seeded, so [`Io::media_type`]
+    /// (and the folded [`Io::stats`]) return it **without sniffing** the magic
+    /// bytes — the "put the media type in" path for an in-memory blob whose type
+    /// the caller already knows. Only present under the `media` feature.
+    #[cfg(feature = "media")]
+    pub fn with_media_type(self, media_type: crate::MediaType) -> BytesIO {
+        log_event!(debug, "BytesIO::with_media_type {media_type}");
+        let media = std::sync::OnceLock::new();
+        let _ = media.set(Some(media_type));
+        BytesIO { media, ..self }
     }
 
     /// Opens a new in-memory handle derived from this one, recording `self` as
@@ -109,6 +160,9 @@ impl BytesIO {
             stream,
             mode,
             parent: Some(parent),
+            stats: None,
+            #[cfg(feature = "media")]
+            media: std::sync::OnceLock::new(),
         }
     }
 
@@ -304,8 +358,33 @@ impl Io for BytesIO {
         Url::new("mem", format!("{:x}", self.buffer.as_ptr() as usize))
     }
 
+    /// The live byte count always wins; any [`set_stats`](Io::set_stats) override
+    /// supplies the other fields, and the (lazily inferred or seeded) media type is
+    /// folded in.
     fn stats(&self) -> Result<IoStats, IoError> {
-        Ok(IoStats::new(self.buffer.len() as u64))
+        let stats = match &self.stats {
+            Some(cached) => cached.clone().with_size(self.buffer.len() as u64),
+            None => IoStats::new(self.buffer.len() as u64),
+        };
+        #[cfg(feature = "media")]
+        if stats.media_type().is_none() {
+            if let Some(media) = self.media_type() {
+                return Ok(stats.with_media_type(media));
+            }
+        }
+        Ok(stats)
+    }
+
+    /// The settable metadata cache, if one has been installed via
+    /// [`set_stats`](Io::set_stats).
+    fn cached_stats(&self) -> Option<IoStats> {
+        self.stats.clone()
+    }
+
+    /// Installs `stats` as this handle's cached metadata. The live byte count still
+    /// wins in [`stats`](Io::stats); the slot supplies the rest.
+    fn set_stats(&mut self, stats: IoStats) {
+        self.stats = Some(stats);
     }
 
     /// Delegates to the Python-style [`seek`](BytesIO::seek), widening to `u64`.
@@ -344,6 +423,25 @@ impl Io for BytesIO {
 
     fn as_slice(&self) -> Option<&[u8]> {
         Some(&self.buffer)
+    }
+
+    /// The media type, **inferred once and cached**: a media type carried on the
+    /// installed [`stats`](Io::set_stats) wins, otherwise the magic bytes are
+    /// sniffed on the first call and memoized (seed it up front with
+    /// [`with_media_type`](BytesIO::with_media_type) to skip the sniff entirely).
+    #[cfg(feature = "media")]
+    fn media_type(&self) -> Option<crate::MediaType> {
+        if let Some(stats) = &self.stats {
+            if let Some(media) = stats.media_type() {
+                return Some(media.clone());
+            }
+        }
+        self.media
+            .get_or_init(|| {
+                crate::MimeType::from_magic(&self.buffer)
+                    .map(|mime| crate::MediaType::new(vec![mime]))
+            })
+            .clone()
     }
 
     /// Writes `bytes` at the cursor, advancing it — the in-memory streamed write.
