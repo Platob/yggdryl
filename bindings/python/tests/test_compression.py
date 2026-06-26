@@ -67,6 +67,20 @@ def test_from_mime():
     assert yggdryl.Compression.from_mime(yggdryl.MimeType("application/json")) is None
 
 
+def test_mime_is_inverse_of_from_mime():
+    # mime() names the MIME a codec is carried as — the inverse of from_mime.
+    assert yggdryl.Compression("gzip").mime().mime == "application/gzip"
+    assert yggdryl.Compression("zstd").mime().mime == "application/zstd"
+    assert yggdryl.Compression("brotli").mime().mime == "application/x-brotli"
+    # none / deflate / snappy have no registered MIME.
+    assert yggdryl.Compression("none").mime() is None
+    assert yggdryl.Compression("deflate").mime() is None
+    assert yggdryl.Compression("snappy").mime() is None
+    # Round-trips back through from_mime.
+    gz = yggdryl.Compression("gzip")
+    assert yggdryl.Compression.from_mime(gz.mime()) == gz
+
+
 def test_from_media():
     # The outermost (container) MIME of a layered stack names the codec.
     assert yggdryl.Compression.from_media(yggdryl.MediaType.from_str("csv.gz")).name == "gzip"

@@ -58,6 +58,19 @@ test('fromMime', () => {
   assert.strictEqual(Compression.fromMime(new MimeType('application/json')), null)
 })
 
+test('mime is the inverse of fromMime', () => {
+  // mime() names the MIME a codec is carried as — the inverse of fromMime.
+  assert.strictEqual(new Compression('gzip').mime().mime, 'application/gzip')
+  assert.strictEqual(new Compression('zstd').mime().mime, 'application/zstd')
+  assert.strictEqual(new Compression('brotli').mime().mime, 'application/x-brotli')
+  // none / deflate / snappy have no registered MIME.
+  assert.strictEqual(new Compression('none').mime(), null)
+  assert.strictEqual(new Compression('deflate').mime(), null)
+  assert.strictEqual(new Compression('snappy').mime(), null)
+  // Round-trips back through fromMime.
+  assert.strictEqual(Compression.fromMime(new Compression('gzip').mime()).name, 'gzip')
+})
+
 test('fromMedia', () => {
   const { MediaType } = require('..')
   assert.strictEqual(Compression.fromMedia(MediaType.fromStr('csv.gz')).name, 'gzip')

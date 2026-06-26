@@ -221,8 +221,11 @@ in-memory buffer, file name for a path), then its `stats()` content type.
 
 Beyond `from_str` / `from_extension`, a codec can be inferred from a single
 [`MimeType`](media.md), a layered [`MediaType`](media.md) stack (its outermost,
-container MIME), or an `Io`'s `stats()`. In Rust these (`from_mime` / `from_media`
-/ `from_stats`, plus the inverse `mime()`) live behind the `media` feature.
+container MIME), or an `Io`'s `stats()`. The inverse `mime()` names the MIME a
+codec is carried as — use it to add an encoding layer to a media type (`null` for
+`none` / `deflate` / `snappy`, which have no registered MIME). In Rust this group
+(`from_mime` / `from_media` / `from_stats` / `mime`) lives behind the `media`
+feature.
 
 === "Python"
 
@@ -232,6 +235,7 @@ container MIME), or an `Io`'s `stats()`. In Rust these (`from_mime` / `from_medi
     yggdryl.Compression.from_mime(yggdryl.MimeType("application/gzip")).name  # "gzip"
     yggdryl.Compression.from_media(yggdryl.MediaType.from_str("csv.gz")).name # "gzip"
     yggdryl.Compression.from_stats(yggdryl.LocalPath("data.csv.gz").stats()).name # "gzip"
+    yggdryl.Compression("gzip").mime().mime  # "application/gzip" (the inverse)
     ```
 
 === "Node"
@@ -242,6 +246,7 @@ container MIME), or an `Io`'s `stats()`. In Rust these (`from_mime` / `from_medi
     Compression.fromMime(new MimeType("application/gzip")).name;     // "gzip"
     Compression.fromMedia(MediaType.fromStr("csv.gz")).name;         // "gzip"
     Compression.fromStats(new LocalPath("data.csv.gz").stats()).name; // "gzip"
+    new Compression("gzip").mime().mime;                             // "application/gzip"
     ```
 
 === "Rust"
@@ -252,6 +257,7 @@ container MIME), or an `Io`'s `stats()`. In Rust these (`from_mime` / `from_medi
     assert_eq!(Compression::from_mime(&MimeType::Gzip), Some(Compression::Gzip));
     let media = MediaType::from_str("data.csv.gz")?;
     assert_eq!(Compression::from_media(&media), Some(Compression::Gzip));
+    assert_eq!(Compression::Gzip.mime(), Some(MimeType::Gzip)); // the inverse
     ```
 
 ## See also
