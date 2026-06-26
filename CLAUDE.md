@@ -94,13 +94,14 @@ handle. The layering, smallest to largest:
   `Frames` is the reference length-delimited codec. (`Codec` is the *value* coder;
   `Io` is the *byte* handle — keep them distinct.) Byte-stream **compression** is a
   separate concern in the `compression` module (see its section), not here.
-- The **factory** `from_str` / `from_url` / `from_uri` returns the right
-  `Box<dyn Io>` for a location, dispatching on the URL scheme: a bare path / `file://`
-  opens a `LocalPath`; any other scheme is looked up in the `register_scheme` registry
-  (a global `OnceLock<RwLock<…>>`, like the MimeType registry) so downstream crates
-  plug in without the `io` module depending on them — `yggdryl-http` registers
-  `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their schemes
-  later. `mem://` and unregistered schemes return an actionable `Unsupported`.
+- The **factory** `from_str` / `from_url` / `from_uri` (the abstract "`Io::open` a
+  location") returns the right `Box<dyn Io>` for a location, dispatching on the URL
+  scheme: a bare path / `file://` opens a `LocalPath`; `http`/`https` send a `GET` and
+  return the live `HttpResponse` (itself an `Io`); any other scheme is looked up in the
+  `register_scheme` registry (a global `OnceLock<RwLock<…>>`, like the MimeType registry)
+  so downstream crates plug in without the `io` module depending on them — `yggdryl-http`
+  registers `http`/`https` (lazily, on first `HttpSession::new`), cloud stores their
+  schemes later. `mem://` and unregistered schemes return an actionable `Unsupported`.
 
 Rules when extending: the `io` module builds on the `url` / `encoding` modules (for
 the universal `Io::url()`); new heavy deps are **optional features** (like `log` /
@@ -204,9 +205,14 @@ shape:
   used unchanged. A process-wide **shared singleton** `HttpSession::shared()` (a
   replaceable `Arc` behind an `RwLock`, swapped by `set_shared`) backs the crate-level
   `get`/`head`/`post`/`put`/`patch`/`delete`/`request` **module functions**, the
-  `requests.get(...)` equivalent. The bindings mirror this with module-level verbs
-  over the shared session and a `set_base_url` to configure it (Node has no `delete`
-  verb — a JS reserved word — so use `request('DELETE', …)`).
+  `requests.get(...)` equivalent. Alongside it, **`HttpSession::shared_for(host)`** keeps
+  one pooled singleton **per hostname** (a global `host → Arc<HttpSession>` registry):
+  this is the session a request is dispatched through when none is given —
+  `HttpRequest::send`, the `http`/`https` `Io` factory, and the session a returned
+  `HttpResponse` carries (`response.session()`) — so a session is shared by host, never
+  copied per request. The bindings mirror the module-level verbs over the shared session
+  and a `set_base_url` to configure it (Node has no `delete` verb — a JS reserved word —
+  so use `request('DELETE', …)`).
 - `HttpCookies` / `Cookie` — the dependency-free cookie jar: parses `Set-Cookie`
   (`Domain`/`Path`/`Secure`/`HttpOnly`/`Max-Age`/`Expires`), matches per RFC 6265
   (domain §5.1.3, path §5.1.4, `Secure` ⇒ https), and `header_for(url)` emits the
@@ -247,9 +253,14 @@ shape:
   `media`) and `compression` (the codec named by `Content-Encoding`, under
   `compression`). It also **holds the request that produced it** (`request()`, like
   `requests.Response.request`) and reports whether it was dispatched (`is_sent()` —
-  `false` for the unsent placeholder a verb returns with `send=false`, status `0`);
-  `send(raise_error)` dispatches that request through the shared session (how an unsent
-  response is sent later). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
+  `false` for the unsent placeholder a verb returns with `send=false`, status `0`).
+  It **carries the shared per-host [`session`](HttpSession::shared_for) it belongs to**
+  (`session()` — a `shared_for(host)` singleton, never a per-response copy); `send(raise_error)`
+  re-dispatches its request through that session (how an unsent response is sent later).
+  **`HttpResponse` is itself an `Io`** (delegating to its body, the `HttpStream`), so a
+  response reads/seeks/`pread`s like any byte source — the `http`/`https` `Io` factory
+  (`from_str`/`Io::open`) hands a sent response straight back. It **holds the live body**
+  as a `Box<dyn Io>` (the `HttpStream`):
   `reader()` is the decoded body `Io` (decompressed under `compression`),
   `bytes`/`text`/`json`/`into_bytesio` drain it (`text`/`json` decompress transparently
   first), `read_all` drains and returns the `received_at` finish time together (used by

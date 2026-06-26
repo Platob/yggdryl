@@ -162,6 +162,48 @@ fn a_sent_response_reports_the_request_that_produced_it() {
 }
 
 #[test]
+fn http_response_is_an_io_handle() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"hello world"));
+    let mut response = HttpSession::new().get(&url, true).unwrap();
+    // The response is itself an `Io`: read its (raw) body straight off it.
+    let mut body = Vec::new();
+    response.read_to_end(&mut body).unwrap();
+    assert_eq!(body, b"hello world");
+}
+
+#[test]
+fn io_open_factory_returns_a_readable_http_response() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"open me"));
+    let _session = HttpSession::new(); // registers http/https with the io factory
+                                       // `from_str` (Io::open) GETs the URL and hands back the response as an `Io`.
+    let mut handle = yggdryl_core::from_str(&url).unwrap();
+    let mut body = Vec::new();
+    handle.read_to_end(&mut body).unwrap();
+    assert_eq!(body, b"open me");
+}
+
+#[test]
+fn responses_share_one_session_per_host() {
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"x"));
+    let response = HttpSession::new().get(&url, true).unwrap();
+    let host = response.url().host().to_string();
+    // The attached session is the per-host shared singleton, not a copy.
+    assert!(std::sync::Arc::ptr_eq(
+        &response.session(),
+        &HttpSession::shared_for(&host)
+    ));
+    // The same host reuses one session; a different host gets its own.
+    assert!(std::sync::Arc::ptr_eq(
+        &HttpSession::shared_for("shared.example"),
+        &HttpSession::shared_for("shared.example")
+    ));
+    assert!(!std::sync::Arc::ptr_eq(
+        &HttpSession::shared_for("shared.example"),
+        &HttpSession::shared_for("other.example")
+    ));
+}
+
+#[test]
 fn post_sends_method_headers_and_body() {
     let (url, rx) = serve_once(ok_reply("application/json", b"{}"));
     let session = HttpSession::new();

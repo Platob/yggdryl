@@ -325,6 +325,41 @@ impl HttpSession {
         SHARED.get_or_init(|| RwLock::new(Arc::new(HttpSession::new())))
     }
 
+    /// The process-wide **shared session for `host`** — one pooled singleton per
+    /// hostname, created on first use and reused thereafter, so connections to a
+    /// host are pooled together and a session is never copied per request. This is
+    /// the session a request is dispatched through when none is given explicitly
+    /// (see [`HttpRequest::send`](crate::HttpRequest::send), the `http`/`https`
+    /// [`Io`](yggdryl_core::Io) factory, and the session a returned
+    /// [`HttpResponse`] carries — [`HttpResponse::session`](crate::HttpResponse::session)).
+    /// An empty `host` falls back to the global [`shared`](HttpSession::shared)
+    /// session. Each per-host session is a fresh default client (its own pool and
+    /// cookie jar).
+    pub fn shared_for(host: &str) -> Arc<HttpSession> {
+        if host.is_empty() {
+            return HttpSession::shared();
+        }
+        let registry = HttpSession::host_registry();
+        let key = host.to_ascii_lowercase();
+        if let Some(session) = registry.read().expect("host sessions poisoned").get(&key) {
+            return session.clone();
+        }
+        let mut sessions = registry.write().expect("host sessions poisoned");
+        // Re-check under the write lock so two racing callers share one session.
+        sessions
+            .entry(key)
+            .or_insert_with(|| Arc::new(HttpSession::new()))
+            .clone()
+    }
+
+    /// The per-host shared-session registry (`host` → pooled singleton), backing
+    /// [`shared_for`](HttpSession::shared_for).
+    fn host_registry() -> &'static RwLock<std::collections::HashMap<String, Arc<HttpSession>>> {
+        static HOSTS: OnceLock<RwLock<std::collections::HashMap<String, Arc<HttpSession>>>> =
+            OnceLock::new();
+        HOSTS.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
+    }
+
     fn with_config(retry: RetryConfig, max_pool: usize) -> HttpSession {
         // Plug http/https into the yggdryl-io factory the first time a session is
         // built, so `yggdryl_core::from_str("https://…")` works once this crate links.
@@ -1057,8 +1092,9 @@ impl HttpSession {
     }
 
     /// Stamps `sent_at` from the first dispatch on the final `response`, embeds the
-    /// originating `origin` request (so the response reports what produced it) and
-    /// applies `raise_error` to it (the only response that error-raises).
+    /// originating `origin` request and the shared per-host session (so the response
+    /// reports what produced it and can re-dispatch), and applies `raise_error` to it
+    /// (the only response that error-raises).
     fn finalize(
         &self,
         mut response: HttpResponse,
@@ -1069,6 +1105,7 @@ impl HttpSession {
         if let Some(sent_at) = sent_at {
             response.set_sent_at(sent_at);
         }
+        response.set_session(HttpSession::shared_for(response.url().host()));
         response.set_request(origin.copy());
         let status = response.status();
         if raise_error && status >= 400 {
