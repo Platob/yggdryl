@@ -180,8 +180,16 @@ impl Scalar {
             ScalarValue::Bool(self.to_bool(target)?)
         } else if target.is_temporal() {
             ScalarValue::Int(self.to_temporal(target)?)
-        } else if matches!(target, DataType::Primitive(p) if p.is_integer()) || target.is_decimal()
+        } else if let DataType::Logical(
+            LogicalType::Decimal32(_, scale)
+            | LogicalType::Decimal64(_, scale)
+            | LogicalType::Decimal128(_, scale)
+            | LogicalType::Decimal256(_, scale),
+        ) = target
         {
+            // A decimal literal is stored as its unscaled integer: value · 10^scale.
+            ScalarValue::Int(self.to_decimal(*scale, target)?)
+        } else if matches!(target, DataType::Primitive(p) if p.is_integer()) {
             ScalarValue::Int(self.to_i64(target)?)
         } else if matches!(target, DataType::Primitive(p) if p.is_floating()) {
             ScalarValue::Float(self.to_f64(target)?)
@@ -253,6 +261,16 @@ impl Scalar {
             ScalarValue::Str(s) => s.trim().parse::<f64>().map_err(|_| self.invalid(target)),
             ScalarValue::Null => Err(self.invalid(target)),
         }
+    }
+
+    /// Converts the value to a decimal's unscaled integer: `round(value · 10^scale)`
+    /// (so `100.50` at scale `2` → `10050`). The conversion goes through `f64`, so
+    /// it is exact only within `f64`'s ~15 significant digits — high-precision
+    /// `decimal128` / `decimal256` literals beyond that (or an `i64`) are
+    /// best-effort.
+    fn to_decimal(&self, scale: i8, target: &DataType) -> Result<i64, CastError> {
+        let value = self.to_f64(target)?;
+        Ok((value * 10f64.powi(scale as i32)).round() as i64)
     }
 
     /// Converts the value to the integer tick count of a temporal `target`. A
@@ -327,6 +345,25 @@ mod tests {
         let date32 = DataType::from_str("date32").unwrap();
         let typed = Scalar::utf8("2024-01-01").cast(&date32).unwrap();
         assert_eq!(typed.as_i64(), Some(19723));
+    }
+
+    #[test]
+    fn decimal_scales_to_unscaled_integer() {
+        let dec2 = DataType::from_str("decimal128(10, 2)").unwrap();
+        // "100.50" at scale 2 → 10050 (not a truncated 100).
+        assert_eq!(
+            Scalar::any("100.50").cast(&dec2).unwrap().as_i64(),
+            Some(10050)
+        );
+        assert_eq!(
+            Scalar::utf8("100.50").cast(&dec2).unwrap().as_i64(),
+            Some(10050)
+        );
+        // An integer literal scales too: 5 → 5.00 → 500.
+        assert_eq!(Scalar::int64(5).cast(&dec2).unwrap().as_i64(), Some(500));
+        // Negative scale: value · 10^-1.
+        let dec_neg = DataType::from_str("decimal128(10, -1)").unwrap();
+        assert_eq!(Scalar::int64(50).cast(&dec_neg).unwrap().as_i64(), Some(5));
     }
 
     #[test]
