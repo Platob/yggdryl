@@ -470,6 +470,45 @@ When you add or change behaviour, instrument it at the right level:
 A new code path that skips, defaults, or mutates shared state must log it; the
 `log` feature must compile and pass `clippy -D warnings` both on and off.
 
+## Documentation
+
+User-facing docs live in **`docs/`** as a **MkDocs Material** site (config:
+`mkdocs.yml`), published to **GitHub Pages** (https://platob.github.io/yggdryl/) by
+the `Docs` workflow (`.github/workflows/docs.yml`) on every push to `main` that
+touches `docs/**` or `mkdocs.yml`. Benchmark numbers/results live in
+`benchmarks/README.md` (organised by theme), surfaced on the docs `Benchmarks` page.
+
+**The docs tree mirrors the code tree** — one page per concern/module, so code and
+documentation map 1:1 and a reader can find the doc for any type by its module:
+
+| code | doc page |
+| --- | --- |
+| `yggdryl-core/src/version.rs` | `docs/core/version.md` |
+| `yggdryl-core/src/media/` | `docs/core/media.md` |
+| `yggdryl-core/src/url/` | `docs/core/url.md` |
+| `yggdryl-core/src/io/` | `docs/core/io.md` |
+| `yggdryl-core/src/compression/` | `docs/core/compression.md` |
+| `yggdryl-http/src/session.rs` | `docs/http/session.md` |
+| `yggdryl-http/src/{request,response}.rs` | `docs/http/request-response.md` |
+| `yggdryl-http/src/stream.rs` | `docs/http/stream.md` |
+| `yggdryl-http/src/cookies.rs` | `docs/http/cookies.md` |
+
+Rules (treat them like the cross-language replication rule — a change is not done
+until the docs match):
+
+- **When you add or change behaviour, update the matching doc page** in the same
+  commit, keeping the code↔doc mapping above intact. A new module/type gets a new
+  page added to the `nav` in `mkdocs.yml` mirroring its code location.
+- **Every code example is a synced language tab block**, in this order and with
+  these exact labels (so Material's linked tabs switch the whole page at once):
+  `=== "Python"` then `=== "Node"` then `=== "Rust"` (4-space-indented fenced
+  block under each). Never write raw, one-after-another per-language sections.
+- Keep examples **accurate to the current API** (the same surface the bindings
+  expose); prefer copy-runnable snippets.
+- **Doc build check** (add it to the gate when you touched docs):
+  `pip install mkdocs-material && mkdocs build --strict` must pass (strict catches
+  broken links and missing nav pages).
+
 ## Required checks before committing
 
 ```bash
@@ -478,9 +517,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test
 (cd bindings/python && maturin develop && pytest)
 (cd bindings/node && npm run build && npm test)
+mkdocs build --strict   # when docs/ or mkdocs.yml changed (pip install mkdocs-material)
 ```
 
-All five must pass.
+All must pass.
 
 ## Releasing
 
@@ -517,5 +557,9 @@ committing — treat it as a required step, not an optional polish:
 4. **Readability** — names match the conventions table, every public item has a
    `///` doc, and a reader cannot tell which type they are looking at from the
    shape of the code.
+5. **Docs in sync** — the matching `docs/` page (per the code↔doc mapping in
+   [Documentation](#documentation)) reflects the new/changed behaviour, with
+   synced Python/Node/Rust language tabs; `benchmarks/README.md` is updated if the
+   numbers moved.
 
 If any point fails, fix it before committing.

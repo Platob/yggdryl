@@ -31,3 +31,6 @@ bindings/node/index.d.ts
 .idea/
 .vscode/
 *.swp
+
+# MkDocs build output
+/site/
