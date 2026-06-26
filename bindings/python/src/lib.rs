@@ -35,7 +35,7 @@ use crate::bytesio::BytesIO;
 use crate::compression::Compression;
 use crate::http::{
     http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url,
-    HttpResponse, HttpSession,
+    HttpRequest, HttpResponse, HttpSession,
 };
 use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
@@ -174,6 +174,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<LocalPath>()?;
     m.add_class::<Compression>()?;
     m.add_class::<HttpSession>()?;
+    m.add_class::<HttpRequest>()?;
     m.add_class::<HttpResponse>()?;
     m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
     m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;

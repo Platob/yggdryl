@@ -136,7 +136,7 @@ fn main() {
 
     println!("== download ({} MiB) ==", SIZE / 1024 / 1024);
     bench("one-shot GET into_bytesio", 20, SIZE, || {
-        let handle = session.get(&url).unwrap().into_bytesio().unwrap();
+        let handle = session.get(&url, true).unwrap().into_bytesio().unwrap();
         black_box(handle);
     });
     bench("HttpStream windowed read_to_end", 20, SIZE, || {
@@ -180,7 +180,7 @@ fn main() {
     println!("\n== {N} small requests, 5ms latency each ==");
     bench("sequential request loop", 4, N, || {
         for _ in 0..N {
-            black_box(session.get(&small).unwrap());
+            black_box(session.get(&small, true).unwrap());
         }
     });
     bench("send_many (concurrency 8)", 4, N, || {
@@ -277,7 +277,7 @@ fn http2_vs_http1() {
         SIZE / 1024
     );
     bench("h1 GET (pooled keep-alive)", 200, SIZE, || {
-        black_box(session.get(&h1_url).unwrap().bytes().unwrap());
+        black_box(session.get(&h1_url, true).unwrap().bytes().unwrap());
     });
     bench("h2c GET (new conn each)", 200, SIZE, || {
         let request = HttpRequest::get(&h2_url)

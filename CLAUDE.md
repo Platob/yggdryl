@@ -166,6 +166,19 @@ shape:
   (`prepare` merges its defaults) and **run** them (`session.send(request, raise_error)`).
   Keep this shape when extending: new request behaviour lives on `HttpRequest`, new
   client configuration on `HttpSession`; don't add a second send path.
+- **The verb helpers centralise on `prepare` → `HttpRequest` and `send(request)` →
+  `HttpResponse`, and always return an `HttpResponse`.** `get`/`head`/`delete`/`post`/
+  `put`/`patch`/`request` take a **`send` flag** (default `true`): with `send` the
+  request is dispatched; with `send` `false` no network call is made and an **unsent**
+  `HttpResponse` is returned — `is_sent()` is `false`, the status is `0`, the body
+  empty — carrying the prepared request via `response.request()`, dispatchable later
+  with `response.send(raise_error)` (through the shared session). Every response
+  **holds the request that produced it** (`response.request()`, like
+  `requests.Response.request`). The bindings configure the whole request from the
+  verb's signature args (kwargs in Python, options in Node: `headers` / `params` /
+  `basic_auth` / `bearer_auth` / `allow_redirect` / `keep_alive` / `http_version` /
+  `raise_error` / `send`); Rust keeps lean verbs (`url`/`body` + `send`) and richer
+  configuration on the `HttpRequest` builder, per the per-language idiom rule.
 - `HttpSession` — like `requests.Session`: a pooled `ureq::Agent` (an idle-connection
   pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
   handshake; idle connections past the keep-alive TTL are dropped), default headers, a
@@ -230,7 +243,11 @@ shape:
   reads `mime_type` (from `Content-Type`), `media_type` (**combines `Content-Type` with
   `Content-Encoding`** — a gzipped CSV is `[Csv, Gzip]`, like a `data.csv.gz` path; under
   `media`) and `compression` (the codec named by `Content-Encoding`, under
-  `compression`). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
+  `compression`). It also **holds the request that produced it** (`request()`, like
+  `requests.Response.request`) and reports whether it was dispatched (`is_sent()` —
+  `false` for the unsent placeholder a verb returns with `send=false`, status `0`);
+  `send(raise_error)` dispatches that request through the shared session (how an unsent
+  response is sent later). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
   `reader()` is the decoded body `Io` (decompressed under `compression`),
   `bytes`/`text`/`json`/`into_bytesio` drain it (`text`/`json` decompress transparently
   first), `read_all` drains and returns the `received_at` finish time together (used by

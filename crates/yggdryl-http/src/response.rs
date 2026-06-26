@@ -5,6 +5,8 @@ use yggdryl_core::{BytesIO, Io};
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
+use crate::request::HttpRequest;
+use crate::session::HttpSession;
 use crate::time::Instant;
 use crate::version::HttpVersion;
 
@@ -20,6 +22,13 @@ use crate::version::HttpVersion;
 /// was dispatched) and [`received_at`](HttpResponse::received_at) (when the
 /// connection finished — the body reaching EOF or being closed), both UTC
 /// Unix-epoch seconds, `0.0` until set.
+///
+/// It **holds the [`request`](HttpResponse::request) that produced it** (the
+/// prepared request, mirroring `requests.Response.request`), so the originating
+/// method / URL / headers can always be read back. A verb called with `send =
+/// false` returns an **unsent** response — [`is_sent`](HttpResponse::is_sent) is
+/// `false`, the status is `0` and the body empty — that carries only the prepared
+/// request; dispatch it later with [`send`](HttpResponse::send).
 pub struct HttpResponse {
     status: u16,
     url: Url,
@@ -28,6 +37,9 @@ pub struct HttpResponse {
     sent_at: f64,
     received_at: Instant,
     negotiated: HttpVersion,
+    /// The request that produced this response (the prepared request, before any
+    /// transport-level headers). `None` only for a bare response built without one.
+    request: Option<HttpRequest>,
 }
 
 impl HttpResponse {
@@ -53,6 +65,28 @@ impl HttpResponse {
             sent_at,
             received_at,
             negotiated,
+            request: None,
+        }
+    }
+
+    /// Builds an **unsent** response: a placeholder that carries only the prepared
+    /// `request` (it has not been dispatched). The status is `0`, the body empty
+    /// and [`is_sent`](HttpResponse::is_sent) `false`. Returned by a verb called
+    /// with `send = false` so the caller can inspect the request via
+    /// [`request`](HttpResponse::request) and dispatch it later with
+    /// [`send`](HttpResponse::send).
+    pub(crate) fn unsent(request: HttpRequest) -> HttpResponse {
+        let url = request.url().clone();
+        let negotiated = request.http_version().unwrap_or(HttpVersion::Auto);
+        HttpResponse {
+            status: 0,
+            url,
+            headers: HttpHeaders::new(),
+            body: Box::new(BytesIO::from_bytes(Vec::new())),
+            sent_at: 0.0,
+            received_at: Instant::new(),
+            negotiated,
+            request: Some(request),
         }
     }
 
@@ -60,6 +94,12 @@ impl HttpResponse {
     /// the **first** hop's `sent_at`, not the final hop's.
     pub(crate) fn set_sent_at(&mut self, sent_at: f64) {
         self.sent_at = sent_at;
+    }
+
+    /// Attaches the originating `request` (a copy of the prepared request), so the
+    /// response can report what produced it. Set by [`HttpSession::send`].
+    pub(crate) fn set_request(&mut self, request: HttpRequest) {
+        self.request = Some(request);
     }
 
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
@@ -85,6 +125,41 @@ impl HttpResponse {
     /// Whether the status is below 400 (the `requests` definition of "ok").
     pub fn ok(&self) -> bool {
         self.status < 400
+    }
+
+    /// Whether this response was actually dispatched. `false` for the **unsent**
+    /// placeholder a verb returns with `send = false` (status `0`, empty body),
+    /// which carries only the prepared [`request`](HttpResponse::request).
+    pub fn is_sent(&self) -> bool {
+        self.status != 0
+    }
+
+    /// The request that produced this response — the prepared request (method,
+    /// URL, headers and settings), mirroring `requests.Response.request`. `None`
+    /// only for a bare response built without one.
+    pub fn request(&self) -> Option<&HttpRequest> {
+        self.request.as_ref()
+    }
+
+    /// Consumes the response, returning the originating [`request`](HttpResponse::request).
+    pub fn into_request(self) -> Option<HttpRequest> {
+        self.request
+    }
+
+    /// Dispatches this response's [`request`](HttpResponse::request) through the
+    /// process-wide shared [`HttpSession`](crate::HttpSession::shared) and returns
+    /// the resulting response. This is how an **unsent** response (one returned by
+    /// a verb with `send = false`) is sent later; on an already-sent response it
+    /// replays the originating request. `raise_error` turns a 4xx/5xx status into
+    /// an [`HttpError::Status`]. Errors with [`HttpError::Unsupported`] if the
+    /// response carries no request.
+    pub fn send(self, raise_error: bool) -> Result<HttpResponse, HttpError> {
+        match self.request {
+            Some(request) => HttpSession::shared().send(request, raise_error),
+            None => Err(HttpError::Unsupported(
+                "this response carries no request to send".into(),
+            )),
+        }
     }
 
     /// Returns an error ([`HttpError::Status`]) if the status is 4xx or 5xx,

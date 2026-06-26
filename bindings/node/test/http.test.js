@@ -277,3 +277,80 @@ test('http version negotiation', async () => {
     server.close()
   }
 })
+
+test('send=false returns an unsent response holding the request', async () => {
+  const { HttpRequest } = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession('yggdryl-test')
+    // send is the 10th positional arg of get(); pass it false to build only.
+    const unsent = await session.get(
+      base + '/', { 'X-Echo': 'tweak-me' }, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, false,
+    )
+    assert.strictEqual(unsent.isSent, false)
+    assert.strictEqual(unsent.status, 0)
+    const request = unsent.request
+    assert.ok(request instanceof HttpRequest)
+    assert.strictEqual(request.method, 'GET')
+    assert.strictEqual(request.url, base + '/')
+    // prepare merged the session default header into the embedded request.
+    assert.strictEqual(request.header('user-agent'), 'yggdryl-test')
+    assert.strictEqual(request.header('x-echo'), 'tweak-me')
+
+    // The unsent response can be dispatched later.
+    const sent = await unsent.send()
+    assert.strictEqual(sent.status, 200)
+    assert.strictEqual(sent.text(), 'hello world')
+  } finally {
+    server.close()
+  }
+})
+
+test('a sent response reports its request', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession()
+    const r = await session.post(base + '/submit', Buffer.from('hi'))
+    assert.strictEqual(r.isSent, true)
+    assert.strictEqual(r.request.method, 'POST')
+    assert.strictEqual(r.request.url, base + '/submit')
+  } finally {
+    server.close()
+  }
+})
+
+test('HttpRequest builds and sends, and a session dispatches a prebuilt request', async () => {
+  const { HttpRequest } = require('..')
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const request = new HttpRequest('GET', base + '/', { 'X-Echo': 'via-request' })
+    assert.strictEqual(request.method, 'GET')
+    const r = await request.send()
+    assert.strictEqual(r.status, 200)
+    assert.strictEqual(r.header('x-echo-back'), 'via-request')
+
+    // A session can dispatch a prebuilt request too (the centralised send path).
+    const echoed = await new HttpSession().send(request)
+    assert.strictEqual(echoed.header('x-echo-back'), 'via-request')
+  } finally {
+    server.close()
+  }
+})
+
+test('verb config args build the request (headers + bearer auth)', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession()
+    // headers (2nd) + bearerAuth (5th) configured straight from the signature.
+    const r = await session.get(base + '/', { 'X-Echo': 'kw' }, undefined, undefined, 'tok-xyz')
+    assert.strictEqual(r.header('x-echo-back'), 'kw')
+    assert.strictEqual(r.header('x-auth-back'), 'Bearer tok-xyz')
+  } finally {
+    server.close()
+  }
+})

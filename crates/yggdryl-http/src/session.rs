@@ -290,7 +290,7 @@ impl HttpSession {
     /// ```no_run
     /// use yggdryl_http::HttpSession;
     /// // Two calls return the same pooled session (and share its cookie jar).
-    /// let body = HttpSession::shared().get("https://example.com").unwrap();
+    /// let body = HttpSession::shared().get("https://example.com", true).unwrap();
     /// ```
     pub fn shared() -> Arc<HttpSession> {
         HttpSession::shared_slot()
@@ -653,53 +653,116 @@ impl HttpSession {
         self.batch_size
     }
 
+    /// Either dispatches `request` (when `send`) returning the response, or — when
+    /// `send` is `false` — returns an **unsent** [`HttpResponse`] carrying the
+    /// prepared request (no network call). The single place the verb helpers below
+    /// honour the `send` flag, keeping them centred on
+    /// [`prepare`](HttpSession::prepare) → [`HttpRequest`] and
+    /// [`send`](HttpSession::send) → [`HttpResponse`].
+    fn run_verb(
+        &self,
+        request: HttpRequest,
+        raise_error: bool,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        if send {
+            self.send(request, raise_error)
+        } else {
+            Ok(HttpResponse::unsent(self.prepare(request)))
+        }
+    }
+
     /// `GET url` (raises on a 4xx/5xx status). `url` is resolved against the
-    /// session's [`base_url`](HttpSession::base_url) when one is set.
-    pub fn get(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// session's [`base_url`](HttpSession::base_url) when one is set. With `send`
+    /// the request is dispatched and the [`HttpResponse`] returned; with `send`
+    /// `false` an **unsent** response carrying the prepared request is returned
+    /// instead (send it later with [`HttpResponse::send`]).
+    pub fn get(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Get, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `HEAD url` (raises on a 4xx/5xx status).
-    pub fn head(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `HEAD url` (raises on a 4xx/5xx status); see [`get`](HttpSession::get) for
+    /// the `send` flag.
+    pub fn head(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Head, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `DELETE url` (raises on a 4xx/5xx status).
-    pub fn delete(&self, url: &str) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `DELETE url` (raises on a 4xx/5xx status); see [`get`](HttpSession::get) for
+    /// the `send` flag.
+    pub fn delete(&self, url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Delete, self.resolve_url(url)?),
             true,
+            send,
         )
     }
 
-    /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn post(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn post(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Post, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
     }
 
-    /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn put(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn put(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Put, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
     }
 
-    /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status).
-    pub fn patch(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-        self.send(
+    /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status); see
+    /// [`get`](HttpSession::get) for the `send` flag.
+    pub fn patch(
+        &self,
+        url: &str,
+        body: impl Into<Vec<u8>>,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(
             HttpRequest::from_url(Method::Patch, self.resolve_url(url)?).with_body(body),
             true,
+            send,
         )
+    }
+
+    /// Either dispatches `request` (when `send`) returning the [`HttpResponse`], or
+    /// — when `send` is `false` — returns an **unsent** response carrying the
+    /// prepared request. The arbitrary-request counterpart of the verb helpers,
+    /// centred on the same [`prepare`](HttpSession::prepare) /
+    /// [`send`](HttpSession::send) pair. `raise_error` turns a 4xx/5xx status into
+    /// an [`HttpError::Status`].
+    pub fn request(
+        &self,
+        request: HttpRequest,
+        raise_error: bool,
+        send: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        self.run_verb(request, raise_error, send)
     }
 
     /// Merges the session's default headers into `request` (a per-request header
@@ -736,6 +799,11 @@ impl HttpSession {
     /// separate buffered mode.
     pub fn send(&self, request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
+        // Keep a copy of the prepared request (before the redirect loop and any
+        // transport-level headers) to embed in the final response, so it always
+        // reports what produced it (`requests.Response.request`). A streamed body
+        // is not duplicable, so the copy carries none — see [`HttpRequest::copy`].
+        let origin = request.copy();
         // `sent_at` reflects the *first* dispatch across a redirect chain.
         let mut sent_at: Option<f64> = None;
         // Loop detection: a `(method, url)` seen twice is a cycle (RFC says stop).
@@ -789,7 +857,7 @@ impl HttpSession {
             let should_follow = allow_redirect && redirect::is_redirect(status);
             let Some(location) = location.filter(|_| should_follow) else {
                 // Final response: stamp the first dispatch and apply `raise_error`.
-                return self.finalize(response, sent_at, raise_error);
+                return self.finalize(response, sent_at, raise_error, &origin);
             };
             if hop >= self.max_redirects {
                 return Err(HttpError::TooManyRedirects(format!(
@@ -809,7 +877,7 @@ impl HttpSession {
                 }
                 // A 307/308 with a non-replayable (already consumed) body cannot be
                 // re-sent: stop and return the 3xx itself rather than corrupt state.
-                None => return self.finalize(response, sent_at, raise_error),
+                None => return self.finalize(response, sent_at, raise_error, &origin),
             }
         }
         unreachable!("the redirect loop returns or errors before exhausting usize")
@@ -987,17 +1055,20 @@ impl HttpSession {
         }
     }
 
-    /// Stamps `sent_at` from the first dispatch on the final `response` and applies
-    /// `raise_error` to it (the only response that error-raises).
+    /// Stamps `sent_at` from the first dispatch on the final `response`, embeds the
+    /// originating `origin` request (so the response reports what produced it) and
+    /// applies `raise_error` to it (the only response that error-raises).
     fn finalize(
         &self,
         mut response: HttpResponse,
         sent_at: Option<f64>,
         raise_error: bool,
+        origin: &HttpRequest,
     ) -> Result<HttpResponse, HttpError> {
         if let Some(sent_at) = sent_at {
             response.set_sent_at(sent_at);
         }
+        response.set_request(origin.copy());
         let status = response.status();
         if raise_error && status >= 400 {
             // Drop closes the held connection; the error carries the status.
@@ -1219,39 +1290,46 @@ impl IntoIterator for HttpResponseBatch {
 /// [`HttpSession::shared`] singleton, mirroring `requests.get(...)` and friends.
 /// Each raises on a 4xx/5xx status, keeps the connection alive and buffers no
 /// more than the streamed [`HttpResponse`] does — for per-client configuration
-/// build an explicit [`HttpSession`] instead.
-pub fn get(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().get(url)
+/// build an explicit [`HttpSession`] instead. With `send` `false` the verb
+/// returns an **unsent** response carrying the prepared request (no network call;
+/// see [`HttpSession::get`]).
+pub fn get(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().get(url, send)
 }
 
 /// `HEAD url` via the shared session (raises on a 4xx/5xx status).
-pub fn head(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().head(url)
+pub fn head(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().head(url, send)
 }
 
 /// `DELETE url` via the shared session (raises on a 4xx/5xx status).
-pub fn delete(url: &str) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().delete(url)
+pub fn delete(url: &str, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().delete(url, send)
 }
 
 /// `POST url` with an in-memory byte body via the shared session.
-pub fn post(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().post(url, body)
+pub fn post(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().post(url, body, send)
 }
 
 /// `PUT url` with an in-memory byte body via the shared session.
-pub fn put(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().put(url, body)
+pub fn put(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().put(url, body, send)
 }
 
 /// `PATCH url` with an in-memory byte body via the shared session.
-pub fn patch(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().patch(url, body)
+pub fn patch(url: &str, body: impl Into<Vec<u8>>, send: bool) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().patch(url, body, send)
 }
 
-/// Sends an arbitrary [`HttpRequest`] via the shared session (streamed; connection
-/// reuse follows the request's [`keep_alive`](HttpRequest::keep_alive) flag, default
-/// `false`), raising on a 4xx/5xx when `raise_error`.
-pub fn request(request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
-    HttpSession::shared().send(request, raise_error)
+/// Dispatches an arbitrary [`HttpRequest`] via the shared session (streamed;
+/// connection reuse follows the request's [`keep_alive`](HttpRequest::keep_alive)),
+/// raising on a 4xx/5xx when `raise_error`. With `send` `false` it returns an
+/// **unsent** response carrying the prepared request instead of dispatching.
+pub fn request(
+    request: HttpRequest,
+    raise_error: bool,
+    send: bool,
+) -> Result<HttpResponse, HttpError> {
+    HttpSession::shared().request(request, raise_error, send)
 }

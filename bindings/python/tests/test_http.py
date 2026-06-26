@@ -148,6 +148,66 @@ def test_io_body_upload_from_localpath(base_url, tmp_path):
     assert response.content == b"file-streamed-upload"
 
 
+def test_send_false_returns_an_unsent_response_holding_the_request(base_url):
+    session = yggdryl.HttpSession(user_agent="yggdryl-test")
+    # send=False builds the request but makes no network call.
+    unsent = session.get(base_url + "/", headers={"X-Echo": "tweak-me"}, send=False)
+    assert unsent.is_sent is False
+    assert unsent.status == 0
+    request = unsent.request
+    assert isinstance(request, yggdryl.HttpRequest)
+    assert request.method == "GET"
+    assert request.url == base_url + "/"
+    # prepare merged the session default header into the embedded request.
+    assert request.header("user-agent") == "yggdryl-test"
+    assert request.header("x-echo") == "tweak-me"
+
+
+def test_unsent_response_can_be_dispatched_later(base_url):
+    session = yggdryl.HttpSession()
+    unsent = session.get(base_url + "/", send=False)
+    # response.send() dispatches the embedded request through the shared session.
+    response = unsent.send()
+    assert response.status == 200
+    assert response.text() == "hello world"
+
+
+def test_sent_response_reports_its_request(base_url):
+    session = yggdryl.HttpSession()
+    response = session.request("POST", base_url + "/submit", body=b"hi")
+    assert response.is_sent is True
+    assert response.request.method == "POST"
+    assert response.request.url == base_url + "/submit"
+
+
+def test_http_request_class_builds_and_sends(base_url):
+    request = yggdryl.HttpRequest("GET", base_url + "/", headers={"X-Echo": "via-request"})
+    assert request.method == "GET"
+    response = request.send()
+    assert response.status == 200
+    assert response.header("x-echo-back") == "via-request"
+    # A session can dispatch a prebuilt request too (the centralised send path).
+    echoed = yggdryl.HttpSession().send(request)
+    assert echoed.header("x-echo-back") == "via-request"
+
+
+def test_verb_config_kwargs_build_the_request(base_url):
+    session = yggdryl.HttpSession()
+    # Headers + bearer auth are configured straight from the verb signature.
+    response = session.get(
+        base_url + "/", headers={"X-Echo": "kw"}, bearer_auth="tok-xyz"
+    )
+    assert response.header("x-echo-back") == "kw"
+    assert response.header("x-auth-back") == "Bearer tok-xyz"
+
+
+def test_module_level_send_false_returns_unsent(base_url):
+    unsent = yggdryl.get(base_url + "/", send=False)
+    assert unsent.is_sent is False
+    assert unsent.request.method == "GET"
+    assert unsent.send().text() == "hello world"
+
+
 def test_set_cookie_seeds_the_jar():
     session = yggdryl.HttpSession()
     session.set_cookie("http://example.com/", "sid", "abc123")

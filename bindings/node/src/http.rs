@@ -33,32 +33,49 @@ fn shared_session() -> Arc<CoreHttpSession> {
     CoreHttpSession::shared()
 }
 
-/// Builds a [`RequestTask`] over the shared session singleton.
+/// Builds a [`RequestTask`] from the full set of verb arguments, parsing the
+/// JS-typed inputs (method, HTTP version, basic-auth pair). The single place every
+/// verb — instance and module-level — turns its signature args into a task.
 #[allow(clippy::too_many_arguments)]
-fn shared_task(
-    method: Method,
+fn make_task(
+    session: Arc<CoreHttpSession>,
+    method: &str,
     url: String,
-    headers: Vec<(String, String)>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
     body: BodyArg,
-    raise_error: bool,
-    keep_alive: f64,
-    allow_redirect: bool,
-    http_version: Option<HttpVersion>,
-) -> AsyncTask<RequestTask> {
-    AsyncTask::new(RequestTask {
-        session: shared_session(),
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    let method = Method::from_str(method).map_err(to_napi)?;
+    let http_version = http_version
+        .map(|v| HttpVersion::from_str(&v).map_err(to_napi))
+        .transpose()?;
+    Ok(AsyncTask::new(RequestTask {
+        session,
         method,
         url,
-        headers,
+        headers: headers.map(|m| m.into_iter().collect()).unwrap_or_default(),
+        params: params.map(|m| m.into_iter().collect()).unwrap_or_default(),
         body,
-        raise_error,
-        keep_alive,
-        allow_redirect,
+        basic_auth: basic_auth_pair(basic_auth)?,
+        bearer_auth,
+        raise_error: raise_error.unwrap_or(true),
+        keep_alive: keep_alive.unwrap_or(300.0),
+        allow_redirect: allow_redirect.unwrap_or(true),
         http_version,
-    })
+        send: send.unwrap_or(true),
+    }))
 }
 
 /// A request body: raw bytes, or a `LocalPath` streamed straight off disk.
+/// `Clone`, so a copy is kept for the response's `request`.
+#[derive(Clone)]
 enum BodyArg {
     Empty,
     Bytes(Vec<u8>),
@@ -74,6 +91,247 @@ fn body_arg(body: Option<Either<Buffer, &LocalPath>>) -> BodyArg {
     }
 }
 
+/// Applies a [`BodyArg`] to a request — a `File` streams from disk via `Io`.
+fn apply_body(request: CoreHttpRequest, body: BodyArg) -> CoreHttpRequest {
+    match body {
+        BodyArg::Empty => request,
+        BodyArg::Bytes(bytes) => request.with_body(bytes),
+        BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
+    }
+}
+
+/// Extracts an optional `[username, password]` pair, erroring on a wrong shape.
+fn basic_auth_pair(basic_auth: Option<Vec<String>>) -> Result<Option<(String, String)>> {
+    match basic_auth {
+        None => Ok(None),
+        Some(pair) => match pair.as_slice() {
+            [username, password] => Ok(Some((username.clone(), password.clone()))),
+            _ => Err(Error::from_reason(
+                "basicAuth expects a [username, password] pair",
+            )),
+        },
+    }
+}
+
+/// Builds a core request from the full set of verb arguments — the single place
+/// the bindings assemble a request from signature args. `session` resolves the
+/// target against its `baseUrl` when given; otherwise the URL must be absolute.
+#[allow(clippy::too_many_arguments)]
+fn build_core_request(
+    session: Option<&CoreHttpSession>,
+    method: Method,
+    url: &str,
+    headers: Vec<(String, String)>,
+    params: Vec<(String, String)>,
+    body: BodyArg,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<HttpVersion>,
+) -> Result<CoreHttpRequest> {
+    let url = match session {
+        Some(session) => session.resolve_url(url).map_err(to_napi)?,
+        None => CoreUrl::from_str(url).map_err(|e| Error::from_reason(e.to_string()))?,
+    };
+    let mut request = CoreHttpRequest::from_url(method, url)
+        .with_allow_redirect(allow_redirect)
+        .with_keep_alive(keep_alive)
+        .with_headers(headers);
+    if let Some(http_version) = http_version {
+        request = request.with_http_version(http_version);
+    }
+    for (key, value) in params {
+        request = request.with_param(key, value);
+    }
+    if let Some((username, password)) = basic_auth {
+        request = request.with_basic_auth(&username, &password);
+    }
+    if let Some(token) = bearer_auth {
+        request = request.with_bearer_auth(&token);
+    }
+    Ok(apply_body(request, body))
+}
+
+/// The built-request snapshot shared by `HttpRequest` (the JS class) and a
+/// response's `request` accessor: the prepared method / URL / headers / settings
+/// plus the binding's own body copy. `Send`, so it crosses the libuv worker.
+#[derive(Clone)]
+struct RequestData {
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: BodyArg,
+    allow_redirect: bool,
+    keep_alive: f64,
+    http_version: Option<String>,
+}
+
+impl RequestData {
+    /// Snapshots a core request (after it was prepared), keeping the binding's own
+    /// `body` (the core copy may have dropped a stream).
+    fn from_core(request: &CoreHttpRequest, body: BodyArg) -> RequestData {
+        RequestData {
+            method: request.method().as_str().to_string(),
+            url: request.url().to_string(),
+            headers: request
+                .headers()
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+            body,
+            allow_redirect: request.allow_redirect(),
+            keep_alive: request.keep_alive(),
+            http_version: request.http_version().map(|v| v.as_str().to_string()),
+        }
+    }
+
+    /// Builds a [`RequestTask`] that dispatches this request through `session`.
+    fn task(
+        &self,
+        session: Arc<CoreHttpSession>,
+        raise_error: bool,
+    ) -> Result<AsyncTask<RequestTask>> {
+        let method = Method::from_str(&self.method).map_err(to_napi)?;
+        let http_version = self
+            .http_version
+            .as_deref()
+            .map(|v| HttpVersion::from_str(v).map_err(to_napi))
+            .transpose()?;
+        Ok(AsyncTask::new(RequestTask {
+            session,
+            method,
+            url: self.url.clone(),
+            headers: self.headers.clone(),
+            params: Vec::new(),
+            body: self.body.clone(),
+            basic_auth: None,
+            bearer_auth: None,
+            raise_error,
+            keep_alive: self.keep_alive,
+            allow_redirect: self.allow_redirect,
+            http_version,
+            send: true,
+        }))
+    }
+}
+
+/// A built HTTP request, modelled on `requests.PreparedRequest`. It is what a verb
+/// returns when `send=false` (via `HttpResponse.request`), and can be dispatched on
+/// its own with `send`.
+#[napi]
+pub struct HttpRequest {
+    data: RequestData,
+}
+
+#[napi]
+impl HttpRequest {
+    /// Build a request explicitly: `method` and `url` plus the same optional
+    /// `headers` / `body` / `params` / `basicAuth` / `bearerAuth` / `allowRedirect`
+    /// / `keepAlive` / `httpVersion` the verbs accept. `body` is a `Buffer` or a
+    /// `LocalPath` (streamed off disk).
+    #[napi(constructor)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        method: String,
+        url: String,
+        headers: Option<HashMap<String, String>>,
+        body: Option<Either<Buffer, &LocalPath>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+    ) -> Result<Self> {
+        let method = Method::from_str(&method).map_err(to_napi)?;
+        let http_version = http_version
+            .map(|v| HttpVersion::from_str(&v).map_err(to_napi))
+            .transpose()?;
+        let body = body_arg(body);
+        let request = build_core_request(
+            None,
+            method,
+            &url,
+            headers.map(|m| m.into_iter().collect()).unwrap_or_default(),
+            params.map(|m| m.into_iter().collect()).unwrap_or_default(),
+            body.clone(),
+            basic_auth_pair(basic_auth)?,
+            bearer_auth,
+            allow_redirect.unwrap_or(true),
+            keep_alive.unwrap_or(300.0),
+            http_version,
+        )?;
+        Ok(HttpRequest {
+            data: RequestData::from_core(&request, body),
+        })
+    }
+
+    /// The request method (e.g. `"GET"`).
+    #[napi(getter)]
+    pub fn method(&self) -> String {
+        self.data.method.clone()
+    }
+
+    /// The request URL.
+    #[napi(getter)]
+    pub fn url(&self) -> String {
+        self.data.url.clone()
+    }
+
+    /// The request headers as an object (lower-cased names).
+    #[napi(getter)]
+    pub fn headers(&self) -> HashMap<String, String> {
+        self.data.headers.iter().cloned().collect()
+    }
+
+    /// Look up a header by name (case-insensitive).
+    #[napi]
+    pub fn header(&self, name: String) -> Option<String> {
+        self.data
+            .headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(&name))
+            .map(|(_, value)| value.clone())
+    }
+
+    /// Whether `HttpSession.send` follows 3xx redirects for this request.
+    #[napi(getter, js_name = "allowRedirect")]
+    pub fn allow_redirect(&self) -> bool {
+        self.data.allow_redirect
+    }
+
+    /// The keep-alive idle TTL in seconds (`0` disables pooling).
+    #[napi(getter, js_name = "keepAlive")]
+    pub fn keep_alive(&self) -> f64 {
+        self.data.keep_alive
+    }
+
+    /// The pinned HTTP protocol version (e.g. `"HTTP/2"`), or `null` to inherit the
+    /// session default.
+    #[napi(getter, js_name = "httpVersion")]
+    pub fn http_version(&self) -> Option<String> {
+        self.data.http_version.clone()
+    }
+
+    /// Dispatch this request through the process-wide shared session, returning a
+    /// `Promise<HttpResponse>`. `raiseError` (default `true`) rejects on a 4xx/5xx
+    /// status.
+    #[napi(js_name = "send")]
+    pub fn send_request(&self, raise_error: Option<bool>) -> Result<AsyncTask<RequestTask>> {
+        self.data
+            .task(shared_session(), raise_error.unwrap_or(true))
+    }
+
+    /// An independent copy of this request.
+    #[napi]
+    pub fn copy(&self) -> HttpRequest {
+        HttpRequest {
+            data: self.data.clone(),
+        }
+    }
+}
+
 /// The data drained from a response on the worker thread, before it is handed
 /// back to JS as an [`HttpResponse`].
 pub struct ResponseData {
@@ -84,6 +342,8 @@ pub struct ResponseData {
     sent_at: f64,
     received_at: f64,
     http_version: String,
+    /// The request that produced this response (the prepared request).
+    request: Option<RequestData>,
 }
 
 /// The blocking request, run on the libuv thread pool by napi.
@@ -92,11 +352,17 @@ pub struct RequestTask {
     method: Method,
     url: String,
     headers: Vec<(String, String)>,
+    params: Vec<(String, String)>,
     body: BodyArg,
+    basic_auth: Option<(String, String)>,
+    bearer_auth: Option<String>,
     raise_error: bool,
     keep_alive: f64,
     allow_redirect: bool,
     http_version: Option<HttpVersion>,
+    /// With `send`, dispatch the request; otherwise prepare it and return an
+    /// **unsent** response carrying only the request.
+    send: bool,
 }
 
 impl Task for RequestTask {
@@ -104,48 +370,73 @@ impl Task for RequestTask {
     type JsValue = HttpResponse;
 
     fn compute(&mut self) -> Result<ResponseData> {
-        // Resolve the target against the session's base URL (the single point all
-        // verbs — instance and module-level — funnel through), then build it.
-        let url = self.session.resolve_url(&self.url).map_err(to_napi)?;
-        let mut request =
-            CoreHttpRequest::from_url(self.method, url).with_allow_redirect(self.allow_redirect);
-        if let Some(http_version) = self.http_version {
-            request = request.with_http_version(http_version);
+        // Build the request from the verb args (the single point all verbs funnel
+        // through), keeping a copy of the body for the response's `request`.
+        let body = std::mem::replace(&mut self.body, BodyArg::Empty);
+        let request = build_core_request(
+            Some(&self.session),
+            self.method,
+            &self.url,
+            std::mem::take(&mut self.headers),
+            std::mem::take(&mut self.params),
+            body.clone(),
+            self.basic_auth.take(),
+            self.bearer_auth.take(),
+            self.allow_redirect,
+            self.keep_alive,
+            self.http_version,
+        )?;
+        if self.send {
+            // Every send streams; we drain the body here (off the event loop) into
+            // an owned buffer, decompressed, so `content` / `text` / `json` are cheap.
+            let response = self
+                .session
+                .send(request, self.raise_error)
+                .map_err(to_napi)?;
+            let status = response.status();
+            let url = response.url().to_string();
+            let headers = response
+                .headers()
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect();
+            let sent_at = response.sent_at();
+            let http_version = response.negotiated_version().as_str().to_string();
+            let request = response
+                .request()
+                .map(|request| RequestData::from_core(request, body));
+            let (body, received_at) = response.read_all().map_err(to_napi)?;
+            Ok(ResponseData {
+                status,
+                url,
+                headers,
+                body,
+                sent_at,
+                received_at,
+                http_version,
+                request,
+            })
+        } else {
+            // No network call: prepare the request and return it unsent.
+            let prepared = self.session.prepare(request);
+            let url = prepared.url().to_string();
+            let http_version = prepared
+                .http_version()
+                .unwrap_or_else(|| self.session.http_version())
+                .as_str()
+                .to_string();
+            let request = Some(RequestData::from_core(&prepared, body));
+            Ok(ResponseData {
+                status: 0,
+                url,
+                headers: Vec::new(),
+                body: Vec::new(),
+                sent_at: 0.0,
+                received_at: 0.0,
+                http_version,
+                request,
+            })
         }
-        request = request
-            .with_keep_alive(self.keep_alive)
-            .with_headers(std::mem::take(&mut self.headers));
-        request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
-            BodyArg::Empty => request,
-            BodyArg::Bytes(bytes) => request.with_body(bytes),
-            BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
-        };
-        // Every send streams; we drain the body here (off the event loop) into an
-        // owned buffer, decompressed, so `content` / `text` / `json` are cheap.
-        let response = self
-            .session
-            .send(request, self.raise_error)
-            .map_err(to_napi)?;
-        let status = response.status();
-        let url = response.url().to_string();
-        let headers = response
-            .headers()
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.to_string()))
-            .collect();
-        let sent_at = response.sent_at();
-        let http_version = response.negotiated_version().as_str().to_string();
-        // Every send streams; drain here, capturing `received_at` (stamped at EOF).
-        let (body, received_at) = response.read_all().map_err(to_napi)?;
-        Ok(ResponseData {
-            status,
-            url,
-            headers,
-            body,
-            sent_at,
-            received_at,
-            http_version,
-        })
     }
 
     fn resolve(&mut self, _env: Env, output: ResponseData) -> Result<HttpResponse> {
@@ -157,6 +448,7 @@ impl Task for RequestTask {
             sent_at: output.sent_at,
             received_at: output.received_at,
             http_version: output.http_version,
+            request: output.request,
         })
     }
 }
@@ -172,11 +464,14 @@ pub struct HttpResponse {
     sent_at: f64,
     received_at: f64,
     http_version: String,
+    /// The request that produced this response (`requests.Response.request`). An
+    /// *unsent* response (a verb called with `send=false`) carries only this.
+    request: Option<RequestData>,
 }
 
 #[napi]
 impl HttpResponse {
-    /// The HTTP status code.
+    /// The HTTP status code (`0` for an unsent response).
     #[napi(getter)]
     pub fn status(&self) -> u16 {
         self.status
@@ -186,6 +481,35 @@ impl HttpResponse {
     #[napi(getter)]
     pub fn ok(&self) -> bool {
         self.status < 400
+    }
+
+    /// Whether this response was actually dispatched. `false` for the **unsent**
+    /// placeholder a verb returns with `send=false` (status `0`, empty body), which
+    /// carries only the prepared `request`.
+    #[napi(getter, js_name = "isSent")]
+    pub fn is_sent(&self) -> bool {
+        self.status != 0
+    }
+
+    /// The request that produced this response (the prepared request), mirroring
+    /// `requests.Response.request`, or `null`.
+    #[napi(getter)]
+    pub fn request(&self) -> Option<HttpRequest> {
+        self.request.clone().map(|data| HttpRequest { data })
+    }
+
+    /// Dispatch this response's `request` through the shared session, returning a
+    /// `Promise<HttpResponse>` — how an **unsent** response (a verb called with
+    /// `send=false`) is sent later. `raiseError` (default `true`) rejects on a
+    /// 4xx/5xx status.
+    #[napi(js_name = "send")]
+    pub fn send_response(&self, raise_error: Option<bool>) -> Result<AsyncTask<RequestTask>> {
+        match &self.request {
+            Some(data) => data.task(shared_session(), raise_error.unwrap_or(true)),
+            None => Err(Error::from_reason(
+                "this response carries no request to send",
+            )),
+        }
     }
 
     /// The final request URL.
@@ -487,142 +811,222 @@ impl HttpSession {
         Ok(())
     }
 
+    /// `GET url` (resolved against the session's `baseUrl` when set), configured
+    /// from the optional `headers` / `params` / `basicAuth` / `bearerAuth` /
+    /// `allowRedirect` / `keepAlive` / `httpVersion`. `raiseError` (default `true`)
+    /// rejects on a 4xx/5xx status. With `send=false` no request is dispatched: the
+    /// returned `Promise` resolves to an **unsent** `HttpResponse` carrying the
+    /// prepared `request` (send it later with `response.send()`).
+    #[napi]
     #[allow(clippy::too_many_arguments)]
-    fn task(
+    pub fn get(
         &self,
-        method: Method,
         url: String,
-        headers: Vec<(String, String)>,
-        body: BodyArg,
-        raise_error: bool,
-        keep_alive: f64,
-        allow_redirect: bool,
-        http_version: Option<HttpVersion>,
-    ) -> AsyncTask<RequestTask> {
-        AsyncTask::new(RequestTask {
-            session: self.inner.clone(),
-            method,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "GET",
             url,
             headers,
-            body,
-            raise_error,
-            keep_alive,
+            params,
+            BodyArg::Empty,
+            basic_auth,
+            bearer_auth,
             allow_redirect,
+            keep_alive,
             http_version,
-        })
-    }
-
-    /// `GET url` (raises on a 4xx/5xx status).
-    #[napi]
-    pub fn get(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Get,
-            url,
-            Vec::new(),
-            BodyArg::Empty,
-            true,
-            300.0,
-            true,
-            None,
+            raise_error,
+            send,
         )
     }
 
-    /// `HEAD url` (raises on a 4xx/5xx status).
+    /// `HEAD url` — same options as `get`.
     #[napi]
-    pub fn head(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Head,
+    #[allow(clippy::too_many_arguments)]
+    pub fn head(
+        &self,
+        url: String,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "HEAD",
             url,
-            Vec::new(),
+            headers,
+            params,
             BodyArg::Empty,
-            true,
-            300.0,
-            true,
-            None,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+            raise_error,
+            send,
         )
     }
 
-    /// `DELETE url` (raises on a 4xx/5xx status).
+    /// `DELETE url` — same options as `get`.
     #[napi]
-    pub fn delete(&self, url: String) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Delete,
+    #[allow(clippy::too_many_arguments)]
+    pub fn delete(
+        &self,
+        url: String,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "DELETE",
             url,
-            Vec::new(),
+            headers,
+            params,
             BodyArg::Empty,
-            true,
-            300.0,
-            true,
-            None,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+            raise_error,
+            send,
         )
     }
 
     /// `POST url` with an optional `body` — a `Buffer` or a `LocalPath` streamed
-    /// straight off disk (raises on a 4xx/5xx status).
+    /// straight off disk — and the same options as `get`.
     #[napi]
+    #[allow(clippy::too_many_arguments)]
     pub fn post(
         &self,
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
-    ) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Post,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "POST",
             url,
-            Vec::new(),
+            headers,
+            params,
             body_arg(body),
-            true,
-            300.0,
-            true,
-            None,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+            raise_error,
+            send,
         )
     }
 
-    /// `PUT url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
+    /// `PUT url` with a `body` — same options as `post`.
     #[napi]
+    #[allow(clippy::too_many_arguments)]
     pub fn put(
         &self,
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
-    ) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Put,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "PUT",
             url,
-            Vec::new(),
+            headers,
+            params,
             body_arg(body),
-            true,
-            300.0,
-            true,
-            None,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+            raise_error,
+            send,
         )
     }
 
-    /// `PATCH url` with a `body` — a `Buffer` or a `LocalPath` (raises on 4xx/5xx).
+    /// `PATCH url` with a `body` — same options as `post`.
     #[napi]
+    #[allow(clippy::too_many_arguments)]
     pub fn patch(
         &self,
         url: String,
         body: Option<Either<Buffer, &LocalPath>>,
-    ) -> AsyncTask<RequestTask> {
-        self.task(
-            Method::Patch,
+        headers: Option<HashMap<String, String>>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        make_task(
+            self.inner.clone(),
+            "PATCH",
             url,
-            Vec::new(),
+            headers,
+            params,
             body_arg(body),
-            true,
-            300.0,
-            true,
-            None,
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
+            http_version,
+            raise_error,
+            send,
         )
     }
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
     /// 4xx/5xx status. `keepAlive` is the keep-alive idle TTL in seconds (default
-    /// 300 — 5 minutes; `0` sends `Connection: close`).
-    /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
-    /// `maxRedirects`); pass `false` to receive the 3xx response itself.
-    /// `httpVersion` (e.g. `"2"`) pins the protocol version for this request,
-    /// overriding the session default.
+    /// 300 — 5 minutes; `0` sends `Connection: close`). `allowRedirect` (default
+    /// `true`) follows 3xx redirects (up to the session's `maxRedirects`); pass
+    /// `false` to receive the 3xx response itself. `httpVersion` (e.g. `"2"`) pins
+    /// the protocol version. `params` / `basicAuth` / `bearerAuth` configure the
+    /// query and `Authorization`. With `send=false` the prepared request is returned
+    /// as an **unsent** response (see `get`).
     #[napi]
     #[allow(clippy::too_many_arguments)]
     pub fn request(
@@ -635,55 +1039,121 @@ impl HttpSession {
         keep_alive: Option<f64>,
         allow_redirect: Option<bool>,
         http_version: Option<String>,
+        params: Option<HashMap<String, String>>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
+        send: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
-        let method = Method::from_str(&method).map_err(to_napi)?;
-        let http_version = http_version
-            .map(|value| HttpVersion::from_str(&value).map_err(to_napi))
-            .transpose()?;
-        let headers = headers
-            .map(|map| map.into_iter().collect())
-            .unwrap_or_default();
-        Ok(self.task(
-            method,
+        make_task(
+            self.inner.clone(),
+            &method,
             url,
             headers,
+            params,
             body_arg(body),
-            raise_error.unwrap_or(true),
-            keep_alive.unwrap_or(300.0),
-            allow_redirect.unwrap_or(true),
+            basic_auth,
+            bearer_auth,
+            allow_redirect,
+            keep_alive,
             http_version,
-        ))
+            raise_error,
+            send,
+        )
+    }
+
+    /// Dispatch a prebuilt `HttpRequest` through this session — the centralised
+    /// `send(request) -> HttpResponse` entry point. `raiseError` (default `true`)
+    /// rejects on a 4xx/5xx status; with `send=false` the prepared request is
+    /// returned as an **unsent** response instead.
+    #[napi]
+    pub fn send(
+        &self,
+        request: &HttpRequest,
+        raise_error: Option<bool>,
+        send: Option<bool>,
+    ) -> Result<AsyncTask<RequestTask>> {
+        let data = &request.data;
+        make_task(
+            self.inner.clone(),
+            &data.method,
+            data.url.clone(),
+            Some(data.headers.iter().cloned().collect()),
+            None,
+            data.body.clone(),
+            None,
+            None,
+            Some(data.allow_redirect),
+            Some(data.keep_alive),
+            data.http_version.clone(),
+            raise_error,
+            send,
+        )
     }
 }
 
 /// `GET url` via the process-wide shared `HttpSession` singleton (the
-/// `requests.get` equivalent — rejects on a 4xx/5xx status).
+/// `requests.get` equivalent — rejects on a 4xx/5xx status). Takes the same options
+/// as `HttpSession.get`, including `send=false` to return an **unsent** response.
 #[napi(js_name = "get")]
-pub fn http_get(url: String) -> AsyncTask<RequestTask> {
-    shared_task(
-        Method::Get,
+#[allow(clippy::too_many_arguments)]
+pub fn http_get(
+    url: String,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    make_task(
+        shared_session(),
+        "GET",
         url,
-        Vec::new(),
+        headers,
+        params,
         BodyArg::Empty,
-        true,
-        300.0,
-        true,
-        None,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+        raise_error,
+        send,
     )
 }
 
-/// `HEAD url` via the shared session singleton (rejects on a 4xx/5xx status).
+/// `HEAD url` via the shared session singleton — same options as `get`.
 #[napi(js_name = "head")]
-pub fn http_head(url: String) -> AsyncTask<RequestTask> {
-    shared_task(
-        Method::Head,
+#[allow(clippy::too_many_arguments)]
+pub fn http_head(
+    url: String,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    make_task(
+        shared_session(),
+        "HEAD",
         url,
-        Vec::new(),
+        headers,
+        params,
         BodyArg::Empty,
-        true,
-        300.0,
-        true,
-        None,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+        raise_error,
+        send,
     )
 }
 
@@ -692,53 +1162,107 @@ pub fn http_head(url: String) -> AsyncTask<RequestTask> {
 // `request('DELETE', url)` (or the `HttpSession.delete` method) instead.
 
 /// `POST url` with an optional `body` (a `Buffer` or `LocalPath`) via the shared
-/// session singleton.
+/// session singleton — same options as `HttpSession.post`.
 #[napi(js_name = "post")]
-pub fn http_post(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
-    shared_task(
-        Method::Post,
+#[allow(clippy::too_many_arguments)]
+pub fn http_post(
+    url: String,
+    body: Option<Either<Buffer, &LocalPath>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    make_task(
+        shared_session(),
+        "POST",
         url,
-        Vec::new(),
+        headers,
+        params,
         body_arg(body),
-        true,
-        300.0,
-        true,
-        None,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+        raise_error,
+        send,
     )
 }
 
 /// `PUT url` with a `body` via the shared session singleton.
 #[napi(js_name = "put")]
-pub fn http_put(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
-    shared_task(
-        Method::Put,
+#[allow(clippy::too_many_arguments)]
+pub fn http_put(
+    url: String,
+    body: Option<Either<Buffer, &LocalPath>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    make_task(
+        shared_session(),
+        "PUT",
         url,
-        Vec::new(),
+        headers,
+        params,
         body_arg(body),
-        true,
-        300.0,
-        true,
-        None,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+        raise_error,
+        send,
     )
 }
 
 /// `PATCH url` with a `body` via the shared session singleton.
 #[napi(js_name = "patch")]
-pub fn http_patch(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncTask<RequestTask> {
-    shared_task(
-        Method::Patch,
+#[allow(clippy::too_many_arguments)]
+pub fn http_patch(
+    url: String,
+    body: Option<Either<Buffer, &LocalPath>>,
+    headers: Option<HashMap<String, String>>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
+    send: Option<bool>,
+) -> Result<AsyncTask<RequestTask>> {
+    make_task(
+        shared_session(),
+        "PATCH",
         url,
-        Vec::new(),
+        headers,
+        params,
         body_arg(body),
-        true,
-        300.0,
-        true,
-        None,
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
+        http_version,
+        raise_error,
+        send,
     )
 }
 
 /// Issue an arbitrary `method` request via the shared session singleton (same
-/// arguments as `HttpSession.request`).
+/// arguments as `HttpSession.request`, including `send=false`).
 #[napi(js_name = "request")]
 #[allow(clippy::too_many_arguments)]
 pub fn http_request(
@@ -750,24 +1274,26 @@ pub fn http_request(
     keep_alive: Option<f64>,
     allow_redirect: Option<bool>,
     http_version: Option<String>,
+    params: Option<HashMap<String, String>>,
+    basic_auth: Option<Vec<String>>,
+    bearer_auth: Option<String>,
+    send: Option<bool>,
 ) -> Result<AsyncTask<RequestTask>> {
-    let method = Method::from_str(&method).map_err(to_napi)?;
-    let http_version = http_version
-        .map(|value| HttpVersion::from_str(&value).map_err(to_napi))
-        .transpose()?;
-    let headers = headers
-        .map(|map| map.into_iter().collect())
-        .unwrap_or_default();
-    Ok(shared_task(
-        method,
+    make_task(
+        shared_session(),
+        &method,
         url,
         headers,
+        params,
         body_arg(body),
-        raise_error.unwrap_or(true),
-        keep_alive.unwrap_or(300.0),
-        allow_redirect.unwrap_or(true),
+        basic_auth,
+        bearer_auth,
+        allow_redirect,
+        keep_alive,
         http_version,
-    ))
+        raise_error,
+        send,
+    )
 }
 
 /// Configure the process-wide shared `HttpSession` singleton with a `baseUrl`
