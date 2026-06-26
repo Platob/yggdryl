@@ -447,7 +447,10 @@ impl Task for RequestTask {
             status: output.status,
             url: output.url,
             headers: output.headers,
-            body: output.body,
+            // Wrap the drained body in a `Buffer` once (zero-copy: napi takes the
+            // `Vec`'s allocation as an external buffer). `content` then hands back a
+            // cheap ref-counted clone — no per-access copy of the payload.
+            body: Buffer::from(output.body),
             sent_at: output.sent_at,
             received_at: output.received_at,
             http_version: output.http_version,
@@ -457,13 +460,14 @@ impl Task for RequestTask {
 }
 
 /// A received HTTP response, modelled on `requests.Response`. The body is read
-/// eagerly (and decompressed) when the response resolves.
+/// eagerly (and decompressed) when the response resolves, into one `Buffer` shared
+/// (ref-counted) by `content`.
 #[napi]
 pub struct HttpResponse {
     status: u16,
     url: String,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    body: Buffer,
     sent_at: f64,
     received_at: f64,
     http_version: String,
@@ -618,27 +622,30 @@ impl HttpResponse {
     #[napi(getter)]
     pub fn io(&self) -> BytesIO {
         BytesIO {
-            inner: CoreBytesIO::from_bytes(self.body.clone()),
+            inner: CoreBytesIO::from_bytes(self.body.to_vec()),
         }
     }
 
-    /// The raw response body as a native `Buffer` (already decompressed; a copy out
-    /// of Rust — prefer `io` for further Rust-side work).
+    /// The raw response body as a native `Buffer` (already decompressed). This is a
+    /// **cheap ref-counted clone** of the one buffer drained at receive time — the
+    /// payload bytes are not copied again — so reading it (repeatedly) is free.
     #[napi(getter)]
     pub fn content(&self) -> Buffer {
-        Buffer::from(self.body.clone())
+        self.body.clone()
     }
 
     /// The response body decoded as UTF-8 text (already decompressed).
     #[napi]
     pub fn text(&self) -> Result<String> {
-        String::from_utf8(self.body.clone()).map_err(|e| Error::from_reason(e.to_string()))
+        std::str::from_utf8(self.body.as_ref())
+            .map(str::to_string)
+            .map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// The response body parsed as JSON (already decompressed).
     #[napi]
     pub fn json(&self) -> Result<serde_json::Value> {
-        serde_json::from_slice(&self.body).map_err(|e| Error::from_reason(e.to_string()))
+        serde_json::from_slice(self.body.as_ref()).map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Throw if the status is 4xx/5xx, otherwise do nothing — the `requests`
