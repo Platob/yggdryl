@@ -20,6 +20,7 @@ same kind, so they compose whether they run now or are recorded for later.
 | method | meaning |
 | --- | --- |
 | `field()` / `name()` / `data_type()` / `is_nullable()` | identity — always known |
+| `frame()` → `Option<&dyn FrameHandle>` | the holder frame, if any (provided, default `None`) |
 | `is_materialized()` | whether values are in memory |
 | `len()` → `Option<usize>` | length if known without evaluating |
 | `is_empty()` | `len() == 0`, when known (provided) |
@@ -27,9 +28,30 @@ same kind, so they compose whether they run now or are recorded for later.
 | `cast(data_type)` | a cast column, or `ColumnError::Cast` |
 | `slice(offset, length)` / `head(n)` / `tail(n)` | row sub-ranges (`head` provided) |
 
-`name`, `data_type`, `is_nullable`, `is_empty` and `head` are **provided** methods —
-an implementor only supplies `field`, `is_materialized`, `len`, `rename`, `cast`,
-`slice` and `tail`.
+`name`, `data_type`, `is_nullable`, `frame`, `is_empty` and `head` are **provided**
+methods — an implementor only supplies `field`, `is_materialized`, `len`, `rename`,
+`cast`, `slice` and `tail`.
+
+## Holder frame
+
+A column can map back to the [`Frame`](frame.md) that holds it via `frame()`. It is
+**optional** — a column built on its own to use as an expression is *detached* and
+returns `None` (the default). When present, the holder is handed back behind the
+object-safe `FrameHandle` (the base trait of `Frame`), so the column reaches its
+holder's schema without naming the frame's concrete type.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_saga::{Column, FrameHandle};
+
+    fn holder_columns<C: Column>(col: &C) -> Vec<String> {
+        match col.frame() {
+            Some(frame) => frame.schema().map(|s| s.names().iter().map(|n| n.to_string()).collect()).unwrap_or_default(),
+            None => Vec::new(), // detached column (used as an expression)
+        }
+    }
+    ```
 
 ## Implementing it
 

@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use crate::{DataType, Field};
+use crate::{DataType, Field, FrameHandle};
 
 /// Error returned by [`Column`] operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +88,17 @@ pub trait Column: Sized {
     /// The column's header: its name, [`DataType`] and nullability.
     fn field(&self) -> &Field;
 
+    /// The [`Frame`](crate::Frame) that holds this column, if any.
+    ///
+    /// A column attached to a frame returns `Some`, handing back its holder behind
+    /// an object-safe [`FrameHandle`] (so the column need not name the frame's
+    /// concrete type). A **detached** column — one built on its own to use as an
+    /// [`Expression`](crate::Expression) — has no holder and returns `None` (the
+    /// default).
+    fn frame(&self) -> Option<&dyn FrameHandle> {
+        None
+    }
+
     /// The column name.
     fn name(&self) -> &str {
         self.field().name()
@@ -138,17 +149,33 @@ pub trait Column: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PrimitiveType;
+    use crate::{FrameError, PrimitiveType, Schema};
+
+    /// A minimal object-safe holder for the attached-column test.
+    struct TestHolder {
+        schema: Schema,
+    }
+
+    impl FrameHandle for TestHolder {
+        fn schema(&self) -> Result<Schema, FrameError> {
+            Ok(self.schema.clone())
+        }
+    }
 
     /// A tiny materialized column used to exercise the trait's provided methods.
+    /// It optionally carries its holder frame.
     struct TestColumn {
         field: Field,
         len: usize,
+        holder: Option<TestHolder>,
     }
 
     impl Column for TestColumn {
         fn field(&self) -> &Field {
             &self.field
+        }
+        fn frame(&self) -> Option<&dyn FrameHandle> {
+            self.holder.as_ref().map(|h| h as &dyn FrameHandle)
         }
         fn is_materialized(&self) -> bool {
             true
@@ -179,6 +206,7 @@ mod tests {
         TestColumn {
             field: Field::new("px", PrimitiveType::Int64.into(), false),
             len: 5,
+            holder: None,
         }
     }
 
@@ -208,5 +236,26 @@ mod tests {
             .unwrap();
         assert_eq!(c.name(), "price");
         assert_eq!(c.data_type(), &DataType::from(PrimitiveType::Float64));
+    }
+
+    #[test]
+    fn detached_column_has_no_holder() {
+        // A column built on its own (to use as an expression) has no frame.
+        assert!(col().frame().is_none());
+    }
+
+    #[test]
+    fn attached_column_maps_its_holder() {
+        let schema = Schema::new(vec![Field::new("px", PrimitiveType::Int64.into(), false)]);
+        let c = TestColumn {
+            field: Field::new("px", PrimitiveType::Int64.into(), false),
+            len: 5,
+            holder: Some(TestHolder { schema }),
+        };
+        // The column maps back to its holder, reachable behind the object-safe handle.
+        let holder = c.frame().expect("column should report its holder");
+        assert_eq!(holder.schema().unwrap().names(), ["px"]);
+        // Transforms carry the holder along.
+        assert!(c.rename("price").frame().is_some());
     }
 }

@@ -93,4 +93,4 @@ pub use predicate::{CompareOp, Predicate};
 pub use scalar::Scalar;
 
 pub use column::{Column, ColumnError};
-pub use frame::{Frame, FrameError};
+pub use frame::{Frame, FrameError, FrameHandle};

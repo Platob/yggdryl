@@ -11,6 +11,12 @@ executing), which is why the structural defaults (`width`, `column_names`, `drop
 frame kind, so a generic pipeline works across backings. Each frame yields its own
 [`Column`](column.md) type via the associated `type Column`.
 
+`Frame` is not object-safe (associated `Column` type, generic methods), so its
+`schema()` lives on an **object-safe base trait `FrameHandle`** that `Frame`
+extends (`Frame: FrameHandle`). That base is exactly what a held
+[`Column`](column.md) reaches through `column.frame()` — a `&dyn FrameHandle` — to
+see its holder's schema without knowing the frame's concrete type.
+
 !!! note
     Python and Node bindings for `yggdryl-saga` are planned; the examples below are
     Rust, the source of truth.

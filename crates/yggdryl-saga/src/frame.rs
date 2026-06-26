@@ -49,6 +49,21 @@ impl From<ExpressionError> for FrameError {
     }
 }
 
+/// The **object-safe base** of [`Frame`]: the part a held [`Column`] can reach
+/// through a `dyn` reference without naming the frame's concrete type.
+///
+/// `Frame` itself is not object-safe (it has an associated `Column` type and
+/// generic methods), so it cannot be used as `dyn Frame`. `FrameHandle` is the
+/// object-safe slice of it — every [`Frame`] **is** a `FrameHandle`
+/// (`Frame: FrameHandle`) — exposing what a column needs from its holder without
+/// knowing whether that holder is eager or lazy. See
+/// [`Column::frame`](crate::Column::frame).
+pub trait FrameHandle {
+    /// The frame's [`Schema`] (column names, types and nullability). Resolvable
+    /// without executing a lazy plan.
+    fn schema(&self) -> Result<Schema, FrameError>;
+}
+
 /// A tabular frame: an ordered set of named [`Column`]s sharing a [`Schema`].
 ///
 /// The trait unifies the two backings the engine will grow:
@@ -58,11 +73,12 @@ impl From<ExpressionError> for FrameError {
 /// - a **lazy** frame holds a plan, so [`height`](Frame::height) is usually `None`
 ///   and each transformation extends the plan, materialising only on demand.
 ///
-/// The [`schema`](Frame::schema) is always resolvable (a lazy frame tracks it
-/// without executing), which is why the structural defaults below
-/// ([`width`](Frame::width), [`column_names`](Frame::column_names),
-/// [`drop`](Frame::drop), …) are total. Transformations consume `self` and return
-/// the same frame kind, so pipelines compose identically across backings.
+/// The [`schema`](FrameHandle::schema) (inherited from [`FrameHandle`]) is always
+/// resolvable (a lazy frame tracks it without executing), which is why the
+/// structural defaults below ([`width`](Frame::width),
+/// [`column_names`](Frame::column_names), [`drop`](Frame::drop), …) are total.
+/// Transformations consume `self` and return the same frame kind, so pipelines
+/// compose identically across backings.
 ///
 /// ```
 /// use yggdryl_saga::{Frame, FrameError, Schema};
@@ -72,13 +88,9 @@ impl From<ExpressionError> for FrameError {
 ///     frame.select(&["id", "px"])?.head(2)
 /// }
 /// ```
-pub trait Frame: Sized {
+pub trait Frame: FrameHandle + Sized {
     /// The associated [`Column`] type this frame yields.
     type Column: Column;
-
-    /// The frame's [`Schema`] (column names, types and nullability). Resolvable
-    /// without executing a lazy plan.
-    fn schema(&self) -> Result<Schema, FrameError>;
 
     /// Accesses a column by name. For a lazy frame this returns a lazy column; for
     /// an eager one, a materialized column.
@@ -212,12 +224,15 @@ mod tests {
         rows: usize,
     }
 
-    impl Frame for TestFrame {
-        type Column = TestColumn;
-
+    impl FrameHandle for TestFrame {
         fn schema(&self) -> Result<Schema, FrameError> {
             Ok(self.schema.clone())
         }
+    }
+
+    impl Frame for TestFrame {
+        type Column = TestColumn;
+
         fn column(&self, name: &str) -> Result<TestColumn, FrameError> {
             let field = self
                 .schema
