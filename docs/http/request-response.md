@@ -336,21 +336,21 @@ once when the response resolves, then exposed three ways: `io` (a Rust-backed
 
 In the Rust core an `HttpResponse` **is itself** an [`Io`](../core/io.md) handle: it
 delegates `read` / `seek` / `pread` to its body (the live [`HttpStream`](stream.md)), so a
-returned response reads and seeks like any other byte source — the `http`/`https`
-`Io` factory hands one back directly. Use `reader()` instead for transparent
-`Content-Encoding` decoding. The bindings surface the same seekable handle as
-`response.io`.
+returned response reads and seeks like any other byte source — and a `pread` on the live
+stream is a true partial fetch (one `Range`, no full download). Use `reader()` instead for
+transparent `Content-Encoding` decoding. The bindings **buffer** the body and surface it
+as `response.io`, a seekable [`BytesIO`](../core/io.md): `seek` / `pread` there work
+**in memory** over the already-downloaded body (see [Streaming body](stream.md) for the
+distinction).
 
 === "Python"
 
     ```python
     import yggdryl
 
-    # The Io factory opens the right backend: a file path -> LocalPath,
-    # http/https -> a sent response. Read its body like any handle.
-    handle = yggdryl.BytesIO  # noqa: F841  (illustrative)
     response = yggdryl.HttpSession().get("https://example.com/big.parquet")
-    body = response.io        # seek / pread a remote footer with one Range request
+    body = response.io           # a Rust-backed BytesIO over the buffered body
+    tail = body.pread(8, -8, 2)  # whence 2 = end; reads in memory (body buffered)
     ```
 
 === "Node"
@@ -359,7 +359,8 @@ returned response reads and seeks like any other byte source — the `http`/`htt
     const { HttpSession } = require("yggdryl");
 
     const response = await new HttpSession().get("https://example.com/big.parquet");
-    const body = response.io; // seek / pread a remote footer with one Range request
+    const body = response.io;       // a Rust-backed BytesIO over the buffered body
+    const tail = body.pread(8, -8, 2); // whence 2 = end; reads in memory (body buffered)
     ```
 
 === "Rust"

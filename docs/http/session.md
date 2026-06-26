@@ -88,11 +88,12 @@ a cross-origin redirect strips it — credentials never leak to another host.
 === "Node"
 
     ```javascript
-    // Constructor: (userAgent, headers, maxRedirects, baseUrl, httpVersion,
-    //               verify, proxy, caCert, basicAuth, bearerAuth, readTimeout).
+    // Constructor: (userAgent, headers, maxRedirects, baseUrl, httpVersion, verify,
+    //              proxy, caCert, caCertFile, basicAuth, bearerAuth, readTimeout).
+    // bearerAuth is the 11th argument.
     const session = new HttpSession(
         undefined, { Accept: "application/json" }, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined, "tok-123",
+        undefined, undefined, undefined, undefined, undefined, "tok-123",
     );
     await session.get("https://httpbin.org/bearer");
     ```
@@ -163,12 +164,12 @@ long; `0` removes the bound. `with_max_redirects` (default 10) caps the 3xx hops
 === "Node"
 
     ```javascript
-    // readTimeout is the 11th option; maxRedirects the 3rd.
-    const opts = Array(11).fill(undefined);
-    opts[2] = 5;       // maxRedirects
-    opts[10] = 30;     // readTimeout (seconds)
+    // readTimeout is the 12th option; maxRedirects the 3rd.
+    const opts = Array(12).fill(undefined);
+    opts[2] = 5;       // maxRedirects (3rd arg)
+    opts[11] = 30;     // readTimeout (12th arg, seconds)
     const session = new HttpSession(...opts);
-    assert.strictEqual(session.readTimeout, 30);
+    // session.readTimeout === 30
     ```
 
 === "Rust"

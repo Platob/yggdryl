@@ -246,7 +246,7 @@ authority with a host).
 
     uri = url.to_uri()
     assert uri.authority == "h"
-    assert yggdryl.Uri("mailto:a@b").to_url  # raises ValueError when called: no host
+    # to_url() requires a host: Uri("mailto:a@b").to_url() raises ValueError.
     ```
 
 === "Node"

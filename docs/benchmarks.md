@@ -28,15 +28,18 @@ the *same* in-process server (both sides set `TCP_NODELAY` for a fair fight).
 
 | workload | yggdryl | `node:http` | speedup |
 | --- | --- | --- | --- |
-| GET small body (latency) | — | — | ≈1.4× |
+| GET small body (latency) | 0.60 ms | 0.24 ms | 0.39× |
 | GET 8 MiB body (throughput) | 1093 MiB/s | 770 MiB/s | **1.42×** |
+
+Small-body latency is bound by the `Promise` + FFI crossing per call; the 8 MiB
+throughput win comes from the single-buffer (no redundant copy) body.
 
 **Python binding vs `requests`** (same in-process server):
 
 | workload | yggdryl | `requests` | speedup |
 | --- | --- | --- | --- |
-| GET small body (latency) | 0.53 ms | 0.83 ms | **1.6×** |
-| GET 8 MiB body (throughput) | 912 MiB/s | 530 MiB/s | **1.7×** |
+| GET small body (latency) | 0.21 ms | 0.75 ms | **3.6×** |
+| GET 8 MiB body (throughput) | 1573 MiB/s | 723 MiB/s | **2.2×** |
 
 The Rust core goes further: the windowed `HttpStream` reads to end at full memory
 speed, a remote footer is one `Range` request (no full download), and concurrent
@@ -45,7 +48,7 @@ speed, a remote footer is one `Range` request (no full download), and concurrent
 | workload | result |
 | --- | --- |
 | `HttpStream` windowed `read_to_end` (8 MiB) | 1.35 GiB/s |
-| footer via `pread` (one Range, no full download) | 0.44 ms |
+| footer via `pread` (one Range, no full download) | 0.28 ms |
 | `send_many` (concurrency 8) vs sequential | ≈6× |
 
 ```bash
@@ -77,7 +80,8 @@ columnar/log data).
 
 | workload | yggdryl | stdlib | speedup |
 | --- | --- | --- | --- |
-| gzip compress | 14 MiB/s | 9 MiB/s | **1.5×** |
+| gzip compress | 40 MiB/s | 11 MiB/s | **3.6×** |
+| gzip decompress | 227 MiB/s | 498 MiB/s | 0.45× |
 
 yggdryl also exposes codecs the standard libraries lack — `zstd`, `snappy`, and
 `brotli` — through the *same* `Compression` API, so there is nothing to compare
