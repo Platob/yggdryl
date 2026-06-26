@@ -75,6 +75,48 @@ column exists:
 A frame applies this for you via [`Frame::filter_typed`](frame.md): it optimises the
 predicate against the schema, then filters with the typed predicate.
 
+## Ranges and collections
+
+Beyond the comparison operators (`eq` / `ne` / `lt` / `le` / `gt` / `ge`), a
+predicate can match a **range** or a **collection of values** — every literal is
+type-cast by `optimize` just the same:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_saga::{Predicate, Scalar};
+
+    // ts BETWEEN "2024-01-01" AND "2024-02-01"  (both bounds inclusive)
+    let range = Predicate::between("ts", Scalar::any("2024-01-01"), Scalar::any("2024-02-01"));
+
+    // symbol IN ("AAPL", "MSFT")   /   side NOT IN (...)
+    let members = Predicate::is_in("symbol", [Scalar::utf8("AAPL"), Scalar::utf8("MSFT")]);
+    let _excluded = Predicate::not_in("side", [Scalar::utf8("CANCEL")]);
+    ```
+
+## Merge & simplify
+
+`merge` folds an extra restriction into a predicate and keeps it in tight pushdown
+form; `simplify` is the normaliser it runs — it flattens nested `AND`s, drops exact
+duplicate conjuncts, and folds a same-column lower (`>=`) and upper (`<=`) bound
+into a single `BETWEEN`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_saga::{Predicate, Scalar};
+
+    let lower = Predicate::ge("ts", Scalar::any("2024-01-01"));
+    let upper = Predicate::le("ts", Scalar::any("2024-02-01"));
+
+    // ts >= a  AND  ts <= b   →   ts BETWEEN a AND b
+    let merged = lower.merge(upper);
+    assert!(matches!(merged, Predicate::Between { .. }));
+    ```
+
+Bounds on different columns stay separate (the merger never reorders scalar values
+it cannot compare), so `merge` is always sound.
+
 ## Expression nodes
 
 `Expression` is the underlying trait; its leaves are `col(name)` (a column
