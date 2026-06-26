@@ -184,11 +184,13 @@ shape:
   handshake; idle connections past the keep-alive TTL are dropped), default headers, a
   `RetryConfig`, a `read_timeout` (`with_read_timeout`, default 120s — errors with a hint
   when the server sends no data for that long), `max_concurrency` (8) and `batch_size`
-  (80). **Every request funnels through the one method** `send(req, raise_error)` — there
+  (80). **Every dispatch funnels through the one method** `send(req, raise_error)` — there
   is no `stream` flag (the body is **always** a live `HttpStream`, which handles buffering
-  and random access itself) and no separate `request()`/`stream()` method. It `prepare`s
-  the request (merge defaults; per-request headers win, case-insensitively), runs it with
-  the retry policy, and returns an `HttpResponse` holding the live body. `raise_error`
+  and random access itself) and no separate `stream()` method; the verb helpers
+  (`get`/`post`/…/`request`) all build a request and delegate to `send` through a private
+  `run_verb` (so `request(req, raise_error, send)` is a verb, not a second send path). It
+  `prepare`s the request (merge defaults; per-request headers win, case-insensitively), runs
+  it with the retry policy, and returns an `HttpResponse` holding the live body. `raise_error`
   (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; connection reuse is the
   request's own **keep-alive idle TTL** in seconds (`with_keep_alive(seconds)`, default 300
   — `0` → `Connection: close`; a pool-saturation safeguard still forces `close` on streams

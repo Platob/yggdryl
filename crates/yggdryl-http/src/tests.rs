@@ -103,6 +103,8 @@ fn verb_with_send_false_returns_an_unsent_response_holding_the_request() {
         .unwrap();
     assert!(!unsent.is_sent());
     assert_eq!(unsent.status(), 0);
+    // An unsent placeholder is not a success — `ok()` must not treat status 0 as 2xx.
+    assert!(!unsent.ok());
     let request = unsent
         .request()
         .expect("an unsent response carries its request");

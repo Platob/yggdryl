@@ -77,7 +77,12 @@ test('http session against a localhost server', async () => {
     assert.strictEqual(overridden.header('x-echo-back'), 'from-request')
 
     // raiseError=false returns the 404 response; the verb helpers reject.
-    const notFound = await session.request('GET', base + '/missing', undefined, undefined, false)
+    // request args: method, url, headers, body, params, basicAuth, bearerAuth,
+    // allowRedirect, keepAlive, httpVersion, raiseError, send.
+    const notFound = await session.request(
+      'GET', base + '/missing', undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, false,
+    )
     assert.strictEqual(notFound.status, 404)
     assert.strictEqual(notFound.ok, false)
     assert.throws(() => notFound.raiseForStatus())
@@ -230,10 +235,15 @@ test('readTimeout, keepAlive seconds and copy', async () => {
   const base = `http://127.0.0.1:${port}`
   try {
     const session = new HttpSession()
-    // request(method, url, headers, body, raiseError, keepAlive, ...)
-    const closed = await session.request('GET', base + '/', undefined, undefined, false, 0)
+    // request args: method, url, headers, body, params, basicAuth, bearerAuth,
+    // allowRedirect, keepAlive, httpVersion, raiseError, send.
+    const closed = await session.request(
+      'GET', base + '/', undefined, undefined, undefined, undefined, undefined, undefined, 0,
+    )
     assert.strictEqual(closed.status, 200)
-    const pooled = await session.request('GET', base + '/', undefined, undefined, false, 30)
+    const pooled = await session.request(
+      'GET', base + '/', undefined, undefined, undefined, undefined, undefined, undefined, 30,
+    )
     assert.strictEqual(pooled.status, 200)
   } finally {
     server.close()
@@ -271,7 +281,10 @@ test('http version negotiation', async () => {
     await assert.rejects(pinned.get(base + '/'))
     // The per-request override rejects the same way.
     await assert.rejects(
-      session.request('GET', base + '/', undefined, undefined, undefined, undefined, undefined, '3'),
+      // httpVersion is the 10th arg (…, allowRedirect, keepAlive, httpVersion).
+      session.request(
+        'GET', base + '/', undefined, undefined, undefined, undefined, undefined, undefined, undefined, '3',
+      ),
     )
   } finally {
     server.close()

@@ -294,9 +294,12 @@ fn run_verb(
             } else {
                 let prepared = session.prepare(request);
                 let url = prepared.url().to_string();
+                // Match the core's `HttpResponse::unsent`: an undispatched request
+                // reports its own pinned version, else `Auto` (not the session
+                // default, which negotiation has not yet resolved).
                 let http_version = prepared
                     .http_version()
-                    .unwrap_or_else(|| session.http_version())
+                    .unwrap_or(HttpVersion::Auto)
                     .as_str()
                     .to_string();
                 let request_spec = Some(HttpRequest::from_core(&prepared, body));
@@ -376,10 +379,12 @@ impl HttpResponse {
         self.status
     }
 
-    /// Whether the status is below 400 (the ``requests`` definition of "ok").
+    /// Whether the response is a success: it was actually dispatched
+    /// (:attr:`is_sent`) **and** its status is below 400 (the ``requests``
+    /// definition of "ok"). An **unsent** placeholder (status ``0``) is *not* ok.
     #[getter]
     fn ok(&self) -> bool {
-        self.status < 400
+        self.status != 0 && self.status < 400
     }
 
     /// Whether this response was actually dispatched. ``False`` for the **unsent**
@@ -390,8 +395,10 @@ impl HttpResponse {
         self.status != 0
     }
 
-    /// The request that produced this response (the prepared request), mirroring
-    /// :attr:`requests.Response.request`, or ``None``.
+    /// The originating prepared request that produced this response (similar to
+    /// :attr:`requests.Response.request`), or ``None``. After a redirect it is the
+    /// *original* request, not the final hop, so its method/URL may differ from
+    /// :attr:`url`.
     #[getter]
     fn request(&self) -> Option<HttpRequest> {
         self.request.clone()
@@ -554,7 +561,10 @@ impl HttpResponse {
     }
 
     /// Support ``pickle`` / ``copy`` by reconstructing through the constructor —
-    /// the buffered body and metadata are carried verbatim.
+    /// the buffered body and metadata are carried verbatim. The embedded
+    /// :attr:`request` is **not** preserved (it belongs to a live exchange, like the
+    /// rule that a request/response body is not serialised), so a restored response
+    /// has ``request == None``.
     #[allow(clippy::type_complexity)]
     fn __reduce__<'py>(
         &self,
@@ -996,16 +1006,15 @@ impl HttpSession {
     }
 
     /// Dispatch a prebuilt :class:`HttpRequest` through this session — the
-    /// centralised ``send(request) -> HttpResponse`` entry point. ``raise_error``
-    /// (default ``True``) raises on a 4xx/5xx status; with ``send=False`` the
-    /// prepared request is returned as an **unsent** response instead.
-    #[pyo3(signature = (request, *, raise_error = true, send = true))]
+    /// centralised ``send(request) -> HttpResponse`` entry point (the dispatch
+    /// primitive, always sent; build without sending via a verb's ``send=False``).
+    /// ``raise_error`` (default ``True``) raises on a 4xx/5xx status.
+    #[pyo3(signature = (request, *, raise_error = true))]
     fn send(
         &self,
         py: Python<'_>,
         request: PyRef<'_, HttpRequest>,
         raise_error: bool,
-        send: bool,
     ) -> PyResult<HttpResponse> {
         let core = request.to_core()?;
         run_verb(
@@ -1014,7 +1023,7 @@ impl HttpSession {
             core,
             request.body.clone(),
             raise_error,
-            send,
+            true,
         )
     }
 }

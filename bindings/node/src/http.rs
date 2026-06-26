@@ -420,9 +420,12 @@ impl Task for RequestTask {
             // No network call: prepare the request and return it unsent.
             let prepared = self.session.prepare(request);
             let url = prepared.url().to_string();
+            // Match the core's `HttpResponse::unsent`: an undispatched request
+            // reports its own pinned version, else `Auto` (not the session default,
+            // which negotiation has not yet resolved).
             let http_version = prepared
                 .http_version()
-                .unwrap_or_else(|| self.session.http_version())
+                .unwrap_or(HttpVersion::Auto)
                 .as_str()
                 .to_string();
             let request = Some(RequestData::from_core(&prepared, body));
@@ -477,10 +480,12 @@ impl HttpResponse {
         self.status
     }
 
-    /// Whether the status is below 400 (the `requests` definition of "ok").
+    /// Whether the response is a success: it was actually dispatched (`isSent`)
+    /// **and** its status is below 400 (the `requests` definition of "ok"). An
+    /// **unsent** placeholder (status `0`) is *not* ok.
     #[napi(getter)]
     pub fn ok(&self) -> bool {
-        self.status < 400
+        self.status != 0 && self.status < 400
     }
 
     /// Whether this response was actually dispatched. `false` for the **unsent**
@@ -491,8 +496,9 @@ impl HttpResponse {
         self.status != 0
     }
 
-    /// The request that produced this response (the prepared request), mirroring
-    /// `requests.Response.request`, or `null`.
+    /// The originating prepared request that produced this response (similar to
+    /// `requests.Response.request`), or `null`. After a redirect it is the *original*
+    /// request, not the final hop, so its method/URL may differ from `url`.
     #[napi(getter)]
     pub fn request(&self) -> Option<HttpRequest> {
         self.request.clone().map(|data| HttpRequest { data })
@@ -1019,14 +1025,14 @@ impl HttpSession {
     }
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
-    /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
-    /// 4xx/5xx status. `keepAlive` is the keep-alive idle TTL in seconds (default
-    /// 300 — 5 minutes; `0` sends `Connection: close`). `allowRedirect` (default
-    /// `true`) follows 3xx redirects (up to the session's `maxRedirects`); pass
-    /// `false` to receive the 3xx response itself. `httpVersion` (e.g. `"2"`) pins
-    /// the protocol version. `params` / `basicAuth` / `bearerAuth` configure the
-    /// query and `Authorization`. With `send=false` the prepared request is returned
-    /// as an **unsent** response (see `get`).
+    /// (a `Buffer` or a `LocalPath`) plus the same `params` / `basicAuth` /
+    /// `bearerAuth` / `allowRedirect` / `keepAlive` / `httpVersion` / `raiseError` /
+    /// `send` options as the other verbs (in that order). `raiseError` (default
+    /// `true`) throws on a 4xx/5xx status; `keepAlive` is the keep-alive idle TTL in
+    /// seconds (default 300; `0` sends `Connection: close`); `allowRedirect` (default
+    /// `true`) follows 3xx redirects; `httpVersion` (e.g. `"2"`) pins the protocol
+    /// version. With `send=false` the prepared request is returned as an **unsent**
+    /// response (see `get`).
     #[napi]
     #[allow(clippy::too_many_arguments)]
     pub fn request(
@@ -1035,13 +1041,13 @@ impl HttpSession {
         url: String,
         headers: Option<HashMap<String, String>>,
         body: Option<Either<Buffer, &LocalPath>>,
-        raise_error: Option<bool>,
-        keep_alive: Option<f64>,
-        allow_redirect: Option<bool>,
-        http_version: Option<String>,
         params: Option<HashMap<String, String>>,
         basic_auth: Option<Vec<String>>,
         bearer_auth: Option<String>,
+        allow_redirect: Option<bool>,
+        keep_alive: Option<f64>,
+        http_version: Option<String>,
+        raise_error: Option<bool>,
         send: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
         make_task(
@@ -1062,32 +1068,19 @@ impl HttpSession {
     }
 
     /// Dispatch a prebuilt `HttpRequest` through this session — the centralised
-    /// `send(request) -> HttpResponse` entry point. `raiseError` (default `true`)
-    /// rejects on a 4xx/5xx status; with `send=false` the prepared request is
-    /// returned as an **unsent** response instead.
+    /// `send(request) -> HttpResponse` entry point (the dispatch primitive, always
+    /// sent; build without sending via a verb's `send=false`). `raiseError` (default
+    /// `true`) rejects on a 4xx/5xx status. The request's headers are carried
+    /// verbatim (order and duplicates preserved).
     #[napi]
     pub fn send(
         &self,
         request: &HttpRequest,
         raise_error: Option<bool>,
-        send: Option<bool>,
     ) -> Result<AsyncTask<RequestTask>> {
-        let data = &request.data;
-        make_task(
-            self.inner.clone(),
-            &data.method,
-            data.url.clone(),
-            Some(data.headers.iter().cloned().collect()),
-            None,
-            data.body.clone(),
-            None,
-            None,
-            Some(data.allow_redirect),
-            Some(data.keep_alive),
-            data.http_version.clone(),
-            raise_error,
-            send,
-        )
+        request
+            .data
+            .task(self.inner.clone(), raise_error.unwrap_or(true))
     }
 }
 
@@ -1270,13 +1263,13 @@ pub fn http_request(
     url: String,
     headers: Option<HashMap<String, String>>,
     body: Option<Either<Buffer, &LocalPath>>,
-    raise_error: Option<bool>,
-    keep_alive: Option<f64>,
-    allow_redirect: Option<bool>,
-    http_version: Option<String>,
     params: Option<HashMap<String, String>>,
     basic_auth: Option<Vec<String>>,
     bearer_auth: Option<String>,
+    allow_redirect: Option<bool>,
+    keep_alive: Option<f64>,
+    http_version: Option<String>,
+    raise_error: Option<bool>,
     send: Option<bool>,
 ) -> Result<AsyncTask<RequestTask>> {
     make_task(

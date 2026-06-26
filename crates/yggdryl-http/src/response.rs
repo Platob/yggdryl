@@ -24,7 +24,7 @@ use crate::version::HttpVersion;
 /// Unix-epoch seconds, `0.0` until set.
 ///
 /// It **holds the [`request`](HttpResponse::request) that produced it** (the
-/// prepared request, mirroring `requests.Response.request`), so the originating
+/// originating prepared request, similar to `requests.Response.request`), so the
 /// method / URL / headers can always be read back. A verb called with `send =
 /// false` returns an **unsent** response — [`is_sent`](HttpResponse::is_sent) is
 /// `false`, the status is `0` and the body empty — that carries only the prepared
@@ -122,9 +122,13 @@ impl HttpResponse {
         self.status
     }
 
-    /// Whether the status is below 400 (the `requests` definition of "ok").
+    /// Whether the response is a success: it was actually dispatched
+    /// ([`is_sent`](HttpResponse::is_sent)) **and** its status is below 400 (the
+    /// `requests` definition of "ok"). An **unsent** placeholder (status `0`) is
+    /// therefore *not* ok, so `if response.ok()` never treats a never-sent response
+    /// as a 2xx success.
     pub fn ok(&self) -> bool {
-        self.status < 400
+        self.is_sent() && self.status < 400
     }
 
     /// Whether this response was actually dispatched. `false` for the **unsent**
@@ -134,9 +138,12 @@ impl HttpResponse {
         self.status != 0
     }
 
-    /// The request that produced this response — the prepared request (method,
-    /// URL, headers and settings), mirroring `requests.Response.request`. `None`
-    /// only for a bare response built without one.
+    /// The request that produced this response — the **prepared, originating**
+    /// request (method, URL, headers and settings), similar to
+    /// `requests.Response.request`. After a redirect chain it is the *original*
+    /// request that entered the chain (not the final hop), so its method/URL may
+    /// differ from [`url`](HttpResponse::url). `None` only for a bare response built
+    /// without one.
     pub fn request(&self) -> Option<&HttpRequest> {
         self.request.as_ref()
     }
@@ -152,7 +159,10 @@ impl HttpResponse {
     /// a verb with `send = false`) is sent later; on an already-sent response it
     /// replays the originating request. `raise_error` turns a 4xx/5xx status into
     /// an [`HttpError::Status`]. Errors with [`HttpError::Unsupported`] if the
-    /// response carries no request.
+    /// response carries no request. (Replaying an *already-sent* request whose body
+    /// was a one-shot stream re-sends it with an empty body, since a streamed body
+    /// cannot be duplicated — see [`HttpRequest::copy`](crate::HttpRequest::copy);
+    /// an unsent response keeps its full body.)
     pub fn send(self, raise_error: bool) -> Result<HttpResponse, HttpError> {
         match self.request {
             Some(request) => HttpSession::shared().send(request, raise_error),

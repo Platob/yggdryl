@@ -800,9 +800,10 @@ impl HttpSession {
     pub fn send(&self, request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
         // Keep a copy of the prepared request (before the redirect loop and any
-        // transport-level headers) to embed in the final response, so it always
-        // reports what produced it (`requests.Response.request`). A streamed body
-        // is not duplicable, so the copy carries none — see [`HttpRequest::copy`].
+        // transport-level headers) to embed in the final response, so it reports
+        // the *originating* request — for a redirected response this is the request
+        // that entered the chain, not the final hop. A streamed body is not
+        // duplicable, so the copy carries none — see [`HttpRequest::copy`].
         let origin = request.copy();
         // `sent_at` reflects the *first* dispatch across a redirect chain.
         let mut sent_at: Option<f64> = None;
