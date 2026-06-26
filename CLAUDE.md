@@ -150,7 +150,11 @@ base stays codec-free and the dependency points one way — `compression` builds
 Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`/`brotli`, all on by
 `default`); a variant whose feature is off still parses and names itself but reports
 `Unsupported` on encode/decode (`is_available` tells ahead of time). `media` adds the
-stats-inference path. When you add a codec, surface it in *both* bindings.
+stats-inference path. **`gzip` uses `flate2`'s pure-Rust `zlib-rs` backend** (not the
+default `miniz_oxide`): near-C-zlib throughput (~3x faster compress, matching decompress)
+with **no C compiler / cmake build dependency**, so the wheels / npm builds stay
+pure-Rust — keep `default-features = false` + `features = ["zlib-rs"]` on the `flate2`
+dep. When you add a codec, surface it in *both* bindings.
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
