@@ -157,13 +157,24 @@ impl HttpResponse {
             .and_then(|content_type| yggdryl_core::MimeType::from_str(content_type).ok())
     }
 
-    /// The response's layered [`MediaType`](yggdryl_core::MediaType) stack, inferred
-    /// from its `Content-Type` (e.g. `text/csv` → `[Csv]`). Only present under the
-    /// `media` feature.
+    /// The response's layered [`MediaType`](yggdryl_core::MediaType) stack,
+    /// **combining `Content-Type` with `Content-Encoding`**: the content MIME is the
+    /// inner type and the transfer encoding (`gzip` / `zstd` / `br`) the outer layer,
+    /// so a gzipped CSV (`Content-Type: text/csv`, `Content-Encoding: gzip`) reads as
+    /// `[Csv, Gzip]` — exactly like the media type of a `data.csv.gz` path. Only
+    /// present under the `media` feature.
     #[cfg(feature = "media")]
     pub fn media_type(&self) -> Option<yggdryl_core::MediaType> {
-        self.mime_type()
-            .map(|mime| yggdryl_core::MediaType::new(vec![mime]))
+        let mut types: Vec<yggdryl_core::MimeType> = self.mime_type().into_iter().collect();
+        if let Some(encoding) = self.content_encoding() {
+            if let Some(mime) = yggdryl_core::Compression::from_str(encoding)
+                .ok()
+                .and_then(|codec| codec.mime())
+            {
+                types.push(mime);
+            }
+        }
+        (!types.is_empty()).then(|| yggdryl_core::MediaType::new(types))
     }
 
     /// The [`Compression`](yggdryl_core::Compression) codec named by the response's

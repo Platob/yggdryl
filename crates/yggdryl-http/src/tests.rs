@@ -345,6 +345,17 @@ fn brotli_response_is_decoded_transparently() {
     let (url, _rx) = serve_once(reply);
     let response = HttpSession::new().get(&url).unwrap();
     assert_eq!(response.content_encoding(), Some("br"));
+    #[cfg(feature = "media")]
+    {
+        // media_type combines Content-Type with Content-Encoding: [Json, Brotli].
+        assert_eq!(
+            response.media_type().map(|m| m.types().to_vec()),
+            Some(vec![
+                yggdryl_core::MimeType::from_str("application/json").unwrap(),
+                yggdryl_core::MimeType::Brotli,
+            ])
+        );
+    }
     assert_eq!(
         response.compression(),
         Some(yggdryl_core::Compression::Brotli)

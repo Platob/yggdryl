@@ -132,7 +132,8 @@ base stays codec-free and the dependency points one way — `compression` builds
 - `Compression` — `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (HTTP
   `Content-Encoding: br`); `from_str` / `from_extension` / `as_str` / `extension` /
   `is_available`, and (under `media`) `from_mime` / `from_media` / `from_stats` for
-  inference. Brotli has no magic bytes, so it is recognised by the `.br` extension /
+  inference plus `mime()` (the inverse of `from_mime`, used to add an encoding layer to
+  a media type). Brotli has no magic bytes, so it is recognised by the `.br` extension /
   `application/x-brotli` MIME only, never by content sniffing.
 - `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
   flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
@@ -226,13 +227,18 @@ shape:
   session `basic_auth`/`bearer_auth` (Python kwargs) / `basicAuth`/`bearerAuth` (Node
   options).
 - `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`, plus the typed
-  reads `mime_type`/`media_type` (from `Content-Type`, under `media`) and `compression`
-  (the codec named by `Content-Encoding`, under `compression`). It **holds the live
-  body** as a `Box<dyn Io>` (the `HttpStream`): `reader()` is the decoded body `Io`
-  (decompressed under `compression`), `bytes`/`text`/`json`/`into_bytesio` drain it
-  (`text`/`json` decompress transparently first), `read_all` drains and returns the
-  `received_at` finish time together (used by the buffering bindings), `body_mut`
-  borrows the raw body to read/seek in place, `into_io` takes the whole body.
+  reads `mime_type` (from `Content-Type`), `media_type` (**combines `Content-Type` with
+  `Content-Encoding`** — a gzipped CSV is `[Csv, Gzip]`, like a `data.csv.gz` path; under
+  `media`) and `compression` (the codec named by `Content-Encoding`, under
+  `compression`). It **holds the live body** as a `Box<dyn Io>` (the `HttpStream`):
+  `reader()` is the decoded body `Io` (decompressed under `compression`),
+  `bytes`/`text`/`json`/`into_bytesio` drain it (`text`/`json` decompress transparently
+  first), `read_all` drains and returns the `received_at` finish time together (used by
+  the buffering bindings), `body_mut` borrows the raw body to read/seek in place,
+  `into_io` takes the whole body. In the **bindings** the decoded body is exposed as a
+  yggdryl `BytesIO` handle (`response.io`) — the performant, Rust-backed byte result you
+  `json()`/`decompress()` without an FFI copy — while `content` (native `bytes`/`Buffer`)
+  and `BytesIO`'s `__bytes__` / `to_bytes_io()` are the on-demand native converters.
 - `HttpStream: Io` — the seekable HTTP body that **streams off the held connection**:
   sequential `read` pulls bytes straight off the socket on demand, keeping only a
   sliding 4 MiB cache for short seek-backs, while `pread` (footer / column-chunk) and

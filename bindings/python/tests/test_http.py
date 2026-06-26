@@ -237,8 +237,21 @@ def test_brotli_response_auto_decodes_with_json_and_accessors(base_url):
     assert response.content_encoding == "br"
     assert response.compression == "brotli"
     assert response.mime_type == "application/json"
-    assert response.media_type == ["application/json"]
+    # media_type combines Content-Type + Content-Encoding (inner → outer).
+    assert response.media_type == ["application/json", "application/x-brotli"]
     assert response.json() == {"msg": "brotli over the wire", "n": 7}
+
+    # The performant byte result is a yggdryl BytesIO handle — parse it in Rust with
+    # no native copy. Native converters produce bytes / io.BytesIO on demand.
+    import io as _io
+
+    handle = response.io
+    assert isinstance(handle, yggdryl.BytesIO)
+    assert handle.json() == {"msg": "brotli over the wire", "n": 7}
+    assert bytes(handle) == response.content
+    native = handle.to_bytes_io()
+    assert isinstance(native, _io.BytesIO)
+    assert native.getvalue() == response.content
 
 
 def test_read_timeout_keep_alive_and_copy(base_url):

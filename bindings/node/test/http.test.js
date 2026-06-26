@@ -203,8 +203,15 @@ test('brotli response auto-decodes with json and accessors', async () => {
     assert.strictEqual(r.contentEncoding, 'br')
     assert.strictEqual(r.compression, 'brotli')
     assert.strictEqual(r.mimeType, 'application/json')
-    assert.deepStrictEqual(r.mediaType, ['application/json'])
+    // mediaType combines Content-Type + Content-Encoding (inner → outer).
+    assert.deepStrictEqual(r.mediaType, ['application/json', 'application/x-brotli'])
     assert.deepStrictEqual(r.json(), { msg: 'brotli over the wire', n: 7 })
+
+    // The performant byte result is a yggdryl BytesIO handle — parse it in Rust with
+    // no native copy; `content` gives a native Buffer when needed.
+    const handle = r.io
+    assert.deepStrictEqual(handle.json(), { msg: 'brotli over the wire', n: 7 })
+    assert.deepStrictEqual(handle.getValue(), r.content)
   } finally {
     server.close()
   }

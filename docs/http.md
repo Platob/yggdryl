@@ -9,14 +9,21 @@ default); decompression goes through [compression](compression.md), on by defaul
 `text()` and `json()` (and `bytes()`) **transparently decompress** the body per its
 `Content-Encoding` — `gzip` / `zstd` / `snappy` / `brotli` (`br`) — so you always read
 the decoded payload. The response also exposes `compression()` (the codec named by
-`Content-Encoding`), `mime_type()` / `media_type()` (from `Content-Type`), and
-`content_type` / `content_encoding`.
+`Content-Encoding`), `mime_type()`, `media_type()` — which **combines `Content-Type`
+with `Content-Encoding`**, so a gzipped CSV reads as `["text/csv", "application/gzip"]`
+— and `content_type` / `content_encoding`.
+
+In the bindings the decoded body is a yggdryl **`BytesIO` handle** via `response.io`:
+the performant byte result that stays Rust-backed, so `io.json()` / `io.decompress()` /
+`io.read()` run with no copy into the host language. `content` (native `bytes` /
+`Buffer`) — and, on `BytesIO`, `bytes(handle)` / `to_bytes_io()` in Python — are the
+on-demand native converters.
 
 ```python
 r = yggdryl.HttpSession().get("https://example.com/data.json")  # served `Content-Encoding: br`
-r.compression   # "brotli"
-r.mime_type     # "application/json"
-data = r.json() # decompressed and parsed in Rust
+r.compression       # "brotli"
+r.media_type        # ["application/json", "application/x-brotli"]
+data = r.io.json()  # decompressed and parsed in Rust, no bytes copied into Python
 ```
 
 ## Request in, response out

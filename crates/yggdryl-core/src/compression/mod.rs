@@ -125,6 +125,21 @@ impl Compression {
         }
     }
 
+    /// The [`MimeType`](crate::MimeType) this codec is carried as — the inverse of
+    /// [`from_mime`](Compression::from_mime). `None` for [`None`](Compression::None)
+    /// and `Snappy` (which has no registered MIME). Only present under the `media`
+    /// feature.
+    #[cfg(feature = "media")]
+    pub fn mime(&self) -> Option<crate::MimeType> {
+        use crate::MimeType;
+        match self {
+            Compression::Gzip => Some(MimeType::Gzip),
+            Compression::Zstd => Some(MimeType::Zstd),
+            Compression::Brotli => Some(MimeType::Brotli),
+            _ => None,
+        }
+    }
+
     /// Infers the codec from a layered [`MediaType`](crate::MediaType) stack — its
     /// outermost (container) MIME, e.g. `Gzip` for `data.csv.gz`. Only present
     /// under the `media` feature.
@@ -417,6 +432,20 @@ mod tests {
         assert_eq!(Compression::Zstd.extension(), Some("zst"));
         assert_eq!(Compression::None.extension(), None);
         assert!(Compression::None.is_available());
+    }
+
+    #[cfg(feature = "media")]
+    #[test]
+    fn mime_is_the_inverse_of_from_mime() {
+        use crate::MimeType;
+        for codec in [Compression::Gzip, Compression::Zstd, Compression::Brotli] {
+            let mime = codec.mime().unwrap();
+            assert_eq!(Compression::from_mime(&mime), Some(codec));
+        }
+        // Snappy / None have no registered MIME.
+        assert_eq!(Compression::Snappy.mime(), None);
+        assert_eq!(Compression::None.mime(), None);
+        assert_eq!(Compression::Brotli.mime(), Some(MimeType::Brotli));
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyType};
-use yggdryl_core::{LocalPath as CoreLocalPath, Path};
+use yggdryl_core::{BytesIO as CoreBytesIO, LocalPath as CoreLocalPath, Path};
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpResponse as CoreHttpResponse,
     HttpSession as CoreHttpSession, HttpVersion, Method,
@@ -163,13 +163,26 @@ impl HttpResponse {
             .map(|mime| mime.to_string())
     }
 
-    /// The layered media type from ``Content-Type`` as a list of MIME strings
-    /// (e.g. ``["text/csv"]``), or ``None``.
+    /// The layered media type **combining ``Content-Type`` with ``Content-Encoding``**
+    /// as a list of MIME strings: the content type is inner, the transfer encoding
+    /// outer — e.g. a gzipped CSV reads as ``["text/csv", "application/gzip"]``.
+    /// ``None`` when neither header names a known type.
     #[getter]
     fn media_type(&self) -> Option<Vec<String>> {
-        self.content_type()
+        let mut types: Vec<String> = self
+            .content_type()
             .and_then(|ct| yggdryl_core::MimeType::from_str(ct).ok())
-            .map(|mime| vec![mime.to_string()])
+            .map(|mime| mime.to_string())
+            .into_iter()
+            .collect();
+        if let Some(mime) = self
+            .content_encoding()
+            .and_then(|enc| yggdryl_core::Compression::from_str(enc).ok())
+            .and_then(|codec| codec.mime())
+        {
+            types.push(mime.to_string());
+        }
+        (!types.is_empty()).then_some(types)
     }
 
     /// The compression codec named by ``Content-Encoding`` (``"gzip"`` / ``"zstd"``
@@ -183,7 +196,20 @@ impl HttpResponse {
             .map(|codec| codec.as_str().to_string())
     }
 
-    /// The raw response body as ``bytes`` (already decompressed).
+    /// The decompressed body as a yggdryl :class:`BytesIO` handle — the
+    /// **performant** accessor: it stays a Rust-backed, seekable byte buffer, so you
+    /// can ``json()`` / ``decompress()`` / ``read`` it (or pass it to another yggdryl
+    /// call) without copying the bytes into Python. Use :attr:`content` to get native
+    /// ``bytes`` only when a Python API requires them.
+    #[getter]
+    fn io(&self) -> BytesIO {
+        BytesIO {
+            inner: CoreBytesIO::from_bytes(self.body.clone()),
+        }
+    }
+
+    /// The raw response body as native ``bytes`` (already decompressed; a copy out
+    /// of Rust — prefer :attr:`io` for further Rust-side work).
     #[getter]
     fn content<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, &self.body)

@@ -11,9 +11,11 @@ use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
 use yggdryl_core::{
-    Compression as CoreCompression, LocalPath as CoreLocalPath, MimeType as CoreMimeType, Path,
-    Url as CoreUrl,
+    BytesIO as CoreBytesIO, Compression as CoreCompression, LocalPath as CoreLocalPath,
+    MimeType as CoreMimeType, Path, Url as CoreUrl,
 };
+
+use crate::bytesio::BytesIO;
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, HttpVersion, Method,
 };
@@ -247,12 +249,25 @@ impl HttpResponse {
             .map(|mime| mime.to_string())
     }
 
-    /// The layered media type from `Content-Type` as an array of MIME strings.
+    /// The layered media type **combining `Content-Type` with `Content-Encoding`** as
+    /// an array of MIME strings: the content type is inner, the transfer encoding
+    /// outer — e.g. a gzipped CSV reads as `["text/csv", "application/gzip"]`.
     #[napi(getter, js_name = "mediaType")]
     pub fn media_type(&self) -> Option<Vec<String>> {
-        self.content_type()
+        let mut types: Vec<String> = self
+            .content_type()
             .and_then(|ct| CoreMimeType::from_str(&ct).ok())
-            .map(|mime| vec![mime.to_string()])
+            .map(|mime| mime.to_string())
+            .into_iter()
+            .collect();
+        if let Some(mime) = self
+            .content_encoding()
+            .and_then(|enc| CoreCompression::from_str(&enc).ok())
+            .and_then(|codec| codec.mime())
+        {
+            types.push(mime.to_string());
+        }
+        (!types.is_empty()).then_some(types)
     }
 
     /// The compression codec named by `Content-Encoding` (`"gzip"` / `"zstd"` /
@@ -266,7 +281,19 @@ impl HttpResponse {
             .map(|codec| codec.as_str().to_string())
     }
 
-    /// The raw response body (already decompressed).
+    /// The decompressed body as a yggdryl `BytesIO` handle — the **performant**
+    /// accessor: it stays a Rust-backed, seekable byte buffer, so you can `json()` /
+    /// `decompress()` / `read` it (or pass it to another yggdryl call) without copying
+    /// the bytes into JS. Use `content` for a native `Buffer` when an API needs one.
+    #[napi(getter)]
+    pub fn io(&self) -> BytesIO {
+        BytesIO {
+            inner: CoreBytesIO::from_bytes(self.body.clone()),
+        }
+    }
+
+    /// The raw response body as a native `Buffer` (already decompressed; a copy out
+    /// of Rust — prefer `io` for further Rust-side work).
     #[napi(getter)]
     pub fn content(&self) -> Buffer {
         Buffer::from(self.body.clone())
