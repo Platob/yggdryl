@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::{MimeType as CoreMimeType, Signature};
+use yggdryl_core::{Category, MimeType as CoreMimeType, Signature};
 
 use crate::to_mapping;
 
@@ -81,16 +81,28 @@ impl MimeType {
     }
 
     /// Register (or replace) a MIME type globally. `magic` is a list of byte
-    /// prefixes matched at the start of a file. The change is process-wide.
+    /// prefixes matched at the start of a file; `category` is one of `'blob'` (the
+    /// default) / `'directory'` / `'tabular'` / `'code'` / `'codec'`. The change is
+    /// process-wide.
     #[napi]
-    pub fn register(mime: String, extensions: Vec<String>, magic: Option<Vec<Buffer>>) {
+    pub fn register(
+        mime: String,
+        extensions: Vec<String>,
+        magic: Option<Vec<Buffer>>,
+        category: Option<String>,
+    ) -> Result<()> {
         let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
         let sigs: Vec<Signature> = magic
             .unwrap_or_default()
             .into_iter()
             .map(|b| Signature::prefix(b.to_vec()))
             .collect();
-        CoreMimeType::register(&mime, &exts, &sigs);
+        let category = match category {
+            Some(c) => Category::from_str(&c).map_err(|e| Error::from_reason(e.to_string()))?,
+            None => Category::default(),
+        };
+        CoreMimeType::register(&mime, &exts, &sigs, category);
+        Ok(())
     }
 
     /// Remove a MIME type from the global registry, returning whether it existed.
@@ -145,6 +157,13 @@ impl MimeType {
     #[napi(getter, js_name = "isKnown")]
     pub fn is_known(&self) -> bool {
         self.inner.is_known()
+    }
+
+    /// The category this type plays: `'blob'` (the default) / `'directory'` /
+    /// `'tabular'` / `'code'` / `'codec'`.
+    #[napi(getter)]
+    pub fn category(&self) -> String {
+        self.inner.category().as_str().to_string()
     }
 
     /// `true` if the two MIME types are equal.

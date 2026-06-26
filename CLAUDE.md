@@ -22,12 +22,16 @@ its concern wholly — do not scatter a concern's logic across modules:
   `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
 - `media/` (`mod` + `mime.rs` + `media_type.rs`) — the `MimeType` enum (single MIME
-  types, backed by a mutable global registry of extensions/magic bytes — add a common
-  type by appending one `builtin(...)` row to `BUILTINS`, keeping a specific magic
-  *before* a broader one, e.g. AVIF's `ftypavif` before MP4's `ftyp`) and the
-  `MediaType` stack (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`;
-  **compound archive extensions** like `.tgz`/`.tbz2`/`.txz`/`.tzst` expand to
-  `[Tar, <codec>]` via `expand_extension`). **All media-type logic lives here.**
+  types, backed by a mutable global registry of extensions/magic bytes/**category** —
+  add a common type by appending one `builtin(category, …)` row to `BUILTINS`, keeping a
+  specific magic *before* a broader one, e.g. AVIF's `ftypavif` before MP4's `ftyp`;
+  programming languages like Python/Rust/TypeScript are built-ins in the `Code`
+  category, recognised by extension only) and the `Category` classifier (`Blob`
+  default / `Directory` / `Tabular` / `Code` / `Codec`, stored per registry entry and
+  read back via `MimeType::category()`; set on `register`), plus the `MediaType` stack
+  (an ordered `Vec<MimeType>`, e.g. `csv.gz` → `[Csv, Gzip]`; **compound archive
+  extensions** like `.tgz`/`.tbz2`/`.txz`/`.tzst` expand to `[Tar, <codec>]` via
+  `expand_extension`). **All media-type logic lives here.**
 - `url/` (`mod` + `uri.rs` + `url.rs`) — the `Uri`/`Url` types and the canonical URL
   tests, built on `encoding`/`mapping` (and `media` for the inferred `media_type()`
   accessor). **All URL logic lives here.**
@@ -382,8 +386,9 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Scheme split (`https+zip`) | `scheme_base()` / `scheme_ext()` |
 | Join a path reference | `join(reference)` on `Uri`/`Url` — RFC 3986 §5.2.4 dot-segment resolution (`./`, `../`, leading-`/` replace); `reference` is a path string (verbatim), a segment sequence (`["a","b"]`, each percent-encoded), or another `Uri`/`Url` (via the `JoinInput` trait); non-mutating, drops query/fragment |
 | Type conversions | `to_uri` / `from_uri` / `to_url` / `from_url` |
-| Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` |
-| Global MIME registry | `MimeType.register(mime, extensions, magic)` / `unregister(mime)` / `reset_registry()` |
+| Single MIME type | `MimeType` enum; `from_str` (a full MIME *or* a short name like `json`/`zstd`) / `from_mapping` / `from_parts(type, subtype)` / `from_extension(ext)` / `from_magic(bytes)` / `from_path(path)`; `.mime` / `type` / `subtype` / `extension(s)` / `category` |
+| MIME category | `Category` enum (`blob` default / `directory` / `tabular` / `code` / `codec`); `from_str` / `as_str`; `MimeType.category()` reads it from the registry |
+| Global MIME registry | `MimeType.register(mime, extensions, magic, category=blob)` / `unregister(mime)` / `reset_registry()` |
 | Layered media type (extension stack) | `MediaType` = ordered `[MimeType, …]`; `from_str` / `from_mapping` / `from_extension` / `from_extensions` / `from_path`; `.types` / `first` / `last` |
 | Inferred media/MIME type on a URI/URL | `media_type()` → `MediaType` stack or null; `mime_type()` → outermost `MimeType` or null (Rust also has `MediaType::from(&uri)`) |
 | Octet-stream fallback | `MimeType.default()` = `application/octet-stream`; `MediaType.default()` = `[OctetStream]` (Rust `Default`, so `from_*(...).unwrap_or_default()`) |

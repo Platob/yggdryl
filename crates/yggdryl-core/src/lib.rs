@@ -47,7 +47,7 @@ pub use encoding::{
 pub use mapping::{Mapping, Params};
 pub use version::{Version, VersionError};
 
-pub use media::{MediaError, MediaType, MimeType, Signature};
+pub use media::{Category, MediaError, MediaType, MimeType, Signature};
 
 pub use url::{JoinInput, Uri, UriError, Url, UrlError};
 

@@ -9,6 +9,77 @@ use crate::log_event;
 use crate::media::MediaType;
 use crate::{Mapping, MediaError};
 
+/// The broad role a [`MimeType`] plays, independent of its concrete `type/subtype`.
+///
+/// Groups types by how their bytes are consumed rather than by format: a Parquet
+/// file and a CSV are both [`Tabular`](Category::Tabular), gzip and zstd are both
+/// [`Codec`](Category::Codec), a Python and a Rust source file are both
+/// [`Code`](Category::Code). The default is [`Blob`](Category::Blob), an opaque,
+/// random-access byte holder. Each type's category lives in the same global
+/// registry as its extensions/magic, so [`MimeType::register`] can set it.
+///
+/// ```
+/// use yggdryl_core::{Category, MimeType};
+///
+/// assert_eq!(MimeType::Parquet.category(), Category::Tabular);
+/// assert_eq!(MimeType::Gzip.category(), Category::Codec);
+/// assert_eq!(MimeType::Python.category(), Category::Code);
+/// assert_eq!(MimeType::Png.category(), Category::Blob);
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Category {
+    /// An opaque, random-access byte holder (the default): images, audio, video,
+    /// PDFs, databases, archives, fonts, …
+    #[default]
+    Blob,
+    /// A hierarchical container of other resources (`inode/directory`).
+    Directory,
+    /// Row/column record data: CSV, Parquet, Arrow, Avro, NDJSON.
+    Tabular,
+    /// Source code, markup or configuration: a programming language, HTML/CSS,
+    /// JSON/XML/YAML/TOML, Markdown, …
+    Code,
+    /// A compression codec: gzip, bzip2, zstd, brotli, xz, lz4.
+    Codec,
+}
+
+impl Category {
+    /// Parses a category name (case-insensitive), e.g. `"tabular"` →
+    /// [`Tabular`](Category::Tabular). Returns [`MediaError::UnknownCategory`]
+    /// otherwise.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<Category, MediaError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "blob" => Ok(Category::Blob),
+            "directory" | "dir" => Ok(Category::Directory),
+            "tabular" | "table" => Ok(Category::Tabular),
+            "code" => Ok(Category::Code),
+            "codec" | "compression" => Ok(Category::Codec),
+            _ => Err(MediaError::UnknownCategory(value.to_string())),
+        }
+    }
+
+    /// The lowercase name (`"blob"` / `"directory"` / `"tabular"` / `"code"` /
+    /// `"codec"`), used by the bindings and [`Display`](fmt::Display).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Category::Blob => "blob",
+            Category::Directory => "directory",
+            Category::Tabular => "tabular",
+            Category::Code => "code",
+            Category::Codec => "codec",
+        }
+    }
+}
+
+impl fmt::Display for Category {
+    /// Renders the lowercase category name.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A single common MIME type, or [`Other`](MimeType::Other) for anything not in
 /// the built-in registry.
 ///
@@ -150,6 +221,50 @@ pub enum MimeType {
     Opus,
     /// `video/x-matroska` (`.mkv`)
     Matroska,
+    // filesystem
+    /// `inode/directory` — a directory (the [`Directory`](Category::Directory) role).
+    Directory,
+    // programming languages / source code (the `Code` category)
+    /// `text/x-python` (`.py` / `.pyi`)
+    Python,
+    /// `text/x-rust` (`.rs`)
+    Rust,
+    /// `text/x-typescript` (`.ts` / `.tsx` / `.mts` / `.cts`)
+    TypeScript,
+    /// `text/x-go` (`.go`)
+    Go,
+    /// `text/x-c` (`.c` / `.h`)
+    C,
+    /// `text/x-c++` (`.cpp` / `.cc` / `.cxx` / `.hpp` / `.hh` / `.hxx`)
+    Cpp,
+    /// `text/x-csharp` (`.cs`)
+    CSharp,
+    /// `text/x-java` (`.java`)
+    Java,
+    /// `text/x-ruby` (`.rb`)
+    Ruby,
+    /// `application/x-httpd-php` (`.php`)
+    Php,
+    /// `application/x-sh` (`.sh` / `.bash` / `.zsh`)
+    Shell,
+    /// `text/x-swift` (`.swift`)
+    Swift,
+    /// `text/x-kotlin` (`.kt` / `.kts`)
+    Kotlin,
+    /// `application/sql` (`.sql`)
+    Sql,
+    /// `text/x-lua` (`.lua`)
+    Lua,
+    /// `text/x-perl` (`.pl` / `.pm`)
+    Perl,
+    /// `text/x-scala` (`.scala` / `.sc`)
+    Scala,
+    /// `text/x-r` (`.r`)
+    RLang,
+    /// `application/dart` (`.dart`)
+    Dart,
+    /// `text/x-haskell` (`.hs`)
+    Haskell,
     /// Any MIME type outside the built-in registry, holding its `type/subtype`.
     Other(String),
 }
@@ -193,9 +308,11 @@ struct Magic {
     bytes: &'static [u8],
 }
 
-/// One built-in registry row: a constructor for the [`MimeType`], its canonical
-/// MIME string, default file extensions (first is canonical) and magic bytes.
+/// One built-in registry row: the [`Category`], a constructor for the
+/// [`MimeType`], its canonical MIME string, default file extensions (first is
+/// canonical) and magic bytes.
 struct Builtin {
+    category: Category,
     new: fn() -> MimeType,
     mime: &'static str,
     extensions: &'static [&'static str],
@@ -204,12 +321,14 @@ struct Builtin {
 
 /// Shorthand for one built-in row.
 const fn builtin(
+    category: Category,
     new: fn() -> MimeType,
     mime: &'static str,
     extensions: &'static [&'static str],
     magic: &'static [Magic],
 ) -> Builtin {
     Builtin {
+        category,
         new,
         mime,
         extensions,
@@ -232,65 +351,93 @@ const fn mag_at(offset: usize, bytes: &'static [u8]) -> Magic {
 static BUILTINS: &[Builtin] = &[
     // text/*
     builtin(
+        Category::Blob,
         || MimeType::Plain,
         "text/plain",
         &["txt", "text", "log"],
         &[],
     ),
-    builtin(|| MimeType::Html, "text/html", &["html", "htm"], &[]),
-    builtin(|| MimeType::Css, "text/css", &["css"], &[]),
-    builtin(|| MimeType::Csv, "text/csv", &["csv"], &[]),
     builtin(
+        Category::Code,
+        || MimeType::Html,
+        "text/html",
+        &["html", "htm"],
+        &[],
+    ),
+    builtin(Category::Code, || MimeType::Css, "text/css", &["css"], &[]),
+    builtin(
+        Category::Tabular,
+        || MimeType::Csv,
+        "text/csv",
+        &["csv"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
         || MimeType::Markdown,
         "text/markdown",
         &["md", "markdown"],
         &[],
     ),
     builtin(
+        Category::Code,
         || MimeType::JavaScript,
         "text/javascript",
-        &["js", "mjs"],
+        &["js", "mjs", "cjs"],
         &[],
     ),
     // application/*
-    builtin(|| MimeType::Json, "application/json", &["json"], &[]),
     builtin(
+        Category::Code,
+        || MimeType::Json,
+        "application/json",
+        &["json"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
         || MimeType::Xml,
         "application/xml",
         &["xml"],
         &[mag(b"<?xml")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Pdf,
         "application/pdf",
         &["pdf"],
         &[mag(b"%PDF-")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Zip,
         "application/zip",
         &["zip"],
         &[mag(b"PK\x03\x04")],
     ),
     builtin(
+        Category::Codec,
         || MimeType::Gzip,
         "application/gzip",
         &["gz", "gzip"],
         &[mag(b"\x1f\x8b")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Tar,
         "application/x-tar",
         &["tar"],
         &[mag_at(257, b"ustar")],
     ),
     builtin(
+        Category::Codec,
         || MimeType::Bzip2,
         "application/x-bzip2",
         &["bz2"],
         &[mag(b"BZh")],
     ),
     builtin(
+        Category::Codec,
         || MimeType::Zstd,
         "application/zstd",
         &["zst"],
@@ -298,48 +445,56 @@ static BUILTINS: &[Builtin] = &[
     ),
     builtin(
         // Brotli has no magic bytes — recognised by the `.br` extension alone.
+        Category::Codec,
         || MimeType::Brotli,
         "application/x-brotli",
         &["br", "brotli"],
         &[],
     ),
     builtin(
+        Category::Blob,
         || MimeType::SevenZip,
         "application/x-7z-compressed",
         &["7z"],
         &[mag(b"7z\xbc\xaf\x27\x1c")],
     ),
     builtin(
+        Category::Tabular,
         || MimeType::Parquet,
         "application/vnd.apache.parquet",
         &["parquet"],
         &[mag(b"PAR1")],
     ),
     builtin(
+        Category::Tabular,
         || MimeType::Arrow,
         "application/vnd.apache.arrow.file",
         &["arrow", "arrows", "ipc"],
         &[mag(b"ARROW1")],
     ),
     builtin(
+        Category::Tabular,
         || MimeType::Avro,
         "application/vnd.apache.avro",
         &["avro"],
         &[mag(b"Obj\x01")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Wasm,
         "application/wasm",
         &["wasm"],
         &[mag(b"\x00asm")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Sqlite,
         "application/vnd.sqlite3",
         &["sqlite", "sqlite3", "db"],
         &[mag(b"SQLite format 3\x00")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::OctetStream,
         "application/octet-stream",
         &["bin"],
@@ -347,38 +502,56 @@ static BUILTINS: &[Builtin] = &[
     ),
     // image/*
     builtin(
+        Category::Blob,
         || MimeType::Png,
         "image/png",
         &["png"],
         &[mag(b"\x89PNG\r\n\x1a\n")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Jpeg,
         "image/jpeg",
         &["jpg", "jpeg"],
         &[mag(b"\xff\xd8\xff")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Gif,
         "image/gif",
         &["gif"],
         &[mag(b"GIF87a"), mag(b"GIF89a")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Webp,
         "image/webp",
         &["webp"],
         &[mag_at(8, b"WEBP")],
     ),
-    builtin(|| MimeType::Bmp, "image/bmp", &["bmp"], &[mag(b"BM")]),
-    builtin(|| MimeType::Svg, "image/svg+xml", &["svg"], &[]),
     builtin(
+        Category::Blob,
+        || MimeType::Bmp,
+        "image/bmp",
+        &["bmp"],
+        &[mag(b"BM")],
+    ),
+    builtin(
+        Category::Blob,
+        || MimeType::Svg,
+        "image/svg+xml",
+        &["svg"],
+        &[],
+    ),
+    builtin(
+        Category::Blob,
         || MimeType::Icon,
         "image/x-icon",
         &["ico"],
         &[mag(b"\x00\x00\x01\x00")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Tiff,
         "image/tiff",
         &["tif", "tiff"],
@@ -388,22 +561,43 @@ static BUILTINS: &[Builtin] = &[
     // generic `ftyp` magic below. HEIC's brand varies, so it is recognised by
     // extension only (a bare `ftyp` would clash with MP4).
     builtin(
+        Category::Blob,
         || MimeType::Avif,
         "image/avif",
         &["avif"],
         &[mag_at(4, b"ftypavif")],
     ),
-    builtin(|| MimeType::Heic, "image/heic", &["heic", "heif"], &[]),
-    // audio/*
-    builtin(|| MimeType::Mp3, "audio/mpeg", &["mp3"], &[mag(b"ID3")]),
     builtin(
+        Category::Blob,
+        || MimeType::Heic,
+        "image/heic",
+        &["heic", "heif"],
+        &[],
+    ),
+    // audio/*
+    builtin(
+        Category::Blob,
+        || MimeType::Mp3,
+        "audio/mpeg",
+        &["mp3"],
+        &[mag(b"ID3")],
+    ),
+    builtin(
+        Category::Blob,
         || MimeType::Wav,
         "audio/wav",
         &["wav"],
         &[mag_at(8, b"WAVE")],
     ),
-    builtin(|| MimeType::Flac, "audio/flac", &["flac"], &[mag(b"fLaC")]),
     builtin(
+        Category::Blob,
+        || MimeType::Flac,
+        "audio/flac",
+        &["flac"],
+        &[mag(b"fLaC")],
+    ),
+    builtin(
+        Category::Blob,
         || MimeType::Ogg,
         "audio/ogg",
         &["ogg", "oga"],
@@ -411,48 +605,79 @@ static BUILTINS: &[Builtin] = &[
     ),
     // video/*
     builtin(
+        Category::Blob,
         || MimeType::Mp4,
         "video/mp4",
         &["mp4", "m4v"],
         &[mag_at(4, b"ftyp")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Webm,
         "video/webm",
         &["webm"],
         &[mag(b"\x1a\x45\xdf\xa3")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Avi,
         "video/x-msvideo",
         &["avi"],
         &[mag_at(8, b"AVI ")],
     ),
     // font/*
-    builtin(|| MimeType::Woff, "font/woff", &["woff"], &[mag(b"wOFF")]),
     builtin(
+        Category::Blob,
+        || MimeType::Woff,
+        "font/woff",
+        &["woff"],
+        &[mag(b"wOFF")],
+    ),
+    builtin(
+        Category::Blob,
         || MimeType::Woff2,
         "font/woff2",
         &["woff2"],
         &[mag(b"wOF2")],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Ttf,
         "font/ttf",
         &["ttf"],
         &[mag(b"\x00\x01\x00\x00")],
     ),
-    builtin(|| MimeType::Otf, "font/otf", &["otf"], &[mag(b"OTTO")]),
-    // text / data
-    builtin(|| MimeType::Yaml, "application/yaml", &["yaml", "yml"], &[]),
-    builtin(|| MimeType::Toml, "application/toml", &["toml"], &[]),
     builtin(
+        Category::Blob,
+        || MimeType::Otf,
+        "font/otf",
+        &["otf"],
+        &[mag(b"OTTO")],
+    ),
+    // text / data
+    builtin(
+        Category::Code,
+        || MimeType::Yaml,
+        "application/yaml",
+        &["yaml", "yml"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Toml,
+        "application/toml",
+        &["toml"],
+        &[],
+    ),
+    builtin(
+        Category::Tabular,
         || MimeType::Ndjson,
         "application/x-ndjson",
         &["ndjson", "jsonl"],
         &[],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Rtf,
         "application/rtf",
         &["rtf"],
@@ -460,12 +685,14 @@ static BUILTINS: &[Builtin] = &[
     ),
     // compression / archives
     builtin(
+        Category::Codec,
         || MimeType::Xz,
         "application/x-xz",
         &["xz"],
         &[mag(b"\xfd7zXZ\x00")],
     ),
     builtin(
+        Category::Codec,
         || MimeType::Lz4,
         "application/x-lz4",
         &["lz4"],
@@ -473,20 +700,29 @@ static BUILTINS: &[Builtin] = &[
     ),
     // documents — OOXML / EPUB are ZIP containers (PK magic), so the ZIP magic is
     // intentionally left off here and they are recognised by extension only.
-    builtin(|| MimeType::Epub, "application/epub+zip", &["epub"], &[]),
     builtin(
+        Category::Blob,
+        || MimeType::Epub,
+        "application/epub+zip",
+        &["epub"],
+        &[],
+    ),
+    builtin(
+        Category::Blob,
         || MimeType::Docx,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         &["docx"],
         &[],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Xlsx,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         &["xlsx"],
         &[],
     ),
     builtin(
+        Category::Blob,
         || MimeType::Pptx,
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         &["pptx"],
@@ -494,15 +730,160 @@ static BUILTINS: &[Builtin] = &[
     ),
     // audio / video — AAC (ADTS), Opus (Ogg container) and Matroska (EBML, shared
     // with WebM) are recognised by extension to avoid ambiguous magic matches.
-    builtin(|| MimeType::Aac, "audio/aac", &["aac"], &[]),
-    builtin(|| MimeType::Opus, "audio/opus", &["opus"], &[]),
-    builtin(|| MimeType::Matroska, "video/x-matroska", &["mkv"], &[]),
+    builtin(Category::Blob, || MimeType::Aac, "audio/aac", &["aac"], &[]),
+    builtin(
+        Category::Blob,
+        || MimeType::Opus,
+        "audio/opus",
+        &["opus"],
+        &[],
+    ),
+    builtin(
+        Category::Blob,
+        || MimeType::Matroska,
+        "video/x-matroska",
+        &["mkv"],
+        &[],
+    ),
+    // filesystem — a directory has no extension or magic.
+    builtin(
+        Category::Directory,
+        || MimeType::Directory,
+        "inode/directory",
+        &[],
+        &[],
+    ),
+    // programming languages / source code — text with no reliable magic bytes, so
+    // recognised by file extension only. The first extension is canonical.
+    builtin(
+        Category::Code,
+        || MimeType::Python,
+        "text/x-python",
+        &["py", "pyi"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Rust,
+        "text/x-rust",
+        &["rs"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::TypeScript,
+        "text/x-typescript",
+        &["ts", "tsx", "mts", "cts"],
+        &[],
+    ),
+    builtin(Category::Code, || MimeType::Go, "text/x-go", &["go"], &[]),
+    builtin(Category::Code, || MimeType::C, "text/x-c", &["c", "h"], &[]),
+    builtin(
+        Category::Code,
+        || MimeType::Cpp,
+        "text/x-c++",
+        &["cpp", "cc", "cxx", "hpp", "hh", "hxx"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::CSharp,
+        "text/x-csharp",
+        &["cs"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Java,
+        "text/x-java",
+        &["java"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Ruby,
+        "text/x-ruby",
+        &["rb"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Php,
+        "application/x-httpd-php",
+        &["php"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Shell,
+        "application/x-sh",
+        &["sh", "bash", "zsh"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Swift,
+        "text/x-swift",
+        &["swift"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Kotlin,
+        "text/x-kotlin",
+        &["kt", "kts"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Sql,
+        "application/sql",
+        &["sql"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Lua,
+        "text/x-lua",
+        &["lua"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Perl,
+        "text/x-perl",
+        &["pl", "pm"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Scala,
+        "text/x-scala",
+        &["scala", "sc"],
+        &[],
+    ),
+    builtin(Category::Code, || MimeType::RLang, "text/x-r", &["r"], &[]),
+    builtin(
+        Category::Code,
+        || MimeType::Dart,
+        "application/dart",
+        &["dart"],
+        &[],
+    ),
+    builtin(
+        Category::Code,
+        || MimeType::Haskell,
+        "text/x-haskell",
+        &["hs"],
+        &[],
+    ),
 ];
 
 /// One mutable registry entry: everything known about one MIME type.
 #[derive(Clone)]
 struct Entry {
     mime: String,
+    category: Category,
     extensions: Vec<String>,
     magic: Vec<Signature>,
 }
@@ -512,6 +893,7 @@ impl Entry {
     fn from_builtin(b: &Builtin) -> Entry {
         Entry {
             mime: b.mime.to_string(),
+            category: b.category,
             extensions: b.extensions.iter().map(|s| s.to_string()).collect(),
             magic: b
                 .magic
@@ -671,21 +1053,36 @@ impl MimeType {
         !matches!(self, MimeType::Other(_))
     }
 
+    /// The [`Category`] this type belongs to (read from the registry), or
+    /// [`Category::Blob`] (the default) for an unregistered
+    /// [`Other`](MimeType::Other).
+    pub fn category(&self) -> Category {
+        let mime = self.mime();
+        let registry = registry().read().unwrap();
+        registry
+            .iter()
+            .find(|e| e.mime == mime)
+            .map(|e| e.category)
+            .unwrap_or_default()
+    }
+
     /// Registers (or replaces) a MIME type in the global registry, so subsequent
     /// [`from_extension`](MimeType::from_extension) /
-    /// [`from_magic`](MimeType::from_magic) lookups recognise it. The change is
+    /// [`from_magic`](MimeType::from_magic) lookups recognise it and
+    /// [`category`](MimeType::category) reports `category`. The change is
     /// process-wide.
-    pub fn register(mime: &str, extensions: &[&str], magic: &[Signature]) {
+    pub fn register(mime: &str, extensions: &[&str], magic: &[Signature], category: Category) {
         let mime = mime.to_ascii_lowercase();
         let entry = Entry {
             extensions: extensions.iter().map(|s| s.to_ascii_lowercase()).collect(),
             magic: magic.to_vec(),
+            category,
             mime: mime.clone(),
         };
         let mut registry = registry().write().unwrap();
         log_event!(
             info,
-            "MimeType::register {mime:?} ({} extensions)",
+            "MimeType::register {mime:?} ({category}, {} extensions)",
             entry.extensions.len()
         );
         match registry.iter_mut().find(|e| e.mime == mime) {

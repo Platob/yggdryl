@@ -73,16 +73,46 @@ def test_mime_to_from_mapping_and_equality():
 def test_registry_add_and_remove():
     assert yggdryl.MimeType.from_extension("ygg") is None
     try:
-        yggdryl.MimeType.register("application/x-yggdryl", ["ygg"], [b"YGG1"])
+        yggdryl.MimeType.register(
+            "application/x-yggdryl", ["ygg"], [b"YGG1"], category="code"
+        )
         m = yggdryl.MimeType.from_extension("ygg")
         assert m.mime == "application/x-yggdryl"
         assert m.extensions == ["ygg"]
+        assert m.category == "code"  # the registered category is read back
         assert yggdryl.MimeType.from_magic(b"YGG1\x00").mime == "application/x-yggdryl"
         assert yggdryl.MimeType.unregister("application/x-yggdryl")
         assert yggdryl.MimeType.from_extension("ygg") is None
         assert not yggdryl.MimeType.unregister("application/x-yggdryl")
     finally:
         yggdryl.MimeType.unregister("application/x-yggdryl")
+
+
+def test_category_and_language_mime_types():
+    # Each built-in plays a category; the default is "blob".
+    assert yggdryl.MimeType("image/png").category == "blob"
+    assert yggdryl.MimeType("text/csv").category == "tabular"
+    assert yggdryl.MimeType("application/vnd.apache.parquet").category == "tabular"
+    assert yggdryl.MimeType("application/gzip").category == "codec"
+    assert yggdryl.MimeType("application/json").category == "code"
+    assert yggdryl.MimeType("application/x-unknown").category == "blob"
+    # Programming languages resolve by extension and are categorised as code.
+    for ext, mime in [
+        ("py", "text/x-python"),
+        ("rs", "text/x-rust"),
+        ("ts", "text/x-typescript"),
+        ("go", "text/x-go"),
+        ("rb", "text/x-ruby"),
+        ("php", "application/x-httpd-php"),
+        ("sh", "application/x-sh"),
+        ("sql", "application/sql"),
+    ]:
+        m = yggdryl.MimeType.from_extension(ext)
+        assert m.mime == mime, ext
+        assert m.category == "code", ext
+    # An unknown category name is rejected with an actionable error.
+    with pytest.raises(ValueError):
+        yggdryl.MimeType.register("application/x-bad", ["bad"], category="nope")
 
 
 def test_media_type_is_ordered_stack():

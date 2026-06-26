@@ -64,10 +64,11 @@ test('mime to/from mapping and equality', () => {
 test('registry add and remove', () => {
   assert.strictEqual(MimeType.fromExtension('ygg'), null)
   try {
-    MimeType.register('application/x-yggdryl', ['ygg'], [Buffer.from('YGG1')])
+    MimeType.register('application/x-yggdryl', ['ygg'], [Buffer.from('YGG1')], 'code')
     const m = MimeType.fromExtension('ygg')
     assert.strictEqual(m.mime, 'application/x-yggdryl')
     assert.deepStrictEqual(m.extensions, ['ygg'])
+    assert.strictEqual(m.category, 'code') // the registered category is read back
     assert.strictEqual(MimeType.fromMagic(Buffer.from('YGG1\x00')).mime, 'application/x-yggdryl')
     assert.ok(MimeType.unregister('application/x-yggdryl'))
     assert.strictEqual(MimeType.fromExtension('ygg'), null)
@@ -75,6 +76,33 @@ test('registry add and remove', () => {
   } finally {
     MimeType.unregister('application/x-yggdryl')
   }
+})
+
+test('category and language mime types', () => {
+  // Each built-in plays a category; the default is "blob".
+  assert.strictEqual(new MimeType('image/png').category, 'blob')
+  assert.strictEqual(new MimeType('text/csv').category, 'tabular')
+  assert.strictEqual(new MimeType('application/vnd.apache.parquet').category, 'tabular')
+  assert.strictEqual(new MimeType('application/gzip').category, 'codec')
+  assert.strictEqual(new MimeType('application/json').category, 'code')
+  assert.strictEqual(new MimeType('application/x-unknown').category, 'blob')
+  // Programming languages resolve by extension and are categorised as code.
+  for (const [ext, mime] of [
+    ['py', 'text/x-python'],
+    ['rs', 'text/x-rust'],
+    ['ts', 'text/x-typescript'],
+    ['go', 'text/x-go'],
+    ['rb', 'text/x-ruby'],
+    ['php', 'application/x-httpd-php'],
+    ['sh', 'application/x-sh'],
+    ['sql', 'application/sql'],
+  ]) {
+    const m = MimeType.fromExtension(ext)
+    assert.strictEqual(m.mime, mime, ext)
+    assert.strictEqual(m.category, 'code', ext)
+  }
+  // An unknown category name is rejected with an actionable error.
+  assert.throws(() => MimeType.register('application/x-bad', ['bad'], undefined, 'nope'))
 })
 
 test('media type is ordered stack', () => {

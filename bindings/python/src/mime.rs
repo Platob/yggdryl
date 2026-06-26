@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, MimeType as CoreMimeType, Signature};
+use yggdryl_core::{Category, Mapping, MimeType as CoreMimeType, Signature};
 
 use crate::{hash_str, media_err};
 
@@ -81,13 +81,22 @@ impl MimeType {
     }
 
     /// Register (or replace) a MIME type globally. ``magic`` is a list of byte
-    /// prefixes matched at the start of a file. The change is process-wide.
+    /// prefixes matched at the start of a file; ``category`` is one of ``"blob"``
+    /// (the default) / ``"directory"`` / ``"tabular"`` / ``"code"`` / ``"codec"``.
+    /// The change is process-wide.
     #[staticmethod]
-    #[pyo3(signature = (mime, extensions, magic = Vec::new()))]
-    fn register(mime: &str, extensions: Vec<String>, magic: Vec<Vec<u8>>) {
+    #[pyo3(signature = (mime, extensions, magic = Vec::new(), category = "blob"))]
+    fn register(
+        mime: &str,
+        extensions: Vec<String>,
+        magic: Vec<Vec<u8>>,
+        category: &str,
+    ) -> PyResult<()> {
         let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
         let sigs: Vec<Signature> = magic.into_iter().map(Signature::prefix).collect();
-        CoreMimeType::register(mime, &exts, &sigs);
+        let category = Category::from_str(category).map_err(media_err)?;
+        CoreMimeType::register(mime, &exts, &sigs, category);
+        Ok(())
     }
 
     /// Remove a MIME type from the global registry, returning whether it existed.
@@ -142,6 +151,13 @@ impl MimeType {
     #[getter]
     fn is_known(&self) -> bool {
         self.inner.is_known()
+    }
+
+    /// The category this type plays: ``"blob"`` (the default) / ``"directory"`` /
+    /// ``"tabular"`` / ``"code"`` / ``"codec"``.
+    #[getter]
+    fn category(&self) -> &'static str {
+        self.inner.category().as_str()
     }
 
     fn __str__(&self) -> String {
