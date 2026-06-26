@@ -33,6 +33,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-schema"
+version = "59.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80b3e786a0dd9103acd583a6fb486dbf2f3268466cc0bd571dcf34cef231c1f1"
+
+[[package]]
 name = "asn1-rs"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1194,7 +1200,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1703,7 +1709,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1952,6 +1958,16 @@ dependencies = [
  "serde_json",
  "yggdryl-core",
  "yggdryl-http",
+]
+
+[[package]]
+name = "yggdryl-saga"
+version = "0.1.1"
+dependencies = [
+ "arrow-schema",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
