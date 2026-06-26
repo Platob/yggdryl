@@ -44,6 +44,7 @@ pub struct ResponseData {
     body: Vec<u8>,
     sent_at: f64,
     received_at: f64,
+    protocol: String,
 }
 
 /// The blocking request, run on the libuv thread pool by napi.
@@ -87,6 +88,7 @@ impl Task for RequestTask {
             .collect();
         let sent_at = response.sent_at();
         let received_at = response.received_at();
+        let protocol = response.protocol().to_string();
         let body = response.bytes().map_err(to_napi)?;
         Ok(ResponseData {
             status,
@@ -95,6 +97,7 @@ impl Task for RequestTask {
             body,
             sent_at,
             received_at,
+            protocol,
         })
     }
 
@@ -106,6 +109,7 @@ impl Task for RequestTask {
             body: output.body,
             sent_at: output.sent_at,
             received_at: output.received_at,
+            protocol: output.protocol,
         })
     }
 }
@@ -120,6 +124,7 @@ pub struct HttpResponse {
     body: Vec<u8>,
     sent_at: f64,
     received_at: f64,
+    protocol: String,
 }
 
 #[napi]
@@ -153,6 +158,14 @@ impl HttpResponse {
     #[napi(getter, js_name = "receivedAt")]
     pub fn received_at(&self) -> f64 {
         self.received_at
+    }
+
+    /// The negotiated HTTP protocol version (`"HTTP/1.1"`, `"HTTP/2"`, or
+    /// `"HTTP/3"`). Requires the `http2` or `http3` cargo feature for a
+    /// value other than `"HTTP/1.1"`.
+    #[napi(getter, js_name = "protocolVersion")]
+    pub fn protocol_version(&self) -> String {
+        self.protocol.clone()
     }
 
     /// The response headers as an object (lower-cased names).

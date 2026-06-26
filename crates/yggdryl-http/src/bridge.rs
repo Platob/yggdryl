@@ -8,8 +8,12 @@ use yggdryl_core::{IoError, IoStats, Url, Whence};
 /// Bridges an [`Io`] request body to [`std::io::Read`] for the transport, so the
 /// bytes stream straight off the handle. The request framing (whether a known
 /// length sets `Content-Length`) is decided by the caller, not the bridge.
+// Only the HTTP/1.1 path (ureq) uses this bridge; HTTP/2 (hyper) buffers the
+// body as `Bytes` before sending.
+#[cfg(not(feature = "http2"))]
 pub(crate) struct IoBridge(pub(crate) Box<dyn Io>);
 
+#[cfg(not(feature = "http2"))]
 impl std::io::Read for IoBridge {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0

@@ -62,3 +62,10 @@ impl From<ureq::http::Error> for HttpError {
         HttpError::InvalidHeader(err.to_string())
     }
 }
+
+#[cfg(feature = "http2")]
+impl From<hyper_util::client::legacy::Error> for HttpError {
+    fn from(err: hyper_util::client::legacy::Error) -> HttpError {
+        HttpError::Transport(err.to_string())
+    }
+}

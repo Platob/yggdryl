@@ -60,6 +60,7 @@ pub struct HttpResponse {
     body: Vec<u8>,
     sent_at: f64,
     received_at: f64,
+    protocol: String,
 }
 
 #[pymethods]
@@ -93,6 +94,14 @@ impl HttpResponse {
     #[getter]
     fn received_at(&self) -> f64 {
         self.received_at
+    }
+
+    /// The negotiated HTTP protocol version (e.g. ``"HTTP/1.1"`` or
+    /// ``"HTTP/2"``). Requires the ``http2`` or ``http3`` cargo feature for
+    /// a value other than ``"HTTP/1.1"``.
+    #[getter]
+    fn protocol_version(&self) -> &str {
+        &self.protocol
     }
 
     /// The response headers as a ``dict`` (lower-cased names).
@@ -159,7 +168,7 @@ impl HttpSession {
         py: Python<'_>,
         build: impl FnOnce(&CoreHttpSession) -> Result<CoreHttpResponse, yggdryl_http::HttpError> + Send,
     ) -> PyResult<HttpResponse> {
-        let (status, url, headers, body, sent_at, received_at) = py
+        let (status, url, headers, body, sent_at, received_at, protocol) = py
             .allow_threads(|| {
                 // The closures issue a buffered (`stream = false`) send, so the body
                 // is drained inside `send` and `received_at` is already stamped here.
@@ -173,8 +182,17 @@ impl HttpSession {
                     .collect::<Vec<_>>();
                 let sent_at = response.sent_at();
                 let received_at = response.received_at();
+                let protocol = response.protocol().to_string();
                 let body = response.bytes()?;
-                Ok::<_, yggdryl_http::HttpError>((status, url, headers, body, sent_at, received_at))
+                Ok::<_, yggdryl_http::HttpError>((
+                    status,
+                    url,
+                    headers,
+                    body,
+                    sent_at,
+                    received_at,
+                    protocol,
+                ))
             })
             .map_err(http_err)?;
         Ok(HttpResponse {
@@ -184,6 +202,7 @@ impl HttpSession {
             body,
             sent_at,
             received_at,
+            protocol,
         })
     }
 }

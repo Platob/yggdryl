@@ -6,15 +6,19 @@ use std::sync::{Arc, Mutex};
 
 use yggdryl_core::{BytesIO, Io};
 
+#[cfg(not(feature = "http2"))]
 use crate::bridge::IoBridge;
 use crate::cookies::{Cookie, HttpCookies};
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
+#[cfg(not(feature = "http2"))]
+use crate::protocol::HttpVersion;
 use crate::redirect::{self, DEFAULT_MAX_REDIRECTS};
 use crate::request::{Body, HttpRequest};
 use crate::response::HttpResponse;
 use crate::retry::{RetryConfig, DEFAULT_POOL};
+#[cfg(not(feature = "http2"))]
 use crate::stream::HttpStream;
 use crate::time::{now_secs, Instant};
 
@@ -51,6 +55,9 @@ pub struct HttpSession {
     /// The RFC 6265 cookie jar, consulted before every dispatch and fed every
     /// response's `Set-Cookie`. Behind a [`Mutex`] since the session is shared `&self`.
     cookies: Mutex<HttpCookies>,
+    /// Pooling HTTP/2+HTTP/1.1 client via hyper (present only with `http2` feature).
+    #[cfg(feature = "http2")]
+    h2: Arc<crate::h2::H2Client>,
 }
 
 impl HttpSession {
@@ -78,6 +85,8 @@ impl HttpSession {
             held: Arc::new(AtomicUsize::new(0)),
             max_redirects: DEFAULT_MAX_REDIRECTS,
             cookies: Mutex::new(HttpCookies::new()),
+            #[cfg(feature = "http2")]
+            h2: Arc::new(crate::h2::H2Client::new(max_pool)),
         }
     }
 
@@ -118,6 +127,10 @@ impl HttpSession {
         let max_pool = max_pool.max(1);
         self.agent = build_agent(max_pool);
         self.max_pool = max_pool;
+        #[cfg(feature = "http2")]
+        {
+            self.h2 = Arc::new(crate::h2::H2Client::new(max_pool));
+        }
         self
     }
 
@@ -340,10 +353,24 @@ impl HttpSession {
         }
     }
 
-    /// Dispatches a single hop (no redirect handling): runs the retry loop and
-    /// builds the [`HttpResponse`] over a streamed or buffered body, exactly the
-    /// pre-redirect [`send`](HttpSession::send) behaviour.
+    /// Dispatches a single hop (no redirect handling) — routes to the H2 or
+    /// H1.1 transport based on the enabled feature set.
     fn dispatch(
+        &self,
+        request: HttpRequest,
+        keep_alive: bool,
+        stream: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        #[cfg(feature = "http2")]
+        return self.dispatch_h2(request, keep_alive, stream);
+        #[cfg(not(feature = "http2"))]
+        self.dispatch_h1(request, keep_alive, stream)
+    }
+
+    /// HTTP/1.1 dispatch via ureq: runs the retry loop and builds the
+    /// [`HttpResponse`] over a streamed or buffered body.
+    #[cfg(not(feature = "http2"))]
+    fn dispatch_h1(
         &self,
         mut request: HttpRequest,
         keep_alive: bool,
@@ -356,7 +383,7 @@ impl HttpSession {
         let url = request.url.clone();
         log_event!(
             debug,
-            "HttpSession::dispatch {} {url} keep_alive={keep_alive} stream={stream}",
+            "HttpSession::dispatch_h1 {} {url} keep_alive={keep_alive} stream={stream}",
             request.method.as_str()
         );
         let raw = self.execute(
@@ -402,6 +429,128 @@ impl HttpSession {
             body,
             sent_at,
             received_at,
+            HttpVersion::H1_1,
+        ))
+    }
+
+    /// HTTP/2 dispatch via hyper: drains non-replayable bodies to bytes (H2
+    /// has no chunked upload; the single-shot reader limitation is documented),
+    /// runs the retry loop, and wraps the response in an [`H2Stream`] body.
+    #[cfg(feature = "http2")]
+    fn dispatch_h2(
+        &self,
+        request: HttpRequest,
+        _keep_alive: bool,
+        stream: bool,
+    ) -> Result<HttpResponse, HttpError> {
+        use crate::h2::H2Stream;
+        use http_body_util::Full;
+        use hyper::body::Bytes;
+
+        let url = request.url.clone();
+        let method_str = request.method.as_str();
+        let request_headers = request.headers.clone();
+
+        // Drain Reader/Io bodies to bytes — H2 does not chunk-encode uploads and
+        // the body must be replayable for the retry loop.
+        let body_bytes: Bytes = match request.body {
+            Body::Empty => Bytes::new(),
+            Body::Bytes(v) => Bytes::from(v),
+            Body::Reader(mut r) => {
+                let mut buf = Vec::new();
+                r.read_to_end(&mut buf)?;
+                Bytes::from(buf)
+            }
+            Body::Io(mut io) => {
+                let mut buf = Vec::new();
+                io.read_to_end(&mut buf)?;
+                Bytes::from(buf)
+            }
+        };
+
+        log_event!(
+            debug,
+            "HttpSession::dispatch_h2 {method_str} {url} stream={stream}"
+        );
+
+        let uri = url.to_string();
+        let mut attempt = 0u32;
+        let (response, version) = loop {
+            let mut req_builder = hyper::Request::builder()
+                .method(method_str)
+                .uri(uri.as_str());
+            for (name, value) in request_headers.iter() {
+                req_builder = req_builder.header(name, value);
+            }
+            let req = req_builder
+                .body(Full::from(body_bytes.clone()))
+                .map_err(|e| HttpError::InvalidHeader(e.to_string()))?;
+
+            match self.h2.execute(req) {
+                Ok((resp, ver)) => {
+                    let status = resp.status().as_u16();
+                    if attempt < self.retry.max_retries
+                        && self.retry.retryable_status(status, attempt)
+                    {
+                        // Drain the body to release the H2 stream slot, then retry.
+                        let resp_headers = HttpHeaders::from(resp.headers());
+                        let delay = self.retry.backoff(attempt, resp_headers.retry_after());
+                        log_event!(warn, "retrying H2 status {status} after {delay:?}");
+                        // Discard the body — we can't use it and must release the stream.
+                        drop(resp);
+                        attempt += 1;
+                        std::thread::sleep(delay);
+                        continue;
+                    }
+                    break (resp, ver);
+                }
+                Err(e) => {
+                    if attempt < self.retry.max_retries {
+                        let delay = self.retry.backoff(attempt, None);
+                        log_event!(warn, "retrying H2 transport error: {e}");
+                        attempt += 1;
+                        std::thread::sleep(delay);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        };
+
+        let sent_at = now_secs();
+        let status = response.status().as_u16();
+        let response_headers = HttpHeaders::from(response.headers());
+        let size = response_headers.content_size();
+        let content_type = response_headers.get("content-type").map(str::to_string);
+        let received_at = Instant::new();
+
+        let mut h2_stream = H2Stream::from_response(
+            response.into_body(),
+            self.h2.clone(),
+            url.clone(),
+            request_headers,
+            received_at.clone(),
+            size,
+            content_type,
+            version,
+        );
+
+        let body: Box<dyn Io> = if stream {
+            Box::new(h2_stream)
+        } else {
+            let mut buffer = Vec::new();
+            h2_stream.read_to_end(&mut buffer)?;
+            Box::new(BytesIO::from_bytes(buffer))
+        };
+
+        Ok(HttpResponse::new(
+            status,
+            url,
+            response_headers,
+            body,
+            sent_at,
+            received_at,
+            version,
         ))
     }
 
@@ -483,6 +632,7 @@ impl HttpSession {
     /// The retry loop shared by every send: replayable bodies (none / bytes) are
     /// retried on transient statuses and lost connections; a streamed body is
     /// single-shot.
+    #[cfg(not(feature = "http2"))]
     fn execute(
         &self,
         method: Method,
@@ -533,6 +683,7 @@ impl HttpSession {
 
     /// Builds a request builder with `method`, `url` and all (already merged)
     /// `headers` applied.
+    #[cfg(not(feature = "http2"))]
     fn builder(
         &self,
         method: Method,
@@ -550,6 +701,7 @@ impl HttpSession {
 
     /// Sends a single-shot streamed body (reader or `Io`). An `Io` body sets
     /// `Content-Length` from its known length so the upload is framed, not chunked.
+    #[cfg(not(feature = "http2"))]
     fn run_streamed(
         &self,
         builder: ureq::http::request::Builder,

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use yggdryl_core::{Io, IoError, IoStats, Url, Whence};
 
 use crate::headers::HttpHeaders;
+use crate::protocol::HttpVersion;
 use crate::retry::{RetryConfig, CACHE_LIMIT};
 use crate::time::Instant;
 
@@ -50,6 +51,7 @@ pub struct HttpStream {
 impl HttpStream {
     /// Builds a stream from a freshly-received response, holding its live body as
     /// the connection at offset 0.
+    #[cfg(not(feature = "http2"))]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_response(
         response: ureq::http::Response<ureq::Body>,
@@ -100,6 +102,12 @@ impl HttpStream {
         self.reader = None;
         self.closed = true;
         self.received_at.stamp_once();
+    }
+
+    /// The HTTP protocol version used for this stream. Always `HTTP/1.1` —
+    /// an `H2Stream` (produced when the `http2` feature is on) returns `HTTP/2`.
+    pub fn protocol(&self) -> HttpVersion {
+        HttpVersion::H1_1
     }
 
     /// The number of bytes still readable from `position`, if the size is known.

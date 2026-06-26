@@ -68,6 +68,7 @@ mod error;
 mod factory;
 mod headers;
 mod method;
+mod protocol;
 mod redirect;
 mod request;
 mod response;
@@ -76,11 +77,21 @@ mod session;
 mod stream;
 mod time;
 
+#[cfg(any(feature = "http2", feature = "http3"))]
+mod runtime;
+
+#[cfg(feature = "http2")]
+mod h2;
+
+#[cfg(feature = "http3")]
+mod h3;
+
 pub use cookies::{Cookie, HttpCookies};
 pub use error::HttpError;
 pub use factory::register;
 pub use headers::HttpHeaders;
 pub use method::Method;
+pub use protocol::HttpVersion;
 pub use request::HttpRequest;
 pub use response::HttpResponse;
 pub use retry::RetryConfig;

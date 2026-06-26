@@ -5,6 +5,7 @@ use yggdryl_core::{BytesIO, Io};
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
+use crate::protocol::HttpVersion;
 use crate::time::Instant;
 
 /// A received HTTP response, modelled on `requests.Response`. It **holds the logic
@@ -26,6 +27,7 @@ pub struct HttpResponse {
     body: Box<dyn Io>,
     sent_at: f64,
     received_at: Instant,
+    protocol: HttpVersion,
 }
 
 impl HttpResponse {
@@ -40,6 +42,7 @@ impl HttpResponse {
         body: Box<dyn Io>,
         sent_at: f64,
         received_at: Instant,
+        protocol: HttpVersion,
     ) -> HttpResponse {
         HttpResponse {
             status,
@@ -48,6 +51,7 @@ impl HttpResponse {
             body,
             sent_at,
             received_at,
+            protocol,
         }
     }
 
@@ -124,6 +128,13 @@ impl HttpResponse {
     /// The `Content-Encoding` header, if present.
     pub fn content_encoding(&self) -> Option<&str> {
         self.headers.get("content-encoding")
+    }
+
+    /// The HTTP protocol version used for this response (`HTTP/1.1`, `HTTP/2`,
+    /// or `HTTP/3`), negotiated by ALPN. Always `HTTP/1.1` unless the `http2`
+    /// or `http3` cargo feature is enabled.
+    pub fn protocol(&self) -> HttpVersion {
+        self.protocol
     }
 
     /// The response media type, inferred from its `Content-Type`. Only present

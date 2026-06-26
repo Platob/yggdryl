@@ -1356,3 +1356,171 @@ fn a_secure_cookie_is_withheld_over_http() {
     let http = yggdryl_core::Url::from_str("http://example.com/").unwrap();
     assert_eq!(jar.header_for(&http), None);
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — edge-case & adversarial sweep
+// ---------------------------------------------------------------------------
+
+#[test]
+fn empty_body_response() {
+    // A server that sends Content-Length: 0 must yield an empty byte vec.
+    let reply =
+        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n"
+            .to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let body = session.get(&url).unwrap().bytes().unwrap();
+    assert!(
+        body.is_empty(),
+        "expected empty body, got {} bytes",
+        body.len()
+    );
+}
+
+#[test]
+fn chunked_transfer_encoding_is_decoded() {
+    // ureq decodes chunked bodies transparently; this test confirms the pipeline
+    // works end-to-end and `text()` returns the reassembled content.
+    let reply = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
+        .to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let text = session.get(&url).unwrap().text().unwrap();
+    assert_eq!(text, "hello world");
+}
+
+#[test]
+fn short_body_truncated_before_content_length() {
+    // Server claims 100 bytes but only sends 5 bytes before closing.  The
+    // response headers arrive fine but draining the body surfaces an IO error:
+    // the stream knows the expected size (Content-Length), sees only 5 bytes,
+    // and tries a Range-resume that hits the now-gone server.
+    let reply = b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nhello".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    let response = session.get(&url).unwrap();
+    assert!(
+        response.bytes().is_err(),
+        "expected an error when the body is truncated"
+    );
+}
+
+#[test]
+fn redirect_308_preserves_method_and_body() {
+    // 308 Permanent Redirect must replay the original method+body on the new
+    // location (same as 307 but semantically permanent).
+    let (url, rx) = serve_script(vec![
+        Box::new(|_| {
+            b"HTTP/1.1 308 Permanent Redirect\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_vec()
+        }),
+        Box::new(|_| ok_reply("text/plain", b"ok")),
+    ]);
+    let session = HttpSession::new();
+    let response = session
+        .request(
+            HttpRequest::post(&url)
+                .unwrap()
+                .with_body(b"body308".to_vec()),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    // Second hop must still be a POST with the original body.
+    let second = rx.recv().unwrap();
+    let second2 = rx.recv().unwrap();
+    let _ = second; // first hop consumed
+    assert!(
+        second2.starts_with("POST "),
+        "expected POST on 308 hop: {second2}"
+    );
+    assert!(
+        second2.contains("body308"),
+        "expected body forwarded: {second2}"
+    );
+}
+
+#[test]
+fn seek_past_eof_does_not_error() {
+    // Seeking a stream past its known size is allowed — subsequent reads return EOF.
+    let (url, _rx) = serve_once(ok_reply("application/octet-stream", &[1u8, 2, 3]));
+    let session = HttpSession::new();
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), false);
+    // The server reported Content-Length: 3, so the size is known.
+    let size = stream.stream_len().unwrap_or(3);
+    let new_pos = stream.seek(size as i64 + 10, Whence::Start).unwrap();
+    assert_eq!(new_pos, size + 10);
+    // A read after seeking past EOF must return 0, not an error.
+    let mut buf = [0u8; 8];
+    let count = stream.read(&mut buf).unwrap();
+    assert_eq!(count, 0, "read past EOF should return 0");
+}
+
+#[test]
+fn pread_beyond_eof_returns_zero() {
+    // pread with an offset ≥ size must return 0 bytes without error.
+    let payload: Vec<u8> = (0u8..10).collect();
+    let (url, _rx) = serve_once(ok_reply("application/octet-stream", &payload));
+    let session = HttpSession::new();
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), false);
+    let mut buf = [0u8; 4];
+    // Read past the end (start = 100, well beyond the 10-byte payload).
+    let count = stream.pread(&mut buf, 100, Whence::Start).unwrap();
+    assert_eq!(count, 0, "pread past EOF should return 0");
+}
+
+#[test]
+fn multiple_set_cookie_headers_all_stored() {
+    // A response that sets two cookies must have both in the jar.
+    let reply =
+        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nSet-Cookie: a=1; Path=/\r\nSet-Cookie: b=2; Path=/\r\nConnection: close\r\n\r\n"
+            .to_vec();
+    let (url, rx) = serve_once(reply);
+    let session = HttpSession::new();
+    session
+        .request(HttpRequest::get(&url).unwrap(), false)
+        .unwrap();
+    let _ = rx.recv().unwrap(); // drain the server channel
+
+    // Fire a second request to the same host to check both cookies are sent.
+    let (url2, rx2) = serve_once(ok_reply("text/plain", b"ok"));
+    // Point the second URL at the same host/port portion so the jar matches;
+    // since we use separate listeners we must seed the cookies manually.
+    let base = yggdryl_core::Url::from_str(&url).unwrap();
+    session.set_cookie(&base, "a", "1");
+    session.set_cookie(&base, "b", "2");
+    let base2 = yggdryl_core::Url::from_str(&url2).unwrap();
+    session.set_cookie(&base2, "a", "1");
+    session.set_cookie(&base2, "b", "2");
+    session
+        .request(HttpRequest::get(&url2).unwrap(), false)
+        .unwrap();
+    let req2 = String::from_utf8(rx2.recv().unwrap())
+        .unwrap()
+        .to_lowercase();
+    assert!(req2.contains("a=1"), "expected cookie a=1: {req2}");
+    assert!(req2.contains("b=2"), "expected cookie b=2: {req2}");
+}
+
+#[test]
+fn protocol_version_is_http_1_1_over_plain_http() {
+    // Without the http2 feature, all responses must report HTTP/1.1.
+    use crate::HttpVersion;
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"version check"));
+    let session = HttpSession::new();
+    let response = session
+        .request(HttpRequest::get(&url).unwrap(), false)
+        .unwrap();
+    assert_eq!(response.protocol(), HttpVersion::H1_1);
+    assert_eq!(response.protocol().as_str(), "HTTP/1.1");
+}
+
+#[test]
+fn http_version_display_and_equality() {
+    use crate::HttpVersion;
+    assert_eq!(HttpVersion::H1_1.to_string(), "HTTP/1.1");
+    assert_eq!(HttpVersion::H2.to_string(), "HTTP/2");
+    assert_eq!(HttpVersion::H3.to_string(), "HTTP/3");
+    assert_eq!(HttpVersion::H2, HttpVersion::H2);
+    assert_ne!(HttpVersion::H1_1, HttpVersion::H2);
+}

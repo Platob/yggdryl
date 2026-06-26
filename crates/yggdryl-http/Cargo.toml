@@ -32,6 +32,12 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 #   media        expose the response `mime_type()` via yggdryl-core's media types;
 #   log          structured logging via the `log` facade.
 log = { version = "0.4", optional = true }
+# HTTP/2 transport (off by default, enabled with `http2` feature):
+hyper = { version = "1", features = ["client", "http1", "http2"], optional = true }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "http2", "tokio"], optional = true }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "webpki-tokio", "tls12", "ring"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"], optional = true }
+http-body-util = { version = "0.1", optional = true }
 
 [features]
 # `compression` (auto `Content-Encoding` decode) ships on by default so a plain
@@ -47,3 +53,15 @@ compression = [
 ]
 media = ["yggdryl-core/media"]
 log = ["dep:log", "yggdryl-core/log"]
+# HTTP/2 (and HTTP/1.1 ALPN fallback) via hyper + hyper-rustls + tokio.
+# Off by default; the default build is pure HTTP/1.1 via ureq with no new
+# required dependencies.
+http2 = [
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:hyper-rustls",
+    "dep:tokio",
+    "dep:http-body-util",
+]
+# HTTP/3 stub (implies http2; QUIC/UDP support planned via quinn).
+http3 = ["http2"]
