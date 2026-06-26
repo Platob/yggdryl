@@ -81,6 +81,13 @@ pub enum DataType {
     Logical(LogicalType),
     /// A type carrying child [`Field`](crate::Field)s.
     Nested(NestedType),
+    /// The **dynamic / object** type (`any`): a value whose concrete type is not
+    /// yet known. It has no Arrow counterpart (it converts to `Null`); its purpose
+    /// is to carry an untyped literal — e.g. a filter value written as a string —
+    /// until a [`Frame`](crate::Frame) resolves the target column's type and casts
+    /// it for pushdown. Every type [`can_cast`](DataType::can_cast_to) to and from
+    /// `Any`.
+    Any,
 }
 
 impl From<PrimitiveType> for DataType {
@@ -117,9 +124,25 @@ impl DataType {
         matches!(self, DataType::Nested(_))
     }
 
+    /// `true` if this is the dynamic [`Any`](DataType::Any) type.
+    pub fn is_any(&self) -> bool {
+        matches!(self, DataType::Any)
+    }
+
     /// `true` for the numeric primitives (see [`PrimitiveType::is_numeric`]).
     pub fn is_numeric(&self) -> bool {
         matches!(self, DataType::Primitive(p) if p.is_numeric())
+    }
+
+    /// `true` for the variable-length string primitives (`utf8` / `large_utf8` /
+    /// `utf8_view`).
+    pub fn is_string(&self) -> bool {
+        matches!(self, DataType::Primitive(p) if p.is_string())
+    }
+
+    /// `true` for the temporal logical types (date / time / timestamp / duration).
+    pub fn is_temporal(&self) -> bool {
+        matches!(self, DataType::Logical(l) if l.is_temporal())
     }
 
     /// Parses any canonical type string, trying the primitive, logical and nested
@@ -133,6 +156,11 @@ impl DataType {
         }
         let head =
             split_head(trimmed).ok_or_else(|| DataTypeError::Invalid(trimmed.to_string()))?;
+
+        // The dynamic type stands outside the three Arrow families.
+        if matches!(head.name, "any" | "object") && head.params.is_none() && head.body.is_none() {
+            return Ok(DataType::Any);
+        }
 
         // Each family claims its own names: an `Unknown` means "not mine, try the
         // next"; any other error means the name matched but the input was bad.
@@ -158,6 +186,7 @@ impl DataType {
             DataType::Primitive(p) => p.to_str(),
             DataType::Logical(l) => l.to_str(),
             DataType::Nested(n) => n.to_str(),
+            DataType::Any => "any".to_string(),
         }
     }
 
@@ -189,6 +218,11 @@ impl From<&DataType> for arrow_schema::DataType {
             DataType::Primitive(p) => p.into(),
             DataType::Logical(l) => l.into(),
             DataType::Nested(n) => n.into(),
+            // `Any` has no Arrow counterpart; it defaults to the `Null` placeholder.
+            DataType::Any => {
+                log_event!(warn, "DataType::Any has no Arrow type; defaulting to Null");
+                arrow_schema::DataType::Null
+            }
         }
     }
 }
@@ -266,6 +300,29 @@ impl From<&arrow_schema::DataType> for DataType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn any_is_the_dynamic_type() {
+        assert_eq!(DataType::from_str("any").unwrap(), DataType::Any);
+        assert_eq!(DataType::from_str("object").unwrap(), DataType::Any);
+        assert_eq!(DataType::Any.to_str(), "any");
+        assert!(DataType::Any.is_any());
+        assert!(!DataType::from(PrimitiveType::Int64).is_any());
+        // `any` takes no parameters/body.
+        assert!(DataType::from_str("any(1)").is_err());
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn any_maps_to_arrow_null() {
+        // `Any` has no Arrow type; it defaults to Null (one-way).
+        assert_eq!(DataType::Any.to_arrow(), arrow_schema::DataType::Null);
+        // Null comes back as the concrete null primitive, not Any.
+        assert_eq!(
+            DataType::from_arrow(&arrow_schema::DataType::Null),
+            DataType::from(PrimitiveType::Null)
+        );
+    }
 
     #[test]
     fn primitives_round_trip() {

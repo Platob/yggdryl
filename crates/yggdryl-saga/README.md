@@ -22,7 +22,10 @@ It provides:
 - `Field` — a named, nullable `DataType` with metadata: the column header and the
   child element of every nested type;
 - `Schema` — an ordered list of `Field`s with metadata (the arrow-`Schema`
-  equivalent).
+  equivalent);
+- `DataType::Any` — the **dynamic** type for an untyped literal, with
+  `DataType::can_cast_to` the casting rule (numbers ↔ booleans ↔ strings, and
+  strings/ints ↔ the temporal types — the ISO-date → `timestamp` path).
 
 On top of that vocabulary sit the **base traits** every future frame and column
 backing will satisfy, so eager and lazy implementations share one surface:
@@ -32,13 +35,22 @@ backing will satisfy, so eager and lazy implementations share one surface:
   (unknown for an unevaluated lazy column), and `rename` / `cast` / `slice` /
   `head` / `tail` compose;
 - `Frame` — a tabular frame: `select` / `drop` / `filter` / `limit` / column
-  access over a common `Schema`, with structural defaults (`width`,
-  `column_names`, `drop`, …) derived from the schema so an implementor supplies
-  only the essentials. A generic `fn pipeline<F: Frame>(f: F)` runs over any
-  backing.
+  access over a common `Schema`, with structural defaults derived from the schema
+  so an implementor supplies only the essentials. A generic `fn pipeline<F: Frame>`
+  runs over any backing.
+
+…and the **filtering layer** they consume:
+
+- `Scalar` — a typed literal; `cast` types an untyped (`Any`) or string value
+  (e.g. an ISO date → a `timestamp`);
+- `Expression` / `col` / `lit` — expression nodes that resolve a type against a
+  `Schema`;
+- `Predicate` — a boolean filter whose `optimize(&schema)` casts each literal to
+  its column's type, so `Frame::filter_typed` can **push it down** into typed
+  storage (`ParquetFrame`, `CsvFrame`).
 
 The concrete eager/lazy frame implementations are intentionally **not built yet** —
-this layer nails the shared contract first.
+this layer nails the shared contract (and the typed-pushdown machinery) first.
 
 Every value type pairs a canonical-string `from_str` / `to_str` round-trip with, under
 the on-by-default `arrow` feature, infallible `to_arrow()` / `from_arrow()`

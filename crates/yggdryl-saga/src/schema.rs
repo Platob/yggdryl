@@ -1,5 +1,5 @@
 //! The [`Schema`] type — an ordered list of [`Field`]s with metadata: the header
-//! of a [`DataFrame`](crate::DataFrame), mirroring `arrow_schema::Schema`.
+//! shared by every [`Frame`](crate::Frame), mirroring `arrow_schema::Schema`.
 
 use std::collections::BTreeMap;
 use std::fmt;

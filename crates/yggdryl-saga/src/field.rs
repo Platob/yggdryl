@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::cast::CastError;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::parse::find_top_level;
@@ -79,6 +80,17 @@ impl Field {
         }
     }
 
+    /// Creates a **nullable** field (the common case when inferring a schema from a
+    /// CSV/Parquet source).
+    pub fn nullable(name: impl Into<String>, data_type: DataType) -> Field {
+        Field::new(name, data_type, true)
+    }
+
+    /// Creates a **non-nullable** (required) field.
+    pub fn required(name: impl Into<String>, data_type: DataType) -> Field {
+        Field::new(name, data_type, false)
+    }
+
     /// The field name.
     pub fn name(&self) -> &str {
         &self.name
@@ -99,13 +111,19 @@ impl Field {
         &self.metadata
     }
 
+    /// The metadata value for `key`, if present.
+    pub fn metadata_value(&self, key: &str) -> Option<&str> {
+        self.metadata.get(key).map(String::as_str)
+    }
+
     /// Returns a copy with the name replaced.
     pub fn with_name(mut self, name: impl Into<String>) -> Field {
         self.name = name.into();
         self
     }
 
-    /// Returns a copy with the data type replaced.
+    /// Returns a copy with the data type replaced (unchecked — see
+    /// [`cast`](Field::cast) for a validated change).
     pub fn with_data_type(mut self, data_type: DataType) -> Field {
         self.data_type = data_type;
         self
@@ -121,6 +139,31 @@ impl Field {
     pub fn with_metadata(mut self, metadata: BTreeMap<String, String>) -> Field {
         self.metadata = metadata;
         self
+    }
+
+    /// Returns a copy with one metadata entry inserted (or overwritten).
+    pub fn with_metadata_entry(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Field {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Returns the field re-typed to `data_type`, keeping the name, nullability and
+    /// metadata. Errors with [`CastError`] when the current type cannot cast to the
+    /// target (see [`DataType::can_cast_to`]). This is the field-level mirror of
+    /// [`Column::cast`](crate::Column::cast).
+    pub fn cast(&self, data_type: DataType) -> Result<Field, CastError> {
+        if self.data_type.can_cast_to(&data_type) {
+            Ok(self.clone().with_data_type(data_type))
+        } else {
+            Err(CastError::Unsupported {
+                from: self.data_type.clone(),
+                to: data_type,
+            })
+        }
     }
 
     /// Parses a `name: type` string, with an optional trailing `not null` marking
@@ -234,6 +277,31 @@ mod tests {
         assert!(g.is_nullable());
         // The original is untouched (builders are non-mutating).
         assert_eq!(f.name(), "id");
+    }
+
+    #[test]
+    fn constructors_and_metadata_helpers() {
+        assert!(Field::nullable("a", PrimitiveType::Int64.into()).is_nullable());
+        assert!(!Field::required("a", PrimitiveType::Int64.into()).is_nullable());
+        let f = Field::nullable("a", PrimitiveType::Int64.into()).with_metadata_entry("unit", "ms");
+        assert_eq!(f.metadata_value("unit"), Some("ms"));
+        assert_eq!(f.metadata_value("nope"), None);
+    }
+
+    #[test]
+    fn cast_keeps_identity_and_validates() {
+        let f =
+            Field::new("ts", PrimitiveType::Utf8.into(), true).with_metadata_entry("source", "csv");
+        // utf8 -> timestamp is a valid cast; name/nullability/metadata survive.
+        let ts = DataType::from_str("timestamp(ns, UTC)").unwrap();
+        let casted = f.cast(ts.clone()).unwrap();
+        assert_eq!(casted.name(), "ts");
+        assert!(casted.is_nullable());
+        assert_eq!(casted.data_type(), &ts);
+        assert_eq!(casted.metadata_value("source"), Some("csv"));
+        // A struct target is not castable from utf8.
+        let struct_ty = DataType::from_str("struct<a: int64>").unwrap();
+        assert!(f.cast(struct_ty).is_err());
     }
 
     #[test]

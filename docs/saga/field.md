@@ -14,6 +14,9 @@ preserve metadata too.
 
 ## Construct
 
+`new` takes the nullability flag; `nullable` / `required` are the readable
+shorthands a CSV/Parquet schema inference reaches for.
+
 === "Rust"
 
     ```rust
@@ -22,22 +25,35 @@ preserve metadata too.
     let f = Field::new("price", DataType::from(PrimitiveType::Float64), false);
     assert_eq!(f.name(), "price");
     assert!(!f.is_nullable());
+
+    let a = Field::nullable("a", PrimitiveType::Int64.into());   // nullable
+    let b = Field::required("b", PrimitiveType::Utf8.into());    // not null
     ```
 
-## Update
+## Update & cast
 
-`with_name` / `with_data_type` / `with_nullable` / `with_metadata` each return a new
-value and never mutate the original.
+`with_name` / `with_data_type` / `with_nullable` / `with_metadata` /
+`with_metadata_entry` each return a new value and never mutate the original.
+`cast` re-types the field **validated** by [`DataType::can_cast_to`](predicate.md)
+(keeping name, nullability and metadata) — the field-level mirror of
+[`Column::cast`](column.md).
 
 === "Rust"
 
     ```rust
-    use yggdryl_saga::{Field, PrimitiveType};
+    use yggdryl_saga::{DataType, Field, PrimitiveType};
 
-    let id = Field::new("id", PrimitiveType::Int64.into(), false);
+    let id = Field::new("id", PrimitiveType::Int64.into(), false)
+        .with_metadata_entry("source", "csv");
     let key = id.clone().with_name("key").with_nullable(true);
     assert_eq!(key.name(), "key");
     assert_eq!(id.name(), "id"); // unchanged
+
+    // Re-type a utf8 field to timestamp (metadata/nullability preserved).
+    let ts = Field::new("ts", PrimitiveType::Utf8.into(), true)
+        .cast(DataType::from_str("timestamp(ns, UTC)").unwrap())
+        .unwrap();
+    assert!(ts.data_type().is_temporal());
     ```
 
 ## The string grammar

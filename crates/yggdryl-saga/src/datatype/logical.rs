@@ -143,6 +143,21 @@ pub enum LogicalType {
 }
 
 impl LogicalType {
+    /// `true` for the calendar/clock types (`date32` / `date64` / `time32` /
+    /// `time64` / `timestamp` / `duration`) — the ones a string ISO value can be
+    /// cast into. Intervals and decimals are excluded.
+    pub fn is_temporal(&self) -> bool {
+        matches!(
+            self,
+            LogicalType::Date32
+                | LogicalType::Date64
+                | LogicalType::Time32(_)
+                | LogicalType::Time64(_)
+                | LogicalType::Timestamp(_, _)
+                | LogicalType::Duration(_)
+        )
+    }
+
     /// Parses a canonical logical name (e.g. `date32`, `timestamp(us, UTC)`,
     /// `decimal128(38, 10)`). Returns [`DataTypeError::Unknown`] for a name that is
     /// not a logical type, so [`DataType::from_str`](crate::DataType::from_str) can

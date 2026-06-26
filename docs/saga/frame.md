@@ -26,30 +26,38 @@ frame kind, so a generic pipeline works across backings. Each frame yields its o
 | `is_empty()` | `height() == 0`, when known (provided) |
 | `select(columns)` | projection, in order |
 | `drop(columns)` | complement of a projection (**provided**) |
-| `filter(predicate)` | keep rows where the named boolean column is true |
+| `filter(predicate)` | keep rows matching a [`Predicate`](predicate.md) (implementations may push it down) |
+| `filter_typed(predicate)` | type-optimise the predicate against the schema, then `filter` (**provided**) |
 | `limit(n)` / `head(n)` / `tail(n)` / `slice(offset, length)` | row limits (`head` provided) |
 
 An implementor supplies `schema`, `column`, `select`, `filter`, `limit`, `tail` and
 `slice`; everything else is provided.
 
-## A backing-agnostic pipeline
+## Filtering & pushdown
 
-Because every method is on the trait, one function runs over **any** `Frame` — the
-eager and lazy implementations (added later) both qualify.
+`filter` takes a [`Predicate`](predicate.md). The provided `filter_typed` first
+**type-optimises** it against the frame's schema — casting each literal to its
+column's type (e.g. a string ISO date → `timestamp`) — so the comparison is typed
+and an implementation (a `ParquetFrame`, a `CsvFrame`) can push it down into typed
+storage. This is the path that turns `col("ts") > "2024-01-01"` into a typed range
+scan.
 
 === "Rust"
 
     ```rust
-    use yggdryl_saga::{Frame, FrameError};
+    use yggdryl_saga::{Frame, FrameError, Predicate, Scalar};
 
-    fn top_trades<F: Frame>(frame: F) -> Result<F, FrameError> {
+    fn recent_fills<F: Frame>(frame: F) -> Result<F, FrameError> {
         frame
             .select(&["ts", "symbol", "px", "qty"])?
-            .filter("is_fill")?   // keep rows where the boolean column `is_fill` is true
+            // An untyped ISO string is cast to the `ts` column's timestamp type,
+            // then pushed down.
+            .filter_typed(Predicate::ge("ts", Scalar::any("2024-01-01")))?
             .head(100)
     }
     ```
 
 ## Next
 
+- [Predicate](predicate.md) — the filtering expressions and type-casting pushdown
 - [Column](column.md) — the per-column trait `Frame::column` yields

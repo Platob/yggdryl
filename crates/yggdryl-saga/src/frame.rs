@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use crate::{Column, ColumnError, Schema};
+use crate::{Column, ColumnError, ExpressionError, Predicate, Schema};
 
 /// Error returned by [`Frame`] operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +37,15 @@ impl std::error::Error for FrameError {}
 impl From<ColumnError> for FrameError {
     fn from(err: ColumnError) -> FrameError {
         FrameError::Column(err)
+    }
+}
+
+impl From<ExpressionError> for FrameError {
+    fn from(err: ExpressionError) -> FrameError {
+        match err {
+            ExpressionError::ColumnNotFound(name) => FrameError::ColumnNotFound(name),
+            other => FrameError::Compute(other.to_string()),
+        }
     }
 }
 
@@ -123,8 +132,24 @@ pub trait Frame: Sized {
         self.select(&keep)
     }
 
-    /// Keeps only the rows where the named boolean column is true.
-    fn filter(self, predicate: &str) -> Result<Self, FrameError>;
+    /// Keeps only the rows matching `predicate`.
+    ///
+    /// Implementations are free to **push the predicate down** into their storage
+    /// (a `ParquetFrame` skips row groups, a `CsvFrame` filters on scan). The
+    /// predicate should be type-optimised against the schema first — use
+    /// [`filter_typed`](Frame::filter_typed), which does it for you — so the
+    /// literals are typed for that pushdown.
+    fn filter(self, predicate: Predicate) -> Result<Self, FrameError>;
+
+    /// Type-optimises `predicate` against this frame's [`Schema`] (casting each
+    /// literal to its column's type — e.g. a string ISO date to a `timestamp`),
+    /// then [`filter`](Frame::filter)s with the typed predicate. This is the path
+    /// that makes a filter pushable into typed storage.
+    fn filter_typed(self, predicate: Predicate) -> Result<Self, FrameError> {
+        let schema = self.schema()?;
+        let optimized = predicate.optimize(&schema)?;
+        self.filter(optimized)
+    }
 
     /// Keeps at most the first `n` rows.
     fn limit(self, n: usize) -> Result<Self, FrameError>;
@@ -144,7 +169,7 @@ pub trait Frame: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Column, ColumnError, DataType, Field, PrimitiveType};
+    use crate::{Column, ColumnError, DataType, Field, PrimitiveType, Scalar};
 
     /// A trivial materialized column for the mock frame.
     struct TestColumn {
@@ -218,7 +243,7 @@ mod tests {
                 rows: self.rows,
             })
         }
-        fn filter(self, _predicate: &str) -> Result<Self, FrameError> {
+        fn filter(self, _predicate: Predicate) -> Result<Self, FrameError> {
             Ok(self) // mock: keep all rows
         }
         fn limit(mut self, n: usize) -> Result<Self, FrameError> {
@@ -285,6 +310,19 @@ mod tests {
         ));
         assert!(matches!(
             frame().select(&["nope"]),
+            Err(FrameError::ColumnNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn filter_typed_optimizes_then_filters() {
+        // An untyped ISO literal against a float column is accepted (typed to it),
+        // and an unknown column is rejected before any filtering happens.
+        assert!(frame()
+            .filter_typed(Predicate::gt("px", Scalar::any("100")))
+            .is_ok());
+        assert!(matches!(
+            frame().filter_typed(Predicate::eq("nope", Scalar::int64(1))),
             Err(FrameError::ColumnNotFound(_))
         ));
     }

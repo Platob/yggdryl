@@ -15,9 +15,18 @@ families, each its own module:
   `View` variants), `FixedSizeList`, `Struct`, `Map`, `Union`, `Dictionary`,
   `RunEndEncoded`.
 
-The partition is total and disjoint, so the Arrow bridge
+Plus one type outside the Arrow families:
+
+- **`Any`** (`any` / `object`) — the **dynamic** type: a value whose concrete type
+  is not yet known. It has no Arrow counterpart (it converts to `Null`); its job is
+  to carry an untyped literal — a filter value written as a string — until a
+  [`Frame`](frame.md) resolves the target column's type and casts it for pushdown
+  (see [Predicate](predicate.md)). Every type `can_cast_to` and from `Any`.
+
+The three Arrow families form a total, disjoint partition, so the Arrow bridge
 (`to_arrow` / `from_arrow`, under the on-by-default `arrow` feature) is a lossless
-bijection in both directions.
+bijection for every Arrow type. (`Any` is the one non-Arrow type — it maps to
+`Null` one-way.)
 
 !!! note
     Python and Node bindings for `yggdryl-saga` are planned; the examples below are

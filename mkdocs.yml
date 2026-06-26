@@ -55,6 +55,7 @@ nav:
       - Schema: saga/schema.md
       - Column (trait): saga/column.md
       - Frame (trait): saga/frame.md
+      - Predicate & expressions: saga/predicate.md
   - Benchmarks: benchmarks.md
 
 markdown_extensions:

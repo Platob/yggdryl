@@ -16,6 +16,8 @@
 //!     `Map`, `Union`, `Dictionary`, …).
 //! - [`Field`] is a named, nullable [`DataType`] with metadata — the column
 //!   header; [`Schema`] is an ordered list of them.
+//! - [`DataType::Any`] is the **dynamic** type for untyped literals, and
+//!   [`can_cast_to`](DataType::can_cast_to) the casting rule that types them.
 //!
 //! On top of that vocabulary sit the **base traits** that every future frame and
 //! column backing will satisfy, so eager and lazy implementations share one
@@ -24,6 +26,16 @@
 //! - [`Column`] — a single named, typed column, materialized or lazy;
 //! - [`Frame`] — a tabular frame: `select` / `filter` / column access over a
 //!   common [`Schema`], whether the rows are in memory or still a plan.
+//!
+//! …and the **filtering layer** they consume:
+//!
+//! - [`Scalar`] — a typed literal; [`cast`](Scalar::cast) types an untyped
+//!   ([`Any`](DataType::Any)) or string value (e.g. an ISO date → a `timestamp`);
+//! - [`Expression`] / [`Col`] / [`Lit`] — expression nodes that resolve a type
+//!   against a [`Schema`];
+//! - [`Predicate`] — a boolean filter whose [`optimize`](Predicate::optimize)
+//!   casts each literal to its column's type, so [`Frame::filter_typed`] can push
+//!   it down into typed storage.
 //!
 //! Every value type pairs a canonical-string [`from_str`](DataType::from_str) /
 //! [`to_str`](DataType::to_str) round-trip with, under the on-by-default `arrow`
@@ -60,6 +72,11 @@ mod datatype;
 mod field;
 mod schema;
 
+mod cast;
+mod expression;
+mod predicate;
+mod scalar;
+
 mod column;
 mod frame;
 
@@ -69,6 +86,11 @@ pub use datatype::{
 };
 pub use field::{Field, FieldError};
 pub use schema::{Schema, SchemaError};
+
+pub use cast::CastError;
+pub use expression::{col, lit, Col, Expression, ExpressionError, Lit};
+pub use predicate::{CompareOp, Predicate};
+pub use scalar::Scalar;
 
 pub use column::{Column, ColumnError};
 pub use frame::{Frame, FrameError};

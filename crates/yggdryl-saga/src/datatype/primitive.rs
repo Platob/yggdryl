@@ -93,6 +93,15 @@ impl PrimitiveType {
         )
     }
 
+    /// `true` for the variable-length string types (`utf8` / `large_utf8` /
+    /// `utf8_view`).
+    pub fn is_string(&self) -> bool {
+        matches!(
+            self,
+            PrimitiveType::Utf8 | PrimitiveType::LargeUtf8 | PrimitiveType::Utf8View
+        )
+    }
+
     /// Parses a canonical primitive name (e.g. `int64`, `utf8`,
     /// `fixed_size_binary(16)`), accepting the common aliases (`bool`, `string`,
     /// `double`). Returns [`DataTypeError::Unknown`] for a name that is not a
