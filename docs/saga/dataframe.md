@@ -96,12 +96,20 @@ all work; a null cell never matches a comparison.
     Vectorising it over Arrow compute kernels, and pushing predicates into a lazy
     plan / file source, are later steps.
 
+## Aggregate
+
+`group_by(keys)` and `resample(time, every)` reduce rows into groups, finished with
+`.agg([...])` — see [Group-by & resample](aggregate.md). Both take a single-pass,
+hash-free path over sorted timeseries.
+
 ## Arrow interop
 
 `record_batch()` / `into_record_batch()` expose the underlying Arrow data, and
 `from_record_batch` wraps one back up — all without copying.
 
 ## Next
+
+- [Group-by & resample](aggregate.md) — `group_by` / `resample` aggregation
 
 - [Frame](frame.md) — the trait `DataFrame` implements
 - [Predicate](predicate.md) — the filters it consumes (and types)

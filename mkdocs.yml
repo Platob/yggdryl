@@ -56,6 +56,7 @@ nav:
       - Column (trait): saga/column.md
       - Frame (trait): saga/frame.md
       - DataFrame (eager): saga/dataframe.md
+      - Group-by & resample: saga/aggregate.md
       - Predicate & expressions: saga/predicate.md
   - Benchmarks: benchmarks.md
 

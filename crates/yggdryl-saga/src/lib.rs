@@ -29,8 +29,11 @@
 //!
 //! The first concrete backing (the on-by-default `dataframe` feature) is the eager,
 //! Arrow-`RecordBatch`-backed [`DataFrame`] / [`ArrayColumn`]: projection and
-//! row-slicing are zero-copy, and `filter` types the predicate's literals against
-//! the schema before evaluating it.
+//! row-slicing are zero-copy, `filter` types the predicate's literals against the
+//! schema before evaluating it, and [`group_by`](DataFrame::group_by) /
+//! [`resample`](DataFrame::resample) reduce rows with [`Agg`]s — taking a
+//! single-pass, hash-free path over sorted timeseries (`resample` buckets, and a
+//! sorted `group_by` key, are contiguous row ranges).
 //!
 //! …and the **filtering layer** they consume:
 //!
@@ -82,6 +85,9 @@ mod expression;
 mod predicate;
 mod scalar;
 
+mod agg;
+mod period;
+
 mod column;
 mod frame;
 
@@ -89,6 +95,8 @@ mod frame;
 mod array_column;
 #[cfg(feature = "dataframe")]
 mod dataframe;
+#[cfg(feature = "dataframe")]
+mod groupby;
 
 pub use datatype::{
     DataType, DataTypeError, IntervalUnit, LogicalType, NestedType, PrimitiveType, TimeUnit,
@@ -102,6 +110,9 @@ pub use expression::{col, lit, Col, Expression, ExpressionError, Lit};
 pub use predicate::{CompareOp, Predicate};
 pub use scalar::Scalar;
 
+pub use agg::{Agg, AggFunc};
+pub use period::{Period, PeriodError};
+
 pub use column::{Column, ColumnError};
 pub use frame::{Frame, FrameError, FrameHandle};
 
@@ -109,3 +120,5 @@ pub use frame::{Frame, FrameError, FrameHandle};
 pub use array_column::ArrayColumn;
 #[cfg(feature = "dataframe")]
 pub use dataframe::DataFrame;
+#[cfg(feature = "dataframe")]
+pub use groupby::{GroupBy, Resample};

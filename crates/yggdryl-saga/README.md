@@ -51,9 +51,12 @@ backing will satisfy, so eager and lazy implementations share one surface:
 
 The first concrete backing is built: the eager, Arrow-`RecordBatch`-backed
 `DataFrame` / `ArrayColumn` (the on-by-default `dataframe` feature). Projection and
-row-slicing are zero-copy, and `filter` types the predicate's literals against the
-schema before evaluating it. A lazy frame and file sources (`ParquetFrame`,
-`CsvFrame`) come next.
+row-slicing are zero-copy; `filter` types the predicate's literals against the
+schema before evaluating it; and `group_by` / `resample` reduce rows with `Agg`s
+(`count` / `sum` / `min` / `max` / `mean`), taking a **single-pass, hash-free path
+over sorted timeseries** (`resample` buckets, and a sorted `group_by` key, are
+contiguous row ranges). A lazy frame and file sources (`ParquetFrame`, `CsvFrame`)
+come next.
 
 Every value type pairs a canonical-string `from_str` / `to_str` round-trip with, under
 the on-by-default `arrow` feature, infallible `to_arrow()` / `from_arrow()`
