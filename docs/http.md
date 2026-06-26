@@ -26,6 +26,30 @@ r = s.get("https://httpbin.org/get")
 print(r.status, r.headers, r.sent_at, r.received_at)   # request/response timestamps
 ```
 
+## Authentication
+
+`with_basic_auth(username, password)` and `with_bearer_auth(token)` set the
+`Authorization` header — HTTP Basic (`Basic base64(user:pass)`, RFC 7617) or
+Bearer (`Bearer <token>`, RFC 6750). They exist on both `HttpRequest` (per
+request) and `HttpSession` (a default on every request, like `requests`'
+`Session.auth`). A session-level credential is a default header, so a per-request
+`Authorization` overrides it and a **cross-origin redirect strips it** — credentials
+never leak to another host.
+
+```python
+import yggdryl
+# Session-wide credentials (Python kwargs / Node options).
+s = yggdryl.HttpSession(basic_auth=("user", "pass"))      # or bearer_auth="token"
+s.get("https://httpbin.org/basic-auth/user/pass")
+```
+
+```javascript
+const { HttpSession } = require("yggdryl");
+// basicAuth is a [username, password] pair; bearerAuth is a token.
+const opts = Array(9).fill(undefined);
+const s = new HttpSession(...opts, ["user", "pass"]); // or (...opts, undefined, "token")
+```
+
 ## Streaming & random access
 
 `HttpStream` streams straight off the held connection — sequential `read` pulls

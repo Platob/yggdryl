@@ -132,6 +132,68 @@ fn request_headers_override_session_defaults() {
 }
 
 #[test]
+fn request_basic_and_bearer_auth_set_authorization() {
+    let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+    let session = HttpSession::new();
+    session
+        .request(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_basic_auth("Aladdin", "open sesame"),
+            false,
+        )
+        .unwrap();
+    let request = String::from_utf8(rx.recv().unwrap()).unwrap();
+    assert!(
+        request.contains("authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+        "{request}"
+    );
+
+    let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+    session
+        .request(
+            HttpRequest::get(&url).unwrap().with_bearer_auth("tok-123"),
+            false,
+        )
+        .unwrap();
+    let request = String::from_utf8(rx.recv().unwrap()).unwrap();
+    assert!(
+        request.contains("authorization: Bearer tok-123"),
+        "{request}"
+    );
+}
+
+#[test]
+fn session_auth_applies_and_request_auth_overrides() {
+    // A session-level credential is sent by default …
+    let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+    let session = HttpSession::new().with_bearer_auth("session-token");
+    session.get(&url).unwrap();
+    let request = String::from_utf8(rx.recv().unwrap()).unwrap();
+    assert!(
+        request.contains("authorization: Bearer session-token"),
+        "{request}"
+    );
+
+    // … but a per-request credential overrides it (no duplicate header).
+    let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
+    session
+        .request(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_basic_auth("user", "pass"),
+            false,
+        )
+        .unwrap();
+    let request = String::from_utf8(rx.recv().unwrap())
+        .unwrap()
+        .to_lowercase();
+    assert_eq!(request.matches("authorization:").count(), 1, "{request}");
+    assert!(request.contains("authorization: basic "), "{request}");
+    assert!(!request.contains("session-token"), "{request}");
+}
+
+#[test]
 fn streamed_request_body_from_an_io_handle() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     let session = HttpSession::new();

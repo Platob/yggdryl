@@ -24,6 +24,7 @@ function startServer() {
           res.writeHead(200, {
             'Content-Type': 'text/plain',
             'X-Echo-Back': req.headers['x-echo'] || '',
+            'X-Auth-Back': req.headers['authorization'] || '',
           })
           res.end('hello world')
         } else if (req.method === 'DELETE') {
@@ -125,6 +126,25 @@ test('baseUrl resolves relative targets', async () => {
     assert.strictEqual((await session.get('some/path')).status, 200)
     // An absolute URL bypasses the base.
     assert.strictEqual((await session.get(base + '/')).status, 200)
+  } finally {
+    server.close()
+  }
+})
+
+test('basicAuth and bearerAuth set a default Authorization header', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  const opts = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]
+  try {
+    // basicAuth: a [username, password] pair.
+    const basic = new HttpSession(...opts, ['Aladdin', 'open sesame'])
+    assert.strictEqual(
+      (await basic.get(base + '/')).header('x-auth-back'),
+      'Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==',
+    )
+    // bearerAuth: a token.
+    const bearer = new HttpSession(...opts, undefined, 'tok-123')
+    assert.strictEqual((await bearer.get(base + '/')).header('x-auth-back'), 'Bearer tok-123')
   } finally {
     server.close()
   }

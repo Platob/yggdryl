@@ -28,9 +28,13 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/missing":
             return self._reply(404, b"nope")
-        # Echo a custom request header back so the client can assert on it.
+        # Echo a custom request header (and any Authorization) back so the client
+        # can assert on it.
         echo = self.headers.get("X-Echo", "")
-        self._reply(200, b"hello world", extra={"X-Echo-Back": echo})
+        auth = self.headers.get("Authorization", "")
+        self._reply(
+            200, b"hello world", extra={"X-Echo-Back": echo, "X-Auth-Back": auth}
+        )
 
     def _echo_body(self, status):
         length = int(self.headers.get("Content-Length", 0))
@@ -83,6 +87,18 @@ def test_default_and_request_headers(base_url):
 
     response = session.request("GET", base_url + "/", headers={"X-Echo": "from-request"})
     assert response.header("x-echo-back") == "from-request"
+
+
+def test_basic_and_bearer_auth(base_url):
+    # `basic_auth=(user, pass)` sends a default HTTP Basic Authorization header.
+    session = yggdryl.HttpSession(basic_auth=("Aladdin", "open sesame"))
+    assert (
+        session.get(base_url + "/").header("x-auth-back")
+        == "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+    )
+    # `bearer_auth=token` sends a Bearer token instead.
+    session = yggdryl.HttpSession(bearer_auth="tok-123")
+    assert session.get(base_url + "/").header("x-auth-back") == "Bearer tok-123"
 
 
 def test_404_and_raise_for_status(base_url):

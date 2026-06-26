@@ -301,6 +301,29 @@ impl HttpSession {
         self.with_header("user-agent", user_agent)
     }
 
+    /// Sets a default `Authorization` header to HTTP Basic credentials
+    /// (`Basic base64(username:password)`, RFC 7617) sent with every request,
+    /// like `requests`' `Session.auth = (user, pass)`. As a default header it is
+    /// merged under any per-request `Authorization` and stripped on a cross-origin
+    /// redirect, so credentials never leak to another host.
+    pub fn with_basic_auth(mut self, username: &str, password: &str) -> HttpSession {
+        self.headers.set(
+            "authorization",
+            crate::auth::basic_auth_header(username, password),
+        );
+        self
+    }
+
+    /// Sets a default `Authorization` header to an HTTP Bearer token
+    /// (`Bearer <token>`, RFC 6750) sent with every request. Like
+    /// [`with_basic_auth`](HttpSession::with_basic_auth) it is a default header:
+    /// per-request overrides win and a cross-origin redirect strips it.
+    pub fn with_bearer_auth(mut self, token: &str) -> HttpSession {
+        self.headers
+            .set("authorization", crate::auth::bearer_auth_header(token));
+        self
+    }
+
     /// Sets a base URL that relative request targets resolve against (see
     /// [`resolve_url`](HttpSession::resolve_url) and [`base_url`](HttpSession::base_url)).
     pub fn with_base_url(mut self, base_url: Url) -> HttpSession {

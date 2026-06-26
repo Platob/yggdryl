@@ -141,6 +141,36 @@ impl HttpRequest {
         self
     }
 
+    /// Sets the `Authorization` header to HTTP Basic credentials
+    /// (`Basic base64(username:password)`, RFC 7617), replacing any existing one.
+    ///
+    /// ```
+    /// use yggdryl_http::HttpRequest;
+    ///
+    /// let request = HttpRequest::get("https://example.com")
+    ///     .unwrap()
+    ///     .with_basic_auth("Aladdin", "open sesame");
+    /// assert_eq!(
+    ///     request.headers().get("authorization"),
+    ///     Some("Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+    /// );
+    /// ```
+    pub fn with_basic_auth(mut self, username: &str, password: &str) -> HttpRequest {
+        self.headers.set(
+            "authorization",
+            crate::auth::basic_auth_header(username, password),
+        );
+        self
+    }
+
+    /// Sets the `Authorization` header to an HTTP Bearer token
+    /// (`Bearer <token>`, RFC 6750), replacing any existing one.
+    pub fn with_bearer_auth(mut self, token: &str) -> HttpRequest {
+        self.headers
+            .set("authorization", crate::auth::bearer_auth_header(token));
+        self
+    }
+
     /// Sets an in-memory byte body.
     pub fn with_body(mut self, body: impl Into<Vec<u8>>) -> HttpRequest {
         self.body = Body::Bytes(body.into());

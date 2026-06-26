@@ -280,8 +280,12 @@ impl HttpSession {
     /// ``headers`` sent with every request, a ``max_redirects`` cap, a ``base_url``
     /// that relative targets resolve against, and a default ``http_version``
     /// (``"auto"`` / ``"1.1"`` / ``"2"`` / ``"3"``) for requests that do not pin one.
+    ///
+    /// ``basic_auth=(username, password)`` or ``bearer_auth=token`` set a default
+    /// ``Authorization`` header on every request (HTTP Basic / Bearer), like
+    /// ``requests``' ``Session.auth``; it is stripped on a cross-origin redirect.
     #[new]
-    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None, verify = true, proxy = None, ca_cert = None, ca_cert_file = None))]
+    #[pyo3(signature = (*, user_agent = None, headers = None, max_redirects = None, base_url = None, http_version = None, verify = true, proxy = None, ca_cert = None, ca_cert_file = None, basic_auth = None, bearer_auth = None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         user_agent: Option<String>,
@@ -293,6 +297,8 @@ impl HttpSession {
         proxy: Option<&str>,
         ca_cert: Option<Vec<u8>>,
         ca_cert_file: Option<&str>,
+        basic_auth: Option<(String, String)>,
+        bearer_auth: Option<String>,
     ) -> PyResult<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -324,6 +330,12 @@ impl HttpSession {
         }
         if let Some(ca_cert_file) = ca_cert_file {
             inner = inner.with_ca_cert_file(ca_cert_file).map_err(http_err)?;
+        }
+        if let Some((username, password)) = basic_auth {
+            inner = inner.with_basic_auth(&username, &password);
+        }
+        if let Some(bearer_auth) = bearer_auth {
+            inner = inner.with_bearer_auth(&bearer_auth);
         }
         Ok(HttpSession { inner })
     }

@@ -83,6 +83,7 @@ macro_rules! log_event {
     }};
 }
 
+mod auth;
 mod bridge;
 mod cookies;
 mod error;

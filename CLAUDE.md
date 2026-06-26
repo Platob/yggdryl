@@ -198,11 +198,18 @@ shape:
   HTTP-typed reads (`retry_after`, `content_size` = `Content-Range` total else
   `Content-Length`). **All header logic lives here.**
 - `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
-  `with_param` / `with_body` / `with_body_reader` / `with_body_io` /
-  `with_allow_redirect`). `with_body_io` is the preferred upload: the handle's
-  `stream_len` sets `Content-Length` and the bytes stream straight off the `Io` (a
-  file is never buffered). `with_allow_redirect(false)` opts a request out of the
-  redirect loop (returning the 3xx).
+  `with_param` / `with_basic_auth` / `with_bearer_auth` / `with_body` /
+  `with_body_reader` / `with_body_io` / `with_allow_redirect`). `with_body_io` is the
+  preferred upload: the handle's `stream_len` sets `Content-Length` and the bytes
+  stream straight off the `Io` (a file is never buffered). `with_allow_redirect(false)`
+  opts a request out of the redirect loop (returning the 3xx).
+- **Authentication** (`auth.rs`, crate-internal) — `with_basic_auth(user, pass)` and
+  `with_bearer_auth(token)` on both `HttpRequest` and `HttpSession` set the
+  `Authorization` header (HTTP Basic, RFC 7617, with a dependency-free base64 encoder;
+  Bearer, RFC 6750). Session-level auth is a default header, so a per-request value
+  overrides it and a cross-origin redirect strips it. The bindings surface it as the
+  session `basic_auth`/`bearer_auth` (Python kwargs) / `basicAuth`/`bearerAuth` (Node
+  options).
 - `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
   body** as a `Box<dyn Io>` (an `HttpStream` when streamed, a `BytesIO` when buffered):
   `reader()` is the decoded body `Io` (decompressed under `compression`),

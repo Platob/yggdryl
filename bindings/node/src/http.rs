@@ -265,6 +265,10 @@ impl HttpSession {
     /// `baseUrl` that relative request targets resolve against, and a default
     /// `httpVersion` (`"auto"` / `"1.1"` / `"2"` / `"3"`) for requests that do not
     /// pin one.
+    ///
+    /// `basicAuth` (a `[username, password]` pair) or `bearerAuth` (a token) set a
+    /// default `Authorization` header on every request (HTTP Basic / Bearer); it is
+    /// stripped on a cross-origin redirect.
     #[napi(constructor)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -277,6 +281,8 @@ impl HttpSession {
         proxy: Option<String>,
         ca_cert: Option<Buffer>,
         ca_cert_file: Option<String>,
+        basic_auth: Option<Vec<String>>,
+        bearer_auth: Option<String>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -309,6 +315,17 @@ impl HttpSession {
         }
         if let Some(ca_cert_file) = ca_cert_file {
             inner = inner.with_ca_cert_file(&ca_cert_file).map_err(to_napi)?;
+        }
+        if let Some(basic_auth) = basic_auth {
+            let [username, password] = basic_auth.as_slice() else {
+                return Err(Error::from_reason(
+                    "basicAuth expects a [username, password] pair",
+                ));
+            };
+            inner = inner.with_basic_auth(username, password);
+        }
+        if let Some(bearer_auth) = bearer_auth {
+            inner = inner.with_bearer_auth(&bearer_auth);
         }
         Ok(HttpSession {
             inner: Arc::new(inner),
