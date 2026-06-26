@@ -13,8 +13,9 @@ use crate::{HttpError, HttpRequest, HttpResponseBatch, HttpSession, Method, Retr
 /// Opens a streamed body over a resource (the old `session.stream` helper): sends
 /// the request without raising and returns the live body as a [`Box<dyn Io>`].
 fn open_stream(session: &HttpSession, request: HttpRequest, keep_alive: bool) -> Box<dyn Io> {
+    let ttl = if keep_alive { 300.0 } else { 0.0 };
     session
-        .send(request.with_keep_alive(keep_alive), false, true)
+        .send(request.with_keep_alive(ttl), false)
         .unwrap()
         .into_io()
 }
@@ -96,7 +97,7 @@ fn post_sends_method_headers_and_body() {
     let (url, rx) = serve_once(ok_reply("application/json", b"{}"));
     let session = HttpSession::new();
     let response = session
-        .request(
+        .send(
             HttpRequest::post(&url)
                 .unwrap()
                 .with_header("x-custom", "42")
@@ -117,7 +118,7 @@ fn request_headers_override_session_defaults() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     let session = HttpSession::new().with_header("x-tag", "session");
     session
-        .request(
+        .send(
             HttpRequest::get(&url)
                 .unwrap()
                 .with_header("x-tag", "request"),
@@ -136,7 +137,7 @@ fn request_basic_and_bearer_auth_set_authorization() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     let session = HttpSession::new();
     session
-        .request(
+        .send(
             HttpRequest::get(&url)
                 .unwrap()
                 .with_basic_auth("Aladdin", "open sesame"),
@@ -151,7 +152,7 @@ fn request_basic_and_bearer_auth_set_authorization() {
 
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     session
-        .request(
+        .send(
             HttpRequest::get(&url).unwrap().with_bearer_auth("tok-123"),
             false,
         )
@@ -178,7 +179,7 @@ fn session_auth_applies_and_request_auth_overrides() {
     // … but a per-request credential overrides it (no duplicate header).
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     session
-        .request(
+        .send(
             HttpRequest::get(&url)
                 .unwrap()
                 .with_basic_auth("user", "pass"),
@@ -200,7 +201,7 @@ fn streamed_request_body_from_an_io_handle() {
     // Upload straight from a BytesIO handle, never buffering a Vec.
     let upload = BytesIO::from_bytes(b"streamed-upload-payload".to_vec());
     session
-        .request(
+        .send(
             HttpRequest::put(&url).unwrap().with_body_reader(upload),
             false,
         )
@@ -217,7 +218,7 @@ fn io_body_sets_content_length_and_streams() {
     // An Io body knows its length, so the request is framed with Content-Length.
     let upload = BytesIO::from_bytes(b"io-streamed-body".to_vec());
     session
-        .request(HttpRequest::put(&url).unwrap().with_body_io(upload), false)
+        .send(HttpRequest::put(&url).unwrap().with_body_io(upload), false)
         .unwrap();
     let request = String::from_utf8(rx.recv().unwrap())
         .unwrap()
@@ -243,7 +244,7 @@ fn raise_for_status_flags_errors() {
     let session = HttpSession::new();
     // raise_error = false returns the 404 response instead of erroring.
     let response = session
-        .request(HttpRequest::get(&url).unwrap(), false)
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     assert_eq!(response.status(), 404);
     assert!(!response.ok());
@@ -294,22 +295,19 @@ fn retries_a_500_once_then_surfaces_it() {
 }
 
 #[test]
-fn buffered_send_drains_the_body_and_releases_the_connection() {
-    // stream = false drains the body into a BytesIO during send, so the connection
-    // is released immediately and the same accessors expose the buffered body.
+fn streamed_send_holds_the_connection_until_the_body_drains() {
+    // Every send streams: the response holds the live connection until the body is
+    // drained (or closed), then releases it. `bytes()` drains it in one call.
     let url = serve_ranges(stream_payload());
     let session = HttpSession::new();
     let response = session
-        .send(
-            HttpRequest::get(&url).unwrap().with_keep_alive(true),
-            false,
-            false,
-        )
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
-    assert_eq!(session.open_streams(), 0); // released during send, not held
+    assert_eq!(session.open_streams(), 1); // the live stream holds one connection
     assert_eq!(response.status(), 200);
-    let bytes = response.bytes().unwrap();
+    let bytes = response.bytes().unwrap(); // draining to EOF releases it
     assert_eq!(bytes, stream_payload());
+    assert_eq!(session.open_streams(), 0);
 }
 
 #[cfg(feature = "compression")]
@@ -884,7 +882,7 @@ fn httpstream_releases_connection_to_the_pool_at_eof() {
 fn keep_alive_false_sends_connection_close() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     HttpSession::new()
-        .send(HttpRequest::get(&url).unwrap(), false, true)
+        .send(HttpRequest::get(&url).unwrap().with_keep_alive(0.0), false)
         .unwrap();
     let request = String::from_utf8(rx.recv().unwrap())
         .unwrap()
@@ -896,11 +894,7 @@ fn keep_alive_false_sends_connection_close() {
 fn keep_alive_true_does_not_close_the_connection() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     HttpSession::new()
-        .send(
-            HttpRequest::get(&url).unwrap().with_keep_alive(true),
-            false,
-            true,
-        )
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     let request = String::from_utf8(rx.recv().unwrap())
         .unwrap()
@@ -1067,27 +1061,25 @@ fn send_many_handles_an_empty_iterator() {
 
 #[test]
 fn timing_records_sent_and_received_after_full_read() {
-    // A buffered send (stream = false) drains the body during `send`, so the
-    // returned response already carries both timestamps: sent_at > 0 and
-    // received_at >= sent_at, the "after a normal GET is fully read" invariant.
+    // sent_at is stamped at dispatch; received_at lands once the body is fully read.
+    // Drain through the shared body handle so the (shared) received_at instant is
+    // stamped, while the response stays alive to report it.
     let url = serve_ranges(stream_payload());
     let session = HttpSession::new();
-    let response = session
-        .send(
-            HttpRequest::get(&url).unwrap().with_keep_alive(true),
-            false,
-            false,
-        )
+    let mut response = session
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     let sent_at = response.sent_at();
-    let received_at = response.received_at();
     assert!(sent_at > 0.0, "sent_at should be stamped: {sent_at}");
+    assert_eq!(response.received_at(), 0.0); // not drained yet
+    let mut drained = Vec::new();
+    response.body_mut().read_to_end(&mut drained).unwrap();
+    assert_eq!(drained, stream_payload());
+    let received_at = response.received_at();
     assert!(
         received_at >= sent_at,
         "received_at {received_at} >= sent_at {sent_at}"
     );
-    // The body is still readable through the same accessors.
-    assert_eq!(response.bytes().unwrap(), stream_payload());
 }
 
 #[test]
@@ -1097,11 +1089,7 @@ fn timing_received_at_is_unset_until_a_streamed_body_drains() {
     let url = serve_ranges(stream_payload());
     let session = HttpSession::new();
     let response = session
-        .send(
-            HttpRequest::get(&url).unwrap().with_keep_alive(true),
-            false,
-            true,
-        )
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     assert!(response.sent_at() > 0.0);
     assert_eq!(response.received_at(), 0.0); // streamed body not yet drained
@@ -1224,7 +1212,7 @@ fn redirect_301_downgrades_post_to_get() {
     ]);
     let session = HttpSession::new();
     let response = session
-        .request(
+        .send(
             HttpRequest::post(&url)
                 .unwrap()
                 .with_body(b"payload".to_vec()),
@@ -1249,7 +1237,7 @@ fn redirect_307_preserves_post_and_body() {
     ]);
     let session = HttpSession::new();
     let response = session
-        .request(
+        .send(
             HttpRequest::post(&url)
                 .unwrap()
                 .with_body(b"keep-me".to_vec()),
@@ -1273,7 +1261,7 @@ fn redirect_dropping_the_body_strips_entity_headers() {
     ]);
     let session = HttpSession::new();
     let response = session
-        .request(
+        .send(
             HttpRequest::post(&url)
                 .unwrap()
                 .with_header("content-type", "application/json")
@@ -1303,9 +1291,7 @@ fn redirect_loop_errors() {
         HttpRequest::from_url(
             Method::Get,
             yggdryl_core::Url::from_str(&format!("{url}/loop")).unwrap(),
-        )
-        .with_keep_alive(true),
-        false,
+        ),
         false,
     );
     assert!(
@@ -1324,11 +1310,7 @@ fn allow_redirect_false_returns_the_3xx() {
     let session = HttpSession::new();
     let response = session
         .send(
-            HttpRequest::get(&url)
-                .unwrap()
-                .with_allow_redirect(false)
-                .with_keep_alive(true),
-            false,
+            HttpRequest::get(&url).unwrap().with_allow_redirect(false),
             false,
         )
         .unwrap();
@@ -1344,11 +1326,7 @@ fn exceeding_max_redirects_errors() {
         Box::new(|_| redirect_reply(302, "Found", "/3")),
     ]);
     let session = HttpSession::new().with_max_redirects(1);
-    let result = session.send(
-        HttpRequest::get(&url).unwrap().with_keep_alive(true),
-        false,
-        false,
-    );
+    let result = session.send(HttpRequest::get(&url).unwrap(), false);
     assert!(
         matches!(result, Err(HttpError::TooManyRedirects(_))),
         "expected TooManyRedirects, got {}",
@@ -1367,7 +1345,7 @@ fn cross_host_redirect_strips_authorization() {
     })]);
     let session = HttpSession::new();
     let response = session
-        .request(
+        .send(
             HttpRequest::get(&host_a)
                 .unwrap()
                 .with_header("authorization", "Bearer secret"),
@@ -1440,9 +1418,7 @@ fn redirect_307_with_a_streamed_body_returns_the_3xx() {
         .send(
             HttpRequest::post(&url)
                 .unwrap()
-                .with_body_io(BytesIO::from_bytes(b"streamed".to_vec()))
-                .with_keep_alive(true),
-            false,
+                .with_body_io(BytesIO::from_bytes(b"streamed".to_vec())),
             false,
         )
         .unwrap();
@@ -1544,7 +1520,7 @@ fn negotiated_version_reports_http11_for_a_normal_request() {
     // response reports the version it was delivered over.
     let session = HttpSession::new();
     let response = session
-        .send(HttpRequest::get(&url).unwrap(), false, false)
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     assert_eq!(response.negotiated_version(), HttpVersion::Http11);
     // The session-level default is carried (a getter, regardless of transport).
@@ -1565,7 +1541,7 @@ fn pinning_an_unwired_http2_errors() {
     let pinned = HttpRequest::get(&url)
         .unwrap()
         .with_http_version(HttpVersion::Http2);
-    let err = match session.send(pinned, false, false) {
+    let err = match session.send(pinned, false) {
         Ok(_) => panic!("pinning an unwired HTTP/2 should error"),
         Err(err) => err,
     };
@@ -1575,7 +1551,7 @@ fn pinning_an_unwired_http2_errors() {
     let h2_session = HttpSession::new().with_http_version(HttpVersion::Http2);
     let (url2, _rx2) = serve_once(ok_reply("text/plain", b"ok"));
     assert!(h2_session
-        .send(HttpRequest::get(&url2).unwrap(), false, false)
+        .send(HttpRequest::get(&url2).unwrap(), false)
         .is_err());
 }
 
@@ -1784,11 +1760,7 @@ fn head_response_with_content_length_drains_empty() {
     let (url, _rx) = serve_once(reply);
     let session = HttpSession::new();
     let response = session
-        .send(
-            HttpRequest::head(&url).unwrap().with_keep_alive(true),
-            false,
-            false,
-        )
+        .send(HttpRequest::head(&url).unwrap(), false)
         .unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.bytes().unwrap(), b"");
@@ -1802,11 +1774,7 @@ fn no_content_204_drains_empty() {
     let (url, _rx) = serve_once(reply);
     let session = HttpSession::new();
     let response = session
-        .send(
-            HttpRequest::get(&url).unwrap().with_keep_alive(true),
-            false,
-            false,
-        )
+        .send(HttpRequest::get(&url).unwrap(), false)
         .unwrap();
     assert_eq!(response.status(), 204);
     assert_eq!(response.bytes().unwrap(), b"");
@@ -1948,7 +1916,7 @@ fn http2_cleartext_h2c_roundtrip_and_negotiated_version() {
         // A hop-by-hop header the client must strip before the h2 wire.
         .with_header("connection", "keep-alive")
         .with_http_version(HttpVersion::Http2);
-    let response = session.send(request, false, false).unwrap();
+    let response = session.send(request, false).unwrap();
     assert_eq!(response.status(), 200);
     // The response reports it was delivered over HTTP/2 (h2c).
     assert_eq!(response.negotiated_version(), HttpVersion::Http2);
@@ -1980,7 +1948,6 @@ fn http2_post_body_roundtrip() {
                 .with_body(b"the-h2-body".to_vec())
                 .with_http_version(HttpVersion::Http2),
             false,
-            false,
         )
         .unwrap();
     assert_eq!(response.status(), 200);
@@ -2001,11 +1968,11 @@ fn http2_error_status_is_a_normal_response() {
             .with_http_version(HttpVersion::Http2)
     };
     // raise_error = false: the 503 comes back as a normal response.
-    let response = session.send(request(), false, false).unwrap();
+    let response = session.send(request(), false).unwrap();
     assert_eq!(response.status(), 503);
     assert!(!response.ok());
     // raise_error = true: it becomes an error carrying the status.
-    match session.send(request(), true, false) {
+    match session.send(request(), true) {
         Err(HttpError::Status(503)) => {}
         Err(other) => panic!("expected Status(503), got {other:?}"),
         Ok(_) => panic!("expected an error, got a response"),
@@ -2023,9 +1990,7 @@ fn http2_follows_a_redirect() {
         .send(
             HttpRequest::get(&format!("{url}/redirect"))
                 .unwrap()
-                .with_http_version(HttpVersion::Http2)
-                .with_keep_alive(true),
-            false,
+                .with_http_version(HttpVersion::Http2),
             false,
         )
         .unwrap();
@@ -2156,7 +2121,7 @@ fn http3_quic_roundtrip_with_self_signed_cert() {
     let request = HttpRequest::get(&url)
         .unwrap()
         .with_http_version(HttpVersion::Http3);
-    let response = session.send(request, false, false).unwrap();
+    let response = session.send(request, false).unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.negotiated_version(), HttpVersion::Http3);
     assert_eq!(response.bytes().unwrap(), b"GET /echo");
@@ -2187,7 +2152,7 @@ fn http3_trusts_an_installed_ca_certificate() {
     let request = HttpRequest::get(&url)
         .unwrap()
         .with_http_version(HttpVersion::Http3);
-    let response = session.send(request, false, false).unwrap();
+    let response = session.send(request, false).unwrap();
     assert_eq!(response.status(), 200);
     assert_eq!(response.bytes().unwrap(), b"GET /echo");
     server.join().unwrap();
@@ -2214,7 +2179,6 @@ fn http3_post_body_roundtrip() {
                 .unwrap()
                 .with_body(b"the-h3-body".to_vec())
                 .with_http_version(HttpVersion::Http3),
-            false,
             false,
         )
         .unwrap();

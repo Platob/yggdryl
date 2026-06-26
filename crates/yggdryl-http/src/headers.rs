@@ -46,6 +46,11 @@ impl HttpHeaders {
         }
     }
 
+    /// An independent copy of this header set (same entries, same order).
+    pub fn copy(&self) -> HttpHeaders {
+        self.clone()
+    }
+
     /// The first value for `name` (case-insensitive), if any.
     pub fn get(&self, name: &str) -> Option<&str> {
         self.entries

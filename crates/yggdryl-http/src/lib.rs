@@ -48,8 +48,8 @@
 //!
 //! // A seekable, lazily-fetched remote Io (stream = true keeps the live connection).
 //! use yggdryl_core::{Io, Whence};
-//! let request = HttpRequest::get("https://example.com/data").unwrap().with_keep_alive(true);
-//! let mut stream = session.send(request, false, true).unwrap().into_io();
+//! let request = HttpRequest::get("https://example.com/data").unwrap();
+//! let mut stream = session.send(request, false).unwrap().into_io();
 //! let mut footer = [0u8; 8];
 //! stream.pread(&mut footer, -8, Whence::End).unwrap(); // read the tail, one range request
 //! ```

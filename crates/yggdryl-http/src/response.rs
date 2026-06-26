@@ -63,10 +63,18 @@ impl HttpResponse {
     }
 
     /// Consumes the response, returning its body as a [`Box<dyn Io>`](Io) — the
-    /// live [`HttpStream`](crate::HttpStream) when streamed, the buffered
-    /// [`BytesIO`](yggdryl_core::BytesIO) when not — for seekable access.
+    /// live [`HttpStream`](crate::HttpStream) — for seekable access.
     pub fn into_io(self) -> Box<dyn Io> {
         self.body
+    }
+
+    /// A mutable handle to the **raw** body [`Io`] (the live
+    /// [`HttpStream`](crate::HttpStream)), to read or seek it in place without
+    /// consuming the response. This is the undecoded body; for transparent
+    /// `Content-Encoding` decoding use [`reader`](HttpResponse::reader) /
+    /// [`bytes`](HttpResponse::bytes), which consume the response.
+    pub fn body_mut(&mut self) -> &mut dyn Io {
+        &mut *self.body
     }
 
     /// The HTTP status code.
@@ -185,6 +193,16 @@ impl HttpResponse {
         let mut out = Vec::with_capacity(hint);
         self.reader().read_to_end(&mut out)?;
         Ok(out)
+    }
+
+    /// Drains the (decoded) body into a `Vec<u8>` **and** returns the
+    /// [`received_at`](HttpResponse::received_at) timestamp stamped as the body
+    /// reached EOF — captured in one move, since draining consumes the response.
+    /// The buffering bindings use this so the finish time reflects the full read.
+    pub fn read_all(self) -> Result<(Vec<u8>, f64), HttpError> {
+        let received_at = self.received_at.clone();
+        let bytes = self.bytes()?;
+        Ok((bytes, received_at.get()))
     }
 
     /// Drains the body and decodes it as UTF-8 text.

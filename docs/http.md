@@ -4,25 +4,43 @@ A blocking, `requests`-like HTTP client whose bodies **stream over [`Io`](io.md)
 The transport is `ureq` (rustls TLS); decompression goes through
 [compression](compression.md), on by default.
 
-## The session
+## Request in, response out
 
-`HttpSession` is a pooled client. **Every request funnels through one method:**
+A **request is the transaction**: build an `HttpRequest`, and it is self-sufficient
+to fetch its `HttpResponse`.
 
 ```rust
-session.send(request, raise_error, stream) -> HttpResponse
+let body = HttpRequest::get("https://example.com")?.send(true)?.text()?;  // raise on 4xx/5xx
 ```
 
-- `raise_error` (`true` on the verb helpers `get`/`post`/…) turns a 4xx/5xx into an error.
-- `stream` (`true` by default) keeps the body a **live, seekable `HttpStream`**; `false`
-  drains it into memory during `send`, releasing the connection at once.
+`request.send(raise_error)` dispatches through the process-wide shared session.
+`HttpSession` is the **defaulting factory + transport**: it carries the pool, TLS,
+proxy, retry policy and default headers, builds requests with `prepare`, and runs
+them with `session.send(request, raise_error)` — use it when you need a
+custom-configured client. The body is **always streamed**: `HttpStream` itself
+handles buffering and random access (a sliding cache, `Range` requests), so there
+is no `stream` flag — drain it with `bytes()` / `text()` / `into_io()`.
 
-Connection reuse is a per-request knob: `request.with_keep_alive(true)` pools the
-connection so the next request skips the TLS handshake (default `false` →
-`Connection: close`, the socket released the moment the body is drained). The verb
-helpers (`get`/`post`/…) opt in, so a Session loop reuses one warm connection; a
-hand-built request sent through `send`/`request` closes by default unless it opts in.
+```rust
+session.send(request, raise_error) -> HttpResponse   // raise on a 4xx/5xx
+```
 
 `send_many(requests)` runs an iterator of requests concurrently in batches, lazily.
+
+### Connection reuse & timeouts
+
+Connection reuse is a per-request **keep-alive idle TTL** in seconds:
+`request.with_keep_alive(seconds)` (default 300 — 5 minutes) pools the connection
+so the next request skips the TLS handshake; `0` sends `Connection: close`,
+releasing the socket the moment the body drains. A pooled connection idle past its
+TTL is dropped.
+
+`session.with_read_timeout(seconds)` (default 120) errors if the server sends no
+data for that long, with a hint to raise it for genuinely slow endpoints; `0`
+removes the bound.
+
+Both `HttpRequest` and `HttpSession` have a `copy()` that returns an independent
+instance (a session copy gets its own fresh pool and a snapshot of the cookie jar).
 
 ```python
 import yggdryl

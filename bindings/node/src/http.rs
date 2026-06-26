@@ -36,7 +36,7 @@ fn shared_task(
     headers: Vec<(String, String)>,
     body: BodyArg,
     raise_error: bool,
-    keep_alive: bool,
+    keep_alive: f64,
     allow_redirect: bool,
     http_version: Option<HttpVersion>,
 ) -> AsyncTask<RequestTask> {
@@ -89,7 +89,7 @@ pub struct RequestTask {
     headers: Vec<(String, String)>,
     body: BodyArg,
     raise_error: bool,
-    keep_alive: bool,
+    keep_alive: f64,
     allow_redirect: bool,
     http_version: Option<HttpVersion>,
 }
@@ -119,7 +119,7 @@ impl Task for RequestTask {
         // connection, so `received_at` is already stamped before `bytes()`.
         let response = self
             .session
-            .send(request, self.raise_error, false)
+            .send(request, self.raise_error)
             .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
@@ -129,9 +129,9 @@ impl Task for RequestTask {
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect();
         let sent_at = response.sent_at();
-        let received_at = response.received_at();
         let http_version = response.negotiated_version().as_str().to_string();
-        let body = response.bytes().map_err(to_napi)?;
+        // Every send streams; drain here, capturing `received_at` (stamped at EOF).
+        let (body, received_at) = response.read_all().map_err(to_napi)?;
         Ok(ResponseData {
             status,
             url,
@@ -270,7 +270,8 @@ impl HttpSession {
     ///
     /// `basicAuth` (a `[username, password]` pair) or `bearerAuth` (a token) set a
     /// default `Authorization` header on every request (HTTP Basic / Bearer); it is
-    /// stripped on a cross-origin redirect.
+    /// stripped on a cross-origin redirect. `readTimeout` (seconds, default 120)
+    /// errors if the server sends no data for that long; `0` removes the bound.
     #[napi(constructor)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -285,6 +286,7 @@ impl HttpSession {
         ca_cert_file: Option<String>,
         basic_auth: Option<Vec<String>>,
         bearer_auth: Option<String>,
+        read_timeout: Option<f64>,
     ) -> Result<Self> {
         let mut inner = CoreHttpSession::new();
         if let Some(user_agent) = user_agent {
@@ -329,9 +331,28 @@ impl HttpSession {
         if let Some(bearer_auth) = bearer_auth {
             inner = inner.with_bearer_auth(&bearer_auth);
         }
+        if let Some(read_timeout) = read_timeout {
+            inner = inner.with_read_timeout(read_timeout);
+        }
         Ok(HttpSession {
             inner: Arc::new(inner),
         })
+    }
+
+    /// The read timeout in seconds (a request errors if the server sends no data
+    /// for this long; `0` means unbounded).
+    #[napi(getter, js_name = "readTimeout")]
+    pub fn read_timeout(&self) -> f64 {
+        self.inner.read_timeout()
+    }
+
+    /// An independent copy of this session — same configuration and a snapshot of
+    /// the cookie jar, but its own fresh connection pool.
+    #[napi]
+    pub fn copy(&self) -> HttpSession {
+        HttpSession {
+            inner: Arc::new(self.inner.copy()),
+        }
     }
 
     /// The maximum number of 3xx redirect hops followed per request.
@@ -405,7 +426,7 @@ impl HttpSession {
         headers: Vec<(String, String)>,
         body: BodyArg,
         raise_error: bool,
-        keep_alive: bool,
+        keep_alive: f64,
         allow_redirect: bool,
         http_version: Option<HttpVersion>,
     ) -> AsyncTask<RequestTask> {
@@ -431,7 +452,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -446,7 +467,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -461,7 +482,7 @@ impl HttpSession {
             Vec::new(),
             BodyArg::Empty,
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -481,7 +502,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -500,7 +521,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -519,7 +540,7 @@ impl HttpSession {
             Vec::new(),
             body_arg(body),
             true,
-            true,
+            300.0,
             true,
             None,
         )
@@ -527,8 +548,8 @@ impl HttpSession {
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
-    /// 4xx/5xx status. `keepAlive` (default `false`) pools the connection for reuse
-    /// (skipping the next TLS handshake) when `true`; otherwise it is closed after.
+    /// 4xx/5xx status. `keepAlive` is the keep-alive idle TTL in seconds (default
+    /// 300 — 5 minutes; `0` sends `Connection: close`).
     /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
     /// `maxRedirects`); pass `false` to receive the 3xx response itself.
     /// `httpVersion` (e.g. `"2"`) pins the protocol version for this request,
@@ -542,7 +563,7 @@ impl HttpSession {
         headers: Option<HashMap<String, String>>,
         body: Option<Either<Buffer, &LocalPath>>,
         raise_error: Option<bool>,
-        keep_alive: Option<bool>,
+        keep_alive: Option<f64>,
         allow_redirect: Option<bool>,
         http_version: Option<String>,
     ) -> Result<AsyncTask<RequestTask>> {
@@ -559,7 +580,7 @@ impl HttpSession {
             headers,
             body_arg(body),
             raise_error.unwrap_or(true),
-            keep_alive.unwrap_or(false),
+            keep_alive.unwrap_or(300.0),
             allow_redirect.unwrap_or(true),
             http_version,
         ))
@@ -576,7 +597,7 @@ pub fn http_get(url: String) -> AsyncTask<RequestTask> {
         Vec::new(),
         BodyArg::Empty,
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -591,7 +612,7 @@ pub fn http_head(url: String) -> AsyncTask<RequestTask> {
         Vec::new(),
         BodyArg::Empty,
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -611,7 +632,7 @@ pub fn http_post(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Async
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -626,7 +647,7 @@ pub fn http_put(url: String, body: Option<Either<Buffer, &LocalPath>>) -> AsyncT
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -641,7 +662,7 @@ pub fn http_patch(url: String, body: Option<Either<Buffer, &LocalPath>>) -> Asyn
         Vec::new(),
         body_arg(body),
         true,
-        true,
+        300.0,
         true,
         None,
     )
@@ -657,7 +678,7 @@ pub fn http_request(
     headers: Option<HashMap<String, String>>,
     body: Option<Either<Buffer, &LocalPath>>,
     raise_error: Option<bool>,
-    keep_alive: Option<bool>,
+    keep_alive: Option<f64>,
     allow_redirect: Option<bool>,
     http_version: Option<String>,
 ) -> Result<AsyncTask<RequestTask>> {
@@ -674,7 +695,7 @@ pub fn http_request(
         headers,
         body_arg(body),
         raise_error.unwrap_or(true),
-        keep_alive.unwrap_or(false),
+        keep_alive.unwrap_or(300.0),
         allow_redirect.unwrap_or(true),
         http_version,
     ))

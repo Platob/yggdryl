@@ -67,6 +67,13 @@ impl From<ureq::Error> for HttpError {
                  certificate, install its CA or set verify=false (insecure) to skip \
                  verification"
             )),
+            // A read/response timeout gets an actionable hint: the server was too
+            // slow for the configured budget — raise it if the endpoint genuinely
+            // needs longer (a big server-side computation, a slow generation).
+            ureq::Error::Timeout(_) => HttpError::Transport(format!(
+                "{err}; the server sent no data within the read timeout — raise it with \
+                 HttpSession::with_read_timeout(seconds) if this endpoint needs longer"
+            )),
             _ => HttpError::Transport(err.to_string()),
         }
     }

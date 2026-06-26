@@ -220,6 +220,20 @@ def test_ca_cert_installer():
         yggdryl.HttpSession(ca_cert=b"")
 
 
+def test_read_timeout_keep_alive_and_copy(base_url):
+    # The read timeout defaults to 120s and is configurable.
+    assert yggdryl.HttpSession().read_timeout == 120.0
+    assert yggdryl.HttpSession(read_timeout=5).read_timeout == 5.0
+    # keep_alive is now a TTL in seconds; 0 closes the connection. A request still
+    # succeeds whichever the value.
+    session = yggdryl.HttpSession()
+    assert session.request("GET", base_url + "/", keep_alive=0).status == 200
+    assert session.request("GET", base_url + "/", keep_alive=30).status == 200
+    # copy() is independent: configuration is carried, the original is unchanged.
+    clone = yggdryl.HttpSession(read_timeout=9).copy()
+    assert clone.read_timeout == 9.0
+
+
 def test_verify_and_proxy_options():
     # TLS verification is on by default; it can be disabled (insecure).
     assert yggdryl.HttpSession().verify is True

@@ -48,10 +48,7 @@ fn session() -> HttpSession {
 /// error). `HEAD` keeps it fast — headers only, no body.
 fn negotiated_head(version: HttpVersion, url: &str) -> HttpVersion {
     let request = HttpRequest::head(url).unwrap().with_http_version(version);
-    session()
-        .send(request, false, false)
-        .unwrap()
-        .negotiated_version()
+    session().send(request, false).unwrap().negotiated_version()
 }
 
 /// Pinned HTTP/1.1 over TLS reports `Http11`.
@@ -77,7 +74,6 @@ fn real_http2_post_body_echoed() {
                 .unwrap()
                 .with_body(payload.as_bytes().to_vec()),
             true,
-            false,
         )
         .unwrap();
     // The body is the key assertion; the version is whatever Auto negotiated (h2
@@ -144,5 +140,5 @@ fn real_http3_pin_is_unsupported() {
     let request = HttpRequest::head("https://www.cloudflare.com/")
         .unwrap()
         .with_http_version(HttpVersion::Http3);
-    assert!(session().send(request, false, false).is_err());
+    assert!(session().send(request, false).is_err());
 }

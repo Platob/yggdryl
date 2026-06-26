@@ -186,6 +186,29 @@ test('CA certificate installer', () => {
   )
 })
 
+test('readTimeout, keepAlive seconds and copy', async () => {
+  // readTimeout defaults to 120s and is the 12th constructor option.
+  assert.strictEqual(new HttpSession().readTimeout, 120)
+  const opts = Array(11).fill(undefined)
+  assert.strictEqual(new HttpSession(...opts, 5).readTimeout, 5)
+  // copy() carries configuration into an independent session.
+  assert.strictEqual(new HttpSession(...opts, 9).copy().readTimeout, 9)
+
+  // keepAlive is a TTL in seconds; a request succeeds whatever the value.
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const session = new HttpSession()
+    // request(method, url, headers, body, raiseError, keepAlive, ...)
+    const closed = await session.request('GET', base + '/', undefined, undefined, false, 0)
+    assert.strictEqual(closed.status, 200)
+    const pooled = await session.request('GET', base + '/', undefined, undefined, false, 30)
+    assert.strictEqual(pooled.status, 200)
+  } finally {
+    server.close()
+  }
+})
+
 test('verify and proxy options', () => {
   assert.strictEqual(new HttpSession().verify, true)
   const insecure = new HttpSession(undefined, undefined, undefined, undefined, undefined, false)
