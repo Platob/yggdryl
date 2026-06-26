@@ -12,9 +12,11 @@ use crate::{HttpRequest, HttpSession};
 /// is the [`yggdryl_core::SchemeOpener`] registered for `http` / `https`.
 fn open(uri: &Uri) -> Result<Box<dyn Io>, IoError> {
     let url = uri.to_string();
-    let request = HttpRequest::get(&url).map_err(|err| IoError::Invalid(err.to_string()))?;
+    let request = HttpRequest::get(&url)
+        .map_err(|err| IoError::Invalid(err.to_string()))?
+        .with_keep_alive(true);
     let response = HttpSession::new()
-        .send(request, true, true, true)
+        .send(request, true, true)
         .map_err(|err| IoError::Io(err.to_string()))?;
     Ok(response.into_io())
 }

@@ -107,7 +107,9 @@ impl Task for RequestTask {
         if let Some(http_version) = self.http_version {
             request = request.with_http_version(http_version);
         }
-        request = request.with_headers(std::mem::take(&mut self.headers));
+        request = request
+            .with_keep_alive(self.keep_alive)
+            .with_headers(std::mem::take(&mut self.headers));
         request = match std::mem::replace(&mut self.body, BodyArg::Empty) {
             BodyArg::Empty => request,
             BodyArg::Bytes(bytes) => request.with_body(bytes),
@@ -117,7 +119,7 @@ impl Task for RequestTask {
         // connection, so `received_at` is already stamped before `bytes()`.
         let response = self
             .session
-            .send(request, self.raise_error, self.keep_alive, false)
+            .send(request, self.raise_error, false)
             .map_err(to_napi)?;
         let status = response.status();
         let url = response.url().to_string();
@@ -525,8 +527,8 @@ impl HttpSession {
 
     /// Issue an arbitrary `method` request, with optional `headers` and `body`
     /// (a `Buffer` or a `LocalPath`). `raiseError` (default `true`) throws on a
-    /// 4xx/5xx status. `keepAlive` (default `true`) pools the connection for reuse
-    /// (skipping the next TLS handshake); pass `false` to close it after.
+    /// 4xx/5xx status. `keepAlive` (default `false`) pools the connection for reuse
+    /// (skipping the next TLS handshake) when `true`; otherwise it is closed after.
     /// `allowRedirect` (default `true`) follows 3xx redirects (up to the session's
     /// `maxRedirects`); pass `false` to receive the 3xx response itself.
     /// `httpVersion` (e.g. `"2"`) pins the protocol version for this request,
@@ -557,7 +559,7 @@ impl HttpSession {
             headers,
             body_arg(body),
             raise_error.unwrap_or(true),
-            keep_alive.unwrap_or(true),
+            keep_alive.unwrap_or(false),
             allow_redirect.unwrap_or(true),
             http_version,
         ))
@@ -672,7 +674,7 @@ pub fn http_request(
         headers,
         body_arg(body),
         raise_error.unwrap_or(true),
-        keep_alive.unwrap_or(true),
+        keep_alive.unwrap_or(false),
         allow_redirect.unwrap_or(true),
         http_version,
     ))

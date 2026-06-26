@@ -544,7 +544,7 @@ impl HttpSession {
     /// session's [`base_url`](HttpSession::base_url) when one is set.
     pub fn get(&self, url: &str) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Get, self.resolve_url(url)?),
+            HttpRequest::from_url(Method::Get, self.resolve_url(url)?).with_keep_alive(true),
             true,
         )
     }
@@ -552,7 +552,7 @@ impl HttpSession {
     /// `HEAD url` (raises on a 4xx/5xx status).
     pub fn head(&self, url: &str) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Head, self.resolve_url(url)?),
+            HttpRequest::from_url(Method::Head, self.resolve_url(url)?).with_keep_alive(true),
             true,
         )
     }
@@ -560,7 +560,7 @@ impl HttpSession {
     /// `DELETE url` (raises on a 4xx/5xx status).
     pub fn delete(&self, url: &str) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Delete, self.resolve_url(url)?),
+            HttpRequest::from_url(Method::Delete, self.resolve_url(url)?).with_keep_alive(true),
             true,
         )
     }
@@ -568,7 +568,9 @@ impl HttpSession {
     /// `POST url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn post(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Post, self.resolve_url(url)?).with_body(body),
+            HttpRequest::from_url(Method::Post, self.resolve_url(url)?)
+                .with_keep_alive(true)
+                .with_body(body),
             true,
         )
     }
@@ -576,7 +578,9 @@ impl HttpSession {
     /// `PUT url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn put(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Put, self.resolve_url(url)?).with_body(body),
+            HttpRequest::from_url(Method::Put, self.resolve_url(url)?)
+                .with_keep_alive(true)
+                .with_body(body),
             true,
         )
     }
@@ -584,7 +588,9 @@ impl HttpSession {
     /// `PATCH url` with an in-memory byte body (raises on a 4xx/5xx status).
     pub fn patch(&self, url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpError> {
         self.request(
-            HttpRequest::from_url(Method::Patch, self.resolve_url(url)?).with_body(body),
+            HttpRequest::from_url(Method::Patch, self.resolve_url(url)?)
+                .with_keep_alive(true)
+                .with_body(body),
             true,
         )
     }
@@ -600,6 +606,7 @@ impl HttpSession {
             headers,
             body: request.body,
             allow_redirect: request.allow_redirect,
+            keep_alive: request.keep_alive,
             http_version: request.http_version,
         }
     }
@@ -608,8 +615,9 @@ impl HttpSession {
     /// the request, runs it with the retry policy, and returns an [`HttpResponse`].
     ///
     /// `raise_error` (`true` for the verb helpers) turns a 4xx/5xx status into an
-    /// [`HttpError::Status`]. `keep_alive` keeps the connection pooled for reuse;
-    /// `false` sends `Connection: close`. As a pool safeguard, once more than
+    /// [`HttpError::Status`]. Connection reuse is controlled by the request's
+    /// [`keep_alive`](HttpRequest::keep_alive) flag (default `false` → `Connection:
+    /// close`; the verb helpers opt in). As a pool safeguard, once more than
     /// [`pool_size`](HttpSession::pool_size) streams are already open, a new one
     /// drops keep-alive regardless, so streaming reads never starve the pool.
     ///
@@ -622,7 +630,6 @@ impl HttpSession {
         &self,
         request: HttpRequest,
         raise_error: bool,
-        keep_alive: bool,
         stream: bool,
     ) -> Result<HttpResponse, HttpError> {
         let mut request = self.prepare(request);
@@ -654,6 +661,7 @@ impl HttpSession {
                 headers: request.headers.clone(),
                 body: Body::Empty,
                 allow_redirect,
+                keep_alive: request.keep_alive,
                 http_version: request.http_version,
             };
             let replayable = request.body.replayable();
@@ -662,7 +670,7 @@ impl HttpSession {
             // Add the jar's Cookie header before dispatch (unless the request set
             // one itself), then dispatch this single hop.
             self.apply_cookies(&mut request);
-            let response = self.dispatch(request, keep_alive, stream)?;
+            let response = self.dispatch(request, stream)?;
             sent_at.get_or_insert(response.sent_at());
             let status = response.status();
 
@@ -723,12 +731,7 @@ impl HttpSession {
     /// Dispatches a single hop (no redirect handling): runs the retry loop and
     /// builds the [`HttpResponse`] over a streamed or buffered body, exactly the
     /// pre-redirect [`send`](HttpSession::send) behaviour.
-    fn dispatch(
-        &self,
-        mut request: HttpRequest,
-        keep_alive: bool,
-        stream: bool,
-    ) -> Result<HttpResponse, HttpError> {
+    fn dispatch(&self, mut request: HttpRequest, stream: bool) -> Result<HttpResponse, HttpError> {
         // Resolve and negotiate the protocol version up front: a request pins its
         // own, else inherits the session default. A pinned version with no wired
         // transport errors here, before any bytes leave, rather than downgrading.
@@ -740,7 +743,7 @@ impl HttpSession {
             return self.dispatch_async(request, prefer);
         }
         let negotiated = negotiate_version(requested)?;
-        let keep_alive = keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
+        let keep_alive = request.keep_alive && self.held.load(Ordering::SeqCst) < self.max_pool;
         if !keep_alive {
             request.headers.set("connection", "close");
         }
@@ -898,14 +901,15 @@ impl HttpSession {
         Ok(response)
     }
 
-    /// Sends a request, raising on a 4xx/5xx when `raise_error` (a keep-alive,
-    /// streamed [`send`](HttpSession::send)).
+    /// Sends a request **streamed**, raising on a 4xx/5xx when `raise_error` (a
+    /// [`send`](HttpSession::send) with `stream = true`). Connection reuse follows
+    /// the request's [`keep_alive`](HttpRequest::keep_alive) flag (default `false`).
     pub fn request(
         &self,
         request: HttpRequest,
         raise_error: bool,
     ) -> Result<HttpResponse, HttpError> {
-        self.send(request, raise_error, true, true)
+        self.send(request, raise_error, true)
     }
 
     /// Sends an iterator of requests concurrently, **streamed** in batches of
@@ -1151,8 +1155,9 @@ pub fn patch(url: &str, body: impl Into<Vec<u8>>) -> Result<HttpResponse, HttpEr
     HttpSession::shared().patch(url, body)
 }
 
-/// Sends an arbitrary [`HttpRequest`] via the shared session (keep-alive,
-/// streamed), raising on a 4xx/5xx when `raise_error`.
+/// Sends an arbitrary [`HttpRequest`] via the shared session (streamed; connection
+/// reuse follows the request's [`keep_alive`](HttpRequest::keep_alive) flag, default
+/// `false`), raising on a 4xx/5xx when `raise_error`.
 pub fn request(request: HttpRequest, raise_error: bool) -> Result<HttpResponse, HttpError> {
     HttpSession::shared().request(request, raise_error)
 }

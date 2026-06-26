@@ -159,15 +159,17 @@ shape:
   pool, sized by `with_pool_size`, so reused keep-alive connections skip the TLS
   handshake), default headers, a `RetryConfig`, `max_concurrency` (8) and `batch_size`
   (80). **Every request funnels through the one method** `send(req, raise_error,
-  keep_alive, stream)` — there is no separate `stream()` method. It `prepare`s the
+  stream)` — there is no separate `stream()` method. It `prepare`s the
   request (merge defaults; per-request headers win, case-insensitively), runs it with
   the retry policy, and returns an `HttpResponse` holding the body. `raise_error`
-  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; `keep_alive` pools
-  the connection (a pool-saturation safeguard forces `Connection: close` on streams
-  past the pool size); `stream` (`true` by default) keeps the body a **live
-  `HttpStream`** read lazily, while `false` drains it into a `BytesIO` during `send`
-  so the connection is released at once. `request(req, raise_error)` is the
-  keep-alive, streamed shorthand. `send_many(reqs)` is a lazy iterator of
+  (`true` on the verb helpers `get`/`post`/…) raises on a 4xx/5xx; connection reuse is
+  the request's own `keep_alive` flag (`with_keep_alive`, default `false` →
+  `Connection: close`; the verb helpers opt in, and a pool-saturation safeguard forces
+  `close` on streams past the pool size); `stream` (`true` by default) keeps the body a
+  **live `HttpStream`** read lazily, while `false` drains it into a `BytesIO` during
+  `send` so the connection is released at once. `request(req, raise_error)` is the
+  streamed shorthand (connection reuse follows the request's `keep_alive`).
+  `send_many(reqs)` is a lazy iterator of
   `HttpResponseBatch`, running each batch up to `max_concurrency` at a time (scoped
   threads). `send` also drives the **redirect** loop (`with_max_redirects`, default
   10) and an RFC 6265 **cookie jar** (`cookies()` / `set_cookie`). An optional
@@ -199,7 +201,9 @@ shape:
   `Content-Length`). **All header logic lives here.**
 - `HttpRequest` — a `Method` + `Url` + `HttpHeaders` + body builder (`with_header` /
   `with_param` / `with_basic_auth` / `with_bearer_auth` / `with_body` /
-  `with_body_reader` / `with_body_io` / `with_allow_redirect`). `with_body_io` is the
+  `with_body_reader` / `with_body_io` / `with_allow_redirect` / `with_keep_alive`).
+  `with_keep_alive(true)` opts the request into connection pooling (default `false`).
+  `with_body_io` is the
   preferred upload: the handle's `stream_len` sets `Content-Length` and the bytes
   stream straight off the `Io` (a file is never buffered). `with_allow_redirect(false)`
   opts a request out of the redirect loop (returning the 3xx).

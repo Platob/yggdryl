@@ -54,6 +54,9 @@ pub struct HttpRequest {
     /// Whether [`send`](crate::HttpSession::send) follows 3xx redirects for this
     /// request (default `true`).
     pub(crate) allow_redirect: bool,
+    /// Whether the connection is pooled for reuse after the response (default
+    /// `false`, i.e. `Connection: close`). The verb helpers opt in.
+    pub(crate) keep_alive: bool,
     /// The pinned HTTP protocol version for this request, or `None` to inherit the
     /// session's [`http_version`](crate::HttpSession::http_version).
     pub(crate) http_version: Option<HttpVersion>,
@@ -70,6 +73,7 @@ impl HttpRequest {
             headers: HttpHeaders::new(),
             body: Body::Empty,
             allow_redirect: true,
+            keep_alive: false,
             http_version: None,
         })
     }
@@ -82,6 +86,7 @@ impl HttpRequest {
             headers: HttpHeaders::new(),
             body: Body::Empty,
             allow_redirect: true,
+            keep_alive: false,
             http_version: None,
         }
     }
@@ -201,6 +206,17 @@ impl HttpRequest {
         self
     }
 
+    /// Sets whether the connection is pooled for reuse after the response (default
+    /// `false`). With `false` the request carries `Connection: close`, so the
+    /// socket is released the moment the body is drained; with `true` it returns to
+    /// the pool to skip the next TLS handshake. The verb helpers
+    /// ([`get`](crate::HttpSession::get) / …) opt in. A pool-saturation safeguard
+    /// can still force `close` on a streamed body past the pool size.
+    pub fn with_keep_alive(mut self, keep_alive: bool) -> HttpRequest {
+        self.keep_alive = keep_alive;
+        self
+    }
+
     /// Pins the HTTP protocol [`version`](HttpVersion) for this request, overriding
     /// the session's default. [`send`](crate::HttpSession::send) errors with
     /// [`HttpError::Unsupported`] if the pinned version has no wired transport (e.g.
@@ -229,6 +245,11 @@ impl HttpRequest {
     /// request.
     pub fn allow_redirect(&self) -> bool {
         self.allow_redirect
+    }
+
+    /// Whether the connection is pooled for reuse after the response.
+    pub fn keep_alive(&self) -> bool {
+        self.keep_alive
     }
 
     /// The pinned HTTP protocol [`version`](HttpVersion) for this request, or

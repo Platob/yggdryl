@@ -141,7 +141,11 @@ fn main() {
     });
     bench("HttpStream windowed read_to_end", 20, SIZE, || {
         let mut stream = session
-            .send(HttpRequest::get(&url).unwrap(), false, true, true)
+            .send(
+                HttpRequest::get(&url).unwrap().with_keep_alive(true),
+                false,
+                true,
+            )
             .unwrap()
             .into_io();
         let mut out = Vec::with_capacity(SIZE);
@@ -159,7 +163,11 @@ fn main() {
     let start = Instant::now();
     for _ in 0..footer_reqs {
         let mut stream = session
-            .send(HttpRequest::get(&url).unwrap(), false, true, true)
+            .send(
+                HttpRequest::get(&url).unwrap().with_keep_alive(true),
+                false,
+                true,
+            )
             .unwrap()
             .into_io();
         let mut footer = [0u8; 16];
@@ -198,7 +206,11 @@ fn main() {
     bench("keep_alive=true  (pooled reuse)", 6, M, || {
         for _ in 0..M {
             let response = session
-                .send(HttpRequest::get(&tiny).unwrap(), false, true, true)
+                .send(
+                    HttpRequest::get(&tiny).unwrap().with_keep_alive(true),
+                    false,
+                    true,
+                )
                 .unwrap();
             black_box(response.bytes().unwrap());
         }
@@ -206,7 +218,7 @@ fn main() {
     bench("keep_alive=false (reconnect each)", 6, M, || {
         for _ in 0..M {
             let response = session
-                .send(HttpRequest::get(&tiny).unwrap(), false, false, true)
+                .send(HttpRequest::get(&tiny).unwrap(), false, true)
                 .unwrap();
             black_box(response.bytes().unwrap());
         }
@@ -285,7 +297,7 @@ fn http2_vs_http1() {
             .with_http_version(HttpVersion::Http2);
         black_box(
             session
-                .send(request, false, false, false)
+                .send(request, false, false)
                 .unwrap()
                 .bytes()
                 .unwrap(),

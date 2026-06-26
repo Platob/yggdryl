@@ -9,13 +9,18 @@ The transport is `ureq` (rustls TLS); decompression goes through
 `HttpSession` is a pooled client. **Every request funnels through one method:**
 
 ```rust
-session.send(request, raise_error, keep_alive, stream) -> HttpResponse
+session.send(request, raise_error, stream) -> HttpResponse
 ```
 
 - `raise_error` (`true` on the verb helpers `get`/`post`/…) turns a 4xx/5xx into an error.
-- `keep_alive` pools the connection so the next request skips the TLS handshake.
 - `stream` (`true` by default) keeps the body a **live, seekable `HttpStream`**; `false`
   drains it into memory during `send`, releasing the connection at once.
+
+Connection reuse is a per-request knob: `request.with_keep_alive(true)` pools the
+connection so the next request skips the TLS handshake (default `false` →
+`Connection: close`, the socket released the moment the body is drained). The verb
+helpers (`get`/`post`/…) opt in, so a Session loop reuses one warm connection; a
+hand-built request sent through `send`/`request` closes by default unless it opts in.
 
 `send_many(requests)` runs an iterator of requests concurrently in batches, lazily.
 

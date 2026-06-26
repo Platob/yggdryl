@@ -405,7 +405,7 @@ impl HttpSession {
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
             let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
-            session.send(request, true, true, false)
+            session.send(request.with_keep_alive(true), true, false)
         })
     }
 
@@ -413,7 +413,7 @@ impl HttpSession {
     fn head(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
             let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
-            session.send(request, true, true, false)
+            session.send(request.with_keep_alive(true), true, false)
         })
     }
 
@@ -421,7 +421,7 @@ impl HttpSession {
     fn delete(&self, py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
         self.run(py, |session| {
             let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
-            session.send(request, true, true, false)
+            session.send(request.with_keep_alive(true), true, false)
         })
     }
 
@@ -437,7 +437,7 @@ impl HttpSession {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
             let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true, true, false)
+            session.send(apply_body(request, body).with_keep_alive(true), true, false)
         })
     }
 
@@ -452,7 +452,7 @@ impl HttpSession {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
             let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true, true, false)
+            session.send(apply_body(request, body).with_keep_alive(true), true, false)
         })
     }
 
@@ -467,22 +467,22 @@ impl HttpSession {
         let body = extract_body(body.as_ref())?;
         self.run(py, move |session| {
             let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
-            session.send(apply_body(request, body), true, true, false)
+            session.send(apply_body(request, body).with_keep_alive(true), true, false)
         })
     }
 
     /// Issue an arbitrary ``method`` request, with optional ``headers`` and
     /// ``body`` (``bytes`` or an `Io` handle). ``raise_error`` (default ``True``)
     /// raises ``ValueError`` on a 4xx/5xx status; pass ``False`` to receive the
-    /// response whatever its status. ``keep_alive`` (default ``True``) pools the
-    /// connection for reuse (skipping the next TLS handshake); pass ``False`` to
-    /// close it after the response. ``allow_redirect`` (default ``True``) follows
+    /// response whatever its status. ``keep_alive`` (default ``False``) pools the
+    /// connection for reuse (skipping the next TLS handshake) when ``True``;
+    /// otherwise it is closed after the response. ``allow_redirect`` (default ``True``) follows
     /// 3xx redirects (up to the session's ``max_redirects``); pass ``False`` to
     /// receive the 3xx response itself. ``http_version`` (e.g. ``"2"``) pins the
     /// protocol version for this request, overriding the session default. The body
     /// is always buffered (the response exposes :attr:`content` repeatedly), so the
     /// connection is released at once.
-    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true, allow_redirect = true, http_version = None))]
+    #[pyo3(signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = false, allow_redirect = true, http_version = None))]
     #[allow(clippy::too_many_arguments)]
     fn request(
         &self,
@@ -511,7 +511,7 @@ impl HttpSession {
                 request = request.with_headers(headers);
             }
             request = apply_body(request, body);
-            session.send(request, raise_error, keep_alive, false)
+            session.send(request.with_keep_alive(keep_alive), raise_error, false)
         })
     }
 }
@@ -526,7 +526,7 @@ pub fn http_get(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Get, session.resolve_url(url)?);
-        session.send(request, true, true, false)
+        session.send(request.with_keep_alive(true), true, false)
     })
 }
 
@@ -537,7 +537,7 @@ pub fn http_head(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Head, session.resolve_url(url)?);
-        session.send(request, true, true, false)
+        session.send(request.with_keep_alive(true), true, false)
     })
 }
 
@@ -548,7 +548,7 @@ pub fn http_delete(py: Python<'_>, url: &str) -> PyResult<HttpResponse> {
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Delete, session.resolve_url(url)?);
-        session.send(request, true, true, false)
+        session.send(request.with_keep_alive(true), true, false)
     })
 }
 
@@ -565,7 +565,7 @@ pub fn http_post(
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Post, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true, true, false)
+        session.send(apply_body(request, body).with_keep_alive(true), true, false)
     })
 }
 
@@ -581,7 +581,7 @@ pub fn http_put(
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Put, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true, true, false)
+        session.send(apply_body(request, body).with_keep_alive(true), true, false)
     })
 }
 
@@ -597,7 +597,7 @@ pub fn http_patch(
     buffer_response(py, move || {
         let session = CoreHttpSession::shared();
         let request = CoreHttpRequest::from_url(Method::Patch, session.resolve_url(url)?);
-        session.send(apply_body(request, body), true, true, false)
+        session.send(apply_body(request, body).with_keep_alive(true), true, false)
     })
 }
 
@@ -615,7 +615,7 @@ pub fn set_base_url(base_url: &str) -> PyResult<()> {
 /// Issue an arbitrary ``method`` request via the shared session singleton (same
 /// arguments as :meth:`HttpSession.request`).
 #[pyfunction]
-#[pyo3(name = "request", signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = true, allow_redirect = true, http_version = None))]
+#[pyo3(name = "request", signature = (method, url, headers = None, body = None, *, raise_error = true, keep_alive = false, allow_redirect = true, http_version = None))]
 #[allow(clippy::too_many_arguments)]
 pub fn http_request(
     py: Python<'_>,
@@ -644,6 +644,6 @@ pub fn http_request(
             request = request.with_headers(headers);
         }
         request = apply_body(request, body);
-        session.send(request, raise_error, keep_alive, false)
+        session.send(request.with_keep_alive(keep_alive), raise_error, false)
     })
 }
