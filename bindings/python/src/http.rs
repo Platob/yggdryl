@@ -148,16 +148,58 @@ impl HttpResponse {
         self.header("content-type")
     }
 
-    /// The raw response body as ``bytes``.
+    /// The ``Content-Encoding`` header, if present.
+    #[getter]
+    fn content_encoding(&self) -> Option<&str> {
+        self.header("content-encoding")
+    }
+
+    /// The single MIME type inferred from ``Content-Type`` (e.g. ``"text/csv"``),
+    /// or ``None``.
+    #[getter]
+    fn mime_type(&self) -> Option<String> {
+        self.content_type()
+            .and_then(|ct| yggdryl_core::MimeType::from_str(ct).ok())
+            .map(|mime| mime.to_string())
+    }
+
+    /// The layered media type from ``Content-Type`` as a list of MIME strings
+    /// (e.g. ``["text/csv"]``), or ``None``.
+    #[getter]
+    fn media_type(&self) -> Option<Vec<String>> {
+        self.content_type()
+            .and_then(|ct| yggdryl_core::MimeType::from_str(ct).ok())
+            .map(|mime| vec![mime.to_string()])
+    }
+
+    /// The compression codec named by ``Content-Encoding`` (``"gzip"`` / ``"zstd"``
+    /// / ``"snappy"`` / ``"brotli"``), or ``None``. The body is already decoded —
+    /// :attr:`content` / :meth:`text` / :meth:`json` are the decompressed payload.
+    #[getter]
+    fn compression(&self) -> Option<String> {
+        self.content_encoding()
+            .and_then(|enc| yggdryl_core::Compression::from_str(enc).ok())
+            .filter(|codec| *codec != yggdryl_core::Compression::None)
+            .map(|codec| codec.as_str().to_string())
+    }
+
+    /// The raw response body as ``bytes`` (already decompressed).
     #[getter]
     fn content<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, &self.body)
     }
 
-    /// The response body decoded as UTF-8 text.
+    /// The response body decoded as UTF-8 text (already decompressed).
     fn text(&self) -> PyResult<String> {
         String::from_utf8(self.body.clone())
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
+    /// The response body parsed as JSON (already decompressed), as Python objects.
+    fn json(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let value: serde_json::Value = serde_json::from_slice(&self.body)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(crate::json_to_py(py, &value))
     }
 
     /// Raise ``ValueError`` if the status is 4xx/5xx, otherwise do nothing —

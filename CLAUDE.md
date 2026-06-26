@@ -129,9 +129,11 @@ Compression is layered **on top of** the `io` module, never inside it (so the IO
 base stays codec-free and the dependency points one way — `compression` builds on
 `io`, never the reverse). The shape:
 
-- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy`; `from_str` /
-  `from_extension` / `as_str` / `extension` / `is_available`, and (under `media`)
-  `from_mime` / `from_media` / `from_stats` for inference.
+- `Compression` — `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (HTTP
+  `Content-Encoding: br`); `from_str` / `from_extension` / `as_str` / `extension` /
+  `is_available`, and (under `media`) `from_mime` / `from_media` / `from_stats` for
+  inference. Brotli has no magic bytes, so it is recognised by the `.br` extension /
+  `application/x-brotli` MIME only, never by content sniffing.
 - `encoder(sink: impl Io) → Encoder: Io` (write-only, compress-on-write; `finish()`
   flushes the trailer and recovers the sink) and `decoder(source: impl Io) → Decoder:
   Io` (read-only, decompress-on-read); both are **streamed `Io` handles** themselves,
@@ -143,9 +145,9 @@ base stays codec-free and the dependency points one way — `compression` builds
   with no codec infers one from the handle's URL extension, then its `stats()`
   media/content type.
 
-Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`); a variant whose
-feature is off still parses and names itself but reports `Unsupported` on
-encode/decode (`is_available` tells ahead of time). `media` adds the
+Each backend is an **optional feature** (`gzip`/`zstd`/`snappy`/`brotli`, all on by
+`default`); a variant whose feature is off still parses and names itself but reports
+`Unsupported` on encode/decode (`is_available` tells ahead of time). `media` adds the
 stats-inference path. When you add a codec, surface it in *both* bindings.
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
@@ -223,12 +225,14 @@ shape:
   overrides it and a cross-origin redirect strips it. The bindings surface it as the
   session `basic_auth`/`bearer_auth` (Python kwargs) / `basicAuth`/`bearerAuth` (Node
   options).
-- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`. It **holds the
-  live body** as a `Box<dyn Io>` (the `HttpStream`): `reader()` is the decoded body `Io`
-  (decompressed under `compression`), `bytes`/`text`/`into_bytesio` drain it, `read_all`
-  drains and returns the `received_at` finish time together (used by the buffering
-  bindings), `body_mut` borrows the raw body to read/seek in place, `into_io` takes the
-  whole body.
+- `HttpResponse` — `status`/`ok`/`raise_for_status`/`headers`/`header`, plus the typed
+  reads `mime_type`/`media_type` (from `Content-Type`, under `media`) and `compression`
+  (the codec named by `Content-Encoding`, under `compression`). It **holds the live
+  body** as a `Box<dyn Io>` (the `HttpStream`): `reader()` is the decoded body `Io`
+  (decompressed under `compression`), `bytes`/`text`/`json`/`into_bytesio` drain it
+  (`text`/`json` decompress transparently first), `read_all` drains and returns the
+  `received_at` finish time together (used by the buffering bindings), `body_mut`
+  borrows the raw body to read/seek in place, `into_io` takes the whole body.
 - `HttpStream: Io` — the seekable HTTP body that **streams off the held connection**:
   sequential `read` pulls bytes straight off the socket on demand, keeping only a
   sliding 4 MiB cache for short seek-backs, while `pread` (footer / column-chunk) and
@@ -254,11 +258,15 @@ shape:
   (`hyper` for h2, `quinn`/`h3` for h3, sharing `tokio`/`tokio-rustls`) are
   dependencies of the `http2`/`http3` features only**; `transport.rs` is
   `#[cfg(any(feature = "http2", feature = "http3"))]`, so the default build stays the
-  lean blocking `ureq` client. TLS verification follows the session's `verify` flag
-  (a rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file`
-  installs custom CA certificates (PEM/DER) that **replace** the default trust store
-  across all transports (the secure alternative to `verify=false`, like `requests`'
-  `verify=<bundle>`); a proxy applies to the `ureq` h1 path.
+  lean blocking `ureq` client. **The default trust store is the OS-native certificate
+  store** (Windows SChannel, macOS Security framework, Linux system bundle) via ureq's
+  `platform-verifier` (`RootCerts::PlatformVerifier`), so corporate/OS roots are
+  honoured out of the box. TLS verification follows the session's `verify` flag (a
+  rustls `NoVerify` certifier when off); `with_ca_cert` / `with_ca_cert_file` installs
+  custom CA certificates (PEM/DER) that **replace** that store (the secure alternative
+  to `verify=false`, like `requests`' `verify=<bundle>`); a proxy applies to the `ureq`
+  h1 path. A `read_timeout` (`with_read_timeout`, default 120s) bounds the wait for
+  server data via ureq's recv timeouts, surfacing an actionable error.
 
 Optional features: `compression` (auto `Content-Encoding` decode — it also turns
 on the codec backends), `media` (`mime_type()`), `serde` (`Serialize`/`Deserialize`

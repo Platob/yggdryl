@@ -8,10 +8,20 @@ use crate::Url;
 
 /// Bridges an [`Io`] sink to [`std::io::Write`], so the streaming compressors
 /// (which speak `std::io`) can push into any handle.
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
 pub(crate) struct WriteShim<W: Io>(pub(crate) W);
 
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
 impl<W: Io> std::io::Write for WriteShim<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.0.write(buf).map_err(into_std)
@@ -24,10 +34,20 @@ impl<W: Io> std::io::Write for WriteShim<W> {
 
 /// Bridges an [`Io`] source to [`std::io::Read`], so the streaming decompressors
 /// can pull from any handle.
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
 pub(crate) struct ReadShim<R: Io>(pub(crate) R);
 
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
 impl<R: Io> std::io::Read for ReadShim<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0.read(buf).map_err(into_std)
@@ -36,7 +56,12 @@ impl<R: Io> std::io::Read for ReadShim<R> {
 
 /// Maps an [`IoError`] back into a [`std::io::Error`] for the `std::io`-based
 /// codecs (the inverse of the byte-IO `From<std::io::Error>`).
-#[cfg(any(feature = "gzip", feature = "zstd", feature = "snappy"))]
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
 fn into_std(err: IoError) -> std::io::Error {
     std::io::Error::other(err.to_string())
 }
@@ -61,6 +86,8 @@ pub(crate) enum EncoderInner<W: Io> {
     Zstd(zstd::stream::write::Encoder<'static, WriteShim<W>>),
     #[cfg(feature = "snappy")]
     Snappy(snap::write::FrameEncoder<WriteShim<W>>),
+    #[cfg(feature = "brotli")]
+    Brotli(brotli::CompressorWriter<WriteShim<W>>),
 }
 
 impl<W: Io> Encoder<W> {
@@ -79,6 +106,8 @@ impl<W: Io> Encoder<W> {
                 .into_inner()
                 .map_err(|err| IoError::Io(err.to_string()))?
                 .0),
+            #[cfg(feature = "brotli")]
+            EncoderInner::Brotli(encoder) => Ok(encoder.into_inner().0),
         }
     }
 }
@@ -125,6 +154,10 @@ impl<W: Io> Io for Encoder<W> {
             EncoderInner::Snappy(encoder) => {
                 std::io::Write::write(encoder, bytes).map_err(IoError::from)
             }
+            #[cfg(feature = "brotli")]
+            EncoderInner::Brotli(encoder) => {
+                std::io::Write::write(encoder, bytes).map_err(IoError::from)
+            }
         }
     }
 
@@ -137,6 +170,8 @@ impl<W: Io> Io for Encoder<W> {
             EncoderInner::Zstd(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
             #[cfg(feature = "snappy")]
             EncoderInner::Snappy(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
+            #[cfg(feature = "brotli")]
+            EncoderInner::Brotli(encoder) => std::io::Write::flush(encoder).map_err(IoError::from),
         }
     }
 }
@@ -148,6 +183,9 @@ pub struct Decoder<R: Io> {
     pub(crate) inner: DecoderInner<R>,
 }
 
+// As with `EncoderInner`: exactly one variant is ever live and the value is
+// short-lived, so the codec states are kept inline rather than boxed.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum DecoderInner<R: Io> {
     /// Identity: reads pass straight through.
     Store(R),
@@ -157,6 +195,8 @@ pub(crate) enum DecoderInner<R: Io> {
     Zstd(zstd::stream::read::Decoder<'static, std::io::BufReader<ReadShim<R>>>),
     #[cfg(feature = "snappy")]
     Snappy(snap::read::FrameDecoder<ReadShim<R>>),
+    #[cfg(feature = "brotli")]
+    Brotli(brotli::Decompressor<ReadShim<R>>),
 }
 
 impl<R: Io> fmt::Debug for Decoder<R> {
@@ -195,6 +235,10 @@ impl<R: Io> Io for Decoder<R> {
             DecoderInner::Zstd(decoder) => std::io::Read::read(decoder, buf).map_err(IoError::from),
             #[cfg(feature = "snappy")]
             DecoderInner::Snappy(decoder) => {
+                std::io::Read::read(decoder, buf).map_err(IoError::from)
+            }
+            #[cfg(feature = "brotli")]
+            DecoderInner::Brotli(decoder) => {
                 std::io::Read::read(decoder, buf).map_err(IoError::from)
             }
         }

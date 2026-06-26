@@ -87,6 +87,16 @@ fn build_agent(
                 .root_certs(ureq::tls::RootCerts::new_with_certs(&certs))
                 .build(),
         );
+    } else {
+        // Default trust store: the **OS-native** certificate store (Windows
+        // SChannel, macOS Security framework, Linux system bundle) via the platform
+        // verifier, so the session honours certificates the host already trusts
+        // (corporate roots, OS updates) instead of a bundled Mozilla snapshot.
+        builder = builder.tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build(),
+        );
     }
     builder.build().into()
 }

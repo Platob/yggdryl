@@ -109,9 +109,10 @@ function compressionBench() {
   rows.push(["gzip decompress", `${mibps(n, ygT).toFixed(0)} MiB/s`, `${mibps(n, ndT).toFixed(0)} MiB/s`, `${(ndT / ygT).toFixed(2)}×`]);
   table(`Compression — yggdryl vs node:zlib (${(n / 1024) | 0} KiB CSV payload)`, ["workload", "yggdryl", "node zlib", "speedup"], rows);
 
-  // Codecs node's zlib does not ship (zstd before Node 22's experimental zstd, snappy never).
+  // Codecs node's zlib does not ship (zstd before Node 22's experimental zstd,
+  // snappy never; brotli is built-in but Snappy/Zstd/Brotli all live here in one API).
   const extra = [];
-  for (const name of ["zstd", "snappy"]) {
+  for (const name of ["zstd", "snappy", "brotli"]) {
     const codec = Compression.fromStr(name);
     if (!codec.isAvailable) continue;
     const packed = codec.compress(payload);

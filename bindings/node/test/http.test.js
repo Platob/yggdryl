@@ -16,6 +16,15 @@ function startServer() {
         res.end('nope')
         return
       }
+      if (req.url === '/brotli') {
+        // A Brotli-compressed JSON body advertised via Content-Encoding: br.
+        const { Compression } = require('..')
+        const body = Buffer.from('{"msg":"brotli over the wire","n":7}')
+        const packed = Compression.fromStr('br').compress(body)
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Encoding': 'br' })
+        res.end(Buffer.from(packed))
+        return
+      }
       const chunks = []
       req.on('data', (c) => chunks.push(c))
       req.on('end', () => {
@@ -184,6 +193,21 @@ test('CA certificate installer', () => {
   assert.throws(() =>
     new HttpSession(...args, Buffer.from('-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----')),
   )
+})
+
+test('brotli response auto-decodes with json and accessors', async () => {
+  const { server, port } = await startServer()
+  const base = `http://127.0.0.1:${port}`
+  try {
+    const r = await new HttpSession().get(base + '/brotli')
+    assert.strictEqual(r.contentEncoding, 'br')
+    assert.strictEqual(r.compression, 'brotli')
+    assert.strictEqual(r.mimeType, 'application/json')
+    assert.deepStrictEqual(r.mediaType, ['application/json'])
+    assert.deepStrictEqual(r.json(), { msg: 'brotli over the wire', n: 7 })
+  } finally {
+    server.close()
+  }
 })
 
 test('readTimeout, keepAlive seconds and copy', async () => {

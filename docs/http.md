@@ -1,8 +1,23 @@
 # HTTP
 
 A blocking, `requests`-like HTTP client whose bodies **stream over [`Io`](io.md)**.
-The transport is `ureq` (rustls TLS); decompression goes through
-[compression](compression.md), on by default.
+The transport is `ureq` (rustls TLS, trusting the **OS-native certificate store** by
+default); decompression goes through [compression](compression.md), on by default.
+
+## Decoding & content type
+
+`text()` and `json()` (and `bytes()`) **transparently decompress** the body per its
+`Content-Encoding` — `gzip` / `zstd` / `snappy` / `brotli` (`br`) — so you always read
+the decoded payload. The response also exposes `compression()` (the codec named by
+`Content-Encoding`), `mime_type()` / `media_type()` (from `Content-Type`), and
+`content_type` / `content_encoding`.
+
+```python
+r = yggdryl.HttpSession().get("https://example.com/data.json")  # served `Content-Encoding: br`
+r.compression   # "brotli"
+r.mime_type     # "application/json"
+data = r.json() # decompressed and parsed in Rust
+```
 
 ## Request in, response out
 

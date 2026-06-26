@@ -1,19 +1,21 @@
 # Compression
 
-Streamed byte compression — **gzip**, **Zstandard** and **Snappy** — layered on
-top of [`Io`](io.md). The codecs ship **on by default**; opt out with
+Streamed byte compression — **gzip**, **Zstandard**, **Snappy** and **Brotli** —
+layered on top of [`Io`](io.md). The codecs ship **on by default**; opt out with
 `default-features = false` for a codec-free build.
 
 ## The codec
 
-`Compression` is `None` / `Gzip` / `Zstd` / `Snappy`:
+`Compression` is `None` / `Gzip` / `Zstd` / `Snappy` / `Brotli` (whose HTTP
+`Content-Encoding` token is `br`; Brotli has no magic bytes, so it is recognised by
+the `.br` extension only):
 
 ```rust
 use yggdryl_core::Compression;
 
-let codec = Compression::from_str("zstd")?;      // "gzip"/"gz", "zstd"/"zst", "snappy"/"snap"/"sz"
-assert_eq!(codec.as_str(), "zstd");
-assert_eq!(codec.extension(), Some("zst"));
+let codec = Compression::from_str("br")?;         // "gzip"/"gz", "zstd"/"zst", "snappy"/"sz", "br"/"brotli"
+assert_eq!(codec.as_str(), "brotli");
+assert_eq!(codec.extension(), Some("br"));
 let packed = codec.compress(b"hello hello hello")?;
 assert_eq!(codec.decompress(&packed)?, b"hello hello hello");
 ```

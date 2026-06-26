@@ -28,6 +28,16 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/missing":
             return self._reply(404, b"nope")
+        if self.path == "/brotli":
+            # A Brotli-compressed JSON body, advertised via Content-Encoding: br.
+            body = b'{"msg":"brotli over the wire","n":7}'
+            packed = yggdryl.Compression("br").compress(body)
+            return self._reply(
+                200,
+                packed,
+                content_type="application/json",
+                extra={"Content-Encoding": "br"},
+            )
         # Echo a custom request header (and any Authorization) back so the client
         # can assert on it.
         echo = self.headers.get("X-Echo", "")
@@ -218,6 +228,17 @@ def test_ca_cert_installer():
         )
     with pytest.raises(ValueError):
         yggdryl.HttpSession(ca_cert=b"")
+
+
+def test_brotli_response_auto_decodes_with_json_and_accessors(base_url):
+    session = yggdryl.HttpSession()
+    response = session.get(base_url + "/brotli")
+    # text/json/content are the decompressed payload; accessors report the codec.
+    assert response.content_encoding == "br"
+    assert response.compression == "brotli"
+    assert response.mime_type == "application/json"
+    assert response.media_type == ["application/json"]
+    assert response.json() == {"msg": "brotli over the wire", "n": 7}
 
 
 def test_read_timeout_keep_alive_and_copy(base_url):

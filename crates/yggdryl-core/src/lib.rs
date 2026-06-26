@@ -57,3 +57,8 @@ pub use io::{
 };
 
 pub use compression::{CompressIo, Compression, Decoder, Encoder};
+
+/// Re-export of `serde_json` (under the `json` feature) so dependents can name the
+/// [`Value`](serde_json::Value) that [`Io::json`] returns without a direct dep.
+#[cfg(feature = "json")]
+pub use serde_json;

@@ -25,6 +25,11 @@ try:
 except ImportError:  # pragma: no cover - requests is optional
     requests = None
 
+try:
+    import httpx  # the modern, HTTP/2-capable client
+except ImportError:  # pragma: no cover - httpx is optional
+    httpx = None
+
 
 def timed(fn, iters):
     """Mean seconds per call over `iters` runs, after a short warm-up."""
@@ -83,33 +88,45 @@ def http_bench():
     try:
         yg = yggdryl.HttpSession()
         rq = requests.Session()
+        hx = httpx.Client() if httpx is not None else None
+
+        def fmt_ms(t):
+            return f"{t * 1e3:.3f} ms" if t is not None else "—"
+
+        def fmt_mibps(t):
+            return f"{mibps(len(big), t):.0f} MiB/s" if t is not None else "—"
 
         yg_t = timed(lambda: yg.get(base + "/small").content, 400)
         rq_t = timed(lambda: rq.get(base + "/small").content, 400)
+        hx_t = timed(lambda: hx.get(base + "/small").content, 400) if hx else None
         rows.append(
             (
                 "GET small body (latency)",
-                f"{yg_t * 1e3:.3f} ms",
-                f"{rq_t * 1e3:.3f} ms",
+                fmt_ms(yg_t),
+                fmt_ms(rq_t),
+                fmt_ms(hx_t),
                 f"{rq_t / yg_t:.2f}×",
             )
         )
 
-        n = len(big)
         yg_t = timed(lambda: yg.get(base + "/big").content, 20)
         rq_t = timed(lambda: rq.get(base + "/big").content, 20)
+        hx_t = timed(lambda: hx.get(base + "/big").content, 20) if hx else None
         rows.append(
             (
                 "GET 8 MiB body (throughput)",
-                f"{mibps(n, yg_t):.0f} MiB/s",
-                f"{mibps(n, rq_t):.0f} MiB/s",
+                fmt_mibps(yg_t),
+                fmt_mibps(rq_t),
+                fmt_mibps(hx_t),
                 f"{rq_t / yg_t:.2f}×",
             )
         )
+        if hx:
+            hx.close()
     finally:
         server.shutdown()
-    table("HTTP — yggdryl vs requests (same in-process server)",
-          ["workload", "yggdryl", "requests", "speedup"], rows)
+    table("HTTP — yggdryl vs requests / httpx (same in-process server)",
+          ["workload", "yggdryl", "requests", "httpx", "vs requests"], rows)
 
 
 # -------------------------------------------------------------------- compression
@@ -152,7 +169,7 @@ def compression_bench():
 
     # Codecs the standard library does not ship at all.
     extra = []
-    for name in ("zstd", "snappy"):
+    for name in ("zstd", "snappy", "brotli"):
         codec = yggdryl.Compression.from_str(name)
         if not codec.is_available:
             continue

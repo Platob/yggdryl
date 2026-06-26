@@ -26,7 +26,9 @@ harness = false
 yggdryl-core = { workspace = true, default-features = false, features = ["json"] }
 # The blocking HTTP transport. `rustls` gives TLS; ureq's own gzip/brotli are
 # left off so decompression goes through `yggdryl-core`'s compression codecs.
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+# `platform-verifier` trusts the OS-native certificate store by default (Windows
+# SChannel, macOS Security framework, Linux system bundle), via rustls-platform-verifier.
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 # Optional and off by default:
 #   compression  auto-decode a `Content-Encoding` body via yggdryl-core's codecs;
 #   media        expose the response `mime_type()` via yggdryl-core's media types;
@@ -66,6 +68,7 @@ compression = [
     "yggdryl-core/gzip",
     "yggdryl-core/zstd",
     "yggdryl-core/snappy",
+    "yggdryl-core/brotli",
 ]
 media = ["yggdryl-core/media"]
 # `serde` also turns on the core's `serde` feature, so the embedded value types

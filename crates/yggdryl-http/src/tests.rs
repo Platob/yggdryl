@@ -328,6 +328,33 @@ fn gzip_response_is_decoded_transparently() {
     assert_eq!(response.text().unwrap(), String::from_utf8(body).unwrap());
 }
 
+#[cfg(feature = "compression")]
+#[test]
+fn brotli_response_is_decoded_transparently() {
+    // A `Content-Encoding: br` body is decoded by `text()`/`json()`; the
+    // `compression()` accessor names the codec.
+    let body = br#"{"msg":"brotli over the wire","n":7}"#.to_vec();
+    let packed = yggdryl_core::Compression::Brotli.compress(&body).unwrap();
+    let mut reply = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: br\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        packed.len()
+    )
+    .into_bytes();
+    reply.extend_from_slice(&packed);
+
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url).unwrap();
+    assert_eq!(response.content_encoding(), Some("br"));
+    assert_eq!(
+        response.compression(),
+        Some(yggdryl_core::Compression::Brotli)
+    );
+    // `json()` decompresses then parses in Rust.
+    let value = response.json().unwrap();
+    assert_eq!(value["msg"].as_str(), Some("brotli over the wire"));
+    assert_eq!(value["n"].as_u64(), Some(7));
+}
+
 #[cfg(feature = "media")]
 #[test]
 fn response_mime_type_from_content_type() {
@@ -336,6 +363,13 @@ fn response_mime_type_from_content_type() {
     assert_eq!(
         response.mime_type(),
         Some(yggdryl_core::MimeType::from_str("application/json").unwrap())
+    );
+    // The layered media-type accessor returns the same outer type as a stack.
+    let (url, _rx) = serve_once(ok_reply("text/csv", b"a,b\n1,2\n"));
+    let response = HttpSession::new().get(&url).unwrap();
+    assert_eq!(
+        response.media_type().map(|m| m.types().to_vec()),
+        Some(vec![yggdryl_core::MimeType::from_str("text/csv").unwrap()])
     );
 }
 

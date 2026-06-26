@@ -15,9 +15,14 @@ def test_parses_names_and_extensions():
     assert yggdryl.Compression(" snappy ").name == "snappy"
     assert yggdryl.Compression("store").name == "none"
 
+    assert yggdryl.Compression("br").name == "brotli"
+    assert yggdryl.Compression("brotli").name == "brotli"
+
     assert yggdryl.Compression("gzip").extension == "gz"
+    assert yggdryl.Compression("brotli").extension == "br"
     assert yggdryl.Compression("none").extension is None
     assert yggdryl.Compression.from_extension(".zst").name == "zstd"
+    assert yggdryl.Compression.from_extension(".br").name == "brotli"
     assert yggdryl.Compression.from_extension("txt") is None
 
     with pytest.raises(ValueError):
@@ -32,7 +37,7 @@ def test_none_is_identity():
     assert codec.decompress(payload) == payload
 
 
-@pytest.mark.parametrize("name", ["gzip", "zstd", "snappy"])
+@pytest.mark.parametrize("name", ["gzip", "zstd", "snappy", "brotli"])
 def test_round_trips_each_codec(name):
     codec = yggdryl.Compression(name)
     assert codec.is_available is True  # the wheel enables all three backends

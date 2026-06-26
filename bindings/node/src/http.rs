@@ -10,7 +10,10 @@ use std::sync::Arc;
 use napi::bindgen_prelude::*;
 use napi::{Env, Task};
 use napi_derive::napi;
-use yggdryl_core::{LocalPath as CoreLocalPath, Path, Url as CoreUrl};
+use yggdryl_core::{
+    Compression as CoreCompression, LocalPath as CoreLocalPath, MimeType as CoreMimeType, Path,
+    Url as CoreUrl,
+};
 use yggdryl_http::{
     HttpRequest as CoreHttpRequest, HttpSession as CoreHttpSession, HttpVersion, Method,
 };
@@ -115,8 +118,8 @@ impl Task for RequestTask {
             BodyArg::Bytes(bytes) => request.with_body(bytes),
             BodyArg::File(location) => request.with_body_io(CoreLocalPath::open(location)),
         };
-        // A buffered (`stream = false`) send drains the body now and releases the
-        // connection, so `received_at` is already stamped before `bytes()`.
+        // Every send streams; we drain the body here (off the event loop) into an
+        // owned buffer, decompressed, so `content` / `text` / `json` are cheap.
         let response = self
             .session
             .send(request, self.raise_error)
@@ -230,16 +233,55 @@ impl HttpResponse {
         self.header("content-type".to_string())
     }
 
-    /// The raw response body.
+    /// The `Content-Encoding` header, if present.
+    #[napi(getter, js_name = "contentEncoding")]
+    pub fn content_encoding(&self) -> Option<String> {
+        self.header("content-encoding".to_string())
+    }
+
+    /// The single MIME type inferred from `Content-Type` (e.g. `"text/csv"`).
+    #[napi(getter, js_name = "mimeType")]
+    pub fn mime_type(&self) -> Option<String> {
+        self.content_type()
+            .and_then(|ct| CoreMimeType::from_str(&ct).ok())
+            .map(|mime| mime.to_string())
+    }
+
+    /// The layered media type from `Content-Type` as an array of MIME strings.
+    #[napi(getter, js_name = "mediaType")]
+    pub fn media_type(&self) -> Option<Vec<String>> {
+        self.content_type()
+            .and_then(|ct| CoreMimeType::from_str(&ct).ok())
+            .map(|mime| vec![mime.to_string()])
+    }
+
+    /// The compression codec named by `Content-Encoding` (`"gzip"` / `"zstd"` /
+    /// `"snappy"` / `"brotli"`), or `null`. The body is already decoded — `content`
+    /// / `text` / `json` are the decompressed payload.
+    #[napi(getter)]
+    pub fn compression(&self) -> Option<String> {
+        self.content_encoding()
+            .and_then(|enc| CoreCompression::from_str(&enc).ok())
+            .filter(|codec| *codec != CoreCompression::None)
+            .map(|codec| codec.as_str().to_string())
+    }
+
+    /// The raw response body (already decompressed).
     #[napi(getter)]
     pub fn content(&self) -> Buffer {
         Buffer::from(self.body.clone())
     }
 
-    /// The response body decoded as UTF-8 text.
+    /// The response body decoded as UTF-8 text (already decompressed).
     #[napi]
     pub fn text(&self) -> Result<String> {
         String::from_utf8(self.body.clone()).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// The response body parsed as JSON (already decompressed).
+    #[napi]
+    pub fn json(&self) -> Result<serde_json::Value> {
+        serde_json::from_slice(&self.body).map_err(|e| Error::from_reason(e.to_string()))
     }
 
     /// Throw if the status is 4xx/5xx, otherwise do nothing — the `requests`
