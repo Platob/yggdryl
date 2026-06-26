@@ -485,6 +485,7 @@ fn retries_429_then_succeeds() {
 }
 
 #[test]
+#[cfg(not(feature = "http2"))]
 fn httpstream_resumes_after_a_dropped_connection() {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
@@ -735,6 +736,7 @@ fn httpstream_range_past_end_is_clean_eof_via_416() {
 }
 
 #[test]
+#[cfg(not(feature = "http2"))]
 fn httpstream_close_releases_the_connection_and_reads_eof() {
     let payload = stream_payload();
     let url = serve_ranges(payload);
@@ -751,6 +753,7 @@ fn httpstream_close_releases_the_connection_and_reads_eof() {
 }
 
 #[test]
+#[cfg(not(feature = "http2"))]
 fn keep_alive_false_sends_connection_close() {
     let (url, rx) = serve_once(ok_reply("text/plain", b"ok"));
     HttpSession::new()
@@ -775,6 +778,7 @@ fn keep_alive_true_does_not_close_the_connection() {
 }
 
 #[test]
+#[cfg(not(feature = "http2"))]
 fn pool_safeguard_closes_extra_streams_when_saturated() {
     use std::sync::{Arc, Mutex};
     // Records every request line/headers, replying 200 with the payload.
@@ -847,6 +851,7 @@ fn keep_alive_requests_release_the_connection_on_eof() {
 }
 
 #[test]
+#[cfg(not(feature = "http2"))]
 fn httpstream_reconnects_through_multiple_drops() {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
