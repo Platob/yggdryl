@@ -26,8 +26,8 @@ frame kind, so a generic pipeline works across backings. Each frame yields its o
 | `is_empty()` | `height() == 0`, when known (provided) |
 | `select(columns)` | projection, in order |
 | `drop(columns)` | complement of a projection (**provided**) |
-| `filter(predicate)` | keep rows matching a [`Predicate`](predicate.md) (implementations may push it down) |
-| `filter_typed(predicate)` | type-optimise the predicate against the schema, then `filter` (**provided**) |
+| `filter(predicate)` | keep rows matching a [`Predicate`](predicate.md) — types it against the schema, then applies/pushes it down |
+| `optimize_predicate(predicate)` | type-optimise a predicate against the schema (the helper `filter` uses) (**provided**) |
 | `limit(n)` / `head(n)` / `tail(n)` / `slice(offset, length)` | row limits (`head` provided) |
 
 An implementor supplies `schema`, `column`, `select`, `filter`, `limit`, `tail` and
@@ -35,12 +35,12 @@ An implementor supplies `schema`, `column`, `select`, `filter`, `limit`, `tail` 
 
 ## Filtering & pushdown
 
-`filter` takes a [`Predicate`](predicate.md). The provided `filter_typed` first
-**type-optimises** it against the frame's schema — casting each literal to its
-column's type (e.g. a string ISO date → `timestamp`) — so the comparison is typed
-and an implementation (a `ParquetFrame`, a `CsvFrame`) can push it down into typed
-storage. This is the path that turns `col("ts") > "2024-01-01"` into a typed range
-scan.
+`filter` takes a [`Predicate`](predicate.md) and **does the whole job**: it
+type-optimises the predicate against the frame's schema — casting each literal to
+its column's type (e.g. a string ISO date → `timestamp`) via the provided
+`optimize_predicate` helper — then applies it, **pushing it down** into storage where
+it can (a `ParquetFrame` skips row groups, a `CsvFrame` filters on scan). That turns
+`col("ts") > "2024-01-01"` into a typed range scan.
 
 === "Rust"
 
@@ -50,9 +50,9 @@ scan.
     fn recent_fills<F: Frame>(frame: F) -> Result<F, FrameError> {
         frame
             .select(&["ts", "symbol", "px", "qty"])?
-            // An untyped ISO string is cast to the `ts` column's timestamp type,
-            // then pushed down.
-            .filter_typed(Predicate::ge("ts", Scalar::any("2024-01-01")))?
+            // `filter` casts the untyped ISO string to the `ts` column's timestamp
+            // type and pushes it down.
+            .filter(Predicate::ge("ts", Scalar::any("2024-01-01")))?
             .head(100)
     }
     ```

@@ -72,8 +72,8 @@ column exists:
     // Both literals are now typed to their columns (timestamp, float64) — ready to push down.
     ```
 
-A frame applies this for you via [`Frame::filter_typed`](frame.md): it optimises the
-predicate against the schema, then filters with the typed predicate.
+A frame's [`filter`](frame.md) does this for you: it optimises the predicate against
+the schema (casting the literals), then applies the typed predicate.
 
 ## Ranges and collections
 
@@ -135,5 +135,5 @@ reference, whose type is resolved from the schema) and `lit(scalar)` (a literal)
 
 ## Next
 
-- [Frame](frame.md) — `filter` / `filter_typed` consume these predicates
+- [Frame](frame.md) — `filter` consumes these predicates (and types them)
 - [DataType](datatype.md) — the `any` type and `can_cast_to`

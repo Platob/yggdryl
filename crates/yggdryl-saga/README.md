@@ -46,8 +46,8 @@ backing will satisfy, so eager and lazy implementations share one surface:
 - `Expression` / `col` / `lit` — expression nodes that resolve a type against a
   `Schema`;
 - `Predicate` — a boolean filter whose `optimize(&schema)` casts each literal to
-  its column's type, so `Frame::filter_typed` can **push it down** into typed
-  storage (`ParquetFrame`, `CsvFrame`).
+  its column's type, so `Frame::filter` can **push it down** into typed storage
+  (`ParquetFrame`, `CsvFrame`).
 
 The concrete eager/lazy frame implementations are intentionally **not built yet** —
 this layer nails the shared contract (and the typed-pushdown machinery) first.

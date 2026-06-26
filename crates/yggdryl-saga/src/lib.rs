@@ -34,8 +34,8 @@
 //! - [`Expression`] / [`Col`] / [`Lit`] — expression nodes that resolve a type
 //!   against a [`Schema`];
 //! - [`Predicate`] — a boolean filter whose [`optimize`](Predicate::optimize)
-//!   casts each literal to its column's type, so [`Frame::filter_typed`] can push
-//!   it down into typed storage.
+//!   casts each literal to its column's type, so [`Frame::filter`] can push it
+//!   down into typed storage.
 //!
 //! Every value type pairs a canonical-string [`from_str`](DataType::from_str) /
 //! [`to_str`](DataType::to_str) round-trip with, under the on-by-default `arrow`
