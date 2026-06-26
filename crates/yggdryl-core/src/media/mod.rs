@@ -27,7 +27,7 @@ mod media_type;
 mod mime;
 
 pub use media_type::MediaType;
-pub use mime::{MimeType, Signature};
+pub use mime::{Category, MimeType, Signature};
 
 /// Error returned when a media or MIME type cannot be interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +36,8 @@ pub enum MediaError {
     Empty,
     /// The input was not a `type/subtype` MIME form.
     Invalid(String),
+    /// The input was not a known [`Category`] name.
+    UnknownCategory(String),
 }
 
 impl fmt::Display for MediaError {
@@ -43,6 +45,10 @@ impl fmt::Display for MediaError {
         match self {
             MediaError::Empty => write!(f, "media type is empty"),
             MediaError::Invalid(value) => write!(f, "media type '{value}' is not 'type/subtype'"),
+            MediaError::UnknownCategory(value) => write!(
+                f,
+                "unknown category '{value}', expected 'blob', 'directory', 'tabular', 'code' or 'codec'"
+            ),
         }
     }
 }
@@ -334,18 +340,87 @@ mod tests {
             "application/x-yggdryl",
             &["ygg"],
             &[Signature::prefix(b"YGG1")],
+            Category::Code,
         );
         let m = MimeType::from_extension("ygg").unwrap();
         assert_eq!(m, MimeType::Other("application/x-yggdryl".to_string()));
         assert_eq!(m.extensions(), vec!["ygg".to_string()]);
+        // The registered category is read back; an unregistered type is Blob.
+        assert_eq!(m.category(), Category::Code);
         assert_eq!(
             MimeType::from_magic(b"YGG1\x00"),
             Some(MimeType::Other("application/x-yggdryl".to_string()))
         );
-        // Unregistering removes it again.
+        // Unregistering removes it again, and its category falls back to Blob.
         assert!(MimeType::unregister("application/x-yggdryl"));
         assert_eq!(MimeType::from_extension("ygg"), None);
+        assert_eq!(m.category(), Category::Blob);
         assert!(!MimeType::unregister("application/x-yggdryl"));
+    }
+
+    #[test]
+    fn category_classifies_types() {
+        // Each built-in role.
+        assert_eq!(MimeType::Png.category(), Category::Blob);
+        assert_eq!(MimeType::OctetStream.category(), Category::Blob);
+        assert_eq!(MimeType::Csv.category(), Category::Tabular);
+        assert_eq!(MimeType::Parquet.category(), Category::Tabular);
+        assert_eq!(MimeType::Ndjson.category(), Category::Tabular);
+        assert_eq!(MimeType::Gzip.category(), Category::Codec);
+        assert_eq!(MimeType::Zstd.category(), Category::Codec);
+        assert_eq!(MimeType::Xz.category(), Category::Codec);
+        assert_eq!(MimeType::Json.category(), Category::Code);
+        assert_eq!(MimeType::Directory.category(), Category::Directory);
+        // The default for an unknown type is Blob.
+        assert_eq!(
+            MimeType::Other("x/y".to_string()).category(),
+            Category::Blob
+        );
+        assert_eq!(Category::default(), Category::Blob);
+        // Name round-trips (case-insensitive, with aliases).
+        assert_eq!(Category::from_str("Tabular").unwrap(), Category::Tabular);
+        assert_eq!(Category::from_str("compression").unwrap(), Category::Codec);
+        assert_eq!(Category::Codec.as_str(), "codec");
+        assert!(Category::from_str("nope").is_err());
+        // A MediaType reports its outermost layer's category (like `mime_type`).
+        assert_eq!(
+            MediaType::from_path("data.csv").category(),
+            Category::Tabular
+        );
+        assert_eq!(
+            MediaType::from_path("data.csv.gz").category(),
+            Category::Codec
+        );
+        assert_eq!(MediaType::default().category(), Category::Blob);
+        assert_eq!(MediaType::new(vec![]).category(), Category::Blob);
+    }
+
+    #[test]
+    fn programming_language_mime_types() {
+        for (ext, mime, variant) in [
+            ("py", "text/x-python", MimeType::Python),
+            ("rs", "text/x-rust", MimeType::Rust),
+            ("ts", "text/x-typescript", MimeType::TypeScript),
+            ("go", "text/x-go", MimeType::Go),
+            ("java", "text/x-java", MimeType::Java),
+            ("rb", "text/x-ruby", MimeType::Ruby),
+            ("php", "application/x-httpd-php", MimeType::Php),
+            ("sh", "application/x-sh", MimeType::Shell),
+            ("sql", "application/sql", MimeType::Sql),
+            ("kt", "text/x-kotlin", MimeType::Kotlin),
+        ] {
+            let m = MimeType::from_extension(ext).unwrap();
+            assert_eq!(m, variant, "{ext}");
+            assert_eq!(m.mime(), mime, "{ext}");
+            assert_eq!(m.category(), Category::Code, "{ext}");
+        }
+        // `.h` resolves to C (registered before C++); `.cpp` to C++.
+        assert_eq!(MimeType::from_extension("h"), Some(MimeType::C));
+        assert_eq!(MimeType::from_extension("cpp"), Some(MimeType::Cpp));
+        // Source files have no magic — content sniffing does not misfire.
+        assert_eq!(MimeType::from_magic(b"def main(): pass"), None);
+        // A short name resolves a language by its canonical extension.
+        assert_eq!(MimeType::from_str("py").unwrap(), MimeType::Python);
     }
 
     #[test]

@@ -179,20 +179,80 @@ failed inference is the default, `application/octet-stream`.
     assert_eq!(MimeType::from_extension("nope").unwrap_or_default(), MimeType::OctetStream);
     ```
 
+### Category — what a type *is*
+
+Every type plays a broad **category**, grouping it by how its bytes are consumed
+rather than by `type/subtype`: `"blob"` (the default — an opaque, random-access byte
+holder: images, audio, video, PDFs, archives, fonts), `"directory"` (`inode/directory`),
+`"tabular"` (CSV, Parquet, Arrow, Avro, NDJSON), `"code"` (source code, markup and
+config — a programming language, HTML/CSS, JSON/XML/YAML/TOML, Markdown), and `"codec"`
+(a compression codec: gzip, bzip2, zstd, brotli, xz, lz4). The category lives in the
+same registry as the extensions/magic, so `register` can set it.
+
+Programming languages are first-class built-ins (all in the `"code"` category):
+Python (`.py`), Rust (`.rs`), TypeScript (`.ts`), Go (`.go`), C (`.c`/`.h`), C++
+(`.cpp`/…), C# (`.cs`), Java (`.java`), Ruby (`.rb`), PHP (`.php`), shell
+(`.sh`/`.bash`), Swift (`.swift`), Kotlin (`.kt`), SQL (`.sql`), Lua (`.lua`),
+Perl (`.pl`), Scala (`.scala`), R (`.r`), Dart (`.dart`) and Haskell (`.hs`).
+
+=== "Python"
+
+    ```python
+    assert yggdryl.MimeType("image/png").category == "blob"      # the default
+    assert yggdryl.MimeType("text/csv").category == "tabular"
+    assert yggdryl.MimeType("application/gzip").category == "codec"
+    assert yggdryl.MimeType("application/json").category == "code"
+
+    py = yggdryl.MimeType.from_extension("py")
+    assert py.mime == "text/x-python"
+    assert py.category == "code"
+    ```
+
+=== "Node"
+
+    ```javascript
+    new MimeType("image/png").category;      // "blob" (the default)
+    new MimeType("text/csv").category;       // "tabular"
+    new MimeType("application/gzip").category; // "codec"
+    new MimeType("application/json").category; // "code"
+
+    const py = MimeType.fromExtension("py");
+    py.mime;     // "text/x-python"
+    py.category; // "code"
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{Category, MimeType};
+
+    assert_eq!(MimeType::Png.category(), Category::Blob);   // the default
+    assert_eq!(MimeType::Csv.category(), Category::Tabular);
+    assert_eq!(MimeType::Gzip.category(), Category::Codec);
+    assert_eq!(MimeType::Json.category(), Category::Code);
+
+    let py = MimeType::from_extension("py").unwrap();
+    assert_eq!(py, MimeType::Python);
+    assert_eq!(py.category(), Category::Code);
+    ```
+
 ## The mutable registry
 
 Extensions and magic bytes live in a **process-wide** registry. Register (or replace)
 a type so subsequent `from_extension` / `from_magic` lookups recognise it; unregister
-it by its canonical string; `reset_registry` restores the built-in defaults.
+it by its canonical string; `reset_registry` restores the built-in defaults. The
+optional `category` (default `"blob"`) sets what [category](#category-what-a-type-is)
+the registered type reports.
 
 === "Python"
 
     ```python
     assert yggdryl.MimeType.from_extension("ygg") is None
-    yggdryl.MimeType.register("application/x-yggdryl", ["ygg"], [b"YGG1"])
+    yggdryl.MimeType.register("application/x-yggdryl", ["ygg"], [b"YGG1"], category="code")
 
     m = yggdryl.MimeType.from_extension("ygg")
     assert m.mime == "application/x-yggdryl"
+    assert m.category == "code"
     assert yggdryl.MimeType.from_magic(b"YGG1\x00").mime == "application/x-yggdryl"
 
     assert yggdryl.MimeType.unregister("application/x-yggdryl")
@@ -203,10 +263,11 @@ it by its canonical string; `reset_registry` restores the built-in defaults.
 
     ```javascript
     MimeType.fromExtension("ygg"); // null
-    MimeType.register("application/x-yggdryl", ["ygg"], [Buffer.from("YGG1")]);
+    MimeType.register("application/x-yggdryl", ["ygg"], [Buffer.from("YGG1")], "code");
 
     const m = MimeType.fromExtension("ygg");
-    m.mime; // "application/x-yggdryl"
+    m.mime;     // "application/x-yggdryl"
+    m.category; // "code"
     MimeType.fromMagic(Buffer.from("YGG1\x00")).mime; // "application/x-yggdryl"
 
     MimeType.unregister("application/x-yggdryl"); // true
@@ -216,13 +277,16 @@ it by its canonical string; `reset_registry` restores the built-in defaults.
 === "Rust"
 
     ```rust
-    use yggdryl_core::{MimeType, Signature};
+    use yggdryl_core::{Category, MimeType, Signature};
 
     assert_eq!(MimeType::from_extension("ygg"), None);
-    MimeType::register("application/x-yggdryl", &["ygg"], &[Signature::prefix(b"YGG1")]);
+    MimeType::register(
+        "application/x-yggdryl", &["ygg"], &[Signature::prefix(b"YGG1")], Category::Code,
+    );
 
     let m = MimeType::from_extension("ygg").unwrap();
     assert_eq!(m, MimeType::Other("application/x-yggdryl".to_string()));
+    assert_eq!(m.category(), Category::Code);
     assert_eq!(MimeType::from_magic(b"YGG1\x00"), m.clone().into());
 
     assert!(MimeType::unregister("application/x-yggdryl"));
@@ -232,13 +296,16 @@ it by its canonical string; `reset_registry` restores the built-in defaults.
 !!! tip "Signatures at an offset"
     In Rust a magic signature is a `Signature`: `Signature::prefix(bytes)` matches at
     the start, `Signature::at(offset, bytes)` at a fixed offset. The bindings take the
-    raw `bytes`/`Buffer` and match them as a prefix.
+    raw `bytes`/`Buffer` and match them as a prefix. `category` is one of `"blob"` /
+    `"directory"` / `"tabular"` / `"code"` / `"codec"` (in Rust, the `Category` enum).
 
 ## MediaType
 
 A `MediaType` is an ordered stack of `MimeType`s, innermost content first. Build it
 from a path, one extension, or many; `first`/`last` pick the content and container
-ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
+ends, `category` reports the outermost layer's [category](#category-what-a-type-is)
+(`codec` for `data.csv.gz`, `tabular` for `data.csv`), and rendering produces the
+canonical dotted extension chain (`csv.gz`).
 
 === "Python"
 
@@ -247,6 +314,7 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
     assert [t.mime for t in stack.types] == ["text/csv", "application/gzip"]
     assert stack.first.mime == "text/csv"
     assert stack.last.mime == "application/gzip"
+    assert stack.category == "codec"   # the outermost layer (gzip)
     assert len(stack) == 2
     assert str(stack) == "csv.gz"
 
@@ -265,6 +333,7 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
     stack.types.map((t) => t.mime); // ["text/csv", "application/gzip"]
     stack.first.mime;               // "text/csv"
     stack.last.mime;                // "application/gzip"
+    stack.category;                 // "codec" (the outermost layer, gzip)
     stack.length;                   // 2
     stack.toString();               // "csv.gz"
 
@@ -276,12 +345,13 @@ ends, and rendering produces the canonical dotted extension chain (`csv.gz`).
 === "Rust"
 
     ```rust
-    use yggdryl_core::{MediaType, MimeType};
+    use yggdryl_core::{Category, MediaType, MimeType};
 
     let stack = MediaType::from_path("data.csv.gz");
     assert_eq!(stack.types(), [MimeType::Csv, MimeType::Gzip]);
     assert_eq!(stack.first(), Some(&MimeType::Csv));
     assert_eq!(stack.last(), Some(&MimeType::Gzip));
+    assert_eq!(stack.category(), Category::Codec); // the outermost layer (gzip)
     assert_eq!(stack.len(), 2);
     assert_eq!(stack.to_str(true), "csv.gz");
 

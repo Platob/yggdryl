@@ -123,6 +123,14 @@ impl MediaType {
         self.inner.is_empty()
     }
 
+    /// The category of the outermost layer (like `MimeType.category`): `'codec'`
+    /// for `data.csv.gz` but `'tabular'` for `data.csv`. An empty stack is `'blob'`
+    /// (the default).
+    #[napi(getter)]
+    pub fn category(&self) -> String {
+        self.inner.category().as_str().to_string()
+    }
+
     /// `true` if the two stacks are equal.
     #[napi]
     pub fn equals(&self, other: &MediaType) -> bool {
