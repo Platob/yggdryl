@@ -6,11 +6,24 @@ handling, and doc style. Consistency across the Rust core and the two bindings i
 the top priority — a reader should not be able to tell which type they are
 looking at from the shape of the code.
 
+**Everything must be serializable and hashable.** Do your best to make every value
+type round-trip through *all* of: a canonical string (`from_str`/`to_str`), a
+component map (`from_mapping`/`to_mapping`), JSON (`serde`, plus `to_json`/`from_json`
+where a crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and
+to derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the
+bindings this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a
+static `fromJSON()` in Node. The only exceptions are live/stream resources (`Io`
+handles, HTTP bodies, sessions). When a field cannot be part of a value's identity
+(e.g. a `Field`'s navigational `parent`, which would create cycles), exclude it
+from `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
+
 ## Architecture
 
-The workspace is **two crates**: `yggdryl-core` (all the data types + byte IO +
-compression) and `yggdryl-http` (the network client). `yggdryl-core` is **one file
-per type** — each concern is a module (or module directory) under
+The workspace is **three crates**: `yggdryl-core` (all the data types + byte IO +
+compression + the self-contained calendar/time module), `yggdryl-schema` (the
+Arrow-compatible `DataType` / `Field` schema layer) and `yggdryl-http` (the network
+client). `yggdryl-core` is **one file per type** — each concern is a module (or
+module directory) under
 `crates/yggdryl-core/src/`, with `lib.rs` as glue (a shared `log_event!` macro,
 `mod` declarations, and `pub use` re-exports of every type at the crate root, so
 `yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
@@ -43,6 +56,17 @@ its concern wholly — do not scatter a concern's logic across modules:
   Snappy / `None` identity) that **streams** compress/decompress over any `Io`
   handle, plus the `CompressIo` extension trait. **All compression logic lives
   here** — do not pull codec SDKs into the `io` module.
+- `time/` (`mod` + `date.rs` + `time.rs` + `datetime.rs` + `duration.rs` +
+  `timezone.rs`) — a **self-contained calendar/time foundation** (std has no civil
+  date/time types): `Date` (days since epoch), `Time` (ns of day), `DateTime` (a UTC
+  instant + optional display `Timezone`), `Duration` (signed ns) and the shared
+  `TimeUnit`. `Timezone` carries an **embedded POSIX-TZ DST engine** + a broad IANA
+  name table (`ZONE_TABLE`), so zone/DST conversions need **no external tz database**
+  (current rules only; historical transitions are not modelled). Civil math uses the
+  exact Hinnant algorithms in `mod.rs`. **All calendar/time logic lives here** — add
+  a zone by appending one `(name, posix)` row to `ZONE_TABLE`.
+- `crates/yggdryl-schema/` — the Arrow-compatible schema layer. See its section
+  below. The `arrow-schema` SDK is a dependency of this crate only.
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
   (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
   `yggdryl-core` `Io` abstraction**. **All HTTP logic lives here** — the transport
@@ -165,6 +189,43 @@ default `miniz_oxide`): near-C-zlib throughput (~3x faster compress, matching de
 with **no C compiler / cmake build dependency**, so the wheels / npm builds stay
 pure-Rust — keep `default-features = false` + `features = ["zlib-rs"]` on the `flate2`
 dep. When you add a codec, surface it in *both* bindings.
+
+### `yggdryl-schema` — Arrow-compatible `DataType` / `Field`
+
+A compact schema layer built to back a future dataframe, **centred on two types**
+(`DataType` + `Field`) and split one-file-per-concern under
+`crates/yggdryl-schema/src/`:
+
+- `charset.rs` — the `Charset` of a string (`Utf8` default / `Utf16` / `Utf32` /
+  `Ascii` / `Latin1`).
+- `datatype/` (`mod` + `primitive.rs` + `logical.rs` + `nested.rs` + `coerce.rs`) —
+  the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
+  `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
+  spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
+  / `is_view`). **Unlike Arrow, the model is parameterized, not combinatorial**:
+  `Int{bits,signed}`, `Float{bits}`, `Decimal{precision,scale,bits}`,
+  `Varchar{charset,large,view}`, `Binary{large,view,size}`, the temporal types reuse
+  the core `TimeUnit`/`Timezone` (`Date{large}` / `Time{unit}` /
+  `Timestamp{unit,tz}` / `Duration{unit}` / `Interval{unit}`), and the nested
+  `List{item,large,view,size}` / `Struct(Vec<Field>)` / `Map{key,value,sorted}` /
+  `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`, plus the `Any` wildcard. The
+  category split lives across the three sibling files (`primitive`/`logical`/`nested`
+  hold that category's checks + constructors); `coerce.rs` holds the `MergeStrategy`,
+  `can_cast_to`, `common_type` (the promotion lattice) and `merge`. **All DataType
+  logic lives here.**
+- `field.rs` — the `Field` graph node (name + `DataType` + nullable + metadata + an
+  optional, identity-excluded `parent`). Carries the metadata getters/setters
+  (`comment` is the named convenience), the case-insensitive / index child accessors,
+  `with_linked_children` / `root` graph wiring, and `merge`. A struct-typed `Field`
+  **is** a schema.
+- `arrow.rs` (feature `arrow`) — fast, near-total conversion to/from `arrow-schema`'s
+  `DataType` / `Field` / `Schema` (`to_arrow`/`from_arrow`, `Field::to_arrow_schema`
+  / `from_arrow_schema`). `Any` has no Arrow equivalent and errors; a non-UTF-8
+  `Charset` maps to UTF-8 (Arrow has no charset). **All Arrow conversion lives here.**
+
+Features: `serde` (structural, lossless — DataType/Field derive, the enums derive),
+`json` (`to_json`/`from_json`, implies `serde`), `arrow`, `log`. The temporal types
+come from `yggdryl-core`. **Anything added here must be surfaced in both bindings.**
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
@@ -493,6 +554,9 @@ documentation map 1:1 and a reader can find the doc for any type by its module:
 | `yggdryl-core/src/url/` | `docs/core/url.md` |
 | `yggdryl-core/src/io/` | `docs/core/io.md` |
 | `yggdryl-core/src/compression/` | `docs/core/compression.md` |
+| `yggdryl-core/src/time/` | `docs/core/time.md` |
+| `yggdryl-schema/src/datatype/` | `docs/schema/datatype.md` |
+| `yggdryl-schema/src/field.rs` | `docs/schema/field.md` |
 | `yggdryl-http/src/session.rs` | `docs/http/session.md` |
 | `yggdryl-http/src/{request,response}.rs` | `docs/http/request-response.md` |
 | `yggdryl-http/src/stream.rs` | `docs/http/stream.md` |

@@ -132,11 +132,40 @@ stream through this same core.
 
 ---
 
+## Schema & time
+
+The `yggdryl-schema` `DataType` / `Field` layer and the core calendar/time module.
+The fast type checks are the point: routing a value by its type or reading its
+physical width is sub-nanosecond, so a batch/column metadata pass is essentially
+free.
+
+### Rust core — `cargo bench -p yggdryl-schema --bench schema --features arrow`
+
+| workload | result |
+| --- | --- |
+| `DataType::is_numeric` / `category` / `bit_size` (fast checks) | **0.8–1.2 ns** |
+| `DataType::can_cast_to` | **5.9 ns** |
+| `DataType::common_type` (int promotion) | **9.8 ns** |
+| `DataType::from_str` (`int64`) | 32 ns |
+| `DataType::from_str` (`timestamp[us, UTC]`) | 138 ns |
+| `DataType::from_str` (nested struct, 3 fields) | 0.93 µs |
+| `DataType::merge` (two 8-field structs, promote) | 1.1 µs |
+| `Field::to_arrow_schema` / `from_arrow_schema` (8 fields) | 1.3 µs / 0.61 µs |
+
+The conversion to/from `arrow-schema` is a cheap structural walk; the type checks
+and category lookup are branch-only (no allocation), so the metadata operations a
+dataframe runs per batch — type unification, cast feasibility, schema merge — stay
+in the nanosecond-to-microsecond range. The timezone engine resolves a DST offset
+from an embedded POSIX rule with no I/O or tz-database lookup.
+
+---
+
 ## Reproduce
 
 ```bash
 # Rust core (true ceiling, no FFI) — one bench file per theme
 cargo bench -p yggdryl-core --bench io
+cargo bench -p yggdryl-schema --bench schema --features arrow
 cargo bench -p yggdryl-core --bench compression --all-features
 cargo bench -p yggdryl-http --all-features
 

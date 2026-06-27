@@ -44,6 +44,10 @@ nav:
       - URI & URL: core/url.md
       - Byte IO (the Io trait): core/io.md
       - Compression: core/compression.md
+      - Calendar & time: core/time.md
+  - Schema:
+      - DataType: schema/datatype.md
+      - Field: schema/field.md
   - HTTP:
       - Session & verbs: http/session.md
       - Request & Response: http/request-response.md
