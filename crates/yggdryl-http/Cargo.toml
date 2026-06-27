@@ -90,6 +90,9 @@ http2 = [
     "hyper/server",
     "dep:hyper-util",
     "dep:http-body-util",
+    # `bytes` is a transitive dep via hyper but declared explicitly so the channel
+    # type `mpsc::Receiver<Result<Bytes, IoError>>` compiles without `http3`.
+    "dep:bytes",
 ]
 # `http3` wires the optional quinn + h3 transport so an `HttpVersion::Http3` request
 # speaks HTTP/3 over QUIC (TLS ALPN `h3`). With it off, `HttpVersion::Http3` stays

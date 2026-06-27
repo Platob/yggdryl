@@ -1,12 +1,21 @@
 # Streaming body
 
-The body of a response is never collected up front — it is a live, seekable
-`HttpStream` that **holds the connection** and pulls bytes off the socket on demand.
-Sequential reads stream straight through (keeping only a small sliding cache for
-short seek-backs), while random access (`pread`) or a seek-back past the cache
-re-opens a one-off `Range` request. So you can read a Parquet footer or a column
-chunk without ever downloading the whole file, and a dropped connection resumes from
-the cursor instead of starting over.
+The body of a response is never collected up front — it is a live, seekable `Io`
+handle that **holds the connection** and pulls bytes on demand. The concrete type
+depends on the HTTP version:
+
+- **HTTP/1.1** — an `HttpStream` holds the live socket; sequential reads stream
+  through a sliding 4 MiB cache, random-access `pread` (and seek-backs past the
+  cache) issue one-off `Range` requests. So you can read a Parquet footer or a
+  column chunk without ever downloading the whole file, and a dropped connection
+  resumes from the cursor instead of starting over.
+- **HTTP/2 and HTTP/3** — an `AsyncBodyStream` (returned by the `http2` / `http3`
+  features) feeds chunks from a background tokio task through an `mpsc` channel.
+  Response headers are available immediately; bytes are pulled lazily. Forward seeks
+  discard buffered data; backward seeks or `Whence::End` are unsupported — call
+  `into_bytesio()` first to buffer the whole body for random access. Dropping the
+  stream before EOF aborts the background task and sends an h2 `RST_STREAM` / h3
+  stream reset, so the connection tears down cleanly without waiting for the body.
 
 ## What it is
 
@@ -31,7 +40,7 @@ takes the body out for seekable access. Either way you get the full
     a file lazily, an `HttpStream` streams a URL lazily. Both implement the one `Io`
     trait, so a reader (Arrow, Parquet) works over either unchanged.
 
-## How it reads
+## How it reads — HTTP/1.1
 
 - **Sequential `read`** pulls bytes off the held connection on demand, appending each
   chunk to a sliding 4 MiB cache so a short seek-back is served without a new request.
@@ -43,6 +52,24 @@ takes the body out for seekable access. Either way you get the full
   cursor** (each `Range` request is idempotent).
 - **Release** — the connection goes back to the pool the moment the body reaches EOF,
   and `close()` drops it eagerly (idempotent; further reads return EOF).
+
+## How it reads — HTTP/2 and HTTP/3
+
+These transports return an `AsyncBodyStream` (enabled by the `http2` / `http3` cargo
+features). The behaviour differs from HTTP/1.1 in a few places:
+
+- **Sequential `read`** pulls the next chunk from an internal `mpsc` channel fed by
+  a background tokio task, so you start reading before the body is fully downloaded.
+- **Forward `seek`** discards buffered bytes up to the new offset (no new connection).
+- **Backward seek or `Whence::End`** returns an `Unsupported` error with a clear
+  message — call `into_bytesio()` or `bytes()` first to buffer the whole body.
+- **`pread`** with `Whence::Current` is identical to `read`; with `Whence::Start` at
+  a forward offset it is equivalent to seek + read; backward or `Whence::End` is
+  unsupported.
+- **No `Range` requests** — h2 and h3 do not issue per-chunk `Range` re-requests.
+  Random access over a large h2/h3 body should buffer it first.
+- **Drop before EOF** aborts the background task, which sends an h2 `RST_STREAM` or
+  h3 stream reset — the connection tears down cleanly without draining the body.
 
 ## Read a footer without downloading the file
 

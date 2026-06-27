@@ -41,10 +41,10 @@ use crate::method::Method;
 use crate::time::Instant;
 use crate::version::HttpVersion;
 
+#[cfg(any(feature = "http2", feature = "http3"))]
+use bytes::Bytes;
 #[cfg(feature = "http2")]
 use http_body_util::{BodyExt, Full};
-#[cfg(feature = "http2")]
-use hyper::body::Bytes;
 #[cfg(feature = "http2")]
 use hyper_util::rt::{TokioExecutor, TokioIo};
 #[cfg(feature = "http2")]
@@ -122,7 +122,7 @@ pub(crate) struct RawResponse {
 #[derive(Debug)]
 pub(crate) struct AsyncBodyStream {
     /// Body chunks arriving from the background task.
-    receiver: Mutex<mpsc::Receiver<Result<Vec<u8>, IoError>>>,
+    receiver: Mutex<mpsc::Receiver<Result<Bytes, IoError>>>,
     /// Bytes received but not yet handed to the caller.
     buffer: VecDeque<u8>,
     /// Whether the channel reached EOF (the body is fully received).
@@ -142,7 +142,7 @@ pub(crate) struct AsyncBodyStream {
 
 impl AsyncBodyStream {
     fn new(
-        receiver: mpsc::Receiver<Result<Vec<u8>, IoError>>,
+        receiver: mpsc::Receiver<Result<Bytes, IoError>>,
         size: Option<u64>,
         url: Url,
         received_at: Instant,
@@ -175,7 +175,7 @@ impl AsyncBodyStream {
                 if chunk.is_empty() {
                     self.done = true;
                 } else {
-                    self.buffer.extend(chunk);
+                    self.buffer.extend(chunk.iter());
                 }
             }
             Ok(Err(err)) => return Err(err),
@@ -268,10 +268,13 @@ impl Io for AsyncBodyStream {
             return Ok(0);
         }
         self.fill_buffer()?;
-        let n = self.buffer.len().min(buf.len());
-        for (i, b) in self.buffer.drain(..n).enumerate() {
-            buf[i] = b;
-        }
+        let n = {
+            let contiguous = self.buffer.make_contiguous();
+            let n = contiguous.len().min(buf.len());
+            buf[..n].copy_from_slice(&contiguous[..n]);
+            n
+        };
+        self.buffer.drain(..n);
         self.position += n as u64;
         // Stamp received_at on the first read that reaches EOF (empty buffer +
         // done) so the timing reflects the last byte landing.
@@ -661,7 +664,7 @@ where
     let size = headers.content_size();
     let url = request.url.clone();
 
-    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let (tx, rx) = mpsc::sync_channel::<Result<Bytes, IoError>>(8);
     let mut incoming = response.into_body();
     let ra = received_at.clone();
 
@@ -672,7 +675,7 @@ where
                     if let Ok(data) = frame.into_data() {
                         // Skip empty data frames (e.g. END_STREAM-only) — an empty
                         // chunk on the channel would prematurely EOF the consumer.
-                        if !data.is_empty() && tx.send(Ok(data.to_vec())).is_err() {
+                        if !data.is_empty() && tx.send(Ok(data)).is_err() {
                             break; // receiver dropped — body abandoned
                         }
                     }
@@ -745,7 +748,7 @@ where
     let size = headers.content_size();
     let url = request.url.clone();
 
-    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let (tx, rx) = mpsc::sync_channel::<Result<Bytes, IoError>>(8);
     let mut incoming = response.into_body();
     let ra = received_at.clone();
 
@@ -754,7 +757,7 @@ where
             match incoming.frame().await {
                 Some(Ok(frame)) => {
                     if let Ok(data) = frame.into_data() {
-                        if !data.is_empty() && tx.send(Ok(data.to_vec())).is_err() {
+                        if !data.is_empty() && tx.send(Ok(data)).is_err() {
                             break; // receiver dropped — body abandoned
                         }
                     }
@@ -955,20 +958,14 @@ async fn h3_request(
     let size = headers.content_size();
     let url_clone = url.clone();
 
-    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let (tx, rx) = mpsc::sync_channel::<Result<Bytes, IoError>>(8);
     let ra = received_at.clone();
 
     let task = tokio::spawn(async move {
         loop {
             match stream.recv_data().await {
                 Ok(Some(mut chunk)) => {
-                    let mut data = Vec::new();
-                    while chunk.has_remaining() {
-                        let b = chunk.chunk();
-                        data.extend_from_slice(b);
-                        let len = b.len();
-                        chunk.advance(len);
-                    }
+                    let data = chunk.copy_to_bytes(chunk.remaining());
                     if !data.is_empty() && tx.send(Ok(data)).is_err() {
                         break; // receiver dropped — body abandoned
                     }
