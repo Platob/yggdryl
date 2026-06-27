@@ -734,6 +734,36 @@ fn map_serie_keys_values_and_render() {
 }
 
 #[test]
+fn map_serie_slice_resize_materialize_do_not_panic() {
+    // A map built from a standard Arrow MapBuilder carries `keys`/`values` entry-field
+    // names, which the schema layer normalises to `key`/`value`. Routing the base
+    // slice/resize/cast/materialize through the crate-internal `dispatch` (rather than
+    // re-validating through the public `from_arrow`) keeps these from tripping on that
+    // documented normalisation — slice/materialize used to panic, resize/cast to error.
+    let mut b = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    b.keys().append_value("a");
+    b.values().append_value(1);
+    b.keys().append_value("b");
+    b.values().append_value(2);
+    b.append(true).unwrap();
+    b.keys().append_value("c");
+    b.values().append_value(3);
+    b.append(true).unwrap();
+    let serie = from_array("m", Arc::new(b.finish()) as ArrayRef).unwrap();
+
+    // slice + materialize (both previously panicked via from_arrow().expect()).
+    let head = serie.slice(0, 1);
+    assert_eq!(head.len(), 1);
+    assert_eq!(head.value_at(0), Scalar::Other("{a=1, b=2}".into()));
+    assert_eq!(serie.materialize().len(), 2);
+
+    // resize now succeeds (previously returned a TypeMismatch error).
+    let grown = serie.resize(3).unwrap();
+    assert_eq!(grown.len(), 3);
+    assert!(grown.is_null(2));
+}
+
+#[test]
 fn categorical_serie_encodes_repeats_and_materializes() {
     let values = VarcharSerie::<i32>::from_values(
         "c",
@@ -1169,4 +1199,255 @@ fn to_bytes_round_trips_through_arrow_ipc() {
         Scalar::Utf8("b".into())
     );
     assert_eq!(back.value_at(0), Scalar::Other("{id=1, name=a}".into()));
+}
+
+#[test]
+fn struct_serie_behaves_like_a_dataframe() {
+    let id: SerieRef = Arc::new(Int32Serie::from_values(
+        "id",
+        vec![Some(1), Some(2), Some(3)],
+    ));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("a"), Some("b"), Some("c")],
+    ));
+    let active: SerieRef = Arc::new(BooleanSerie::from_values(
+        "active",
+        vec![Some(true), Some(false), Some(true)],
+    ));
+    let df = StructSerie::from_children("df", vec![id, name, active]).unwrap();
+
+    // shape + column metadata
+    assert_eq!(df.shape(), (3, 3));
+    assert_eq!(df.num_columns(), 3);
+    assert_eq!(df.column_names(), vec!["id", "name", "active"]);
+
+    // projection (order honoured; missing column errors)
+    let proj = df.select_columns(&["name", "id"]).unwrap();
+    assert_eq!(proj.column_names(), vec!["name", "id"]);
+    assert!(df.select_columns(&["missing"]).is_err());
+
+    // with_column: append then replace; length mismatch errors
+    let flag: SerieRef = Arc::new(Int32Serie::from_values(
+        "flag",
+        vec![Some(0), Some(1), Some(0)],
+    ));
+    assert_eq!(df.with_column(flag).unwrap().num_columns(), 4);
+    let id2: SerieRef = Arc::new(Int32Serie::from_values(
+        "id",
+        vec![Some(9), Some(9), Some(9)],
+    ));
+    let replaced = df.with_column(id2).unwrap();
+    assert_eq!(replaced.num_columns(), 3);
+    assert_eq!(
+        replaced.child_by_name("id").unwrap().value_at(0),
+        Scalar::Int(9)
+    );
+    let bad: SerieRef = Arc::new(Int32Serie::from_values("x", vec![Some(1)]));
+    assert!(df.with_column(bad).is_err());
+
+    // drop + rename
+    assert_eq!(
+        df.drop_columns(&["name"]).unwrap().column_names(),
+        vec!["id", "active"]
+    );
+    assert_eq!(
+        df.rename("id", "key").unwrap().column_names(),
+        vec!["key", "name", "active"]
+    );
+
+    // row slicing returns frames
+    assert_eq!(df.head(2).unwrap().shape(), (2, 3));
+    assert_eq!(df.tail(1).unwrap().shape(), (1, 3));
+    let sliced = df.slice_rows(1, 2).unwrap();
+    assert_eq!(sliced.shape(), (2, 3));
+    assert_eq!(
+        sliced.child_by_name("id").unwrap().value_at(0),
+        Scalar::Int(2)
+    );
+
+    // Arrow RecordBatch round-trip
+    let batch = df.to_record_batch().unwrap();
+    assert_eq!((batch.num_rows(), batch.num_columns()), (3, 3));
+    let back = StructSerie::from_record_batch("df", &batch).unwrap();
+    assert_eq!(back.shape(), (3, 3));
+    assert_eq!(back.column_names(), vec!["id", "name", "active"]);
+    assert_eq!(
+        back.child_by_name("name").unwrap().value_at(1),
+        Scalar::Utf8("b".into())
+    );
+
+    // row filter
+    let kept = df.filter(&[true, false, true]).unwrap();
+    assert_eq!(kept.shape(), (2, 3));
+    assert_eq!(
+        kept.child_by_name("id").unwrap().value_at(1),
+        Scalar::Int(3)
+    );
+    assert!(df.filter(&[true]).is_err()); // mask length must match
+
+    // row stacking (vstack appends rows)
+    let stacked = df.vstack(&df).unwrap();
+    assert_eq!(stacked.shape(), (6, 3));
+    assert_eq!(
+        stacked.child_by_name("name").unwrap().value_at(4),
+        Scalar::Utf8("b".into())
+    );
+    let mismatched = df.drop_columns(&["active"]).unwrap();
+    assert!(df.vstack(&mismatched).is_err());
+
+    // table render — the one `display` method renders a struct frame as a table.
+    let text = df.display(&DisplayOptions::default().with_max_rows(2));
+    assert!(text.contains("id: int32"));
+    assert!(text.contains("more rows"));
+}
+
+#[test]
+fn dataframe_from_record_batch_with_nested_column() {
+    // a frame whose column is itself a struct (nested) round-trips through RecordBatch.
+    let inner = StructSerie::from_children(
+        "addr",
+        vec![Arc::new(Int32Serie::from_values("zip", vec![Some(7), Some(8)])) as SerieRef],
+    )
+    .unwrap();
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let df = StructSerie::from_children("df", vec![id, Arc::new(inner)]).unwrap();
+    let batch = df.to_record_batch().unwrap();
+    let back = StructSerie::from_record_batch("df", &batch).unwrap();
+    assert_eq!(back.shape(), (2, 2));
+    let addr = back.child_by_name("addr").unwrap();
+    let addr_struct = addr.as_any().downcast_ref::<StructSerie>().unwrap();
+    assert_eq!(
+        addr_struct.child_by_name("zip").unwrap().value_at(0),
+        Scalar::Int(7)
+    );
+}
+
+#[test]
+fn set_at_and_push_mutate_functionally() {
+    use yggdryl_scalar::{IntScalar, NullScalar, VarcharScalar};
+
+    let serie = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![Some(1), Some(2), Some(3)])) as ArrayRef,
+    )
+    .unwrap();
+
+    // safe set: an int64 value is cast to the column's int32 before writing
+    let updated = serie
+        .set_at(1, &IntScalar::new(20, 64, true), true)
+        .unwrap();
+    assert_eq!(updated.value_at(0), Scalar::Int(1));
+    assert_eq!(updated.value_at(1), Scalar::Int(20));
+    assert_eq!(updated.value_at(2), Scalar::Int(3));
+    // the original is untouched (functional)
+    assert_eq!(serie.value_at(1), Scalar::Int(2));
+
+    // writing a null into a cell
+    let nulled = serie
+        .set_at(0, &NullScalar::new(DataType::int(32, true)), true)
+        .unwrap();
+    assert!(nulled.is_null(0));
+
+    // out of bounds errors
+    assert!(matches!(
+        serie.set_at(9, &IntScalar::new(1, 32, true), true),
+        Err(crate::SerieError::OutOfBounds { .. })
+    ));
+
+    // push appends a new last row (cast to the column type)
+    let pushed = serie.push(&IntScalar::new(4, 8, true), true).unwrap();
+    assert_eq!(pushed.len(), 4);
+    assert_eq!(pushed.value_at(3), Scalar::Int(4));
+
+    // a string column: set_at rewrites variable-length storage uniformly
+    let names = from_array(
+        "s",
+        Arc::new(StringArray::from(vec!["a", "b", "c"])) as ArrayRef,
+    )
+    .unwrap();
+    let renamed = names.set_at(2, &VarcharScalar::new("zzz"), true).unwrap();
+    assert_eq!(renamed.value_at(2), Scalar::Utf8("zzz".into()));
+    assert_eq!(renamed.value_at(0), Scalar::Utf8("a".into()));
+}
+
+#[test]
+fn struct_serie_dataframe_advanced() {
+    let id: SerieRef = Arc::new(Int32Serie::from_values(
+        "id",
+        vec![Some(3), Some(1), Some(2)],
+    ));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("c"), Some("a"), Some("b")],
+    ));
+    let df = StructSerie::from_children("df", vec![id, name]).unwrap();
+
+    // select_fields: cast (int32 -> int64), reorder, fill a missing column, drop extras
+    let target = vec![
+        Field::new("name", DataType::varchar(), true),
+        Field::new("id", DataType::int(64, true), false),
+        Field::new("score", DataType::float(64), true),
+    ];
+    let projected = df.select_fields(target).unwrap();
+    assert_eq!(projected.column_names(), vec!["name", "id", "score"]);
+    assert_eq!(
+        projected.child_by_name("id").unwrap().data_type(),
+        &DataType::int(64, true)
+    );
+    assert!(projected.child_by_name("score").unwrap().is_null(0)); // filled with null
+
+    // sort_by (asc then desc)
+    let asc = df.sort_by("id", false).unwrap();
+    assert_eq!(asc.child_by_name("id").unwrap().value_at(0), Scalar::Int(1));
+    assert_eq!(
+        asc.child_by_name("name").unwrap().value_at(0),
+        Scalar::Utf8("a".into())
+    );
+    let desc = df.sort_by("id", true).unwrap();
+    assert_eq!(
+        desc.child_by_name("id").unwrap().value_at(0),
+        Scalar::Int(3)
+    );
+    assert!(df.sort_by("missing", false).is_err());
+
+    // with_row_index prepends a 0..n column
+    let indexed = df.with_row_index("row").unwrap();
+    assert_eq!(indexed.column_names(), vec!["row", "id", "name"]);
+    assert_eq!(
+        indexed.child_by_name("row").unwrap().value_at(0),
+        Scalar::Int(0)
+    );
+
+    // per-row record access as a rich StructScalar
+    let record = df.row(1).unwrap();
+    assert_eq!(record.child_named("id").unwrap().to_str(), "1::int32");
+    assert_eq!(record.child_named("name").unwrap().to_str(), "'a'::utf8");
+
+    // chunked RecordBatch table + reader/scanner round-trips
+    let batches = df.to_record_batches(2).unwrap();
+    assert_eq!(batches.len(), 2); // 3 rows in chunks of 2
+    assert_eq!(
+        StructSerie::from_record_batches("df", &batches)
+            .unwrap()
+            .shape(),
+        (3, 2)
+    );
+    let reader = df.to_record_batch_reader(2).unwrap();
+    assert_eq!(
+        StructSerie::from_record_batch_reader("df", reader)
+            .unwrap()
+            .shape(),
+        (3, 2)
+    );
+
+    // Arrow IPC stream round-trip — the cross-language table interchange.
+    let ipc = df.to_ipc_bytes().unwrap();
+    let back = StructSerie::from_ipc_bytes("df", &ipc).unwrap();
+    assert_eq!(back.shape(), (3, 2));
+    assert_eq!(back.column_names(), vec!["id", "name"]);
+    assert_eq!(
+        back.row(2).unwrap().child_named("name").unwrap().to_str(),
+        "'b'::utf8"
+    );
 }

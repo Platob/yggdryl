@@ -7,6 +7,7 @@ use std::sync::Arc;
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyFloat, PyInt, PyList, PyString};
+use yggdryl_scalar::ScalarValue;
 use yggdryl_schema::DataType as CoreDataType;
 use yggdryl_serie::arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray,
@@ -32,6 +33,14 @@ pub struct Serie {
 
 fn wrap(inner: SerieRef) -> Serie {
     Serie { inner }
+}
+
+/// Borrows a column as a [`StructSerie`] frame, or raises if it is not a struct column —
+/// the gate for the frame (DataFrame) operations.
+fn as_frame(serie: &SerieRef) -> PyResult<&StructSerie> {
+    serie.as_any().downcast_ref::<StructSerie>().ok_or_else(|| {
+        PyTypeError::new_err("not a struct column; build a frame with Serie.struct(...)")
+    })
 }
 
 /// The element kind inferred from a Python list (boolean checked before int, since
@@ -263,6 +272,28 @@ impl Serie {
             .collect()
     }
 
+    /// A copy of the column with the cell at `index` replaced by `value` (a
+    /// :class:`Scalar`). With ``safe`` the value is cast to the column's type first, so
+    /// any value can be written. Functional — returns a new column.
+    #[pyo3(signature = (index, value, safe = true))]
+    fn set_at(&self, index: usize, value: &crate::scalar::Scalar, safe: bool) -> PyResult<Self> {
+        let scalar = value.inner.clone().into_scalar();
+        self.inner
+            .set_at(index, scalar.as_ref(), safe)
+            .map(wrap)
+            .map_err(serie_err)
+    }
+
+    /// A copy of the column with `value` (a :class:`Scalar`) appended as a new last row.
+    #[pyo3(signature = (value, safe = true))]
+    fn push(&self, value: &crate::scalar::Scalar, safe: bool) -> PyResult<Self> {
+        let scalar = value.inner.clone().into_scalar();
+        self.inner
+            .push(scalar.as_ref(), safe)
+            .map(wrap)
+            .map_err(serie_err)
+    }
+
     // ---- shape ----
 
     /// A zero-copy slice of `length` values starting at `offset`.
@@ -336,6 +367,157 @@ impl Serie {
             Some(nested) => nested.children().into_iter().map(wrap).collect(),
             None => Vec::new(),
         }
+    }
+
+    // ---- frame (DataFrame) ----
+
+    /// The frame shape as ``(rows, columns)`` (struct columns only).
+    #[getter]
+    fn shape(&self) -> PyResult<(usize, usize)> {
+        Ok(as_frame(&self.inner)?.shape())
+    }
+
+    /// The number of columns (struct columns only).
+    #[getter]
+    fn num_columns(&self) -> PyResult<usize> {
+        Ok(as_frame(&self.inner)?.num_columns())
+    }
+
+    /// The column names, in order (struct columns only).
+    #[getter]
+    fn column_names(&self) -> PyResult<Vec<String>> {
+        Ok(as_frame(&self.inner)?
+            .column_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect())
+    }
+
+    /// Project the frame to the named columns, in the requested order.
+    fn select_columns(&self, names: Vec<String>) -> PyResult<Self> {
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        as_frame(&self.inner)?
+            .select_columns(&refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// Project **and cast** the frame to an explicit list of :class:`Field`s: each takes
+    /// the source column of the same name cast to its type (or a filled column if absent),
+    /// in the target order, dropping unlisted columns.
+    fn select_fields(&self, fields: Vec<Field>) -> PyResult<Self> {
+        let fields: Vec<yggdryl_schema::Field> = fields.into_iter().map(|f| f.inner).collect();
+        as_frame(&self.inner)?
+            .select_fields(fields)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// A new frame with `column` appended (or replacing an existing column of the same
+    /// name). The column length must match the frame's row count.
+    fn with_column(&self, column: &Serie) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .with_column(column.inner.clone())
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// A new frame without the named columns (absent names are ignored).
+    fn drop_columns(&self, names: Vec<String>) -> PyResult<Self> {
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        as_frame(&self.inner)?
+            .drop_columns(&refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// A new frame with column `old` renamed to `new` (a no-op if `old` is absent).
+    fn rename(&self, old: &str, new: &str) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .rename(old, new)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// The last `n` rows, as a new frame (a zero-copy row slice).
+    fn tail(&self, n: usize) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .tail(n)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// Keep the rows where `mask` is ``True`` (the mask length must equal the row count).
+    fn filter(&self, mask: Vec<bool>) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .filter(&mask)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// A new frame with the rows sorted by column `column` (ascending unless
+    /// `descending`), reordering every column by the same permutation.
+    #[pyo3(signature = (column, descending = false))]
+    fn sort_by(&self, column: &str, descending: bool) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .sort_by(column, descending)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// Stack `other`'s rows below this frame's (both must share column names and types).
+    fn vstack(&self, other: &Serie) -> PyResult<Self> {
+        let other = as_frame(&other.inner)?;
+        as_frame(&self.inner)?
+            .vstack(other)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// A new frame with a ``0..rows`` integer index column named `name` prepended (a lazy
+    /// ``uint64`` range, so it costs nothing until materialised).
+    fn with_row_index(&self, name: &str) -> PyResult<Self> {
+        as_frame(&self.inner)?
+            .with_row_index(name)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// The record at `index` as a :class:`Scalar` struct — one typed value per column.
+    fn row(&self, index: usize) -> PyResult<crate::scalar::Scalar> {
+        let record = as_frame(&self.inner)?.row(index).map_err(serie_err)?;
+        Ok(crate::scalar::Scalar {
+            inner: record.into(),
+        })
+    }
+
+    /// The frame's rows as a list of native ``dict`` records
+    /// (``[{col: value, ...}, ...]``) — the pandas / polars ``to_dicts`` projection.
+    fn to_dicts(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+        let frame = as_frame(&self.inner)?;
+        let rows = frame.shape().0;
+        (0..rows)
+            .map(|i| {
+                let row: ScalarValue = frame.row(i).map_err(serie_err)?.into();
+                crate::scalar::value_to_py(py, &row)
+            })
+            .collect()
+    }
+
+    /// The frame as an **Arrow IPC stream** — bytes any Arrow library reads back as a
+    /// multi-column table (``pyarrow.ipc.open_stream(bytes).read_all()``).
+    fn to_arrow_ipc<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let bytes = as_frame(&self.inner)?.to_ipc_bytes().map_err(serie_err)?;
+        Ok(PyBytes::new_bound(py, &bytes))
+    }
+
+    /// Build a frame named `name` from an **Arrow IPC stream** (as written by
+    /// :meth:`to_arrow_ipc` or any Arrow library).
+    #[staticmethod]
+    fn from_arrow_ipc(name: &str, data: &[u8]) -> PyResult<Self> {
+        StructSerie::from_ipc_bytes(name, data)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
     }
 
     // ---- display / serialisation ----

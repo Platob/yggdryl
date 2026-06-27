@@ -14,6 +14,7 @@ use crate::{Charset, Field};
 use yggdryl_core::{TimeUnit, Timezone};
 
 mod coerce;
+mod intern;
 mod logical;
 mod nested;
 mod numeric;
@@ -263,6 +264,12 @@ pub enum DataType {
     /// A BSON document — a binary-backed logical type (its physical type is a
     /// [`Binary`](DataType::Binary)).
     Bson,
+    /// A timezone value (a column of zone names like `"UTC"` / `"America/New_York"`) —
+    /// a string-backed logical type. Its physical type is a [`Varchar`](DataType::Varchar)
+    /// and its Arrow equivalent is `Utf8` (the logical name is not recovered on
+    /// `from_arrow`, like [`Json`](DataType::Json)). Distinct from the optional display
+    /// timezone an attribute carries on a [`Timestamp`](DataType::Timestamp).
+    Timezone,
 
     // ---- nested ----
     /// A list of the `item` field. `large` uses 64-bit offsets, `view` the view
@@ -443,6 +450,7 @@ impl DataType {
             Dictionary { key, .. } => key.physical_type(),
             Json => DataType::varchar(),
             Bson => DataType::binary(),
+            Timezone => DataType::varchar(),
             other => other.clone(),
         }
     }
@@ -565,10 +573,17 @@ pub(crate) fn parse_child_field(token: &str, default_name: &str) -> Result<Field
         return Err(SchemaError::Empty);
     }
     // Strip a trailing nullability marker before splitting (so an unnamed
-    // `int32 not null` is not mistaken for a `name type` pair).
-    let (token, nullable) = match token.to_ascii_lowercase().strip_suffix(" not null") {
-        Some(_) => (token[..token.len() - " not null".len()].trim(), false),
-        None => (token, true),
+    // `int32 not null` is not mistaken for a `name type` pair). Test the suffix on the
+    // raw bytes (case-insensitively) rather than lowercasing the whole token; the
+    // matched tail is 9 ASCII bytes, so `len - 9` is always a char boundary.
+    const NOT_NULL: &str = " not null";
+    let (token, nullable) = if token.len() >= NOT_NULL.len()
+        && token.as_bytes()[token.len() - NOT_NULL.len()..]
+            .eq_ignore_ascii_case(NOT_NULL.as_bytes())
+    {
+        (token[..token.len() - NOT_NULL.len()].trim(), false)
+    } else {
+        (token, true)
     };
     let (name, type_str) = split_name_type(token, default_name);
     let name = if name.is_empty() {
@@ -711,12 +726,16 @@ impl DataType {
             None => (input, None),
         };
         // Normalise the head: lowercase + single-spaced, so multi-word SQL names
-        // (`double precision`, `timestamp with time zone`) match.
-        let lower = head
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_ascii_lowercase();
+        // (`double precision`, `timestamp with time zone`) match. The common single-word
+        // head (`int64` / `utf8` / `struct`) needs no re-spacing, so skip the Vec+join.
+        let lower = if head.split_whitespace().nth(1).is_none() {
+            head.to_ascii_lowercase()
+        } else {
+            head.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase()
+        };
         match (lower.as_str(), args) {
             ("any", None) => Ok(DataType::Any),
             ("null", None) => Ok(DataType::Null),
@@ -749,6 +768,7 @@ impl DataType {
             ("varchar" | "nvarchar" | "string" | "clob", Some(a)) => parse_varchar(a, input, false),
             ("json" | "jsonb", None) => Ok(DataType::Json),
             ("bson", None) => Ok(DataType::Bson),
+            ("timezone" | "tz", None) => Ok(DataType::Timezone),
             ("binary" | "bytea" | "blob" | "varbinary", None) => Ok(DataType::binary()),
             ("varbinary", Some(_)) => Ok(DataType::binary()),
             ("large_binary", None) => Ok(DataType::Binary {
@@ -966,6 +986,7 @@ impl DataType {
             }
             Json => "json".to_string(),
             Bson => "bson".to_string(),
+            Timezone => "timezone".to_string(),
             List {
                 item,
                 large,

@@ -19,6 +19,9 @@ use crate::nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
 use crate::temporal::{DatetimeSerie, DurationSerie, TimeSerie};
+// The rich atomic value layer — the value written by [`Serie::set_at`] / [`Serie::push`].
+// Aliased so it does not clash with the crate's own (lossy) `Scalar` enum above.
+use yggdryl_scalar::Scalar as AtomicScalar;
 
 /// A reference-counted, type-erased column — the handle a column store and the
 /// [factory](from_arrow) hand around.
@@ -129,7 +132,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// computed into a real array, and the parent/graph link is dropped. The default
     /// realises [`array`](Serie::array) into a standalone series.
     fn materialize(&self) -> SerieRef {
-        from_arrow(self.field().clone(), self.array()).expect("a serie's array matches its field")
+        // The array is this column's own, so it already matches the field — go straight
+        // to `dispatch`, skipping `from_arrow`'s redundant `to_arrow()` re-validation.
+        dispatch(self.field().clone(), self.array()).expect("a serie's array matches its field")
     }
 
     /// Serialises the column to **Arrow IPC stream bytes** — a lossless round-trip
@@ -153,7 +158,10 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// `offset`, as a new column of the same type. (Use [`child`](crate::child) to keep a link
     /// back to this serie.)
     fn slice(&self, offset: usize, length: usize) -> SerieRef {
-        from_arrow(self.field().clone(), self.array().slice(offset, length))
+        // A slice keeps the source's type, so dispatch directly — `from_arrow`'s
+        // re-validation through `to_arrow()` is not only wasted here but would wrongly
+        // reject an Arrow-normalised type (e.g. a map's `keys`/`values` entry names).
+        dispatch(self.field().clone(), self.array().slice(offset, length))
             .expect("a slice has the same type as its source")
     }
 
@@ -187,7 +195,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
             crate::build::default_array(array.data_type(), extra)?
         };
         let combined = arrow_select::concat::concat(&[array.as_ref(), fill.as_ref()])?;
-        from_arrow(self.field().clone(), combined)
+        // `combined` concatenates same-typed arrays, so it matches the field — dispatch
+        // directly rather than re-validating through `from_arrow`.
+        dispatch(self.field().clone(), combined)
     }
 
     /// Casts the column to `dtype`, converting the backing values (Arrow's cast kernel
@@ -202,7 +212,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
         }
         let target = dtype.to_arrow()?;
         let array = arrow_cast::cast(self.array().as_ref(), &target)?;
-        from_arrow(
+        // `array` was cast to exactly `dtype.to_arrow()`, so it matches the re-typed
+        // field by construction — dispatch directly.
+        dispatch(
             self.field().copy(None, Some(dtype.clone()), None, None),
             array,
         )
@@ -213,7 +225,59 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// column in one step.
     fn cast_field(&self, field: &Field) -> SerieResult<SerieRef> {
         let casted = self.cast(field.data_type())?;
-        from_arrow(field.clone(), casted.array())
+        // `casted` already has `field`'s type, so dispatch directly.
+        dispatch(field.clone(), casted.array())
+    }
+
+    /// Returns a copy of the column with the cell at `index` replaced by `value` — the
+    /// functional mutator (Arrow arrays are immutable, so this rebuilds the column). With
+    /// `safe` the `value` is **cast to the column's type** first, so any value can be
+    /// written (a non-castable one errors); without it the value must already match the
+    /// column type. Out of bounds is an error. Works uniformly across every type
+    /// (primitive / varchar / binary / **nested**) via one Arrow `concat` of
+    /// prefix + cell + suffix — O(n), but correct for variable-length and nested storage.
+    fn set_at(&self, index: usize, value: &dyn AtomicScalar, safe: bool) -> SerieResult<SerieRef> {
+        let len = self.len();
+        if index >= len {
+            return Err(SerieError::OutOfBounds { index, len });
+        }
+        let cell = self.cell_array(value, safe)?;
+        let array = self.array();
+        let mut parts: Vec<ArrayRef> = Vec::with_capacity(3);
+        if index > 0 {
+            parts.push(array.slice(0, index));
+        }
+        parts.push(cell);
+        if index + 1 < len {
+            parts.push(array.slice(index + 1, len - index - 1));
+        }
+        let refs: Vec<&dyn Array> = parts.iter().map(|a| a.as_ref()).collect();
+        dispatch(self.field().clone(), arrow_select::concat::concat(&refs)?)
+    }
+
+    /// Returns a copy of the column with `value` appended as a new last row — the
+    /// row-append companion to [`set_at`](Serie::set_at) (same `safe` cast semantics,
+    /// same functional rebuild).
+    fn push(&self, value: &dyn AtomicScalar, safe: bool) -> SerieResult<SerieRef> {
+        let cell = self.cell_array(value, safe)?;
+        let array = self.array();
+        let combined = arrow_select::concat::concat(&[array.as_ref(), cell.as_ref()])?;
+        dispatch(self.field().clone(), combined)
+    }
+
+    /// Renders `value` as a length-1 Arrow array of this column's type — the shared cell
+    /// builder behind [`set_at`](Serie::set_at) / [`push`](Serie::push). With `safe` the
+    /// value is cast to the column type; otherwise it is used as-is (and a type mismatch
+    /// surfaces from the caller's `concat`).
+    fn cell_array(&self, value: &dyn AtomicScalar, safe: bool) -> SerieResult<ArrayRef> {
+        // `safe` casts the value to the column type; otherwise it is rendered as-is (and a
+        // type mismatch surfaces from the caller's `concat`).
+        let array = if safe {
+            value.cast(self.data_type())?.to_array()?
+        } else {
+            value.to_array()?
+        };
+        Ok(array)
     }
 
     /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it

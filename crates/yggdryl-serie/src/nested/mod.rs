@@ -68,14 +68,12 @@ pub trait NestedSerie: Serie {
     /// `Ok(None)`.
     fn child_path(&self, path: &str) -> SerieResult<Option<SerieRef>> {
         let mut segments = parse_path(path)?.into_iter();
-        // First segment resolves against `self`; deeper ones against each nested child.
-        let first = match segments.next() {
-            Some(Segment::Index(index)) => self.child(index),
-            Some(Segment::Exact(name)) => self.child_named(&name),
-            Some(Segment::Loose(name)) => self.child_by_name(&name),
-            None => return Ok(None),
+        // First segment resolves against `self`; deeper ones against each nested child —
+        // both through the same `resolve` helper.
+        let Some(first) = segments.next() else {
+            return Ok(None);
         };
-        let Some(mut current) = first else {
+        let Some(mut current) = resolve(self, &first) else {
             return Ok(None);
         };
         for segment in segments {
@@ -91,8 +89,10 @@ pub trait NestedSerie: Serie {
     }
 }
 
-/// Resolves one parsed path [`Segment`] against a nested column.
-fn resolve(nested: &dyn NestedSerie, segment: &Segment) -> Option<SerieRef> {
+/// Resolves one parsed path [`Segment`] against a nested column (generic over the
+/// concrete or `dyn` nested type, so it serves both the first segment — against `self` —
+/// and the deeper ones, against each nested child).
+fn resolve<N: NestedSerie + ?Sized>(nested: &N, segment: &Segment) -> Option<SerieRef> {
     match segment {
         Segment::Index(index) => nested.child(*index),
         Segment::Exact(name) => nested.child_named(name),

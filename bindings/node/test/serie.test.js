@@ -110,3 +110,72 @@ test('equality', () => {
   assert.ok(a.equals(b))
   assert.ok(!a.equals(c))
 })
+
+const { Scalar, Field } = require('..')
+
+function frame() {
+  // a 3-row, 2-column frame: id int64, name utf8
+  return Serie.struct('df', [new Serie('id', [3, 1, 2]), new Serie('name', ['c', 'a', 'b'])])
+}
+
+test('frame shape and projection', () => {
+  const df = frame()
+  assert.deepStrictEqual(df.shape, [3, 2])
+  assert.strictEqual(df.numColumns, 2)
+  assert.deepStrictEqual(df.columnNames, ['id', 'name'])
+  assert.deepStrictEqual(df.selectColumns(['name']).columnNames, ['name'])
+  assert.deepStrictEqual(df.withColumn(new Serie('ok', [true, true, false])).columnNames, ['id', 'name', 'ok'])
+  assert.deepStrictEqual(df.dropColumns(['name']).columnNames, ['id'])
+  assert.deepStrictEqual(df.rename('id', 'key').columnNames, ['key', 'name'])
+})
+
+test('frame rows: filter, sort, stack, toDicts', () => {
+  const df = frame()
+  assert.deepStrictEqual(df.sortBy('id').toDicts(), [
+    { id: 1, name: 'a' },
+    { id: 2, name: 'b' },
+    { id: 3, name: 'c' },
+  ])
+  assert.deepStrictEqual(df.filter([true, false, true]).shape, [2, 2])
+  assert.deepStrictEqual(df.vstack(df).shape, [6, 2])
+  assert.deepStrictEqual(df.withRowIndex('i').columnNames, ['i', 'id', 'name'])
+})
+
+test('frame row record and object', () => {
+  const df = frame()
+  const record = df.row(1)
+  assert.deepStrictEqual(record.toObject(), { id: 1, name: 'a' })
+})
+
+test('frame selectFields casts and fills', () => {
+  const df = frame()
+  const target = [
+    new Field('name', new DataType('utf8'), true),
+    new Field('id', new DataType('int64'), true),
+    new Field('score', new DataType('float64'), true),
+  ]
+  const projected = df.selectFields(target)
+  assert.deepStrictEqual(projected.columnNames, ['name', 'id', 'score'])
+  assert.strictEqual(projected.child('score').valueAt(0), null) // filled with null
+})
+
+test('frame Arrow IPC round-trip', () => {
+  const df = frame()
+  const back = Serie.fromArrowIpc('df', df.toArrowIpc())
+  assert.deepStrictEqual(back.shape, [3, 2])
+  assert.deepStrictEqual(back.toDicts(), df.toDicts())
+})
+
+test('setAt and push mutate functionally', () => {
+  const s = new Serie('n', [1, 2, 3])
+  assert.deepStrictEqual(s.setAt(1, new Scalar(20)).toList(), [1, 20, 3])
+  assert.deepStrictEqual(s.toList(), [1, 2, 3]) // original untouched
+  assert.deepStrictEqual(s.setAt(0, Scalar.null('int64')).toList(), [null, 2, 3])
+  assert.deepStrictEqual(s.push(new Scalar(4)).toList(), [1, 2, 3, 4])
+  assert.throws(() => s.setAt(9, new Scalar(1)))
+})
+
+test('frame ops require a struct column', () => {
+  const s = new Serie('n', [1, 2, 3])
+  assert.throws(() => s.shape)
+})

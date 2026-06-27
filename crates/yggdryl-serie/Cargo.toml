@@ -28,10 +28,15 @@ yggdryl-core = { workspace = true, default-features = false }
 arrow-array = { version = "59", default-features = false }
 arrow-schema = { version = "59", default-features = false }
 arrow-buffer = { version = "59", default-features = false }
-# Zero-copy `concat` for Serie::resize (extending a column with fill values).
+# Zero-copy `concat` for Serie::resize, plus `filter` / `take` powering the frame's
+# row filter and sort.
 arrow-select = { version = "59", default-features = false }
 # The cast kernel powering Serie::cast and CategoricalSerie dictionary encode/decode.
 arrow-cast = { version = "59", default-features = false }
+# The sort kernel powering the frame's `sort_by` (sort_to_indices + take).
+arrow-ord = { version = "59", default-features = false }
+# The atomic value layer — a frame row reads back as a `StructScalar`.
+yggdryl-scalar = { path = "../yggdryl-scalar", version = "0.1.0" }
 # Arrow IPC stream format for Serie::to_bytes / from_bytes — lossless column bytes
 # (type, name, nulls, values, including nested). `default-features = false` keeps it
 # pure-Rust (no lz4/zstd C codecs; IPC bodies are uncompressed).

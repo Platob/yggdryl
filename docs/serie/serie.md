@@ -8,12 +8,14 @@ and its physical storage. Columns can also be **lazy** (computed on demand) or
 **children** (zero-copy slices that remember their parent).
 
 !!! note "Available in all three languages"
-    `yggdryl-serie` is the Arrow-backed foundation a `Frame` / `LazyFrame` /
-    `ParquetFrame` will build on. The column API is surfaced in **Python** and **Node**
-    as a single `Serie` class (build from a list, read by index, slice / resize / cast,
-    navigate nested children, round-trip through bytes) as well as the Rust core. The
-    Rust API exposes the richer concrete-series internals (typed downcasts, the slice
-    graph) directly.
+    `yggdryl-serie` is the Arrow-backed columnar foundation. A **struct column is a
+    [DataFrame](#frame-dataframe)** (its children are the columns), so the same `Serie`
+    class is both the column *and* the table. The API is surfaced in **Python** and
+    **Node** as a single `Serie` class — build from a list, read / update by index, slice
+    / resize / cast, navigate nested children, run frame ops (select / filter / sort /
+    stack / records), round-trip through bytes — as well as the Rust core, which also
+    exposes the richer concrete-series internals (typed downcasts, the slice graph)
+    directly.
 
 === "Python"
 
@@ -550,21 +552,314 @@ while a well-formed path that does not resolve — a missing child, or a leaf co
     # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
-## Display
+## Frame (DataFrame)
 
-`Serie::display(&DisplayOptions)` renders a column to a readable string — the building
-block for a future `Frame`'s table. Parameters: `max_rows`, `header`, `width`, `null` and
-`index`.
+**A struct column *is* a DataFrame** — its child columns *are* the frame's columns, so
+`StructSerie` carries the table surface directly (there is no separate `Frame` type).
+Build one with the `struct` factory, then project / filter / sort / stack rows and read
+records back, with a pandas-like feel: every transform is **functional** and returns a new
+lazy frame that **shares the untouched columns' Arrow buffers** (no copy), assembling the
+backing `StructArray` only on demand.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    df = yggdryl.Serie.struct("df", [
+        yggdryl.Serie("id", [3, 1, 2]),
+        yggdryl.Serie("name", ["c", "a", "b"]),
+    ])
+    assert df.shape == (3, 2)                            # (rows, columns)
+    assert df.column_names == ["id", "name"]
+
+    # columns: project / add / drop / rename (all return a new frame)
+    df.select_columns(["name"])                         # keep / reorder a subset
+    df.with_column(yggdryl.Serie("ok", [True, True, False]))
+    df.drop_columns(["name"])
+    df.rename("id", "key")
+
+    # rows: filter / sort / stack / row-index / head / tail
+    df.filter([True, False, True])
+    df.vstack(df)
+    df.with_row_index("i")                              # prepend a 0..n column
+
+    # read rows back as native records
+    assert df.row(1).to_dict() == {"id": 1, "name": "a"}
+    row = df.row(1).as_dataclass("Row")                 # a real dataclass instance
+    assert (row.id, row.name) == (1, "a")
+    assert df.sort_by("id").to_dicts() == [
+        {"id": 1, "name": "a"}, {"id": 2, "name": "b"}, {"id": 3, "name": "c"},
+    ]
+
+    print(df.display(max_rows=10))                      # an aligned table
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const df = Serie.struct('df', [
+      new Serie('id', [3, 1, 2]),
+      new Serie('name', ['c', 'a', 'b']),
+    ])
+    if (df.shape[0] !== 3 || df.shape[1] !== 2) throw new Error('shape')
+    if (df.columnNames.join() !== 'id,name') throw new Error('columns')
+
+    // columns
+    df.selectColumns(['name'])
+    df.withColumn(new Serie('ok', [true, true, false]))
+    df.dropColumns(['name'])
+    df.rename('id', 'key')
+
+    // rows
+    df.filter([true, false, true])
+    df.vstack(df)
+    df.withRowIndex('i')
+
+    // records
+    const rec = df.row(1).toObject()                    // { id: 1, name: 'a' }
+    const rows = df.sortBy('id').toDicts()
+    console.log(df.display(10))
+    ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{DisplayOptions, Serie, Int32Serie};
+    use yggdryl_serie::{Int32Serie, VarcharSerie, StructSerie, Serie, SerieRef, DisplayOptions};
+    use std::sync::Arc;
 
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(3), Some(1), Some(2)]));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("name", vec![Some("c"), Some("a"), Some("b")]));
+    let df = StructSerie::from_children("df", vec![id, name])?;
+
+    assert_eq!(df.shape(), (3, 2));
+    assert_eq!(df.column_names(), vec!["id", "name"]);
+
+    // columns
+    let _ = df.select_columns(&["name"])?;
+    let _ = df.drop_columns(&["name"])?;
+    let _ = df.rename("id", "key")?;
+
+    // rows
+    let asc = df.sort_by("id", false)?;
+    let _ = df.filter(&[true, false, true])?;
+    let _ = df.vstack(&df)?;
+    let _ = df.with_row_index("i")?;
+
+    // read a row back as a StructScalar record
+    let record = asc.row(0)?;
+    assert_eq!(record.child_named("name").unwrap().to_str(), "'a'::utf8");
+
+    println!("{}", df.display(&DisplayOptions::default()));
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+### Schema-cast projection
+
+`select_fields` projects **and casts** to an explicit target schema in one step: each
+target [`Field`](../schema/field.md) takes the source column of the same name **cast to
+its type** (or, if absent, a **filled** column — null when nullable, else the type
+default), in the target order, dropping unlisted columns. The schema companion to
+`select_columns` (which only reorders / projects), powered by the same `cast` struct
+kernel.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    df = yggdryl.Serie.struct("df", [yggdryl.Serie("id", [1, 2])])  # id: int64
+    target = [
+        yggdryl.Field("id", yggdryl.DataType("int32"), True),       # narrow
+        yggdryl.Field("score", yggdryl.DataType("float64"), True),  # missing -> filled null
+    ]
+    out = df.select_fields(target)
+    assert out.column_names == ["id", "score"]
+    assert out.child("score").value_at(0) is None
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie, Field, DataType } = require('yggdryl')
+
+    const df = Serie.struct('df', [new Serie('id', [1, 2])])
+    const out = df.selectFields([
+      new Field('id', new DataType('int32'), true),
+      new Field('score', new DataType('float64'), true),  // filled with null
+    ])
+    if (out.child('score').valueAt(0) !== null) throw new Error('fill')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, StructSerie, NestedSerie, Serie, SerieRef, DataType, Field, Scalar};
+    use std::sync::Arc;
+
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let df = StructSerie::from_children("df", vec![id])?;
+    let out = df.select_fields(vec![
+        Field::new("id", DataType::int(64, true), true),     // widen
+        Field::new("score", DataType::float(64), true),      // filled null
+    ])?;
+    assert_eq!(out.child_by_name("score").unwrap().value_at(0), Scalar::Null);
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+### Arrow interchange (RecordBatch / IPC / reader)
+
+A frame round-trips through Arrow: `to_arrow_ipc()` writes an **Arrow IPC stream** (columns
+as top-level fields) that any Arrow library reads back as a table, and
+`from_arrow_ipc(name, bytes)` reads it in. In Rust there are also `to_record_batch` /
+`from_record_batch`, chunked `to_record_batches(max_rows)` / `from_record_batches`, and a
+streaming `to_record_batch_reader` / `from_record_batch_reader` (the shape Parquet readers
+and scanners consume).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+    import pyarrow as pa                                 # any Arrow library
+
+    df = yggdryl.Serie.struct("df", [
+        yggdryl.Serie("id", [1, 2, 3]),
+        yggdryl.Serie("name", ["a", "b", "c"]),
+    ])
+    ipc = df.to_arrow_ipc()
+    table = pa.ipc.open_stream(ipc).read_all()           # -> a pyarrow.Table
+    assert table.column_names == ["id", "name"]
+    back = yggdryl.Serie.from_arrow_ipc("df", ipc)        # round-trips
+    assert back.to_dicts() == df.to_dicts()
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const df = Serie.struct('df', [new Serie('id', [1, 2, 3])])
+    const ipc = df.toArrowIpc()                          // Buffer of an Arrow IPC stream
+    const back = Serie.fromArrowIpc('df', ipc)
+    if (back.shape[0] !== 3) throw new Error('roundtrip')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, StructSerie, Serie, SerieRef};
+    use std::sync::Arc;
+
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2), Some(3)]));
+    let df = StructSerie::from_children("df", vec![id])?;
+
+    // one RecordBatch, or chunked batches, or an IPC stream
+    let batch = df.to_record_batch()?;
+    assert_eq!(batch.num_rows(), 3);
+    let chunks = df.to_record_batches(2)?;               // [2 rows, 1 row]
+    let reader = df.to_record_batch_reader(2)?;           // a RecordBatchReader (scanner)
+    let bytes = df.to_ipc_bytes()?;
+    assert_eq!(StructSerie::from_ipc_bytes("df", &bytes)?.shape(), (3, 1));
+    let _ = (chunks, reader);
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+## Update values: `set_at` & `push`
+
+Arrow arrays are immutable, so the value mutators are **functional** — they return a *new*
+column with one cell replaced (`set_at`) or a row appended (`push`), leaving the original
+untouched. With `safe` (the default) the incoming [`Scalar`](../scalar/scalar.md) is
+**cast to the column's type** first, so any value can be written; an out-of-bounds index
+errors. The rebuild is uniform across every type — primitive, varchar, binary and
+**nested** — via a single Arrow `concat`.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", [1, 2, 3])
+    assert s.set_at(1, yggdryl.Scalar(20)).to_list() == [1, 20, 3]
+    assert s.to_list() == [1, 2, 3]                      # original untouched
+    assert s.set_at(0, yggdryl.Scalar.null("int64")).to_list() == [None, 2, 3]
+    assert s.push(yggdryl.Scalar(4)).to_list() == [1, 2, 3, 4]
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie, Scalar } = require('yggdryl')
+
+    const s = new Serie('n', [1, 2, 3])
+    if (s.setAt(1, new Scalar(20)).toList().join() !== '1,20,3') throw new Error('set')
+    if (s.toList().join() !== '1,2,3') throw new Error('functional')
+    if (s.push(new Scalar(4)).toList().join() !== '1,2,3,4') throw new Error('push')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, Scalar, Serie};
+    use yggdryl_scalar::IntScalar;
+
+    let s = Int32Serie::from_values("n", vec![Some(1), Some(2), Some(3)]);
+    let updated = s.set_at(1, &IntScalar::new(20, 64, true), true)?;  // int64 cast to int32
+    assert_eq!(updated.value_at(1), Scalar::Int(20));
+    assert_eq!(s.value_at(1), Scalar::Int(2));                        // original untouched
+    let grown = s.push(&IntScalar::new(4, 8, true), true)?;
+    assert_eq!(grown.len(), 4);
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+## Display
+
+`display` is the **single** render method — there is no separate `show`. A leaf column
+renders **vertically** (one value per line); a struct [frame](#frame-dataframe) renders as
+an **aligned table** (one column per child). Parameters: `max_rows`, `header`, `width`,
+`null` and `index` (a leading row-index gutter).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", list(range(100)))
+    assert "97 more rows" in s.display(max_rows=3)        # a column, vertical
+
+    df = yggdryl.Serie.struct("df", [yggdryl.Serie("id", [1, 2])])
+    assert "id: int64" in df.display()                   # a frame, table
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', Array.from({ length: 100 }, (_, i) => i))
+    if (!s.display(3).includes('97 more rows')) throw new Error('column')
+    const df = Serie.struct('df', [new Serie('id', [1, 2])])
+    if (!df.display().includes('id: int64')) throw new Error('table')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{DisplayOptions, Int32Serie, Serie, StructSerie, SerieRef};
+    use std::sync::Arc;
+
+    // a leaf column renders vertically
     let serie = Int32Serie::from_values("n", (0..100).map(Some));
     let text = serie.display(&DisplayOptions::default().with_max_rows(3));
     assert!(text.contains("n: int32"));        // header
     assert!(text.contains("97 more rows"));    // truncation marker
+
+    // a struct frame renders as an aligned table (same method)
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let df = StructSerie::from_children("df", vec![id])?;
+    assert!(df.display(&DisplayOptions::default()).contains("id: int32"));
+    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Serialize

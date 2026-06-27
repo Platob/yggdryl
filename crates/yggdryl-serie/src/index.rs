@@ -94,6 +94,10 @@ impl IndexSerie {
         if index >= self.len() {
             return None;
         }
+        // The default range index labels row `i` with `i`; skip the value read.
+        if self.range {
+            return Some(index as u64);
+        }
         match self.value_at(index) {
             Scalar::Int(value) => u64::try_from(value).ok(),
             _ => None,

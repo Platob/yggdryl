@@ -49,7 +49,9 @@ nav:
       - DataType: schema/datatype.md
       - Field: schema/field.md
   - Serie:
-      - Serie (columns): serie/serie.md
+      - Serie & Frame (columns + DataFrame): serie/serie.md
+  - Scalar:
+      - Scalar (single value): scalar/scalar.md
   - HTTP:
       - Session & verbs: http/session.md
       - Request & Response: http/request-response.md

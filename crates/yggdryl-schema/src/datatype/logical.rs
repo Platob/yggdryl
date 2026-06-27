@@ -115,6 +115,7 @@ impl DataType {
             || self.is_dictionary()
             || self.is_json()
             || self.is_bson()
+            || self.is_timezone()
     }
 
     /// Whether this is a temporal type (date / time / timestamp / duration / interval).
@@ -147,6 +148,14 @@ impl DataType {
     /// Whether this is the [`Bson`](DataType::Bson) logical type.
     pub fn is_bson(&self) -> bool {
         matches!(self, DataType::Bson)
+    }
+
+    /// Whether this is the [`Timezone`](DataType::Timezone) logical type (a column of
+    /// zone names — not the optional display timezone a
+    /// [`Timestamp`](DataType::Timestamp) carries; read that with
+    /// [`timezone`](DataType::timezone)).
+    pub fn is_timezone(&self) -> bool {
+        matches!(self, DataType::Timezone)
     }
 
     /// The [`TimeUnit`] of a temporal type that carries one, or `None`.

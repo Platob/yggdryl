@@ -90,11 +90,14 @@ impl DataType {
             // Run-end encoding is transparent to casting, like a dictionary.
             (RunEndEncoded { values, .. }, b) => values.can_cast_to(b),
             (a, RunEndEncoded { values, .. }) => a.can_cast_to(values),
-            // Json <-> string and Bson <-> binary cast through their physical type.
+            // Json <-> string, Bson <-> binary and Timezone <-> string cast through
+            // their physical type.
             (a, b) if a.is_json() && b.is_string() => true,
             (a, b) if a.is_string() && b.is_json() => true,
             (a, b) if a.is_bson() && b.is_binary() => true,
             (a, b) if a.is_binary() && b.is_bson() => true,
+            (a, b) if a.is_timezone() && b.is_string() => true,
+            (a, b) if a.is_string() && b.is_timezone() => true,
             (List { item: a, .. }, List { item: b, .. }) => {
                 a.data_type().can_cast_to(b.data_type())
             }
@@ -255,9 +258,10 @@ impl DataType {
             (RunEndEncoded { values, .. }, t) | (t, RunEndEncoded { values, .. }) => {
                 values.common_type(t)
             }
-            // Json / Bson widen to their physical string / binary supertype.
+            // Json / Bson / Timezone widen to their physical string / binary supertype.
             (Json, t) | (t, Json) if t.is_string() => Some(t.clone()),
             (Bson, t) | (t, Bson) if t.is_binary() => Some(t.clone()),
+            (Timezone, t) | (t, Timezone) if t.is_string() => Some(t.clone()),
             _ => None,
         }
     }
@@ -325,11 +329,10 @@ fn promote_field(a: &Field, b: &Field) -> Option<Field> {
     for (key, value) in b.metadata() {
         metadata.entry(key.clone()).or_insert_with(|| value.clone());
     }
+    // Build the merged field directly (keeping only `a`'s name) rather than cloning the
+    // whole of `a` and overwriting its type / nullability / metadata.
     Some(
-        a.clone()
-            .with_data_type(data_type)
-            .with_nullable(a.is_nullable() || b.is_nullable())
-            .with_metadata(metadata),
+        Field::new(a.name(), data_type, a.is_nullable() || b.is_nullable()).with_metadata(metadata),
     )
 }
 

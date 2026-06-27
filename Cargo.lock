@@ -2327,6 +2327,7 @@ dependencies = [
  "serde_json",
  "yggdryl-core",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
  "yggdryl-serie",
 ]
@@ -2339,8 +2340,27 @@ dependencies = [
  "serde_json",
  "yggdryl-core",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
  "yggdryl-serie",
+]
+
+[[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-cast",
+ "arrow-ipc",
+ "arrow-schema",
+ "arrow-select",
+ "half",
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-core",
+ "yggdryl-schema",
 ]
 
 [[package]]
@@ -2362,10 +2382,12 @@ dependencies = [
  "arrow-buffer",
  "arrow-cast",
  "arrow-ipc",
+ "arrow-ord",
  "arrow-schema",
  "arrow-select",
  "log",
  "yggdryl-core",
+ "yggdryl-scalar",
  "yggdryl-schema",
 ]
 

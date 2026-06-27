@@ -168,10 +168,11 @@ impl DataType {
             Dictionary { key, value } => {
                 ADataType::Dictionary(Box::new(key.to_arrow()?), Box::new(value.to_arrow()?))
             }
-            // Arrow has no first-class JSON/BSON; map to the physical string / binary
-            // (the logical name is not recovered on `from_arrow`).
+            // Arrow has no first-class JSON/BSON/timezone; map to the physical string /
+            // binary (the logical name is not recovered on `from_arrow`).
             Json => ADataType::Utf8,
             Bson => ADataType::Binary,
+            Timezone => ADataType::Utf8,
             List {
                 item,
                 large,

@@ -24,6 +24,7 @@ mod localpath;
 mod media;
 mod mime;
 mod pytime;
+mod scalar;
 mod serie;
 mod timezone;
 mod uri;
@@ -38,6 +39,7 @@ use yggdryl_core::VersionError;
 use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_core::{IoError, TimeError, TimeUnit, Whence};
 use yggdryl_http::HttpError;
+use yggdryl_scalar::ScalarError;
 use yggdryl_schema::SchemaError;
 use yggdryl_serie::SerieError;
 
@@ -57,6 +59,7 @@ use crate::localpath::LocalPath;
 use crate::media::MediaType;
 use crate::mime::MimeType;
 use crate::pytime::Time;
+use crate::scalar::Scalar;
 use crate::serie::Serie;
 use crate::timezone::Timezone;
 use crate::uri::Uri;
@@ -96,6 +99,10 @@ pub(crate) fn schema_err(err: SchemaError) -> PyErr {
 }
 
 pub(crate) fn serie_err(err: SerieError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn scalar_err(err: ScalarError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -212,6 +219,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DataType>()?;
     m.add_class::<Field>()?;
     m.add_class::<Serie>()?;
+    m.add_class::<Scalar>()?;
     m.add_class::<Date>()?;
     m.add_class::<Time>()?;
     m.add_class::<DateTime>()?;

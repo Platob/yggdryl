@@ -1,0 +1,60 @@
+[package]
+name = "yggdryl-scalar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Atomic scalar values for yggdryl: a single typed value over every DataType, with lossless Apache Arrow scalar conversion"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_scalar"
+path = "src/lib.rs"
+
+[[bench]]
+name = "scalar"
+harness = false
+
+[dependencies]
+# The schema layer is the source of truth for a scalar's logical type; the `arrow`
+# feature is required here because a scalar converts to/from an Arrow array.
+yggdryl-schema = { workspace = true, features = ["arrow"] }
+# The core supplies the temporal value types (Date / Time / DateTime / Duration) a
+# scalar presents its physical values as, plus TimeUnit / Timezone / Charset.
+yggdryl-core = { workspace = true, default-features = false }
+# Arrow is the conversion target — a scalar is a length-1 Arrow array. Required (not
+# optional), pinned to the same major as `yggdryl-schema`'s `arrow-schema` so the
+# types unify. `default-features = false` keeps every Arrow crate pure-Rust.
+arrow-array = { version = "59", default-features = false }
+arrow-schema = { version = "59", default-features = false }
+arrow-buffer = { version = "59", default-features = false }
+# Zero-copy `concat` for building a nested scalar's child array (list / map values).
+arrow-select = { version = "59", default-features = false }
+# The cast kernel powering `Scalar::cast` (length-1 array cast).
+arrow-cast = { version = "59", default-features = false }
+# Arrow IPC stream format for the lossless `to_bytes` / `from_bytes` round-trip.
+arrow-ipc = { version = "59", default-features = false }
+# `half::f16` to build / read a `float16` scalar (the one float width std lacks).
+half = { version = "2", default-features = false }
+# Off-by-default structured logging, via the crate-local `log_event!` macro only.
+log = { version = "0.4", optional = true }
+# Structural `Serialize` / `Deserialize` for the recursive scalar (lossless, carrying
+# the exact logical type — unlike the Arrow-normalised `to_bytes`).
+serde = { version = "1", optional = true, features = ["derive"] }
+# `to_json` / `from_json` on the scalar (implies `serde`). Used by the bindings.
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+serde_json = { version = "1" }
+
+[features]
+default = []
+log = ["dep:log", "yggdryl-core/log", "yggdryl-schema/log"]
+# Structural serde for the scalar (lossless; wide integers are string-encoded so JSON
+# is exact). Also turns on the core's and schema's serde.
+serde = ["dep:serde", "yggdryl-core/serde", "yggdryl-schema/serde"]
+# `to_json` / `from_json` (implies `serde`). Used by the bindings.
+json = ["serde", "dep:serde_json", "yggdryl-core/json", "yggdryl-schema/json"]

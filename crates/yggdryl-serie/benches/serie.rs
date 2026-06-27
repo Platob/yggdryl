@@ -142,4 +142,54 @@ fn main() {
     bench("Serie::select (node path)", n, || {
         black_box(black_box(&rec).select(black_box("name")).unwrap());
     });
+
+    // ---- frame (DataFrame) operations ----
+    bench("StructSerie::select_columns", n / 4, || {
+        black_box(
+            black_box(&rec)
+                .select_columns(black_box(&["name"]))
+                .unwrap(),
+        );
+    });
+    let target = vec![
+        yggdryl_serie::Field::new("id", DataType::int(64, true), true),
+        yggdryl_serie::Field::new("name", DataType::varchar(), true),
+    ];
+    bench(
+        "StructSerie::select_fields (cast int32->int64)",
+        n / 200,
+        || {
+            black_box(
+                black_box(&rec)
+                    .select_fields(black_box(target.clone()))
+                    .unwrap(),
+            );
+        },
+    );
+    bench("StructSerie::sort_by (4096)", n / 500, || {
+        black_box(black_box(&rec).sort_by(black_box("id"), false).unwrap());
+    });
+    let mask: Vec<bool> = (0..ROWS).map(|i| i % 2 == 0).collect();
+    bench("StructSerie::filter (4096)", n / 500, || {
+        black_box(black_box(&rec).filter(black_box(&mask)).unwrap());
+    });
+    bench("StructSerie::row -> StructScalar", n / 4, || {
+        black_box(black_box(&rec).row(black_box(2000)).unwrap());
+    });
+    bench("StructSerie::to_record_batch", n / 200, || {
+        black_box(black_box(&rec).to_record_batch().unwrap());
+    });
+
+    // ---- value mutation (functional rebuild) ----
+    let value = yggdryl_scalar::IntScalar::new(42, 32, true);
+    bench("Serie::set_at (int32, 4096)", n / 500, || {
+        black_box(
+            black_box(&int_serie)
+                .set_at(black_box(2000), black_box(&value), true)
+                .unwrap(),
+        );
+    });
+    bench("Serie::push (int32, 4096)", n / 500, || {
+        black_box(black_box(&int_serie).push(black_box(&value), true).unwrap());
+    });
 }

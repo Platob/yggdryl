@@ -141,16 +141,27 @@ ahead of time. These are pure-Rust core numbers (no FFI, no server).
 | metadata / fast checks — `num_rows` / `null_count` / `category` / `data_type` | 1.6–1.9 ns |
 | typed value read — `Int32Serie::value` | 0.9 ns |
 | lazy `RangeSerie::value_at` (computed, no storage) | 1.5 ns |
-| type-erased `Serie::value_at` → `Scalar` | 57 ns |
+| type-erased `Serie::value_at` → `Scalar` | 12 ns |
 | `from_array` factory dispatch (4096 rows) | 127–145 ns |
 | zero-copy `slice` (re-wrap as a new column) | 226 ns |
 | `cast` int32 → int64 / float64 (4096 rows) | 1.2–1.4 µs |
 | dictionary encode / decode — `CategoricalSerie` (8 distinct) | 59 µs / 19 µs |
 
+The **frame** (a struct column *is* a DataFrame) and the functional **value mutators**
+rebuild Arrow buffers, so they scale with the column length:
+
+| workload | result |
+| --- | --- |
+| frame projection — `select_columns` / row record `row` / `to_record_batch` | 119 / 326 / 312 ns |
+| value mutate — `push` / `set_at` (int32, 4096) | 0.8 / 1.0 µs |
+| frame filter / sort (4096 rows) | 18 / 24 µs |
+
 A **lazy** column (a range, a cast result) computes a value without touching memory, so a
 `RangeSerie` read matches a typed array read; `slice` is O(1) on the Arrow buffers (its
 cost is wrapping the slice as a new column, not copying); and dictionary encoding is the
-one heavy op — worth it only when a column actually repeats.
+one heavy op — worth it only when a column actually repeats. The frame transforms are
+functional (each returns a new lazy frame sharing the untouched buffers), so projection and
+record reads are sub-microsecond; `filter` / `sort` are the bulk Arrow-kernel passes.
 
 ```bash
 cargo bench -p yggdryl-serie --bench serie

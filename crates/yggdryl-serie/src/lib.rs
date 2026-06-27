@@ -15,7 +15,9 @@
 //!   [`null_count`](Serie::null_count) bookkeeping; type-erased value access by index
 //!   ([`value_at`](Serie::value_at) → [`Scalar`]) and by range
 //!   ([`slice`](Serie::slice) / [`slice_range`](Serie::slice_range), zero-copy); the
-//!   [`parent`](Serie::parent) graph link; [`materialize`](Serie::materialize); and
+//!   functional value mutators [`set_at`](Serie::set_at) / [`push`](Serie::push) (rebuild
+//!   the column with a cell replaced / appended, casting the value to the column type);
+//!   the [`parent`](Serie::parent) graph link; [`materialize`](Serie::materialize); and
 //!   downcasting via [`as_any`](Serie::as_any).
 //! - [`TypedSerie<T>`] — typed value access (`get` / `value` / `iter`) over the native
 //!   value type `T` of a concrete column.
@@ -75,6 +77,7 @@ mod bytes;
 mod categorical;
 mod display;
 mod error;
+mod frame;
 mod index;
 mod lazy;
 mod nested;
