@@ -150,8 +150,8 @@ pass it in at construction to skip the sniff entirely.
     io = yggdryl.BytesIO(bytes([0x1F, 0x8B, 0x08, 0x00]))  # gzip magic
     io.media_type.first.mime         # "application/gzip" — sniffed once, cached
 
-    # Put the type in instead of inferring it.
-    csv = yggdryl.MediaType.from_str("text/csv")
+    # Put the type in instead of inferring it (from_str takes a short name / extension).
+    csv = yggdryl.MediaType.from_str("csv")          # text/csv
     typed = yggdryl.BytesIO(b"a,b,c\n1,2,3\n", media_type=csv)
 
     # Attach / peek cached metadata; the live size is never frozen.
@@ -168,8 +168,8 @@ pass it in at construction to skip the sniff entirely.
     const io = new BytesIO(Buffer.from([0x1f, 0x8b, 0x08, 0x00])); // gzip magic
     io.mediaType.first.mime;         // "application/gzip" — sniffed once, cached
 
-    // Put the type in instead of inferring it (3rd constructor arg).
-    const csv = MediaType.fromStr("text/csv");
+    // Put the type in instead of inferring it (fromStr takes a short name / extension).
+    const csv = MediaType.fromStr("csv");            // text/csv
     const typed = new BytesIO(Buffer.from("a,b,c\n1,2,3\n"), undefined, csv);
 
     // Attach / peek cached metadata; the live size is never frozen.
@@ -186,8 +186,8 @@ pass it in at construction to skip the sniff entirely.
     let io = BytesIO::from_bytes(vec![0x1f, 0x8b, 0x08, 0x00]); // gzip magic
     assert_eq!(io.media_type().unwrap().first(), Some(&MimeType::Gzip));
 
-    // Put the type in instead of inferring it.
-    let csv = MediaType::from_str("text/csv")?;
+    // Put the type in instead of inferring it (from_str takes a short name / extension).
+    let csv = MediaType::from_str("csv")?;           // text/csv
     let _typed = BytesIO::from_bytes(b"a,b,c\n".to_vec()).with_media_type(csv);
 
     // Attach / peek cached metadata (cached_stats = get, set_stats = set).
