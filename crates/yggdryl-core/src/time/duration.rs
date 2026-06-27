@@ -125,6 +125,21 @@ impl Duration {
         }
     }
 
+    /// The span scaled by an integer `factor`.
+    pub fn mul(&self, factor: i64) -> Duration {
+        Duration {
+            nanos: self.nanos * factor as i128,
+        }
+    }
+
+    /// The span divided by an integer `divisor` (truncating toward zero); dividing by
+    /// `0` yields a zero span.
+    pub fn div(&self, divisor: i64) -> Duration {
+        Duration {
+            nanos: self.nanos.checked_div(divisor as i128).unwrap_or(0),
+        }
+    }
+
     /// Parses a compact span like `"1h30m"`, `"1s500ms"`, `"-2d"`, a plain number of
     /// seconds (`"90"`, `"1.5"`), with units `d` / `h` / `m` / `s` / `ms` / `us` /
     /// `ns`. The inverse of [`to_str`](Duration::to_str).
@@ -132,8 +147,10 @@ impl Duration {
     pub fn from_str(input: &str) -> Result<Duration, TimeError> {
         log_event!(trace, "Duration::from_str {input:?}");
         let value = input.trim();
+        // An empty span parses to the zero default (no error), mirroring an empty
+        // numeric field decoding to 0.
         if value.is_empty() {
-            return Err(TimeError::Empty);
+            return Ok(Duration::from_nanos(0));
         }
         let negative = value.starts_with('-');
         // Strip at most one leading sign; a second sign (`--5`, `+-5`) is malformed.
@@ -329,5 +346,40 @@ fn accumulate_iso(
 impl fmt::Display for Duration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_str())
+    }
+}
+
+impl std::ops::Add for Duration {
+    type Output = Duration;
+    fn add(self, rhs: Duration) -> Duration {
+        Duration::add(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub for Duration {
+    type Output = Duration;
+    fn sub(self, rhs: Duration) -> Duration {
+        Duration::sub(&self, &rhs)
+    }
+}
+
+impl std::ops::Mul<i64> for Duration {
+    type Output = Duration;
+    fn mul(self, rhs: i64) -> Duration {
+        Duration::mul(&self, rhs)
+    }
+}
+
+impl std::ops::Div<i64> for Duration {
+    type Output = Duration;
+    fn div(self, rhs: i64) -> Duration {
+        Duration::div(&self, rhs)
+    }
+}
+
+impl std::ops::Neg for Duration {
+    type Output = Duration;
+    fn neg(self) -> Duration {
+        self.negate()
     }
 }

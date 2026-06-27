@@ -245,6 +245,17 @@ fn temporal_trait_interconversion() {
     let dt = DateTime::from_str("2024-07-01T08:30:00Z").unwrap();
     assert_eq!(dt.to_date(), Date::from_str("2024-07-01").unwrap());
     assert_eq!(dt.to_time(), Time::from_hms(8, 30, 0).unwrap());
+    // `from_datetime` / `from_temporal` redirect to the right per-type conversion.
+    assert_eq!(
+        Date::from_datetime(&dt),
+        Date::from_str("2024-07-01").unwrap()
+    );
+    assert_eq!(Time::from_datetime(&dt), Time::from_hms(8, 30, 0).unwrap());
+    assert_eq!(DateTime::from_datetime(&dt), dt);
+    // from_temporal goes through to_datetime, so any source type works.
+    assert_eq!(Date::from_temporal(&t).to_str(), "1970-01-01"); // Time -> epoch day
+    assert_eq!(Time::from_temporal(&d), Time::from_hms(0, 0, 0).unwrap()); // Date -> midnight
+    assert_eq!(DateTime::from_temporal(&d), d.to_datetime());
 }
 
 #[test]
@@ -372,6 +383,79 @@ fn datetime_convert_helper() {
     let utc = DateTime::from_str("2024-07-01T12:00:00Z").unwrap();
     assert_eq!(utc.convert("Asia/Tokyo").unwrap().hour(), 21);
     assert!(utc.convert("Nowhere/Nope").is_err());
+}
+
+#[test]
+fn temporal_empty_parses_to_default() {
+    // An empty string / buffer decodes to the zero default (epoch / midnight / 0).
+    assert_eq!(Date::from_str("").unwrap(), Date::from_epoch_days(0));
+    assert_eq!(Date::from_str("").unwrap().to_str(), "1970-01-01");
+    assert_eq!(
+        Time::from_str("").unwrap(),
+        Time::from_hms(0, 0, 0).unwrap()
+    );
+    assert_eq!(DateTime::from_str("").unwrap().epoch_seconds(), 0);
+    assert_eq!(Duration::from_str("").unwrap().as_nanos(), 0);
+    assert_eq!(Date::from_bytes(b"").unwrap(), Date::from_epoch_days(0));
+    assert_eq!(Duration::from_bytes(b"").unwrap().as_nanos(), 0);
+}
+
+#[test]
+fn duration_scale_and_operators() {
+    assert_eq!(Duration::from_secs(5).mul(3).as_seconds(), 15);
+    assert_eq!(Duration::from_secs(10).div(4).as_seconds(), 2);
+    assert_eq!(Duration::from_secs(7).div(0).as_nanos(), 0); // divide by zero -> zero
+    assert_eq!(
+        (Duration::from_secs(5) + Duration::from_secs(3)).as_seconds(),
+        8
+    );
+    assert_eq!(
+        (Duration::from_secs(5) - Duration::from_secs(8)).as_seconds(),
+        -3
+    );
+    assert_eq!((Duration::from_secs(5) * 4).as_seconds(), 20);
+    assert_eq!((Duration::from_secs(20) / 5).as_seconds(), 4);
+    assert_eq!((-Duration::from_secs(5)).as_seconds(), -5);
+}
+
+#[test]
+fn temporal_arithmetic_and_truncate() {
+    let dt = DateTime::from_str("2024-07-01T12:00:00Z").unwrap();
+    let later = dt.clone() + Duration::from_str("1h30m").unwrap();
+    assert_eq!(later.to_str(), "2024-07-01T13:30:00Z");
+    assert_eq!((later - dt.clone()).as_seconds(), 5_400); // DateTime - DateTime -> Duration
+    assert_eq!((dt.clone() - Duration::from_secs(3_600)).hour(), 11);
+    // truncate an instant to the hour.
+    assert_eq!(
+        dt.add(&Duration::from_str("25m").unwrap())
+            .truncate(&Duration::from_str("1h").unwrap())
+            .to_str(),
+        "2024-07-01T12:00:00Z"
+    );
+    // Time wraps around midnight; difference and truncate.
+    let t = Time::from_hms(23, 30, 0).unwrap();
+    assert_eq!((t + Duration::from_str("1h").unwrap()).to_str(), "00:30:00");
+    assert_eq!(
+        (Time::from_hms(10, 0, 0).unwrap() - Time::from_hms(8, 0, 0).unwrap()).as_seconds(),
+        7_200
+    );
+    assert_eq!(
+        Time::from_str("12:34:56")
+            .unwrap()
+            .truncate(&Duration::from_str("1m").unwrap())
+            .to_str(),
+        "12:34:00"
+    );
+    // Date arithmetic is whole-day; difference.
+    let d = Date::from_ymd(2024, 7, 1).unwrap();
+    assert_eq!(
+        (d + Duration::from_str("2d").unwrap()).to_str(),
+        "2024-07-03"
+    );
+    assert_eq!(
+        (Date::from_ymd(2024, 7, 10).unwrap() - Date::from_ymd(2024, 7, 1).unwrap()).as_seconds(),
+        9 * 86_400
+    );
 }
 
 #[cfg(feature = "serde")]

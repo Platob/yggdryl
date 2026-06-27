@@ -6,7 +6,7 @@ use std::fmt;
 use crate::log_event;
 use crate::Mapping;
 
-use super::{Date, DateTime, Temporal, TimeError};
+use super::{Date, DateTime, Duration, Temporal, TimeError};
 
 const NANOS_PER_DAY: u64 = 86_400 * 1_000_000_000;
 
@@ -87,14 +87,47 @@ impl Time {
         (self.nanos_of_day % 1_000_000_000) as u32
     }
 
+    /// This time advanced by a [`Duration`], wrapping around midnight.
+    pub fn add(&self, span: &Duration) -> Time {
+        let day = NANOS_PER_DAY as i128;
+        let nanos = (self.nanos_of_day as i128 + span.as_nanos()).rem_euclid(day) as u64;
+        Time {
+            nanos_of_day: nanos,
+        }
+    }
+
+    /// This time moved back by a [`Duration`], wrapping around midnight.
+    pub fn sub(&self, span: &Duration) -> Time {
+        self.add(&span.negate())
+    }
+
+    /// The signed [`Duration`] from `other` to `self` within the day (`self - other`).
+    pub fn duration_since(&self, other: &Time) -> Duration {
+        Duration::from_nanos(self.nanos_of_day as i128 - other.nanos_of_day as i128)
+    }
+
+    /// This time-of-day floored to a multiple of `unit` since midnight (e.g. truncate
+    /// to the minute). A zero/negative `unit` returns the time unchanged.
+    pub fn truncate(&self, unit: &Duration) -> Time {
+        let step = unit.as_nanos();
+        if step <= 0 {
+            return *self;
+        }
+        let floored = (self.nanos_of_day as i128).div_euclid(step) * step;
+        Time {
+            nanos_of_day: floored.rem_euclid(NANOS_PER_DAY as i128) as u64,
+        }
+    }
+
     /// Parses `HH:MM[:SS[.fraction]]` (fraction up to 9 digits), or a compact
     /// colon-less `HHMM` / `HHMMSS`.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<Time, TimeError> {
         log_event!(trace, "Time::from_str {input:?}");
         let value = input.trim();
+        // An empty string decodes to midnight (the zero default).
         if value.is_empty() {
-            return Err(TimeError::Empty);
+            return Ok(Time { nanos_of_day: 0 });
         }
         // Compact colon-less form: HHMM or HHMMSS.
         if !value.contains([':', '.']) && value.bytes().all(|b| b.is_ascii_digit()) {
@@ -223,6 +256,11 @@ impl Temporal for Time {
         DateTime::from_local(Date::from_epoch_days(0), *self, None)
     }
 
+    /// The local time-of-day of `value`.
+    fn from_datetime(value: &DateTime) -> Time {
+        value.time()
+    }
+
     fn to_time(&self) -> Time {
         *self
     }
@@ -231,5 +269,26 @@ impl Temporal for Time {
 impl fmt::Display for Time {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_str())
+    }
+}
+
+impl std::ops::Add<Duration> for Time {
+    type Output = Time;
+    fn add(self, rhs: Duration) -> Time {
+        Time::add(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<Duration> for Time {
+    type Output = Time;
+    fn sub(self, rhs: Duration) -> Time {
+        Time::sub(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<Time> for Time {
+    type Output = Duration;
+    fn sub(self, rhs: Time) -> Duration {
+        self.duration_since(&rhs)
     }
 }

@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use yggdryl_core::{Date as CoreDate, Mapping, Temporal, Timezone as CoreTimezone};
 
 use crate::datetime::DateTime;
+use crate::duration::Duration;
 use crate::pytime::Time;
 use crate::time_err;
 use crate::timezone::Timezone;
@@ -33,6 +34,15 @@ impl Date {
         CoreDate::from_str(value)
             .map(|inner| Date { inner })
             .map_err(time_err)
+    }
+
+    /// Build from a :class:`DateTime` (its local calendar date) — the `Temporal`
+    /// redirect.
+    #[staticmethod]
+    fn from_datetime(value: &DateTime) -> Self {
+        Date {
+            inner: CoreDate::from_datetime(&value.inner),
+        }
     }
 
     /// Build from a count of days since the UNIX epoch.
@@ -91,6 +101,42 @@ impl Date {
         Date {
             inner: self.inner.add_days(days),
         }
+    }
+
+    /// This date advanced by a :class:`Duration`'s whole days.
+    fn add(&self, span: &Duration) -> Self {
+        Date {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This date moved back by a :class:`Duration`'s whole days.
+    fn sub(&self, span: &Duration) -> Self {
+        Date {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed whole-day :class:`Duration` from `other` to ``self``.
+    fn duration_since(&self, other: &Date) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This date floored to a multiple of `unit` (whole days) since the epoch.
+    fn truncate(&self, unit: &Duration) -> Self {
+        Date {
+            inner: self.inner.truncate(&unit.inner),
+        }
+    }
+
+    fn __add__(&self, span: &Duration) -> Self {
+        self.add(span)
+    }
+
+    fn __sub__(&self, span: &Duration) -> Self {
+        self.sub(span)
     }
 
     /// The timezone this date is anchored to, if any.

@@ -180,9 +180,10 @@ pub enum DataType {
         /// Whether the integer is signed.
         signed: bool,
     },
-    /// A floating-point number of `bits` width (16/32/64).
+    /// A floating-point number of `bits` width (commonly 16/32/64, but any width is
+    /// allowed for custom encodings).
     Float {
-        /// Bit width: 16, 32 or 64.
+        /// Bit width (commonly 16/32/64; any positive width is allowed).
         bits: u16,
     },
     /// A UTF-8 (or other [`Charset`]) string. `large` uses 64-bit offsets; `view`
@@ -644,6 +645,17 @@ fn parse_generic_int(head: &str) -> Option<DataType> {
     Some(DataType::int(bits, signed))
 }
 
+/// Parses a generic `float<N>` head of any positive bit width (e.g. `float24`,
+/// `float128`), returning `None` for anything else. The common widths are handled by
+/// explicit aliases ahead of this; this is the flexible fallback.
+fn parse_generic_float(head: &str) -> Option<DataType> {
+    let digits = head.strip_prefix("float")?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(DataType::float(digits.parse::<u16>().ok()?))
+}
+
 /// Parses a time resolution given either a unit token (`us`) or a SQL fractional
 /// precision (`0` → s, `1..3` → ms, `4..6` → us, `7..9` → ns).
 fn parse_unit_or_precision(value: &str) -> Result<TimeUnit, SchemaError> {
@@ -887,10 +899,11 @@ impl DataType {
                     DataType::from_str(parts[1])?,
                 ))
             }
-            // A bare `int<N>` / `uint<N>` of any width (e.g. `int24`, `uint128`).
-            (other, None) => {
-                parse_generic_int(other).ok_or_else(|| SchemaError::Unknown(input.to_string()))
-            }
+            // A bare `int<N>` / `uint<N>` / `float<N>` of any width (e.g. `int24`,
+            // `uint128`, `float24`).
+            (other, None) => parse_generic_int(other)
+                .or_else(|| parse_generic_float(other))
+                .ok_or_else(|| SchemaError::Unknown(input.to_string())),
             (_, _) => Err(SchemaError::Unknown(input.to_string())),
         }
     }

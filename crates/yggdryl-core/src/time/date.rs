@@ -9,8 +9,12 @@ use crate::log_event;
 use crate::Mapping;
 
 use super::{
-    civil_from_days, days_from_civil, days_in_month, DateTime, Temporal, Time, TimeError, Timezone,
+    civil_from_days, days_from_civil, days_in_month, DateTime, Duration, Temporal, Time, TimeError,
+    Timezone,
 };
+
+/// Nanoseconds in a calendar day — used by the [`Duration`] arithmetic helpers.
+const NANOS_PER_DAY: i128 = 86_400 * 1_000_000_000;
 
 /// A calendar date with no time-of-day, optionally tagged with a [`Timezone`]
 /// (so it can name "this day in this zone"). Ordered chronologically.
@@ -122,6 +126,37 @@ impl Date {
         DateTime::from_local(self.clone(), time, self.timezone.clone())
     }
 
+    /// This date advanced by a [`Duration`]'s **whole days** (sub-day components are
+    /// truncated), keeping the timezone.
+    pub fn add(&self, span: &Duration) -> Date {
+        let days = span.as_nanos().div_euclid(NANOS_PER_DAY);
+        self.add_days(days.clamp(i32::MIN as i128, i32::MAX as i128) as i32)
+    }
+
+    /// This date moved back by a [`Duration`]'s whole days.
+    pub fn sub(&self, span: &Duration) -> Date {
+        self.add(&span.negate())
+    }
+
+    /// The signed whole-day [`Duration`] from `other` to `self` (`self - other`).
+    pub fn duration_since(&self, other: &Date) -> Duration {
+        Duration::from_nanos((self.epoch_days as i128 - other.epoch_days as i128) * NANOS_PER_DAY)
+    }
+
+    /// This date floored to a multiple of `unit` (rounded down to whole days) since
+    /// the epoch. A `unit` under one day returns the date unchanged.
+    pub fn truncate(&self, unit: &Duration) -> Date {
+        let days = unit.as_nanos().div_euclid(NANOS_PER_DAY);
+        if days <= 0 {
+            return self.clone();
+        }
+        let floored = (self.epoch_days as i128).div_euclid(days) * days;
+        Date {
+            epoch_days: floored.clamp(i32::MIN as i128, i32::MAX as i128) as i32,
+            timezone: self.timezone.clone(),
+        }
+    }
+
     /// Parses a date, flexibly: an ISO `YYYY-MM-DD`, a `YYYY/MM/DD`, a compact
     /// `YYYYMMDD`, or a full datetime string (the date part is kept, along with its
     /// timezone). The inverse of [`to_str`](Date::to_str).
@@ -129,8 +164,9 @@ impl Date {
     pub fn from_str(input: &str) -> Result<Date, TimeError> {
         log_event!(trace, "Date::from_str {input:?}");
         let value = input.trim();
+        // An empty string decodes to the epoch default (1970-01-01).
         if value.is_empty() {
-            return Err(TimeError::Empty);
+            return Ok(Date::from_epoch_days(0));
         }
         // A full datetime keeps the date (and any timezone).
         if value.contains(['T', 't']) || value.contains(' ') {
@@ -214,6 +250,11 @@ impl Temporal for Date {
         )
     }
 
+    /// The local calendar date of `value`.
+    fn from_datetime(value: &DateTime) -> Date {
+        value.date()
+    }
+
     fn to_date(&self) -> Date {
         self.clone()
     }
@@ -253,6 +294,27 @@ fn parse_ymd(value: &str) -> Option<(i32, u32, u32)> {
         return None;
     }
     Some((if negative { -year } else { year }, month, day))
+}
+
+impl std::ops::Add<Duration> for Date {
+    type Output = Date;
+    fn add(self, rhs: Duration) -> Date {
+        Date::add(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<Duration> for Date {
+    type Output = Date;
+    fn sub(self, rhs: Duration) -> Date {
+        Date::sub(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<Date> for Date {
+    type Output = Duration;
+    fn sub(self, rhs: Date) -> Duration {
+        self.duration_since(&rhs)
+    }
 }
 
 impl PartialOrd for Date {

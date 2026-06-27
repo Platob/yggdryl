@@ -221,6 +221,36 @@ test('json/bson + physical types + fixed size', () => {
   assert.ok(DataType.fixedSizeBinary(16).isFixedSize)
 })
 
+test('temporal math, empty default, from_datetime, float generic', () => {
+  // Empty string decodes to the zero default.
+  assert.strictEqual(YDate.fromStr('').toString(), '1970-01-01')
+  assert.strictEqual(DateTime.fromStr('').epochSeconds, 0)
+  assert.strictEqual(Duration.fromStr('').asSeconds(), 0)
+  // Duration scale.
+  assert.strictEqual(Duration.fromSecs(5).mul(3).asSeconds(), 15)
+  assert.strictEqual(Duration.fromSecs(20).div(5).asSeconds(), 4)
+  // DateTime arithmetic + diff + truncate.
+  const dt = DateTime.fromStr('2024-07-01T12:00:00Z')
+  const later = dt.add(Duration.fromStr('1h30m'))
+  assert.strictEqual(later.toString(), '2024-07-01T13:30:00Z')
+  assert.strictEqual(later.durationSince(dt).asSeconds(), 5400)
+  assert.strictEqual(
+    dt.add(Duration.fromStr('25m')).truncate(Duration.fromStr('1h')).toString(),
+    '2024-07-01T12:00:00Z',
+  )
+  // Time wraps around midnight; Date adds whole days.
+  assert.strictEqual(new Time(23, 30, 0).add(Duration.fromStr('1h')).toString(), '00:30:00')
+  assert.strictEqual(new YDate(2024, 7, 1).add(Duration.fromStr('2d')).toString(), '2024-07-03')
+  // Temporal.fromDatetime redirect.
+  assert.ok(YDate.fromDatetime(dt).equals(new YDate(2024, 7, 1)))
+  assert.ok(Time.fromDatetime(dt).equals(new Time(12, 0, 0)))
+  // Generic-width float.
+  assert.ok(DataType.fromStr('float24').equals(DataType.float(24)))
+  assert.ok(DataType.float().equals(DataType.float(64)))
+  assert.ok(DataType.floating().equals(DataType.float(64)))
+  assert.ok(DataType.floatFromBytes(Buffer.alloc(4)).equals(DataType.float(32)))
+})
+
 test('temporal conversions and parse', () => {
   const d = new YDate(2024, 7, 1)
   assert.strictEqual(d.toDatetime().hour, 0)

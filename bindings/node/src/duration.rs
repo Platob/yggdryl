@@ -150,6 +150,22 @@ impl Duration {
         }
     }
 
+    /// The span scaled by an integer `factor`.
+    #[napi]
+    pub fn mul(&self, factor: i64) -> Self {
+        Duration {
+            inner: self.inner.mul(factor),
+        }
+    }
+
+    /// The span divided by an integer `divisor` (dividing by zero yields zero).
+    #[napi]
+    pub fn div(&self, divisor: i64) -> Self {
+        Duration {
+            inner: self.inner.div(divisor),
+        }
+    }
+
     /// The difference of two spans.
     #[napi]
     pub fn sub(&self, other: &Duration) -> Self {

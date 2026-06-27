@@ -7,6 +7,7 @@ use napi_derive::napi;
 use yggdryl_core::{Temporal, Time as CoreTime};
 
 use crate::datetime::DateTime;
+use crate::duration::Duration;
 use crate::{err, to_mapping};
 
 /// A time of day (no date or timezone), with nanosecond resolution.
@@ -42,6 +43,14 @@ impl Time {
             .map_err(err)
     }
 
+    /// Build from a `DateTime` (its local time-of-day) — the `Temporal` redirect.
+    #[napi(factory, js_name = "fromDatetime")]
+    pub fn from_datetime(value: &DateTime) -> Self {
+        Time {
+            inner: CoreTime::from_datetime(&value.inner),
+        }
+    }
+
     #[napi(getter)]
     pub fn hour(&self) -> u32 {
         self.inner.hour()
@@ -73,6 +82,38 @@ impl Time {
     pub fn to_datetime(&self) -> DateTime {
         DateTime {
             inner: self.inner.to_datetime(),
+        }
+    }
+
+    /// This time advanced by a `Duration`, wrapping around midnight.
+    #[napi]
+    pub fn add(&self, span: &Duration) -> Self {
+        Time {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This time moved back by a `Duration`, wrapping around midnight.
+    #[napi]
+    pub fn sub(&self, span: &Duration) -> Self {
+        Time {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed within-day `Duration` from `other` to this time.
+    #[napi(js_name = "durationSince")]
+    pub fn duration_since(&self, other: &Time) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This time-of-day floored to a multiple of `unit` since midnight.
+    #[napi]
+    pub fn truncate(&self, unit: &Duration) -> Self {
+        Time {
+            inner: self.inner.truncate(&unit.inner),
         }
     }
 

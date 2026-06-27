@@ -532,6 +532,25 @@ fn flexible_integer_and_byte_decode() {
 }
 
 #[test]
+fn flexible_float_and_byte_decode() {
+    use DataType as D;
+    // Arbitrary float widths parse and round-trip.
+    assert_eq!(D::from_str("float24").unwrap(), D::float(24));
+    assert_eq!(D::from_str("float128").unwrap(), D::float(128));
+    assert_eq!(D::float(24).to_str(), "float24");
+    assert_eq!(D::from_str(&D::float(24).to_str()).unwrap(), D::float(24));
+    // Default + byte-width decode (2/4/8 bytes -> 16/32/64 bits).
+    assert_eq!(D::floating(), D::float(64));
+    assert_eq!(D::float_from_bytes(&[0u8; 2]), D::float(16));
+    assert_eq!(D::float_from_bytes(&[0u8; 4]), D::float(32));
+    assert_eq!(D::float_from_bytes(&[0u8; 8]), D::float(64));
+    assert_eq!(D::float_from_bytes(&[]), D::float(64)); // empty -> default
+                                                        // Standard widths still resolve via the explicit aliases.
+    assert_eq!(D::from_str("float32").unwrap(), D::float(32));
+    assert_eq!(D::from_str("double").unwrap(), D::float(64));
+}
+
+#[test]
 fn json_bson_and_physical_types() {
     use DataType as D;
     assert_eq!(D::from_str("json").unwrap(), D::json());
@@ -742,6 +761,15 @@ fn arrow_round_trips_every_concrete_type() {
             "arrow round-trip for {dt}"
         );
     }
+}
+
+#[cfg(feature = "arrow")]
+#[test]
+fn arrow_rejects_custom_numeric_widths() {
+    // Custom integer / float widths have no Arrow equivalent and error (not coerce).
+    assert!(DataType::int(24, true).to_arrow().is_err());
+    assert!(DataType::float(24).to_arrow().is_err());
+    assert!(DataType::int(128, false).to_arrow().is_err());
 }
 
 #[cfg(feature = "arrow")]

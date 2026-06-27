@@ -105,11 +105,12 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
 
 ## Integers, JSON/BSON & physical types
 
-Integers take **any** bit width (not just 8/16/32/64): `integer()` is the default
-`int64`, and `int_from_bytes` infers the width from a buffer's length. `Json`
-(string-backed) and `Bson` (binary-backed) are logical types, and every logical type
-reports its storage layout via `physical_type()`. Strings and binaries can be fixed-
-or variable-length (`is_fixed_size`).
+Integers **and floats** take **any** bit width (not just 8/16/32/64): `integer()` /
+`floating()` are the `int64` / `float64` defaults, and `int_from_bytes` /
+`float_from_bytes` infer the width from a buffer's length. `Json` (string-backed) and
+`Bson` (binary-backed) are logical types, and every logical type reports its storage
+layout via `physical_type()`. Strings and binaries can be fixed- or variable-length
+(`is_fixed_size`).
 
 === "Python"
 
@@ -118,8 +119,10 @@ or variable-length (`is_fixed_size`).
     D = yggdryl.DataType
 
     assert D("int24") == D.int(24)
+    assert D("float24") == D.float(24)                         # custom float width
     assert D.int() == D.int(64) and D.integer() == D.int(64)   # default width
     assert D.int_from_bytes(bytes(4)) == D.int(32)             # 4 bytes -> int32
+    assert D.float_from_bytes(bytes(8)) == D.float(64)         # 8 bytes -> float64
     assert D("json").physical_type() == D.varchar()            # logical -> physical
     assert D("bson").physical_type() == D.binary()
     assert D.date().physical_type() == D.int(32)
@@ -146,8 +149,10 @@ or variable-length (`is_fixed_size`).
     use yggdryl_schema::DataType;
 
     assert_eq!(DataType::from_str("int24")?, DataType::int(24, true));
+    assert_eq!(DataType::from_str("float24")?, DataType::float(24));
     assert_eq!(DataType::integer(), DataType::int(64, true));
     assert_eq!(DataType::int_from_bytes(&[0u8; 4], true), DataType::int(32, true));
+    assert_eq!(DataType::float_from_bytes(&[0u8; 8]), DataType::float(64));
     assert_eq!(DataType::json().physical_type(), DataType::varchar());
     assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
     assert!(DataType::fixed_size_varchar(10).is_fixed_size());

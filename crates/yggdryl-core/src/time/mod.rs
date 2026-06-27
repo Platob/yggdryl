@@ -200,20 +200,31 @@ pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
 }
 
 /// The shared interface of the point-in-time temporal types ([`Date`], [`Time`],
-/// [`DateTime`]) — every one converts to every other. The single required method
-/// is [`to_datetime`](Temporal::to_datetime); the rest derive from it.
+/// [`DateTime`]) — every one converts to and from every other. The two required
+/// methods are [`to_datetime`](Temporal::to_datetime) and
+/// [`from_datetime`](Temporal::from_datetime); the rest derive from them.
 ///
 /// ```
-/// use yggdryl_core::{Date, Temporal, Time};
+/// use yggdryl_core::{Date, DateTime, Temporal, Time};
 ///
 /// let d = Date::from_str("2024-07-01").unwrap();
 /// assert_eq!(d.to_datetime().date(), d);          // Date -> DateTime (midnight) -> Date
 /// assert_eq!(Time::from_str("13:30").unwrap().to_datetime().hour(), 13);
+/// // `from_*` redirect through `to_datetime`: build any temporal from any other.
+/// let dt = DateTime::from_str("2024-07-01T13:30:00Z").unwrap();
+/// assert_eq!(Date::from_datetime(&dt), d);
+/// assert_eq!(Time::from_temporal(&dt).hour(), 13);
 /// ```
 pub trait Temporal {
     /// Converts to an absolute [`DateTime`] (a [`Date`] becomes midnight, a [`Time`]
     /// becomes that time on the UNIX-epoch day).
     fn to_datetime(&self) -> DateTime;
+
+    /// Builds this type from an absolute [`DateTime`] — the inverse of
+    /// [`to_datetime`](Temporal::to_datetime), keeping the matching component.
+    fn from_datetime(value: &DateTime) -> Self
+    where
+        Self: Sized;
 
     /// The calendar [`Date`] component.
     fn to_date(&self) -> Date {
@@ -223,6 +234,16 @@ pub trait Temporal {
     /// The [`Time`]-of-day component.
     fn to_time(&self) -> Time {
         self.to_datetime().time()
+    }
+
+    /// Builds this type from **any** other [`Temporal`] value, redirecting through
+    /// [`to_datetime`](Temporal::to_datetime) → [`from_datetime`](Temporal::from_datetime)
+    /// to reach the correct per-type implementation.
+    fn from_temporal<T: Temporal>(value: &T) -> Self
+    where
+        Self: Sized,
+    {
+        Self::from_datetime(&value.to_datetime())
     }
 }
 

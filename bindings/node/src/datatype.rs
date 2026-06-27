@@ -78,10 +78,24 @@ impl DataType {
         wrap(CoreDataType::int_from_bytes(&data, signed.unwrap_or(true)))
     }
 
-    /// A floating-point type of `bits` width (16/32/64).
+    /// A floating-point type of `bits` width (commonly 16/32/64, but any width is
+    /// allowed; default 64).
     #[napi(factory)]
-    pub fn float(bits: u16) -> Self {
-        wrap(CoreDataType::float(bits))
+    pub fn float(bits: Option<u16>) -> Self {
+        wrap(CoreDataType::float(bits.unwrap_or(64)))
+    }
+
+    /// A float at the default width (`float64`).
+    #[napi(factory)]
+    pub fn floating() -> Self {
+        wrap(CoreDataType::floating())
+    }
+
+    /// A float type wide enough to hold a byte buffer/view (2 → `float16`, 4 →
+    /// `float32`, 8 → `float64`; empty → default `float64`).
+    #[napi(factory, js_name = "floatFromBytes")]
+    pub fn float_from_bytes(data: Uint8Array) -> Self {
+        wrap(CoreDataType::float_from_bytes(&data))
     }
 
     /// A decimal with `(precision, scale)`, stored in `bits` (default 128).

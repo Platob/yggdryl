@@ -63,8 +63,14 @@ its concern wholly — do not scatter a concern's logic across modules:
   `TimeUnit`. `Timezone` carries an **embedded POSIX-TZ DST engine** + a broad IANA
   name table (`ZONE_TABLE`), so zone/DST conversions need **no external tz database**
   (current rules only; historical transitions are not modelled). Civil math uses the
-  exact Hinnant algorithms in `mod.rs`. **All calendar/time logic lives here** — add
-  a zone by appending one `(name, posix)` row to `ZONE_TABLE`.
+  exact Hinnant algorithms in `mod.rs`. The point-in-time types do **calendar
+  arithmetic** (`add`/`sub` a `Duration`, `duration_since`, `truncate` to a `Duration`
+  boundary, with `std::ops` `+`/`-` and `Duration` `*`/`/` operators), an **empty
+  string/buffer parses to the zero default** (epoch / midnight / `0`), and the
+  `Temporal` trait is **bidirectional** — `to_datetime`/`to_date`/`to_time` plus
+  `from_datetime` (required) and a `from_temporal<T>` default that redirects through
+  `to_datetime`. **All calendar/time logic lives here** — add a zone by appending one
+  `(name, posix)` row to `ZONE_TABLE`.
 - `crates/yggdryl-schema/` — the Arrow-compatible schema layer. See its section
   below. The `arrow-schema` SDK is a dependency of this crate only.
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
@@ -206,7 +212,9 @@ A compact schema layer built to back a future dataframe, **centred on two types*
   storage primitive, identity for the rest). **Unlike Arrow, the model is
   parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
   8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`,
-  `int_from_bytes` infers the width from a buffer length), `Float{bits}`,
+  `int_from_bytes` infers the width from a buffer length), `Float{bits}` (likewise
+  **any** width — `float24` parses; `floating()` defaults to `float64`,
+  `float_from_bytes` infers the width),
   `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
   is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
   max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed

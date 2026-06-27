@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use yggdryl_core::{DateTime as CoreDateTime, Mapping, Timezone as CoreTimezone};
 
 use crate::date::Date;
+use crate::duration::Duration;
 use crate::pytime::Time;
 use crate::timezone::Timezone;
 use crate::{hash_str, time_err};
@@ -107,6 +108,14 @@ impl DateTime {
             .map_err(time_err)
     }
 
+    /// Build from another :class:`DateTime` (the identity `Temporal` redirect).
+    #[staticmethod]
+    fn from_datetime(value: &DateTime) -> Self {
+        DateTime {
+            inner: value.inner.clone(),
+        }
+    }
+
     #[getter]
     fn epoch_seconds(&self) -> i64 {
         self.inner.epoch_seconds()
@@ -120,6 +129,42 @@ impl DateTime {
     #[getter]
     fn epoch_nanos(&self) -> i128 {
         self.inner.epoch_nanos()
+    }
+
+    /// This instant advanced by a :class:`Duration` (keeping the display timezone).
+    fn add(&self, span: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This instant moved back by a :class:`Duration` (keeping the display timezone).
+    fn sub(&self, span: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed :class:`Duration` from `other` to ``self`` (``self - other``).
+    fn duration_since(&self, other: &DateTime) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This instant floored to a multiple of `unit` since the epoch (e.g. the hour).
+    fn truncate(&self, unit: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.truncate(&unit.inner),
+        }
+    }
+
+    fn __add__(&self, span: &Duration) -> Self {
+        self.add(span)
+    }
+
+    fn __sub__(&self, span: &Duration) -> Self {
+        self.sub(span)
     }
 
     #[getter]

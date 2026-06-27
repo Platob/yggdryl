@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::log_event;
 use crate::Mapping;
 
-use super::{Date, Temporal, Time, TimeError, Timezone};
+use super::{Date, Duration, Temporal, Time, TimeError, Timezone};
 
 /// An instant in time, stored as UTC epoch seconds + sub-second nanoseconds, with
 /// an optional [`Timezone`] used only for display / civil-field extraction. A naive
@@ -139,6 +139,32 @@ impl DateTime {
         self.seconds as i128 * 1_000_000_000 + self.nanos as i128
     }
 
+    /// This instant advanced by a [`Duration`] (keeping the display timezone).
+    pub fn add(&self, span: &Duration) -> DateTime {
+        DateTime::from_epoch_nanos(self.epoch_nanos() + span.as_nanos(), self.timezone.clone())
+    }
+
+    /// This instant moved back by a [`Duration`] (keeping the display timezone).
+    pub fn sub(&self, span: &Duration) -> DateTime {
+        DateTime::from_epoch_nanos(self.epoch_nanos() - span.as_nanos(), self.timezone.clone())
+    }
+
+    /// The signed [`Duration`] from `other` to `self` (`self - other`).
+    pub fn duration_since(&self, other: &DateTime) -> Duration {
+        Duration::from_nanos(self.epoch_nanos() - other.epoch_nanos())
+    }
+
+    /// This instant floored to a multiple of `unit` since the UNIX epoch (e.g.
+    /// truncate to the hour). A zero or negative `unit` returns the instant unchanged.
+    pub fn truncate(&self, unit: &Duration) -> DateTime {
+        let step = unit.as_nanos();
+        if step <= 0 {
+            return self.clone();
+        }
+        let floored = self.epoch_nanos().div_euclid(step) * step;
+        DateTime::from_epoch_nanos(floored, self.timezone.clone())
+    }
+
     /// The display timezone, or `None` if naive.
     pub fn timezone(&self) -> Option<&Timezone> {
         self.timezone.as_ref()
@@ -235,8 +261,9 @@ impl DateTime {
     pub fn from_str(input: &str) -> Result<DateTime, TimeError> {
         log_event!(trace, "DateTime::from_str {input:?}");
         let value = input.trim();
+        // An empty string decodes to the epoch default (1970-01-01T00:00:00, naive).
         if value.is_empty() {
-            return Err(TimeError::Empty);
+            return Ok(DateTime::from_epoch_seconds(0, None));
         }
         // A bare integer is epoch seconds (a compact 8-digit YYYYMMDD is a date).
         if value.bytes().all(|b| b.is_ascii_digit()) && value.len() != 8 {
@@ -328,6 +355,11 @@ impl Temporal for DateTime {
         self.clone()
     }
 
+    /// A clone of `value` (the identity conversion).
+    fn from_datetime(value: &DateTime) -> DateTime {
+        value.clone()
+    }
+
     fn to_date(&self) -> Date {
         self.date()
     }
@@ -340,6 +372,27 @@ impl Temporal for DateTime {
 impl fmt::Display for DateTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_str())
+    }
+}
+
+impl std::ops::Add<Duration> for DateTime {
+    type Output = DateTime;
+    fn add(self, rhs: Duration) -> DateTime {
+        DateTime::add(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<Duration> for DateTime {
+    type Output = DateTime;
+    fn sub(self, rhs: Duration) -> DateTime {
+        DateTime::sub(&self, &rhs)
+    }
+}
+
+impl std::ops::Sub<DateTime> for DateTime {
+    type Output = Duration;
+    fn sub(self, rhs: DateTime) -> Duration {
+        self.duration_since(&rhs)
     }
 }
 

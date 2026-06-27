@@ -6,6 +6,7 @@ use pyo3::types::PyType;
 use yggdryl_core::{Mapping, Temporal, Time as CoreTime};
 
 use crate::datetime::DateTime;
+use crate::duration::Duration;
 use crate::time_err;
 
 /// A time of day (no date or timezone), with nanosecond resolution.
@@ -41,6 +42,14 @@ impl Time {
         CoreTime::from_mapping(&fields)
             .map(|inner| Time { inner })
             .map_err(time_err)
+    }
+
+    /// Build from a :class:`DateTime` (its local time-of-day) — the `Temporal` redirect.
+    #[staticmethod]
+    fn from_datetime(value: &DateTime) -> Self {
+        Time {
+            inner: CoreTime::from_datetime(&value.inner),
+        }
     }
 
     /// Parse from the UTF-8 bytes of the canonical string.
@@ -82,6 +91,42 @@ impl Time {
         DateTime {
             inner: self.inner.to_datetime(),
         }
+    }
+
+    /// This time advanced by a :class:`Duration`, wrapping around midnight.
+    fn add(&self, span: &Duration) -> Self {
+        Time {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This time moved back by a :class:`Duration`, wrapping around midnight.
+    fn sub(&self, span: &Duration) -> Self {
+        Time {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed within-day :class:`Duration` from `other` to ``self``.
+    fn duration_since(&self, other: &Time) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This time-of-day floored to a multiple of `unit` since midnight.
+    fn truncate(&self, unit: &Duration) -> Self {
+        Time {
+            inner: self.inner.truncate(&unit.inner),
+        }
+    }
+
+    fn __add__(&self, span: &Duration) -> Self {
+        self.add(span)
+    }
+
+    fn __sub__(&self, span: &Duration) -> Self {
+        self.sub(span)
     }
 
     /// Render to a dict (``hour`` / ``minute`` / ``second`` / ``nanosecond``).

@@ -76,10 +76,25 @@ impl DataType {
         wrap(CoreDataType::int_from_bytes(&data, signed))
     }
 
-    /// A floating-point type of `bits` width (16/32/64).
+    /// A floating-point type of `bits` width (commonly 16/32/64, but any width is
+    /// allowed; default 64).
     #[staticmethod]
+    #[pyo3(signature = (bits = 64))]
     fn float(bits: u16) -> Self {
         wrap(CoreDataType::float(bits))
+    }
+
+    /// A float at the default width (``float64``).
+    #[staticmethod]
+    fn floating() -> Self {
+        wrap(CoreDataType::floating())
+    }
+
+    /// A float type wide enough to hold a ``bytes``/buffer (2 → ``float16``, 4 →
+    /// ``float32``, 8 → ``float64``; empty ⇒ default ``float64``).
+    #[staticmethod]
+    fn float_from_bytes(data: Vec<u8>) -> Self {
+        wrap(CoreDataType::float_from_bytes(&data))
     }
 
     /// A decimal with `(precision, scale)`, stored in `bits` (default 128).

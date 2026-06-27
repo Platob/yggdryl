@@ -259,6 +259,35 @@ def test_flexible_integer_json_bson_physical_fixed():
     assert D.fixed_size_binary(16).is_fixed_size
 
 
+def test_temporal_math_empty_and_float():
+    D = yggdryl.DataType
+    # Empty string decodes to the zero default.
+    assert str(yggdryl.Date.from_str("")) == "1970-01-01"
+    assert yggdryl.DateTime.from_str("").epoch_seconds == 0
+    assert yggdryl.Duration.from_str("").as_seconds() == 0
+    # Duration scale + operators.
+    assert yggdryl.Duration.from_secs(5).mul(3).as_seconds() == 15
+    assert (yggdryl.Duration.from_secs(5) * 4).as_seconds() == 20
+    assert (yggdryl.Duration.from_secs(20) / 5).as_seconds() == 4
+    assert (-yggdryl.Duration.from_secs(5)).as_seconds() == -5
+    # DateTime arithmetic + diff + truncate.
+    dt = yggdryl.DateTime.from_str("2024-07-01T12:00:00Z")
+    later = dt + yggdryl.Duration.from_str("1h30m")
+    assert str(later) == "2024-07-01T13:30:00Z"
+    assert later.duration_since(dt).as_seconds() == 5_400
+    assert str(dt.add(yggdryl.Duration.from_str("25m")).truncate(yggdryl.Duration.from_str("1h"))) == "2024-07-01T12:00:00Z"
+    # Time wraps around midnight; Date adds whole days.
+    assert str(yggdryl.Time(23, 30, 0) + yggdryl.Duration.from_str("1h")) == "00:30:00"
+    assert str(yggdryl.Date(2024, 7, 1) + yggdryl.Duration.from_str("2d")) == "2024-07-03"
+    # Temporal.from_datetime redirect.
+    assert yggdryl.Date.from_datetime(dt) == yggdryl.Date(2024, 7, 1)
+    assert yggdryl.Time.from_datetime(dt) == yggdryl.Time(12, 0, 0)
+    # Generic-width float.
+    assert D("float24") == D.float(24)
+    assert D.float() == D.float(64) and D.floating() == D.float(64)
+    assert D.float_from_bytes(bytes(4)) == D.float(32)
+
+
 def test_temporal_conversions_and_parse():
     d = yggdryl.Date(2024, 7, 1)
     assert d.to_datetime().hour == 0

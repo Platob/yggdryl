@@ -7,6 +7,7 @@ use napi_derive::napi;
 use yggdryl_core::{DateTime as CoreDateTime, Timezone as CoreTimezone};
 
 use crate::date::Date;
+use crate::duration::Duration;
 use crate::time::Time;
 use crate::timezone::Timezone;
 use crate::{err, to_mapping};
@@ -96,6 +97,14 @@ impl DateTime {
             .map_err(err)
     }
 
+    /// Build from another `DateTime` (the identity `Temporal` redirect).
+    #[napi(factory, js_name = "fromDatetime")]
+    pub fn from_datetime(value: &DateTime) -> Self {
+        DateTime {
+            inner: value.inner.clone(),
+        }
+    }
+
     #[napi(getter, js_name = "epochSeconds")]
     pub fn epoch_seconds(&self) -> i64 {
         self.inner.epoch_seconds()
@@ -110,6 +119,38 @@ impl DateTime {
     #[napi(getter, js_name = "epochNanos")]
     pub fn epoch_nanos(&self) -> BigInt {
         BigInt::from(self.inner.epoch_nanos())
+    }
+
+    /// This instant advanced by a `Duration` (keeping the display timezone).
+    #[napi]
+    pub fn add(&self, span: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This instant moved back by a `Duration` (keeping the display timezone).
+    #[napi]
+    pub fn sub(&self, span: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed `Duration` from `other` to this instant (`self - other`).
+    #[napi(js_name = "durationSince")]
+    pub fn duration_since(&self, other: &DateTime) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This instant floored to a multiple of `unit` since the epoch (e.g. the hour).
+    #[napi]
+    pub fn truncate(&self, unit: &Duration) -> Self {
+        DateTime {
+            inner: self.inner.truncate(&unit.inner),
+        }
     }
 
     #[napi(getter)]

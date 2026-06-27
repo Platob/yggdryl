@@ -244,6 +244,54 @@ lenient mode).
     assert_eq!(d.at(Time::from_hms(8, 0, 0)?).epoch_seconds(), 1_719_835_200);
     ```
 
+## Arithmetic & truncation
+
+`Duration` scales (`* int`, `/ int`) and the point-in-time types do calendar math:
+add/subtract a `Duration`, take the signed difference of two instants
+(`duration_since`), and floor to a `Duration` boundary (`truncate`, e.g. to the
+hour). An empty string also decodes to the zero default (`Date` → `1970-01-01`,
+`Duration` → `0`), and `from_datetime` builds any temporal type from a `DateTime`.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    dt = yggdryl.DateTime.from_str("2024-07-01T12:00:00Z")
+    assert str(dt + yggdryl.Duration.from_str("1h30m")) == "2024-07-01T13:30:00Z"
+    assert (dt + yggdryl.Duration.from_str("90m")).duration_since(dt).as_seconds() == 5400
+    assert str(dt.truncate(yggdryl.Duration.from_str("1h"))) == "2024-07-01T12:00:00Z"
+    assert (yggdryl.Duration.from_secs(5) * 4).as_seconds() == 20
+    assert str(yggdryl.Date.from_str("")) == "1970-01-01"           # empty -> default
+    assert yggdryl.Date.from_datetime(dt) == yggdryl.Date(2024, 7, 1)
+    ```
+
+=== "Node"
+
+    ```javascript
+    const yggdryl = require("yggdryl");
+
+    const dt = yggdryl.DateTime.fromStr("2024-07-01T12:00:00Z");
+    dt.add(yggdryl.Duration.fromStr("1h30m")).toString();   // "2024-07-01T13:30:00Z"
+    dt.truncate(yggdryl.Duration.fromStr("1h")).toString(); // "2024-07-01T12:00:00Z"
+    yggdryl.Duration.fromSecs(5).mul(4).asSeconds();        // 20
+    yggdryl.Date.fromStr("").toString();                    // "1970-01-01" (empty -> default)
+    yggdryl.Date.fromDatetime(dt).toString();               // "2024-07-01"
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{Date, DateTime, Duration, Temporal};
+
+    let dt = DateTime::from_str("2024-07-01T12:00:00Z")?;
+    assert_eq!((dt.clone() + Duration::from_str("1h30m")?).to_str(), "2024-07-01T13:30:00Z");
+    assert_eq!(dt.truncate(&Duration::from_str("1h")?).to_str(), "2024-07-01T12:00:00Z");
+    assert_eq!((Duration::from_secs(5) * 4).as_seconds(), 20);
+    assert_eq!(Date::from_str("")?.to_str(), "1970-01-01"); // empty -> default
+    assert_eq!(Date::from_datetime(&dt), Date::from_str("2024-07-01")?);
+    ```
+
 ## Next
 
 - [DataType](../schema/datatype.md) — the schema layer's temporal types reuse this

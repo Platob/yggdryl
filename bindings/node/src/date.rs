@@ -7,6 +7,7 @@ use napi_derive::napi;
 use yggdryl_core::{Date as CoreDate, Temporal, Timezone as CoreTimezone};
 
 use crate::datetime::DateTime;
+use crate::duration::Duration;
 use crate::time::Time;
 use crate::timezone::Timezone;
 use crate::{err, to_mapping};
@@ -34,6 +35,14 @@ impl Date {
         CoreDate::from_str(&value)
             .map(|inner| Date { inner })
             .map_err(err)
+    }
+
+    /// Build from a `DateTime` (its local calendar date) — the `Temporal` redirect.
+    #[napi(factory, js_name = "fromDatetime")]
+    pub fn from_datetime(value: &DateTime) -> Self {
+        Date {
+            inner: CoreDate::from_datetime(&value.inner),
+        }
     }
 
     /// Build from a count of days since the UNIX epoch.
@@ -84,6 +93,38 @@ impl Date {
     pub fn add_days(&self, days: i32) -> Self {
         Date {
             inner: self.inner.add_days(days),
+        }
+    }
+
+    /// This date advanced by a `Duration`'s whole days.
+    #[napi]
+    pub fn add(&self, span: &Duration) -> Self {
+        Date {
+            inner: self.inner.add(&span.inner),
+        }
+    }
+
+    /// This date moved back by a `Duration`'s whole days.
+    #[napi]
+    pub fn sub(&self, span: &Duration) -> Self {
+        Date {
+            inner: self.inner.sub(&span.inner),
+        }
+    }
+
+    /// The signed whole-day `Duration` from `other` to this date.
+    #[napi(js_name = "durationSince")]
+    pub fn duration_since(&self, other: &Date) -> Duration {
+        Duration {
+            inner: self.inner.duration_since(&other.inner),
+        }
+    }
+
+    /// This date floored to a multiple of `unit` (whole days) since the epoch.
+    #[napi]
+    pub fn truncate(&self, unit: &Duration) -> Self {
+        Date {
+            inner: self.inner.truncate(&unit.inner),
         }
     }
 

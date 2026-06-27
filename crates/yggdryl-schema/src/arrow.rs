@@ -107,7 +107,13 @@ impl DataType {
             Float { bits } => match bits {
                 16 => ADataType::Float16,
                 32 => ADataType::Float32,
-                _ => ADataType::Float64,
+                64 => ADataType::Float64,
+                // Arrow only has the IEEE widths; a custom width has no mapping.
+                other => {
+                    return Err(SchemaError::Unsupported(format!(
+                        "Arrow has no float{other}; use a standard width (16/32/64)"
+                    )))
+                }
             },
             Varchar {
                 large, view, size, ..

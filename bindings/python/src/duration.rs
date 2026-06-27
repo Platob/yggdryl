@@ -124,6 +124,20 @@ impl Duration {
         }
     }
 
+    /// The span scaled by an integer `factor`.
+    fn mul(&self, factor: i64) -> Self {
+        Duration {
+            inner: self.inner.mul(factor),
+        }
+    }
+
+    /// The span divided by an integer `divisor` (dividing by zero yields zero).
+    fn div(&self, divisor: i64) -> Self {
+        Duration {
+            inner: self.inner.div(divisor),
+        }
+    }
+
     fn __add__(&self, other: &Self) -> Self {
         Duration {
             inner: self.inner.add(&other.inner),
@@ -133,6 +147,24 @@ impl Duration {
     fn __sub__(&self, other: &Self) -> Self {
         Duration {
             inner: self.inner.sub(&other.inner),
+        }
+    }
+
+    fn __mul__(&self, factor: i64) -> Self {
+        Duration {
+            inner: self.inner.mul(factor),
+        }
+    }
+
+    fn __truediv__(&self, divisor: i64) -> Self {
+        Duration {
+            inner: self.inner.div(divisor),
+        }
+    }
+
+    fn __neg__(&self) -> Self {
+        Duration {
+            inner: self.inner.negate(),
         }
     }
 

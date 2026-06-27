@@ -10,6 +10,10 @@ use crate::Charset;
 /// byte-decode fallback.
 pub(crate) const DEFAULT_INT_BITS: u16 = 64;
 
+/// The default float width used by [`floating`](DataType::floating) and the
+/// byte-decode fallback.
+pub(crate) const DEFAULT_FLOAT_BITS: u16 = 64;
+
 /// The largest byte-aligned integer width that fits a `u16` (65528 bits = 8191
 /// bytes) — the clamp ceiling for [`int_from_bytes`](DataType::int_from_bytes), so an
 /// inferred width is always a whole number of bytes (`!7` clears the low 3 bits).
@@ -57,9 +61,39 @@ impl DataType {
         DataType::int(capped, signed)
     }
 
-    /// A floating-point number of `bits` width (16/32/64).
+    /// A floating-point number of `bits` width (commonly 16/32/64, but any width is
+    /// allowed for custom encodings).
     pub fn float(bits: u16) -> DataType {
         DataType::Float { bits }
+    }
+
+    /// A float at the default width (`float64`) — the no-argument constructor.
+    pub fn floating() -> DataType {
+        DataType::float(DEFAULT_FLOAT_BITS)
+    }
+
+    /// A float type wide enough to hold a `bytes.len()`-byte encoding (2 → `float16`,
+    /// 4 → `float32`, 8 → `float64`; any length maps to `bytes.len() * 8` bits). An
+    /// empty buffer falls back to the default width; an oversized buffer caps at the
+    /// largest byte-aligned width (both logged at `warn`).
+    pub fn float_from_bytes(bytes: &[u8]) -> DataType {
+        if bytes.is_empty() {
+            log_event!(
+                warn,
+                "float_from_bytes: empty buffer, defaulting to float{DEFAULT_FLOAT_BITS}"
+            );
+            return DataType::float(DEFAULT_FLOAT_BITS);
+        }
+        let wanted = (bytes.len() as u64).saturating_mul(8);
+        let capped = wanted.min(MAX_BYTE_ALIGNED_BITS as u64) as u16;
+        if (capped as u64) < wanted {
+            log_event!(
+                warn,
+                "float_from_bytes: {} bytes exceeds the max float width, capping at {capped} bits",
+                bytes.len()
+            );
+        }
+        DataType::float(capped)
     }
 
     /// A variable-length UTF-8 string (32-bit offsets, no view).
