@@ -24,6 +24,8 @@ yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features
 yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
 # The schema layer (DataType / Field) with JSON (de)serialisation and Arrow conversion.
 yggdryl-schema = { path = "../../crates/yggdryl-schema", version = "0.1.0", features = ["json", "arrow"] }
+# The Arrow-backed columnar layer (Serie) — typed columns over every DataType.
+yggdryl-serie = { path = "../../crates/yggdryl-serie", version = "0.1.0" }
 # `serde-json` lets `Io::json()`'s `serde_json::Value` cross to JS as an object.
 napi = { version = "2", default-features = false, features = ["napi8", "serde-json"] }
 napi-derive = "2"

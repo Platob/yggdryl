@@ -367,13 +367,24 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   the `child` / `child_range` constructors that build the parent→child graph;
   `materialize` detaches a child into an independent column. **All slice-graph logic
   lives here.**
+- **Surfaced in the bindings**: the column API is exposed as a single `Serie` class in
+  **both** Python (`bindings/python/src/serie.rs`) and Node (`bindings/node/src/serie.rs`)
+  — construct from a list (type inferred, or an explicit `dtype` cast) plus `range` /
+  `index` / `struct` / `binary` factories; metadata, value access (`value_at` / `to_list`),
+  `slice` / `head` / `resize`, `cast` / `categorical` / `materialize`, nested `select` /
+  `child` / `children`, `display`, and lossless `to_bytes` / `from_bytes` (pickle in
+  Python, `toJSON` / `fromJSON` over IPC-hex in Node). Per the per-language idiom rule,
+  Python infers `int64` for whole numbers while Node (JS has one number type) infers
+  `int64` only when every value is integral, else `float64`; Node builds byte columns via
+  the `Serie.binary` factory.
+- **Benchmarked**: `crates/yggdryl-serie/benches/serie.rs` (`cargo bench -p yggdryl-serie
+  --bench serie`), with results in `benchmarks/README.md` and the docs Benchmarks page.
 - **Still to build** (next increments): the **union** nested type, the **dictionary** /
-  **view** backends, a **`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, cast /
-  arithmetic operations, **benchmarks**, and the **Python / Node bindings** (not yet
-  surfaced — the cross-language rule applies once the Rust base settles).
+  **view** backends, a **`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, and
+  arithmetic operations.
 
-Features: `log` only so far (`arrow-array` is required, not optional). **All serie logic
-lives here; `arrow-array` stays a dependency of this crate only.**
+Features: `log` only so far (`arrow-array` / `arrow-ipc` are required, not optional).
+**All serie logic lives here; `arrow-array` stays a dependency of this crate only.**
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 

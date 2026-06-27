@@ -7,11 +7,49 @@ Apache **Arrow** array holding the values, so a column carries both its logical 
 and its physical storage. Columns can also be **lazy** (computed on demand) or
 **children** (zero-copy slices that remember their parent).
 
-!!! note "Rust core first"
+!!! note "Available in all three languages"
     `yggdryl-serie` is the Arrow-backed foundation a `Frame` / `LazyFrame` /
-    `ParquetFrame` will build on. The examples below are the Rust API; the **Python
-    and Node bindings are planned** and this page will gain synced language tabs once
-    they land.
+    `ParquetFrame` will build on. The column API is surfaced in **Python** and **Node**
+    as a single `Serie` class (build from a list, read by index, slice / resize / cast,
+    navigate nested children, round-trip through bytes) as well as the Rust core. The
+    Rust API exposes the richer concrete-series internals (typed downcasts, the slice
+    graph) directly.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", [1, None, 3])
+    assert len(s) == 3 and s.null_count == 1
+    assert str(s.data_type) == "int64"
+    assert s[0] == 1 and s[1] is None
+    assert s.cast("float64")[0] == 1.0
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', [1, null, 3])
+    // numbers infer int64 when all integral (JS has no int type)
+    if (s.numRows !== 3 || s.nullCount !== 1) throw new Error('shape')
+    if (s.dataType.toString() !== 'int64') throw new Error('type')
+    if (s.get(0) !== 1 || s.get(1) !== null) throw new Error('values')
+    if (s.cast('float64').get(0) !== 1) throw new Error('cast')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, Scalar, Serie};
+
+    let s = Int32Serie::from_values("n", vec![Some(1), None, Some(3)]);
+    assert_eq!(s.num_rows(), 3);
+    assert_eq!(s.null_count(), 1);
+    assert_eq!(s.value_at(0), Scalar::Int(1));
+    ```
 
 ## The model
 
@@ -66,9 +104,51 @@ right concrete series and return a boxed `SerieRef`.
 
 ## Creating series — one line per type
 
-Every concrete series has a `from_values(name, values)` one-liner; nested and lazy
-columns have purpose-built constructors. `from_array(name, arrow_array)` is the
-universal fallback for *any* Arrow array.
+In the bindings a single `Serie` builds any column from a list (the type is inferred,
+or pass a `dtype`), with `range` / `index` / `struct` / `binary` factories for the rest.
+In Rust each concrete series has a `from_values(name, values)` one-liner; `from_array`
+is the universal fallback for *any* Arrow array.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    ints = yggdryl.Serie("i", [1, None, 3])                 # int64
+    floats = yggdryl.Serie("f", [1.5, 2.5])                 # float64
+    flags = yggdryl.Serie("b", [True, False])               # bool
+    text = yggdryl.Serie("s", ["a", "b"])                   # utf8
+    small = yggdryl.Serie("i8", [1, 2, 3], dtype="int8")    # explicit dtype
+
+    rng = yggdryl.Serie.range(100)                          # lazy 0..100
+    idx = yggdryl.Serie.index(100)                          # lazy row index
+    rec = yggdryl.Serie.struct("rec", [                     # nested, one line
+        yggdryl.Serie("id", [1, 2]),
+        yggdryl.Serie("name", ["a", "b"]),
+    ])
+    cat = yggdryl.Serie("c", ["a", "b", "a"]).categorical() # dictionary-encoded
+    assert rec.children()[0].name == "id"
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const ints = new Serie('i', [1, null, 3])               // int64 (all integral)
+    const floats = new Serie('f', [1.5, 2.5])               // float64
+    const flags = new Serie('b', [true, false])             // bool
+    const text = new Serie('s', ['a', 'b'])                 // utf8
+    const small = new Serie('i8', [1, 2, 3], 'int8')        // explicit dtype
+
+    const rng = Serie.range(100)                            // lazy 0..100
+    const idx = Serie.index(100)                            // lazy row index
+    const rec = Serie.struct('rec', [                       // nested, one line
+      new Serie('id', [1, 2]),
+      new Serie('name', ['a', 'b']),
+    ])
+    const cat = new Serie('c', ['a', 'b', 'a']).categorical() // dictionary-encoded
+    ```
 
 === "Rust"
 
@@ -327,9 +407,31 @@ into a flat column.
 ## Cast
 
 `cast(dtype)` converts a column's values (Arrow's cast kernel — including lossy /
-narrowing casts, which yield null on overflow); `cast_field(field)` casts and re-fields
-in one step. A **struct → struct** cast matches children by name, casts each, **fills
-missing** target columns (null if nullable, else the type default) and drops extras.
+narrowing casts, which yield null on overflow). A **struct → struct** cast matches
+children by name, casts each, **fills missing** target columns (null if nullable, else
+the type default) and drops extras. `dtype` is a `DataType` or a type string.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    ints = yggdryl.Serie("n", [1, 2, 3])
+    assert ints.cast("float64")[0] == 1.0
+    big = yggdryl.Serie("n", [1000, 5]).cast("int8")    # narrowing
+    assert big[0] is None                               # 1000 overflows int8
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const ints = new Serie('n', [1, 2, 3])
+    if (ints.cast('float64').get(0) !== 1) throw new Error('cast')
+    const big = new Serie('n', [1000, 5]).cast('int8')  // narrowing
+    if (big.get(0) !== null) throw new Error('overflow') // 1000 overflows int8
+    ```
 
 === "Rust"
 
@@ -391,7 +493,37 @@ case-insensitive fallback). A path segment may be **wrapped** (`[name]`, `"name"
 numeric segment is a child index. The path is **parsed first**, so `select` returns
 `Result<Option<…>>`: a malformed path (unclosed wrapper, empty segment) is an error,
 while a well-formed path that does not resolve — a missing child, or a leaf column — is
-`Ok(None)`.
+`Ok(None)` (`None` in the bindings); a malformed path raises.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    rec = yggdryl.Serie.struct("rec", [
+        yggdryl.Serie.struct("inner", [yggdryl.Serie("a", [1, 2])]),
+        yggdryl.Serie("Label", ["x", "y"]),
+    ])
+    assert rec.select("inner.a")[1] == 2          # node path
+    assert rec.select("label").name == "Label"    # case-insensitive
+    assert rec.child(0).name == "inner"           # by index
+    assert rec.select("inner.zzz") is None        # unresolved
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const rec = Serie.struct('rec', [
+      Serie.struct('inner', [new Serie('a', [1, 2])]),
+      new Serie('Label', ['x', 'y']),
+    ])
+    if (rec.select('inner.a').get(1) !== 2) throw new Error('path')
+    if (rec.select('label').name !== 'Label') throw new Error('ci')
+    if (rec.child(0).name !== 'inner') throw new Error('index')
+    if (rec.select('inner.zzz') !== null) throw new Error('unresolved')
+    ```
 
 === "Rust"
 
@@ -437,9 +569,34 @@ block for a future `Frame`'s table. Parameters: `max_rows`, `header`, `width`, `
 
 ## Serialize
 
-`Serie::to_bytes` writes the column as an **Arrow IPC stream** and `from_bytes` reads it
-back — a **lossless** round-trip of the type, name, nulls and values, *including nested*
-columns. This is the canonical bytes form (the bindings' pickle / `toJSON` use it).
+`to_bytes` writes the column as an **Arrow IPC stream** and `from_bytes` reads it back —
+a **lossless** round-trip of the type, name, nulls and values, *including nested*
+columns. This is the canonical bytes form: Python `pickle` / `copy` and Node
+`toJSON` / `fromJSON` go through it, so any column round-trips faithfully.
+
+=== "Python"
+
+    ```python
+    import copy, pickle, yggdryl
+
+    s = yggdryl.Serie("n", [1, None, 3])
+    assert yggdryl.Serie.from_bytes(s.to_bytes()).to_list() == [1, None, 3]
+    assert pickle.loads(pickle.dumps(s)).to_list() == [1, None, 3]   # via IPC bytes
+    rec = yggdryl.Serie.struct("rec", [yggdryl.Serie("a", [1, 2])])
+    assert copy.copy(rec).select("a").to_list() == [1, 2]            # nested too
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', [1, null, 3])
+    const back = Serie.fromBytes(s.toBytes())
+    if (back.toList().join() !== '1,,3') throw new Error('bytes')
+    const json = JSON.stringify(s)                       // lossless via IPC hex
+    if (Serie.fromJSON(JSON.parse(json)).get(2) !== 3) throw new Error('json')
+    ```
 
 === "Rust"
 
@@ -465,10 +622,12 @@ and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **
 `materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` /
 `DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`,
 `CategoricalSerie` (dictionary-encoded), the `TemporalSerie` / `NestedSerie` traits, the
-`SliceSerie` graph, `cast` / `resize` / `display`, and a per-datatype default
-(`Scalar::default_for`) round it out. The **union** nested type, the **view** backend, a
-**`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, arithmetic operations, **benchmarks**
-and the **Python / Node bindings** are the next increments.
+`SliceSerie` graph, `cast` / `resize` / `display`, lossless Arrow-IPC `to_bytes` /
+`from_bytes`, and a per-datatype default (`Scalar::default_for`) round it out. The column
+API is **surfaced in the Python and Node bindings** (a single `Serie` class) and covered
+by [benchmarks](../benchmarks.md#serie-the-columnar-layer). The **union** nested type, the
+**view** backend, a **`ChunkedSerie`** mirroring Arrow's `ChunkedArray` and arithmetic
+operations are the next increments.
 
 ## Next
 

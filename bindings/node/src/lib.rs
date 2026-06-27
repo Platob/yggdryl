@@ -18,6 +18,7 @@ mod iostats;
 mod localpath;
 mod media;
 mod mime;
+mod serie;
 mod time;
 mod timezone;
 mod uri;
