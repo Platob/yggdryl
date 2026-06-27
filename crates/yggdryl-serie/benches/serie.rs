@@ -179,4 +179,17 @@ fn main() {
     bench("StructSerie::to_record_batch", n / 200, || {
         black_box(black_box(&rec).to_record_batch().unwrap());
     });
+
+    // ---- value mutation (functional rebuild) ----
+    let value = yggdryl_scalar::IntScalar::new(42, 32, true);
+    bench("Serie::set_at (int32, 4096)", n / 500, || {
+        black_box(
+            black_box(&int_serie)
+                .set_at(black_box(2000), black_box(&value), true)
+                .unwrap(),
+        );
+    });
+    bench("Serie::push (int32, 4096)", n / 500, || {
+        black_box(black_box(&int_serie).push(black_box(&value), true).unwrap());
+    });
 }

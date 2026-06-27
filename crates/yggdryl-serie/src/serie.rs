@@ -270,13 +270,14 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// value is cast to the column type; otherwise it is used as-is (and a type mismatch
     /// surfaces from the caller's `concat`).
     fn cell_array(&self, value: &dyn AtomicScalar, safe: bool) -> SerieResult<ArrayRef> {
-        let cell = if safe {
-            value.cast(self.data_type())?
+        // `safe` casts the value to the column type; otherwise it is rendered as-is (and a
+        // type mismatch surfaces from the caller's `concat`).
+        let array = if safe {
+            value.cast(self.data_type())?.to_array()?
         } else {
-            // No cast: render the value directly (its type must match the column).
-            return Ok(value.to_array()?);
+            value.to_array()?
         };
-        Ok(cell.to_array()?)
+        Ok(array)
     }
 
     /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it

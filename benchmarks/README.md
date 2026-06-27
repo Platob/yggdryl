@@ -226,6 +226,19 @@ branch-only, so a per-batch / per-column scan over many columns is essentially f
 | dictionary decode — `CategoricalSerie::materialize` | 19 µs |
 | dictionary encode — `CategoricalSerie::from_serie` (4096 rows, 8 distinct) | 59 µs |
 
+The **frame** (a struct column *is* a DataFrame) and the functional **value mutators**:
+
+| workload | result |
+| --- | --- |
+| frame projection — `StructSerie::select_columns` | 119 ns |
+| frame row record — `StructSerie::row` → `StructScalar` | 326 ns |
+| frame → Arrow — `StructSerie::to_record_batch` | 312 ns |
+| value mutate — `Serie::push` (int32, 4096) | 826 ns |
+| value mutate — `Serie::set_at` (int32, 4096) | 1.0 µs |
+| schema-cast projection — `StructSerie::select_fields` (cast a column, 4096) | 2.7 µs |
+| frame row filter — `StructSerie::filter` (4096) | 18 µs |
+| frame sort — `StructSerie::sort_by` (4096) | 24 µs |
+
 Value access has **two tiers**: the typed `value` / `get` is sub-nanosecond — use it in
 hot loops — while the type-erased `value_at → Scalar` pays a dynamic match + downcast
 (~12 ns, read straight off the concrete column's typed array — no per-row `array()`
