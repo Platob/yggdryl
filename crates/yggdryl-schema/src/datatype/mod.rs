@@ -14,6 +14,7 @@ use crate::{Charset, Field};
 use yggdryl_core::{TimeUnit, Timezone};
 
 mod coerce;
+mod intern;
 mod logical;
 mod nested;
 mod numeric;
@@ -263,6 +264,12 @@ pub enum DataType {
     /// A BSON document — a binary-backed logical type (its physical type is a
     /// [`Binary`](DataType::Binary)).
     Bson,
+    /// A timezone value (a column of zone names like `"UTC"` / `"America/New_York"`) —
+    /// a string-backed logical type. Its physical type is a [`Varchar`](DataType::Varchar)
+    /// and its Arrow equivalent is `Utf8` (the logical name is not recovered on
+    /// `from_arrow`, like [`Json`](DataType::Json)). Distinct from the optional display
+    /// timezone an attribute carries on a [`Timestamp`](DataType::Timestamp).
+    Timezone,
 
     // ---- nested ----
     /// A list of the `item` field. `large` uses 64-bit offsets, `view` the view
@@ -443,6 +450,7 @@ impl DataType {
             Dictionary { key, .. } => key.physical_type(),
             Json => DataType::varchar(),
             Bson => DataType::binary(),
+            Timezone => DataType::varchar(),
             other => other.clone(),
         }
     }
@@ -760,6 +768,7 @@ impl DataType {
             ("varchar" | "nvarchar" | "string" | "clob", Some(a)) => parse_varchar(a, input, false),
             ("json" | "jsonb", None) => Ok(DataType::Json),
             ("bson", None) => Ok(DataType::Bson),
+            ("timezone" | "tz", None) => Ok(DataType::Timezone),
             ("binary" | "bytea" | "blob" | "varbinary", None) => Ok(DataType::binary()),
             ("varbinary", Some(_)) => Ok(DataType::binary()),
             ("large_binary", None) => Ok(DataType::Binary {
@@ -977,6 +986,7 @@ impl DataType {
             }
             Json => "json".to_string(),
             Bson => "bson".to_string(),
+            Timezone => "timezone".to_string(),
             List {
                 item,
                 large,

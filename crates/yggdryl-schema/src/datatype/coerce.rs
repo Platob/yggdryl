@@ -90,11 +90,14 @@ impl DataType {
             // Run-end encoding is transparent to casting, like a dictionary.
             (RunEndEncoded { values, .. }, b) => values.can_cast_to(b),
             (a, RunEndEncoded { values, .. }) => a.can_cast_to(values),
-            // Json <-> string and Bson <-> binary cast through their physical type.
+            // Json <-> string, Bson <-> binary and Timezone <-> string cast through
+            // their physical type.
             (a, b) if a.is_json() && b.is_string() => true,
             (a, b) if a.is_string() && b.is_json() => true,
             (a, b) if a.is_bson() && b.is_binary() => true,
             (a, b) if a.is_binary() && b.is_bson() => true,
+            (a, b) if a.is_timezone() && b.is_string() => true,
+            (a, b) if a.is_string() && b.is_timezone() => true,
             (List { item: a, .. }, List { item: b, .. }) => {
                 a.data_type().can_cast_to(b.data_type())
             }
@@ -255,9 +258,10 @@ impl DataType {
             (RunEndEncoded { values, .. }, t) | (t, RunEndEncoded { values, .. }) => {
                 values.common_type(t)
             }
-            // Json / Bson widen to their physical string / binary supertype.
+            // Json / Bson / Timezone widen to their physical string / binary supertype.
             (Json, t) | (t, Json) if t.is_string() => Some(t.clone()),
             (Bson, t) | (t, Bson) if t.is_binary() => Some(t.clone()),
+            (Timezone, t) | (t, Timezone) if t.is_string() => Some(t.clone()),
             _ => None,
         }
     }

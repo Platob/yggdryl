@@ -590,6 +590,41 @@ fn json_bson_and_physical_types() {
 }
 
 #[test]
+fn timezone_logical_type() {
+    use DataType as D;
+    assert_eq!(D::from_str("timezone").unwrap(), D::Timezone);
+    assert_eq!(D::from_str("tz").unwrap(), D::Timezone);
+    assert_eq!(D::Timezone.to_str(), "timezone");
+    assert!(D::Timezone.is_timezone() && D::Timezone.is_logical());
+    assert_eq!(D::Timezone.category(), TypeCategory::Logical);
+    assert_eq!(D::Timezone.physical_type(), D::varchar());
+    assert_eq!(D::from_bytes(&D::Timezone.to_bytes()).unwrap(), D::Timezone);
+    // casts / merges with its string physical type, like json.
+    assert!(D::Timezone.can_cast_to(&D::varchar()) && D::varchar().can_cast_to(&D::Timezone));
+    assert_eq!(D::Timezone.common_type(&D::varchar()), Some(D::varchar()));
+    // a Timezone *value* type is distinct from a Timestamp's display timezone attribute.
+    assert!(D::timestamp(TimeUnit::Microsecond, None)
+        .timezone()
+        .is_none());
+}
+
+#[test]
+fn datatype_interning() {
+    use std::sync::Arc;
+    use DataType as D;
+    let a = D::int(32, true).interned();
+    let b = D::int(32, true).interned();
+    assert!(Arc::ptr_eq(&a, &b)); // same shared allocation
+    assert_eq!(*a, D::int(32, true));
+    // a different type interns to its own shared allocation, stable across calls.
+    let c = D::varchar().interned();
+    let d = D::varchar().interned();
+    assert!(Arc::ptr_eq(&c, &d));
+    assert!(!Arc::ptr_eq(&a, &c));
+    assert_eq!(*c, D::varchar());
+}
+
+#[test]
 fn fixed_size_string_and_binary() {
     use DataType as D;
     // char(n) is fixed; varchar(n) stays variable (the length is a max hint).
