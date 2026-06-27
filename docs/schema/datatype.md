@@ -183,8 +183,12 @@ type across batches — `"strict"` (must match), `"promote"` (widen, else error)
 
 Every type round-trips through a string, a component map, JSON and bytes, and is
 hashable (`pickle` in Python, `JSON.stringify` in Node, `serde` in Rust). In Rust,
-the `arrow` feature adds lossless `to_arrow` / `from_arrow` conversion to
-`arrow-schema`.
+the `arrow` feature adds `to_arrow` / `from_arrow` conversion to `arrow-schema`. The
+mapping is structural and near-total — a few attributes the simplified model does not
+carry are normalised rather than preserved on the round-trip: a non-UTF-8 charset
+maps to UTF-8, a union's type ids are reassigned `0, 1, …`, a map's key/value
+entry-field nullability follows the Arrow convention, and an unrecognised Arrow
+timestamp timezone falls back to UTC (with a `warn` log).
 
 === "Python"
 

@@ -82,7 +82,7 @@ impl DateTime {
     #[napi(factory, js_name = "fromEpochNanos")]
     pub fn from_epoch_nanos(nanos: BigInt, timezone: Option<String>) -> Result<Self> {
         Ok(DateTime {
-            inner: CoreDateTime::from_epoch_nanos(nanos.get_i128().0, zone(timezone)?),
+            inner: CoreDateTime::from_epoch_nanos(crate::bigint_i128(nanos)?, zone(timezone)?),
         })
     }
 

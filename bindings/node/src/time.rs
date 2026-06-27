@@ -61,6 +61,12 @@ impl Time {
         self.inner.nanosecond()
     }
 
+    /// Nanoseconds since midnight (a BigInt, matching the nanos convention).
+    #[napi(getter, js_name = "nanosOfDay")]
+    pub fn nanos_of_day(&self) -> BigInt {
+        BigInt::from(self.inner.nanos_of_day())
+    }
+
     /// This time of day on the UNIX-epoch day as a naive `DateTime`.
     #[napi(js_name = "toDatetime")]
     pub fn to_datetime(&self) -> DateTime {

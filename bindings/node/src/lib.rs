@@ -46,6 +46,20 @@ pub(crate) fn err<E: std::fmt::Display>(error: E) -> Error {
     Error::from_reason(error.to_string())
 }
 
+/// Converts a JS `BigInt` to an `i128`, throwing if the value does not fit (rather
+/// than silently truncating, the way `get_i128().0` would). Shared by the
+/// nanosecond-valued constructors.
+pub(crate) fn bigint_i128(value: BigInt) -> Result<i128> {
+    let (signed, lossless) = value.get_i128();
+    if lossless {
+        Ok(signed)
+    } else {
+        Err(Error::from_reason(
+            "BigInt value does not fit in a signed 128-bit integer",
+        ))
+    }
+}
+
 /// Maps a `whence` integer (`0` start, `1` current, `2` end) to the core
 /// [`Whence`], throwing on any other value. Shared by the seekable IO types.
 pub(crate) fn whence_from(whence: u8) -> Result<Whence> {

@@ -270,6 +270,14 @@ impl DataType {
             .map(|inner| Timezone { inner })
     }
 
+    /// The `[precision, scale]` of a decimal type, else null.
+    #[napi(getter, js_name = "decimalParts")]
+    pub fn decimal_parts(&self) -> Option<Vec<i32>> {
+        self.inner
+            .decimal_parts()
+            .map(|(p, s)| vec![p as i32, s as i32])
+    }
+
     /// The child `Field` list of a nested type.
     #[napi]
     pub fn children(&self) -> Vec<Field> {
@@ -288,6 +296,10 @@ impl DataType {
     #[napi(js_name = "isNull")]
     pub fn is_null(&self) -> bool {
         self.inner.is_null()
+    }
+    #[napi(js_name = "isBoolean")]
+    pub fn is_boolean(&self) -> bool {
+        self.inner.is_boolean()
     }
     #[napi(js_name = "isInteger")]
     pub fn is_integer(&self) -> bool {
@@ -333,6 +345,10 @@ impl DataType {
     pub fn is_decimal(&self) -> bool {
         self.inner.is_decimal()
     }
+    #[napi(js_name = "isDictionary")]
+    pub fn is_dictionary(&self) -> bool {
+        self.inner.is_dictionary()
+    }
     #[napi(js_name = "isNested")]
     pub fn is_nested(&self) -> bool {
         self.inner.is_nested()
@@ -344,6 +360,10 @@ impl DataType {
     #[napi(js_name = "isStruct")]
     pub fn is_struct(&self) -> bool {
         self.inner.is_struct()
+    }
+    #[napi(js_name = "isUnion")]
+    pub fn is_union(&self) -> bool {
+        self.inner.is_union()
     }
     #[napi(js_name = "isMap")]
     pub fn is_map(&self) -> bool {

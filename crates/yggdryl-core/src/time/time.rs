@@ -135,9 +135,14 @@ impl Time {
             return Err(TimeError::Invalid(input.to_string()));
         }
         let nano = match frac {
-            Some(frac) if frac.bytes().all(|b| b.is_ascii_digit()) && !frac.is_empty() => {
+            // Nanosecond resolution caps the fraction at 9 digits; a longer fraction
+            // would silently lose precision, so reject it rather than truncate.
+            Some(frac)
+                if frac.len() <= 9
+                    && !frac.is_empty()
+                    && frac.bytes().all(|b| b.is_ascii_digit()) =>
+            {
                 let mut digits = frac.to_string();
-                digits.truncate(9);
                 while digits.len() < 9 {
                     digits.push('0');
                 }

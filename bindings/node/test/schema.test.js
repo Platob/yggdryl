@@ -26,6 +26,14 @@ test('datatype accessors and categories', () => {
   assert.strictEqual(DataType.varchar('latin1').charset, 'latin1')
   assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timeUnit, 'ns')
   assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timezone.name, 'Asia/Tokyo')
+  assert.deepStrictEqual(DataType.decimal(10, 2).decimalParts, [10, 2])
+  assert.strictEqual(DataType.int(32).decimalParts, null)
+})
+
+test('datatype predicate parity', () => {
+  assert.ok(DataType.boolean().isBoolean())
+  assert.ok(DataType.dictionary(DataType.int(32), DataType.varchar()).isDictionary())
+  assert.ok(DataType.union([new Field('a', DataType.int(32))]).isUnion())
 })
 
 test('datatype predicates and children', () => {
@@ -79,6 +87,17 @@ test('field surface and metadata', () => {
   assert.strictEqual(m.removeMetadata('unit'), 'count')
   assert.ok(Field.fromMapping(f.toMapping()).equals(f))
   assert.ok(Field.fromJSON(f.toJSON()).equals(f))
+  // builders: withMetadata / withoutMetadata / copy.
+  const withMeta = new Field('id', DataType.int(64)).withMetadata({ a: '1', b: '2' })
+  assert.strictEqual(withMeta.getMetadata('a'), '1')
+  assert.deepStrictEqual(withMeta.withoutMetadata().metadata, {})
+  const copied = f.copy(undefined, undefined, true, undefined)
+  assert.ok(copied.nullable)
+  assert.strictEqual(copied.comment, 'pk')
+  // setParent (in place).
+  const child = new Field('c', DataType.int(8))
+  child.setParent(new Field('root', DataType.struct([])))
+  assert.strictEqual(child.parent.name, 'root')
 })
 
 test('field graph', () => {
@@ -119,6 +138,12 @@ test('time and duration', () => {
   assert.strictEqual(d.toString(), '1h30m')
   assert.strictEqual(Duration.fromUnit(500, 'ms').asNanos(), 500000000n)
   assert.ok(Duration.fromSecs(-5).isNegative)
+  // asMillis / asMicros / fromMicros parity.
+  assert.strictEqual(Duration.fromSecs(2).asMillis(), 2000n)
+  assert.strictEqual(Duration.fromMicros(1500).asMicros(), 1500n)
+  assert.strictEqual(Duration.fromMicros(1500).asNanos(), 1500000n)
+  // Time.nanosOfDay (BigInt).
+  assert.strictEqual(new Time(0, 0, 1).nanosOfDay, 1000000000n)
 })
 
 test('timezone dst', () => {
@@ -146,6 +171,20 @@ test('sql and hive parsing', () => {
   assert.strictEqual(Field.fromStr('col struct<a: str>').name, 'col')
   assert.strictEqual(Field.fromStr('"my col": int64').name, 'my col')
   assert.strictEqual(Field.fromStr('`qty` int64').name, 'qty')
+})
+
+test('schema grammar and coercion edge cases', () => {
+  // A raw POSIX timezone keeps its embedded commas through the timestamp grammar.
+  const ts = DataType.fromStr('timestamp[us, EST5EDT,M3.2.0,M11.1.0]')
+  assert.strictEqual(ts.timezone.name, 'EST5EDT,M3.2.0,M11.1.0')
+  assert.ok(DataType.fromStr(ts.toString()).equals(ts))
+  // Differing interval units widen to month_day_nano (no calendar field dropped).
+  const ym = DataType.fromStr('interval[year_month]')
+  const dtv = DataType.fromStr('interval[day_time]')
+  assert.ok(ym.commonType(dtv).equals(DataType.fromStr('interval[month_day_nano]')))
+  // map rejects extra args; stray brackets in a name are rejected.
+  assert.throws(() => DataType.fromStr('map[utf8, int64, nope]'))
+  assert.throws(() => DataType.fromStr('struct[a]: int]'))
 })
 
 test('temporal conversions and parse', () => {

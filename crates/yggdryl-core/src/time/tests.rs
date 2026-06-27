@@ -304,6 +304,70 @@ fn duration_iso8601() {
 }
 
 #[test]
+fn timezone_cairo_last_friday_dst() {
+    // Africa/Cairo starts DST on the *last* Friday of April at 00:00 (rule
+    // `M4.5.5/0`). In a five-Friday April (2021: 2/9/16/23/30) the switch is the
+    // 30th, so the 24th is still EET (+2) — a week-4 rule would wrongly read +3.
+    let cairo = Timezone::from_str("Africa/Cairo").unwrap();
+    assert_eq!(cairo.offset_seconds(utc(2024, 1, 15, 12, 0)), 2 * 3600); // EET
+    assert_eq!(cairo.offset_seconds(utc(2024, 7, 15, 12, 0)), 3 * 3600); // EEST
+    assert_eq!(cairo.offset_seconds(utc(2021, 4, 24, 12, 0)), 2 * 3600); // before last Fri
+    assert_eq!(cairo.offset_seconds(utc(2021, 5, 1, 12, 0)), 3 * 3600); // after
+}
+
+#[test]
+fn datetime_from_local_dst_fold_and_gap() {
+    let ny = Timezone::from_str("America/New_York").unwrap();
+    // Autumn fold: 2024-11-03 01:30 occurs twice; fold=0 keeps the earlier instant
+    // (still EDT, -4h), and the reading is self-consistent.
+    let fold = DateTime::from_ymd_hms(2024, 11, 3, 1, 30, 0, 0, Some(ny.clone())).unwrap();
+    assert_eq!((fold.hour(), fold.minute()), (1, 30));
+    assert_eq!(fold.offset_seconds(), -4 * 3600);
+    assert_eq!(
+        fold.offset_seconds(),
+        ny.offset_seconds(fold.epoch_seconds())
+    );
+    // Spring gap: 2024-03-10 02:30 does not exist; the pre-transition (EST) offset
+    // is used, so the instant lands after the jump and displays 03:30 EDT — but the
+    // stored offset is consistent with the instant (no inconsistent flip).
+    let gap = DateTime::from_ymd_hms(2024, 3, 10, 2, 30, 0, 0, Some(ny.clone())).unwrap();
+    assert_eq!((gap.hour(), gap.minute()), (3, 30));
+    assert_eq!(gap.offset_seconds(), ny.offset_seconds(gap.epoch_seconds()));
+}
+
+#[test]
+fn date_extreme_year_out_of_range() {
+    // A year whose epoch-day count overflows the i32 storage is rejected, not wrapped.
+    assert!(Date::from_ymd(i32::MAX, 1, 1).is_err());
+    assert!(Date::from_ymd(i32::MIN, 12, 31).is_err());
+    // add_days saturates rather than panicking at the bounds.
+    let near_max = Date::from_epoch_days(i32::MAX - 1);
+    assert_eq!(near_max.add_days(100).epoch_days(), i32::MAX);
+}
+
+#[test]
+fn duration_rejects_double_sign() {
+    assert!(Duration::from_str("--5").is_err());
+    assert!(Duration::from_str("+-5").is_err());
+    assert!(Duration::from_str("-+5").is_err());
+    assert_eq!(Duration::from_str("-5").unwrap().as_seconds(), -5);
+    assert_eq!(Duration::from_str("+5").unwrap().as_seconds(), 5);
+}
+
+#[test]
+fn time_rejects_overlong_and_signed_components() {
+    // More than nanosecond precision (10 fractional digits) is rejected, not truncated.
+    assert!(Time::from_str("12:00:00.1234567890").is_err());
+    assert_eq!(
+        Time::from_str("12:00:00.123456789").unwrap().nanosecond(),
+        123_456_789
+    );
+    // A stray sign inside a date component is rejected, not silently parsed.
+    assert!(Date::from_str("2024-+3-01").is_err());
+    assert!(Date::from_str("2024-03-+1").is_err());
+}
+
+#[test]
 fn datetime_convert_helper() {
     let utc = DateTime::from_str("2024-07-01T12:00:00Z").unwrap();
     assert_eq!(utc.convert("Asia/Tokyo").unwrap().hour(), 21);

@@ -407,6 +407,34 @@ fn split_top_level(input: &str, sep: char) -> Vec<&str> {
     parts
 }
 
+/// Whether every bracket in `input` is balanced and never closes before it opens
+/// — bracket characters inside a `"`/`'`/`` ` `` quoted name are ignored. Catches
+/// stray closers (`struct[a]: int]`) that the depth-saturating scanners would
+/// otherwise absorb into a name.
+fn brackets_balanced(input: &str) -> bool {
+    let mut depth: i32 = 0;
+    let mut quote: Option<char> = None;
+    for ch in input.chars() {
+        match quote {
+            Some(q) => {
+                if ch == q {
+                    quote = None;
+                }
+            }
+            None if matches!(ch, '"' | '\'' | '`') => quote = Some(ch),
+            None if is_open_bracket(ch) => depth += 1,
+            None if is_close_bracket(ch) => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            None => {}
+        }
+    }
+    depth == 0 && quote.is_none()
+}
+
 /// The byte index of the first top-level occurrence of `target` (across all bracket
 /// kinds).
 fn top_level_index(input: &str, target: char) -> Option<usize> {
@@ -559,6 +587,9 @@ impl DataType {
         if input.is_empty() {
             return Err(SchemaError::Empty);
         }
+        if !brackets_balanced(input) {
+            return Err(SchemaError::Invalid(input.to_string()));
+        }
         // The argument group may be bracketed with `[ ]` (canonical), `( )` (SQL) or
         // `< >` (Hive), e.g. `varchar(255)`, `struct<a: int>`, `decimal[10, 2]`.
         let (head, args) = match input.find(['[', '(', '<']) {
@@ -667,9 +698,16 @@ impl DataType {
                 timezone: Some(Timezone::Utc),
             }),
             ("timestamp" | "datetime" | "timestamptz", Some(a)) => {
-                let parts = split_top_level(a, ',');
-                let unit = parse_unit_or_precision(parts.first().copied().unwrap_or("us"))?;
-                let timezone = match parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                // Split on only the FIRST top-level comma: a raw POSIX zone
+                // (`EST5EDT,M3.2.0,M11.1.0`) itself contains commas, so splitting on
+                // every comma would truncate it to its first segment.
+                let (unit_str, tz_str) = match top_level_index(a, ',') {
+                    Some(i) => (a[..i].trim(), Some(a[i + 1..].trim())),
+                    None => (a.trim(), None),
+                };
+                let unit =
+                    parse_unit_or_precision(if unit_str.is_empty() { "us" } else { unit_str })?;
+                let timezone = match tz_str.filter(|s| !s.is_empty()) {
                     Some(tz) => Some(
                         Timezone::from_str(tz).map_err(|e| SchemaError::Invalid(e.to_string()))?,
                     ),
@@ -729,10 +767,12 @@ impl DataType {
             ("struct", Some(a)) => Ok(DataType::Struct(parse_struct_body(a)?)),
             ("map", Some(a)) => {
                 let parts = split_top_level(a, ',');
-                if parts.len() < 2 {
-                    return Err(SchemaError::Invalid(input.to_string()));
-                }
-                let sorted = parts.get(2).map(|s| s.eq_ignore_ascii_case("sorted")) == Some(true);
+                // Exactly `key, value` or `key, value, sorted`; reject extra args.
+                let sorted = match parts.len() {
+                    2 => false,
+                    3 if parts[2].eq_ignore_ascii_case("sorted") => true,
+                    _ => return Err(SchemaError::Invalid(input.to_string())),
+                };
                 Ok(DataType::map(
                     DataType::from_str(parts[0])?,
                     DataType::from_str(parts[1])?,

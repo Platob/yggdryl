@@ -60,6 +60,12 @@ fn sample_types() -> Vec<DataType> {
             Some(Timezone::from_str("America/New_York").unwrap()),
         ),
         DataType::timestamp(TimeUnit::Second, Some(Timezone::Fixed(19_800))),
+        // A raw POSIX zone contains commas — its round-trip exercises the
+        // first-comma split in the timestamp grammar.
+        DataType::timestamp(
+            TimeUnit::Microsecond,
+            Some(Timezone::from_str("EST5EDT,M3.2.0,M11.1.0").unwrap()),
+        ),
         DataType::dictionary(DataType::int(32, true), DataType::varchar()),
         DataType::list(Field::new("item", DataType::varchar(), true)),
         DataType::large_list(Field::new("item", DataType::int(64, true), false)),
@@ -393,6 +399,101 @@ fn can_cast_and_merge_strategies() {
         MergeStrategy::Promote
     );
     assert_eq!(MergeStrategy::default(), MergeStrategy::Promote);
+}
+
+#[test]
+fn timestamp_raw_posix_zone_round_trips() {
+    // A raw POSIX zone keeps its embedded commas through the string grammar.
+    let dt = DataType::from_str("timestamp[us, EST5EDT,M3.2.0,M11.1.0]").unwrap();
+    assert_eq!(
+        dt.timezone().map(Timezone::name).as_deref(),
+        Some("EST5EDT,M3.2.0,M11.1.0")
+    );
+    assert_eq!(DataType::from_str(&dt.to_str()).unwrap(), dt);
+}
+
+#[test]
+fn interval_common_type_widens_to_month_day_nano() {
+    use DataType as D;
+    // Differing interval units must widen to MonthDayNano (the only superset that
+    // keeps both months and sub-day components) — never to one that drops a field.
+    let ym = D::Interval {
+        unit: IntervalUnit::YearMonth,
+    };
+    let dt = D::Interval {
+        unit: IntervalUnit::DayTime,
+    };
+    assert_eq!(
+        ym.common_type(&dt),
+        Some(D::Interval {
+            unit: IntervalUnit::MonthDayNano
+        })
+    );
+    // Equal units are preserved.
+    assert_eq!(ym.common_type(&ym), Some(ym.clone()));
+}
+
+#[test]
+fn common_decimal_overflow_falls_back_to_float() {
+    use DataType as D;
+    // 70 integer digits + 10 fractional > the 76-digit decimal cap, so the common
+    // type widens to float64 instead of silently clamping (and dropping digits).
+    assert_eq!(
+        D::decimal(76, 6).common_type(&D::decimal(76, 10)),
+        Some(D::float(64))
+    );
+}
+
+#[test]
+fn promote_field_folds_metadata() {
+    use DataType as D;
+    // A list element's metadata is preserved (first wins, second folded in) when its
+    // type promotes — the same rule as Field::merge.
+    let a = D::list(Field::new("item", D::int(8, true), true).with_metadata_entry("k", "a"));
+    let b = D::list(
+        Field::new("item", D::int(32, true), false)
+            .with_metadata_entry("k", "b")
+            .with_metadata_entry("k2", "c"),
+    );
+    let Some(D::List { item, .. }) = a.common_type(&b) else {
+        panic!("list promotes")
+    };
+    assert_eq!(item.data_type(), &D::int(32, true));
+    assert_eq!(item.get_metadata("k"), Some("a"));
+    assert_eq!(item.get_metadata("k2"), Some("c"));
+}
+
+#[test]
+fn run_end_encoded_is_transparent_to_cast_and_merge() {
+    use DataType as D;
+    let ree = D::run_end_encoded(D::int(32, true), D::int(8, true));
+    // Casting / merging see through run-end encoding to the values type.
+    assert!(ree.can_cast_to(&D::int(64, true)));
+    assert!(D::int(8, true).can_cast_to(&ree));
+    assert_eq!(ree.common_type(&D::int(32, true)), Some(D::int(32, true)));
+}
+
+#[test]
+fn grammar_rejects_extra_args_and_unbalanced_brackets() {
+    // map accepts only `key, value[, sorted]`.
+    assert!(DataType::from_str("map[utf8, int64]").is_ok());
+    assert!(DataType::from_str("map[utf8, int64, sorted]").is_ok());
+    assert!(matches!(
+        DataType::from_str("map[utf8, int64, nope]"),
+        Err(SchemaError::Invalid(_))
+    ));
+    assert!(matches!(
+        DataType::from_str("map[utf8, int64, sorted, extra]"),
+        Err(SchemaError::Invalid(_))
+    ));
+    // A stray closing bracket inside a name is rejected, not absorbed.
+    assert!(matches!(
+        DataType::from_str("struct[a]: int]"),
+        Err(SchemaError::Invalid(_))
+    ));
+    // A quoted name may still legitimately contain a bracket.
+    let dt = DataType::from_str("struct[\"a]b\": int32]").unwrap();
+    assert_eq!(dt.children()[0].name(), "a]b");
 }
 
 // ---- Field ----

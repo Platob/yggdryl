@@ -345,8 +345,9 @@ fn format_offset(seconds: i32) -> String {
 
 // ---- POSIX TZ byte scanner ----
 
-/// Skips a zone abbreviation: either `<...>` or a run of letters / `+` / `-` that
-/// are *not* part of an offset (a leading sign before digits belongs to the offset).
+/// Skips a zone abbreviation: either a quoted `<...>` form, or a run of ASCII
+/// letters. Per POSIX an unquoted abbreviation contains letters only; any
+/// abbreviation with a sign or digits must use the `<...>` form (handled above).
 fn skip_abbrev(bytes: &[u8], pos: &mut usize) {
     if *pos < bytes.len() && bytes[*pos] == b'<' {
         while *pos < bytes.len() && bytes[*pos] != b'>' {
@@ -411,12 +412,18 @@ fn parse_transition(bytes: &[u8], pos: &mut usize) -> Option<TzTransition> {
     } else if kind == b'J' {
         *pos += 1;
         let day = parse_uint(bytes, pos)? as u32;
+        if !(1..=365).contains(&day) {
+            return None; // POSIX Julian day is 1..=365 (29 February never counted)
+        }
         TzTransition::Julian {
             day,
             time: parse_rule_time(bytes, pos),
         }
     } else {
         let day = parse_uint(bytes, pos)? as u32;
+        if day > 365 {
+            return None; // POSIX zero-based day is 0..=365
+        }
         TzTransition::ZeroJulian {
             day,
             time: parse_rule_time(bytes, pos),
@@ -544,10 +551,13 @@ pub static ZONE_TABLE: &[(&str, &str)] = &[
     ("Pacific/Auckland", "NZST-12NZDT,M9.5.0,M4.1.0/3"),
     ("Pacific/Guam", "ChST-10"),
     // ---- Africa ----
-    ("Africa/Cairo", "EET-2EEST,M4.4.5,M10.5.4/24"),
+    ("Africa/Cairo", "EET-2EEST,M4.5.5/0,M10.5.4/24"),
     ("Africa/Johannesburg", "SAST-2"),
     ("Africa/Lagos", "WAT-1"),
     ("Africa/Nairobi", "EAT-3"),
+    // Approximation: Morocco observes +01 nearly year-round but drops to +00 during
+    // Ramadan — a moving lunar exception no POSIX rule can express, so it is modelled
+    // as a fixed +01 (correct ~11 months/year; the Ramadan window needs the full tz db).
     ("Africa/Casablanca", "<+01>-1"),
     ("Africa/Accra", "GMT0"),
     // ---- UTC aliases ----

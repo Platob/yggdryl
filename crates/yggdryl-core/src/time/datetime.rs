@@ -63,10 +63,19 @@ impl DateTime {
             None => local_seconds,
             Some(tz) => {
                 // Resolve local -> UTC: the offset itself depends on the instant, so
-                // estimate once then refine (handles the common, non-transition case).
+                // guess from the wall time then refine. Near a DST transition the wall
+                // time is ambiguous (fold) or non-existent (gap); only accept the
+                // refined offset when it is self-consistent, otherwise keep the first
+                // (pre-transition) offset — a deterministic resolution matching
+                // Python's `fold=0` for both the spring gap and the autumn fold.
                 let guess = tz.offset_seconds(local_seconds);
                 let refined = tz.offset_seconds(local_seconds - guess as i64);
-                local_seconds - refined as i64
+                let chosen = if tz.offset_seconds(local_seconds - refined as i64) == refined {
+                    refined
+                } else {
+                    guess
+                };
+                local_seconds - chosen as i64
             }
         };
         DateTime {
@@ -111,14 +120,18 @@ impl DateTime {
         self.seconds
     }
 
-    /// UTC epoch milliseconds.
+    /// UTC epoch milliseconds (saturates rather than overflowing for extreme years).
     pub fn epoch_millis(&self) -> i64 {
-        self.seconds * 1_000 + (self.nanos / 1_000_000) as i64
+        self.seconds
+            .saturating_mul(1_000)
+            .saturating_add((self.nanos / 1_000_000) as i64)
     }
 
-    /// UTC epoch microseconds.
+    /// UTC epoch microseconds (saturates rather than overflowing for extreme years).
     pub fn epoch_micros(&self) -> i64 {
-        self.seconds * 1_000_000 + (self.nanos / 1_000) as i64
+        self.seconds
+            .saturating_mul(1_000_000)
+            .saturating_add((self.nanos / 1_000) as i64)
     }
 
     /// UTC epoch nanoseconds (128-bit to avoid overflow).

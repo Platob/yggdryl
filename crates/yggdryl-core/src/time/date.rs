@@ -43,8 +43,12 @@ impl Date {
                 "{year:04}-{month:02}-{day:02}"
             )));
         }
+        // Guard the i32 epoch-day storage against extreme years overflowing silently.
+        let epoch_days = i32::try_from(days_from_civil(year, month, day)).map_err(|_| {
+            TimeError::OutOfRange(format!("{year:04}-{month:02}-{day:02} (year out of range)"))
+        })?;
         Ok(Date {
-            epoch_days: days_from_civil(year, month, day) as i32,
+            epoch_days,
             timezone: None,
         })
     }
@@ -104,10 +108,11 @@ impl Date {
         self
     }
 
-    /// Returns a copy `days` days later (keeping the timezone).
+    /// Returns a copy `days` days later (keeping the timezone; saturates at the
+    /// i32 epoch-day bounds rather than overflowing).
     pub fn add_days(&self, days: i32) -> Date {
         Date {
-            epoch_days: self.epoch_days + days,
+            epoch_days: self.epoch_days.saturating_add(days),
             timezone: self.timezone.clone(),
         }
     }
@@ -148,11 +153,14 @@ impl Date {
                 .parse::<i64>()
                 .map_err(|_| TimeError::Invalid(format!("'{key}' is not an integer")))
         };
-        let mut date = Date::from_ymd(
-            component("year")? as i32,
-            component("month")? as u32,
-            component("day")? as u32,
-        )?;
+        // Convert without wrapping: an out-of-range component is an error, not a wrap.
+        let year = i32::try_from(component("year")?)
+            .map_err(|_| TimeError::OutOfRange("'year' out of range".into()))?;
+        let month = u32::try_from(component("month")?)
+            .map_err(|_| TimeError::Invalid("'month' out of range".into()))?;
+        let day = u32::try_from(component("day")?)
+            .map_err(|_| TimeError::Invalid("'day' out of range".into()))?;
+        let mut date = Date::from_ymd(year, month, day)?;
         if let Some(tz) = fields.get("timezone") {
             date.timezone = Some(Timezone::from_str(tz)?);
         }
@@ -212,7 +220,16 @@ impl Temporal for Date {
 }
 
 /// Parses `YYYY-MM-DD`, `YYYY/MM/DD` or compact `YYYYMMDD` into `(year, month, day)`.
+/// Every component must be a plain run of digits (no embedded sign or junk).
 fn parse_ymd(value: &str) -> Option<(i32, u32, u32)> {
+    /// Parses a run of ASCII digits, rejecting an empty part or any non-digit byte
+    /// (so a stray sign like `+3` does not slip through `str::parse`).
+    fn digits<T: std::str::FromStr>(part: &str) -> Option<T> {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        part.parse::<T>().ok()
+    }
     let negative = value.starts_with('-');
     let body = value.strip_prefix('-').unwrap_or(value);
     let sep = if body.contains('-') {
@@ -221,17 +238,17 @@ fn parse_ymd(value: &str) -> Option<(i32, u32, u32)> {
         '/'
     } else if body.len() == 8 && body.bytes().all(|b| b.is_ascii_digit()) {
         // Compact YYYYMMDD.
-        let year = body[..4].parse::<i32>().ok()?;
-        let month = body[4..6].parse::<u32>().ok()?;
-        let day = body[6..8].parse::<u32>().ok()?;
+        let year = digits::<i32>(&body[..4])?;
+        let month = digits::<u32>(&body[4..6])?;
+        let day = digits::<u32>(&body[6..8])?;
         return Some((if negative { -year } else { year }, month, day));
     } else {
         return None;
     };
     let mut parts = body.split(sep);
-    let year = parts.next()?.parse::<i32>().ok()?;
-    let month = parts.next()?.parse::<u32>().ok()?;
-    let day = parts.next()?.parse::<u32>().ok()?;
+    let year = digits::<i32>(parts.next()?)?;
+    let month = digits::<u32>(parts.next()?)?;
+    let day = digits::<u32>(parts.next()?)?;
     if parts.next().is_some() {
         return None;
     }

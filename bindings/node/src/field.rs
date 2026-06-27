@@ -124,6 +124,11 @@ impl Field {
         wrap(self.inner.clone().with_nullable(nullable))
     }
 
+    #[napi(js_name = "withMetadata")]
+    pub fn with_metadata(&self, metadata: HashMap<String, String>) -> Self {
+        wrap(self.inner.clone().with_metadata(to_mapping(metadata)))
+    }
+
     #[napi(js_name = "withMetadataEntry")]
     pub fn with_metadata_entry(&self, key: String, value: String) -> Self {
         wrap(self.inner.clone().with_metadata_entry(key, value))
@@ -132,6 +137,28 @@ impl Field {
     #[napi(js_name = "withComment")]
     pub fn with_comment(&self, comment: String) -> Self {
         wrap(self.inner.clone().with_comment(comment))
+    }
+
+    #[napi(js_name = "withoutMetadata")]
+    pub fn without_metadata(&self) -> Self {
+        wrap(self.inner.clone().without_metadata())
+    }
+
+    /// A copy overriding any component passed and keeping the rest (parent is not carried).
+    #[napi]
+    pub fn copy(
+        &self,
+        name: Option<String>,
+        data_type: Option<&DataType>,
+        nullable: Option<bool>,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Self {
+        wrap(self.inner.copy(
+            name,
+            data_type.map(|d| d.inner.clone()),
+            nullable,
+            metadata.map(to_mapping),
+        ))
     }
 
     // ---- graph ----
@@ -145,6 +172,12 @@ impl Field {
     #[napi(js_name = "withParent")]
     pub fn with_parent(&self, parent: &Field) -> Self {
         wrap(self.inner.clone().with_parent(parent.inner.clone()))
+    }
+
+    /// Set the parent in place.
+    #[napi(js_name = "setParent")]
+    pub fn set_parent(&mut self, parent: &Field) {
+        self.inner.set_parent(parent.inner.clone());
     }
 
     #[napi(js_name = "withoutParent")]

@@ -96,6 +96,11 @@ impl Duration {
         self.inner.as_millis()
     }
 
+    /// The total microseconds.
+    fn as_micros(&self) -> i128 {
+        self.inner.as_micros()
+    }
+
     /// The total nanoseconds.
     fn as_nanos(&self) -> i128 {
         self.inner.as_nanos()

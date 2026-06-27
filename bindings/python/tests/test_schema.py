@@ -168,6 +168,8 @@ def test_duration():
     assert (d + yggdryl.Duration.from_secs(30)).as_seconds() == 5430
     assert yggdryl.Duration.from_unit(500, "ms").as_nanos() == 500_000_000
     assert yggdryl.Duration.from_secs(-5).is_negative
+    assert yggdryl.Duration.from_secs(2).as_millis() == 2_000
+    assert yggdryl.Duration.from_micros(1_500).as_micros() == 1_500
     assert pickle.loads(pickle.dumps(d)) == d
 
 
@@ -198,6 +200,29 @@ def test_sql_and_hive_parsing():
     assert yggdryl.Field.from_str("col struct<a: str>").name == "col"
     assert yggdryl.Field.from_str('"my col": int64').name == "my col"
     assert yggdryl.Field.from_str("`qty` int64").name == "qty"
+
+
+def test_schema_grammar_and_coercion_edge_cases():
+    D = yggdryl.DataType
+    # A raw POSIX timezone keeps its embedded commas through the timestamp grammar.
+    ts = D("timestamp[us, EST5EDT,M3.2.0,M11.1.0]")
+    assert ts.timezone.name == "EST5EDT,M3.2.0,M11.1.0"
+    assert D(str(ts)) == ts
+    # Differing interval units widen to month_day_nano (no calendar field dropped).
+    assert D("interval[year_month]").common_type(D("interval[day_time]")) == D(
+        "interval[month_day_nano]"
+    )
+    # A decimal that would exceed 76 digits widens to float64 instead of clamping.
+    assert D.decimal(76, 6).common_type(D.decimal(76, 10)) == D.float(64)
+    # Run-end encoding is transparent to casting / merging.
+    ree = D.run_end_encoded(D.int(32), D.int(8))
+    assert ree.can_cast_to(D.int(64))
+    assert ree.common_type(D.int(32)) == D.int(32)
+    # map rejects extra args; a stray bracket in a name is rejected.
+    with pytest.raises(ValueError):
+        D("map[utf8, int64, nope]")
+    with pytest.raises(ValueError):
+        D("struct[a]: int]")
 
 
 def test_temporal_conversions_and_parse():

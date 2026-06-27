@@ -5,6 +5,8 @@
 use std::fmt;
 
 use super::{DataType, SchemaError};
+#[allow(unused_imports)]
+use crate::log_event;
 use crate::Field;
 use yggdryl_core::TimeUnit;
 
@@ -19,7 +21,9 @@ pub enum MergeStrategy {
     #[default]
     Promote,
     /// Like [`Promote`](MergeStrategy::Promote) but never errors — incompatible
-    /// types collapse to the [`Any`](DataType::Any) wildcard.
+    /// types collapse to the [`Any`](DataType::Any) wildcard. The collapse is at the
+    /// **top level**: if a nested leaf (a struct field, a map value) has no common
+    /// type the whole container becomes `Any`, rather than collapsing only the leaf.
     Permissive,
 }
 
@@ -83,9 +87,14 @@ impl DataType {
             (a, b) if (a.is_integer() || a.is_string()) && b.is_temporal() => true,
             (Dictionary { value, .. }, b) => value.can_cast_to(b),
             (a, Dictionary { value, .. }) => a.can_cast_to(value),
+            // Run-end encoding is transparent to casting, like a dictionary.
+            (RunEndEncoded { values, .. }, b) => values.can_cast_to(b),
+            (a, RunEndEncoded { values, .. }) => a.can_cast_to(values),
             (List { item: a, .. }, List { item: b, .. }) => {
                 a.data_type().can_cast_to(b.data_type())
             }
+            // Casting matches struct fields *positionally* (a layout cast); merging
+            // (`common_type`) unions them *by name*. The two have different goals.
             (Struct(a), Struct(b)) => {
                 a.len() == b.len()
                     && a.iter()
@@ -180,7 +189,14 @@ impl DataType {
                 timezone: za.clone(),
             }),
             (Interval { unit: a }, Interval { unit: b }) => Some(Interval {
-                unit: if a >= b { *a } else { *b },
+                // The only superset carrying both calendar fields is MonthDayNano
+                // (months + days + nanos); picking max(unit) would drop components
+                // (e.g. YearMonth's months when widened to DayTime).
+                unit: if a == b {
+                    *a
+                } else {
+                    crate::IntervalUnit::MonthDayNano
+                },
             }),
             (
                 List {
@@ -224,6 +240,12 @@ impl DataType {
             )),
             (Dictionary { value: v1, .. }, Dictionary { value: v2, .. }) => v1.common_type(v2),
             (Dictionary { value, .. }, t) | (t, Dictionary { value, .. }) => value.common_type(t),
+            (RunEndEncoded { values: v1, .. }, RunEndEncoded { values: v2, .. }) => {
+                v1.common_type(v2)
+            }
+            (RunEndEncoded { values, .. }, t) | (t, RunEndEncoded { values, .. }) => {
+                values.common_type(t)
+            }
             _ => None,
         }
     }
@@ -282,13 +304,20 @@ fn merge_struct_fields(a: &[Field], b: &[Field]) -> Option<Vec<Field>> {
 }
 
 /// Promotes two fields to a common field (merged type, nullable if either is,
-/// keeping the first's metadata then folding in the second's).
+/// keeping the first's metadata then folding in the second's — matching
+/// [`Field::merge`](crate::Field::merge), without its name-equality check so list
+/// items with differing element names can still promote).
 fn promote_field(a: &Field, b: &Field) -> Option<Field> {
     let data_type = a.data_type().common_type(b.data_type())?;
+    let mut metadata = a.metadata().clone();
+    for (key, value) in b.metadata() {
+        metadata.entry(key.clone()).or_insert_with(|| value.clone());
+    }
     Some(
         a.clone()
             .with_data_type(data_type)
-            .with_nullable(a.is_nullable() || b.is_nullable()),
+            .with_nullable(a.is_nullable() || b.is_nullable())
+            .with_metadata(metadata),
     )
 }
 
@@ -321,7 +350,14 @@ fn common_integer(a: &DataType, b: &DataType) -> DataType {
         8 => 16,
         16 => 32,
         32 => 64,
-        _ => return DataType::float(64), // uint64 has no signed superset
+        _ => {
+            // uint64 has no signed integer superset; float64 is the lossy fallback.
+            log_event!(
+                warn,
+                "common_integer: uint64 vs signed widened to float64 (range-lossy)"
+            );
+            return DataType::float(64);
+        }
     };
     int_of(sbits.max(needed).min(64), true)
 }
@@ -396,7 +432,17 @@ fn common_decimal(a: &DataType, b: &DataType) -> Option<DataType> {
     let (p2, s2) = as_decimal(b)?;
     let scale = s1.max(s2);
     let lead = (p1 - s1).max(p2 - s2);
-    let precision = (lead + scale).clamp(1, 76) as u8;
+    let total = lead + scale;
+    // A decimal tops out at 76 digits; clamping `total` would silently drop integer
+    // digits, so widen to float64 instead (consistent with the decimal+float case).
+    if total > 76 {
+        log_event!(
+            warn,
+            "common_decimal: {total} digits exceed decimal's 76, widening to float64"
+        );
+        return Some(DataType::float(64));
+    }
+    let precision = total.clamp(1, 76) as u8;
     let min_bits = decimal_bits_of(a).max(decimal_bits_of(b));
     Some(DataType::decimal_with(
         precision,

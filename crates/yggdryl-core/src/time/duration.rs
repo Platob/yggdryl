@@ -136,7 +136,11 @@ impl Duration {
             return Err(TimeError::Empty);
         }
         let negative = value.starts_with('-');
-        let body = value.trim_start_matches(['+', '-']);
+        // Strip at most one leading sign; a second sign (`--5`, `+-5`) is malformed.
+        let body = value.strip_prefix(['+', '-']).unwrap_or(value);
+        if body.starts_with(['+', '-']) {
+            return Err(TimeError::Invalid(input.to_string()));
+        }
         let sign: i128 = if negative { -1 } else { 1 };
         // ISO-8601 duration: P[nY][nM][nW][nD][T[nH][nM][nS]] (Y≈365d, M≈30d).
         if body.starts_with(['P', 'p']) {

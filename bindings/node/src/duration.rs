@@ -6,7 +6,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_core::{Duration as CoreDuration, TimeUnit};
 
-use crate::{err, to_mapping};
+use crate::{bigint_i128, err, to_mapping};
 
 /// A signed span of time with nanosecond resolution.
 #[napi]
@@ -18,11 +18,14 @@ pub struct Duration {
 impl Duration {
     /// Build from a count of nanoseconds (a BigInt).
     #[napi(constructor)]
-    pub fn new(nanos: Option<BigInt>) -> Self {
-        let nanos = nanos.map(|b| b.get_i128().0).unwrap_or(0);
-        Duration {
+    pub fn new(nanos: Option<BigInt>) -> Result<Self> {
+        let nanos = match nanos {
+            Some(b) => bigint_i128(b)?,
+            None => 0,
+        };
+        Ok(Duration {
             inner: CoreDuration::from_nanos(nanos),
-        }
+        })
     }
 
     /// Parse a compact span (`"1h30m"` / `"1s500ms"` / `"-2d"`) or seconds.
@@ -60,12 +63,20 @@ impl Duration {
         }
     }
 
+    /// A span of `micros` microseconds.
+    #[napi(factory, js_name = "fromMicros")]
+    pub fn from_micros(micros: i64) -> Self {
+        Duration {
+            inner: CoreDuration::from_micros(micros),
+        }
+    }
+
     /// A span of `nanos` nanoseconds (a BigInt).
     #[napi(factory, js_name = "fromNanos")]
-    pub fn from_nanos(nanos: BigInt) -> Self {
-        Duration {
-            inner: CoreDuration::from_nanos(nanos.get_i128().0),
-        }
+    pub fn from_nanos(nanos: BigInt) -> Result<Self> {
+        Ok(Duration {
+            inner: CoreDuration::from_nanos(bigint_i128(nanos)?),
+        })
     }
 
     /// A span of `value` of the given unit (`"s"` / `"ms"` / `"us"` / `"ns"`).
@@ -89,6 +100,18 @@ impl Duration {
     #[napi(js_name = "asSeconds")]
     pub fn as_seconds(&self) -> i64 {
         self.inner.as_seconds()
+    }
+
+    /// The total milliseconds (a BigInt, truncated toward zero).
+    #[napi(js_name = "asMillis")]
+    pub fn as_millis(&self) -> BigInt {
+        BigInt::from(self.inner.as_millis())
+    }
+
+    /// The total microseconds (a BigInt, truncated toward zero).
+    #[napi(js_name = "asMicros")]
+    pub fn as_micros(&self) -> BigInt {
+        BigInt::from(self.inner.as_micros())
     }
 
     /// The total nanoseconds (a BigInt).

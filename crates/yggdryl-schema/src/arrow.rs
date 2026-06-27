@@ -9,6 +9,14 @@
 //! fixed-size Arrow type. The only value with no Arrow equivalent is
 //! [`Any`](DataType::Any), which errors.
 //!
+//! A few attributes the simplified model does not carry are **normalised** on the
+//! round-trip rather than preserved: a [`Union`](DataType::Union)'s type ids are
+//! reassigned `0, 1, …` (so an imported union with non-contiguous external ids does
+//! not round-trip), a [`Map`](DataType::Map)'s key/value entry-field names and
+//! nullability follow the Arrow convention (`key` non-null, `value` nullable), and
+//! an Arrow timestamp timezone string that is not a recognised zone falls back to
+//! UTC with a `warn` log.
+//!
 //! ```
 //! # #[cfg(feature = "arrow")] {
 //! use yggdryl_schema::{DataType, Field};
@@ -25,6 +33,8 @@ use arrow_schema::{
     UnionFields as AUnionFields, UnionMode as AUnionMode,
 };
 
+#[allow(unused_imports)]
+use crate::log_event;
 use crate::{Charset, DataType, Field, IntervalUnit, SchemaError, UnionMode};
 use yggdryl_core::{TimeUnit, Timezone};
 
@@ -161,6 +171,13 @@ impl DataType {
                 ADataType::Map(Arc::new(entries), *sorted)
             }
             Union { fields, mode } => {
+                // Arrow union type ids are i8 (0..=127); reject rather than wrap.
+                if fields.len() > 128 {
+                    return Err(SchemaError::Unsupported(format!(
+                        "union has {} alternatives; Arrow allows at most 128 type ids",
+                        fields.len()
+                    )));
+                }
                 let pairs = fields
                     .iter()
                     .enumerate()
@@ -179,7 +196,9 @@ impl DataType {
         })
     }
 
-    /// Converts from an [`arrow_schema::DataType`] (a total mapping — Arrow has no `Any`).
+    /// Converts from an [`arrow_schema::DataType`]. Total (Arrow has no `Any`), but
+    /// union type ids and map entry-field names/nullability are normalised, not
+    /// preserved (see the [module docs](self)).
     pub fn from_arrow(data_type: &ADataType) -> DataType {
         match data_type {
             ADataType::Null => DataType::Null,
@@ -221,9 +240,15 @@ impl DataType {
             },
             ADataType::Timestamp(u, tz) => DataType::Timestamp {
                 unit: time_unit_from_arrow(u),
-                timezone: tz
-                    .as_ref()
-                    .map(|s| Timezone::from_str(s).unwrap_or(Timezone::Utc)),
+                timezone: tz.as_ref().map(|s| {
+                    Timezone::from_str(s).unwrap_or_else(|_| {
+                        log_event!(
+                            warn,
+                            "from_arrow: timestamp timezone {s:?} is not a recognised zone, defaulting to UTC"
+                        );
+                        Timezone::Utc
+                    })
+                }),
             },
             ADataType::Duration(u) => DataType::Duration {
                 unit: time_unit_from_arrow(u),
