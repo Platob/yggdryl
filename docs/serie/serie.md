@@ -63,6 +63,98 @@ right concrete series and return a boxed `SerieRef`.
     # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
+## Creating series — one line per type
+
+Every concrete series has a `from_values(name, values)` one-liner; nested and lazy
+columns have purpose-built constructors. `from_array(name, arrow_array)` is the
+universal fallback for *any* Arrow array.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{
+        Int32Serie, Float64Serie, BooleanSerie, VarcharSerie, BinarySerie,
+        DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, RangeSerie,
+        IndexSerie, StructSerie, EnumSerie, Serie, SerieRef, TypedSerie,
+    };
+    use yggdryl_core::{DateTime, Duration, Time, Date};
+    use std::sync::Arc;
+
+    // primitives
+    let i = Int32Serie::from_values("i", vec![Some(1), None, Some(3)]);
+    let f = Float64Serie::from_values("f", vec![Some(1.5), Some(2.5)]);
+    let b = BooleanSerie::from_values("b", vec![Some(true), Some(false)]);
+    let s = VarcharSerie::<i32>::from_values("s", vec![Some("a"), Some("b")]);
+    let bin = BinarySerie::<i32>::from_values("raw", vec![Some(&b"xy"[..])]);
+
+    // temporal — values are the core DateTime / Time / Duration
+    let ts = DatetimeSerie::from_values("ts", vec![Some(DateTime::from_epoch_seconds(0, None))]);
+    let tm = TimeSerie::from_values("t", vec![Some(Time::from_hms(9, 30, 0).unwrap())]);
+    let du = DurationSerie::from_values("d", vec![Some(Duration::from_secs(60))]);
+
+    // lazy ranges + index (computed, not stored)
+    let r = RangeSerie::new("r", 0, 1, 100);            // 0..100 (uint64)
+    let days = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 1).unwrap(), 1, 7);
+    let idx = IndexSerie::range(100);
+
+    // nested — a struct from its child columns, in one line
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("name", vec![Some("a"), Some("b")]));
+    let rec = StructSerie::from_children("rec", vec![id, name])?;
+
+    // categorical view over any column
+    let cat = EnumSerie::from_serie(Arc::new(BooleanSerie::from_values("c", vec![Some(true), Some(false), Some(true)])));
+    assert_eq!(rec.child_count(), 2);
+    assert_eq!(cat.unique_count(), 2);
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+Lists and maps are built from an Arrow builder and wrapped with `from_array`:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{from_array, ListSerie, Serie, Scalar};
+    use yggdryl_serie::arrow_array::{ArrayRef, ListArray};
+    use yggdryl_serie::arrow_array::types::Int32Type;
+    use std::sync::Arc;
+
+    let lists = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
+        Some(vec![Some(1), Some(2)]), Some(vec![Some(3)]),
+    ]);
+    let serie = from_array("l", Arc::new(lists) as ArrayRef)?;
+    assert_eq!(serie.value_at(0), Scalar::Other("[1, 2]".into()));
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+## Defaults & resize
+
+Every datatype has a default value (`Scalar::default_for`): `false`, `0`, `0.0`, the
+empty string, empty bytes, a struct of defaults. `resize(new_len)` slices when
+shrinking and extends when growing — with **nulls** if the column is nullable, otherwise
+the type **default** (so a non-nullable column never gains a null).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, Scalar, Serie, DataType, Field, from_arrow};
+    use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
+    use std::sync::Arc;
+
+    assert_eq!(Scalar::default_for(&DataType::int(32, true)), Scalar::Int(0));
+    assert_eq!(Scalar::default_for(&DataType::varchar()), Scalar::Utf8(String::new()));
+
+    // nullable column → grows with nulls
+    let nullable = Int32Serie::from_values("n", vec![Some(1), Some(2)]);
+    assert_eq!(nullable.resize(4)?.value_at(3), Scalar::Null);
+
+    // non-nullable column → grows with the type default (0)
+    let strict = from_arrow(Field::new("n", DataType::int(32, true), false),
+                            Arc::new(Int32Array::from(vec![7])) as ArrayRef)?;
+    assert_eq!(strict.resize(3)?.value_at(2), Scalar::Int(0));
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
 ## Values: by index and by range
 
 `value_at` reads a single cell as a type-erased `Scalar` (`Null` for a null or
@@ -231,7 +323,7 @@ column.
 `StructSerie`, `ListSerie<O>` and `MapSerie` are columns of columns. Each builds its
 child [`Serie`]s **recursively** through the same factory, so arbitrarily deep nesting (a
 list of structs of maps, …) resolves uniformly. The `NestedSerie` trait exposes
-`child_count` / `child(index)` / `child_by_name`.
+`child_count` / `child(index)` / `children` / `child_by_name`.
 
 === "Rust"
 
@@ -252,6 +344,35 @@ list of structs of maps, …) resolves uniformly. The `NestedSerie` trait expose
     assert!(list.value_slice(2).is_none());              // null row
     assert_eq!(list.value_at(1), Scalar::Other("[3]".into()));
     # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+### Child access — by index, name or path
+
+Any column exposes `select("a.b.c")` to navigate into nested children, and
+`as_nested()` for the full child API (by index, or by name with a case-sensitive →
+case-insensitive fallback). A path segment may be **wrapped** (`[name]`, `"name"`,
+`'name'`, `` `name` ``) to match the literal name exactly (and to contain dots); a bare
+numeric segment is a child index.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{StructSerie, Int32Serie, VarcharSerie, NestedSerie, Serie, SerieRef, Scalar};
+    use std::sync::Arc;
+
+    let inner: SerieRef = Arc::new(StructSerie::from_children("inner", vec![
+        Arc::new(Int32Serie::from_values("a", vec![Some(1), Some(2)])) as SerieRef,
+    ]).unwrap());
+    let label: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("Label", vec![Some("x"), Some("y")]));
+    let rec: SerieRef = Arc::new(StructSerie::from_children("rec", vec![inner, label]).unwrap());
+
+    assert_eq!(rec.select("inner.a").unwrap().value_at(1), Scalar::Int(2)); // path
+    assert_eq!(rec.select("label").unwrap().name(), "Label");               // case-insensitive
+    assert_eq!(rec.select("[inner].a").unwrap().value_at(0), Scalar::Int(1)); // wrapped exact
+
+    let nested = rec.as_nested().unwrap();
+    assert_eq!(nested.child(0).unwrap().name(), "inner"); // by index
+    assert_eq!(nested.children().len(), 2);
     ```
 
 ## Display

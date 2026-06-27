@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, StructArray};
 use arrow_schema::DataType as ADataType;
-use yggdryl_schema::Field;
+use yggdryl_schema::{DataType, Field};
 
-use crate::error::SerieResult;
+use crate::error::{SerieError, SerieResult};
 use crate::nested::NestedSerie;
 use crate::scalar::Scalar;
 use crate::serie::{dispatch, Serie, SerieRef};
@@ -52,6 +52,28 @@ impl StructSerie {
     pub fn children(&self) -> &[SerieRef] {
         &self.children
     }
+
+    /// Builds a struct column named `name` from its child columns — the one-line
+    /// constructor (each child's field, including its name, becomes a struct field). The
+    /// children must all have the same length.
+    pub fn from_children(
+        name: impl Into<String>,
+        children: Vec<SerieRef>,
+    ) -> SerieResult<StructSerie> {
+        let arrow_fields = children
+            .iter()
+            .map(|c| c.field().to_arrow().map(Arc::new))
+            .collect::<Result<Vec<_>, _>>()?;
+        let arrays = children.iter().map(|c| c.array()).collect::<Vec<_>>();
+        let array = StructArray::try_new(arrow_fields.into(), arrays, None)
+            .map_err(|e| SerieError::Arrow(e.to_string()))?;
+        let field = Field::new(
+            name,
+            DataType::struct_(children.iter().map(|c| c.field().clone()).collect()),
+            true,
+        );
+        StructSerie::from_parts(field, Arc::new(array))
+    }
 }
 
 impl Serie for StructSerie {
@@ -77,6 +99,10 @@ impl Serie for StructSerie {
 
     fn is_null(&self, index: usize) -> bool {
         index >= self.array.len() || self.array.is_null(index)
+    }
+
+    fn as_nested(&self) -> Option<&dyn NestedSerie> {
+        Some(self)
     }
 
     /// A readable `{name=value, …}` rendering of the record at `index`.
@@ -105,9 +131,5 @@ impl NestedSerie for StructSerie {
 
     fn child(&self, index: usize) -> Option<SerieRef> {
         self.children.get(index).cloned()
-    }
-
-    fn child_by_name(&self, name: &str) -> Option<SerieRef> {
-        self.children.iter().find(|c| c.name() == name).cloned()
     }
 }

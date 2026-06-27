@@ -78,6 +78,10 @@ impl Serie for MapSerie {
         index >= self.array.len() || self.array.is_null(index)
     }
 
+    fn as_nested(&self) -> Option<&dyn NestedSerie> {
+        Some(self)
+    }
+
     /// A readable `{key=value, …}` rendering of the entries at `index`.
     fn value_at(&self, index: usize) -> Scalar {
         if self.is_null(index) {
@@ -108,14 +112,6 @@ impl NestedSerie for MapSerie {
         match index {
             0 => Some(self.keys.clone()),
             1 => Some(self.values.clone()),
-            _ => None,
-        }
-    }
-
-    fn child_by_name(&self, name: &str) -> Option<SerieRef> {
-        match name {
-            "key" => Some(self.keys.clone()),
-            "value" => Some(self.values.clone()),
             _ => None,
         }
     }

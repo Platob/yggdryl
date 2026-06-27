@@ -865,3 +865,143 @@ fn lazy_temporal_field_accessors() {
     assert_eq!(index.dtype(), &DataType::int(64, false));
     assert_eq!(index.get_metadata("missing"), None);
 }
+
+#[test]
+fn scalar_default_for_each_kind() {
+    assert_eq!(
+        Scalar::default_for(&DataType::int(32, true)),
+        Scalar::Int(0)
+    );
+    assert_eq!(
+        Scalar::default_for(&DataType::float(64)),
+        Scalar::Float(0.0)
+    );
+    assert_eq!(
+        Scalar::default_for(&DataType::Boolean),
+        Scalar::Boolean(false)
+    );
+    assert_eq!(
+        Scalar::default_for(&DataType::varchar()),
+        Scalar::Utf8(String::new())
+    );
+    assert_eq!(
+        Scalar::default_for(&DataType::binary()),
+        Scalar::Binary(Vec::new())
+    );
+    assert_eq!(Scalar::default_for(&DataType::date()), Scalar::Int(0));
+    assert_eq!(Scalar::default_for(&DataType::Null), Scalar::Null);
+}
+
+#[test]
+fn resize_grows_with_nulls_or_defaults_and_shrinks() {
+    // nullable column grows with nulls
+    let s = Int32Serie::from_values("n", vec![Some(1), Some(2)]);
+    let grown = s.resize(4).unwrap();
+    assert_eq!(grown.len(), 4);
+    assert_eq!(grown.value_at(1), Scalar::Int(2));
+    assert_eq!(grown.value_at(2), Scalar::Null);
+    assert_eq!(grown.value_at(3), Scalar::Null);
+
+    // shrink is a slice
+    let shrunk = s.resize(1).unwrap();
+    assert_eq!(shrunk.len(), 1);
+    assert_eq!(shrunk.value_at(0), Scalar::Int(1));
+
+    // non-nullable column grows with the type default (0)
+    let field = Field::new("n", DataType::int(32, true), false);
+    let nn = from_arrow(field, Arc::new(Int32Array::from(vec![7])) as ArrayRef).unwrap();
+    let gd = nn.resize(3).unwrap();
+    assert_eq!(gd.value_at(0), Scalar::Int(7));
+    assert_eq!(gd.value_at(1), Scalar::Int(0));
+    assert_eq!(gd.value_at(2), Scalar::Int(0));
+
+    // non-nullable varchar grows with the empty string
+    let vfield = Field::new("s", DataType::varchar(), false);
+    let vs = from_arrow(vfield, Arc::new(StringArray::from(vec!["a"])) as ArrayRef).unwrap();
+    let vg = vs.resize(2).unwrap();
+    assert_eq!(vg.value_at(0), Scalar::Utf8("a".into()));
+    assert_eq!(vg.value_at(1), Scalar::Utf8(String::new()));
+}
+
+#[test]
+fn one_line_temporal_and_struct_constructors() {
+    use yggdryl_core::{DateTime, Duration, Time};
+
+    let dt =
+        DatetimeSerie::from_values("t", vec![Some(DateTime::from_epoch_seconds(1, None)), None]);
+    assert_eq!(dt.len(), 2);
+    assert_eq!(dt.datetime_at(0).unwrap().epoch_seconds(), 1);
+    assert!(dt.is_null(1));
+
+    let tm = TimeSerie::from_values("t", vec![Some(Time::from_hms(1, 0, 0).unwrap())]);
+    assert_eq!(tm.time_at(0), Some(Time::from_hms(1, 0, 0).unwrap()));
+
+    let du = DurationSerie::from_values("d", vec![Some(Duration::from_secs(5))]);
+    assert_eq!(du.duration_at(0), Some(Duration::from_secs(5)));
+
+    // struct from child columns, in one line
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("a"), Some("b")],
+    ));
+    let st = StructSerie::from_children("rec", vec![id, name]).unwrap();
+    assert_eq!(st.child_count(), 2);
+    assert_eq!(
+        st.child_by_name("name").unwrap().value_at(1),
+        Scalar::Utf8("b".into())
+    );
+    assert_eq!(st.value_at(0), Scalar::Other("{id=1, name=a}".into()));
+}
+
+#[test]
+fn nested_child_access_by_index_name_and_path() {
+    // struct rec { inner: struct { a: int32, b: utf8 }, N: int64 }
+    let a = Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef;
+    let b = Arc::new(StringArray::from(vec!["x", "y"])) as ArrayRef;
+    let inner = StructArray::from(vec![
+        (Arc::new(AField::new("a", ADataType::Int32, true)), a),
+        (Arc::new(AField::new("b", ADataType::Utf8, true)), b),
+    ]);
+    let n = Arc::new(Int64Array::from(vec![10i64, 20])) as ArrayRef;
+    let outer = StructArray::from(vec![
+        (
+            Arc::new(AField::new("inner", inner.data_type().clone(), true)),
+            Arc::new(inner) as ArrayRef,
+        ),
+        (Arc::new(AField::new("N", ADataType::Int64, true)), n),
+    ]);
+    let serie = from_array("rec", Arc::new(outer) as ArrayRef).unwrap();
+    let st = serie.as_nested().unwrap();
+
+    // by index
+    assert_eq!(st.child(0).unwrap().name(), "inner");
+    assert_eq!(st.children().len(), 2);
+
+    // by name: exact (cs) vs case-insensitive fallback
+    assert!(st.child_named("n").is_none()); // exact, case-sensitive
+    assert_eq!(st.child_named("N").unwrap().name(), "N");
+    assert_eq!(st.child_by_name("n").unwrap().name(), "N"); // cs miss -> ci
+
+    // by node path
+    assert_eq!(serie.select("inner.a").unwrap().value_at(0), Scalar::Int(1));
+    assert_eq!(
+        serie.select("inner.b").unwrap().value_at(1),
+        Scalar::Utf8("y".into())
+    );
+    assert_eq!(serie.select("n").unwrap().name(), "N"); // ci segment
+    assert_eq!(
+        serie.select("[inner].a").unwrap().value_at(0),
+        Scalar::Int(1)
+    ); // bracket-wrapped exact
+    assert_eq!(
+        serie.select(r#""inner".a"#).unwrap().value_at(0),
+        Scalar::Int(1)
+    ); // quote-wrapped exact
+    assert!(serie.select("inner.zzz").is_none());
+
+    // a leaf column is not navigable
+    let leaf = from_array("x", Arc::new(Int32Array::from(vec![1])) as ArrayRef).unwrap();
+    assert!(leaf.as_nested().is_none());
+    assert!(leaf.select("a.b").is_none());
+}

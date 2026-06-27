@@ -39,6 +39,27 @@ pub enum Scalar {
 }
 
 impl Scalar {
+    /// The **default** value of a [`DataType`](yggdryl_schema::DataType): `false` for
+    /// boolean, `0` for every integer / decimal / temporal physical, `0.0` for floats,
+    /// the empty string for text (and `Json`), empty bytes for binary (and `Bson`), and
+    /// [`Null`](Scalar::Null) for the null / nested / wildcard types (which have no
+    /// scalar default).
+    pub fn default_for(dtype: &yggdryl_schema::DataType) -> Scalar {
+        if dtype.is_boolean() {
+            Scalar::Boolean(false)
+        } else if dtype.is_floating() {
+            Scalar::Float(0.0)
+        } else if dtype.is_integer() || dtype.is_decimal() || dtype.is_temporal() {
+            Scalar::Int(0)
+        } else if dtype.is_string() || dtype.is_json() {
+            Scalar::Utf8(String::new())
+        } else if dtype.is_binary() || dtype.is_bson() {
+            Scalar::Binary(Vec::new())
+        } else {
+            Scalar::Null
+        }
+    }
+
     /// Whether this is the [`Null`](Scalar::Null) value.
     pub fn is_null(&self) -> bool {
         matches!(self, Scalar::Null)

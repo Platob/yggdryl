@@ -5,13 +5,14 @@
 //! data type.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
     Time64NanosecondArray,
 };
 use yggdryl_core::{DateTime, Temporal, Time, TimeUnit};
-use yggdryl_schema::Field;
+use yggdryl_schema::{DataType, Field};
 
 use crate::error::{SerieError, SerieResult};
 use crate::serie::{Serie, TypedSerie};
@@ -48,6 +49,27 @@ impl TimeSerie {
             });
         }
         Ok(TimeSerie::from_parts(field, array))
+    }
+
+    /// Builds a nanosecond time-of-day column named `name` from an iterator of optional
+    /// [`Time`]s — the one-line constructor.
+    pub fn from_values(
+        name: impl Into<String>,
+        values: impl IntoIterator<Item = Option<Time>>,
+    ) -> TimeSerie {
+        let array = Time64NanosecondArray::from_iter(
+            values
+                .into_iter()
+                .map(|opt| opt.map(|t| t.nanos_of_day() as i64)),
+        );
+        let field = Field::new(
+            name,
+            DataType::Time {
+                unit: TimeUnit::Nanosecond,
+            },
+            true,
+        );
+        TimeSerie::from_parts(field, Arc::new(array))
     }
 
     /// The column's [`TimeUnit`] resolution.

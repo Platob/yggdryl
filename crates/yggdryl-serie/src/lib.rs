@@ -70,12 +70,14 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod build;
 mod display;
 mod enum_serie;
 mod error;
 mod index;
 mod lazy;
 mod nested;
+mod path;
 mod primitive;
 mod scalar;
 mod serie;

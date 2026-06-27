@@ -15,7 +15,7 @@ use crate::display::{render as render_display, DisplayOptions};
 use crate::error::{SerieError, SerieResult};
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::nested::{ListSerie, MapSerie, StructSerie};
+use crate::nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
 use crate::temporal::{DatetimeSerie, DurationSerie, TimeSerie};
@@ -160,6 +160,43 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// the building block for a future `Frame`'s table rendering.
     fn display(&self, opts: &DisplayOptions) -> String {
         render_display(self, opts)
+    }
+
+    /// Returns a column of length `new_len`: a [`slice`](Serie::slice) when shrinking,
+    /// or the values extended with **fill** when growing — nulls if the column is
+    /// nullable, otherwise the type's [default](crate::Scalar::default_for) (`0` / `false`
+    /// / `""` / …). Non-nullable nested defaults beyond structs are unsupported (make the
+    /// field nullable). The result is materialised and independent.
+    fn resize(&self, new_len: usize) -> SerieResult<SerieRef> {
+        let len = self.len();
+        if new_len <= len {
+            return Ok(self.slice(0, new_len));
+        }
+        let array = self.array();
+        let extra = new_len - len;
+        let fill = if self.is_nullable() {
+            crate::build::null_array(array.data_type(), extra)
+        } else {
+            crate::build::default_array(array.data_type(), extra)?
+        };
+        let combined = arrow_select::concat::concat(&[array.as_ref(), fill.as_ref()])?;
+        from_arrow(self.field().clone(), combined)
+    }
+
+    /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it
+    /// is one — the hook behind [`select`](Serie::select) and child navigation. `None`
+    /// for a leaf column; the nested concretes override it.
+    fn as_nested(&self) -> Option<&dyn NestedSerie> {
+        None
+    }
+
+    /// Navigates a child **node path** (`a.b.c`, `["a.b"].c`, `tags.0`, …) from this
+    /// column into a descendant, or `None` if it is not nested or the path does not
+    /// resolve. The one-line accessor over the [`NestedSerie`](crate::NestedSerie) child
+    /// graph; see [`NestedSerie::child_path`](crate::NestedSerie::child_path) for the
+    /// matching rules.
+    fn select(&self, path: &str) -> Option<SerieRef> {
+        self.as_nested()?.child_path(path)
     }
 }
 

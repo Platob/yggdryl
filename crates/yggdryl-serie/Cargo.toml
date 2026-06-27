@@ -24,6 +24,8 @@ yggdryl-core = { workspace = true, default-features = false }
 arrow-array = { version = "59", default-features = false }
 arrow-schema = { version = "59", default-features = false }
 arrow-buffer = { version = "59", default-features = false }
+# Zero-copy `concat` for Serie::resize (extending a column with fill values).
+arrow-select = { version = "59", default-features = false }
 # Off-by-default structured logging, via the crate-local `log_event!` macro only.
 log = { version = "0.4", optional = true }
 

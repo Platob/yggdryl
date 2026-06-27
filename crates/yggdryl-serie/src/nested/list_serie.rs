@@ -87,6 +87,10 @@ impl<O: OffsetSizeTrait> Serie for ListSerie<O> {
         index >= self.array.len() || self.array.is_null(index)
     }
 
+    fn as_nested(&self) -> Option<&dyn NestedSerie> {
+        Some(self)
+    }
+
     /// A readable `[v0, v1, …]` rendering of the sub-list at `index`.
     fn value_at(&self, index: usize) -> Scalar {
         if self.is_null(index) {

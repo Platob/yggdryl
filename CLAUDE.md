@@ -273,18 +273,29 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   field from the array and calls `dispatch` **directly** (skipping the equality check,
   which would trip on the schema's documented Arrow normalisations — e.g. a map's
   `key`/`value` entry names vs Arrow's `keys`/`values`). The recursive nested builders
-  call `dispatch` too. **All dispatch logic lives here.** A default `display(&DisplayOptions)`
-  renders the column to a readable string (see `display.rs`). (Object-safety: the base
-  trait is *not* generic; the `<T>` lives in `TypedSerie<T>`, recovered via
-  `as_any().downcast_ref`.)
+  call `dispatch` too. **All dispatch logic lives here.** Base also provides
+  `resize(new_len)` (slice when shrinking; grow with nulls if nullable else the type
+  default, via `build.rs`), `display(&DisplayOptions)` (see `display.rs`), and the nested
+  hooks `as_nested()` / `select(path)` (one-line node-path navigation, see `path.rs`).
+  (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
+  recovered via `as_any().downcast_ref`.)
 - `display.rs` — `DisplayOptions` (`max_rows` / `header` / `width` / `null` / `index`)
   and the `render` routine behind `Serie::display`, the building block for a future
   `Frame`'s table rendering. **All display logic lives here.**
+- `path.rs` — the `a.b.c` child-path parser (`parse_path` → `Segment` = `Index` /
+  `Exact` / `Loose`) honouring the wrapper chars (`[]` / `"` / `'` / `` ` ``) for an
+  exact, dot-containing name. Behind `NestedSerie::child_path` / `Serie::select`. **All
+  path-parsing logic lives here.**
+- `build.rs` — the **fill-array** builders behind `Serie::resize`: `null_array` (a run of
+  nulls of an exact Arrow type) and `default_array` (a run of a type's **default** — every
+  datatype has one: `false` / `0` / `0.0` / `""` / empty bytes / a struct of defaults).
+  **All default/fill-array logic lives here.**
 - `scalar.rs` — the type-erased `Scalar` (a single value read by index: integers /
   decimals-128 / temporal-physicals widen to `Int(i128)`, floats to `Float(f64)`,
   plus `Boolean` / `Utf8` / `Binary`, and an `Other(String)` for the exotic physicals —
-  256-bit decimals, interval structs — so no value is dropped) and the `scalar_at`
-  array-cell extractor. **All scalar logic lives here.**
+  256-bit decimals, interval structs — so no value is dropped), `Scalar::default_for(dtype)`
+  (the per-datatype default value) and the `scalar_at` array-cell extractor. **All scalar
+  logic lives here.**
 - `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
   **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
   generic backing every fixed-width scalar (integers, floats, decimals, **and** the
@@ -301,16 +312,20 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   `TimeSerie` / `DurationSerie` are the **unified** timestamp / time / duration columns:
   each backs an Arrow array of **any** `TimeUnit` (timestamps also carry an optional
   `Timezone`), reads the unit/zone from its field, and presents values as the core
-  `DateTime` / `Time` / `Duration` — replacing the per-unit aliases. `DatetimeSerie` /
-  `TimeSerie` implement `TemporalSerie`; `DurationSerie` is a span, so it does not. **All
-  `TemporalSerie` / unified-temporal logic lives here.**
+  `DateTime` / `Time` / `Duration` — replacing the per-unit aliases. Each has a
+  `from_values(name, iter<Option<core-value>>)` one-line constructor (nanosecond,
+  tz-naive). `DatetimeSerie` / `TimeSerie` implement `TemporalSerie`; `DurationSerie` is a
+  span, so it does not. **All `TemporalSerie` / unified-temporal logic lives here.**
 - `nested/` (`mod` + `struct_serie.rs` + `list_serie.rs` + `map_serie.rs`) — the
-  **nested** series. `NestedSerie` is the shared trait (`child_count` / `child(index)` /
-  `child_by_name`). `StructSerie` (a child `Serie` per field), `ListSerie<O>` (a flattened
-  values child + a zero-copy per-row `value_slice`) and `MapSerie` (flattened key/value
-  children) build their children **recursively** via `dispatch`, so arbitrarily deep
-  nesting resolves uniformly; each `value_at` renders a readable `{…}` / `[…]`. **All
-  nested-series logic lives here.**
+  **nested** series. `NestedSerie` is the shared trait: `child_count` / `child(index)` /
+  `children` / `child_named` (exact) / `child_named_ci` / `child_by_name` (cs→ci) /
+  `child_path` (`a.b.c`, deriving name lookups from each child's `name`). `StructSerie`
+  (a child `Serie` per field, plus a `from_children(name, cols)` one-line constructor),
+  `ListSerie<O>` (a flattened values child + a zero-copy per-row `value_slice`) and
+  `MapSerie` (flattened key/value children) build their children **recursively** via
+  `dispatch`, so arbitrarily deep nesting resolves uniformly; each `value_at` renders a
+  readable `{…}` / `[…]`, and each overrides `as_nested()`. **All nested-series logic
+  lives here.**
 - `lazy/` (`mod` + `range.rs` + `daterange.rs` + `datetimerange.rs` + `timerange.rs`) —
   the **lazy / computed** series, not resident in memory: they store a compact
   description and compute each value on demand (`is_materialized()` → `false`),

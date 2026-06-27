@@ -4,13 +4,14 @@
 //! [`DateTime`](yggdryl_core::DateTime). It replaces the per-unit timestamp aliases.
 
 use std::any::Any;
+use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, TimestampMicrosecondArray, TimestampMillisecondArray,
     TimestampNanosecondArray, TimestampSecondArray,
 };
 use yggdryl_core::{DateTime, TimeUnit, Timezone};
-use yggdryl_schema::Field;
+use yggdryl_schema::{DataType, Field};
 
 use crate::error::{SerieError, SerieResult};
 use crate::serie::{Serie, TypedSerie};
@@ -56,6 +57,20 @@ impl DatetimeSerie {
             });
         }
         Ok(DatetimeSerie::from_parts(field, array))
+    }
+
+    /// Builds a nanosecond, timezone-naive timestamp column named `name` from an
+    /// iterator of optional [`DateTime`]s — the one-line constructor (instants are
+    /// clamped to the `i64` nanosecond range).
+    pub fn from_values(
+        name: impl Into<String>,
+        values: impl IntoIterator<Item = Option<DateTime>>,
+    ) -> DatetimeSerie {
+        let array = TimestampNanosecondArray::from_iter(values.into_iter().map(|opt| {
+            opt.map(|dt| dt.epoch_nanos().clamp(i64::MIN as i128, i64::MAX as i128) as i64)
+        }));
+        let field = Field::new(name, DataType::timestamp(TimeUnit::Nanosecond, None), true);
+        DatetimeSerie::from_parts(field, Arc::new(array))
     }
 
     /// The column's [`TimeUnit`] resolution.

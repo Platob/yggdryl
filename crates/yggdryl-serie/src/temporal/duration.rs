@@ -5,13 +5,14 @@
 //! not an instant, so it is not a [`TemporalSerie`](crate::TemporalSerie).)
 
 use std::any::Any;
+use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray,
 };
 use yggdryl_core::{Duration, TimeUnit};
-use yggdryl_schema::Field;
+use yggdryl_schema::{DataType, Field};
 
 use crate::error::{SerieError, SerieResult};
 use crate::serie::{Serie, TypedSerie};
@@ -47,6 +48,27 @@ impl DurationSerie {
             });
         }
         Ok(DurationSerie::from_parts(field, array))
+    }
+
+    /// Builds a nanosecond duration column named `name` from an iterator of optional
+    /// [`Duration`]s — the one-line constructor (spans are clamped to the `i64`
+    /// nanosecond range).
+    pub fn from_values(
+        name: impl Into<String>,
+        values: impl IntoIterator<Item = Option<Duration>>,
+    ) -> DurationSerie {
+        let array =
+            DurationNanosecondArray::from_iter(values.into_iter().map(|opt| {
+                opt.map(|d| d.as_nanos().clamp(i64::MIN as i128, i64::MAX as i128) as i64)
+            }));
+        let field = Field::new(
+            name,
+            DataType::Duration {
+                unit: TimeUnit::Nanosecond,
+            },
+            true,
+        );
+        DurationSerie::from_parts(field, Arc::new(array))
     }
 
     /// The column's [`TimeUnit`] resolution.
