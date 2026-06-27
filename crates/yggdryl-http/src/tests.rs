@@ -2228,6 +2228,227 @@ fn http2_send_many_concurrent() {
     assert_eq!(count.load(Ordering::SeqCst), N);
 }
 
+/// A 512 KB response body over h2c is delivered correctly via the streaming
+/// `AsyncBodyStream` path: multiple DATA frames are reassembled into the right bytes.
+/// This guards against any silent truncation in `fill_buffer` or the channel logic.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_large_body_streams_without_buffering() {
+    use crate::HttpVersion;
+
+    const SIZE: usize = 512 * 1024; // 512 KB
+    let payload: Vec<u8> = (0..SIZE).map(|i| (i % 251) as u8).collect();
+    let payload_srv = payload.clone();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/large");
+
+    let server = thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(move |_req| {
+                let body = payload_srv.clone();
+                async move {
+                    Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(hyper::body::Bytes::from(body)),
+                    ))
+                }
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body = response.bytes().unwrap();
+    assert_eq!(body.len(), SIZE, "body was truncated");
+    assert_eq!(body, payload.as_slice(), "body content mismatch");
+    server.join().unwrap();
+}
+
+/// A 200 response with an empty body (Content-Length: 0) over h2c reads as EOF
+/// immediately — `bytes()` returns an empty vec and no hang occurs.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_empty_body_reads_as_eof() {
+    use crate::HttpVersion;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/empty");
+
+    let server = thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(|_req| async move {
+                Ok::<_, std::convert::Infallible>(
+                    hyper::Response::builder()
+                        .status(200)
+                        .body(http_body_util::Full::new(hyper::body::Bytes::new()))
+                        .unwrap(),
+                )
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.bytes().unwrap(), b"");
+    server.join().unwrap();
+}
+
+/// Dropping an `HttpResponse` before the body is fully consumed aborts the
+/// background body-reader task cleanly — no hang, no panic, no resource leak.
+/// The server is allowed to error on the RST_STREAM; what matters is the client
+/// side completes promptly.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_drop_before_eof_does_not_hang() {
+    use crate::HttpVersion;
+
+    const SIZE: usize = 64 * 1024; // 64 KB — large enough to need multiple frames
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/drop");
+
+    thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(|_req| async move {
+                Ok::<_, std::convert::Infallible>(hyper::Response::new(http_body_util::Full::new(
+                    hyper::body::Bytes::from(vec![0u8; SIZE]),
+                )))
+            });
+            // The serve may error when the client drops (RST_STREAM); ignore it.
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    // Drop without consuming the body — the background task must abort and the
+    // test must exit in finite time (no deadlock, no stuck channel).
+    drop(response);
+    // A brief pause lets the tokio runtime process the abort before the test exits.
+    thread::sleep(Duration::from_millis(50));
+}
+
+/// A forward seek on an h2c streaming body skips the right number of bytes:
+/// seeking to offset 50 in a 100-byte body yields the last 50 bytes.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_streaming_body_seek_forward() {
+    use crate::HttpVersion;
+
+    // 100-byte body: bytes 0..100 with value equal to their index mod 256.
+    let body_data: Vec<u8> = (0u8..100).collect();
+    let body_srv = body_data.clone();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/seek");
+
+    let server = thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(move |_req| {
+                let body = body_srv.clone();
+                async move {
+                    Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(hyper::body::Bytes::from(body)),
+                    ))
+                }
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let mut response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    // Forward seek to byte 50 discards the first 50 bytes.
+    response
+        .seek(50, Whence::Start)
+        .expect("forward seek on h2 streaming body should succeed");
+    assert_eq!(response.stream_position(), 50);
+    let tail = response.bytes().unwrap();
+    assert_eq!(tail.len(), 50, "seek discarded too many or too few bytes");
+    assert_eq!(tail, &body_data[50..], "tail bytes after seek are wrong");
+    server.join().unwrap();
+}
+
 /// Spawns a localhost quinn + h3 server on an ephemeral UDP port that serves
 /// exactly one request (echoing `METHOD path`) using `cert_der`/`key_der`, then
 /// idles. Returns the bound port and the server thread handle. Hermetic — UDP
