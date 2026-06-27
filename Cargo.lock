@@ -2327,6 +2327,7 @@ dependencies = [
  "serde_json",
  "yggdryl-core",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
  "yggdryl-serie",
 ]
@@ -2339,6 +2340,7 @@ dependencies = [
  "serde_json",
  "yggdryl-core",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
  "yggdryl-serie",
 ]
