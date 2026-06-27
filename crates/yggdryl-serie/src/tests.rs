@@ -1392,4 +1392,14 @@ fn struct_serie_dataframe_advanced() {
             .shape(),
         (3, 2)
     );
+
+    // Arrow IPC stream round-trip — the cross-language table interchange.
+    let ipc = df.to_ipc_bytes().unwrap();
+    let back = StructSerie::from_ipc_bytes("df", &ipc).unwrap();
+    assert_eq!(back.shape(), (3, 2));
+    assert_eq!(back.column_names(), vec!["id", "name"]);
+    assert_eq!(
+        back.row(2).unwrap().child_named("name").unwrap().to_str(),
+        "'b'::utf8"
+    );
 }

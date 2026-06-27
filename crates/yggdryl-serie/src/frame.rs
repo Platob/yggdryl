@@ -435,4 +435,28 @@ impl StructSerie {
         let batches = reader.collect::<Result<Vec<_>, _>>().map_err(arrow_err)?;
         StructSerie::from_record_batches(name, &batches)
     }
+
+    /// The frame as an **Arrow IPC stream** of its [`RecordBatch`] (columns as top-level
+    /// fields) — bytes any Arrow library reads back as a multi-column table (e.g.
+    /// `pyarrow.ipc.open_stream(bytes).read_all()`). The cross-language table interchange.
+    pub fn to_ipc_bytes(&self) -> SerieResult<Vec<u8>> {
+        let batch = self.to_record_batch()?;
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let mut writer = arrow_ipc::writer::StreamWriter::try_new(&mut buf, &batch.schema())
+                .map_err(arrow_err)?;
+            writer.write(&batch).map_err(arrow_err)?;
+            writer.finish().map_err(arrow_err)?;
+        }
+        Ok(buf)
+    }
+
+    /// Builds a frame named `name` from an **Arrow IPC stream** (as written by
+    /// [`to_ipc_bytes`](StructSerie::to_ipc_bytes) or any Arrow library) — every batch is
+    /// concatenated.
+    pub fn from_ipc_bytes(name: impl Into<String>, bytes: &[u8]) -> SerieResult<StructSerie> {
+        let reader = arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes), None)
+            .map_err(arrow_err)?;
+        StructSerie::from_record_batch_reader(name, reader)
+    }
 }
