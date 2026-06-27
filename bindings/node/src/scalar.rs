@@ -147,7 +147,7 @@ fn interval_to_json(interval: &Interval) -> JsonValue {
 /// Maps a core [`CoreScalar`] to a JSON value (which napi converts to the JS value):
 /// primitives become native values, temporal scalars an ISO string, decimals / intervals
 /// a string / object, and the nested types an array / object (recursively).
-fn value_to_json(scalar: &CoreScalar) -> JsonValue {
+pub(crate) fn value_to_json(scalar: &CoreScalar) -> JsonValue {
     use CoreScalar as S;
     match scalar {
         S::Null(_) => JsonValue::Null,
@@ -313,6 +313,33 @@ impl Scalar {
     #[napi(js_name = "asStr")]
     pub fn as_str(&self) -> Option<String> {
         self.inner.as_str().map(|s| s.to_string())
+    }
+
+    /// The scalar as a native JS object — a struct as `{ field: value }` or a map as
+    /// `{ key: value }` (recursively). Throws for a non-nested scalar. The JS analogue of
+    /// Python's `to_dict`.
+    #[napi(js_name = "toObject")]
+    pub fn to_object(&self) -> Result<JsonValue> {
+        use CoreScalar as S;
+        match &self.inner {
+            S::Struct { .. } => Ok(value_to_json(&self.inner)),
+            S::Map { entries, .. } => Ok(JsonValue::Object(
+                entries
+                    .iter()
+                    .map(|(k, v)| {
+                        let key = match value_to_json(k) {
+                            JsonValue::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        (key, value_to_json(v))
+                    })
+                    .collect(),
+            )),
+            other => Err(err(format!(
+                "toObject requires a struct or map scalar, got '{}'",
+                other.data_type().to_str()
+            ))),
+        }
     }
 
     /// The value as a `Buffer`, or `null`.

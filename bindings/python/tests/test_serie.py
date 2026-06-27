@@ -129,3 +129,95 @@ def test_eq_and_hash():
     assert a != c
     assert hash(a) == hash(b)
     assert len({a, b}) == 1          # hashable, equal series collapse
+
+
+def _frame():
+    """A 3-row, 2-column frame: id int64, name utf8."""
+    return yggdryl.Serie.struct(
+        "df",
+        [yggdryl.Serie("id", [3, 1, 2]), yggdryl.Serie("name", ["c", "a", "b"])],
+    )
+
+
+def test_frame_shape_and_projection():
+    df = _frame()
+    assert df.shape == (3, 2)
+    assert df.num_columns == 2
+    assert df.column_names == ["id", "name"]
+
+    # projection / reorder
+    assert df.select_columns(["name"]).column_names == ["name"]
+    # add / drop / rename columns (functional)
+    flagged = df.with_column(yggdryl.Serie("ok", [True, True, False]))
+    assert flagged.column_names == ["id", "name", "ok"]
+    assert df.drop_columns(["name"]).column_names == ["id"]
+    assert df.rename("id", "key").column_names == ["key", "name"]
+
+
+def test_frame_rows_filter_sort_stack():
+    df = _frame()
+    # sort ascending by id
+    asc = df.sort_by("id")
+    assert asc.to_dicts() == [
+        {"id": 1, "name": "a"},
+        {"id": 2, "name": "b"},
+        {"id": 3, "name": "c"},
+    ]
+    # filter keeps the masked rows
+    even = df.filter([True, False, True])
+    assert even.shape == (2, 2)
+    # vstack doubles the rows
+    assert df.vstack(df).shape == (6, 2)
+    # with_row_index prepends a 0..n column
+    assert df.with_row_index("i").column_names == ["i", "id", "name"]
+
+
+def test_frame_row_record_and_dataclass():
+    df = _frame()
+    record = df.row(1)                       # a Scalar struct
+    assert record.to_dict() == {"id": 1, "name": "a"}
+    dc = record.as_dataclass("Row")
+    assert (dc.id, dc.name) == (1, "a")
+    assert type(dc).__name__ == "Row"
+
+
+def test_frame_select_fields_casts_and_fills():
+    df = _frame()
+    target = [
+        yggdryl.Field("name", yggdryl.DataType("utf8"), True),
+        yggdryl.Field("id", yggdryl.DataType("int64"), True),
+        yggdryl.Field("score", yggdryl.DataType("float64"), True),
+    ]
+    projected = df.select_fields(target)
+    assert projected.column_names == ["name", "id", "score"]
+    assert projected.child("score").value_at(0) is None     # filled with null
+
+
+def test_frame_arrow_ipc_roundtrip():
+    df = _frame()
+    ipc = df.to_arrow_ipc()
+    back = yggdryl.Serie.from_arrow_ipc("df", ipc)
+    assert back.shape == (3, 2)
+    assert back.to_dicts() == df.to_dicts()
+
+
+def test_set_at_and_push():
+    s = yggdryl.Serie("n", [1, 2, 3])
+    # set_at casts the value to the column type (safe by default) and is functional
+    updated = s.set_at(1, yggdryl.Scalar(20))
+    assert updated.to_list() == [1, 20, 3]
+    assert s.to_list() == [1, 2, 3]
+    # writing a typed null
+    nulled = s.set_at(0, yggdryl.Scalar.null("int64"))
+    assert nulled.to_list() == [None, 2, 3]
+    # push appends a row
+    assert s.push(yggdryl.Scalar(4)).to_list() == [1, 2, 3, 4]
+    # out of bounds raises
+    with pytest.raises(Exception):
+        s.set_at(9, yggdryl.Scalar(1))
+
+
+def test_frame_requires_struct():
+    s = yggdryl.Serie("n", [1, 2, 3])
+    with pytest.raises(Exception):
+        _ = s.shape          # not a struct column

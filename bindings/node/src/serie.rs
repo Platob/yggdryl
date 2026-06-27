@@ -7,6 +7,7 @@ use std::sync::Arc;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
+use yggdryl_scalar::ScalarValue;
 use yggdryl_schema::DataType as CoreDataType;
 use yggdryl_serie::arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray,
@@ -31,6 +32,15 @@ pub struct Serie {
 
 fn wrap(inner: SerieRef) -> Serie {
     Serie { inner }
+}
+
+/// Borrows a column as a [`StructSerie`] frame, or throws if it is not a struct column —
+/// the gate for the frame (DataFrame) operations.
+fn as_frame(serie: &SerieRef) -> Result<&StructSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<StructSerie>()
+        .ok_or_else(|| err("not a struct column; build a frame with Serie.struct(...)"))
 }
 
 /// The element kind inferred from a JS array.
@@ -347,6 +357,33 @@ impl Serie {
             .collect()
     }
 
+    /// A copy of the column with the cell at `index` replaced by `value` (a `Scalar`).
+    /// With `safe` (default `true`) the value is cast to the column's type first, so any
+    /// value can be written. Functional — returns a new column.
+    #[napi(js_name = "setAt")]
+    pub fn set_at(
+        &self,
+        index: u32,
+        value: &crate::scalar::Scalar,
+        safe: Option<bool>,
+    ) -> Result<Self> {
+        let scalar = value.inner.clone().into_scalar();
+        self.inner
+            .set_at(index as usize, scalar.as_ref(), safe.unwrap_or(true))
+            .map(wrap)
+            .map_err(err)
+    }
+
+    /// A copy of the column with `value` (a `Scalar`) appended as a new last row.
+    #[napi]
+    pub fn push(&self, value: &crate::scalar::Scalar, safe: Option<bool>) -> Result<Self> {
+        let scalar = value.inner.clone().into_scalar();
+        self.inner
+            .push(scalar.as_ref(), safe.unwrap_or(true))
+            .map(wrap)
+            .map_err(err)
+    }
+
     // ---- shape ----
 
     /// A zero-copy slice of `length` values starting at `offset`.
@@ -425,6 +462,172 @@ impl Serie {
             Some(nested) => nested.children().into_iter().map(wrap).collect(),
             None => Vec::new(),
         }
+    }
+
+    // ---- frame (DataFrame) ----
+
+    /// The frame shape as `[rows, columns]` (struct columns only).
+    #[napi(getter)]
+    pub fn shape(&self) -> Result<Vec<u32>> {
+        let (rows, cols) = as_frame(&self.inner)?.shape();
+        Ok(vec![rows as u32, cols as u32])
+    }
+
+    /// The number of columns (struct columns only).
+    #[napi(getter, js_name = "numColumns")]
+    pub fn num_columns(&self) -> Result<u32> {
+        Ok(as_frame(&self.inner)?.num_columns() as u32)
+    }
+
+    /// The column names, in order (struct columns only).
+    #[napi(getter, js_name = "columnNames")]
+    pub fn column_names(&self) -> Result<Vec<String>> {
+        Ok(as_frame(&self.inner)?
+            .column_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect())
+    }
+
+    /// Project the frame to the named columns, in the requested order.
+    #[napi(js_name = "selectColumns")]
+    pub fn select_columns(&self, names: Vec<String>) -> Result<Self> {
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        as_frame(&self.inner)?
+            .select_columns(&refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// Project **and cast** the frame to an explicit list of `Field`s: each takes the
+    /// source column of the same name cast to its type (or a filled column if absent), in
+    /// the target order, dropping unlisted columns.
+    #[napi(js_name = "selectFields")]
+    pub fn select_fields(&self, fields: Vec<&Field>) -> Result<Self> {
+        let fields: Vec<yggdryl_schema::Field> = fields.iter().map(|f| f.inner.clone()).collect();
+        as_frame(&self.inner)?
+            .select_fields(fields)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// A new frame with `column` appended (or replacing an existing column of the same
+    /// name). The column length must match the frame's row count.
+    #[napi(js_name = "withColumn")]
+    pub fn with_column(&self, column: &Serie) -> Result<Self> {
+        as_frame(&self.inner)?
+            .with_column(column.inner.clone())
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// A new frame without the named columns (absent names are ignored).
+    #[napi(js_name = "dropColumns")]
+    pub fn drop_columns(&self, names: Vec<String>) -> Result<Self> {
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        as_frame(&self.inner)?
+            .drop_columns(&refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// A new frame with column `old` renamed to `newName` (a no-op if `old` is absent).
+    #[napi]
+    pub fn rename(&self, old: String, new_name: String) -> Result<Self> {
+        as_frame(&self.inner)?
+            .rename(&old, &new_name)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// The last `n` rows, as a new frame (a zero-copy row slice).
+    #[napi]
+    pub fn tail(&self, n: u32) -> Result<Self> {
+        as_frame(&self.inner)?
+            .tail(n as usize)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// Keep the rows where `mask` is `true` (the mask length must equal the row count).
+    #[napi]
+    pub fn filter(&self, mask: Vec<bool>) -> Result<Self> {
+        as_frame(&self.inner)?
+            .filter(&mask)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// A new frame with the rows sorted by column `column` (ascending unless `descending`),
+    /// reordering every column by the same permutation.
+    #[napi(js_name = "sortBy")]
+    pub fn sort_by(&self, column: String, descending: Option<bool>) -> Result<Self> {
+        as_frame(&self.inner)?
+            .sort_by(&column, descending.unwrap_or(false))
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// Stack `other`'s rows below this frame's (both must share column names and types).
+    #[napi]
+    pub fn vstack(&self, other: &Serie) -> Result<Self> {
+        let other = as_frame(&other.inner)?;
+        as_frame(&self.inner)?
+            .vstack(other)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// A new frame with a `0..rows` integer index column named `name` prepended (a lazy
+    /// `uint64` range, so it costs nothing until materialised).
+    #[napi(js_name = "withRowIndex")]
+    pub fn with_row_index(&self, name: String) -> Result<Self> {
+        as_frame(&self.inner)?
+            .with_row_index(&name)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// The record at `index` as a `Scalar` struct — one typed value per column.
+    #[napi]
+    pub fn row(&self, index: u32) -> Result<crate::scalar::Scalar> {
+        let record = as_frame(&self.inner)?.row(index as usize).map_err(err)?;
+        Ok(crate::scalar::Scalar {
+            inner: record.into(),
+        })
+    }
+
+    /// The frame's rows as an array of native objects (`[{ col: value, ... }, ...]`) — the
+    /// pandas / polars `toDicts` projection.
+    #[napi(js_name = "toDicts")]
+    pub fn to_dicts(&self) -> Result<Vec<JsonValue>> {
+        let frame = as_frame(&self.inner)?;
+        let rows = frame.shape().0;
+        (0..rows)
+            .map(|i| {
+                let row: ScalarValue = frame.row(i).map_err(err)?.into();
+                Ok(crate::scalar::value_to_json(&row))
+            })
+            .collect()
+    }
+
+    /// The frame as an **Arrow IPC stream** — bytes any Arrow library reads back as a
+    /// multi-column table.
+    #[napi(js_name = "toArrowIpc")]
+    pub fn to_arrow_ipc(&self) -> Result<Buffer> {
+        as_frame(&self.inner)?
+            .to_ipc_bytes()
+            .map(Buffer::from)
+            .map_err(err)
+    }
+
+    /// Build a frame named `name` from an **Arrow IPC stream** (as written by
+    /// `toArrowIpc` or any Arrow library).
+    #[napi(factory, js_name = "fromArrowIpc")]
+    pub fn from_arrow_ipc(name: String, data: Buffer) -> Result<Self> {
+        StructSerie::from_ipc_bytes(name, &data)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
     }
 
     // ---- display / serialisation ----

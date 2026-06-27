@@ -151,7 +151,7 @@ fn interval_to_py(py: Python<'_>, interval: &Interval) -> PyObject {
 /// values, temporal scalars the :class:`Date` / :class:`Time` / :class:`DateTime` /
 /// :class:`Duration` classes, decimals / intervals a string / dict, and the nested
 /// types a list / dict (recursively).
-fn value_to_py(py: Python<'_>, scalar: &CoreScalar) -> PyResult<PyObject> {
+pub(crate) fn value_to_py(py: Python<'_>, scalar: &CoreScalar) -> PyResult<PyObject> {
     use CoreScalar as S;
     Ok(match scalar {
         S::Null(_) => py.None(),
@@ -294,6 +294,50 @@ impl Scalar {
     /// The value as a `str`, or ``None``.
     fn as_str(&self) -> Option<String> {
         self.inner.as_str().map(str::to_string)
+    }
+
+    /// The scalar as a native ``dict`` — a struct as ``{field: value}`` or a map as
+    /// ``{key: value}`` (recursively). Raises for a non-nested scalar.
+    fn to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        use CoreScalar as S;
+        match &self.inner {
+            S::Struct { fields, values } => {
+                let dict = PyDict::new_bound(py);
+                for (field, value) in fields.iter().zip(values) {
+                    dict.set_item(field.name(), value_to_py(py, value)?)?;
+                }
+                Ok(dict.into())
+            }
+            S::Map { entries, .. } => {
+                let dict = PyDict::new_bound(py);
+                for (key, value) in entries {
+                    dict.set_item(value_to_py(py, key)?, value_to_py(py, value)?)?;
+                }
+                Ok(dict.into())
+            }
+            other => Err(PyTypeError::new_err(format!(
+                "to_dict requires a struct or map scalar, got '{}'",
+                other.data_type().to_str()
+            ))),
+        }
+    }
+
+    /// The scalar as a Python **dataclass instance** (struct scalars only): builds a
+    /// dataclass named `name` with one field per struct field and returns an instance
+    /// (attribute access, ``record.id``). The native-record convenience over
+    /// :meth:`to_dict`.
+    #[pyo3(signature = (name = "Record"))]
+    fn as_dataclass(&self, py: Python<'_>, name: &str) -> PyResult<PyObject> {
+        let dict_obj = self.to_dict(py)?;
+        let dict = dict_obj.downcast_bound::<PyDict>(py)?;
+        let dataclasses = py.import_bound("dataclasses")?;
+        let field_names: Vec<String> = dict
+            .keys()
+            .iter()
+            .map(|key| key.extract::<String>())
+            .collect::<PyResult<_>>()?;
+        let cls = dataclasses.call_method1("make_dataclass", (name, field_names))?;
+        cls.call((), Some(dict)).map(|obj| obj.into())
     }
 
     /// The value as `bytes`, or ``None``.
