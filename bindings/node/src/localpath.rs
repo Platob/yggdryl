@@ -131,6 +131,19 @@ impl LocalPath {
         self.inner.tell() as f64
     }
 
+    /// The current cursor position — the cross-language `Io` cursor accessor
+    /// (same value as `tell`).
+    #[napi(js_name = "streamPosition")]
+    pub fn stream_position(&self) -> f64 {
+        self.inner.stream_position() as f64
+    }
+
+    /// The total length in bytes when known without I/O (the file size), else `null`.
+    #[napi(js_name = "streamLen")]
+    pub fn stream_len(&self) -> Option<f64> {
+        self.inner.stream_len().map(|n| n as f64)
+    }
+
     /// The capacity in bytes (the mapped file size; the handle is read-only, so
     /// resizing is unsupported).
     #[napi(getter)]

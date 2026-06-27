@@ -207,6 +207,19 @@ impl BytesIO {
         self.inner.tell() as u32
     }
 
+    /// The current cursor position — the cross-language `Io` cursor accessor
+    /// (same value as `tell`).
+    #[napi(js_name = "streamPosition")]
+    pub fn stream_position(&self) -> f64 {
+        self.inner.stream_position() as f64
+    }
+
+    /// The total length in bytes when known without I/O, else `null`.
+    #[napi(js_name = "streamLen")]
+    pub fn stream_len(&self) -> Option<f64> {
+        self.inner.stream_len().map(|n| n as f64)
+    }
+
     /// Return the entire buffer, ignoring the cursor.
     #[napi(js_name = "getValue")]
     pub fn get_value(&self) -> Buffer {

@@ -85,7 +85,7 @@ fixed position.
 
     let mut io = BytesIO::from_bytes(b"hello world".to_vec());
     let mut head = [0u8; 5];
-    io.read(&mut head)?;                       // streamed: from the cursor
+    Io::read(&mut io, &mut head)?;              // streamed: from the cursor
     assert_eq!(&head, b"hello");
     io.seek(6, Whence::Start)?;
     assert_eq!(Io::stream_position(&io), 6);
@@ -308,7 +308,7 @@ remote schemes go through the [HTTP session](../http/session.md).
     import yggdryl
 
     handle = yggdryl.open("/etc/hostname")   # a LocalPath, statted up front
-    assert handle.exists
+    assert handle.exists()
     data = handle.read()                     # mmaps lazily on first read
     ```
 
@@ -318,7 +318,7 @@ remote schemes go through the [HTTP session](../http/session.md).
     const { open } = require("yggdryl");
 
     const handle = open("/etc/hostname");    // a LocalPath, statted up front
-    handle.exists;                           // true
+    handle.exists();                         // true
     const data = handle.read();              // mmaps lazily on first read
     ```
 

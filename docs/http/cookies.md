@@ -75,6 +75,8 @@ name → value map; in Rust it is an `HttpCookies` you iterate (`iter`) or look 
 === "Rust"
 
     ```rust
+    use yggdryl_core::Url;
+
     let session = HttpSession::new();
     session.set_cookie(&Url::from_str("https://example.com/")?, "sid", "abc123");
     let jar = session.cookies();        // an HttpCookies snapshot
@@ -107,6 +109,8 @@ and path `"/"`, so it rides along on matching requests. An empty `name` is ignor
 === "Rust"
 
     ```rust
+    use yggdryl_core::Url;
+
     let session = HttpSession::new();
     let url = Url::from_str("https://api.example.com/")?;
     session.set_cookie(&url, "token", "xyz");

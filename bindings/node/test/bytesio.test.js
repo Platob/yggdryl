@@ -107,6 +107,14 @@ test('read advances the cursor', () => {
   assert.strictEqual(io.length, 11)
 })
 
+test('streamPosition and streamLen mirror the Io cursor surface', () => {
+  const io = new BytesIO(Buffer.from('hello world'))
+  io.seek(6)
+  assert.strictEqual(io.streamPosition(), io.tell())
+  assert.strictEqual(io.streamPosition(), 6)
+  assert.strictEqual(io.streamLen(), 11)
+})
+
 test('getValue ignores the cursor', () => {
   const io = new BytesIO(Buffer.from('abcdef'))
   io.read(3)

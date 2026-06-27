@@ -34,6 +34,9 @@ test('open, read, seek and random access', () => {
 
     assert.deepStrictEqual(io.read(5), Buffer.from('hello'))
     assert.strictEqual(io.tell(), 5)
+    // The cross-language Io cursor accessors mirror `tell` / the file size.
+    assert.strictEqual(io.streamPosition(), 5)
+    assert.strictEqual(io.streamLen(), 11)
     // Positional pread leaves the cursor put (size, offset, whence=0).
     assert.deepStrictEqual(io.pread(5, 6), Buffer.from('world'))
     assert.strictEqual(io.tell(), 5)

@@ -45,6 +45,9 @@ def test_open_read_seek_and_random_access():
         # Streamed read advances the cursor.
         assert io.read(5) == b"hello"
         assert io.tell() == 5
+        # The cross-language Io cursor accessors mirror `tell` / the file size.
+        assert io.stream_position() == 5
+        assert io.stream_len() == 11
         # Positional pread leaves the cursor put (size, offset, whence=0).
         assert io.pread(5, 6) == b"world"
         assert io.tell() == 5
