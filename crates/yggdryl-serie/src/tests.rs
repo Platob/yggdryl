@@ -1277,6 +1277,25 @@ fn struct_serie_behaves_like_a_dataframe() {
         Scalar::Utf8("b".into())
     );
 
+    // row filter
+    let kept = df.filter(&[true, false, true]).unwrap();
+    assert_eq!(kept.shape(), (2, 3));
+    assert_eq!(
+        kept.child_by_name("id").unwrap().value_at(1),
+        Scalar::Int(3)
+    );
+    assert!(df.filter(&[true]).is_err()); // mask length must match
+
+    // row stacking (vstack appends rows)
+    let stacked = df.vstack(&df).unwrap();
+    assert_eq!(stacked.shape(), (6, 3));
+    assert_eq!(
+        stacked.child_by_name("name").unwrap().value_at(4),
+        Scalar::Utf8("b".into())
+    );
+    let mismatched = df.drop_columns(&["active"]).unwrap();
+    assert!(df.vstack(&mismatched).is_err());
+
     // table render
     let text = df.show(Some(2));
     assert!(text.contains("id: int32"));

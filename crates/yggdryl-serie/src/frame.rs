@@ -4,8 +4,9 @@
 //! [shape](StructSerie::shape) and [column names](StructSerie::column_names), projection
 //! ([`select_columns`](StructSerie::select_columns)), column add / drop / rename
 //! ([`with_column`](StructSerie::with_column) / [`drop_columns`](StructSerie::drop_columns)
-//! / [`rename`](StructSerie::rename)), row slicing ([`head`](StructSerie::head) /
-//! [`tail`](StructSerie::tail) / [`slice_rows`](StructSerie::slice_rows)), a table
+//! / [`rename`](StructSerie::rename)), row selection ([`head`](StructSerie::head) /
+//! [`tail`](StructSerie::tail) / [`slice_rows`](StructSerie::slice_rows) /
+//! [`filter`](StructSerie::filter)), row stacking ([`vstack`](StructSerie::vstack)), a table
 //! [render](StructSerie::show) and a lossless Arrow [`RecordBatch`] round-trip
 //! ([`to_record_batch`](StructSerie::to_record_batch) /
 //! [`from_record_batch`](StructSerie::from_record_batch)).
@@ -21,13 +22,18 @@
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{ArrayRef, BooleanArray, RecordBatch};
 use arrow_schema::{Field as AField, Schema};
 use yggdryl_schema::Field;
 
 use crate::error::{SerieError, SerieResult};
 use crate::nested::{NestedSerie, StructSerie};
 use crate::serie::{dispatch, Serie, SerieRef};
+
+/// Maps an Arrow error to a [`SerieError`].
+fn arrow_err(e: arrow_schema::ArrowError) -> SerieError {
+    SerieError::Arrow(e.to_string())
+}
 
 impl StructSerie {
     /// The frame shape as `(rows, columns)`.
@@ -137,6 +143,52 @@ impl StructSerie {
         let len = self.len();
         let n = n.min(len);
         self.slice_rows(len - n, n)
+    }
+
+    /// Keeps the rows where `mask` is `true` (the mask length must equal the row count),
+    /// as a new frame — the row-filter every column store needs.
+    pub fn filter(&self, mask: &[bool]) -> SerieResult<StructSerie> {
+        if mask.len() != self.len() {
+            return Err(SerieError::Arrow(format!(
+                "filter mask length {} does not match the frame's {} rows",
+                mask.len(),
+                self.len()
+            )));
+        }
+        let predicate = BooleanArray::from(mask.to_vec());
+        let cols = self
+            .children()
+            .iter()
+            .map(|c| {
+                let kept = arrow_select::filter::filter(c.array().as_ref(), &predicate)
+                    .map_err(arrow_err)?;
+                dispatch(c.field().clone(), kept)
+            })
+            .collect::<SerieResult<Vec<SerieRef>>>()?;
+        StructSerie::from_children(self.name(), cols)
+    }
+
+    /// Stacks `other`'s rows below this frame's, as a new frame. The two frames must have
+    /// the same column names and types (each column pair is concatenated).
+    pub fn vstack(&self, other: &StructSerie) -> SerieResult<StructSerie> {
+        if self.column_names() != other.column_names() {
+            return Err(SerieError::Arrow(
+                "vstack requires both frames to have the same column names in the same order"
+                    .into(),
+            ));
+        }
+        let cols = self
+            .children()
+            .iter()
+            .zip(other.children())
+            .map(|(a, b)| {
+                let combined =
+                    arrow_select::concat::concat(&[a.array().as_ref(), b.array().as_ref()])
+                        .map_err(arrow_err)?;
+                dispatch(a.field().clone(), combined)
+            })
+            .collect::<SerieResult<Vec<SerieRef>>>()?;
+        StructSerie::from_children(self.name(), cols)
     }
 
     /// The frame's columns as an Arrow [`RecordBatch`] (one Arrow field + array per
