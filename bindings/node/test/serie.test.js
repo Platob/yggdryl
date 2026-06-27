@@ -61,6 +61,11 @@ test('cast and categorical', () => {
   assert.strictEqual(cat.isMaterialized, false)
   assert.deepStrictEqual(cat.toList(), ['a', 'b', 'a', 'a'])
   assert.strictEqual(cat.materialize().isMaterialized, true)
+  // dictionary accessors: distinct values stored once, a code per row
+  assert.strictEqual(cat.categoryCount, 2)
+  assert.strictEqual(cat.codeAt(0), cat.codeAt(2))
+  assert.deepStrictEqual(cat.categories().toList(), ['a', 'b'])
+  assert.throws(() => new Serie('n', [1, 2]).categoryCount) // not categorical
 })
 
 test('lazy range and index', () => {
@@ -68,7 +73,15 @@ test('lazy range and index', () => {
   assert.strictEqual(r.isMaterialized, false)
   assert.deepStrictEqual(r.toList(), [0, 1, 2, 3, 4])
   assert.deepStrictEqual(Serie.range(3, 10, 5).toList(), [10, 15, 20])
-  assert.deepStrictEqual(Serie.index(4).toList(), [0, 1, 2, 3])
+  const idx = Serie.index(4)
+  assert.deepStrictEqual(idx.toList(), [0, 1, 2, 3])
+  // index lookups: label <-> position
+  assert.strictEqual(idx.isRange, true)
+  assert.strictEqual(idx.at(2), 2)
+  assert.strictEqual(idx.position(3), 3)
+  assert.strictEqual(idx.contains(3), true)
+  assert.strictEqual(idx.contains(4), false)
+  assert.throws(() => new Serie('n', [1, 2]).at(0)) // not an index
 })
 
 test('nested struct and select', () => {

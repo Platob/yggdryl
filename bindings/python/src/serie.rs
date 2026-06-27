@@ -43,6 +43,26 @@ fn as_frame(serie: &SerieRef) -> PyResult<&StructSerie> {
     })
 }
 
+/// Borrows a column as an [`IndexSerie`], or raises if it is not an index column — the
+/// gate for the index (label ↔ position) operations.
+fn as_index(serie: &SerieRef) -> PyResult<&IndexSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<IndexSerie>()
+        .ok_or_else(|| PyTypeError::new_err("not an index column; build one with Serie.index(...)"))
+}
+
+/// Borrows a column as a [`CategoricalSerie`], or raises if it is not a categorical
+/// column — the gate for the dictionary (category / code) operations.
+fn as_categorical(serie: &SerieRef) -> PyResult<&CategoricalSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<CategoricalSerie>()
+        .ok_or_else(|| {
+            PyTypeError::new_err("not a categorical column; build one with serie.categorical()")
+        })
+}
+
 /// The element kind inferred from a Python list (boolean checked before int, since
 /// Python `bool` is a subclass of `int`).
 enum Kind {
@@ -367,6 +387,51 @@ impl Serie {
             Some(nested) => nested.children().into_iter().map(wrap).collect(),
             None => Vec::new(),
         }
+    }
+
+    // ---- index ----
+
+    /// Whether this is the implicit lazy ``0..len`` ``uint64`` range index (enables the
+    /// O(1) label ↔ position lookups). Raises if the column is not an index.
+    #[getter]
+    fn is_range(&self) -> PyResult<bool> {
+        Ok(as_index(&self.inner)?.is_range())
+    }
+
+    /// The integer label at row `index` (``None`` when out of bounds or non-integer).
+    fn at(&self, index: usize) -> PyResult<Option<u64>> {
+        Ok(as_index(&self.inner)?.at(index))
+    }
+
+    /// The first row whose label equals `label`, or ``None``.
+    fn position(&self, label: u64) -> PyResult<Option<usize>> {
+        Ok(as_index(&self.inner)?.position(label))
+    }
+
+    /// Whether `label` is one of the index labels.
+    fn contains(&self, label: u64) -> PyResult<bool> {
+        Ok(as_index(&self.inner)?.contains(label))
+    }
+
+    // ---- categorical ----
+
+    /// The number of distinct categories. Raises if the column is not categorical.
+    #[getter]
+    fn category_count(&self) -> PyResult<usize> {
+        Ok(as_categorical(&self.inner)?.category_count())
+    }
+
+    /// The distinct values (the dictionary) as a column named ``"categories"``.
+    fn categories(&self) -> PyResult<Serie> {
+        as_categorical(&self.inner)?
+            .categories()
+            .map(wrap)
+            .map_err(serie_err)
+    }
+
+    /// The dictionary **code** at row `index` (``None`` when null / out of bounds).
+    fn code_at(&self, index: usize) -> PyResult<Option<i32>> {
+        Ok(as_categorical(&self.inner)?.code_at(index))
     }
 
     // ---- frame (DataFrame) ----

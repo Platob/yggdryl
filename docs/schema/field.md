@@ -190,9 +190,7 @@ In Rust (with the `arrow` feature), a struct-typed field converts to an
     let schema = Field::new("rec", DataType::struct_(vec![
         Field::new("id", DataType::int(64, true), false),
     ]), false);
-    # #[cfg(feature = "arrow")]
     let arrow = schema.to_arrow_schema()?;           // arrow_schema::Schema
-    # #[cfg(feature = "arrow")]
     let back = Field::from_arrow_schema("rec", &arrow, false);
     ```
 

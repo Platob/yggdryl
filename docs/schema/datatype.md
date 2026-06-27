@@ -273,8 +273,7 @@ timestamp timezone falls back to UTC (with a `warn` log).
     ```rust
     use yggdryl_schema::{DataType, Field};
     let dt = DataType::struct_(vec![Field::new("id", DataType::int(64, true), true)]);
-    # #[cfg(feature = "arrow")]
-    let _arrow = dt.to_arrow()?;     // arrow_schema::DataType
+    let _arrow = dt.to_arrow()?;     // arrow_schema::DataType (the `arrow` feature)
     ```
 
 ## Next
