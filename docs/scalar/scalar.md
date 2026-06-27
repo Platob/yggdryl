@@ -106,6 +106,39 @@ decimals; and a `list` / `dict` (array / object) for the nested list / struct / 
 types. The typed accessors `as_bool` / `as_int` / `as_float` / `as_str` / `as_bytes`
 return the value only when it is of that kind.
 
+### Native records — `to_dict` / `as_dataclass`
+
+A struct or map scalar (e.g. a [frame](../serie/serie.md#frame-dataframe) row) converts
+straight into a **language-native record**: Python's `to_dict()` (a `dict`) and
+`as_dataclass(name)` (a real `dataclasses` instance with attribute access), and Node's
+`toObject()` (a plain object — the JS struct). Nested values convert recursively.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    df = yggdryl.Serie.struct("df", [
+        yggdryl.Serie("id", [1, 2]),
+        yggdryl.Serie("name", ["a", "b"]),
+    ])
+    row = df.row(0)                                      # a struct Scalar
+    assert row.to_dict() == {"id": 1, "name": "a"}
+    rec = row.as_dataclass("Row")                        # a dataclass instance
+    assert (rec.id, rec.name) == (1, "a")
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const df = Serie.struct('df', [new Serie('id', [1, 2]), new Serie('name', ['a', 'b'])])
+    const row = df.row(0)                                // a struct Scalar
+    // toObject -> a native JS object { id: 1, name: 'a' }
+    if (row.toObject().name !== 'a') throw new Error('record')
+    ```
+
 ## Serialization
 
 As with every yggdryl value type, a `Scalar` round-trips through:
