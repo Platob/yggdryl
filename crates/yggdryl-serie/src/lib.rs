@@ -71,6 +71,7 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod build;
+mod bytes;
 mod categorical;
 mod display;
 mod error;
@@ -87,6 +88,7 @@ mod temporal;
 #[cfg(test)]
 mod tests;
 
+pub use bytes::from_bytes;
 pub use categorical::CategoricalSerie;
 pub use display::DisplayOptions;
 pub use error::{SerieError, SerieResult};

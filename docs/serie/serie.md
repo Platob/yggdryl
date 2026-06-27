@@ -435,6 +435,26 @@ block for a future `Frame`'s table. Parameters: `max_rows`, `header`, `width`, `
     assert!(text.contains("97 more rows"));    // truncation marker
     ```
 
+## Serialize
+
+`Serie::to_bytes` writes the column as an **Arrow IPC stream** and `from_bytes` reads it
+back — a **lossless** round-trip of the type, name, nulls and values, *including nested*
+columns. This is the canonical bytes form (the bindings' pickle / `toJSON` use it).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{from_bytes, Int32Serie, Scalar, Serie};
+
+    let serie = Int32Serie::from_values("n", vec![Some(1), None, Some(3)]);
+    let bytes = serie.to_bytes()?;
+    let back = from_bytes(&bytes)?;
+    assert_eq!(back.name(), "n");
+    assert_eq!(back.value_at(0), Scalar::Int(1));
+    assert!(back.is_null(1));
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
 ## Coverage
 
 The primitive category is complete: integers (`int8`…`int64`, `uint8`…`uint64`),

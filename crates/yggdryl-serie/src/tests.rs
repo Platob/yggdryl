@@ -15,11 +15,11 @@ use arrow_schema::{DataType as ADataType, Field as AField};
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
-    child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, CategoricalSerie,
-    Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, DisplayOptions,
-    DurationSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie, ListSerie,
-    MapSerie, NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie,
-    TimeRangeSerie, TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
+    child, child_range, from_array, from_arrow, from_bytes, BinarySerie, BooleanSerie,
+    CategoricalSerie, Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie,
+    DisplayOptions, DurationSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie,
+    ListSerie, MapSerie, NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie,
+    TemporalSerie, TimeRangeSerie, TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -1135,4 +1135,38 @@ fn struct_from_children_is_lazy_until_materialized() {
     assert!(mat.is_materialized());
     assert_eq!(mat.len(), 3);
     assert_eq!(mat.value_at(2), Scalar::Other("{id=2, name=c}".into()));
+}
+
+#[test]
+fn to_bytes_round_trips_through_arrow_ipc() {
+    // primitive column with nulls
+    let ints = Int32Serie::from_values("n", vec![Some(1), None, Some(3)]);
+    let back = from_bytes(&ints.to_bytes().unwrap()).unwrap();
+    assert_eq!(back.name(), "n");
+    assert_eq!(back.data_type(), &DataType::int(32, true));
+    assert_eq!(back.len(), 3);
+    assert_eq!(back.value_at(0), Scalar::Int(1));
+    assert!(back.is_null(1));
+    assert_eq!(back.value_at(2), Scalar::Int(3));
+
+    // utf8 column
+    let strs = VarcharSerie::<i32>::from_values("s", vec![Some("a"), None, Some("c")]);
+    let back = from_bytes(&strs.to_bytes().unwrap()).unwrap();
+    assert_eq!(back.value_at(0), Scalar::Utf8("a".into()));
+    assert!(back.is_null(1));
+
+    // nested struct round-trips losslessly (the point of IPC over to_list)
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("a"), Some("b")],
+    ));
+    let rec = StructSerie::from_children("rec", vec![id, name]).unwrap();
+    let back = from_bytes(&rec.to_bytes().unwrap()).unwrap();
+    assert!(back.data_type().is_struct());
+    assert_eq!(
+        back.select("name").unwrap().unwrap().value_at(1),
+        Scalar::Utf8("b".into())
+    );
+    assert_eq!(back.value_at(0), Scalar::Other("{id=1, name=a}".into()));
 }

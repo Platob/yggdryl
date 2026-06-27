@@ -32,6 +32,10 @@ arrow-buffer = { version = "59", default-features = false }
 arrow-select = { version = "59", default-features = false }
 # The cast kernel powering Serie::cast and CategoricalSerie dictionary encode/decode.
 arrow-cast = { version = "59", default-features = false }
+# Arrow IPC stream format for Serie::to_bytes / from_bytes — lossless column bytes
+# (type, name, nulls, values, including nested). `default-features = false` keeps it
+# pure-Rust (no lz4/zstd C codecs; IPC bodies are uncompressed).
+arrow-ipc = { version = "59", default-features = false }
 # Off-by-default structured logging, via the crate-local `log_event!` macro only.
 log = { version = "0.4", optional = true }
 

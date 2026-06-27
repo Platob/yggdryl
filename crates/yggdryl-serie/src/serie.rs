@@ -132,6 +132,13 @@ pub trait Serie: fmt::Debug + Send + Sync {
         from_arrow(self.field().clone(), self.array()).expect("a serie's array matches its field")
     }
 
+    /// Serialises the column to **Arrow IPC stream bytes** — a lossless round-trip
+    /// (type, name, nulls and values, including nested) through [`from_bytes`](crate::from_bytes).
+    /// The canonical bytes form the bindings' pickle / `toJSON` use.
+    fn to_bytes(&self) -> SerieResult<Vec<u8>> {
+        crate::bytes::to_ipc_bytes(self.field(), self.array())
+    }
+
     /// The value at `index` as a type-erased [`Scalar`] (`Null` for a null cell or an
     /// out-of-bounds index). Lazy columns override this to compute the value directly.
     fn value_at(&self, index: usize) -> Scalar {

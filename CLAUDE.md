@@ -294,8 +294,15 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   path-parsing logic lives here.**
 - `build.rs` — the **fill-array** builders behind `Serie::resize`: `null_array` (a run of
   nulls of an exact Arrow type) and `default_array` (a run of a type's **default** — every
-  datatype has one: `false` / `0` / `0.0` / `""` / empty bytes / a struct of defaults).
-  **All default/fill-array logic lives here.**
+  datatype has one: `false` / `0` / `0.0` / `""` / empty bytes / a struct of defaults;
+  a struct fills each child by **its** nullability). **All default/fill-array logic lives
+  here.**
+- `bytes.rs` — **Arrow-IPC byte serialization**: `Serie::to_bytes` (a base-trait default
+  that writes the column as a one-field IPC **stream**) and the `from_bytes` free fn (reads
+  it back via the factory), a **lossless** round-trip of type / name / nulls / values
+  **including nested** — the canonical bytes the bindings' pickle / `toJSON` use.
+  `arrow-ipc` is `default-features = false` (no lz4/zstd C codecs, so the build stays
+  pure-Rust). **All column-bytes logic lives here.**
 - `scalar.rs` — the type-erased `Scalar` (a single value read by index: integers /
   decimals-128 / temporal-physicals widen to `Int(i128)`, floats to `Float(f64)`,
   plus `Boolean` / `Utf8` / `Binary`, and an `Other(String)` for the exotic physicals —
