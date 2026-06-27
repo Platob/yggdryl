@@ -3,19 +3,23 @@
 
 use std::sync::Arc;
 
+use arrow_array::builder::{Int32Builder, MapBuilder, StringBuilder};
+use arrow_array::types::Int32Type;
 use arrow_array::{
-    ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
+    Array, ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
     Float32Array, Float64Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
-    NullArray, StringArray, TimestampMicrosecondArray, TimestampNanosecondArray,
-    TimestampSecondArray, UInt32Array,
+    ListArray, NullArray, StringArray, StructArray, Time32SecondArray, TimestampMicrosecondArray,
+    TimestampNanosecondArray, TimestampSecondArray, UInt32Array,
 };
+use arrow_schema::{DataType as ADataType, Field as AField};
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
     child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie,
-    Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, EnumSerie, Float32Serie,
-    Float64Serie, IndexSerie, Int32Serie, Int64Serie, RangeSerie, Scalar, Serie, SerieRef,
-    TemporalSerie, TimeRangeSerie, TypedSerie, UInt64Serie, VarcharSerie,
+    Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, DisplayOptions, DurationSerie,
+    EnumSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie, ListSerie, MapSerie,
+    NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie, TimeRangeSerie,
+    TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -592,6 +596,141 @@ fn date_range_is_temporal() {
     let r = DateRangeSerie::from_dates("d", start.clone(), 1, 3);
     assert_eq!(r.date_at(0), Some(start.clone()));
     assert_eq!(r.datetime_at(0).unwrap().date(), start);
+}
+
+#[test]
+fn unified_time_and_duration_series() {
+    use yggdryl_core::{Duration, Time, TimeUnit};
+
+    let t = from_array(
+        "t",
+        Arc::new(Time32SecondArray::from(vec![3600, 7200])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(
+        t.data_type(),
+        &DataType::Time {
+            unit: TimeUnit::Second
+        }
+    );
+    let ts = t.as_any().downcast_ref::<TimeSerie>().unwrap();
+    assert_eq!(ts.unit(), TimeUnit::Second);
+    assert_eq!(ts.time_at(0), Some(Time::from_hms(1, 0, 0).unwrap()));
+    assert_eq!(ts.get(1), Some(Time::from_hms(2, 0, 0).unwrap()));
+
+    let d = from_array(
+        "d",
+        Arc::new(DurationSecondArray::from(vec![60, 120])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(
+        d.data_type(),
+        &DataType::Duration {
+            unit: TimeUnit::Second
+        }
+    );
+    let ds = d.as_any().downcast_ref::<DurationSerie>().unwrap();
+    assert_eq!(ds.duration_at(0), Some(Duration::from_secs(60)));
+    assert_eq!(ds.value_at(1), Scalar::Int(120));
+}
+
+#[test]
+fn display_renders_header_rows_and_truncation() {
+    let serie = Int32Serie::from_values("n", vec![Some(1), None, Some(3)]);
+    let text = serie.display(&DisplayOptions::default());
+    assert!(text.contains("n: int32"));
+    assert!(text.contains("null"));
+    assert!(text.contains('1') && text.contains('3'));
+
+    let big = Int32Serie::from_values("n", (0..20).map(Some));
+    let limited = big.display(&DisplayOptions::default().with_max_rows(5));
+    assert!(limited.contains("15 more rows"));
+
+    // fixed width truncates with an ellipsis; no-header drops the title line
+    let wide = VarcharSerie::<i32>::from_values("s", vec![Some("abcdef")]);
+    let w = wide.display(&DisplayOptions::default().with_width(3).with_header(false));
+    assert_eq!(w, "ab…");
+}
+
+#[test]
+fn struct_serie_children_and_recursion() {
+    // struct { id: int32, name: utf8 }
+    let id = Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef;
+    let name = Arc::new(StringArray::from(vec!["a", "b", "c"])) as ArrayRef;
+    let sa = StructArray::from(vec![
+        (Arc::new(AField::new("id", ADataType::Int32, false)), id),
+        (Arc::new(AField::new("name", ADataType::Utf8, true)), name),
+    ]);
+    let serie = from_array("rec", Arc::new(sa) as ArrayRef).unwrap();
+    assert_eq!(serie.category(), TypeCategory::Nested);
+
+    let st = serie.as_any().downcast_ref::<StructSerie>().unwrap();
+    assert_eq!(st.child_count(), 2);
+    assert_eq!(st.child_by_name("id").unwrap().value_at(0), Scalar::Int(1));
+    assert_eq!(st.child(1).unwrap().value_at(2), Scalar::Utf8("c".into()));
+    // a record renders as {field=value, …}
+    assert_eq!(st.value_at(0), Scalar::Other("{id=1, name=a}".into()));
+
+    // recursion: a struct whose child is a list<int32>
+    let inner = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
+        Some(vec![Some(1), Some(2)]),
+        Some(vec![Some(3)]),
+    ]);
+    let dt = inner.data_type().clone();
+    let nested = StructArray::from(vec![(
+        Arc::new(AField::new("tags", dt, true)),
+        Arc::new(inner) as ArrayRef,
+    )]);
+    let serie = from_array("rec", Arc::new(nested) as ArrayRef).unwrap();
+    let st = serie.as_any().downcast_ref::<StructSerie>().unwrap();
+    let tags = st.child_by_name("tags").unwrap();
+    let tags_list = tags.as_any().downcast_ref::<ListSerie<i32>>().unwrap();
+    assert_eq!(tags_list.value_slice(0).unwrap().len(), 2);
+}
+
+#[test]
+fn list_serie_slices_and_nulls() {
+    let la = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
+        Some(vec![Some(1), Some(2)]),
+        Some(vec![Some(3)]),
+        None,
+    ]);
+    let serie = from_array("l", Arc::new(la) as ArrayRef).unwrap();
+    let ls = serie.as_any().downcast_ref::<ListSerie<i32>>().unwrap();
+
+    assert_eq!(ls.len(), 3);
+    assert_eq!(ls.values().len(), 3); // flattened 1,2,3
+    let sub = ls.value_slice(0).unwrap();
+    assert_eq!(sub.len(), 2);
+    assert_eq!(sub.value_at(0), Scalar::Int(1));
+    assert!(ls.value_slice(2).is_none()); // null row
+    assert_eq!(ls.value_at(1), Scalar::Other("[3]".into()));
+    assert_eq!(ls.value_at(2), Scalar::Null);
+}
+
+#[test]
+fn map_serie_keys_values_and_render() {
+    let mut b = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    b.keys().append_value("a");
+    b.values().append_value(1);
+    b.keys().append_value("b");
+    b.values().append_value(2);
+    b.append(true).unwrap(); // row 0: {a=1, b=2}
+    b.keys().append_value("c");
+    b.values().append_value(3);
+    b.append(true).unwrap(); // row 1: {c=3}
+    let ma = b.finish();
+
+    let serie = from_array("m", Arc::new(ma) as ArrayRef).unwrap();
+    let ms = serie.as_any().downcast_ref::<MapSerie>().unwrap();
+    assert_eq!(ms.len(), 2);
+    assert_eq!(ms.keys().len(), 3); // flattened a,b,c
+    assert_eq!(
+        ms.child_by_name("value").unwrap().value_at(0),
+        Scalar::Int(1)
+    );
+    assert_eq!(ms.value_at(0), Scalar::Other("{a=1, b=2}".into()));
+    assert_eq!(ms.value_at(1), Scalar::Other("{c=3}".into()));
 }
 
 #[test]

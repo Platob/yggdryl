@@ -267,10 +267,18 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   field); `TypedSerie<T>` adds typed value access (`get` / `value` / `iter` / `to_vec`)
   over a column's native value type. `from_arrow(field, array)` / `from_array(name,
   array)` **redirect** an Arrow array to the right concrete series, returning a boxed
-  `SerieRef = Arc<dyn Serie>` (the factory checks the field's `DataType` maps to the
-  array's Arrow type, then dispatches on it). **All dispatch logic lives here.**
-  (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
-  recovered via `as_any().downcast_ref`.)
+  `SerieRef = Arc<dyn Serie>`. `from_arrow` checks the field's `DataType` maps to the
+  array's Arrow type then calls the crate-internal `dispatch`; `from_array` derives the
+  field from the array and calls `dispatch` **directly** (skipping the equality check,
+  which would trip on the schema's documented Arrow normalisations — e.g. a map's
+  `key`/`value` entry names vs Arrow's `keys`/`values`). The recursive nested builders
+  call `dispatch` too. **All dispatch logic lives here.** A default `display(&DisplayOptions)`
+  renders the column to a readable string (see `display.rs`). (Object-safety: the base
+  trait is *not* generic; the `<T>` lives in `TypedSerie<T>`, recovered via
+  `as_any().downcast_ref`.)
+- `display.rs` — `DisplayOptions` (`max_rows` / `header` / `width` / `null` / `index`)
+  and the `render` routine behind `Serie::display`, the building block for a future
+  `Frame`'s table rendering. **All display logic lives here.**
 - `scalar.rs` — the type-erased `Scalar` (a single value read by index: integers /
   decimals-128 / temporal-physicals widen to `Int(i128)`, floats to `Float(f64)`,
   plus `Boolean` / `Utf8` / `Binary`, and an `Other(String)` for the exotic physicals —
@@ -279,19 +287,29 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
 - `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
   **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
   generic backing every fixed-width scalar (integers, floats, decimals, **and** the
-  date/time/duration/interval physical types — **timestamps unify into `DatetimeSerie`**,
-  not here); `BooleanSerie`, `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`, plus
-  a zero-copy `str_value`) and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus
+  date/interval physical types — **timestamps/times/durations unify into the temporal
+  series**, not here); `BooleanSerie`, `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`,
+  plus a zero-copy `str_value`) and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus
   `bytes_value`) cover the rest. Named aliases (`mod.rs`: `Int32Serie`, `Float64Serie`,
   `Date32Serie`, …) pin the common widths. Each concrete stores its typed array +
   `Field`, overrides the length/null methods for zero-overhead, and `array()` returns a
   cheap `Arc` clone.
-- `temporal/` (`mod` + `datetime.rs`) — the **temporal** series. `TemporalSerie` is the
-  shared trait (a uniform `datetime_at`, with derived `date_at` / `time_at`, all in core
-  `DateTime`/`Date`/`Time`); `DatetimeSerie` is the **unified timestamp column**, backing
-  an Arrow timestamp array of **any** `TimeUnit` + optional `Timezone` (reads them from
-  the field) and presenting values as `DateTime` — it replaces the per-unit timestamp
-  aliases. **All `TemporalSerie` / datetime logic lives here.**
+- `temporal/` (`mod` + `datetime.rs` + `time.rs` + `duration.rs`) — the **temporal**
+  series. `TemporalSerie` is the shared trait (a uniform `datetime_at`, with derived
+  `date_at` / `time_at`, all in core `DateTime`/`Date`/`Time`). `DatetimeSerie` /
+  `TimeSerie` / `DurationSerie` are the **unified** timestamp / time / duration columns:
+  each backs an Arrow array of **any** `TimeUnit` (timestamps also carry an optional
+  `Timezone`), reads the unit/zone from its field, and presents values as the core
+  `DateTime` / `Time` / `Duration` — replacing the per-unit aliases. `DatetimeSerie` /
+  `TimeSerie` implement `TemporalSerie`; `DurationSerie` is a span, so it does not. **All
+  `TemporalSerie` / unified-temporal logic lives here.**
+- `nested/` (`mod` + `struct_serie.rs` + `list_serie.rs` + `map_serie.rs`) — the
+  **nested** series. `NestedSerie` is the shared trait (`child_count` / `child(index)` /
+  `child_by_name`). `StructSerie` (a child `Serie` per field), `ListSerie<O>` (a flattened
+  values child + a zero-copy per-row `value_slice`) and `MapSerie` (flattened key/value
+  children) build their children **recursively** via `dispatch`, so arbitrarily deep
+  nesting resolves uniformly; each `value_at` renders a readable `{…}` / `[…]`. **All
+  nested-series logic lives here.**
 - `lazy/` (`mod` + `range.rs` + `daterange.rs` + `datetimerange.rs` + `timerange.rs`) —
   the **lazy / computed** series, not resident in memory: they store a compact
   description and compute each value on demand (`is_materialized()` → `false`),
@@ -312,11 +330,10 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   the `child` / `child_range` constructors that build the parent→child graph;
   `materialize` detaches a child into an independent column. **All slice-graph logic
   lives here.**
-- **Still to build** (next increments): the **nested** series (list / struct / map /
-  union), the **dictionary** / **view** backends, a **`ChunkedSerie`** mirroring Arrow's
-  `ChunkedArray`, cast / arithmetic operations, **benchmarks**, and the **Python / Node
-  bindings** (not yet surfaced — the cross-language rule applies once the Rust base
-  settles).
+- **Still to build** (next increments): the **union** nested type, the **dictionary** /
+  **view** backends, a **`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, cast /
+  arithmetic operations, **benchmarks**, and the **Python / Node bindings** (not yet
+  surfaced — the cross-language rule applies once the Rust base settles).
 
 Features: `log` only so far (`arrow-array` is required, not optional). **All serie logic
 lives here; `arrow-array` stays a dependency of this crate only.**

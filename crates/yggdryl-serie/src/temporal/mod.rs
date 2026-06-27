@@ -6,14 +6,22 @@
 //!   plus the derived [`date_at`](TemporalSerie::date_at) / [`time_at`](TemporalSerie::time_at).
 //! - [`DatetimeSerie`] — the unified timestamp column (any [`TimeUnit`](yggdryl_core::TimeUnit)
 //!   + optional timezone).
+//! - [`TimeSerie`] — the unified time-of-day column (any unit), values as
+//!   [`Time`](yggdryl_core::Time).
+//! - [`DurationSerie`] — the unified elapsed-time column (any unit), values as
+//!   [`Duration`](yggdryl_core::Duration) (a span, so *not* a [`TemporalSerie`]).
 //!
 //! The lazy temporal **ranges** ([`DateRangeSerie`](crate::DateRangeSerie),
 //! [`DateTimeRangeSerie`](crate::DateTimeRangeSerie), [`TimeRangeSerie`](crate::TimeRangeSerie))
 //! also implement [`TemporalSerie`].
 
 mod datetime;
+mod duration;
+mod time;
 
 pub use datetime::DatetimeSerie;
+pub use duration::DurationSerie;
+pub use time::TimeSerie;
 
 use yggdryl_core::{Date, DateTime, Time};
 

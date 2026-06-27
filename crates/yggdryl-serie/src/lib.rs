@@ -21,9 +21,11 @@
 //! - The **primitive** concrete series — [`PrimitiveSerie<A>`] (Arrow numeric / date /
 //!   time / duration / interval types), [`BooleanSerie`], [`VarcharSerie<O>`] and
 //!   [`BinarySerie<O>`].
-//! - The **temporal** series — [`DatetimeSerie`] (the unified timestamp column over any
-//!   unit + timezone) and the [`TemporalSerie`] trait (`datetime_at` / `date_at` /
-//!   `time_at`).
+//! - The **temporal** series — [`DatetimeSerie`] / [`TimeSerie`] / [`DurationSerie`]
+//!   (unified columns over any unit, presenting core `DateTime` / `Time` / `Duration`)
+//!   and the [`TemporalSerie`] trait (`datetime_at` / `date_at` / `time_at`).
+//! - The **nested** series — [`StructSerie`], [`ListSerie<O>`] and [`MapSerie`] (child
+//!   columns built recursively) and the [`NestedSerie`] trait.
 //! - The **lazy** (computed) series — [`RangeSerie`], [`DateRangeSerie`],
 //!   [`DateTimeRangeSerie`] and [`TimeRangeSerie`] — store a compact description and
 //!   produce values on demand until materialised (the temporal ranges are
@@ -33,6 +35,7 @@
 //!   and first row index.
 //! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
 //!   [`parent`](Serie::parent), forming a slice graph.
+//! - [`Serie::display`] with [`DisplayOptions`] renders a column to a readable string.
 //!
 //! [`from_arrow`] / [`from_array`] **redirect** an Arrow array to the right concrete
 //! series, returning a boxed [`SerieRef`] — the basis for a column store, and in turn
@@ -66,10 +69,12 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod display;
 mod enum_serie;
 mod error;
 mod index;
 mod lazy;
+mod nested;
 mod primitive;
 mod scalar;
 mod serie;
@@ -79,22 +84,20 @@ mod temporal;
 #[cfg(test)]
 mod tests;
 
+pub use display::DisplayOptions;
 pub use enum_serie::EnumSerie;
 pub use error::{SerieError, SerieResult};
 pub use index::IndexSerie;
 pub use lazy::{DateRangeSerie, DateTimeRangeSerie, RangeSerie, TimeRangeSerie};
+pub use nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 pub use primitive::{
     BinarySerie,
     BooleanSerie,
-    // Concrete temporal / decimal aliases.
+    // Concrete date / decimal aliases.
     Date32Serie,
     Date64Serie,
     Decimal128Serie,
     Decimal256Serie,
-    DurationMicrosecondSerie,
-    DurationMillisecondSerie,
-    DurationNanosecondSerie,
-    DurationSecondSerie,
     // Concrete numeric aliases.
     Float16Serie,
     Float32Serie,
@@ -113,7 +116,7 @@ pub use primitive::{
 pub use scalar::Scalar;
 pub use serie::{from_array, from_arrow, Serie, SerieRef, TypedSerie};
 pub use slice::{child, child_range, SliceSerie};
-pub use temporal::{DatetimeSerie, TemporalSerie};
+pub use temporal::{DatetimeSerie, DurationSerie, TemporalSerie, TimeSerie};
 
 // Re-export the Arrow array crate so dependents build arrays without pinning the
 // exact `arrow-array` version themselves, and the shared vocabulary they need.

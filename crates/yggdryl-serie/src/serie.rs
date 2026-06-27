@@ -8,15 +8,17 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, GenericBinaryArray, GenericStringArray};
-use arrow_schema::{DataType as ADataType, IntervalUnit as AIntervalUnit, TimeUnit as ATimeUnit};
+use arrow_schema::{DataType as ADataType, IntervalUnit as AIntervalUnit};
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
+use crate::display::{render as render_display, DisplayOptions};
 use crate::error::{SerieError, SerieResult};
 #[allow(unused_imports)]
 use crate::log_event;
+use crate::nested::{ListSerie, MapSerie, StructSerie};
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
-use crate::temporal::DatetimeSerie;
+use crate::temporal::{DatetimeSerie, DurationSerie, TimeSerie};
 
 /// A reference-counted, type-erased column — the handle a column store and the
 /// [factory](from_arrow) hand around.
@@ -153,6 +155,12 @@ pub trait Serie: fmt::Debug + Send + Sync {
     fn slice_range(&self, range: Range<usize>) -> SerieRef {
         self.slice(range.start, range.len())
     }
+
+    /// A readable, parametrised string view of the column (see [`DisplayOptions`]) —
+    /// the building block for a future `Frame`'s table rendering.
+    fn display(&self, opts: &DisplayOptions) -> String {
+        render_display(self, opts)
+    }
 }
 
 /// Typed value access over a concrete column's native value type `T` (e.g. `i32` for
@@ -222,12 +230,18 @@ pub fn from_arrow(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
 /// assert_eq!(serie.data_type(), &yggdryl_serie::DataType::varchar());
 /// ```
 pub fn from_array(name: impl Into<String>, array: ArrayRef) -> SerieResult<SerieRef> {
+    // The field is derived *from* the array, so it is consistent by construction —
+    // dispatch directly, skipping the explicit-field equality check (which would trip
+    // on the schema's documented Arrow normalisations, e.g. a map's `key`/`value`
+    // entry-field names vs Arrow's `keys`/`values`).
     let afield = arrow_schema::Field::new(name, array.data_type().clone(), true);
-    from_arrow(Field::from_arrow(&afield), array)
+    dispatch(Field::from_arrow(&afield), array)
 }
 
-/// Picks the concrete series for an array whose type already matches `field`.
-fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
+/// Picks the concrete series for an array whose type already matches `field`. Crate-
+/// internal: the recursive nested builders call it directly (the array is the source of
+/// truth, so the explicit-field check is skipped).
+pub(crate) fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
     use arrow_array::types::*;
 
     /// Downcasts `array` to its `PrimitiveArray<$ty>` and boxes a `PrimitiveSerie`.
@@ -262,18 +276,14 @@ fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
         // decimals
         ADataType::Decimal128(_, _) => prim!(Decimal128Type),
         ADataType::Decimal256(_, _) => prim!(Decimal256Type),
-        // temporal — timestamps unify into the DatetimeSerie (handles every unit + tz)
+        // temporal — timestamps / times / durations unify into their unit-aware series
         ADataType::Timestamp(_, _) => Arc::new(DatetimeSerie::from_parts(field, array)) as SerieRef,
+        ADataType::Time32(_) | ADataType::Time64(_) => {
+            Arc::new(TimeSerie::from_parts(field, array)) as SerieRef
+        }
+        ADataType::Duration(_) => Arc::new(DurationSerie::from_parts(field, array)) as SerieRef,
         ADataType::Date32 => prim!(Date32Type),
         ADataType::Date64 => prim!(Date64Type),
-        ADataType::Time32(ATimeUnit::Second) => prim!(Time32SecondType),
-        ADataType::Time32(ATimeUnit::Millisecond) => prim!(Time32MillisecondType),
-        ADataType::Time64(ATimeUnit::Microsecond) => prim!(Time64MicrosecondType),
-        ADataType::Time64(ATimeUnit::Nanosecond) => prim!(Time64NanosecondType),
-        ADataType::Duration(ATimeUnit::Second) => prim!(DurationSecondType),
-        ADataType::Duration(ATimeUnit::Millisecond) => prim!(DurationMillisecondType),
-        ADataType::Duration(ATimeUnit::Microsecond) => prim!(DurationMicrosecondType),
-        ADataType::Duration(ATimeUnit::Nanosecond) => prim!(DurationNanosecondType),
         ADataType::Interval(AIntervalUnit::YearMonth) => prim!(IntervalYearMonthType),
         ADataType::Interval(AIntervalUnit::DayTime) => prim!(IntervalDayTimeType),
         ADataType::Interval(AIntervalUnit::MonthDayNano) => prim!(IntervalMonthDayNanoType),
@@ -320,6 +330,13 @@ fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
                 .clone();
             Arc::new(BinarySerie::<i64>::from_parts(field, typed)) as SerieRef
         }
+        // nested — children build recursively through this same factory
+        ADataType::Struct(_) => Arc::new(StructSerie::from_parts(field, array)?) as SerieRef,
+        ADataType::List(_) => Arc::new(ListSerie::<i32>::from_parts(field, array)?) as SerieRef,
+        ADataType::LargeList(_) => {
+            Arc::new(ListSerie::<i64>::from_parts(field, array)?) as SerieRef
+        }
+        ADataType::Map(_, _) => Arc::new(MapSerie::from_parts(field, array)?) as SerieRef,
         other => {
             return Err(SerieError::Unsupported(format!(
                 "no serie backend for arrow type '{other}' yet; nested, view, dictionary \

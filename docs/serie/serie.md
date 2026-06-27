@@ -21,14 +21,18 @@ The design mirrors the schema crate's three [categories](../schema/datatype.md):
   reflections (`name()`, `dtype()`, `get_metadata(key)`); accessors to the `field()` and
   the backing Arrow `array()`; the `len()` / `num_rows()` / `null_count()` bookkeeping;
   value access by index (`value_at` → `Scalar`) and by range (`slice` / `slice_range`,
-  zero-copy); the `parent()` graph link; `materialize()`; and downcasting via `as_any()`.
+  zero-copy); the `parent()` graph link; `materialize()`; a parametrised `display()`; and
+  downcasting via `as_any()`.
 - **`TypedSerie<T>`** — typed value access (`get` / `value` / `iter` / `to_vec`) over a
   column's native value type `T`.
-- The **primitive** concrete series — `PrimitiveSerie<A>` (Arrow numeric / date / time /
-  duration / interval types), `BooleanSerie`, `VarcharSerie<O>` and `BinarySerie<O>`,
-  with named aliases (`Int32Serie`, `Float64Serie`, `Date32Serie`, …).
-- The **temporal** series — `DatetimeSerie` (the unified timestamp column over any unit
-  + timezone) and the `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
+- The **primitive** concrete series — `PrimitiveSerie<A>` (Arrow numeric / date / interval
+  types), `BooleanSerie`, `VarcharSerie<O>` and `BinarySerie<O>`, with named aliases
+  (`Int32Serie`, `Float64Serie`, `Date32Serie`, …).
+- The **temporal** series — `DatetimeSerie`, `TimeSerie` and `DurationSerie` (unified
+  columns over any unit, presenting core `DateTime` / `Time` / `Duration`) and the
+  `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
+- The **nested** series — `StructSerie`, `ListSerie<O>` and `MapSerie` (child columns
+  built recursively) and the `NestedSerie` trait.
 - The **lazy** (computed) series — `RangeSerie`, `DateRangeSerie`, `DateTimeRangeSerie`,
   `TimeRangeSerie`.
 - **`IndexSerie`** — a row index, defaulting to a lazy `uint64` range.
@@ -151,10 +155,13 @@ The three temporal ranges implement `TemporalSerie` (see below).
 ## Temporal series
 
 `DatetimeSerie` is the **unified timestamp column**: it backs any unit (second …
-nanosecond) and an optional timezone, exposing values as the core `DateTime`. Every
-timestamp array dispatches to it. All temporal columns (including the date/time/datetime
-ranges) implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` /
-`time_at`.
+nanosecond) and an optional timezone, exposing values as the core `DateTime`. `TimeSerie`
+and `DurationSerie` are its time-of-day and elapsed-time counterparts — each unifies every
+unit and presents core `Time` / `Duration`, respecting the `Time{unit}` / `Duration{unit}`
+data types (so there are no per-unit aliases). Every timestamp / time / duration array
+dispatches to these. All temporal columns (including the date/time/datetime ranges)
+implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` / `time_at`
+(`DurationSerie` is a span, so it is not `TemporalSerie`).
 
 === "Rust"
 
@@ -219,17 +226,63 @@ column.
     assert_eq!(enums.code_at(2), Some(0));                        // row 2 holds "a"
     ```
 
+## Nested
+
+`StructSerie`, `ListSerie<O>` and `MapSerie` are columns of columns. Each builds its
+child [`Serie`]s **recursively** through the same factory, so arbitrarily deep nesting (a
+list of structs of maps, …) resolves uniformly. The `NestedSerie` trait exposes
+`child_count` / `child(index)` / `child_by_name`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{from_array, NestedSerie, ListSerie, Scalar, Serie};
+    use yggdryl_serie::arrow_array::{ArrayRef, ListArray};
+    use yggdryl_serie::arrow_array::types::Int32Type;
+    use std::sync::Arc;
+
+    // list<int32>: [[1, 2], [3], null]
+    let la = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
+        Some(vec![Some(1), Some(2)]), Some(vec![Some(3)]), None,
+    ]);
+    let serie = from_array("l", Arc::new(la) as ArrayRef)?;
+    let list = serie.as_any().downcast_ref::<ListSerie<i32>>().unwrap();
+
+    assert_eq!(list.value_slice(0).unwrap().len(), 2);   // the sub-list is a zero-copy Serie
+    assert!(list.value_slice(2).is_none());              // null row
+    assert_eq!(list.value_at(1), Scalar::Other("[3]".into()));
+    # Ok::<(), yggdryl_serie::SerieError>(())
+    ```
+
+## Display
+
+`Serie::display(&DisplayOptions)` renders a column to a readable string — the building
+block for a future `Frame`'s table. Parameters: `max_rows`, `header`, `width`, `null` and
+`index`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{DisplayOptions, Serie, Int32Serie};
+
+    let serie = Int32Serie::from_values("n", (0..100).map(Some));
+    let text = serie.display(&DisplayOptions::default().with_max_rows(3));
+    assert!(text.contains("n: int32"));        // header
+    assert!(text.contains("97 more rows"));    // truncation marker
+    ```
+
 ## Coverage
 
 The primitive category is complete: integers (`int8`…`int64`, `uint8`…`uint64`),
-floats (`float16`/`32`/`64`), decimals (128/256), dates, times, durations and intervals,
-boolean, UTF-8 strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`);
-timestamps unify into `DatetimeSerie`. On top sit the lazy `RangeSerie` /
-`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`,
-`EnumSerie`, the `TemporalSerie` trait and the `SliceSerie` graph. The **nested** (list /
-struct / map / union), **dictionary** and **view** backends, a **`ChunkedSerie`**
-mirroring Arrow's `ChunkedArray`, cast / arithmetic operations, **benchmarks** and the
-**Python / Node bindings** are the next increments.
+floats (`float16`/`32`/`64`), decimals (128/256), dates and intervals, boolean, UTF-8
+strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`); timestamps, times
+and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **nested**
+`StructSerie` / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` /
+`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`, `EnumSerie`,
+the `TemporalSerie` / `NestedSerie` traits, the `SliceSerie` graph and `display()` round
+it out. The **union** nested type, the **dictionary** and **view** backends, a
+**`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, cast / arithmetic operations,
+**benchmarks** and the **Python / Node bindings** are the next increments.
 
 ## Next
 

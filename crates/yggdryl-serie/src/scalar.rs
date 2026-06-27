@@ -1,6 +1,8 @@
 //! [`Scalar`] — a single, type-erased value read out of a column by index, and the
 //! [`scalar_at`] extractor that maps any backing Arrow array cell to one.
 
+use std::fmt;
+
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, Decimal128Array,
     Decimal256Array, DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
@@ -63,6 +65,29 @@ impl Scalar {
         match self {
             Scalar::Utf8(v) => Some(v),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Scalar {
+    /// A compact value rendering used by [`Serie::display`](crate::Serie::display): a
+    /// null is `"null"`, a string its text, binary lowercase hex, and the rest their
+    /// natural form.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Scalar::Null => f.write_str("null"),
+            Scalar::Boolean(v) => write!(f, "{v}"),
+            Scalar::Int(v) => write!(f, "{v}"),
+            Scalar::Float(v) => write!(f, "{v}"),
+            Scalar::Utf8(v) => f.write_str(v),
+            Scalar::Binary(v) => {
+                f.write_str("0x")?;
+                for byte in v {
+                    write!(f, "{byte:02x}")?;
+                }
+                Ok(())
+            }
+            Scalar::Other(v) => f.write_str(v),
         }
     }
 }
