@@ -565,10 +565,17 @@ pub(crate) fn parse_child_field(token: &str, default_name: &str) -> Result<Field
         return Err(SchemaError::Empty);
     }
     // Strip a trailing nullability marker before splitting (so an unnamed
-    // `int32 not null` is not mistaken for a `name type` pair).
-    let (token, nullable) = match token.to_ascii_lowercase().strip_suffix(" not null") {
-        Some(_) => (token[..token.len() - " not null".len()].trim(), false),
-        None => (token, true),
+    // `int32 not null` is not mistaken for a `name type` pair). Test the suffix on the
+    // raw bytes (case-insensitively) rather than lowercasing the whole token; the
+    // matched tail is 9 ASCII bytes, so `len - 9` is always a char boundary.
+    const NOT_NULL: &str = " not null";
+    let (token, nullable) = if token.len() >= NOT_NULL.len()
+        && token.as_bytes()[token.len() - NOT_NULL.len()..]
+            .eq_ignore_ascii_case(NOT_NULL.as_bytes())
+    {
+        (token[..token.len() - NOT_NULL.len()].trim(), false)
+    } else {
+        (token, true)
     };
     let (name, type_str) = split_name_type(token, default_name);
     let name = if name.is_empty() {
@@ -711,12 +718,16 @@ impl DataType {
             None => (input, None),
         };
         // Normalise the head: lowercase + single-spaced, so multi-word SQL names
-        // (`double precision`, `timestamp with time zone`) match.
-        let lower = head
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_ascii_lowercase();
+        // (`double precision`, `timestamp with time zone`) match. The common single-word
+        // head (`int64` / `utf8` / `struct`) needs no re-spacing, so skip the Vec+join.
+        let lower = if head.split_whitespace().nth(1).is_none() {
+            head.to_ascii_lowercase()
+        } else {
+            head.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase()
+        };
         match (lower.as_str(), args) {
             ("any", None) => Ok(DataType::Any),
             ("null", None) => Ok(DataType::Null),

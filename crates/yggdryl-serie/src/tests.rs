@@ -734,6 +734,36 @@ fn map_serie_keys_values_and_render() {
 }
 
 #[test]
+fn map_serie_slice_resize_materialize_do_not_panic() {
+    // A map built from a standard Arrow MapBuilder carries `keys`/`values` entry-field
+    // names, which the schema layer normalises to `key`/`value`. Routing the base
+    // slice/resize/cast/materialize through the crate-internal `dispatch` (rather than
+    // re-validating through the public `from_arrow`) keeps these from tripping on that
+    // documented normalisation — slice/materialize used to panic, resize/cast to error.
+    let mut b = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    b.keys().append_value("a");
+    b.values().append_value(1);
+    b.keys().append_value("b");
+    b.values().append_value(2);
+    b.append(true).unwrap();
+    b.keys().append_value("c");
+    b.values().append_value(3);
+    b.append(true).unwrap();
+    let serie = from_array("m", Arc::new(b.finish()) as ArrayRef).unwrap();
+
+    // slice + materialize (both previously panicked via from_arrow().expect()).
+    let head = serie.slice(0, 1);
+    assert_eq!(head.len(), 1);
+    assert_eq!(head.value_at(0), Scalar::Other("{a=1, b=2}".into()));
+    assert_eq!(serie.materialize().len(), 2);
+
+    // resize now succeeds (previously returned a TypeMismatch error).
+    let grown = serie.resize(3).unwrap();
+    assert_eq!(grown.len(), 3);
+    assert!(grown.is_null(2));
+}
+
+#[test]
 fn categorical_serie_encodes_repeats_and_materializes() {
     let values = VarcharSerie::<i32>::from_values(
         "c",

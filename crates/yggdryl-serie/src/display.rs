@@ -125,6 +125,9 @@ pub(crate) fn render(serie: &(impl Serie + ?Sized), opts: &DisplayOptions) -> St
     } else {
         0
     };
+    // The full gutter width incl. the two trailing spaces `pad` emits (0 when off) —
+    // used to indent the header rows without formatting a throwaway sample string.
+    let gutter_width = if opts.index { gutter + 2 } else { 0 };
     let pad = |idx: usize| {
         if opts.index {
             format!("{idx:>gutter$}  ")
@@ -137,10 +140,10 @@ pub(crate) fn render(serie: &(impl Serie + ?Sized), opts: &DisplayOptions) -> St
     if opts.header {
         lines.push(format!(
             "{}{}",
-            " ".repeat(pad(0).len()),
+            " ".repeat(gutter_width),
             fit(&header_text, width)
         ));
-        lines.push(format!("{}{}", " ".repeat(pad(0).len()), "─".repeat(width)));
+        lines.push(format!("{}{}", " ".repeat(gutter_width), "─".repeat(width)));
     }
     for (i, cell) in cells.iter().enumerate() {
         lines.push(format!("{}{}", pad(i), fit(cell, width)));

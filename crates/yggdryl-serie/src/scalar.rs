@@ -114,8 +114,16 @@ impl fmt::Display for Scalar {
 }
 
 /// Reads the value of `array` at `index` into a [`Scalar`] (mapping `Null` for a null
-/// cell or an out-of-bounds index).
+/// cell or an out-of-bounds index) over a shared [`ArrayRef`] — the thin wrapper around
+/// [`scalar_at_ref`].
 pub(crate) fn scalar_at(array: &ArrayRef, index: usize) -> Scalar {
+    scalar_at_ref(array.as_ref(), index)
+}
+
+/// Reads the value of `array` at `index` into a [`Scalar`] (mapping `Null` for a null
+/// cell or an out-of-bounds index). Takes `&dyn Array` so a concrete series can read
+/// straight off its typed backing array — no `Arc` clone of [`Serie::array`] per cell.
+pub(crate) fn scalar_at_ref(array: &dyn Array, index: usize) -> Scalar {
     if index >= array.len() || array.is_null(index) {
         return Scalar::Null;
     }

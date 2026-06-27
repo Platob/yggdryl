@@ -23,8 +23,9 @@ pub struct StructSerie {
     field: Field,
     children: Vec<SerieRef>,
     /// The materialised struct array, when available (the `from_parts` path or after
-    /// `materialize`); `None` while the column is lazy.
-    array: Option<StructArray>,
+    /// `materialize`); `None` while the column is lazy. Held behind an `Arc` so
+    /// [`array`](Serie::array) is a cheap clone, not a buffer-wise rebuild.
+    array: Option<Arc<StructArray>>,
 }
 
 /// Assembles a `StructArray` from `children` (a zero-copy transfer — it references each
@@ -59,7 +60,7 @@ impl StructSerie {
         Ok(StructSerie {
             field,
             children,
-            array: Some(array),
+            array: Some(Arc::new(array)),
         })
     }
 
@@ -117,7 +118,8 @@ impl Serie for StructSerie {
 
     fn array(&self) -> ArrayRef {
         match &self.array {
-            Some(a) => Arc::new(a.clone()),
+            // A cheap `Arc` clone of the cached array (no buffer-wise rebuild).
+            Some(a) => Arc::clone(a) as ArrayRef,
             None => {
                 Arc::new(struct_array(&self.children).expect("validated struct children build"))
             }
@@ -158,7 +160,7 @@ impl Serie for StructSerie {
         Arc::new(StructSerie {
             field: self.field.clone(),
             children,
-            array: Some(array),
+            array: Some(Arc::new(array)),
         })
     }
 

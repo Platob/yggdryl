@@ -325,11 +325,10 @@ fn promote_field(a: &Field, b: &Field) -> Option<Field> {
     for (key, value) in b.metadata() {
         metadata.entry(key.clone()).or_insert_with(|| value.clone());
     }
+    // Build the merged field directly (keeping only `a`'s name) rather than cloning the
+    // whole of `a` and overwriting its type / nullability / metadata.
     Some(
-        a.clone()
-            .with_data_type(data_type)
-            .with_nullable(a.is_nullable() || b.is_nullable())
-            .with_metadata(metadata),
+        Field::new(a.name(), data_type, a.is_nullable() || b.is_nullable()).with_metadata(metadata),
     )
 }
 

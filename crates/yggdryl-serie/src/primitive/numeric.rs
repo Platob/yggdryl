@@ -14,6 +14,7 @@ use arrow_array::{Array, ArrayRef, PrimitiveArray};
 use yggdryl_schema::Field;
 
 use crate::error::{SerieError, SerieResult};
+use crate::scalar::{scalar_at_ref, Scalar};
 use crate::serie::{Serie, TypedSerie};
 
 /// A column of a fixed-width Arrow scalar type `A` (an integer, float, decimal or a
@@ -105,6 +106,11 @@ impl<A: ArrowPrimitiveType> Serie for PrimitiveSerie<A> {
 
     fn is_null(&self, index: usize) -> bool {
         index >= self.values.len() || self.values.is_null(index)
+    }
+
+    /// Reads the cell straight off the typed array (no `Arc` clone of [`array`](Serie::array)).
+    fn value_at(&self, index: usize) -> Scalar {
+        scalar_at_ref(&self.values, index)
     }
 }
 

@@ -129,7 +129,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// computed into a real array, and the parent/graph link is dropped. The default
     /// realises [`array`](Serie::array) into a standalone series.
     fn materialize(&self) -> SerieRef {
-        from_arrow(self.field().clone(), self.array()).expect("a serie's array matches its field")
+        // The array is this column's own, so it already matches the field — go straight
+        // to `dispatch`, skipping `from_arrow`'s redundant `to_arrow()` re-validation.
+        dispatch(self.field().clone(), self.array()).expect("a serie's array matches its field")
     }
 
     /// Serialises the column to **Arrow IPC stream bytes** — a lossless round-trip
@@ -153,7 +155,10 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// `offset`, as a new column of the same type. (Use [`child`](crate::child) to keep a link
     /// back to this serie.)
     fn slice(&self, offset: usize, length: usize) -> SerieRef {
-        from_arrow(self.field().clone(), self.array().slice(offset, length))
+        // A slice keeps the source's type, so dispatch directly — `from_arrow`'s
+        // re-validation through `to_arrow()` is not only wasted here but would wrongly
+        // reject an Arrow-normalised type (e.g. a map's `keys`/`values` entry names).
+        dispatch(self.field().clone(), self.array().slice(offset, length))
             .expect("a slice has the same type as its source")
     }
 
@@ -187,7 +192,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
             crate::build::default_array(array.data_type(), extra)?
         };
         let combined = arrow_select::concat::concat(&[array.as_ref(), fill.as_ref()])?;
-        from_arrow(self.field().clone(), combined)
+        // `combined` concatenates same-typed arrays, so it matches the field — dispatch
+        // directly rather than re-validating through `from_arrow`.
+        dispatch(self.field().clone(), combined)
     }
 
     /// Casts the column to `dtype`, converting the backing values (Arrow's cast kernel
@@ -202,7 +209,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
         }
         let target = dtype.to_arrow()?;
         let array = arrow_cast::cast(self.array().as_ref(), &target)?;
-        from_arrow(
+        // `array` was cast to exactly `dtype.to_arrow()`, so it matches the re-typed
+        // field by construction — dispatch directly.
+        dispatch(
             self.field().copy(None, Some(dtype.clone()), None, None),
             array,
         )
@@ -213,7 +222,8 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// column in one step.
     fn cast_field(&self, field: &Field) -> SerieResult<SerieRef> {
         let casted = self.cast(field.data_type())?;
-        from_arrow(field.clone(), casted.array())
+        // `casted` already has `field`'s type, so dispatch directly.
+        dispatch(field.clone(), casted.array())
     }
 
     /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it
