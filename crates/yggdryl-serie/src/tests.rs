@@ -6,15 +6,16 @@ use std::sync::Arc;
 use arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
     Float32Array, Float64Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
-    NullArray, StringArray, TimestampMicrosecondArray, UInt32Array,
+    NullArray, StringArray, TimestampMicrosecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt32Array,
 };
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
     child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie,
-    Date64Serie, DateRangeSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie,
-    RangeSerie, Scalar, Serie, SerieRef, TimestampMicrosecondSerie, TypedSerie, UInt64Serie,
-    VarcharSerie,
+    Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, EnumSerie, Float32Serie,
+    Float64Serie, IndexSerie, Int32Serie, Int64Serie, RangeSerie, Scalar, Serie, SerieRef,
+    TemporalSerie, TimeRangeSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -103,11 +104,14 @@ fn temporal_series() {
     let ts: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![10, 20]));
     let serie = from_array("ts", ts).unwrap();
     assert!(serie.data_type().is_temporal());
-    let typed = serie
-        .as_any()
-        .downcast_ref::<TimestampMicrosecondSerie>()
-        .unwrap();
-    assert_eq!(typed.get(0), Some(10));
+    // every timestamp unit unifies into DatetimeSerie
+    let typed = serie.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert_eq!(typed.unit(), yggdryl_core::TimeUnit::Microsecond);
+    assert_eq!(typed.physical_at(0), Some(10));
+    assert_eq!(serie.value_at(0), Scalar::Int(10));
+    // exposed as a core DateTime (10 microseconds past the epoch = 10_000 ns)
+    let dt = typed.datetime_at(0).unwrap();
+    assert_eq!(dt.epoch_nanos(), 10_000);
 }
 
 #[test]
@@ -503,4 +507,113 @@ fn metadata_survives_slice_and_materialize() {
 
     let mat = sliced.materialize();
     assert_eq!(mat.field().comment(), Some("pk"));
+}
+
+#[test]
+fn convenience_field_accessors() {
+    let field = Field::new("id", DataType::int(32, true), false).with_comment("pk");
+    let serie = from_arrow(field, Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef).unwrap();
+
+    assert_eq!(serie.name(), "id");
+    assert_eq!(serie.dtype(), &DataType::int(32, true));
+    assert_eq!(serie.dtype(), serie.data_type()); // dtype is the alias
+    assert_eq!(serie.get_metadata("comment"), Some("pk"));
+    assert_eq!(serie.get_metadata("missing"), None);
+}
+
+#[test]
+fn datetime_serie_handles_units() {
+    use yggdryl_core::TimeUnit;
+
+    let secs = from_array(
+        "ts",
+        Arc::new(TimestampSecondArray::from(vec![1, 2])) as ArrayRef,
+    )
+    .unwrap();
+    let dts = secs.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert_eq!(dts.unit(), TimeUnit::Second);
+    assert_eq!(dts.datetime_at(1).unwrap().epoch_seconds(), 2);
+
+    let nanos = from_array(
+        "ts",
+        Arc::new(TimestampNanosecondArray::from(vec![1_500])) as ArrayRef,
+    )
+    .unwrap();
+    let dtn = nanos.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert_eq!(dtn.unit(), TimeUnit::Nanosecond);
+    assert_eq!(dtn.datetime_at(0).unwrap().epoch_nanos(), 1_500);
+}
+
+#[test]
+fn datetime_range_is_lazy_temporal() {
+    use yggdryl_core::{DateTime, Duration};
+
+    let start = DateTime::from_epoch_seconds(0, None);
+    let step = Duration::from_secs(3600); // 1 hour
+    let r = DateTimeRangeSerie::new("ts", &start, &step, 3);
+
+    assert!(!r.is_materialized());
+    assert_eq!(r.len(), 3);
+    assert!(r.data_type().is_temporal());
+    assert_eq!(r.datetime_at(0).unwrap().epoch_seconds(), 0);
+    assert_eq!(r.datetime_at(2).unwrap().epoch_seconds(), 7200);
+
+    let mat = r.materialize();
+    assert!(mat.is_materialized());
+    assert!(mat.as_any().downcast_ref::<DatetimeSerie>().is_some());
+
+    let sub = r.slice(1, 2);
+    assert!(!sub.is_materialized());
+    let subt = sub.as_any().downcast_ref::<DateTimeRangeSerie>().unwrap();
+    assert_eq!(subt.datetime_at(0).unwrap().epoch_seconds(), 3600);
+}
+
+#[test]
+fn time_range_wraps_within_day_and_is_temporal() {
+    use yggdryl_core::{Duration, Time};
+
+    let start = Time::from_hms(23, 0, 0).unwrap();
+    let step = Duration::from_secs(3600); // 1 hour
+    let r = TimeRangeSerie::new("t", start, step, 3); // 23:00, 00:00, 01:00
+
+    assert!(!r.is_materialized());
+    assert_eq!(r.time(0).unwrap(), Time::from_hms(23, 0, 0).unwrap());
+    assert_eq!(r.time(1).unwrap(), Time::from_hms(0, 0, 0).unwrap()); // wrapped
+    assert_eq!(r.time(2).unwrap(), Time::from_hms(1, 0, 0).unwrap());
+    assert_eq!(r.time_at(1).unwrap(), Time::from_hms(0, 0, 0).unwrap());
+    assert_eq!(r.array().len(), 3); // materialising must not panic
+}
+
+#[test]
+fn date_range_is_temporal() {
+    use yggdryl_core::Date;
+
+    let start = Date::from_ymd(2024, 1, 1).unwrap();
+    let r = DateRangeSerie::from_dates("d", start.clone(), 1, 3);
+    assert_eq!(r.date_at(0), Some(start.clone()));
+    assert_eq!(r.datetime_at(0).unwrap().date(), start);
+}
+
+#[test]
+fn enum_serie_maps_uniques_codes_and_rows() {
+    let values = VarcharSerie::<i32>::from_values(
+        "c",
+        vec![Some("a"), Some("b"), Some("a"), None, Some("c")],
+    );
+    let enums = EnumSerie::from_serie(Arc::new(values));
+
+    assert_eq!(enums.unique_count(), 3); // a, b, c (null is not a category)
+    assert_eq!(enums.code(&Scalar::Utf8("a".into())), Some(0));
+    assert_eq!(enums.code(&Scalar::Utf8("b".into())), Some(1));
+    assert_eq!(enums.code(&Scalar::Utf8("c".into())), Some(2));
+    assert_eq!(enums.code(&Scalar::Utf8("z".into())), None);
+    assert_eq!(enums.first_row(&Scalar::Utf8("a".into())), Some(0));
+    assert_eq!(enums.first_row(&Scalar::Utf8("c".into())), Some(4));
+    assert_eq!(enums.code_at(2), Some(0)); // row 2 holds "a"
+    assert_eq!(enums.code_at(3), None); // null row has no code
+    assert_eq!(enums.value_of(1), Some(&Scalar::Utf8("b".into())));
+
+    // it is a Serie delegating to the backing column
+    assert_eq!(enums.len(), 5);
+    assert_eq!(enums.null_count(), 1);
 }

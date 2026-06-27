@@ -18,11 +18,19 @@
 //!   downcasting via [`as_any`](Serie::as_any).
 //! - [`TypedSerie<T>`] — typed value access (`get` / `value` / `iter`) over the native
 //!   value type `T` of a concrete column.
-//! - The **primitive** concrete series — [`PrimitiveSerie<A>`] (every Arrow numeric and
-//!   temporal type), [`BooleanSerie`], [`VarcharSerie<O>`] and [`BinarySerie<O>`].
-//! - The **lazy** (computed) series — [`RangeSerie`] and [`DateRangeSerie`] — store a
-//!   compact description and produce values on demand until materialised.
+//! - The **primitive** concrete series — [`PrimitiveSerie<A>`] (Arrow numeric / date /
+//!   time / duration / interval types), [`BooleanSerie`], [`VarcharSerie<O>`] and
+//!   [`BinarySerie<O>`].
+//! - The **temporal** series — [`DatetimeSerie`] (the unified timestamp column over any
+//!   unit + timezone) and the [`TemporalSerie`] trait (`datetime_at` / `date_at` /
+//!   `time_at`).
+//! - The **lazy** (computed) series — [`RangeSerie`], [`DateRangeSerie`],
+//!   [`DateTimeRangeSerie`] and [`TimeRangeSerie`] — store a compact description and
+//!   produce values on demand until materialised (the temporal ranges are
+//!   [`TemporalSerie`]s).
 //! - [`IndexSerie`] — a row index, defaulting to a lazy `uint64` [`RangeSerie`].
+//! - [`EnumSerie`] — a categorical view holding the unique values mapped to their code
+//!   and first row index.
 //! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
 //!   [`parent`](Serie::parent), forming a slice graph.
 //!
@@ -58,6 +66,7 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod enum_serie;
 mod error;
 mod index;
 mod lazy;
@@ -65,13 +74,15 @@ mod primitive;
 mod scalar;
 mod serie;
 mod slice;
+mod temporal;
 
 #[cfg(test)]
 mod tests;
 
+pub use enum_serie::EnumSerie;
 pub use error::{SerieError, SerieResult};
 pub use index::IndexSerie;
-pub use lazy::{DateRangeSerie, RangeSerie};
+pub use lazy::{DateRangeSerie, DateTimeRangeSerie, RangeSerie, TimeRangeSerie};
 pub use primitive::{
     BinarySerie,
     BooleanSerie,
@@ -93,10 +104,6 @@ pub use primitive::{
     Int64Serie,
     Int8Serie,
     PrimitiveSerie,
-    TimestampMicrosecondSerie,
-    TimestampMillisecondSerie,
-    TimestampNanosecondSerie,
-    TimestampSecondSerie,
     UInt16Serie,
     UInt32Serie,
     UInt64Serie,
@@ -106,6 +113,7 @@ pub use primitive::{
 pub use scalar::Scalar;
 pub use serie::{from_array, from_arrow, Serie, SerieRef, TypedSerie};
 pub use slice::{child, child_range, SliceSerie};
+pub use temporal::{DatetimeSerie, TemporalSerie};
 
 // Re-export the Arrow array crate so dependents build arrays without pinning the
 // exact `arrow-array` version themselves, and the shared vocabulary they need.

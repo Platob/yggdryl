@@ -17,19 +17,22 @@ and its physical storage. Columns can also be **lazy** (computed on demand) or
 
 The design mirrors the schema crate's three [categories](../schema/datatype.md):
 
-- **`Serie`** — the object-safe base trait every column implements: accessors to the
-  `field()` and the backing Arrow `array()`; the `len()` / `num_rows()` / `null_count()`
-  / `metadata()` bookkeeping; value access by index (`value_at` → `Scalar`) and by range
-  (`slice` / `slice_range`, zero-copy); the `parent()` graph link; `materialize()`; and
-  downcasting via `as_any()`.
+- **`Serie`** — the object-safe base trait every column implements: convenience field
+  reflections (`name()`, `dtype()`, `get_metadata(key)`); accessors to the `field()` and
+  the backing Arrow `array()`; the `len()` / `num_rows()` / `null_count()` bookkeeping;
+  value access by index (`value_at` → `Scalar`) and by range (`slice` / `slice_range`,
+  zero-copy); the `parent()` graph link; `materialize()`; and downcasting via `as_any()`.
 - **`TypedSerie<T>`** — typed value access (`get` / `value` / `iter` / `to_vec`) over a
   column's native value type `T`.
-- The **primitive** concrete series — `PrimitiveSerie<A>` (every Arrow numeric, decimal
-  and temporal type), `BooleanSerie`, `VarcharSerie<O>` and `BinarySerie<O>`. Named
-  aliases (`Int32Serie`, `Float64Serie`, `TimestampMicrosecondSerie`, …) pin the common
-  widths.
-- The **lazy** (computed) series — `RangeSerie` and `DateRangeSerie`.
+- The **primitive** concrete series — `PrimitiveSerie<A>` (Arrow numeric / date / time /
+  duration / interval types), `BooleanSerie`, `VarcharSerie<O>` and `BinarySerie<O>`,
+  with named aliases (`Int32Serie`, `Float64Serie`, `Date32Serie`, …).
+- The **temporal** series — `DatetimeSerie` (the unified timestamp column over any unit
+  + timezone) and the `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
+- The **lazy** (computed) series — `RangeSerie`, `DateRangeSerie`, `DateTimeRangeSerie`,
+  `TimeRangeSerie`.
 - **`IndexSerie`** — a row index, defaulting to a lazy `uint64` range.
+- **`EnumSerie`** — a categorical view mapping unique values to a code and first row.
 
 ## Build a column
 
@@ -123,6 +126,10 @@ A lazy column stores only a compact description and computes its values on deman
 
 - `RangeSerie` — a `uint64` arithmetic range `start, start+step, …`.
 - `DateRangeSerie` — a day-resolution calendar-date range (`Date32`).
+- `DateTimeRangeSerie` — a nanosecond timestamp range.
+- `TimeRangeSerie` — a time-of-day range (wraps within the day).
+
+The three temporal ranges implement `TemporalSerie` (see below).
 
 === "Rust"
 
@@ -139,6 +146,36 @@ A lazy column stores only a compact description and computes its values on deman
 
     let dates = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 30).unwrap(), 1, 3);
     assert_eq!(dates.date_at(2), Some(Date::from_ymd(2024, 2, 1).unwrap()));
+    ```
+
+## Temporal series
+
+`DatetimeSerie` is the **unified timestamp column**: it backs any unit (second …
+nanosecond) and an optional timezone, exposing values as the core `DateTime`. Every
+timestamp array dispatches to it. All temporal columns (including the date/time/datetime
+ranges) implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` /
+`time_at`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{from_array, DatetimeSerie, DateTimeRangeSerie, TimeRangeSerie, TemporalSerie, Serie};
+    use yggdryl_serie::arrow_array::{ArrayRef, TimestampMicrosecondArray};
+    use yggdryl_core::{DateTime, Duration, Time};
+    use std::sync::Arc;
+
+    // a timestamp array becomes a DatetimeSerie (any unit + tz)
+    let ts = from_array("ts", Arc::new(TimestampMicrosecondArray::from(vec![10, 20])) as ArrayRef)?;
+    let dt = ts.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert_eq!(dt.datetime_at(0).unwrap().epoch_nanos(), 10_000); // 10µs
+
+    // lazy temporal ranges, all TemporalSerie
+    let hours = DateTimeRangeSerie::new("h", &DateTime::from_epoch_seconds(0, None), &Duration::from_secs(3600), 3);
+    assert_eq!(hours.datetime_at(2).unwrap().epoch_seconds(), 7200);
+
+    let clock = TimeRangeSerie::new("t", Time::from_hms(23, 0, 0).unwrap(), Duration::from_secs(3600), 3);
+    assert_eq!(clock.time(1), Time::from_hms(0, 0, 0).ok()); // wraps past midnight
+    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Index
@@ -162,16 +199,37 @@ default is a **lazy** `uint64` range; any column can be wrapped as an index.
 Slicing a range index drops the range fast-path flag (the labels no longer start at
 `0`), but the result is still an `IndexSerie` and `at` / `position` keep working.
 
+## Enum (categorical)
+
+`EnumSerie` scans a column once and holds the mapping of unique values to a compact
+**code** and to their **first row index** — the basis for a categorical/dictionary
+column.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{EnumSerie, VarcharSerie, Scalar, Serie};
+    use std::sync::Arc;
+
+    let values = VarcharSerie::<i32>::from_values("c", vec![Some("a"), Some("b"), Some("a")]);
+    let enums = EnumSerie::from_serie(Arc::new(values));
+    assert_eq!(enums.unique_count(), 2);                          // "a", "b"
+    assert_eq!(enums.code(&Scalar::Utf8("b".into())), Some(1));   // enum code
+    assert_eq!(enums.first_row(&Scalar::Utf8("a".into())), Some(0));
+    assert_eq!(enums.code_at(2), Some(0));                        // row 2 holds "a"
+    ```
+
 ## Coverage
 
 The primitive category is complete: integers (`int8`…`int64`, `uint8`…`uint64`),
-floats (`float16`/`32`/`64`), decimals (128/256), every temporal physical type
-(date/time/timestamp/duration/interval), boolean, UTF-8 strings (`Utf8` / `LargeUtf8`)
-and binary (`Binary` / `LargeBinary`), plus the lazy `RangeSerie` / `DateRangeSerie`,
-`IndexSerie` and the `SliceSerie` graph. The **nested** (list / struct / map / union),
-**dictionary** and **view** backends, a **`ChunkedSerie`** mirroring Arrow's
-`ChunkedArray`, cast / arithmetic operations, and the **Python / Node bindings** are the
-next increments.
+floats (`float16`/`32`/`64`), decimals (128/256), dates, times, durations and intervals,
+boolean, UTF-8 strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`);
+timestamps unify into `DatetimeSerie`. On top sit the lazy `RangeSerie` /
+`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`,
+`EnumSerie`, the `TemporalSerie` trait and the `SliceSerie` graph. The **nested** (list /
+struct / map / union), **dictionary** and **view** backends, a **`ChunkedSerie`**
+mirroring Arrow's `ChunkedArray`, cast / arithmetic operations, **benchmarks** and the
+**Python / Node bindings** are the next increments.
 
 ## Next
 

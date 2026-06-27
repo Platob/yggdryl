@@ -257,14 +257,16 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   `From<arrow_schema::ArrowError>`; actionable messages).
 - `serie.rs` — the **two traits** and the **redirect factory**. `Serie` is the
   object-safe base (untyped column ops: `field` / `array` (the backing `ArrayRef`) /
-  `len` / `num_rows` / `null_count` / `metadata` / `is_null` / `is_valid` / `as_any` for
-  downcast, plus type-erased value access by index (`value_at` → `Scalar`) and by range
-  (`slice` / `slice_range`, zero-copy), the navigational `parent` graph link,
-  `is_materialized` and `materialize` (realise a lazy/child column into an independent
-  in-memory one), with `name` / `data_type` / `category` defaulting off the field);
-  `TypedSerie<T>` adds typed value access (`get` / `value` / `iter` / `to_vec`) over a
-  column's native value type. `from_arrow(field, array)` / `from_array(name, array)`
-  **redirect** an Arrow array to the right concrete series, returning a boxed
+  `len` / `num_rows` / `null_count` / `is_null` / `is_valid` / `as_any` for downcast,
+  plus the convenient field reflections `name` / `dtype` (alias of `data_type`) /
+  `get_metadata(key)` (a **narrow, safe** accessor — the whole metadata map stays
+  encapsulated in the field, no wide `metadata()` getter), `category`, type-erased value
+  access by index (`value_at` → `Scalar`) and by range (`slice` / `slice_range`,
+  zero-copy), the navigational `parent` graph link, `is_materialized` and `materialize`
+  (realise a lazy/child column into an independent in-memory one), all defaulting off the
+  field); `TypedSerie<T>` adds typed value access (`get` / `value` / `iter` / `to_vec`)
+  over a column's native value type. `from_arrow(field, array)` / `from_array(name,
+  array)` **redirect** an Arrow array to the right concrete series, returning a boxed
   `SerieRef = Arc<dyn Serie>` (the factory checks the field's `DataType` maps to the
   array's Arrow type, then dispatches on it). **All dispatch logic lives here.**
   (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
@@ -277,30 +279,44 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
 - `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
   **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
   generic backing every fixed-width scalar (integers, floats, decimals, **and** the
-  temporal physical types — date/time/timestamp/duration/interval); `BooleanSerie`,
-  `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`, plus a zero-copy `str_value`)
-  and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus `bytes_value`) cover the rest. Named
-  aliases (`mod.rs`: `Int32Serie`, `Float64Serie`, `TimestampMicrosecondSerie`, …) pin
-  the common widths. Each concrete stores its typed array + `Field`, overrides the
-  length/null methods for zero-overhead, and `array()` returns a cheap `Arc` clone.
-- `lazy/` (`mod` + `range.rs` + `daterange.rs`) — the **lazy / computed** series, not
-  resident in memory: they store a compact description and compute each value on demand
-  (`is_materialized()` → `false`), `array()`/`materialize()` realising a real column.
+  date/time/duration/interval physical types — **timestamps unify into `DatetimeSerie`**,
+  not here); `BooleanSerie`, `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`, plus
+  a zero-copy `str_value`) and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus
+  `bytes_value`) cover the rest. Named aliases (`mod.rs`: `Int32Serie`, `Float64Serie`,
+  `Date32Serie`, …) pin the common widths. Each concrete stores its typed array +
+  `Field`, overrides the length/null methods for zero-overhead, and `array()` returns a
+  cheap `Arc` clone.
+- `temporal/` (`mod` + `datetime.rs`) — the **temporal** series. `TemporalSerie` is the
+  shared trait (a uniform `datetime_at`, with derived `date_at` / `time_at`, all in core
+  `DateTime`/`Date`/`Time`); `DatetimeSerie` is the **unified timestamp column**, backing
+  an Arrow timestamp array of **any** `TimeUnit` + optional `Timezone` (reads them from
+  the field) and presenting values as `DateTime` — it replaces the per-unit timestamp
+  aliases. **All `TemporalSerie` / datetime logic lives here.**
+- `lazy/` (`mod` + `range.rs` + `daterange.rs` + `datetimerange.rs` + `timerange.rs`) —
+  the **lazy / computed** series, not resident in memory: they store a compact
+  description and compute each value on demand (`is_materialized()` → `false`),
+  `array()`/`materialize()` realising a real column (a `slice` of any stays lazy).
   `RangeSerie` is a `uint64` arithmetic range (`start + i*step`); `DateRangeSerie` a
-  day-resolution `Date32` range (a `slice` of either stays lazy). **All lazy-series
-  logic lives here.**
+  day-resolution `Date32` range; `DateTimeRangeSerie` a nanosecond `Timestamp` range
+  (tz-naive); `TimeRangeSerie` a `Time64` time-of-day range (wraps within the day). The
+  three temporal ranges implement `TemporalSerie`. **All lazy-series logic lives here.**
 - `index.rs` — `IndexSerie`, a row index (a `Serie` of labels with `at` (label at a row)
   / `position` (row of a label) / `contains` lookups), **defaulting to a lazy `uint64`
   `RangeSerie`** (`is_range()` enables the O(1) lookups); wraps any column via
   `from_serie` / `from_array`.
+- `enum_serie.rs` — `EnumSerie`, a categorical view that scans a column once and holds
+  the **mapping of unique values** to a compact `code` (`0..unique_count`) and to their
+  `first_row` index (`code` / `first_row` / `value_of` / `code_at`); a `Serie`
+  delegating data access to the backing column. **All enum/categorical logic lives here.**
 - `slice.rs` — `SliceSerie`, a zero-copy **child** view that records its `parent`, and
   the `child` / `child_range` constructors that build the parent→child graph;
   `materialize` detaches a child into an independent column. **All slice-graph logic
   lives here.**
 - **Still to build** (next increments): the **nested** series (list / struct / map /
   union), the **dictionary** / **view** backends, a **`ChunkedSerie`** mirroring Arrow's
-  `ChunkedArray`, cast / arithmetic operations, and the **Python / Node bindings**
-  (not yet surfaced — the cross-language rule applies once the Rust base settles).
+  `ChunkedArray`, cast / arithmetic operations, **benchmarks**, and the **Python / Node
+  bindings** (not yet surfaced — the cross-language rule applies once the Rust base
+  settles).
 
 Features: `log` only so far (`arrow-array` is required, not optional). **All serie logic
 lives here; `arrow-array` stays a dependency of this crate only.**

@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, GenericBinaryArray, GenericStringArray};
 use arrow_schema::{DataType as ADataType, IntervalUnit as AIntervalUnit, TimeUnit as ATimeUnit};
-use yggdryl_core::Mapping;
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::error::{SerieError, SerieResult};
@@ -17,6 +16,7 @@ use crate::error::{SerieError, SerieResult};
 use crate::log_event;
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
+use crate::temporal::DatetimeSerie;
 
 /// A reference-counted, type-erased column — the handle a column store and the
 /// [factory](from_arrow) hand around.
@@ -54,6 +54,12 @@ pub trait Serie: fmt::Debug + Send + Sync {
         self.field().data_type()
     }
 
+    /// The column's [`DataType`] — the convenient short alias of
+    /// [`data_type`](Serie::data_type), reflecting the held [`field`](Serie::field).
+    fn dtype(&self) -> &DataType {
+        self.field().data_type()
+    }
+
     /// The column's [`TypeCategory`].
     fn category(&self) -> TypeCategory {
         self.data_type().category()
@@ -64,9 +70,11 @@ pub trait Serie: fmt::Debug + Send + Sync {
         self.field().is_nullable()
     }
 
-    /// The column's metadata map (its field's metadata).
-    fn metadata(&self) -> &Mapping {
-        self.field().metadata()
+    /// One metadata value by key, reflecting the held [`field`](Serie::field)'s
+    /// metadata — the safe, narrow accessor (the whole map stays encapsulated in the
+    /// field).
+    fn get_metadata(&self, key: &str) -> Option<&str> {
+        self.field().get_metadata(key)
     }
 
     /// The number of values (including nulls).
@@ -234,7 +242,10 @@ fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
         }};
     }
 
-    let serie = match array.data_type() {
+    // Clone the data type so the Timestamp arm can move `array` into the
+    // DatetimeSerie (the match scrutinee then borrows the clone, not `array`).
+    let data_type = array.data_type().clone();
+    let serie = match &data_type {
         // integers
         ADataType::Int8 => prim!(Int8Type),
         ADataType::Int16 => prim!(Int16Type),
@@ -251,17 +262,14 @@ fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
         // decimals
         ADataType::Decimal128(_, _) => prim!(Decimal128Type),
         ADataType::Decimal256(_, _) => prim!(Decimal256Type),
-        // temporal
+        // temporal — timestamps unify into the DatetimeSerie (handles every unit + tz)
+        ADataType::Timestamp(_, _) => Arc::new(DatetimeSerie::from_parts(field, array)) as SerieRef,
         ADataType::Date32 => prim!(Date32Type),
         ADataType::Date64 => prim!(Date64Type),
         ADataType::Time32(ATimeUnit::Second) => prim!(Time32SecondType),
         ADataType::Time32(ATimeUnit::Millisecond) => prim!(Time32MillisecondType),
         ADataType::Time64(ATimeUnit::Microsecond) => prim!(Time64MicrosecondType),
         ADataType::Time64(ATimeUnit::Nanosecond) => prim!(Time64NanosecondType),
-        ADataType::Timestamp(ATimeUnit::Second, _) => prim!(TimestampSecondType),
-        ADataType::Timestamp(ATimeUnit::Millisecond, _) => prim!(TimestampMillisecondType),
-        ADataType::Timestamp(ATimeUnit::Microsecond, _) => prim!(TimestampMicrosecondType),
-        ADataType::Timestamp(ATimeUnit::Nanosecond, _) => prim!(TimestampNanosecondType),
         ADataType::Duration(ATimeUnit::Second) => prim!(DurationSecondType),
         ADataType::Duration(ATimeUnit::Millisecond) => prim!(DurationMillisecondType),
         ADataType::Duration(ATimeUnit::Microsecond) => prim!(DurationMicrosecondType),

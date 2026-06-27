@@ -7,11 +7,12 @@ use std::any::Any;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Date32Array};
-use yggdryl_core::Date;
+use yggdryl_core::{Date, DateTime, Temporal};
 use yggdryl_schema::{DataType, Field};
 
 use crate::scalar::Scalar;
 use crate::serie::{Serie, SerieRef, TypedSerie};
+use crate::temporal::TemporalSerie;
 
 /// A lazy day-resolution date range: `day(i) = start_days + i * step_days` (days since
 /// the Unix epoch), for `len` rows, stored as `Date32`.
@@ -133,5 +134,11 @@ impl TypedSerie<i32> for DateRangeSerie {
     fn iter(&self) -> Box<dyn Iterator<Item = Option<i32>> + '_> {
         let (start, step, len) = (self.start_days, self.step_days, self.len);
         Box::new((0..len).map(move |i| Some(start.saturating_add((i as i32).saturating_mul(step)))))
+    }
+}
+
+impl TemporalSerie for DateRangeSerie {
+    fn datetime_at(&self, index: usize) -> Option<DateTime> {
+        (index < self.len).then(|| Date::from_epoch_days(self.at(index)).to_datetime())
     }
 }

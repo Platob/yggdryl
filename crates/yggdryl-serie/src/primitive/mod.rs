@@ -17,9 +17,8 @@ pub use varchar::VarcharSerie;
 use arrow_array::types::{
     Date32Type, Date64Type, Decimal128Type, Decimal256Type, DurationMicrosecondType,
     DurationMillisecondType, DurationNanosecondType, DurationSecondType, Float16Type, Float32Type,
-    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampMicrosecondType,
-    TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt16Type, UInt32Type,
-    UInt64Type, UInt8Type,
+    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type,
+    UInt8Type,
 };
 
 /// An `int8` column.
@@ -56,14 +55,8 @@ pub type Date32Serie = PrimitiveSerie<Date32Type>;
 /// A millisecond-resolution date column (`int64` storage).
 pub type Date64Serie = PrimitiveSerie<Date64Type>;
 
-/// A second-resolution timestamp column.
-pub type TimestampSecondSerie = PrimitiveSerie<TimestampSecondType>;
-/// A millisecond-resolution timestamp column.
-pub type TimestampMillisecondSerie = PrimitiveSerie<TimestampMillisecondType>;
-/// A microsecond-resolution timestamp column.
-pub type TimestampMicrosecondSerie = PrimitiveSerie<TimestampMicrosecondType>;
-/// A nanosecond-resolution timestamp column.
-pub type TimestampNanosecondSerie = PrimitiveSerie<TimestampNanosecondType>;
+// Timestamps are not aliased here — every unit unifies into the
+// [`DatetimeSerie`](crate::DatetimeSerie).
 
 /// A second-resolution duration column.
 pub type DurationSecondSerie = PrimitiveSerie<DurationSecondType>;
