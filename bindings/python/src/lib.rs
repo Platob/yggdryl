@@ -24,6 +24,7 @@ mod localpath;
 mod media;
 mod mime;
 mod pytime;
+mod serie;
 mod timezone;
 mod uri;
 mod url;
@@ -38,6 +39,7 @@ use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_core::{IoError, TimeError, TimeUnit, Whence};
 use yggdryl_http::HttpError;
 use yggdryl_schema::SchemaError;
+use yggdryl_serie::SerieError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
@@ -55,6 +57,7 @@ use crate::localpath::LocalPath;
 use crate::media::MediaType;
 use crate::mime::MimeType;
 use crate::pytime::Time;
+use crate::serie::Serie;
 use crate::timezone::Timezone;
 use crate::uri::Uri;
 use crate::url::Url;
@@ -89,6 +92,10 @@ pub(crate) fn time_err(err: TimeError) -> PyErr {
 }
 
 pub(crate) fn schema_err(err: SchemaError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn serie_err(err: SerieError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
@@ -204,6 +211,7 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Compression>()?;
     m.add_class::<DataType>()?;
     m.add_class::<Field>()?;
+    m.add_class::<Serie>()?;
     m.add_class::<Date>()?;
     m.add_class::<Time>()?;
     m.add_class::<DateTime>()?;

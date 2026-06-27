@@ -2339,6 +2339,7 @@ dependencies = [
  "yggdryl-core",
  "yggdryl-http",
  "yggdryl-schema",
+ "yggdryl-serie",
 ]
 
 [[package]]
