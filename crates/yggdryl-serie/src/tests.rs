@@ -1324,6 +1324,54 @@ fn dataframe_from_record_batch_with_nested_column() {
 }
 
 #[test]
+fn set_at_and_push_mutate_functionally() {
+    use yggdryl_scalar::{IntScalar, NullScalar, VarcharScalar};
+
+    let serie = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![Some(1), Some(2), Some(3)])) as ArrayRef,
+    )
+    .unwrap();
+
+    // safe set: an int64 value is cast to the column's int32 before writing
+    let updated = serie
+        .set_at(1, &IntScalar::new(20, 64, true), true)
+        .unwrap();
+    assert_eq!(updated.value_at(0), Scalar::Int(1));
+    assert_eq!(updated.value_at(1), Scalar::Int(20));
+    assert_eq!(updated.value_at(2), Scalar::Int(3));
+    // the original is untouched (functional)
+    assert_eq!(serie.value_at(1), Scalar::Int(2));
+
+    // writing a null into a cell
+    let nulled = serie
+        .set_at(0, &NullScalar::new(DataType::int(32, true)), true)
+        .unwrap();
+    assert!(nulled.is_null(0));
+
+    // out of bounds errors
+    assert!(matches!(
+        serie.set_at(9, &IntScalar::new(1, 32, true), true),
+        Err(crate::SerieError::OutOfBounds { .. })
+    ));
+
+    // push appends a new last row (cast to the column type)
+    let pushed = serie.push(&IntScalar::new(4, 8, true), true).unwrap();
+    assert_eq!(pushed.len(), 4);
+    assert_eq!(pushed.value_at(3), Scalar::Int(4));
+
+    // a string column: set_at rewrites variable-length storage uniformly
+    let names = from_array(
+        "s",
+        Arc::new(StringArray::from(vec!["a", "b", "c"])) as ArrayRef,
+    )
+    .unwrap();
+    let renamed = names.set_at(2, &VarcharScalar::new("zzz"), true).unwrap();
+    assert_eq!(renamed.value_at(2), Scalar::Utf8("zzz".into()));
+    assert_eq!(renamed.value_at(0), Scalar::Utf8("a".into()));
+}
+
+#[test]
 fn struct_serie_dataframe_advanced() {
     let id: SerieRef = Arc::new(Int32Serie::from_values(
         "id",

@@ -73,3 +73,11 @@ impl From<arrow_schema::ArrowError> for SerieError {
         SerieError::Arrow(err.to_string())
     }
 }
+
+impl From<yggdryl_scalar::ScalarError> for SerieError {
+    fn from(err: yggdryl_scalar::ScalarError) -> SerieError {
+        // A scalar-layer failure (e.g. casting a value to write into a column) surfaces as
+        // an Arrow error here, carrying the actionable scalar message.
+        SerieError::Arrow(err.to_string())
+    }
+}

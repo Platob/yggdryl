@@ -19,6 +19,9 @@ use crate::nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
 use crate::temporal::{DatetimeSerie, DurationSerie, TimeSerie};
+// The rich atomic value layer — the value written by [`Serie::set_at`] / [`Serie::push`].
+// Aliased so it does not clash with the crate's own (lossy) `Scalar` enum above.
+use yggdryl_scalar::Scalar as AtomicScalar;
 
 /// A reference-counted, type-erased column — the handle a column store and the
 /// [factory](from_arrow) hand around.
@@ -224,6 +227,56 @@ pub trait Serie: fmt::Debug + Send + Sync {
         let casted = self.cast(field.data_type())?;
         // `casted` already has `field`'s type, so dispatch directly.
         dispatch(field.clone(), casted.array())
+    }
+
+    /// Returns a copy of the column with the cell at `index` replaced by `value` — the
+    /// functional mutator (Arrow arrays are immutable, so this rebuilds the column). With
+    /// `safe` the `value` is **cast to the column's type** first, so any value can be
+    /// written (a non-castable one errors); without it the value must already match the
+    /// column type. Out of bounds is an error. Works uniformly across every type
+    /// (primitive / varchar / binary / **nested**) via one Arrow `concat` of
+    /// prefix + cell + suffix — O(n), but correct for variable-length and nested storage.
+    fn set_at(&self, index: usize, value: &dyn AtomicScalar, safe: bool) -> SerieResult<SerieRef> {
+        let len = self.len();
+        if index >= len {
+            return Err(SerieError::OutOfBounds { index, len });
+        }
+        let cell = self.cell_array(value, safe)?;
+        let array = self.array();
+        let mut parts: Vec<ArrayRef> = Vec::with_capacity(3);
+        if index > 0 {
+            parts.push(array.slice(0, index));
+        }
+        parts.push(cell);
+        if index + 1 < len {
+            parts.push(array.slice(index + 1, len - index - 1));
+        }
+        let refs: Vec<&dyn Array> = parts.iter().map(|a| a.as_ref()).collect();
+        dispatch(self.field().clone(), arrow_select::concat::concat(&refs)?)
+    }
+
+    /// Returns a copy of the column with `value` appended as a new last row — the
+    /// row-append companion to [`set_at`](Serie::set_at) (same `safe` cast semantics,
+    /// same functional rebuild).
+    fn push(&self, value: &dyn AtomicScalar, safe: bool) -> SerieResult<SerieRef> {
+        let cell = self.cell_array(value, safe)?;
+        let array = self.array();
+        let combined = arrow_select::concat::concat(&[array.as_ref(), cell.as_ref()])?;
+        dispatch(self.field().clone(), combined)
+    }
+
+    /// Renders `value` as a length-1 Arrow array of this column's type — the shared cell
+    /// builder behind [`set_at`](Serie::set_at) / [`push`](Serie::push). With `safe` the
+    /// value is cast to the column type; otherwise it is used as-is (and a type mismatch
+    /// surfaces from the caller's `concat`).
+    fn cell_array(&self, value: &dyn AtomicScalar, safe: bool) -> SerieResult<ArrayRef> {
+        let cell = if safe {
+            value.cast(self.data_type())?
+        } else {
+            // No cast: render the value directly (its type must match the column).
+            return Ok(value.to_array()?);
+        };
+        Ok(cell.to_array()?)
     }
 
     /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it
