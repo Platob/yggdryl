@@ -2351,6 +2351,7 @@ version = "0.1.1"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-cast",
  "arrow-ipc",
  "arrow-schema",
  "arrow-select",

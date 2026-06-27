@@ -1,15 +1,15 @@
-//! Total conversion between a [`Scalar`] and Apache Arrow: a scalar renders to a
-//! **length-1 [`ArrayRef`]** ([`to_array`](Scalar::to_array)) or an
-//! [`arrow_array::Scalar`] ([`to_arrow_scalar`](Scalar::to_arrow_scalar)), and any Arrow
-//! array cell reads back into a [`Scalar`] ([`from_array`](Scalar::from_array) /
-//! [`from_arrow_scalar`](Scalar::from_arrow_scalar)).
+//! Total conversion between a [`ScalarValue`] and Apache Arrow: a scalar renders to a
+//! **length-1 [`ArrayRef`]** ([`to_array`](ScalarValue::to_array)) or an
+//! [`arrow_array::Scalar`] ([`to_arrow_scalar`](ScalarValue::to_arrow_scalar)), and any Arrow
+//! array cell reads back into a [`ScalarValue`] ([`from_array`](ScalarValue::from_array) /
+//! [`from_arrow_scalar`](ScalarValue::from_arrow_scalar)).
 //!
 //! Logical refinements the Arrow type system does not carry are **normalised** on the
 //! round-trip, exactly as in [`yggdryl-schema`](yggdryl_schema)'s Arrow conversion:
-//! a [`Json`](crate::Scalar::Json) reads back as a [`Utf8`](crate::Scalar::Utf8), a
+//! a [`Json`](crate::ScalarValue::Json) reads back as a [`Utf8`](crate::ScalarValue::Utf8), a
 //! fixed-size string loses its length, a non-UTF-8 charset maps to UTF-8. For a fully
 //! lossless round-trip carrying the exact logical type use
-//! [`to_str`](Scalar::to_str) / [`to_json`](Scalar::to_json).
+//! [`to_str`](ScalarValue::to_str) / [`to_json`](ScalarValue::to_json).
 
 use std::sync::Arc;
 
@@ -37,23 +37,23 @@ use yggdryl_schema::{DataType, Field};
 use crate::error::{ScalarError, ScalarResult};
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::scalar::{Interval, Scalar, F64};
+use crate::value::{Interval, ScalarValue, F64};
 
-impl Scalar {
+impl ScalarValue {
     /// Renders this value as a **length-1 Arrow [`ArrayRef`]** of its
-    /// [`DataType`](Scalar::data_type)'s Arrow type — the inverse of
-    /// [`from_array`](Scalar::from_array) at index 0.
+    /// [`DataType`](ScalarValue::data_type)'s Arrow type — the inverse of
+    /// [`from_array`](ScalarValue::from_array) at index 0.
     ///
     /// ```
-    /// use yggdryl_scalar::Scalar;
-    /// let value = Scalar::utf8("hi");
+    /// use yggdryl_scalar::ScalarValue;
+    /// let value = ScalarValue::utf8("hi");
     /// let array = value.to_array().unwrap();
     /// assert_eq!(array.len(), 1);
-    /// assert_eq!(Scalar::from_array(array.as_ref(), 0).unwrap(), value);
+    /// assert_eq!(ScalarValue::from_array(array.as_ref(), 0).unwrap(), value);
     /// ```
     pub fn to_array(&self) -> ScalarResult<ArrayRef> {
-        use Scalar::*;
-        log_event!(trace, "Scalar::to_array {}", self.data_type().to_str());
+        use ScalarValue::*;
+        log_event!(trace, "ScalarValue::to_array {}", self.data_type().to_str());
         Ok(match self {
             Null(dt) => new_null_array(&dt.to_arrow()?, 1),
             Boolean(v) => Arc::new(BooleanArray::from(vec![*v])),
@@ -78,10 +78,11 @@ impl Scalar {
                 view,
                 size,
             } => binary_array(value, *large, *view, *size)?,
-            // Json / Bson lower to their physical Utf8 / Binary array (the logical name
-            // is not recoverable from the array — see the module docs).
+            // Json / Bson / Timezone lower to their physical Utf8 / Binary array (the
+            // logical name is not recoverable from the array — see the module docs).
             Json(v) => string_array(v, false, false),
             Bson(v) => binary_array(v, false, false, None)?,
+            Timezone(tz) => string_array(&tz.name(), false, false),
             Date { value, large } => {
                 if *large {
                     Arc::new(Date64Array::from(vec![*value]))
@@ -114,27 +115,27 @@ impl Scalar {
         })
     }
 
-    /// Wraps [`to_array`](Scalar::to_array) in an [`arrow_array::Scalar`] — the broadcast
+    /// Wraps [`to_array`](ScalarValue::to_array) in an [`arrow_array::Scalar`] — the broadcast
     /// marker Arrow's compute kernels treat as a single value rather than a length-1
     /// column.
     pub fn to_arrow_scalar(&self) -> ScalarResult<arrow_array::Scalar<ArrayRef>> {
         Ok(arrow_array::Scalar::new(self.to_array()?))
     }
 
-    /// Reads the cell of `array` at `index` into a [`Scalar`]. A null cell or an
-    /// out-of-bounds index yields a typed [`Null`](Scalar::Null) of the array's type.
+    /// Reads the cell of `array` at `index` into a [`ScalarValue`]. A null cell or an
+    /// out-of-bounds index yields a typed [`Null`](ScalarValue::Null) of the array's type.
     ///
     /// ```
-    /// use yggdryl_scalar::Scalar;
+    /// use yggdryl_scalar::ScalarValue;
     /// use yggdryl_scalar::arrow_array::{Int32Array, ArrayRef};
     /// use std::sync::Arc;
     /// let array: ArrayRef = Arc::new(Int32Array::from(vec![Some(7), None]));
-    /// assert_eq!(Scalar::from_array(array.as_ref(), 0).unwrap(), Scalar::int(7, 32, true));
-    /// assert!(Scalar::from_array(array.as_ref(), 1).unwrap().is_null());
+    /// assert_eq!(ScalarValue::from_array(array.as_ref(), 0).unwrap(), ScalarValue::int(7, 32, true));
+    /// assert!(ScalarValue::from_array(array.as_ref(), 1).unwrap().is_null());
     /// ```
-    pub fn from_array(array: &dyn Array, index: usize) -> ScalarResult<Scalar> {
+    pub fn from_array(array: &dyn Array, index: usize) -> ScalarResult<ScalarValue> {
         if index >= array.len() || array.is_null(index) {
-            return Ok(Scalar::Null(DataType::from_arrow(array.data_type())));
+            return Ok(ScalarValue::Null(DataType::from_arrow(array.data_type())));
         }
 
         /// Downcasts `array` to `$ty` and reads its value at `index`.
@@ -149,86 +150,86 @@ impl Scalar {
         }
 
         Ok(match array.data_type() {
-            ADataType::Boolean => Scalar::Boolean(get!(BooleanArray)),
-            ADataType::Int8 => Scalar::int(get!(Int8Array) as i128, 8, true),
-            ADataType::Int16 => Scalar::int(get!(Int16Array) as i128, 16, true),
-            ADataType::Int32 => Scalar::int(get!(Int32Array) as i128, 32, true),
-            ADataType::Int64 => Scalar::int(get!(Int64Array) as i128, 64, true),
-            ADataType::UInt8 => Scalar::int(get!(UInt8Array) as i128, 8, false),
-            ADataType::UInt16 => Scalar::int(get!(UInt16Array) as i128, 16, false),
-            ADataType::UInt32 => Scalar::int(get!(UInt32Array) as i128, 32, false),
-            ADataType::UInt64 => Scalar::int(get!(UInt64Array) as i128, 64, false),
-            ADataType::Float16 => Scalar::Float {
+            ADataType::Boolean => ScalarValue::Boolean(get!(BooleanArray)),
+            ADataType::Int8 => ScalarValue::int(get!(Int8Array) as i128, 8, true),
+            ADataType::Int16 => ScalarValue::int(get!(Int16Array) as i128, 16, true),
+            ADataType::Int32 => ScalarValue::int(get!(Int32Array) as i128, 32, true),
+            ADataType::Int64 => ScalarValue::int(get!(Int64Array) as i128, 64, true),
+            ADataType::UInt8 => ScalarValue::int(get!(UInt8Array) as i128, 8, false),
+            ADataType::UInt16 => ScalarValue::int(get!(UInt16Array) as i128, 16, false),
+            ADataType::UInt32 => ScalarValue::int(get!(UInt32Array) as i128, 32, false),
+            ADataType::UInt64 => ScalarValue::int(get!(UInt64Array) as i128, 64, false),
+            ADataType::Float16 => ScalarValue::Float {
                 value: F64(get!(Float16Array).to_f64()),
                 bits: 16,
             },
-            ADataType::Float32 => Scalar::float(get!(Float32Array) as f64, 32),
-            ADataType::Float64 => Scalar::float(get!(Float64Array), 64),
+            ADataType::Float32 => ScalarValue::float(get!(Float32Array) as f64, 32),
+            ADataType::Float64 => ScalarValue::float(get!(Float64Array), 64),
             ADataType::Decimal32(p, s) => {
-                Scalar::decimal(i256::from_i128(get!(Decimal32Array) as i128), *p, *s, 32)
+                ScalarValue::decimal(i256::from_i128(get!(Decimal32Array) as i128), *p, *s, 32)
             }
             ADataType::Decimal64(p, s) => {
-                Scalar::decimal(i256::from_i128(get!(Decimal64Array) as i128), *p, *s, 64)
+                ScalarValue::decimal(i256::from_i128(get!(Decimal64Array) as i128), *p, *s, 64)
             }
             ADataType::Decimal128(p, s) => {
-                Scalar::decimal(i256::from_i128(get!(Decimal128Array)), *p, *s, 128)
+                ScalarValue::decimal(i256::from_i128(get!(Decimal128Array)), *p, *s, 128)
             }
-            ADataType::Decimal256(p, s) => Scalar::decimal(get!(Decimal256Array), *p, *s, 256),
-            ADataType::Utf8 => Scalar::utf8(get!(StringArray).to_string()),
-            ADataType::LargeUtf8 => Scalar::Utf8 {
+            ADataType::Decimal256(p, s) => ScalarValue::decimal(get!(Decimal256Array), *p, *s, 256),
+            ADataType::Utf8 => ScalarValue::utf8(get!(StringArray).to_string()),
+            ADataType::LargeUtf8 => ScalarValue::Utf8 {
                 value: get!(LargeStringArray).to_string(),
                 charset: yggdryl_core::Charset::Utf8,
                 large: true,
                 view: false,
                 size: None,
             },
-            ADataType::Utf8View => Scalar::Utf8 {
+            ADataType::Utf8View => ScalarValue::Utf8 {
                 value: get!(StringViewArray).to_string(),
                 charset: yggdryl_core::Charset::Utf8,
                 large: false,
                 view: true,
                 size: None,
             },
-            ADataType::Binary => Scalar::binary(get!(BinaryArray).to_vec()),
-            ADataType::LargeBinary => Scalar::Binary {
+            ADataType::Binary => ScalarValue::binary(get!(BinaryArray).to_vec()),
+            ADataType::LargeBinary => ScalarValue::Binary {
                 value: get!(LargeBinaryArray).to_vec(),
                 large: true,
                 view: false,
                 size: None,
             },
-            ADataType::BinaryView => Scalar::Binary {
+            ADataType::BinaryView => ScalarValue::Binary {
                 value: get!(BinaryViewArray).to_vec(),
                 large: false,
                 view: true,
                 size: None,
             },
-            ADataType::FixedSizeBinary(n) => Scalar::Binary {
+            ADataType::FixedSizeBinary(n) => ScalarValue::Binary {
                 value: get!(FixedSizeBinaryArray).to_vec(),
                 large: false,
                 view: false,
                 size: Some(*n),
             },
-            ADataType::Date32 => Scalar::Date {
+            ADataType::Date32 => ScalarValue::Date {
                 value: get!(Date32Array) as i64,
                 large: false,
             },
-            ADataType::Date64 => Scalar::Date {
+            ADataType::Date64 => ScalarValue::Date {
                 value: get!(Date64Array),
                 large: true,
             },
-            ADataType::Time32(ATimeUnit::Second) => Scalar::Time {
+            ADataType::Time32(ATimeUnit::Second) => ScalarValue::Time {
                 value: get!(Time32SecondArray) as i64,
                 unit: TimeUnit::Second,
             },
-            ADataType::Time32(ATimeUnit::Millisecond) => Scalar::Time {
+            ADataType::Time32(ATimeUnit::Millisecond) => ScalarValue::Time {
                 value: get!(Time32MillisecondArray) as i64,
                 unit: TimeUnit::Millisecond,
             },
-            ADataType::Time64(ATimeUnit::Microsecond) => Scalar::Time {
+            ADataType::Time64(ATimeUnit::Microsecond) => ScalarValue::Time {
                 value: get!(Time64MicrosecondArray),
                 unit: TimeUnit::Microsecond,
             },
-            ADataType::Time64(ATimeUnit::Nanosecond) => Scalar::Time {
+            ADataType::Time64(ATimeUnit::Nanosecond) => ScalarValue::Time {
                 value: get!(Time64NanosecondArray),
                 unit: TimeUnit::Nanosecond,
             },
@@ -237,28 +238,28 @@ impl Scalar {
                     "unsupported time resolution in array".into(),
                 ))
             }
-            ADataType::Timestamp(unit, tz) => Scalar::Timestamp {
+            ADataType::Timestamp(unit, tz) => ScalarValue::Timestamp {
                 value: timestamp_value(array, index, unit),
                 unit: time_unit_from_arrow(unit),
                 timezone: tz.as_ref().map(|name| parse_timezone(name)),
             },
-            ADataType::Duration(unit) => Scalar::Duration {
+            ADataType::Duration(unit) => ScalarValue::Duration {
                 value: duration_value(array, index, unit),
                 unit: time_unit_from_arrow(unit),
             },
             ADataType::Interval(AIntervalUnit::YearMonth) => {
-                Scalar::Interval(Interval::YearMonth(get!(IntervalYearMonthArray)))
+                ScalarValue::Interval(Interval::YearMonth(get!(IntervalYearMonthArray)))
             }
             ADataType::Interval(AIntervalUnit::DayTime) => {
                 let v = get!(IntervalDayTimeArray);
-                Scalar::Interval(Interval::DayTime {
+                ScalarValue::Interval(Interval::DayTime {
                     days: v.days,
                     millis: v.milliseconds,
                 })
             }
             ADataType::Interval(AIntervalUnit::MonthDayNano) => {
                 let v = get!(IntervalMonthDayNanoArray);
-                Scalar::Interval(Interval::MonthDayNano {
+                ScalarValue::Interval(Interval::MonthDayNano {
                     months: v.months,
                     days: v.days,
                     nanos: v.nanoseconds,
@@ -278,10 +279,12 @@ impl Scalar {
         })
     }
 
-    /// Reads index 0 of an [`arrow_array::Scalar`] back into a [`Scalar`].
-    pub fn from_arrow_scalar<T: Array>(scalar: &arrow_array::Scalar<T>) -> ScalarResult<Scalar> {
+    /// Reads index 0 of an [`arrow_array::Scalar`] back into a [`ScalarValue`].
+    pub fn from_arrow_scalar<T: Array>(
+        scalar: &arrow_array::Scalar<T>,
+    ) -> ScalarResult<ScalarValue> {
         let (array, _is_scalar) = scalar.get();
-        Scalar::from_array(array, 0)
+        ScalarValue::from_array(array, 0)
     }
 }
 
@@ -439,13 +442,13 @@ fn interval_array(interval: Interval) -> ArrayRef {
 
 /// Concatenates each scalar's length-1 array into the flattened child array of a nested
 /// value (or an empty array of `item_type` when there are no elements).
-fn child_array(values: &[Scalar], item_type: &ADataType) -> ScalarResult<ArrayRef> {
+fn child_array(values: &[ScalarValue], item_type: &ADataType) -> ScalarResult<ArrayRef> {
     if values.is_empty() {
         return Ok(new_empty_array(item_type));
     }
     let arrays = values
         .iter()
-        .map(Scalar::to_array)
+        .map(ScalarValue::to_array)
         .collect::<ScalarResult<Vec<_>>>()?;
     let refs: Vec<&dyn Array> = arrays.iter().map(|a| a.as_ref()).collect();
     Ok(arrow_select::concat::concat(&refs)?)
@@ -453,7 +456,7 @@ fn child_array(values: &[Scalar], item_type: &ADataType) -> ScalarResult<ArrayRe
 
 /// A length-1 list array whose single element is the list of `values`.
 fn list_array(
-    values: &[Scalar],
+    values: &[ScalarValue],
     field: &Field,
     large: bool,
     view: bool,
@@ -481,7 +484,7 @@ fn list_array(
 }
 
 /// A length-1 struct array holding one record.
-fn struct_array(fields: &[Field], values: &[Scalar]) -> ScalarResult<ArrayRef> {
+fn struct_array(fields: &[Field], values: &[ScalarValue]) -> ScalarResult<ArrayRef> {
     if fields.is_empty() {
         return Ok(Arc::new(StructArray::new_empty_fields(1, None)));
     }
@@ -491,7 +494,7 @@ fn struct_array(fields: &[Field], values: &[Scalar]) -> ScalarResult<ArrayRef> {
         .collect::<Result<Vec<_>, _>>()?;
     let arrays = values
         .iter()
-        .map(Scalar::to_array)
+        .map(ScalarValue::to_array)
         .collect::<ScalarResult<Vec<_>>>()?;
     let fields: Fields = afields.into();
     Ok(Arc::new(StructArray::try_new(fields, arrays, None)?))
@@ -502,12 +505,12 @@ fn map_array(
     key: &DataType,
     value: &DataType,
     sorted: bool,
-    entries: &[(Scalar, Scalar)],
+    entries: &[(ScalarValue, ScalarValue)],
 ) -> ScalarResult<ArrayRef> {
     let key_arrow = key.to_arrow()?;
     let value_arrow = value.to_arrow()?;
-    let keys: Vec<Scalar> = entries.iter().map(|(k, _)| k.clone()).collect();
-    let vals: Vec<Scalar> = entries.iter().map(|(_, v)| v.clone()).collect();
+    let keys: Vec<ScalarValue> = entries.iter().map(|(k, _)| k.clone()).collect();
+    let vals: Vec<ScalarValue> = entries.iter().map(|(_, v)| v.clone()).collect();
     let keys_child = child_array(&keys, &key_arrow)?;
     let vals_child = child_array(&vals, &value_arrow)?;
     let entry_fields: Fields = vec![
@@ -578,31 +581,31 @@ fn parse_timezone(name: &str) -> Timezone {
     Timezone::from_str(name).unwrap_or_else(|_| {
         log_event!(
             warn,
-            "Scalar::from_array: timezone {name:?} is not a recognised zone, defaulting to UTC"
+            "ScalarValue::from_array: timezone {name:?} is not a recognised zone, defaulting to UTC"
         );
         Timezone::Utc
     })
 }
 
-/// Reads the sub-list at `index` of a (large) list array into a [`Scalar::List`].
+/// Reads the sub-list at `index` of a (large) list array into a [`ScalarValue::List`].
 fn read_list<O: OffsetSizeTrait>(
     array: &dyn Array,
     index: usize,
     large: bool,
-) -> ScalarResult<Scalar> {
+) -> ScalarResult<ScalarValue> {
     let list = array
         .as_any()
         .downcast_ref::<GenericListArray<O>>()
         .expect("data type matched the list array");
     let sub = list.value(index);
     let values = (0..sub.len())
-        .map(|k| Scalar::from_array(sub.as_ref(), k))
+        .map(|k| ScalarValue::from_array(sub.as_ref(), k))
         .collect::<ScalarResult<Vec<_>>>()?;
     let field = match list.data_type() {
         ADataType::List(f) | ADataType::LargeList(f) => Field::from_arrow(f),
         _ => unreachable!("list array has a list data type"),
     };
-    Ok(Scalar::List {
+    Ok(ScalarValue::List {
         values,
         field: Box::new(field),
         large,
@@ -611,8 +614,12 @@ fn read_list<O: OffsetSizeTrait>(
     })
 }
 
-/// Reads the sub-list at `index` of a fixed-size list array into a [`Scalar::List`].
-fn read_fixed_list(array: &dyn Array, index: usize, field: &Arc<AField>) -> ScalarResult<Scalar> {
+/// Reads the sub-list at `index` of a fixed-size list array into a [`ScalarValue::List`].
+fn read_fixed_list(
+    array: &dyn Array,
+    index: usize,
+    field: &Arc<AField>,
+) -> ScalarResult<ScalarValue> {
     let list = array
         .as_any()
         .downcast_ref::<FixedSizeListArray>()
@@ -620,9 +627,9 @@ fn read_fixed_list(array: &dyn Array, index: usize, field: &Arc<AField>) -> Scal
     let sub = list.value(index);
     let n = sub.len();
     let values = (0..n)
-        .map(|k| Scalar::from_array(sub.as_ref(), k))
+        .map(|k| ScalarValue::from_array(sub.as_ref(), k))
         .collect::<ScalarResult<Vec<_>>>()?;
-    Ok(Scalar::List {
+    Ok(ScalarValue::List {
         values,
         field: Box::new(Field::from_arrow(field)),
         large: false,
@@ -631,8 +638,8 @@ fn read_fixed_list(array: &dyn Array, index: usize, field: &Arc<AField>) -> Scal
     })
 }
 
-/// Reads the record at `index` of a struct array into a [`Scalar::Struct`].
-fn read_struct(array: &dyn Array, index: usize, fields: &Fields) -> ScalarResult<Scalar> {
+/// Reads the record at `index` of a struct array into a [`ScalarValue::Struct`].
+fn read_struct(array: &dyn Array, index: usize, fields: &Fields) -> ScalarResult<ScalarValue> {
     let s = array
         .as_any()
         .downcast_ref::<StructArray>()
@@ -640,14 +647,14 @@ fn read_struct(array: &dyn Array, index: usize, fields: &Fields) -> ScalarResult
     let values = s
         .columns()
         .iter()
-        .map(|col| Scalar::from_array(col.as_ref(), index))
+        .map(|col| ScalarValue::from_array(col.as_ref(), index))
         .collect::<ScalarResult<Vec<_>>>()?;
     let fields = fields.iter().map(|f| Field::from_arrow(f)).collect();
-    Ok(Scalar::Struct { fields, values })
+    Ok(ScalarValue::Struct { fields, values })
 }
 
-/// Reads the map at `index` of a map array into a [`Scalar::Map`].
-fn read_map(array: &dyn Array, index: usize, sorted: bool) -> ScalarResult<Scalar> {
+/// Reads the map at `index` of a map array into a [`ScalarValue::Map`].
+fn read_map(array: &dyn Array, index: usize, sorted: bool) -> ScalarResult<ScalarValue> {
     let map = array
         .as_any()
         .downcast_ref::<MapArray>()
@@ -660,12 +667,12 @@ fn read_map(array: &dyn Array, index: usize, sorted: bool) -> ScalarResult<Scala
     let entries = (start..end)
         .map(|k| {
             Ok((
-                Scalar::from_array(keys.as_ref(), k)?,
-                Scalar::from_array(vals.as_ref(), k)?,
+                ScalarValue::from_array(keys.as_ref(), k)?,
+                ScalarValue::from_array(vals.as_ref(), k)?,
             ))
         })
         .collect::<ScalarResult<Vec<_>>>()?;
-    Ok(Scalar::Map {
+    Ok(ScalarValue::Map {
         key: Box::new(DataType::from_arrow(keys.data_type())),
         value: Box::new(DataType::from_arrow(vals.data_type())),
         sorted,

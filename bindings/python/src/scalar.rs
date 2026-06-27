@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use pyo3::types::{
     PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple,
 };
-use yggdryl_scalar::{from_bytes, i256, Interval, Scalar as CoreScalar, ScalarError};
+use yggdryl_scalar::{from_bytes, i256, Interval, ScalarError, ScalarValue as CoreScalar};
 use yggdryl_schema::DataType as CoreDataType;
 
 use crate::datatype::DataType;
@@ -162,6 +162,7 @@ fn value_to_py(py: Python<'_>, scalar: &CoreScalar) -> PyResult<PyObject> {
         S::Json(v) => v.into_py(py),
         S::Binary { value, .. } => PyBytes::new_bound(py, value).into(),
         S::Bson(v) => PyBytes::new_bound(py, v).into(),
+        S::Timezone(tz) => crate::timezone::Timezone { inner: tz.clone() }.into_py(py),
         S::Decimal { value, scale, .. } => decimal_string(*value, *scale).into_py(py),
         S::Date { .. } => crate::date::Date {
             inner: scalar.as_date().expect("a date scalar reads as a Date"),

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
-use yggdryl_scalar::{from_bytes, i256, Interval, Scalar as CoreScalar};
+use yggdryl_scalar::{from_bytes, i256, Interval, ScalarValue as CoreScalar};
 use yggdryl_schema::DataType as CoreDataType;
 
 use crate::datatype::DataType;
@@ -164,6 +164,7 @@ fn value_to_json(scalar: &CoreScalar) -> JsonValue {
             JsonValue::Array(value.iter().map(|x| JsonValue::from(*x)).collect())
         }
         S::Bson(v) => JsonValue::Array(v.iter().map(|x| JsonValue::from(*x)).collect()),
+        S::Timezone(tz) => JsonValue::String(tz.name()),
         S::Decimal { value, scale, .. } => JsonValue::String(decimal_string(*value, *scale)),
         S::Date { .. } => {
             JsonValue::String(scalar.as_date().map(|d| d.to_string()).unwrap_or_default())

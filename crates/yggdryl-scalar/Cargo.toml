@@ -14,6 +14,10 @@ readme = "README.md"
 name = "yggdryl_scalar"
 path = "src/lib.rs"
 
+[[bench]]
+name = "scalar"
+harness = false
+
 [dependencies]
 # The schema layer is the source of truth for a scalar's logical type; the `arrow`
 # feature is required here because a scalar converts to/from an Arrow array.
@@ -29,6 +33,8 @@ arrow-schema = { version = "59", default-features = false }
 arrow-buffer = { version = "59", default-features = false }
 # Zero-copy `concat` for building a nested scalar's child array (list / map values).
 arrow-select = { version = "59", default-features = false }
+# The cast kernel powering `Scalar::cast` (length-1 array cast).
+arrow-cast = { version = "59", default-features = false }
 # Arrow IPC stream format for the lossless `to_bytes` / `from_bytes` round-trip.
 arrow-ipc = { version = "59", default-features = false }
 # `half::f16` to build / read a `float16` scalar (the one float width std lacks).
