@@ -4,15 +4,17 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, BinaryArray, BooleanArray, Date32Array, Float64Array, Int32Array, LargeStringArray,
-    NullArray, StringArray, TimestampMicrosecondArray,
+    ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
+    Float32Array, Float64Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
+    NullArray, StringArray, TimestampMicrosecondArray, UInt32Array,
 };
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
     child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie,
-    DateRangeSerie, Float64Serie, IndexSerie, Int32Serie, RangeSerie, Scalar, Serie, SerieRef,
-    TimestampMicrosecondSerie, TypedSerie, UInt64Serie, VarcharSerie,
+    Date64Serie, DateRangeSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie,
+    RangeSerie, Scalar, Serie, SerieRef, TimestampMicrosecondSerie, TypedSerie, UInt64Serie,
+    VarcharSerie,
 };
 
 #[test]
@@ -326,4 +328,179 @@ fn explicit_field_carries_metadata() {
     let serie = from_arrow(field, array).unwrap();
     assert!(!serie.is_nullable());
     assert_eq!(serie.field().comment(), Some("primary key"));
+}
+
+#[test]
+fn empty_and_single_element_series() {
+    let empty = Int64Serie::from_values("e", Vec::<Option<i64>>::new());
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+    assert_eq!(empty.value_at(0), Scalar::Null);
+    assert_eq!(empty.iter().count(), 0);
+
+    let one = Int64Serie::from_values("o", vec![Some(42i64)]);
+    assert_eq!(one.len(), 1);
+    assert_eq!(one.value(0), 42);
+    assert_eq!(one.value_at(0), Scalar::Int(42));
+    assert_eq!(one.value_at(1), Scalar::Null); // just past the end
+
+    let empty_range = RangeSerie::new("r", 0, 1, 0);
+    assert!(empty_range.is_empty());
+    assert_eq!(empty_range.array().len(), 0); // must not panic
+}
+
+#[test]
+fn slice_boundary_cases() {
+    let s = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![1, 2, 3, 4])) as ArrayRef,
+    )
+    .unwrap();
+
+    let zero = s.slice(0, 0);
+    assert_eq!(zero.len(), 0);
+    assert!(zero.is_empty());
+
+    let tail = s.slice_range(2..4); // the last two
+    assert_eq!(tail.len(), 2);
+    assert_eq!(tail.value_at(0), Scalar::Int(3));
+    assert_eq!(tail.value_at(1), Scalar::Int(4));
+}
+
+#[test]
+fn range_serie_saturates_on_overflow() {
+    // start near the top: at(1) would overflow, so it clamps instead of wrapping/panicking
+    let r = RangeSerie::new("r", u64::MAX - 1, 10, 4);
+    assert_eq!(r.value_at(0), Scalar::Int((u64::MAX - 1) as i128));
+    assert_eq!(r.value_at(1), Scalar::Int(u64::MAX as i128)); // saturated
+    assert_eq!(r.value_at(3), Scalar::Int(u64::MAX as i128)); // still clamped
+    assert_eq!(r.array().len(), 4); // materialising must not panic
+}
+
+#[test]
+fn date_range_negative_step_and_accessors() {
+    use yggdryl_core::Date;
+    let start = Date::from_ymd(2024, 3, 1).unwrap();
+    let r = DateRangeSerie::from_dates("d", start.clone(), -1, 3); // Mar 1, Feb 29 (leap), Feb 28
+    assert_eq!(r.date_at(0), Some(start.clone()));
+    assert_eq!(r.date_at(1), Some(Date::from_ymd(2024, 2, 29).unwrap()));
+    assert_eq!(r.date_at(2), Some(Date::from_ymd(2024, 2, 28).unwrap()));
+    assert_eq!(r.start_days(), start.epoch_days());
+    assert_eq!(r.step_days(), -1);
+    assert_eq!(r.array().len(), 3); // must not panic
+}
+
+#[test]
+fn scalar_variants_and_accessors() {
+    let b = from_array(
+        "b",
+        Arc::new(BooleanArray::from(vec![Some(true), Some(false)])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(b.value_at(0), Scalar::Boolean(true));
+    assert_eq!(b.value_at(1), Scalar::Boolean(false));
+
+    let bin = from_array(
+        "bin",
+        Arc::new(BinaryArray::from(vec![Some(&b"ab"[..])])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(bin.value_at(0), Scalar::Binary(b"ab".to_vec()));
+
+    assert_eq!(Scalar::Int(7).as_int(), Some(7));
+    assert_eq!(Scalar::Float(1.5).as_float(), Some(1.5));
+    assert!(Scalar::Null.is_null());
+    assert_eq!(Scalar::Int(7).as_float(), None); // wrong-arm accessor returns None
+    assert_eq!(Scalar::Float(1.0).as_str(), None);
+}
+
+#[test]
+fn more_numeric_aliases_dispatch_and_read() {
+    let i64s = from_array("a", Arc::new(Int64Array::from(vec![10i64])) as ArrayRef).unwrap();
+    assert!(i64s.as_any().downcast_ref::<Int64Serie>().is_some());
+    assert_eq!(i64s.value_at(0), Scalar::Int(10));
+
+    let u32s = from_array("b", Arc::new(UInt32Array::from(vec![5u32])) as ArrayRef).unwrap();
+    assert_eq!(u32s.data_type(), &DataType::int(32, false));
+    assert_eq!(u32s.value_at(0), Scalar::Int(5));
+
+    let f32s = from_array("c", Arc::new(Float32Array::from(vec![1.5f32])) as ArrayRef).unwrap();
+    assert!(f32s.as_any().downcast_ref::<Float32Serie>().is_some());
+    assert_eq!(f32s.value_at(0), Scalar::Float(1.5));
+
+    let d64 = from_array(
+        "d",
+        Arc::new(Date64Array::from(vec![86_400_000i64])) as ArrayRef,
+    )
+    .unwrap();
+    assert!(d64.as_any().downcast_ref::<Date64Serie>().is_some());
+    assert_eq!(d64.value_at(0), Scalar::Int(86_400_000));
+
+    let dur = from_array(
+        "e",
+        Arc::new(DurationSecondArray::from(vec![3i64])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(dur.value_at(0), Scalar::Int(3));
+}
+
+#[test]
+fn large_offset_string_and_binary() {
+    let lu = from_array(
+        "s",
+        Arc::new(LargeStringArray::from(vec![Some("hi")])) as ArrayRef,
+    )
+    .unwrap();
+    let v = lu.as_any().downcast_ref::<VarcharSerie<i64>>().unwrap();
+    assert_eq!(v.str_value(0), Some("hi"));
+
+    let lb = from_array(
+        "b",
+        Arc::new(LargeBinaryArray::from(vec![Some(&b"xy"[..])])) as ArrayRef,
+    )
+    .unwrap();
+    let vb = lb.as_any().downcast_ref::<BinarySerie<i64>>().unwrap();
+    assert_eq!(vb.bytes_value(0), Some(&b"xy"[..]));
+}
+
+#[test]
+fn lazy_slice_stays_lazy_then_materializes() {
+    let r = RangeSerie::new("r", 0, 2, 6); // 0, 2, 4, 6, 8, 10 (lazy)
+    let sub = r.slice(1, 3); // 2, 4, 6 — still lazy
+    assert!(!sub.is_materialized());
+    assert_eq!(sub.len(), 3);
+    assert_eq!(sub.value_at(0), Scalar::Int(2));
+    assert_eq!(sub.value_at(2), Scalar::Int(6));
+
+    let mat = sub.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.value_at(2), Scalar::Int(6));
+}
+
+#[test]
+fn nested_children_walk_up_the_graph() {
+    let parent = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![0, 1, 2, 3, 4, 5])) as ArrayRef,
+    )
+    .unwrap();
+    let c1 = child(&parent, 2, 4); // 2, 3, 4, 5
+    let c2 = child(&c1, 1, 2); // 3, 4
+
+    assert_eq!(c2.value_at(0), Scalar::Int(3));
+    assert_eq!(c2.value_at(1), Scalar::Int(4));
+    // c2's parent is c1 (length 4)
+    assert_eq!(c2.parent().unwrap().len(), 4);
+}
+
+#[test]
+fn metadata_survives_slice_and_materialize() {
+    let field = Field::new("id", DataType::int(32, true), false).with_comment("pk");
+    let serie = from_arrow(field, Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef).unwrap();
+
+    let sliced = serie.slice(0, 2);
+    assert_eq!(sliced.field().comment(), Some("pk"));
+
+    let mat = sliced.materialize();
+    assert_eq!(mat.field().comment(), Some("pk"));
 }

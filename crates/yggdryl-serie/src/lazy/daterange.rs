@@ -50,9 +50,22 @@ impl DateRangeSerie {
         DateRangeSerie::new(name, start.epoch_days(), step_days, len)
     }
 
-    /// The day-since-epoch value at `index` (no bounds check).
+    /// The first day value (days since the Unix epoch).
+    pub fn start_days(&self) -> i32 {
+        self.start_days
+    }
+
+    /// The step between consecutive days.
+    pub fn step_days(&self) -> i32 {
+        self.step_days
+    }
+
+    /// The day-since-epoch value at `index` (no bounds check). Uses **saturating**
+    /// arithmetic, so an out-of-range result is clamped at the `i32` bound rather than
+    /// wrapping (release) or panicking (debug).
     fn at(&self, index: usize) -> i32 {
-        self.start_days + (index as i32) * self.step_days
+        self.start_days
+            .saturating_add((index as i32).saturating_mul(self.step_days))
     }
 
     /// The [`Date`] at `index`, or `None` when out of bounds.
@@ -69,7 +82,7 @@ impl Serie for DateRangeSerie {
     fn array(&self) -> ArrayRef {
         let (start, step) = (self.start_days, self.step_days);
         Arc::new(Date32Array::from_iter_values(
-            (0..self.len).map(|i| start + (i as i32) * step),
+            (0..self.len).map(|i| start.saturating_add((i as i32).saturating_mul(step))),
         ))
     }
 
@@ -119,6 +132,6 @@ impl TypedSerie<i32> for DateRangeSerie {
 
     fn iter(&self) -> Box<dyn Iterator<Item = Option<i32>> + '_> {
         let (start, step, len) = (self.start_days, self.step_days, self.len);
-        Box::new((0..len).map(move |i| Some(start + (i as i32) * step)))
+        Box::new((0..len).map(move |i| Some(start.saturating_add((i as i32).saturating_mul(step)))))
     }
 }

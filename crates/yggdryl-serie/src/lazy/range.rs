@@ -48,9 +48,12 @@ impl RangeSerie {
         self.step
     }
 
-    /// The value at `index` (no bounds check).
+    /// The value at `index` (no bounds check). Uses **saturating** arithmetic, so an
+    /// out-of-range result is clamped at `u64::MAX` rather than wrapping (release) or
+    /// panicking (debug).
     fn at(&self, index: usize) -> u64 {
-        self.start + (index as u64) * self.step
+        self.start
+            .saturating_add((index as u64).saturating_mul(self.step))
     }
 }
 
@@ -60,10 +63,9 @@ impl Serie for RangeSerie {
     }
 
     fn array(&self) -> ArrayRef {
-        let start = self.start;
-        let step = self.step;
+        let (start, step) = (self.start, self.step);
         Arc::new(UInt64Array::from_iter_values(
-            (0..self.len).map(|i| start + (i as u64) * step),
+            (0..self.len).map(|i| start.saturating_add((i as u64).saturating_mul(step))),
         ))
     }
 
@@ -113,6 +115,6 @@ impl TypedSerie<u64> for RangeSerie {
 
     fn iter(&self) -> Box<dyn Iterator<Item = Option<u64>> + '_> {
         let (start, step, len) = (self.start, self.step, self.len);
-        Box::new((0..len).map(move |i| Some(start + (i as u64) * step)))
+        Box::new((0..len).map(move |i| Some(start.saturating_add((i as u64).saturating_mul(step)))))
     }
 }

@@ -35,7 +35,9 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// The column's [`Field`] — its name, [`DataType`], nullability and metadata.
     fn field(&self) -> &Field;
 
-    /// The backing Arrow array (a cheap `Arc` clone of the column's buffers).
+    /// The backing Arrow array. For a materialised column this is a cheap shallow
+    /// clone that **shares** the column's buffers (no data copy); a *lazy* column
+    /// computes the array on demand.
     fn array(&self) -> ArrayRef;
 
     /// Downcast hook — recover the concrete series (e.g. `serie.as_any()

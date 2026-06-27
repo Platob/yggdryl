@@ -80,6 +80,11 @@ typed access, downcast to the concrete series and use `TypedSerie<T>`.
     let window = serie.slice_range(1..3);
     assert_eq!(window.len(), 2);
 
+    // null / presence checks (out-of-bounds reads as null)
+    assert!(serie.is_null(1));
+    assert!(serie.is_valid(0));
+    assert!(!serie.is_empty());
+
     // typed access through a downcast
     let ints = serie.as_any().downcast_ref::<Int32Serie>().unwrap();
     assert_eq!(ints.get(0), Some(5));
@@ -153,6 +158,9 @@ default is a **lazy** `uint64` range; any column can be wrapped as an index.
     assert_eq!(index.position(3), Some(3));           // row of label 3
     assert!(!index.contains(4));
     ```
+
+Slicing a range index drops the range fast-path flag (the labels no longer start at
+`0`), but the result is still an `IndexSerie` and `at` / `position` keep working.
 
 ## Coverage
 
