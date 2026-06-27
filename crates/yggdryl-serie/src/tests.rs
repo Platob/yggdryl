@@ -1322,3 +1322,74 @@ fn dataframe_from_record_batch_with_nested_column() {
         Scalar::Int(7)
     );
 }
+
+#[test]
+fn struct_serie_dataframe_advanced() {
+    let id: SerieRef = Arc::new(Int32Serie::from_values(
+        "id",
+        vec![Some(3), Some(1), Some(2)],
+    ));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("c"), Some("a"), Some("b")],
+    ));
+    let df = StructSerie::from_children("df", vec![id, name]).unwrap();
+
+    // select_fields: cast (int32 -> int64), reorder, fill a missing column, drop extras
+    let target = vec![
+        Field::new("name", DataType::varchar(), true),
+        Field::new("id", DataType::int(64, true), false),
+        Field::new("score", DataType::float(64), true),
+    ];
+    let projected = df.select_fields(target).unwrap();
+    assert_eq!(projected.column_names(), vec!["name", "id", "score"]);
+    assert_eq!(
+        projected.child_by_name("id").unwrap().data_type(),
+        &DataType::int(64, true)
+    );
+    assert!(projected.child_by_name("score").unwrap().is_null(0)); // filled with null
+
+    // sort_by (asc then desc)
+    let asc = df.sort_by("id", false).unwrap();
+    assert_eq!(asc.child_by_name("id").unwrap().value_at(0), Scalar::Int(1));
+    assert_eq!(
+        asc.child_by_name("name").unwrap().value_at(0),
+        Scalar::Utf8("a".into())
+    );
+    let desc = df.sort_by("id", true).unwrap();
+    assert_eq!(
+        desc.child_by_name("id").unwrap().value_at(0),
+        Scalar::Int(3)
+    );
+    assert!(df.sort_by("missing", false).is_err());
+
+    // with_row_index prepends a 0..n column
+    let indexed = df.with_row_index("row").unwrap();
+    assert_eq!(indexed.column_names(), vec!["row", "id", "name"]);
+    assert_eq!(
+        indexed.child_by_name("row").unwrap().value_at(0),
+        Scalar::Int(0)
+    );
+
+    // per-row record access as a rich StructScalar
+    let record = df.row(1).unwrap();
+    assert_eq!(record.child_named("id").unwrap().to_str(), "1::int32");
+    assert_eq!(record.child_named("name").unwrap().to_str(), "'a'::utf8");
+
+    // chunked RecordBatch table + reader/scanner round-trips
+    let batches = df.to_record_batches(2).unwrap();
+    assert_eq!(batches.len(), 2); // 3 rows in chunks of 2
+    assert_eq!(
+        StructSerie::from_record_batches("df", &batches)
+            .unwrap()
+            .shape(),
+        (3, 2)
+    );
+    let reader = df.to_record_batch_reader(2).unwrap();
+    assert_eq!(
+        StructSerie::from_record_batch_reader("df", reader)
+            .unwrap()
+            .shape(),
+        (3, 2)
+    );
+}

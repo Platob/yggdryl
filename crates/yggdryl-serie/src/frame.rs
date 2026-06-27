@@ -16,19 +16,27 @@
 //! [`child_by_name`](NestedSerie::child_by_name) (by name) — so the frame adds the
 //! *table* operations without restating column access.
 //!
+//! The richer surface adds schema-cast projection ([`select_fields`](StructSerie::select_fields)
+//! — cast + reorder + fill + drop), [sorting](StructSerie::sort_by), a
+//! [row index](StructSerie::with_row_index), per-row record access
+//! ([`row`](StructSerie::row) → a [`StructScalar`](yggdryl_scalar::StructScalar)) and
+//! chunked Arrow table / [reader](StructSerie::to_record_batch_reader) conversions.
+//!
 //! Every transform is **functional**: it returns a new lazy `StructSerie` that shares the
 //! untouched columns' Arrow buffers (no copy), assembling the backing `StructArray` only
 //! on demand.
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, BooleanArray, RecordBatch};
+use arrow_array::{ArrayRef, BooleanArray, RecordBatch, RecordBatchIterator, RecordBatchReader};
 use arrow_schema::{Field as AField, Schema};
-use yggdryl_schema::Field;
+use yggdryl_scalar::{ScalarRef, ScalarValue, StructScalar};
+use yggdryl_schema::{DataType, Field};
 
 use crate::error::{SerieError, SerieResult};
 use crate::nested::{NestedSerie, StructSerie};
 use crate::serie::{dispatch, Serie, SerieRef};
+use crate::RangeSerie;
 
 /// Maps an Arrow error to a [`SerieError`].
 fn arrow_err(e: arrow_schema::ArrowError) -> SerieError {
@@ -292,5 +300,139 @@ impl StructSerie {
             out.push_str(&format!("… ({} more rows)\n", rows - shown));
         }
         out
+    }
+}
+
+/// Schema-cast projection, sorting, row records, a row index, and chunked Arrow
+/// `RecordBatch` / reader conversions — the richer DataFrame surface.
+impl StructSerie {
+    /// Projects and **casts** the frame to an explicit list of target [`Field`]s: each
+    /// target field takes the source column of the same name **cast to its type** (or, if
+    /// absent, an optimized **fill** — nulls when nullable, else the type default), in the
+    /// target order, dropping unlisted columns. The schema-cast companion to
+    /// [`select_columns`](StructSerie::select_columns) (which only reorders/projects),
+    /// powered by the same `Serie::cast` struct kernel.
+    pub fn select_fields(&self, fields: Vec<Field>) -> SerieResult<StructSerie> {
+        let casted = self.cast(&DataType::struct_(fields))?;
+        casted
+            .as_any()
+            .downcast_ref::<StructSerie>()
+            .cloned()
+            .ok_or_else(|| SerieError::Arrow("schema cast did not yield a struct frame".into()))
+    }
+
+    /// A new frame with the rows sorted by column `column` (ascending unless
+    /// `descending`), reordering every column by the sort permutation (Arrow's
+    /// `sort_to_indices` + `take`). Nulls sort first ascending, last descending.
+    pub fn sort_by(&self, column: &str, descending: bool) -> SerieResult<StructSerie> {
+        let key = self
+            .child_by_name(column)
+            .ok_or_else(|| SerieError::Arrow(format!("no column named '{column}' to sort by")))?;
+        let options = arrow_ord::sort::SortOptions {
+            descending,
+            nulls_first: !descending,
+        };
+        let indices = arrow_ord::sort::sort_to_indices(key.array().as_ref(), Some(options), None)
+            .map_err(arrow_err)?;
+        let cols = self
+            .children()
+            .iter()
+            .map(|c| {
+                let taken = arrow_select::take::take(c.array().as_ref(), &indices, None)
+                    .map_err(arrow_err)?;
+                dispatch(c.field().clone(), taken)
+            })
+            .collect::<SerieResult<Vec<SerieRef>>>()?;
+        StructSerie::from_children(self.name(), cols)
+    }
+
+    /// A new frame with a `0..rows` integer index column named `name` prepended (a lazy
+    /// `uint64` [`RangeSerie`](crate::RangeSerie), so it costs nothing until materialised).
+    pub fn with_row_index(&self, name: &str) -> SerieResult<StructSerie> {
+        let index: SerieRef = Arc::new(RangeSerie::new(name, 0, 1, self.len()));
+        let mut cols = Vec::with_capacity(self.children().len() + 1);
+        cols.push(index);
+        cols.extend(self.children().iter().cloned());
+        StructSerie::from_children(self.name(), cols)
+    }
+
+    /// The record at `index` as a [`StructScalar`] — one typed [`ScalarRef`] per column,
+    /// the per-row accessor for a frame. Reads each column's cell as a rich scalar; an
+    /// out-of-bounds index yields a struct of typed nulls.
+    pub fn row(&self, index: usize) -> SerieResult<StructScalar> {
+        let fields: Vec<Field> = self.children().iter().map(|c| c.field().clone()).collect();
+        let values = self
+            .children()
+            .iter()
+            .map(|c| {
+                ScalarValue::from_array(c.array().as_ref(), index)
+                    .map(ScalarValue::into_scalar)
+                    .map_err(|e| SerieError::Arrow(e.to_string()))
+            })
+            .collect::<SerieResult<Vec<ScalarRef>>>()?;
+        Ok(StructScalar::from_children(fields, values))
+    }
+
+    /// The frame split into Arrow [`RecordBatch`]es of at most `max_rows` rows each (a
+    /// "table" of chunks). An empty frame yields a single empty batch (preserving the
+    /// schema).
+    pub fn to_record_batches(&self, max_rows: usize) -> SerieResult<Vec<RecordBatch>> {
+        if max_rows == 0 {
+            return Err(SerieError::Arrow("max_rows must be greater than 0".into()));
+        }
+        let rows = self.len();
+        if rows == 0 {
+            return Ok(vec![self.to_record_batch()?]);
+        }
+        let mut batches = Vec::with_capacity(rows.div_ceil(max_rows));
+        let mut offset = 0;
+        while offset < rows {
+            let len = max_rows.min(rows - offset);
+            batches.push(self.slice_rows(offset, len)?.to_record_batch()?);
+            offset += len;
+        }
+        Ok(batches)
+    }
+
+    /// Builds a frame named `name` by concatenating a sequence of Arrow
+    /// [`RecordBatch`]es (they must share a schema) — the inverse of
+    /// [`to_record_batches`](StructSerie::to_record_batches).
+    pub fn from_record_batches(
+        name: impl Into<String>,
+        batches: &[RecordBatch],
+    ) -> SerieResult<StructSerie> {
+        let first = batches
+            .first()
+            .ok_or_else(|| SerieError::Arrow("no record batches to read".into()))?;
+        let combined =
+            arrow_select::concat::concat_batches(&first.schema(), batches).map_err(arrow_err)?;
+        StructSerie::from_record_batch(name, &combined)
+    }
+
+    /// The frame as an Arrow [`RecordBatchReader`] — a streaming scanner over chunks of at
+    /// most `max_rows` rows, the shape Arrow/Parquet readers and downstream scanners
+    /// consume.
+    pub fn to_record_batch_reader(
+        &self,
+        max_rows: usize,
+    ) -> SerieResult<Box<dyn RecordBatchReader + Send>> {
+        let batches = self.to_record_batches(max_rows)?;
+        let schema = batches
+            .first()
+            .map(|b| b.schema())
+            .unwrap_or_else(|| Arc::new(Schema::empty()));
+        let reader = RecordBatchIterator::new(batches.into_iter().map(Ok), schema);
+        Ok(Box::new(reader))
+    }
+
+    /// Builds a frame named `name` by draining an Arrow [`RecordBatchReader`] (a scanner /
+    /// Parquet reader) — the inverse of
+    /// [`to_record_batch_reader`](StructSerie::to_record_batch_reader).
+    pub fn from_record_batch_reader(
+        name: impl Into<String>,
+        reader: impl RecordBatchReader,
+    ) -> SerieResult<StructSerie> {
+        let batches = reader.collect::<Result<Vec<_>, _>>().map_err(arrow_err)?;
+        StructSerie::from_record_batches(name, &batches)
     }
 }
