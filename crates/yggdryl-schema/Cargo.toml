@@ -1,0 +1,57 @@
+[package]
+name = "yggdryl-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-compatible schema types for yggdryl: DataType / Field / StructType / StructField with fast Apache Arrow conversion, type checks and schema merge"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_schema"
+path = "src/lib.rs"
+
+[[bench]]
+name = "schema"
+harness = false
+
+[dependencies]
+# The consolidated core supplies the shared `Mapping` component map (reused for
+# field / schema metadata) so the `from_mapping` / `to_mapping` surface matches the
+# other value types. Nothing else is pulled in by default.
+yggdryl-core = { workspace = true, default-features = false }
+# All heavy dependencies are optional and off by default:
+#   log    structured logging via the `log` facade;
+#   serde  `Serialize` / `Deserialize` for every type (structural, lossless);
+#   arrow  fast, total conversion to / from `arrow-schema`'s DataType / Field /
+#          Schema (the foundation for an Arrow-backed dataframe).
+log = { version = "0.4", optional = true }
+serde = { version = "1", optional = true, features = ["derive"] }
+# `json` (de)serialisation of every type, used heavily by the bindings.
+serde_json = { version = "1", optional = true }
+# `arrow-schema` is a zero-dependency crate (just the schema types, no arrays), so
+# the conversion feature stays lightweight. `ffi` exposes the Arrow C Data Interface
+# (`FFI_ArrowSchema`), the zero-copy bridge the bindings use to hand schemas to
+# pyarrow / arrow-js.
+arrow-schema = { version = "59", optional = true, default-features = false, features = ["ffi"] }
+
+[dev-dependencies]
+# Round-trip the `serde` impls through a concrete format in the tests, and exercise
+# the Arrow conversion both ways.
+serde_json = { version = "1" }
+arrow-schema = { version = "59", default-features = false, features = ["ffi"] }
+
+[features]
+default = []
+log = ["dep:log", "yggdryl-core/log"]
+# Structural `Serialize` / `Deserialize` for the recursive schema types (lossless,
+# unlike the canonical string form). Also turns on the core's `serde`.
+serde = ["dep:serde", "yggdryl-core/serde"]
+# `to_json` / `from_json` on every type (implies `serde`). Used by the bindings.
+json = ["serde", "dep:serde_json", "yggdryl-core/json"]
+# Fast conversion to / from `arrow-schema` (DataType / Field / Schema), plus the
+# Arrow C Data Interface export the bindings build on.
+arrow = ["dep:arrow-schema"]

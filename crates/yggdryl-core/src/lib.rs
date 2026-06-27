@@ -38,6 +38,8 @@ mod version;
 mod media;
 mod url;
 
+mod time;
+
 mod compression;
 mod io;
 
@@ -50,6 +52,8 @@ pub use version::{Version, VersionError};
 pub use media::{Category, MediaError, MediaType, MimeType, Signature};
 
 pub use url::{JoinInput, Uri, UriError, Url, UrlError};
+
+pub use time::{Date, DateTime, Duration, Time, TimeError, TimeUnit, Timezone};
 
 pub use io::{
     copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,

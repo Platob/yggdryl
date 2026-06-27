@@ -1,0 +1,820 @@
+//! The central [`DataType`] enum, its [`TypeCategory`] classifier, the
+//! [`SchemaError`] type, the uniform physical accessors
+//! ([`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
+//! [`is_view`](DataType::is_view)) and the canonical string grammar. The
+//! category-specific surface lives in the sibling modules ([`primitive`],
+//! [`logical`], [`nested`], [`coerce`]).
+
+use std::fmt;
+
+#[allow(unused_imports)]
+use crate::log_event;
+use crate::{Charset, Field};
+use yggdryl_core::{Mapping, TimeUnit, Timezone};
+
+mod coerce;
+mod logical;
+mod nested;
+mod primitive;
+
+pub use coerce::MergeStrategy;
+pub use logical::IntervalUnit;
+pub use nested::UnionMode;
+
+/// Error returned when a schema type cannot be parsed, converted or merged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SchemaError {
+    /// The input was empty.
+    Empty,
+    /// The input was not a well-formed type / field string.
+    Invalid(String),
+    /// A well-formed string named an unknown type.
+    Unknown(String),
+    /// A unit token (time / interval / union mode / merge strategy / charset) was
+    /// not recognised.
+    UnknownUnit(String),
+    /// A [`TypeCategory`] name was not known.
+    UnknownCategory(String),
+    /// Two types could not be merged into a common type under the chosen strategy.
+    Incompatible {
+        /// The left operand's canonical string.
+        left: String,
+        /// The right operand's canonical string.
+        right: String,
+    },
+    /// Two fields with different names were merged.
+    NameMismatch {
+        /// The left field's name.
+        left: String,
+        /// The right field's name.
+        right: String,
+    },
+    /// A field expected to be a struct was not.
+    NotAStruct(String),
+    /// The operation has no equivalent (e.g. converting [`Any`](DataType::Any) to
+    /// Arrow). The message names what to do instead.
+    Unsupported(String),
+}
+
+impl fmt::Display for SchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SchemaError::Empty => write!(f, "data type is empty"),
+            SchemaError::Invalid(value) => write!(f, "data type '{value}' is malformed"),
+            SchemaError::Unknown(value) => write!(f, "unknown data type '{value}'"),
+            SchemaError::UnknownUnit(value) => write!(f, "unknown unit '{value}'"),
+            SchemaError::UnknownCategory(value) => write!(
+                f,
+                "unknown category '{value}', expected 'any', 'primitive', 'logical' or 'nested'"
+            ),
+            SchemaError::Incompatible { left, right } => {
+                write!(f, "data types '{left}' and '{right}' have no common type")
+            }
+            SchemaError::NameMismatch { left, right } => {
+                write!(
+                    f,
+                    "cannot merge fields with different names '{left}' and '{right}'"
+                )
+            }
+            SchemaError::NotAStruct(value) => write!(f, "field '{value}' is not a struct"),
+            SchemaError::Unsupported(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl std::error::Error for SchemaError {}
+
+/// The broad category a [`DataType`] belongs to — the three-way split of the type
+/// system, plus the [`Any`](TypeCategory::Any) wildcard.
+///
+/// ```
+/// use yggdryl_schema::{DataType, TypeCategory};
+/// assert_eq!(DataType::int(32, true).category(), TypeCategory::Primitive);
+/// assert_eq!(DataType::date().category(), TypeCategory::Logical);
+/// assert_eq!(DataType::struct_(vec![]).category(), TypeCategory::Nested);
+/// assert_eq!(DataType::Any.category(), TypeCategory::Any);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TypeCategory {
+    /// The wildcard [`Any`](DataType::Any) — matches and merges with every type.
+    Any,
+    /// A fixed/variable-width scalar: null, boolean, integers, floats, binary, strings.
+    Primitive,
+    /// A richer logical meaning than its storage: temporal, decimal, dictionary.
+    Logical,
+    /// A container of other fields: lists, structs, maps, unions, run-end encoding.
+    Nested,
+}
+
+impl TypeCategory {
+    /// Parses a category name (case-insensitive).
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<TypeCategory, SchemaError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "any" => Ok(TypeCategory::Any),
+            "primitive" | "scalar" => Ok(TypeCategory::Primitive),
+            "logical" => Ok(TypeCategory::Logical),
+            "nested" | "complex" => Ok(TypeCategory::Nested),
+            _ => Err(SchemaError::UnknownCategory(value.to_string())),
+        }
+    }
+
+    /// The lowercase name (`"any"` / `"primitive"` / `"logical"` / `"nested"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TypeCategory::Any => "any",
+            TypeCategory::Primitive => "primitive",
+            TypeCategory::Logical => "logical",
+            TypeCategory::Nested => "nested",
+        }
+    }
+}
+
+impl fmt::Display for TypeCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A logical data type. Variants are grouped into three [categories](TypeCategory)
+/// — primitive, logical, nested — plus the [`Any`](DataType::Any) wildcard. The
+/// design is simpler than Arrow's: width/offset/layout variations are carried as
+/// the uniform fields `bits` / `large` / `view` (and read back via
+/// [`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
+/// [`is_view`](DataType::is_view)), and all strings are one
+/// [`Varchar`](DataType::Varchar) with a [`Charset`].
+///
+/// ```
+/// use yggdryl_schema::{DataType, Charset};
+/// assert_eq!(DataType::from_str("int64").unwrap(), DataType::int(64, true));
+/// assert_eq!(DataType::from_str("uint8").unwrap(), DataType::int(8, false));
+/// assert_eq!(DataType::varchar().is_large(), false);
+/// assert_eq!(DataType::int(32, true).bit_size(), Some(32));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DataType {
+    // ---- wildcard ----
+    /// Matches and merges with any other type — the top of the lattice. Has no
+    /// Arrow equivalent, so it must be resolved before converting.
+    Any,
+
+    // ---- primitive ----
+    /// The null type (all values null), the bottom concrete type.
+    Null,
+    /// `true` / `false`.
+    Boolean,
+    /// An integer of `bits` width (8/16/32/64), signed or unsigned.
+    Int {
+        /// Bit width: 8, 16, 32 or 64.
+        bits: u16,
+        /// Whether the integer is signed.
+        signed: bool,
+    },
+    /// A floating-point number of `bits` width (16/32/64).
+    Float {
+        /// Bit width: 16, 32 or 64.
+        bits: u16,
+    },
+    /// A UTF-8 (or other [`Charset`]) string. `large` uses 64-bit offsets; `view`
+    /// the view layout.
+    Varchar {
+        /// The character set (default UTF-8).
+        charset: Charset,
+        /// 64-bit offsets.
+        large: bool,
+        /// View layout.
+        view: bool,
+    },
+    /// Opaque bytes. `large` uses 64-bit offsets, `view` the view layout, and
+    /// `size` (when set) makes it fixed-width.
+    Binary {
+        /// 64-bit offsets.
+        large: bool,
+        /// View layout.
+        view: bool,
+        /// Fixed byte width, if any.
+        size: Option<i32>,
+    },
+
+    // ---- logical ----
+    /// A decimal with `(precision, scale)` stored in `bits` (32/64/128/256).
+    Decimal {
+        /// Total number of digits.
+        precision: u8,
+        /// Digits after the decimal point (may be negative).
+        scale: i8,
+        /// Storage width: 32, 64, 128 or 256.
+        bits: u16,
+    },
+    /// A calendar date. `large` selects millisecond (64-bit) storage over the
+    /// default day (32-bit) storage.
+    Date {
+        /// Millisecond (64-bit) storage instead of day (32-bit).
+        large: bool,
+    },
+    /// A time of day in the given [`TimeUnit`].
+    Time {
+        /// Resolution (`s`/`ms` are 32-bit, `us`/`ns` are 64-bit).
+        unit: TimeUnit,
+    },
+    /// A timestamp in the given [`TimeUnit`] with an optional [`Timezone`].
+    Timestamp {
+        /// Resolution.
+        unit: TimeUnit,
+        /// Display timezone, if zoned.
+        timezone: Option<Timezone>,
+    },
+    /// Elapsed time in the given [`TimeUnit`].
+    Duration {
+        /// Resolution.
+        unit: TimeUnit,
+    },
+    /// A calendar interval in the given [`IntervalUnit`].
+    Interval {
+        /// Interval resolution.
+        unit: IntervalUnit,
+    },
+    /// Dictionary (run-time `key` index into a `value` dictionary) encoding.
+    Dictionary {
+        /// The integer index type.
+        key: Box<DataType>,
+        /// The dictionary value type.
+        value: Box<DataType>,
+    },
+
+    // ---- nested ----
+    /// A list of the `item` field. `large` uses 64-bit offsets, `view` the view
+    /// layout, and `size` (when set) makes it fixed-length.
+    List {
+        /// The element field.
+        item: Box<Field>,
+        /// 64-bit offsets.
+        large: bool,
+        /// View layout.
+        view: bool,
+        /// Fixed length, if any.
+        size: Option<i32>,
+    },
+    /// A composite of named, typed sub-fields. A `Field` of this type is a schema.
+    Struct(Vec<Field>),
+    /// A map from `key` to `value`; `sorted` records whether the keys are sorted.
+    Map {
+        /// The key type (non-null by convention).
+        key: Box<DataType>,
+        /// The value type.
+        value: Box<DataType>,
+        /// Whether keys are sorted.
+        sorted: bool,
+    },
+    /// A union of typed alternatives.
+    Union {
+        /// The alternative fields (type ids are assigned `0, 1, …`).
+        fields: Vec<Field>,
+        /// Sparse or dense layout.
+        mode: UnionMode,
+    },
+    /// Run-end encoding: a `run_ends` integer type and a `values` type.
+    RunEndEncoded {
+        /// The run-ends integer type.
+        run_ends: Box<DataType>,
+        /// The values type.
+        values: Box<DataType>,
+    },
+}
+
+impl DataType {
+    /// The [`TypeCategory`] this type belongs to.
+    pub fn category(&self) -> TypeCategory {
+        if self.is_any() {
+            TypeCategory::Any
+        } else if self.is_nested() {
+            TypeCategory::Nested
+        } else if self.is_logical() {
+            TypeCategory::Logical
+        } else {
+            TypeCategory::Primitive
+        }
+    }
+
+    /// Whether this is the [`Any`](DataType::Any) wildcard.
+    pub fn is_any(&self) -> bool {
+        matches!(self, DataType::Any)
+    }
+
+    /// The physical width of a value in **bits** for fixed-width types, or `None`
+    /// for variable-width / nested types. `Boolean` is one bit; a fixed-size
+    /// `Binary` is `size * 8`.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert_eq!(DataType::int(32, true).bit_size(), Some(32));
+    /// assert_eq!(DataType::Boolean.bit_size(), Some(1));
+    /// assert_eq!(DataType::varchar().bit_size(), None);
+    /// ```
+    pub fn bit_size(&self) -> Option<u16> {
+        use DataType::*;
+        let bits = match self {
+            Boolean => 1,
+            Int { bits, .. } | Float { bits } | Decimal { bits, .. } => *bits,
+            Date { large } => {
+                if *large {
+                    64
+                } else {
+                    32
+                }
+            }
+            Time { unit } => {
+                if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
+                    32
+                } else {
+                    64
+                }
+            }
+            Timestamp { .. } | Duration { .. } => 64,
+            Interval { unit } => return Some(unit.bit_size()),
+            Binary { size: Some(n), .. } if *n >= 0 => return Some((*n as u16).saturating_mul(8)),
+            _ => return None,
+        };
+        Some(bits)
+    }
+
+    /// The physical width in **bytes** for byte-aligned fixed-width types (so
+    /// `Boolean`, which is sub-byte, and all variable-width / nested types are `None`).
+    pub fn byte_size(&self) -> Option<u16> {
+        self.bit_size().filter(|b| b % 8 == 0).map(|b| b / 8)
+    }
+
+    /// Whether this type uses the **large** (64-bit offset / wide) form — a large
+    /// string/binary/list, or a millisecond date.
+    pub fn is_large(&self) -> bool {
+        use DataType::*;
+        matches!(
+            self,
+            Varchar { large: true, .. }
+                | Binary { large: true, .. }
+                | List { large: true, .. }
+                | Date { large: true }
+        )
+    }
+
+    /// Whether this type uses the **view** layout (a string/binary/list view).
+    pub fn is_view(&self) -> bool {
+        use DataType::*;
+        matches!(
+            self,
+            Varchar { view: true, .. } | Binary { view: true, .. } | List { view: true, .. }
+        )
+    }
+}
+
+// ---- the canonical string grammar ----
+
+/// Splits `input` on top-level (bracket depth 0) occurrences of `sep`.
+fn split_top_level(input: &str, sep: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            c if c == sep && depth == 0 => {
+                parts.push(input[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(input[start..].trim());
+    parts
+}
+
+/// The byte index of the first top-level occurrence of `target`.
+fn top_level_index(input: &str, target: char) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            c if c == target && depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits `name: type` on the first top-level `:` (defaulting the name to
+/// `default_name`); a trailing ` not null` marks the field non-nullable.
+pub(crate) fn parse_child_field(token: &str, default_name: &str) -> Result<Field, SchemaError> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(SchemaError::Empty);
+    }
+    let (name, rest) = match top_level_index(token, ':') {
+        Some(i) => (token[..i].trim().to_string(), token[i + 1..].trim()),
+        None => (default_name.to_string(), token),
+    };
+    let (rest, nullable) = match rest.to_ascii_lowercase().strip_suffix(" not null") {
+        Some(_) => (rest[..rest.len() - " not null".len()].trim(), false),
+        None => (rest, true),
+    };
+    Ok(Field::new(name, DataType::from_str(rest)?, nullable))
+}
+
+/// Parses the comma-separated body of a `struct[…]` into fields.
+pub(crate) fn parse_struct_body(args: &str) -> Result<Vec<Field>, SchemaError> {
+    let args = args.trim();
+    if args.is_empty() {
+        return Ok(Vec::new());
+    }
+    split_top_level(args, ',')
+        .into_iter()
+        .enumerate()
+        .map(|(i, token)| parse_child_field(token, &format!("f{i}")))
+        .collect()
+}
+
+/// Parses a standalone `name: type` field string (requires an explicit name).
+pub(crate) fn parse_field_str(input: &str) -> Result<Field, SchemaError> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(SchemaError::Empty);
+    }
+    match top_level_index(input, ':') {
+        Some(_) => parse_child_field(input, ""),
+        None => Err(SchemaError::Invalid(input.to_string())),
+    }
+}
+
+/// Parses an integer parameter (precision / size / …).
+fn parse_int<T: std::str::FromStr>(value: &str, whole: &str) -> Result<T, SchemaError> {
+    value
+        .trim()
+        .parse::<T>()
+        .map_err(|_| SchemaError::Invalid(whole.to_string()))
+}
+
+/// Parses a `precision[, scale]` decimal argument.
+fn parse_decimal_args(args: &str, whole: &str) -> Result<(u8, i8), SchemaError> {
+    let parts = split_top_level(args, ',');
+    let precision = parse_int::<u8>(parts.first().copied().unwrap_or(""), whole)?;
+    let scale = match parts.get(1) {
+        Some(s) => parse_int::<i8>(s, whole)?,
+        None => 0,
+    };
+    Ok((precision, scale))
+}
+
+/// Parses a [`TimeUnit`], mapping a bad token to [`SchemaError::UnknownUnit`].
+fn parse_time_unit(value: &str) -> Result<TimeUnit, SchemaError> {
+    TimeUnit::from_str(value).map_err(|_| SchemaError::UnknownUnit(value.to_string()))
+}
+
+impl DataType {
+    /// Parses a type from its canonical lowercase string. Examples: `int64`,
+    /// `uint8`, `decimal128[10, 2]`, `timestamp[us, UTC]`, `varchar[latin1]`,
+    /// `list[item: utf8]`, `struct[id: int64 not null, name: utf8]`,
+    /// `map[utf8, int64]`. Common aliases are accepted (`bool`, `string`/`str`,
+    /// `float`/`double`, `date`). The inverse of [`to_str`](DataType::to_str).
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(input: &str) -> Result<DataType, SchemaError> {
+        log_event!(trace, "DataType::from_str {input:?}");
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(SchemaError::Empty);
+        }
+        let (head, args) = match input.find('[') {
+            Some(i) => {
+                if !input.ends_with(']') {
+                    return Err(SchemaError::Invalid(input.to_string()));
+                }
+                (
+                    input[..i].trim(),
+                    Some(input[i + 1..input.len() - 1].trim()),
+                )
+            }
+            None => (input, None),
+        };
+        let lower = head.to_ascii_lowercase();
+        match (lower.as_str(), args) {
+            ("any", None) => Ok(DataType::Any),
+            ("null", None) => Ok(DataType::Null),
+            ("bool" | "boolean", None) => Ok(DataType::Boolean),
+            ("int8", None) => Ok(DataType::int(8, true)),
+            ("int16", None) => Ok(DataType::int(16, true)),
+            ("int32", None) => Ok(DataType::int(32, true)),
+            ("int64" | "int", None) => Ok(DataType::int(64, true)),
+            ("uint8", None) => Ok(DataType::int(8, false)),
+            ("uint16", None) => Ok(DataType::int(16, false)),
+            ("uint32", None) => Ok(DataType::int(32, false)),
+            ("uint64" | "uint", None) => Ok(DataType::int(64, false)),
+            ("float16" | "halffloat", None) => Ok(DataType::float(16)),
+            ("float32" | "float", None) => Ok(DataType::float(32)),
+            ("float64" | "double", None) => Ok(DataType::float(64)),
+            ("utf8" | "string" | "str", None) => Ok(DataType::varchar()),
+            ("large_utf8" | "large_string", None) => {
+                Ok(DataType::varchar_with(Charset::Utf8, true, false))
+            }
+            ("utf8_view" | "string_view", None) => {
+                Ok(DataType::varchar_with(Charset::Utf8, false, true))
+            }
+            ("varchar", None) => Ok(DataType::varchar()),
+            ("varchar", Some(a)) => parse_varchar(a, input),
+            ("binary", None) => Ok(DataType::binary()),
+            ("large_binary", None) => Ok(DataType::Binary {
+                large: true,
+                view: false,
+                size: None,
+            }),
+            ("binary_view", None) => Ok(DataType::Binary {
+                large: false,
+                view: true,
+                size: None,
+            }),
+            ("fixed_size_binary", Some(a)) => Ok(DataType::fixed_size_binary(parse_int(a, input)?)),
+            ("date" | "date32", None) => Ok(DataType::date()),
+            ("date64", None) => Ok(DataType::Date { large: true }),
+            ("time32" | "time64" | "time", Some(a)) => Ok(DataType::Time {
+                unit: parse_time_unit(a)?,
+            }),
+            ("duration", Some(a)) => Ok(DataType::Duration {
+                unit: parse_time_unit(a)?,
+            }),
+            ("interval", Some(a)) => Ok(DataType::Interval {
+                unit: IntervalUnit::from_str(a)?,
+            }),
+            ("timestamp", Some(a)) => {
+                let parts = split_top_level(a, ',');
+                let unit = parse_time_unit(parts.first().copied().unwrap_or(""))?;
+                let timezone = match parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    Some(tz) => Some(
+                        Timezone::from_str(tz).map_err(|e| SchemaError::Invalid(e.to_string()))?,
+                    ),
+                    None => None,
+                };
+                Ok(DataType::Timestamp { unit, timezone })
+            }
+            ("decimal" | "decimal128", Some(a)) => {
+                let (p, s) = parse_decimal_args(a, input)?;
+                Ok(DataType::decimal_with(p, s, 128))
+            }
+            ("decimal32", Some(a)) => {
+                let (p, s) = parse_decimal_args(a, input)?;
+                Ok(DataType::decimal_with(p, s, 32))
+            }
+            ("decimal64", Some(a)) => {
+                let (p, s) = parse_decimal_args(a, input)?;
+                Ok(DataType::decimal_with(p, s, 64))
+            }
+            ("decimal256", Some(a)) => {
+                let (p, s) = parse_decimal_args(a, input)?;
+                Ok(DataType::decimal_with(p, s, 256))
+            }
+            ("dictionary", Some(a)) => {
+                let parts = split_top_level(a, ',');
+                if parts.len() != 2 {
+                    return Err(SchemaError::Invalid(input.to_string()));
+                }
+                Ok(DataType::dictionary(
+                    DataType::from_str(parts[0])?,
+                    DataType::from_str(parts[1])?,
+                ))
+            }
+            ("list", Some(a)) => Ok(DataType::list(parse_child_field(a, "item")?)),
+            ("list_view", Some(a)) => Ok(DataType::List {
+                item: Box::new(parse_child_field(a, "item")?),
+                large: false,
+                view: true,
+                size: None,
+            }),
+            ("large_list", Some(a)) => Ok(DataType::large_list(parse_child_field(a, "item")?)),
+            ("large_list_view", Some(a)) => Ok(DataType::List {
+                item: Box::new(parse_child_field(a, "item")?),
+                large: true,
+                view: true,
+                size: None,
+            }),
+            ("fixed_size_list", Some(a)) => {
+                let parts = split_top_level(a, ',');
+                if parts.len() != 2 {
+                    return Err(SchemaError::Invalid(input.to_string()));
+                }
+                let item = parse_child_field(parts[0], "item")?;
+                Ok(DataType::fixed_size_list(item, parse_int(parts[1], input)?))
+            }
+            ("struct", Some(a)) => Ok(DataType::Struct(parse_struct_body(a)?)),
+            ("map", Some(a)) => {
+                let parts = split_top_level(a, ',');
+                if parts.len() < 2 {
+                    return Err(SchemaError::Invalid(input.to_string()));
+                }
+                let sorted = parts.get(2).map(|s| s.eq_ignore_ascii_case("sorted")) == Some(true);
+                Ok(DataType::map(
+                    DataType::from_str(parts[0])?,
+                    DataType::from_str(parts[1])?,
+                    sorted,
+                ))
+            }
+            ("union" | "sparse_union" | "dense_union", Some(a)) => {
+                let mode = if lower == "dense_union" {
+                    UnionMode::Dense
+                } else {
+                    UnionMode::Sparse
+                };
+                let fields = parse_struct_body(a)?;
+                Ok(DataType::Union { fields, mode })
+            }
+            ("run_end_encoded", Some(a)) => {
+                let parts = split_top_level(a, ',');
+                if parts.len() != 2 {
+                    return Err(SchemaError::Invalid(input.to_string()));
+                }
+                Ok(DataType::run_end_encoded(
+                    DataType::from_str(parts[0])?,
+                    DataType::from_str(parts[1])?,
+                ))
+            }
+            (_, _) => Err(SchemaError::Unknown(input.to_string())),
+        }
+    }
+
+    /// Builds a [`DataType`] from a [`Mapping`]; reads the single `type` key.
+    pub fn from_mapping(fields: &Mapping) -> Result<DataType, SchemaError> {
+        match fields.get("type") {
+            Some(value) => DataType::from_str(value),
+            None => Err(SchemaError::Empty),
+        }
+    }
+
+    /// Renders the canonical lowercase string — the inverse of
+    /// [`from_str`](DataType::from_str).
+    pub fn to_str(&self) -> String {
+        use DataType::*;
+        match self {
+            Any => "any".to_string(),
+            Null => "null".to_string(),
+            Boolean => "bool".to_string(),
+            Int { bits, signed } => format!("{}int{bits}", if *signed { "" } else { "u" }),
+            Float { bits } => format!("float{bits}"),
+            Varchar {
+                charset,
+                large,
+                view,
+            } => render_varchar(*charset, *large, *view),
+            Binary { large, view, size } => match (large, view, size) {
+                (_, _, Some(n)) => format!("fixed_size_binary[{n}]"),
+                (true, _, None) => "large_binary".to_string(),
+                (_, true, None) => "binary_view".to_string(),
+                _ => "binary".to_string(),
+            },
+            Decimal {
+                precision,
+                scale,
+                bits,
+            } => format!("decimal{bits}[{precision}, {scale}]"),
+            Date { large } => if *large { "date64" } else { "date32" }.to_string(),
+            Time { unit } => {
+                let width = if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
+                    32
+                } else {
+                    64
+                };
+                format!("time{width}[{}]", unit.as_str())
+            }
+            Duration { unit } => format!("duration[{}]", unit.as_str()),
+            Interval { unit } => format!("interval[{}]", unit.as_str()),
+            Timestamp { unit, timezone } => match timezone {
+                Some(tz) => format!("timestamp[{}, {}]", unit.as_str(), tz.name()),
+                None => format!("timestamp[{}]", unit.as_str()),
+            },
+            Dictionary { key, value } => {
+                format!("dictionary[{}, {}]", key.to_str(), value.to_str())
+            }
+            List {
+                item,
+                large,
+                view,
+                size,
+            } => {
+                let head = match (large, view, size) {
+                    (_, _, Some(_)) => "fixed_size_list",
+                    (true, true, None) => "large_list_view",
+                    (true, false, None) => "large_list",
+                    (false, true, None) => "list_view",
+                    _ => "list",
+                };
+                match size {
+                    Some(n) => format!("{head}[{}, {n}]", item.to_str()),
+                    None => format!("{head}[{}]", item.to_str()),
+                }
+            }
+            Struct(fields) => format!("struct[{}]", render_fields(fields)),
+            Map { key, value, sorted } => {
+                if *sorted {
+                    format!("map[{}, {}, sorted]", key.to_str(), value.to_str())
+                } else {
+                    format!("map[{}, {}]", key.to_str(), value.to_str())
+                }
+            }
+            Union { fields, mode } => format!("{}_union[{}]", mode.as_str(), render_fields(fields)),
+            RunEndEncoded { run_ends, values } => {
+                format!(
+                    "run_end_encoded[{}, {}]",
+                    run_ends.to_str(),
+                    values.to_str()
+                )
+            }
+        }
+    }
+
+    /// Renders to a component [`Mapping`] (the single `type` key).
+    pub fn to_mapping(&self) -> Mapping {
+        Mapping::from([("type".to_string(), self.to_str())])
+    }
+
+    /// The canonical string as UTF-8 bytes.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_str().into_bytes()
+    }
+
+    /// Parses a type from the UTF-8 bytes of its canonical string.
+    pub fn from_bytes(bytes: &[u8]) -> Result<DataType, SchemaError> {
+        let value =
+            std::str::from_utf8(bytes).map_err(|_| SchemaError::Invalid("<bytes>".into()))?;
+        DataType::from_str(value)
+    }
+
+    /// Serialises to a lossless structural JSON string (preserves field metadata,
+    /// unlike the canonical string). Requires the `json` feature.
+    #[cfg(feature = "json")]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("DataType serialises")
+    }
+
+    /// Parses a [`DataType`] from the structural JSON of [`to_json`](DataType::to_json).
+    #[cfg(feature = "json")]
+    pub fn from_json(json: &str) -> Result<DataType, SchemaError> {
+        serde_json::from_str(json).map_err(|e| SchemaError::Invalid(e.to_string()))
+    }
+}
+
+/// Renders a field list as `"name: type[ not null], …"`.
+fn render_fields(fields: &[Field]) -> String {
+    fields
+        .iter()
+        .map(Field::to_str)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Renders a `Varchar`, preferring the friendly `utf8` / `large_utf8` / `utf8_view`
+/// spellings, else `varchar[<charset>[, large][, view]]`.
+fn render_varchar(charset: Charset, large: bool, view: bool) -> String {
+    if charset == Charset::Utf8 {
+        match (large, view) {
+            (false, false) => return "utf8".to_string(),
+            (true, false) => return "large_utf8".to_string(),
+            (false, true) => return "utf8_view".to_string(),
+            _ => {}
+        }
+    }
+    let mut out = format!("varchar[{}", charset.as_str());
+    if large {
+        out.push_str(", large");
+    }
+    if view {
+        out.push_str(", view");
+    }
+    out.push(']');
+    out
+}
+
+/// Parses a `varchar[<charset>[, large][, view]]` argument list.
+fn parse_varchar(args: &str, whole: &str) -> Result<DataType, SchemaError> {
+    let parts = split_top_level(args, ',');
+    let charset = match parts.first().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        Some(name) => Charset::from_str(name)?,
+        None => Charset::Utf8,
+    };
+    let mut large = false;
+    let mut view = false;
+    for flag in parts.iter().skip(1) {
+        match flag.trim().to_ascii_lowercase().as_str() {
+            "large" => large = true,
+            "view" => view = true,
+            _ => return Err(SchemaError::Invalid(whole.to_string())),
+        }
+    }
+    Ok(DataType::varchar_with(charset, large, view))
+}
+
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.to_str())
+    }
+}
+
+#[cfg(test)]
+mod tests;
