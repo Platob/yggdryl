@@ -71,9 +71,10 @@ pub trait Scalar: fmt::Debug + Send + Sync {
         self.value().to_mapping()
     }
 
-    /// Casts to `dtype` (Arrow's cast kernel over the length-1 array), returning the
-    /// right concrete scalar. A struct → struct cast matches children by name, like
-    /// `Serie::cast`.
+    /// Casts to `dtype` by running Arrow's cast kernel over the length-1 array, returning
+    /// the right concrete scalar (lossy / narrowing casts yield null on overflow). Nested
+    /// types follow the Arrow kernel's own semantics; for a by-name struct cast that fills
+    /// missing target columns, cast at the [`Serie`](yggdryl_serie) layer instead.
     fn cast(&self, dtype: &DataType) -> ScalarResult<ScalarRef> {
         let target = dtype.to_arrow()?;
         let array = arrow_cast::cast(self.to_array()?.as_ref(), &target)?;
