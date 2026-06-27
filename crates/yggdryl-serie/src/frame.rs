@@ -6,10 +6,11 @@
 //! ([`with_column`](StructSerie::with_column) / [`drop_columns`](StructSerie::drop_columns)
 //! / [`rename`](StructSerie::rename)), row selection ([`head`](StructSerie::head) /
 //! [`tail`](StructSerie::tail) / [`slice_rows`](StructSerie::slice_rows) /
-//! [`filter`](StructSerie::filter)), row stacking ([`vstack`](StructSerie::vstack)), a table
-//! [render](StructSerie::show) and a lossless Arrow [`RecordBatch`] round-trip
+//! [`filter`](StructSerie::filter)), row stacking ([`vstack`](StructSerie::vstack)) and a
+//! lossless Arrow [`RecordBatch`] round-trip
 //! ([`to_record_batch`](StructSerie::to_record_batch) /
-//! [`from_record_batch`](StructSerie::from_record_batch)).
+//! [`from_record_batch`](StructSerie::from_record_batch)). A frame renders as an aligned
+//! table through the one [`display`](Serie::display) method (there is no separate `show`).
 //!
 //! Columns are accessed with the [`NestedSerie`] vocabulary the frame inherits —
 //! [`children`](StructSerie::children), [`child`](NestedSerie::child) (by index) and
@@ -227,79 +228,6 @@ impl StructSerie {
             .map(|(field, column)| dispatch(Field::from_arrow(field), column.clone()))
             .collect::<SerieResult<Vec<SerieRef>>>()?;
         StructSerie::from_children(name, children)
-    }
-
-    /// Renders the frame as a readable text table (`name: type` headers, aligned cells),
-    /// showing at most `max_rows` rows (`None` = all). The building block for a frame's
-    /// `__str__` / display.
-    pub fn show(&self, max_rows: Option<usize>) -> String {
-        let rows = self.len();
-        let cols = self.children();
-        if cols.is_empty() {
-            return format!("empty frame ({rows} rows, 0 columns)");
-        }
-        let shown = max_rows.map_or(rows, |m| m.min(rows));
-
-        let headers: Vec<String> = cols
-            .iter()
-            .map(|c| format!("{}: {}", c.name(), c.data_type().to_str()))
-            .collect();
-        let cells: Vec<Vec<String>> = cols
-            .iter()
-            .map(|c| {
-                (0..shown)
-                    .map(|r| {
-                        let value = c.value_at(r);
-                        if value.is_null() {
-                            "null".to_string()
-                        } else {
-                            value.to_string()
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
-        let widths: Vec<usize> = (0..cols.len())
-            .map(|ci| {
-                let header = headers[ci].chars().count();
-                let widest = cells[ci]
-                    .iter()
-                    .map(|s| s.chars().count())
-                    .max()
-                    .unwrap_or(0);
-                header.max(widest)
-            })
-            .collect();
-
-        let mut out = String::new();
-        let join_row = |fields: &[String]| -> String {
-            fields
-                .iter()
-                .enumerate()
-                .map(|(i, f)| format!("{f:<width$}", width = widths[i]))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        };
-        out.push_str(&join_row(&headers));
-        out.push('\n');
-        out.push_str(
-            &widths
-                .iter()
-                .map(|w| "-".repeat(*w))
-                .collect::<Vec<_>>()
-                .join("-+-"),
-        );
-        out.push('\n');
-        for r in 0..shown {
-            // `cells` is column-major (one Vec per column); a row picks index `r` from each.
-            let row: Vec<String> = cells.iter().map(|col| col[r].clone()).collect();
-            out.push_str(&join_row(&row));
-            out.push('\n');
-        }
-        if rows > shown {
-            out.push_str(&format!("… ({} more rows)\n", rows - shown));
-        }
-        out
     }
 }
 

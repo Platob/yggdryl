@@ -1296,8 +1296,8 @@ fn struct_serie_behaves_like_a_dataframe() {
     let mismatched = df.drop_columns(&["active"]).unwrap();
     assert!(df.vstack(&mismatched).is_err());
 
-    // table render
-    let text = df.show(Some(2));
+    // table render — the one `display` method renders a struct frame as a table.
+    let text = df.display(&DisplayOptions::default().with_max_rows(2));
     assert!(text.contains("id: int32"));
     assert!(text.contains("more rows"));
 }
