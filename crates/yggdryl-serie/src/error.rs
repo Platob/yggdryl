@@ -31,6 +31,9 @@ pub enum SerieError {
         /// The column length.
         len: usize,
     },
+    /// A child **node path** (e.g. `a.b.c`) was malformed — an unclosed wrapper or an
+    /// empty segment. The message names the offending path.
+    Path(String),
     /// The operation has no equivalent for this type yet; the message names what to do
     /// instead.
     Unsupported(String),
@@ -51,6 +54,7 @@ impl fmt::Display for SerieError {
                     "index {index} is out of bounds for a serie of length {len}"
                 )
             }
+            SerieError::Path(msg) => write!(f, "{msg}"),
             SerieError::Unsupported(msg) => write!(f, "{msg}"),
         }
     }

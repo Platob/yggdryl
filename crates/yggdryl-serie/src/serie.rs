@@ -183,6 +183,32 @@ pub trait Serie: fmt::Debug + Send + Sync {
         from_arrow(self.field().clone(), combined)
     }
 
+    /// Casts the column to `dtype`, converting the backing values (Arrow's cast kernel
+    /// for scalars — including lossy / narrowing casts, which yield null on overflow).
+    /// A **struct → struct** cast matches children by name, casts each to the target
+    /// field's type, **fills missing** target columns (null if nullable, else the type
+    /// default) and drops extras. The result keeps this column's name / nullability /
+    /// metadata (only the type changes).
+    fn cast(&self, dtype: &DataType) -> SerieResult<SerieRef> {
+        if self.data_type().is_struct() && dtype.is_struct() {
+            return cast_struct(self, dtype);
+        }
+        let target = dtype.to_arrow()?;
+        let array = arrow_cast::cast(self.array().as_ref(), &target)?;
+        from_arrow(
+            self.field().copy(None, Some(dtype.clone()), None, None),
+            array,
+        )
+    }
+
+    /// Casts to `field`'s type, then applies `field` (its name, nullability and
+    /// metadata) to the result — the [`cast`](Serie::cast) variant that re-fields the
+    /// column in one step.
+    fn cast_field(&self, field: &Field) -> SerieResult<SerieRef> {
+        let casted = self.cast(field.data_type())?;
+        from_arrow(field.clone(), casted.array())
+    }
+
     /// This column as a [`NestedSerie`](crate::NestedSerie) (struct / list / map) when it
     /// is one — the hook behind [`select`](Serie::select) and child navigation. `None`
     /// for a leaf column; the nested concretes override it.
@@ -191,12 +217,16 @@ pub trait Serie: fmt::Debug + Send + Sync {
     }
 
     /// Navigates a child **node path** (`a.b.c`, `["a.b"].c`, `tags.0`, …) from this
-    /// column into a descendant, or `None` if it is not nested or the path does not
-    /// resolve. The one-line accessor over the [`NestedSerie`](crate::NestedSerie) child
-    /// graph; see [`NestedSerie::child_path`](crate::NestedSerie::child_path) for the
-    /// matching rules.
-    fn select(&self, path: &str) -> Option<SerieRef> {
-        self.as_nested()?.child_path(path)
+    /// column into a descendant. The path is parsed first, so a malformed one (unclosed
+    /// wrapper, empty segment) is an `Err`; a leaf column, or a well-formed path that
+    /// does not resolve, is `Ok(None)`. The one-line accessor over the
+    /// [`NestedSerie`](crate::NestedSerie) child graph; see
+    /// [`NestedSerie::child_path`](crate::NestedSerie::child_path) for the matching rules.
+    fn select(&self, path: &str) -> SerieResult<Option<SerieRef>> {
+        match self.as_nested() {
+            Some(nested) => nested.child_path(path),
+            None => Ok(None),
+        }
     }
 }
 
@@ -273,6 +303,36 @@ pub fn from_array(name: impl Into<String>, array: ArrayRef) -> SerieResult<Serie
     // entry-field names vs Arrow's `keys`/`values`).
     let afield = arrow_schema::Field::new(name, array.data_type().clone(), true);
     dispatch(Field::from_arrow(&afield), array)
+}
+
+/// Casts a struct column to a target struct type: each target field is taken from the
+/// source child of the same name (cast to the target type) or **filled** when missing
+/// (null if nullable, else the type default); extra source children are dropped.
+fn cast_struct<S: Serie + ?Sized>(source: &S, target: &DataType) -> SerieResult<SerieRef> {
+    let nested = source.as_nested().ok_or_else(|| {
+        SerieError::Unsupported("cannot cast a non-struct column to a struct".into())
+    })?;
+    let fields = match target {
+        DataType::Struct(fields) => fields,
+        _ => {
+            return Err(SerieError::Unsupported(
+                "cast target is not a struct".into(),
+            ))
+        }
+    };
+    let len = source.len();
+    let mut children = Vec::with_capacity(fields.len());
+    for target_field in fields {
+        let child = match nested.child_by_name(target_field.name()) {
+            Some(c) => c.cast_field(target_field)?,
+            None => crate::build::fill_serie(target_field, len)?,
+        };
+        children.push(child);
+    }
+    Ok(Arc::new(StructSerie::from_children(
+        source.name(),
+        children,
+    )?))
 }
 
 /// Picks the concrete series for an array whose type already matches `field`. Crate-

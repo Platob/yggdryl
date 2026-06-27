@@ -1,6 +1,7 @@
-//! [`StructSerie`] — a struct (record) column backed by an Arrow `StructArray`. Its
-//! child fields are themselves [`Serie`]s, built recursively, so arbitrarily nested
-//! structures resolve through the same [factory](crate::from_arrow).
+//! [`StructSerie`] — a struct (record) column. Its child fields are themselves
+//! [`Serie`]s; they may be **lazy** (e.g. a computed range or a cast result), in which
+//! case the backing `StructArray` is built on demand. [`materialize`](Serie::materialize)
+//! realises every child and assembles the array with a zero-copy buffer transfer.
 
 use std::any::Any;
 use std::sync::Arc;
@@ -14,13 +15,27 @@ use crate::nested::NestedSerie;
 use crate::scalar::Scalar;
 use crate::serie::{dispatch, Serie, SerieRef};
 
-/// A struct column: a [`Serie`] per child field (built recursively), addressable by
-/// index or name.
+/// A struct column: a [`Serie`] per child field. Built either from an Arrow
+/// `StructArray` (the cached `array`) or from child columns that may still be lazy (the
+/// `array` is then assembled on demand / on `materialize`).
 #[derive(Debug, Clone)]
 pub struct StructSerie {
     field: Field,
-    array: StructArray,
     children: Vec<SerieRef>,
+    /// The materialised struct array, when available (the `from_parts` path or after
+    /// `materialize`); `None` while the column is lazy.
+    array: Option<StructArray>,
+}
+
+/// Assembles a `StructArray` from `children` (a zero-copy transfer — it references each
+/// child's buffers).
+fn struct_array(children: &[SerieRef]) -> SerieResult<StructArray> {
+    let fields = children
+        .iter()
+        .map(|c| c.field().to_arrow().map(Arc::new))
+        .collect::<Result<Vec<_>, _>>()?;
+    let arrays = children.iter().map(|c| c.array()).collect::<Vec<_>>();
+    StructArray::try_new(fields.into(), arrays, None).map_err(|e| SerieError::Arrow(e.to_string()))
 }
 
 impl StructSerie {
@@ -43,8 +58,41 @@ impl StructSerie {
         };
         Ok(StructSerie {
             field,
-            array,
             children,
+            array: Some(array),
+        })
+    }
+
+    /// Builds a struct column named `name` from its child columns — the one-line
+    /// constructor (each child's field, including its name, becomes a struct field). The
+    /// children must all have the same length. The result is **lazy**: the backing
+    /// `StructArray` is assembled on demand, so lazy children stay lazy until
+    /// [`materialize`](Serie::materialize).
+    pub fn from_children(
+        name: impl Into<String>,
+        children: Vec<SerieRef>,
+    ) -> SerieResult<StructSerie> {
+        if let Some(first) = children.first() {
+            let len = first.len();
+            if let Some(bad) = children.iter().find(|c| c.len() != len) {
+                return Err(SerieError::Arrow(format!(
+                    "struct children must have equal length: '{}' has {} but '{}' has {}",
+                    bad.name(),
+                    bad.len(),
+                    first.name(),
+                    len
+                )));
+            }
+        }
+        let field = Field::new(
+            name,
+            DataType::struct_(children.iter().map(|c| c.field().clone()).collect()),
+            true,
+        );
+        Ok(StructSerie {
+            field,
+            children,
+            array: None,
         })
     }
 
@@ -53,26 +101,12 @@ impl StructSerie {
         &self.children
     }
 
-    /// Builds a struct column named `name` from its child columns — the one-line
-    /// constructor (each child's field, including its name, becomes a struct field). The
-    /// children must all have the same length.
-    pub fn from_children(
-        name: impl Into<String>,
-        children: Vec<SerieRef>,
-    ) -> SerieResult<StructSerie> {
-        let arrow_fields = children
-            .iter()
-            .map(|c| c.field().to_arrow().map(Arc::new))
-            .collect::<Result<Vec<_>, _>>()?;
-        let arrays = children.iter().map(|c| c.array()).collect::<Vec<_>>();
-        let array = StructArray::try_new(arrow_fields.into(), arrays, None)
-            .map_err(|e| SerieError::Arrow(e.to_string()))?;
-        let field = Field::new(
-            name,
-            DataType::struct_(children.iter().map(|c| c.field().clone()).collect()),
-            true,
-        );
-        StructSerie::from_parts(field, Arc::new(array))
+    /// The number of rows (the children's length).
+    fn rows(&self) -> usize {
+        match &self.array {
+            Some(a) => a.len(),
+            None => self.children.first().map_or(0, |c| c.len()),
+        }
     }
 }
 
@@ -82,7 +116,12 @@ impl Serie for StructSerie {
     }
 
     fn array(&self) -> ArrayRef {
-        Arc::new(self.array.clone())
+        match &self.array {
+            Some(a) => Arc::new(a.clone()),
+            None => {
+                Arc::new(struct_array(&self.children).expect("validated struct children build"))
+            }
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -90,15 +129,37 @@ impl Serie for StructSerie {
     }
 
     fn len(&self) -> usize {
-        self.array.len()
+        self.rows()
     }
 
     fn null_count(&self) -> usize {
-        self.array.null_count()
+        self.array.as_ref().map_or(0, |a| a.null_count())
     }
 
     fn is_null(&self, index: usize) -> bool {
-        index >= self.array.len() || self.array.is_null(index)
+        match &self.array {
+            Some(a) => index >= a.len() || a.is_null(index),
+            None => index >= self.rows(),
+        }
+    }
+
+    fn is_materialized(&self) -> bool {
+        self.array.is_some()
+    }
+
+    /// Realises every (possibly lazy) child and assembles the backing `StructArray` with
+    /// a zero-copy buffer transfer.
+    fn materialize(&self) -> SerieRef {
+        if self.array.is_some() {
+            return Arc::new(self.clone());
+        }
+        let children: Vec<SerieRef> = self.children.iter().map(|c| c.materialize()).collect();
+        let array = struct_array(&children).expect("validated struct children build");
+        Arc::new(StructSerie {
+            field: self.field.clone(),
+            children,
+            array: Some(array),
+        })
     }
 
     fn as_nested(&self) -> Option<&dyn NestedSerie> {

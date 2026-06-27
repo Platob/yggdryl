@@ -15,11 +15,11 @@ use arrow_schema::{DataType as ADataType, Field as AField};
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
-    child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie,
-    Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, DisplayOptions, DurationSerie,
-    EnumSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie, ListSerie, MapSerie,
-    NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie, TimeRangeSerie,
-    TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
+    child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, CategoricalSerie,
+    Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie, DisplayOptions,
+    DurationSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie, ListSerie,
+    MapSerie, NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie,
+    TimeRangeSerie, TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -734,27 +734,40 @@ fn map_serie_keys_values_and_render() {
 }
 
 #[test]
-fn enum_serie_maps_uniques_codes_and_rows() {
+fn categorical_serie_encodes_repeats_and_materializes() {
     let values = VarcharSerie::<i32>::from_values(
         "c",
         vec![Some("a"), Some("b"), Some("a"), None, Some("c")],
     );
-    let enums = EnumSerie::from_serie(Arc::new(values));
+    let cat = CategoricalSerie::from_serie(&values).unwrap();
 
-    assert_eq!(enums.unique_count(), 3); // a, b, c (null is not a category)
-    assert_eq!(enums.code(&Scalar::Utf8("a".into())), Some(0));
-    assert_eq!(enums.code(&Scalar::Utf8("b".into())), Some(1));
-    assert_eq!(enums.code(&Scalar::Utf8("c".into())), Some(2));
-    assert_eq!(enums.code(&Scalar::Utf8("z".into())), None);
-    assert_eq!(enums.first_row(&Scalar::Utf8("a".into())), Some(0));
-    assert_eq!(enums.first_row(&Scalar::Utf8("c".into())), Some(4));
-    assert_eq!(enums.code_at(2), Some(0)); // row 2 holds "a"
-    assert_eq!(enums.code_at(3), None); // null row has no code
-    assert_eq!(enums.value_of(1), Some(&Scalar::Utf8("b".into())));
+    // a, b, c are the distinct categories (null is not a category); it is a lazy view
+    assert_eq!(cat.category_count(), 3);
+    assert_eq!(cat.len(), 5);
+    assert_eq!(cat.null_count(), 1);
+    assert!(!cat.is_materialized());
 
-    // it is a Serie delegating to the backing column
-    assert_eq!(enums.len(), 5);
-    assert_eq!(enums.null_count(), 1);
+    // per-row codes index into the dictionary; the null row has no code
+    let a_code = cat.code_at(0).unwrap();
+    assert_eq!(cat.code_at(2), Some(a_code)); // row 2 repeats "a"
+    assert_eq!(cat.code_at(3), None); // null row
+
+    // value access decodes through the dictionary
+    assert_eq!(cat.value_at(0), Scalar::Utf8("a".into()));
+    assert_eq!(cat.value_at(2), Scalar::Utf8("a".into()));
+    assert_eq!(cat.value_at(3), Scalar::Null);
+    assert_eq!(cat.category(a_code as usize), Scalar::Utf8("a".into()));
+
+    // the distinct values are exposed as their own column
+    assert_eq!(cat.categories().unwrap().len(), 3);
+
+    // materialize decodes back to a real, flat column
+    let flat = cat.materialize();
+    assert!(flat.is_materialized());
+    assert_eq!(flat.len(), 5);
+    assert_eq!(flat.value_at(0), Scalar::Utf8("a".into()));
+    assert_eq!(flat.value_at(3), Scalar::Null);
+    assert_eq!(flat.data_type(), &DataType::varchar());
 }
 
 #[test]
@@ -845,18 +858,22 @@ fn date_range_materialize_timeat_and_tovec() {
 }
 
 #[test]
-fn enum_serie_integer_and_all_null() {
+fn categorical_serie_integer_and_all_null() {
     let ints = Int32Serie::from_values("c", vec![Some(1), Some(2), Some(1), None]);
-    let e = EnumSerie::from_serie(Arc::new(ints));
-    assert_eq!(e.unique_count(), 2);
-    assert_eq!(e.code(&Scalar::Int(2)), Some(1));
-    assert_eq!(e.first_row(&Scalar::Int(1)), Some(0));
-    assert_eq!(e.code_at(3), None); // null
+    let cat = CategoricalSerie::from_serie(&ints).unwrap();
+    assert_eq!(cat.category_count(), 2);
+    assert_eq!(cat.value_at(0), Scalar::Int(1));
+    assert_eq!(cat.value_at(1), Scalar::Int(2));
+    assert_eq!(cat.value_at(2), Scalar::Int(1));
+    assert_eq!(cat.code_at(3), None); // null
+    assert_eq!(cat.len(), 4);
+    assert_eq!(cat.null_count(), 1);
 
     let nulls = Int32Serie::from_values("c", vec![Option::<i32>::None, None]);
-    let e2 = EnumSerie::from_serie(Arc::new(nulls));
-    assert_eq!(e2.unique_count(), 0); // null is not a category
-    assert_eq!(e2.len(), 2);
+    let cat2 = CategoricalSerie::from_serie(&nulls).unwrap();
+    assert_eq!(cat2.category_count(), 0); // null is not a category
+    assert_eq!(cat2.len(), 2);
+    assert_eq!(cat2.null_count(), 2);
 }
 
 #[test]
@@ -924,6 +941,48 @@ fn resize_grows_with_nulls_or_defaults_and_shrinks() {
 }
 
 #[test]
+fn resize_non_nullable_struct_fills_nested_defaults() {
+    // non-nullable struct rec { id: int32, name: utf8 } (both children non-nullable)
+    let id = Arc::new(Int32Array::from(vec![7])) as ArrayRef;
+    let name = Arc::new(StringArray::from(vec!["a"])) as ArrayRef;
+    let array = StructArray::from(vec![
+        (Arc::new(AField::new("id", ADataType::Int32, false)), id),
+        (Arc::new(AField::new("name", ADataType::Utf8, false)), name),
+    ]);
+    let field = Field::new(
+        "rec",
+        DataType::struct_(vec![
+            Field::new("id", DataType::int(32, true), false),
+            Field::new("name", DataType::varchar(), false),
+        ]),
+        false,
+    );
+    let s = from_arrow(field, Arc::new(array) as ArrayRef).unwrap();
+    let grown = s.resize(3).unwrap();
+    assert_eq!(grown.len(), 3);
+    assert_eq!(grown.value_at(0), Scalar::Other("{id=7, name=a}".into()));
+    // fill rows are the record of child defaults (0 / empty string), not nulls
+    assert_eq!(grown.value_at(1), Scalar::Other("{id=0, name=}".into()));
+    assert_eq!(grown.value_at(2), Scalar::Other("{id=0, name=}".into()));
+}
+
+#[test]
+fn default_array_covers_all_interval_units() {
+    use arrow_schema::IntervalUnit as AIntervalUnit;
+    // every interval unit a column can dispatch to must also produce a non-null default
+    // (so a non-nullable interval column is resizable, not just YearMonth).
+    for unit in [
+        AIntervalUnit::YearMonth,
+        AIntervalUnit::DayTime,
+        AIntervalUnit::MonthDayNano,
+    ] {
+        let arr = crate::build::default_array(&ADataType::Interval(unit), 3).unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr.null_count(), 0);
+    }
+}
+
+#[test]
 fn one_line_temporal_and_struct_constructors() {
     use yggdryl_core::{DateTime, Duration, Time};
 
@@ -952,6 +1011,15 @@ fn one_line_temporal_and_struct_constructors() {
         Scalar::Utf8("b".into())
     );
     assert_eq!(st.value_at(0), Scalar::Other("{id=1, name=a}".into()));
+
+    // mismatched child lengths are rejected with an actionable message
+    let two: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let three: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("a"), Some("b"), Some("c")],
+    ));
+    let bad = StructSerie::from_children("rec", vec![two, three]);
+    assert!(matches!(bad, Err(crate::SerieError::Arrow(msg)) if msg.contains("equal length")));
 }
 
 #[test]
@@ -984,24 +1052,87 @@ fn nested_child_access_by_index_name_and_path() {
     assert_eq!(st.child_by_name("n").unwrap().name(), "N"); // cs miss -> ci
 
     // by node path
-    assert_eq!(serie.select("inner.a").unwrap().value_at(0), Scalar::Int(1));
     assert_eq!(
-        serie.select("inner.b").unwrap().value_at(1),
+        serie.select("inner.a").unwrap().unwrap().value_at(0),
+        Scalar::Int(1)
+    );
+    assert_eq!(
+        serie.select("inner.b").unwrap().unwrap().value_at(1),
         Scalar::Utf8("y".into())
     );
-    assert_eq!(serie.select("n").unwrap().name(), "N"); // ci segment
+    assert_eq!(serie.select("n").unwrap().unwrap().name(), "N"); // ci segment
     assert_eq!(
-        serie.select("[inner].a").unwrap().value_at(0),
+        serie.select("[inner].a").unwrap().unwrap().value_at(0),
         Scalar::Int(1)
     ); // bracket-wrapped exact
     assert_eq!(
-        serie.select(r#""inner".a"#).unwrap().value_at(0),
+        serie.select(r#""inner".a"#).unwrap().unwrap().value_at(0),
         Scalar::Int(1)
     ); // quote-wrapped exact
-    assert!(serie.select("inner.zzz").is_none());
+    assert!(serie.select("inner.zzz").unwrap().is_none()); // well-formed but missing
+
+    // navigating *through* a non-nested intermediate ('a' is int32) yields Ok(None)
+    assert!(serie.select("inner.a.something").unwrap().is_none());
+
+    // a malformed path is an Err (parsing validates), not a silent miss
+    assert!(serie.select("inner.").is_err()); // trailing dot
+    assert!(serie.select("[inner.a").is_err()); // unclosed wrapper
 
     // a leaf column is not navigable
     let leaf = from_array("x", Arc::new(Int32Array::from(vec![1])) as ArrayRef).unwrap();
     assert!(leaf.as_nested().is_none());
-    assert!(leaf.select("a.b").is_none());
+    assert!(leaf.select("a.b").unwrap().is_none());
+}
+
+#[test]
+fn cast_primitive_and_struct_with_fill() {
+    // widening primitive cast (int32 -> int64) keeps the column's name
+    let s = Int32Serie::from_values("n", vec![Some(1), Some(2), None]);
+    let wide = s.cast(&DataType::int(64, true)).unwrap();
+    assert_eq!(wide.data_type(), &DataType::int(64, true));
+    assert_eq!(wide.name(), "n");
+    assert_eq!(wide.value_at(0), Scalar::Int(1));
+    assert_eq!(wide.value_at(2), Scalar::Null);
+
+    // lossy / narrowing cast (int32 -> int8) yields null on overflow
+    let big = Int32Serie::from_values("n", vec![Some(1000), Some(5)]);
+    let narrow = big.cast(&DataType::int(8, true)).unwrap();
+    assert_eq!(narrow.value_at(0), Scalar::Null); // 1000 overflows i8
+    assert_eq!(narrow.value_at(1), Scalar::Int(5));
+
+    // struct -> struct cast: child 'id' is widened, missing 'extra' is filled with nulls
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let src = StructSerie::from_children("rec", vec![id]).unwrap();
+    let target = DataType::struct_(vec![
+        Field::new("id", DataType::int(64, true), true),
+        Field::new("extra", DataType::varchar(), true),
+    ]);
+    let casted = src.cast(&target).unwrap();
+    assert_eq!(casted.data_type(), &target);
+    assert_eq!(
+        casted.select("id").unwrap().unwrap().value_at(0),
+        Scalar::Int(1)
+    );
+    assert!(casted.select("extra").unwrap().unwrap().is_null(0)); // filled column is null
+}
+
+#[test]
+fn struct_from_children_is_lazy_until_materialized() {
+    // a lazy child (a computed range) keeps the struct lazy until materialize
+    let id: SerieRef = Arc::new(RangeSerie::new("id", 0, 1, 3));
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "name",
+        vec![Some("a"), Some("b"), Some("c")],
+    ));
+    let st = StructSerie::from_children("rec", vec![id, name]).unwrap();
+    assert!(!st.is_materialized()); // no backing StructArray yet
+    assert_eq!(st.len(), 3);
+    assert_eq!(st.value_at(0), Scalar::Other("{id=0, name=a}".into()));
+
+    // array() assembles on demand; materialize() realises the children and caches it
+    assert_eq!(st.array().len(), 3);
+    let mat = st.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.len(), 3);
+    assert_eq!(mat.value_at(2), Scalar::Other("{id=2, name=c}".into()));
 }

@@ -18,6 +18,7 @@ pub use struct_serie::StructSerie;
 
 use crate::path::{parse_path, Segment};
 use crate::serie::{Serie, SerieRef};
+use crate::SerieResult;
 
 /// The shared interface of a nested column — access to its child column(s) by index,
 /// name or node path. A concrete only supplies [`child_count`](NestedSerie::child_count)
@@ -61,20 +62,32 @@ pub trait NestedSerie: Serie {
     /// descendant column. Each segment is matched against the current column's children;
     /// a wrapped (`[...]` / `"..."` / `'...'` / `` `...` ``) segment matches the name
     /// exactly, a bare numeric segment is a child index, and any other bare segment
-    /// matches case-sensitively then case-insensitively. Returns `None` at the first
-    /// segment that does not resolve (or where the intermediate column is not nested).
-    fn child_path(&self, path: &str) -> Option<SerieRef> {
-        let mut segments = parse_path(path).into_iter();
+    /// matches case-sensitively then case-insensitively. The path is **parsed first**,
+    /// so a malformed one (unclosed wrapper, empty segment) is an `Err`; a well-formed
+    /// path that does not resolve (a missing child, or a non-nested intermediate) is
+    /// `Ok(None)`.
+    fn child_path(&self, path: &str) -> SerieResult<Option<SerieRef>> {
+        let mut segments = parse_path(path)?.into_iter();
         // First segment resolves against `self`; deeper ones against each nested child.
-        let mut current = match segments.next()? {
-            Segment::Index(index) => self.child(index),
-            Segment::Exact(name) => self.child_named(&name),
-            Segment::Loose(name) => self.child_by_name(&name),
-        }?;
+        let first = match segments.next() {
+            Some(Segment::Index(index)) => self.child(index),
+            Some(Segment::Exact(name)) => self.child_named(&name),
+            Some(Segment::Loose(name)) => self.child_by_name(&name),
+            None => return Ok(None),
+        };
+        let Some(mut current) = first else {
+            return Ok(None);
+        };
         for segment in segments {
-            current = resolve(current.as_nested()?, &segment)?;
+            let Some(nested) = current.as_nested() else {
+                return Ok(None);
+            };
+            match resolve(nested, &segment) {
+                Some(next) => current = next,
+                None => return Ok(None),
+            }
         }
-        Some(current)
+        Ok(Some(current))
     }
 }
 

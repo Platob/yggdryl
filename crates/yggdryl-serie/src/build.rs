@@ -8,10 +8,11 @@ use std::sync::Arc;
 use arrow_array::types::{
     Date32Type, Date64Type, Decimal128Type, Decimal256Type, DurationMicrosecondType,
     DurationMillisecondType, DurationNanosecondType, DurationSecondType, Float16Type, Float32Type,
-    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, IntervalYearMonthType,
-    Time32MillisecondType, Time32SecondType, Time64MicrosecondType, Time64NanosecondType,
-    TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
-    TimestampSecondType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+    Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, IntervalDayTimeType,
+    IntervalMonthDayNanoType, IntervalYearMonthType, Time32MillisecondType, Time32SecondType,
+    Time64MicrosecondType, Time64NanosecondType, TimestampMicrosecondType,
+    TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt16Type, UInt32Type,
+    UInt64Type, UInt8Type,
 };
 use arrow_array::{
     new_null_array, ArrayRef, ArrowPrimitiveType, BinaryArray, BooleanArray, LargeBinaryArray,
@@ -19,12 +20,27 @@ use arrow_array::{
 };
 use arrow_buffer::i256;
 use arrow_schema::{DataType as ADataType, IntervalUnit as AIntervalUnit, TimeUnit as ATimeUnit};
+use yggdryl_schema::Field;
 
 use crate::error::{SerieError, SerieResult};
+use crate::serie::{from_arrow, SerieRef};
 
 /// A run of `len` nulls of the exact Arrow type `dt`.
 pub(crate) fn null_array(dt: &ADataType, len: usize) -> ArrayRef {
     new_null_array(dt, len)
+}
+
+/// A [`Serie`](crate::Serie) of `len` fill values for `field`: nulls if the field is
+/// nullable, otherwise its type's default. Used to fill a missing column on
+/// [`cast`](crate::Serie::cast).
+pub(crate) fn fill_serie(field: &Field, len: usize) -> SerieResult<SerieRef> {
+    let dt = field.data_type().to_arrow()?;
+    let array = if field.is_nullable() {
+        null_array(&dt, len)
+    } else {
+        default_array(&dt, len)?
+    };
+    from_arrow(field.clone(), array)
 }
 
 /// A `PrimitiveArray<A>` of `len` default (`0`) values.
@@ -106,6 +122,12 @@ pub(crate) fn default_array(dt: &ADataType, len: usize) -> SerieResult<ArrayRef>
         ADataType::Interval(AIntervalUnit::YearMonth) => {
             Arc::new(prim_default::<IntervalYearMonthType>(len))
         }
+        ADataType::Interval(AIntervalUnit::DayTime) => {
+            Arc::new(prim_default::<IntervalDayTimeType>(len))
+        }
+        ADataType::Interval(AIntervalUnit::MonthDayNano) => {
+            Arc::new(prim_default::<IntervalMonthDayNanoType>(len))
+        }
         ADataType::Utf8 => Arc::new(StringArray::from_iter_values(std::iter::repeat_n("", len))),
         ADataType::LargeUtf8 => Arc::new(LargeStringArray::from_iter_values(std::iter::repeat_n(
             "", len,
@@ -117,11 +139,18 @@ pub(crate) fn default_array(dt: &ADataType, len: usize) -> SerieResult<ArrayRef>
         ADataType::LargeBinary => Arc::new(LargeBinaryArray::from_iter_values(
             std::iter::repeat_n(Vec::<u8>::new(), len),
         )),
-        // A struct default is a record of each field's default (built recursively).
+        // A struct default is a record of each field's fill — nulls for a nullable child,
+        // its type's default for a non-nullable one (built recursively).
         ADataType::Struct(fields) => {
             let arrays = fields
                 .iter()
-                .map(|f| default_array(f.data_type(), len))
+                .map(|f| {
+                    if f.is_nullable() {
+                        Ok(null_array(f.data_type(), len))
+                    } else {
+                        default_array(f.data_type(), len)
+                    }
+                })
                 .collect::<SerieResult<Vec<_>>>()?;
             Arc::new(StructArray::try_new(fields.clone(), arrays, None).map_err(arrow_err)?)
         }

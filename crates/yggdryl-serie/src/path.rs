@@ -3,7 +3,11 @@
 //! Segments are split on top-level `.`; a segment may be **wrapped** in `[...]`,
 //! `"..."`, `'...'` or `` `...` `` to match a name **exactly** (and to contain dots),
 //! a bare numeric segment is a child **index**, and any other bare segment matches a
-//! child name case-sensitively then case-insensitively.
+//! child name case-sensitively then case-insensitively. Parsing **validates**: an
+//! unclosed wrapper or an empty segment (a leading, trailing or doubled `.`) is an
+//! [error](crate::SerieError::Path), never silently matched.
+
+use crate::error::{SerieError, SerieResult};
 
 /// One resolved path segment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +21,9 @@ pub(crate) enum Segment {
 }
 
 /// Splits `path` into [`Segment`]s on top-level `.`, honouring the wrapper characters
-/// (`[]` / `"` / `'` / `` ` ``) so a wrapped segment can contain dots.
-pub(crate) fn parse_path(path: &str) -> Vec<Segment> {
+/// (`[]` / `"` / `'` / `` ` ``) so a wrapped segment can contain dots. Errors on an
+/// unclosed wrapper or an empty segment (a leading, trailing or doubled `.`).
+pub(crate) fn parse_path(path: &str) -> SerieResult<Vec<Segment>> {
     let mut raw: Vec<String> = Vec::new();
     let mut buf = String::new();
     let mut close: Option<char> = None; // the closing char we are waiting for
@@ -44,8 +49,18 @@ pub(crate) fn parse_path(path: &str) -> Vec<Segment> {
             },
         }
     }
+    if let Some(end) = close {
+        return Err(SerieError::Path(format!(
+            "unclosed wrapper in path {path:?}: expected a closing '{end}'"
+        )));
+    }
     raw.push(buf);
-    raw.into_iter().map(classify).collect()
+    if raw.iter().any(|s| s.trim().is_empty()) {
+        return Err(SerieError::Path(format!(
+            "empty segment in path {path:?}; check for a leading, trailing or doubled '.'"
+        )));
+    }
+    Ok(raw.into_iter().map(classify).collect())
 }
 
 /// Classifies one raw segment into a [`Segment`].
@@ -81,7 +96,7 @@ mod tests {
     #[test]
     fn splits_and_classifies() {
         assert_eq!(
-            parse_path("a.b.c"),
+            parse_path("a.b.c").unwrap(),
             vec![
                 Segment::Loose("a".into()),
                 Segment::Loose("b".into()),
@@ -89,15 +104,31 @@ mod tests {
             ]
         );
         assert_eq!(
-            parse_path("items.0"),
+            parse_path("items.0").unwrap(),
             vec![Segment::Loose("items".into()), Segment::Index(0)]
         );
         // wrappers protect dots and force an exact match
         assert_eq!(
-            parse_path(r#""a.b".c"#),
+            parse_path(r#""a.b".c"#).unwrap(),
             vec![Segment::Exact("a.b".into()), Segment::Loose("c".into())]
         );
-        assert_eq!(parse_path("[a.b]"), vec![Segment::Exact("a.b".into())]);
-        assert_eq!(parse_path("`x`"), vec![Segment::Exact("x".into())]);
+        assert_eq!(
+            parse_path("[a.b]").unwrap(),
+            vec![Segment::Exact("a.b".into())]
+        );
+        assert_eq!(parse_path("`x`").unwrap(), vec![Segment::Exact("x".into())]);
+    }
+
+    #[test]
+    fn rejects_malformed_paths() {
+        // unclosed wrappers
+        assert!(parse_path("[a.b").is_err());
+        assert!(parse_path(r#""unclosed"#).is_err());
+        assert!(parse_path("`x").is_err());
+        // empty segments (leading, trailing, doubled dot) and the empty path
+        assert!(parse_path("").is_err());
+        assert!(parse_path(".a.b").is_err());
+        assert!(parse_path("a.b.").is_err());
+        assert!(parse_path("a..b").is_err());
     }
 }

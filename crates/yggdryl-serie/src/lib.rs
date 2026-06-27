@@ -32,8 +32,8 @@
 //!   produce values on demand until materialised (the temporal ranges are
 //!   [`TemporalSerie`]s).
 //! - [`IndexSerie`] — a row index, defaulting to a lazy `uint64` [`RangeSerie`].
-//! - [`EnumSerie`] — a categorical view holding the unique values mapped to their code
-//!   and first row index.
+//! - [`CategoricalSerie`] — a dictionary-encoded view for repeated values (distinct
+//!   values + per-row codes); decodes to a flat column on `materialize`.
 //! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
 //!   [`parent`](Serie::parent), forming a slice graph.
 //! - [`Serie::display`] with [`DisplayOptions`] renders a column to a readable string.
@@ -71,8 +71,8 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod build;
+mod categorical;
 mod display;
-mod enum_serie;
 mod error;
 mod index;
 mod lazy;
@@ -87,8 +87,8 @@ mod temporal;
 #[cfg(test)]
 mod tests;
 
+pub use categorical::CategoricalSerie;
 pub use display::DisplayOptions;
-pub use enum_serie::EnumSerie;
 pub use error::{SerieError, SerieResult};
 pub use index::IndexSerie;
 pub use lazy::{DateRangeSerie, DateTimeRangeSerie, RangeSerie, TimeRangeSerie};

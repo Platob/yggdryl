@@ -275,16 +275,22 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   `key`/`value` entry names vs Arrow's `keys`/`values`). The recursive nested builders
   call `dispatch` too. **All dispatch logic lives here.** Base also provides
   `resize(new_len)` (slice when shrinking; grow with nulls if nullable else the type
-  default, via `build.rs`), `display(&DisplayOptions)` (see `display.rs`), and the nested
-  hooks `as_nested()` / `select(path)` (one-line node-path navigation, see `path.rs`).
+  default, via `build.rs`), `cast(dtype)` / `cast_field(field)` (Arrow's cast kernel for
+  scalars — lossy/narrowing allowed; **struct→struct** matches children by name, casts
+  each, fills missing target columns and drops extras), `display(&DisplayOptions)` (see
+  `display.rs`), and the nested hooks `as_nested()` / `select(path)` (one-line node-path
+  navigation returning `SerieResult<Option<SerieRef>>`, see `path.rs`).
   (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
   recovered via `as_any().downcast_ref`.)
 - `display.rs` — `DisplayOptions` (`max_rows` / `header` / `width` / `null` / `index`)
   and the `render` routine behind `Serie::display`, the building block for a future
   `Frame`'s table rendering. **All display logic lives here.**
-- `path.rs` — the `a.b.c` child-path parser (`parse_path` → `Segment` = `Index` /
-  `Exact` / `Loose`) honouring the wrapper chars (`[]` / `"` / `'` / `` ` ``) for an
-  exact, dot-containing name. Behind `NestedSerie::child_path` / `Serie::select`. **All
+- `path.rs` — the `a.b.c` child-path parser (`parse_path` → `SerieResult<Vec<Segment>>`,
+  `Segment` = `Index` / `Exact` / `Loose`) honouring the wrapper chars (`[]` / `"` / `'`
+  / `` ` ``) for an exact, dot-containing name. **Parsing validates** (per the no-lenient
+  rule): an unclosed wrapper or an empty segment (leading / trailing / doubled `.`) is a
+  `SerieError::Path`. Behind `NestedSerie::child_path` / `Serie::select` (both
+  `SerieResult<Option<SerieRef>>` — `Err` = malformed, `Ok(None)` = unresolved). **All
   path-parsing logic lives here.**
 - `build.rs` — the **fill-array** builders behind `Serie::resize`: `null_array` (a run of
   nulls of an exact Arrow type) and `default_array` (a run of a type's **default** — every
@@ -319,13 +325,19 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
 - `nested/` (`mod` + `struct_serie.rs` + `list_serie.rs` + `map_serie.rs`) — the
   **nested** series. `NestedSerie` is the shared trait: `child_count` / `child(index)` /
   `children` / `child_named` (exact) / `child_named_ci` / `child_by_name` (cs→ci) /
-  `child_path` (`a.b.c`, deriving name lookups from each child's `name`). `StructSerie`
-  (a child `Serie` per field, plus a `from_children(name, cols)` one-line constructor),
-  `ListSerie<O>` (a flattened values child + a zero-copy per-row `value_slice`) and
-  `MapSerie` (flattened key/value children) build their children **recursively** via
-  `dispatch`, so arbitrarily deep nesting resolves uniformly; each `value_at` renders a
-  readable `{…}` / `[…]`, and each overrides `as_nested()`. **All nested-series logic
-  lives here.**
+  `child_path` (`a.b.c`, deriving name lookups from each child's `name`). `child_path`
+  **parses the path first** (`path.rs`), so a malformed path (unclosed wrapper, empty
+  segment) is an `Err` while a well-formed but unresolved path is `Ok(None)` — hence both
+  it and the base `Serie::select` return `SerieResult<Option<SerieRef>>`. `StructSerie`
+  holds a child `Serie` **per field plus an optional cached `StructArray`**: a
+  `from_children(name, cols)` one-line constructor leaves children **lazy** (`array:
+  None`, equal-length-checked) and assembles the array on demand, while
+  `is_materialized()` reflects the cache and `materialize()` realises every child and
+  builds the array with a zero-copy buffer transfer. `ListSerie<O>` (a flattened values
+  child + a zero-copy per-row `value_slice`) and `MapSerie` (flattened key/value
+  children) build their children **recursively** via `dispatch`, so arbitrarily deep
+  nesting resolves uniformly; each `value_at` renders a readable `{…}` / `[…]`, and each
+  overrides `as_nested()`. **All nested-series logic lives here.**
 - `lazy/` (`mod` + `range.rs` + `daterange.rs` + `datetimerange.rs` + `timerange.rs`) —
   the **lazy / computed** series, not resident in memory: they store a compact
   description and compute each value on demand (`is_materialized()` → `false`),
@@ -338,10 +350,12 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   / `position` (row of a label) / `contains` lookups), **defaulting to a lazy `uint64`
   `RangeSerie`** (`is_range()` enables the O(1) lookups); wraps any column via
   `from_serie` / `from_array`.
-- `enum_serie.rs` — `EnumSerie`, a categorical view that scans a column once and holds
-  the **mapping of unique values** to a compact `code` (`0..unique_count`) and to their
-  `first_row` index (`code` / `first_row` / `value_of` / `code_at`); a `Serie`
-  delegating data access to the backing column. **All enum/categorical logic lives here.**
+- `categorical.rs` — `CategoricalSerie`, a **dictionary-encoded** view for repeated
+  values: it casts the column to an Arrow `Dictionary(Int32, value)` (distinct values +
+  per-row codes), exposing `category_count` / `categories` / `code_at` / `category(code)`.
+  It is **lazy** (`is_materialized()` → `false`); `array()` / `materialize()` decode it
+  back to a flat column. **All categorical/dictionary logic lives here.** (`arrow-cast`
+  powers the encode/decode, shared with `Serie::cast`.)
 - `slice.rs` — `SliceSerie`, a zero-copy **child** view that records its `parent`, and
   the `child` / `child_range` constructors that build the parent→child graph;
   `materialize` detaches a child into an independent column. **All slice-graph logic

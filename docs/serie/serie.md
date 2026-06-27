@@ -36,7 +36,8 @@ The design mirrors the schema crate's three [categories](../schema/datatype.md):
 - The **lazy** (computed) series — `RangeSerie`, `DateRangeSerie`, `DateTimeRangeSerie`,
   `TimeRangeSerie`.
 - **`IndexSerie`** — a row index, defaulting to a lazy `uint64` range.
-- **`EnumSerie`** — a categorical view mapping unique values to a code and first row.
+- **`CategoricalSerie`** — a dictionary-encoded view for repeated values (distinct values
+  + a per-row code), decoding back to a flat column on `materialize`.
 
 ## Build a column
 
@@ -75,7 +76,7 @@ universal fallback for *any* Arrow array.
     use yggdryl_serie::{
         Int32Serie, Float64Serie, BooleanSerie, VarcharSerie, BinarySerie,
         DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, RangeSerie,
-        IndexSerie, StructSerie, EnumSerie, Serie, SerieRef, TypedSerie,
+        IndexSerie, StructSerie, CategoricalSerie, Serie, SerieRef, TypedSerie,
     };
     use yggdryl_core::{DateTime, Duration, Time, Date};
     use std::sync::Arc;
@@ -102,10 +103,12 @@ universal fallback for *any* Arrow array.
     let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("name", vec![Some("a"), Some("b")]));
     let rec = StructSerie::from_children("rec", vec![id, name])?;
 
-    // categorical view over any column
-    let cat = EnumSerie::from_serie(Arc::new(BooleanSerie::from_values("c", vec![Some(true), Some(false), Some(true)])));
+    // categorical (dictionary-encoded) view over any column
+    let cat = CategoricalSerie::from_serie(
+        &BooleanSerie::from_values("c", vec![Some(true), Some(false), Some(true)]),
+    )?;
     assert_eq!(rec.child_count(), 2);
-    assert_eq!(cat.unique_count(), 2);
+    assert_eq!(cat.category_count(), 2);
     # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
@@ -298,24 +301,57 @@ default is a **lazy** `uint64` range; any column can be wrapped as an index.
 Slicing a range index drops the range fast-path flag (the labels no longer start at
 `0`), but the result is still an `IndexSerie` and `at` / `position` keep working.
 
-## Enum (categorical)
+## Categorical (dictionary-encoded)
 
-`EnumSerie` scans a column once and holds the mapping of unique values to a compact
-**code** and to their **first row index** — the basis for a categorical/dictionary
-column.
+`CategoricalSerie` is a **dictionary-encoded** view for *repeated values*: it stores the
+distinct values once plus a compact per-row code, so a low-cardinality column is held
+compactly. It is lazy (`is_materialized()` is `false`); `materialize()` decodes it back
+into a flat column.
 
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{EnumSerie, VarcharSerie, Scalar, Serie};
-    use std::sync::Arc;
+    use yggdryl_serie::{CategoricalSerie, VarcharSerie, Scalar, Serie};
 
     let values = VarcharSerie::<i32>::from_values("c", vec![Some("a"), Some("b"), Some("a")]);
-    let enums = EnumSerie::from_serie(Arc::new(values));
-    assert_eq!(enums.unique_count(), 2);                          // "a", "b"
-    assert_eq!(enums.code(&Scalar::Utf8("b".into())), Some(1));   // enum code
-    assert_eq!(enums.first_row(&Scalar::Utf8("a".into())), Some(0));
-    assert_eq!(enums.code_at(2), Some(0));                        // row 2 holds "a"
+    let cat = CategoricalSerie::from_serie(&values).unwrap();
+    assert_eq!(cat.category_count(), 2);              // "a", "b" stored once
+    assert_eq!(cat.code_at(0), cat.code_at(2));       // repeated "a" shares a code
+    assert_eq!(cat.value_at(1), Scalar::Utf8("b".into()));
+    assert!(!cat.is_materialized());
+
+    let flat = cat.materialize();                     // decode -> a real varchar column
+    assert!(flat.is_materialized());
+    ```
+
+## Cast
+
+`cast(dtype)` converts a column's values (Arrow's cast kernel — including lossy /
+narrowing casts, which yield null on overflow); `cast_field(field)` casts and re-fields
+in one step. A **struct → struct** cast matches children by name, casts each, **fills
+missing** target columns (null if nullable, else the type default) and drops extras.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{from_array, Int32Serie, StructSerie, DataType, Field, NestedSerie, Serie, Scalar, SerieRef};
+    use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
+    use std::sync::Arc;
+
+    // primitive cast (lossy narrowing yields null on overflow)
+    let ints = from_array("n", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef)?;
+    assert_eq!(ints.cast(&DataType::float(64))?.value_at(0), Scalar::Float(1.0));
+
+    // struct cast with a missing column filled
+    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
+    let rec: SerieRef = Arc::new(StructSerie::from_children("rec", vec![id])?);
+    let target = DataType::struct_(vec![
+        Field::new("id", DataType::int(64, true), true),    // widened
+        Field::new("extra", DataType::varchar(), true),     // missing -> filled null
+    ]);
+    let casted = rec.cast(&target)?;
+    assert_eq!(casted.as_nested().unwrap().child_by_name("extra").unwrap().value_at(0), Scalar::Null);
+    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Nested
@@ -352,7 +388,10 @@ Any column exposes `select("a.b.c")` to navigate into nested children, and
 `as_nested()` for the full child API (by index, or by name with a case-sensitive →
 case-insensitive fallback). A path segment may be **wrapped** (`[name]`, `"name"`,
 `'name'`, `` `name` ``) to match the literal name exactly (and to contain dots); a bare
-numeric segment is a child index.
+numeric segment is a child index. The path is **parsed first**, so `select` returns
+`Result<Option<…>>`: a malformed path (unclosed wrapper, empty segment) is an error,
+while a well-formed path that does not resolve — a missing child, or a leaf column — is
+`Ok(None)`.
 
 === "Rust"
 
@@ -366,13 +405,17 @@ numeric segment is a child index.
     let label: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("Label", vec![Some("x"), Some("y")]));
     let rec: SerieRef = Arc::new(StructSerie::from_children("rec", vec![inner, label]).unwrap());
 
-    assert_eq!(rec.select("inner.a").unwrap().value_at(1), Scalar::Int(2)); // path
-    assert_eq!(rec.select("label").unwrap().name(), "Label");               // case-insensitive
-    assert_eq!(rec.select("[inner].a").unwrap().value_at(0), Scalar::Int(1)); // wrapped exact
+    // select returns Result<Option<…>>: Ok(Some) found, Ok(None) unresolved, Err malformed
+    assert_eq!(rec.select("inner.a")?.unwrap().value_at(1), Scalar::Int(2)); // path
+    assert_eq!(rec.select("label")?.unwrap().name(), "Label");               // case-insensitive
+    assert_eq!(rec.select("[inner].a")?.unwrap().value_at(0), Scalar::Int(1)); // wrapped exact
+    assert!(rec.select("inner.zzz")?.is_none());                             // unresolved
+    assert!(rec.select("inner.").is_err());                                  // malformed path
 
     let nested = rec.as_nested().unwrap();
     assert_eq!(nested.child(0).unwrap().name(), "inner"); // by index
     assert_eq!(nested.children().len(), 2);
+    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Display
@@ -398,12 +441,14 @@ The primitive category is complete: integers (`int8`…`int64`, `uint8`…`uint6
 floats (`float16`/`32`/`64`), decimals (128/256), dates and intervals, boolean, UTF-8
 strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`); timestamps, times
 and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **nested**
-`StructSerie` / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` /
-`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`, `EnumSerie`,
-the `TemporalSerie` / `NestedSerie` traits, the `SliceSerie` graph and `display()` round
-it out. The **union** nested type, the **dictionary** and **view** backends, a
-**`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, cast / arithmetic operations,
-**benchmarks** and the **Python / Node bindings** are the next increments.
+`StructSerie` (which holds **lazy children** — `from_children` stays lazy until
+`materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` /
+`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`,
+`CategoricalSerie` (dictionary-encoded), the `TemporalSerie` / `NestedSerie` traits, the
+`SliceSerie` graph, `cast` / `resize` / `display`, and a per-datatype default
+(`Scalar::default_for`) round it out. The **union** nested type, the **view** backend, a
+**`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, arithmetic operations, **benchmarks**
+and the **Python / Node bindings** are the next increments.
 
 ## Next
 
