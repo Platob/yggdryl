@@ -75,6 +75,7 @@ mod bytes;
 mod categorical;
 mod display;
 mod error;
+mod frame;
 mod index;
 mod lazy;
 mod nested;
