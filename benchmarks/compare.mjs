@@ -10,7 +10,7 @@ import zlib from "node:zlib";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { HttpSession, Compression } = require("../bindings/node");
+const { HttpSession, Compression, DateTime } = require("../bindings/node");
 
 async function timedAsync(fn, iters) {
   for (let i = 0; i < Math.max(1, iters / 10); i++) await fn();
@@ -123,6 +123,44 @@ function compressionBench() {
   if (extra.length) table("Bonus — codecs with no built-in node:zlib equivalent", ["codec", "compress", "decompress", "ratio"], extra);
 }
 
+// yggdryl's calendar/time types vs the JS built-in Date (+ Intl). The timing table
+// is an honest side-by-side; the capability table is where yggdryl is more complete
+// and safer — Date is lenient (rolls invalid dates over), has no duration parser, no
+// per-zone offset API, and only millisecond precision.
+function temporalBench() {
+  const us = (t) => `${(t * 1e6).toFixed(3)} µs`;
+  const iso = "2024-07-01T12:00:00Z";
+  const rows = [];
+
+  let ygT = timed(() => DateTime.fromStr(iso), 50000);
+  let ndT = timed(() => new Date(iso), 50000);
+  rows.push(["parse ISO datetime", us(ygT), us(ndT), `${(ndT / ygT).toFixed(2)}×`]);
+
+  const ydt = DateTime.fromStr(iso);
+  const ndt = new Date(iso);
+  ygT = timed(() => ydt.toString(), 50000);
+  ndT = timed(() => ndt.toISOString(), 50000);
+  rows.push(["format datetime", us(ygT), us(ndT), `${(ndT / ygT).toFixed(2)}×`]);
+
+  // DST-aware conversion: yggdryl returns the wall-clock hour directly; the closest
+  // built-in is an Intl.DateTimeFormat in the target zone.
+  // Both sides extract the numeric NY hour so the comparison is like-for-like.
+  const fmtNY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false });
+  ygT = timed(() => ydt.toTimezone("America/New_York").hour, 50000);
+  ndT = timed(() => Number(fmtNY.format(ndt)), 50000);
+  rows.push(["convert UTC→New York (DST-aware)", us(ygT), us(ndT), `${(ndT / ygT).toFixed(2)}×`]);
+
+  table("Temporal — yggdryl vs JS Date / Intl (per-call, lower is better)", ["workload", "yggdryl", "Date/Intl", "vs Date"], rows);
+
+  table("Temporal — capability & safety (where yggdryl is more complete)", ["capability", "yggdryl", "JS Date"], [
+    ["parse a duration string (`1h30m`, `PT15M`)", "✓", "✗ (no parser)"],
+    ["sub-millisecond (nanosecond) precision", "✓", "✗ (ms only)"],
+    ["DST offset for an arbitrary IANA zone", "✓ (offsetSeconds)", "~ (Intl format only)"],
+    ["reject an invalid date (`2023-02-29`)", "✓ throws", "✗ rolls to Mar 1"],
+    ["flexible parse (`20240701`, `2024/07/01`)", "✓", "~ (impl-defined)"],
+  ]);
+}
+
 console.log("# yggdryl vs Node — same code, measured\n");
 console.log(
   "_The thin Node binding runs the bulk work (an HTTP download, a whole-buffer " +
@@ -132,3 +170,4 @@ console.log(
 );
 await httpBench();
 compressionBench();
+temporalBench();

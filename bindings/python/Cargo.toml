@@ -19,8 +19,12 @@ path = "src/lib.rs"
 # The consolidated core provides every value type (Version, MimeType/MediaType,
 # Uri/Url), the BytesIO / LocalPath byte-IO handles and the Compression codec —
 # with mmap, media, json and all compression backends enabled.
-yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features = ["mmap", "media", "json"] }
+yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features = ["mmap", "media", "json", "serde"] }
 yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
+# The schema layer (DataType / Field) with JSON (de)serialisation and Arrow conversion.
+yggdryl-schema = { path = "../../crates/yggdryl-schema", version = "0.1.0", features = ["json", "arrow"] }
+# The Arrow-backed columnar layer (Serie) — typed columns over every DataType.
+yggdryl-serie = { path = "../../crates/yggdryl-serie", version = "0.1.0" }
 # Converts the `serde_json::Value` from `Io::json()` into Python objects.
 serde_json = "1"
 

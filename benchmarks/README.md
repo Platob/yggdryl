@@ -132,11 +132,119 @@ stream through this same core.
 
 ---
 
+## Schema & time
+
+The `yggdryl-schema` `DataType` / `Field` layer and the core calendar/time module.
+The fast type checks are the point: routing a value by its type or reading its
+physical width is sub-nanosecond, so a batch/column metadata pass is essentially
+free.
+
+### Rust core — `cargo bench -p yggdryl-schema --bench schema --features arrow`
+
+| workload | result |
+| --- | --- |
+| `DataType::is_numeric` / `category` / `bit_size` (fast checks) | **0.8–1.2 ns** |
+| `DataType::can_cast_to` | **5.9 ns** |
+| `DataType::common_type` (int promotion) | **9.8 ns** |
+| `DataType::from_str` (`int64`) | 32 ns |
+| `DataType::from_str` (`timestamp[us, UTC]`) | 138 ns |
+| `DataType::from_str` (nested struct, 3 fields) | 0.93 µs |
+| `DataType::merge` (two 8-field structs, promote) | 1.1 µs |
+| `Field::to_arrow_schema` / `from_arrow_schema` (8 fields) | 1.3 µs / 0.61 µs |
+
+The conversion to/from `arrow-schema` is a cheap structural walk; the type checks
+and category lookup are branch-only (no allocation), so the metadata operations a
+dataframe runs per batch — type unification, cast feasibility, schema merge — stay
+in the nanosecond-to-microsecond range. The timezone engine resolves a DST offset
+from an embedded POSIX rule with no I/O or tz-database lookup.
+
+### From Python — temporal vs `datetime` / `zoneinfo`
+
+Unlike the bulk HTTP/compression paths, these are *tiny per-call* operations, so the
+FFI crossing dominates and the C-implemented stdlib `datetime` wins the raw timing.
+The value yggdryl adds is **coverage and safety**, not microseconds:
+
+| workload | yggdryl | datetime | vs datetime |
+| --- | --- | --- | --- |
+| parse ISO datetime | 6.7 µs | 0.14 µs | 0.02× |
+| format datetime | 1.1 µs | 0.80 µs | 0.70× |
+| convert UTC→New York (DST-aware) | 3.6 µs | 0.37 µs | 0.10× |
+
+| capability | yggdryl | stdlib datetime |
+| --- | --- | --- |
+| parse a duration string (`1h30m`, `PT15M`) | ✓ | ✗ (no parser) |
+| sub-microsecond (nanosecond) precision | ✓ | ✗ (µs only) |
+| DST conversion with no OS tz database | ✓ (embedded) | ✗ (needs tzdata) |
+| flexible parse (`2024/07/01` slash form) | ✓ | ✗ (dashes only) |
+| reject an invalid calendar date | ✓ raises | ✓ raises |
+
+### From Node — temporal vs `Date` / `Intl`
+
+Node's `Date` is the starkest case for "more complete and safer": it has no duration
+parser, only millisecond precision, no per-zone offset API, and silently rolls an
+invalid date over. yggdryl's formatting is already on par; the gap is the capability
+table.
+
+| workload | yggdryl | Date/Intl | vs Date |
+| --- | --- | --- | --- |
+| parse ISO datetime | 0.98 µs | 0.24 µs | 0.24× |
+| format datetime | 0.50 µs | 0.51 µs | 1.03× |
+| convert UTC→New York (DST-aware) | 3.0 µs | 0.71 µs | 0.24× |
+
+| capability | yggdryl | JS Date |
+| --- | --- | --- |
+| parse a duration string (`1h30m`, `PT15M`) | ✓ | ✗ (no parser) |
+| sub-millisecond (nanosecond) precision | ✓ | ✗ (ms only) |
+| DST offset for an arbitrary IANA zone | ✓ (`offsetSeconds`) | ~ (Intl format only) |
+| reject an invalid date (`2023-02-29`) | ✓ throws | ✗ rolls to Mar 1 |
+| flexible parse (`20240701`, `2024/07/01`) | ✓ | ~ (impl-defined) |
+
+(Numbers from `python3 benchmarks/compare.py` and `node benchmarks/compare.mjs`;
+hardware-dependent — the takeaway is the capability columns, not the microseconds.)
+
+---
+
+## Serie — the columnar layer
+
+The Arrow-backed `Serie` (a named, typed column) sits on the schema layer. As with
+schema, the **metadata pass is the point**: reading a column's shape and type is
+branch-only, so a per-batch / per-column scan over many columns is essentially free.
+
+### Rust core — `cargo bench -p yggdryl-serie --bench serie`
+
+| workload | result |
+| --- | --- |
+| metadata / fast checks — `num_rows` / `null_count` / `category` / `data_type` | **1.6–1.9 ns** |
+| typed value read — `Int32Serie::value` | **0.9 ns** |
+| lazy `RangeSerie::value_at` (computed, no storage) | **1.5 ns** |
+| type-erased `Serie::value_at` → `Scalar` (dynamic dispatch) | 57 ns |
+| factory dispatch — `from_array` (4096-row int32 / utf8) | 127 / 145 ns |
+| zero-copy `slice` (re-wrap a slice as a new column) | 226 ns |
+| nested `child_by_name` / `select` (node path) | 34 / 96 ns |
+| `resize` grow + fill (16 → 4096, nulls) | 1.1 µs |
+| `cast` int32 → int64 / float64 (4096 rows) | 1.4 / 1.2 µs |
+| dictionary decode — `CategoricalSerie::materialize` | 19 µs |
+| dictionary encode — `CategoricalSerie::from_serie` (4096 rows, 8 distinct) | 59 µs |
+
+Value access has **two tiers**: the typed `value` / `get` is sub-nanosecond — use it in
+hot loops — while the type-erased `value_at → Scalar` pays a dynamic match + downcast
+(~57 ns) for the convenience of not knowing the column's type ahead of time. A **lazy**
+column computes a value without touching memory, so a `RangeSerie` read matches a typed
+array read. `slice` is O(1) on the Arrow buffers; its cost is re-wrapping the slice as a
+new boxed column, not copying data. `cast` and `resize` are bulk Arrow-kernel passes
+(microseconds for 4 K rows). **Dictionary encoding** (`CategoricalSerie::from_serie`)
+builds a hash of the distinct values — the one genuinely heavy op, worth it only when a
+column actually repeats; decoding back to a flat column is ~3× cheaper.
+
+---
+
 ## Reproduce
 
 ```bash
 # Rust core (true ceiling, no FFI) — one bench file per theme
 cargo bench -p yggdryl-core --bench io
+cargo bench -p yggdryl-schema --bench schema --features arrow
+cargo bench -p yggdryl-serie --bench serie
 cargo bench -p yggdryl-core --bench compression --all-features
 cargo bench -p yggdryl-http --all-features
 

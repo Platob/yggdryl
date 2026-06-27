@@ -4,7 +4,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::Mapping;
+use std::collections::BTreeMap;
 
 /// Error returned when [`Version`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,9 +133,9 @@ impl Version {
         })
     }
 
-    /// Builds a [`Version`] from a [`Mapping`]. Recognised keys: `major`, `minor`
+    /// Builds a [`Version`] from a `BTreeMap`. Recognised keys: `major`, `minor`
     /// and `patch`; any omitted default to `0`.
-    pub fn from_mapping(fields: &Mapping) -> Result<Version, VersionError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Version, VersionError> {
         let component = |key: &str| -> Result<u64, VersionError> {
             match fields.get(key) {
                 Some(value) => value
@@ -165,10 +165,10 @@ impl Version {
         self.to_string()
     }
 
-    /// Renders to a component [`Mapping`] (`major` / `minor` / `patch`) — the
+    /// Renders to a component `BTreeMap` (`major` / `minor` / `patch`) — the
     /// inverse of [`from_mapping`](Version::from_mapping).
-    pub fn to_mapping(&self) -> Mapping {
-        Mapping::from([
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
             ("major".to_string(), self.major.to_string()),
             ("minor".to_string(), self.minor.to_string()),
             ("patch".to_string(), self.patch.to_string()),
@@ -245,7 +245,7 @@ mod tests {
     }
     #[test]
     fn version_from_mapping() {
-        let fields = Mapping::from([
+        let fields = BTreeMap::from([
             ("major".to_string(), "1".to_string()),
             ("minor".to_string(), "4".to_string()),
         ]);

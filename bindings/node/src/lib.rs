@@ -8,11 +8,19 @@
 
 mod bytesio;
 mod compression;
+mod datatype;
+mod date;
+mod datetime;
+mod duration;
+mod field;
 mod http;
 mod iostats;
 mod localpath;
 mod media;
 mod mime;
+mod serie;
+mod time;
+mod timezone;
 mod uri;
 mod url;
 mod version;
@@ -22,16 +30,36 @@ mod version;
 // to JS regardless, this just keeps plain `cargo` from flagging them unused.
 pub use http::{http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url};
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_core::Whence;
-use yggdryl_core::{percent_decode, percent_encode, Mapping};
+use yggdryl_core::{percent_decode, percent_encode};
 
-/// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
-pub(crate) fn to_mapping(fields: HashMap<String, String>) -> Mapping {
+/// Converts a JS object (`HashMap`) into the core ordered `BTreeMap`.
+pub(crate) fn to_mapping(fields: HashMap<String, String>) -> BTreeMap<String, String> {
     fields.into_iter().collect()
+}
+
+/// Converts any displayable error (core / schema / time) into a thrown JS `Error`.
+pub(crate) fn err<E: std::fmt::Display>(error: E) -> Error {
+    Error::from_reason(error.to_string())
+}
+
+/// Converts a JS `BigInt` to an `i128`, throwing if the value does not fit (rather
+/// than silently truncating, the way `get_i128().0` would). Shared by the
+/// nanosecond-valued constructors.
+pub(crate) fn bigint_i128(value: BigInt) -> Result<i128> {
+    let (signed, lossless) = value.get_i128();
+    if lossless {
+        Ok(signed)
+    } else {
+        Err(Error::from_reason(
+            "BigInt value does not fit in a signed 128-bit integer",
+        ))
+    }
 }
 
 /// Maps a `whence` integer (`0` start, `1` current, `2` end) to the core

@@ -3,7 +3,8 @@
 //! The consolidated foundations of the **yggdryl** project. One crate now holds
 //! what used to be five:
 //!
-//! - the [`Mapping`] / [`Params`] component maps, plus URL-safe percent-encoding
+//! - the [`Params`] query-parameter map (component maps are a plain
+//!   `BTreeMap<String, String>`), plus URL-safe percent-encoding
 //!   ([`percent_encode`] / [`percent_decode`]) and the component helpers (each
 //!   value type pairs its `from_str` / `from_mapping` parsers with inherent
 //!   `to_str` / `to_mapping` renderers);
@@ -31,6 +32,7 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod charset;
 mod encoding;
 mod mapping;
 mod version;
@@ -38,18 +40,23 @@ mod version;
 mod media;
 mod url;
 
+mod time;
+
 mod compression;
 mod io;
 
+pub use charset::{Charset, CharsetError};
 pub use encoding::{
     encode_component, percent_decode, percent_encode, validate_percent_encoding, EncodingError,
 };
-pub use mapping::{Mapping, Params};
+pub use mapping::Params;
 pub use version::{Version, VersionError};
 
 pub use media::{Category, MediaError, MediaType, MimeType, Signature};
 
 pub use url::{JoinInput, Uri, UriError, Url, UrlError};
+
+pub use time::{Date, DateTime, Duration, Temporal, Time, TimeError, TimeUnit, Timezone};
 
 pub use io::{
     copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,

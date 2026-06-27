@@ -246,9 +246,10 @@ A `Version` also converts to and from a component map (`major` / `minor` /
 === "Rust"
 
     ```rust
-    use yggdryl_core::{Mapping, Version};
+    use std::collections::BTreeMap;
+    use yggdryl_core::Version;
 
-    let fields = Mapping::from([("major".into(), "1".into()), ("minor".into(), "4".into())]);
+    let fields = BTreeMap::from([("major".into(), "1".into()), ("minor".into(), "4".into())]);
     let v = Version::from_mapping(&fields)?;   // 1.4.0
     let back = v.to_mapping();
     ```

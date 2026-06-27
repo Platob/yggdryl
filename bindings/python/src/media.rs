@@ -2,7 +2,8 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, MediaType as CoreMediaType};
+use std::collections::BTreeMap;
+use yggdryl_core::MediaType as CoreMediaType;
 
 use crate::mime::MimeType;
 use crate::{hash_str, media_err};
@@ -43,7 +44,7 @@ impl MediaType {
 
     /// Build the stack from a dict; reads the ``path`` key (or ``str``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreMediaType::from_mapping(&fields)
             .map(|inner| MediaType { inner })
             .map_err(media_err)
@@ -77,7 +78,7 @@ impl MediaType {
     }
 
     /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

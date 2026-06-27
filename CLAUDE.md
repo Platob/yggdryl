@@ -6,18 +6,33 @@ handling, and doc style. Consistency across the Rust core and the two bindings i
 the top priority — a reader should not be able to tell which type they are
 looking at from the shape of the code.
 
+**Everything must be serializable and hashable.** Do your best to make every value
+type round-trip through *all* of: a canonical string (`from_str`/`to_str`), a
+component map (`from_mapping`/`to_mapping`), JSON (`serde`, plus `to_json`/`from_json`
+where a crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and
+to derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the
+bindings this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a
+static `fromJSON()` in Node. The only exceptions are live/stream resources (`Io`
+handles, HTTP bodies, sessions). When a field cannot be part of a value's identity
+(e.g. a `Field`'s navigational `parent`, which would create cycles), exclude it
+from `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
+
 ## Architecture
 
-The workspace is **two crates**: `yggdryl-core` (all the data types + byte IO +
-compression) and `yggdryl-http` (the network client). `yggdryl-core` is **one file
-per type** — each concern is a module (or module directory) under
+The workspace is **four crates**: `yggdryl-core` (all the data types + byte IO +
+compression + the self-contained calendar/time module), `yggdryl-schema` (the
+Arrow-compatible `DataType` / `Field` schema layer), `yggdryl-serie` (the Arrow-backed
+columnar `Serie` layer built on the schema) and `yggdryl-http` (the network
+client). `yggdryl-core` is **one file per type** — each concern is a module (or
+module directory) under
 `crates/yggdryl-core/src/`, with `lib.rs` as glue (a shared `log_event!` macro,
 `mod` declarations, and `pub use` re-exports of every type at the crate root, so
 `yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
 its concern wholly — do not scatter a concern's logic across modules:
 
-- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Mapping` /
-  `Params` component maps and percent-encoding. Each value type pairs its own
+- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Params`
+  query-parameter map and percent-encoding (component maps are a plain
+  `BTreeMap<String, String>`, not a type alias). Each value type pairs its own
   inherent `from_str` / `from_mapping` parsers with inherent `to_str` /
   `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.
@@ -43,6 +58,26 @@ its concern wholly — do not scatter a concern's logic across modules:
   Snappy / `None` identity) that **streams** compress/decompress over any `Io`
   handle, plus the `CompressIo` extension trait. **All compression logic lives
   here** — do not pull codec SDKs into the `io` module.
+- `time/` (`mod` + `date.rs` + `time.rs` + `datetime.rs` + `duration.rs` +
+  `timezone.rs`) — a **self-contained calendar/time foundation** (std has no civil
+  date/time types): `Date` (days since epoch), `Time` (ns of day), `DateTime` (a UTC
+  instant + optional display `Timezone`), `Duration` (signed ns) and the shared
+  `TimeUnit`. `Timezone` carries an **embedded POSIX-TZ DST engine** + a broad IANA
+  name table (`ZONE_TABLE`), so zone/DST conversions need **no external tz database**
+  (current rules only; historical transitions are not modelled). Civil math uses the
+  exact Hinnant algorithms in `mod.rs`. The point-in-time types do **calendar
+  arithmetic** (`add`/`sub` a `Duration`, `duration_since`, `truncate` to a `Duration`
+  boundary, with `std::ops` `+`/`-` and `Duration` `*`/`/` operators), an **empty
+  string/buffer parses to the zero default** (epoch / midnight / `0`), and the
+  `Temporal` trait is **bidirectional** — `to_datetime`/`to_date`/`to_time` plus
+  `from_datetime` (required) and a `from_temporal<T>` default that redirects through
+  `to_datetime`. **All calendar/time logic lives here** — add a zone by appending one
+  `(name, posix)` row to `ZONE_TABLE`.
+- `crates/yggdryl-schema/` — the Arrow-compatible schema layer. See its section
+  below. The `arrow-schema` SDK is a dependency of this crate only.
+- `crates/yggdryl-serie/` — the Arrow-backed columnar layer built on the schema. See
+  its section below. The `arrow-array` SDK is a **required** dependency of this crate
+  only (every `Serie` is array-backed).
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
   (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
   `yggdryl-core` `Io` abstraction**. **All HTTP logic lives here** — the transport
@@ -165,6 +200,191 @@ default `miniz_oxide`): near-C-zlib throughput (~3x faster compress, matching de
 with **no C compiler / cmake build dependency**, so the wheels / npm builds stay
 pure-Rust — keep `default-features = false` + `features = ["zlib-rs"]` on the `flate2`
 dep. When you add a codec, surface it in *both* bindings.
+
+### `yggdryl-schema` — Arrow-compatible `DataType` / `Field`
+
+A compact schema layer built to back a future dataframe, **centred on two types**
+(`DataType` + `Field`) and split one-file-per-concern under
+`crates/yggdryl-schema/src/`:
+
+- `charset.rs` — the `Charset` of a string (`Utf8` default / `Utf16` / `Utf32` /
+  `Ascii` / `Latin1`).
+- `datatype/` (`mod` + `primitive.rs` + `logical.rs` + `nested.rs` + `coerce.rs`) —
+  the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
+  `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
+  spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
+  / `is_view` / `is_fixed_size` / `physical_type` — the last returns a logical type's
+  storage primitive, identity for the rest — plus the `Numeric` trait mutualising the
+  numeric types' `numeric_bits` + common `signed` accessor). **Unlike Arrow, the model
+  is parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
+  8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`),
+  `Float{bits}` (likewise **any** width — `float24` parses; `floating()` defaults to
+  `float64`), `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
+  is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
+  max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed
+  `Bson`** logical types, the temporal types reuse the core `TimeUnit`/`Timezone`
+  (`Date{large}` / `Time{unit}` / `Timestamp{unit,tz}` / `Duration{unit}` /
+  `Interval{unit}`), and the nested `List{item,large,view,size}` / `Struct(Vec<Field>)`
+  / `Map{key,value,sorted}` / `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`,
+  plus the `Any` wildcard. The category split lives across the three sibling files
+  (`primitive`/`logical`/`nested` hold that category's checks + constructors);
+  `coerce.rs` holds the `MergeStrategy`, `can_cast_to`, `common_type` (the promotion
+  lattice) and `merge`. **All DataType logic lives here.**
+- `field.rs` — the `Field` graph node (name + `DataType` + nullable + metadata + an
+  optional, identity-excluded `parent`). Carries the metadata getters/setters
+  (`comment` is the named convenience), the case-insensitive / index child accessors,
+  `with_linked_children` / `root` graph wiring, and `merge`. A struct-typed `Field`
+  **is** a schema.
+- `arrow.rs` (feature `arrow`) — fast, near-total conversion to/from `arrow-schema`'s
+  `DataType` / `Field` / `Schema` (`to_arrow`/`from_arrow`, `Field::to_arrow_schema`
+  / `from_arrow_schema`). `Any` has no Arrow equivalent and errors; a non-UTF-8
+  `Charset` maps to UTF-8 (Arrow has no charset). **All Arrow conversion lives here.**
+
+Features: `serde` (structural, lossless — DataType/Field derive, the enums derive),
+`json` (`to_json`/`from_json`, implies `serde`), `arrow`, `log`. The temporal types
+come from `yggdryl-core`. **Anything added here must be surfaced in both bindings.**
+
+### `yggdryl-serie` — Arrow-backed columnar `Serie`
+
+The layer between the schema types and a future dataframe: a `Serie` is a single
+named, typed **column** — a [`Field`](schema) paired with an Apache **Arrow** array,
+so it carries both its logical type and its physical storage. Built **on top of**
+`yggdryl-schema` (with its `arrow` feature) and `arrow-array` (a **required** core
+dependency — every serie is array-backed), the dependency points one way (serie builds
+on schema, never the reverse). Split one-file-per-type under `crates/yggdryl-serie/src/`,
+mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatible-datatype--field):
+
+- `error.rs` — the `SerieError` / `SerieResult` (with `From<SchemaError>` and
+  `From<arrow_schema::ArrowError>`; actionable messages).
+- `serie.rs` — the **two traits** and the **redirect factory**. `Serie` is the
+  object-safe base (untyped column ops: `field` / `array` (the backing `ArrayRef`) /
+  `len` / `num_rows` / `null_count` / `is_null` / `is_valid` / `as_any` for downcast,
+  plus the convenient field reflections `name` / `dtype` (alias of `data_type`) /
+  `get_metadata(key)` (a **narrow, safe** accessor — the whole metadata map stays
+  encapsulated in the field, no wide `metadata()` getter), `category`, type-erased value
+  access by index (`value_at` → `Scalar`) and by range (`slice` / `slice_range`,
+  zero-copy), the navigational `parent` graph link, `is_materialized` and `materialize`
+  (realise a lazy/child column into an independent in-memory one), all defaulting off the
+  field); `TypedSerie<T>` adds typed value access (`get` / `value` / `iter` / `to_vec`)
+  over a column's native value type. `from_arrow(field, array)` / `from_array(name,
+  array)` **redirect** an Arrow array to the right concrete series, returning a boxed
+  `SerieRef = Arc<dyn Serie>`. `from_arrow` checks the field's `DataType` maps to the
+  array's Arrow type then calls the crate-internal `dispatch`; `from_array` derives the
+  field from the array and calls `dispatch` **directly** (skipping the equality check,
+  which would trip on the schema's documented Arrow normalisations — e.g. a map's
+  `key`/`value` entry names vs Arrow's `keys`/`values`). The recursive nested builders
+  call `dispatch` too. **All dispatch logic lives here.** Base also provides
+  `resize(new_len)` (slice when shrinking; grow with nulls if nullable else the type
+  default, via `build.rs`), `cast(dtype)` / `cast_field(field)` (Arrow's cast kernel for
+  scalars — lossy/narrowing allowed; **struct→struct** matches children by name, casts
+  each, fills missing target columns and drops extras), `display(&DisplayOptions)` (see
+  `display.rs`), and the nested hooks `as_nested()` / `select(path)` (one-line node-path
+  navigation returning `SerieResult<Option<SerieRef>>`, see `path.rs`).
+  (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
+  recovered via `as_any().downcast_ref`.)
+- `display.rs` — `DisplayOptions` (`max_rows` / `header` / `width` / `null` / `index`)
+  and the `render` routine behind `Serie::display`, the building block for a future
+  `Frame`'s table rendering. **All display logic lives here.**
+- `path.rs` — the `a.b.c` child-path parser (`parse_path` → `SerieResult<Vec<Segment>>`,
+  `Segment` = `Index` / `Exact` / `Loose`) honouring the wrapper chars (`[]` / `"` / `'`
+  / `` ` ``) for an exact, dot-containing name. **Parsing validates** (per the no-lenient
+  rule): an unclosed wrapper or an empty segment (leading / trailing / doubled `.`) is a
+  `SerieError::Path`. Behind `NestedSerie::child_path` / `Serie::select` (both
+  `SerieResult<Option<SerieRef>>` — `Err` = malformed, `Ok(None)` = unresolved). **All
+  path-parsing logic lives here.**
+- `build.rs` — the **fill-array** builders behind `Serie::resize`: `null_array` (a run of
+  nulls of an exact Arrow type) and `default_array` (a run of a type's **default** — every
+  datatype has one: `false` / `0` / `0.0` / `""` / empty bytes / a struct of defaults;
+  a struct fills each child by **its** nullability). **All default/fill-array logic lives
+  here.**
+- `bytes.rs` — **Arrow-IPC byte serialization**: `Serie::to_bytes` (a base-trait default
+  that writes the column as a one-field IPC **stream**) and the `from_bytes` free fn (reads
+  it back via the factory), a **lossless** round-trip of type / name / nulls / values
+  **including nested** — the canonical bytes the bindings' pickle / `toJSON` use.
+  `arrow-ipc` is `default-features = false` (no lz4/zstd C codecs, so the build stays
+  pure-Rust). **All column-bytes logic lives here.**
+- `scalar.rs` — the type-erased `Scalar` (a single value read by index: integers /
+  decimals-128 / temporal-physicals widen to `Int(i128)`, floats to `Float(f64)`,
+  plus `Boolean` / `Utf8` / `Binary`, and an `Other(String)` for the exotic physicals —
+  256-bit decimals, interval structs — so no value is dropped), `Scalar::default_for(dtype)`
+  (the per-datatype default value) and the `scalar_at` array-cell extractor. **All scalar
+  logic lives here.**
+- `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
+  **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
+  generic backing every fixed-width scalar (integers, floats, decimals, **and** the
+  date/interval physical types — **timestamps/times/durations unify into the temporal
+  series**, not here); `BooleanSerie`, `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`,
+  plus a zero-copy `str_value`) and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus
+  `bytes_value`) cover the rest. Named aliases (`mod.rs`: `Int32Serie`, `Float64Serie`,
+  `Date32Serie`, …) pin the common widths. Each concrete stores its typed array +
+  `Field`, overrides the length/null methods for zero-overhead, and `array()` returns a
+  cheap `Arc` clone.
+- `temporal/` (`mod` + `datetime.rs` + `time.rs` + `duration.rs`) — the **temporal**
+  series. `TemporalSerie` is the shared trait (a uniform `datetime_at`, with derived
+  `date_at` / `time_at`, all in core `DateTime`/`Date`/`Time`). `DatetimeSerie` /
+  `TimeSerie` / `DurationSerie` are the **unified** timestamp / time / duration columns:
+  each backs an Arrow array of **any** `TimeUnit` (timestamps also carry an optional
+  `Timezone`), reads the unit/zone from its field, and presents values as the core
+  `DateTime` / `Time` / `Duration` — replacing the per-unit aliases. Each has a
+  `from_values(name, iter<Option<core-value>>)` one-line constructor (nanosecond,
+  tz-naive). `DatetimeSerie` / `TimeSerie` implement `TemporalSerie`; `DurationSerie` is a
+  span, so it does not. **All `TemporalSerie` / unified-temporal logic lives here.**
+- `nested/` (`mod` + `struct_serie.rs` + `list_serie.rs` + `map_serie.rs`) — the
+  **nested** series. `NestedSerie` is the shared trait: `child_count` / `child(index)` /
+  `children` / `child_named` (exact) / `child_named_ci` / `child_by_name` (cs→ci) /
+  `child_path` (`a.b.c`, deriving name lookups from each child's `name`). `child_path`
+  **parses the path first** (`path.rs`), so a malformed path (unclosed wrapper, empty
+  segment) is an `Err` while a well-formed but unresolved path is `Ok(None)` — hence both
+  it and the base `Serie::select` return `SerieResult<Option<SerieRef>>`. `StructSerie`
+  holds a child `Serie` **per field plus an optional cached `StructArray`**: a
+  `from_children(name, cols)` one-line constructor leaves children **lazy** (`array:
+  None`, equal-length-checked) and assembles the array on demand, while
+  `is_materialized()` reflects the cache and `materialize()` realises every child and
+  builds the array with a zero-copy buffer transfer. `ListSerie<O>` (a flattened values
+  child + a zero-copy per-row `value_slice`) and `MapSerie` (flattened key/value
+  children) build their children **recursively** via `dispatch`, so arbitrarily deep
+  nesting resolves uniformly; each `value_at` renders a readable `{…}` / `[…]`, and each
+  overrides `as_nested()`. **All nested-series logic lives here.**
+- `lazy/` (`mod` + `range.rs` + `daterange.rs` + `datetimerange.rs` + `timerange.rs`) —
+  the **lazy / computed** series, not resident in memory: they store a compact
+  description and compute each value on demand (`is_materialized()` → `false`),
+  `array()`/`materialize()` realising a real column (a `slice` of any stays lazy).
+  `RangeSerie` is a `uint64` arithmetic range (`start + i*step`); `DateRangeSerie` a
+  day-resolution `Date32` range; `DateTimeRangeSerie` a nanosecond `Timestamp` range
+  (tz-naive); `TimeRangeSerie` a `Time64` time-of-day range (wraps within the day). The
+  three temporal ranges implement `TemporalSerie`. **All lazy-series logic lives here.**
+- `index.rs` — `IndexSerie`, a row index (a `Serie` of labels with `at` (label at a row)
+  / `position` (row of a label) / `contains` lookups), **defaulting to a lazy `uint64`
+  `RangeSerie`** (`is_range()` enables the O(1) lookups); wraps any column via
+  `from_serie` / `from_array`.
+- `categorical.rs` — `CategoricalSerie`, a **dictionary-encoded** view for repeated
+  values: it casts the column to an Arrow `Dictionary(Int32, value)` (distinct values +
+  per-row codes), exposing `category_count` / `categories` / `code_at` / `category(code)`.
+  It is **lazy** (`is_materialized()` → `false`); `array()` / `materialize()` decode it
+  back to a flat column. **All categorical/dictionary logic lives here.** (`arrow-cast`
+  powers the encode/decode, shared with `Serie::cast`.)
+- `slice.rs` — `SliceSerie`, a zero-copy **child** view that records its `parent`, and
+  the `child` / `child_range` constructors that build the parent→child graph;
+  `materialize` detaches a child into an independent column. **All slice-graph logic
+  lives here.**
+- **Surfaced in the bindings**: the column API is exposed as a single `Serie` class in
+  **both** Python (`bindings/python/src/serie.rs`) and Node (`bindings/node/src/serie.rs`)
+  — construct from a list (type inferred, or an explicit `dtype` cast) plus `range` /
+  `index` / `struct` / `binary` factories; metadata, value access (`value_at` / `to_list`),
+  `slice` / `head` / `resize`, `cast` / `categorical` / `materialize`, nested `select` /
+  `child` / `children`, `display`, and lossless `to_bytes` / `from_bytes` (pickle in
+  Python, `toJSON` / `fromJSON` over IPC-hex in Node). Per the per-language idiom rule,
+  Python infers `int64` for whole numbers while Node (JS has one number type) infers
+  `int64` only when every value is integral, else `float64`; Node builds byte columns via
+  the `Serie.binary` factory.
+- **Benchmarked**: `crates/yggdryl-serie/benches/serie.rs` (`cargo bench -p yggdryl-serie
+  --bench serie`), with results in `benchmarks/README.md` and the docs Benchmarks page.
+- **Still to build** (next increments): the **union** nested type, the **dictionary** /
+  **view** backends, a **`ChunkedSerie`** mirroring Arrow's `ChunkedArray`, and
+  arithmetic operations.
+
+Features: `log` only so far (`arrow-array` / `arrow-ipc` are required, not optional).
+**All serie logic lives here; `arrow-array` stays a dependency of this crate only.**
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
@@ -493,6 +713,10 @@ documentation map 1:1 and a reader can find the doc for any type by its module:
 | `yggdryl-core/src/url/` | `docs/core/url.md` |
 | `yggdryl-core/src/io/` | `docs/core/io.md` |
 | `yggdryl-core/src/compression/` | `docs/core/compression.md` |
+| `yggdryl-core/src/time/` | `docs/core/time.md` |
+| `yggdryl-schema/src/datatype/` | `docs/schema/datatype.md` |
+| `yggdryl-schema/src/field.rs` | `docs/schema/field.md` |
+| `yggdryl-serie/src/serie.rs` | `docs/serie/serie.md` |
 | `yggdryl-http/src/session.rs` | `docs/http/session.md` |
 | `yggdryl-http/src/{request,response}.rs` | `docs/http/request-response.md` |
 | `yggdryl-http/src/stream.rs` | `docs/http/stream.md` |

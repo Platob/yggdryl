@@ -3,7 +3,8 @@
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, Params, Url as CoreUrl};
+use std::collections::BTreeMap;
+use yggdryl_core::{Params, Url as CoreUrl};
 
 use crate::media::MediaType;
 use crate::mime::MimeType;
@@ -49,7 +50,7 @@ impl Url {
     /// required; ``username``, ``password``, ``port``, ``path``, ``query``,
     /// ``fragment``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreUrl::from_mapping(&fields)
             .map(|inner| Url { inner })
             .map_err(url_err)
@@ -355,7 +356,7 @@ impl Url {
     }
 
     /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

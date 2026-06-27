@@ -3,7 +3,8 @@
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, Version as CoreVersion};
+use std::collections::BTreeMap;
+use yggdryl_core::Version as CoreVersion;
 
 use crate::{hash_str, version_err};
 
@@ -37,7 +38,7 @@ impl Version {
     /// Build a :class:`Version` from a dict of components (``major``, ``minor``,
     /// ``patch``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreVersion::from_mapping(&fields)
             .map(|inner| Version { inner })
             .map_err(version_err)
@@ -73,7 +74,7 @@ impl Version {
     }
 
     /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

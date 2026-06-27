@@ -1,13 +1,14 @@
 //! The [`MimeType`] enum, its [`Signature`] magic-byte type, and the mutable
 //! global registry that backs extension/magic lookups.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{OnceLock, RwLock};
 
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::media::MediaType;
-use crate::{Mapping, MediaError};
+use crate::MediaError;
 
 /// The broad role a [`MimeType`] plays, independent of its concrete `type/subtype`.
 ///
@@ -1154,9 +1155,9 @@ impl MimeType {
         Ok(MimeType::from_mime(&essence))
     }
 
-    /// Builds a [`MimeType`] from a [`Mapping`]. Recognised keys: `type` and
+    /// Builds a [`MimeType`] from a `BTreeMap`. Recognised keys: `type` and
     /// `subtype`; both must be present and valid tokens.
-    pub fn from_mapping(fields: &Mapping) -> Result<MimeType, MediaError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<MimeType, MediaError> {
         let type_ = fields.get("type").map_or("", String::as_str);
         let subtype = fields.get("subtype").map_or("", String::as_str);
         if !is_valid_mime(&format!("{type_}/{subtype}")) {
@@ -1181,8 +1182,8 @@ impl MimeType {
     }
 
     /// The inverse of `from_mapping`: keys `type` and `subtype`.
-    pub fn to_mapping(&self) -> Mapping {
-        Mapping::from([
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
             ("type".to_string(), self.type_().to_string()),
             ("subtype".to_string(), self.subtype().to_string()),
         ])

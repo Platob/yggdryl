@@ -1,12 +1,13 @@
 //! The [`MediaType`] stack — an ordered `Vec<MimeType>` describing a layered
 //! file, e.g. `data.csv.gz` → `[Csv, Gzip]`.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::media::mime::resolve_name;
-use crate::{Category, Mapping, MediaError, MimeType};
+use crate::{Category, MediaError, MimeType};
 
 /// An ordered stack of [`MimeType`]s describing a layered file, innermost content
 /// first. Parsing `data.csv.gz` yields `MediaType([MimeType::Csv, MimeType::Gzip])`.
@@ -169,10 +170,10 @@ impl MediaType {
         Ok(MediaType::from_path(input))
     }
 
-    /// Builds the stack from a [`Mapping`]; reads the `types` key, a comma-
+    /// Builds the stack from a `BTreeMap`; reads the `types` key, a comma-
     /// separated list of MIME strings (the inverse of
     /// [`to_mapping`](MediaType::to_mapping)).
-    pub fn from_mapping(fields: &Mapping) -> Result<MediaType, MediaError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<MediaType, MediaError> {
         let types = fields
             .get("types")
             .map(|list| {
@@ -207,14 +208,14 @@ impl MediaType {
 
     /// The inverse of [`from_mapping`](MediaType::from_mapping): a single `types`
     /// key holding the comma-separated MIME strings (e.g. `"text/csv,application/gzip"`).
-    pub fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
         let types = self
             .types
             .iter()
             .map(MimeType::mime)
             .collect::<Vec<_>>()
             .join(",");
-        Mapping::from([("types".to_string(), types)])
+        BTreeMap::from([("types".to_string(), types)])
     }
 }
 
