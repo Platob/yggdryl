@@ -48,10 +48,13 @@ impl DateTimeRangeSerie {
     }
 
     /// The instant at `index` in nanoseconds since the epoch (no bounds check).
-    /// Saturating, so an out-of-range result clamps rather than wrapping.
+    /// Saturating **and clamped to the `i64` range** — the physical storage of a
+    /// nanosecond `Timestamp` — so the lazy value, `value_at` and the materialised
+    /// array always agree (no wrapping i128→i64 truncation).
     fn at_nanos(&self, index: usize) -> i128 {
         self.start_nanos
             .saturating_add((index as i128).saturating_mul(self.step_nanos))
+            .clamp(i64::MIN as i128, i64::MAX as i128)
     }
 
     /// The [`DateTime`] at `index`, or `None` when out of bounds.

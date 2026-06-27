@@ -9,7 +9,7 @@ use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
     Float32Array, Float64Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
     ListArray, NullArray, StringArray, StructArray, Time32SecondArray, TimestampMicrosecondArray,
-    TimestampNanosecondArray, TimestampSecondArray, UInt32Array,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt32Array,
 };
 use arrow_schema::{DataType as ADataType, Field as AField};
 use yggdryl_schema::{DataType, Field, TypeCategory};
@@ -755,4 +755,113 @@ fn enum_serie_maps_uniques_codes_and_rows() {
     // it is a Serie delegating to the backing column
     assert_eq!(enums.len(), 5);
     assert_eq!(enums.null_count(), 1);
+}
+
+#[test]
+fn datetime_serie_units_zone_and_get() {
+    use yggdryl_core::TimeUnit;
+
+    // millisecond unit
+    let ms = from_array(
+        "ts",
+        Arc::new(TimestampMillisecondArray::from(vec![1_500])) as ArrayRef,
+    )
+    .unwrap();
+    let d = ms.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert_eq!(d.unit(), TimeUnit::Millisecond);
+    assert_eq!(d.datetime_at(0).unwrap().epoch_nanos(), 1_500_000_000);
+    assert_eq!(d.value_at(9), Scalar::Null); // out of bounds
+
+    // zoned (timezone-aware) timestamp
+    let zoned = TimestampMicrosecondArray::from(vec![0i64, 1_000_000]).with_timezone("UTC");
+    let serie = from_array("ts", Arc::new(zoned) as ArrayRef).unwrap();
+    let dz = serie.as_any().downcast_ref::<DatetimeSerie>().unwrap();
+    assert!(dz.timezone().is_some());
+    assert_eq!(dz.get(1).unwrap().epoch_seconds(), 1); // TypedSerie<DateTime>::get
+}
+
+#[test]
+fn datetime_range_overflow_and_boundaries() {
+    use yggdryl_core::{DateTime, Duration};
+
+    // saturating: values clamp at the i64 nanosecond bound instead of wrapping
+    let near_max = DateTime::from_epoch_nanos(i64::MAX as i128 - 5, None);
+    let r = DateTimeRangeSerie::new("ts", &near_max, &Duration::from_nanos(100), 3);
+    assert_eq!(r.array().len(), 3); // must not panic
+    assert_eq!(r.value_at(2), Scalar::Int(i64::MAX as i128));
+
+    // empty + single-element
+    let zero = DateTimeRangeSerie::new("t", &near_max, &Duration::from_secs(1), 0);
+    assert!(zero.is_empty());
+    let one = DateTimeRangeSerie::new(
+        "t",
+        &DateTime::from_epoch_seconds(5, None),
+        &Duration::from_secs(1),
+        1,
+    );
+    assert_eq!(one.len(), 1);
+    assert_eq!(one.datetime_at(0).unwrap().epoch_seconds(), 5);
+}
+
+#[test]
+fn time_range_materialize_iter_and_empty() {
+    use yggdryl_core::{Duration, Time};
+
+    let r = TimeRangeSerie::new(
+        "t",
+        Time::from_hms(0, 0, 0).unwrap(),
+        Duration::from_secs(3600),
+        3,
+    );
+    let mat = r.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.len(), 3);
+
+    let times: Vec<_> = r.iter().collect();
+    assert_eq!(times[1], Some(Time::from_hms(1, 0, 0).unwrap()));
+
+    let empty = TimeRangeSerie::new(
+        "t",
+        Time::from_hms(0, 0, 0).unwrap(),
+        Duration::from_secs(1),
+        0,
+    );
+    assert!(empty.is_empty());
+    assert_eq!(empty.array().len(), 0);
+}
+
+#[test]
+fn date_range_materialize_timeat_and_tovec() {
+    use yggdryl_core::Time;
+
+    let r = DateRangeSerie::new("d", 100, 2, 3); // days 100, 102, 104
+    let mat = r.materialize();
+    assert!(mat.is_materialized());
+    let darr = mat.as_any().downcast_ref::<Date32Serie>().unwrap();
+    assert_eq!(darr.value(2), 104);
+
+    assert_eq!(r.time_at(0), Some(Time::from_hms(0, 0, 0).unwrap())); // midnight
+    assert_eq!(r.to_vec(), vec![Some(100), Some(102), Some(104)]);
+}
+
+#[test]
+fn enum_serie_integer_and_all_null() {
+    let ints = Int32Serie::from_values("c", vec![Some(1), Some(2), Some(1), None]);
+    let e = EnumSerie::from_serie(Arc::new(ints));
+    assert_eq!(e.unique_count(), 2);
+    assert_eq!(e.code(&Scalar::Int(2)), Some(1));
+    assert_eq!(e.first_row(&Scalar::Int(1)), Some(0));
+    assert_eq!(e.code_at(3), None); // null
+
+    let nulls = Int32Serie::from_values("c", vec![Option::<i32>::None, None]);
+    let e2 = EnumSerie::from_serie(Arc::new(nulls));
+    assert_eq!(e2.unique_count(), 0); // null is not a category
+    assert_eq!(e2.len(), 2);
+}
+
+#[test]
+fn lazy_temporal_field_accessors() {
+    let index = IndexSerie::range(3);
+    assert_eq!(index.dtype(), &DataType::int(64, false));
+    assert_eq!(index.get_metadata("missing"), None);
 }

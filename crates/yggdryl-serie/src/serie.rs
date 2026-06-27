@@ -111,7 +111,7 @@ pub trait Serie: fmt::Debug + Send + Sync {
     }
 
     /// The serie this one was **derived from** (its slice/child source), or `None` for
-    /// a root column. Navigational only — a [child](child) slice records its parent so
+    /// a root column. Navigational only — a [child](crate::child) slice records its parent so
     /// the graph can be walked upward; [`materialize`](Serie::materialize) detaches it.
     fn parent(&self) -> Option<&SerieRef> {
         None
@@ -143,7 +143,7 @@ pub trait Serie: fmt::Debug + Send + Sync {
     }
 
     /// A zero-copy [`slice`](arrow_array::Array::slice) of `length` values starting at
-    /// `offset`, as a new column of the same type. (Use [`child`](child) to keep a link
+    /// `offset`, as a new column of the same type. (Use [`child`](crate::child) to keep a link
     /// back to this serie.)
     fn slice(&self, offset: usize, length: usize) -> SerieRef {
         from_arrow(self.field().clone(), self.array().slice(offset, length))

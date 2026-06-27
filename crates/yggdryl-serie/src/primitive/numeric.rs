@@ -1,8 +1,9 @@
 //! [`PrimitiveSerie<A>`] — the column backing every fixed-width Arrow scalar: the
-//! integers, floats, decimals and the temporal physical types. Parameterised by the
-//! Arrow [`ArrowPrimitiveType`](arrow_array::types::ArrowPrimitiveType) marker, so one
-//! type covers them all; named [aliases](crate) (`Int32Serie`, `Float64Serie`,
-//! `TimestampMicrosecondSerie`, …) pin the common ones.
+//! integers, floats, decimals and the date/interval physical types (timestamps, times
+//! and durations have their own unified series). Parameterised by the Arrow
+//! [`ArrowPrimitiveType`](arrow_array::types::ArrowPrimitiveType) marker, so one type
+//! covers them all; named [aliases](crate) (`Int32Serie`, `Float64Serie`, `Date32Serie`,
+//! …) pin the common ones.
 
 use std::any::Any;
 use std::fmt;

@@ -8,10 +8,11 @@
 //!
 //! The design mirrors the schema crate's three [categories](yggdryl_schema::TypeCategory):
 //!
-//! - [`Serie`] — the object-safe **base** trait every column implements: accessors to
-//!   the [`field`](Serie::field) and the backing [`array`](Serie::array); the
-//!   [`len`](Serie::len) / [`num_rows`](Serie::num_rows) / [`null_count`](Serie::null_count)
-//!   / [`metadata`](Serie::metadata) bookkeeping; type-erased value access by index
+//! - [`Serie`] — the object-safe **base** trait every column implements: convenience
+//!   field reflections ([`name`](Serie::name) / [`dtype`](Serie::dtype) /
+//!   [`get_metadata`](Serie::get_metadata)); the backing [`field`](Serie::field) /
+//!   [`array`](Serie::array); the [`len`](Serie::len) / [`num_rows`](Serie::num_rows) /
+//!   [`null_count`](Serie::null_count) bookkeeping; type-erased value access by index
 //!   ([`value_at`](Serie::value_at) → [`Scalar`]) and by range
 //!   ([`slice`](Serie::slice) / [`slice_range`](Serie::slice_range), zero-copy); the
 //!   [`parent`](Serie::parent) graph link; [`materialize`](Serie::materialize); and

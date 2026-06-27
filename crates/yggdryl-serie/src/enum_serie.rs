@@ -13,9 +13,14 @@ use crate::scalar::Scalar;
 use crate::serie::{Serie, SerieRef};
 
 /// A canonical, hashable key for a [`Scalar`] (its `Debug` form distinguishes every
-/// value and variant — `Int(5)` vs `Utf8("5")`).
+/// value and variant — `Int(5)` vs `Utf8("5")`). Floating-point `-0.0` is normalised to
+/// `0.0` so the two (which compare equal) share a category.
 fn key(value: &Scalar) -> String {
-    format!("{value:?}")
+    match value {
+        // `x == 0.0` is true for both `0.0` and `-0.0`; collapse them to one key.
+        Scalar::Float(x) if *x == 0.0 => format!("{:?}", Scalar::Float(0.0)),
+        other => format!("{other:?}"),
+    }
 }
 
 /// An enum/categorical column: the distinct (non-null) values of a backing serie, in
