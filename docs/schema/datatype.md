@@ -20,7 +20,7 @@ Parse a canonical string, or use a named constructor.
     assert yggdryl.DataType.int(8, signed=False) == yggdryl.DataType("uint8")
     assert yggdryl.DataType.varchar() == yggdryl.DataType("string")
     yggdryl.DataType.timestamp("us", "UTC")          # timestamp[us, UTC]
-    yggdryl.DataType.struct([
+    yggdryl.DataType.struct_([
         yggdryl.Field("id", yggdryl.DataType.int(64), nullable=False),
         yggdryl.Field("name", yggdryl.DataType.varchar()),
     ])
@@ -255,7 +255,7 @@ timestamp timezone falls back to UTC (with a `warn` log).
 
     ```python
     import yggdryl, pickle
-    dt = yggdryl.DataType.struct([yggdryl.Field("id", yggdryl.DataType.int(64))])
+    dt = yggdryl.DataType.struct_([yggdryl.Field("id", yggdryl.DataType.int(64))])
     assert yggdryl.DataType.from_json(dt.to_json()) == dt
     assert pickle.loads(pickle.dumps(dt)) == dt
     ```

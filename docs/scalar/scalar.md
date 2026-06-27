@@ -54,15 +54,15 @@ model is **parameterised, not combinatorial** (one integer variant covers every 
 === "Rust"
 
     ```rust
-    use yggdryl_scalar::{DataType, Scalar};
+    use yggdryl_scalar::{DataType, Scalar, ScalarValue};
 
-    let s = Scalar::int(42, 64, true);
+    let s = ScalarValue::int(42, 64, true);
     assert_eq!(s.data_type(), DataType::int(64, true));
     assert_eq!(s.to_str(), "42::int64");
 
-    // Render as a length-1 Arrow array and read it back.
+    // Render as a length-1 Arrow array and read it back (`to_array` is the `Scalar` trait).
     let array = s.to_array().unwrap();
-    assert_eq!(Scalar::from_array(array.as_ref(), 0).unwrap(), s);
+    assert_eq!(ScalarValue::from_array(array.as_ref(), 0).unwrap(), s);
     ```
 
 ## Building a scalar

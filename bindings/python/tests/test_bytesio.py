@@ -113,6 +113,14 @@ def test_read_advances_the_cursor():
     assert len(io) == 11
 
 
+def test_stream_position_and_len():
+    io = yggdryl.BytesIO(b"hello world")
+    io.seek(6)
+    # the cross-language Io cursor accessors mirror `tell` / the buffer length
+    assert io.stream_position() == io.tell() == 6
+    assert io.stream_len() == 11
+
+
 def test_getvalue_ignores_the_cursor():
     io = yggdryl.BytesIO(b"abcdef")
     io.read(3)

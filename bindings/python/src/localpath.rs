@@ -127,6 +127,18 @@ impl LocalPath {
         self.inner.tell()
     }
 
+    /// The current cursor position — the cross-language ``Io`` cursor accessor
+    /// (same value as :meth:`tell`).
+    fn stream_position(&self) -> u64 {
+        self.inner.stream_position()
+    }
+
+    /// The total length in bytes when known without I/O (the file size), else
+    /// ``None``.
+    fn stream_len(&self) -> Option<u64> {
+        self.inner.stream_len()
+    }
+
     /// The capacity in bytes (the mapped file size; the handle is read-only, so
     /// :meth:`reserve_capacity` / :meth:`truncate` are unsupported).
     #[getter]

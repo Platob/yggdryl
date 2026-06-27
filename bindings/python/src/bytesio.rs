@@ -207,6 +207,17 @@ impl BytesIO {
         self.inner.tell()
     }
 
+    /// The current cursor position — the cross-language ``Io`` cursor accessor
+    /// (same value as :meth:`tell`).
+    fn stream_position(&self) -> u64 {
+        self.inner.stream_position()
+    }
+
+    /// The total length in bytes when known without I/O, else ``None``.
+    fn stream_len(&self) -> Option<u64> {
+        self.inner.stream_len()
+    }
+
     /// Return the entire buffer as ``bytes``, ignoring the cursor.
     fn getvalue<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.getvalue())

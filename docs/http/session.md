@@ -204,6 +204,7 @@ synchronous, Node returns per-call `Promise`s you can `Promise.all`).
 
     ```python
     # No send_many in the binding — issue requests directly (or use a thread pool).
+    urls = ["https://httpbin.org/get", "https://httpbin.org/json"]
     session = yggdryl.HttpSession()
     results = [session.get(url, raise_error=False) for url in urls]
     ```
@@ -212,6 +213,7 @@ synchronous, Node returns per-call `Promise`s you can `Promise.all`).
 
     ```javascript
     // No sendMany in the binding — fan out with Promise.all over the verb Promises.
+    const urls = ["https://httpbin.org/get", "https://httpbin.org/json"];
     const session = new HttpSession();
     const results = await Promise.all(urls.map((u) => session.get(u)));
     ```
@@ -219,6 +221,9 @@ synchronous, Node returns per-call `Promise`s you can `Promise.all`).
 === "Rust"
 
     ```rust
+    use yggdryl_http::HttpRequest;
+
+    let urls = ["https://httpbin.org/get", "https://httpbin.org/json"];
     let session = HttpSession::new()
         .with_max_concurrency(8)   // requests in flight per wave
         .with_batch_size(80);      // requests pulled per batch

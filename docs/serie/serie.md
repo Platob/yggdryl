@@ -101,7 +101,6 @@ right concrete series and return a boxed `SerieRef`.
     let field = Field::new("id", DataType::int(32, true), false).with_comment("primary key");
     let serie = from_arrow(field, Arc::new(Int32Array::from(vec![1, 2, 3])))?;
     assert!(!serie.is_nullable());
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Creating series — one line per type
@@ -158,7 +157,7 @@ is the universal fallback for *any* Arrow array.
     use yggdryl_serie::{
         Int32Serie, Float64Serie, BooleanSerie, VarcharSerie, BinarySerie,
         DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, RangeSerie,
-        IndexSerie, StructSerie, CategoricalSerie, Serie, SerieRef, TypedSerie,
+        IndexSerie, StructSerie, CategoricalSerie, NestedSerie, Serie, SerieRef, TypedSerie,
     };
     use yggdryl_core::{DateTime, Duration, Time, Date};
     use std::sync::Arc;
@@ -191,7 +190,6 @@ is the universal fallback for *any* Arrow array.
     )?;
     assert_eq!(rec.child_count(), 2);
     assert_eq!(cat.category_count(), 2);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 Lists and maps are built from an Arrow builder and wrapped with `from_array`:
@@ -209,7 +207,6 @@ Lists and maps are built from an Arrow builder and wrapped with `from_array`:
     ]);
     let serie = from_array("l", Arc::new(lists) as ArrayRef)?;
     assert_eq!(serie.value_at(0), Scalar::Other("[1, 2]".into()));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Defaults & resize
@@ -237,7 +234,6 @@ the type **default** (so a non-nullable column never gains a null).
     let strict = from_arrow(Field::new("n", DataType::int(32, true), false),
                             Arc::new(Int32Array::from(vec![7])) as ArrayRef)?;
     assert_eq!(strict.resize(3)?.value_at(2), Scalar::Int(0));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Values: by index and by range
@@ -273,7 +269,6 @@ typed access, downcast to the concrete series and use `TypedSerie<T>`.
     let ints = serie.as_any().downcast_ref::<Int32Serie>().unwrap();
     assert_eq!(ints.get(0), Some(5));
     assert_eq!(ints.value(2), 7);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## The slice graph: children & parents
@@ -297,7 +292,6 @@ independent, in-memory one and **detaches** it from the graph.
 
     let independent = view.materialize();             // detach from the graph
     assert!(independent.parent().is_none());
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Lazy (computed) series
@@ -359,7 +353,6 @@ implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` / `
 
     let clock = TimeRangeSerie::new("t", Time::from_hms(23, 0, 0).unwrap(), Duration::from_secs(3600), 3);
     assert_eq!(clock.time(1), Time::from_hms(0, 0, 0).ok()); // wraps past midnight
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Index
@@ -455,7 +448,6 @@ the type default) and drops extras. `dtype` is a `DataType` or a type string.
     ]);
     let casted = rec.cast(&target)?;
     assert_eq!(casted.as_nested().unwrap().child_by_name("extra").unwrap().value_at(0), Scalar::Null);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Nested
@@ -483,7 +475,6 @@ list of structs of maps, …) resolves uniformly. The `NestedSerie` trait expose
     assert_eq!(list.value_slice(0).unwrap().len(), 2);   // the sub-list is a zero-copy Serie
     assert!(list.value_slice(2).is_none());              // null row
     assert_eq!(list.value_at(1), Scalar::Other("[3]".into()));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ### Child access — by index, name or path
@@ -549,7 +540,6 @@ while a well-formed path that does not resolve — a missing child, or a leaf co
     let nested = rec.as_nested().unwrap();
     assert_eq!(nested.child(0).unwrap().name(), "inner"); // by index
     assert_eq!(nested.children().len(), 2);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Frame (DataFrame)
@@ -628,6 +618,7 @@ backing `StructArray` only on demand.
 
     ```rust
     use yggdryl_serie::{Int32Serie, VarcharSerie, StructSerie, Serie, SerieRef, DisplayOptions};
+    use yggdryl_scalar::Scalar;   // the `to_str()` on a record's scalar is a trait method
     use std::sync::Arc;
 
     let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(3), Some(1), Some(2)]));
@@ -653,7 +644,6 @@ backing `StructArray` only on demand.
     assert_eq!(record.child_named("name").unwrap().to_str(), "'a'::utf8");
 
     println!("{}", df.display(&DisplayOptions::default()));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ### Schema-cast projection
@@ -706,7 +696,6 @@ kernel.
         Field::new("score", DataType::float(64), true),      // filled null
     ])?;
     assert_eq!(out.child_by_name("score").unwrap().value_at(0), Scalar::Null);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ### Arrow interchange (RecordBatch / IPC / reader)
@@ -763,7 +752,6 @@ and scanners consume).
     let bytes = df.to_ipc_bytes()?;
     assert_eq!(StructSerie::from_ipc_bytes("df", &bytes)?.shape(), (3, 1));
     let _ = (chunks, reader);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Update values: `set_at` & `push`
@@ -810,7 +798,6 @@ errors. The rebuild is uniform across every type — primitive, varchar, binary 
     assert_eq!(s.value_at(1), Scalar::Int(2));                        // original untouched
     let grown = s.push(&IntScalar::new(4, 8, true), true)?;
     assert_eq!(grown.len(), 4);
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Display
@@ -859,7 +846,6 @@ an **aligned table** (one column per child). Parameters: `max_rows`, `header`, `
     let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
     let df = StructSerie::from_children("df", vec![id])?;
     assert!(df.display(&DisplayOptions::default()).contains("id: int32"));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Serialize
@@ -904,7 +890,6 @@ columns. This is the canonical bytes form: Python `pickle` / `copy` and Node
     assert_eq!(back.name(), "n");
     assert_eq!(back.value_at(0), Scalar::Int(1));
     assert!(back.is_null(1));
-    # Ok::<(), yggdryl_serie::SerieError>(())
     ```
 
 ## Coverage
