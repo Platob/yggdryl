@@ -216,6 +216,26 @@ empty string, empty bytes, a struct of defaults. `resize(new_len)` slices when
 shrinking and extends when growing — with **nulls** if the column is nullable, otherwise
 the type **default** (so a non-nullable column never gains a null).
 
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", [1, 2])
+    assert s.resize(4).value_at(3) is None              # grow: a nullable column gains nulls
+    assert len(s.resize(1)) == 1                         # shrink: a zero-copy slice
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', [1, 2])
+    if (s.resize(4).valueAt(3) !== null) throw new Error('grow')  // nullable -> nulls
+    if (s.resize(1).numRows !== 1) throw new Error('shrink')      // a slice
+    ```
+
 === "Rust"
 
     ```rust
@@ -241,6 +261,47 @@ the type **default** (so a non-nullable column never gains a null).
 `value_at` reads a single cell as a type-erased `Scalar` (`Null` for a null or
 out-of-bounds cell); `slice` / `slice_range` return a **zero-copy** sub-column. For
 typed access, downcast to the concrete series and use `TypedSerie<T>`.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", [5, None, 7])
+
+    # by index -> a native value (None for a null or out-of-bounds cell)
+    assert s.value_at(0) == 5
+    assert s.value_at(1) is None                        # null cell
+    assert s.value_at(9) is None                        # out of bounds
+    assert s[2] == 7                                     # subscript (supports negatives)
+
+    # by range -> a zero-copy slice
+    assert len(s.slice(1, 2)) == 2
+
+    # null / presence checks
+    assert s.is_null(1)
+    assert s.is_valid(0)
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', [5, null, 7])
+
+    // by index -> a native value (null for a null or out-of-bounds cell)
+    if (s.valueAt(0) !== 5) throw new Error('value')
+    if (s.valueAt(1) !== null) throw new Error('null')  // null cell
+    if (s.get(2) !== 7) throw new Error('get')          // supports negative indices
+
+    // by range -> a zero-copy slice
+    if (s.slice(1, 2).numRows !== 2) throw new Error('slice')
+
+    // null / presence checks
+    if (!s.isNull(1)) throw new Error('isNull')
+    if (!s.isValid(0)) throw new Error('isValid')
+    ```
 
 === "Rust"
 
@@ -304,7 +365,32 @@ A lazy column stores only a compact description and computes its values on deman
 - `DateTimeRangeSerie` — a nanosecond timestamp range.
 - `TimeRangeSerie` — a time-of-day range (wraps within the day).
 
-The three temporal ranges implement `TemporalSerie` (see below).
+The three temporal ranges implement `TemporalSerie` (see below). The bindings expose the
+arithmetic `Serie.range`; the calendar/time ranges are Rust-only.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    r = yggdryl.Serie.range(4, start=100, step=5)        # 100, 105, 110, 115 (lazy)
+    assert not r.is_materialized
+    assert r[2] == 110
+    realized = r.materialize()                           # -> a real uint64 column
+    assert realized.is_materialized
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const r = Serie.range(4, 100, 5)                     // 100, 105, 110, 115 (lazy)
+    if (r.isMaterialized) throw new Error('lazy')
+    if (r.get(2) !== 110) throw new Error('value')
+    const realized = r.materialize()                     // -> a real uint64 column
+    if (!realized.isMaterialized) throw new Error('materialized')
+    ```
 
 === "Rust"
 
@@ -360,6 +446,32 @@ implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` / `
 `IndexSerie` is the row index — a `Serie` of labels with label ↔ position lookups. The
 default is a **lazy** `uint64` range; any column can be wrapped as an index.
 
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    index = yggdryl.Serie.index(4)                       # lazy [0, 1, 2, 3] (uint64)
+    assert index.is_range
+    assert not index.is_materialized
+    assert index.at(2) == 2                              # label at row 2
+    assert index.position(3) == 3                        # row of label 3
+    assert not index.contains(4)
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const index = Serie.index(4)                         // lazy [0, 1, 2, 3] (uint64)
+    if (!index.isRange) throw new Error('range')
+    if (index.isMaterialized) throw new Error('lazy')
+    if (index.at(2) !== 2) throw new Error('label')      // label at row 2
+    if (index.position(3) !== 3) throw new Error('pos')  // row of label 3
+    if (index.contains(4)) throw new Error('absent')
+    ```
+
 === "Rust"
 
     ```rust
@@ -382,6 +494,36 @@ Slicing a range index drops the range fast-path flag (the labels no longer start
 distinct values once plus a compact per-row code, so a low-cardinality column is held
 compactly. It is lazy (`is_materialized()` is `false`); `materialize()` decodes it back
 into a flat column.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    cat = yggdryl.Serie("c", ["a", "b", "a"]).categorical()
+    assert cat.category_count == 2                       # "a", "b" stored once
+    assert cat.code_at(0) == cat.code_at(2)              # repeated "a" shares a code
+    assert cat[1] == "b"
+    assert not cat.is_materialized
+
+    flat = cat.materialize()                             # decode -> a real varchar column
+    assert flat.is_materialized
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const cat = new Serie('c', ['a', 'b', 'a']).categorical()
+    if (cat.categoryCount !== 2) throw new Error('count')        // "a", "b" stored once
+    if (cat.codeAt(0) !== cat.codeAt(2)) throw new Error('code') // repeated "a" shares a code
+    if (cat.get(1) !== 'b') throw new Error('value')
+    if (cat.isMaterialized) throw new Error('lazy')
+
+    const flat = cat.materialize()                              // decode -> a real column
+    if (!flat.isMaterialized) throw new Error('decoded')
+    ```
 
 === "Rust"
 

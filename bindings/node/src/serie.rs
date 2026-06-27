@@ -43,6 +43,24 @@ fn as_frame(serie: &SerieRef) -> Result<&StructSerie> {
         .ok_or_else(|| err("not a struct column; build a frame with Serie.struct(...)"))
 }
 
+/// Borrows a column as an [`IndexSerie`], or throws if it is not an index column — the
+/// gate for the index (label ↔ position) operations.
+fn as_index(serie: &SerieRef) -> Result<&IndexSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<IndexSerie>()
+        .ok_or_else(|| err("not an index column; build one with Serie.index(...)"))
+}
+
+/// Borrows a column as a [`CategoricalSerie`], or throws if it is not a categorical
+/// column — the gate for the dictionary (category / code) operations.
+fn as_categorical(serie: &SerieRef) -> Result<&CategoricalSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<CategoricalSerie>()
+        .ok_or_else(|| err("not a categorical column; build one with serie.categorical()"))
+}
+
 /// The element kind inferred from a JS array.
 enum Kind {
     Bool,
@@ -462,6 +480,64 @@ impl Serie {
             Some(nested) => nested.children().into_iter().map(wrap).collect(),
             None => Vec::new(),
         }
+    }
+
+    // ---- index ----
+
+    /// Whether this is the implicit lazy `0..len` `uint64` range index (enables the O(1)
+    /// label ↔ position lookups). Throws if the column is not an index.
+    #[napi(getter, js_name = "isRange")]
+    pub fn is_range(&self) -> Result<bool> {
+        Ok(as_index(&self.inner)?.is_range())
+    }
+
+    /// The integer label at row `index` (`null` when out of bounds or non-integer).
+    #[napi]
+    pub fn at(&self, index: u32) -> Result<Option<i64>> {
+        Ok(as_index(&self.inner)?.at(index as usize).map(|v| v as i64))
+    }
+
+    /// The first row whose label equals `label`, or `null`.
+    #[napi]
+    pub fn position(&self, label: i64) -> Result<Option<u32>> {
+        if label < 0 {
+            return Ok(None);
+        }
+        Ok(as_index(&self.inner)?
+            .position(label as u64)
+            .map(|p| p as u32))
+    }
+
+    /// Whether `label` is one of the index labels.
+    #[napi]
+    pub fn contains(&self, label: i64) -> Result<bool> {
+        if label < 0 {
+            return Ok(false);
+        }
+        Ok(as_index(&self.inner)?.contains(label as u64))
+    }
+
+    // ---- categorical ----
+
+    /// The number of distinct categories. Throws if the column is not categorical.
+    #[napi(getter, js_name = "categoryCount")]
+    pub fn category_count(&self) -> Result<u32> {
+        Ok(as_categorical(&self.inner)?.category_count() as u32)
+    }
+
+    /// The distinct values (the dictionary) as a column named `"categories"`.
+    #[napi]
+    pub fn categories(&self) -> Result<Serie> {
+        as_categorical(&self.inner)?
+            .categories()
+            .map(wrap)
+            .map_err(err)
+    }
+
+    /// The dictionary **code** at row `index` (`null` when null / out of bounds).
+    #[napi(js_name = "codeAt")]
+    pub fn code_at(&self, index: u32) -> Result<Option<i32>> {
+        Ok(as_categorical(&self.inner)?.code_at(index as usize))
     }
 
     // ---- frame (DataFrame) ----

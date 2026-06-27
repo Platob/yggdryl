@@ -76,6 +76,12 @@ def test_cast_and_categorical():
     assert cat.is_materialized is False
     assert cat.to_list() == ["a", "b", "a", "a"]
     assert cat.materialize().is_materialized is True
+    # dictionary accessors: distinct values stored once, a code per row
+    assert cat.category_count == 2
+    assert cat.code_at(0) == cat.code_at(2) == cat.code_at(3)
+    assert cat.categories().to_list() == ["a", "b"]
+    with pytest.raises(TypeError):
+        yggdryl.Serie("n", [1, 2]).category_count  # not categorical
 
 
 def test_lazy_range_and_index():
@@ -86,6 +92,14 @@ def test_lazy_range_and_index():
     assert r2.to_list() == [10, 15, 20]
     idx = yggdryl.Serie.index(4)
     assert idx.to_list() == [0, 1, 2, 3]
+    # index lookups: label <-> position
+    assert idx.is_range is True
+    assert idx.at(2) == 2
+    assert idx.position(3) == 3
+    assert idx.contains(3) is True
+    assert idx.contains(4) is False
+    with pytest.raises(TypeError):
+        yggdryl.Serie("n", [1, 2]).at(0)  # not an index
 
 
 def test_nested_struct_and_select():
