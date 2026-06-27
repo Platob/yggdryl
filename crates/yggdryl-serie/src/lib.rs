@@ -9,13 +9,22 @@
 //! The design mirrors the schema crate's three [categories](yggdryl_schema::TypeCategory):
 //!
 //! - [`Serie`] — the object-safe **base** trait every column implements: accessors to
-//!   the [`field`](Serie::field) and the backing [`array`](Serie::array), the length /
-//!   null bookkeeping, [`slice`](Serie::slice) and downcasting via
-//!   [`as_any`](Serie::as_any).
+//!   the [`field`](Serie::field) and the backing [`array`](Serie::array); the
+//!   [`len`](Serie::len) / [`num_rows`](Serie::num_rows) / [`null_count`](Serie::null_count)
+//!   / [`metadata`](Serie::metadata) bookkeeping; type-erased value access by index
+//!   ([`value_at`](Serie::value_at) → [`Scalar`]) and by range
+//!   ([`slice`](Serie::slice) / [`slice_range`](Serie::slice_range), zero-copy); the
+//!   [`parent`](Serie::parent) graph link; [`materialize`](Serie::materialize); and
+//!   downcasting via [`as_any`](Serie::as_any).
 //! - [`TypedSerie<T>`] — typed value access (`get` / `value` / `iter`) over the native
 //!   value type `T` of a concrete column.
 //! - The **primitive** concrete series — [`PrimitiveSerie<A>`] (every Arrow numeric and
 //!   temporal type), [`BooleanSerie`], [`VarcharSerie<O>`] and [`BinarySerie<O>`].
+//! - The **lazy** (computed) series — [`RangeSerie`] and [`DateRangeSerie`] — store a
+//!   compact description and produce values on demand until materialised.
+//! - [`IndexSerie`] — a row index, defaulting to a lazy `uint64` [`RangeSerie`].
+//! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
+//!   [`parent`](Serie::parent), forming a slice graph.
 //!
 //! [`from_arrow`] / [`from_array`] **redirect** an Arrow array to the right concrete
 //! series, returning a boxed [`SerieRef`] — the basis for a column store, and in turn
@@ -50,13 +59,19 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod error;
+mod index;
+mod lazy;
 mod primitive;
+mod scalar;
 mod serie;
+mod slice;
 
 #[cfg(test)]
 mod tests;
 
 pub use error::{SerieError, SerieResult};
+pub use index::IndexSerie;
+pub use lazy::{DateRangeSerie, RangeSerie};
 pub use primitive::{
     BinarySerie,
     BooleanSerie,
@@ -88,7 +103,9 @@ pub use primitive::{
     UInt8Serie,
     VarcharSerie,
 };
+pub use scalar::Scalar;
 pub use serie::{from_array, from_arrow, Serie, SerieRef, TypedSerie};
+pub use slice::{child, child_range, SliceSerie};
 
 // Re-export the Arrow array crate so dependents build arrays without pinning the
 // exact `arrow-array` version themselves, and the shared vocabulary they need.

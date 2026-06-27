@@ -10,8 +10,9 @@ use arrow_array::{
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::{
-    from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie, Float64Serie, Int32Serie,
-    Serie, TimestampMicrosecondSerie, TypedSerie, VarcharSerie,
+    child, child_range, from_array, from_arrow, BinarySerie, BooleanSerie, Date32Serie,
+    DateRangeSerie, Float64Serie, IndexSerie, Int32Serie, RangeSerie, Scalar, Serie, SerieRef,
+    TimestampMicrosecondSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -134,6 +135,188 @@ fn unsupported_arrow_type_errors() {
     let array: ArrayRef = Arc::new(NullArray::new(3));
     let err = from_array("n", array).unwrap_err();
     assert!(matches!(err, crate::SerieError::Unsupported(_)));
+}
+
+#[test]
+fn index_range_is_lazy_uint64() {
+    let index = IndexSerie::range(4);
+    assert_eq!(index.len(), 4);
+    assert_eq!(index.num_rows(), 4);
+    assert!(index.is_range());
+    assert!(!index.is_materialized()); // lazy range
+    assert_eq!(index.name(), "index");
+    assert_eq!(index.data_type(), &DataType::int(64, false));
+    assert_eq!(index.category(), TypeCategory::Primitive);
+    assert_eq!(index.null_count(), 0);
+
+    assert_eq!(index.at(0), Some(0));
+    assert_eq!(index.at(3), Some(3));
+    assert_eq!(index.at(4), None); // out of bounds
+    assert_eq!(index.position(2), Some(2));
+    assert_eq!(index.position(9), None);
+    assert!(index.contains(1));
+    assert!(!index.contains(4));
+
+    // materialise into an in-memory index that is still range-flagged
+    let materialized = index.materialize();
+    let mat = materialized.as_any().downcast_ref::<IndexSerie>().unwrap();
+    assert!(mat.is_materialized());
+    assert!(mat.is_range());
+    assert_eq!(mat.at(2), Some(2));
+}
+
+#[test]
+fn index_default_is_empty_lazy_uint64() {
+    let index = IndexSerie::default();
+    assert!(index.is_empty());
+    assert!(index.is_range());
+    assert!(!index.is_materialized());
+    assert_eq!(index.data_type(), &DataType::int(64, false));
+}
+
+#[test]
+fn index_from_serie_labels() {
+    let labels: SerieRef = Arc::new(UInt64Serie::from_values(
+        "k",
+        vec![Some(10), Some(20), Some(30)],
+    ));
+    let index = IndexSerie::from_serie(labels);
+    assert!(!index.is_range());
+    assert_eq!(index.name(), "k");
+    assert_eq!(index.at(0), Some(10));
+    assert_eq!(index.position(20), Some(1));
+    assert_eq!(index.position(99), None);
+    assert!(index.contains(30));
+}
+
+#[test]
+fn index_from_array_wraps_any_type() {
+    let array: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "c"]));
+    let index = IndexSerie::from_array("name", array).unwrap();
+    assert!(!index.is_range());
+    assert_eq!(index.len(), 3);
+    assert_eq!(index.data_type(), &DataType::varchar());
+    // a non-integer index has no integer-label lookup
+    assert_eq!(index.at(0), None);
+    assert_eq!(index.position(0), None);
+}
+
+#[test]
+fn index_slice_stays_an_index() {
+    let index = IndexSerie::range(5);
+    let sliced = index.slice(1, 2);
+    let view = sliced.as_any().downcast_ref::<IndexSerie>().unwrap();
+    assert_eq!(view.len(), 2);
+    assert!(!view.is_range()); // a slice no longer starts at 0
+    assert_eq!(view.at(0), Some(1));
+    assert_eq!(view.at(1), Some(2));
+    assert_eq!(view.position(2), Some(1));
+}
+
+#[test]
+fn index_is_usable_as_a_serie() {
+    let index = IndexSerie::range(3);
+    let column: SerieRef = Arc::new(index);
+    assert_eq!(column.len(), 3);
+    assert_eq!(column.null_count(), 0);
+    // recover the IndexSerie through the base handle
+    let recovered = column.as_any().downcast_ref::<IndexSerie>().unwrap();
+    assert!(recovered.is_range());
+}
+
+#[test]
+fn lazy_range_serie_computes_and_materializes() {
+    let range = RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    assert!(!range.is_materialized());
+    assert_eq!(range.len(), 4);
+    assert_eq!(range.get(0), Some(100));
+    assert_eq!(range.get(3), Some(115));
+    assert_eq!(range.get(4), None);
+    assert_eq!(range.value_at(2), Scalar::Int(110));
+    assert_eq!(
+        range.to_vec(),
+        vec![Some(100), Some(105), Some(110), Some(115)]
+    );
+
+    // materialising yields a real uint64 column with the same values
+    let mat = range.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.value_at(1), Scalar::Int(105));
+    let ints = mat.as_any().downcast_ref::<UInt64Serie>().unwrap();
+    assert_eq!(ints.value(3), 115);
+}
+
+#[test]
+fn lazy_date_range_serie_computes_dates() {
+    use yggdryl_core::Date;
+    let start = Date::from_ymd(2024, 1, 30).unwrap();
+    let range = DateRangeSerie::from_dates("d", start.clone(), 1, 3); // Jan 30, 31, Feb 1
+    assert!(!range.is_materialized());
+    assert_eq!(range.len(), 3);
+    assert_eq!(range.data_type(), &DataType::date());
+    assert_eq!(range.date_at(0), Some(start.clone()));
+    assert_eq!(range.date_at(2), Some(Date::from_ymd(2024, 2, 1).unwrap()));
+    assert_eq!(range.date_at(3), None);
+
+    // value_at exposes the physical day-since-epoch
+    assert_eq!(range.value_at(0), Scalar::Int(start.epoch_days() as i128));
+
+    let mat = range.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.data_type(), &DataType::date());
+}
+
+#[test]
+fn value_at_and_slice_range() {
+    let serie = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![Some(5), None, Some(7)])) as ArrayRef,
+    )
+    .unwrap();
+    assert_eq!(serie.value_at(0), Scalar::Int(5));
+    assert_eq!(serie.value_at(1), Scalar::Null); // null cell
+    assert_eq!(serie.value_at(9), Scalar::Null); // out of bounds
+
+    // zero-copy slice by range
+    let window = serie.slice_range(1..3);
+    assert_eq!(window.len(), 2);
+    assert_eq!(window.value_at(0), Scalar::Null);
+    assert_eq!(window.value_at(1), Scalar::Int(7));
+
+    // strings and floats round-trip through Scalar
+    let s = from_array("s", Arc::new(StringArray::from(vec!["hi"])) as ArrayRef).unwrap();
+    assert_eq!(s.value_at(0).as_str(), Some("hi"));
+    let f = from_array("f", Arc::new(Float64Array::from(vec![2.5])) as ArrayRef).unwrap();
+    assert_eq!(f.value_at(0), Scalar::Float(2.5));
+}
+
+#[test]
+fn child_records_parent_and_materialize_detaches() {
+    let parent = from_array(
+        "n",
+        Arc::new(Int32Array::from(vec![10, 20, 30, 40])) as ArrayRef,
+    )
+    .unwrap();
+    let view = child(&parent, 1, 2);
+
+    assert_eq!(view.len(), 2);
+    assert_eq!(view.value_at(0), Scalar::Int(20));
+    assert_eq!(view.value_at(1), Scalar::Int(30));
+
+    // the child remembers its parent
+    let p = view.parent().expect("child has a parent");
+    assert_eq!(p.len(), 4);
+    assert_eq!(p.name(), "n");
+
+    // child_range builds the same graph node
+    let view2 = child_range(&parent, 0..2);
+    assert_eq!(view2.value_at(1), Scalar::Int(20));
+    assert!(view2.parent().is_some());
+
+    // materialising detaches from the parent graph
+    let independent = view.materialize();
+    assert!(independent.parent().is_none());
+    assert_eq!(independent.value_at(0), Scalar::Int(20));
 }
 
 #[test]

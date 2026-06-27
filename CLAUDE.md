@@ -257,14 +257,23 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   `From<arrow_schema::ArrowError>`; actionable messages).
 - `serie.rs` — the **two traits** and the **redirect factory**. `Serie` is the
   object-safe base (untyped column ops: `field` / `array` (the backing `ArrayRef`) /
-  `len` / `null_count` / `is_null` / `is_valid` / `slice` / `as_any` for downcast, with
-  `name` / `data_type` / `category` defaulting off the field); `TypedSerie<T>` adds typed
-  value access (`get` / `value` / `iter` / `to_vec`) over a column's native value type.
-  `from_arrow(field, array)` / `from_array(name, array)` **redirect** an Arrow array to
-  the right concrete series, returning a boxed `SerieRef = Arc<dyn Serie>` (the factory
-  checks the field's `DataType` maps to the array's Arrow type, then dispatches on it).
-  **All dispatch logic lives here.** (Object-safety: the base trait is *not* generic;
-  the `<T>` lives in `TypedSerie<T>`, recovered via `as_any().downcast_ref`.)
+  `len` / `num_rows` / `null_count` / `metadata` / `is_null` / `is_valid` / `as_any` for
+  downcast, plus type-erased value access by index (`value_at` → `Scalar`) and by range
+  (`slice` / `slice_range`, zero-copy), the navigational `parent` graph link,
+  `is_materialized` and `materialize` (realise a lazy/child column into an independent
+  in-memory one), with `name` / `data_type` / `category` defaulting off the field);
+  `TypedSerie<T>` adds typed value access (`get` / `value` / `iter` / `to_vec`) over a
+  column's native value type. `from_arrow(field, array)` / `from_array(name, array)`
+  **redirect** an Arrow array to the right concrete series, returning a boxed
+  `SerieRef = Arc<dyn Serie>` (the factory checks the field's `DataType` maps to the
+  array's Arrow type, then dispatches on it). **All dispatch logic lives here.**
+  (Object-safety: the base trait is *not* generic; the `<T>` lives in `TypedSerie<T>`,
+  recovered via `as_any().downcast_ref`.)
+- `scalar.rs` — the type-erased `Scalar` (a single value read by index: integers /
+  decimals-128 / temporal-physicals widen to `Int(i128)`, floats to `Float(f64)`,
+  plus `Boolean` / `Utf8` / `Binary`, and an `Other(String)` for the exotic physicals —
+  256-bit decimals, interval structs — so no value is dropped) and the `scalar_at`
+  array-cell extractor. **All scalar logic lives here.**
 - `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
   **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
   generic backing every fixed-width scalar (integers, floats, decimals, **and** the
@@ -274,6 +283,20 @@ mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatibl
   aliases (`mod.rs`: `Int32Serie`, `Float64Serie`, `TimestampMicrosecondSerie`, …) pin
   the common widths. Each concrete stores its typed array + `Field`, overrides the
   length/null methods for zero-overhead, and `array()` returns a cheap `Arc` clone.
+- `lazy/` (`mod` + `range.rs` + `daterange.rs`) — the **lazy / computed** series, not
+  resident in memory: they store a compact description and compute each value on demand
+  (`is_materialized()` → `false`), `array()`/`materialize()` realising a real column.
+  `RangeSerie` is a `uint64` arithmetic range (`start + i*step`); `DateRangeSerie` a
+  day-resolution `Date32` range (a `slice` of either stays lazy). **All lazy-series
+  logic lives here.**
+- `index.rs` — `IndexSerie`, a row index (a `Serie` of labels with `at` (label at a row)
+  / `position` (row of a label) / `contains` lookups), **defaulting to a lazy `uint64`
+  `RangeSerie`** (`is_range()` enables the O(1) lookups); wraps any column via
+  `from_serie` / `from_array`.
+- `slice.rs` — `SliceSerie`, a zero-copy **child** view that records its `parent`, and
+  the `child` / `child_range` constructors that build the parent→child graph;
+  `materialize` detaches a child into an independent column. **All slice-graph logic
+  lives here.**
 - **Still to build** (next increments): the **nested** series (list / struct / map /
   union), the **dictionary** / **view** backends, a **`ChunkedSerie`** mirroring Arrow's
   `ChunkedArray`, cast / arithmetic operations, and the **Python / Node bindings**

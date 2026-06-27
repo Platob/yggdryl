@@ -4,16 +4,19 @@
 
 use std::any::Any;
 use std::fmt;
+use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, GenericBinaryArray, GenericStringArray};
 use arrow_schema::{DataType as ADataType, IntervalUnit as AIntervalUnit, TimeUnit as ATimeUnit};
+use yggdryl_core::Mapping;
 use yggdryl_schema::{DataType, Field, TypeCategory};
 
 use crate::error::{SerieError, SerieResult};
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
+use crate::scalar::{scalar_at, Scalar};
 
 /// A reference-counted, type-erased column — the handle a column store and the
 /// [factory](from_arrow) hand around.
@@ -59,9 +62,20 @@ pub trait Serie: fmt::Debug + Send + Sync {
         self.field().is_nullable()
     }
 
+    /// The column's metadata map (its field's metadata).
+    fn metadata(&self) -> &Mapping {
+        self.field().metadata()
+    }
+
     /// The number of values (including nulls).
     fn len(&self) -> usize {
         self.array().len()
+    }
+
+    /// The number of rows — the row-oriented name for [`len`](Serie::len), the
+    /// vocabulary a frame uses across all its columns.
+    fn num_rows(&self) -> usize {
+        self.len()
     }
 
     /// Whether the column has no values.
@@ -84,11 +98,50 @@ pub trait Serie: fmt::Debug + Send + Sync {
         index < self.len() && !self.is_null(index)
     }
 
+    /// The serie this one was **derived from** (its slice/child source), or `None` for
+    /// a root column. Navigational only — a [child](child) slice records its parent so
+    /// the graph can be walked upward; [`materialize`](Serie::materialize) detaches it.
+    fn parent(&self) -> Option<&SerieRef> {
+        None
+    }
+
+    /// Whether the column's values are **fully resident in memory** (the normal case).
+    /// A *lazy* / computed column (a [range](crate::RangeSerie), a
+    /// [date range](crate::DateRangeSerie)) reports `false` — its values are produced
+    /// on demand until [`materialize`](Serie::materialize)d.
+    fn is_materialized(&self) -> bool {
+        true
+    }
+
+    /// A fully-materialised, **independent** copy of this column: a lazy column is
+    /// computed into a real array, and the parent/graph link is dropped. The default
+    /// realises [`array`](Serie::array) into a standalone series.
+    fn materialize(&self) -> SerieRef {
+        from_arrow(self.field().clone(), self.array()).expect("a serie's array matches its field")
+    }
+
+    /// The value at `index` as a type-erased [`Scalar`] (`Null` for a null cell or an
+    /// out-of-bounds index). Lazy columns override this to compute the value directly.
+    fn value_at(&self, index: usize) -> Scalar {
+        if self.is_null(index) {
+            Scalar::Null
+        } else {
+            scalar_at(&self.array(), index)
+        }
+    }
+
     /// A zero-copy [`slice`](arrow_array::Array::slice) of `length` values starting at
-    /// `offset`, as a new column of the same type.
+    /// `offset`, as a new column of the same type. (Use [`child`](child) to keep a link
+    /// back to this serie.)
     fn slice(&self, offset: usize, length: usize) -> SerieRef {
         from_arrow(self.field().clone(), self.array().slice(offset, length))
             .expect("a slice has the same type as its source")
+    }
+
+    /// A zero-copy slice addressed by a half-open row `range` — the by-range value
+    /// accessor companion to [`value_at`](Serie::value_at).
+    fn slice_range(&self, range: Range<usize>) -> SerieRef {
+        self.slice(range.start, range.len())
     }
 }
 
