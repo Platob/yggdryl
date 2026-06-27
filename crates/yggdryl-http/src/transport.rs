@@ -17,25 +17,28 @@
 //! - `http` (cleartext) + pinned `h2` → h2c (HTTP/2 with prior knowledge);
 //! - `https` + pinned `h3` → QUIC with ALPN `h3` (HTTP/3 is TLS-only).
 //!
-//! Each path **buffers** the response body into memory (the returned body is a
-//! seekable [`BytesIO`](yggdryl_core::BytesIO)); streaming a body — and a
-//! per-response size cap (none yet, as on the buffered HTTP/1.1 path) — are later
-//! refinements. Request bodies are buffered too, so they are replayable on a retry.
-//! A coarse [`REQUEST_TIMEOUT`] bounds the whole round-trip so a stalled server
-//! cannot pin the calling thread indefinitely. TLS certificate verification follows
-//! the session's [`verify`](crate::HttpSession::verify) flag. No HTTP `CONNECT`
-//! proxy support yet: the transport connects directly, so it needs direct egress.
+//! Each path returns the response **headers immediately** while the body is
+//! delivered lazily via an [`AsyncBodyStream`]: bytes flow from a background tokio
+//! task into a synchronous [`mpsc`] channel, so callers can start reading before
+//! the body is fully received. Request bodies are buffered (the whole upload is in
+//! memory before the request fires) so they stay replayable on a retry. A coarse
+//! [`REQUEST_TIMEOUT`] bounds the whole header-receiving leg; the body read is
+//! bounded by the caller's own read timeout. No HTTP `CONNECT` proxy support yet:
+//! the transport connects directly, so it needs direct egress.
 
-use std::sync::{Arc, OnceLock};
+use std::collections::VecDeque;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::runtime::Runtime;
 use tokio_rustls::rustls::ClientConfig;
-use yggdryl_core::Url;
+use yggdryl_core::{Io, IoError, IoStats, Url, Whence};
 
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
+use crate::time::Instant;
 use crate::version::HttpVersion;
 
 #[cfg(feature = "http2")]
@@ -85,13 +88,243 @@ pub(crate) struct AsyncRequest<'a> {
     pub(crate) ca_certs: &'a [Vec<u8>],
 }
 
-/// The buffered result of an async round-trip: status, response headers, the whole
-/// body, and the protocol [`version`](RawResponse::version) actually spoken.
+/// The result of an async round-trip: status, response headers, a streaming body,
+/// the protocol [`version`](RawResponse::version) actually spoken, and the shared
+/// [`received_at`](RawResponse::received_at) instant stamped when the body reaches
+/// EOF (mirroring the `HttpStream` pattern on the HTTP/1.1 path).
 pub(crate) struct RawResponse {
     pub(crate) status: u16,
     pub(crate) headers: HttpHeaders,
-    pub(crate) body: Vec<u8>,
+    /// The response body as a streaming [`Io`] handle — an [`AsyncBodyStream`] for
+    /// HTTP/2 and HTTP/3. Draining it reads lazily from the network.
+    pub(crate) body: Box<dyn Io>,
     pub(crate) version: HttpVersion,
+    /// Shared with the [`AsyncBodyStream`] body; stamped when the body reaches EOF.
+    pub(crate) received_at: Instant,
+}
+
+// ---------------------------------------------------------------------------
+// Async body → sync Io bridge.
+// ---------------------------------------------------------------------------
+
+/// A streaming [`Io`] body backed by an `mpsc` channel fed by a background tokio
+/// task (the body reader). Returned by the HTTP/2 and HTTP/3 transports so the
+/// response headers are available immediately while the body is read lazily.
+///
+/// Seeking **forward** (discarding bytes) is supported; seeking backward or from
+/// the end requires buffering the whole body first — call
+/// [`into_bytesio`](crate::HttpResponse::into_bytesio) or
+/// [`bytes`](crate::HttpResponse::bytes) for that.
+///
+/// When this handle is **dropped before the body is fully consumed**, the
+/// background task is aborted, which drops the underlying h2/h3 stream and
+/// closes the connection cleanly.
+#[derive(Debug)]
+pub(crate) struct AsyncBodyStream {
+    /// Body chunks arriving from the background task.
+    receiver: Mutex<mpsc::Receiver<Result<Vec<u8>, IoError>>>,
+    /// Bytes received but not yet handed to the caller.
+    buffer: VecDeque<u8>,
+    /// Whether the channel reached EOF (the body is fully received).
+    done: bool,
+    /// Absolute byte position of the logical cursor.
+    position: u64,
+    /// Declared body size from `Content-Length`, or `None` if chunked/unknown.
+    size: Option<u64>,
+    url: Url,
+    /// Stamped when the body reaches EOF — shared with the response's
+    /// `received_at` so the timing reflects the full download.
+    received_at: Instant,
+    /// The background body-reader task; aborted on drop to close the connection
+    /// when the body is abandoned before EOF.
+    _task: tokio::task::JoinHandle<()>,
+}
+
+impl AsyncBodyStream {
+    fn new(
+        receiver: mpsc::Receiver<Result<Vec<u8>, IoError>>,
+        size: Option<u64>,
+        url: Url,
+        received_at: Instant,
+        task: tokio::task::JoinHandle<()>,
+    ) -> Self {
+        Self {
+            receiver: Mutex::new(receiver),
+            buffer: VecDeque::new(),
+            done: false,
+            position: 0,
+            size,
+            url,
+            received_at,
+            _task: task,
+        }
+    }
+
+    /// Fills the internal buffer from the channel until either `buf.len()` bytes
+    /// are available or the channel is exhausted.
+    fn fill_buffer(&mut self) -> Result<(), IoError> {
+        if self.done || !self.buffer.is_empty() {
+            return Ok(());
+        }
+        let rx = self
+            .receiver
+            .lock()
+            .expect("AsyncBodyStream receiver poisoned");
+        match rx.recv() {
+            Ok(Ok(chunk)) => {
+                if chunk.is_empty() {
+                    self.done = true;
+                } else {
+                    self.buffer.extend(chunk);
+                }
+            }
+            Ok(Err(err)) => return Err(err),
+            Err(_) => {
+                // Channel closed by the sender — body is fully received.
+                self.done = true;
+                self.received_at.stamp_once();
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for AsyncBodyStream {
+    fn drop(&mut self) {
+        // Aborting the background task drops the underlying connection stream,
+        // sending RST_STREAM / QUIC stream reset so the server learns the body
+        // is unwanted — cleaner than letting the connection time out.
+        self._task.abort();
+    }
+}
+
+impl Io for AsyncBodyStream {
+    fn url(&self) -> Url {
+        self.url.clone()
+    }
+
+    fn stats(&self) -> Result<IoStats, IoError> {
+        Ok(IoStats::new(self.size.unwrap_or(0)))
+    }
+
+    fn stream_position(&self) -> u64 {
+        self.position
+    }
+
+    fn stream_len(&self) -> Option<u64> {
+        self.size
+    }
+
+    fn seek(&mut self, offset: i64, whence: Whence) -> Result<u64, IoError> {
+        let target = match whence {
+            Whence::Start => {
+                if offset < 0 {
+                    return Err(IoError::Invalid(format!(
+                        "seek to negative position {offset}"
+                    )));
+                }
+                offset as u64
+            }
+            Whence::Current => {
+                let pos = self.position as i64 + offset;
+                if pos < 0 {
+                    return Err(IoError::Invalid(format!("seek to negative position {pos}")));
+                }
+                pos as u64
+            }
+            Whence::End => {
+                return Err(IoError::Unsupported(
+                    "seek from end on a streaming h2/h3 body requires the whole body; \
+                     call into_bytesio() first"
+                        .into(),
+                ))
+            }
+        };
+        if target < self.position {
+            return Err(IoError::Unsupported(
+                "backward seek on a streaming h2/h3 body is unsupported; \
+                 call into_bytesio() first"
+                    .into(),
+            ));
+        }
+        // Forward seek: drain and discard bytes up to the target.
+        let mut to_skip = target - self.position;
+        while to_skip > 0 {
+            self.fill_buffer()?;
+            if self.buffer.is_empty() {
+                // Seeking past EOF: clamp to current position.
+                break;
+            }
+            let take = to_skip.min(self.buffer.len() as u64) as usize;
+            self.buffer.drain(..take);
+            self.position += take as u64;
+            to_skip -= take as u64;
+        }
+        Ok(self.position)
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        self.fill_buffer()?;
+        let n = self.buffer.len().min(buf.len());
+        for (i, b) in self.buffer.drain(..n).enumerate() {
+            buf[i] = b;
+        }
+        self.position += n as u64;
+        // Stamp received_at on the first read that reaches EOF (empty buffer +
+        // done) so the timing reflects the last byte landing.
+        if n == 0 && self.done {
+            self.received_at.stamp_once();
+        }
+        Ok(n)
+    }
+
+    /// Positional read: `Whence::Current` acts like [`read`](Io::read) (advances
+    /// the cursor). `Whence::Start` at a position ahead of the cursor drains up
+    /// to that offset, then reads — the cursor ends at offset + count (not
+    /// restored). Backward seeks and `Whence::End` return [`IoError::Unsupported`];
+    /// call [`into_bytesio`](crate::HttpResponse::into_bytesio) first for those.
+    fn pread(&mut self, buf: &mut [u8], offset: i64, whence: Whence) -> Result<usize, IoError> {
+        match whence {
+            Whence::Current => {
+                if offset != 0 {
+                    self.seek(offset, Whence::Current)?;
+                }
+                self.read(buf)
+            }
+            Whence::Start => {
+                let target = if offset < 0 {
+                    return Err(IoError::Invalid(format!(
+                        "seek to negative position {offset}"
+                    )));
+                } else {
+                    offset as u64
+                };
+                if target < self.position {
+                    return Err(IoError::Unsupported(
+                        "positional pread before the current position on a streaming \
+                         h2/h3 body is unsupported; call into_bytesio() first"
+                            .into(),
+                    ));
+                }
+                self.seek(offset, Whence::Start)?;
+                self.read(buf)
+            }
+            Whence::End => Err(IoError::Unsupported(
+                "positional pread from end on a streaming h2/h3 body requires the \
+                 whole body; call into_bytesio() first"
+                    .into(),
+            )),
+        }
+    }
+
+    fn close(&mut self) -> Result<(), IoError> {
+        self.done = true;
+        self._task.abort();
+        Ok(())
+    }
 }
 
 /// The process-wide tokio runtime the async transport runs on, built on first use.
@@ -118,8 +351,9 @@ fn runtime() -> &'static Runtime {
 /// thread forever. It bounds the whole connect→TLS→request→body sequence.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Runs one async request to completion on the transport runtime, blocking the
-/// calling thread until the response is buffered (or [`REQUEST_TIMEOUT`] elapses).
+/// Dispatches one async request, blocking the calling thread until the response
+/// **headers** are available (or [`REQUEST_TIMEOUT`] elapses). The body is
+/// returned as a streaming [`AsyncBodyStream`] read lazily by the caller.
 pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
     log_event!(
         debug,
@@ -128,11 +362,14 @@ pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> 
         request.url,
         request.prefer
     );
+    let received_at = Instant::new();
     runtime().block_on(async {
-        match tokio::time::timeout(REQUEST_TIMEOUT, send_async(request)).await {
+        match tokio::time::timeout(REQUEST_TIMEOUT, send_async(request, received_at.clone())).await
+        {
             Ok(result) => result,
             Err(_) => Err(HttpError::Transport(format!(
-                "request timed out after {}s",
+                "request timed out after {}s — the server sent no response headers; \
+                 raise the read timeout for slow endpoints",
                 REQUEST_TIMEOUT.as_secs()
             ))),
         }
@@ -140,12 +377,15 @@ pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> 
 }
 
 /// Dispatches to the protocol-specific path based on the request's preference.
-async fn send_async(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
+async fn send_async(
+    request: AsyncRequest<'_>,
+    received_at: Instant,
+) -> Result<RawResponse, HttpError> {
     match request.prefer {
         #[cfg(feature = "http3")]
-        HttpVersion::Http3 => h3_request(request).await,
+        HttpVersion::Http3 => h3_request(request, received_at).await,
         #[cfg(feature = "http2")]
-        _ => h2_send(request).await,
+        _ => h2_send(request, received_at).await,
         #[cfg(not(feature = "http2"))]
         _ => Err(HttpError::Unsupported(
             "no async transport for the requested version is compiled in".into(),
@@ -328,9 +568,12 @@ fn is_hop_by_hop(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Opens the connection (h2c / TLS+ALPN), speaks the negotiated protocol and
-/// buffers the response.
+/// returns a streaming response.
 #[cfg(feature = "http2")]
-async fn h2_send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
+async fn h2_send(
+    request: AsyncRequest<'_>,
+    received_at: Instant,
+) -> Result<RawResponse, HttpError> {
     let url = request.url;
     let host = url.host().to_string();
     if host.is_empty() {
@@ -356,32 +599,38 @@ async fn h2_send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
         let tls = tls_connect(tcp, &host, alpn, request.verify, request.ca_certs).await?;
         let h2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
         if h2 {
-            h2_request(tls, request).await
+            h2_request(tls, request, received_at).await
         } else if request.prefer == HttpVersion::Http2 {
             Err(HttpError::Unsupported(
                 "server refused HTTP/2 over ALPN; retry with HttpVersion::Auto or Http11".into(),
             ))
         } else {
             // Auto fallback: the server chose http/1.1 — speak it over the same TLS.
-            h1_request(tls, request).await
+            h1_request(tls, request, received_at).await
         }
     } else {
         // Cleartext: h2c (prior knowledge) when h2 is pinned, else HTTP/1.1.
         match request.prefer {
-            HttpVersion::Http2 => h2_request(tcp, request).await,
-            _ => h1_request(tcp, request).await,
+            HttpVersion::Http2 => h2_request(tcp, request, received_at).await,
+            _ => h1_request(tcp, request, received_at).await,
         }
     }
 }
 
-/// Performs an HTTP/2 request over an established `stream`, returning the buffered
-/// response (its [`version`](RawResponse::version) is [`Http2`](HttpVersion::Http2)).
+/// Performs an HTTP/2 request over an established `stream`, returning the response
+/// headers immediately with a streaming body (its
+/// [`version`](RawResponse::version) is [`Http2`](HttpVersion::Http2)).
 ///
-/// The connection future is spawned to drive the request, then **aborted** once the
-/// body is buffered: the runtime's worker drops the aborted task promptly, closing
-/// the socket instead of leaving it open for a connection we will not reuse.
+/// The connection driver task is spawned and kept alive by the body reader task,
+/// which feeds chunks into an [`mpsc`] channel. The driver is aborted when the
+/// body reader exits (EOF or error) or when the caller drops the
+/// [`AsyncBodyStream`] (early abandon).
 #[cfg(feature = "http2")]
-async fn h2_request<S>(stream: S, request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
+async fn h2_request<S>(
+    stream: S,
+    request: AsyncRequest<'_>,
+    received_at: Instant,
+) -> Result<RawResponse, HttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -390,30 +639,82 @@ where
     let (mut sender, conn) = hyper::client::conn::http2::handshake(TokioExecutor::new(), io)
         .await
         .map_err(|err| HttpError::Transport(err.to_string()))?;
-    let conn = tokio::spawn(async move {
+    let conn_handle = tokio::spawn(async move {
         let _ = conn.await;
     });
-    let result = async {
-        sender
-            .ready()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = sender
-            .send_request(hyper_request)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        collect(response, HttpVersion::Http2).await
+    sender
+        .ready()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    let response = sender
+        .send_request(hyper_request)
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+
+    let status = response.status().as_u16();
+    let mut headers = HttpHeaders::new();
+    for (name, value) in response.headers() {
+        if let Ok(value) = value.to_str() {
+            headers.insert(name.as_str(), value);
+        }
     }
-    .await;
-    conn.abort();
-    result
+    let size = headers.content_size();
+    let url = request.url.clone();
+
+    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let mut incoming = response.into_body();
+    let ra = received_at.clone();
+
+    let task = tokio::spawn(async move {
+        loop {
+            match incoming.frame().await {
+                Some(Ok(frame)) => {
+                    if let Ok(data) = frame.into_data() {
+                        // Skip empty data frames (e.g. END_STREAM-only) — an empty
+                        // chunk on the channel would prematurely EOF the consumer.
+                        if !data.is_empty() && tx.send(Ok(data.to_vec())).is_err() {
+                            break; // receiver dropped — body abandoned
+                        }
+                    }
+                    // Non-data frames (trailers) are silently skipped.
+                }
+                Some(Err(err)) => {
+                    let _ = tx.send(Err(IoError::Io(err.to_string())));
+                    break;
+                }
+                None => {
+                    ra.stamp_once(); // body fully received from the network
+                    break; // EOF
+                }
+            }
+        }
+        conn_handle.abort();
+    });
+
+    Ok(RawResponse {
+        status,
+        headers,
+        body: Box::new(AsyncBodyStream::new(
+            rx,
+            size,
+            url,
+            received_at.clone(),
+            task,
+        )),
+        version: HttpVersion::Http2,
+        received_at,
+    })
 }
 
 /// Performs an HTTP/1.1 request over an established `stream` (the Auto ALPN
-/// fallback when a TLS server declines `h2`). Like [`h2_request`], the connection
-/// task is aborted once the body is buffered.
+/// fallback when a TLS server declines `h2`). Returns the response headers
+/// immediately with a streaming body, identical in shape to [`h2_request`].
 #[cfg(feature = "http2")]
-async fn h1_request<S>(stream: S, request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
+async fn h1_request<S>(
+    stream: S,
+    request: AsyncRequest<'_>,
+    received_at: Instant,
+) -> Result<RawResponse, HttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -422,23 +723,69 @@ where
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
         .await
         .map_err(|err| HttpError::Transport(err.to_string()))?;
-    let conn = tokio::spawn(async move {
+    let conn_handle = tokio::spawn(async move {
         let _ = conn.await;
     });
-    let result = async {
-        sender
-            .ready()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = sender
-            .send_request(hyper_request)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        collect(response, HttpVersion::Http11).await
+    sender
+        .ready()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    let response = sender
+        .send_request(hyper_request)
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+
+    let status = response.status().as_u16();
+    let mut headers = HttpHeaders::new();
+    for (name, value) in response.headers() {
+        if let Ok(value) = value.to_str() {
+            headers.insert(name.as_str(), value);
+        }
     }
-    .await;
-    conn.abort();
-    result
+    let size = headers.content_size();
+    let url = request.url.clone();
+
+    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let mut incoming = response.into_body();
+    let ra = received_at.clone();
+
+    let task = tokio::spawn(async move {
+        loop {
+            match incoming.frame().await {
+                Some(Ok(frame)) => {
+                    if let Ok(data) = frame.into_data() {
+                        if !data.is_empty() && tx.send(Ok(data.to_vec())).is_err() {
+                            break; // receiver dropped — body abandoned
+                        }
+                    }
+                    // Non-data frames (trailers) are silently skipped.
+                }
+                Some(Err(err)) => {
+                    let _ = tx.send(Err(IoError::Io(err.to_string())));
+                    break;
+                }
+                None => {
+                    ra.stamp_once(); // body fully received from the network
+                    break; // EOF
+                }
+            }
+        }
+        conn_handle.abort();
+    });
+
+    Ok(RawResponse {
+        status,
+        headers,
+        body: Box::new(AsyncBodyStream::new(
+            rx,
+            size,
+            url,
+            received_at.clone(),
+            task,
+        )),
+        version: HttpVersion::Http11,
+        received_at,
+    })
 }
 
 /// Builds the `hyper` request from our prepared one. `with_host` adds a `Host`
@@ -481,35 +828,6 @@ fn build_request(
         .map_err(|err| HttpError::InvalidHeader(err.to_string()))
 }
 
-/// Drains a hyper response into a [`RawResponse`], tagging it with the protocol
-/// `version` it was delivered over.
-#[cfg(feature = "http2")]
-async fn collect(
-    response: hyper::Response<hyper::body::Incoming>,
-    version: HttpVersion,
-) -> Result<RawResponse, HttpError> {
-    let status = response.status().as_u16();
-    let mut headers = HttpHeaders::new();
-    for (name, value) in response.headers() {
-        if let Ok(value) = value.to_str() {
-            headers.insert(name.as_str(), value);
-        }
-    }
-    let body = response
-        .into_body()
-        .collect()
-        .await
-        .map_err(|err| HttpError::Transport(err.to_string()))?
-        .to_bytes()
-        .to_vec();
-    Ok(RawResponse {
-        status,
-        headers,
-        body,
-        version,
-    })
-}
-
 /// Wraps `stream` in a rustls TLS session for `host`, offering `alpn` and verifying
 /// the certificate unless `verify` is `false`. The negotiated ALPN id is read back
 /// by the caller.
@@ -548,11 +866,16 @@ where
 // HTTP/3 over QUIC (quinn + h3).
 // ---------------------------------------------------------------------------
 
-/// Performs an HTTP/3 request over a fresh QUIC connection, buffering the response.
-/// HTTP/3 is TLS-only, so the URL must be `https`; the connection offers ALPN `h3`.
-/// The connection driver is spawned and aborted once the body is buffered.
+/// Performs an HTTP/3 request over a fresh QUIC connection, returning the response
+/// headers immediately with a streaming body. HTTP/3 is TLS-only, so the URL must
+/// be `https`; the connection offers ALPN `h3`. A background body-reader task feeds
+/// chunks into an [`mpsc`] channel — the connection driver and QUIC endpoint are
+/// closed by that task once the body is fully read (or the stream is abandoned).
 #[cfg(feature = "http3")]
-async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
+async fn h3_request(
+    request: AsyncRequest<'_>,
+    received_at: Instant,
+) -> Result<RawResponse, HttpError> {
     use bytes::Buf;
 
     let url = request.url;
@@ -591,70 +914,94 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
         .await
         .map_err(|err| h3_tls_hint(err.to_string(), request.verify))?;
 
-    let (mut driver, mut send_request) = h3::client::new(h3_quinn::Connection::new(connection))
+    let (mut h3_conn, mut send_request) = h3::client::new(h3_quinn::Connection::new(connection))
         .await
         .map_err(|err| HttpError::Transport(err.to_string()))?;
-    let driver = tokio::spawn(async move {
-        let _ = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
+    // The driver task keeps the h3 connection alive (polls it); it is aborted by
+    // the body-reader task once the body stream is done or abandoned.
+    let driver_task = tokio::spawn(async move {
+        let _ = std::future::poll_fn(|cx| h3_conn.poll_close(cx)).await;
     });
 
-    let result = async {
-        let req = build_h3_request(&request)?;
-        let mut stream = send_request
-            .send_request(req)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        if !request.body.is_empty() {
-            stream
-                .send_data(bytes::Bytes::copy_from_slice(request.body))
-                .await
-                .map_err(|err| HttpError::Transport(err.to_string()))?;
-        }
+    // Send the request and receive the response headers before handing off to the
+    // background body-reader task — headers are available immediately.
+    let req = build_h3_request(&request)?;
+    let mut stream = send_request
+        .send_request(req)
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    if !request.body.is_empty() {
         stream
-            .finish()
+            .send_data(bytes::Bytes::copy_from_slice(request.body))
             .await
             .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = stream
-            .recv_response()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let status = response.status().as_u16();
-        let mut headers = HttpHeaders::new();
-        for (name, value) in response.headers() {
-            if let Ok(value) = value.to_str() {
-                headers.insert(name.as_str(), value);
-            }
-        }
-        let mut body = Vec::new();
-        while let Some(mut chunk) = stream
-            .recv_data()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?
-        {
-            while chunk.has_remaining() {
-                let bytes = chunk.chunk();
-                body.extend_from_slice(bytes);
-                let len = bytes.len();
-                chunk.advance(len);
-            }
-        }
-        Ok(RawResponse {
-            status,
-            headers,
-            body,
-            version: HttpVersion::Http3,
-        })
     }
-    .await;
+    stream
+        .finish()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    let response = stream
+        .recv_response()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
 
-    driver.abort();
-    // Queue a CONNECTION_CLOSE and drop the endpoint (we do not pool QUIC
-    // connections yet). This is best-effort: the body is already fully buffered, so
-    // we do not `wait_idle()` to flush the close frame — a server learns of the
-    // close via its idle timeout at worst, and we avoid adding teardown latency to
-    // every request.
-    endpoint.close(0u32.into(), b"done");
-    result
+    let status = response.status().as_u16();
+    let mut headers = HttpHeaders::new();
+    for (name, value) in response.headers() {
+        if let Ok(value) = value.to_str() {
+            headers.insert(name.as_str(), value);
+        }
+    }
+    let size = headers.content_size();
+    let url_clone = url.clone();
+
+    let (tx, rx) = mpsc::sync_channel::<Result<Vec<u8>, IoError>>(8);
+    let ra = received_at.clone();
+
+    let task = tokio::spawn(async move {
+        loop {
+            match stream.recv_data().await {
+                Ok(Some(mut chunk)) => {
+                    let mut data = Vec::new();
+                    while chunk.has_remaining() {
+                        let b = chunk.chunk();
+                        data.extend_from_slice(b);
+                        let len = b.len();
+                        chunk.advance(len);
+                    }
+                    if !data.is_empty() && tx.send(Ok(data)).is_err() {
+                        break; // receiver dropped — body abandoned
+                    }
+                }
+                Ok(None) => {
+                    ra.stamp_once(); // body fully received from the network
+                    break; // EOF
+                }
+                Err(err) => {
+                    let _ = tx.send(Err(IoError::Io(err.to_string())));
+                    break;
+                }
+            }
+        }
+        driver_task.abort();
+        // Best-effort CONNECTION_CLOSE; the body is either fully read or abandoned
+        // so we do not `wait_idle()` — avoid adding teardown latency.
+        endpoint.close(0u32.into(), b"done");
+    });
+
+    Ok(RawResponse {
+        status,
+        headers,
+        body: Box::new(AsyncBodyStream::new(
+            rx,
+            size,
+            url_clone,
+            received_at.clone(),
+            task,
+        )),
+        version: HttpVersion::Http3,
+        received_at,
+    })
 }
 
 /// Wraps a QUIC connect error, adding the self-signed-certificate hint only when
