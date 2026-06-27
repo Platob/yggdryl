@@ -2344,6 +2344,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ipc",
+ "arrow-schema",
+ "arrow-select",
+ "half",
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-core",
+ "yggdryl-schema",
+]
+
+[[package]]
 name = "yggdryl-schema"
 version = "0.1.1"
 dependencies = [
