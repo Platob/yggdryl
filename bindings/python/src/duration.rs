@@ -34,6 +34,18 @@ impl Duration {
             .map_err(time_err)
     }
 
+    /// Parse flexibly (compact / ISO-8601 / seconds); with ``raise_error=False``
+    /// return ``None`` instead of raising.
+    #[staticmethod]
+    #[pyo3(signature = (value, raise_error = true))]
+    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
+        match CoreDuration::from_str(value) {
+            Ok(inner) => Ok(Some(Duration { inner })),
+            Err(e) if raise_error => Err(time_err(e)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// A span of `seconds` seconds.
     #[staticmethod]
     fn from_secs(seconds: i64) -> Self {

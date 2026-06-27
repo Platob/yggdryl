@@ -230,6 +230,86 @@ fn utc_now_like() -> DateTime {
     DateTime::from_str("2024-03-10T07:00:00Z").unwrap()
 }
 
+#[test]
+fn temporal_trait_interconversion() {
+    let d = Date::from_str("2024-07-01").unwrap();
+    // Date -> DateTime (midnight) -> Date.
+    assert_eq!(d.to_datetime().date(), d);
+    assert_eq!(d.to_time(), Time::from_hms(0, 0, 0).unwrap());
+    // Time -> DateTime on the epoch day.
+    let t = Time::from_str("13:30:00").unwrap();
+    assert_eq!(t.to_datetime().hour(), 13);
+    assert_eq!(t.to_datetime().date(), Date::from_epoch_days(0));
+    assert_eq!(t.to_time(), t);
+    // DateTime -> date / time.
+    let dt = DateTime::from_str("2024-07-01T08:30:00Z").unwrap();
+    assert_eq!(dt.to_date(), Date::from_str("2024-07-01").unwrap());
+    assert_eq!(dt.to_time(), Time::from_hms(8, 30, 0).unwrap());
+}
+
+#[test]
+fn date_timezone_and_at() {
+    let d = Date::from_ymd(2024, 7, 1)
+        .unwrap()
+        .with_timezone(Timezone::from_str("America/New_York").unwrap());
+    assert_eq!(d.timezone().unwrap().name(), "America/New_York");
+    // Date.at(time) localises in the date's zone (EDT in July -> 12:00 UTC).
+    let dt = d.at(Time::from_hms(8, 0, 0).unwrap());
+    assert_eq!(dt.epoch_seconds(), 1_719_835_200);
+    assert_eq!(d.without_timezone().timezone(), None);
+}
+
+#[test]
+fn flexible_parsing() {
+    // Date: slash, compact, and a full datetime (date kept).
+    assert_eq!(Date::from_str("2024/07/01").unwrap().to_str(), "2024-07-01");
+    assert_eq!(Date::from_str("20240701").unwrap().to_str(), "2024-07-01");
+    assert_eq!(
+        Date::from_str("2024-07-01T10:00:00Z").unwrap().to_str(),
+        "2024-07-01"
+    );
+    // Time: compact.
+    assert_eq!(Time::from_str("1345").unwrap().to_str(), "13:45:00");
+    assert_eq!(Time::from_str("134530").unwrap().to_str(), "13:45:30");
+    // DateTime: date-only -> midnight, bare integer -> epoch seconds.
+    assert_eq!(
+        DateTime::from_str("2024-07-01").unwrap().to_str(),
+        "2024-07-01T00:00:00"
+    );
+    assert_eq!(
+        DateTime::from_str("1719835200").unwrap().epoch_seconds(),
+        1_719_835_200
+    );
+    assert!(DateTime::from_str("nonsense").is_err());
+}
+
+#[test]
+fn duration_iso8601() {
+    assert_eq!(Duration::from_str("PT15M").unwrap().as_seconds(), 900);
+    assert_eq!(Duration::from_str("PT1H30M").unwrap().as_seconds(), 5_400);
+    assert_eq!(Duration::from_str("P1D").unwrap().as_seconds(), 86_400);
+    assert_eq!(
+        Duration::from_str("P1Y").unwrap().as_seconds(),
+        365 * 86_400
+    ); // Y≈365d
+    assert_eq!(
+        Duration::from_str("PT0.5S").unwrap().as_nanos(),
+        500_000_000
+    );
+    assert_eq!(Duration::from_str("-PT1H").unwrap().as_seconds(), -3_600);
+    assert!(Duration::from_str("P").is_err());
+    // 'M' is months before T, minutes after T.
+    assert_eq!(Duration::from_str("P1M").unwrap().as_seconds(), 30 * 86_400);
+    assert_eq!(Duration::from_str("PT1M").unwrap().as_seconds(), 60);
+}
+
+#[test]
+fn datetime_convert_helper() {
+    let utc = DateTime::from_str("2024-07-01T12:00:00Z").unwrap();
+    assert_eq!(utc.convert("Asia/Tokyo").unwrap().hour(), 21);
+    assert!(utc.convert("Nowhere/Nope").is_err());
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn temporal_serde_round_trips() {

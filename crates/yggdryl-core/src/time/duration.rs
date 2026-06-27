@@ -137,12 +137,14 @@ impl Duration {
         }
         let negative = value.starts_with('-');
         let body = value.trim_start_matches(['+', '-']);
-        let sign = if negative { -1 } else { 1 };
+        let sign: i128 = if negative { -1 } else { 1 };
+        // ISO-8601 duration: P[nY][nM][nW][nD][T[nH][nM][nS]] (Y≈365d, M≈30d).
+        if body.starts_with(['P', 'p']) {
+            return parse_iso8601(body, sign, input);
+        }
         // A bare number is seconds (fractional allowed).
         if let Ok(secs) = body.parse::<i64>() {
-            return Ok(Duration::from_nanos(
-                sign as i128 * secs as i128 * NS_PER_SEC,
-            ));
+            return Ok(Duration::from_nanos(sign * secs as i128 * NS_PER_SEC));
         }
         if !body.bytes().any(|b| b.is_ascii_alphabetic()) {
             if let Ok(secs) = body.parse::<f64>() {
@@ -196,7 +198,7 @@ impl Duration {
         if !matched {
             return Err(TimeError::Invalid(input.to_string()));
         }
-        Ok(Duration::from_nanos(sign as i128 * total))
+        Ok(Duration::from_nanos(sign * total))
     }
 
     /// Builds a span from a [`Mapping`] (`nanoseconds`).
@@ -258,6 +260,66 @@ impl Duration {
         let value = std::str::from_utf8(bytes).map_err(|_| TimeError::Invalid("<bytes>".into()))?;
         Duration::from_str(value)
     }
+}
+
+/// Parses an ISO-8601 duration (`body` begins with `P`). Calendar fields are
+/// approximated: a year is 365 days and a month is 30 days.
+fn parse_iso8601(body: &str, sign: i128, input: &str) -> Result<Duration, TimeError> {
+    let after_p = &body[1..];
+    let split = after_p.find(['T', 't']);
+    let date_part = split.map_or(after_p, |i| &after_p[..i]);
+    let time_part = split.map_or("", |i| &after_p[i + 1..]);
+    let mut total: i128 = 0;
+    let mut matched = false;
+    accumulate_iso(date_part, false, &mut total, &mut matched, input)?;
+    accumulate_iso(time_part, true, &mut total, &mut matched, input)?;
+    if !matched {
+        return Err(TimeError::Invalid(input.to_string()));
+    }
+    Ok(Duration::from_nanos(sign * total))
+}
+
+/// Accumulates one ISO-8601 segment (`time` selects H/M/S vs Y/M/W/D semantics).
+fn accumulate_iso(
+    segment: &str,
+    time: bool,
+    total: &mut i128,
+    matched: &mut bool,
+    input: &str,
+) -> Result<(), TimeError> {
+    let invalid = || TimeError::Invalid(input.to_string());
+    let bytes = segment.as_bytes();
+    let mut pos = 0;
+    while pos < bytes.len() {
+        let start = pos;
+        while pos < bytes.len() && (bytes[pos].is_ascii_digit() || bytes[pos] == b'.') {
+            pos += 1;
+        }
+        if pos == start || pos >= bytes.len() {
+            return Err(invalid());
+        }
+        let number = &segment[start..pos];
+        let scale: i128 = match (bytes[pos].to_ascii_uppercase(), time) {
+            (b'Y', false) => 365 * NS_PER_DAY,
+            (b'M', false) => 30 * NS_PER_DAY,
+            (b'W', false) => 7 * NS_PER_DAY,
+            (b'D', false) => NS_PER_DAY,
+            (b'H', true) => NS_PER_HOUR,
+            (b'M', true) => NS_PER_MIN,
+            (b'S', true) => NS_PER_SEC,
+            _ => return Err(invalid()),
+        };
+        pos += 1;
+        if number.contains('.') {
+            let value = number.parse::<f64>().map_err(|_| invalid())?;
+            *total += (value * scale as f64) as i128;
+        } else {
+            let value = number.parse::<i128>().map_err(|_| invalid())?;
+            *total += value * scale;
+        }
+        *matched = true;
+    }
+    Ok(())
 }
 
 impl fmt::Display for Duration {

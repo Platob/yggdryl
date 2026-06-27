@@ -199,6 +199,18 @@ impl DateTime {
         }
     }
 
+    /// Parse flexibly (ISO, date-only → midnight, bare integer → epoch seconds);
+    /// with ``raise_error=False`` return ``None`` instead of raising.
+    #[staticmethod]
+    #[pyo3(signature = (value, raise_error = true))]
+    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
+        match CoreDateTime::from_str(value) {
+            Ok(inner) => Ok(Some(DateTime { inner })),
+            Err(e) if raise_error => Err(time_err(e)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// Render to a component dict.
     fn to_mapping(&self) -> Mapping {
         self.inner.to_mapping()

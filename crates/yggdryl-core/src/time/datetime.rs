@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::log_event;
 use crate::Mapping;
 
-use super::{Date, Time, TimeError, Timezone};
+use super::{Date, Temporal, Time, TimeError, Timezone};
 
 /// An instant in time, stored as UTC epoch seconds + sub-second nanoseconds, with
 /// an optional [`Timezone`] used only for display / civil-field extraction. A naive
@@ -208,8 +208,16 @@ impl DateTime {
         self.to_timezone(Timezone::Utc)
     }
 
-    /// Parses an ISO-8601 datetime: `YYYY-MM-DD`, then `T` or a space, then
-    /// `HH:MM[:SS[.frac]]`, then an optional `Z` or `±HH:MM` offset (no offset = naive).
+    /// The same instant displayed in the named zone — a string-keyed convenience
+    /// over [`to_timezone`](DateTime::to_timezone) (e.g. `convert("Asia/Tokyo")`).
+    pub fn convert(&self, timezone: &str) -> Result<DateTime, TimeError> {
+        Ok(self.to_timezone(Timezone::from_str(timezone)?))
+    }
+
+    /// Parses a datetime, flexibly: an ISO-8601 `YYYY-MM-DD` then `T`/space then
+    /// `HH:MM[:SS[.frac]]` then an optional `Z` / `±HH:MM` offset (no offset =
+    /// naive); a **date-only** string (→ midnight); or a **bare integer** of epoch
+    /// seconds (→ UTC).
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<DateTime, TimeError> {
         log_event!(trace, "DateTime::from_str {input:?}");
@@ -217,10 +225,23 @@ impl DateTime {
         if value.is_empty() {
             return Err(TimeError::Empty);
         }
-        let split = value
-            .find(['T', 't'])
-            .or_else(|| value.find(' '))
-            .ok_or_else(|| TimeError::Invalid(input.to_string()))?;
+        // A bare integer is epoch seconds (a compact 8-digit YYYYMMDD is a date).
+        if value.bytes().all(|b| b.is_ascii_digit()) && value.len() != 8 {
+            let seconds = value
+                .parse::<i64>()
+                .map_err(|_| TimeError::Invalid(input.to_string()))?;
+            return Ok(DateTime::from_epoch_seconds(seconds, Some(Timezone::Utc)));
+        }
+        // No time component -> a date-only string at midnight (keeping its zone).
+        let Some(split) = value.find(['T', 't']).or_else(|| value.find(' ')) else {
+            let date = Date::from_str(value)?;
+            let timezone = date.timezone().cloned();
+            return Ok(DateTime::from_local(
+                date,
+                Time::from_hms(0, 0, 0)?,
+                timezone,
+            ));
+        };
         let date = Date::from_str(&value[..split])?;
         let mut rest = value[split + 1..].trim();
         let timezone =
@@ -286,6 +307,20 @@ impl DateTime {
     pub fn from_bytes(bytes: &[u8]) -> Result<DateTime, TimeError> {
         let value = std::str::from_utf8(bytes).map_err(|_| TimeError::Invalid("<bytes>".into()))?;
         DateTime::from_str(value)
+    }
+}
+
+impl Temporal for DateTime {
+    fn to_datetime(&self) -> DateTime {
+        self.clone()
+    }
+
+    fn to_date(&self) -> Date {
+        self.date()
+    }
+
+    fn to_time(&self) -> Time {
+        self.time()
     }
 }
 

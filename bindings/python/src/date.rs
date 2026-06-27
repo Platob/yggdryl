@@ -2,10 +2,12 @@
 
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
-use pyo3::types::PyType;
-use yggdryl_core::{Date as CoreDate, Mapping};
+use yggdryl_core::{Date as CoreDate, Mapping, Temporal, Timezone as CoreTimezone};
 
+use crate::datetime::DateTime;
+use crate::pytime::Time;
 use crate::time_err;
+use crate::timezone::Timezone;
 
 /// A calendar date (no time of day or timezone), stored as days since the epoch.
 #[pyclass(name = "Date", module = "yggdryl")]
@@ -90,6 +92,55 @@ impl Date {
         }
     }
 
+    /// The timezone this date is anchored to, if any.
+    #[getter]
+    fn timezone(&self) -> Option<Timezone> {
+        self.inner
+            .timezone()
+            .cloned()
+            .map(|inner| Timezone { inner })
+    }
+
+    /// A copy anchored to the named timezone.
+    fn with_timezone(&self, timezone: &str) -> PyResult<Self> {
+        let tz = CoreTimezone::from_str(timezone).map_err(time_err)?;
+        Ok(Date {
+            inner: self.inner.clone().with_timezone(tz),
+        })
+    }
+
+    /// A copy with no timezone.
+    fn without_timezone(&self) -> Self {
+        Date {
+            inner: self.inner.clone().without_timezone(),
+        }
+    }
+
+    /// Midnight on this date (in its timezone) as a :class:`DateTime`.
+    fn to_datetime(&self) -> DateTime {
+        DateTime {
+            inner: self.inner.to_datetime(),
+        }
+    }
+
+    /// Combine with a :class:`Time` into a :class:`DateTime` in the date's zone.
+    fn at(&self, time: &Time) -> DateTime {
+        DateTime {
+            inner: self.inner.at(time.inner),
+        }
+    }
+
+    /// Parse flexibly; with ``raise_error=False`` return ``None`` instead of raising.
+    #[staticmethod]
+    #[pyo3(signature = (value, raise_error = true))]
+    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
+        match CoreDate::from_str(value) {
+            Ok(inner) => Ok(Some(Date { inner })),
+            Err(e) if raise_error => Err(time_err(e)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// Render to a dict (``year`` / ``month`` / ``day``).
     fn to_mapping(&self) -> Mapping {
         self.inner.to_mapping()
@@ -115,10 +166,9 @@ impl Date {
         self.inner.epoch_days() as i64
     }
 
-    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (i32, u32, u32)) {
-        (
-            py.get_type_bound::<Self>(),
-            (self.inner.year(), self.inner.month(), self.inner.day()),
-        )
+    /// Reconstruct losslessly (incl. timezone) through the component mapping.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<(PyObject, (Mapping,))> {
+        let from_mapping = py.get_type_bound::<Self>().getattr("from_mapping")?;
+        Ok((from_mapping.into(), (self.inner.to_mapping(),)))
     }
 }

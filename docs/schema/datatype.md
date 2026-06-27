@@ -51,6 +51,13 @@ Parse a canonical string, or use a named constructor.
     let _ = DataType::struct_(vec![Field::new("id", DataType::int(64, true), false)]);
     ```
 
+!!! tip "SQL & Hive forms"
+    `from_str` also accepts common **SQL** and **Hive/Spark** spellings, so you can
+    paste a DDL type: `BIGINT`, `INTEGER`, `VARCHAR(255)`, `DOUBLE PRECISION`,
+    `DECIMAL(10,2)`, `TIMESTAMP WITH TIME ZONE`, `UUID`, and the `( )` / `< >`
+    bracket styles — `array<int>`, `struct<a: int, b: string>`, `map<string, int>`.
+    (Per SQL, a bare `int`/`integer` is 32-bit and `bigint` is 64-bit.)
+
 ## Categories & physical attributes
 
 `category` is `"primitive"` / `"logical"` / `"nested"` / `"any"`. The physical

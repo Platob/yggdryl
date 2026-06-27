@@ -84,6 +84,12 @@ impl fmt::Display for SchemaError {
 
 impl std::error::Error for SchemaError {}
 
+impl From<yggdryl_core::CharsetError> for SchemaError {
+    fn from(err: yggdryl_core::CharsetError) -> SchemaError {
+        SchemaError::UnknownUnit(err.0)
+    }
+}
+
 /// The broad category a [`DataType`] belongs to — the three-way split of the type
 /// system, plus the [`Any`](TypeCategory::Any) wildcard.
 ///
@@ -371,56 +377,105 @@ impl DataType {
 
 // ---- the canonical string grammar ----
 
-/// Splits `input` on top-level (bracket depth 0) occurrences of `sep`.
+/// Whether `c` opens a parameter group (`[`, `(` or `<`).
+fn is_open_bracket(c: char) -> bool {
+    matches!(c, '[' | '(' | '<')
+}
+
+/// Whether `c` closes a parameter group (`]`, `)` or `>`).
+fn is_close_bracket(c: char) -> bool {
+    matches!(c, ']' | ')' | '>')
+}
+
+/// Splits `input` on top-level (bracket depth 0) occurrences of `sep`, tracking all
+/// of `[]` / `()` / `<>` so nested type arguments are not split.
 fn split_top_level(input: &str, sep: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0usize;
     let mut start = 0usize;
     for (i, ch) in input.char_indices() {
-        match ch {
-            '[' => depth += 1,
-            ']' => depth = depth.saturating_sub(1),
-            c if c == sep && depth == 0 => {
-                parts.push(input[start..i].trim());
-                start = i + 1;
-            }
-            _ => {}
+        if is_open_bracket(ch) {
+            depth += 1;
+        } else if is_close_bracket(ch) {
+            depth = depth.saturating_sub(1);
+        } else if ch == sep && depth == 0 {
+            parts.push(input[start..i].trim());
+            start = i + 1;
         }
     }
     parts.push(input[start..].trim());
     parts
 }
 
-/// The byte index of the first top-level occurrence of `target`.
+/// The byte index of the first top-level occurrence of `target` (across all bracket
+/// kinds).
 fn top_level_index(input: &str, target: char) -> Option<usize> {
     let mut depth = 0usize;
     for (i, ch) in input.char_indices() {
-        match ch {
-            '[' => depth += 1,
-            ']' => depth = depth.saturating_sub(1),
-            c if c == target && depth == 0 => return Some(i),
-            _ => {}
+        if is_open_bracket(ch) {
+            depth += 1;
+        } else if is_close_bracket(ch) {
+            depth = depth.saturating_sub(1);
+        } else if ch == target && depth == 0 {
+            return Some(i);
         }
     }
     None
 }
 
-/// Splits `name: type` on the first top-level `:` (defaulting the name to
-/// `default_name`); a trailing ` not null` marks the field non-nullable.
+/// Splits a field token into `(name, type)`. The name may be quoted with `"`, `'`,
+/// `` ` `` or `[ ]`, and is separated from the type by a `:` (`qty: int64`) or by
+/// whitespace (Hive/SQL `qty int64`, `col struct<a: str>`). Unnamed tokens
+/// (`int32`) fall back to `default_name`.
+fn split_name_type<'a>(token: &'a str, default_name: &'a str) -> (String, &'a str) {
+    // A quoted / bracketed name comes first and may contain spaces or colons.
+    if let Some(open) = token.chars().next() {
+        let close = match open {
+            '"' => Some('"'),
+            '\'' => Some('\''),
+            '`' => Some('`'),
+            '[' => Some(']'),
+            _ => None,
+        };
+        if let Some(close) = close {
+            if let Some(end) = token[1..].find(close) {
+                let name = token[1..1 + end].to_string();
+                let rest = token[1 + end + close.len_utf8()..].trim_start();
+                let rest = rest.strip_prefix(':').unwrap_or(rest).trim_start();
+                return (name, rest);
+            }
+        }
+    }
+    // Unquoted: a `:` separates name and type, else the first whitespace does.
+    if let Some(i) = top_level_index(token, ':') {
+        return (token[..i].trim().to_string(), token[i + 1..].trim());
+    }
+    if let Some(i) = token.find(char::is_whitespace) {
+        return (token[..i].trim().to_string(), token[i + 1..].trim());
+    }
+    (default_name.to_string(), token)
+}
+
+/// Parses a field token (`name: type` / `name type` / unnamed `type`), with an
+/// optional trailing ` not null` and an optionally quoted name (see [`split_name_type`]).
 pub(crate) fn parse_child_field(token: &str, default_name: &str) -> Result<Field, SchemaError> {
     let token = token.trim();
     if token.is_empty() {
         return Err(SchemaError::Empty);
     }
-    let (name, rest) = match top_level_index(token, ':') {
-        Some(i) => (token[..i].trim().to_string(), token[i + 1..].trim()),
-        None => (default_name.to_string(), token),
+    // Strip a trailing nullability marker before splitting (so an unnamed
+    // `int32 not null` is not mistaken for a `name type` pair).
+    let (token, nullable) = match token.to_ascii_lowercase().strip_suffix(" not null") {
+        Some(_) => (token[..token.len() - " not null".len()].trim(), false),
+        None => (token, true),
     };
-    let (rest, nullable) = match rest.to_ascii_lowercase().strip_suffix(" not null") {
-        Some(_) => (rest[..rest.len() - " not null".len()].trim(), false),
-        None => (rest, true),
+    let (name, type_str) = split_name_type(token, default_name);
+    let name = if name.is_empty() {
+        default_name.to_string()
+    } else {
+        name
     };
-    Ok(Field::new(name, DataType::from_str(rest)?, nullable))
+    Ok(Field::new(name, DataType::from_str(type_str)?, nullable))
 }
 
 /// Parses the comma-separated body of a `struct[…]` into fields.
@@ -436,16 +491,19 @@ pub(crate) fn parse_struct_body(args: &str) -> Result<Vec<Field>, SchemaError> {
         .collect()
 }
 
-/// Parses a standalone `name: type` field string (requires an explicit name).
+/// Parses a standalone field string (`name: type` or `name type`), requiring an
+/// explicit name.
 pub(crate) fn parse_field_str(input: &str) -> Result<Field, SchemaError> {
     let input = input.trim();
     if input.is_empty() {
         return Err(SchemaError::Empty);
     }
-    match top_level_index(input, ':') {
-        Some(_) => parse_child_field(input, ""),
-        None => Err(SchemaError::Invalid(input.to_string())),
+    const SENTINEL: &str = "\u{0}unnamed";
+    let field = parse_child_field(input, SENTINEL)?;
+    if field.name() == SENTINEL {
+        return Err(SchemaError::Invalid(input.to_string()));
     }
+    Ok(field)
 }
 
 /// Parses an integer parameter (precision / size / …).
@@ -472,6 +530,22 @@ fn parse_time_unit(value: &str) -> Result<TimeUnit, SchemaError> {
     TimeUnit::from_str(value).map_err(|_| SchemaError::UnknownUnit(value.to_string()))
 }
 
+/// Parses a time resolution given either a unit token (`us`) or a SQL fractional
+/// precision (`0` → s, `1..3` → ms, `4..6` → us, `7..9` → ns).
+fn parse_unit_or_precision(value: &str) -> Result<TimeUnit, SchemaError> {
+    let value = value.trim();
+    if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) {
+        let precision: u32 = parse_int(value, value)?;
+        return Ok(match precision {
+            0 => TimeUnit::Second,
+            1..=3 => TimeUnit::Millisecond,
+            4..=6 => TimeUnit::Microsecond,
+            _ => TimeUnit::Nanosecond,
+        });
+    }
+    parse_time_unit(value)
+}
+
 impl DataType {
     /// Parses a type from its canonical lowercase string. Examples: `int64`,
     /// `uint8`, `decimal128[10, 2]`, `timestamp[us, UTC]`, `varchar[latin1]`,
@@ -485,9 +559,16 @@ impl DataType {
         if input.is_empty() {
             return Err(SchemaError::Empty);
         }
-        let (head, args) = match input.find('[') {
+        // The argument group may be bracketed with `[ ]` (canonical), `( )` (SQL) or
+        // `< >` (Hive), e.g. `varchar(255)`, `struct<a: int>`, `decimal[10, 2]`.
+        let (head, args) = match input.find(['[', '(', '<']) {
             Some(i) => {
-                if !input.ends_with(']') {
+                let close = match input.as_bytes()[i] {
+                    b'[' => ']',
+                    b'(' => ')',
+                    _ => '>',
+                };
+                if !input.ends_with(close) {
                     return Err(SchemaError::Invalid(input.to_string()));
                 }
                 (
@@ -497,32 +578,44 @@ impl DataType {
             }
             None => (input, None),
         };
-        let lower = head.to_ascii_lowercase();
+        // Normalise the head: lowercase + single-spaced, so multi-word SQL names
+        // (`double precision`, `timestamp with time zone`) match.
+        let lower = head
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase();
         match (lower.as_str(), args) {
             ("any", None) => Ok(DataType::Any),
             ("null", None) => Ok(DataType::Null),
-            ("bool" | "boolean", None) => Ok(DataType::Boolean),
-            ("int8", None) => Ok(DataType::int(8, true)),
-            ("int16", None) => Ok(DataType::int(16, true)),
-            ("int32", None) => Ok(DataType::int(32, true)),
-            ("int64" | "int", None) => Ok(DataType::int(64, true)),
-            ("uint8", None) => Ok(DataType::int(8, false)),
-            ("uint16", None) => Ok(DataType::int(16, false)),
-            ("uint32", None) => Ok(DataType::int(32, false)),
-            ("uint64" | "uint", None) => Ok(DataType::int(64, false)),
+            ("bool" | "boolean" | "bit", None) => Ok(DataType::Boolean),
+            ("int8" | "tinyint", None) => Ok(DataType::int(8, true)),
+            ("int16" | "smallint", None) => Ok(DataType::int(16, true)),
+            ("int32" | "int" | "integer", None) => Ok(DataType::int(32, true)),
+            ("int64" | "bigint" | "long", None) => Ok(DataType::int(64, true)),
+            ("uint8" | "utinyint", None) => Ok(DataType::int(8, false)),
+            ("uint16" | "usmallint", None) => Ok(DataType::int(16, false)),
+            ("uint32" | "uinteger", None) => Ok(DataType::int(32, false)),
+            ("uint64" | "uint" | "ubigint", None) => Ok(DataType::int(64, false)),
             ("float16" | "halffloat", None) => Ok(DataType::float(16)),
-            ("float32" | "float", None) => Ok(DataType::float(32)),
-            ("float64" | "double", None) => Ok(DataType::float(64)),
-            ("utf8" | "string" | "str", None) => Ok(DataType::varchar()),
+            ("float32" | "float" | "real" | "float4", None) => Ok(DataType::float(32)),
+            ("float64" | "double" | "double precision" | "float8", None) => Ok(DataType::float(64)),
+            (
+                "utf8" | "string" | "str" | "text" | "varchar" | "char" | "character" | "nvarchar"
+                | "nchar" | "clob" | "json" | "jsonb",
+                None,
+            ) => Ok(DataType::varchar()),
             ("large_utf8" | "large_string", None) => {
                 Ok(DataType::varchar_with(Charset::Utf8, true, false))
             }
             ("utf8_view" | "string_view", None) => {
                 Ok(DataType::varchar_with(Charset::Utf8, false, true))
             }
-            ("varchar", None) => Ok(DataType::varchar()),
-            ("varchar", Some(a)) => parse_varchar(a, input),
-            ("binary", None) => Ok(DataType::binary()),
+            ("varchar" | "char" | "character" | "nvarchar" | "nchar" | "string", Some(a)) => {
+                parse_varchar(a, input)
+            }
+            ("binary" | "bytea" | "blob" | "varbinary", None) => Ok(DataType::binary()),
+            ("varbinary", Some(_)) => Ok(DataType::binary()),
             ("large_binary", None) => Ok(DataType::Binary {
                 large: true,
                 view: false,
@@ -533,30 +626,59 @@ impl DataType {
                 view: true,
                 size: None,
             }),
-            ("fixed_size_binary", Some(a)) => Ok(DataType::fixed_size_binary(parse_int(a, input)?)),
+            ("fixed_size_binary" | "binary", Some(a)) => {
+                Ok(DataType::fixed_size_binary(parse_int(a, input)?))
+            }
+            ("uuid", None) => Ok(DataType::fixed_size_binary(16)),
             ("date" | "date32", None) => Ok(DataType::date()),
             ("date64", None) => Ok(DataType::Date { large: true }),
+            (
+                "time" | "time32" | "time64" | "time without time zone" | "time with time zone",
+                None,
+            ) => Ok(DataType::Time {
+                unit: TimeUnit::Microsecond,
+            }),
             ("time32" | "time64" | "time", Some(a)) => Ok(DataType::Time {
-                unit: parse_time_unit(a)?,
+                unit: parse_unit_or_precision(a)?,
+            }),
+            ("duration", None) => Ok(DataType::Duration {
+                unit: TimeUnit::Microsecond,
             }),
             ("duration", Some(a)) => Ok(DataType::Duration {
                 unit: parse_time_unit(a)?,
             }),
+            ("interval", None) => Ok(DataType::Interval {
+                unit: IntervalUnit::MonthDayNano,
+            }),
             ("interval", Some(a)) => Ok(DataType::Interval {
                 unit: IntervalUnit::from_str(a)?,
             }),
-            ("timestamp", Some(a)) => {
+            ("timestamp" | "datetime" | "timestamp without time zone", None) => {
+                Ok(DataType::Timestamp {
+                    unit: TimeUnit::Microsecond,
+                    timezone: None,
+                })
+            }
+            (
+                "timestamptz" | "timestamp with time zone" | "timestamp with local time zone",
+                None,
+            ) => Ok(DataType::Timestamp {
+                unit: TimeUnit::Microsecond,
+                timezone: Some(Timezone::Utc),
+            }),
+            ("timestamp" | "datetime" | "timestamptz", Some(a)) => {
                 let parts = split_top_level(a, ',');
-                let unit = parse_time_unit(parts.first().copied().unwrap_or(""))?;
+                let unit = parse_unit_or_precision(parts.first().copied().unwrap_or("us"))?;
                 let timezone = match parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
                     Some(tz) => Some(
                         Timezone::from_str(tz).map_err(|e| SchemaError::Invalid(e.to_string()))?,
                     ),
+                    None if lower == "timestamptz" => Some(Timezone::Utc),
                     None => None,
                 };
                 Ok(DataType::Timestamp { unit, timezone })
             }
-            ("decimal" | "decimal128", Some(a)) => {
+            ("decimal" | "decimal128" | "numeric" | "number" | "dec", Some(a)) => {
                 let (p, s) = parse_decimal_args(a, input)?;
                 Ok(DataType::decimal_with(p, s, 128))
             }
@@ -582,7 +704,7 @@ impl DataType {
                     DataType::from_str(parts[1])?,
                 ))
             }
-            ("list", Some(a)) => Ok(DataType::list(parse_child_field(a, "item")?)),
+            ("list" | "array", Some(a)) => Ok(DataType::list(parse_child_field(a, "item")?)),
             ("list_view", Some(a)) => Ok(DataType::List {
                 item: Box::new(parse_child_field(a, "item")?),
                 large: false,
@@ -793,17 +915,20 @@ fn render_varchar(charset: Charset, large: bool, view: bool) -> String {
 
 /// Parses a `varchar[<charset>[, large][, view]]` argument list.
 fn parse_varchar(args: &str, whole: &str) -> Result<DataType, SchemaError> {
-    let parts = split_top_level(args, ',');
-    let charset = match parts.first().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        Some(name) => Charset::from_str(name)?,
-        None => Charset::Utf8,
-    };
+    let mut charset = Charset::Utf8;
     let mut large = false;
     let mut view = false;
-    for flag in parts.iter().skip(1) {
-        match flag.trim().to_ascii_lowercase().as_str() {
+    for (i, part) in split_top_level(args, ',').into_iter().enumerate() {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        match part.to_ascii_lowercase().as_str() {
             "large" => large = true,
             "view" => view = true,
+            // A SQL length like `varchar(255)` is accepted and ignored.
+            _ if part.bytes().all(|b| b.is_ascii_digit()) => {}
+            _ if i == 0 => charset = Charset::from_str(part)?,
             _ => return Err(SchemaError::Invalid(whole.to_string())),
         }
     }

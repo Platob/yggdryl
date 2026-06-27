@@ -4,8 +4,9 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::Time as CoreTime;
+use yggdryl_core::{Temporal, Time as CoreTime};
 
+use crate::datetime::DateTime;
 use crate::{err, to_mapping};
 
 /// A time of day (no date or timezone), with nanosecond resolution.
@@ -58,6 +59,24 @@ impl Time {
     #[napi(getter)]
     pub fn nanosecond(&self) -> u32 {
         self.inner.nanosecond()
+    }
+
+    /// This time of day on the UNIX-epoch day as a naive `DateTime`.
+    #[napi(js_name = "toDatetime")]
+    pub fn to_datetime(&self) -> DateTime {
+        DateTime {
+            inner: self.inner.to_datetime(),
+        }
+    }
+
+    /// Parse flexibly; with `raiseError = false` return `null` instead of throwing.
+    #[napi]
+    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
+        match CoreTime::from_str(&value) {
+            Ok(inner) => Ok(Some(Time { inner })),
+            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
+            Err(_) => Ok(None),
+        }
     }
 
     /// Render to an object (`hour` / `minute` / `second` / `nanosecond`).

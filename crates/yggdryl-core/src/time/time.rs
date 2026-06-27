@@ -6,7 +6,7 @@ use std::fmt;
 use crate::log_event;
 use crate::Mapping;
 
-use super::TimeError;
+use super::{Date, DateTime, Temporal, TimeError};
 
 const NANOS_PER_DAY: u64 = 86_400 * 1_000_000_000;
 
@@ -87,13 +87,30 @@ impl Time {
         (self.nanos_of_day % 1_000_000_000) as u32
     }
 
-    /// Parses `HH:MM[:SS[.fraction]]` (fraction up to 9 digits).
+    /// Parses `HH:MM[:SS[.fraction]]` (fraction up to 9 digits), or a compact
+    /// colon-less `HHMM` / `HHMMSS`.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<Time, TimeError> {
         log_event!(trace, "Time::from_str {input:?}");
         let value = input.trim();
         if value.is_empty() {
             return Err(TimeError::Empty);
+        }
+        // Compact colon-less form: HHMM or HHMMSS.
+        if !value.contains([':', '.']) && value.bytes().all(|b| b.is_ascii_digit()) {
+            let (h, m, s) = match value.len() {
+                4 => (&value[..2], &value[2..4], "0"),
+                6 => (&value[..2], &value[2..4], &value[4..6]),
+                _ => return Err(TimeError::Invalid(input.to_string())),
+            };
+            return Time::from_hms(
+                h.parse()
+                    .map_err(|_| TimeError::Invalid(input.to_string()))?,
+                m.parse()
+                    .map_err(|_| TimeError::Invalid(input.to_string()))?,
+                s.parse()
+                    .map_err(|_| TimeError::Invalid(input.to_string()))?,
+            );
         }
         let (clock, frac) = match value.split_once('.') {
             Some((clock, frac)) => (clock, Some(frac)),
@@ -192,6 +209,17 @@ impl Time {
     pub fn from_bytes(bytes: &[u8]) -> Result<Time, TimeError> {
         let value = std::str::from_utf8(bytes).map_err(|_| TimeError::Invalid("<bytes>".into()))?;
         Time::from_str(value)
+    }
+}
+
+impl Temporal for Time {
+    /// This time of day on the UNIX-epoch day (1970-01-01), naive.
+    fn to_datetime(&self) -> DateTime {
+        DateTime::from_local(Date::from_epoch_days(0), *self, None)
+    }
+
+    fn to_time(&self) -> Time {
+        *self
     }
 }
 

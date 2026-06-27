@@ -1,16 +1,29 @@
-//! The [`Charset`] of a [`Varchar`](crate::DataType::Varchar) — the character
-//! encoding of a string type.
+//! The [`Charset`] of a string — the character encoding, shared across the
+//! workspace (a [`Varchar`](https://docs.rs/yggdryl-schema) carries one).
 
 use std::fmt;
 
-use crate::SchemaError;
+/// Error returned when a [`Charset`] name is not recognised.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharsetError(pub String);
 
-/// The character set of a string ([`Varchar`](crate::DataType::Varchar)). UTF-8 is
-/// the default and the only one with an Arrow equivalent; the others are carried as
-/// metadata for non-Arrow back-ends.
+impl fmt::Display for CharsetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unknown charset '{}', expected 'utf8', 'utf16', 'utf32', 'ascii' or 'latin1'",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for CharsetError {}
+
+/// The character set of a string. UTF-8 is the default and the only one with an
+/// Arrow equivalent; the others are carried as metadata for non-Arrow back-ends.
 ///
 /// ```
-/// use yggdryl_schema::Charset;
+/// use yggdryl_core::Charset;
 /// assert_eq!(Charset::default(), Charset::Utf8);
 /// assert_eq!(Charset::from_str("latin1").unwrap(), Charset::Latin1);
 /// assert_eq!(Charset::Utf16.as_str(), "utf16");
@@ -32,9 +45,9 @@ pub enum Charset {
 }
 
 impl Charset {
-    /// Parses a charset name (case-insensitive), accepting a few common aliases.
+    /// Parses a charset name (case-insensitive), accepting common aliases.
     #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Result<Charset, SchemaError> {
+    pub fn from_str(value: &str) -> Result<Charset, CharsetError> {
         match value
             .trim()
             .to_ascii_lowercase()
@@ -46,7 +59,7 @@ impl Charset {
             "utf32" => Ok(Charset::Utf32),
             "ascii" | "usascii" => Ok(Charset::Ascii),
             "latin1" | "iso88591" => Ok(Charset::Latin1),
-            _ => Err(SchemaError::UnknownUnit(value.to_string())),
+            _ => Err(CharsetError(value.to_string())),
         }
     }
 

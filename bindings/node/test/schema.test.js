@@ -130,6 +130,41 @@ test('timezone dst', () => {
   assert.throws(() => new Timezone('Mars/Olympus'))
 })
 
+test('sql and hive parsing', () => {
+  assert.ok(DataType.fromStr('bigint').equals(DataType.int(64)))
+  assert.ok(DataType.fromStr('VARCHAR(255)').equals(DataType.varchar()))
+  assert.ok(DataType.fromStr('double precision').equals(DataType.float(64)))
+  assert.ok(DataType.fromStr('decimal(10, 2)').equals(DataType.decimal(10, 2)))
+  assert.strictEqual(DataType.fromStr('timestamp with time zone').timezone.name, 'UTC')
+  assert.ok(DataType.fromStr('array<int>').isList())
+  assert.deepStrictEqual(
+    DataType.fromStr('struct<a: int, b: string>').children().map((f) => f.name),
+    ['a', 'b'],
+  )
+  // Field colon / space separators + quoted names.
+  assert.strictEqual(Field.fromStr('qty: int64 not null').name, 'qty')
+  assert.strictEqual(Field.fromStr('col struct<a: str>').name, 'col')
+  assert.strictEqual(Field.fromStr('"my col": int64').name, 'my col')
+  assert.strictEqual(Field.fromStr('`qty` int64').name, 'qty')
+})
+
+test('temporal conversions and parse', () => {
+  const d = new YDate(2024, 7, 1)
+  assert.strictEqual(d.toDatetime().hour, 0)
+  const ny = d.withTimezone('America/New_York')
+  assert.strictEqual(ny.timezone.name, 'America/New_York')
+  assert.strictEqual(ny.at(new Time(8, 0, 0)).epochSeconds, 1719835200)
+  assert.strictEqual(new Time(13, 30, 0).toDatetime().hour, 13)
+  // Flexible parse with raiseError=false -> null.
+  assert.strictEqual(YDate.parse('not-a-date', false), null)
+  assert.strictEqual(DateTime.parse('2024-07-01').toString(), '2024-07-01T00:00:00')
+  assert.strictEqual(DateTime.parse('1719835200').epochSeconds, 1719835200)
+  assert.throws(() => YDate.parse('nonsense', true))
+  // Duration ISO-8601.
+  assert.strictEqual(Duration.fromStr('PT15M').asSeconds(), 900)
+  assert.strictEqual(Duration.fromStr('P1D').asSeconds(), 86400)
+})
+
 test('datetime dst conversion', () => {
   const utc = DateTime.fromStr('2024-07-01T12:00:00Z')
   assert.strictEqual(utc.epochSeconds, 1719835200)

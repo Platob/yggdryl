@@ -78,7 +78,7 @@ impl DataType {
     #[staticmethod]
     #[pyo3(signature = (charset = "utf8", large = false, view = false))]
     fn varchar(charset: &str, large: bool, view: bool) -> PyResult<Self> {
-        let charset = Charset::from_str(charset).map_err(schema_err)?;
+        let charset = Charset::from_str(charset).map_err(|e| schema_err(e.into()))?;
         Ok(wrap(CoreDataType::varchar_with(charset, large, view)))
     }
 

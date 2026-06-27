@@ -193,6 +193,17 @@ impl DateTime {
         }
     }
 
+    /// Parse flexibly (ISO, date-only → midnight, bare integer → epoch seconds);
+    /// with `raiseError = false` return `null` instead of throwing.
+    #[napi]
+    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
+        match CoreDateTime::from_str(&value) {
+            Ok(inner) => Ok(Some(DateTime { inner })),
+            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// Render to a component object.
     #[napi(js_name = "toMapping")]
     pub fn to_mapping(&self) -> HashMap<String, String> {

@@ -3,8 +3,9 @@
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, Time as CoreTime};
+use yggdryl_core::{Mapping, Temporal, Time as CoreTime};
 
+use crate::datetime::DateTime;
 use crate::time_err;
 
 /// A time of day (no date or timezone), with nanosecond resolution.
@@ -73,6 +74,24 @@ impl Time {
     #[getter]
     fn nanos_of_day(&self) -> u64 {
         self.inner.nanos_of_day()
+    }
+
+    /// This time of day on the UNIX-epoch day as a naive :class:`DateTime`.
+    fn to_datetime(&self) -> DateTime {
+        DateTime {
+            inner: self.inner.to_datetime(),
+        }
+    }
+
+    /// Parse flexibly; with ``raise_error=False`` return ``None`` instead of raising.
+    #[staticmethod]
+    #[pyo3(signature = (value, raise_error = true))]
+    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
+        match CoreTime::from_str(value) {
+            Ok(inner) => Ok(Some(Time { inner })),
+            Err(e) if raise_error => Err(time_err(e)),
+            Err(_) => Ok(None),
+        }
     }
 
     /// Render to a dict (``hour`` / ``minute`` / ``second`` / ``nanosecond``).

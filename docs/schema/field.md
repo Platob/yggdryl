@@ -41,6 +41,12 @@ item, struct member or map entry is itself a `Field`.
     assert_eq!(f.to_str(), "id: int64 not null");
     ```
 
+!!! tip "Field string forms"
+    `from_str` accepts a `:` or a space between the name and type, an optional
+    trailing `not null`, and a name wrapped in `"…"`, `'…'`, `` `…` `` or `[…]` —
+    so SQL/Hive DDL works: `qty: int64 not null`, `col struct<a: str>`,
+    `"my col" varchar(255)`.
+
 ## Metadata
 
 Arbitrary string metadata, with `comment` as a named convenience getter/setter.

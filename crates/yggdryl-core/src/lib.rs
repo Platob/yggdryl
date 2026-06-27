@@ -31,6 +31,7 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod charset;
 mod encoding;
 mod mapping;
 mod version;
@@ -43,6 +44,7 @@ mod time;
 mod compression;
 mod io;
 
+pub use charset::{Charset, CharsetError};
 pub use encoding::{
     encode_component, percent_decode, percent_encode, validate_percent_encoding, EncodingError,
 };
@@ -53,7 +55,7 @@ pub use media::{Category, MediaError, MediaType, MimeType, Signature};
 
 pub use url::{JoinInput, Uri, UriError, Url, UrlError};
 
-pub use time::{Date, DateTime, Duration, Time, TimeError, TimeUnit, Timezone};
+pub use time::{Date, DateTime, Duration, Temporal, Time, TimeError, TimeUnit, Timezone};
 
 pub use io::{
     copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,

@@ -200,6 +200,50 @@ A signed span of time with nanosecond resolution, parsed from a compact form.
     assert_eq!(Duration::from_unit(500, TimeUnit::Millisecond).as_nanos(), 500_000_000);
     ```
 
+## Conversion & flexible parsing
+
+The point-in-time types share a `Temporal` interface and convert into one another:
+a `Date` becomes a midnight `DateTime` (`to_datetime`), a `DateTime` yields its
+local `Date` / `Time`, and a `Date` can be `at(time)` to a zoned instant. Parsing is
+flexible — `Date` accepts `2024/07/01`, `20240701` or a full datetime; `DateTime`
+accepts a date-only string (→ midnight) or a bare integer (→ epoch seconds);
+`Duration` accepts ISO-8601 (`PT15M`, `P1D`) as well as the compact form. Each
+binding adds a `parse(value, raise_error=False)` that returns null instead of
+raising.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    assert yggdryl.Date.parse("not-a-date", raise_error=False) is None
+    assert yggdryl.Duration.from_str("PT15M").as_seconds() == 900
+    d = yggdryl.Date(2024, 7, 1).with_timezone("America/New_York")
+    assert d.at(yggdryl.Time(8, 0, 0)).epoch_seconds == 1_719_835_200
+    ```
+
+=== "Node"
+
+    ```javascript
+    const yggdryl = require("yggdryl");
+
+    yggdryl.Date.parse("not-a-date", false);          // null
+    yggdryl.Duration.fromStr("PT15M").asSeconds();    // 900
+    new yggdryl.Date(2024, 7, 1).withTimezone("America/New_York")
+      .at(new yggdryl.Time(8, 0, 0)).epochSeconds;    // 1719835200
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{Date, Duration, Temporal, Time, Timezone};
+
+    assert!(Date::from_str("not-a-date").is_err());
+    assert_eq!(Duration::from_str("PT15M")?.as_seconds(), 900);
+    let d = Date::from_ymd(2024, 7, 1)?.with_timezone(Timezone::from_str("America/New_York")?);
+    assert_eq!(d.at(Time::from_hms(8, 0, 0)?).epoch_seconds(), 1_719_835_200);
+    ```
+
 ## Next
 
 - [DataType](../schema/datatype.md) — the schema layer's temporal types reuse this

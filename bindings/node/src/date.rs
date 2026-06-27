@@ -4,8 +4,11 @@ use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl_core::Date as CoreDate;
+use yggdryl_core::{Date as CoreDate, Temporal, Timezone as CoreTimezone};
 
+use crate::datetime::DateTime;
+use crate::time::Time;
+use crate::timezone::Timezone;
 use crate::{err, to_mapping};
 
 /// A calendar date (no time of day or timezone), stored as days since the epoch.
@@ -80,6 +83,58 @@ impl Date {
     pub fn add_days(&self, days: i32) -> Self {
         Date {
             inner: self.inner.add_days(days),
+        }
+    }
+
+    /// The timezone this date is anchored to, if any.
+    #[napi(getter)]
+    pub fn timezone(&self) -> Option<Timezone> {
+        self.inner
+            .timezone()
+            .cloned()
+            .map(|inner| Timezone { inner })
+    }
+
+    /// A copy anchored to the named timezone.
+    #[napi(js_name = "withTimezone")]
+    pub fn with_timezone(&self, timezone: String) -> Result<Self> {
+        let tz = CoreTimezone::from_str(&timezone).map_err(err)?;
+        Ok(Date {
+            inner: self.inner.clone().with_timezone(tz),
+        })
+    }
+
+    /// A copy with no timezone.
+    #[napi(js_name = "withoutTimezone")]
+    pub fn without_timezone(&self) -> Self {
+        Date {
+            inner: self.inner.clone().without_timezone(),
+        }
+    }
+
+    /// Midnight on this date (in its timezone) as a `DateTime`.
+    #[napi(js_name = "toDatetime")]
+    pub fn to_datetime(&self) -> DateTime {
+        DateTime {
+            inner: self.inner.to_datetime(),
+        }
+    }
+
+    /// Combine with a `Time` into a `DateTime` in the date's zone.
+    #[napi]
+    pub fn at(&self, time: &Time) -> DateTime {
+        DateTime {
+            inner: self.inner.at(time.inner),
+        }
+    }
+
+    /// Parse flexibly; with `raiseError = false` return `null` instead of throwing.
+    #[napi]
+    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
+        match CoreDate::from_str(&value) {
+            Ok(inner) => Ok(Some(Date { inner })),
+            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
+            Err(_) => Ok(None),
         }
     }
 

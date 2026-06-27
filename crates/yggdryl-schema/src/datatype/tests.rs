@@ -115,7 +115,12 @@ fn parses_canonical_and_aliases() {
         DataType::from_str("int64").unwrap(),
         DataType::int(64, true)
     );
-    assert_eq!(DataType::from_str("int").unwrap(), DataType::int(64, true));
+    // SQL semantics: bare `int`/`integer` is 32-bit, `bigint` is 64-bit.
+    assert_eq!(DataType::from_str("int").unwrap(), DataType::int(32, true));
+    assert_eq!(
+        DataType::from_str("bigint").unwrap(),
+        DataType::int(64, true)
+    );
     assert_eq!(
         DataType::from_str("uint8").unwrap(),
         DataType::int(8, false)

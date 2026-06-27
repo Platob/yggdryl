@@ -199,5 +199,32 @@ pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
     }
 }
 
+/// The shared interface of the point-in-time temporal types ([`Date`], [`Time`],
+/// [`DateTime`]) — every one converts to every other. The single required method
+/// is [`to_datetime`](Temporal::to_datetime); the rest derive from it.
+///
+/// ```
+/// use yggdryl_core::{Date, Temporal, Time};
+///
+/// let d = Date::from_str("2024-07-01").unwrap();
+/// assert_eq!(d.to_datetime().date(), d);          // Date -> DateTime (midnight) -> Date
+/// assert_eq!(Time::from_str("13:30").unwrap().to_datetime().hour(), 13);
+/// ```
+pub trait Temporal {
+    /// Converts to an absolute [`DateTime`] (a [`Date`] becomes midnight, a [`Time`]
+    /// becomes that time on the UNIX-epoch day).
+    fn to_datetime(&self) -> DateTime;
+
+    /// The calendar [`Date`] component.
+    fn to_date(&self) -> Date {
+        self.to_datetime().date()
+    }
+
+    /// The [`Time`]-of-day component.
+    fn to_time(&self) -> Time {
+        self.to_datetime().time()
+    }
+}
+
 #[cfg(test)]
 mod tests;

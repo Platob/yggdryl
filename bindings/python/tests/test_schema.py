@@ -183,6 +183,44 @@ def test_timezone():
     assert pickle.loads(pickle.dumps(ny)) == ny
 
 
+def test_sql_and_hive_parsing():
+    assert yggdryl.DataType("bigint") == yggdryl.DataType.int(64)
+    assert yggdryl.DataType("VARCHAR(255)") == yggdryl.DataType.varchar()
+    assert yggdryl.DataType("double precision") == yggdryl.DataType.float(64)
+    assert yggdryl.DataType("decimal(10, 2)") == yggdryl.DataType.decimal(10, 2)
+    assert yggdryl.DataType("timestamp with time zone").timezone.name == "UTC"
+    # Hive angle brackets.
+    assert yggdryl.DataType("array<int>").is_list()
+    s = yggdryl.DataType("struct<a: int, b: string>")
+    assert [f.name for f in s.children()] == ["a", "b"]
+    # Field: colon / space separators + quoted names.
+    assert yggdryl.Field.from_str("qty: int64 not null").name == "qty"
+    assert yggdryl.Field.from_str("col struct<a: str>").name == "col"
+    assert yggdryl.Field.from_str('"my col": int64').name == "my col"
+    assert yggdryl.Field.from_str("`qty` int64").name == "qty"
+
+
+def test_temporal_conversions_and_parse():
+    d = yggdryl.Date(2024, 7, 1)
+    assert d.to_datetime().hour == 0
+    # Date anchored to a zone, combined with a time.
+    ny = d.with_timezone("America/New_York")
+    assert ny.timezone.name == "America/New_York"
+    assert ny.at(yggdryl.Time(8, 0, 0)).epoch_seconds == 1_719_835_200
+    assert yggdryl.Time(13, 30, 0).to_datetime().hour == 13
+    # Flexible parse with raise_error=False -> None.
+    assert yggdryl.Date.parse("not-a-date", raise_error=False) is None
+    assert str(yggdryl.DateTime.parse("2024-07-01")) == "2024-07-01T00:00:00"
+    assert yggdryl.DateTime.parse("1719835200").epoch_seconds == 1_719_835_200
+    with pytest.raises(ValueError):
+        yggdryl.Date.parse("nonsense", raise_error=True)
+    # Duration ISO-8601.
+    assert yggdryl.Duration.from_str("PT15M").as_seconds() == 900
+    assert yggdryl.Duration.from_str("P1D").as_seconds() == 86_400
+    # Date pickle keeps the timezone.
+    assert pickle.loads(pickle.dumps(ny)).timezone.name == "America/New_York"
+
+
 def test_datetime_dst_conversion():
     utc = yggdryl.DateTime.from_str("2024-07-01T12:00:00Z")
     assert utc.epoch_seconds == 1_719_835_200

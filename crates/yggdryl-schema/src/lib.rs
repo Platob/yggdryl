@@ -50,17 +50,15 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
-mod charset;
 mod datatype;
 mod field;
 
 #[cfg(feature = "arrow")]
 mod arrow;
 
-pub use charset::Charset;
 pub use datatype::{DataType, IntervalUnit, MergeStrategy, SchemaError, TypeCategory, UnionMode};
 pub use field::Field;
 
-// Re-export the shared temporal vocabulary the schema types build on, so dependents
-// resolve `yggdryl_schema::{TimeUnit, Timezone}` without a separate core import.
-pub use yggdryl_core::{TimeUnit, Timezone};
+// Re-export the shared vocabulary the schema types build on, so dependents resolve
+// `yggdryl_schema::{Charset, TimeUnit, Timezone}` without a separate core import.
+pub use yggdryl_core::{Charset, TimeUnit, Timezone};

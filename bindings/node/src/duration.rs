@@ -33,6 +33,17 @@ impl Duration {
             .map_err(err)
     }
 
+    /// Parse flexibly (compact / ISO-8601 / seconds); with `raiseError = false`
+    /// return `null` instead of throwing.
+    #[napi]
+    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
+        match CoreDuration::from_str(&value) {
+            Ok(inner) => Ok(Some(Duration { inner })),
+            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// A span of `seconds` seconds.
     #[napi(factory, js_name = "fromSecs")]
     pub fn from_secs(seconds: i64) -> Self {
