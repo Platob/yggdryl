@@ -81,7 +81,35 @@ test('lazy range and index', () => {
   assert.strictEqual(idx.position(3), 3)
   assert.strictEqual(idx.contains(3), true)
   assert.strictEqual(idx.contains(4), false)
+  // a stepped range is not the canonical 0..len index, but the lookups still work
+  const stepped = Serie.range(4, 100, 5)
+  assert.strictEqual(stepped.isRange, false)
+  assert.strictEqual(stepped.position(110), 2)
+  assert.strictEqual(new Serie('n', [1, 2]).isRange, false) // a plain column is not a range
   assert.throws(() => new Serie('n', [1, 2]).at(0)) // not an index
+})
+
+test('list factory', () => {
+  const nums = Serie.list('nums', [[1, 2], [], null, [3]])
+  assert.strictEqual(nums.category, 'nested')
+  assert.strictEqual(nums.numRows, 4)
+  assert.strictEqual(nums.nullCount, 1)
+  assert.strictEqual(nums.valueAt(0), '[1, 2]')
+  assert.strictEqual(nums.valueAt(3), '[3]')
+  assert.strictEqual(nums.child(0).name, 'item')
+  const floats = Serie.list('f', [[1], [2, 3]], 'float64')
+  assert.strictEqual(floats.child(0).dataType.toString(), 'float64')
+  assert.strictEqual(Serie.fromBytes(nums.toBytes()).valueAt(0), '[1, 2]')
+})
+
+test('map factory', () => {
+  const m = Serie.map('m', [{ a: 1, b: 2 }, { c: 3 }, null])
+  assert.strictEqual(m.category, 'nested')
+  assert.strictEqual(m.numRows, 3)
+  assert.strictEqual(m.nullCount, 1)
+  assert.strictEqual(m.valueAt(0), '{a=1, b=2}')
+  assert.strictEqual(m.valueAt(1), '{c=3}')
+  assert.strictEqual(Serie.fromBytes(m.toBytes()).valueAt(1), '{c=3}')
 })
 
 test('nested struct and select', () => {

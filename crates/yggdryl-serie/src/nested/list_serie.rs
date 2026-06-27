@@ -6,10 +6,11 @@ use std::any::Any;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, GenericListArray, OffsetSizeTrait};
+use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::DataType as ADataType;
-use yggdryl_schema::Field;
+use yggdryl_schema::{DataType, Field};
 
-use crate::error::SerieResult;
+use crate::error::{SerieError, SerieResult};
 use crate::nested::NestedSerie;
 use crate::scalar::Scalar;
 use crate::serie::{dispatch, Serie, SerieRef};
@@ -42,6 +43,56 @@ impl<O: OffsetSizeTrait> ListSerie<O> {
             array,
             values,
         })
+    }
+
+    /// Builds a list column named `name` from its **flattened** element column and the
+    /// per-row element counts — the one-line constructor the bindings build a list from a
+    /// list-of-lists with. Row `i` takes the next `lengths[i]` elements off `values`; a
+    /// `None` length marks a **null** row (contributing no elements). The summed lengths
+    /// must equal `values.len()`.
+    ///
+    /// ```
+    /// use yggdryl_serie::{Int32Serie, ListSerie, NestedSerie, Serie, SerieRef};
+    /// use std::sync::Arc;
+    ///
+    /// // [[1, 2], [], None, [3]] from the flat values [1, 2, 3]
+    /// let flat: SerieRef = Arc::new(Int32Serie::from_values("item", vec![Some(1), Some(2), Some(3)]));
+    /// let list = ListSerie::<i32>::from_values("nums", flat, &[Some(2), Some(0), None, Some(1)]).unwrap();
+    /// assert_eq!(list.len(), 4);
+    /// assert_eq!(list.null_count(), 1);
+    /// assert_eq!(list.value_slice(0).unwrap().len(), 2);
+    /// assert_eq!(list.value_at(3).to_string(), "[3]");
+    /// ```
+    pub fn from_values(
+        name: impl Into<String>,
+        values: SerieRef,
+        lengths: &[Option<usize>],
+    ) -> SerieResult<ListSerie<O>> {
+        let total: usize = lengths.iter().map(|l| l.unwrap_or(0)).sum();
+        if total != values.len() {
+            return Err(SerieError::Arrow(format!(
+                "list lengths sum to {total} but the flattened values column has {} rows",
+                values.len()
+            )));
+        }
+        // The item field carries the element type; name it `item` (the Arrow convention).
+        let item = values
+            .field()
+            .copy(Some("item".to_string()), None, None, None);
+        let item_arrow = Arc::new(item.to_arrow()?);
+        let offsets = OffsetBuffer::<O>::from_lengths(lengths.iter().map(|l| l.unwrap_or(0)));
+        let nulls = lengths
+            .iter()
+            .any(|l| l.is_none())
+            .then(|| NullBuffer::from(lengths.iter().map(|l| l.is_some()).collect::<Vec<_>>()));
+        let array = GenericListArray::<O>::try_new(item_arrow, offsets, values.array(), nulls)
+            .map_err(|e| SerieError::Arrow(e.to_string()))?;
+        let dtype = if O::IS_LARGE {
+            DataType::large_list(item)
+        } else {
+            DataType::list(item)
+        };
+        ListSerie::from_parts(Field::new(name, dtype, true), Arc::new(array))
     }
 
     /// The flattened element column (all rows' elements concatenated).

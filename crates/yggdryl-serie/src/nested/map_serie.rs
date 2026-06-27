@@ -5,10 +5,12 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, MapArray};
-use yggdryl_schema::Field;
+use arrow_array::{Array, ArrayRef, MapArray, StructArray};
+use arrow_buffer::{NullBuffer, OffsetBuffer};
+use arrow_schema::Field as AField;
+use yggdryl_schema::{DataType, Field};
 
-use crate::error::SerieResult;
+use crate::error::{SerieError, SerieResult};
 use crate::nested::NestedSerie;
 use crate::scalar::Scalar;
 use crate::serie::{from_array, Serie, SerieRef};
@@ -40,6 +42,74 @@ impl MapSerie {
             keys,
             values,
         })
+    }
+
+    /// Builds a map column named `name` from its **flattened** key and value columns and
+    /// the per-row entry counts — the one-line constructor the bindings build a map from a
+    /// list-of-dicts with. Row `i` takes the next `lengths[i]` pairs off `keys`/`values`;
+    /// a `None` length marks a **null** row. The summed lengths must equal each child's
+    /// length (the keys and values must be equal-length). Keys must be non-null.
+    ///
+    /// ```
+    /// use yggdryl_serie::{Int32Serie, MapSerie, Serie, SerieRef, VarcharSerie};
+    /// use std::sync::Arc;
+    ///
+    /// // [{"a": 1, "b": 2}, {"c": 3}] from the flat keys/values
+    /// let keys: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("key", vec![Some("a"), Some("b"), Some("c")]));
+    /// let vals: SerieRef = Arc::new(Int32Serie::from_values("value", vec![Some(1), Some(2), Some(3)]));
+    /// let map = MapSerie::from_values("m", keys, vals, &[Some(2), Some(1)]).unwrap();
+    /// assert_eq!(map.len(), 2);
+    /// assert_eq!(map.value_at(0).to_string(), "{a=1, b=2}");
+    /// ```
+    pub fn from_values(
+        name: impl Into<String>,
+        keys: SerieRef,
+        values: SerieRef,
+        lengths: &[Option<usize>],
+    ) -> SerieResult<MapSerie> {
+        if keys.len() != values.len() {
+            return Err(SerieError::Arrow(format!(
+                "map keys have {} rows but values have {}",
+                keys.len(),
+                values.len()
+            )));
+        }
+        let total: usize = lengths.iter().map(|l| l.unwrap_or(0)).sum();
+        if total != keys.len() {
+            return Err(SerieError::Arrow(format!(
+                "map lengths sum to {total} but the flattened entries have {} rows",
+                keys.len()
+            )));
+        }
+        // The entries struct's key field must be non-nullable (Arrow's map invariant).
+        let key_field = keys
+            .field()
+            .copy(Some("key".to_string()), None, Some(false), None);
+        let value_field = values
+            .field()
+            .copy(Some("value".to_string()), None, None, None);
+        let key_arrow = Arc::new(key_field.to_arrow()?);
+        let value_arrow = Arc::new(value_field.to_arrow()?);
+        let entries = StructArray::try_new(
+            vec![key_arrow, value_arrow].into(),
+            vec![keys.array(), values.array()],
+            None,
+        )
+        .map_err(|e| SerieError::Arrow(e.to_string()))?;
+        let entries_field = Arc::new(AField::new("entries", entries.data_type().clone(), false));
+        let offsets = OffsetBuffer::<i32>::from_lengths(lengths.iter().map(|l| l.unwrap_or(0)));
+        let nulls = lengths
+            .iter()
+            .any(|l| l.is_none())
+            .then(|| NullBuffer::from(lengths.iter().map(|l| l.is_some()).collect::<Vec<_>>()));
+        let array = MapArray::try_new(entries_field, offsets, entries, nulls, false)
+            .map_err(|e| SerieError::Arrow(e.to_string()))?;
+        let dtype = DataType::map(
+            key_field.data_type().clone(),
+            value_field.data_type().clone(),
+            false,
+        );
+        MapSerie::from_parts(Field::new(name, dtype, true), Arc::new(array))
     }
 
     /// The flattened key column.

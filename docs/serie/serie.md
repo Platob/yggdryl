@@ -9,13 +9,15 @@ and its physical storage. Columns can also be **lazy** (computed on demand) or
 
 !!! note "Available in all three languages"
     `yggdryl-serie` is the Arrow-backed columnar foundation. A **struct column is a
-    [DataFrame](#frame-dataframe)** (its children are the columns), so the same `Serie`
-    class is both the column *and* the table. The API is surfaced in **Python** and
-    **Node** as a single `Serie` class — build from a list, read / update by index, slice
-    / resize / cast, navigate nested children, run frame ops (select / filter / sort /
-    stack / records), round-trip through bytes — as well as the Rust core, which also
-    exposes the richer concrete-series internals (typed downcasts, the slice graph)
-    directly.
+    [DataFrame](frame.md)** (its children are the columns), so the same `Serie` class is
+    both the column *and* the table. The API is surfaced in **Python** and **Node** as a
+    single `Serie` class — build from a list, read / update by index, slice / resize / cast,
+    navigate nested children, run frame ops (select / filter / sort / stack / records),
+    round-trip through bytes — as well as the Rust core, which also exposes the richer
+    concrete-series internals (typed downcasts, the slice graph) directly.
+
+This page covers the base column. See also: [Lazy, range & categorical](lazy.md) ·
+[Nested (struct / list / map)](nested.md) · [Frame (DataFrame)](frame.md).
 
 === "Python"
 
@@ -71,19 +73,45 @@ The design mirrors the schema crate's three [categories](../schema/datatype.md):
 - The **temporal** series — `DatetimeSerie`, `TimeSerie` and `DurationSerie` (unified
   columns over any unit, presenting core `DateTime` / `Time` / `Duration`) and the
   `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
-- The **nested** series — `StructSerie`, `ListSerie<O>` and `MapSerie` (child columns
-  built recursively) and the `NestedSerie` trait.
-- The **lazy** (computed) series — `RangeSerie`, `DateRangeSerie`, `DateTimeRangeSerie`,
-  `TimeRangeSerie`.
-- **`IndexSerie`** — a row index, defaulting to a lazy `uint64` range.
-- **`CategoricalSerie`** — a dictionary-encoded view for repeated values (distinct values
-  + a per-row code), decoding back to a flat column on `materialize`.
+- The **[nested](nested.md)** series — `StructSerie`, `ListSerie<O>` and `MapSerie` (child
+  columns built recursively) and the `NestedSerie` trait.
+- The **[lazy](lazy.md)** (computed) series — `UInt64RangeSerie` (which doubles as the
+  canonical row index), `DateRangeSerie`, `DateTimeRangeSerie`, `TimeRangeSerie`.
+- **[`CategoricalSerie`](lazy.md#categorical-dictionary-encoded)** — a dictionary-encoded
+  view for repeated values (distinct values + a per-row code), decoding back to a flat
+  column on `materialize`.
 
 ## Build a column
 
-`from_array` derives the field from the Arrow type; `from_arrow` takes an explicit
-`Field` (carrying name, nullability and metadata). Both **redirect** the array to the
-right concrete series and return a boxed `SerieRef`.
+In Rust, `from_array` derives the field from the Arrow type while `from_arrow` takes an
+explicit `Field` (carrying name, nullability and metadata); both **redirect** the array to
+the right concrete series and return a boxed `SerieRef`. In the bindings the `Serie`
+constructor is the entry point, and every column reflects its `field` / `data_type` /
+`nullable`.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("id", [1, None, 3])
+    assert s.num_rows == 3 and s.null_count == 1
+    assert str(s.data_type) == "int64"
+    assert s.nullable is True
+    assert s.field.name == "id"
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('id', [1, null, 3])
+    if (s.numRows !== 3 || s.nullCount !== 1) throw new Error('shape')
+    if (s.dataType.toString() !== 'int64') throw new Error('type')
+    if (s.nullable !== true) throw new Error('nullable')
+    if (s.field.name !== 'id') throw new Error('field')
+    ```
 
 === "Rust"
 
@@ -105,29 +133,47 @@ right concrete series and return a boxed `SerieRef`.
 
 ## Creating series — one line per type
 
-In the bindings a single `Serie` builds any column from a list (the type is inferred,
-or pass a `dtype`), with `range` / `index` / `struct` / `binary` factories for the rest.
-In Rust each concrete series has a `from_values(name, values)` one-liner; `from_array`
-is the universal fallback for *any* Arrow array.
+In the bindings a single `Serie` builds any column from a list (the type is inferred, or
+pass a `dtype`), with `range` / `index` / `struct` / `list` / `map` / `binary` factories
+for the rest. In Rust each concrete series has a `from_values(name, values)` one-liner;
+`from_array` is the universal fallback for *any* Arrow array.
+
+### Type inference
+
+The element type is inferred from the values, adapting to each language's number model:
+
+| value | Python | Node (JS has one number type) |
+| --- | --- | --- |
+| whole number | `int64` | `int64` **only if every value is integral**, else `float64` |
+| fractional number | `float64` | `float64` |
+| `True` / `False` | `bool` | `bool` |
+| string | `utf8` | `utf8` |
+| bytes | `binary` | use the `Serie.binary` factory |
+
+Nulls are skipped during inference; an **empty or all-null** list cannot be inferred, so
+pass an explicit `dtype` (a `DataType` or a type string like `"int8"`). Passing `dtype`
+always **casts** to that type. Rust does not infer — pick the concrete `*Serie` (or
+`from_array` for an existing Arrow array).
 
 === "Python"
 
     ```python
     import yggdryl
 
-    ints = yggdryl.Serie("i", [1, None, 3])                 # int64
+    ints = yggdryl.Serie("i", [1, None, 3])                 # int64 (whole numbers)
     floats = yggdryl.Serie("f", [1.5, 2.5])                 # float64
     flags = yggdryl.Serie("b", [True, False])               # bool
     text = yggdryl.Serie("s", ["a", "b"])                   # utf8
-    small = yggdryl.Serie("i8", [1, 2, 3], dtype="int8")    # explicit dtype
+    small = yggdryl.Serie("i8", [1, 2, 3], dtype="int8")    # explicit dtype (cast)
+    empty = yggdryl.Serie("e", [], dtype="float64")         # empty needs a dtype
 
-    rng = yggdryl.Serie.range(100)                          # lazy 0..100
+    rng = yggdryl.Serie.range(100)                          # lazy 0..100 (see Lazy)
     idx = yggdryl.Serie.index(100)                          # lazy row index
-    rec = yggdryl.Serie.struct("rec", [                     # nested, one line
+    rec = yggdryl.Serie.struct("rec", [                     # nested (see Nested)
         yggdryl.Serie("id", [1, 2]),
         yggdryl.Serie("name", ["a", "b"]),
     ])
-    cat = yggdryl.Serie("c", ["a", "b", "a"]).categorical() # dictionary-encoded
+    cat = yggdryl.Serie("c", ["a", "b", "a"]).categorical() # dictionary-encoded (see Lazy)
     assert rec.children()[0].name == "id"
     ```
 
@@ -138,17 +184,18 @@ is the universal fallback for *any* Arrow array.
 
     const ints = new Serie('i', [1, null, 3])               // int64 (all integral)
     const floats = new Serie('f', [1.5, 2.5])               // float64
+    const mixed = new Serie('m', [1, 2.5])                  // float64 (one fractional value)
     const flags = new Serie('b', [true, false])             // bool
     const text = new Serie('s', ['a', 'b'])                 // utf8
-    const small = new Serie('i8', [1, 2, 3], 'int8')        // explicit dtype
+    const small = new Serie('i8', [1, 2, 3], 'int8')        // explicit dtype (cast)
 
-    const rng = Serie.range(100)                            // lazy 0..100
+    const rng = Serie.range(100)                            // lazy 0..100 (see Lazy)
     const idx = Serie.index(100)                            // lazy row index
-    const rec = Serie.struct('rec', [                       // nested, one line
+    const rec = Serie.struct('rec', [                       // nested (see Nested)
       new Serie('id', [1, 2]),
       new Serie('name', ['a', 'b']),
     ])
-    const cat = new Serie('c', ['a', 'b', 'a']).categorical() // dictionary-encoded
+    const cat = new Serie('c', ['a', 'b', 'a']).categorical() // dictionary-encoded (see Lazy)
     ```
 
 === "Rust"
@@ -156,8 +203,8 @@ is the universal fallback for *any* Arrow array.
     ```rust
     use yggdryl_serie::{
         Int32Serie, Float64Serie, BooleanSerie, VarcharSerie, BinarySerie,
-        DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, RangeSerie,
-        IndexSerie, StructSerie, CategoricalSerie, NestedSerie, Serie, SerieRef, TypedSerie,
+        DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, UInt64RangeSerie,
+        StructSerie, CategoricalSerie, NestedSerie, Serie, SerieRef, TypedSerie,
     };
     use yggdryl_core::{DateTime, Duration, Time, Date};
     use std::sync::Arc;
@@ -174,10 +221,10 @@ is the universal fallback for *any* Arrow array.
     let tm = TimeSerie::from_values("t", vec![Some(Time::from_hms(9, 30, 0).unwrap())]);
     let du = DurationSerie::from_values("d", vec![Some(Duration::from_secs(60))]);
 
-    // lazy ranges + index (computed, not stored)
-    let r = RangeSerie::new("r", 0, 1, 100);            // 0..100 (uint64)
+    // lazy ranges + the row index (computed, not stored)
+    let r = UInt64RangeSerie::new("r", 0, 1, 100);     // 0..100 (uint64)
     let days = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 1).unwrap(), 1, 7);
-    let idx = IndexSerie::range(100);
+    let idx = UInt64RangeSerie::indices(100);          // the canonical row index
 
     // nested — a struct from its child columns, in one line
     let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
@@ -192,69 +239,8 @@ is the universal fallback for *any* Arrow array.
     assert_eq!(cat.category_count(), 2);
     ```
 
-Lists and maps are built from an Arrow builder and wrapped with `from_array`:
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{from_array, ListSerie, Serie, Scalar};
-    use yggdryl_serie::arrow_array::{ArrayRef, ListArray};
-    use yggdryl_serie::arrow_array::types::Int32Type;
-    use std::sync::Arc;
-
-    let lists = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
-        Some(vec![Some(1), Some(2)]), Some(vec![Some(3)]),
-    ]);
-    let serie = from_array("l", Arc::new(lists) as ArrayRef)?;
-    assert_eq!(serie.value_at(0), Scalar::Other("[1, 2]".into()));
-    ```
-
-## Defaults & resize
-
-Every datatype has a default value (`Scalar::default_for`): `false`, `0`, `0.0`, the
-empty string, empty bytes, a struct of defaults. `resize(new_len)` slices when
-shrinking and extends when growing — with **nulls** if the column is nullable, otherwise
-the type **default** (so a non-nullable column never gains a null).
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    s = yggdryl.Serie("n", [1, 2])
-    assert s.resize(4).value_at(3) is None              # grow: a nullable column gains nulls
-    assert len(s.resize(1)) == 1                         # shrink: a zero-copy slice
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const s = new Serie('n', [1, 2])
-    if (s.resize(4).valueAt(3) !== null) throw new Error('grow')  // nullable -> nulls
-    if (s.resize(1).numRows !== 1) throw new Error('shrink')      // a slice
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{Int32Serie, Scalar, Serie, DataType, Field, from_arrow};
-    use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
-    use std::sync::Arc;
-
-    assert_eq!(Scalar::default_for(&DataType::int(32, true)), Scalar::Int(0));
-    assert_eq!(Scalar::default_for(&DataType::varchar()), Scalar::Utf8(String::new()));
-
-    // nullable column → grows with nulls
-    let nullable = Int32Serie::from_values("n", vec![Some(1), Some(2)]);
-    assert_eq!(nullable.resize(4)?.value_at(3), Scalar::Null);
-
-    // non-nullable column → grows with the type default (0)
-    let strict = from_arrow(Field::new("n", DataType::int(32, true), false),
-                            Arc::new(Int32Array::from(vec![7])) as ArrayRef)?;
-    assert_eq!(strict.resize(3)?.value_at(2), Scalar::Int(0));
-    ```
+The lazy ranges and the row index live on the [Lazy & range](lazy.md) page; struct / list /
+map building is on the [Nested](nested.md) page.
 
 ## Values: by index and by range
 
@@ -332,11 +318,86 @@ typed access, downcast to the concrete series and use `TypedSerie<T>`.
     assert_eq!(ints.value(2), 7);
     ```
 
+## Defaults & resize
+
+Every datatype has a default value (`Scalar::default_for`): `false`, `0`, `0.0`, the
+empty string, empty bytes, a struct of defaults. `resize(new_len)` slices when
+shrinking and extends when growing — with **nulls** if the column is nullable, otherwise
+the type **default** (so a non-nullable column never gains a null).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    s = yggdryl.Serie("n", [1, 2])
+    assert s.resize(4).value_at(3) is None              # grow: a nullable column gains nulls
+    assert len(s.resize(1)) == 1                         # shrink: a zero-copy slice
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const s = new Serie('n', [1, 2])
+    if (s.resize(4).valueAt(3) !== null) throw new Error('grow')  // nullable -> nulls
+    if (s.resize(1).numRows !== 1) throw new Error('shrink')      // a slice
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{Int32Serie, Scalar, Serie, DataType, Field, from_arrow};
+    use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
+    use std::sync::Arc;
+
+    assert_eq!(Scalar::default_for(&DataType::int(32, true)), Scalar::Int(0));
+    assert_eq!(Scalar::default_for(&DataType::varchar()), Scalar::Utf8(String::new()));
+
+    // nullable column → grows with nulls
+    let nullable = Int32Serie::from_values("n", vec![Some(1), Some(2)]);
+    assert_eq!(nullable.resize(4)?.value_at(3), Scalar::Null);
+
+    // non-nullable column → grows with the type default (0)
+    let strict = from_arrow(Field::new("n", DataType::int(32, true), false),
+                            Arc::new(Int32Array::from(vec![7])) as ArrayRef)?;
+    assert_eq!(strict.resize(3)?.value_at(2), Scalar::Int(0));
+    ```
+
 ## The slice graph: children & parents
 
-`child` (and `child_range`) build a zero-copy slice that remembers the serie it came
-from via `parent()` — a navigable graph. `materialize()` realises a column into an
-independent, in-memory one and **detaches** it from the graph.
+`slice` / `slice_range` build a **zero-copy** view over the same buffers; `materialize()`
+realises a column into an independent, in-memory one. In the Rust core a slice additionally
+remembers the serie it came from via `parent()` — a navigable graph (the `child` /
+`child_range` free functions, and `materialize` **detaches** the view). The bindings expose
+the zero-copy `slice` / `head` and `materialize`; the `parent()` back-link is a Rust-core
+detail.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    parent = yggdryl.Serie("n", [10, 20, 30, 40])
+    view = parent.slice(1, 2)                            # rows 1..3, zero-copy
+    assert view.to_list() == [20, 30]
+    assert parent.to_list() == [10, 20, 30, 40]          # original untouched
+    independent = view.materialize()                     # an in-memory copy
+    assert independent.is_materialized
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const parent = new Serie('n', [10, 20, 30, 40])
+    const view = parent.slice(1, 2)                      // rows 1..3, zero-copy
+    if (view.toList().join() !== '20,30') throw new Error('slice')
+    const independent = view.materialize()               // an in-memory copy
+    if (!independent.isMaterialized) throw new Error('materialized')
+    ```
 
 === "Rust"
 
@@ -355,29 +416,31 @@ independent, in-memory one and **detaches** it from the graph.
     assert!(independent.parent().is_none());
     ```
 
-## Lazy (computed) series
+## Temporal series
 
-A lazy column stores only a compact description and computes its values on demand
-(`is_materialized()` is `false`) until `materialize()` realises a real Arrow array.
-
-- `RangeSerie` — a `uint64` arithmetic range `start, start+step, …`.
-- `DateRangeSerie` — a day-resolution calendar-date range (`Date32`).
-- `DateTimeRangeSerie` — a nanosecond timestamp range.
-- `TimeRangeSerie` — a time-of-day range (wraps within the day).
-
-The three temporal ranges implement `TemporalSerie` (see below). The bindings expose the
-arithmetic `Serie.range`; the calendar/time ranges are Rust-only.
+`DatetimeSerie` is the **unified timestamp column**: it backs any unit (second …
+nanosecond) and an optional timezone, exposing values as the core `DateTime`. `TimeSerie`
+and `DurationSerie` are its time-of-day and elapsed-time counterparts — each unifies every
+unit and presents core `Time` / `Duration` (so there are no per-unit aliases). Every
+timestamp / time / duration array dispatches to these. All temporal columns (including the
+date/time/datetime ranges) implement `TemporalSerie` — a uniform `datetime_at` with derived
+`date_at` / `time_at` (`DurationSerie` is a span, so it is not `TemporalSerie`). In the
+bindings a temporal column is built by casting to a temporal `dtype`; `value_at` returns the
+physical (the epoch count), while the Rust core presents the typed `DateTime` / `Time` /
+`Duration`.
 
 === "Python"
 
     ```python
     import yggdryl
 
-    r = yggdryl.Serie.range(4, start=100, step=5)        # 100, 105, 110, 115 (lazy)
-    assert not r.is_materialized
-    assert r[2] == 110
-    realized = r.materialize()                           # -> a real uint64 column
-    assert realized.is_materialized
+    # cast an integer column to a temporal dtype
+    ts = yggdryl.Serie("ts", [0, 86400], dtype="timestamp[s]")
+    assert str(ts.data_type) == "timestamp[s]"
+    assert ts.value_at(1) == 86400                       # physical (epoch seconds)
+    d = yggdryl.Serie("d", [0, 1, 2], dtype="date32")
+    assert str(d.data_type) == "date32"
+    assert d.value_at(2) == 2                             # days since the epoch
     ```
 
 === "Node"
@@ -385,40 +448,12 @@ arithmetic `Serie.range`; the calendar/time ranges are Rust-only.
     ```javascript
     const { Serie } = require('yggdryl')
 
-    const r = Serie.range(4, 100, 5)                     // 100, 105, 110, 115 (lazy)
-    if (r.isMaterialized) throw new Error('lazy')
-    if (r.get(2) !== 110) throw new Error('value')
-    const realized = r.materialize()                     // -> a real uint64 column
-    if (!realized.isMaterialized) throw new Error('materialized')
+    const ts = new Serie('ts', [0, 86400], 'timestamp[s]')
+    if (ts.dataType.toString() !== 'timestamp[s]') throw new Error('type')
+    if (ts.valueAt(1) !== 86400) throw new Error('physical')  // epoch seconds
+    const d = new Serie('d', [0, 1, 2], 'date32')
+    if (d.valueAt(2) !== 2) throw new Error('days')           // days since the epoch
     ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{RangeSerie, DateRangeSerie, Serie, TypedSerie, Scalar};
-    use yggdryl_core::Date;
-
-    let r = RangeSerie::new("r", 100, 5, 4);          // 100, 105, 110, 115 (lazy)
-    assert!(!r.is_materialized());
-    assert_eq!(r.get(2), Some(110));
-    assert_eq!(r.value_at(3), Scalar::Int(115));
-    let realized = r.materialize();                    // -> a real uint64 column
-    assert!(realized.is_materialized());
-
-    let dates = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 30).unwrap(), 1, 3);
-    assert_eq!(dates.date_at(2), Some(Date::from_ymd(2024, 2, 1).unwrap()));
-    ```
-
-## Temporal series
-
-`DatetimeSerie` is the **unified timestamp column**: it backs any unit (second …
-nanosecond) and an optional timezone, exposing values as the core `DateTime`. `TimeSerie`
-and `DurationSerie` are its time-of-day and elapsed-time counterparts — each unifies every
-unit and presents core `Time` / `Duration`, respecting the `Time{unit}` / `Duration{unit}`
-data types (so there are no per-unit aliases). Every timestamp / time / duration array
-dispatches to these. All temporal columns (including the date/time/datetime ranges)
-implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` / `time_at`
-(`DurationSerie` is a span, so it is not `TemporalSerie`).
 
 === "Rust"
 
@@ -439,106 +474,6 @@ implement `TemporalSerie` — a uniform `datetime_at` with derived `date_at` / `
 
     let clock = TimeRangeSerie::new("t", Time::from_hms(23, 0, 0).unwrap(), Duration::from_secs(3600), 3);
     assert_eq!(clock.time(1), Time::from_hms(0, 0, 0).ok()); // wraps past midnight
-    ```
-
-## Index
-
-`IndexSerie` is the row index — a `Serie` of labels with label ↔ position lookups. The
-default is a **lazy** `uint64` range; any column can be wrapped as an index.
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    index = yggdryl.Serie.index(4)                       # lazy [0, 1, 2, 3] (uint64)
-    assert index.is_range
-    assert not index.is_materialized
-    assert index.at(2) == 2                              # label at row 2
-    assert index.position(3) == 3                        # row of label 3
-    assert not index.contains(4)
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const index = Serie.index(4)                         // lazy [0, 1, 2, 3] (uint64)
-    if (!index.isRange) throw new Error('range')
-    if (index.isMaterialized) throw new Error('lazy')
-    if (index.at(2) !== 2) throw new Error('label')      // label at row 2
-    if (index.position(3) !== 3) throw new Error('pos')  // row of label 3
-    if (index.contains(4)) throw new Error('absent')
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{IndexSerie, Serie};
-
-    let index = IndexSerie::range(4);                 // lazy [0, 1, 2, 3] (uint64)
-    assert!(index.is_range());
-    assert!(!index.is_materialized());
-    assert_eq!(index.at(2), Some(2));                 // label at row 2
-    assert_eq!(index.position(3), Some(3));           // row of label 3
-    assert!(!index.contains(4));
-    ```
-
-Slicing a range index drops the range fast-path flag (the labels no longer start at
-`0`), but the result is still an `IndexSerie` and `at` / `position` keep working.
-
-## Categorical (dictionary-encoded)
-
-`CategoricalSerie` is a **dictionary-encoded** view for *repeated values*: it stores the
-distinct values once plus a compact per-row code, so a low-cardinality column is held
-compactly. It is lazy (`is_materialized()` is `false`); `materialize()` decodes it back
-into a flat column.
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    cat = yggdryl.Serie("c", ["a", "b", "a"]).categorical()
-    assert cat.category_count == 2                       # "a", "b" stored once
-    assert cat.code_at(0) == cat.code_at(2)              # repeated "a" shares a code
-    assert cat[1] == "b"
-    assert not cat.is_materialized
-
-    flat = cat.materialize()                             # decode -> a real varchar column
-    assert flat.is_materialized
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const cat = new Serie('c', ['a', 'b', 'a']).categorical()
-    if (cat.categoryCount !== 2) throw new Error('count')        // "a", "b" stored once
-    if (cat.codeAt(0) !== cat.codeAt(2)) throw new Error('code') // repeated "a" shares a code
-    if (cat.get(1) !== 'b') throw new Error('value')
-    if (cat.isMaterialized) throw new Error('lazy')
-
-    const flat = cat.materialize()                              // decode -> a real column
-    if (!flat.isMaterialized) throw new Error('decoded')
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{CategoricalSerie, VarcharSerie, Scalar, Serie};
-
-    let values = VarcharSerie::<i32>::from_values("c", vec![Some("a"), Some("b"), Some("a")]);
-    let cat = CategoricalSerie::from_serie(&values).unwrap();
-    assert_eq!(cat.category_count(), 2);              // "a", "b" stored once
-    assert_eq!(cat.code_at(0), cat.code_at(2));       // repeated "a" shares a code
-    assert_eq!(cat.value_at(1), Scalar::Utf8("b".into()));
-    assert!(!cat.is_materialized());
-
-    let flat = cat.materialize();                     // decode -> a real varchar column
-    assert!(flat.is_materialized());
     ```
 
 ## Cast
@@ -592,310 +527,6 @@ the type default) and drops extras. `dtype` is a `DataType` or a type string.
     assert_eq!(casted.as_nested().unwrap().child_by_name("extra").unwrap().value_at(0), Scalar::Null);
     ```
 
-## Nested
-
-`StructSerie`, `ListSerie<O>` and `MapSerie` are columns of columns. Each builds its
-child [`Serie`]s **recursively** through the same factory, so arbitrarily deep nesting (a
-list of structs of maps, …) resolves uniformly. The `NestedSerie` trait exposes
-`child_count` / `child(index)` / `children` / `child_by_name`.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{from_array, NestedSerie, ListSerie, Scalar, Serie};
-    use yggdryl_serie::arrow_array::{ArrayRef, ListArray};
-    use yggdryl_serie::arrow_array::types::Int32Type;
-    use std::sync::Arc;
-
-    // list<int32>: [[1, 2], [3], null]
-    let la = ListArray::from_iter_primitive::<Int32Type, _, _>(vec![
-        Some(vec![Some(1), Some(2)]), Some(vec![Some(3)]), None,
-    ]);
-    let serie = from_array("l", Arc::new(la) as ArrayRef)?;
-    let list = serie.as_any().downcast_ref::<ListSerie<i32>>().unwrap();
-
-    assert_eq!(list.value_slice(0).unwrap().len(), 2);   // the sub-list is a zero-copy Serie
-    assert!(list.value_slice(2).is_none());              // null row
-    assert_eq!(list.value_at(1), Scalar::Other("[3]".into()));
-    ```
-
-### Child access — by index, name or path
-
-Any column exposes `select("a.b.c")` to navigate into nested children, and
-`as_nested()` for the full child API (by index, or by name with a case-sensitive →
-case-insensitive fallback). A path segment may be **wrapped** (`[name]`, `"name"`,
-`'name'`, `` `name` ``) to match the literal name exactly (and to contain dots); a bare
-numeric segment is a child index. The path is **parsed first**, so `select` returns
-`Result<Option<…>>`: a malformed path (unclosed wrapper, empty segment) is an error,
-while a well-formed path that does not resolve — a missing child, or a leaf column — is
-`Ok(None)` (`None` in the bindings); a malformed path raises.
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    rec = yggdryl.Serie.struct("rec", [
-        yggdryl.Serie.struct("inner", [yggdryl.Serie("a", [1, 2])]),
-        yggdryl.Serie("Label", ["x", "y"]),
-    ])
-    assert rec.select("inner.a")[1] == 2          # node path
-    assert rec.select("label").name == "Label"    # case-insensitive
-    assert rec.child(0).name == "inner"           # by index
-    assert rec.select("inner.zzz") is None        # unresolved
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const rec = Serie.struct('rec', [
-      Serie.struct('inner', [new Serie('a', [1, 2])]),
-      new Serie('Label', ['x', 'y']),
-    ])
-    if (rec.select('inner.a').get(1) !== 2) throw new Error('path')
-    if (rec.select('label').name !== 'Label') throw new Error('ci')
-    if (rec.child(0).name !== 'inner') throw new Error('index')
-    if (rec.select('inner.zzz') !== null) throw new Error('unresolved')
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{StructSerie, Int32Serie, VarcharSerie, NestedSerie, Serie, SerieRef, Scalar};
-    use std::sync::Arc;
-
-    let inner: SerieRef = Arc::new(StructSerie::from_children("inner", vec![
-        Arc::new(Int32Serie::from_values("a", vec![Some(1), Some(2)])) as SerieRef,
-    ]).unwrap());
-    let label: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("Label", vec![Some("x"), Some("y")]));
-    let rec: SerieRef = Arc::new(StructSerie::from_children("rec", vec![inner, label]).unwrap());
-
-    // select returns Result<Option<…>>: Ok(Some) found, Ok(None) unresolved, Err malformed
-    assert_eq!(rec.select("inner.a")?.unwrap().value_at(1), Scalar::Int(2)); // path
-    assert_eq!(rec.select("label")?.unwrap().name(), "Label");               // case-insensitive
-    assert_eq!(rec.select("[inner].a")?.unwrap().value_at(0), Scalar::Int(1)); // wrapped exact
-    assert!(rec.select("inner.zzz")?.is_none());                             // unresolved
-    assert!(rec.select("inner.").is_err());                                  // malformed path
-
-    let nested = rec.as_nested().unwrap();
-    assert_eq!(nested.child(0).unwrap().name(), "inner"); // by index
-    assert_eq!(nested.children().len(), 2);
-    ```
-
-## Frame (DataFrame)
-
-**A struct column *is* a DataFrame** — its child columns *are* the frame's columns, so
-`StructSerie` carries the table surface directly (there is no separate `Frame` type).
-Build one with the `struct` factory, then project / filter / sort / stack rows and read
-records back, with a pandas-like feel: every transform is **functional** and returns a new
-lazy frame that **shares the untouched columns' Arrow buffers** (no copy), assembling the
-backing `StructArray` only on demand.
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    df = yggdryl.Serie.struct("df", [
-        yggdryl.Serie("id", [3, 1, 2]),
-        yggdryl.Serie("name", ["c", "a", "b"]),
-    ])
-    assert df.shape == (3, 2)                            # (rows, columns)
-    assert df.column_names == ["id", "name"]
-
-    # columns: project / add / drop / rename (all return a new frame)
-    df.select_columns(["name"])                         # keep / reorder a subset
-    df.with_column(yggdryl.Serie("ok", [True, True, False]))
-    df.drop_columns(["name"])
-    df.rename("id", "key")
-
-    # rows: filter / sort / stack / row-index / head / tail
-    df.filter([True, False, True])
-    df.vstack(df)
-    df.with_row_index("i")                              # prepend a 0..n column
-
-    # read rows back as native records
-    assert df.row(1).to_dict() == {"id": 1, "name": "a"}
-    row = df.row(1).as_dataclass("Row")                 # a real dataclass instance
-    assert (row.id, row.name) == (1, "a")
-    assert df.sort_by("id").to_dicts() == [
-        {"id": 1, "name": "a"}, {"id": 2, "name": "b"}, {"id": 3, "name": "c"},
-    ]
-
-    print(df.display(max_rows=10))                      # an aligned table
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const df = Serie.struct('df', [
-      new Serie('id', [3, 1, 2]),
-      new Serie('name', ['c', 'a', 'b']),
-    ])
-    if (df.shape[0] !== 3 || df.shape[1] !== 2) throw new Error('shape')
-    if (df.columnNames.join() !== 'id,name') throw new Error('columns')
-
-    // columns
-    df.selectColumns(['name'])
-    df.withColumn(new Serie('ok', [true, true, false]))
-    df.dropColumns(['name'])
-    df.rename('id', 'key')
-
-    // rows
-    df.filter([true, false, true])
-    df.vstack(df)
-    df.withRowIndex('i')
-
-    // records
-    const rec = df.row(1).toObject()                    // { id: 1, name: 'a' }
-    const rows = df.sortBy('id').toDicts()
-    console.log(df.display(10))
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{Int32Serie, VarcharSerie, StructSerie, Serie, SerieRef, DisplayOptions};
-    use yggdryl_scalar::Scalar;   // the `to_str()` on a record's scalar is a trait method
-    use std::sync::Arc;
-
-    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(3), Some(1), Some(2)]));
-    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("name", vec![Some("c"), Some("a"), Some("b")]));
-    let df = StructSerie::from_children("df", vec![id, name])?;
-
-    assert_eq!(df.shape(), (3, 2));
-    assert_eq!(df.column_names(), vec!["id", "name"]);
-
-    // columns
-    let _ = df.select_columns(&["name"])?;
-    let _ = df.drop_columns(&["name"])?;
-    let _ = df.rename("id", "key")?;
-
-    // rows
-    let asc = df.sort_by("id", false)?;
-    let _ = df.filter(&[true, false, true])?;
-    let _ = df.vstack(&df)?;
-    let _ = df.with_row_index("i")?;
-
-    // read a row back as a StructScalar record
-    let record = asc.row(0)?;
-    assert_eq!(record.child_named("name").unwrap().to_str(), "'a'::utf8");
-
-    println!("{}", df.display(&DisplayOptions::default()));
-    ```
-
-### Schema-cast projection
-
-`select_fields` projects **and casts** to an explicit target schema in one step: each
-target [`Field`](../schema/field.md) takes the source column of the same name **cast to
-its type** (or, if absent, a **filled** column — null when nullable, else the type
-default), in the target order, dropping unlisted columns. The schema companion to
-`select_columns` (which only reorders / projects), powered by the same `cast` struct
-kernel.
-
-=== "Python"
-
-    ```python
-    import yggdryl
-
-    df = yggdryl.Serie.struct("df", [yggdryl.Serie("id", [1, 2])])  # id: int64
-    target = [
-        yggdryl.Field("id", yggdryl.DataType("int32"), True),       # narrow
-        yggdryl.Field("score", yggdryl.DataType("float64"), True),  # missing -> filled null
-    ]
-    out = df.select_fields(target)
-    assert out.column_names == ["id", "score"]
-    assert out.child("score").value_at(0) is None
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie, Field, DataType } = require('yggdryl')
-
-    const df = Serie.struct('df', [new Serie('id', [1, 2])])
-    const out = df.selectFields([
-      new Field('id', new DataType('int32'), true),
-      new Field('score', new DataType('float64'), true),  // filled with null
-    ])
-    if (out.child('score').valueAt(0) !== null) throw new Error('fill')
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{Int32Serie, StructSerie, NestedSerie, Serie, SerieRef, DataType, Field, Scalar};
-    use std::sync::Arc;
-
-    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
-    let df = StructSerie::from_children("df", vec![id])?;
-    let out = df.select_fields(vec![
-        Field::new("id", DataType::int(64, true), true),     // widen
-        Field::new("score", DataType::float(64), true),      // filled null
-    ])?;
-    assert_eq!(out.child_by_name("score").unwrap().value_at(0), Scalar::Null);
-    ```
-
-### Arrow interchange (RecordBatch / IPC / reader)
-
-A frame round-trips through Arrow: `to_arrow_ipc()` writes an **Arrow IPC stream** (columns
-as top-level fields) that any Arrow library reads back as a table, and
-`from_arrow_ipc(name, bytes)` reads it in. In Rust there are also `to_record_batch` /
-`from_record_batch`, chunked `to_record_batches(max_rows)` / `from_record_batches`, and a
-streaming `to_record_batch_reader` / `from_record_batch_reader` (the shape Parquet readers
-and scanners consume).
-
-=== "Python"
-
-    ```python
-    import yggdryl
-    import pyarrow as pa                                 # any Arrow library
-
-    df = yggdryl.Serie.struct("df", [
-        yggdryl.Serie("id", [1, 2, 3]),
-        yggdryl.Serie("name", ["a", "b", "c"]),
-    ])
-    ipc = df.to_arrow_ipc()
-    table = pa.ipc.open_stream(ipc).read_all()           # -> a pyarrow.Table
-    assert table.column_names == ["id", "name"]
-    back = yggdryl.Serie.from_arrow_ipc("df", ipc)        # round-trips
-    assert back.to_dicts() == df.to_dicts()
-    ```
-
-=== "Node"
-
-    ```javascript
-    const { Serie } = require('yggdryl')
-
-    const df = Serie.struct('df', [new Serie('id', [1, 2, 3])])
-    const ipc = df.toArrowIpc()                          // Buffer of an Arrow IPC stream
-    const back = Serie.fromArrowIpc('df', ipc)
-    if (back.shape[0] !== 3) throw new Error('roundtrip')
-    ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_serie::{Int32Serie, StructSerie, Serie, SerieRef};
-    use std::sync::Arc;
-
-    let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2), Some(3)]));
-    let df = StructSerie::from_children("df", vec![id])?;
-
-    // one RecordBatch, or chunked batches, or an IPC stream
-    let batch = df.to_record_batch()?;
-    assert_eq!(batch.num_rows(), 3);
-    let chunks = df.to_record_batches(2)?;               // [2 rows, 1 row]
-    let reader = df.to_record_batch_reader(2)?;           // a RecordBatchReader (scanner)
-    let bytes = df.to_ipc_bytes()?;
-    assert_eq!(StructSerie::from_ipc_bytes("df", &bytes)?.shape(), (3, 1));
-    let _ = (chunks, reader);
-    ```
-
 ## Update values: `set_at` & `push`
 
 Arrow arrays are immutable, so the value mutators are **functional** — they return a *new*
@@ -945,8 +576,8 @@ errors. The rebuild is uniform across every type — primitive, varchar, binary 
 ## Display
 
 `display` is the **single** render method — there is no separate `show`. A leaf column
-renders **vertically** (one value per line); a struct [frame](#frame-dataframe) renders as
-an **aligned table** (one column per child). Parameters: `max_rows`, `header`, `width`,
+renders **vertically** (one value per line); a struct [frame](frame.md) renders as an
+**aligned table** (one column per child). Parameters: `max_rows`, `header`, `width`,
 `null` and `index` (a leading row-index gutter).
 
 === "Python"
@@ -1041,8 +672,8 @@ floats (`float16`/`32`/`64`), decimals (128/256), dates and intervals, boolean, 
 strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`); timestamps, times
 and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **nested**
 `StructSerie` (which holds **lazy children** — `from_children` stays lazy until
-`materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` /
-`DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`, the `IndexSerie`,
+`materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `UInt64RangeSerie` (which
+doubles as the row index) / `DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`,
 `CategoricalSerie` (dictionary-encoded), the `TemporalSerie` / `NestedSerie` traits, the
 `SliceSerie` graph, `cast` / `resize` / `display`, lossless Arrow-IPC `to_bytes` /
 `from_bytes`, and a per-datatype default (`Scalar::default_for`) round it out. The column
@@ -1053,5 +684,8 @@ operations are the next increments.
 
 ## Next
 
+- [Lazy, range & categorical](lazy.md) — computed columns and the `uint64` row index
+- [Nested (struct / list / map)](nested.md) — columns of columns and the build factories
+- [Frame (DataFrame)](frame.md) — a struct column *is* a table
 - [DataType](../schema/datatype.md) — the logical type a serie carries
 - [Field](../schema/field.md) — naming a column, building a schema

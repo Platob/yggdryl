@@ -12,8 +12,8 @@ use std::time::Instant;
 
 use yggdryl_serie::arrow_array::{ArrayRef, Int32Array, StringArray};
 use yggdryl_serie::{
-    from_array, CategoricalSerie, DataType, Int32Serie, NestedSerie, RangeSerie, Serie, SerieRef,
-    StructSerie, TypedSerie, VarcharSerie,
+    from_array, CategoricalSerie, DataType, Int32Serie, NestedSerie, Serie, SerieRef, StructSerie,
+    TypedSerie, UInt64RangeSerie, VarcharSerie,
 };
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
@@ -121,11 +121,11 @@ fn main() {
     });
 
     // ---- lazy range ----
-    let range = RangeSerie::new("r", 0, 1, ROWS);
-    bench("RangeSerie::value_at (lazy)", n * 2, || {
+    let range = UInt64RangeSerie::new("r", 0, 1, ROWS);
+    bench("UInt64RangeSerie::value_at (lazy)", n * 2, || {
         black_box(black_box(&range).value_at(black_box(2000)));
     });
-    bench("RangeSerie::materialize (4096)", n / 500, || {
+    bench("UInt64RangeSerie::materialize (4096)", n / 500, || {
         black_box(black_box(&range).materialize());
     });
 

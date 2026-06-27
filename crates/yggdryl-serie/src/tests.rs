@@ -17,9 +17,9 @@ use yggdryl_schema::{DataType, Field, TypeCategory};
 use crate::{
     child, child_range, from_array, from_arrow, from_bytes, BinarySerie, BooleanSerie,
     CategoricalSerie, Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie,
-    DisplayOptions, DurationSerie, Float32Serie, Float64Serie, IndexSerie, Int32Serie, Int64Serie,
-    ListSerie, MapSerie, NestedSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie,
-    TemporalSerie, TimeRangeSerie, TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
+    DisplayOptions, DurationSerie, Float32Serie, Float64Serie, Int32Serie, Int64Serie, ListSerie,
+    MapSerie, NestedSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie, TimeRangeSerie,
+    TimeSerie, TypedSerie, UInt64RangeSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -148,8 +148,8 @@ fn unsupported_arrow_type_errors() {
 }
 
 #[test]
-fn index_range_is_lazy_uint64() {
-    let index = IndexSerie::range(4);
+fn range_index_is_lazy_uint64() {
+    let index = UInt64RangeSerie::indices(4);
     assert_eq!(index.len(), 4);
     assert_eq!(index.num_rows(), 4);
     assert!(index.is_range());
@@ -167,56 +167,37 @@ fn index_range_is_lazy_uint64() {
     assert!(index.contains(1));
     assert!(!index.contains(4));
 
-    // materialise into an in-memory index that is still range-flagged
+    // materialise into a plain in-memory uint64 column (no longer a lazy range)
     let materialized = index.materialize();
-    let mat = materialized.as_any().downcast_ref::<IndexSerie>().unwrap();
-    assert!(mat.is_materialized());
-    assert!(mat.is_range());
-    assert_eq!(mat.at(2), Some(2));
+    assert!(materialized.is_materialized());
+    assert!(materialized
+        .as_any()
+        .downcast_ref::<UInt64RangeSerie>()
+        .is_none());
+    assert_eq!(materialized.value_at(2), Scalar::Int(2));
 }
 
 #[test]
-fn index_default_is_empty_lazy_uint64() {
-    let index = IndexSerie::default();
-    assert!(index.is_empty());
-    assert!(index.is_range());
-    assert!(!index.is_materialized());
-    assert_eq!(index.data_type(), &DataType::int(64, false));
+fn range_with_start_and_step_inverts_labels() {
+    let range = UInt64RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    assert!(!range.is_range()); // not the canonical 0..len index
+    assert_eq!(range.at(0), Some(100));
+    assert_eq!(range.at(3), Some(115));
+    assert_eq!(range.at(4), None);
+    assert_eq!(range.position(105), Some(1)); // O(1) inverse
+    assert_eq!(range.position(106), None); // off the step grid
+    assert_eq!(range.position(50), None); // before start
+    assert!(range.contains(110));
+    assert!(!range.contains(120));
 }
 
 #[test]
-fn index_from_serie_labels() {
-    let labels: SerieRef = Arc::new(UInt64Serie::from_values(
-        "k",
-        vec![Some(10), Some(20), Some(30)],
-    ));
-    let index = IndexSerie::from_serie(labels);
-    assert!(!index.is_range());
-    assert_eq!(index.name(), "k");
-    assert_eq!(index.at(0), Some(10));
-    assert_eq!(index.position(20), Some(1));
-    assert_eq!(index.position(99), None);
-    assert!(index.contains(30));
-}
-
-#[test]
-fn index_from_array_wraps_any_type() {
-    let array: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "c"]));
-    let index = IndexSerie::from_array("name", array).unwrap();
-    assert!(!index.is_range());
-    assert_eq!(index.len(), 3);
-    assert_eq!(index.data_type(), &DataType::varchar());
-    // a non-integer index has no integer-label lookup
-    assert_eq!(index.at(0), None);
-    assert_eq!(index.position(0), None);
-}
-
-#[test]
-fn index_slice_stays_an_index() {
-    let index = IndexSerie::range(5);
+fn range_slice_stays_a_lazy_range() {
+    let index = UInt64RangeSerie::indices(5);
     let sliced = index.slice(1, 2);
-    let view = sliced.as_any().downcast_ref::<IndexSerie>().unwrap();
+    let view = sliced.as_any().downcast_ref::<UInt64RangeSerie>().unwrap();
     assert_eq!(view.len(), 2);
+    assert!(!view.is_materialized()); // still lazy
     assert!(!view.is_range()); // a slice no longer starts at 0
     assert_eq!(view.at(0), Some(1));
     assert_eq!(view.at(1), Some(2));
@@ -224,19 +205,19 @@ fn index_slice_stays_an_index() {
 }
 
 #[test]
-fn index_is_usable_as_a_serie() {
-    let index = IndexSerie::range(3);
+fn range_is_usable_as_a_serie() {
+    let index = UInt64RangeSerie::indices(3);
     let column: SerieRef = Arc::new(index);
     assert_eq!(column.len(), 3);
     assert_eq!(column.null_count(), 0);
-    // recover the IndexSerie through the base handle
-    let recovered = column.as_any().downcast_ref::<IndexSerie>().unwrap();
+    // recover the UInt64RangeSerie through the base handle
+    let recovered = column.as_any().downcast_ref::<UInt64RangeSerie>().unwrap();
     assert!(recovered.is_range());
 }
 
 #[test]
 fn lazy_range_serie_computes_and_materializes() {
-    let range = RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    let range = UInt64RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
     assert!(!range.is_materialized());
     assert_eq!(range.len(), 4);
     assert_eq!(range.get(0), Some(100));
@@ -352,7 +333,7 @@ fn empty_and_single_element_series() {
     assert_eq!(one.value_at(0), Scalar::Int(42));
     assert_eq!(one.value_at(1), Scalar::Null); // just past the end
 
-    let empty_range = RangeSerie::new("r", 0, 1, 0);
+    let empty_range = UInt64RangeSerie::new("r", 0, 1, 0);
     assert!(empty_range.is_empty());
     assert_eq!(empty_range.array().len(), 0); // must not panic
 }
@@ -378,7 +359,7 @@ fn slice_boundary_cases() {
 #[test]
 fn range_serie_saturates_on_overflow() {
     // start near the top: at(1) would overflow, so it clamps instead of wrapping/panicking
-    let r = RangeSerie::new("r", u64::MAX - 1, 10, 4);
+    let r = UInt64RangeSerie::new("r", u64::MAX - 1, 10, 4);
     assert_eq!(r.value_at(0), Scalar::Int((u64::MAX - 1) as i128));
     assert_eq!(r.value_at(1), Scalar::Int(u64::MAX as i128)); // saturated
     assert_eq!(r.value_at(3), Scalar::Int(u64::MAX as i128)); // still clamped
@@ -473,7 +454,7 @@ fn large_offset_string_and_binary() {
 
 #[test]
 fn lazy_slice_stays_lazy_then_materializes() {
-    let r = RangeSerie::new("r", 0, 2, 6); // 0, 2, 4, 6, 8, 10 (lazy)
+    let r = UInt64RangeSerie::new("r", 0, 2, 6); // 0, 2, 4, 6, 8, 10 (lazy)
     let sub = r.slice(1, 3); // 2, 4, 6 — still lazy
     assert!(!sub.is_materialized());
     assert_eq!(sub.len(), 3);
@@ -734,6 +715,59 @@ fn map_serie_keys_values_and_render() {
 }
 
 #[test]
+fn list_from_values_builds_and_round_trips() {
+    // [[1, 2], [], None, [3]] from the flat values [1, 2, 3]
+    let flat: SerieRef = Arc::new(Int32Serie::from_values(
+        "item",
+        vec![Some(1), Some(2), Some(3)],
+    ));
+    let list =
+        ListSerie::<i32>::from_values("nums", flat, &[Some(2), Some(0), None, Some(1)]).unwrap();
+    assert_eq!(list.len(), 4);
+    assert_eq!(list.null_count(), 1);
+    assert_eq!(list.value_slice(0).unwrap().len(), 2);
+    assert_eq!(list.value_slice(1).unwrap().len(), 0);
+    assert!(list.value_slice(2).is_none());
+    assert_eq!(list.value_at(3), Scalar::Other("[3]".into()));
+
+    // a length sum that disagrees with the flat values is rejected
+    let bad: SerieRef = Arc::new(Int32Serie::from_values("item", vec![Some(1)]));
+    assert!(ListSerie::<i32>::from_values("x", bad, &[Some(2)]).is_err());
+
+    // lossless Arrow-IPC round-trip
+    let bytes = list.to_bytes().unwrap();
+    let back = from_bytes(&bytes).unwrap();
+    assert_eq!(back.value_at(0), Scalar::Other("[1, 2]".into()));
+    assert_eq!(back.value_at(3), Scalar::Other("[3]".into()));
+}
+
+#[test]
+fn map_from_values_builds_and_round_trips() {
+    // [{a=1, b=2}, {c=3}] from the flat keys/values
+    let keys: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
+        "key",
+        vec![Some("a"), Some("b"), Some("c")],
+    ));
+    let vals: SerieRef = Arc::new(Int32Serie::from_values(
+        "value",
+        vec![Some(1), Some(2), Some(3)],
+    ));
+    let map = MapSerie::from_values("m", keys, vals, &[Some(2), Some(1)]).unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(map.keys().len(), 3);
+    assert_eq!(map.value_at(0), Scalar::Other("{a=1, b=2}".into()));
+
+    // a list of these nested columns also nests inside a struct frame
+    let frame = StructSerie::from_children("df", vec![Arc::new(map.clone())]).unwrap();
+    assert_eq!(frame.shape(), (2, 1));
+
+    // lossless Arrow-IPC round-trip
+    let bytes = map.to_bytes().unwrap();
+    let back = from_bytes(&bytes).unwrap();
+    assert_eq!(back.value_at(1), Scalar::Other("{c=3}".into()));
+}
+
+#[test]
 fn map_serie_slice_resize_materialize_do_not_panic() {
     // A map built from a standard Arrow MapBuilder carries `keys`/`values` entry-field
     // names, which the schema layer normalises to `key`/`value`. Routing the base
@@ -908,7 +942,7 @@ fn categorical_serie_integer_and_all_null() {
 
 #[test]
 fn lazy_temporal_field_accessors() {
-    let index = IndexSerie::range(3);
+    let index = UInt64RangeSerie::indices(3);
     assert_eq!(index.dtype(), &DataType::int(64, false));
     assert_eq!(index.get_metadata("missing"), None);
 }
@@ -1149,7 +1183,7 @@ fn cast_primitive_and_struct_with_fill() {
 #[test]
 fn struct_from_children_is_lazy_until_materialized() {
     // a lazy child (a computed range) keeps the struct lazy until materialize
-    let id: SerieRef = Arc::new(RangeSerie::new("id", 0, 1, 3));
+    let id: SerieRef = Arc::new(UInt64RangeSerie::new("id", 0, 1, 3));
     let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
         "name",
         vec![Some("a"), Some("b"), Some("c")],

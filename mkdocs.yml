@@ -49,7 +49,10 @@ nav:
       - DataType: schema/datatype.md
       - Field: schema/field.md
   - Serie:
-      - Serie & Frame (columns + DataFrame): serie/serie.md
+      - Serie (the typed column): serie/serie.md
+      - Lazy, range & categorical: serie/lazy.md
+      - Nested (struct / list / map): serie/nested.md
+      - Frame (DataFrame): serie/frame.md
   - Scalar:
       - Scalar (single value): scalar/scalar.md
   - HTTP:

@@ -108,7 +108,7 @@ return the value only when it is of that kind.
 
 ### Native records — `to_dict` / `as_dataclass`
 
-A struct or map scalar (e.g. a [frame](../serie/serie.md#frame-dataframe) row) converts
+A struct or map scalar (e.g. a [frame](../serie/frame.md) row) converts
 straight into a **language-native record**: Python's `to_dict()` (a `dict`) and
 `as_dataclass(name)` (a real `dataclasses` instance with attribute access), and Node's
 `toObject()` (a plain object — the JS struct). Nested values convert recursively.

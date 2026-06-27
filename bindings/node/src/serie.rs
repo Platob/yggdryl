@@ -13,8 +13,8 @@ use yggdryl_serie::arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray,
 };
 use yggdryl_serie::{
-    from_array, from_bytes, CategoricalSerie, DisplayOptions, IndexSerie, RangeSerie, Scalar,
-    SerieRef, StructSerie,
+    from_array, from_bytes, CategoricalSerie, DisplayOptions, ListSerie, MapSerie, Scalar,
+    SerieRef, StructSerie, UInt64RangeSerie,
 };
 
 use crate::datatype::DataType;
@@ -43,13 +43,15 @@ fn as_frame(serie: &SerieRef) -> Result<&StructSerie> {
         .ok_or_else(|| err("not a struct column; build a frame with Serie.struct(...)"))
 }
 
-/// Borrows a column as an [`IndexSerie`], or throws if it is not an index column — the
-/// gate for the index (label ↔ position) operations.
-fn as_index(serie: &SerieRef) -> Result<&IndexSerie> {
+/// Borrows a column as a [`UInt64RangeSerie`], or throws if it is not a range/index
+/// column — the gate for the index (label ↔ position) operations.
+fn as_index(serie: &SerieRef) -> Result<&UInt64RangeSerie> {
     serie
         .as_any()
-        .downcast_ref::<IndexSerie>()
-        .ok_or_else(|| err("not an index column; build one with Serie.index(...)"))
+        .downcast_ref::<UInt64RangeSerie>()
+        .ok_or_else(|| {
+            err("not a range/index column; build one with Serie.range(...) or Serie.index(...)")
+        })
 }
 
 /// Borrows a column as a [`CategoricalSerie`], or throws if it is not a categorical
@@ -263,7 +265,7 @@ impl Serie {
         let start = start.unwrap_or(0).max(0) as u64;
         let step = step.unwrap_or(1).max(0) as u64;
         let name = name.unwrap_or_else(|| "range".to_string());
-        wrap(Arc::new(RangeSerie::new(
+        wrap(Arc::new(UInt64RangeSerie::new(
             name,
             start,
             step,
@@ -271,10 +273,11 @@ impl Serie {
         )))
     }
 
-    /// A lazy `uint64` row index of `length` rows (`0..length`).
+    /// A lazy `uint64` row index of `length` rows (`0..length`) — a `UInt64RangeSerie`
+    /// with the label ↔ position lookups.
     #[napi(factory)]
     pub fn index(length: u32) -> Self {
-        wrap(Arc::new(IndexSerie::range(length as usize)))
+        wrap(Arc::new(UInt64RangeSerie::indices(length as usize)))
     }
 
     /// Build a struct column named `name` from its child columns (each child's field,
@@ -284,6 +287,68 @@ impl Serie {
     pub fn struct_js(name: String, children: Vec<&Serie>) -> Result<Self> {
         let refs: Vec<SerieRef> = children.iter().map(|c| c.inner.clone()).collect();
         StructSerie::from_children(name, refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// Build a **list** column named `name` from an array of sub-arrays (each row an array
+    /// of elements, or `null` for a null row). The element type is inferred like the
+    /// `Serie` constructor; pass `dtype` to cast the elements. An empty / all-empty input
+    /// needs an explicit element `dtype`.
+    #[napi(factory, js_name = "list")]
+    pub fn list_js(
+        name: String,
+        values: Vec<JsonValue>,
+        dtype: Option<Either<&DataType, String>>,
+    ) -> Result<Self> {
+        let mut flat: Vec<JsonValue> = Vec::new();
+        let mut lengths: Vec<Option<usize>> = Vec::with_capacity(values.len());
+        for row in values {
+            match row {
+                JsonValue::Null => lengths.push(None),
+                JsonValue::Array(items) => {
+                    lengths.push(Some(items.len()));
+                    flat.extend(items);
+                }
+                _ => return Err(err("each list row must be an array of elements or null")),
+            }
+        }
+        let items = Serie::new("item".to_string(), flat, dtype)?;
+        ListSerie::<i32>::from_values(name, items.inner, &lengths)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(err)
+    }
+
+    /// Build a **map** column named `name` from an array of objects (each row an object of
+    /// key → value, or `null` for a null row). Keys are strings; the value type is
+    /// inferred like the `Serie` constructor (pass `valueDtype` to cast it, `keyDtype` for
+    /// parity with the Python binding).
+    #[napi(factory, js_name = "map")]
+    pub fn map_js(
+        name: String,
+        entries: Vec<JsonValue>,
+        key_dtype: Option<Either<&DataType, String>>,
+        value_dtype: Option<Either<&DataType, String>>,
+    ) -> Result<Self> {
+        let mut keys: Vec<JsonValue> = Vec::new();
+        let mut vals: Vec<JsonValue> = Vec::new();
+        let mut lengths: Vec<Option<usize>> = Vec::with_capacity(entries.len());
+        for row in entries {
+            match row {
+                JsonValue::Null => lengths.push(None),
+                JsonValue::Object(map) => {
+                    lengths.push(Some(map.len()));
+                    for (k, v) in map {
+                        keys.push(JsonValue::String(k));
+                        vals.push(v);
+                    }
+                }
+                _ => return Err(err("each map row must be an object or null")),
+            }
+        }
+        let key_col = Serie::new("key".to_string(), keys, key_dtype)?;
+        let value_col = Serie::new("value".to_string(), vals, value_dtype)?;
+        MapSerie::from_values(name, key_col.inner, value_col.inner, &lengths)
             .map(|s| wrap(Arc::new(s)))
             .map_err(err)
     }
@@ -482,16 +547,20 @@ impl Serie {
         }
     }
 
-    // ---- index ----
+    // ---- range / index ----
 
-    /// Whether this is the implicit lazy `0..len` `uint64` range index (enables the O(1)
-    /// label ↔ position lookups). Throws if the column is not an index.
+    /// Whether this is a canonical `0..len` `uint64` range index (`start == 0`, `step ==
+    /// 1`, the implicit row index) — `false` for any other column.
     #[napi(getter, js_name = "isRange")]
-    pub fn is_range(&self) -> Result<bool> {
-        Ok(as_index(&self.inner)?.is_range())
+    pub fn is_range(&self) -> bool {
+        self.inner
+            .as_any()
+            .downcast_ref::<UInt64RangeSerie>()
+            .is_some_and(UInt64RangeSerie::is_range)
     }
 
-    /// The integer label at row `index` (`null` when out of bounds or non-integer).
+    /// The integer label at row `index` (`null` when out of bounds). Requires a
+    /// range/index column.
     #[napi]
     pub fn at(&self, index: u32) -> Result<Option<i64>> {
         Ok(as_index(&self.inner)?.at(index as usize).map(|v| v as i64))

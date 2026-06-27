@@ -98,8 +98,38 @@ def test_lazy_range_and_index():
     assert idx.position(3) == 3
     assert idx.contains(3) is True
     assert idx.contains(4) is False
+    # a non-range column is not a range, and the index lookups require one
+    assert yggdryl.Serie("n", [1, 2]).is_range is False
+    assert r2.is_range is False  # start != 0
+    assert r2.at(1) == 15
+    assert r2.position(20) == 2
     with pytest.raises(TypeError):
         yggdryl.Serie("n", [1, 2]).at(0)  # not an index
+
+
+def test_list_factory():
+    nums = yggdryl.Serie.list("nums", [[1, 2], [], None, [3]])
+    assert nums.category == "nested"
+    assert nums.num_rows == 4
+    assert nums.null_count == 1
+    assert nums.value_at(0) == "[1, 2]"
+    assert nums.value_at(3) == "[3]"
+    assert nums.child(0).name == "item"  # the flattened element column
+    # an explicit element dtype casts the elements
+    typed = yggdryl.Serie.list("f", [[1], [2, 3]], dtype="float64")
+    assert typed.child(0).data_type == yggdryl.DataType.from_str("float64")
+    # round-trips losslessly through the column bytes
+    assert yggdryl.Serie.from_bytes(nums.to_bytes()).value_at(0) == "[1, 2]"
+
+
+def test_map_factory():
+    m = yggdryl.Serie.map("m", [{"a": 1, "b": 2}, {"c": 3}, None])
+    assert m.category == "nested"
+    assert m.num_rows == 3
+    assert m.null_count == 1
+    assert m.value_at(0) == "{a=1, b=2}"
+    assert m.value_at(1) == "{c=3}"
+    assert yggdryl.Serie.from_bytes(m.to_bytes()).value_at(1) == "{c=3}"
 
 
 def test_nested_struct_and_select():

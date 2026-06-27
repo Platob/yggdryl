@@ -6,15 +6,15 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyByteArray, PyBytes, PyFloat, PyInt, PyList, PyString};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString};
 use yggdryl_scalar::ScalarValue;
 use yggdryl_schema::DataType as CoreDataType;
 use yggdryl_serie::arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray,
 };
 use yggdryl_serie::{
-    from_array, from_bytes, CategoricalSerie, DisplayOptions, IndexSerie, RangeSerie, Scalar,
-    SerieRef, StructSerie,
+    from_array, from_bytes, CategoricalSerie, DisplayOptions, ListSerie, MapSerie, Scalar,
+    SerieRef, StructSerie, UInt64RangeSerie,
 };
 
 use crate::datatype::DataType;
@@ -43,13 +43,17 @@ fn as_frame(serie: &SerieRef) -> PyResult<&StructSerie> {
     })
 }
 
-/// Borrows a column as an [`IndexSerie`], or raises if it is not an index column — the
-/// gate for the index (label ↔ position) operations.
-fn as_index(serie: &SerieRef) -> PyResult<&IndexSerie> {
+/// Borrows a column as a [`UInt64RangeSerie`], or raises if it is not a range/index
+/// column — the gate for the index (label ↔ position) operations.
+fn as_index(serie: &SerieRef) -> PyResult<&UInt64RangeSerie> {
     serie
         .as_any()
-        .downcast_ref::<IndexSerie>()
-        .ok_or_else(|| PyTypeError::new_err("not an index column; build one with Serie.index(...)"))
+        .downcast_ref::<UInt64RangeSerie>()
+        .ok_or_else(|| {
+            PyTypeError::new_err(
+                "not a range/index column; build one with Serie.range(...) or Serie.index(...)",
+            )
+        })
 }
 
 /// Borrows a column as a [`CategoricalSerie`], or raises if it is not a categorical
@@ -200,13 +204,14 @@ impl Serie {
     #[staticmethod]
     #[pyo3(signature = (length, start = 0, step = 1, name = "range"))]
     fn range(length: usize, start: u64, step: u64, name: &str) -> Self {
-        wrap(Arc::new(RangeSerie::new(name, start, step, length)))
+        wrap(Arc::new(UInt64RangeSerie::new(name, start, step, length)))
     }
 
-    /// A lazy ``uint64`` row index of `length` rows (`0..length`).
+    /// A lazy ``uint64`` row index of `length` rows (`0..length`) — a
+    /// :class:`UInt64RangeSerie` with the label ↔ position lookups.
     #[staticmethod]
     fn index(length: usize) -> Self {
-        wrap(Arc::new(IndexSerie::range(length)))
+        wrap(Arc::new(UInt64RangeSerie::indices(length)))
     }
 
     /// Build a struct column named `name` from its child columns (each child's field,
@@ -217,6 +222,74 @@ impl Serie {
     fn struct_(name: &str, children: Vec<Serie>) -> PyResult<Self> {
         let refs: Vec<SerieRef> = children.into_iter().map(|c| c.inner).collect();
         StructSerie::from_children(name, refs)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// Build a **list** column named `name` from a list of sub-lists (each row a list of
+    /// elements, or ``None`` for a null row). The element type is inferred like the
+    /// :class:`Serie` constructor; pass `dtype` to cast the elements. An empty / all-empty
+    /// input needs an explicit element `dtype`.
+    #[staticmethod]
+    #[pyo3(name = "list", signature = (name, values, dtype = None))]
+    fn list_(
+        py: Python<'_>,
+        name: &str,
+        values: &Bound<'_, PyList>,
+        dtype: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        // Flatten the rows, recording each row's element count (`None` = null row).
+        let mut flat: Vec<Bound<'_, PyAny>> = Vec::new();
+        let mut lengths: Vec<Option<usize>> = Vec::with_capacity(values.len());
+        for row in values.iter() {
+            if row.is_none() {
+                lengths.push(None);
+            } else {
+                let sub = row.downcast::<PyList>().map_err(|_| {
+                    PyTypeError::new_err("each list row must be a list of elements or None")
+                })?;
+                lengths.push(Some(sub.len()));
+                flat.extend(sub.iter());
+            }
+        }
+        let items = Serie::new("item", &PyList::new_bound(py, flat), dtype)?;
+        ListSerie::<i32>::from_values(name, items.inner, &lengths)
+            .map(|s| wrap(Arc::new(s)))
+            .map_err(serie_err)
+    }
+
+    /// Build a **map** column named `name` from a list of dicts (each row a ``dict`` of
+    /// key → value, or ``None`` for a null row). Key / value types are inferred like the
+    /// :class:`Serie` constructor; pass `key_dtype` / `value_dtype` to cast them.
+    #[staticmethod]
+    #[pyo3(name = "map", signature = (name, entries, key_dtype = None, value_dtype = None))]
+    fn map_(
+        py: Python<'_>,
+        name: &str,
+        entries: &Bound<'_, PyList>,
+        key_dtype: Option<&Bound<'_, PyAny>>,
+        value_dtype: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let mut keys: Vec<Bound<'_, PyAny>> = Vec::new();
+        let mut vals: Vec<Bound<'_, PyAny>> = Vec::new();
+        let mut lengths: Vec<Option<usize>> = Vec::with_capacity(entries.len());
+        for row in entries.iter() {
+            if row.is_none() {
+                lengths.push(None);
+            } else {
+                let dict = row.downcast::<PyDict>().map_err(|_| {
+                    PyTypeError::new_err("each map row must be a dict of key/value pairs or None")
+                })?;
+                lengths.push(Some(dict.len()));
+                for (k, v) in dict.iter() {
+                    keys.push(k);
+                    vals.push(v);
+                }
+            }
+        }
+        let key_col = Serie::new("key", &PyList::new_bound(py, keys), key_dtype)?;
+        let value_col = Serie::new("value", &PyList::new_bound(py, vals), value_dtype)?;
+        MapSerie::from_values(name, key_col.inner, value_col.inner, &lengths)
             .map(|s| wrap(Arc::new(s)))
             .map_err(serie_err)
     }
@@ -389,16 +462,20 @@ impl Serie {
         }
     }
 
-    // ---- index ----
+    // ---- range / index ----
 
-    /// Whether this is the implicit lazy ``0..len`` ``uint64`` range index (enables the
-    /// O(1) label ↔ position lookups). Raises if the column is not an index.
+    /// Whether this is a canonical ``0..len`` ``uint64`` range index (``start == 0``,
+    /// ``step == 1``, the implicit row index) — ``False`` for any other column.
     #[getter]
-    fn is_range(&self) -> PyResult<bool> {
-        Ok(as_index(&self.inner)?.is_range())
+    fn is_range(&self) -> bool {
+        self.inner
+            .as_any()
+            .downcast_ref::<UInt64RangeSerie>()
+            .is_some_and(UInt64RangeSerie::is_range)
     }
 
-    /// The integer label at row `index` (``None`` when out of bounds or non-integer).
+    /// The integer label at row `index` (``None`` when out of bounds). Requires a
+    /// range/index column.
     fn at(&self, index: usize) -> PyResult<Option<u64>> {
         Ok(as_index(&self.inner)?.at(index))
     }
