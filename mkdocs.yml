@@ -48,6 +48,8 @@ nav:
   - Schema:
       - DataType: schema/datatype.md
       - Field: schema/field.md
+  - Serie:
+      - Serie (columns): serie/serie.md
   - HTTP:
       - Session & verbs: http/session.md
       - Request & Response: http/request-response.md

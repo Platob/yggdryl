@@ -4,6 +4,7 @@ members = [
     "crates/yggdryl-core",
     "crates/yggdryl-http",
     "crates/yggdryl-schema",
+    "crates/yggdryl-serie",
     "bindings/python",
     "bindings/node",
 ]
@@ -14,6 +15,7 @@ default-members = [
     "crates/yggdryl-core",
     "crates/yggdryl-http",
     "crates/yggdryl-schema",
+    "crates/yggdryl-serie",
 ]
 
 [workspace.package]

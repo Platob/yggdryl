@@ -1,0 +1,32 @@
+[package]
+name = "yggdryl-serie"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-backed columnar series for yggdryl: a typed Serie over every DataType, the base for a future dataframe"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_serie"
+path = "src/lib.rs"
+
+[dependencies]
+# The schema layer is the source of truth for the logical type of a column; the
+# `arrow` feature is required here because every Serie is Arrow-array backed.
+yggdryl-schema = { workspace = true, features = ["arrow"] }
+yggdryl-core = { workspace = true, default-features = false }
+# Arrow arrays are the storage backend — a required core dependency (not optional),
+# pinned to the same major as `yggdryl-schema`'s `arrow-schema` so the types unify.
+arrow-array = { version = "59", default-features = false }
+arrow-schema = { version = "59", default-features = false }
+arrow-buffer = { version = "59", default-features = false }
+# Off-by-default structured logging, via the crate-local `log_event!` macro only.
+log = { version = "0.4", optional = true }
+
+[features]
+default = []
+log = ["dep:log", "yggdryl-core/log", "yggdryl-schema/log"]

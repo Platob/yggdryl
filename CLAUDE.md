@@ -19,9 +19,10 @@ from `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
 
 ## Architecture
 
-The workspace is **three crates**: `yggdryl-core` (all the data types + byte IO +
+The workspace is **four crates**: `yggdryl-core` (all the data types + byte IO +
 compression + the self-contained calendar/time module), `yggdryl-schema` (the
-Arrow-compatible `DataType` / `Field` schema layer) and `yggdryl-http` (the network
+Arrow-compatible `DataType` / `Field` schema layer), `yggdryl-serie` (the Arrow-backed
+columnar `Serie` layer built on the schema) and `yggdryl-http` (the network
 client). `yggdryl-core` is **one file per type** — each concern is a module (or
 module directory) under
 `crates/yggdryl-core/src/`, with `lib.rs` as glue (a shared `log_event!` macro,
@@ -73,6 +74,9 @@ its concern wholly — do not scatter a concern's logic across modules:
   `(name, posix)` row to `ZONE_TABLE`.
 - `crates/yggdryl-schema/` — the Arrow-compatible schema layer. See its section
   below. The `arrow-schema` SDK is a dependency of this crate only.
+- `crates/yggdryl-serie/` — the Arrow-backed columnar layer built on the schema. See
+  its section below. The `arrow-array` SDK is a **required** dependency of this crate
+  only (every `Serie` is array-backed).
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
   (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
   `yggdryl-core` `Io` abstraction**. **All HTTP logic lives here** — the transport
@@ -238,6 +242,45 @@ A compact schema layer built to back a future dataframe, **centred on two types*
 Features: `serde` (structural, lossless — DataType/Field derive, the enums derive),
 `json` (`to_json`/`from_json`, implies `serde`), `arrow`, `log`. The temporal types
 come from `yggdryl-core`. **Anything added here must be surfaced in both bindings.**
+
+### `yggdryl-serie` — Arrow-backed columnar `Serie`
+
+The layer between the schema types and a future dataframe: a `Serie` is a single
+named, typed **column** — a [`Field`](schema) paired with an Apache **Arrow** array,
+so it carries both its logical type and its physical storage. Built **on top of**
+`yggdryl-schema` (with its `arrow` feature) and `arrow-array` (a **required** core
+dependency — every serie is array-backed), the dependency points one way (serie builds
+on schema, never the reverse). Split one-file-per-type under `crates/yggdryl-serie/src/`,
+mirroring the schema crate's three [categories](#yggdryl-schema--arrow-compatible-datatype--field):
+
+- `error.rs` — the `SerieError` / `SerieResult` (with `From<SchemaError>` and
+  `From<arrow_schema::ArrowError>`; actionable messages).
+- `serie.rs` — the **two traits** and the **redirect factory**. `Serie` is the
+  object-safe base (untyped column ops: `field` / `array` (the backing `ArrayRef`) /
+  `len` / `null_count` / `is_null` / `is_valid` / `slice` / `as_any` for downcast, with
+  `name` / `data_type` / `category` defaulting off the field); `TypedSerie<T>` adds typed
+  value access (`get` / `value` / `iter` / `to_vec`) over a column's native value type.
+  `from_arrow(field, array)` / `from_array(name, array)` **redirect** an Arrow array to
+  the right concrete series, returning a boxed `SerieRef = Arc<dyn Serie>` (the factory
+  checks the field's `DataType` maps to the array's Arrow type, then dispatches on it).
+  **All dispatch logic lives here.** (Object-safety: the base trait is *not* generic;
+  the `<T>` lives in `TypedSerie<T>`, recovered via `as_any().downcast_ref`.)
+- `primitive/` (`mod` + `numeric.rs` + `boolean.rs` + `varchar.rs` + `binary.rs`) — the
+  **primitive** concrete series. `PrimitiveSerie<A: ArrowPrimitiveType>` is the one
+  generic backing every fixed-width scalar (integers, floats, decimals, **and** the
+  temporal physical types — date/time/timestamp/duration/interval); `BooleanSerie`,
+  `VarcharSerie<O: OffsetSizeTrait>` (`Utf8`/`LargeUtf8`, plus a zero-copy `str_value`)
+  and `BinarySerie<O>` (`Binary`/`LargeBinary`, plus `bytes_value`) cover the rest. Named
+  aliases (`mod.rs`: `Int32Serie`, `Float64Serie`, `TimestampMicrosecondSerie`, …) pin
+  the common widths. Each concrete stores its typed array + `Field`, overrides the
+  length/null methods for zero-overhead, and `array()` returns a cheap `Arc` clone.
+- **Still to build** (next increments): the **nested** series (list / struct / map /
+  union), the **dictionary** / **view** backends, a **`ChunkedSerie`** mirroring Arrow's
+  `ChunkedArray`, cast / arithmetic operations, and the **Python / Node bindings**
+  (not yet surfaced — the cross-language rule applies once the Rust base settles).
+
+Features: `log` only so far (`arrow-array` is required, not optional). **All serie logic
+lives here; `arrow-array` stays a dependency of this crate only.**
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 
@@ -569,6 +612,7 @@ documentation map 1:1 and a reader can find the doc for any type by its module:
 | `yggdryl-core/src/time/` | `docs/core/time.md` |
 | `yggdryl-schema/src/datatype/` | `docs/schema/datatype.md` |
 | `yggdryl-schema/src/field.rs` | `docs/schema/field.md` |
+| `yggdryl-serie/src/serie.rs` | `docs/serie/serie.md` |
 | `yggdryl-http/src/session.rs` | `docs/http/session.md` |
 | `yggdryl-http/src/{request,response}.rs` | `docs/http/request-response.md` |
 | `yggdryl-http/src/stream.rs` | `docs/http/stream.md` |
