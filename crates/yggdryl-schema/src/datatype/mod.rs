@@ -638,10 +638,9 @@ fn parse_generic_int(head: &str) -> Option<DataType> {
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
+    // Any width (including the degenerate `int0`) round-trips through `to_str`; the
+    // width is not range-checked here — it mirrors the permissive `int` constructor.
     let bits = digits.parse::<u16>().ok()?;
-    if bits == 0 {
-        return None;
-    }
     Some(DataType::int(bits, signed))
 }
 
@@ -732,7 +731,7 @@ impl DataType {
             // `char(n)` is a fixed-length string; `varchar(n)` keeps the length only as
             // an (ignored) max-length hint and stays variable-length.
             ("char" | "character" | "nchar", Some(a)) => parse_varchar(a, input, true),
-            ("varchar" | "nvarchar" | "string", Some(a)) => parse_varchar(a, input, false),
+            ("varchar" | "nvarchar" | "string" | "clob", Some(a)) => parse_varchar(a, input, false),
             ("json" | "jsonb", None) => Ok(DataType::Json),
             ("bson", None) => Ok(DataType::Bson),
             ("binary" | "bytea" | "blob" | "varbinary", None) => Ok(DataType::binary()),

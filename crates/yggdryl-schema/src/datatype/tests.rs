@@ -22,8 +22,8 @@ fn sample_types() -> Vec<DataType> {
         DataType::float(32),
         DataType::float(64),
         DataType::varchar(),
-        DataType::varchar_with(Charset::Utf8, true, false),
-        DataType::varchar_with(Charset::Utf8, false, true),
+        DataType::varchar_with(Charset::Utf8, true, false, None),
+        DataType::varchar_with(Charset::Utf8, false, true, None),
         DataType::binary(),
         DataType::Binary {
             large: true,
@@ -145,13 +145,13 @@ fn parses_canonical_and_aliases() {
 fn varchar_charset_grammar() {
     assert_eq!(DataType::varchar().to_str(), "utf8");
     assert_eq!(
-        DataType::varchar_with(Charset::Utf8, true, false).to_str(),
+        DataType::varchar_with(Charset::Utf8, true, false, None).to_str(),
         "large_utf8"
     );
-    let latin = DataType::varchar_with(Charset::Latin1, false, false);
+    let latin = DataType::varchar_with(Charset::Latin1, false, false, None);
     assert_eq!(latin.to_str(), "varchar[latin1]");
     assert_eq!(DataType::from_str("varchar[latin1]").unwrap(), latin);
-    let big_latin = DataType::varchar_with(Charset::Latin1, true, false);
+    let big_latin = DataType::varchar_with(Charset::Latin1, true, false, None);
     assert_eq!(big_latin.to_str(), "varchar[latin1, large]");
     assert_eq!(
         DataType::from_str("varchar[latin1, large]").unwrap(),
@@ -195,8 +195,8 @@ fn uniform_physical_accessors() {
     assert_eq!(DataType::int(32, true).byte_size(), Some(4));
     assert_eq!(DataType::Boolean.byte_size(), None);
     // large / view flags.
-    assert!(DataType::varchar_with(Charset::Utf8, true, false).is_large());
-    assert!(DataType::varchar_with(Charset::Utf8, false, true).is_view());
+    assert!(DataType::varchar_with(Charset::Utf8, true, false, None).is_large());
+    assert!(DataType::varchar_with(Charset::Utf8, false, true, None).is_view());
     assert!(DataType::Date { large: true }.is_large());
     assert!(!DataType::int(32, true).is_large());
 }
@@ -314,12 +314,12 @@ fn common_type_numeric() {
 fn common_type_strings_temporal_nested() {
     use DataType as D;
     assert_eq!(
-        D::varchar().common_type(&D::varchar_with(Charset::Utf8, true, false)),
-        Some(D::varchar_with(Charset::Utf8, true, false))
+        D::varchar().common_type(&D::varchar_with(Charset::Utf8, true, false, None)),
+        Some(D::varchar_with(Charset::Utf8, true, false, None))
     );
     // Differing charsets do not unify.
     assert_eq!(
-        D::varchar().common_type(&D::varchar_with(Charset::Latin1, false, false)),
+        D::varchar().common_type(&D::varchar_with(Charset::Latin1, false, false, None)),
         None
     );
     assert_eq!(
@@ -494,6 +494,118 @@ fn grammar_rejects_extra_args_and_unbalanced_brackets() {
     // A quoted name may still legitimately contain a bracket.
     let dt = DataType::from_str("struct[\"a]b\": int32]").unwrap();
     assert_eq!(dt.children()[0].name(), "a]b");
+}
+
+#[test]
+fn flexible_integer_and_byte_decode() {
+    use DataType as D;
+    // Arbitrary widths parse and round-trip through the canonical string.
+    assert_eq!(D::from_str("int24").unwrap(), D::int(24, true));
+    assert_eq!(D::from_str("uint128").unwrap(), D::int(128, false));
+    assert_eq!(D::int(24, true).to_str(), "int24");
+    assert_eq!(
+        D::from_str(&D::int(128, false).to_str()).unwrap(),
+        D::int(128, false)
+    );
+    // The degenerate `int0` round-trips too (width is not range-checked, matching
+    // the permissive `int` constructor).
+    assert_eq!(D::int(0, true).to_str(), "int0");
+    assert_eq!(D::from_str("int0").unwrap(), D::int(0, true));
+    // Generic default + byte-width decode (1/2/4/8/16 bytes -> 8/16/32/64/128 bits).
+    assert_eq!(D::integer(), D::int(64, true));
+    assert_eq!(D::int_from_bytes(&[0u8; 1], true), D::int(8, true));
+    assert_eq!(D::int_from_bytes(&[0u8; 4], true), D::int(32, true));
+    assert_eq!(D::int_from_bytes(&[0u8; 8], false), D::int(64, false));
+    assert_eq!(D::int_from_bytes(&[0u8; 16], true), D::int(128, true));
+    assert_eq!(D::int_from_bytes(&[0u8; 3], true), D::int(24, true));
+    assert_eq!(D::int_from_bytes(&[], true), D::int(64, true)); // empty -> default
+                                                                // An oversized buffer clamps to the largest byte-aligned width (no overflow).
+    let big = vec![0u8; 9000];
+    assert_eq!(D::int_from_bytes(&big, true), D::int(65528, true));
+    let edge = vec![0u8; 8191];
+    assert_eq!(D::int_from_bytes(&edge, true), D::int(65528, true));
+    // Invalid names.
+    assert!(matches!(
+        D::from_str("intfoo"),
+        Err(SchemaError::Unknown(_))
+    ));
+}
+
+#[test]
+fn json_bson_and_physical_types() {
+    use DataType as D;
+    assert_eq!(D::from_str("json").unwrap(), D::json());
+    assert_eq!(D::from_str("jsonb").unwrap(), D::json());
+    assert_eq!(D::from_str("bson").unwrap(), D::bson());
+    assert_eq!(D::json().to_str(), "json");
+    assert_eq!(D::bson().to_str(), "bson");
+    assert!(D::json().is_json() && D::json().is_logical());
+    assert!(D::bson().is_bson() && D::bson().is_logical());
+    assert_eq!(D::json().category(), TypeCategory::Logical);
+    assert_eq!(D::from_bytes(&D::json().to_bytes()).unwrap(), D::json());
+    // physical (storage) types.
+    assert_eq!(D::json().physical_type(), D::varchar());
+    assert_eq!(D::bson().physical_type(), D::binary());
+    assert_eq!(D::date().physical_type(), D::int(32, true));
+    assert_eq!(D::Date { large: true }.physical_type(), D::int(64, true));
+    assert_eq!(
+        D::timestamp(TimeUnit::Microsecond, None).physical_type(),
+        D::int(64, true)
+    );
+    assert_eq!(
+        D::decimal_with(10, 2, 128).physical_type(),
+        D::int(128, true)
+    );
+    assert_eq!(
+        D::dictionary(D::int(16, true), D::varchar()).physical_type(),
+        D::int(16, true)
+    );
+    assert_eq!(D::int(32, true).physical_type(), D::int(32, true)); // identity
+                                                                    // json/bson cast + merge with their physical type.
+    assert!(D::json().can_cast_to(&D::varchar()) && D::varchar().can_cast_to(&D::json()));
+    assert!(D::bson().can_cast_to(&D::binary()));
+    assert_eq!(D::json().common_type(&D::varchar()), Some(D::varchar()));
+}
+
+#[test]
+fn fixed_size_string_and_binary() {
+    use DataType as D;
+    // char(n) is fixed; varchar(n) stays variable (the length is a max hint).
+    let fixed = D::from_str("char[10]").unwrap();
+    assert_eq!(fixed, D::fixed_size_varchar(10));
+    assert!(fixed.is_fixed_size());
+    assert_eq!(fixed.to_str(), "char[10]");
+    assert_eq!(
+        D::from_str("char(255)").unwrap(),
+        D::fixed_size_varchar(255)
+    );
+    assert_eq!(D::from_str("varchar(255)").unwrap(), D::varchar()); // still variable
+    assert!(!D::varchar().is_fixed_size());
+    assert!(!D::binary().is_fixed_size());
+    assert!(D::fixed_size_binary(16).is_fixed_size());
+    assert!(D::int(32, true).is_fixed_size());
+    // Every (charset, large, view, size) combo round-trips through the `char[..]` form.
+    for dt in [
+        D::varchar_with(Charset::Latin1, false, false, Some(8)),
+        D::varchar_with(Charset::Utf8, true, false, Some(8)),
+        D::varchar_with(Charset::Utf8, false, true, Some(8)),
+    ] {
+        assert_eq!(
+            D::from_str(&dt.to_str()).unwrap(),
+            dt,
+            "round-trip {}",
+            dt.to_str()
+        );
+    }
+    // common_type keeps a shared fixed size, else falls back to variable.
+    assert_eq!(
+        D::fixed_size_varchar(8).common_type(&D::fixed_size_varchar(8)),
+        Some(D::fixed_size_varchar(8))
+    );
+    assert_eq!(
+        D::fixed_size_varchar(8).common_type(&D::fixed_size_varchar(4)),
+        Some(D::varchar())
+    );
 }
 
 // ---- Field ----

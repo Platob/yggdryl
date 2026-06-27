@@ -175,7 +175,7 @@ The value yggdryl adds is **coverage and safety**, not microseconds:
 | parse a duration string (`1h30m`, `PT15M`) | ✓ | ✗ (no parser) |
 | sub-microsecond (nanosecond) precision | ✓ | ✗ (µs only) |
 | DST conversion with no OS tz database | ✓ (embedded) | ✗ (needs tzdata) |
-| flexible parse (`20240701`, `2024/07/01`) | ✓ | ✗ (ISO only) |
+| flexible parse (`2024/07/01` slash form) | ✓ | ✗ (dashes only) |
 | reject an invalid calendar date | ✓ raises | ✓ raises |
 
 ### From Node — temporal vs `Date` / `Intl`

@@ -144,9 +144,10 @@ function temporalBench() {
 
   // DST-aware conversion: yggdryl returns the wall-clock hour directly; the closest
   // built-in is an Intl.DateTimeFormat in the target zone.
+  // Both sides extract the numeric NY hour so the comparison is like-for-like.
   const fmtNY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false });
   ygT = timed(() => ydt.toTimezone("America/New_York").hour, 50000);
-  ndT = timed(() => fmtNY.format(ndt), 50000);
+  ndT = timed(() => Number(fmtNY.format(ndt)), 50000);
   rows.push(["convert UTC→New York (DST-aware)", us(ygT), us(ndT), `${(ndT / ygT).toFixed(2)}×`]);
 
   table("Temporal — yggdryl vs JS Date / Intl (per-call, lower is better)", ["workload", "yggdryl", "Date/Intl", "vs Date"], rows);

@@ -86,12 +86,16 @@ impl DataType {
 
     /// A decimal with `(precision, scale)`, stored in `bits` (default 128).
     #[napi(factory)]
-    pub fn decimal(precision: u8, scale: Option<i32>, bits: Option<u16>) -> Self {
-        wrap(CoreDataType::decimal_with(
+    pub fn decimal(precision: u8, scale: Option<i32>, bits: Option<u16>) -> Result<Self> {
+        // Validate the scale fits i8 rather than silently wrapping (Python raises too).
+        let scale = scale.unwrap_or(0);
+        let scale = i8::try_from(scale)
+            .map_err(|_| err("decimal scale out of range, expected -128..=127"))?;
+        Ok(wrap(CoreDataType::decimal_with(
             precision,
-            scale.unwrap_or(0) as i8,
+            scale,
             bits.unwrap_or(128),
-        ))
+        )))
     }
 
     /// A string with the given charset, large/view flags and optional fixed `size`

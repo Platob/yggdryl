@@ -2,11 +2,18 @@
 //! integers, floats, strings, binary).
 
 use super::DataType;
+#[allow(unused_imports)]
+use crate::log_event;
 use crate::Charset;
 
 /// The default integer width used by [`integer`](DataType::integer) and the
 /// byte-decode fallback.
 pub(crate) const DEFAULT_INT_BITS: u16 = 64;
+
+/// The largest byte-aligned integer width that fits a `u16` (65528 bits = 8191
+/// bytes) — the clamp ceiling for [`int_from_bytes`](DataType::int_from_bytes), so an
+/// inferred width is always a whole number of bytes (`!7` clears the low 3 bits).
+const MAX_BYTE_ALIGNED_BITS: u16 = !7;
 
 impl DataType {
     // ---- constructors ----
@@ -27,13 +34,27 @@ impl DataType {
     /// width is inferred from the buffer length (1 → `int8`, 2 → `int16`, 4 →
     /// `int32`, 8 → `int64`, 16 → `int128`; any length maps to `bytes.len() * 8`
     /// bits). Works on an owned array or a borrowed view. An empty buffer falls back
-    /// to the default width.
+    /// to the default width; a buffer wider than `u16` caps at the largest
+    /// byte-aligned width (both defaults are logged at `warn`).
     pub fn int_from_bytes(bytes: &[u8], signed: bool) -> DataType {
-        let bits = match bytes.len() {
-            0 => DEFAULT_INT_BITS,
-            n => (n as u32 * 8).min(u16::MAX as u32) as u16,
-        };
-        DataType::int(bits, signed)
+        if bytes.is_empty() {
+            log_event!(
+                warn,
+                "int_from_bytes: empty buffer, defaulting to int{DEFAULT_INT_BITS}"
+            );
+            return DataType::int(DEFAULT_INT_BITS, signed);
+        }
+        // Do the width math in u64 so the `* 8` cannot overflow before the clamp.
+        let wanted = (bytes.len() as u64).saturating_mul(8);
+        let capped = wanted.min(MAX_BYTE_ALIGNED_BITS as u64) as u16;
+        if (capped as u64) < wanted {
+            log_event!(
+                warn,
+                "int_from_bytes: {} bytes exceeds the max integer width, capping at {capped} bits",
+                bytes.len()
+            );
+        }
+        DataType::int(capped, signed)
     }
 
     /// A floating-point number of `bits` width (16/32/64).

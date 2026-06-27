@@ -223,8 +223,15 @@ def temporal_bench():
     py_t = timed(lambda: pdt.isoformat(), 50_000)
     rows.append(("format datetime", fmt(yg_t), fmt(py_t), f"{py_t / yg_t:.2f}×"))
 
+    # zoneinfo needs OS tzdata (or the `tzdata` package); skip the row if absent
+    # rather than crash — the very gap the capability table calls out.
+    ny = None
     if ZoneInfo is not None:
-        ny = ZoneInfo("America/New_York")
+        try:
+            ny = ZoneInfo("America/New_York")
+        except Exception:
+            ny = None
+    if ny is not None:
         yg_t = timed(lambda: ydt.to_timezone("America/New_York").hour, 50_000)
         py_t = timed(lambda: pdt.astimezone(ny).hour, 50_000)
         rows.append(("convert UTC→New York (DST-aware)", fmt(yg_t), fmt(py_t), f"{py_t / yg_t:.2f}×"))
@@ -243,7 +250,7 @@ def temporal_bench():
             ("parse a duration string (`1h30m`, `PT15M`)", "✓", "✗ (no parser)"),
             ("sub-microsecond (nanosecond) precision", "✓", "✗ (µs only)"),
             ("DST conversion with no OS tz database", "✓ (embedded)", "✗ (needs tzdata)"),
-            ("flexible parse (`20240701`, `2024/07/01`)", "✓", "✗ (ISO only)"),
+            ("flexible parse (`2024/07/01` slash form)", "✓", "✗ (dashes only)"),
             ("reject an invalid calendar date", "✓ raises", "✓ raises"),
         ],
     )
