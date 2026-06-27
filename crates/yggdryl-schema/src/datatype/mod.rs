@@ -15,11 +15,13 @@ use yggdryl_core::{Mapping, TimeUnit, Timezone};
 mod coerce;
 mod logical;
 mod nested;
+mod numeric;
 mod primitive;
 
 pub use coerce::MergeStrategy;
 pub use logical::IntervalUnit;
 pub use nested::UnionMode;
+pub use numeric::Numeric;
 
 /// Error returned when a schema type cannot be parsed, converted or merged.
 #[derive(Debug, Clone, PartialEq, Eq)]

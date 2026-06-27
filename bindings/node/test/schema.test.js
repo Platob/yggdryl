@@ -187,15 +187,19 @@ test('schema grammar and coercion edge cases', () => {
   assert.throws(() => DataType.fromStr('struct[a]: int]'))
 })
 
-test('flexible integer + byte decode', () => {
+test('flexible integer widths + Numeric interface', () => {
   assert.ok(DataType.fromStr('int24').equals(DataType.int(24)))
   assert.ok(DataType.fromStr('uint128').equals(DataType.int(128, false)))
   assert.strictEqual(DataType.int(24).toString(), 'int24')
   assert.ok(DataType.int().equals(DataType.int(64))) // default width
   assert.ok(DataType.integer().equals(DataType.int(64)))
-  assert.ok(DataType.intFromBytes(Buffer.alloc(4)).equals(DataType.int(32)))
-  assert.ok(DataType.intFromBytes(new Uint8Array(16), true).equals(DataType.int(128)))
-  assert.ok(DataType.intFromBytes(Buffer.alloc(0)).equals(DataType.int(64))) // empty -> default
+  // Numeric interface: mutualised bits + signed.
+  assert.strictEqual(DataType.int(32, false).numericBits, 32)
+  assert.strictEqual(DataType.int(32, false).signed, false)
+  assert.strictEqual(DataType.float(64).signed, true) // floats are always signed
+  assert.strictEqual(DataType.decimal(10, 2).signed, true)
+  assert.strictEqual(DataType.varchar().signed, null)
+  assert.strictEqual(DataType.varchar().numericBits, null)
 })
 
 test('json/bson + physical types + fixed size', () => {
@@ -248,7 +252,6 @@ test('temporal math, empty default, from_datetime, float generic', () => {
   assert.ok(DataType.fromStr('float24').equals(DataType.float(24)))
   assert.ok(DataType.float().equals(DataType.float(64)))
   assert.ok(DataType.floating().equals(DataType.float(64)))
-  assert.ok(DataType.floatFromBytes(Buffer.alloc(4)).equals(DataType.float(32)))
 })
 
 test('temporal conversions and parse', () => {

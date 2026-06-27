@@ -56,7 +56,9 @@ mod field;
 #[cfg(feature = "arrow")]
 mod arrow;
 
-pub use datatype::{DataType, IntervalUnit, MergeStrategy, SchemaError, TypeCategory, UnionMode};
+pub use datatype::{
+    DataType, IntervalUnit, MergeStrategy, Numeric, SchemaError, TypeCategory, UnionMode,
+};
 pub use field::Field;
 
 // Re-export the shared vocabulary the schema types build on, so dependents resolve

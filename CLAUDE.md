@@ -209,13 +209,12 @@ A compact schema layer built to back a future dataframe, **centred on two types*
   `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
   spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
   / `is_view` / `is_fixed_size` / `physical_type` — the last returns a logical type's
-  storage primitive, identity for the rest). **Unlike Arrow, the model is
-  parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
-  8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`,
-  `int_from_bytes` infers the width from a buffer length), `Float{bits}` (likewise
-  **any** width — `float24` parses; `floating()` defaults to `float64`,
-  `float_from_bytes` infers the width),
-  `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
+  storage primitive, identity for the rest — plus the `Numeric` trait mutualising the
+  numeric types' `numeric_bits` + common `signed` accessor). **Unlike Arrow, the model
+  is parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
+  8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`),
+  `Float{bits}` (likewise **any** width — `float24` parses; `floating()` defaults to
+  `float64`), `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
   is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
   max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed
   `Bson`** logical types, the temporal types reuse the core `TimeUnit`/`Timezone`

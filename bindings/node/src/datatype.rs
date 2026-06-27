@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_core::{TimeUnit, Timezone as CoreTimezone};
-use yggdryl_schema::{Charset, DataType as CoreDataType, IntervalUnit, MergeStrategy, UnionMode};
+use yggdryl_schema::{
+    Charset, DataType as CoreDataType, IntervalUnit, MergeStrategy, Numeric, UnionMode,
+};
 
 use crate::field::Field;
 use crate::timezone::Timezone;
@@ -71,13 +73,6 @@ impl DataType {
         wrap(CoreDataType::integer())
     }
 
-    /// An integer type wide enough to hold a byte buffer/view (width =
-    /// `data.length * 8` bits; empty → default `int64`), signed by default.
-    #[napi(factory, js_name = "intFromBytes")]
-    pub fn int_from_bytes(data: Uint8Array, signed: Option<bool>) -> Self {
-        wrap(CoreDataType::int_from_bytes(&data, signed.unwrap_or(true)))
-    }
-
     /// A floating-point type of `bits` width (commonly 16/32/64, but any width is
     /// allowed; default 64).
     #[napi(factory)]
@@ -89,13 +84,6 @@ impl DataType {
     #[napi(factory)]
     pub fn floating() -> Self {
         wrap(CoreDataType::floating())
-    }
-
-    /// A float type wide enough to hold a byte buffer/view (2 → `float16`, 4 →
-    /// `float32`, 8 → `float64`; empty → default `float64`).
-    #[napi(factory, js_name = "floatFromBytes")]
-    pub fn float_from_bytes(data: Uint8Array) -> Self {
-        wrap(CoreDataType::float_from_bytes(&data))
     }
 
     /// A decimal with `(precision, scale)`, stored in `bits` (default 128).
@@ -321,6 +309,20 @@ impl DataType {
     #[napi(getter)]
     pub fn charset(&self) -> Option<String> {
         self.inner.charset().map(|c| c.as_str().to_string())
+    }
+
+    /// The numeric storage width in bits (int / float / decimal), else null
+    /// (the `Numeric` interface).
+    #[napi(getter, js_name = "numericBits")]
+    pub fn numeric_bits(&self) -> Option<u16> {
+        self.inner.numeric_bits()
+    }
+
+    /// Whether a numeric type is signed — the integer flag, always `true` for
+    /// floats / decimals — else null (the `Numeric` interface).
+    #[napi(getter)]
+    pub fn signed(&self) -> Option<bool> {
+        self.inner.signed()
     }
 
     /// The time unit of a temporal type carrying one, else null.

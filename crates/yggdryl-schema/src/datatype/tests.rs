@@ -511,19 +511,8 @@ fn flexible_integer_and_byte_decode() {
     // the permissive `int` constructor).
     assert_eq!(D::int(0, true).to_str(), "int0");
     assert_eq!(D::from_str("int0").unwrap(), D::int(0, true));
-    // Generic default + byte-width decode (1/2/4/8/16 bytes -> 8/16/32/64/128 bits).
+    // The generic default constructor.
     assert_eq!(D::integer(), D::int(64, true));
-    assert_eq!(D::int_from_bytes(&[0u8; 1], true), D::int(8, true));
-    assert_eq!(D::int_from_bytes(&[0u8; 4], true), D::int(32, true));
-    assert_eq!(D::int_from_bytes(&[0u8; 8], false), D::int(64, false));
-    assert_eq!(D::int_from_bytes(&[0u8; 16], true), D::int(128, true));
-    assert_eq!(D::int_from_bytes(&[0u8; 3], true), D::int(24, true));
-    assert_eq!(D::int_from_bytes(&[], true), D::int(64, true)); // empty -> default
-                                                                // An oversized buffer clamps to the largest byte-aligned width (no overflow).
-    let big = vec![0u8; 9000];
-    assert_eq!(D::int_from_bytes(&big, true), D::int(65528, true));
-    let edge = vec![0u8; 8191];
-    assert_eq!(D::int_from_bytes(&edge, true), D::int(65528, true));
     // Invalid names.
     assert!(matches!(
         D::from_str("intfoo"),
@@ -532,22 +521,36 @@ fn flexible_integer_and_byte_decode() {
 }
 
 #[test]
-fn flexible_float_and_byte_decode() {
+fn flexible_float_widths() {
     use DataType as D;
     // Arbitrary float widths parse and round-trip.
     assert_eq!(D::from_str("float24").unwrap(), D::float(24));
     assert_eq!(D::from_str("float128").unwrap(), D::float(128));
     assert_eq!(D::float(24).to_str(), "float24");
     assert_eq!(D::from_str(&D::float(24).to_str()).unwrap(), D::float(24));
-    // Default + byte-width decode (2/4/8 bytes -> 16/32/64 bits).
-    assert_eq!(D::floating(), D::float(64));
-    assert_eq!(D::float_from_bytes(&[0u8; 2]), D::float(16));
-    assert_eq!(D::float_from_bytes(&[0u8; 4]), D::float(32));
-    assert_eq!(D::float_from_bytes(&[0u8; 8]), D::float(64));
-    assert_eq!(D::float_from_bytes(&[]), D::float(64)); // empty -> default
-                                                        // Standard widths still resolve via the explicit aliases.
+    assert_eq!(D::floating(), D::float(64)); // default width
+                                             // Standard widths still resolve via the explicit aliases.
     assert_eq!(D::from_str("float32").unwrap(), D::float(32));
     assert_eq!(D::from_str("double").unwrap(), D::float(64));
+}
+
+#[test]
+fn numeric_trait_bits_and_signed() {
+    use crate::Numeric;
+    use DataType as D;
+    // numeric_bits + signed are mutualised across int / float / decimal.
+    assert_eq!(D::int(32, false).numeric_bits(), Some(32));
+    assert_eq!(D::int(32, false).signed(), Some(false));
+    assert_eq!(D::int(64, true).signed(), Some(true));
+    assert_eq!(D::float(64).numeric_bits(), Some(64));
+    assert_eq!(D::float(64).signed(), Some(true)); // floats are always signed
+    assert_eq!(D::decimal_with(20, 2, 128).numeric_bits(), Some(128));
+    assert_eq!(D::decimal(10, 2).signed(), Some(true));
+    assert!(D::int(8, true).is_numeric_kind() && D::float(16).is_numeric_kind());
+    // Non-numeric types report None.
+    assert_eq!(D::varchar().numeric_bits(), None);
+    assert_eq!(D::varchar().signed(), None);
+    assert!(!D::date().is_numeric_kind());
 }
 
 #[test]

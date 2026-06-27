@@ -227,15 +227,18 @@ def test_schema_grammar_and_coercion_edge_cases():
 
 def test_flexible_integer_json_bson_physical_fixed():
     D = yggdryl.DataType
-    # Flexible integer widths + byte-width decode + default.
+    # Flexible integer widths + default.
     assert D("int24") == D.int(24)
     assert D("uint128") == D.int(128, signed=False)
     assert str(D.int(24)) == "int24"
     assert D.int() == D.int(64)  # default width
     assert D.integer() == D.int(64)
-    assert D.int_from_bytes(bytes(4)) == D.int(32)
-    assert D.int_from_bytes(bytes(16), signed=True) == D.int(128)
-    assert D.int_from_bytes(b"") == D.int(64)  # empty -> default
+    # Numeric interface: mutualised bits + signed.
+    assert D.int(32, signed=False).numeric_bits == 32
+    assert D.int(32, signed=False).signed is False
+    assert D.float(64).signed is True  # floats are always signed
+    assert D.decimal(10, 2).signed is True
+    assert D.varchar().signed is None and D.varchar().numeric_bits is None
     # Json / Bson logical types + physical types.
     assert D("json") == D.json() and D("jsonb") == D.json()
     assert D("bson") == D.bson()
@@ -285,7 +288,6 @@ def test_temporal_math_empty_and_float():
     # Generic-width float.
     assert D("float24") == D.float(24)
     assert D.float() == D.float(64) and D.floating() == D.float(64)
-    assert D.float_from_bytes(bytes(4)) == D.float(32)
 
 
 def test_temporal_conversions_and_parse():

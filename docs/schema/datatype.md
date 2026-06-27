@@ -106,10 +106,11 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
 ## Integers, JSON/BSON & physical types
 
 Integers **and floats** take **any** bit width (not just 8/16/32/64): `integer()` /
-`floating()` are the `int64` / `float64` defaults, and `int_from_bytes` /
-`float_from_bytes` infer the width from a buffer's length. `Json` (string-backed) and
-`Bson` (binary-backed) are logical types, and every logical type reports its storage
-layout via `physical_type()`. Strings and binaries can be fixed- or variable-length
+`floating()` are the `int64` / `float64` defaults. The numeric types (int / float /
+decimal) share the **`Numeric`** interface — `numeric_bits` and a common `signed` —
+mutualising those two properties. `Json` (string-backed) and `Bson` (binary-backed)
+are logical types, and every logical type reports its storage layout via
+`physical_type()`. Strings and binaries can be fixed- or variable-length
 (`is_fixed_size`).
 
 === "Python"
@@ -121,8 +122,8 @@ layout via `physical_type()`. Strings and binaries can be fixed- or variable-len
     assert D("int24") == D.int(24)
     assert D("float24") == D.float(24)                         # custom float width
     assert D.int() == D.int(64) and D.integer() == D.int(64)   # default width
-    assert D.int_from_bytes(bytes(4)) == D.int(32)             # 4 bytes -> int32
-    assert D.float_from_bytes(bytes(8)) == D.float(64)         # 8 bytes -> float64
+    assert D.int(32, signed=False).signed is False             # Numeric interface
+    assert D.float(64).signed is True and D.float(64).numeric_bits == 64
     assert D("json").physical_type() == D.varchar()            # logical -> physical
     assert D("bson").physical_type() == D.binary()
     assert D.date().physical_type() == D.int(32)
@@ -136,7 +137,8 @@ layout via `physical_type()`. Strings and binaries can be fixed- or variable-len
 
     D.fromStr("int24").equals(D.int(24));                      // true
     D.int().equals(D.int(64));                                 // default width
-    D.intFromBytes(Buffer.alloc(4)).equals(D.int(32));         // 4 bytes -> int32
+    D.int(32, false).signed;                                   // false (Numeric)
+    D.float(64).signed;                                        // true; .numericBits === 64
     D.json().physicalType().equals(D.varchar());               // logical -> physical
     D.bson().physicalType().equals(D.binary());
     D.fromStr("char[10]").isFixedSize;                         // true
@@ -148,11 +150,12 @@ layout via `physical_type()`. Strings and binaries can be fixed- or variable-len
     ```rust
     use yggdryl_schema::DataType;
 
+    use yggdryl_schema::Numeric;
     assert_eq!(DataType::from_str("int24")?, DataType::int(24, true));
     assert_eq!(DataType::from_str("float24")?, DataType::float(24));
     assert_eq!(DataType::integer(), DataType::int(64, true));
-    assert_eq!(DataType::int_from_bytes(&[0u8; 4], true), DataType::int(32, true));
-    assert_eq!(DataType::float_from_bytes(&[0u8; 8]), DataType::float(64));
+    assert_eq!(DataType::int(32, false).signed(), Some(false)); // Numeric interface
+    assert_eq!(DataType::float(64).numeric_bits(), Some(64));
     assert_eq!(DataType::json().physical_type(), DataType::varchar());
     assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
     assert!(DataType::fixed_size_varchar(10).is_fixed_size());

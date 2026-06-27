@@ -2,7 +2,9 @@
 
 use pyo3::prelude::*;
 use yggdryl_core::{Mapping, Timezone as CoreTimezone};
-use yggdryl_schema::{Charset, DataType as CoreDataType, IntervalUnit, MergeStrategy, UnionMode};
+use yggdryl_schema::{
+    Charset, DataType as CoreDataType, IntervalUnit, MergeStrategy, Numeric, UnionMode,
+};
 
 use crate::field::Field;
 use crate::timezone::Timezone;
@@ -68,14 +70,6 @@ impl DataType {
         wrap(CoreDataType::integer())
     }
 
-    /// An integer type wide enough to hold a ``bytes``/buffer of `data` (width =
-    /// ``len(data) * 8`` bits; empty ⇒ default ``int64``), signed or unsigned.
-    #[staticmethod]
-    #[pyo3(signature = (data, signed = true))]
-    fn int_from_bytes(data: Vec<u8>, signed: bool) -> Self {
-        wrap(CoreDataType::int_from_bytes(&data, signed))
-    }
-
     /// A floating-point type of `bits` width (commonly 16/32/64, but any width is
     /// allowed; default 64).
     #[staticmethod]
@@ -88,13 +82,6 @@ impl DataType {
     #[staticmethod]
     fn floating() -> Self {
         wrap(CoreDataType::floating())
-    }
-
-    /// A float type wide enough to hold a ``bytes``/buffer (2 → ``float16``, 4 →
-    /// ``float32``, 8 → ``float64``; empty ⇒ default ``float64``).
-    #[staticmethod]
-    fn float_from_bytes(data: Vec<u8>) -> Self {
-        wrap(CoreDataType::float_from_bytes(&data))
     }
 
     /// A decimal with `(precision, scale)`, stored in `bits` (default 128).
@@ -304,6 +291,20 @@ impl DataType {
     #[getter]
     fn charset(&self) -> Option<&'static str> {
         self.inner.charset().map(|c| c.as_str())
+    }
+
+    /// The numeric storage width in bits (int / float / decimal), else ``None``
+    /// (the :class:`Numeric` interface).
+    #[getter]
+    fn numeric_bits(&self) -> Option<u16> {
+        self.inner.numeric_bits()
+    }
+
+    /// Whether a numeric type is signed — the integer flag, always ``True`` for
+    /// floats / decimals — else ``None`` (the :class:`Numeric` interface).
+    #[getter]
+    fn signed(&self) -> Option<bool> {
+        self.inner.signed()
     }
 
     /// The time unit of a temporal type carrying one, else ``None``.
