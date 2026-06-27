@@ -54,11 +54,26 @@ impl DataType {
         wrap(CoreDataType::Boolean)
     }
 
-    /// An integer of `bits` width (8/16/32/64), signed or unsigned.
+    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed;
+    /// default 64), signed or unsigned.
     #[staticmethod]
-    #[pyo3(signature = (bits, signed = true))]
+    #[pyo3(signature = (bits = 64, signed = true))]
     fn int(bits: u16, signed: bool) -> Self {
         wrap(CoreDataType::int(bits, signed))
+    }
+
+    /// A generic signed integer at the default width (``int64``).
+    #[staticmethod]
+    fn integer() -> Self {
+        wrap(CoreDataType::integer())
+    }
+
+    /// An integer type wide enough to hold a ``bytes``/buffer of `data` (width =
+    /// ``len(data) * 8`` bits; empty ⇒ default ``int64``), signed or unsigned.
+    #[staticmethod]
+    #[pyo3(signature = (data, signed = true))]
+    fn int_from_bytes(data: Vec<u8>, signed: bool) -> Self {
+        wrap(CoreDataType::int_from_bytes(&data, signed))
     }
 
     /// A floating-point type of `bits` width (16/32/64).
@@ -74,12 +89,19 @@ impl DataType {
         wrap(CoreDataType::decimal_with(precision, scale, bits))
     }
 
-    /// A string with the given charset and large/view flags.
+    /// A string with the given charset, large/view flags and optional fixed `size`
+    /// (``None`` = variable-length).
     #[staticmethod]
-    #[pyo3(signature = (charset = "utf8", large = false, view = false))]
-    fn varchar(charset: &str, large: bool, view: bool) -> PyResult<Self> {
+    #[pyo3(signature = (charset = "utf8", large = false, view = false, size = None))]
+    fn varchar(charset: &str, large: bool, view: bool, size: Option<i32>) -> PyResult<Self> {
         let charset = Charset::from_str(charset).map_err(|e| schema_err(e.into()))?;
-        Ok(wrap(CoreDataType::varchar_with(charset, large, view)))
+        Ok(wrap(CoreDataType::varchar_with(charset, large, view, size)))
+    }
+
+    /// A fixed-length UTF-8 string of `size` characters (SQL ``char(n)``).
+    #[staticmethod]
+    fn fixed_size_varchar(size: i32) -> Self {
+        wrap(CoreDataType::fixed_size_varchar(size))
     }
 
     /// Variable-length opaque bytes (``large`` for 64-bit offsets, ``view`` layout).
@@ -148,6 +170,18 @@ impl DataType {
             key.inner.clone(),
             value.inner.clone(),
         ))
+    }
+
+    /// JSON text (a string-backed logical type).
+    #[staticmethod]
+    fn json() -> Self {
+        wrap(CoreDataType::json())
+    }
+
+    /// A BSON document (a binary-backed logical type).
+    #[staticmethod]
+    fn bson() -> Self {
+        wrap(CoreDataType::bson())
     }
 
     /// A variable-length list of the item :class:`Field`.
@@ -239,6 +273,18 @@ impl DataType {
         self.inner.is_view()
     }
 
+    /// Whether this type has a fixed (non-variable) length.
+    #[getter]
+    fn is_fixed_size(&self) -> bool {
+        self.inner.is_fixed_size()
+    }
+
+    /// The physical (storage) :class:`DataType` backing a logical type (identity for
+    /// non-logical types).
+    fn physical_type(&self) -> DataType {
+        wrap(self.inner.physical_type())
+    }
+
     /// The string charset, if a string type.
     #[getter]
     fn charset(&self) -> Option<&'static str> {
@@ -320,6 +366,12 @@ impl DataType {
     }
     fn is_dictionary(&self) -> bool {
         self.inner.is_dictionary()
+    }
+    fn is_json(&self) -> bool {
+        self.inner.is_json()
+    }
+    fn is_bson(&self) -> bool {
+        self.inner.is_bson()
     }
     fn is_nested(&self) -> bool {
         self.inner.is_nested()

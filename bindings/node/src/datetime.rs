@@ -54,7 +54,9 @@ impl DateTime {
         .map_err(err)
     }
 
-    /// Parse an ISO-8601 datetime (`Z` / `±HH:MM` offset, or none for naive).
+    /// Parse a datetime flexibly (ISO-8601 with `Z` / `±HH:MM` offset or none for
+    /// naive, a date-only string → midnight, or a bare integer → epoch seconds),
+    /// throwing on malformed input.
     #[napi(factory, js_name = "fromStr")]
     pub fn from_str(value: String) -> Result<Self> {
         CoreDateTime::from_str(&value)
@@ -193,17 +195,6 @@ impl DateTime {
         }
     }
 
-    /// Parse flexibly (ISO, date-only → midnight, bare integer → epoch seconds);
-    /// with `raiseError = false` return `null` instead of throwing.
-    #[napi]
-    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
-        match CoreDateTime::from_str(&value) {
-            Ok(inner) => Ok(Some(DateTime { inner })),
-            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
-            Err(_) => Ok(None),
-        }
-    }
-
     /// Render to a component object.
     #[napi(js_name = "toMapping")]
     pub fn to_mapping(&self) -> HashMap<String, String> {
@@ -240,6 +231,8 @@ impl DateTime {
     /// Reconstruct from the string produced by `toJSON`.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: String) -> Result<Self> {
-        DateTime::from_str(value)
+        CoreDateTime::from_str(&value)
+            .map(|inner| DateTime { inner })
+            .map_err(err)
     }
 }

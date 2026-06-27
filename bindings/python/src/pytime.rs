@@ -26,7 +26,8 @@ impl Time {
             .map_err(time_err)
     }
 
-    /// Parse ``HH:MM[:SS[.fraction]]``.
+    /// Parse ``HH:MM[:SS[.fraction]]`` (or compact ``HHMM`` / ``HHMMSS``), raising on
+    /// malformed input.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreTime::from_str(value)
@@ -80,17 +81,6 @@ impl Time {
     fn to_datetime(&self) -> DateTime {
         DateTime {
             inner: self.inner.to_datetime(),
-        }
-    }
-
-    /// Parse flexibly; with ``raise_error=False`` return ``None`` instead of raising.
-    #[staticmethod]
-    #[pyo3(signature = (value, raise_error = true))]
-    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
-        match CoreTime::from_str(value) {
-            Ok(inner) => Ok(Some(Time { inner })),
-            Err(e) if raise_error => Err(time_err(e)),
-            Err(_) => Ok(None),
         }
     }
 

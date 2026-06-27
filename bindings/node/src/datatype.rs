@@ -55,10 +55,27 @@ impl DataType {
         wrap(CoreDataType::Boolean)
     }
 
-    /// An integer of `bits` width (8/16/32/64), signed by default.
+    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed;
+    /// default 64), signed by default.
     #[napi(factory)]
-    pub fn int(bits: u16, signed: Option<bool>) -> Self {
-        wrap(CoreDataType::int(bits, signed.unwrap_or(true)))
+    pub fn int(bits: Option<u16>, signed: Option<bool>) -> Self {
+        wrap(CoreDataType::int(
+            bits.unwrap_or(64),
+            signed.unwrap_or(true),
+        ))
+    }
+
+    /// A generic signed integer at the default width (`int64`).
+    #[napi(factory)]
+    pub fn integer() -> Self {
+        wrap(CoreDataType::integer())
+    }
+
+    /// An integer type wide enough to hold a byte buffer/view (width =
+    /// `data.length * 8` bits; empty → default `int64`), signed by default.
+    #[napi(factory, js_name = "intFromBytes")]
+    pub fn int_from_bytes(data: Uint8Array, signed: Option<bool>) -> Self {
+        wrap(CoreDataType::int_from_bytes(&data, signed.unwrap_or(true)))
     }
 
     /// A floating-point type of `bits` width (16/32/64).
@@ -77,19 +94,28 @@ impl DataType {
         ))
     }
 
-    /// A string with the given charset and large/view flags.
+    /// A string with the given charset, large/view flags and optional fixed `size`
+    /// (omitted = variable-length).
     #[napi(factory)]
     pub fn varchar(
         charset: Option<String>,
         large: Option<bool>,
         view: Option<bool>,
+        size: Option<i32>,
     ) -> Result<Self> {
         let charset = Charset::from_str(charset.as_deref().unwrap_or("utf8")).map_err(err)?;
         Ok(wrap(CoreDataType::varchar_with(
             charset,
             large.unwrap_or(false),
             view.unwrap_or(false),
+            size,
         )))
+    }
+
+    /// A fixed-length UTF-8 string of `size` characters (SQL `char(n)`).
+    #[napi(factory, js_name = "fixedSizeVarchar")]
+    pub fn fixed_size_varchar(size: i32) -> Self {
+        wrap(CoreDataType::fixed_size_varchar(size))
     }
 
     /// Variable-length opaque bytes.
@@ -160,6 +186,18 @@ impl DataType {
             key.inner.clone(),
             value.inner.clone(),
         ))
+    }
+
+    /// JSON text (a string-backed logical type).
+    #[napi(factory)]
+    pub fn json() -> Self {
+        wrap(CoreDataType::json())
+    }
+
+    /// A BSON document (a binary-backed logical type).
+    #[napi(factory)]
+    pub fn bson() -> Self {
+        wrap(CoreDataType::bson())
     }
 
     /// A variable-length list of the item `Field`.
@@ -247,6 +285,18 @@ impl DataType {
     #[napi(getter, js_name = "isView")]
     pub fn is_view(&self) -> bool {
         self.inner.is_view()
+    }
+
+    /// Whether this type has a fixed (non-variable) length.
+    #[napi(getter, js_name = "isFixedSize")]
+    pub fn is_fixed_size(&self) -> bool {
+        self.inner.is_fixed_size()
+    }
+
+    /// The physical (storage) `DataType` backing a logical type (identity otherwise).
+    #[napi(js_name = "physicalType")]
+    pub fn physical_type(&self) -> DataType {
+        wrap(self.inner.physical_type())
     }
 
     /// The string charset, if a string type.
@@ -348,6 +398,14 @@ impl DataType {
     #[napi(js_name = "isDictionary")]
     pub fn is_dictionary(&self) -> bool {
         self.inner.is_dictionary()
+    }
+    #[napi(js_name = "isJson")]
+    pub fn is_json(&self) -> bool {
+        self.inner.is_json()
+    }
+    #[napi(js_name = "isBson")]
+    pub fn is_bson(&self) -> bool {
+        self.inner.is_bson()
     }
     #[napi(js_name = "isNested")]
     pub fn is_nested(&self) -> bool {

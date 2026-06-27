@@ -202,17 +202,22 @@ A compact schema layer built to back a future dataframe, **centred on two types*
   the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
   `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
   spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
-  / `is_view`). **Unlike Arrow, the model is parameterized, not combinatorial**:
-  `Int{bits,signed}`, `Float{bits}`, `Decimal{precision,scale,bits}`,
-  `Varchar{charset,large,view}`, `Binary{large,view,size}`, the temporal types reuse
-  the core `TimeUnit`/`Timezone` (`Date{large}` / `Time{unit}` /
-  `Timestamp{unit,tz}` / `Duration{unit}` / `Interval{unit}`), and the nested
-  `List{item,large,view,size}` / `Struct(Vec<Field>)` / `Map{key,value,sorted}` /
-  `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`, plus the `Any` wildcard. The
-  category split lives across the three sibling files (`primitive`/`logical`/`nested`
-  hold that category's checks + constructors); `coerce.rs` holds the `MergeStrategy`,
-  `can_cast_to`, `common_type` (the promotion lattice) and `merge`. **All DataType
-  logic lives here.**
+  / `is_view` / `is_fixed_size` / `physical_type` — the last returns a logical type's
+  storage primitive, identity for the rest). **Unlike Arrow, the model is
+  parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
+  8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`,
+  `int_from_bytes` infers the width from a buffer length), `Float{bits}`,
+  `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
+  is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
+  max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed
+  `Bson`** logical types, the temporal types reuse the core `TimeUnit`/`Timezone`
+  (`Date{large}` / `Time{unit}` / `Timestamp{unit,tz}` / `Duration{unit}` /
+  `Interval{unit}`), and the nested `List{item,large,view,size}` / `Struct(Vec<Field>)`
+  / `Map{key,value,sorted}` / `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`,
+  plus the `Any` wildcard. The category split lives across the three sibling files
+  (`primitive`/`logical`/`nested` hold that category's checks + constructors);
+  `coerce.rs` holds the `MergeStrategy`, `can_cast_to`, `common_type` (the promotion
+  lattice) and `merge`. **All DataType logic lives here.**
 - `field.rs` — the `Field` graph node (name + `DataType` + nullable + metadata + an
   optional, identity-excluded `parent`). Carries the metadata getters/setters
   (`comment` is the named convenience), the case-insensitive / index child accessors,

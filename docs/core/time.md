@@ -207,16 +207,16 @@ a `Date` becomes a midnight `DateTime` (`to_datetime`), a `DateTime` yields its
 local `Date` / `Time`, and a `Date` can be `at(time)` to a zoned instant. Parsing is
 flexible — `Date` accepts `2024/07/01`, `20240701` or a full datetime; `DateTime`
 accepts a date-only string (→ midnight) or a bare integer (→ epoch seconds);
-`Duration` accepts ISO-8601 (`PT15M`, `P1D`) as well as the compact form. Each
-binding adds a `parse(value, raise_error=False)` that returns null instead of
-raising.
+`Duration` accepts ISO-8601 (`PT15M`, `P1D`) as well as the compact form. `from_str`
+is the single parsing entry point and **raises** on malformed input (there is no
+lenient mode).
 
 === "Python"
 
     ```python
     import yggdryl
 
-    assert yggdryl.Date.parse("not-a-date", raise_error=False) is None
+    assert str(yggdryl.Date.from_str("2024/07/01")) == "2024-07-01"  # flexible format
     assert yggdryl.Duration.from_str("PT15M").as_seconds() == 900
     d = yggdryl.Date(2024, 7, 1).with_timezone("America/New_York")
     assert d.at(yggdryl.Time(8, 0, 0)).epoch_seconds == 1_719_835_200
@@ -227,7 +227,7 @@ raising.
     ```javascript
     const yggdryl = require("yggdryl");
 
-    yggdryl.Date.parse("not-a-date", false);          // null
+    yggdryl.Date.fromStr("20240701").toString();      // "2024-07-01" (flexible format)
     yggdryl.Duration.fromStr("PT15M").asSeconds();    // 900
     new yggdryl.Date(2024, 7, 1).withTimezone("America/New_York")
       .at(new yggdryl.Time(8, 0, 0)).epochSeconds;    // 1719835200

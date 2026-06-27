@@ -192,6 +192,63 @@ def compression_bench():
         )
 
 
+# ----------------------------------------------------------------------- temporal
+def temporal_bench():
+    """yggdryl's calendar/time types vs the stdlib ``datetime`` (+ ``zoneinfo``).
+
+    The timing table is an honest side-by-side of the comparable operations; the
+    capability table is where yggdryl is *more complete and safer* — a built-in
+    duration parser, nanosecond precision, and DST conversion with no external tz
+    database (``zoneinfo`` raises if the OS ships no tzdata)."""
+    from datetime import datetime
+
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:  # pragma: no cover
+        ZoneInfo = None
+
+    def fmt(t):
+        return f"{t * 1e6:.3f} µs"
+
+    iso = "2024-07-01T12:00:00+00:00"
+    rows = []
+
+    yg_t = timed(lambda: yggdryl.DateTime.from_str(iso), 50_000)
+    py_t = timed(lambda: datetime.fromisoformat(iso), 50_000)
+    rows.append(("parse ISO datetime", fmt(yg_t), fmt(py_t), f"{py_t / yg_t:.2f}×"))
+
+    ydt = yggdryl.DateTime.from_str(iso)
+    pdt = datetime.fromisoformat(iso)
+    yg_t = timed(lambda: str(ydt), 50_000)
+    py_t = timed(lambda: pdt.isoformat(), 50_000)
+    rows.append(("format datetime", fmt(yg_t), fmt(py_t), f"{py_t / yg_t:.2f}×"))
+
+    if ZoneInfo is not None:
+        ny = ZoneInfo("America/New_York")
+        yg_t = timed(lambda: ydt.to_timezone("America/New_York").hour, 50_000)
+        py_t = timed(lambda: pdt.astimezone(ny).hour, 50_000)
+        rows.append(("convert UTC→New York (DST-aware)", fmt(yg_t), fmt(py_t), f"{py_t / yg_t:.2f}×"))
+
+    table(
+        "Temporal — yggdryl vs stdlib datetime / zoneinfo (per-call, lower is better)",
+        ["workload", "yggdryl", "datetime", "vs datetime"],
+        rows,
+    )
+
+    # Capabilities: what each library can do at all (the completeness / safety story).
+    table(
+        "Temporal — capability & safety (where the FFI cost buys real coverage)",
+        ["capability", "yggdryl", "stdlib datetime"],
+        [
+            ("parse a duration string (`1h30m`, `PT15M`)", "✓", "✗ (no parser)"),
+            ("sub-microsecond (nanosecond) precision", "✓", "✗ (µs only)"),
+            ("DST conversion with no OS tz database", "✓ (embedded)", "✗ (needs tzdata)"),
+            ("flexible parse (`20240701`, `2024/07/01`)", "✓", "✗ (ISO only)"),
+            ("reject an invalid calendar date", "✓ raises", "✓ raises"),
+        ],
+    )
+
+
 def peak_mib(fn):
     """Peak Python-heap allocation (MiB) for one call to `fn`, via tracemalloc."""
     fn()  # warm any import/codepath caches out of the measurement
@@ -251,4 +308,5 @@ if __name__ == "__main__":
     )
     http_bench()
     compression_bench()
+    temporal_bench()
     memory_bench()

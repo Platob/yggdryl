@@ -25,25 +25,14 @@ impl Duration {
         }
     }
 
-    /// Parse a compact span (``"1h30m"`` / ``"1s500ms"`` / ``"-2d"``) or a number
-    /// of seconds.
+    /// Parse a span flexibly (compact ``"1h30m"`` / ``"1s500ms"`` / ``"-2d"``,
+    /// ISO-8601 ``"PT15M"`` / ``"P1D"``, or a number of seconds), raising on malformed
+    /// input.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreDuration::from_str(value)
             .map(|inner| Duration { inner })
             .map_err(time_err)
-    }
-
-    /// Parse flexibly (compact / ISO-8601 / seconds); with ``raise_error=False``
-    /// return ``None`` instead of raising.
-    #[staticmethod]
-    #[pyo3(signature = (value, raise_error = true))]
-    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
-        match CoreDuration::from_str(value) {
-            Ok(inner) => Ok(Some(Duration { inner })),
-            Err(e) if raise_error => Err(time_err(e)),
-            Err(_) => Ok(None),
-        }
     }
 
     /// A span of `seconds` seconds.

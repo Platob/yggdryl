@@ -90,6 +90,11 @@ impl DataType {
             // Run-end encoding is transparent to casting, like a dictionary.
             (RunEndEncoded { values, .. }, b) => values.can_cast_to(b),
             (a, RunEndEncoded { values, .. }) => a.can_cast_to(values),
+            // Json <-> string and Bson <-> binary cast through their physical type.
+            (a, b) if a.is_json() && b.is_string() => true,
+            (a, b) if a.is_string() && b.is_json() => true,
+            (a, b) if a.is_bson() && b.is_binary() => true,
+            (a, b) if a.is_binary() && b.is_bson() => true,
             (List { item: a, .. }, List { item: b, .. }) => {
                 a.data_type().can_cast_to(b.data_type())
             }
@@ -141,16 +146,20 @@ impl DataType {
                     charset: c1,
                     large: l1,
                     view: v1,
+                    size: z1,
                 },
                 Varchar {
                     charset: c2,
                     large: l2,
                     view: v2,
+                    size: z2,
                 },
             ) if c1 == c2 => Some(Varchar {
                 charset: *c1,
                 large: *l1 || *l2,
                 view: *v1 && *v2,
+                // A common fixed size only when both agree, else fall to variable.
+                size: if z1 == z2 { *z1 } else { None },
             }),
             (
                 Binary {
@@ -246,6 +255,9 @@ impl DataType {
             (RunEndEncoded { values, .. }, t) | (t, RunEndEncoded { values, .. }) => {
                 values.common_type(t)
             }
+            // Json / Bson widen to their physical string / binary supertype.
+            (Json, t) | (t, Json) if t.is_string() => Some(t.clone()),
+            (Bson, t) | (t, Bson) if t.is_binary() => Some(t.clone()),
             _ => None,
         }
     }

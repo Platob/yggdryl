@@ -158,6 +158,50 @@ dataframe runs per batch — type unification, cast feasibility, schema merge �
 in the nanosecond-to-microsecond range. The timezone engine resolves a DST offset
 from an embedded POSIX rule with no I/O or tz-database lookup.
 
+### From Python — temporal vs `datetime` / `zoneinfo`
+
+Unlike the bulk HTTP/compression paths, these are *tiny per-call* operations, so the
+FFI crossing dominates and the C-implemented stdlib `datetime` wins the raw timing.
+The value yggdryl adds is **coverage and safety**, not microseconds:
+
+| workload | yggdryl | datetime | vs datetime |
+| --- | --- | --- | --- |
+| parse ISO datetime | 6.7 µs | 0.14 µs | 0.02× |
+| format datetime | 1.1 µs | 0.80 µs | 0.70× |
+| convert UTC→New York (DST-aware) | 3.6 µs | 0.37 µs | 0.10× |
+
+| capability | yggdryl | stdlib datetime |
+| --- | --- | --- |
+| parse a duration string (`1h30m`, `PT15M`) | ✓ | ✗ (no parser) |
+| sub-microsecond (nanosecond) precision | ✓ | ✗ (µs only) |
+| DST conversion with no OS tz database | ✓ (embedded) | ✗ (needs tzdata) |
+| flexible parse (`20240701`, `2024/07/01`) | ✓ | ✗ (ISO only) |
+| reject an invalid calendar date | ✓ raises | ✓ raises |
+
+### From Node — temporal vs `Date` / `Intl`
+
+Node's `Date` is the starkest case for "more complete and safer": it has no duration
+parser, only millisecond precision, no per-zone offset API, and silently rolls an
+invalid date over. yggdryl's formatting is already on par; the gap is the capability
+table.
+
+| workload | yggdryl | Date/Intl | vs Date |
+| --- | --- | --- | --- |
+| parse ISO datetime | 0.98 µs | 0.24 µs | 0.24× |
+| format datetime | 0.50 µs | 0.51 µs | 1.03× |
+| convert UTC→New York (DST-aware) | 3.0 µs | 0.71 µs | 0.24× |
+
+| capability | yggdryl | JS Date |
+| --- | --- | --- |
+| parse a duration string (`1h30m`, `PT15M`) | ✓ | ✗ (no parser) |
+| sub-millisecond (nanosecond) precision | ✓ | ✗ (ms only) |
+| DST offset for an arbitrary IANA zone | ✓ (`offsetSeconds`) | ~ (Intl format only) |
+| reject an invalid date (`2023-02-29`) | ✓ throws | ✗ rolls to Mar 1 |
+| flexible parse (`20240701`, `2024/07/01`) | ✓ | ~ (impl-defined) |
+
+(Numbers from `python3 benchmarks/compare.py` and `node benchmarks/compare.mjs`;
+hardware-dependent — the takeaway is the capability columns, not the microseconds.)
+
 ---
 
 ## Reproduce

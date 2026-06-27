@@ -27,7 +27,8 @@ impl Date {
             .map_err(err)
     }
 
-    /// Parse an ISO `YYYY-MM-DD` date.
+    /// Parse a date flexibly (ISO `YYYY-MM-DD`, `YYYY/MM/DD`, compact `YYYYMMDD` or a
+    /// full datetime), throwing on malformed input.
     #[napi(factory, js_name = "fromStr")]
     pub fn from_str(value: String) -> Result<Self> {
         CoreDate::from_str(&value)
@@ -128,16 +129,6 @@ impl Date {
         }
     }
 
-    /// Parse flexibly; with `raiseError = false` return `null` instead of throwing.
-    #[napi]
-    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
-        match CoreDate::from_str(&value) {
-            Ok(inner) => Ok(Some(Date { inner })),
-            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
-            Err(_) => Ok(None),
-        }
-    }
-
     /// Render to an object (`year` / `month` / `day`).
     #[napi(js_name = "toMapping")]
     pub fn to_mapping(&self) -> HashMap<String, String> {
@@ -180,6 +171,8 @@ impl Date {
     /// Reconstruct from the string produced by `toJSON`.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: String) -> Result<Self> {
-        Date::from_str(value)
+        CoreDate::from_str(&value)
+            .map(|inner| Date { inner })
+            .map_err(err)
     }
 }

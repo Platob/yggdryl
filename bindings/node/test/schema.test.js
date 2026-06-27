@@ -187,6 +187,40 @@ test('schema grammar and coercion edge cases', () => {
   assert.throws(() => DataType.fromStr('struct[a]: int]'))
 })
 
+test('flexible integer + byte decode', () => {
+  assert.ok(DataType.fromStr('int24').equals(DataType.int(24)))
+  assert.ok(DataType.fromStr('uint128').equals(DataType.int(128, false)))
+  assert.strictEqual(DataType.int(24).toString(), 'int24')
+  assert.ok(DataType.int().equals(DataType.int(64))) // default width
+  assert.ok(DataType.integer().equals(DataType.int(64)))
+  assert.ok(DataType.intFromBytes(Buffer.alloc(4)).equals(DataType.int(32)))
+  assert.ok(DataType.intFromBytes(new Uint8Array(16), true).equals(DataType.int(128)))
+  assert.ok(DataType.intFromBytes(Buffer.alloc(0)).equals(DataType.int(64))) // empty -> default
+})
+
+test('json/bson + physical types + fixed size', () => {
+  assert.ok(DataType.fromStr('json').equals(DataType.json()))
+  assert.ok(DataType.fromStr('bson').equals(DataType.bson()))
+  assert.strictEqual(DataType.json().toString(), 'json')
+  assert.ok(DataType.json().isJson() && DataType.json().isLogical())
+  assert.ok(DataType.bson().isBson())
+  assert.strictEqual(DataType.json().category, 'logical')
+  // physical types.
+  assert.ok(DataType.json().physicalType().equals(DataType.varchar()))
+  assert.ok(DataType.bson().physicalType().equals(DataType.binary()))
+  assert.ok(DataType.date().physicalType().equals(DataType.int(32)))
+  assert.ok(DataType.decimal(10, 2).physicalType().equals(DataType.int(128)))
+  // fixed vs variable size.
+  const fixed = DataType.fromStr('char[10]')
+  assert.ok(fixed.equals(DataType.fixedSizeVarchar(10)))
+  assert.ok(fixed.isFixedSize)
+  assert.strictEqual(fixed.toString(), 'char[10]')
+  assert.ok(DataType.fromStr('varchar(255)').equals(DataType.varchar())) // still variable
+  assert.ok(!DataType.varchar().isFixedSize)
+  assert.ok(!DataType.binary().isFixedSize)
+  assert.ok(DataType.fixedSizeBinary(16).isFixedSize)
+})
+
 test('temporal conversions and parse', () => {
   const d = new YDate(2024, 7, 1)
   assert.strictEqual(d.toDatetime().hour, 0)
@@ -194,11 +228,10 @@ test('temporal conversions and parse', () => {
   assert.strictEqual(ny.timezone.name, 'America/New_York')
   assert.strictEqual(ny.at(new Time(8, 0, 0)).epochSeconds, 1719835200)
   assert.strictEqual(new Time(13, 30, 0).toDatetime().hour, 13)
-  // Flexible parse with raiseError=false -> null.
-  assert.strictEqual(YDate.parse('not-a-date', false), null)
-  assert.strictEqual(DateTime.parse('2024-07-01').toString(), '2024-07-01T00:00:00')
-  assert.strictEqual(DateTime.parse('1719835200').epochSeconds, 1719835200)
-  assert.throws(() => YDate.parse('nonsense', true))
+  // fromStr is the single, strict parser (throws on malformed input; no `parse`).
+  assert.strictEqual(DateTime.fromStr('2024-07-01').toString(), '2024-07-01T00:00:00')
+  assert.strictEqual(DateTime.fromStr('1719835200').epochSeconds, 1719835200)
+  assert.throws(() => YDate.fromStr('not-a-date'))
   // Duration ISO-8601.
   assert.strictEqual(Duration.fromStr('PT15M').asSeconds(), 900)
   assert.strictEqual(Duration.fromStr('P1D').asSeconds(), 86400)

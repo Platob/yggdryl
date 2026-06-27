@@ -96,11 +96,25 @@ impl DataType {
         }
     }
 
+    /// JSON text (a string-backed logical type).
+    pub fn json() -> DataType {
+        DataType::Json
+    }
+
+    /// A BSON document (a binary-backed logical type).
+    pub fn bson() -> DataType {
+        DataType::Bson
+    }
+
     // ---- checks ----
 
     /// Whether this is a [logical](super::TypeCategory::Logical) type.
     pub fn is_logical(&self) -> bool {
-        self.is_temporal() || self.is_decimal() || self.is_dictionary()
+        self.is_temporal()
+            || self.is_decimal()
+            || self.is_dictionary()
+            || self.is_json()
+            || self.is_bson()
     }
 
     /// Whether this is a temporal type (date / time / timestamp / duration / interval).
@@ -123,6 +137,16 @@ impl DataType {
     /// Whether this is a [`Dictionary`](DataType::Dictionary) encoding.
     pub fn is_dictionary(&self) -> bool {
         matches!(self, DataType::Dictionary { .. })
+    }
+
+    /// Whether this is the [`Json`](DataType::Json) logical type.
+    pub fn is_json(&self) -> bool {
+        matches!(self, DataType::Json)
+    }
+
+    /// Whether this is the [`Bson`](DataType::Bson) logical type.
+    pub fn is_bson(&self) -> bool {
+        matches!(self, DataType::Bson)
     }
 
     /// The [`TimeUnit`] of a temporal type that carries one, or `None`.

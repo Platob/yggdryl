@@ -25,7 +25,8 @@ impl Time {
             .map_err(err)
     }
 
-    /// Parse `HH:MM[:SS[.fraction]]`.
+    /// Parse `HH:MM[:SS[.fraction]]` (or compact `HHMM` / `HHMMSS`), throwing on
+    /// malformed input.
     #[napi(factory, js_name = "fromStr")]
     pub fn from_str(value: String) -> Result<Self> {
         CoreTime::from_str(&value)
@@ -75,16 +76,6 @@ impl Time {
         }
     }
 
-    /// Parse flexibly; with `raiseError = false` return `null` instead of throwing.
-    #[napi]
-    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
-        match CoreTime::from_str(&value) {
-            Ok(inner) => Ok(Some(Time { inner })),
-            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
-            Err(_) => Ok(None),
-        }
-    }
-
     /// Render to an object (`hour` / `minute` / `second` / `nanosecond`).
     #[napi(js_name = "toMapping")]
     pub fn to_mapping(&self) -> HashMap<String, String> {
@@ -127,6 +118,8 @@ impl Time {
     /// Reconstruct from the string produced by `toJSON`.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: String) -> Result<Self> {
-        Time::from_str(value)
+        CoreTime::from_str(&value)
+            .map(|inner| Time { inner })
+            .map_err(err)
     }
 }

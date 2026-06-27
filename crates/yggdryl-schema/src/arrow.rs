@@ -13,9 +13,11 @@
 //! round-trip rather than preserved: a [`Union`](DataType::Union)'s type ids are
 //! reassigned `0, 1, …` (so an imported union with non-contiguous external ids does
 //! not round-trip), a [`Map`](DataType::Map)'s key/value entry-field names and
-//! nullability follow the Arrow convention (`key` non-null, `value` nullable), and
-//! an Arrow timestamp timezone string that is not a recognised zone falls back to
-//! UTC with a `warn` log.
+//! nullability follow the Arrow convention (`key` non-null, `value` nullable), an
+//! Arrow timestamp timezone string that is not a recognised zone falls back to UTC
+//! with a `warn` log, a fixed-length [`Varchar`](DataType::Varchar) loses its length
+//! (Arrow has no fixed UTF-8), and [`Json`](DataType::Json) / [`Bson`](DataType::Bson)
+//! map to their physical `Utf8` / `Binary` (the logical name is not recovered).
 //!
 //! ```
 //! # #[cfg(feature = "arrow")] {
@@ -93,18 +95,35 @@ impl DataType {
                 (8, false) => ADataType::UInt8,
                 (16, false) => ADataType::UInt16,
                 (32, false) => ADataType::UInt32,
-                _ => ADataType::UInt64,
+                (64, false) => ADataType::UInt64,
+                // Arrow only has the standard widths; a flexible width has no mapping.
+                (bits, signed) => {
+                    return Err(SchemaError::Unsupported(format!(
+                        "Arrow has no {}int{bits}; use a standard width (8/16/32/64)",
+                        if *signed { "" } else { "u" }
+                    )))
+                }
             },
             Float { bits } => match bits {
                 16 => ADataType::Float16,
                 32 => ADataType::Float32,
                 _ => ADataType::Float64,
             },
-            Varchar { large, view, .. } => match (large, view) {
-                (true, _) => ADataType::LargeUtf8,
-                (_, true) => ADataType::Utf8View,
-                _ => ADataType::Utf8,
-            },
+            Varchar {
+                large, view, size, ..
+            } => {
+                if size.is_some() {
+                    log_event!(
+                        warn,
+                        "to_arrow: Arrow has no fixed-size UTF-8 string; dropping the fixed length"
+                    );
+                }
+                match (large, view) {
+                    (true, _) => ADataType::LargeUtf8,
+                    (_, true) => ADataType::Utf8View,
+                    _ => ADataType::Utf8,
+                }
+            }
             Binary { large, view, size } => match (large, view, size) {
                 (_, _, Some(n)) => ADataType::FixedSizeBinary(*n),
                 (true, _, None) => ADataType::LargeBinary,
@@ -143,6 +162,10 @@ impl DataType {
             Dictionary { key, value } => {
                 ADataType::Dictionary(Box::new(key.to_arrow()?), Box::new(value.to_arrow()?))
             }
+            // Arrow has no first-class JSON/BSON; map to the physical string / binary
+            // (the logical name is not recovered on `from_arrow`).
+            Json => ADataType::Utf8,
+            Bson => ADataType::Binary,
             List {
                 item,
                 large,
@@ -215,8 +238,8 @@ impl DataType {
             ADataType::Float32 => DataType::float(32),
             ADataType::Float64 => DataType::float(64),
             ADataType::Utf8 => DataType::varchar(),
-            ADataType::LargeUtf8 => DataType::varchar_with(Charset::Utf8, true, false),
-            ADataType::Utf8View => DataType::varchar_with(Charset::Utf8, false, true),
+            ADataType::LargeUtf8 => DataType::varchar_with(Charset::Utf8, true, false, None),
+            ADataType::Utf8View => DataType::varchar_with(Charset::Utf8, false, true, None),
             ADataType::Binary => DataType::binary(),
             ADataType::LargeBinary => DataType::Binary {
                 large: true,

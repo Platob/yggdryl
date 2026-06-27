@@ -26,7 +26,8 @@ impl Date {
             .map_err(time_err)
     }
 
-    /// Parse an ISO ``YYYY-MM-DD`` date.
+    /// Parse a date flexibly (ISO ``YYYY-MM-DD``, ``YYYY/MM/DD``, compact
+    /// ``YYYYMMDD`` or a full datetime), raising on malformed input.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreDate::from_str(value)
@@ -127,17 +128,6 @@ impl Date {
     fn at(&self, time: &Time) -> DateTime {
         DateTime {
             inner: self.inner.at(time.inner),
-        }
-    }
-
-    /// Parse flexibly; with ``raise_error=False`` return ``None`` instead of raising.
-    #[staticmethod]
-    #[pyo3(signature = (value, raise_error = true))]
-    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
-        match CoreDate::from_str(value) {
-            Ok(inner) => Ok(Some(Date { inner })),
-            Err(e) if raise_error => Err(time_err(e)),
-            Err(_) => Ok(None),
         }
     }
 

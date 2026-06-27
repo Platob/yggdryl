@@ -107,7 +107,8 @@ pub enum TypeCategory {
     Any,
     /// A fixed/variable-width scalar: null, boolean, integers, floats, binary, strings.
     Primitive,
-    /// A richer logical meaning than its storage: temporal, decimal, dictionary.
+    /// A richer logical meaning than its storage: temporal, decimal, dictionary,
+    /// JSON / BSON.
     Logical,
     /// A container of other fields: lists, structs, maps, unions, run-end encoding.
     Nested,
@@ -171,9 +172,10 @@ pub enum DataType {
     Null,
     /// `true` / `false`.
     Boolean,
-    /// An integer of `bits` width (8/16/32/64), signed or unsigned.
+    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed),
+    /// signed or unsigned.
     Int {
-        /// Bit width: 8, 16, 32 or 64.
+        /// Bit width (commonly 8/16/32/64; any positive width is allowed).
         bits: u16,
         /// Whether the integer is signed.
         signed: bool,
@@ -184,7 +186,7 @@ pub enum DataType {
         bits: u16,
     },
     /// A UTF-8 (or other [`Charset`]) string. `large` uses 64-bit offsets; `view`
-    /// the view layout.
+    /// the view layout; `size` (when set) makes it fixed-length (`char(n)`).
     Varchar {
         /// The character set (default UTF-8).
         charset: Charset,
@@ -192,6 +194,8 @@ pub enum DataType {
         large: bool,
         /// View layout.
         view: bool,
+        /// Fixed character length, if any (`None` = variable-length).
+        size: Option<i32>,
     },
     /// Opaque bytes. `large` uses 64-bit offsets, `view` the view layout, and
     /// `size` (when set) makes it fixed-width.
@@ -249,6 +253,12 @@ pub enum DataType {
         /// The dictionary value type.
         value: Box<DataType>,
     },
+    /// JSON text — a string-backed logical type (its physical type is a
+    /// [`Varchar`](DataType::Varchar)).
+    Json,
+    /// A BSON document — a binary-backed logical type (its physical type is a
+    /// [`Binary`](DataType::Binary)).
+    Bson,
 
     // ---- nested ----
     /// A list of the `item` field. `large` uses 64-bit offsets, `view` the view
@@ -372,6 +382,65 @@ impl DataType {
             self,
             Varchar { view: true, .. } | Binary { view: true, .. } | List { view: true, .. }
         )
+    }
+
+    /// Whether this type has a **fixed** (non-variable) length: a fixed-width scalar
+    /// (int / float / decimal / temporal), or a fixed-size binary / string / list.
+    /// A variable-length string / binary / list and the unbounded nested types are
+    /// not fixed-size.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert!(DataType::int(32, true).is_fixed_size());
+    /// assert!(DataType::fixed_size_binary(16).is_fixed_size());
+    /// assert!(DataType::fixed_size_varchar(10).is_fixed_size());
+    /// assert!(!DataType::varchar().is_fixed_size());
+    /// assert!(!DataType::binary().is_fixed_size());
+    /// ```
+    pub fn is_fixed_size(&self) -> bool {
+        use DataType::*;
+        self.bit_size().is_some()
+            || matches!(
+                self,
+                Varchar { size: Some(_), .. } | List { size: Some(_), .. }
+            )
+    }
+
+    /// The physical (storage) [`DataType`] backing this type. A [logical](TypeCategory::Logical)
+    /// type reports its underlying primitive — a [`Date`](DataType::Date) is an
+    /// `int32`/`int64`, a [`Time`](DataType::Time) / [`Timestamp`](DataType::Timestamp)
+    /// / [`Duration`](DataType::Duration) / [`Interval`](DataType::Interval) an integer
+    /// of its width, a [`Decimal`](DataType::Decimal) an integer of its storage width, a
+    /// [`Dictionary`](DataType::Dictionary) its key index type, a [`Json`](DataType::Json)
+    /// a [`Varchar`](DataType::Varchar) and a [`Bson`](DataType::Bson) a
+    /// [`Binary`](DataType::Binary). Every other type is its own physical type.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
+    /// assert_eq!(DataType::json().physical_type(), DataType::varchar());
+    /// assert_eq!(DataType::int(32, true).physical_type(), DataType::int(32, true));
+    /// ```
+    pub fn physical_type(&self) -> DataType {
+        use DataType::*;
+        match self {
+            Date { large } => DataType::int(if *large { 64 } else { 32 }, true),
+            Time { unit } => DataType::int(
+                if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
+                    32
+                } else {
+                    64
+                },
+                true,
+            ),
+            Timestamp { .. } | Duration { .. } => DataType::int(64, true),
+            Interval { unit } => DataType::int(unit.bit_size(), true),
+            Decimal { bits, .. } => DataType::int(*bits, true),
+            Dictionary { key, .. } => key.physical_type(),
+            Json => DataType::varchar(),
+            Bson => DataType::binary(),
+            other => other.clone(),
+        }
     }
 }
 
@@ -558,6 +627,24 @@ fn parse_time_unit(value: &str) -> Result<TimeUnit, SchemaError> {
     TimeUnit::from_str(value).map_err(|_| SchemaError::UnknownUnit(value.to_string()))
 }
 
+/// Parses a generic `int<N>` / `uint<N>` head of any positive bit width (e.g.
+/// `int24`, `uint128`), returning `None` for anything else. The common widths are
+/// handled by explicit aliases ahead of this; this is the flexible fallback.
+fn parse_generic_int(head: &str) -> Option<DataType> {
+    let (digits, signed) = match head.strip_prefix("uint") {
+        Some(rest) => (rest, false),
+        None => (head.strip_prefix("int")?, true),
+    };
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let bits = digits.parse::<u16>().ok()?;
+    if bits == 0 {
+        return None;
+    }
+    Some(DataType::int(bits, signed))
+}
+
 /// Parses a time resolution given either a unit token (`us`) or a SQL fractional
 /// precision (`0` → s, `1..3` → ms, `4..6` → us, `7..9` → ns).
 fn parse_unit_or_precision(value: &str) -> Result<TimeUnit, SchemaError> {
@@ -633,18 +720,21 @@ impl DataType {
             ("float64" | "double" | "double precision" | "float8", None) => Ok(DataType::float(64)),
             (
                 "utf8" | "string" | "str" | "text" | "varchar" | "char" | "character" | "nvarchar"
-                | "nchar" | "clob" | "json" | "jsonb",
+                | "nchar" | "clob",
                 None,
             ) => Ok(DataType::varchar()),
             ("large_utf8" | "large_string", None) => {
-                Ok(DataType::varchar_with(Charset::Utf8, true, false))
+                Ok(DataType::varchar_with(Charset::Utf8, true, false, None))
             }
             ("utf8_view" | "string_view", None) => {
-                Ok(DataType::varchar_with(Charset::Utf8, false, true))
+                Ok(DataType::varchar_with(Charset::Utf8, false, true, None))
             }
-            ("varchar" | "char" | "character" | "nvarchar" | "nchar" | "string", Some(a)) => {
-                parse_varchar(a, input)
-            }
+            // `char(n)` is a fixed-length string; `varchar(n)` keeps the length only as
+            // an (ignored) max-length hint and stays variable-length.
+            ("char" | "character" | "nchar", Some(a)) => parse_varchar(a, input, true),
+            ("varchar" | "nvarchar" | "string", Some(a)) => parse_varchar(a, input, false),
+            ("json" | "jsonb", None) => Ok(DataType::Json),
+            ("bson", None) => Ok(DataType::Bson),
             ("binary" | "bytea" | "blob" | "varbinary", None) => Ok(DataType::binary()),
             ("varbinary", Some(_)) => Ok(DataType::binary()),
             ("large_binary", None) => Ok(DataType::Binary {
@@ -798,6 +888,10 @@ impl DataType {
                     DataType::from_str(parts[1])?,
                 ))
             }
+            // A bare `int<N>` / `uint<N>` of any width (e.g. `int24`, `uint128`).
+            (other, None) => {
+                parse_generic_int(other).ok_or_else(|| SchemaError::Unknown(input.to_string()))
+            }
             (_, _) => Err(SchemaError::Unknown(input.to_string())),
         }
     }
@@ -824,7 +918,8 @@ impl DataType {
                 charset,
                 large,
                 view,
-            } => render_varchar(*charset, *large, *view),
+                size,
+            } => render_varchar(*charset, *large, *view, *size),
             Binary { large, view, size } => match (large, view, size) {
                 (_, _, Some(n)) => format!("fixed_size_binary[{n}]"),
                 (true, _, None) => "large_binary".to_string(),
@@ -854,6 +949,8 @@ impl DataType {
             Dictionary { key, value } => {
                 format!("dictionary[{}, {}]", key.to_str(), value.to_str())
             }
+            Json => "json".to_string(),
+            Bson => "bson".to_string(),
             List {
                 item,
                 large,
@@ -931,33 +1028,55 @@ fn render_fields(fields: &[Field]) -> String {
         .join(", ")
 }
 
-/// Renders a `Varchar`, preferring the friendly `utf8` / `large_utf8` / `utf8_view`
-/// spellings, else `varchar[<charset>[, large][, view]]`.
-fn render_varchar(charset: Charset, large: bool, view: bool) -> String {
-    if charset == Charset::Utf8 {
-        match (large, view) {
-            (false, false) => return "utf8".to_string(),
-            (true, false) => return "large_utf8".to_string(),
-            (false, true) => return "utf8_view".to_string(),
-            _ => {}
+/// Renders a `Varchar`. A variable-length UTF-8 string uses the friendly `utf8` /
+/// `large_utf8` / `utf8_view` spellings (else `varchar[<charset>[, large][, view]]`);
+/// a fixed-length string uses the `char` head (`char[n]` for plain UTF-8, else
+/// `char[<charset>[, large][, view], <size>]`) so it parses back as fixed.
+fn render_varchar(charset: Charset, large: bool, view: bool, size: Option<i32>) -> String {
+    let Some(n) = size else {
+        // Variable-length.
+        if charset == Charset::Utf8 {
+            match (large, view) {
+                (false, false) => return "utf8".to_string(),
+                (true, false) => return "large_utf8".to_string(),
+                (false, true) => return "utf8_view".to_string(),
+                _ => {}
+            }
         }
+        let mut out = format!("varchar[{}", charset.as_str());
+        if large {
+            out.push_str(", large");
+        }
+        if view {
+            out.push_str(", view");
+        }
+        out.push(']');
+        return out;
+    };
+    // Fixed-length: the `char` head round-trips through `parse_varchar(.., fixed=true)`.
+    if charset == Charset::Utf8 && !large && !view {
+        return format!("char[{n}]");
     }
-    let mut out = format!("varchar[{}", charset.as_str());
+    let mut out = format!("char[{}", charset.as_str());
     if large {
         out.push_str(", large");
     }
     if view {
         out.push_str(", view");
     }
+    out.push_str(&format!(", {n}"));
     out.push(']');
     out
 }
 
-/// Parses a `varchar[<charset>[, large][, view]]` argument list.
-fn parse_varchar(args: &str, whole: &str) -> Result<DataType, SchemaError> {
+/// Parses a `varchar[<charset>[, large][, view][, <size>]]` argument list. A numeric
+/// token sets the fixed `size` when `fixed` is set (the `char(n)` spelling), otherwise
+/// it is a SQL max-length hint and ignored (the `varchar(n)` spelling).
+fn parse_varchar(args: &str, whole: &str, fixed: bool) -> Result<DataType, SchemaError> {
     let mut charset = Charset::Utf8;
     let mut large = false;
     let mut view = false;
+    let mut size = None;
     for (i, part) in split_top_level(args, ',').into_iter().enumerate() {
         let part = part.trim();
         if part.is_empty() {
@@ -966,13 +1085,18 @@ fn parse_varchar(args: &str, whole: &str) -> Result<DataType, SchemaError> {
         match part.to_ascii_lowercase().as_str() {
             "large" => large = true,
             "view" => view = true,
-            // A SQL length like `varchar(255)` is accepted and ignored.
-            _ if part.bytes().all(|b| b.is_ascii_digit()) => {}
+            // A numeric token is a fixed length for `char(n)`, else an ignored
+            // `varchar(n)` max-length hint.
+            _ if part.bytes().all(|b| b.is_ascii_digit()) => {
+                if fixed {
+                    size = Some(parse_int::<i32>(part, whole)?);
+                }
+            }
             _ if i == 0 => charset = Charset::from_str(part)?,
             _ => return Err(SchemaError::Invalid(whole.to_string())),
         }
     }
-    Ok(DataType::varchar_with(charset, large, view))
+    Ok(DataType::varchar_with(charset, large, view, size))
 }
 
 impl fmt::Display for DataType {

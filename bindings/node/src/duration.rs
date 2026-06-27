@@ -28,23 +28,13 @@ impl Duration {
         })
     }
 
-    /// Parse a compact span (`"1h30m"` / `"1s500ms"` / `"-2d"`) or seconds.
+    /// Parse a span flexibly (compact `"1h30m"` / `"1s500ms"` / `"-2d"`, ISO-8601
+    /// `"PT15M"` / `"P1D"`, or seconds), throwing on malformed input.
     #[napi(factory, js_name = "fromStr")]
     pub fn from_str(value: String) -> Result<Self> {
         CoreDuration::from_str(&value)
             .map(|inner| Duration { inner })
             .map_err(err)
-    }
-
-    /// Parse flexibly (compact / ISO-8601 / seconds); with `raiseError = false`
-    /// return `null` instead of throwing.
-    #[napi]
-    pub fn parse(value: String, raise_error: Option<bool>) -> Result<Option<Self>> {
-        match CoreDuration::from_str(&value) {
-            Ok(inner) => Ok(Some(Duration { inner })),
-            Err(e) if raise_error.unwrap_or(true) => Err(err(e)),
-            Err(_) => Ok(None),
-        }
     }
 
     /// A span of `seconds` seconds.
@@ -204,6 +194,8 @@ impl Duration {
     /// Reconstruct from the string produced by `toJSON`.
     #[napi(factory, js_name = "fromJSON")]
     pub fn from_json(value: String) -> Result<Self> {
-        Duration::from_str(value)
+        CoreDuration::from_str(&value)
+            .map(|inner| Duration { inner })
+            .map_err(err)
     }
 }

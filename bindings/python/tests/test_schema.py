@@ -225,6 +225,40 @@ def test_schema_grammar_and_coercion_edge_cases():
         D("struct[a]: int]")
 
 
+def test_flexible_integer_json_bson_physical_fixed():
+    D = yggdryl.DataType
+    # Flexible integer widths + byte-width decode + default.
+    assert D("int24") == D.int(24)
+    assert D("uint128") == D.int(128, signed=False)
+    assert str(D.int(24)) == "int24"
+    assert D.int() == D.int(64)  # default width
+    assert D.integer() == D.int(64)
+    assert D.int_from_bytes(bytes(4)) == D.int(32)
+    assert D.int_from_bytes(bytes(16), signed=True) == D.int(128)
+    assert D.int_from_bytes(b"") == D.int(64)  # empty -> default
+    # Json / Bson logical types + physical types.
+    assert D("json") == D.json() and D("jsonb") == D.json()
+    assert D("bson") == D.bson()
+    assert str(D.json()) == "json"
+    assert D.json().is_json() and D.json().is_logical()
+    assert D.bson().is_bson()
+    assert D.json().category == "logical"
+    assert D.json().physical_type() == D.varchar()
+    assert D.bson().physical_type() == D.binary()
+    assert D.date().physical_type() == D.int(32)
+    assert D.decimal(10, 2).physical_type() == D.int(128)
+    assert D.int(32).physical_type() == D.int(32)  # identity
+    # Fixed vs variable size.
+    fixed = D("char[10]")
+    assert fixed == D.fixed_size_varchar(10)
+    assert fixed.is_fixed_size
+    assert str(fixed) == "char[10]"
+    assert D("varchar(255)") == D.varchar()  # still variable
+    assert not D.varchar().is_fixed_size
+    assert not D.binary().is_fixed_size
+    assert D.fixed_size_binary(16).is_fixed_size
+
+
 def test_temporal_conversions_and_parse():
     d = yggdryl.Date(2024, 7, 1)
     assert d.to_datetime().hour == 0
@@ -233,12 +267,11 @@ def test_temporal_conversions_and_parse():
     assert ny.timezone.name == "America/New_York"
     assert ny.at(yggdryl.Time(8, 0, 0)).epoch_seconds == 1_719_835_200
     assert yggdryl.Time(13, 30, 0).to_datetime().hour == 13
-    # Flexible parse with raise_error=False -> None.
-    assert yggdryl.Date.parse("not-a-date", raise_error=False) is None
-    assert str(yggdryl.DateTime.parse("2024-07-01")) == "2024-07-01T00:00:00"
-    assert yggdryl.DateTime.parse("1719835200").epoch_seconds == 1_719_835_200
+    # from_str is the single, strict parser (raises on malformed input; no `parse`).
+    assert str(yggdryl.DateTime.from_str("2024-07-01")) == "2024-07-01T00:00:00"
+    assert yggdryl.DateTime.from_str("1719835200").epoch_seconds == 1_719_835_200
     with pytest.raises(ValueError):
-        yggdryl.Date.parse("nonsense", raise_error=True)
+        yggdryl.Date.from_str("not-a-date")
     # Duration ISO-8601.
     assert yggdryl.Duration.from_str("PT15M").as_seconds() == 900
     assert yggdryl.Duration.from_str("P1D").as_seconds() == 86_400

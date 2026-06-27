@@ -55,7 +55,9 @@ impl DateTime {
         .map_err(time_err)
     }
 
-    /// Parse an ISO-8601 datetime (``Z`` / ``±HH:MM`` offset, or none for naive).
+    /// Parse a datetime flexibly (ISO-8601 with ``Z`` / ``±HH:MM`` offset or none for
+    /// naive, a date-only string → midnight, or a bare integer → epoch seconds),
+    /// raising on malformed input.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         CoreDateTime::from_str(value)
@@ -196,18 +198,6 @@ impl DateTime {
     fn to_utc(&self) -> Self {
         DateTime {
             inner: self.inner.to_utc(),
-        }
-    }
-
-    /// Parse flexibly (ISO, date-only → midnight, bare integer → epoch seconds);
-    /// with ``raise_error=False`` return ``None`` instead of raising.
-    #[staticmethod]
-    #[pyo3(signature = (value, raise_error = true))]
-    fn parse(value: &str, raise_error: bool) -> PyResult<Option<Self>> {
-        match CoreDateTime::from_str(value) {
-            Ok(inner) => Ok(Some(DateTime { inner })),
-            Err(e) if raise_error => Err(time_err(e)),
-            Err(_) => Ok(None),
         }
     }
 
