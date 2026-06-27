@@ -13,11 +13,18 @@
 
 mod bytesio;
 mod compression;
+mod datatype;
+mod date;
+mod datetime;
+mod duration;
+mod field;
 mod http;
 mod iostats;
 mod localpath;
 mod media;
 mod mime;
+mod pytime;
+mod timezone;
 mod uri;
 mod url;
 mod version;
@@ -28,11 +35,17 @@ use pyo3::wrap_pyfunction;
 use yggdryl_core::MediaError;
 use yggdryl_core::VersionError;
 use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
-use yggdryl_core::{IoError, Whence};
+use yggdryl_core::{IoError, TimeError, TimeUnit, Whence};
 use yggdryl_http::HttpError;
+use yggdryl_schema::SchemaError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
+use crate::datatype::DataType;
+use crate::date::Date;
+use crate::datetime::DateTime;
+use crate::duration::Duration;
+use crate::field::Field;
 use crate::http::{
     http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url,
     HttpRequest, HttpResponse, HttpSession,
@@ -41,6 +54,8 @@ use crate::iostats::IoStats;
 use crate::localpath::LocalPath;
 use crate::media::MediaType;
 use crate::mime::MimeType;
+use crate::pytime::Time;
+use crate::timezone::Timezone;
 use crate::uri::Uri;
 use crate::url::Url;
 use crate::version::Version;
@@ -67,6 +82,20 @@ pub(crate) fn io_err(err: IoError) -> PyErr {
 
 pub(crate) fn http_err(err: HttpError) -> PyErr {
     PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn time_err(err: TimeError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+pub(crate) fn schema_err(err: SchemaError) -> PyErr {
+    PyValueError::new_err(err.to_string())
+}
+
+/// Parses a time-unit string (``s`` / ``ms`` / ``us`` / ``ns``) to a [`TimeUnit`],
+/// raising ``ValueError`` on a bad token. Shared by the schema / duration types.
+pub(crate) fn time_unit_from(unit: &str) -> PyResult<TimeUnit> {
+    TimeUnit::from_str(unit).map_err(time_err)
 }
 
 /// Converts a `serde_json::Value` (from [`yggdryl_core::Io::json`]) into the
@@ -173,6 +202,13 @@ fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<IoStats>()?;
     m.add_class::<LocalPath>()?;
     m.add_class::<Compression>()?;
+    m.add_class::<DataType>()?;
+    m.add_class::<Field>()?;
+    m.add_class::<Date>()?;
+    m.add_class::<Time>()?;
+    m.add_class::<DateTime>()?;
+    m.add_class::<Duration>()?;
+    m.add_class::<Timezone>()?;
     m.add_class::<HttpSession>()?;
     m.add_class::<HttpRequest>()?;
     m.add_class::<HttpResponse>()?;

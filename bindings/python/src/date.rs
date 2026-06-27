@@ -1,0 +1,124 @@
+//! The `Date` pyclass — a proleptic-Gregorian calendar date.
+
+use pyo3::basic::CompareOp;
+use pyo3::prelude::*;
+use pyo3::types::PyType;
+use yggdryl_core::{Date as CoreDate, Mapping};
+
+use crate::time_err;
+
+/// A calendar date (no time of day or timezone), stored as days since the epoch.
+#[pyclass(name = "Date", module = "yggdryl")]
+#[derive(Clone)]
+pub struct Date {
+    pub(crate) inner: CoreDate,
+}
+
+#[pymethods]
+impl Date {
+    /// Build from ``(year, month, day)``, validating the calendar.
+    #[new]
+    fn new(year: i32, month: u32, day: u32) -> PyResult<Self> {
+        CoreDate::from_ymd(year, month, day)
+            .map(|inner| Date { inner })
+            .map_err(time_err)
+    }
+
+    /// Parse an ISO ``YYYY-MM-DD`` date.
+    #[staticmethod]
+    fn from_str(value: &str) -> PyResult<Self> {
+        CoreDate::from_str(value)
+            .map(|inner| Date { inner })
+            .map_err(time_err)
+    }
+
+    /// Build from a count of days since the UNIX epoch.
+    #[staticmethod]
+    fn from_epoch_days(days: i32) -> Self {
+        Date {
+            inner: CoreDate::from_epoch_days(days),
+        }
+    }
+
+    /// Build from a dict (``year`` / ``month`` / ``day``).
+    #[staticmethod]
+    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+        CoreDate::from_mapping(&fields)
+            .map(|inner| Date { inner })
+            .map_err(time_err)
+    }
+
+    /// Parse from the UTF-8 bytes of the canonical string.
+    #[staticmethod]
+    fn from_bytes(data: Vec<u8>) -> PyResult<Self> {
+        CoreDate::from_bytes(&data)
+            .map(|inner| Date { inner })
+            .map_err(time_err)
+    }
+
+    #[getter]
+    fn year(&self) -> i32 {
+        self.inner.year()
+    }
+
+    #[getter]
+    fn month(&self) -> u32 {
+        self.inner.month()
+    }
+
+    #[getter]
+    fn day(&self) -> u32 {
+        self.inner.day()
+    }
+
+    /// The day of week (0 = Sunday … 6 = Saturday).
+    #[getter]
+    fn weekday(&self) -> u32 {
+        self.inner.weekday()
+    }
+
+    /// Days since the UNIX epoch.
+    #[getter]
+    fn epoch_days(&self) -> i32 {
+        self.inner.epoch_days()
+    }
+
+    /// A copy `days` days later (or earlier, if negative).
+    fn add_days(&self, days: i32) -> Self {
+        Date {
+            inner: self.inner.add_days(days),
+        }
+    }
+
+    /// Render to a dict (``year`` / ``month`` / ``day``).
+    fn to_mapping(&self) -> Mapping {
+        self.inner.to_mapping()
+    }
+
+    fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
+        pyo3::types::PyBytes::new_bound(py, &self.inner.to_bytes())
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_str()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Date('{}')", self.inner.to_str())
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> bool {
+        op.matches(self.inner.cmp(&other.inner))
+    }
+
+    fn __hash__(&self) -> i64 {
+        self.inner.epoch_days() as i64
+    }
+
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, PyType>, (i32, u32, u32)) {
+        (
+            py.get_type_bound::<Self>(),
+            (self.inner.year(), self.inner.month(), self.inner.day()),
+        )
+    }
+}

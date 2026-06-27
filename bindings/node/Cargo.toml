@@ -20,8 +20,10 @@ path = "src/lib.rs"
 # The consolidated core provides every value type (Version, MimeType/MediaType,
 # Uri/Url), the BytesIO / LocalPath byte-IO handles and the Compression codec —
 # with mmap, media, json and all compression backends enabled.
-yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features = ["mmap", "media", "json"] }
+yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features = ["mmap", "media", "json", "serde"] }
 yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
+# The schema layer (DataType / Field) with JSON (de)serialisation and Arrow conversion.
+yggdryl-schema = { path = "../../crates/yggdryl-schema", version = "0.1.0", features = ["json", "arrow"] }
 # `serde-json` lets `Io::json()`'s `serde_json::Value` cross to JS as an object.
 napi = { version = "2", default-features = false, features = ["napi8", "serde-json"] }
 napi-derive = "2"

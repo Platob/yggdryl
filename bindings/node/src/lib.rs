@@ -8,11 +8,18 @@
 
 mod bytesio;
 mod compression;
+mod datatype;
+mod date;
+mod datetime;
+mod duration;
+mod field;
 mod http;
 mod iostats;
 mod localpath;
 mod media;
 mod mime;
+mod time;
+mod timezone;
 mod uri;
 mod url;
 mod version;
@@ -32,6 +39,11 @@ use yggdryl_core::{percent_decode, percent_encode, Mapping};
 /// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
 pub(crate) fn to_mapping(fields: HashMap<String, String>) -> Mapping {
     fields.into_iter().collect()
+}
+
+/// Converts any displayable error (core / schema / time) into a thrown JS `Error`.
+pub(crate) fn err<E: std::fmt::Display>(error: E) -> Error {
+    Error::from_reason(error.to_string())
 }
 
 /// Maps a `whence` integer (`0` start, `1` current, `2` end) to the core
