@@ -24,7 +24,7 @@
 //! ([`MergeStrategy`]). Temporal types reuse the core [`TimeUnit`](yggdryl_core::TimeUnit)
 //! and [`Timezone`](yggdryl_core::Timezone).
 //!
-//! Every type converts smoothly to/from a string, a [`Mapping`](yggdryl_core::Mapping),
+//! Every type converts smoothly to/from a string, a `BTreeMap`,
 //! JSON and bytes, is `serde`-serializable (under `serde`) and [`Hash`]; with the
 //! `arrow` feature it converts losslessly to/from `arrow-schema`.
 //!

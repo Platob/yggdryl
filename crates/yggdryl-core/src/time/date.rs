@@ -6,7 +6,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::Mapping;
+use std::collections::BTreeMap;
 
 use super::{
     civil_from_days, days_from_civil, days_in_month, DateTime, Duration, Temporal, Time, TimeError,
@@ -180,8 +180,8 @@ impl Date {
         Date::from_ymd(year, month, day)
     }
 
-    /// Builds a date from a [`Mapping`] (`year` / `month` / `day`, optional `timezone`).
-    pub fn from_mapping(fields: &Mapping) -> Result<Date, TimeError> {
+    /// Builds a date from a `BTreeMap` (`year` / `month` / `day`, optional `timezone`).
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Date, TimeError> {
         let component = |key: &str| -> Result<i64, TimeError> {
             fields
                 .get(key)
@@ -213,11 +213,11 @@ impl Date {
         }
     }
 
-    /// Renders to a component [`Mapping`] (`year` / `month` / `day`, plus `timezone`
+    /// Renders to a component `BTreeMap` (`year` / `month` / `day`, plus `timezone`
     /// when anchored).
-    pub fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
         let (y, m, d) = self.ymd();
-        let mut map = Mapping::from([
+        let mut map = BTreeMap::from([
             ("year".to_string(), y.to_string()),
             ("month".to_string(), m.to_string()),
             ("day".to_string(), d.to_string()),

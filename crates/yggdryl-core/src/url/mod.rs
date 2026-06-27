@@ -320,8 +320,10 @@ pub(crate) fn remove_dot_segments(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use crate::{percent_decode, percent_encode};
-    use crate::{Mapping, MediaType, MimeType, Params};
+    use crate::{MediaType, MimeType, Params};
     use crate::{Uri, UriError, Url, UrlError};
 
     #[test]
@@ -536,7 +538,7 @@ mod tests {
 
     #[test]
     fn uri_from_mapping() {
-        let fields = Mapping::from([
+        let fields = BTreeMap::from([
             ("scheme".to_string(), "https".to_string()),
             ("authority".to_string(), "example.com".to_string()),
             ("path".to_string(), "/x".to_string()),
@@ -618,7 +620,7 @@ mod tests {
 
     #[test]
     fn url_from_mapping() {
-        let fields = Mapping::from([
+        let fields = BTreeMap::from([
             ("scheme".to_string(), "https".to_string()),
             ("host".to_string(), "example.com".to_string()),
             ("port".to_string(), "8443".to_string()),
@@ -627,7 +629,7 @@ mod tests {
         let url = Url::from_mapping(&fields).unwrap();
         assert_eq!(url.to_string(), "https://example.com:8443/api");
 
-        let missing_host = Mapping::from([("scheme".to_string(), "https".to_string())]);
+        let missing_host = BTreeMap::from([("scheme".to_string(), "https".to_string())]);
         assert_eq!(Url::from_mapping(&missing_host), Err(UrlError::MissingHost));
     }
 

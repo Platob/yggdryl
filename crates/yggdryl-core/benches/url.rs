@@ -4,10 +4,11 @@
 //! `harness = false`) so there is no benchmark-framework dependency; it reports
 //! nanoseconds per iteration using a fixed iteration count.
 
+use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::time::Instant;
 
-use yggdryl_core::{percent_decode, percent_encode, Mapping, MediaType, MimeType, Uri, Url};
+use yggdryl_core::{percent_decode, percent_encode, MediaType, MimeType, Uri, Url};
 
 /// Times `f` over `iters` iterations (after a short warm-up) and prints ns/iter.
 fn bench(name: &str, iters: u64, mut f: impl FnMut()) {
@@ -101,7 +102,7 @@ fn main() {
     });
 
     println!("== from_mapping ==");
-    let fields = Mapping::from([
+    let fields = BTreeMap::from([
         ("scheme".to_string(), "https".to_string()),
         ("host".to_string(), "example.com".to_string()),
         ("port".to_string(), "8443".to_string()),

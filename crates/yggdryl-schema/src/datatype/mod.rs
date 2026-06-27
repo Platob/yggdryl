@@ -5,12 +5,13 @@
 //! category-specific surface lives in the sibling modules ([`primitive`],
 //! [`logical`], [`nested`], [`coerce`]).
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::{Charset, Field};
-use yggdryl_core::{Mapping, TimeUnit, Timezone};
+use yggdryl_core::{TimeUnit, Timezone};
 
 mod coerce;
 mod logical;
@@ -910,8 +911,8 @@ impl DataType {
         }
     }
 
-    /// Builds a [`DataType`] from a [`Mapping`]; reads the single `type` key.
-    pub fn from_mapping(fields: &Mapping) -> Result<DataType, SchemaError> {
+    /// Builds a [`DataType`] from a `BTreeMap`; reads the single `type` key.
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<DataType, SchemaError> {
         match fields.get("type") {
             Some(value) => DataType::from_str(value),
             None => Err(SchemaError::Empty),
@@ -1002,9 +1003,9 @@ impl DataType {
         }
     }
 
-    /// Renders to a component [`Mapping`] (the single `type` key).
-    pub fn to_mapping(&self) -> Mapping {
-        Mapping::from([("type".to_string(), self.to_str())])
+    /// Renders to a component `BTreeMap` (the single `type` key).
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([("type".to_string(), self.to_str())])
     }
 
     /// The canonical string as UTF-8 bytes.

@@ -29,15 +29,16 @@ mod version;
 // to JS regardless, this just keeps plain `cargo` from flagging them unused.
 pub use http::{http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url};
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use yggdryl_core::Whence;
-use yggdryl_core::{percent_decode, percent_encode, Mapping};
+use yggdryl_core::{percent_decode, percent_encode};
 
-/// Converts a JS object (`HashMap`) into the core ordered [`Mapping`].
-pub(crate) fn to_mapping(fields: HashMap<String, String>) -> Mapping {
+/// Converts a JS object (`HashMap`) into the core ordered `BTreeMap`.
+pub(crate) fn to_mapping(fields: HashMap<String, String>) -> BTreeMap<String, String> {
     fields.into_iter().collect()
 }
 

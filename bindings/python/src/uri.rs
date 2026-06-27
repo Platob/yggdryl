@@ -3,7 +3,8 @@
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, Params, Uri as CoreUri};
+use std::collections::BTreeMap;
+use yggdryl_core::{Params, Uri as CoreUri};
 
 use crate::media::MediaType;
 use crate::mime::MimeType;
@@ -47,7 +48,7 @@ impl Uri {
     /// Build a :class:`Uri` from a dict of components (``scheme``, ``authority``,
     /// ``path``, ``query``, ``fragment``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreUri::from_mapping(&fields)
             .map(|inner| Uri { inner })
             .map_err(uri_err)
@@ -321,7 +322,7 @@ impl Uri {
     }
 
     /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

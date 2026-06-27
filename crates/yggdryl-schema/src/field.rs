@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::{DataType, MergeStrategy, SchemaError};
-use yggdryl_core::Mapping;
+use std::collections::BTreeMap;
 
 /// The metadata key used by the [`comment`](Field::comment) accessor.
 const COMMENT_KEY: &str = "comment";
@@ -36,7 +36,7 @@ pub struct Field {
     name: String,
     data_type: DataType,
     nullable: bool,
-    metadata: Mapping,
+    metadata: BTreeMap<String, String>,
     /// Navigational parent — excluded from identity and serialization.
     #[cfg_attr(feature = "serde", serde(skip))]
     parent: Option<Box<Field>>,
@@ -71,7 +71,7 @@ impl Field {
             name: name.into(),
             data_type,
             nullable,
-            metadata: Mapping::new(),
+            metadata: BTreeMap::new(),
             parent: None,
         }
     }
@@ -94,7 +94,7 @@ impl Field {
     }
 
     /// The field's metadata map (empty by default).
-    pub fn metadata(&self) -> &Mapping {
+    pub fn metadata(&self) -> &BTreeMap<String, String> {
         &self.metadata
     }
 
@@ -146,7 +146,7 @@ impl Field {
     }
 
     /// Returns a copy with the whole metadata map replaced.
-    pub fn with_metadata(mut self, metadata: Mapping) -> Field {
+    pub fn with_metadata(mut self, metadata: BTreeMap<String, String>) -> Field {
         self.metadata = metadata;
         self
     }
@@ -181,7 +181,7 @@ impl Field {
         name: Option<String>,
         data_type: Option<DataType>,
         nullable: Option<bool>,
-        metadata: Option<Mapping>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Field {
         Field {
             name: name.unwrap_or_else(|| self.name.clone()),
@@ -331,9 +331,9 @@ impl Field {
         crate::datatype::parse_field_str(input)
     }
 
-    /// Builds a [`Field`] from a [`Mapping`] (`name`, `type` (required), `nullable`
+    /// Builds a [`Field`] from a `BTreeMap` (`name`, `type` (required), `nullable`
     /// (default `true`), optional `comment`).
-    pub fn from_mapping(fields: &Mapping) -> Result<Field, SchemaError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Field, SchemaError> {
         let name = fields.get("name").cloned().unwrap_or_default();
         let data_type = match fields.get("type") {
             Some(value) => DataType::from_str(value)?,
@@ -360,10 +360,10 @@ impl Field {
         }
     }
 
-    /// Renders to a component [`Mapping`] (`name` / `type` / `nullable`, plus
+    /// Renders to a component `BTreeMap` (`name` / `type` / `nullable`, plus
     /// `comment` if set).
-    pub fn to_mapping(&self) -> Mapping {
-        let mut map = Mapping::from([
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::from([
             ("name".to_string(), self.name.clone()),
             ("type".to_string(), self.data_type.to_str()),
             ("nullable".to_string(), self.nullable.to_string()),

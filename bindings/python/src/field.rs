@@ -1,7 +1,7 @@
 //! The `Field` pyclass — a named, nullable :class:`DataType` graph node.
 
 use pyo3::prelude::*;
-use yggdryl_core::Mapping;
+use std::collections::BTreeMap;
 use yggdryl_schema::{Field as CoreField, MergeStrategy};
 
 use crate::datatype::DataType;
@@ -36,7 +36,7 @@ impl Field {
 
     /// Build from a dict (``name`` / ``type`` / ``nullable`` / ``comment``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreField::from_mapping(&fields)
             .map(wrap)
             .map_err(schema_err)
@@ -68,7 +68,7 @@ impl Field {
     }
 
     /// The metadata dict.
-    fn metadata(&self) -> Mapping {
+    fn metadata(&self) -> BTreeMap<String, String> {
         self.inner.metadata().clone()
     }
 
@@ -112,7 +112,7 @@ impl Field {
         wrap(self.inner.clone().with_nullable(nullable))
     }
 
-    fn with_metadata(&self, metadata: Mapping) -> Self {
+    fn with_metadata(&self, metadata: BTreeMap<String, String>) -> Self {
         wrap(self.inner.clone().with_metadata(metadata))
     }
 
@@ -135,7 +135,7 @@ impl Field {
         name: Option<String>,
         data_type: Option<DataType>,
         nullable: Option<bool>,
-        metadata: Option<Mapping>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Self {
         wrap(
             self.inner
@@ -219,7 +219,7 @@ impl Field {
     // ---- serialisation ----
 
     /// Render to a dict (``name`` / ``type`` / ``nullable`` / ``comment``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

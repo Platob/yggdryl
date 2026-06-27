@@ -4,7 +4,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::Mapping;
+use std::collections::BTreeMap;
 
 use super::{Date, DateTime, Duration, Temporal, TimeError};
 
@@ -189,8 +189,8 @@ impl Time {
         Time::from_hms_nano(hour, minute, second, nano)
     }
 
-    /// Builds a time from a [`Mapping`] (`hour` / `minute` / `second` / `nanosecond`).
-    pub fn from_mapping(fields: &Mapping) -> Result<Time, TimeError> {
+    /// Builds a time from a `BTreeMap` (`hour` / `minute` / `second` / `nanosecond`).
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Time, TimeError> {
         let component = |key: &str, default: u32| -> Result<u32, TimeError> {
             match fields.get(key) {
                 Some(v) => v
@@ -228,9 +228,9 @@ impl Time {
         }
     }
 
-    /// Renders to a component [`Mapping`] (`hour` / `minute` / `second` / `nanosecond`).
-    pub fn to_mapping(&self) -> Mapping {
-        Mapping::from([
+    /// Renders to a component `BTreeMap` (`hour` / `minute` / `second` / `nanosecond`).
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
             ("hour".to_string(), self.hour().to_string()),
             ("minute".to_string(), self.minute().to_string()),
             ("second".to_string(), self.second().to_string()),

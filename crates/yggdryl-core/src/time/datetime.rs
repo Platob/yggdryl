@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::Mapping;
+use std::collections::BTreeMap;
 
 use super::{Date, Duration, Temporal, Time, TimeError, Timezone};
 
@@ -299,9 +299,9 @@ impl DateTime {
         Ok(DateTime::from_local(date, time, timezone))
     }
 
-    /// Builds an instant from a [`Mapping`] (`year`/`month`/`day`/`hour`/`minute`/
+    /// Builds an instant from a `BTreeMap` (`year`/`month`/`day`/`hour`/`minute`/
     /// `second`/`nanosecond`/`timezone`).
-    pub fn from_mapping(fields: &Mapping) -> Result<DateTime, TimeError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<DateTime, TimeError> {
         let date = Date::from_mapping(fields)?;
         let time = Time::from_mapping(fields)?;
         let timezone = match fields.get("timezone") {
@@ -327,9 +327,9 @@ impl DateTime {
         }
     }
 
-    /// Renders to a component [`Mapping`] (the [`Date`] / [`Time`] components plus
+    /// Renders to a component `BTreeMap` (the [`Date`] / [`Time`] components plus
     /// `timezone` when zoned).
-    pub fn to_mapping(&self) -> Mapping {
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
         let mut map = self.date().to_mapping();
         map.extend(self.time().to_mapping());
         if let Some(tz) = &self.timezone {

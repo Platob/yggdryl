@@ -4,7 +4,7 @@ use std::fmt;
 
 #[allow(unused_imports)]
 use crate::log_event;
-use crate::Mapping;
+use std::collections::BTreeMap;
 
 use super::{TimeError, TimeUnit};
 
@@ -222,8 +222,8 @@ impl Duration {
         Ok(Duration::from_nanos(sign * total))
     }
 
-    /// Builds a span from a [`Mapping`] (`nanoseconds`).
-    pub fn from_mapping(fields: &Mapping) -> Result<Duration, TimeError> {
+    /// Builds a span from a `BTreeMap` (`nanoseconds`).
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Duration, TimeError> {
         let nanos = fields
             .get("nanoseconds")
             .ok_or_else(|| TimeError::Invalid("missing 'nanoseconds'".into()))?
@@ -266,9 +266,9 @@ impl Duration {
         out
     }
 
-    /// Renders to a component [`Mapping`] (`nanoseconds`).
-    pub fn to_mapping(&self) -> Mapping {
-        Mapping::from([("nanoseconds".to_string(), self.nanos.to_string())])
+    /// Renders to a component `BTreeMap` (`nanoseconds`).
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([("nanoseconds".to_string(), self.nanos.to_string())])
     }
 
     /// The canonical string as UTF-8 bytes.

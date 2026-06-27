@@ -2,7 +2,8 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Category, Mapping, MimeType as CoreMimeType, Signature};
+use std::collections::BTreeMap;
+use yggdryl_core::{Category, MimeType as CoreMimeType, Signature};
 
 use crate::{hash_str, media_err};
 
@@ -35,7 +36,7 @@ impl MimeType {
 
     /// Build a :class:`MimeType` from a dict of components (``type``, ``subtype``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreMimeType::from_mapping(&fields)
             .map(|inner| MimeType { inner })
             .map_err(media_err)
@@ -112,7 +113,7 @@ impl MimeType {
     }
 
     /// Render to a component ``dict`` (the inverse of ``from_mapping``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

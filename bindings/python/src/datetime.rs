@@ -2,7 +2,8 @@
 
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
-use yggdryl_core::{DateTime as CoreDateTime, Mapping, Timezone as CoreTimezone};
+use std::collections::BTreeMap;
+use yggdryl_core::{DateTime as CoreDateTime, Timezone as CoreTimezone};
 
 use crate::date::Date;
 use crate::duration::Duration;
@@ -94,7 +95,7 @@ impl DateTime {
 
     /// Build from a dict (date/time components plus optional ``timezone``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreDateTime::from_mapping(&fields)
             .map(|inner| DateTime { inner })
             .map_err(time_err)
@@ -247,7 +248,7 @@ impl DateTime {
     }
 
     /// Render to a component dict.
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

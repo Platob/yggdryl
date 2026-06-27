@@ -3,7 +3,8 @@
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use yggdryl_core::{Mapping, Temporal, Time as CoreTime};
+use std::collections::BTreeMap;
+use yggdryl_core::{Temporal, Time as CoreTime};
 
 use crate::datetime::DateTime;
 use crate::duration::Duration;
@@ -38,7 +39,7 @@ impl Time {
 
     /// Build from a dict (``hour`` / ``minute`` / ``second`` / ``nanosecond``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreTime::from_mapping(&fields)
             .map(|inner| Time { inner })
             .map_err(time_err)
@@ -130,7 +131,7 @@ impl Time {
     }
 
     /// Render to a dict (``hour`` / ``minute`` / ``second`` / ``nanosecond``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 

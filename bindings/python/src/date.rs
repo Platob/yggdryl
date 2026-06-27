@@ -2,7 +2,8 @@
 
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
-use yggdryl_core::{Date as CoreDate, Mapping, Temporal, Timezone as CoreTimezone};
+use std::collections::BTreeMap;
+use yggdryl_core::{Date as CoreDate, Temporal, Timezone as CoreTimezone};
 
 use crate::datetime::DateTime;
 use crate::duration::Duration;
@@ -55,7 +56,7 @@ impl Date {
 
     /// Build from a dict (``year`` / ``month`` / ``day``).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreDate::from_mapping(&fields)
             .map(|inner| Date { inner })
             .map_err(time_err)
@@ -178,7 +179,7 @@ impl Date {
     }
 
     /// Render to a dict (``year`` / ``month`` / ``day``).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 
@@ -203,7 +204,10 @@ impl Date {
     }
 
     /// Reconstruct losslessly (incl. timezone) through the component mapping.
-    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<(PyObject, (Mapping,))> {
+    fn __reduce__<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<(PyObject, (BTreeMap<String, String>,))> {
         let from_mapping = py.get_type_bound::<Self>().getattr("from_mapping")?;
         Ok((from_mapping.into(), (self.inner.to_mapping(),)))
     }

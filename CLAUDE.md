@@ -30,8 +30,9 @@ module directory) under
 `yggdryl_core::Io` / `::Url` / `::Compression` / … all resolve). Each module owns
 its concern wholly — do not scatter a concern's logic across modules:
 
-- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Mapping` /
-  `Params` component maps and percent-encoding. Each value type pairs its own
+- `encoding.rs` / `mapping.rs` — dependency-free foundations: the `Params`
+  query-parameter map and percent-encoding (component maps are a plain
+  `BTreeMap<String, String>`, not a type alias). Each value type pairs its own
   inherent `from_str` / `from_mapping` parsers with inherent `to_str` /
   `to_mapping` renderers (no shared rendering trait — keep them per-type).
 - `version.rs` — the standalone `Version` type.

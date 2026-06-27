@@ -1,6 +1,7 @@
 //! The [`Url`] value type — a [`Uri`] that always has an authority, decomposed
 //! into `username` / `password` / `host` / `port` (and its [`UrlError`]).
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -11,7 +12,7 @@ use crate::url::{
     render_component, split_stem_ext, JoinInput, KEEP_AUTHORITY, KEEP_FRAGMENT, KEEP_PATH,
     KEEP_QUERY,
 };
-use crate::{validate_percent_encoding, Mapping, MediaType, MimeType, Params, Uri, UriError};
+use crate::{validate_percent_encoding, MediaType, MimeType, Params, Uri, UriError};
 
 /// Error returned when [`Url`] parsing cannot interpret its input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,9 +100,9 @@ impl Url {
         Url::from_uri(&Uri::from_str(input)?)
     }
 
-    /// Builds a [`Url`] from a [`Mapping`]. Recognised keys: `scheme` and `host`
+    /// Builds a [`Url`] from a `BTreeMap`. Recognised keys: `scheme` and `host`
     /// (required), `username`, `password`, `port`, `path`, `query`, `fragment`.
-    pub fn from_mapping(fields: &Mapping) -> Result<Url, UrlError> {
+    pub fn from_mapping(fields: &BTreeMap<String, String>) -> Result<Url, UrlError> {
         // A missing scheme defaults to `file`.
         let scheme = match fields.get("scheme") {
             Some(s) => s.as_str(),
@@ -753,8 +754,8 @@ impl Url {
 impl Url {
     /// The inverse of `from_mapping`: keys `scheme`, `host` and any of
     /// `username`, `password`, `port`, `path`, `query`, `fragment` that are set.
-    pub fn to_mapping(&self) -> Mapping {
-        let mut map = Mapping::from([
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::from([
             ("scheme".to_string(), self.scheme.clone()),
             ("host".to_string(), self.host.clone()),
         ]);

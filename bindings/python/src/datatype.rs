@@ -1,7 +1,8 @@
 //! The `DataType` pyclass — the simplified, Arrow-compatible logical type.
 
 use pyo3::prelude::*;
-use yggdryl_core::{Mapping, Timezone as CoreTimezone};
+use std::collections::BTreeMap;
+use yggdryl_core::Timezone as CoreTimezone;
 use yggdryl_schema::{
     Charset, DataType as CoreDataType, IntervalUnit, MergeStrategy, Numeric, UnionMode,
 };
@@ -431,13 +432,13 @@ impl DataType {
     // ---- serialisation ----
 
     /// Render to a dict (the single ``type`` key).
-    fn to_mapping(&self) -> Mapping {
+    fn to_mapping(&self) -> BTreeMap<String, String> {
         self.inner.to_mapping()
     }
 
     /// Build from a dict (the ``type`` key).
     #[staticmethod]
-    fn from_mapping(fields: Mapping) -> PyResult<Self> {
+    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
         CoreDataType::from_mapping(&fields)
             .map(wrap)
             .map_err(schema_err)
