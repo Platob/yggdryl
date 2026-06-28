@@ -1,7 +1,6 @@
 //! A process-wide **intern pool** for [`DataType`], so attaching a common type
 //! (`int32`, `utf8`, a frequently-used struct, …) to many values reuses one shared
-//! `Arc<DataType>` rather than re-allocating it. Used by the [scalar](https://docs.rs/yggdryl-scalar)
-//! layer, where every value carries an `Arc<DataType>`.
+//! `Arc<DataType>` rather than re-allocating it.
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
