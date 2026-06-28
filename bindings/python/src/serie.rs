@@ -146,28 +146,38 @@ fn scalar_to_py(py: Python<'_>, scalar: &Scalar) -> PyObject {
 #[pymethods]
 impl Serie {
     /// Build a column named `name` from a list of values. The Arrow type is inferred
-    /// (`bool` / `int` → int64 / `float` → float64 / `str` → utf8 / `bytes` → binary);
-    /// pass `dtype` (a :class:`DataType` or type string) to cast to a specific type.
-    /// An empty / all-null list needs an explicit `dtype`.
+    /// from the first non-null value: a scalar gives `bool` / `int` → int64 / `float` →
+    /// float64 / `str` → utf8 / `bytes` → binary, a **list** gives a list column and a
+    /// **dict** gives a map column (recursively — a list of dicts is `list<map>`, etc.).
+    /// Pass `dtype` (a :class:`DataType` or type string) to cast the leaf type. An
+    /// empty / all-null list needs an explicit `dtype`.
     #[new]
     #[pyo3(signature = (name, values, dtype = None))]
     fn new(
+        py: Python<'_>,
         name: &str,
         values: &Bound<'_, PyList>,
         dtype: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        // Infer the element kind from the first non-null value, if any.
-        let mut kind: Option<Kind> = None;
-        for item in values.iter() {
-            if !item.is_none() {
-                kind = Some(classify(&item)?);
-                break;
+        // The first non-null value drives inference.
+        let first = values.iter().find(|item| !item.is_none());
+
+        // A nested value infers a list / map column (the element builder is this same
+        // constructor, so arbitrarily deep nesting resolves on its own).
+        if let Some(ref item) = first {
+            if item.is_instance_of::<PyList>() {
+                return Serie::list_(py, name, values, dtype);
+            }
+            if item.is_instance_of::<PyDict>() {
+                return Serie::map_(py, name, values, None, dtype);
             }
         }
+
+        // Otherwise a flat scalar column (an empty / all-null list re-types via `dtype`).
+        let kind = first.as_ref().map(classify).transpose()?;
         let inferred = kind.is_some();
         let base = match kind {
             Some(kind) => build_array(values, kind)?,
-            // Empty / all-null: a null int64 base that the `dtype` cast re-types.
             None => Arc::new(Int64Array::from(vec![None::<i64>; values.len()])) as ArrayRef,
         };
         let serie = from_array(name, base).map_err(serie_err)?;
@@ -187,11 +197,12 @@ impl Serie {
     #[staticmethod]
     #[pyo3(signature = (name, values, dtype = None))]
     fn from_values(
+        py: Python<'_>,
         name: &str,
         values: &Bound<'_, PyList>,
         dtype: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        Serie::new(name, values, dtype)
+        Serie::new(py, name, values, dtype)
     }
 
     /// Reconstruct a column from its Arrow-IPC :meth:`to_bytes` form.
@@ -252,7 +263,7 @@ impl Serie {
                 flat.extend(sub.iter());
             }
         }
-        let items = Serie::new("item", &PyList::new_bound(py, flat), dtype)?;
+        let items = Serie::new(py, "item", &PyList::new_bound(py, flat), dtype)?;
         ListSerie::<i32>::from_values(name, items.inner, &lengths)
             .map(|s| wrap(Arc::new(s)))
             .map_err(serie_err)
@@ -287,8 +298,8 @@ impl Serie {
                 }
             }
         }
-        let key_col = Serie::new("key", &PyList::new_bound(py, keys), key_dtype)?;
-        let value_col = Serie::new("value", &PyList::new_bound(py, vals), value_dtype)?;
+        let key_col = Serie::new(py, "key", &PyList::new_bound(py, keys), key_dtype)?;
+        let value_col = Serie::new(py, "value", &PyList::new_bound(py, vals), value_dtype)?;
         MapSerie::from_values(name, key_col.inner, value_col.inner, &lengths)
             .map(|s| wrap(Arc::new(s)))
             .map_err(serie_err)

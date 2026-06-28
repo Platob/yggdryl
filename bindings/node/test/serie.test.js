@@ -112,6 +112,28 @@ test('map factory', () => {
   assert.strictEqual(Serie.fromBytes(m.toBytes()).valueAt(1), '{c=3}')
 })
 
+test('constructor infers nested', () => {
+  // an array value infers a list column
+  const a = new Serie('a', [[1, 2], [], null, [3]])
+  assert.strictEqual(a.category, 'nested')
+  assert.strictEqual(a.dataType.toString(), 'list[item: int64]')
+  assert.strictEqual(a.valueAt(0), '[1, 2]')
+  assert.strictEqual(a.valueAt(3), '[3]')
+
+  // an object value infers a map column
+  const m = new Serie('m', [{ x: 1, y: 2 }, { z: 3 }])
+  assert.strictEqual(m.category, 'nested')
+  assert.strictEqual(m.valueAt(0), '{x=1, y=2}')
+
+  // nesting composes: array of objects is list<map>, array of arrays is list<list>
+  assert.strictEqual(new Serie('ld', [[{ a: 1 }]]).dataType.toString(), 'list[item: map[utf8, int64]]')
+  assert.strictEqual(new Serie('ll', [[[1], [2]]]).dataType.toString(), 'list[item: list[item: int64]]')
+
+  // the leaf dtype is still castable
+  const floats = new Serie('f', [[1], [2, 3]], 'float64')
+  assert.strictEqual(floats.child(0).dataType.toString(), 'float64')
+})
+
 test('nested struct and select', () => {
   const a = new Serie('a', [1, 2])
   const b = new Serie('b', ['x', 'y'])

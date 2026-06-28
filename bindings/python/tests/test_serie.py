@@ -132,6 +132,27 @@ def test_map_factory():
     assert yggdryl.Serie.from_bytes(m.to_bytes()).value_at(1) == "{c=3}"
 
 
+def test_constructor_infers_nested():
+    # a list value infers a list column
+    a = yggdryl.Serie("a", [[1, 2], [], None, [3]])
+    assert a.category == "nested"
+    assert str(a.data_type) == "list[item: int64]"
+    assert a.value_at(0) == "[1, 2]" and a.value_at(3) == "[3]"
+
+    # a dict value infers a map column
+    m = yggdryl.Serie("m", [{"x": 1, "y": 2}, {"z": 3}])
+    assert m.category == "nested"
+    assert m.value_at(0) == "{x=1, y=2}"
+
+    # nesting composes: a list of dicts is list<map>, list of lists is list<list>
+    assert str(yggdryl.Serie("ld", [[{"a": 1}]]).data_type) == "list[item: map[utf8, int64]]"
+    assert str(yggdryl.Serie("ll", [[[1], [2]]]).data_type) == "list[item: list[item: int64]]"
+
+    # the leaf dtype is still castable
+    floats = yggdryl.Serie("f", [[1], [2, 3]], dtype="float64")
+    assert str(floats.child(0).data_type) == "float64"
+
+
 def test_nested_struct_and_select():
     a = yggdryl.Serie("a", [1, 2])
     b = yggdryl.Serie("b", ["x", "y"])

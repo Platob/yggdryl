@@ -207,15 +207,26 @@ fn from_hex(text: &str) -> Result<Vec<u8>> {
 #[napi]
 impl Serie {
     /// Build a column named `name` from an array of values. The Arrow type is inferred
-    /// (`boolean` → bool, `number` → int64 if all integral else float64, `string` →
-    /// utf8); pass `dtype` (a `DataType` or type string) to cast to a specific type. An
-    /// empty / all-null array needs an explicit `dtype`. Use `Serie.binary` for bytes.
+    /// from the first non-null value: a scalar gives `boolean` → bool / `number` → int64
+    /// if all integral else float64 / `string` → utf8, a nested **array** gives a list
+    /// column and an **object** gives a map column (recursively — an array of objects is
+    /// `list<map>`, etc.). Pass `dtype` (a `DataType` or type string) to cast the leaf
+    /// type. An empty / all-null array needs an explicit `dtype`. Use `Serie.binary` for
+    /// bytes.
     #[napi(constructor)]
     pub fn new(
         name: String,
         values: Vec<JsonValue>,
         dtype: Option<Either<&DataType, String>>,
     ) -> Result<Self> {
+        // A nested first value infers a list / map column (the element builder is this
+        // same constructor, so arbitrarily deep nesting resolves on its own).
+        match values.iter().find(|v| !v.is_null()) {
+            Some(JsonValue::Array(_)) => return Serie::list_js(name, values, dtype),
+            Some(JsonValue::Object(_)) => return Serie::map_js(name, values, None, dtype),
+            _ => {}
+        }
+
         let base = build_array(&values)?;
         let inferred = base.is_some();
         let array = base.unwrap_or_else(|| {

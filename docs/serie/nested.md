@@ -18,6 +18,13 @@ just like the [`Serie` constructor](serie.md#type-inference), or pass an explici
 `ListSerie::<O>::from_values` (a flattened element column + per-row lengths) and
 `MapSerie::from_values` (flattened keys/values + per-row lengths).
 
+!!! tip "The plain constructor infers these too"
+    In the bindings you rarely need the explicit factories: `Serie(name, values)` /
+    `new Serie(name, values)` **auto-detects** a list value (→ list column) or a dict /
+    object value (→ map column), recursively. The `Serie.list` / `Serie.map` factories are
+    the explicit form (and let you spell out an element `dtype`). See
+    [type inference](serie.md#type-inference).
+
 === "Python"
 
     ```python

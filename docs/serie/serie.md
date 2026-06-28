@@ -140,7 +140,8 @@ for the rest. In Rust each concrete series has a `from_values(name, values)` one
 
 ### Type inference
 
-The element type is inferred from the values, adapting to each language's number model:
+The element type is inferred from the first non-null value, adapting to each language's
+number model:
 
 | value | Python | Node (JS has one number type) |
 | --- | --- | --- |
@@ -149,11 +150,52 @@ The element type is inferred from the values, adapting to each language's number
 | `True` / `False` | `bool` | `bool` |
 | string | `utf8` | `utf8` |
 | bytes | `binary` | use the `Serie.binary` factory |
+| list / array | `list<…>` (the [nested](nested.md) factory) | `list<…>` |
+| dict / object | `map<…>` (the [nested](nested.md) factory) | `map<…>` |
 
-Nulls are skipped during inference; an **empty or all-null** list cannot be inferred, so
-pass an explicit `dtype` (a `DataType` or a type string like `"int8"`). Passing `dtype`
-always **casts** to that type. Rust does not infer — pick the concrete `*Serie` (or
-`from_array` for an existing Arrow array).
+A **nested** value (a Python list/dict, a JS array/object) makes the constructor build a
+list / map column, **recursively** — the element builder is the same constructor, so a
+list of dicts is `list<map>`, a list of lists is `list<list>`, and so on. Nulls are skipped
+during inference; an **empty or all-null** list cannot be inferred, so pass an explicit
+`dtype` (a `DataType` or a type string like `"int8"`). Passing `dtype` always **casts** the
+leaf type. Rust does not infer — pick the concrete `*Serie` (or `from_array` for an
+existing Arrow array).
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    lists = yggdryl.Serie("a", [[1, 2], [], None, [3]])  # list<int64> (a list value)
+    maps = yggdryl.Serie("m", [{"x": 1}, {"y": 2}])       # map<utf8, int64> (a dict value)
+    nested = yggdryl.Serie("ld", [[{"a": 1}], [{"b": 2}]]) # list<map<utf8, int64>>
+    assert str(lists.data_type) == "list[item: int64]"
+    assert maps.value_at(0) == "{x=1}"
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const lists = new Serie('a', [[1, 2], [], null, [3]])  // list<int64> (an array value)
+    const maps = new Serie('m', [{ x: 1 }, { y: 2 }])      // map<utf8, int64> (an object value)
+    const nested = new Serie('ld', [[{ a: 1 }], [{ b: 2 }]]) // list<map<utf8, int64>>
+    if (lists.dataType.toString() !== 'list[item: int64]') throw new Error('list')
+    if (maps.valueAt(0) !== '{x=1}') throw new Error('map')
+    ```
+
+=== "Rust"
+
+    ```rust
+    // Rust has no value inference — pick the concrete series (see Nested for the builders).
+    use yggdryl_serie::{Int32Serie, ListSerie, Serie, SerieRef, Scalar};
+    use std::sync::Arc;
+
+    let flat: SerieRef = Arc::new(Int32Serie::from_values("item", vec![Some(1), Some(2), Some(3)]));
+    let lists = ListSerie::<i32>::from_values("a", flat, &[Some(2), Some(0), None, Some(1)])?;
+    assert_eq!(lists.value_at(0), Scalar::Other("[1, 2]".into()));
+    ```
 
 === "Python"
 
