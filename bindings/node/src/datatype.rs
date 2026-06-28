@@ -444,6 +444,32 @@ impl DataType {
             .map(|(p, s)| vec![p as i32, s as i32])
     }
 
+    /// The total significant digits of a decimal type, else null.
+    #[napi(getter)]
+    pub fn precision(&self) -> Option<u8> {
+        self.inner.precision()
+    }
+
+    /// The digits after the decimal point of a decimal type, else null.
+    #[napi(getter)]
+    pub fn scale(&self) -> Option<i32> {
+        self.inner.scale().map(|s| s as i32)
+    }
+
+    /// A copy with a decimal's `precision` replaced (same width / scale); a
+    /// non-decimal type is returned unchanged.
+    #[napi(js_name = "withPrecision")]
+    pub fn with_precision(&self, precision: u8) -> DataType {
+        wrap(self.inner.with_precision(precision))
+    }
+
+    /// A copy with a decimal's `scale` replaced (same width / precision); a
+    /// non-decimal type is returned unchanged.
+    #[napi(js_name = "withScale")]
+    pub fn with_scale(&self, scale: i32) -> Result<DataType> {
+        Ok(wrap(self.inner.with_scale(decimal_scale(Some(scale))?)))
+    }
+
     /// The child `Field` list of a nested type.
     #[napi]
     pub fn children(&self) -> Vec<Field> {

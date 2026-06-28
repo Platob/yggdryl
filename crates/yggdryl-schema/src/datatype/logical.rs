@@ -207,4 +207,52 @@ impl DataType {
     pub fn decimal_parts(&self) -> Option<(u8, i8)> {
         self.fixed().and_then(|t| t.decimal)
     }
+
+    /// The total number of significant digits of a decimal type, or `None` for a
+    /// non-decimal.
+    pub fn precision(&self) -> Option<u8> {
+        self.decimal_parts().map(|(precision, _)| precision)
+    }
+
+    /// The number of digits after the decimal point of a decimal type (may be
+    /// negative), or `None` for a non-decimal.
+    pub fn scale(&self) -> Option<i8> {
+        self.decimal_parts().map(|(_, scale)| scale)
+    }
+
+    /// A copy of this type with a decimal's `precision` replaced (same storage width
+    /// and scale). A non-decimal type is returned unchanged.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert_eq!(DataType::decimal(10, 2).with_precision(20), DataType::decimal(20, 2));
+    /// assert_eq!(DataType::varchar().with_precision(20), DataType::varchar());
+    /// ```
+    pub fn with_precision(&self, precision: u8) -> DataType {
+        match self.fixed() {
+            Some(info) => match info.decimal {
+                Some((_, scale)) => DataType::decimal_with(precision, scale, info.bits),
+                None => self.clone(),
+            },
+            None => self.clone(),
+        }
+    }
+
+    /// A copy of this type with a decimal's `scale` replaced (same storage width and
+    /// precision). A non-decimal type is returned unchanged.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert_eq!(DataType::decimal(10, 2).with_scale(4), DataType::decimal(10, 4));
+    /// assert_eq!(DataType::int(32, true).with_scale(4), DataType::int(32, true));
+    /// ```
+    pub fn with_scale(&self, scale: i8) -> DataType {
+        match self.fixed() {
+            Some(info) => match info.decimal {
+                Some((precision, _)) => DataType::decimal_with(precision, scale, info.bits),
+                None => self.clone(),
+            },
+            None => self.clone(),
+        }
+    }
 }

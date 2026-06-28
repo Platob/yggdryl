@@ -564,6 +564,18 @@ fn fixed_decimal_widths_and_native_types() {
     assert_eq!(DataType::from(Decimal128::new(10, 2)), D::decimal128(10, 2));
     // The created 256-bit native type round-trips a value beyond i128.
     assert_eq!(i256::from_i128(-5).to_string(), "-5");
+    // precision / scale accessors + with_* builders (the width is preserved).
+    let d = D::decimal64(10, 2);
+    assert_eq!(d.precision(), Some(10));
+    assert_eq!(d.scale(), Some(2));
+    assert_eq!(d.with_precision(20), D::decimal64(20, 2));
+    assert_eq!(d.with_scale(4), D::decimal64(10, 4));
+    assert_eq!(d.decimal_parts(), Some((10, 2)));
+    // Non-decimals: None accessors, with_* is an identity no-op.
+    assert_eq!(D::int(32, true).precision(), None);
+    assert_eq!(D::varchar().scale(), None);
+    assert_eq!(D::int(32, true).with_precision(5), D::int(32, true));
+    assert_eq!(D::varchar().with_scale(3), D::varchar());
 }
 
 #[test]

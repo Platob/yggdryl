@@ -414,6 +414,30 @@ impl DataType {
         self.inner.decimal_parts()
     }
 
+    /// The total significant digits of a decimal type, else ``None``.
+    #[getter]
+    fn precision(&self) -> Option<u8> {
+        self.inner.precision()
+    }
+
+    /// The digits after the decimal point of a decimal type, else ``None``.
+    #[getter]
+    fn scale(&self) -> Option<i8> {
+        self.inner.scale()
+    }
+
+    /// A copy with a decimal's `precision` replaced (same width / scale); a
+    /// non-decimal type is returned unchanged.
+    fn with_precision(&self, precision: u8) -> DataType {
+        wrap(self.inner.with_precision(precision))
+    }
+
+    /// A copy with a decimal's `scale` replaced (same width / precision); a
+    /// non-decimal type is returned unchanged.
+    fn with_scale(&self, scale: i8) -> DataType {
+        wrap(self.inner.with_scale(scale))
+    }
+
     /// The child :class:`Field` list of a nested type.
     fn children(&self) -> Vec<Field> {
         self.inner

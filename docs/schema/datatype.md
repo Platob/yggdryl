@@ -118,8 +118,10 @@ storage type** via `name` — a builtin (`i8` / `f32` / `i128` / …) or the typ
 where Rust has none (`f16` for `float16`, `i256` for `decimal256`). In Rust each is a
 struct generic over that storage type, defaulting to the natural one (`Int64<i64>`,
 `Float16<f16>`, `Decimal256<i256>`). The numeric types share the **`Numeric`**
-interface (a common `signed`). `Json` (string-backed) and `Bson` (binary-backed) are
-logical types. Strings and binaries can be fixed- or variable-length (`is_fixed_size`).
+interface (a common `signed`). Decimals expose `precision` / `scale` accessors and
+`with_precision` / `with_scale` builders (the storage width is preserved; non-decimals
+return unchanged). `Json` (string-backed) and `Bson` (binary-backed) are logical types.
+Strings and binaries can be fixed- or variable-length (`is_fixed_size`).
 
 === "Python"
 
@@ -135,6 +137,8 @@ logical types. Strings and binaries can be fixed- or variable-length (`is_fixed_
     assert D.decimal256(76, 0).name == "i256"                  # created 256-bit int
     assert D.int(32, signed=False).signed is False             # Numeric interface
     assert D.float(64).signed is True
+    assert (D.decimal(10, 2).precision, D.decimal(10, 2).scale) == (10, 2)
+    assert D.decimal(10, 2).with_precision(20) == D.decimal(20, 2)
     assert D("json").is_json() and D("bson").is_bson()
     assert D("char[10]").is_fixed_size and not D.varchar().is_fixed_size
     ```
@@ -152,6 +156,8 @@ logical types. Strings and binaries can be fixed- or variable-length (`is_fixed_
     D.decimal256(76, 0).name;                                  // "i256" (created 256-bit int)
     D.int(32, false).signed;                                   // false (Numeric)
     D.float(64).signed;                                        // true
+    D.decimal(10, 2).precision;                                // 10 ; .scale === 2
+    D.decimal(10, 2).withScale(4).equals(D.decimal(10, 4));    // true
     D.fromStr("char[10]").isFixedSize;                         // true
     D.varchar().isFixedSize;                                   // false
     ```
@@ -171,6 +177,9 @@ logical types. Strings and binaries can be fixed- or variable-length (`is_fixed_
     assert_eq!(DataType::from(Decimal128::new(10, 2)), DataType::decimal(10, 2));
     assert_eq!(DataType::int(32, false).signed(), Some(false));  // Numeric interface
     assert_eq!(DataType::int32().to_string(), "int32");          // canonical via Display
+    // decimal precision / scale accessors + with_* builders (width preserved).
+    assert_eq!(DataType::decimal(10, 2).precision(), Some(10));
+    assert_eq!(DataType::decimal(10, 2).with_scale(4), DataType::decimal(10, 4));
     // the two native types Rust has no builtin for, created in `fixed`:
     assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
     assert_eq!(i256::from_i128(-5).to_str(), "-5");

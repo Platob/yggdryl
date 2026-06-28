@@ -37,6 +37,14 @@ def test_datatype_accessors_and_categories():
     assert yggdryl.DataType.timestamp("ns", "Asia/Tokyo").time_unit == "ns"
     assert yggdryl.DataType.timestamp("ns", "Asia/Tokyo").timezone.name == "Asia/Tokyo"
     assert yggdryl.DataType.decimal(10, 2).decimal_parts == (10, 2)
+    # precision / scale accessors + with_* builders (the width is preserved).
+    d = yggdryl.DataType.decimal(10, 2)
+    assert (d.precision, d.scale) == (10, 2)
+    assert d.with_precision(20) == yggdryl.DataType.decimal(20, 2)
+    assert d.with_scale(4) == yggdryl.DataType.decimal(10, 4)
+    assert yggdryl.DataType.int(32).precision is None
+    assert yggdryl.DataType.varchar().scale is None
+    assert yggdryl.DataType.varchar().with_precision(5) == yggdryl.DataType.varchar()
 
 
 def test_datatype_predicates_and_children():

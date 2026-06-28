@@ -28,6 +28,14 @@ test('datatype accessors and categories', () => {
   assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timezone.name, 'Asia/Tokyo')
   assert.deepStrictEqual(DataType.decimal(10, 2).decimalParts, [10, 2])
   assert.strictEqual(DataType.int(32).decimalParts, null)
+  // precision / scale accessors + with_* builders (the width is preserved).
+  const dec = DataType.decimal(10, 2)
+  assert.strictEqual(dec.precision, 10)
+  assert.strictEqual(dec.scale, 2)
+  assert.ok(dec.withPrecision(20).equals(DataType.decimal(20, 2)))
+  assert.ok(dec.withScale(4).equals(DataType.decimal(10, 4)))
+  assert.strictEqual(DataType.int(32).precision, null)
+  assert.ok(DataType.varchar().withScale(3).equals(DataType.varchar()))
 })
 
 test('datatype predicate parity', () => {
