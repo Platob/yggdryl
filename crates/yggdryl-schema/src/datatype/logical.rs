@@ -159,7 +159,7 @@ impl DataType {
 
     /// Whether this is a decimal type (any storage width).
     pub fn is_decimal(&self) -> bool {
-        self.fixed().map(|t| t.kind()) == Some(FixedKind::Decimal)
+        self.fixed().map(|t| t.kind) == Some(FixedKind::Decimal)
     }
 
     /// Whether this is a [`Dictionary`](DataType::Dictionary) encoding.
@@ -205,6 +205,6 @@ impl DataType {
 
     /// The `(precision, scale)` of a decimal type, or `None`.
     pub fn decimal_parts(&self) -> Option<(u8, i8)> {
-        self.fixed().and_then(|t| t.decimal_parts())
+        self.fixed().and_then(|t| t.decimal)
     }
 }

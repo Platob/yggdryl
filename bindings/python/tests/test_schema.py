@@ -243,11 +243,11 @@ def test_fixed_numeric_json_bson_physical():
     assert D("float16") == D.float16() == D.float(16)
     assert D("decimal256[76, 0]") == D.decimal256(76, 0)
     # Native Rust storage type names (reused builtins / created f16,i256).
-    assert D.int32().native_name == "i32"
-    assert D.float16().native_name == "f16"
-    assert D.decimal128(10, 2).native_name == "i128"
-    assert D.decimal256(76, 0).native_name == "i256"
-    assert D.varchar().native_name is None
+    assert D.int32().name == "i32"
+    assert D.float16().name == "f16"
+    assert D.decimal128(10, 2).name == "i128"
+    assert D.decimal256(76, 0).name == "i256"
+    assert D.varchar().name is None
     # Numeric interface: mutualised bits + signed.
     assert D.int(32, signed=False).numeric_bits == 32
     assert D.int(32, signed=False).signed is False

@@ -1,19 +1,22 @@
 //! Dedicated, fixed-width numeric type descriptors — **one native Rust struct per
-//! concrete numeric [`DataType`]**. Each descriptor ties its logical type to a native
-//! Rust storage type via [`FixedNative::Native`], **reusing the Rust built-in** where one
-//! exists (`i8` / `u32` / `f32` / `f64` / `i128` / …) and **providing the type Rust has
-//! no built-in for** here: the half-precision [`f16`](struct@f16) and the 256-bit [`i256`].
+//! concrete numeric [`DataType`]**, each **generic over its native Rust storage type**
+//! ([`Native`]) and defaulting to the natural one: [`Int64`] is `Int64<i64>`,
+//! [`Float16`] is `Float16<f16>`, [`Decimal128`] is `Decimal128<i128>`. The native type
+//! **reuses the Rust built-in** where one exists (`i8` … `u64`, `f32`, `f64`, `i128`)
+//! and the two Rust has **no built-in for** are created here: the half-precision
+//! [`f16`](struct@f16) and the 256-bit [`i256`].
 //!
-//! The descriptors are zero-cost markers (the integers / floats) or carry their
-//! parameters (the decimals); each converts into the matching [`DataType`] via
-//! [`FixedType::data_type`] / `From`, so the static, per-type structs and the dynamic
-//! enum stay in lock-step.
+//! Each struct owns its `bits` / `kind` / `head` / `native` and an [`info`](FixedInfo)
+//! snapshot — the per-type behaviour the [`DataType`] enum delegates to (so the enum
+//! has no per-accessor match over widths) — and converts into the matching
+//! [`DataType`] via `From`.
 //!
 //! ```
-//! use yggdryl_schema::{DataType, FixedType, Int32, Decimal128, f16, i256};
-//! assert_eq!(Int32.data_type(), DataType::int(32, true));
-//! assert_eq!(Int32.name(), "int32");
-//! assert_eq!(Int32.native_name(), "i32");
+//! use yggdryl_schema::{DataType, Int32, Decimal128, f16, i256};
+//! let int32 = Int32::<i32>::new();
+//! assert_eq!(int32.head(), "int32");               // canonical type name
+//! assert_eq!(int32.native(), "i32");               // native Rust storage
+//! assert_eq!(DataType::from(int32), DataType::int(32, true));
 //! assert_eq!(DataType::from(Decimal128::new(10, 2)), DataType::decimal(10, 2));
 //! // the two types Rust lacks a built-in for, created here:
 //! assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
@@ -428,10 +431,10 @@ impl<'de> serde::Deserialize<'de> for i256 {
 }
 
 // ===========================================================================
-// FixedType — one descriptor struct per concrete fixed-width numeric DataType
+// Native — the native Rust storage type of a fixed-width numeric DataType
 // ===========================================================================
 
-/// The numeric family a [`FixedType`] descriptor belongs to.
+/// The numeric family a fixed-width type belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FixedKind {
@@ -445,177 +448,213 @@ pub enum FixedKind {
     Decimal,
 }
 
-/// The **native Rust storage type** of a fixed-width numeric descriptor — the built-in
-/// Rust type where one exists (`i8` / `f32` / `i128` / …) or the type created in this
-/// module where Rust has none ([`f16`](struct@f16) / [`i256`]). Lets generic code name a fixed
-/// type's storage as `<Int32 as FixedNative>::Native`.
-pub trait FixedNative {
-    /// The native Rust type values are stored in.
-    type Native;
+/// The **native Rust storage type** of a fixed-width numeric [`DataType`] — the type a
+/// value is actually stored in. Implemented by the Rust built-ins (`i8` … `u64`, `f32`,
+/// `f64`, `i128`) and by the two types Rust has no built-in for, created in this module:
+/// [`f16`](struct@f16) and [`i256`]. Each fixed type is **generic over its `Native`**,
+/// defaulting to the natural one — so [`Int64`] is `Int64<i64>`, [`Float16`] is
+/// `Float16<f16>`, [`Decimal256`] is `Decimal256<i256>`.
+pub trait Native: Copy {
+    /// The canonical short name of the type (`"i64"`, `"f16"`, `"i256"`, …).
+    const NAME: &'static str;
 }
 
-/// The **runtime behaviour** of a fixed-width numeric type descriptor. The concrete
-/// structs below — one per width ([`Int8`] … [`UInt64`], [`Float16`] … [`Float64`],
-/// [`Decimal32`] … [`Decimal256`]) — implement it, and [`DataType`] delegates its
-/// numeric accessors here through a single dispatch. Each type's width / signedness /
-/// native storage / rendering lives **on that type**, not in a match at the enum root.
-///
-/// The trait is object-safe: [`DataType`] holds the descriptors and reads them back
-/// through `&dyn FixedType`.
-pub trait FixedType {
-    /// Which numeric family this is.
-    fn kind(&self) -> FixedKind;
+macro_rules! impl_native {
+    ($($ty:ty => $name:literal),+ $(,)?) => {
+        $(impl Native for $ty { const NAME: &'static str = $name; })+
+    };
+}
+impl_native!(
+    i8 => "i8", i16 => "i16", i32 => "i32", i64 => "i64",
+    u8 => "u8", u16 => "u16", u32 => "u32", u64 => "u64",
+    f32 => "f32", f64 => "f64", i128 => "i128",
+    f16 => "f16", i256 => "i256",
+);
 
+/// A read-back snapshot of a fixed-width numeric type's properties — the data the
+/// [`DataType`] accessors delegate to, so each width's family / size / storage / name
+/// lives on its own descriptor rather than in a per-accessor match at the enum root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FixedInfo {
+    /// The numeric family.
+    pub kind: FixedKind,
     /// The physical width in bits.
-    fn bits(&self) -> u16;
-
-    /// The canonical type name without parameters (`"int8"`, `"decimal128"`, …).
-    fn name(&self) -> &'static str;
-
-    /// The name of the native Rust storage type (`"i8"`, `"f16"`, `"i128"`, `"i256"`, …).
-    fn native_name(&self) -> &'static str;
-
-    /// The matching dynamic [`DataType`].
-    fn data_type(&self) -> DataType;
-
-    /// Whether the type is signed (integers carry the flag; floats and decimals are
-    /// always signed).
-    fn signed(&self) -> bool {
-        !matches!(self.kind(), FixedKind::UnsignedInt)
-    }
-
+    pub bits: u16,
+    /// The native Rust storage type name (`"i64"`, `"f16"`, …).
+    pub native: &'static str,
+    /// The canonical type head without parameters (`"int64"`, `"decimal128"`).
+    pub head: &'static str,
     /// The `(precision, scale)` of a decimal, else `None`.
-    fn decimal_parts(&self) -> Option<(u8, i8)> {
-        None
-    }
-
-    /// The full canonical string, including any parameters (`"int8"`,
-    /// `"decimal128[10, 2]"`).
-    fn render(&self) -> String {
-        self.name().to_string()
-    }
-
-    /// The physical (storage) [`DataType`] — identity for the integers and floats; a
-    /// fixed-size binary of the storage width for the decimals (whose `i128`/`i256`
-    /// storage has no logical integer type).
-    fn physical_type(&self) -> DataType {
-        self.data_type()
-    }
+    pub decimal: Option<(u8, i8)>,
 }
 
-/// Defines a zero-sized descriptor for a parameter-less fixed type (integer / float).
+// ===========================================================================
+// The fixed-width type descriptors — one per width, generic over its Native type
+// ===========================================================================
+
+/// Defines a parameter-less fixed type (integer / float) as a struct generic over its
+/// native Rust storage type, defaulting to the natural one (so `Int64` is `Int64<i64>`).
+/// Each carries its own `bits` / `kind` / `head` / `native` and an `info()` snapshot —
+/// the per-type behaviour the [`DataType`] enum delegates to.
 macro_rules! fixed_scalar {
-    ($name:ident, $native:ty, $native_name:literal, $bits:literal, $kind:ident, $text:literal, $variant:ident) => {
-        #[doc = concat!("The fixed-width `", $text, "` type descriptor (native Rust storage `", $native_name, "`).")]
-        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    ($name:ident, $native:ty, $bits:literal, $kind:ident, $head:literal) => {
+        #[doc = concat!("The fixed-width `", $head, "` type — by default backed by the native Rust `", stringify!($native), "` (overridable as `", stringify!($name), "<T>`).")]
+        #[derive(Clone, Copy, Default, Debug)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct $name;
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
+        pub struct $name<T = $native>(core::marker::PhantomData<T>);
 
-        impl FixedNative for $name {
-            type Native = $native;
-        }
-
-        impl FixedType for $name {
-            fn kind(&self) -> FixedKind {
-                FixedKind::$kind
+        impl<T> $name<T> {
+            #[doc = concat!("The `", $head, "` type descriptor.")]
+            pub const fn new() -> Self {
+                $name(core::marker::PhantomData)
             }
-            fn bits(&self) -> u16 {
+            /// The physical width in bits.
+            pub const fn bits(&self) -> u16 {
                 $bits
             }
-            fn name(&self) -> &'static str {
-                $text
+            /// The numeric family.
+            pub const fn kind(&self) -> FixedKind {
+                FixedKind::$kind
             }
-            fn native_name(&self) -> &'static str {
-                $native_name
+            /// The canonical type name (`"int64"`, `"float16"`, …).
+            pub const fn head(&self) -> &'static str {
+                $head
             }
-            fn data_type(&self) -> DataType {
-                DataType::$variant(*self)
+        }
+
+        impl<T: Native> $name<T> {
+            /// The native Rust storage type name (`"i64"`, `"f16"`, …).
+            pub fn native(&self) -> &'static str {
+                T::NAME
             }
+            /// The property snapshot the [`DataType`] accessors read back.
+            pub fn info(&self) -> FixedInfo {
+                FixedInfo {
+                    kind: FixedKind::$kind,
+                    bits: $bits,
+                    native: T::NAME,
+                    head: $head,
+                    decimal: None,
+                }
+            }
+        }
+
+        // Identity / hashing ignore the phantom storage type (`f32`/`f64` are neither
+        // `Eq` nor `Hash`, so these cannot be derived from `T`).
+        impl<T> PartialEq for $name<T> {
+            fn eq(&self, _: &Self) -> bool {
+                true
+            }
+        }
+        impl<T> Eq for $name<T> {}
+        impl<T> core::hash::Hash for $name<T> {
+            fn hash<H: core::hash::Hasher>(&self, _: &mut H) {}
         }
 
         impl From<$name> for DataType {
             fn from(value: $name) -> DataType {
-                DataType::$variant(value)
+                DataType::$name(value)
             }
         }
     };
 }
 
-fixed_scalar!(Int8, i8, "i8", 8, SignedInt, "int8", Int8);
-fixed_scalar!(Int16, i16, "i16", 16, SignedInt, "int16", Int16);
-fixed_scalar!(Int32, i32, "i32", 32, SignedInt, "int32", Int32);
-fixed_scalar!(Int64, i64, "i64", 64, SignedInt, "int64", Int64);
-fixed_scalar!(UInt8, u8, "u8", 8, UnsignedInt, "uint8", UInt8);
-fixed_scalar!(UInt16, u16, "u16", 16, UnsignedInt, "uint16", UInt16);
-fixed_scalar!(UInt32, u32, "u32", 32, UnsignedInt, "uint32", UInt32);
-fixed_scalar!(UInt64, u64, "u64", 64, UnsignedInt, "uint64", UInt64);
-fixed_scalar!(Float16, f16, "f16", 16, Float, "float16", Float16);
-fixed_scalar!(Float32, f32, "f32", 32, Float, "float32", Float32);
-fixed_scalar!(Float64, f64, "f64", 64, Float, "float64", Float64);
+fixed_scalar!(Int8, i8, 8, SignedInt, "int8");
+fixed_scalar!(Int16, i16, 16, SignedInt, "int16");
+fixed_scalar!(Int32, i32, 32, SignedInt, "int32");
+fixed_scalar!(Int64, i64, 64, SignedInt, "int64");
+fixed_scalar!(UInt8, u8, 8, UnsignedInt, "uint8");
+fixed_scalar!(UInt16, u16, 16, UnsignedInt, "uint16");
+fixed_scalar!(UInt32, u32, 32, UnsignedInt, "uint32");
+fixed_scalar!(UInt64, u64, 64, UnsignedInt, "uint64");
+fixed_scalar!(Float16, f16, 16, Float, "float16");
+fixed_scalar!(Float32, f32, 32, Float, "float32");
+fixed_scalar!(Float64, f64, 64, Float, "float64");
 
-/// Defines a `(precision, scale)` descriptor for a fixed-width decimal type.
+/// Defines a fixed-width decimal type (carrying `precision` / `scale`) generic over its
+/// native Rust storage, defaulting to the natural one (so `Decimal128` is `Decimal128<i128>`).
 macro_rules! fixed_decimal {
-    ($name:ident, $native:ty, $native_name:literal, $bits:literal, $bytes:literal, $text:literal, $variant:ident) => {
-        #[doc = concat!("The fixed-width `", $text, "` type descriptor (native Rust storage `", $native_name, "`), carrying its `precision` and `scale`.")]
-        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    ($name:ident, $native:ty, $bits:literal, $head:literal) => {
+        #[doc = concat!("The fixed-width `", $head, "` type — by default backed by the native Rust `", stringify!($native), "` (overridable as `", stringify!($name), "<T>`).")]
+        #[derive(Clone, Copy, Default, Debug)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct $name {
+        #[cfg_attr(feature = "serde", serde(bound = ""))]
+        pub struct $name<T = $native> {
             /// Total number of significant digits.
             pub precision: u8,
             /// Digits after the decimal point (may be negative).
             pub scale: i8,
+            #[cfg_attr(feature = "serde", serde(skip))]
+            _native: core::marker::PhantomData<T>,
         }
 
-        impl $name {
-            #[doc = concat!("A `", $text, "` with the given `precision` and `scale`.")]
-            pub fn new(precision: u8, scale: i8) -> $name {
-                $name { precision, scale }
+        impl<T> $name<T> {
+            #[doc = concat!("A `", $head, "` with the given `precision` and `scale`.")]
+            pub const fn new(precision: u8, scale: i8) -> Self {
+                $name {
+                    precision,
+                    scale,
+                    _native: core::marker::PhantomData,
+                }
             }
-        }
-
-        impl FixedNative for $name {
-            type Native = $native;
-        }
-
-        impl FixedType for $name {
-            fn kind(&self) -> FixedKind {
-                FixedKind::Decimal
-            }
-            fn bits(&self) -> u16 {
+            /// The physical width in bits.
+            pub const fn bits(&self) -> u16 {
                 $bits
             }
-            fn name(&self) -> &'static str {
-                $text
+            /// The numeric family ([`FixedKind::Decimal`]).
+            pub const fn kind(&self) -> FixedKind {
+                FixedKind::Decimal
             }
-            fn native_name(&self) -> &'static str {
-                $native_name
+            /// The canonical type name (`"decimal128"`, …).
+            pub const fn head(&self) -> &'static str {
+                $head
             }
-            fn data_type(&self) -> DataType {
-                DataType::$variant(*self)
+        }
+
+        impl<T: Native> $name<T> {
+            /// The native Rust storage type name (`"i128"`, `"i256"`, …).
+            pub fn native(&self) -> &'static str {
+                T::NAME
             }
-            fn decimal_parts(&self) -> Option<(u8, i8)> {
-                Some((self.precision, self.scale))
+            /// The property snapshot the [`DataType`] accessors read back.
+            pub fn info(&self) -> FixedInfo {
+                FixedInfo {
+                    kind: FixedKind::Decimal,
+                    bits: $bits,
+                    native: T::NAME,
+                    head: $head,
+                    decimal: Some((self.precision, self.scale)),
+                }
             }
-            fn render(&self) -> String {
-                format!("{}[{}, {}]", $text, self.precision, self.scale)
+        }
+
+        // Identity / hashing ignore the phantom storage type.
+        impl<T> PartialEq for $name<T> {
+            fn eq(&self, other: &Self) -> bool {
+                self.precision == other.precision && self.scale == other.scale
             }
-            fn physical_type(&self) -> DataType {
-                DataType::fixed_size_binary($bytes)
+        }
+        impl<T> Eq for $name<T> {}
+        impl<T> core::hash::Hash for $name<T> {
+            fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+                self.precision.hash(state);
+                self.scale.hash(state);
             }
         }
 
         impl From<$name> for DataType {
             fn from(value: $name) -> DataType {
-                DataType::$variant(value)
+                DataType::$name(value)
             }
         }
     };
 }
 
-fixed_decimal!(Decimal32, i32, "i32", 32, 4, "decimal32", Decimal32);
-fixed_decimal!(Decimal64, i64, "i64", 64, 8, "decimal64", Decimal64);
-fixed_decimal!(Decimal128, i128, "i128", 128, 16, "decimal128", Decimal128);
-fixed_decimal!(Decimal256, i256, "i256", 256, 32, "decimal256", Decimal256);
+fixed_decimal!(Decimal32, i32, 32, "decimal32");
+fixed_decimal!(Decimal64, i64, 64, "decimal64");
+fixed_decimal!(Decimal128, i128, 128, "decimal128");
+fixed_decimal!(Decimal256, i256, 256, "decimal256");
 
 #[cfg(test)]
 mod tests {
@@ -667,31 +706,31 @@ mod tests {
 
     #[test]
     fn descriptors_carry_their_own_behaviour() {
-        // Each concrete type owns its width / signedness / name / native storage —
-        // there is no per-variant match at the enum root.
-        assert_eq!(Int32.bits(), 32);
-        assert_eq!(Int32.name(), "int32");
-        assert_eq!(Int32.native_name(), "i32");
-        assert!(Int32.signed());
-        assert!(!UInt8.signed());
-        assert_eq!(UInt8.bits(), 8);
-        assert_eq!(Float16.native_name(), "f16");
-        assert_eq!(Int32.data_type(), DataType::int(32, true));
-        assert_eq!(Float16.data_type(), DataType::float(16));
-        // The decimal carries its parameters and renders / stores accordingly.
-        let dec = Decimal128::new(10, 2);
-        assert_eq!(dec.decimal_parts(), Some((10, 2)));
-        assert_eq!(dec.render(), "decimal128[10, 2]");
-        assert_eq!(dec.physical_type(), DataType::fixed_size_binary(16));
-        assert_eq!(dec.data_type(), DataType::decimal(10, 2));
-        assert_eq!(DataType::from(Int64), DataType::int(64, true));
+        // Each concrete type owns its width / family / native storage / name. (The
+        // descriptors default to their native type; standalone uses pin it explicitly.)
+        assert_eq!(Int32::<i32>::new().bits(), 32);
+        assert_eq!(Int32::<i32>::new().head(), "int32");
+        assert_eq!(Int32::<i32>::new().native(), "i32");
+        assert_eq!(Int32::<i32>::new().kind(), FixedKind::SignedInt);
+        assert_eq!(UInt8::<u8>::new().native(), "u8");
+        assert_eq!(UInt8::<u8>::new().kind(), FixedKind::UnsignedInt);
+        assert_eq!(Float16::<f16>::new().native(), "f16");
+        // The decimal carries its parameters.
+        let dec = Decimal128::<i128>::new(10, 2);
+        assert_eq!(dec.info().decimal, Some((10, 2)));
+        assert_eq!(dec.native(), "i128");
+        assert_eq!(dec.head(), "decimal128");
+        // Into the enum (default native instantiation).
+        assert_eq!(DataType::from(Int64::new()), DataType::int(64, true));
         assert_eq!(
             DataType::from(Decimal256::new(76, 0)),
             DataType::decimal_with(76, 0, 256)
         );
-        // The native Rust storage type binding (reused builtins / created types).
-        let _: <Int32 as FixedNative>::Native = 7i32;
-        let _: <Float16 as FixedNative>::Native = f16::ONE;
-        let _: <Decimal256 as FixedNative>::Native = i256::ZERO;
+        // Generic over the native storage type — the default is the natural one.
+        assert_eq!(Int64::<i64>::new().native(), "i64");
+        assert_eq!(Decimal256::<i256>::new(1, 0).native(), "i256");
+        // The created native types Rust lacks a built-in for.
+        assert_eq!(f16::ONE.to_f32(), 1.0);
+        assert_eq!(i256::ZERO.to_str(), "0");
     }
 }

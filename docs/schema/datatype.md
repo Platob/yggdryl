@@ -114,13 +114,14 @@ The fixed-width numerics are concrete types with **explicit constructors** — `
 — while `int(bits, signed)` / `float(bits)` / `decimal(precision, scale, bits)` are the
 width builders (`integer()` / `floating()` default to `int64` / `float64`; a
 non-standard width rounds up to the next fixed one). Each names its **native Rust
-storage type** via `native_name` — a builtin (`i8` / `f32` / `i128` / …) or the type
-created where Rust has none (`f16` for `float16`, `i256` for `decimal256`). The numeric
-types share the **`Numeric`** interface — `numeric_bits` and a common `signed`. `Json`
-(string-backed) and `Bson` (binary-backed) are logical types, and every logical type
-reports its storage layout via `physical_type()` (a decimal stores in a fixed-size
-binary of its byte width). Strings and binaries can be fixed- or variable-length
-(`is_fixed_size`).
+storage type** via `name` — a builtin (`i8` / `f32` / `i128` / …) or the type created
+where Rust has none (`f16` for `float16`, `i256` for `decimal256`). In Rust each is a
+struct generic over that storage type, defaulting to the natural one (`Int64<i64>`,
+`Float16<f16>`, `Decimal256<i256>`). The numeric types share the **`Numeric`**
+interface — `numeric_bits` and a common `signed`. `Json` (string-backed) and `Bson`
+(binary-backed) are logical types, and every logical type reports its storage layout via
+`physical_type()` (a decimal stores in a fixed-size binary of its byte width). Strings
+and binaries can be fixed- or variable-length (`is_fixed_size`).
 
 === "Python"
 
@@ -131,9 +132,9 @@ binary of its byte width). Strings and binaries can be fixed- or variable-length
     assert D("int8") == D.int8() == D.int(8)
     assert D.int() == D.int(64) and D.integer() == D.int(64)   # default width
     assert D.int(24) == D.int32()                              # rounds up to a fixed width
-    assert D.int32().native_name == "i32"                      # native Rust storage
-    assert D.float16().native_name == "f16"                    # created half float
-    assert D.decimal256(76, 0).native_name == "i256"           # created 256-bit int
+    assert D.int32().name == "i32"                             # native Rust storage type
+    assert D.float16().name == "f16"                           # created half float
+    assert D.decimal256(76, 0).name == "i256"                  # created 256-bit int
     assert D.int(32, signed=False).signed is False             # Numeric interface
     assert D.float(64).signed is True and D.float(64).numeric_bits == 64
     assert D("json").physical_type() == D.varchar()            # logical -> physical
@@ -151,9 +152,9 @@ binary of its byte width). Strings and binaries can be fixed- or variable-length
     D.fromStr("int8").equals(D.int8());                        // true
     D.int().equals(D.int(64));                                 // default width
     D.int(24).equals(D.int32());                               // rounds up to a fixed width
-    D.int32().nativeName;                                      // "i32" (native Rust storage)
-    D.float16().nativeName;                                    // "f16" (created half float)
-    D.decimal256(76, 0).nativeName;                            // "i256" (created 256-bit int)
+    D.int32().name;                                            // "i32" (native Rust storage)
+    D.float16().name;                                          // "f16" (created half float)
+    D.decimal256(76, 0).name;                                  // "i256" (created 256-bit int)
     D.int(32, false).signed;                                   // false (Numeric)
     D.float(64).signed;                                        // true; .numericBits === 64
     D.json().physicalType().equals(D.varchar());               // logical -> physical
@@ -165,14 +166,16 @@ binary of its byte width). Strings and binaries can be fixed- or variable-length
 === "Rust"
 
     ```rust
-    use yggdryl_schema::{DataType, FixedType, Int32, Float16, Decimal256, f16, i256};
+    use yggdryl_schema::{DataType, Int32, Decimal128, f16, i256};
 
     use yggdryl_schema::Numeric;
     assert_eq!(DataType::from_str("int8")?, DataType::int8());
     assert_eq!(DataType::integer(), DataType::int64());
     assert_eq!(DataType::int(24, true), DataType::int32());      // rounds up to a fixed width
-    assert_eq!(DataType::int32().native_name(), Some("i32"));    // native Rust storage
-    assert_eq!(Int32.data_type(), DataType::int32());           // the FixedType descriptor
+    assert_eq!(DataType::int32().name(), Some("i32"));          // native Rust storage type
+    // Each fixed type is a struct generic over its native storage (default = natural).
+    assert_eq!(DataType::from(Int32::<i32>::new()), DataType::int32());
+    assert_eq!(DataType::from(Decimal128::new(10, 2)), DataType::decimal(10, 2));
     assert_eq!(DataType::int(32, false).signed(), Some(false));  // Numeric interface
     assert_eq!(DataType::float(64).numeric_bits(), Some(64));
     assert_eq!(DataType::json().physical_type(), DataType::varchar());
@@ -180,7 +183,6 @@ binary of its byte width). Strings and binaries can be fixed- or variable-length
     // the two native types Rust has no builtin for, created in `fixed`:
     assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
     assert_eq!(i256::from_i128(-5).to_str(), "-5");
-    let _ = (Float16, Decimal256::new(76, 0));
     ```
 
 ## Type checks

@@ -24,14 +24,14 @@ impl DataType {
     /// rounds **up** to the next supported one (saturating at 64) with a `warn` log.
     pub fn int(bits: u16, signed: bool) -> DataType {
         match (bits, signed) {
-            (8, true) => Int8.into(),
-            (16, true) => Int16.into(),
-            (32, true) => Int32.into(),
-            (64, true) => Int64.into(),
-            (8, false) => UInt8.into(),
-            (16, false) => UInt16.into(),
-            (32, false) => UInt32.into(),
-            (64, false) => UInt64.into(),
+            (8, true) => Int8::new().into(),
+            (16, true) => Int16::new().into(),
+            (32, true) => Int32::new().into(),
+            (64, true) => Int64::new().into(),
+            (8, false) => UInt8::new().into(),
+            (16, false) => UInt16::new().into(),
+            (32, false) => UInt32::new().into(),
+            (64, false) => UInt64::new().into(),
             _ => {
                 let standard = match bits {
                     0..=8 => 8,
@@ -51,42 +51,42 @@ impl DataType {
 
     /// A signed 8-bit integer ([`int8`](DataType::Int8)).
     pub fn int8() -> DataType {
-        Int8.into()
+        Int8::new().into()
     }
 
     /// A signed 16-bit integer ([`int16`](DataType::Int16)).
     pub fn int16() -> DataType {
-        Int16.into()
+        Int16::new().into()
     }
 
     /// A signed 32-bit integer ([`int32`](DataType::Int32)).
     pub fn int32() -> DataType {
-        Int32.into()
+        Int32::new().into()
     }
 
     /// A signed 64-bit integer ([`int64`](DataType::Int64)).
     pub fn int64() -> DataType {
-        Int64.into()
+        Int64::new().into()
     }
 
     /// An unsigned 8-bit integer ([`uint8`](DataType::UInt8)).
     pub fn uint8() -> DataType {
-        UInt8.into()
+        UInt8::new().into()
     }
 
     /// An unsigned 16-bit integer ([`uint16`](DataType::UInt16)).
     pub fn uint16() -> DataType {
-        UInt16.into()
+        UInt16::new().into()
     }
 
     /// An unsigned 32-bit integer ([`uint32`](DataType::UInt32)).
     pub fn uint32() -> DataType {
-        UInt32.into()
+        UInt32::new().into()
     }
 
     /// An unsigned 64-bit integer ([`uint64`](DataType::UInt64)).
     pub fn uint64() -> DataType {
-        UInt64.into()
+        UInt64::new().into()
     }
 
     /// A signed integer at the default width (`int64`) — the no-argument constructor;
@@ -102,9 +102,9 @@ impl DataType {
     /// (saturating at 64) with a `warn` log.
     pub fn float(bits: u16) -> DataType {
         match bits {
-            16 => Float16.into(),
-            32 => Float32.into(),
-            64 => Float64.into(),
+            16 => Float16::new().into(),
+            32 => Float32::new().into(),
+            64 => Float64::new().into(),
             _ => {
                 let standard = match bits {
                     0..=16 => 16,
@@ -122,17 +122,17 @@ impl DataType {
 
     /// A half-precision (16-bit) float ([`float16`](DataType::Float16)).
     pub fn float16() -> DataType {
-        Float16.into()
+        Float16::new().into()
     }
 
     /// A single-precision (32-bit) float ([`float32`](DataType::Float32)).
     pub fn float32() -> DataType {
-        Float32.into()
+        Float32::new().into()
     }
 
     /// A double-precision (64-bit) float ([`float64`](DataType::Float64)).
     pub fn float64() -> DataType {
-        Float64.into()
+        Float64::new().into()
     }
 
     /// A float at the default width (`float64`) — the no-argument constructor.
@@ -212,24 +212,24 @@ impl DataType {
     /// Whether this is any integer.
     pub fn is_integer(&self) -> bool {
         matches!(
-            self.fixed().map(|t| t.kind()),
+            self.fixed().map(|t| t.kind),
             Some(FixedKind::SignedInt | FixedKind::UnsignedInt)
         )
     }
 
     /// Whether this is a signed integer.
     pub fn is_signed_integer(&self) -> bool {
-        self.fixed().map(|t| t.kind()) == Some(FixedKind::SignedInt)
+        self.fixed().map(|t| t.kind) == Some(FixedKind::SignedInt)
     }
 
     /// Whether this is an unsigned integer.
     pub fn is_unsigned_integer(&self) -> bool {
-        self.fixed().map(|t| t.kind()) == Some(FixedKind::UnsignedInt)
+        self.fixed().map(|t| t.kind) == Some(FixedKind::UnsignedInt)
     }
 
     /// Whether this is a floating-point type.
     pub fn is_floating(&self) -> bool {
-        self.fixed().map(|t| t.kind()) == Some(FixedKind::Float)
+        self.fixed().map(|t| t.kind) == Some(FixedKind::Float)
     }
 
     /// Whether this is a number — an integer or a float (decimals are

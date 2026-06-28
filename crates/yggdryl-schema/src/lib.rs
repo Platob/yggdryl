@@ -9,7 +9,7 @@
 //!   [`Decimal128`](DataType::Decimal128), [`Dictionary`](DataType::Dictionary), …) and
 //!   **nested** ([`List`](DataType::List), [`Struct`](DataType::Struct), …), plus the
 //!   [`Any`](DataType::Any) wildcard. The fixed-width numerics are concrete variants,
-//!   each backed by a native Rust storage type and a [`FixedType`] descriptor;
+//!   each a struct generic over its native Rust storage type (`Int64<i64>`, …);
 //!   the variable-width attributes stay uniform accessors:
 //!   [`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
 //!   [`is_view`](DataType::is_view), and strings are a single [`Varchar`](DataType::Varchar)
@@ -58,8 +58,8 @@ mod field;
 mod arrow;
 
 pub use datatype::fixed::{
-    f16, i256, Decimal128, Decimal256, Decimal32, Decimal64, FixedKind, FixedNative, FixedType,
-    Float16, Float32, Float64, Int16, Int32, Int64, Int8, UInt16, UInt32, UInt64, UInt8,
+    f16, i256, Decimal128, Decimal256, Decimal32, Decimal64, FixedInfo, FixedKind, Float16,
+    Float32, Float64, Int16, Int32, Int64, Int8, Native, UInt16, UInt32, UInt64, UInt8,
 };
 pub use datatype::{
     DataType, IntervalUnit, MergeStrategy, Numeric, SchemaError, TypeCategory, UnionMode,

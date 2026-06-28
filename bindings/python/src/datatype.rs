@@ -408,8 +408,8 @@ impl DataType {
     /// The native Rust storage type name of a fixed-width numeric type (``"i32"`` /
     /// ``"f16"`` / ``"i128"`` / ``"i256"`` / …), else ``None``.
     #[getter]
-    fn native_name(&self) -> Option<&'static str> {
-        self.inner.native_name()
+    fn name(&self) -> Option<&'static str> {
+        self.inner.name()
     }
 
     /// The time unit of a temporal type carrying one, else ``None``.

@@ -199,11 +199,11 @@ test('fixed numeric widths + Numeric interface', () => {
   // A non-standard width rounds up to the next fixed width.
   assert.ok(DataType.int(24).equals(DataType.int32()))
   // Native Rust storage type names (reused builtins / created f16,i256).
-  assert.strictEqual(DataType.int32().nativeName, 'i32')
-  assert.strictEqual(DataType.float16().nativeName, 'f16')
-  assert.strictEqual(DataType.decimal128(10, 2).nativeName, 'i128')
-  assert.strictEqual(DataType.decimal256(76, 0).nativeName, 'i256')
-  assert.strictEqual(DataType.varchar().nativeName, null)
+  assert.strictEqual(DataType.int32().name, 'i32')
+  assert.strictEqual(DataType.float16().name, 'f16')
+  assert.strictEqual(DataType.decimal128(10, 2).name, 'i128')
+  assert.strictEqual(DataType.decimal256(76, 0).name, 'i256')
+  assert.strictEqual(DataType.varchar().name, null)
   // Numeric interface: mutualised bits + signed.
   assert.strictEqual(DataType.int(32, false).numericBits, 32)
   assert.strictEqual(DataType.int(32, false).signed, false)

@@ -1,6 +1,7 @@
 //! The [`Numeric`] trait — the shared interface of the numeric data types
 //! (integers, floats and decimals): their physical width and signedness.
 
+use super::fixed::FixedKind;
 use super::DataType;
 
 /// The common interface of the **numeric** data types — the integers
@@ -42,11 +43,12 @@ pub trait Numeric {
 impl Numeric for DataType {
     fn numeric_bits(&self) -> Option<u16> {
         // Each fixed-width numeric descriptor reports its own storage width.
-        self.fixed().map(|t| t.bits())
+        self.fixed().map(|t| t.bits)
     }
 
     fn signed(&self) -> Option<bool> {
-        // Integers carry the flag; floats and decimals are always signed.
-        self.fixed().map(|t| t.signed())
+        // Integers carry the flag (unsigned ones excepted); floats and decimals are
+        // always signed.
+        self.fixed().map(|t| t.kind != FixedKind::UnsignedInt)
     }
 }

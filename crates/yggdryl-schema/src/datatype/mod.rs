@@ -11,7 +11,7 @@ use std::fmt;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::{Charset, Field};
-use fixed::FixedType;
+use fixed::FixedInfo;
 use yggdryl_core::{TimeUnit, Timezone};
 
 mod coerce;
@@ -155,8 +155,8 @@ impl fmt::Display for TypeCategory {
 /// fixed-width numeric types are **concrete** ([`Int8`](DataType::Int8) …
 /// [`UInt64`](DataType::UInt64), [`Float16`](DataType::Float16) …
 /// [`Float64`](DataType::Float64), [`Decimal32`](DataType::Decimal32) …
-/// [`Decimal256`](DataType::Decimal256)), each backed by a native Rust storage type
-/// and a [`FixedType`] descriptor; the offset/layout variations of the
+/// [`Decimal256`](DataType::Decimal256)), each a struct generic over its native Rust
+/// storage type (`Int64<i64>`, …); the offset/layout variations of the
 /// variable-width types stay uniform fields (`large` / `view`), read back via
 /// [`is_large`](DataType::is_large) / [`is_view`](DataType::is_view), and all strings
 /// are one [`Varchar`](DataType::Varchar) with a [`Charset`].
@@ -344,30 +344,30 @@ impl DataType {
 
     /// The fixed-width numeric descriptor backing this type, or `None` for a
     /// non-fixed-numeric type. This is the **single dispatch point** the numeric
-    /// accessors ([`bit_size`](DataType::bit_size), [`native_name`](DataType::native_name),
-    /// the [`Numeric`](crate::Numeric) interface, the integer/float/decimal predicates,
-    /// …) delegate to, so each width's behaviour lives on its own
-    /// [`FixedType`] descriptor rather than in a match per accessor.
-    pub(crate) fn fixed(&self) -> Option<&dyn FixedType> {
+    /// accessors ([`bit_size`](DataType::bit_size), [`name`](DataType::name), the
+    /// [`Numeric`](crate::Numeric) interface, the integer/float/decimal predicates, …)
+    /// delegate to, so each width's behaviour lives on its own descriptor (its
+    /// [`info`](FixedInfo)) rather than in a match per accessor.
+    pub(crate) fn fixed(&self) -> Option<FixedInfo> {
         use DataType::*;
-        match self {
-            Int8(t) => Some(t),
-            Int16(t) => Some(t),
-            Int32(t) => Some(t),
-            Int64(t) => Some(t),
-            UInt8(t) => Some(t),
-            UInt16(t) => Some(t),
-            UInt32(t) => Some(t),
-            UInt64(t) => Some(t),
-            Float16(t) => Some(t),
-            Float32(t) => Some(t),
-            Float64(t) => Some(t),
-            Decimal32(t) => Some(t),
-            Decimal64(t) => Some(t),
-            Decimal128(t) => Some(t),
-            Decimal256(t) => Some(t),
-            _ => None,
-        }
+        Some(match self {
+            Int8(t) => t.info(),
+            Int16(t) => t.info(),
+            Int32(t) => t.info(),
+            Int64(t) => t.info(),
+            UInt8(t) => t.info(),
+            UInt16(t) => t.info(),
+            UInt32(t) => t.info(),
+            UInt64(t) => t.info(),
+            Float16(t) => t.info(),
+            Float32(t) => t.info(),
+            Float64(t) => t.info(),
+            Decimal32(t) => t.info(),
+            Decimal64(t) => t.info(),
+            Decimal128(t) => t.info(),
+            Decimal256(t) => t.info(),
+            _ => return None,
+        })
     }
 
     /// The physical width of a value in **bits** for fixed-width types, or `None`
@@ -384,7 +384,7 @@ impl DataType {
         use DataType::*;
         // The fixed-width numerics report their own width.
         if let Some(t) = self.fixed() {
-            return Some(t.bits());
+            return Some(t.bits);
         }
         let bits = match self {
             Boolean => 1,
@@ -482,7 +482,10 @@ impl DataType {
         // The integers / floats are their own physical type; the decimals report a
         // fixed-size binary of their storage width — both decided by the descriptor.
         if let Some(t) = self.fixed() {
-            return t.physical_type();
+            return match t.decimal {
+                Some(_) => DataType::fixed_size_binary((t.bits / 8) as i32),
+                None => self.clone(),
+            };
         }
         match self {
             Date { large } => DataType::int(if *large { 64 } else { 32 }, true),
@@ -514,17 +517,18 @@ impl DataType {
     /// type — a Rust built-in where one exists (`"i8"` / `"f32"` / `"i128"` / …), or one
     /// of the types created for the widths Rust lacks (`"f16"` for
     /// [`Float16`](DataType::Float16), `"i256"` for [`Decimal256`](DataType::Decimal256)).
-    /// `None` for non-fixed-numeric types. Delegates to the [`FixedType`] descriptor.
+    /// `None` for non-fixed-numeric types. Delegates to the type's
+    /// [`info`](FixedInfo) descriptor.
     ///
     /// ```
     /// use yggdryl_schema::DataType;
-    /// assert_eq!(DataType::int(32, true).native_name(), Some("i32"));
-    /// assert_eq!(DataType::float(16).native_name(), Some("f16"));
-    /// assert_eq!(DataType::decimal(10, 2).native_name(), Some("i128"));
-    /// assert_eq!(DataType::varchar().native_name(), None);
+    /// assert_eq!(DataType::int(32, true).name(), Some("i32"));
+    /// assert_eq!(DataType::float(16).name(), Some("f16"));
+    /// assert_eq!(DataType::decimal(10, 2).name(), Some("i128"));
+    /// assert_eq!(DataType::varchar().name(), None);
     /// ```
-    pub fn native_name(&self) -> Option<&'static str> {
-        self.fixed().map(|t| t.native_name())
+    pub fn name(&self) -> Option<&'static str> {
+        self.fixed().map(|t| t.native)
     }
 }
 
@@ -985,9 +989,13 @@ impl DataType {
     /// [`from_str`](DataType::from_str).
     pub fn to_str(&self) -> String {
         use DataType::*;
-        // The fixed-width numerics render themselves (`int8`, `decimal128[10, 2]`, …).
+        // The fixed-width numerics render from their descriptor (`int8`,
+        // `decimal128[10, 2]`, …): the canonical head plus a decimal's parameters.
         if let Some(t) = self.fixed() {
-            return t.render();
+            return match t.decimal {
+                Some((precision, scale)) => format!("{}[{precision}, {scale}]", t.head),
+                None => t.head.to_string(),
+            };
         }
         match self {
             Any => "any".to_string(),

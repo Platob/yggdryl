@@ -498,7 +498,7 @@ fn grammar_rejects_extra_args_and_unbalanced_brackets() {
 
 #[test]
 fn fixed_integer_widths() {
-    use crate::{FixedType, Int32, UInt8};
+    use crate::{Int32, UInt8};
     use DataType as D;
     // Each integer alias resolves to its concrete fixed variant.
     assert_eq!(D::from_str("int8").unwrap(), D::int8());
@@ -525,16 +525,19 @@ fn fixed_integer_widths() {
     // A non-standard width passed to the builder rounds up to the next fixed width.
     assert_eq!(D::int(24, true), D::int32());
     assert_eq!(D::int(128, false), D::uint64());
-    // The native Rust storage type is named per variant; the descriptor mirrors it.
-    assert_eq!(D::int32().native_name(), Some("i32"));
-    assert_eq!(D::uint8().native_name(), Some("u8"));
-    assert_eq!(Int32.data_type(), D::int32());
-    assert_eq!(DataType::from(UInt8), D::uint8());
+    // `name()` is the native Rust storage type name; the descriptor struct mirrors it.
+    assert_eq!(D::int32().name(), Some("i32"));
+    assert_eq!(D::uint8().name(), Some("u8"));
+    assert_eq!(DataType::from(Int32::new()), D::int32());
+    assert_eq!(DataType::from(UInt8::new()), D::uint8());
+    // The descriptor is generic over its native storage, defaulting to the natural one.
+    assert_eq!(Int32::<i32>::new().native(), "i32");
+    assert_eq!(UInt8::<u8>::new().head(), "uint8");
 }
 
 #[test]
 fn fixed_float_widths() {
-    use crate::{f16, FixedType, Float16};
+    use crate::{f16, Float16};
     use DataType as D;
     assert_eq!(D::from_str("float16").unwrap(), D::float16());
     assert_eq!(D::from_str("float32").unwrap(), D::float32());
@@ -551,14 +554,14 @@ fn fixed_float_widths() {
         Err(SchemaError::Unknown(_))
     ));
     // The half float is backed by the created `f16` native type.
-    assert_eq!(D::float16().native_name(), Some("f16"));
-    assert_eq!(Float16.data_type(), D::float16());
+    assert_eq!(D::float16().name(), Some("f16"));
+    assert_eq!(DataType::from(Float16::new()), D::float16());
     assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
 }
 
 #[test]
 fn fixed_decimal_widths_and_native_types() {
-    use crate::{i256, Decimal128, FixedType};
+    use crate::{i256, Decimal128};
     use DataType as D;
     // Each decimal width is a concrete variant carrying precision/scale.
     assert_eq!(D::from_str("decimal32[9, 2]").unwrap(), D::decimal32(9, 2));
@@ -576,12 +579,12 @@ fn fixed_decimal_widths_and_native_types() {
     );
     // The bare `decimal[..]` alias is the 128-bit decimal.
     assert_eq!(D::from_str("decimal[10, 2]").unwrap(), D::decimal128(10, 2));
-    // Native storage names: i32/i64/i128/i256.
-    assert_eq!(D::decimal32(9, 2).native_name(), Some("i32"));
-    assert_eq!(D::decimal128(10, 2).native_name(), Some("i128"));
-    assert_eq!(D::decimal256(76, 0).native_name(), Some("i256"));
+    // `name()` is the native storage type: i32/i64/i128/i256.
+    assert_eq!(D::decimal32(9, 2).name(), Some("i32"));
+    assert_eq!(D::decimal128(10, 2).name(), Some("i128"));
+    assert_eq!(D::decimal256(76, 0).name(), Some("i256"));
     // The descriptor struct mirrors the variant.
-    assert_eq!(Decimal128::new(10, 2).data_type(), D::decimal128(10, 2));
+    assert_eq!(DataType::from(Decimal128::new(10, 2)), D::decimal128(10, 2));
     // The created 256-bit native type round-trips a value beyond i128.
     assert_eq!(i256::from_i128(-5).to_str(), "-5");
 }

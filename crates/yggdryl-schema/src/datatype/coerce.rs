@@ -340,7 +340,7 @@ fn promote_field(a: &Field, b: &Field) -> Option<Field> {
 /// `(bit width, is signed)` of an integer type (via its fixed descriptor).
 fn int_meta(dt: &DataType) -> (u32, bool) {
     match dt.fixed() {
-        Some(t) => (t.bits() as u32, t.signed()),
+        Some(i) => (i.bits as u32, i.kind != FixedKind::UnsignedInt),
         None => (64, true),
     }
 }
@@ -377,7 +377,7 @@ fn common_integer(a: &DataType, b: &DataType) -> DataType {
 
 /// The bit width of a float type (via its fixed descriptor).
 fn float_bits(dt: &DataType) -> u32 {
-    dt.fixed().map(|t| t.bits() as u32).unwrap_or(64)
+    dt.fixed().map(|i| i.bits as u32).unwrap_or(64)
 }
 
 /// The float that safely holds an integer type's range.
@@ -464,7 +464,7 @@ fn common_decimal(a: &DataType, b: &DataType) -> Option<DataType> {
 /// The storage bits of a decimal type, or `0` if not a decimal.
 fn decimal_bits_of(dt: &DataType) -> u16 {
     match dt.fixed() {
-        Some(t) if t.kind() == FixedKind::Decimal => t.bits(),
+        Some(i) if i.kind == FixedKind::Decimal => i.bits,
         _ => 0,
     }
 }
