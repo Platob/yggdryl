@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString, PyType};
 use yggdryl_scalar::ScalarValue;
 use yggdryl_schema::DataType as CoreDataType;
 use yggdryl_serie::arrow_array::{
@@ -97,6 +97,67 @@ fn classify(obj: &Bound<'_, PyAny>) -> PyResult<Kind> {
     }
 }
 
+/// Whether `obj` is a **dataclass instance** (not the dataclass type itself) — the cue to
+/// infer a struct column from a list of dataclasses. (`dataclasses.is_dataclass` is `True`
+/// for both the class and its instances, so the type is ruled out first.) Node has no
+/// equivalent: its values arrive as already-serialized JSON, where a class instance is
+/// indistinguishable from a plain object, so this struct inference is Python-only.
+fn is_dataclass_instance(obj: &Bound<'_, PyAny>) -> PyResult<bool> {
+    if obj.is_instance_of::<PyType>() {
+        return Ok(false);
+    }
+    obj.py()
+        .import_bound("dataclasses")?
+        .call_method1("is_dataclass", (obj,))?
+        .is_truthy()
+}
+
+/// Builds a **struct** column named `name` from a list of dataclass instances: each
+/// **public** dataclass field (one whose name does not start with `_`) becomes a struct
+/// field, its column inferred across every row by the [`Serie`] constructor (so a field
+/// holding a dataclass / list / dict nests recursively). A `None` row contributes a null
+/// to every field. The field set / order is taken from the first instance.
+fn struct_from_dataclasses(
+    py: Python<'_>,
+    name: &str,
+    values: &Bound<'_, PyList>,
+    first: &Bound<'_, PyAny>,
+) -> PyResult<Serie> {
+    let fields: Vec<Bound<'_, PyAny>> = py
+        .import_bound("dataclasses")?
+        .call_method1("fields", (first,))?
+        .extract()?;
+    let mut field_names: Vec<String> = Vec::with_capacity(fields.len());
+    for field in &fields {
+        let fname: String = field.getattr("name")?.extract()?;
+        if !fname.starts_with('_') {
+            field_names.push(fname);
+        }
+    }
+    if field_names.is_empty() {
+        return Err(PyTypeError::new_err(
+            "cannot infer a struct: the dataclass has no public fields",
+        ));
+    }
+    // One child column per field, reading the attribute across every row (None row → null).
+    let mut children: Vec<SerieRef> = Vec::with_capacity(field_names.len());
+    for fname in &field_names {
+        let mut column: Vec<Bound<'_, PyAny>> = Vec::with_capacity(values.len());
+        for row in values.iter() {
+            column.push(if row.is_none() {
+                py.None().into_bound(py)
+            } else {
+                row.getattr(fname.as_str())?
+            });
+        }
+        let child = Serie::new(py, fname, &PyList::new_bound(py, column), None)?;
+        children.push(child.inner);
+    }
+    StructSerie::from_children(name, children)
+        .map(|s| wrap(Arc::new(s)))
+        .map_err(serie_err)
+}
+
 /// Builds the Arrow array for the inferred `kind` from a Python list (`None` → null).
 fn build_array(values: &Bound<'_, PyList>, kind: Kind) -> PyResult<ArrayRef> {
     macro_rules! collect {
@@ -147,10 +208,12 @@ fn scalar_to_py(py: Python<'_>, scalar: &Scalar) -> PyObject {
 impl Serie {
     /// Build a column named `name` from a list of values. The Arrow type is inferred
     /// from the first non-null value: a scalar gives `bool` / `int` → int64 / `float` →
-    /// float64 / `str` → utf8 / `bytes` → binary, a **list** gives a list column and a
-    /// **dict** gives a map column (recursively — a list of dicts is `list<map>`, etc.).
-    /// Pass `dtype` (a :class:`DataType` or type string) to cast the leaf type. An
-    /// empty / all-null list needs an explicit `dtype`.
+    /// float64 / `str` → utf8 / `bytes` → binary, a **list** gives a list column, a
+    /// **dict** gives a map column, and a **dataclass** gives a struct column (one struct
+    /// field per public dataclass field) — recursively, so a list of dicts is `list<map>`,
+    /// a dataclass with a list field nests a list column, etc. Pass `dtype` (a
+    /// :class:`DataType` or type string) to cast the leaf type. An empty / all-null list
+    /// needs an explicit `dtype`.
     #[new]
     #[pyo3(signature = (name, values, dtype = None))]
     fn new(
@@ -170,6 +233,15 @@ impl Serie {
             }
             if item.is_instance_of::<PyDict>() {
                 return Serie::map_(py, name, values, None, dtype);
+            }
+            if is_dataclass_instance(item)? {
+                if dtype.is_some() {
+                    return Err(PyTypeError::new_err(
+                        "dtype is not supported when inferring a struct from dataclasses; \
+                         cast the individual fields instead",
+                    ));
+                }
+                return struct_from_dataclasses(py, name, values, item);
             }
         }
 

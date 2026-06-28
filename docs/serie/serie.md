@@ -153,25 +153,43 @@ number model:
 | bytes | `binary` | use the `Serie.binary` factory |
 | list / array | `list<…>` (the [nested](nested.md) factory) | `list<…>` |
 | dict / object | `map<…>` (the [nested](nested.md) factory) | `map<…>` |
+| dataclass | `struct<…>` (one field per public field) | — (use `Serie.struct`) |
 
 A **nested** value (a Python list/dict, a JS array/object) makes the constructor build a
 list / map column, **recursively** — the element builder is the same constructor, so a
-list of dicts is `list<map>`, a list of lists is `list<list>`, and so on. Nulls are skipped
-during inference; an **empty or all-null** list cannot be inferred, so pass an explicit
-`dtype` (a `DataType` or a type string like `"int8"`). Passing `dtype` always **casts** the
-leaf type. Rust does not infer — pick the concrete `*Serie` (or `from_array` for an
-existing Arrow array).
+list of dicts is `list<map>`, a list of lists is `list<list>`, and so on. A Python
+**dataclass** value builds a **struct** column: one struct field per *public* dataclass
+field (one whose name does not start with `_`), each field's column inferred the same way,
+so a dataclass holding a dataclass / list / dict nests further. A `None` row contributes a
+null to every field; `dtype` does not apply to a dataclass struct (cast the individual
+fields instead). This is Python-only: in Node the values arrive as already-serialized JSON,
+where a class instance is indistinguishable from a plain object (→ `map`), so build a struct
+explicitly with `Serie.struct`. Nulls are skipped during inference; an **empty or all-null**
+list cannot be inferred, so pass an explicit `dtype` (a `DataType` or a type string like
+`"int8"`). Passing `dtype` always **casts** the leaf type. Rust does not infer — pick the
+concrete `*Serie` (or `from_array` for an existing Arrow array).
 
 === "Python"
 
     ```python
     import yggdryl
 
+    from dataclasses import dataclass
+
     lists = yggdryl.Serie("a", [[1, 2], [], None, [3]])  # list<int64> (a list value)
     maps = yggdryl.Serie("m", [{"x": 1}, {"y": 2}])       # map<utf8, int64> (a dict value)
     nested = yggdryl.Serie("ld", [[{"a": 1}], [{"b": 2}]]) # list<map<utf8, int64>>
     assert str(lists.data_type) == "list[item: int64]"
     assert maps.value_at(0) == "{x=1}"
+
+    @dataclass
+    class Person:
+        name: str
+        age: int
+
+    people = yggdryl.Serie("p", [Person("a", 1), Person("b", 2)])  # struct<name, age>
+    assert str(people.data_type) == "struct[name: utf8, age: int64]"
+    assert people.to_dicts()[0] == {"name": "a", "age": 1}
     ```
 
 === "Node"
@@ -184,18 +202,32 @@ existing Arrow array).
     const nested = new Serie('ld', [[{ a: 1 }], [{ b: 2 }]]) // list<map<utf8, int64>>
     if (lists.dataType.toString() !== 'list[item: int64]') throw new Error('list')
     if (maps.valueAt(0) !== '{x=1}') throw new Error('map')
+
+    // no dataclass equivalent — an object infers a map; build a struct explicitly
+    const people = Serie.struct('p', [
+      new Serie('name', ['a', 'b']),
+      new Serie('age', [1, 2]),
+    ])
+    if (people.dataType.toString() !== 'struct[name: utf8, age: int64]') throw new Error('struct')
     ```
 
 === "Rust"
 
     ```rust
     // Rust has no value inference — pick the concrete series (see Nested for the builders).
-    use yggdryl_serie::{Int32Serie, ListSerie, Serie, SerieRef, Scalar};
+    use yggdryl_serie::{Int32Serie, ListSerie, StructSerie, NestedSerie, Serie, SerieRef, Scalar};
     use std::sync::Arc;
 
     let flat: SerieRef = Arc::new(Int32Serie::from_values("item", vec![Some(1), Some(2), Some(3)]));
     let lists = ListSerie::<i32>::from_values("a", flat, &[Some(2), Some(0), None, Some(1)])?;
     assert_eq!(lists.value_at(0), Scalar::Other("[1, 2]".into()));
+
+    // build a struct from its child columns (the explicit form of dataclass inference)
+    use yggdryl_serie::VarcharSerie;
+    let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values("name", vec![Some("a"), Some("b")]));
+    let age: SerieRef = Arc::new(Int32Serie::from_values("age", vec![Some(1), Some(2)]));
+    let people = StructSerie::from_children("p", vec![name, age])?;
+    assert_eq!(people.child_count(), 2);
     ```
 
 === "Python"

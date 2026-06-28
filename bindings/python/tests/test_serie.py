@@ -185,6 +185,58 @@ def test_constructor_infers_nested():
     assert str(floats.child(0).data_type) == "float64"
 
 
+def test_constructor_infers_dataclass_struct():
+    from dataclasses import dataclass
+
+    @dataclass
+    class Person:
+        name: str
+        age: int
+        score: float
+
+    # a dataclass value infers a struct column, one field per public dataclass field
+    people = yggdryl.Serie("people", [Person("a", 1, 1.5), Person("b", 2, 2.5)])
+    assert people.category == "nested"
+    assert str(people.data_type) == "struct[name: utf8, age: int64, score: float64]"
+    assert [c.name for c in people.children()] == ["name", "age", "score"]
+    assert people.to_dicts() == [
+        {"name": "a", "age": 1, "score": 1.5},
+        {"name": "b", "age": 2, "score": 2.5},
+    ]
+
+    # a None row contributes a null to every field
+    holey = yggdryl.Serie("h", [Person("x", 9, 0.5), None])
+    assert holey.to_dicts()[1] == {"name": None, "age": None, "score": None}
+
+    # nesting composes: a dataclass field that is a dataclass / list nests further
+    @dataclass
+    class Team:
+        lead: Person
+        members: list
+
+    teams = yggdryl.Serie("teams", [Team(Person("c", 3, 3.5), [1, 2])])
+    assert str(teams.data_type) == (
+        "struct[lead: struct[name: utf8, age: int64, score: float64], "
+        "members: list[item: int64]]"
+    )
+
+    # private (underscore) fields are skipped
+    @dataclass
+    class Mixed:
+        pub: int
+        _priv: int = 0
+
+    mixed = yggdryl.Serie("m", [Mixed(5)])
+    assert [c.name for c in mixed.children()] == ["pub"]
+
+    # a dtype is rejected (cast individual fields instead)
+    with pytest.raises(Exception):
+        yggdryl.Serie("bad", [Person("a", 1, 1.5)], dtype="int64")
+
+    # round-trips losslessly through the column bytes
+    assert yggdryl.Serie.from_bytes(people.to_bytes()).to_dicts() == people.to_dicts()
+
+
 def test_nested_struct_and_select():
     a = yggdryl.Serie("a", [1, 2])
     b = yggdryl.Serie("b", ["x", "y"])
