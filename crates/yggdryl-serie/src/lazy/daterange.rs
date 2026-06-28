@@ -1,5 +1,5 @@
 //! [`DateRangeSerie`] — a **lazy** calendar-date range (day resolution, `Date32`
-//! storage): a start day, a step in days and a length. Like [`UInt64RangeSerie`](super::UInt64RangeSerie)
+//! storage): a start day, a step in days and a length. Like [`RangeSerie`](super::RangeSerie)
 //! it stores only a few numbers and computes each date on demand, materialising into a
 //! real `date` column when asked.
 

@@ -366,6 +366,37 @@ impl Scalar {
         self.inner.to_bytes().map(Buffer::from).map_err(err)
     }
 
+    /// `this + other` — promotes numeric operands and defines a few temporal
+    /// combinations; throws for a combination with no defined sum.
+    #[napi]
+    pub fn add(&self, other: &Scalar) -> Result<Self> {
+        self.inner.add(&other.inner).map(wrap).map_err(err)
+    }
+
+    /// `this - other`.
+    #[napi]
+    pub fn sub(&self, other: &Scalar) -> Result<Self> {
+        self.inner.sub(&other.inner).map(wrap).map_err(err)
+    }
+
+    /// `this * other`.
+    #[napi]
+    pub fn mul(&self, other: &Scalar) -> Result<Self> {
+        self.inner.mul(&other.inner).map(wrap).map_err(err)
+    }
+
+    /// `this / other` (throws on a zero divisor).
+    #[napi]
+    pub fn div(&self, other: &Scalar) -> Result<Self> {
+        self.inner.div(&other.inner).map(wrap).map_err(err)
+    }
+
+    /// `-this`.
+    #[napi]
+    pub fn neg(&self) -> Result<Self> {
+        self.inner.neg().map(wrap).map_err(err)
+    }
+
     /// Value equality (same type and value).
     #[napi]
     pub fn equals(&self, other: &Scalar) -> bool {

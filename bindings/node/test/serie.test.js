@@ -108,6 +108,15 @@ test('lazy range and index', () => {
   assert.throws(() => new Serie('n', [1, 2]).at(0)) // not an index
 })
 
+test('range cast preserves original and stays lazy', () => {
+  const floats = Serie.index(4).cast('float64')
+  // the cast range exposes float output but is still a lazy computed range
+  assert.strictEqual(floats.isMaterialized, false)
+  assert.strictEqual(floats.dataType.toString(), 'float64')
+  assert.deepStrictEqual(floats.toList(), [0, 1, 2, 3])
+  assert.deepStrictEqual(floats.materialize().toList(), [0, 1, 2, 3])
+})
+
 test('list factory', () => {
   const nums = Serie.list('nums', [[1, 2], [], null, [3]])
   assert.strictEqual(nums.category, 'nested')

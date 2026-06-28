@@ -125,6 +125,20 @@ def test_lazy_range_and_index():
         yggdryl.Serie("n", [1, 2]).at(0)  # not an index
 
 
+def test_range_cast_preserves_original_and_stays_lazy():
+    idx = yggdryl.Serie.index(4)  # uint64 0..3
+    floats = idx.cast("float64")
+    # the cast range exposes float output but is still lazy (a computed range view)
+    assert floats.is_materialized is False
+    assert str(floats.data_type) == "float64"
+    assert floats.to_list() == [0.0, 1.0, 2.0, 3.0]
+    # materialising it gives a real float column with the same values
+    assert floats.materialize().to_list() == [0.0, 1.0, 2.0, 3.0]
+    # a float range also works directly through a dtype cast on a stepped range
+    stepped = yggdryl.Serie.range(3, start=10, step=5).cast("int32")
+    assert stepped.to_list() == [10, 15, 20]
+
+
 def test_list_factory():
     nums = yggdryl.Serie.list("nums", [[1, 2], [], None, [3]])
     assert nums.category == "nested"

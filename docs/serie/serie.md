@@ -75,7 +75,7 @@ The design mirrors the schema crate's three [categories](../schema/datatype.md):
   `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
 - The **[nested](nested.md)** series — `StructSerie`, `ListSerie<O>` and `MapSerie` (child
   columns built recursively) and the `NestedSerie` trait.
-- The **[lazy](lazy.md)** (computed) series — `UInt64RangeSerie` (which doubles as the
+- The **[lazy](lazy.md)** (computed) series — `RangeSerie` (which doubles as the
   canonical row index), `DateRangeSerie`, `DateTimeRangeSerie`, `TimeRangeSerie`.
 - **[`CategoricalSerie`](lazy.md#categorical-dictionary-encoded)** — a dictionary-encoded
   view for repeated values (distinct values + a per-row code), decoding back to a flat
@@ -245,7 +245,7 @@ existing Arrow array).
     ```rust
     use yggdryl_serie::{
         Int32Serie, Float64Serie, BooleanSerie, VarcharSerie, BinarySerie,
-        DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, UInt64RangeSerie,
+        DatetimeSerie, TimeSerie, DurationSerie, DateRangeSerie, RangeSerie,
         StructSerie, CategoricalSerie, NestedSerie, Serie, SerieRef, TypedSerie,
     };
     use yggdryl_core::{DateTime, Duration, Time, Date};
@@ -264,9 +264,9 @@ existing Arrow array).
     let du = DurationSerie::from_values("d", vec![Some(Duration::from_secs(60))]);
 
     // lazy ranges + the row index (computed, not stored)
-    let r = UInt64RangeSerie::new("r", 0, 1, 100);     // 0..100 (uint64)
+    let r = RangeSerie::uint64("r", 0, 1, 100);     // 0..100 (uint64)
     let days = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 1).unwrap(), 1, 7);
-    let idx = UInt64RangeSerie::indices(100);          // the canonical row index
+    let idx = RangeSerie::indices(100);          // the canonical row index
 
     // nested — a struct from its child columns, in one line
     let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
@@ -745,7 +745,7 @@ strings (`Utf8` / `LargeUtf8`), binary (`Binary` / `LargeBinary`) and the all-nu
 (`NullSerie`); timestamps, times
 and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **nested**
 `StructSerie` (which holds **lazy children** — `from_children` stays lazy until
-`materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `UInt64RangeSerie` (which
+`materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `RangeSerie` (which
 doubles as the row index) / `DateRangeSerie` / `DateTimeRangeSerie` / `TimeRangeSerie`,
 `CategoricalSerie` (dictionary-encoded), the `TemporalSerie` / `NestedSerie` traits, the
 `SliceSerie` graph, `cast` / `resize` / `display`, lossless Arrow-IPC `to_bytes` /

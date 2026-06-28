@@ -59,6 +59,7 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod arith;
 mod arrow;
 mod bytes;
 mod concrete;

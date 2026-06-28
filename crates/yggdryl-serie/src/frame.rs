@@ -37,7 +37,7 @@ use yggdryl_schema::{DataType, Field};
 use crate::error::{SerieError, SerieResult};
 use crate::nested::{NestedSerie, StructSerie};
 use crate::serie::{dispatch, Serie, SerieRef};
-use crate::UInt64RangeSerie;
+use crate::RangeSerie;
 
 /// Maps an Arrow error to a [`SerieError`].
 fn arrow_err(e: arrow_schema::ArrowError) -> SerieError {
@@ -275,10 +275,9 @@ impl StructSerie {
     }
 
     /// A new frame with a `0..rows` integer index column named `name` prepended (a lazy
-    /// `uint64` [`UInt64RangeSerie`](crate::UInt64RangeSerie), so it costs nothing until
-    /// materialised).
+    /// `uint64` [`RangeSerie`](crate::RangeSerie), so it costs nothing until materialised).
     pub fn with_row_index(&self, name: &str) -> SerieResult<StructSerie> {
-        let index: SerieRef = Arc::new(UInt64RangeSerie::new(name, 0, 1, self.len()));
+        let index: SerieRef = Arc::new(RangeSerie::uint64(name, 0, 1, self.len()));
         let mut cols = Vec::with_capacity(self.children().len() + 1);
         cols.push(index);
         cols.extend(self.children().iter().cloned());

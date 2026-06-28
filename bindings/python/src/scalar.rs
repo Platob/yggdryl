@@ -365,6 +365,32 @@ impl Scalar {
         self.to_bytes(py)
     }
 
+    /// `self + other` — promotes numeric operands and defines a few temporal
+    /// combinations; raises for a combination with no defined sum.
+    fn __add__(&self, other: &Scalar) -> PyResult<Self> {
+        Ok(wrap(self.inner.add(&other.inner).map_err(scalar_err)?))
+    }
+
+    /// `self - other`.
+    fn __sub__(&self, other: &Scalar) -> PyResult<Self> {
+        Ok(wrap(self.inner.sub(&other.inner).map_err(scalar_err)?))
+    }
+
+    /// `self * other`.
+    fn __mul__(&self, other: &Scalar) -> PyResult<Self> {
+        Ok(wrap(self.inner.mul(&other.inner).map_err(scalar_err)?))
+    }
+
+    /// `self / other` (raises on a zero divisor).
+    fn __truediv__(&self, other: &Scalar) -> PyResult<Self> {
+        Ok(wrap(self.inner.div(&other.inner).map_err(scalar_err)?))
+    }
+
+    /// `-self`.
+    fn __neg__(&self) -> PyResult<Self> {
+        Ok(wrap(self.inner.neg().map_err(scalar_err)?))
+    }
+
     fn __eq__(&self, other: &Scalar) -> bool {
         self.inner == other.inner
     }

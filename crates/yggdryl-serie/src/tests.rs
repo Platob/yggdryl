@@ -19,8 +19,8 @@ use crate::{
     child, child_range, from_array, from_arrow, from_bytes, BinarySerie, BooleanSerie,
     CategoricalSerie, Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie,
     DisplayOptions, DurationSerie, Float32Serie, Float64Serie, Int32Serie, Int64Serie, ListSerie,
-    MapSerie, NestedSerie, NullSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie,
-    TimeRangeSerie, TimeSerie, TypedSerie, UInt64RangeSerie, UInt64Serie, VarcharSerie,
+    MapSerie, NestedSerie, NullSerie, RangeSerie, Scalar, Serie, SerieRef, StructSerie,
+    TemporalSerie, TimeRangeSerie, TimeSerie, TypedSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -151,7 +151,7 @@ fn unsupported_arrow_type_errors() {
 
 #[test]
 fn range_index_is_lazy_uint64() {
-    let index = UInt64RangeSerie::indices(4);
+    let index = RangeSerie::indices(4);
     assert_eq!(index.len(), 4);
     assert_eq!(index.num_rows(), 4);
     assert!(index.is_range());
@@ -172,16 +172,13 @@ fn range_index_is_lazy_uint64() {
     // materialise into a plain in-memory uint64 column (no longer a lazy range)
     let materialized = index.materialize();
     assert!(materialized.is_materialized());
-    assert!(materialized
-        .as_any()
-        .downcast_ref::<UInt64RangeSerie>()
-        .is_none());
+    assert!(materialized.as_any().downcast_ref::<RangeSerie>().is_none());
     assert_eq!(materialized.value_at(2), Scalar::Int(2));
 }
 
 #[test]
 fn range_with_start_and_step_inverts_labels() {
-    let range = UInt64RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    let range = RangeSerie::uint64("r", 100, 5, 4); // 100, 105, 110, 115
     assert!(!range.is_range()); // not the canonical 0..len index
     assert_eq!(range.at(0), Some(100));
     assert_eq!(range.at(3), Some(115));
@@ -195,9 +192,9 @@ fn range_with_start_and_step_inverts_labels() {
 
 #[test]
 fn range_slice_stays_a_lazy_range() {
-    let index = UInt64RangeSerie::indices(5);
+    let index = RangeSerie::indices(5);
     let sliced = index.slice(1, 2);
-    let view = sliced.as_any().downcast_ref::<UInt64RangeSerie>().unwrap();
+    let view = sliced.as_any().downcast_ref::<RangeSerie>().unwrap();
     assert_eq!(view.len(), 2);
     assert!(!view.is_materialized()); // still lazy
     assert!(!view.is_range()); // a slice no longer starts at 0
@@ -208,27 +205,33 @@ fn range_slice_stays_a_lazy_range() {
 
 #[test]
 fn range_is_usable_as_a_serie() {
-    let index = UInt64RangeSerie::indices(3);
+    let index = RangeSerie::indices(3);
     let column: SerieRef = Arc::new(index);
     assert_eq!(column.len(), 3);
     assert_eq!(column.null_count(), 0);
-    // recover the UInt64RangeSerie through the base handle
-    let recovered = column.as_any().downcast_ref::<UInt64RangeSerie>().unwrap();
+    // recover the RangeSerie through the base handle
+    let recovered = column.as_any().downcast_ref::<RangeSerie>().unwrap();
     assert!(recovered.is_range());
 }
 
 #[test]
 fn lazy_range_serie_computes_and_materializes() {
-    let range = UInt64RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    let range = RangeSerie::uint64("r", 100, 5, 4); // 100, 105, 110, 115
     assert!(!range.is_materialized());
     assert_eq!(range.len(), 4);
-    assert_eq!(range.get(0), Some(100));
-    assert_eq!(range.get(3), Some(115));
-    assert_eq!(range.get(4), None);
+    assert_eq!(range.at(0), Some(100));
+    assert_eq!(range.at(3), Some(115));
+    assert_eq!(range.at(4), None);
     assert_eq!(range.value_at(2), Scalar::Int(110));
+    let values: Vec<Scalar> = (0..range.len()).map(|i| range.value_at(i)).collect();
     assert_eq!(
-        range.to_vec(),
-        vec![Some(100), Some(105), Some(110), Some(115)]
+        values,
+        vec![
+            Scalar::Int(100),
+            Scalar::Int(105),
+            Scalar::Int(110),
+            Scalar::Int(115)
+        ]
     );
 
     // materialising yields a real uint64 column with the same values
@@ -335,7 +338,7 @@ fn empty_and_single_element_series() {
     assert_eq!(one.value_at(0), Scalar::Int(42));
     assert_eq!(one.value_at(1), Scalar::Null); // just past the end
 
-    let empty_range = UInt64RangeSerie::new("r", 0, 1, 0);
+    let empty_range = RangeSerie::uint64("r", 0, 1, 0);
     assert!(empty_range.is_empty());
     assert_eq!(empty_range.array().len(), 0); // must not panic
 }
@@ -361,11 +364,93 @@ fn slice_boundary_cases() {
 #[test]
 fn range_serie_saturates_on_overflow() {
     // start near the top: at(1) would overflow, so it clamps instead of wrapping/panicking
-    let r = UInt64RangeSerie::new("r", u64::MAX - 1, 10, 4);
+    let r = RangeSerie::uint64("r", u64::MAX - 1, 10, 4);
     assert_eq!(r.value_at(0), Scalar::Int((u64::MAX - 1) as i128));
     assert_eq!(r.value_at(1), Scalar::Int(u64::MAX as i128)); // saturated
     assert_eq!(r.value_at(3), Scalar::Int(u64::MAX as i128)); // still clamped
     assert_eq!(r.array().len(), 4); // materialising must not panic
+}
+
+#[test]
+fn range_serie_is_datatype_generic() {
+    use yggdryl_scalar::ScalarValue;
+
+    // a float64 range computed via scalar math
+    let f = RangeSerie::new(
+        "f",
+        ScalarValue::float(1.0, 64),
+        ScalarValue::float(0.5, 64),
+        4,
+    )
+    .unwrap();
+    assert_eq!(f.data_type(), &DataType::float(64));
+    assert_eq!(f.value_at(0), Scalar::Float(1.0));
+    assert_eq!(f.value_at(3), Scalar::Float(2.5));
+    let mat = f.materialize();
+    assert!(mat.is_materialized());
+    assert_eq!(mat.value_at(2), Scalar::Float(2.0));
+
+    // a stepped int range: at / position invert each other
+    let r = RangeSerie::new(
+        "r",
+        ScalarValue::int(100, 32, true),
+        ScalarValue::int(5, 32, true),
+        4,
+    )
+    .unwrap(); // 100, 105, 110, 115
+    assert_eq!(r.data_type(), &DataType::int(32, true));
+    assert!(!r.is_range()); // not the canonical 0..len uint64 index
+    assert_eq!(r.at(2), Some(110));
+    assert_eq!(r.position(110), Some(2));
+    assert_eq!(r.position(111), None);
+}
+
+#[test]
+fn range_serie_cast_preserves_original() {
+    use yggdryl_scalar::ScalarValue;
+
+    let index = RangeSerie::indices(4); // uint64 [0, 1, 2, 3]
+    let floats = index.cast(&DataType::float(64)).unwrap();
+
+    // the cast column exposes float output, still lazy
+    assert_eq!(floats.data_type(), &DataType::float(64));
+    assert!(!floats.is_materialized());
+    assert_eq!(floats.value_at(2), Scalar::Float(2.0));
+
+    // but the underlying range keeps its original uint64 start / step / end
+    let casted = floats.as_any().downcast_ref::<RangeSerie>().unwrap();
+    assert!(casted.is_cast());
+    assert_eq!(casted.original_type(), DataType::int(64, false));
+    assert_eq!(*casted.start(), ScalarValue::int(0, 64, false));
+    assert_eq!(*casted.step(), ScalarValue::int(1, 64, false));
+
+    // materialising the cast range yields a real float column
+    let mat = floats.materialize();
+    assert_eq!(mat.data_type(), &DataType::float(64));
+    assert_eq!(mat.value_at(3), Scalar::Float(3.0));
+
+    // casting back to the original type is the identity (original preserved)
+    let back = floats.cast(&DataType::int(64, false)).unwrap();
+    assert_eq!(back.value_at(2), Scalar::Int(2));
+}
+
+#[test]
+fn range_serie_temporal_via_duration_step() {
+    use yggdryl_core::{Date, Duration};
+    use yggdryl_scalar::ScalarValue;
+
+    // a date range whose step is a one-day duration, computed via scalar math
+    let start = ScalarValue::from_date(&Date::from_ymd(2024, 1, 1).unwrap());
+    let step = ScalarValue::from_duration(&Duration::from_secs(86_400));
+    let r = RangeSerie::new("d", start, step, 3).unwrap();
+    assert_eq!(r.data_type(), &DataType::date());
+    // value_at exposes the physical day-since-epoch, advancing by one per row
+    assert_eq!(
+        r.value_at(2),
+        Scalar::Int(Date::from_ymd(2024, 1, 3).unwrap().epoch_days() as i128)
+    );
+    assert_eq!(r.array().len(), 3);
+    assert_eq!(r.materialize().data_type(), &DataType::date());
 }
 
 #[test]
@@ -456,7 +541,7 @@ fn large_offset_string_and_binary() {
 
 #[test]
 fn lazy_slice_stays_lazy_then_materializes() {
-    let r = UInt64RangeSerie::new("r", 0, 2, 6); // 0, 2, 4, 6, 8, 10 (lazy)
+    let r = RangeSerie::uint64("r", 0, 2, 6); // 0, 2, 4, 6, 8, 10 (lazy)
     let sub = r.slice(1, 3); // 2, 4, 6 — still lazy
     assert!(!sub.is_materialized());
     assert_eq!(sub.len(), 3);
@@ -944,7 +1029,7 @@ fn categorical_serie_integer_and_all_null() {
 
 #[test]
 fn lazy_temporal_field_accessors() {
-    let index = UInt64RangeSerie::indices(3);
+    let index = RangeSerie::indices(3);
     assert_eq!(index.dtype(), &DataType::int(64, false));
     assert_eq!(index.get_metadata("missing"), None);
 }
@@ -1193,7 +1278,7 @@ fn cast_to_any_and_null_fast_paths() {
     assert_eq!(any.len(), 3);
 
     // casting a column to its own type is also skipped — the type and values are preserved
-    let range = UInt64RangeSerie::indices(4);
+    let range = RangeSerie::indices(4);
     let same = range.cast(&DataType::Any).unwrap();
     assert_eq!(same.data_type(), &DataType::int(64, false));
     assert_eq!(same.value_at(2), Scalar::Int(2));
@@ -1257,7 +1342,7 @@ fn cast_str_parses_and_delegates() {
 #[test]
 fn struct_from_children_is_lazy_until_materialized() {
     // a lazy child (a computed range) keeps the struct lazy until materialize
-    let id: SerieRef = Arc::new(UInt64RangeSerie::new("id", 0, 1, 3));
+    let id: SerieRef = Arc::new(RangeSerie::uint64("id", 0, 1, 3));
     let name: SerieRef = Arc::new(VarcharSerie::<i32>::from_values(
         "name",
         vec![Some("a"), Some("b"), Some("c")],

@@ -3,17 +3,21 @@
 Some columns are **not** fully resident in memory. A **lazy** column stores only a compact
 description and computes each value on demand (`is_materialized()` is `false`) until
 `materialize()` realises a real Arrow array. This page covers the lazy ranges, the
-`uint64` range that doubles as the canonical **row index**, and the dictionary-encoded
-`CategoricalSerie`.
+datatype-generic range that doubles as the canonical **row index**, and the
+dictionary-encoded `CategoricalSerie`.
 
 See also: [Serie (the typed column)](serie.md) · [Nested](nested.md) · [Frame](frame.md).
 
 ## Lazy (computed) ranges
 
-A range stores a start, a step and a length, and computes `start + i*step` on demand.
+A range stores a `start`, a `step` and a length, and computes `start + step*i` on demand.
 
-- `UInt64RangeSerie` — a `uint64` arithmetic range `start, start+step, …` (also the row
-  index, below).
+- `RangeSerie` — a **datatype-generic** arithmetic range. Its `start`, `end` and `step` are
+  rich [scalars](../scalar/scalar.md) and each value is computed through the
+  [`Scalar` math operations](../scalar/scalar.md#arithmetic), so the *same* range type spans
+  every datatype whose values add and scale: integers, floats and decimals, and the temporal
+  types (a date / timestamp / time range whose `step` is a duration). A `uint64` one is the
+  row index (below).
 - `DateRangeSerie` — a day-resolution calendar-date range (`Date32`).
 - `DateTimeRangeSerie` — a nanosecond timestamp range.
 - `TimeRangeSerie` — a time-of-day range (wraps within the day).
@@ -48,15 +52,20 @@ The bindings expose the arithmetic `Serie.range`; the calendar/time ranges are R
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{UInt64RangeSerie, DateRangeSerie, Serie, TypedSerie, Scalar};
+    use yggdryl_serie::{RangeSerie, DateRangeSerie, Serie, Scalar};
+    use yggdryl_scalar::ScalarValue;
     use yggdryl_core::Date;
 
-    let r = UInt64RangeSerie::new("r", 100, 5, 4);    // 100, 105, 110, 115 (lazy)
+    let r = RangeSerie::uint64("r", 100, 5, 4);        // 100, 105, 110, 115 (lazy)
     assert!(!r.is_materialized());
-    assert_eq!(r.get(2), Some(110));
+    assert_eq!(r.at(2), Some(110));
     assert_eq!(r.value_at(3), Scalar::Int(115));
     let realized = r.materialize();                    // -> a real uint64 column
     assert!(realized.is_materialized());
+
+    // datatype-generic: a float64 range computed via Scalar math
+    let f = RangeSerie::new("f", ScalarValue::float(1.0, 64), ScalarValue::float(0.5, 64), 4).unwrap();
+    assert_eq!(f.value_at(3), Scalar::Float(2.5));
 
     let dates = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 30).unwrap(), 1, 3);
     assert_eq!(dates.date_at(2), Some(Date::from_ymd(2024, 2, 1).unwrap()));
@@ -64,7 +73,7 @@ The bindings expose the arithmetic `Serie.range`; the calendar/time ranges are R
 
 ## Range & row index
 
-`UInt64RangeSerie` is the canonical **row index** — the `0, 1, …, len-1` labels that
+`RangeSerie` is the canonical **row index** — the `0, 1, …, len-1` labels that
 address a frame's rows, the implicit index a frame carries when no explicit one is set.
 Because the values are a known arithmetic progression, the label ↔ position lookups
 (`at` / `position` / `contains`) are **O(1)**, even after a slice (whose labels start at
@@ -111,23 +120,71 @@ general `start + i*step` range; `is_range` reports whether a column is the canon
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{UInt64RangeSerie, Serie};
+    use yggdryl_serie::{RangeSerie, Serie};
 
-    let index = UInt64RangeSerie::indices(4);         // lazy [0, 1, 2, 3] (uint64)
+    let index = RangeSerie::indices(4);         // lazy [0, 1, 2, 3] (uint64)
     assert!(index.is_range());
     assert!(!index.is_materialized());
     assert_eq!(index.at(2), Some(2));                 // label at row 2
     assert_eq!(index.position(3), Some(3));           // row of label 3
     assert!(!index.contains(4));
 
-    let stepped = UInt64RangeSerie::new("r", 100, 5, 4); // 100, 105, 110, 115
+    let stepped = RangeSerie::uint64("r", 100, 5, 4); // 100, 105, 110, 115
     assert!(!stepped.is_range());                     // start != 0
     assert_eq!(stepped.position(110), Some(2));       // O(1) inverse lookup
     ```
 
-Slicing a range stays a lazy `UInt64RangeSerie` whose labels start at the slice offset, so
+Slicing a range stays a lazy `RangeSerie` whose labels start at the slice offset, so
 `at` / `position` keep working, but `is_range` becomes `false` (the labels no longer start
 at `0`). Materialising a range yields a plain in-memory `uint64` column.
+
+## Casting a range preserves its original type
+
+[`cast`](serie.md#cast) on a range is special: it **keeps the original `start` / `end` /
+`step`** and only re-types what the column *exposes*. The result is a **still-lazy** range
+that computes in the original type and presents `value_at` / `array` / `data_type` as the
+cast output — so the original numbers survive while the column reads as the new type.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    floats = yggdryl.Serie.index(4).cast("float64")   # cast a uint64 index
+    assert not floats.is_materialized                 # still a lazy computed range
+    assert str(floats.data_type) == "float64"
+    assert floats.to_list() == [0.0, 1.0, 2.0, 3.0]   # exposed as floats
+    assert floats.materialize().to_list() == [0.0, 1.0, 2.0, 3.0]
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Serie } = require('yggdryl')
+
+    const floats = Serie.index(4).cast('float64')     // cast a uint64 index
+    if (floats.isMaterialized) throw new Error('lazy') // still a lazy computed range
+    if (floats.dataType.toString() !== 'float64') throw new Error('type')
+    if (floats.toList().join() !== '0,1,2,3') throw new Error('values')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_serie::{RangeSerie, DataType, Serie, Scalar};
+    use yggdryl_scalar::ScalarValue;
+
+    let floats = RangeSerie::indices(4).cast(&DataType::float(64)).unwrap();
+    assert_eq!(floats.data_type(), &DataType::float(64));   // exposes float
+    assert!(!floats.is_materialized());                     // still lazy
+    assert_eq!(floats.value_at(2), Scalar::Float(2.0));
+
+    // the underlying range keeps its original uint64 start / step
+    let range = floats.as_any().downcast_ref::<RangeSerie>().unwrap();
+    assert!(range.is_cast());
+    assert_eq!(*range.start(), ScalarValue::int(0, 64, false));
+    assert_eq!(range.original_type(), DataType::int(64, false));
+    ```
 
 ## Categorical (dictionary-encoded)
 

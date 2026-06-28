@@ -61,3 +61,20 @@ test('component map round-trip', () => {
   assert.strictEqual(m.type, 'int32')
   assert.ok(Scalar.fromMapping(m).equals(s))
 })
+
+test('scalar arithmetic', () => {
+  const a = new Scalar(6)
+  const b = new Scalar(4)
+  assert.strictEqual(a.add(b).value, 10)
+  assert.strictEqual(a.sub(b).value, 2)
+  assert.strictEqual(a.mul(b).value, 24)
+  assert.strictEqual(a.div(b).value, 1)
+  assert.strictEqual(a.neg().value, -6)
+  // mixed int + float promotes to float
+  const mixed = a.add(new Scalar(1.5))
+  assert.strictEqual(mixed.dataType.toString(), 'float64')
+  assert.strictEqual(mixed.value, 7.5)
+  // division by zero and an undefined combination throw
+  assert.throws(() => a.div(new Scalar(0)))
+  assert.throws(() => new Scalar('x').add(a))
+})

@@ -76,9 +76,37 @@ pub trait Scalar: fmt::Debug + Send + Sync {
     /// types follow the Arrow kernel's own semantics; for a by-name struct cast that fills
     /// missing target columns, cast at the [`Serie`](yggdryl_serie) layer instead.
     fn cast(&self, dtype: &DataType) -> ScalarResult<ScalarRef> {
-        let target = dtype.to_arrow()?;
-        let array = arrow_cast::cast(self.to_array()?.as_ref(), &target)?;
-        Ok(ScalarValue::from_array(array.as_ref(), 0)?.into_scalar())
+        Ok(self.value().cast(dtype)?.into_scalar())
+    }
+
+    /// `self + rhs`, boxed as a [`ScalarRef`] — the default delegates to
+    /// [`ScalarValue::add`], which promotes numeric operands, defines a few temporal
+    /// combinations, and raises [`ScalarError::Unsupported`](crate::ScalarError::Unsupported)
+    /// for a combination with no defined sum. Every concrete scalar inherits it, so it
+    /// either computes or says why it can't.
+    fn add(&self, rhs: &dyn Scalar) -> ScalarResult<ScalarRef> {
+        Ok(self.value().add(rhs.value())?.into_scalar())
+    }
+
+    /// `self - rhs`, boxed as a [`ScalarRef`] (see [`add`](Scalar::add)).
+    fn sub(&self, rhs: &dyn Scalar) -> ScalarResult<ScalarRef> {
+        Ok(self.value().sub(rhs.value())?.into_scalar())
+    }
+
+    /// `self * rhs`, boxed as a [`ScalarRef`] (see [`add`](Scalar::add)).
+    fn mul(&self, rhs: &dyn Scalar) -> ScalarResult<ScalarRef> {
+        Ok(self.value().mul(rhs.value())?.into_scalar())
+    }
+
+    /// `self / rhs`, boxed as a [`ScalarRef`] (see [`add`](Scalar::add); raises on a zero
+    /// divisor).
+    fn div(&self, rhs: &dyn Scalar) -> ScalarResult<ScalarRef> {
+        Ok(self.value().div(rhs.value())?.into_scalar())
+    }
+
+    /// `-self`, boxed as a [`ScalarRef`] (see [`add`](Scalar::add)).
+    fn neg(&self) -> ScalarResult<ScalarRef> {
+        Ok(self.value().neg()?.into_scalar())
     }
 }
 

@@ -139,6 +139,70 @@ straight into a **language-native record**: Python's `to_dict()` (a `dict`) and
     if (row.toObject().name !== 'a') throw new Error('record')
     ```
 
+## Arithmetic
+
+Every scalar supports the basic math operations — `add` / `sub` / `mul` / `div` and
+negation — **by default**: numeric operands **promote** (an integer widens to a float when
+mixed, a decimal carries its scale), a few **temporal** combinations are defined (durations
+scale and add, a duration shifts a date / timestamp / time, two instants subtract to a
+duration), a `null` operand propagates as a typed null, and anything with no defined result
+(a string plus an integer, two booleans, …) **raises** rather than guessing. The whole
+engine works in the widened representation, so an integer overflow is an error, not a
+silent wraparound. (This is what the generic [`RangeSerie`](../serie/lazy.md) computes its
+values with.)
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    a = yggdryl.Scalar(6)                       # int64
+    b = yggdryl.Scalar(4)
+    assert (a + b).value == 10
+    assert (a - b).value == 2 and (a * b).value == 24
+    assert (-a).value == -6
+    # mixed int + float promotes to float
+    assert str((a + yggdryl.Scalar(1.5)).data_type) == "float64"
+    # an undefined combination raises
+    try:
+        yggdryl.Scalar("x") + a
+        raise AssertionError("expected an error")
+    except ValueError:
+        pass
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { Scalar } = require('yggdryl')
+
+    const a = new Scalar(6)                      // int64 (all-integral number)
+    const b = new Scalar(4)
+    if (a.add(b).value !== 10) throw new Error('add')
+    if (a.sub(b).value !== 2 || a.mul(b).value !== 24) throw new Error('sub/mul')
+    if (a.neg().value !== -6) throw new Error('neg')
+    // an undefined combination throws
+    let threw = false
+    try { new Scalar('x').add(a) } catch (e) { threw = true }
+    if (!threw) throw new Error('expected a throw')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_scalar::{IntScalar, FloatScalar, VarcharScalar, Scalar};
+
+    let a = IntScalar::new(6, 64, true);
+    let b = IntScalar::new(4, 64, true);
+    assert_eq!(a.add(&b).unwrap().to_str(), "10::int64");
+    assert_eq!(a.mul(&b).unwrap().to_str(), "24::int64");
+    assert_eq!(a.neg().unwrap().to_str(), "-6::int64");
+    // mixed int + float promotes to float
+    assert_eq!(a.add(&FloatScalar::new(1.5, 64)).unwrap().to_str(), "7.5::float64");
+    // an undefined combination is an actionable error, not a guess
+    assert!(VarcharScalar::new("x").add(&a).is_err());
+    ```
+
 ## Serialization
 
 As with every yggdryl value type, a `Scalar` round-trips through:

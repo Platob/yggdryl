@@ -121,7 +121,7 @@ pub trait Serie: fmt::Debug + Send + Sync {
     }
 
     /// Whether the column's values are **fully resident in memory** (the normal case).
-    /// A *lazy* / computed column (a [range](crate::UInt64RangeSerie), a
+    /// A *lazy* / computed column (a [range](crate::RangeSerie), a
     /// [date range](crate::DateRangeSerie)) reports `false` — its values are produced
     /// on demand until [`materialize`](Serie::materialize)d.
     fn is_materialized(&self) -> bool {

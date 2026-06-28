@@ -593,3 +593,116 @@ fn nested_edge_cases() {
         ScalarValue::utf8("x").to_array().unwrap().data_type()
     );
 }
+
+#[test]
+fn scalar_value_arithmetic_edge_cases() {
+    // unsigned underflow / negation must error, not silently wrap on Arrow conversion
+    let u = ScalarValue::int(5, 64, false);
+    assert!(u.sub(&ScalarValue::int(10, 64, false)).is_err());
+    assert!(u.neg().is_err());
+    assert_eq!(
+        ScalarValue::int(0, 64, false).neg().unwrap(),
+        ScalarValue::int(0, 64, false)
+    );
+
+    // decimal multiply that overflows 128-bit precision widens to 256-bit, not truncates
+    // 2e-30 * 3e-30 = 6e-60 (scale 60 needs 256-bit storage)
+    let a = ScalarValue::decimal128(2, 38, 30);
+    let b = ScalarValue::decimal128(3, 38, 30);
+    let prod = a.mul(&b).unwrap();
+    match prod {
+        ScalarValue::Decimal {
+            value, scale, bits, ..
+        } => {
+            assert_eq!(value, i256::from_i128(6));
+            assert_eq!(scale, 60);
+            assert_eq!(bits, 256);
+        }
+        _ => panic!("expected a decimal"),
+    }
+    // and it builds a valid Arrow array (precision/scale are coherent)
+    assert!(prod.to_array().is_ok());
+
+    // a null operand does NOT turn an unsupported combination into a successful null
+    let null_str = ScalarValue::Null(DataType::varchar());
+    assert!(null_str.add(&ScalarValue::int(1, 32, true)).is_err());
+
+    // duration division by zero is a division-by-zero error (not "unsupported combination")
+    let dur = ScalarValue::from_duration(&Duration::from_secs(10));
+    let err = dur.div(&ScalarValue::int(0, 64, true)).unwrap_err();
+    assert!(format!("{err}").contains("zero"));
+}
+
+// ---- arithmetic (add / sub / mul / div / neg) ----
+
+use crate::{Duration, DurationScalar, FloatScalar};
+
+#[test]
+fn scalar_value_numeric_arithmetic() {
+    let a = ScalarValue::int(7, 32, true);
+    let b = ScalarValue::int(5, 32, true);
+    assert_eq!(a.add(&b).unwrap(), ScalarValue::int(12, 32, true));
+    assert_eq!(a.sub(&b).unwrap(), ScalarValue::int(2, 32, true));
+    assert_eq!(a.mul(&b).unwrap(), ScalarValue::int(35, 32, true));
+    assert_eq!(a.div(&b).unwrap(), ScalarValue::int(1, 32, true));
+
+    // width / signedness promote to the wider, signed-if-either operand
+    assert_eq!(
+        ScalarValue::int(10, 64, false)
+            .add(&ScalarValue::int(3, 16, true))
+            .unwrap(),
+        ScalarValue::int(13, 64, true)
+    );
+    // a float anywhere widens to f64
+    assert_eq!(
+        a.add(&ScalarValue::float(2.5, 64)).unwrap(),
+        ScalarValue::float(9.5, 64)
+    );
+    // division by zero and overflow are actionable errors
+    assert!(a.div(&ScalarValue::int(0, 32, true)).is_err());
+    assert!(ScalarValue::int(i128::MAX, 64, true)
+        .add(&ScalarValue::int(1, 64, true))
+        .is_err());
+    assert_eq!(a.neg().unwrap(), ScalarValue::int(-7, 32, true));
+}
+
+#[test]
+fn scalar_value_temporal_arithmetic() {
+    let day = ScalarValue::from_duration(&Duration::from_secs(86_400));
+    assert_eq!(
+        day.add(&day).unwrap().as_duration().unwrap().as_seconds(),
+        172_800
+    );
+    assert_eq!(
+        day.mul(&ScalarValue::int(3, 64, true))
+            .unwrap()
+            .as_duration()
+            .unwrap()
+            .as_seconds(),
+        259_200
+    );
+    let d0 = ScalarValue::from_date(&Date::from_ymd(2024, 1, 1).unwrap());
+    let d1 = d0.add(&day).unwrap();
+    assert_eq!(d1.as_date().unwrap(), Date::from_ymd(2024, 1, 2).unwrap());
+    assert_eq!(
+        d1.sub(&d0).unwrap().as_duration().unwrap().as_seconds(),
+        86_400
+    );
+}
+
+#[test]
+fn scalar_trait_arithmetic() {
+    let a = IntScalar::new(6, 64, true);
+    let b = IntScalar::new(4, 64, true);
+    assert_eq!(a.add(&b).unwrap().to_str(), "10::int64");
+    assert_eq!(a.mul(&b).unwrap().to_str(), "24::int64");
+    assert_eq!(a.neg().unwrap().to_str(), "-6::int64");
+    assert_eq!(
+        a.add(&FloatScalar::new(1.5, 64)).unwrap().to_str(),
+        "7.5::float64"
+    );
+    assert!(VarcharScalar::new("x").add(&a).is_err());
+    // a value-level cast is also available
+    let dur = DurationScalar::from_duration(&Duration::from_secs(1));
+    assert!(dur.value().cast(&DataType::int(64, true)).is_ok());
+}

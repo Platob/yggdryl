@@ -68,3 +68,22 @@ def test_component_map_round_trip():
     mapping = s.to_mapping()
     assert mapping["type"] == "int32"
     assert Scalar.from_mapping(mapping) == s
+
+
+def test_scalar_arithmetic():
+    import pytest
+
+    a, b = Scalar(6), Scalar(4)
+    assert (a + b).value == 10
+    assert (a - b).value == 2
+    assert (a * b).value == 24
+    assert (a / b).value == 1
+    assert (-a).value == -6
+    # mixed int + float promotes to float
+    mixed = a + Scalar(1.5)
+    assert str(mixed.data_type) == "float64" and mixed.value == 7.5
+    # division by zero and an undefined combination raise
+    with pytest.raises(ValueError):
+        a / Scalar(0)
+    with pytest.raises(ValueError):
+        Scalar("x") + a

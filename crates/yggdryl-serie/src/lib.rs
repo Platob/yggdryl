@@ -29,11 +29,12 @@
 //!   and the [`TemporalSerie`] trait (`datetime_at` / `date_at` / `time_at`).
 //! - The **nested** series — [`StructSerie`], [`ListSerie<O>`] and [`MapSerie`] (child
 //!   columns built recursively) and the [`NestedSerie`] trait.
-//! - The **lazy** (computed) series — [`UInt64RangeSerie`], [`DateRangeSerie`],
+//! - The **lazy** (computed) series — [`RangeSerie`], [`DateRangeSerie`],
 //!   [`DateTimeRangeSerie`] and [`TimeRangeSerie`] — store a compact description and
 //!   produce values on demand until materialised (the temporal ranges are
-//!   [`TemporalSerie`]s). [`UInt64RangeSerie`] doubles as the canonical row index
-//!   (O(1) label ↔ position lookups via `at` / `position` / `contains`).
+//!   [`TemporalSerie`]s). [`RangeSerie`] is **datatype-generic** (its `start` / `end` /
+//!   `step` are scalars computed via [`Scalar`](yggdryl_scalar::Scalar) math) and a `uint64`
+//!   one doubles as the canonical row index (O(1) `at` / `position` / `contains`).
 //! - [`CategoricalSerie`] — a dictionary-encoded view for repeated values (distinct
 //!   values + per-row codes); decodes to a flat column on `materialize`.
 //! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
@@ -94,7 +95,7 @@ pub use bytes::from_bytes;
 pub use categorical::CategoricalSerie;
 pub use display::DisplayOptions;
 pub use error::{SerieError, SerieResult};
-pub use lazy::{DateRangeSerie, DateTimeRangeSerie, TimeRangeSerie, UInt64RangeSerie};
+pub use lazy::{DateRangeSerie, DateTimeRangeSerie, RangeSerie, TimeRangeSerie};
 pub use nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 pub use primitive::{
     BinarySerie,

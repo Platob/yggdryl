@@ -140,7 +140,7 @@ ahead of time. These are pure-Rust core numbers (no FFI, no server).
 | --- | --- |
 | metadata / fast checks — `num_rows` / `null_count` / `category` / `data_type` | 1.6–1.9 ns |
 | typed value read — `Int32Serie::value` | 0.9 ns |
-| lazy `UInt64RangeSerie::value_at` (computed, no storage) | 1.5 ns |
+| lazy `RangeSerie::value_at` (datatype-generic, Scalar math, no storage) | 67 ns |
 | type-erased `Serie::value_at` → `Scalar` | 12 ns |
 | `from_array` factory dispatch (4096 rows) | 127–145 ns |
 | zero-copy `slice` (re-wrap as a new column) | 226 ns |
@@ -156,10 +156,13 @@ rebuild Arrow buffers, so they scale with the column length:
 | value mutate — `push` / `set_at` (int32, 4096) | 0.8 / 1.0 µs |
 | frame filter / sort (4096 rows) | 18 / 24 µs |
 
-A **lazy** column (a range, a cast result) computes a value without touching memory, so a
-`UInt64RangeSerie` read matches a typed array read; `slice` is O(1) on the Arrow buffers (its
-cost is wrapping the slice as a new column, not copying); and dictionary encoding is the
-one heavy op — worth it only when a column actually repeats. The frame transforms are
+A **lazy** column (a range, a cast result) computes a value without touching memory. The
+`RangeSerie` is now **datatype-generic** — each `value_at` runs the
+[`Scalar` math](scalar/scalar.md) (`start + step*i`) rather than a single add, so a read costs tens
+of nanoseconds instead of matching a raw array read, in exchange for spanning every numeric
+and temporal type and preserving its original type across a cast. `slice` is O(1) on the
+Arrow buffers (its cost is wrapping the slice as a new column, not copying); and dictionary
+encoding is the one heavy op — worth it only when a column actually repeats. The frame transforms are
 functional (each returns a new lazy frame sharing the untouched buffers), so projection and
 record reads are sub-microsecond; `filter` / `sort` are the bulk Arrow-kernel passes.
 
