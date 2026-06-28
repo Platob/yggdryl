@@ -349,12 +349,6 @@ impl DataType {
         self.inner.category().as_str()
     }
 
-    /// The physical width in bits for fixed-width types, else ``None``.
-    #[getter]
-    fn bit_size(&self) -> Option<u16> {
-        self.inner.bit_size()
-    }
-
     /// The physical width in bytes for byte-aligned fixed-width types, else ``None``.
     #[getter]
     fn byte_size(&self) -> Option<u16> {
@@ -379,23 +373,10 @@ impl DataType {
         self.inner.is_fixed_size()
     }
 
-    /// The physical (storage) :class:`DataType` backing a logical type (identity for
-    /// non-logical types).
-    fn physical_type(&self) -> DataType {
-        wrap(self.inner.physical_type())
-    }
-
     /// The string charset, if a string type.
     #[getter]
     fn charset(&self) -> Option<&'static str> {
         self.inner.charset().map(|c| c.as_str())
-    }
-
-    /// The numeric storage width in bits (int / float / decimal), else ``None``
-    /// (the :class:`Numeric` interface).
-    #[getter]
-    fn numeric_bits(&self) -> Option<u16> {
-        self.inner.numeric_bits()
     }
 
     /// Whether a numeric type is signed — the integer flag, always ``True`` for
@@ -564,11 +545,11 @@ impl DataType {
     }
 
     fn __str__(&self) -> String {
-        self.inner.to_str()
+        self.inner.to_string()
     }
 
     fn __repr__(&self) -> String {
-        format!("DataType('{}')", self.inner.to_str())
+        format!("DataType('{}')", self.inner)
     }
 
     fn __eq__(&self, other: &Self) -> bool {
@@ -576,7 +557,7 @@ impl DataType {
     }
 
     fn __hash__(&self) -> u64 {
-        crate::hash_str(&self.inner.to_str())
+        crate::hash_str(&self.inner.to_string())
     }
 
     /// Reconstruct losslessly through structural JSON.

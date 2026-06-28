@@ -28,9 +28,9 @@ def test_datatype_accessors_and_categories():
     assert yggdryl.DataType.date().category == "logical"
     assert yggdryl.DataType.struct_([]).category == "nested"
     assert yggdryl.DataType.any().category == "any"
-    assert yggdryl.DataType.int(32).bit_size == 32
-    assert yggdryl.DataType.boolean().bit_size == 1
-    assert yggdryl.DataType.varchar().bit_size is None
+    assert yggdryl.DataType.int(32).byte_size == 4
+    assert yggdryl.DataType.boolean().byte_size is None
+    assert yggdryl.DataType.varchar().byte_size is None
     assert yggdryl.DataType.varchar(large=True).is_large
     assert yggdryl.DataType.varchar(view=True).is_view
     assert yggdryl.DataType.varchar(charset="latin1").charset == "latin1"
@@ -248,25 +248,18 @@ def test_fixed_numeric_json_bson_physical():
     assert D.decimal128(10, 2).name == "i128"
     assert D.decimal256(76, 0).name == "i256"
     assert D.varchar().name is None
-    # Numeric interface: mutualised bits + signed.
-    assert D.int(32, signed=False).numeric_bits == 32
+    # Numeric interface: signed.
     assert D.int(32, signed=False).signed is False
     assert D.float(64).signed is True  # floats are always signed
     assert D.decimal(10, 2).signed is True
-    assert D.varchar().signed is None and D.varchar().numeric_bits is None
-    # Json / Bson logical types + physical types.
+    assert D.varchar().signed is None
+    # Json / Bson logical types.
     assert D("json") == D.json() and D("jsonb") == D.json()
     assert D("bson") == D.bson()
     assert str(D.json()) == "json"
     assert D.json().is_json() and D.json().is_logical()
     assert D.bson().is_bson()
     assert D.json().category == "logical"
-    assert D.json().physical_type() == D.varchar()
-    assert D.bson().physical_type() == D.binary()
-    assert D.date().physical_type() == D.int(32)
-    # A decimal stores in a fixed-size binary of its byte width.
-    assert D.decimal(10, 2).physical_type() == D.fixed_size_binary(16)
-    assert D.int(32).physical_type() == D.int(32)  # identity
     # Fixed vs variable size.
     fixed = D("char[10]")
     assert fixed == D.fixed_size_varchar(10)

@@ -106,7 +106,7 @@ fn sample_types() -> Vec<DataType> {
 #[test]
 fn string_round_trips_for_every_type() {
     for dt in sample_types() {
-        let rendered = dt.to_str();
+        let rendered = dt.to_string();
         let parsed =
             DataType::from_str(&rendered).unwrap_or_else(|e| panic!("re-parse {rendered:?}: {e}"));
         assert_eq!(parsed, dt, "round-trip mismatch for {rendered:?}");
@@ -143,16 +143,16 @@ fn parses_canonical_and_aliases() {
 
 #[test]
 fn varchar_charset_grammar() {
-    assert_eq!(DataType::varchar().to_str(), "utf8");
+    assert_eq!(DataType::varchar().to_string(), "utf8");
     assert_eq!(
-        DataType::varchar_with(Charset::Utf8, true, false, None).to_str(),
+        DataType::varchar_with(Charset::Utf8, true, false, None).to_string(),
         "large_utf8"
     );
     let latin = DataType::varchar_with(Charset::Latin1, false, false, None);
-    assert_eq!(latin.to_str(), "varchar[latin1]");
+    assert_eq!(latin.to_string(), "varchar[latin1]");
     assert_eq!(DataType::from_str("varchar[latin1]").unwrap(), latin);
     let big_latin = DataType::varchar_with(Charset::Latin1, true, false, None);
-    assert_eq!(big_latin.to_str(), "varchar[latin1, large]");
+    assert_eq!(big_latin.to_string(), "varchar[latin1, large]");
     assert_eq!(
         DataType::from_str("varchar[latin1, large]").unwrap(),
         big_latin
@@ -163,37 +163,14 @@ fn varchar_charset_grammar() {
 
 #[test]
 fn uniform_physical_accessors() {
-    assert_eq!(DataType::int(32, true).bit_size(), Some(32));
-    assert_eq!(DataType::Boolean.bit_size(), Some(1));
-    assert_eq!(DataType::float(64).bit_size(), Some(64));
-    assert_eq!(DataType::decimal_with(20, 2, 128).bit_size(), Some(128));
-    assert_eq!(DataType::fixed_size_binary(10).bit_size(), Some(80));
-    assert_eq!(DataType::date().bit_size(), Some(32));
-    assert_eq!(DataType::Date { large: true }.bit_size(), Some(64));
-    assert_eq!(
-        DataType::Time {
-            unit: TimeUnit::Second
-        }
-        .bit_size(),
-        Some(32)
-    );
-    assert_eq!(
-        DataType::Time {
-            unit: TimeUnit::Nanosecond
-        }
-        .bit_size(),
-        Some(64)
-    );
-    assert_eq!(
-        DataType::Interval {
-            unit: IntervalUnit::DayTime
-        }
-        .bit_size(),
-        Some(64)
-    );
-    assert_eq!(DataType::varchar().bit_size(), None);
+    // byte_size: byte-aligned fixed widths only (Boolean is sub-byte; strings are None).
     assert_eq!(DataType::int(32, true).byte_size(), Some(4));
+    assert_eq!(DataType::float(64).byte_size(), Some(8));
+    assert_eq!(DataType::decimal_with(20, 2, 128).byte_size(), Some(16));
+    assert_eq!(DataType::fixed_size_binary(10).byte_size(), Some(10));
+    assert_eq!(DataType::date().byte_size(), Some(4));
     assert_eq!(DataType::Boolean.byte_size(), None);
+    assert_eq!(DataType::varchar().byte_size(), None);
     // large / view flags.
     assert!(DataType::varchar_with(Charset::Utf8, true, false, None).is_large());
     assert!(DataType::varchar_with(Charset::Utf8, false, true, None).is_view());
@@ -409,7 +386,7 @@ fn timestamp_raw_posix_zone_round_trips() {
         dt.timezone().map(Timezone::name).as_deref(),
         Some("EST5EDT,M3.2.0,M11.1.0")
     );
-    assert_eq!(DataType::from_str(&dt.to_str()).unwrap(), dt);
+    assert_eq!(DataType::from_str(&dt.to_string()).unwrap(), dt);
 }
 
 #[test]
@@ -586,59 +563,37 @@ fn fixed_decimal_widths_and_native_types() {
     // The descriptor struct mirrors the variant.
     assert_eq!(DataType::from(Decimal128::new(10, 2)), D::decimal128(10, 2));
     // The created 256-bit native type round-trips a value beyond i128.
-    assert_eq!(i256::from_i128(-5).to_str(), "-5");
+    assert_eq!(i256::from_i128(-5).to_string(), "-5");
 }
 
 #[test]
-fn numeric_trait_bits_and_signed() {
+fn numeric_trait_signed() {
     use crate::Numeric;
     use DataType as D;
-    // numeric_bits + signed are mutualised across int / float / decimal.
-    assert_eq!(D::int(32, false).numeric_bits(), Some(32));
+    // signed is mutualised across int / float / decimal.
     assert_eq!(D::int(32, false).signed(), Some(false));
     assert_eq!(D::int(64, true).signed(), Some(true));
-    assert_eq!(D::float(64).numeric_bits(), Some(64));
     assert_eq!(D::float(64).signed(), Some(true)); // floats are always signed
-    assert_eq!(D::decimal_with(20, 2, 128).numeric_bits(), Some(128));
     assert_eq!(D::decimal(10, 2).signed(), Some(true));
     assert!(D::int(8, true).is_numeric_kind() && D::float(16).is_numeric_kind());
     // Non-numeric types report None.
-    assert_eq!(D::varchar().numeric_bits(), None);
     assert_eq!(D::varchar().signed(), None);
     assert!(!D::date().is_numeric_kind());
 }
 
 #[test]
-fn json_bson_and_physical_types() {
+fn json_bson_logical_types() {
     use DataType as D;
     assert_eq!(D::from_str("json").unwrap(), D::json());
     assert_eq!(D::from_str("jsonb").unwrap(), D::json());
     assert_eq!(D::from_str("bson").unwrap(), D::bson());
-    assert_eq!(D::json().to_str(), "json");
-    assert_eq!(D::bson().to_str(), "bson");
+    assert_eq!(D::json().to_string(), "json");
+    assert_eq!(D::bson().to_string(), "bson");
     assert!(D::json().is_json() && D::json().is_logical());
     assert!(D::bson().is_bson() && D::bson().is_logical());
     assert_eq!(D::json().category(), TypeCategory::Logical);
     assert_eq!(D::from_bytes(&D::json().to_bytes()).unwrap(), D::json());
-    // physical (storage) types.
-    assert_eq!(D::json().physical_type(), D::varchar());
-    assert_eq!(D::bson().physical_type(), D::binary());
-    assert_eq!(D::date().physical_type(), D::int(32, true));
-    assert_eq!(D::Date { large: true }.physical_type(), D::int(64, true));
-    assert_eq!(
-        D::timestamp(TimeUnit::Microsecond, None).physical_type(),
-        D::int(64, true)
-    );
-    assert_eq!(
-        D::decimal_with(10, 2, 128).physical_type(),
-        D::fixed_size_binary(16)
-    );
-    assert_eq!(
-        D::dictionary(D::int(16, true), D::varchar()).physical_type(),
-        D::int(16, true)
-    );
-    assert_eq!(D::int(32, true).physical_type(), D::int(32, true)); // identity
-                                                                    // json/bson cast + merge with their physical type.
+    // json/bson cast + merge with their physical string / binary type.
     assert!(D::json().can_cast_to(&D::varchar()) && D::varchar().can_cast_to(&D::json()));
     assert!(D::bson().can_cast_to(&D::binary()));
     assert_eq!(D::json().common_type(&D::varchar()), Some(D::varchar()));
@@ -649,10 +604,9 @@ fn timezone_logical_type() {
     use DataType as D;
     assert_eq!(D::from_str("timezone").unwrap(), D::Timezone);
     assert_eq!(D::from_str("tz").unwrap(), D::Timezone);
-    assert_eq!(D::Timezone.to_str(), "timezone");
+    assert_eq!(D::Timezone.to_string(), "timezone");
     assert!(D::Timezone.is_timezone() && D::Timezone.is_logical());
     assert_eq!(D::Timezone.category(), TypeCategory::Logical);
-    assert_eq!(D::Timezone.physical_type(), D::varchar());
     assert_eq!(D::from_bytes(&D::Timezone.to_bytes()).unwrap(), D::Timezone);
     // casts / merges with its string physical type, like json.
     assert!(D::Timezone.can_cast_to(&D::varchar()) && D::varchar().can_cast_to(&D::Timezone));
@@ -686,7 +640,7 @@ fn fixed_size_string_and_binary() {
     let fixed = D::from_str("char[10]").unwrap();
     assert_eq!(fixed, D::fixed_size_varchar(10));
     assert!(fixed.is_fixed_size());
-    assert_eq!(fixed.to_str(), "char[10]");
+    assert_eq!(fixed.to_string(), "char[10]");
     assert_eq!(
         D::from_str("char(255)").unwrap(),
         D::fixed_size_varchar(255)
@@ -702,12 +656,7 @@ fn fixed_size_string_and_binary() {
         D::varchar_with(Charset::Utf8, true, false, Some(8)),
         D::varchar_with(Charset::Utf8, false, true, Some(8)),
     ] {
-        assert_eq!(
-            D::from_str(&dt.to_str()).unwrap(),
-            dt,
-            "round-trip {}",
-            dt.to_str()
-        );
+        assert_eq!(D::from_str(&dt.to_string()).unwrap(), dt, "round-trip {dt}");
     }
     // common_type keeps a shared fixed size, else falls back to variable.
     assert_eq!(
@@ -728,7 +677,7 @@ fn field_surface() {
     assert_eq!(f.name(), "id");
     assert!(!f.is_nullable());
     assert_eq!(f.comment(), Some("primary key"));
-    assert_eq!(f.to_str(), "id: int64 not null");
+    assert_eq!(f.to_string(), "id: int64 not null");
     assert_eq!(
         Field::from_str("id: int64 not null").unwrap(),
         f.clone().without_metadata()

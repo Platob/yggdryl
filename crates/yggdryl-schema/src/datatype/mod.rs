@@ -166,7 +166,7 @@ impl fmt::Display for TypeCategory {
 /// assert_eq!(DataType::from_str("int64").unwrap(), DataType::int64());
 /// assert_eq!(DataType::from_str("uint8").unwrap(), DataType::uint8());
 /// assert_eq!(DataType::varchar().is_large(), false);
-/// assert_eq!(DataType::int32().bit_size(), Some(32));
+/// assert_eq!(DataType::int32().name(), Some("i32"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -371,16 +371,10 @@ impl DataType {
     }
 
     /// The physical width of a value in **bits** for fixed-width types, or `None`
-    /// for variable-width / nested types. `Boolean` is one bit; a fixed-size
-    /// `Binary` is `size * 8`.
-    ///
-    /// ```
-    /// use yggdryl_schema::DataType;
-    /// assert_eq!(DataType::int(32, true).bit_size(), Some(32));
-    /// assert_eq!(DataType::Boolean.bit_size(), Some(1));
-    /// assert_eq!(DataType::varchar().bit_size(), None);
-    /// ```
-    pub fn bit_size(&self) -> Option<u16> {
+    /// for variable-width / nested types — the private backing for
+    /// [`byte_size`](DataType::byte_size) / [`is_fixed_size`](DataType::is_fixed_size).
+    /// `Boolean` is one bit; a fixed-size `Binary` is `size * 8`.
+    fn width_bits(&self) -> Option<u16> {
         use DataType::*;
         // The fixed-width numerics report their own width.
         if let Some(t) = self.fixed() {
@@ -413,7 +407,7 @@ impl DataType {
     /// The physical width in **bytes** for byte-aligned fixed-width types (so
     /// `Boolean`, which is sub-byte, and all variable-width / nested types are `None`).
     pub fn byte_size(&self) -> Option<u16> {
-        self.bit_size().filter(|b| b % 8 == 0).map(|b| b / 8)
+        self.width_bits().filter(|b| b % 8 == 0).map(|b| b / 8)
     }
 
     /// Whether this type uses the **large** (64-bit offset / wide) form — a large
@@ -453,64 +447,11 @@ impl DataType {
     /// ```
     pub fn is_fixed_size(&self) -> bool {
         use DataType::*;
-        self.bit_size().is_some()
+        self.width_bits().is_some()
             || matches!(
                 self,
                 Varchar { size: Some(_), .. } | List { size: Some(_), .. }
             )
-    }
-
-    /// The physical (storage) [`DataType`] backing this type. A [logical](TypeCategory::Logical)
-    /// type reports its underlying primitive — a [`Date`](DataType::Date) is an
-    /// `int32`/`int64`, a [`Time`](DataType::Time) is an `int32`/`int64`, a
-    /// [`Timestamp`](DataType::Timestamp) / [`Duration`](DataType::Duration) an `int64`,
-    /// a fixed-width [`Decimal128`](DataType::Decimal128) (and an `int128`-wide
-    /// [`Interval`](DataType::Interval)) a fixed-size binary of its storage width, a
-    /// [`Dictionary`](DataType::Dictionary) its key index type, a [`Json`](DataType::Json)
-    /// a [`Varchar`](DataType::Varchar) and a [`Bson`](DataType::Bson) a
-    /// [`Binary`](DataType::Binary). Every other type is its own physical type.
-    ///
-    /// ```
-    /// use yggdryl_schema::DataType;
-    /// assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
-    /// assert_eq!(DataType::json().physical_type(), DataType::varchar());
-    /// assert_eq!(DataType::decimal(10, 2).physical_type(), DataType::fixed_size_binary(16));
-    /// assert_eq!(DataType::int(32, true).physical_type(), DataType::int(32, true));
-    /// ```
-    pub fn physical_type(&self) -> DataType {
-        use DataType::*;
-        // The integers / floats are their own physical type; the decimals report a
-        // fixed-size binary of their storage width — both decided by the descriptor.
-        if let Some(t) = self.fixed() {
-            return match t.decimal {
-                Some(_) => DataType::fixed_size_binary((t.bits / 8) as i32),
-                None => self.clone(),
-            };
-        }
-        match self {
-            Date { large } => DataType::int(if *large { 64 } else { 32 }, true),
-            Time { unit } => DataType::int(
-                if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
-                    32
-                } else {
-                    64
-                },
-                true,
-            ),
-            Timestamp { .. } | Duration { .. } => DataType::int(64, true),
-            // 32/64-bit intervals are integers; the 128-bit month_day_nano has no
-            // integer type, so it falls to a fixed-size binary of its byte width.
-            Interval { unit } => match unit.bit_size() {
-                32 => DataType::int(32, true),
-                64 => DataType::int(64, true),
-                bits => DataType::fixed_size_binary((bits / 8) as i32),
-            },
-            Dictionary { key, .. } => key.physical_type(),
-            Json => DataType::varchar(),
-            Bson => DataType::binary(),
-            Timezone => DataType::varchar(),
-            other => other.clone(),
-        }
     }
 
     /// The name of the **native Rust type** that stores values of a fixed-width numeric
@@ -743,7 +684,8 @@ impl DataType {
     /// `uint8`, `decimal128[10, 2]`, `timestamp[us, UTC]`, `varchar[latin1]`,
     /// `list[item: utf8]`, `struct[id: int64 not null, name: utf8]`,
     /// `map[utf8, int64]`. Common aliases are accepted (`bool`, `string`/`str`,
-    /// `float`/`double`, `date`). The inverse of [`to_str`](DataType::to_str).
+    /// `float`/`double`, `date`). The inverse of the canonical render
+    /// ([`Display`](std::fmt::Display) / `to_string`).
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(input: &str) -> Result<DataType, SchemaError> {
         log_event!(trace, "DataType::from_str {input:?}");
@@ -985,107 +927,15 @@ impl DataType {
         }
     }
 
-    /// Renders the canonical lowercase string — the inverse of
-    /// [`from_str`](DataType::from_str).
-    pub fn to_str(&self) -> String {
-        use DataType::*;
-        // The fixed-width numerics render from their descriptor (`int8`,
-        // `decimal128[10, 2]`, …): the canonical head plus a decimal's parameters.
-        if let Some(t) = self.fixed() {
-            return match t.decimal {
-                Some((precision, scale)) => format!("{}[{precision}, {scale}]", t.head),
-                None => t.head.to_string(),
-            };
-        }
-        match self {
-            Any => "any".to_string(),
-            Null => "null".to_string(),
-            Boolean => "bool".to_string(),
-            Varchar {
-                charset,
-                large,
-                view,
-                size,
-            } => render_varchar(*charset, *large, *view, *size),
-            Binary { large, view, size } => match (large, view, size) {
-                (_, _, Some(n)) => format!("fixed_size_binary[{n}]"),
-                (true, _, None) => "large_binary".to_string(),
-                (_, true, None) => "binary_view".to_string(),
-                _ => "binary".to_string(),
-            },
-            Date { large } => if *large { "date64" } else { "date32" }.to_string(),
-            Time { unit } => {
-                let width = if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
-                    32
-                } else {
-                    64
-                };
-                format!("time{width}[{}]", unit.as_str())
-            }
-            Duration { unit } => format!("duration[{}]", unit.as_str()),
-            Interval { unit } => format!("interval[{}]", unit.as_str()),
-            Timestamp { unit, timezone } => match timezone {
-                Some(tz) => format!("timestamp[{}, {}]", unit.as_str(), tz.name()),
-                None => format!("timestamp[{}]", unit.as_str()),
-            },
-            Dictionary { key, value } => {
-                format!("dictionary[{}, {}]", key.to_str(), value.to_str())
-            }
-            Json => "json".to_string(),
-            Bson => "bson".to_string(),
-            Timezone => "timezone".to_string(),
-            List {
-                item,
-                large,
-                view,
-                size,
-            } => {
-                let head = match (large, view, size) {
-                    (_, _, Some(_)) => "fixed_size_list",
-                    (true, true, None) => "large_list_view",
-                    (true, false, None) => "large_list",
-                    (false, true, None) => "list_view",
-                    _ => "list",
-                };
-                match size {
-                    Some(n) => format!("{head}[{}, {n}]", item.to_str()),
-                    None => format!("{head}[{}]", item.to_str()),
-                }
-            }
-            Struct(fields) => format!("struct[{}]", render_fields(fields)),
-            Map { key, value, sorted } => {
-                if *sorted {
-                    format!("map[{}, {}, sorted]", key.to_str(), value.to_str())
-                } else {
-                    format!("map[{}, {}]", key.to_str(), value.to_str())
-                }
-            }
-            Union { fields, mode } => format!("{}_union[{}]", mode.as_str(), render_fields(fields)),
-            RunEndEncoded { run_ends, values } => {
-                format!(
-                    "run_end_encoded[{}, {}]",
-                    run_ends.to_str(),
-                    values.to_str()
-                )
-            }
-            // The fixed-width numerics are rendered above by their descriptor; listing
-            // them keeps the match exhaustive so a new variant is still caught.
-            Int8(_) | Int16(_) | Int32(_) | Int64(_) | UInt8(_) | UInt16(_) | UInt32(_)
-            | UInt64(_) | Float16(_) | Float32(_) | Float64(_) | Decimal32(_) | Decimal64(_)
-            | Decimal128(_) | Decimal256(_) => {
-                unreachable!("fixed numerics rendered via `fixed()`")
-            }
-        }
-    }
-
-    /// Renders to a component `BTreeMap` (the single `type` key).
+    /// Renders to a component `BTreeMap` (the single `type` key) — the canonical string
+    /// (via [`Display`](std::fmt::Display)) under `type`.
     pub fn to_mapping(&self) -> BTreeMap<String, String> {
-        BTreeMap::from([("type".to_string(), self.to_str())])
+        BTreeMap::from([("type".to_string(), self.to_string())])
     }
 
-    /// The canonical string as UTF-8 bytes.
+    /// The canonical string (via [`Display`](std::fmt::Display)) as UTF-8 bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_str().into_bytes()
+        self.to_string().into_bytes()
     }
 
     /// Parses a type from the UTF-8 bytes of its canonical string.
@@ -1190,8 +1040,94 @@ fn parse_varchar(args: &str, whole: &str, fixed: bool) -> Result<DataType, Schem
 }
 
 impl fmt::Display for DataType {
+    /// Renders the canonical lowercase string — the inverse of
+    /// [`from_str`](DataType::from_str), and the basis of [`to_mapping`](DataType::to_mapping)
+    /// / [`to_bytes`](DataType::to_bytes). Nested types render their children through
+    /// `Display` in turn.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_str())
+        use DataType::*;
+        // The fixed-width numerics render from their descriptor (`int8`,
+        // `decimal128[10, 2]`, …): the canonical head plus a decimal's parameters.
+        if let Some(t) = self.fixed() {
+            return match t.decimal {
+                Some((precision, scale)) => write!(f, "{}[{precision}, {scale}]", t.head),
+                None => f.write_str(t.head),
+            };
+        }
+        let rendered = match self {
+            Any => "any".to_string(),
+            Null => "null".to_string(),
+            Boolean => "bool".to_string(),
+            Varchar {
+                charset,
+                large,
+                view,
+                size,
+            } => render_varchar(*charset, *large, *view, *size),
+            Binary { large, view, size } => match (large, view, size) {
+                (_, _, Some(n)) => format!("fixed_size_binary[{n}]"),
+                (true, _, None) => "large_binary".to_string(),
+                (_, true, None) => "binary_view".to_string(),
+                _ => "binary".to_string(),
+            },
+            Date { large } => if *large { "date64" } else { "date32" }.to_string(),
+            Time { unit } => {
+                let width = if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
+                    32
+                } else {
+                    64
+                };
+                format!("time{width}[{}]", unit.as_str())
+            }
+            Duration { unit } => format!("duration[{}]", unit.as_str()),
+            Interval { unit } => format!("interval[{}]", unit.as_str()),
+            Timestamp { unit, timezone } => match timezone {
+                Some(tz) => format!("timestamp[{}, {}]", unit.as_str(), tz.name()),
+                None => format!("timestamp[{}]", unit.as_str()),
+            },
+            Dictionary { key, value } => format!("dictionary[{key}, {value}]"),
+            Json => "json".to_string(),
+            Bson => "bson".to_string(),
+            Timezone => "timezone".to_string(),
+            List {
+                item,
+                large,
+                view,
+                size,
+            } => {
+                let head = match (large, view, size) {
+                    (_, _, Some(_)) => "fixed_size_list",
+                    (true, true, None) => "large_list_view",
+                    (true, false, None) => "large_list",
+                    (false, true, None) => "list_view",
+                    _ => "list",
+                };
+                match size {
+                    Some(n) => format!("{head}[{item}, {n}]"),
+                    None => format!("{head}[{item}]"),
+                }
+            }
+            Struct(fields) => format!("struct[{}]", render_fields(fields)),
+            Map { key, value, sorted } => {
+                if *sorted {
+                    format!("map[{key}, {value}, sorted]")
+                } else {
+                    format!("map[{key}, {value}]")
+                }
+            }
+            Union { fields, mode } => format!("{}_union[{}]", mode.as_str(), render_fields(fields)),
+            RunEndEncoded { run_ends, values } => {
+                format!("run_end_encoded[{run_ends}, {values}]")
+            }
+            // The fixed-width numerics are rendered above by their descriptor; listing
+            // them keeps the match exhaustive so a new variant is still caught.
+            Int8(_) | Int16(_) | Int32(_) | Int64(_) | UInt8(_) | UInt16(_) | UInt32(_)
+            | UInt64(_) | Float16(_) | Float32(_) | Float64(_) | Decimal32(_) | Decimal64(_)
+            | Decimal128(_) | Decimal256(_) => {
+                unreachable!("fixed numerics rendered via `fixed()`")
+            }
+        };
+        f.write_str(&rendered)
     }
 }
 

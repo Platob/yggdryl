@@ -377,12 +377,6 @@ impl DataType {
         self.inner.category().as_str().to_string()
     }
 
-    /// The physical width in bits for fixed-width types, else null.
-    #[napi(getter, js_name = "bitSize")]
-    pub fn bit_size(&self) -> Option<u16> {
-        self.inner.bit_size()
-    }
-
     /// The physical width in bytes for byte-aligned fixed-width types, else null.
     #[napi(getter, js_name = "byteSize")]
     pub fn byte_size(&self) -> Option<u16> {
@@ -407,23 +401,10 @@ impl DataType {
         self.inner.is_fixed_size()
     }
 
-    /// The physical (storage) `DataType` backing a logical type (identity otherwise).
-    #[napi(js_name = "physicalType")]
-    pub fn physical_type(&self) -> DataType {
-        wrap(self.inner.physical_type())
-    }
-
     /// The string charset, if a string type.
     #[napi(getter)]
     pub fn charset(&self) -> Option<String> {
         self.inner.charset().map(|c| c.as_str().to_string())
-    }
-
-    /// The numeric storage width in bits (int / float / decimal), else null
-    /// (the `Numeric` interface).
-    #[napi(getter, js_name = "numericBits")]
-    pub fn numeric_bits(&self) -> Option<u16> {
-        self.inner.numeric_bits()
     }
 
     /// Whether a numeric type is signed — the integer flag, always `true` for
@@ -618,7 +599,7 @@ impl DataType {
 
     #[napi(js_name = "toString")]
     pub fn to_string_js(&self) -> String {
-        self.inner.to_str()
+        self.inner.to_string()
     }
 
     /// Serialise to a lossless structural JSON string.

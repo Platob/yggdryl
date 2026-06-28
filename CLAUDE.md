@@ -208,11 +208,12 @@ A compact schema layer built to back a future dataframe, **centred on two types*
 - `datatype/` (`mod` + `fixed.rs` + `primitive.rs` + `logical.rs` + `nested.rs` +
   `numeric.rs` + `coerce.rs` + `intern.rs`) —
   the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
-  `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
-  spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
-  / `is_view` / `is_fixed_size` / `physical_type` — the last returns a logical type's
-  storage primitive, identity for the rest — plus the `Numeric` trait mutualising the
-  numeric types' `numeric_bits` + common `signed` accessor). **The fixed-width numerics
+  `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str` to parse;
+  the canonical render is **`Display`** only — `to_str` was removed, use
+  `.to_string()`, which also backs `to_bytes`/`to_mapping`) and the uniform physical
+  accessors (`byte_size` / `is_large` / `is_view` / `is_fixed_size` / `name` — `name`
+  returns the native Rust storage type — plus the `Numeric` trait's common `signed`
+  accessor). **The fixed-width numerics
   are concrete, not parameterized** — `Int8`/`Int16`/`Int32`/`Int64` +
   `UInt8`…`UInt64`, `Float16`/`Float32`/`Float64`, `Decimal32`/`Decimal64`/`Decimal128`/
   `Decimal256{precision,scale}` (no arbitrary widths: `int24`/`float128` are **unknown**;

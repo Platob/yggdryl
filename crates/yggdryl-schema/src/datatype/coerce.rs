@@ -282,8 +282,8 @@ impl DataType {
         strategy: MergeStrategy,
     ) -> Result<DataType, SchemaError> {
         let incompatible = || SchemaError::Incompatible {
-            left: self.to_str(),
-            right: other.to_str(),
+            left: self.to_string(),
+            right: other.to_string(),
         };
         match strategy {
             MergeStrategy::Strict => {

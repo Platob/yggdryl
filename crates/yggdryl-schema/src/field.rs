@@ -354,9 +354,9 @@ impl Field {
     /// non-nullable — the inverse of [`from_str`](Field::from_str).
     pub fn to_str(&self) -> String {
         if self.nullable {
-            format!("{}: {}", self.name, self.data_type.to_str())
+            format!("{}: {}", self.name, self.data_type)
         } else {
-            format!("{}: {} not null", self.name, self.data_type.to_str())
+            format!("{}: {} not null", self.name, self.data_type)
         }
     }
 
@@ -365,7 +365,7 @@ impl Field {
     pub fn to_mapping(&self) -> BTreeMap<String, String> {
         let mut map = BTreeMap::from([
             ("name".to_string(), self.name.clone()),
-            ("type".to_string(), self.data_type.to_str()),
+            ("type".to_string(), self.data_type.to_string()),
             ("nullable".to_string(), self.nullable.to_string()),
         ]);
         if let Some(comment) = self.comment() {

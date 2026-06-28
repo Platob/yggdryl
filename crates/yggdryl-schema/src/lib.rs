@@ -11,7 +11,7 @@
 //!   [`Any`](DataType::Any) wildcard. The fixed-width numerics are concrete variants,
 //!   each a struct generic over its native Rust storage type (`Int64<i64>`, …);
 //!   the variable-width attributes stay uniform accessors:
-//!   [`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
+//!   [`byte_size`](DataType::byte_size) / [`is_large`](DataType::is_large) /
 //!   [`is_view`](DataType::is_view), and strings are a single [`Varchar`](DataType::Varchar)
 //!   with a [`Charset`].
 //! - [`Field`] — a named, nullable [`DataType`] with metadata, an optional

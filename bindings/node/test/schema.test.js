@@ -19,9 +19,9 @@ test('datatype accessors and categories', () => {
   assert.strictEqual(DataType.date().category, 'logical')
   assert.strictEqual(DataType.struct([]).category, 'nested')
   assert.strictEqual(DataType.any().category, 'any')
-  assert.strictEqual(DataType.int(32).bitSize, 32)
-  assert.strictEqual(DataType.boolean().bitSize, 1)
-  assert.strictEqual(DataType.varchar().bitSize, null)
+  assert.strictEqual(DataType.int(32).byteSize, 4)
+  assert.strictEqual(DataType.boolean().byteSize, null)
+  assert.strictEqual(DataType.varchar().byteSize, null)
   assert.ok(DataType.varchar(undefined, true).isLarge)
   assert.strictEqual(DataType.varchar('latin1').charset, 'latin1')
   assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timeUnit, 'ns')
@@ -204,27 +204,20 @@ test('fixed numeric widths + Numeric interface', () => {
   assert.strictEqual(DataType.decimal128(10, 2).name, 'i128')
   assert.strictEqual(DataType.decimal256(76, 0).name, 'i256')
   assert.strictEqual(DataType.varchar().name, null)
-  // Numeric interface: mutualised bits + signed.
-  assert.strictEqual(DataType.int(32, false).numericBits, 32)
+  // Numeric interface: signed.
   assert.strictEqual(DataType.int(32, false).signed, false)
   assert.strictEqual(DataType.float(64).signed, true) // floats are always signed
   assert.strictEqual(DataType.decimal(10, 2).signed, true)
   assert.strictEqual(DataType.varchar().signed, null)
-  assert.strictEqual(DataType.varchar().numericBits, null)
 })
 
-test('json/bson + physical types + fixed size', () => {
+test('json/bson logical + fixed size', () => {
   assert.ok(DataType.fromStr('json').equals(DataType.json()))
   assert.ok(DataType.fromStr('bson').equals(DataType.bson()))
   assert.strictEqual(DataType.json().toString(), 'json')
   assert.ok(DataType.json().isJson() && DataType.json().isLogical())
   assert.ok(DataType.bson().isBson())
   assert.strictEqual(DataType.json().category, 'logical')
-  // physical types.
-  assert.ok(DataType.json().physicalType().equals(DataType.varchar()))
-  assert.ok(DataType.bson().physicalType().equals(DataType.binary()))
-  assert.ok(DataType.date().physicalType().equals(DataType.int(32)))
-  assert.ok(DataType.decimal(10, 2).physicalType().equals(DataType.fixedSizeBinary(16)))
   // fixed vs variable size.
   const fixed = DataType.fromStr('char[10]')
   assert.ok(fixed.equals(DataType.fixedSizeVarchar(10)))

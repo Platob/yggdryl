@@ -67,8 +67,8 @@ Parse a canonical string, or use a named constructor.
 ## Categories & physical attributes
 
 `category` is `"primitive"` / `"logical"` / `"nested"` / `"any"`. The physical
-layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
-`byte_size`, `is_large`, `is_view`, and `charset` for strings.
+layout is read uniformly: `byte_size` (bytes for byte-aligned fixed-width types,
+else null), `is_large`, `is_view`, `is_fixed_size`, and `charset` for strings.
 
 === "Python"
 
@@ -78,9 +78,9 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
     assert yggdryl.DataType.int(32).category == "primitive"
     assert yggdryl.DataType.date().category == "logical"
     assert yggdryl.DataType.struct_([]).category == "nested"
-    assert yggdryl.DataType.int(32).bit_size == 32
-    assert yggdryl.DataType.boolean().bit_size == 1
-    assert yggdryl.DataType.varchar().bit_size is None
+    assert yggdryl.DataType.int(32).byte_size == 4
+    assert yggdryl.DataType.boolean().byte_size is None   # sub-byte
+    assert yggdryl.DataType.varchar().byte_size is None
     assert yggdryl.DataType.varchar(large=True).is_large
     assert yggdryl.DataType.varchar(charset="latin1").charset == "latin1"
     ```
@@ -92,8 +92,8 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
 
     yggdryl.DataType.int(32).category;       // "primitive"
     yggdryl.DataType.date().category;        // "logical"
-    yggdryl.DataType.int(32).bitSize;        // 32
-    yggdryl.DataType.varchar().bitSize;      // null
+    yggdryl.DataType.int(32).byteSize;       // 4
+    yggdryl.DataType.varchar().byteSize;     // null
     yggdryl.DataType.varchar(undefined, true).isLarge; // true
     ```
 
@@ -103,11 +103,11 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
     use yggdryl_schema::{DataType, TypeCategory};
 
     assert_eq!(DataType::int(32, true).category(), TypeCategory::Primitive);
-    assert_eq!(DataType::int(32, true).bit_size(), Some(32));
-    assert_eq!(DataType::varchar().bit_size(), None);
+    assert_eq!(DataType::int(32, true).byte_size(), Some(4));
+    assert_eq!(DataType::varchar().byte_size(), None);
     ```
 
-## Fixed numerics, native storage, JSON/BSON & physical types
+## Fixed numerics, native storage & JSON/BSON
 
 The fixed-width numerics are concrete types with **explicit constructors** — `int8()`
 … `uint64()`, `float16()` / `float32()` / `float64()`, `decimal32()` … `decimal256()`
@@ -118,10 +118,8 @@ storage type** via `name` — a builtin (`i8` / `f32` / `i128` / …) or the typ
 where Rust has none (`f16` for `float16`, `i256` for `decimal256`). In Rust each is a
 struct generic over that storage type, defaulting to the natural one (`Int64<i64>`,
 `Float16<f16>`, `Decimal256<i256>`). The numeric types share the **`Numeric`**
-interface — `numeric_bits` and a common `signed`. `Json` (string-backed) and `Bson`
-(binary-backed) are logical types, and every logical type reports its storage layout via
-`physical_type()` (a decimal stores in a fixed-size binary of its byte width). Strings
-and binaries can be fixed- or variable-length (`is_fixed_size`).
+interface (a common `signed`). `Json` (string-backed) and `Bson` (binary-backed) are
+logical types. Strings and binaries can be fixed- or variable-length (`is_fixed_size`).
 
 === "Python"
 
@@ -136,11 +134,8 @@ and binaries can be fixed- or variable-length (`is_fixed_size`).
     assert D.float16().name == "f16"                           # created half float
     assert D.decimal256(76, 0).name == "i256"                  # created 256-bit int
     assert D.int(32, signed=False).signed is False             # Numeric interface
-    assert D.float(64).signed is True and D.float(64).numeric_bits == 64
-    assert D("json").physical_type() == D.varchar()            # logical -> physical
-    assert D("bson").physical_type() == D.binary()
-    assert D.date().physical_type() == D.int(32)
-    assert D.decimal(10, 2).physical_type() == D.fixed_size_binary(16)
+    assert D.float(64).signed is True
+    assert D("json").is_json() and D("bson").is_bson()
     assert D("char[10]").is_fixed_size and not D.varchar().is_fixed_size
     ```
 
@@ -156,9 +151,7 @@ and binaries can be fixed- or variable-length (`is_fixed_size`).
     D.float16().name;                                          // "f16" (created half float)
     D.decimal256(76, 0).name;                                  // "i256" (created 256-bit int)
     D.int(32, false).signed;                                   // false (Numeric)
-    D.float(64).signed;                                        // true; .numericBits === 64
-    D.json().physicalType().equals(D.varchar());               // logical -> physical
-    D.decimal(10, 2).physicalType().equals(D.fixedSizeBinary(16));
+    D.float(64).signed;                                        // true
     D.fromStr("char[10]").isFixedSize;                         // true
     D.varchar().isFixedSize;                                   // false
     ```
@@ -177,9 +170,7 @@ and binaries can be fixed- or variable-length (`is_fixed_size`).
     assert_eq!(DataType::from(Int32::<i32>::new()), DataType::int32());
     assert_eq!(DataType::from(Decimal128::new(10, 2)), DataType::decimal(10, 2));
     assert_eq!(DataType::int(32, false).signed(), Some(false));  // Numeric interface
-    assert_eq!(DataType::float(64).numeric_bits(), Some(64));
-    assert_eq!(DataType::json().physical_type(), DataType::varchar());
-    assert_eq!(DataType::decimal(10, 2).physical_type(), DataType::fixed_size_binary(16));
+    assert_eq!(DataType::int32().to_string(), "int32");          // canonical via Display
     // the two native types Rust has no builtin for, created in `fixed`:
     assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
     assert_eq!(i256::from_i128(-5).to_str(), "-5");

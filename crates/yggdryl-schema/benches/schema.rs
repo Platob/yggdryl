@@ -67,8 +67,8 @@ fn main() {
         black_box(DataType::from_str(black_box(nested)).unwrap());
     });
     let dt = DataType::from_str(nested).unwrap();
-    bench("DataType::to_str (nested struct)", n / 4, || {
-        black_box(black_box(&dt).to_str());
+    bench("DataType::to_string (nested struct)", n / 4, || {
+        black_box(black_box(&dt).to_string());
     });
 
     // ---- fast type checks ----
@@ -76,8 +76,8 @@ fn main() {
     bench("DataType::is_numeric", n * 4, || {
         black_box(black_box(&int32).is_numeric());
     });
-    bench("DataType::bit_size", n * 4, || {
-        black_box(black_box(&int32).bit_size());
+    bench("DataType::name", n * 4, || {
+        black_box(black_box(&int32).name());
     });
     bench("DataType::category", n * 4, || {
         black_box(black_box(&dt).category());
