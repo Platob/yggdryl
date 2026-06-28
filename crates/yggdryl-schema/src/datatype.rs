@@ -3,11 +3,13 @@
 //! [`DataTypeId`] (`u8`).
 
 mod id;
+mod integer;
 mod logical;
 mod nested;
 mod primitive;
 
 pub use id::{DataTypeId, TypeCategory};
+pub use integer::IntegerType;
 pub use logical::{IntervalUnit, LogicalType};
 pub use nested::NestedType;
 pub use primitive::PrimitiveType;
@@ -115,35 +117,35 @@ impl DataType {
     }
     /// A signed 8-bit integer.
     pub fn int8() -> DataType {
-        DataType::Primitive(PrimitiveType::Int8)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::Int8))
     }
     /// A signed 16-bit integer.
     pub fn int16() -> DataType {
-        DataType::Primitive(PrimitiveType::Int16)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::Int16))
     }
     /// A signed 32-bit integer.
     pub fn int32() -> DataType {
-        DataType::Primitive(PrimitiveType::Int32)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::Int32))
     }
     /// A signed 64-bit integer.
     pub fn int64() -> DataType {
-        DataType::Primitive(PrimitiveType::Int64)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::Int64))
     }
     /// An unsigned 8-bit integer.
     pub fn uint8() -> DataType {
-        DataType::Primitive(PrimitiveType::UInt8)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::UInt8))
     }
     /// An unsigned 16-bit integer.
     pub fn uint16() -> DataType {
-        DataType::Primitive(PrimitiveType::UInt16)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::UInt16))
     }
     /// An unsigned 32-bit integer.
     pub fn uint32() -> DataType {
-        DataType::Primitive(PrimitiveType::UInt32)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::UInt32))
     }
     /// An unsigned 64-bit integer.
     pub fn uint64() -> DataType {
-        DataType::Primitive(PrimitiveType::UInt64)
+        DataType::Primitive(PrimitiveType::Integer(IntegerType::UInt64))
     }
     /// A half-precision (16-bit) float.
     pub fn float16() -> DataType {
@@ -296,8 +298,19 @@ mod tests {
     fn category_access_and_predicates() {
         let p = DataType::int8();
         assert!(p.is_primitive() && !p.is_logical() && !p.is_nested());
-        assert_eq!(p.as_primitive(), Some(PrimitiveType::Int8));
+        assert_eq!(
+            p.as_primitive(),
+            Some(PrimitiveType::Integer(IntegerType::Int8))
+        );
         assert!(p.as_primitive().unwrap().is_integer());
+        // the integer family answers signedness.
+        assert!(p.as_primitive().unwrap().as_integer().unwrap().is_signed());
+        assert!(!DataType::uint8()
+            .as_primitive()
+            .unwrap()
+            .as_integer()
+            .unwrap()
+            .is_signed());
         assert!(DataType::float64().as_primitive().unwrap().is_float());
 
         let l = DataType::timestamp(TimeUnit::Microsecond, None);

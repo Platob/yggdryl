@@ -26,7 +26,8 @@ mod datatype;
 mod field;
 
 pub use datatype::{
-    DataType, DataTypeId, IntervalUnit, LogicalType, NestedType, PrimitiveType, TypeCategory,
+    DataType, DataTypeId, IntegerType, IntervalUnit, LogicalType, NestedType, PrimitiveType,
+    TypeCategory,
 };
 pub use field::{Field, Metadata};
 

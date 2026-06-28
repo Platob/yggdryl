@@ -1,32 +1,19 @@
 //! The [`PrimitiveType`] — the fixed/variable-width scalar types (null, boolean,
 //! integers, floats, string, bytes).
 
-use super::DataTypeId;
+use super::{DataTypeId, IntegerType};
 
 /// A primitive (scalar) type. Every variant is parameter-less; its width and
-/// signedness are intrinsic to the variant.
+/// signedness are intrinsic. The fixed-width integers are grouped under the
+/// [`IntegerType`] family rather than spelled out as separate variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     /// The null type.
     Null,
     /// `true` / `false`.
     Boolean,
-    /// Signed 8-bit integer.
-    Int8,
-    /// Signed 16-bit integer.
-    Int16,
-    /// Signed 32-bit integer.
-    Int32,
-    /// Signed 64-bit integer.
-    Int64,
-    /// Unsigned 8-bit integer.
-    UInt8,
-    /// Unsigned 16-bit integer.
-    UInt16,
-    /// Unsigned 32-bit integer.
-    UInt32,
-    /// Unsigned 64-bit integer.
-    UInt64,
+    /// A fixed-width signed or unsigned [`integer`](IntegerType).
+    Integer(IntegerType),
     /// Half-precision (16-bit) float.
     Float16,
     /// Single-precision (32-bit) float.
@@ -46,14 +33,7 @@ impl PrimitiveType {
         match self {
             Null => DataTypeId::Null,
             Boolean => DataTypeId::Boolean,
-            Int8 => DataTypeId::Int8,
-            Int16 => DataTypeId::Int16,
-            Int32 => DataTypeId::Int32,
-            Int64 => DataTypeId::Int64,
-            UInt8 => DataTypeId::UInt8,
-            UInt16 => DataTypeId::UInt16,
-            UInt32 => DataTypeId::UInt32,
-            UInt64 => DataTypeId::UInt64,
+            Integer(int) => int.type_id(),
             Float16 => DataTypeId::Float16,
             Float32 => DataTypeId::Float32,
             Float64 => DataTypeId::Float64,
@@ -67,13 +47,17 @@ impl PrimitiveType {
         self.type_id().name()
     }
 
+    /// The [`IntegerType`] if this is an integer, else `None`.
+    pub fn as_integer(self) -> Option<IntegerType> {
+        match self {
+            PrimitiveType::Integer(int) => Some(int),
+            _ => None,
+        }
+    }
+
     /// Whether this is any integer (signed or unsigned).
     pub fn is_integer(self) -> bool {
-        use PrimitiveType::*;
-        matches!(
-            self,
-            Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
-        )
+        matches!(self, PrimitiveType::Integer(_))
     }
 
     /// Whether this is a floating-point type.

@@ -206,8 +206,10 @@ canonical-string grammar, coercion lattice, intern pool, serde or Arrow conversi
 yet; add those back as their own concern-files when needed, mirroring the structure
 below.
 
-- `datatype/` (`mod` + `id.rs` + `primitive.rs` + `logical.rs` + `nested.rs`) — the
-  central `DataType` enum and its three category types. `DataType` is exactly one of
+- `datatype.rs` + `datatype/` (`id.rs` + `primitive.rs` + `integer.rs` + `logical.rs` +
+  `nested.rs`) — the central `DataType` enum and its category types. **No `mod.rs`** —
+  the module uses the path-style layout (`datatype.rs` sits beside the `datatype/`
+  folder it owns), so the whole crate is `mod.rs`-free. `DataType` is exactly one of
   `Primitive(PrimitiveType)` / `Logical(LogicalType)` / `Nested(NestedType)`, and every
   type carries **two universal accessors**: a stable `type_id` (a `u8` `DataTypeId`) and
   a `name` (the lowercase token from the id, e.g. `"int32"` / `"decimal"` / `"list"`;
@@ -215,9 +217,14 @@ below.
   (`#[repr(u8)]`, `Null = 0` … `RunEndEncoded = 28`) with its `as_u8` / `category` /
   `name`, plus the `TypeCategory` enum (`Primitive` / `Logical` / `Nested`). Each
   category file owns that category's type + its `type_id` / `name`:
-  - `primitive.rs` — `PrimitiveType` (parameter-less: `Null`, `Boolean`, `Int8`…`Int64`,
-    `UInt8`…`UInt64`, `Float16`/`Float32`/`Float64`, `Utf8`, `Binary`) with
-    `is_integer` / `is_float`. Widths are intrinsic to the variant, not parameters.
+  - `primitive.rs` — `PrimitiveType` (parameter-less: `Null`, `Boolean`,
+    `Integer(IntegerType)`, `Float16`/`Float32`/`Float64`, `Utf8`, `Binary`) with
+    `is_integer` / `is_float` / `as_integer`. Widths are intrinsic to the variant, not
+    parameters; the fixed-width integers are grouped under the `IntegerType` family
+    rather than spelled out as separate variants.
+  - `integer.rs` — `IntegerType` (the fixed-width integers `Int8`…`Int64` /
+    `UInt8`…`UInt64`) with `type_id` / `name` / `is_signed`. This is the integer family
+    `PrimitiveType` wraps as its `Integer(IntegerType)` variant.
   - `logical.rs` — `LogicalType` (`Decimal{precision:u8,scale:i8}`, `Date`,
     `Time{unit}`, `Timestamp{unit,timezone}`, `Duration{unit}`, `Interval{unit}`,
     `Json`, `Bson`) reusing the core `TimeUnit`/`Timezone`, plus the `IntervalUnit`
@@ -226,7 +233,7 @@ below.
     `Map{key,value}`, `Union(Vec<Field>)`, `Dictionary{key,value}`,
     `RunEndEncoded{run_ends,values}`) with `fields()` returning the immediate child
     `Field`s (list/struct/union; the key/value containers report `&[]`).
-  `mod.rs` is the glue: the `DataType` enum, the universal `type_id`/`name`/`category`,
+  `datatype.rs` is the glue: the `DataType` enum, the universal `type_id`/`name`/`category`,
   the category access (`as_primitive`/`as_logical`/`as_nested`, `is_*`), **all the
   constructors** (`null`/`boolean`/`int8`…`uint64`/`float16`…/`utf8`/`binary`;
   `decimal(p,s)`/`date`/`time`/`timestamp`/`duration`/`interval`/`json`/`bson`;
