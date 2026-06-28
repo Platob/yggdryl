@@ -4,6 +4,7 @@
 
 use std::fmt;
 
+use super::fixed::FixedKind;
 use super::{DataType, SchemaError};
 #[allow(unused_imports)]
 use crate::log_event;
@@ -336,20 +337,17 @@ fn promote_field(a: &Field, b: &Field) -> Option<Field> {
     )
 }
 
-/// `(bit width, is signed)` of an integer type.
+/// `(bit width, is signed)` of an integer type (via its fixed descriptor).
 fn int_meta(dt: &DataType) -> (u32, bool) {
-    match dt {
-        DataType::Int { bits, signed } => (*bits as u32, *signed),
-        _ => (64, true),
+    match dt.fixed() {
+        Some(t) => (t.bits() as u32, t.signed()),
+        None => (64, true),
     }
 }
 
 /// The integer type of the given width and signedness.
 fn int_of(bits: u32, signed: bool) -> DataType {
-    DataType::Int {
-        bits: bits as u16,
-        signed,
-    }
+    DataType::int(bits as u16, signed)
 }
 
 /// The smallest integer type holding both inputs, falling back to `float64` when a
@@ -377,12 +375,9 @@ fn common_integer(a: &DataType, b: &DataType) -> DataType {
     int_of(sbits.max(needed).min(64), true)
 }
 
-/// The bit width of a float type.
+/// The bit width of a float type (via its fixed descriptor).
 fn float_bits(dt: &DataType) -> u32 {
-    match dt {
-        DataType::Float { bits } => *bits as u32,
-        _ => 64,
-    }
+    dt.fixed().map(|t| t.bits() as u32).unwrap_or(64)
 }
 
 /// The float that safely holds an integer type's range.
@@ -413,10 +408,10 @@ fn as_decimal(dt: &DataType) -> Option<(i16, i16)> {
     if let Some((p, s)) = dt.decimal_parts() {
         return Some((p as i16, s as i16));
     }
-    let (bits, signed) = match dt {
-        DataType::Int { bits, signed } => (*bits, *signed),
-        _ => return None,
-    };
+    if !dt.is_integer() {
+        return None;
+    }
+    let (bits, signed) = int_meta(dt);
     let digits = match (bits, signed) {
         (8, _) => 3,
         (16, _) => 5,
@@ -468,8 +463,8 @@ fn common_decimal(a: &DataType, b: &DataType) -> Option<DataType> {
 
 /// The storage bits of a decimal type, or `0` if not a decimal.
 fn decimal_bits_of(dt: &DataType) -> u16 {
-    match dt {
-        DataType::Decimal { bits, .. } => *bits,
+    match dt.fixed() {
+        Some(t) if t.kind() == FixedKind::Decimal => t.bits(),
         _ => 0,
     }
 }

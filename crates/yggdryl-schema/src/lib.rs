@@ -4,12 +4,13 @@
 //! dataframe. Everything is centred on just two types:
 //!
 //! - [`DataType`] — the logical type of a value, in three [categories](TypeCategory):
-//!   **primitive** ([`Int`](DataType::Int), [`Float`](DataType::Float),
+//!   **primitive** ([`Int32`](DataType::Int32), [`Float64`](DataType::Float64),
 //!   [`Varchar`](DataType::Varchar), …), **logical** ([`Timestamp`](DataType::Timestamp),
-//!   [`Decimal`](DataType::Decimal), [`Dictionary`](DataType::Dictionary), …) and
+//!   [`Decimal128`](DataType::Decimal128), [`Dictionary`](DataType::Dictionary), …) and
 //!   **nested** ([`List`](DataType::List), [`Struct`](DataType::Struct), …), plus the
-//!   [`Any`](DataType::Any) wildcard. Unlike Arrow's combinatorial variants, the
-//!   common physical attributes are uniform accessors:
+//!   [`Any`](DataType::Any) wildcard. The fixed-width numerics are concrete variants,
+//!   each backed by a native Rust storage type and a [`FixedType`] descriptor;
+//!   the variable-width attributes stay uniform accessors:
 //!   [`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
 //!   [`is_view`](DataType::is_view), and strings are a single [`Varchar`](DataType::Varchar)
 //!   with a [`Charset`].
@@ -56,6 +57,10 @@ mod field;
 #[cfg(feature = "arrow")]
 mod arrow;
 
+pub use datatype::fixed::{
+    f16, i256, Decimal128, Decimal256, Decimal32, Decimal64, FixedKind, FixedNative, FixedType,
+    Float16, Float32, Float64, Int16, Int32, Int64, Int8, UInt16, UInt32, UInt64, UInt8,
+};
 pub use datatype::{
     DataType, IntervalUnit, MergeStrategy, Numeric, SchemaError, TypeCategory, UnionMode,
 };

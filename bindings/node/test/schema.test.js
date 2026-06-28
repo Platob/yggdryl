@@ -187,12 +187,23 @@ test('schema grammar and coercion edge cases', () => {
   assert.throws(() => DataType.fromStr('struct[a]: int]'))
 })
 
-test('flexible integer widths + Numeric interface', () => {
-  assert.ok(DataType.fromStr('int24').equals(DataType.int(24)))
-  assert.ok(DataType.fromStr('uint128').equals(DataType.int(128, false)))
-  assert.strictEqual(DataType.int(24).toString(), 'int24')
+test('fixed numeric widths + Numeric interface', () => {
+  // Explicit fixed constructors and the width builder agree.
+  assert.ok(DataType.fromStr('int8').equals(DataType.int8()))
+  assert.ok(DataType.uint64().equals(DataType.int(64, false)))
   assert.ok(DataType.int().equals(DataType.int(64))) // default width
   assert.ok(DataType.integer().equals(DataType.int(64)))
+  // Arbitrary widths are no longer a type.
+  assert.throws(() => DataType.fromStr('int24'))
+  assert.throws(() => DataType.fromStr('uint128'))
+  // A non-standard width rounds up to the next fixed width.
+  assert.ok(DataType.int(24).equals(DataType.int32()))
+  // Native Rust storage type names (reused builtins / created f16,i256).
+  assert.strictEqual(DataType.int32().nativeName, 'i32')
+  assert.strictEqual(DataType.float16().nativeName, 'f16')
+  assert.strictEqual(DataType.decimal128(10, 2).nativeName, 'i128')
+  assert.strictEqual(DataType.decimal256(76, 0).nativeName, 'i256')
+  assert.strictEqual(DataType.varchar().nativeName, null)
   // Numeric interface: mutualised bits + signed.
   assert.strictEqual(DataType.int(32, false).numericBits, 32)
   assert.strictEqual(DataType.int(32, false).signed, false)
@@ -213,7 +224,7 @@ test('json/bson + physical types + fixed size', () => {
   assert.ok(DataType.json().physicalType().equals(DataType.varchar()))
   assert.ok(DataType.bson().physicalType().equals(DataType.binary()))
   assert.ok(DataType.date().physicalType().equals(DataType.int(32)))
-  assert.ok(DataType.decimal(10, 2).physicalType().equals(DataType.int(128)))
+  assert.ok(DataType.decimal(10, 2).physicalType().equals(DataType.fixedSizeBinary(16)))
   // fixed vs variable size.
   const fixed = DataType.fromStr('char[10]')
   assert.ok(fixed.equals(DataType.fixedSizeVarchar(10)))
@@ -248,8 +259,8 @@ test('temporal math, empty default, from_datetime, float generic', () => {
   // Temporal.fromDatetime redirect.
   assert.ok(YDate.fromDatetime(dt).equals(new YDate(2024, 7, 1)))
   assert.ok(Time.fromDatetime(dt).equals(new Time(12, 0, 0)))
-  // Generic-width float.
-  assert.ok(DataType.fromStr('float24').equals(DataType.float(24)))
+  // Fixed-width float.
+  assert.ok(DataType.fromStr('float16').equals(DataType.float16()))
   assert.ok(DataType.float().equals(DataType.float(64)))
   assert.ok(DataType.floating().equals(DataType.float(64)))
 })

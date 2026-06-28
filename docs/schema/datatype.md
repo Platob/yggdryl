@@ -3,9 +3,12 @@
 `DataType` is the logical type of a value — the heart of `yggdryl-schema`, a compact
 **Arrow-compatible** type system built to back a dataframe. It has three
 [categories](#categories-physical-attributes) — **primitive**, **logical**,
-**nested** — plus an `any` wildcard. Unlike Arrow's combinatorial variants, width /
-offset / layout differences are uniform attributes (`bit_size` / `large` / `view`),
-and all strings are one `Varchar` with a charset.
+**nested** — plus an `any` wildcard. The fixed-width numerics are **concrete types**
+(`int8` … `uint64`, `float16` / `float32` / `float64`, `decimal32` … `decimal256`),
+each backed by a native Rust storage type (`i8` / `f32` / `i128` / … — and the
+created `f16` / `i256` where Rust has no builtin); the variable-width string / binary /
+list still carry their offset/layout as uniform attributes (`large` / `view`), and all
+strings are one `Varchar` with a charset.
 
 ## Construct
 
@@ -57,8 +60,9 @@ Parse a canonical string, or use a named constructor.
     PRECISION`, `DECIMAL(10,2)`, `TIMESTAMP WITH TIME ZONE`, `UUID`, `JSON`, `BSON`,
     and the `( )` / `< >` bracket styles — `array<int>`, `struct<a: int, b: string>`,
     `map<string, int>`. (Per SQL, a bare `int`/`integer` is 32-bit and `bigint` is
-    64-bit; `varchar(n)` stays variable-length while `char(n)` is fixed.) Integers
-    take **any** width — `int24`, `uint128` — not just 8/16/32/64.
+    64-bit; `varchar(n)` stays variable-length while `char(n)` is fixed.) Integers are
+    the **fixed** widths only — `int8`/`int16`/`int32`/`int64` and their `uint`
+    counterparts — so a non-standard width like `int24` is not a type.
 
 ## Categories & physical attributes
 
@@ -103,14 +107,19 @@ layout is read uniformly: `bit_size` (bits for fixed-width types, else null),
     assert_eq!(DataType::varchar().bit_size(), None);
     ```
 
-## Integers, JSON/BSON & physical types
+## Fixed numerics, native storage, JSON/BSON & physical types
 
-Integers **and floats** take **any** bit width (not just 8/16/32/64): `integer()` /
-`floating()` are the `int64` / `float64` defaults. The numeric types (int / float /
-decimal) share the **`Numeric`** interface — `numeric_bits` and a common `signed` —
-mutualising those two properties. `Json` (string-backed) and `Bson` (binary-backed)
-are logical types, and every logical type reports its storage layout via
-`physical_type()`. Strings and binaries can be fixed- or variable-length
+The fixed-width numerics are concrete types with **explicit constructors** — `int8()`
+… `uint64()`, `float16()` / `float32()` / `float64()`, `decimal32()` … `decimal256()`
+— while `int(bits, signed)` / `float(bits)` / `decimal(precision, scale, bits)` are the
+width builders (`integer()` / `floating()` default to `int64` / `float64`; a
+non-standard width rounds up to the next fixed one). Each names its **native Rust
+storage type** via `native_name` — a builtin (`i8` / `f32` / `i128` / …) or the type
+created where Rust has none (`f16` for `float16`, `i256` for `decimal256`). The numeric
+types share the **`Numeric`** interface — `numeric_bits` and a common `signed`. `Json`
+(string-backed) and `Bson` (binary-backed) are logical types, and every logical type
+reports its storage layout via `physical_type()` (a decimal stores in a fixed-size
+binary of its byte width). Strings and binaries can be fixed- or variable-length
 (`is_fixed_size`).
 
 === "Python"
@@ -119,14 +128,18 @@ are logical types, and every logical type reports its storage layout via
     import yggdryl
     D = yggdryl.DataType
 
-    assert D("int24") == D.int(24)
-    assert D("float24") == D.float(24)                         # custom float width
+    assert D("int8") == D.int8() == D.int(8)
     assert D.int() == D.int(64) and D.integer() == D.int(64)   # default width
+    assert D.int(24) == D.int32()                              # rounds up to a fixed width
+    assert D.int32().native_name == "i32"                      # native Rust storage
+    assert D.float16().native_name == "f16"                    # created half float
+    assert D.decimal256(76, 0).native_name == "i256"           # created 256-bit int
     assert D.int(32, signed=False).signed is False             # Numeric interface
     assert D.float(64).signed is True and D.float(64).numeric_bits == 64
     assert D("json").physical_type() == D.varchar()            # logical -> physical
     assert D("bson").physical_type() == D.binary()
     assert D.date().physical_type() == D.int(32)
+    assert D.decimal(10, 2).physical_type() == D.fixed_size_binary(16)
     assert D("char[10]").is_fixed_size and not D.varchar().is_fixed_size
     ```
 
@@ -135,12 +148,16 @@ are logical types, and every logical type reports its storage layout via
     ```javascript
     const D = require("yggdryl").DataType;
 
-    D.fromStr("int24").equals(D.int(24));                      // true
+    D.fromStr("int8").equals(D.int8());                        // true
     D.int().equals(D.int(64));                                 // default width
+    D.int(24).equals(D.int32());                               // rounds up to a fixed width
+    D.int32().nativeName;                                      // "i32" (native Rust storage)
+    D.float16().nativeName;                                    // "f16" (created half float)
+    D.decimal256(76, 0).nativeName;                            // "i256" (created 256-bit int)
     D.int(32, false).signed;                                   // false (Numeric)
     D.float(64).signed;                                        // true; .numericBits === 64
     D.json().physicalType().equals(D.varchar());               // logical -> physical
-    D.bson().physicalType().equals(D.binary());
+    D.decimal(10, 2).physicalType().equals(D.fixedSizeBinary(16));
     D.fromStr("char[10]").isFixedSize;                         // true
     D.varchar().isFixedSize;                                   // false
     ```
@@ -148,18 +165,22 @@ are logical types, and every logical type reports its storage layout via
 === "Rust"
 
     ```rust
-    use yggdryl_schema::DataType;
+    use yggdryl_schema::{DataType, FixedType, Int32, Float16, Decimal256, f16, i256};
 
     use yggdryl_schema::Numeric;
-    assert_eq!(DataType::from_str("int24")?, DataType::int(24, true));
-    assert_eq!(DataType::from_str("float24")?, DataType::float(24));
-    assert_eq!(DataType::integer(), DataType::int(64, true));
-    assert_eq!(DataType::int(32, false).signed(), Some(false)); // Numeric interface
+    assert_eq!(DataType::from_str("int8")?, DataType::int8());
+    assert_eq!(DataType::integer(), DataType::int64());
+    assert_eq!(DataType::int(24, true), DataType::int32());      // rounds up to a fixed width
+    assert_eq!(DataType::int32().native_name(), Some("i32"));    // native Rust storage
+    assert_eq!(Int32.data_type(), DataType::int32());           // the FixedType descriptor
+    assert_eq!(DataType::int(32, false).signed(), Some(false));  // Numeric interface
     assert_eq!(DataType::float(64).numeric_bits(), Some(64));
     assert_eq!(DataType::json().physical_type(), DataType::varchar());
-    assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
-    assert!(DataType::fixed_size_varchar(10).is_fixed_size());
-    assert!(!DataType::varchar().is_fixed_size());
+    assert_eq!(DataType::decimal(10, 2).physical_type(), DataType::fixed_size_binary(16));
+    // the two native types Rust has no builtin for, created in `fixed`:
+    assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
+    assert_eq!(i256::from_i128(-5).to_str(), "-5");
+    let _ = (Float16, Decimal256::new(76, 0));
     ```
 
 ## Type checks

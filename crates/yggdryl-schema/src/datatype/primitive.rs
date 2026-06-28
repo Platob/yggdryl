@@ -1,7 +1,12 @@
 //! Primitive-category checks and constructors: the scalar types (null, boolean,
 //! integers, floats, strings, binary).
 
+use super::fixed::{
+    FixedKind, Float16, Float32, Float64, Int16, Int32, Int64, Int8, UInt16, UInt32, UInt64, UInt8,
+};
 use super::DataType;
+#[allow(unused_imports)]
+use crate::log_event;
 use crate::Charset;
 
 /// The default integer width used by [`integer`](DataType::integer).
@@ -13,22 +18,121 @@ pub(crate) const DEFAULT_FLOAT_BITS: u16 = 64;
 impl DataType {
     // ---- constructors ----
 
-    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed),
-    /// signed or unsigned.
+    /// The fixed-width integer for `(bits, signed)` — the convenience builder over the
+    /// concrete [`Int8`](DataType::Int8) … [`UInt64`](DataType::UInt64) variants. The
+    /// type system carries only the standard widths (8/16/32/64); a non-standard width
+    /// rounds **up** to the next supported one (saturating at 64) with a `warn` log.
     pub fn int(bits: u16, signed: bool) -> DataType {
-        DataType::Int { bits, signed }
+        match (bits, signed) {
+            (8, true) => Int8.into(),
+            (16, true) => Int16.into(),
+            (32, true) => Int32.into(),
+            (64, true) => Int64.into(),
+            (8, false) => UInt8.into(),
+            (16, false) => UInt16.into(),
+            (32, false) => UInt32.into(),
+            (64, false) => UInt64.into(),
+            _ => {
+                let standard = match bits {
+                    0..=8 => 8,
+                    9..=16 => 16,
+                    17..=32 => 32,
+                    _ => 64,
+                };
+                log_event!(
+                    warn,
+                    "DataType::int: non-standard width {bits} mapped to {}int{standard}",
+                    if signed { "" } else { "u" }
+                );
+                DataType::int(standard, signed)
+            }
+        }
     }
 
-    /// A generic signed integer at the default width (`int64`) — the no-argument
-    /// constructor; pass an explicit width to [`int`](DataType::int).
+    /// A signed 8-bit integer ([`int8`](DataType::Int8)).
+    pub fn int8() -> DataType {
+        Int8.into()
+    }
+
+    /// A signed 16-bit integer ([`int16`](DataType::Int16)).
+    pub fn int16() -> DataType {
+        Int16.into()
+    }
+
+    /// A signed 32-bit integer ([`int32`](DataType::Int32)).
+    pub fn int32() -> DataType {
+        Int32.into()
+    }
+
+    /// A signed 64-bit integer ([`int64`](DataType::Int64)).
+    pub fn int64() -> DataType {
+        Int64.into()
+    }
+
+    /// An unsigned 8-bit integer ([`uint8`](DataType::UInt8)).
+    pub fn uint8() -> DataType {
+        UInt8.into()
+    }
+
+    /// An unsigned 16-bit integer ([`uint16`](DataType::UInt16)).
+    pub fn uint16() -> DataType {
+        UInt16.into()
+    }
+
+    /// An unsigned 32-bit integer ([`uint32`](DataType::UInt32)).
+    pub fn uint32() -> DataType {
+        UInt32.into()
+    }
+
+    /// An unsigned 64-bit integer ([`uint64`](DataType::UInt64)).
+    pub fn uint64() -> DataType {
+        UInt64.into()
+    }
+
+    /// A signed integer at the default width (`int64`) — the no-argument constructor;
+    /// pass an explicit width to [`int`](DataType::int).
     pub fn integer() -> DataType {
         DataType::int(DEFAULT_INT_BITS, true)
     }
 
-    /// A floating-point number of `bits` width (commonly 16/32/64, but any width is
-    /// allowed for custom encodings).
+    /// The fixed-width float for `bits` — the convenience builder over the concrete
+    /// [`Float16`](DataType::Float16) / [`Float32`](DataType::Float32) /
+    /// [`Float64`](DataType::Float64) variants. The type system carries only the IEEE
+    /// widths (16/32/64); a non-standard width rounds **up** to the next supported one
+    /// (saturating at 64) with a `warn` log.
     pub fn float(bits: u16) -> DataType {
-        DataType::Float { bits }
+        match bits {
+            16 => Float16.into(),
+            32 => Float32.into(),
+            64 => Float64.into(),
+            _ => {
+                let standard = match bits {
+                    0..=16 => 16,
+                    17..=32 => 32,
+                    _ => 64,
+                };
+                log_event!(
+                    warn,
+                    "DataType::float: non-standard width {bits} mapped to float{standard}"
+                );
+                DataType::float(standard)
+            }
+        }
+    }
+
+    /// A half-precision (16-bit) float ([`float16`](DataType::Float16)).
+    pub fn float16() -> DataType {
+        Float16.into()
+    }
+
+    /// A single-precision (32-bit) float ([`float32`](DataType::Float32)).
+    pub fn float32() -> DataType {
+        Float32.into()
+    }
+
+    /// A double-precision (64-bit) float ([`float64`](DataType::Float64)).
+    pub fn float64() -> DataType {
+        Float64.into()
     }
 
     /// A float at the default width (`float64`) — the no-argument constructor.
@@ -84,11 +188,15 @@ impl DataType {
 
     /// Whether this is a [primitive](super::TypeCategory::Primitive) scalar.
     pub fn is_primitive(&self) -> bool {
-        use DataType::*;
-        matches!(
-            self,
-            Null | Boolean | Int { .. } | Float { .. } | Varchar { .. } | Binary { .. }
-        )
+        // The fixed-width numerics are primitive; so are null / boolean / strings / bytes.
+        self.fixed().is_some()
+            || matches!(
+                self,
+                DataType::Null
+                    | DataType::Boolean
+                    | DataType::Varchar { .. }
+                    | DataType::Binary { .. }
+            )
     }
 
     /// Whether this is the [`Null`](DataType::Null) type.
@@ -103,22 +211,25 @@ impl DataType {
 
     /// Whether this is any integer.
     pub fn is_integer(&self) -> bool {
-        matches!(self, DataType::Int { .. })
+        matches!(
+            self.fixed().map(|t| t.kind()),
+            Some(FixedKind::SignedInt | FixedKind::UnsignedInt)
+        )
     }
 
     /// Whether this is a signed integer.
     pub fn is_signed_integer(&self) -> bool {
-        matches!(self, DataType::Int { signed: true, .. })
+        self.fixed().map(|t| t.kind()) == Some(FixedKind::SignedInt)
     }
 
     /// Whether this is an unsigned integer.
     pub fn is_unsigned_integer(&self) -> bool {
-        matches!(self, DataType::Int { signed: false, .. })
+        self.fixed().map(|t| t.kind()) == Some(FixedKind::UnsignedInt)
     }
 
     /// Whether this is a floating-point type.
     pub fn is_floating(&self) -> bool {
-        matches!(self, DataType::Float { .. })
+        self.fixed().map(|t| t.kind()) == Some(FixedKind::Float)
     }
 
     /// Whether this is a number — an integer or a float (decimals are

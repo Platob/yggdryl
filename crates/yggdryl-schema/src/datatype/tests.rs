@@ -497,41 +497,93 @@ fn grammar_rejects_extra_args_and_unbalanced_brackets() {
 }
 
 #[test]
-fn flexible_integer_and_byte_decode() {
+fn fixed_integer_widths() {
+    use crate::{FixedType, Int32, UInt8};
     use DataType as D;
-    // Arbitrary widths parse and round-trip through the canonical string.
-    assert_eq!(D::from_str("int24").unwrap(), D::int(24, true));
-    assert_eq!(D::from_str("uint128").unwrap(), D::int(128, false));
-    assert_eq!(D::int(24, true).to_str(), "int24");
-    assert_eq!(
-        D::from_str(&D::int(128, false).to_str()).unwrap(),
-        D::int(128, false)
-    );
-    // The degenerate `int0` round-trips too (width is not range-checked, matching
-    // the permissive `int` constructor).
-    assert_eq!(D::int(0, true).to_str(), "int0");
-    assert_eq!(D::from_str("int0").unwrap(), D::int(0, true));
-    // The generic default constructor.
-    assert_eq!(D::integer(), D::int(64, true));
-    // Invalid names.
+    // Each integer alias resolves to its concrete fixed variant.
+    assert_eq!(D::from_str("int8").unwrap(), D::int8());
+    assert_eq!(D::from_str("int16").unwrap(), D::int16());
+    assert_eq!(D::from_str("int32").unwrap(), D::int32());
+    assert_eq!(D::from_str("int64").unwrap(), D::int64());
+    assert_eq!(D::from_str("uint8").unwrap(), D::uint8());
+    assert_eq!(D::from_str("uint64").unwrap(), D::uint64());
+    // Explicit constructors and the width builder agree.
+    assert_eq!(D::int8(), D::int(8, true));
+    assert_eq!(D::uint32(), D::int(32, false));
+    assert_eq!(D::integer(), D::int64());
+    // Arbitrary widths are no longer a type — they are unknown, not a generic int.
+    assert!(matches!(D::from_str("int24"), Err(SchemaError::Unknown(_))));
+    assert!(matches!(
+        D::from_str("uint128"),
+        Err(SchemaError::Unknown(_))
+    ));
+    assert!(matches!(D::from_str("int0"), Err(SchemaError::Unknown(_))));
     assert!(matches!(
         D::from_str("intfoo"),
         Err(SchemaError::Unknown(_))
     ));
+    // A non-standard width passed to the builder rounds up to the next fixed width.
+    assert_eq!(D::int(24, true), D::int32());
+    assert_eq!(D::int(128, false), D::uint64());
+    // The native Rust storage type is named per variant; the descriptor mirrors it.
+    assert_eq!(D::int32().native_name(), Some("i32"));
+    assert_eq!(D::uint8().native_name(), Some("u8"));
+    assert_eq!(Int32.data_type(), D::int32());
+    assert_eq!(DataType::from(UInt8), D::uint8());
 }
 
 #[test]
-fn flexible_float_widths() {
+fn fixed_float_widths() {
+    use crate::{f16, FixedType, Float16};
     use DataType as D;
-    // Arbitrary float widths parse and round-trip.
-    assert_eq!(D::from_str("float24").unwrap(), D::float(24));
-    assert_eq!(D::from_str("float128").unwrap(), D::float(128));
-    assert_eq!(D::float(24).to_str(), "float24");
-    assert_eq!(D::from_str(&D::float(24).to_str()).unwrap(), D::float(24));
-    assert_eq!(D::floating(), D::float(64)); // default width
-                                             // Standard widths still resolve via the explicit aliases.
-    assert_eq!(D::from_str("float32").unwrap(), D::float(32));
-    assert_eq!(D::from_str("double").unwrap(), D::float(64));
+    assert_eq!(D::from_str("float16").unwrap(), D::float16());
+    assert_eq!(D::from_str("float32").unwrap(), D::float32());
+    assert_eq!(D::from_str("double").unwrap(), D::float64());
+    assert_eq!(D::float16(), D::float(16));
+    assert_eq!(D::floating(), D::float64()); // default width
+                                             // Arbitrary float widths are unknown now.
+    assert!(matches!(
+        D::from_str("float24"),
+        Err(SchemaError::Unknown(_))
+    ));
+    assert!(matches!(
+        D::from_str("float128"),
+        Err(SchemaError::Unknown(_))
+    ));
+    // The half float is backed by the created `f16` native type.
+    assert_eq!(D::float16().native_name(), Some("f16"));
+    assert_eq!(Float16.data_type(), D::float16());
+    assert_eq!(f16::from_f32(0.5).to_f32(), 0.5);
+}
+
+#[test]
+fn fixed_decimal_widths_and_native_types() {
+    use crate::{i256, Decimal128, FixedType};
+    use DataType as D;
+    // Each decimal width is a concrete variant carrying precision/scale.
+    assert_eq!(D::from_str("decimal32[9, 2]").unwrap(), D::decimal32(9, 2));
+    assert_eq!(
+        D::from_str("decimal64[18, 4]").unwrap(),
+        D::decimal64(18, 4)
+    );
+    assert_eq!(
+        D::from_str("decimal128[38, 10]").unwrap(),
+        D::decimal128(38, 10)
+    );
+    assert_eq!(
+        D::from_str("decimal256[76, 0]").unwrap(),
+        D::decimal256(76, 0)
+    );
+    // The bare `decimal[..]` alias is the 128-bit decimal.
+    assert_eq!(D::from_str("decimal[10, 2]").unwrap(), D::decimal128(10, 2));
+    // Native storage names: i32/i64/i128/i256.
+    assert_eq!(D::decimal32(9, 2).native_name(), Some("i32"));
+    assert_eq!(D::decimal128(10, 2).native_name(), Some("i128"));
+    assert_eq!(D::decimal256(76, 0).native_name(), Some("i256"));
+    // The descriptor struct mirrors the variant.
+    assert_eq!(Decimal128::new(10, 2).data_type(), D::decimal128(10, 2));
+    // The created 256-bit native type round-trips a value beyond i128.
+    assert_eq!(i256::from_i128(-5).to_str(), "-5");
 }
 
 #[test]
@@ -576,7 +628,7 @@ fn json_bson_and_physical_types() {
     );
     assert_eq!(
         D::decimal_with(10, 2, 128).physical_type(),
-        D::int(128, true)
+        D::fixed_size_binary(16)
     );
     assert_eq!(
         D::dictionary(D::int(16, true), D::varchar()).physical_type(),
@@ -803,11 +855,24 @@ fn arrow_round_trips_every_concrete_type() {
 
 #[cfg(feature = "arrow")]
 #[test]
-fn arrow_rejects_custom_numeric_widths() {
-    // Custom integer / float widths have no Arrow equivalent and error (not coerce).
-    assert!(DataType::int(24, true).to_arrow().is_err());
-    assert!(DataType::float(24).to_arrow().is_err());
-    assert!(DataType::int(128, false).to_arrow().is_err());
+fn arrow_maps_every_fixed_numeric_width() {
+    use arrow_schema::DataType as A;
+    // Every concrete fixed width has a direct Arrow equivalent (no width is rejected).
+    assert_eq!(DataType::int8().to_arrow().unwrap(), A::Int8);
+    assert_eq!(DataType::int(16, false).to_arrow().unwrap(), A::UInt16);
+    assert_eq!(DataType::float16().to_arrow().unwrap(), A::Float16);
+    assert_eq!(DataType::float64().to_arrow().unwrap(), A::Float64);
+    assert_eq!(
+        DataType::decimal32(9, 2).to_arrow().unwrap(),
+        A::Decimal32(9, 2)
+    );
+    assert_eq!(
+        DataType::decimal256(76, 0).to_arrow().unwrap(),
+        A::Decimal256(76, 0)
+    );
+    // ... and back.
+    assert_eq!(DataType::from_arrow(&A::UInt64), DataType::uint64());
+    assert_eq!(DataType::from_arrow(&A::Float16), DataType::float16());
 }
 
 #[cfg(feature = "arrow")]

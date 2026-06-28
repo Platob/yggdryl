@@ -87,34 +87,17 @@ impl DataType {
             }
             Null => ADataType::Null,
             Boolean => ADataType::Boolean,
-            Int { bits, signed } => match (bits, signed) {
-                (8, true) => ADataType::Int8,
-                (16, true) => ADataType::Int16,
-                (32, true) => ADataType::Int32,
-                (64, true) => ADataType::Int64,
-                (8, false) => ADataType::UInt8,
-                (16, false) => ADataType::UInt16,
-                (32, false) => ADataType::UInt32,
-                (64, false) => ADataType::UInt64,
-                // Arrow only has the standard widths; a flexible width has no mapping.
-                (bits, signed) => {
-                    return Err(SchemaError::Unsupported(format!(
-                        "Arrow has no {}int{bits}; use a standard width (8/16/32/64)",
-                        if *signed { "" } else { "u" }
-                    )))
-                }
-            },
-            Float { bits } => match bits {
-                16 => ADataType::Float16,
-                32 => ADataType::Float32,
-                64 => ADataType::Float64,
-                // Arrow only has the IEEE widths; a custom width has no mapping.
-                other => {
-                    return Err(SchemaError::Unsupported(format!(
-                        "Arrow has no float{other}; use a standard width (16/32/64)"
-                    )))
-                }
-            },
+            Int8(_) => ADataType::Int8,
+            Int16(_) => ADataType::Int16,
+            Int32(_) => ADataType::Int32,
+            Int64(_) => ADataType::Int64,
+            UInt8(_) => ADataType::UInt8,
+            UInt16(_) => ADataType::UInt16,
+            UInt32(_) => ADataType::UInt32,
+            UInt64(_) => ADataType::UInt64,
+            Float16(_) => ADataType::Float16,
+            Float32(_) => ADataType::Float32,
+            Float64(_) => ADataType::Float64,
             Varchar {
                 large, view, size, ..
             } => {
@@ -136,16 +119,10 @@ impl DataType {
                 (_, true, None) => ADataType::BinaryView,
                 _ => ADataType::Binary,
             },
-            Decimal {
-                precision,
-                scale,
-                bits,
-            } => match bits {
-                32 => ADataType::Decimal32(*precision, *scale),
-                64 => ADataType::Decimal64(*precision, *scale),
-                256 => ADataType::Decimal256(*precision, *scale),
-                _ => ADataType::Decimal128(*precision, *scale),
-            },
+            Decimal32(d) => ADataType::Decimal32(d.precision, d.scale),
+            Decimal64(d) => ADataType::Decimal64(d.precision, d.scale),
+            Decimal128(d) => ADataType::Decimal128(d.precision, d.scale),
+            Decimal256(d) => ADataType::Decimal256(d.precision, d.scale),
             Date { large } => {
                 if *large {
                     ADataType::Date64

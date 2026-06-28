@@ -11,9 +11,11 @@ use std::fmt;
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::{Charset, Field};
+use fixed::FixedType;
 use yggdryl_core::{TimeUnit, Timezone};
 
 mod coerce;
+pub mod fixed;
 mod intern;
 mod logical;
 mod nested;
@@ -150,18 +152,21 @@ impl fmt::Display for TypeCategory {
 
 /// A logical data type. Variants are grouped into three [categories](TypeCategory)
 /// — primitive, logical, nested — plus the [`Any`](DataType::Any) wildcard. The
-/// design is simpler than Arrow's: width/offset/layout variations are carried as
-/// the uniform fields `bits` / `large` / `view` (and read back via
-/// [`bit_size`](DataType::bit_size) / [`is_large`](DataType::is_large) /
-/// [`is_view`](DataType::is_view)), and all strings are one
-/// [`Varchar`](DataType::Varchar) with a [`Charset`].
+/// fixed-width numeric types are **concrete** ([`Int8`](DataType::Int8) …
+/// [`UInt64`](DataType::UInt64), [`Float16`](DataType::Float16) …
+/// [`Float64`](DataType::Float64), [`Decimal32`](DataType::Decimal32) …
+/// [`Decimal256`](DataType::Decimal256)), each backed by a native Rust storage type
+/// and a [`FixedType`] descriptor; the offset/layout variations of the
+/// variable-width types stay uniform fields (`large` / `view`), read back via
+/// [`is_large`](DataType::is_large) / [`is_view`](DataType::is_view), and all strings
+/// are one [`Varchar`](DataType::Varchar) with a [`Charset`].
 ///
 /// ```
 /// use yggdryl_schema::{DataType, Charset};
-/// assert_eq!(DataType::from_str("int64").unwrap(), DataType::int(64, true));
-/// assert_eq!(DataType::from_str("uint8").unwrap(), DataType::int(8, false));
+/// assert_eq!(DataType::from_str("int64").unwrap(), DataType::int64());
+/// assert_eq!(DataType::from_str("uint8").unwrap(), DataType::uint8());
 /// assert_eq!(DataType::varchar().is_large(), false);
-/// assert_eq!(DataType::int(32, true).bit_size(), Some(32));
+/// assert_eq!(DataType::int32().bit_size(), Some(32));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -176,20 +181,28 @@ pub enum DataType {
     Null,
     /// `true` / `false`.
     Boolean,
-    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed),
-    /// signed or unsigned.
-    Int {
-        /// Bit width (commonly 8/16/32/64; any positive width is allowed).
-        bits: u16,
-        /// Whether the integer is signed.
-        signed: bool,
-    },
-    /// A floating-point number of `bits` width (commonly 16/32/64, but any width is
-    /// allowed for custom encodings).
-    Float {
-        /// Bit width (commonly 16/32/64; any positive width is allowed).
-        bits: u16,
-    },
+    /// A signed 8-bit integer (native storage [`i8`]).
+    Int8(fixed::Int8),
+    /// A signed 16-bit integer (native storage [`i16`]).
+    Int16(fixed::Int16),
+    /// A signed 32-bit integer (native storage [`i32`]).
+    Int32(fixed::Int32),
+    /// A signed 64-bit integer (native storage [`i64`]).
+    Int64(fixed::Int64),
+    /// An unsigned 8-bit integer (native storage [`u8`]).
+    UInt8(fixed::UInt8),
+    /// An unsigned 16-bit integer (native storage [`u16`]).
+    UInt16(fixed::UInt16),
+    /// An unsigned 32-bit integer (native storage [`u32`]).
+    UInt32(fixed::UInt32),
+    /// An unsigned 64-bit integer (native storage [`u64`]).
+    UInt64(fixed::UInt64),
+    /// A half-precision (16-bit) float (native storage `f16`).
+    Float16(fixed::Float16),
+    /// A single-precision (32-bit) float (native storage [`f32`]).
+    Float32(fixed::Float32),
+    /// A double-precision (64-bit) float (native storage [`f64`]).
+    Float64(fixed::Float64),
     /// A UTF-8 (or other [`Charset`]) string. `large` uses 64-bit offsets; `view`
     /// the view layout; `size` (when set) makes it fixed-length (`char(n)`).
     Varchar {
@@ -214,15 +227,14 @@ pub enum DataType {
     },
 
     // ---- logical ----
-    /// A decimal with `(precision, scale)` stored in `bits` (32/64/128/256).
-    Decimal {
-        /// Total number of digits.
-        precision: u8,
-        /// Digits after the decimal point (may be negative).
-        scale: i8,
-        /// Storage width: 32, 64, 128 or 256.
-        bits: u16,
-    },
+    /// A 32-bit decimal with `(precision, scale)` (native storage [`i32`]).
+    Decimal32(fixed::Decimal32),
+    /// A 64-bit decimal with `(precision, scale)` (native storage [`i64`]).
+    Decimal64(fixed::Decimal64),
+    /// A 128-bit decimal with `(precision, scale)` (native storage [`i128`]).
+    Decimal128(fixed::Decimal128),
+    /// A 256-bit decimal with `(precision, scale)` (native storage `i256`).
+    Decimal256(fixed::Decimal256),
     /// A calendar date. `large` selects millisecond (64-bit) storage over the
     /// default day (32-bit) storage.
     Date {
@@ -330,6 +342,34 @@ impl DataType {
         matches!(self, DataType::Any)
     }
 
+    /// The fixed-width numeric descriptor backing this type, or `None` for a
+    /// non-fixed-numeric type. This is the **single dispatch point** the numeric
+    /// accessors ([`bit_size`](DataType::bit_size), [`native_name`](DataType::native_name),
+    /// the [`Numeric`](crate::Numeric) interface, the integer/float/decimal predicates,
+    /// …) delegate to, so each width's behaviour lives on its own
+    /// [`FixedType`] descriptor rather than in a match per accessor.
+    pub(crate) fn fixed(&self) -> Option<&dyn FixedType> {
+        use DataType::*;
+        match self {
+            Int8(t) => Some(t),
+            Int16(t) => Some(t),
+            Int32(t) => Some(t),
+            Int64(t) => Some(t),
+            UInt8(t) => Some(t),
+            UInt16(t) => Some(t),
+            UInt32(t) => Some(t),
+            UInt64(t) => Some(t),
+            Float16(t) => Some(t),
+            Float32(t) => Some(t),
+            Float64(t) => Some(t),
+            Decimal32(t) => Some(t),
+            Decimal64(t) => Some(t),
+            Decimal128(t) => Some(t),
+            Decimal256(t) => Some(t),
+            _ => None,
+        }
+    }
+
     /// The physical width of a value in **bits** for fixed-width types, or `None`
     /// for variable-width / nested types. `Boolean` is one bit; a fixed-size
     /// `Binary` is `size * 8`.
@@ -342,9 +382,12 @@ impl DataType {
     /// ```
     pub fn bit_size(&self) -> Option<u16> {
         use DataType::*;
+        // The fixed-width numerics report their own width.
+        if let Some(t) = self.fixed() {
+            return Some(t.bits());
+        }
         let bits = match self {
             Boolean => 1,
-            Int { bits, .. } | Float { bits } | Decimal { bits, .. } => *bits,
             Date { large } => {
                 if *large {
                     64
@@ -419,9 +462,10 @@ impl DataType {
 
     /// The physical (storage) [`DataType`] backing this type. A [logical](TypeCategory::Logical)
     /// type reports its underlying primitive — a [`Date`](DataType::Date) is an
-    /// `int32`/`int64`, a [`Time`](DataType::Time) / [`Timestamp`](DataType::Timestamp)
-    /// / [`Duration`](DataType::Duration) / [`Interval`](DataType::Interval) an integer
-    /// of its width, a [`Decimal`](DataType::Decimal) an integer of its storage width, a
+    /// `int32`/`int64`, a [`Time`](DataType::Time) is an `int32`/`int64`, a
+    /// [`Timestamp`](DataType::Timestamp) / [`Duration`](DataType::Duration) an `int64`,
+    /// a fixed-width [`Decimal128`](DataType::Decimal128) (and an `int128`-wide
+    /// [`Interval`](DataType::Interval)) a fixed-size binary of its storage width, a
     /// [`Dictionary`](DataType::Dictionary) its key index type, a [`Json`](DataType::Json)
     /// a [`Varchar`](DataType::Varchar) and a [`Bson`](DataType::Bson) a
     /// [`Binary`](DataType::Binary). Every other type is its own physical type.
@@ -430,10 +474,16 @@ impl DataType {
     /// use yggdryl_schema::DataType;
     /// assert_eq!(DataType::date().physical_type(), DataType::int(32, true));
     /// assert_eq!(DataType::json().physical_type(), DataType::varchar());
+    /// assert_eq!(DataType::decimal(10, 2).physical_type(), DataType::fixed_size_binary(16));
     /// assert_eq!(DataType::int(32, true).physical_type(), DataType::int(32, true));
     /// ```
     pub fn physical_type(&self) -> DataType {
         use DataType::*;
+        // The integers / floats are their own physical type; the decimals report a
+        // fixed-size binary of their storage width — both decided by the descriptor.
+        if let Some(t) = self.fixed() {
+            return t.physical_type();
+        }
         match self {
             Date { large } => DataType::int(if *large { 64 } else { 32 }, true),
             Time { unit } => DataType::int(
@@ -445,14 +495,36 @@ impl DataType {
                 true,
             ),
             Timestamp { .. } | Duration { .. } => DataType::int(64, true),
-            Interval { unit } => DataType::int(unit.bit_size(), true),
-            Decimal { bits, .. } => DataType::int(*bits, true),
+            // 32/64-bit intervals are integers; the 128-bit month_day_nano has no
+            // integer type, so it falls to a fixed-size binary of its byte width.
+            Interval { unit } => match unit.bit_size() {
+                32 => DataType::int(32, true),
+                64 => DataType::int(64, true),
+                bits => DataType::fixed_size_binary((bits / 8) as i32),
+            },
             Dictionary { key, .. } => key.physical_type(),
             Json => DataType::varchar(),
             Bson => DataType::binary(),
             Timezone => DataType::varchar(),
             other => other.clone(),
         }
+    }
+
+    /// The name of the **native Rust type** that stores values of a fixed-width numeric
+    /// type — a Rust built-in where one exists (`"i8"` / `"f32"` / `"i128"` / …), or one
+    /// of the types created for the widths Rust lacks (`"f16"` for
+    /// [`Float16`](DataType::Float16), `"i256"` for [`Decimal256`](DataType::Decimal256)).
+    /// `None` for non-fixed-numeric types. Delegates to the [`FixedType`] descriptor.
+    ///
+    /// ```
+    /// use yggdryl_schema::DataType;
+    /// assert_eq!(DataType::int(32, true).native_name(), Some("i32"));
+    /// assert_eq!(DataType::float(16).native_name(), Some("f16"));
+    /// assert_eq!(DataType::decimal(10, 2).native_name(), Some("i128"));
+    /// assert_eq!(DataType::varchar().native_name(), None);
+    /// ```
+    pub fn native_name(&self) -> Option<&'static str> {
+        self.fixed().map(|t| t.native_name())
     }
 }
 
@@ -644,34 +716,6 @@ fn parse_decimal_args(args: &str, whole: &str) -> Result<(u8, i8), SchemaError> 
 /// Parses a [`TimeUnit`], mapping a bad token to [`SchemaError::UnknownUnit`].
 fn parse_time_unit(value: &str) -> Result<TimeUnit, SchemaError> {
     TimeUnit::from_str(value).map_err(|_| SchemaError::UnknownUnit(value.to_string()))
-}
-
-/// Parses a generic `int<N>` / `uint<N>` head of any positive bit width (e.g.
-/// `int24`, `uint128`), returning `None` for anything else. The common widths are
-/// handled by explicit aliases ahead of this; this is the flexible fallback.
-fn parse_generic_int(head: &str) -> Option<DataType> {
-    let (digits, signed) = match head.strip_prefix("uint") {
-        Some(rest) => (rest, false),
-        None => (head.strip_prefix("int")?, true),
-    };
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    // Any width (including the degenerate `int0`) round-trips through `to_str`; the
-    // width is not range-checked here — it mirrors the permissive `int` constructor.
-    let bits = digits.parse::<u16>().ok()?;
-    Some(DataType::int(bits, signed))
-}
-
-/// Parses a generic `float<N>` head of any positive bit width (e.g. `float24`,
-/// `float128`), returning `None` for anything else. The common widths are handled by
-/// explicit aliases ahead of this; this is the flexible fallback.
-fn parse_generic_float(head: &str) -> Option<DataType> {
-    let digits = head.strip_prefix("float")?;
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    Some(DataType::float(digits.parse::<u16>().ok()?))
 }
 
 /// Parses a time resolution given either a unit token (`us`) or a SQL fractional
@@ -922,11 +966,9 @@ impl DataType {
                     DataType::from_str(parts[1])?,
                 ))
             }
-            // A bare `int<N>` / `uint<N>` / `float<N>` of any width (e.g. `int24`,
-            // `uint128`, `float24`).
-            (other, None) => parse_generic_int(other)
-                .or_else(|| parse_generic_float(other))
-                .ok_or_else(|| SchemaError::Unknown(input.to_string())),
+            // Fixed-width numerics resolve through the explicit aliases above; any other
+            // bare head (including a non-standard width like `int24` / `float128`) is
+            // unknown — the type system carries only the concrete fixed widths.
             (_, _) => Err(SchemaError::Unknown(input.to_string())),
         }
     }
@@ -943,12 +985,14 @@ impl DataType {
     /// [`from_str`](DataType::from_str).
     pub fn to_str(&self) -> String {
         use DataType::*;
+        // The fixed-width numerics render themselves (`int8`, `decimal128[10, 2]`, …).
+        if let Some(t) = self.fixed() {
+            return t.render();
+        }
         match self {
             Any => "any".to_string(),
             Null => "null".to_string(),
             Boolean => "bool".to_string(),
-            Int { bits, signed } => format!("{}int{bits}", if *signed { "" } else { "u" }),
-            Float { bits } => format!("float{bits}"),
             Varchar {
                 charset,
                 large,
@@ -961,11 +1005,6 @@ impl DataType {
                 (_, true, None) => "binary_view".to_string(),
                 _ => "binary".to_string(),
             },
-            Decimal {
-                precision,
-                scale,
-                bits,
-            } => format!("decimal{bits}[{precision}, {scale}]"),
             Date { large } => if *large { "date64" } else { "date32" }.to_string(),
             Time { unit } => {
                 let width = if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
@@ -1020,6 +1059,13 @@ impl DataType {
                     run_ends.to_str(),
                     values.to_str()
                 )
+            }
+            // The fixed-width numerics are rendered above by their descriptor; listing
+            // them keeps the match exhaustive so a new variant is still caught.
+            Int8(_) | Int16(_) | Int32(_) | Int64(_) | UInt8(_) | UInt16(_) | UInt32(_)
+            | UInt64(_) | Float16(_) | Float32(_) | Float64(_) | Decimal32(_) | Decimal64(_)
+            | Decimal128(_) | Decimal256(_) => {
+                unreachable!("fixed numerics rendered via `fixed()`")
             }
         }
     }

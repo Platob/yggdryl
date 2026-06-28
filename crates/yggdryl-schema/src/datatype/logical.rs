@@ -4,6 +4,7 @@
 
 use std::fmt;
 
+use super::fixed::{Decimal128, Decimal256, Decimal32, Decimal64, FixedKind};
 use super::{DataType, SchemaError};
 use yggdryl_core::{TimeUnit, Timezone};
 
@@ -69,18 +70,44 @@ impl DataType {
         DataType::Date { large: false }
     }
 
-    /// A decimal with `(precision, scale)`, stored in 128 bits.
+    /// A decimal with `(precision, scale)`, stored in 128 bits
+    /// ([`decimal128`](DataType::Decimal128)).
     pub fn decimal(precision: u8, scale: i8) -> DataType {
         DataType::decimal_with(precision, scale, 128)
     }
 
-    /// A decimal with an explicit storage width (32/64/128/256 bits).
+    /// The fixed-width decimal for an explicit storage width — the convenience builder
+    /// over the concrete [`Decimal32`](DataType::Decimal32) /
+    /// [`Decimal64`](DataType::Decimal64) / [`Decimal128`](DataType::Decimal128) /
+    /// [`Decimal256`](DataType::Decimal256) variants. A width that is not 32/64/256
+    /// defaults to the 128-bit decimal (the common case).
     pub fn decimal_with(precision: u8, scale: i8, bits: u16) -> DataType {
-        DataType::Decimal {
-            precision,
-            scale,
-            bits,
+        match bits {
+            32 => Decimal32::new(precision, scale).into(),
+            64 => Decimal64::new(precision, scale).into(),
+            256 => Decimal256::new(precision, scale).into(),
+            _ => Decimal128::new(precision, scale).into(),
         }
+    }
+
+    /// A 32-bit decimal with `(precision, scale)` ([`decimal32`](DataType::Decimal32)).
+    pub fn decimal32(precision: u8, scale: i8) -> DataType {
+        Decimal32::new(precision, scale).into()
+    }
+
+    /// A 64-bit decimal with `(precision, scale)` ([`decimal64`](DataType::Decimal64)).
+    pub fn decimal64(precision: u8, scale: i8) -> DataType {
+        Decimal64::new(precision, scale).into()
+    }
+
+    /// A 128-bit decimal with `(precision, scale)` ([`decimal128`](DataType::Decimal128)).
+    pub fn decimal128(precision: u8, scale: i8) -> DataType {
+        Decimal128::new(precision, scale).into()
+    }
+
+    /// A 256-bit decimal with `(precision, scale)` ([`decimal256`](DataType::Decimal256)).
+    pub fn decimal256(precision: u8, scale: i8) -> DataType {
+        Decimal256::new(precision, scale).into()
     }
 
     /// A [`Timestamp`](DataType::Timestamp); pass `timezone` for a zoned timestamp.
@@ -130,9 +157,9 @@ impl DataType {
         )
     }
 
-    /// Whether this is a decimal type.
+    /// Whether this is a decimal type (any storage width).
     pub fn is_decimal(&self) -> bool {
-        matches!(self, DataType::Decimal { .. })
+        self.fixed().map(|t| t.kind()) == Some(FixedKind::Decimal)
     }
 
     /// Whether this is a [`Dictionary`](DataType::Dictionary) encoding.
@@ -178,11 +205,6 @@ impl DataType {
 
     /// The `(precision, scale)` of a decimal type, or `None`.
     pub fn decimal_parts(&self) -> Option<(u8, i8)> {
-        match self {
-            DataType::Decimal {
-                precision, scale, ..
-            } => Some((*precision, *scale)),
-            _ => None,
-        }
+        self.fixed().and_then(|t| t.decimal_parts())
     }
 }

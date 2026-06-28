@@ -23,6 +23,13 @@ fn wrap(inner: CoreDataType) -> DataType {
     DataType { inner }
 }
 
+/// Validates a JS decimal `scale` fits an `i8`, raising rather than silently wrapping
+/// (Python raises too).
+fn decimal_scale(scale: Option<i32>) -> Result<i8> {
+    i8::try_from(scale.unwrap_or(0))
+        .map_err(|_| err("decimal scale out of range, expected -128..=127"))
+}
+
 #[napi]
 impl DataType {
     /// Parse a canonical type string (e.g. `"int64"`, `"timestamp[us, UTC]"`).
@@ -57,8 +64,9 @@ impl DataType {
         wrap(CoreDataType::Boolean)
     }
 
-    /// An integer of `bits` width (commonly 8/16/32/64, but any width is allowed;
-    /// default 64), signed by default.
+    /// The fixed-width integer for `(bits, signed)` — the builder over the concrete
+    /// `int8` … `uint64` types (default `int64`). Only the standard widths (8/16/32/64)
+    /// are types; a non-standard width rounds up to the next supported one.
     #[napi(factory)]
     pub fn int(bits: Option<u16>, signed: Option<bool>) -> Self {
         wrap(CoreDataType::int(
@@ -67,17 +75,84 @@ impl DataType {
         ))
     }
 
-    /// A generic signed integer at the default width (`int64`).
+    /// A signed 8-bit integer (`int8`).
+    #[napi(factory)]
+    pub fn int8() -> Self {
+        wrap(CoreDataType::int8())
+    }
+
+    /// A signed 16-bit integer (`int16`).
+    #[napi(factory)]
+    pub fn int16() -> Self {
+        wrap(CoreDataType::int16())
+    }
+
+    /// A signed 32-bit integer (`int32`).
+    #[napi(factory)]
+    pub fn int32() -> Self {
+        wrap(CoreDataType::int32())
+    }
+
+    /// A signed 64-bit integer (`int64`).
+    #[napi(factory)]
+    pub fn int64() -> Self {
+        wrap(CoreDataType::int64())
+    }
+
+    /// An unsigned 8-bit integer (`uint8`).
+    #[napi(factory)]
+    pub fn uint8() -> Self {
+        wrap(CoreDataType::uint8())
+    }
+
+    /// An unsigned 16-bit integer (`uint16`).
+    #[napi(factory)]
+    pub fn uint16() -> Self {
+        wrap(CoreDataType::uint16())
+    }
+
+    /// An unsigned 32-bit integer (`uint32`).
+    #[napi(factory)]
+    pub fn uint32() -> Self {
+        wrap(CoreDataType::uint32())
+    }
+
+    /// An unsigned 64-bit integer (`uint64`).
+    #[napi(factory)]
+    pub fn uint64() -> Self {
+        wrap(CoreDataType::uint64())
+    }
+
+    /// A signed integer at the default width (`int64`).
     #[napi(factory)]
     pub fn integer() -> Self {
         wrap(CoreDataType::integer())
     }
 
-    /// A floating-point type of `bits` width (commonly 16/32/64, but any width is
-    /// allowed; default 64).
+    /// The fixed-width float for `bits` — the builder over `float16` / `float32` /
+    /// `float64` (default 64). Only the IEEE widths (16/32/64) are types; a non-standard
+    /// width rounds up to the next supported one.
     #[napi(factory)]
     pub fn float(bits: Option<u16>) -> Self {
         wrap(CoreDataType::float(bits.unwrap_or(64)))
+    }
+
+    /// A half-precision (16-bit) float (`float16`).
+    #[napi(factory)]
+    pub fn float16() -> Self {
+        wrap(CoreDataType::float16())
+    }
+
+    /// A single-precision (32-bit) float (`float32`).
+    #[napi(factory)]
+    pub fn float32() -> Self {
+        wrap(CoreDataType::float32())
+    }
+
+    /// A double-precision (64-bit) float (`float64`).
+    #[napi(factory)]
+    pub fn float64() -> Self {
+        wrap(CoreDataType::float64())
     }
 
     /// A float at the default width (`float64`).
@@ -86,17 +161,50 @@ impl DataType {
         wrap(CoreDataType::floating())
     }
 
-    /// A decimal with `(precision, scale)`, stored in `bits` (default 128).
+    /// A decimal with `(precision, scale)`, stored in `bits` (32/64/128/256;
+    /// default 128).
     #[napi(factory)]
     pub fn decimal(precision: u8, scale: Option<i32>, bits: Option<u16>) -> Result<Self> {
-        // Validate the scale fits i8 rather than silently wrapping (Python raises too).
-        let scale = scale.unwrap_or(0);
-        let scale = i8::try_from(scale)
-            .map_err(|_| err("decimal scale out of range, expected -128..=127"))?;
         Ok(wrap(CoreDataType::decimal_with(
             precision,
-            scale,
+            decimal_scale(scale)?,
             bits.unwrap_or(128),
+        )))
+    }
+
+    /// A 32-bit decimal with `(precision, scale)` (`decimal32`).
+    #[napi(factory)]
+    pub fn decimal32(precision: u8, scale: Option<i32>) -> Result<Self> {
+        Ok(wrap(CoreDataType::decimal32(
+            precision,
+            decimal_scale(scale)?,
+        )))
+    }
+
+    /// A 64-bit decimal with `(precision, scale)` (`decimal64`).
+    #[napi(factory)]
+    pub fn decimal64(precision: u8, scale: Option<i32>) -> Result<Self> {
+        Ok(wrap(CoreDataType::decimal64(
+            precision,
+            decimal_scale(scale)?,
+        )))
+    }
+
+    /// A 128-bit decimal with `(precision, scale)` (`decimal128`).
+    #[napi(factory)]
+    pub fn decimal128(precision: u8, scale: Option<i32>) -> Result<Self> {
+        Ok(wrap(CoreDataType::decimal128(
+            precision,
+            decimal_scale(scale)?,
+        )))
+    }
+
+    /// A 256-bit decimal with `(precision, scale)` (`decimal256`).
+    #[napi(factory)]
+    pub fn decimal256(precision: u8, scale: Option<i32>) -> Result<Self> {
+        Ok(wrap(CoreDataType::decimal256(
+            precision,
+            decimal_scale(scale)?,
         )))
     }
 
@@ -323,6 +431,13 @@ impl DataType {
     #[napi(getter)]
     pub fn signed(&self) -> Option<bool> {
         self.inner.signed()
+    }
+
+    /// The native Rust storage type name of a fixed-width numeric type (`"i32"` /
+    /// `"f16"` / `"i128"` / `"i256"` / …), else null.
+    #[napi(getter, js_name = "nativeName")]
+    pub fn native_name(&self) -> Option<&'static str> {
+        self.inner.native_name()
     }
 
     /// The time unit of a temporal type carrying one, else null.

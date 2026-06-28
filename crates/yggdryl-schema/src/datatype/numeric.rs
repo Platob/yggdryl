@@ -3,10 +3,13 @@
 
 use super::DataType;
 
-/// The common interface of the **numeric** data types — [`Int`](DataType::Int),
-/// [`Float`](DataType::Float) and [`Decimal`](DataType::Decimal) — mutualising the
-/// two properties they all share: a physical bit width and a signedness. Every method
-/// returns `None` for a non-numeric type, so it is safe to call on any [`DataType`].
+/// The common interface of the **numeric** data types — the integers
+/// ([`Int8`](DataType::Int8) … [`UInt64`](DataType::UInt64)), the floats
+/// ([`Float16`](DataType::Float16) … [`Float64`](DataType::Float64)) and the decimals
+/// ([`Decimal32`](DataType::Decimal32) … [`Decimal256`](DataType::Decimal256)) —
+/// mutualising the two properties they all share: a physical bit width and a
+/// signedness. Every method returns `None` for a non-numeric type, so it is safe to
+/// call on any [`DataType`].
 ///
 /// (This is broader than the [`is_numeric`](DataType::is_numeric) predicate, which
 /// counts only integers and floats; a decimal is numeric *here* because it carries a
@@ -38,19 +41,12 @@ pub trait Numeric {
 
 impl Numeric for DataType {
     fn numeric_bits(&self) -> Option<u16> {
-        match self {
-            DataType::Int { bits, .. }
-            | DataType::Float { bits }
-            | DataType::Decimal { bits, .. } => Some(*bits),
-            _ => None,
-        }
+        // Each fixed-width numeric descriptor reports its own storage width.
+        self.fixed().map(|t| t.bits())
     }
 
     fn signed(&self) -> Option<bool> {
-        match self {
-            DataType::Int { signed, .. } => Some(*signed),
-            DataType::Float { .. } | DataType::Decimal { .. } => Some(true),
-            _ => None,
-        }
+        // Integers carry the flag; floats and decimals are always signed.
+        self.fixed().map(|t| t.signed())
     }
 }

@@ -205,27 +205,43 @@ A compact schema layer built to back a future dataframe, **centred on two types*
 
 - `charset.rs` — the `Charset` of a string (`Utf8` default / `Utf16` / `Utf32` /
   `Ascii` / `Latin1`).
-- `datatype/` (`mod` + `primitive.rs` + `logical.rs` + `nested.rs` + `coerce.rs`) —
+- `datatype/` (`mod` + `fixed.rs` + `primitive.rs` + `logical.rs` + `nested.rs` +
+  `numeric.rs` + `coerce.rs` + `intern.rs`) —
   the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
   `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str`/`to_str`
   spanning every variant) and the uniform physical accessors (`bit_size` / `is_large`
   / `is_view` / `is_fixed_size` / `physical_type` — the last returns a logical type's
   storage primitive, identity for the rest — plus the `Numeric` trait mutualising the
-  numeric types' `numeric_bits` + common `signed` accessor). **Unlike Arrow, the model
-  is parameterized, not combinatorial**: `Int{bits,signed}` (**any** width, not just
-  8/16/32/64 — `int24`/`uint128` parse; `integer()` defaults to `int64`),
-  `Float{bits}` (likewise **any** width — `float24` parses; `floating()` defaults to
-  `float64`), `Decimal{precision,scale,bits}`, `Varchar{charset,large,view,size}` (a `Some` `size`
+  numeric types' `numeric_bits` + common `signed` accessor). **The fixed-width numerics
+  are concrete, not parameterized** — `Int8`/`Int16`/`Int32`/`Int64` +
+  `UInt8`…`UInt64`, `Float16`/`Float32`/`Float64`, `Decimal32`/`Decimal64`/`Decimal128`/
+  `Decimal256{precision,scale}` (no arbitrary widths: `int24`/`float128` are **unknown**;
+  `int(bits,signed)`/`float(bits)` are width *builders* that round a non-standard width
+  up to the next fixed one, `integer()`/`floating()` default to `int64`/`float64`).
+  **`fixed.rs` is the home of the fixed types**: one native Rust **struct per width**
+  (`Int8`…`Decimal256`, re-exported at the crate root) implementing the object-safe
+  **`FixedType`** trait (abstract `kind`/`bits`/`name`/`native_name`/`data_type`, with
+  `signed`/`decimal_parts`/`render`/`physical_type` defaults the decimals override) and
+  the **`FixedNative`** trait (`type Native` — the native Rust storage: reuse `i8`…`u64`/
+  `f32`/`f64`/`i128`, and the two types Rust lacks are **created here**: `f16`
+  half-precision and `i256` 256-bit). `DataType` **wraps** these structs in its variants
+  (`Int32(fixed::Int32)`, `Decimal128(fixed::Decimal128)`, …) and delegates **every**
+  numeric accessor through a single dispatch point — `DataType::fixed() ->
+  Option<&dyn FixedType>` — so each width's behaviour lives on its own descriptor, never
+  in a per-accessor match at the enum root (add a width by adding one `fixed_scalar!` /
+  `fixed_decimal!` row + one enum variant). The other variants stay parameterized:
+  `Varchar{charset,large,view,size}` (a `Some` `size`
   is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
   max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed
   `Bson`** logical types, the temporal types reuse the core `TimeUnit`/`Timezone`
   (`Date{large}` / `Time{unit}` / `Timestamp{unit,tz}` / `Duration{unit}` /
   `Interval{unit}`), and the nested `List{item,large,view,size}` / `Struct(Vec<Field>)`
   / `Map{key,value,sorted}` / `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`,
-  plus the `Any` wildcard. The category split lives across the three sibling files
-  (`primitive`/`logical`/`nested` hold that category's checks + constructors);
-  `coerce.rs` holds the `MergeStrategy`, `can_cast_to`, `common_type` (the promotion
-  lattice) and `merge`. **All DataType logic lives here.**
+  plus the `Any` wildcard. The category split lives across the sibling files
+  (`primitive`/`logical`/`nested` hold that category's checks + constructors, `numeric.rs`
+  the `Numeric` trait, `intern.rs` the intern pool); `coerce.rs` holds the
+  `MergeStrategy`, `can_cast_to`, `common_type` (the promotion lattice) and `merge`.
+  **All DataType logic lives here.**
 - `field.rs` — the `Field` graph node (name + `DataType` + nullable + metadata + an
   optional, identity-excluded `parent`). Carries the metadata getters/setters
   (`comment` is the named convenience), the case-insensitive / index child accessors,

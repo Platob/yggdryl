@@ -225,14 +225,29 @@ def test_schema_grammar_and_coercion_edge_cases():
         D("struct[a]: int]")
 
 
-def test_flexible_integer_json_bson_physical_fixed():
+def test_fixed_numeric_json_bson_physical():
     D = yggdryl.DataType
-    # Flexible integer widths + default.
-    assert D("int24") == D.int(24)
-    assert D("uint128") == D.int(128, signed=False)
-    assert str(D.int(24)) == "int24"
+    # Fixed integer widths: explicit constructors + the width builder agree.
+    assert D("int8") == D.int8() == D.int(8)
+    assert D("uint64") == D.uint64() == D.int(64, signed=False)
     assert D.int() == D.int(64)  # default width
     assert D.integer() == D.int(64)
+    # Arbitrary widths are no longer a type.
+    with pytest.raises(ValueError):
+        D("int24")
+    with pytest.raises(ValueError):
+        D("uint128")
+    # A non-standard width passed to the builder rounds up to the next fixed width.
+    assert D.int(24) == D.int32()
+    # Fixed float + decimal constructors.
+    assert D("float16") == D.float16() == D.float(16)
+    assert D("decimal256[76, 0]") == D.decimal256(76, 0)
+    # Native Rust storage type names (reused builtins / created f16,i256).
+    assert D.int32().native_name == "i32"
+    assert D.float16().native_name == "f16"
+    assert D.decimal128(10, 2).native_name == "i128"
+    assert D.decimal256(76, 0).native_name == "i256"
+    assert D.varchar().native_name is None
     # Numeric interface: mutualised bits + signed.
     assert D.int(32, signed=False).numeric_bits == 32
     assert D.int(32, signed=False).signed is False
@@ -249,7 +264,8 @@ def test_flexible_integer_json_bson_physical_fixed():
     assert D.json().physical_type() == D.varchar()
     assert D.bson().physical_type() == D.binary()
     assert D.date().physical_type() == D.int(32)
-    assert D.decimal(10, 2).physical_type() == D.int(128)
+    # A decimal stores in a fixed-size binary of its byte width.
+    assert D.decimal(10, 2).physical_type() == D.fixed_size_binary(16)
     assert D.int(32).physical_type() == D.int(32)  # identity
     # Fixed vs variable size.
     fixed = D("char[10]")
@@ -285,8 +301,8 @@ def test_temporal_math_empty_and_float():
     # Temporal.from_datetime redirect.
     assert yggdryl.Date.from_datetime(dt) == yggdryl.Date(2024, 7, 1)
     assert yggdryl.Time.from_datetime(dt) == yggdryl.Time(12, 0, 0)
-    # Generic-width float.
-    assert D("float24") == D.float(24)
+    # Fixed-width float.
+    assert D("float16") == D.float16()
     assert D.float() == D.float(64) and D.floating() == D.float(64)
 
 
