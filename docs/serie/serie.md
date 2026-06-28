@@ -528,10 +528,10 @@ bindings accept either, and Rust adds `cast_str(&str)` next to the canonical
 `cast(&DataType)`; both spellings parse through `DataType::from_str` and run the one
 `cast` implementation.
 
-The wildcard `any` and the `null` type are **fast cast** for any column, without invoking
-the Arrow kernel: casting **to `any` is skipped** entirely — the column is returned
-untouched (it keeps its concrete type and values, and a lazy column even stays lazy), since
-every column already satisfies the wildcard. Casting **to or from `null`** builds an
+`cast` **prechecks the target type**: if it equals the column's current type, or is the
+wildcard `any`, the cast is **skipped** entirely — the column is returned untouched (it
+keeps its concrete type and values, and a lazy column even stays lazy), with no Arrow-kernel
+work. The `null` type is likewise fast cast: casting **to or from `null`** builds an
 all-null column of the target type directly — the natural target for an all-null column,
 and a `null` column casts back to any type as an all-null fill.
 

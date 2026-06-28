@@ -224,16 +224,17 @@ pub trait Serie: fmt::Debug + Send + Sync + CloneSerie {
     /// default) and drops extras. The result keeps this column's name / nullability /
     /// metadata (only the type changes).
     ///
-    /// The wildcard [`Any`](DataType::Any) and the [`Null`](DataType::Null) type are
-    /// **fast cast** without invoking the Arrow kernel: casting to `Any` is a no-op (every
-    /// column already satisfies the wildcard, so the column is returned with its concrete
-    /// type), while casting **to** or **from** `Null` produces an all-null array of the
-    /// target type directly (Arrow has no `cast`-to-`Null`, and casting *from* an all-null
-    /// column is just a null fill).
+    /// When the target equals the column's current type, or is the wildcard
+    /// [`Any`](DataType::Any), the cast is **skipped** — the column is returned untouched (a
+    /// cheap clone keeping its concrete type, values and laziness), with no Arrow-kernel
+    /// work. The [`Null`](DataType::Null) type is likewise **fast cast**: casting **to** or
+    /// **from** `Null` builds an all-null array of the target type directly (Arrow has no
+    /// `cast`-to-`Null`, and casting *from* an all-null column is just a null fill).
     fn cast(&self, dtype: &DataType) -> SerieResult<SerieRef> {
-        // `Any` accepts any column — **skip** the cast entirely and return the column
-        // untouched (a cheap clone that keeps its concrete type, values and laziness).
-        if dtype.is_any() {
+        // Skip when the target is the wildcard `Any` or already this column's type — return
+        // the column untouched (a cheap clone that keeps its concrete type, values and
+        // laziness), with no Arrow-kernel work.
+        if dtype.is_any() || self.data_type() == dtype {
             return Ok(self.clone_serie());
         }
         // To-Null (Arrow can't cast to it) or from-Null (an all-null fill): build the

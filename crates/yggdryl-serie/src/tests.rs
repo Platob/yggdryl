@@ -1198,6 +1198,19 @@ fn cast_to_any_and_null_fast_paths() {
     assert!(!same.is_materialized());
     assert!(same.as_any().downcast_ref::<UInt64RangeSerie>().is_some());
 
+    // casting to the column's own type is also skipped (a lazy range stays a lazy range)
+    let identity = range.cast(&DataType::int(64, false)).unwrap();
+    assert!(!identity.is_materialized());
+    assert!(identity
+        .as_any()
+        .downcast_ref::<UInt64RangeSerie>()
+        .is_some());
+    // a primitive cast to its own type is a no-op too
+    assert_eq!(
+        s.cast(&DataType::int(32, true)).unwrap().value_at(0),
+        Scalar::Int(1)
+    );
+
     // cast to `Null` produces an all-null NullSerie (Arrow has no cast-to-Null)
     let nulled = s.cast(&DataType::Null).unwrap();
     assert_eq!(nulled.data_type(), &DataType::Null);
