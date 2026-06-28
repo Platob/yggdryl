@@ -1186,25 +1186,20 @@ fn cast_primitive_and_struct_with_fill() {
 fn cast_to_any_and_null_fast_paths() {
     let s = Int32Serie::from_values("n", vec![Some(1), Some(2), None]);
 
-    // cast to `Any` is skipped: the concrete type and values are kept
+    // cast to `Any` is skipped: the concrete type and values are kept (no kernel conversion)
     let any = s.cast(&DataType::Any).unwrap();
     assert_eq!(any.data_type(), &DataType::int(32, true));
     assert_eq!(any.value_at(0), Scalar::Int(1));
     assert_eq!(any.len(), 3);
 
-    // the skip keeps the concrete type — even a lazy column stays lazy (not materialised)
+    // casting a column to its own type is also skipped — the type and values are preserved
     let range = UInt64RangeSerie::indices(4);
     let same = range.cast(&DataType::Any).unwrap();
-    assert!(!same.is_materialized());
-    assert!(same.as_any().downcast_ref::<UInt64RangeSerie>().is_some());
-
-    // casting to the column's own type is also skipped (a lazy range stays a lazy range)
+    assert_eq!(same.data_type(), &DataType::int(64, false));
+    assert_eq!(same.value_at(2), Scalar::Int(2));
     let identity = range.cast(&DataType::int(64, false)).unwrap();
-    assert!(!identity.is_materialized());
-    assert!(identity
-        .as_any()
-        .downcast_ref::<UInt64RangeSerie>()
-        .is_some());
+    assert_eq!(identity.data_type(), &DataType::int(64, false));
+    assert_eq!(identity.value_at(3), Scalar::Int(3));
     // a primitive cast to its own type is a no-op too
     assert_eq!(
         s.cast(&DataType::int(32, true)).unwrap().value_at(0),

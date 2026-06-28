@@ -121,7 +121,7 @@ pub use primitive::{
     VarcharSerie,
 };
 pub use scalar::Scalar;
-pub use serie::{from_array, from_arrow, CloneSerie, Serie, SerieRef, TypedSerie};
+pub use serie::{from_array, from_arrow, Serie, SerieRef, TypedSerie};
 pub use slice::{child, child_range, SliceSerie};
 pub use temporal::{DatetimeSerie, DurationSerie, TemporalSerie, TimeSerie};
 

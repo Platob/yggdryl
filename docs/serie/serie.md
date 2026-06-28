@@ -529,11 +529,11 @@ bindings accept either, and Rust adds `cast_str(&str)` next to the canonical
 `cast` implementation.
 
 `cast` **prechecks the target type**: if it equals the column's current type, or is the
-wildcard `any`, the cast is **skipped** entirely — the column is returned untouched (it
-keeps its concrete type and values, and a lazy column even stays lazy), with no Arrow-kernel
-work. The `null` type is likewise fast cast: casting **to or from `null`** builds an
-all-null column of the target type directly — the natural target for an all-null column,
-and a `null` column casts back to any type as an all-null fill.
+wildcard `any`, the cast is **skipped** — the column's own array is re-wrapped unchanged,
+with no Arrow-kernel conversion (its type and values are preserved). The `null` type is
+likewise fast cast: casting **to or from `null`** builds an all-null column of the target
+type directly — the natural target for an all-null column, and a `null` column casts back
+to any type as an all-null fill.
 
 === "Python"
 
