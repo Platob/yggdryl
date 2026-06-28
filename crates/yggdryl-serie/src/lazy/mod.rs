@@ -2,9 +2,9 @@
 //! produce their values on demand from a compact description, materialising into a real
 //! Arrow-backed column only when asked. Each is a full [`Serie`](crate::Serie):
 //!
-//! - [`RangeSerie`] — a datatype-generic arithmetic range (its `start` / `end` / `step` are
-//!   [`ScalarValue`](yggdryl_scalar::ScalarValue)s, computed via [`Scalar`](yggdryl_scalar::Scalar)
-//!   math), a `uint64` one doubling as the canonical row index (O(1) label ↔ position lookups).
+//! - [`RangeSerie<A>`] — a type-parameterised arithmetic range over an Arrow primitive type
+//!   `A` (native `start` / `step`, native arithmetic), a `uint64` one ([`UInt64RangeSerie`])
+//!   doubling as the canonical row index (O(1) label ↔ position lookups).
 //! - [`DateRangeSerie`] — a day-resolution calendar-date range.
 //! - [`DateTimeRangeSerie`] — a nanosecond timestamp range.
 //! - [`TimeRangeSerie`] — a time-of-day range (wrapping within the day).
@@ -18,5 +18,5 @@ mod timerange;
 
 pub use daterange::DateRangeSerie;
 pub use datetimerange::DateTimeRangeSerie;
-pub use range::RangeSerie;
+pub use range::{RangeNative, RangeSerie, UInt64RangeSerie};
 pub use timerange::TimeRangeSerie;

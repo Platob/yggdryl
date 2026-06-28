@@ -120,36 +120,6 @@ pub(crate) fn scalar_at(array: &ArrayRef, index: usize) -> Scalar {
     scalar_at_ref(array.as_ref(), index)
 }
 
-/// Maps a rich [`ScalarValue`](yggdryl_scalar::ScalarValue) (the value-layer scalar a
-/// computed column produces) into this layer's lossy [`Scalar`] — the same widening
-/// [`scalar_at_ref`] applies (integers / decimals-128 / temporal physicals widen into
-/// [`Int`](Scalar::Int), floats into [`Float`](Scalar::Float), the exotics render as
-/// [`Other`](Scalar::Other)). Used by the lazy [`RangeSerie`](crate::RangeSerie).
-pub(crate) fn scalar_from_value(value: &yggdryl_scalar::ScalarValue) -> Scalar {
-    use yggdryl_scalar::ScalarValue as V;
-    match value {
-        V::Null(_) => Scalar::Null,
-        V::Boolean(v) => Scalar::Boolean(*v),
-        V::Int { value, .. } => Scalar::Int(*value),
-        V::Float { value, .. } => Scalar::Float(**value),
-        V::Decimal { value, .. } => value
-            .to_i128()
-            .map(Scalar::Int)
-            .unwrap_or_else(|| Scalar::Other(value.to_string())),
-        V::Utf8 { value, .. } => Scalar::Utf8(value.clone()),
-        V::Json(v) => Scalar::Utf8(v.clone()),
-        V::Timezone(tz) => Scalar::Utf8(tz.name()),
-        V::Binary { value, .. } => Scalar::Binary(value.clone()),
-        V::Bson(v) => Scalar::Binary(v.clone()),
-        V::Date { value, .. }
-        | V::Time { value, .. }
-        | V::Timestamp { value, .. }
-        | V::Duration { value, .. } => Scalar::Int(*value as i128),
-        // intervals and nested values have no widened form — render them textually.
-        other => Scalar::Other(other.to_string()),
-    }
-}
-
 /// Reads the value of `array` at `index` into a [`Scalar`] (mapping `Null` for a null
 /// cell or an out-of-bounds index). Takes `&dyn Array` so a concrete series can read
 /// straight off its typed backing array — no `Arc` clone of [`Serie::array`] per cell.

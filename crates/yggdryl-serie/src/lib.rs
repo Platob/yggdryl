@@ -32,9 +32,10 @@
 //! - The **lazy** (computed) series — [`RangeSerie`], [`DateRangeSerie`],
 //!   [`DateTimeRangeSerie`] and [`TimeRangeSerie`] — store a compact description and
 //!   produce values on demand until materialised (the temporal ranges are
-//!   [`TemporalSerie`]s). [`RangeSerie`] is **datatype-generic** (its `start` / `end` /
-//!   `step` are scalars computed via [`Scalar`](yggdryl_scalar::Scalar) math) and a `uint64`
-//!   one doubles as the canonical row index (O(1) `at` / `position` / `contains`).
+//!   [`TemporalSerie`]s). [`RangeSerie<A>`] is **type-parameterised** over an Arrow
+//!   primitive type `A` (native `start` / `step` and native arithmetic) and a `uint64` one
+//!   ([`UInt64RangeSerie`]) doubles as the canonical row index (O(1) `at` / `position` /
+//!   `contains`).
 //! - [`CategoricalSerie`] — a dictionary-encoded view for repeated values (distinct
 //!   values + per-row codes); decodes to a flat column on `materialize`.
 //! - [`SliceSerie`] / [`child`] — zero-copy child views that record their
@@ -95,7 +96,9 @@ pub use bytes::from_bytes;
 pub use categorical::CategoricalSerie;
 pub use display::DisplayOptions;
 pub use error::{SerieError, SerieResult};
-pub use lazy::{DateRangeSerie, DateTimeRangeSerie, RangeSerie, TimeRangeSerie};
+pub use lazy::{
+    DateRangeSerie, DateTimeRangeSerie, RangeNative, RangeSerie, TimeRangeSerie, UInt64RangeSerie,
+};
 pub use nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
 pub use primitive::{
     BinarySerie,

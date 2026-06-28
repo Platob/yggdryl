@@ -148,8 +148,7 @@ scale and add, a duration shifts a date / timestamp / time, two instants subtrac
 duration), a `null` operand propagates as a typed null, and anything with no defined result
 (a string plus an integer, two booleans, …) **raises** rather than guessing. The whole
 engine works in the widened representation, so an integer overflow is an error, not a
-silent wraparound. (This is what the generic [`RangeSerie`](../serie/lazy.md) computes its
-values with.)
+silent wraparound.
 
 === "Python"
 

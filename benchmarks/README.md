@@ -216,7 +216,7 @@ branch-only, so a per-batch / per-column scan over many columns is essentially f
 | --- | --- |
 | metadata / fast checks — `num_rows` / `null_count` / `category` / `data_type` | **1.6–1.9 ns** |
 | typed value read — `Int32Serie::value` | **0.9 ns** |
-| lazy `RangeSerie::value_at` (datatype-generic, Scalar math, no storage) | **67 ns** |
+| lazy `RangeSerie::value_at` (type-parameterised `RangeSerie<A>`, native arithmetic) | **3 ns** |
 | type-erased `Serie::value_at` → `Scalar` (dynamic dispatch) | **12 ns** |
 | factory dispatch — `from_array` (4096-row int32 / utf8) | 127 / 145 ns |
 | zero-copy `slice` (re-wrap a slice as a new column) | 226 ns |
@@ -243,10 +243,10 @@ Value access has **two tiers**: the typed `value` / `get` is sub-nanosecond — 
 hot loops — while the type-erased `value_at → Scalar` pays a dynamic match + downcast
 (~12 ns, read straight off the concrete column's typed array — no per-row `array()`
 clone) for the convenience of not knowing the column's type ahead of time. A **lazy**
-column computes a value without touching memory; the now **datatype-generic** `RangeSerie`
-runs the `Scalar` math (`start + step*i`) per `value_at`, so a read costs tens of nanoseconds
-(rather than matching a raw array read) in exchange for spanning every numeric / temporal
-type and preserving its original type across a cast. `slice` is O(1) on the Arrow buffers;
+column computes a value without touching memory; the **type-parameterised** `RangeSerie<A>`
+does a **native** `start + step*i` per `value_at` (no boxing), so a read is a few nanoseconds
+— matching a raw array read — while spanning every numeric / temporal type and preserving its
+original type across a cast. `slice` is O(1) on the Arrow buffers;
 its cost is re-wrapping the slice as a new boxed column, not copying data. `cast` and `resize` are bulk Arrow-kernel passes
 (microseconds for 4 K rows). **Dictionary encoding** (`CategoricalSerie::from_serie`)
 builds a hash of the distinct values — the one genuinely heavy op, worth it only when a

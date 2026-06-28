@@ -12,12 +12,14 @@ See also: [Serie (the typed column)](serie.md) · [Nested](nested.md) · [Frame]
 
 A range stores a `start`, a `step` and a length, and computes `start + step*i` on demand.
 
-- `RangeSerie` — a **datatype-generic** arithmetic range. Its `start`, `end` and `step` are
-  rich [scalars](../scalar/scalar.md) and each value is computed through the
-  [`Scalar` math operations](../scalar/scalar.md#arithmetic), so the *same* range type spans
-  every datatype whose values add and scale: integers, floats and decimals, and the temporal
-  types (a date / timestamp / time range whose `step` is a duration). A `uint64` one is the
-  row index (below).
+- `RangeSerie<A>` — a **type-parameterised** arithmetic range over an Arrow primitive type
+  `A` (like `PrimitiveSerie<A>`). It stores `start` / `step` as the **native physical** value
+  (`u64`, `i64`, a timestamp's `i64`, …) and computes each value with **native arithmetic**,
+  building a `PrimitiveArray<A>` directly — so an integer or timestamp range is as cheap as a
+  typed array read, with no boxing. A `uint64` one (`UInt64RangeSerie`) is the row index
+  (below); a date range is `RangeSerie<Date32Type>`, a timestamp range
+  `RangeSerie<TimestampSecondType>`, and so on. In the bindings `Serie.range` / `Serie.index`
+  build the `uint64` form.
 - `DateRangeSerie` — a day-resolution calendar-date range (`Date32`).
 - `DateTimeRangeSerie` — a nanosecond timestamp range.
 - `TimeRangeSerie` — a time-of-day range (wraps within the day).
@@ -52,19 +54,19 @@ The bindings expose the arithmetic `Serie.range`; the calendar/time ranges are R
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{RangeSerie, DateRangeSerie, Serie, Scalar};
-    use yggdryl_scalar::ScalarValue;
+    use yggdryl_serie::{RangeSerie, UInt64RangeSerie, DateRangeSerie, Serie, Scalar};
+    use yggdryl_serie::arrow_array::types::Float64Type;
     use yggdryl_core::Date;
 
-    let r = RangeSerie::uint64("r", 100, 5, 4);        // 100, 105, 110, 115 (lazy)
+    let r = UInt64RangeSerie::uint64("r", 100, 5, 4);  // 100, 105, 110, 115 (lazy uint64)
     assert!(!r.is_materialized());
     assert_eq!(r.at(2), Some(110));
     assert_eq!(r.value_at(3), Scalar::Int(115));
     let realized = r.materialize();                    // -> a real uint64 column
     assert!(realized.is_materialized());
 
-    // datatype-generic: a float64 range computed via Scalar math
-    let f = RangeSerie::new("f", ScalarValue::float(1.0, 64), ScalarValue::float(0.5, 64), 4).unwrap();
+    // type-parameterised: a float64 range, native arithmetic
+    let f = RangeSerie::<Float64Type>::new("f", 1.0, 0.5, 4);
     assert_eq!(f.value_at(3), Scalar::Float(2.5));
 
     let dates = DateRangeSerie::from_dates("d", Date::from_ymd(2024, 1, 30).unwrap(), 1, 3);
@@ -73,8 +75,9 @@ The bindings expose the arithmetic `Serie.range`; the calendar/time ranges are R
 
 ## Range & row index
 
-`RangeSerie` is the canonical **row index** — the `0, 1, …, len-1` labels that
-address a frame's rows, the implicit index a frame carries when no explicit one is set.
+The `uint64` `UInt64RangeSerie` is the canonical **row index** — the `0, 1, …, len-1`
+labels that address a frame's rows, the implicit index a frame carries when no explicit
+one is set.
 Because the values are a known arithmetic progression, the label ↔ position lookups
 (`at` / `position` / `contains`) are **O(1)**, even after a slice (whose labels start at
 the slice offset). `Serie.index(len)` is the `0..len` index; `Serie.range(...)` is the
@@ -120,21 +123,21 @@ general `start + i*step` range; `is_range` reports whether a column is the canon
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{RangeSerie, Serie};
+    use yggdryl_serie::{UInt64RangeSerie, Serie};
 
-    let index = RangeSerie::indices(4);         // lazy [0, 1, 2, 3] (uint64)
+    let index = UInt64RangeSerie::indices(4);   // lazy [0, 1, 2, 3] (uint64)
     assert!(index.is_range());
     assert!(!index.is_materialized());
     assert_eq!(index.at(2), Some(2));                 // label at row 2
     assert_eq!(index.position(3), Some(3));           // row of label 3
     assert!(!index.contains(4));
 
-    let stepped = RangeSerie::uint64("r", 100, 5, 4); // 100, 105, 110, 115
+    let stepped = UInt64RangeSerie::uint64("r", 100, 5, 4); // 100, 105, 110, 115
     assert!(!stepped.is_range());                     // start != 0
     assert_eq!(stepped.position(110), Some(2));       // O(1) inverse lookup
     ```
 
-Slicing a range stays a lazy `RangeSerie` whose labels start at the slice offset, so
+Slicing a range stays a lazy `RangeSerie<A>` whose labels start at the slice offset, so
 `at` / `position` keep working, but `is_range` becomes `false` (the labels no longer start
 at `0`). Materialising a range yields a plain in-memory `uint64` column.
 
@@ -171,18 +174,17 @@ cast output — so the original numbers survive while the column reads as the ne
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{RangeSerie, DataType, Serie, Scalar};
-    use yggdryl_scalar::ScalarValue;
+    use yggdryl_serie::{UInt64RangeSerie, DataType, Serie, Scalar};
 
-    let floats = RangeSerie::indices(4).cast(&DataType::float(64)).unwrap();
+    let floats = UInt64RangeSerie::indices(4).cast(&DataType::float(64)).unwrap();
     assert_eq!(floats.data_type(), &DataType::float(64));   // exposes float
     assert!(!floats.is_materialized());                     // still lazy
     assert_eq!(floats.value_at(2), Scalar::Float(2.0));
 
     // the underlying range keeps its original uint64 start / step
-    let range = floats.as_any().downcast_ref::<RangeSerie>().unwrap();
+    let range = floats.as_any().downcast_ref::<UInt64RangeSerie>().unwrap();
     assert!(range.is_cast());
-    assert_eq!(*range.start(), ScalarValue::int(0, 64, false));
+    assert_eq!(range.start(), 0);                           // native u64 progression
     assert_eq!(range.original_type(), DataType::int(64, false));
     ```
 

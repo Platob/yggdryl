@@ -1,42 +1,84 @@
-//! [`RangeSerie`] — a **lazy**, **datatype-generic** arithmetic range `[start, start+step,
-//! …]`. It holds its `start`, `end` and `step` as rich [`ScalarValue`]s and computes each
-//! value on demand through the [`Scalar`](yggdryl_scalar::Scalar) math operations, so the
-//! *same* range type spans every datatype whose values add and scale: integers, floats and
-//! decimals, and the temporal types (a date / timestamp / time range whose `step` is a
-//! [`Duration`](yggdryl_core::Duration)). It stores only those few scalars, materialising
-//! into a real column when asked.
+//! [`RangeSerie<A>`] — a **lazy**, **type-parameterised** arithmetic range `[start,
+//! start+step, …]`. It is parameterised by an Arrow primitive type `A` (like
+//! [`PrimitiveSerie<A>`](crate::PrimitiveSerie)) and stores its `start` / `step` as the
+//! native physical values (`u64`, `i64`, a timestamp's `i64`, …), computing each value with
+//! **native arithmetic** and building a `PrimitiveArray<A>` directly — so an integer or
+//! timestamp range is as cheap as a typed array read, with no per-value boxing.
 //!
-//! A `uint64` range doubles as the canonical **row index**: because the values are a known
-//! arithmetic progression, the label ↔ position lookups ([`at`](RangeSerie::at) /
-//! [`position`](RangeSerie::position) / [`contains`](RangeSerie::contains)) are O(1).
+//! A `uint64` range ([`UInt64RangeSerie`]) doubles as the canonical **row index**: because
+//! the values are a known arithmetic progression, the label ↔ position lookups
+//! ([`at`](RangeSerie::at) / [`position`](RangeSerie::position) /
+//! [`contains`](RangeSerie::contains)) are O(1).
 //!
-//! **Casting a range preserves its original `start` / `end` / `step`** and only re-types
-//! what it *exposes*: [`cast`](RangeSerie::cast) returns a still-lazy range computing in the
-//! original type, whose [`value_at`](Serie::value_at) / [`array`](Serie::array) /
-//! [`data_type`](Serie::data_type) present the **cast** output — so the original numbers
-//! survive while the column reads as the new type.
+//! **Casting a range preserves its original `start` / `step`** and only re-types what it
+//! *exposes*: [`cast`](Serie::cast) keeps the native progression and re-types the output, so
+//! [`value_at`](Serie::value_at) / [`array`](Serie::array) / [`data_type`](Serie::data_type)
+//! read as the cast type while the original numbers survive and the column stays lazy.
 
 use std::any::Any;
+use std::fmt;
 use std::sync::Arc;
 
-use arrow_array::{
-    new_empty_array, Array, ArrayRef, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
-};
-use yggdryl_scalar::ScalarValue;
+use arrow_array::types::UInt64Type;
+use arrow_array::{ArrayRef, ArrowPrimitiveType, PrimitiveArray};
 use yggdryl_schema::{DataType, Field};
 
-use crate::error::{SerieError, SerieResult};
-use crate::scalar::{scalar_from_value, Scalar};
-use crate::serie::{Serie, SerieRef};
+use crate::error::SerieResult;
+use crate::scalar::{scalar_at_ref, Scalar};
+use crate::serie::{dispatch, Serie, SerieRef};
 
-/// A lazy, datatype-generic arithmetic range: `value(i) = start + step * i`, for `len`
-/// rows; also the default row index (O(1) label ↔ position lookups) when it is `uint64`.
+/// The native physical value of a [`RangeSerie`] — the small set of operations the range
+/// needs from `A::Native`: build it from a row index, add and (wrapping-)multiply, and map
+/// it to a type-erased [`Scalar`]. Implemented for every integer and float native, which
+/// covers the integer / float / date / time / timestamp / duration ranges.
+///
+/// It is `pub` only so [`RangeSerie<A>`]'s `where A::Native: RangeNative` bound can be
+/// named; it is not meant to be implemented downstream.
+pub trait RangeNative: Copy {
+    /// The native value of a row index `i` (`i` widened to the native type).
+    fn from_index(i: usize) -> Self;
+    /// `self + other` (wrapping — a range never panics on overflow).
+    fn range_add(self, other: Self) -> Self;
+    /// `self * other` (wrapping).
+    fn range_mul(self, other: Self) -> Self;
+    /// The value as a type-erased [`Scalar`] (the same widening as a column read).
+    fn to_scalar(self) -> Scalar;
+}
+
+/// Implements [`RangeNative`] for an integer native (widening into [`Scalar::Int`]).
+macro_rules! range_native_int {
+    ($($ty:ty),+) => {$(
+        impl RangeNative for $ty {
+            fn from_index(i: usize) -> Self { i as $ty }
+            fn range_add(self, other: Self) -> Self { self.wrapping_add(other) }
+            fn range_mul(self, other: Self) -> Self { self.wrapping_mul(other) }
+            fn to_scalar(self) -> Scalar { Scalar::Int(self as i128) }
+        }
+    )+};
+}
+range_native_int!(i8, i16, i32, i64, u8, u16, u32, u64);
+
+/// Implements [`RangeNative`] for a float native (widening into [`Scalar::Float`]).
+macro_rules! range_native_float {
+    ($($ty:ty),+) => {$(
+        impl RangeNative for $ty {
+            fn from_index(i: usize) -> Self { i as $ty }
+            fn range_add(self, other: Self) -> Self { self + other }
+            fn range_mul(self, other: Self) -> Self { self * other }
+            fn to_scalar(self) -> Scalar { Scalar::Float(self as f64) }
+        }
+    )+};
+}
+range_native_float!(f32, f64);
+
+/// A lazy, type-parameterised arithmetic range over the Arrow primitive type `A`:
+/// `value(i) = start + step * i`, for `len` rows. Aliased for the common widths (see
+/// [`UInt64RangeSerie`]); a `uint64` one is the canonical row index.
 ///
 /// ```
-/// use yggdryl_serie::{RangeSerie, DataType, Serie, Scalar};
+/// use yggdryl_serie::{UInt64RangeSerie, DataType, Serie, Scalar};
 ///
-/// let index = RangeSerie::indices(4);               // lazy [0, 1, 2, 3] (uint64)
+/// let index = UInt64RangeSerie::indices(4);         // lazy [0, 1, 2, 3] (uint64)
 /// assert_eq!(index.len(), 4);
 /// assert!(index.is_range());
 /// assert!(!index.is_materialized());                // computed on demand
@@ -44,76 +86,54 @@ use crate::serie::{Serie, SerieRef};
 /// assert_eq!(index.at(2), Some(2));                 // label at row 2
 /// assert_eq!(index.position(3), Some(3));           // row of label 3
 ///
-/// // casting keeps the original integers, exposes float output
+/// // casting keeps the original uint64 progression, exposes float output
 /// let floats = index.cast(&DataType::float(64)).unwrap();
 /// assert_eq!(floats.data_type(), &DataType::float(64));
 /// assert_eq!(floats.value_at(2), Scalar::Float(2.0));
 /// ```
-#[derive(Debug, Clone)]
-pub struct RangeSerie {
+pub struct RangeSerie<A: ArrowPrimitiveType>
+where
+    A::Native: RangeNative,
+{
     /// The **output** field — its name, the (possibly cast) output datatype, and
-    /// nullability. The original value type is `start.data_type()`.
+    /// nullability. The original value type is `A`'s.
     field: Field,
-    /// The first value, in its original type.
-    start: ScalarValue,
-    /// The exclusive bound `start + step * len`, in its original type.
-    end: ScalarValue,
-    /// The step between consecutive values.
-    step: ScalarValue,
+    /// The first value (native physical).
+    start: A::Native,
+    /// The step between consecutive values (native physical).
+    step: A::Native,
     /// The number of rows.
     len: usize,
+    /// Whether the output type differs from `A`'s (a cast range) — cached so the hot
+    /// `value_at` / `array` paths skip recomputing the original type.
+    casted: bool,
 }
 
-impl RangeSerie {
-    /// A range named `name` of `len` values `start, start+step, …`, computed in `start`'s
-    /// type. `start` and `step` may differ in type when the math is defined (e.g. a date
-    /// `start` with a duration `step`).
-    pub fn new(
-        name: impl Into<String>,
-        start: ScalarValue,
-        step: ScalarValue,
-        len: usize,
-    ) -> SerieResult<RangeSerie> {
-        let field = Field::new(name, start.data_type(), false);
-        let end = compute_raw(&start, &step, len)?;
-        Ok(RangeSerie {
-            field,
+impl<A: ArrowPrimitiveType> RangeSerie<A>
+where
+    A::Native: RangeNative,
+{
+    /// A range named `name` of `len` values `start, start+step, …` (native `A` physicals).
+    pub fn new(name: impl Into<String>, start: A::Native, step: A::Native, len: usize) -> Self {
+        let dtype = DataType::from_arrow(&A::DATA_TYPE);
+        RangeSerie {
+            field: Field::new(name, dtype, false),
             start,
-            end,
             step,
             len,
-        })
+            casted: false,
+        }
     }
 
-    /// A `uint64` range named `name` (the common integer range / index backing).
-    pub fn uint64(name: impl Into<String>, start: u64, step: u64, len: usize) -> RangeSerie {
-        RangeSerie::new(
-            name,
-            ScalarValue::int(start as i128, 64, false),
-            ScalarValue::int(step as i128, 64, false),
-            len,
-        )
-        .expect("uint64 + uint64 arithmetic is always defined")
+    /// The first value (native physical, the **original** progression, preserved across a
+    /// [`cast`](Serie::cast)).
+    pub fn start(&self) -> A::Native {
+        self.start
     }
 
-    /// The canonical row index `0, 1, …, len-1` (`uint64`), named `"index"`.
-    pub fn indices(len: usize) -> RangeSerie {
-        RangeSerie::uint64("index", 0, 1, len)
-    }
-
-    /// The first value (its **original** type, preserved across a [`cast`](RangeSerie::cast)).
-    pub fn start(&self) -> &ScalarValue {
-        &self.start
-    }
-
-    /// The exclusive bound `start + step * len` (its **original** type).
-    pub fn end(&self) -> &ScalarValue {
-        &self.end
-    }
-
-    /// The step between consecutive values (its **original** type).
-    pub fn step(&self) -> &ScalarValue {
-        &self.step
+    /// The step between consecutive values (native physical).
+    pub fn step(&self) -> A::Native {
+        self.step
     }
 
     /// The number of rows.
@@ -126,83 +146,58 @@ impl RangeSerie {
         self.len == 0
     }
 
-    /// The original value type (the type `start` / `step` / `end` are in), which a
-    /// [`cast`](RangeSerie::cast) preserves even as the exposed [`data_type`](Serie::data_type)
-    /// changes.
+    /// The original value type (`A`'s), preserved even as the exposed
+    /// [`data_type`](Serie::data_type) changes across a cast.
     pub fn original_type(&self) -> DataType {
-        self.start.data_type()
+        DataType::from_arrow(&A::DATA_TYPE)
     }
 
     /// Whether the exposed output type differs from the original — i.e. this is a cast range.
     pub fn is_cast(&self) -> bool {
-        *self.field.data_type() != self.original_type()
+        self.casted
     }
 
-    /// Whether this is the canonical `0, 1, 2, …` `uint64` index (`start == 0`, `step == 1`,
-    /// not cast) — the implicit index a frame carries.
+    /// Whether this is the canonical `0, 1, 2, …` index (`start == 0`, `step == 1`, not
+    /// cast) — the implicit index a frame carries.
     pub fn is_range(&self) -> bool {
         !self.is_cast()
-            && self.start == ScalarValue::int(0, 64, false)
-            && self.step == ScalarValue::int(1, 64, false)
+            && self.start.to_scalar() == Scalar::Int(0)
+            && self.step.to_scalar() == Scalar::Int(1)
     }
 
-    /// The raw value at row `i`, in the **original** type (`start + step * i`).
-    fn raw(&self, i: usize) -> SerieResult<ScalarValue> {
-        compute_raw(&self.start, &self.step, i)
+    /// The native value at row `i` (`start + step * i`, wrapping on overflow).
+    fn native_at(&self, i: usize) -> A::Native {
+        self.start
+            .range_add(self.step.range_mul(RangeNative::from_index(i)))
     }
 
-    /// The value at row `i`, in the **exposed output** type (the original value cast to the
-    /// output type; an identity when the range is not cast).
-    fn output_at(&self, i: usize) -> SerieResult<ScalarValue> {
-        let raw = self.raw(i)?;
-        let original = self.original_type();
-        // Normalise back to the original type (temporal math can widen the unit) …
-        let value = if raw.data_type() == original {
-            raw
-        } else {
-            raw.cast(&original)?
-        };
-        // … then expose the output type.
-        let output = self.field.data_type();
-        let value = if value.data_type() == *output {
-            value
-        } else {
-            value.cast(output)?
-        };
-        // Clamp an integer output to its representable range, so an out-of-range value
-        // saturates consistently with the materialised array (rather than wrapping).
-        Ok(match value {
-            ScalarValue::Int {
-                value: v,
-                bits,
-                signed,
-            } => {
-                let (lo, hi) = int_bounds(bits, signed);
-                ScalarValue::int(v.clamp(lo, hi), bits, signed)
-            }
-            other => other,
-        })
+    /// The raw (original-typed) Arrow array of all `len` values.
+    fn raw_array(&self) -> ArrayRef {
+        Arc::new(PrimitiveArray::<A>::from_iter_values(
+            (0..self.len).map(|i| self.native_at(i)),
+        ))
     }
 
-    /// The integer label at row `i`, or `None` when out of bounds or non-integer — the
-    /// index accessor (reads the exposed output value).
+    /// The integer label at row `i`, or `None` when out of bounds or non-integer — the index
+    /// accessor (reads the original native progression).
     pub fn at(&self, i: usize) -> Option<u64> {
         if i >= self.len {
             return None;
         }
-        match self.output_at(i).ok()? {
-            ScalarValue::Int { value, .. } => u64::try_from(value).ok(),
+        match self.native_at(i).to_scalar() {
+            Scalar::Int(value) => u64::try_from(value).ok(),
             _ => None,
         }
     }
 
-    /// The first row whose integer label equals `value`, or `None`. O(1) for an integer
-    /// range (inverts `start + i*step`); `None` for a non-integer or cast range.
+    /// The first row whose integer label equals `value`, or `None`. O(1): inverts the
+    /// progression; `None` for a non-integer or cast range.
     pub fn position(&self, value: u64) -> Option<usize> {
-        // The inverse is only well-defined over an integer progression in the output type.
-        let (start, step) = match (&self.start, &self.step) {
-            _ if self.is_cast() => return None,
-            (ScalarValue::Int { value: s, .. }, ScalarValue::Int { value: st, .. }) => (*s, *st),
+        if self.is_cast() {
+            return None;
+        }
+        let (start, step) = match (self.start.to_scalar(), self.step.to_scalar()) {
+            (Scalar::Int(s), Scalar::Int(st)) => (s, st),
             _ => return None,
         };
         let value = value as i128;
@@ -222,132 +217,72 @@ impl RangeSerie {
         self.position(value).is_some()
     }
 
-    /// Builds the full output array. Fast paths build an integer / float range directly;
-    /// the general path computes each output value and concatenates.
-    fn build_array(&self) -> SerieResult<ArrayRef> {
-        if let Some(array) = self.fast_numeric_array() {
-            return Ok(array);
-        }
-        let output_arrow = self.field.data_type().to_arrow()?;
-        if self.len == 0 {
-            return Ok(new_empty_array(&output_arrow));
-        }
-        let arrays = (0..self.len)
-            .map(|i| {
-                self.output_at(i)
-                    .and_then(|v| v.to_array().map_err(SerieError::from))
-            })
-            .collect::<SerieResult<Vec<_>>>()?;
-        let refs: Vec<&dyn Array> = arrays.iter().map(|a| a.as_ref()).collect();
-        Ok(arrow_select::concat::concat(&refs)?)
+    /// The output Arrow type (the exposed, possibly cast type).
+    fn output_arrow(&self) -> SerieResult<arrow_schema::DataType> {
+        Ok(self.field.data_type().to_arrow()?)
+    }
+}
+
+/// `uint64` row-index / range constructors (the common case, and the index backing).
+impl RangeSerie<UInt64Type> {
+    /// A `uint64` range named `name`.
+    pub fn uint64(name: impl Into<String>, start: u64, step: u64, len: usize) -> Self {
+        RangeSerie::new(name, start, step, len)
     }
 
-    /// A fast, allocation-light build for a non-cast integer / float range (the common
-    /// case, including the index); `None` for cast / temporal / decimal ranges, which take
-    /// the general per-value path.
-    fn fast_numeric_array(&self) -> Option<ArrayRef> {
-        if self.is_cast() {
-            return None;
-        }
-        let len = self.len;
-        match (&self.start, &self.step) {
-            (
-                ScalarValue::Int {
-                    value: s,
-                    bits,
-                    signed,
-                },
-                ScalarValue::Int { value: st, .. },
-            ) => {
-                let (s, st) = (*s, *st);
-                let (lo, hi) = int_bounds(*bits, *signed);
-                let at = |i: usize| {
-                    s.saturating_add((i as i128).saturating_mul(st))
-                        .clamp(lo, hi)
-                };
-                Some(match (*bits, *signed) {
-                    (8, true) => {
-                        Arc::new(Int8Array::from_iter_values((0..len).map(|i| at(i) as i8)))
-                    }
-                    (16, true) => {
-                        Arc::new(Int16Array::from_iter_values((0..len).map(|i| at(i) as i16)))
-                    }
-                    (32, true) => {
-                        Arc::new(Int32Array::from_iter_values((0..len).map(|i| at(i) as i32)))
-                    }
-                    (64, true) => {
-                        Arc::new(Int64Array::from_iter_values((0..len).map(|i| at(i) as i64)))
-                    }
-                    (8, false) => {
-                        Arc::new(UInt8Array::from_iter_values((0..len).map(|i| at(i) as u8)))
-                    }
-                    (16, false) => Arc::new(UInt16Array::from_iter_values(
-                        (0..len).map(|i| at(i) as u16),
-                    )),
-                    (32, false) => Arc::new(UInt32Array::from_iter_values(
-                        (0..len).map(|i| at(i) as u32),
-                    )),
-                    (64, false) => Arc::new(UInt64Array::from_iter_values(
-                        (0..len).map(|i| at(i) as u64),
-                    )),
-                    _ => return None,
-                })
-            }
-            (ScalarValue::Float { value: s, bits }, ScalarValue::Float { value: st, .. }) => {
-                let (s, st) = (s.0, st.0);
-                let at = |i: usize| s + st * i as f64;
-                Some(match *bits {
-                    32 => Arc::new(Float32Array::from_iter_values(
-                        (0..len).map(|i| at(i) as f32),
-                    )),
-                    64 => Arc::new(Float64Array::from_iter_values((0..len).map(at))),
-                    _ => return None,
-                })
-            }
-            _ => None,
+    /// The canonical row index `0, 1, …, len-1` (`uint64`), named `"index"`.
+    pub fn indices(len: usize) -> Self {
+        RangeSerie::uint64("index", 0, 1, len)
+    }
+}
+
+impl<A: ArrowPrimitiveType> Clone for RangeSerie<A>
+where
+    A::Native: RangeNative,
+{
+    fn clone(&self) -> Self {
+        RangeSerie {
+            field: self.field.clone(),
+            start: self.start,
+            step: self.step,
+            len: self.len,
+            casted: self.casted,
         }
     }
 }
 
-/// The `[min, max]` an integer of `bits` width / signedness can represent (a non-standard
-/// width falls back to the full `i128` range).
-fn int_bounds(bits: u16, signed: bool) -> (i128, i128) {
-    if signed {
-        match bits {
-            8 => (i8::MIN as i128, i8::MAX as i128),
-            16 => (i16::MIN as i128, i16::MAX as i128),
-            32 => (i32::MIN as i128, i32::MAX as i128),
-            64 => (i64::MIN as i128, i64::MAX as i128),
-            _ => (i128::MIN, i128::MAX),
-        }
-    } else {
-        match bits {
-            8 => (0, u8::MAX as i128),
-            16 => (0, u16::MAX as i128),
-            32 => (0, u32::MAX as i128),
-            64 => (0, u64::MAX as i128),
-            _ => (0, i128::MAX),
-        }
+impl<A: ArrowPrimitiveType> fmt::Debug for RangeSerie<A>
+where
+    A::Native: RangeNative,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RangeSerie")
+            .field("field", &self.field)
+            .field("start", &self.start.to_scalar())
+            .field("step", &self.step.to_scalar())
+            .field("len", &self.len)
+            .finish()
     }
 }
 
-/// `start + step * i`, in the original type (an `i == 0` short-circuit returns `start`).
-fn compute_raw(start: &ScalarValue, step: &ScalarValue, i: usize) -> SerieResult<ScalarValue> {
-    if i == 0 {
-        return Ok(start.clone());
-    }
-    let idx = ScalarValue::int(i as i128, 64, false);
-    Ok(start.add(&step.mul(&idx)?)?)
-}
-
-impl Serie for RangeSerie {
+impl<A: ArrowPrimitiveType> Serie for RangeSerie<A>
+where
+    A::Native: RangeNative,
+{
     fn field(&self) -> &Field {
         &self.field
     }
 
     fn array(&self) -> ArrayRef {
-        self.build_array()
-            .expect("a range's computed values build an array")
+        let raw = self.raw_array();
+        if !self.is_cast() {
+            return raw;
+        }
+        // Expose the cast output by running the Arrow kernel over the raw progression.
+        let target = self
+            .output_arrow()
+            .expect("a range's output type converts to Arrow");
+        arrow_cast::cast(raw.as_ref(), &target).expect("a range casts to its output type")
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -374,46 +309,62 @@ impl Serie for RangeSerie {
         if index >= self.len {
             return Scalar::Null;
         }
-        self.output_at(index)
-            .map(|v| scalar_from_value(&v))
-            .unwrap_or(Scalar::Null)
+        let native = self.native_at(index);
+        if !self.is_cast() {
+            return native.to_scalar();
+        }
+        // Cast the single native value to the output type and read it back.
+        let raw: ArrayRef = Arc::new(PrimitiveArray::<A>::from_iter_values([native]));
+        match self
+            .output_arrow()
+            .ok()
+            .and_then(|target| arrow_cast::cast(raw.as_ref(), &target).ok())
+        {
+            Some(array) => scalar_at_ref(array.as_ref(), 0),
+            None => Scalar::Null,
+        }
     }
 
     /// A sub-range — still lazy, preserving the output type and any cast. Its first value is
-    /// the original value at `offset`.
+    /// the original native value at `offset`.
     fn slice(&self, offset: usize, length: usize) -> SerieRef {
-        let start = self.raw(offset).unwrap_or_else(|_| self.start.clone());
-        let end = compute_raw(&start, &self.step, length).unwrap_or_else(|_| start.clone());
-        Arc::new(RangeSerie {
+        Arc::new(RangeSerie::<A> {
             field: self.field.clone(),
-            start,
-            end,
-            step: self.step.clone(),
+            start: self.native_at(offset),
+            step: self.step,
             len: length,
+            casted: self.casted,
         })
     }
 
-    /// Casting a range **preserves the original `start` / `end` / `step`** and only re-types
-    /// what it exposes: the result is a still-lazy range computing in the original type,
-    /// whose values / array / data type read as `dtype`. Casting to the current type or to
-    /// the [`Any`](DataType::Any) wildcard is skipped.
+    /// Casting a range **preserves the original native `start` / `step`** and only re-types
+    /// what it exposes: the result is a still-lazy range whose values / array / data type
+    /// read as `dtype`. Casting to the current type or to [`Any`](DataType::Any) is skipped.
     fn cast(&self, dtype: &DataType) -> SerieResult<SerieRef> {
         if dtype.is_any() || self.field.data_type() == dtype {
             return Ok(Arc::new(self.clone()));
         }
-        // The lazy cast-view: keep the original start/end/step, expose `dtype`. Only when
-        // the original type can actually reach `dtype` as a scalar cast.
-        if !dtype.is_null() && self.start.cast(dtype).is_ok() {
-            return Ok(Arc::new(RangeSerie {
-                field: self.field.copy(None, Some(dtype.clone()), None, None),
-                start: self.start.clone(),
-                end: self.end.clone(),
-                step: self.step.clone(),
-                len: self.len,
-            }));
+        // The lazy cast-view: keep the native progression, expose `dtype` — only when the
+        // original type can actually reach `dtype` as an Arrow cast.
+        if !dtype.is_null() {
+            if let (Ok(from), Ok(to)) = (self.original_type().to_arrow(), dtype.to_arrow()) {
+                if arrow_cast::can_cast_types(&from, &to) {
+                    return Ok(Arc::new(RangeSerie::<A> {
+                        field: self.field.copy(None, Some(dtype.clone()), None, None),
+                        start: self.start,
+                        step: self.step,
+                        len: self.len,
+                        // The output now differs from `A` unless we happened to cast to it.
+                        casted: *dtype != self.original_type(),
+                    }));
+                }
+            }
         }
-        // Fall back (e.g. to `null` or a nested target): materialise this range, then run
-        // the generic column cast.
-        crate::serie::dispatch(self.field.clone(), self.array())?.cast(dtype)
+        // Fall back (e.g. to `null` or a nested target): materialise, then run the generic
+        // column cast.
+        dispatch(self.field.clone(), self.array())?.cast(dtype)
     }
 }
+
+/// A `uint64` range — the canonical row index (and the common integer range).
+pub type UInt64RangeSerie = RangeSerie<UInt64Type>;

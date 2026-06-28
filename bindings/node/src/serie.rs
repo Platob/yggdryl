@@ -13,8 +13,8 @@ use yggdryl_serie::arrow_array::{
     ArrayRef, BinaryArray, BooleanArray, Float64Array, Int64Array, StringArray,
 };
 use yggdryl_serie::{
-    from_array, from_bytes, CategoricalSerie, DisplayOptions, ListSerie, MapSerie, RangeSerie,
-    Scalar, SerieRef, StructSerie,
+    from_array, from_bytes, CategoricalSerie, DisplayOptions, ListSerie, MapSerie, Scalar,
+    SerieRef, StructSerie, UInt64RangeSerie,
 };
 
 use crate::datatype::DataType;
@@ -43,12 +43,15 @@ fn as_frame(serie: &SerieRef) -> Result<&StructSerie> {
         .ok_or_else(|| err("not a struct column; build a frame with Serie.struct(...)"))
 }
 
-/// Borrows a column as a [`RangeSerie`], or throws if it is not a range/index
+/// Borrows a column as a [`UInt64RangeSerie`], or throws if it is not a range/index
 /// column — the gate for the index (label ↔ position) operations.
-fn as_index(serie: &SerieRef) -> Result<&RangeSerie> {
-    serie.as_any().downcast_ref::<RangeSerie>().ok_or_else(|| {
-        err("not a range/index column; build one with Serie.range(...) or Serie.index(...)")
-    })
+fn as_index(serie: &SerieRef) -> Result<&UInt64RangeSerie> {
+    serie
+        .as_any()
+        .downcast_ref::<UInt64RangeSerie>()
+        .ok_or_else(|| {
+            err("not a range/index column; build one with Serie.range(...) or Serie.index(...)")
+        })
 }
 
 /// Borrows a column as a [`CategoricalSerie`], or throws if it is not a categorical
@@ -273,7 +276,7 @@ impl Serie {
         let start = start.unwrap_or(0).max(0) as u64;
         let step = step.unwrap_or(1).max(0) as u64;
         let name = name.unwrap_or_else(|| "range".to_string());
-        wrap(Arc::new(RangeSerie::uint64(
+        wrap(Arc::new(UInt64RangeSerie::uint64(
             name,
             start,
             step,
@@ -281,11 +284,11 @@ impl Serie {
         )))
     }
 
-    /// A lazy `uint64` row index of `length` rows (`0..length`) — a `RangeSerie`
+    /// A lazy `uint64` row index of `length` rows (`0..length`) — a `UInt64RangeSerie`
     /// with the label ↔ position lookups.
     #[napi(factory)]
     pub fn index(length: u32) -> Self {
-        wrap(Arc::new(RangeSerie::indices(length as usize)))
+        wrap(Arc::new(UInt64RangeSerie::indices(length as usize)))
     }
 
     /// Build a struct column named `name` from its child columns (each child's field,
@@ -567,8 +570,8 @@ impl Serie {
     pub fn is_range(&self) -> bool {
         self.inner
             .as_any()
-            .downcast_ref::<RangeSerie>()
-            .is_some_and(RangeSerie::is_range)
+            .downcast_ref::<UInt64RangeSerie>()
+            .is_some_and(UInt64RangeSerie::is_range)
     }
 
     /// The integer label at row `index` (`null` when out of bounds). Requires a
