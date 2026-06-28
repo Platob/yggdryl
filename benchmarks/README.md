@@ -204,61 +204,12 @@ hardware-dependent — the takeaway is the capability columns, not the microseco
 
 ---
 
-## Serie — the columnar layer
-
-The Arrow-backed `Serie` (a named, typed column) sits on the schema layer. As with
-schema, the **metadata pass is the point**: reading a column's shape and type is
-branch-only, so a per-batch / per-column scan over many columns is essentially free.
-
-### Rust core — `cargo bench -p yggdryl-serie --bench serie`
-
-| workload | result |
-| --- | --- |
-| metadata / fast checks — `num_rows` / `null_count` / `category` / `data_type` | **1.6–1.9 ns** |
-| typed value read — `Int32Serie::value` | **0.9 ns** |
-| lazy `RangeSerie::value_at` (computed, no storage) | **1.5 ns** |
-| type-erased `Serie::value_at` → `Scalar` (dynamic dispatch) | **12 ns** |
-| factory dispatch — `from_array` (4096-row int32 / utf8) | 127 / 145 ns |
-| zero-copy `slice` (re-wrap a slice as a new column) | 226 ns |
-| nested `child_by_name` / `select` (node path) | 34 / 96 ns |
-| `resize` grow + fill (16 → 4096, nulls) | 1.1 µs |
-| `cast` int32 → int64 / float64 (4096 rows) | 1.4 / 1.2 µs |
-| dictionary decode — `CategoricalSerie::materialize` | 19 µs |
-| dictionary encode — `CategoricalSerie::from_serie` (4096 rows, 8 distinct) | 59 µs |
-
-The **frame** (a struct column *is* a DataFrame) and the functional **value mutators**:
-
-| workload | result |
-| --- | --- |
-| frame projection — `StructSerie::select_columns` | 119 ns |
-| frame row record — `StructSerie::row` → `StructScalar` | 326 ns |
-| frame → Arrow — `StructSerie::to_record_batch` | 312 ns |
-| value mutate — `Serie::push` (int32, 4096) | 826 ns |
-| value mutate — `Serie::set_at` (int32, 4096) | 1.0 µs |
-| schema-cast projection — `StructSerie::select_fields` (cast a column, 4096) | 2.7 µs |
-| frame row filter — `StructSerie::filter` (4096) | 18 µs |
-| frame sort — `StructSerie::sort_by` (4096) | 24 µs |
-
-Value access has **two tiers**: the typed `value` / `get` is sub-nanosecond — use it in
-hot loops — while the type-erased `value_at → Scalar` pays a dynamic match + downcast
-(~12 ns, read straight off the concrete column's typed array — no per-row `array()`
-clone) for the convenience of not knowing the column's type ahead of time. A **lazy**
-column computes a value without touching memory, so a `RangeSerie` read matches a typed
-array read. `slice` is O(1) on the Arrow buffers; its cost is re-wrapping the slice as a
-new boxed column, not copying data. `cast` and `resize` are bulk Arrow-kernel passes
-(microseconds for 4 K rows). **Dictionary encoding** (`CategoricalSerie::from_serie`)
-builds a hash of the distinct values — the one genuinely heavy op, worth it only when a
-column actually repeats; decoding back to a flat column is ~3× cheaper.
-
----
-
 ## Reproduce
 
 ```bash
 # Rust core (true ceiling, no FFI) — one bench file per theme
 cargo bench -p yggdryl-core --bench io
 cargo bench -p yggdryl-schema --bench schema --features arrow
-cargo bench -p yggdryl-serie --bench serie
 cargo bench -p yggdryl-core --bench compression --all-features
 cargo bench -p yggdryl-http --all-features
 
