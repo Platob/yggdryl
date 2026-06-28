@@ -6,11 +6,13 @@
 
 mod binary;
 mod boolean;
+mod null;
 mod numeric;
 mod varchar;
 
 pub use binary::BinarySerie;
 pub use boolean::BooleanSerie;
+pub use null::NullSerie;
 pub use numeric::PrimitiveSerie;
 pub use varchar::VarcharSerie;
 

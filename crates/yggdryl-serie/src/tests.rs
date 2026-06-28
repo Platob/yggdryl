@@ -8,8 +8,9 @@ use arrow_array::types::Int32Type;
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Date32Array, Date64Array, DurationSecondArray,
     Float32Array, Float64Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray,
-    ListArray, NullArray, StringArray, StructArray, Time32SecondArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt32Array,
+    ListArray, StringArray, StringViewArray, StructArray, Time32SecondArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt32Array,
 };
 use arrow_schema::{DataType as ADataType, Field as AField};
 use yggdryl_schema::{DataType, Field, TypeCategory};
@@ -18,8 +19,8 @@ use crate::{
     child, child_range, from_array, from_arrow, from_bytes, BinarySerie, BooleanSerie,
     CategoricalSerie, Date32Serie, Date64Serie, DateRangeSerie, DateTimeRangeSerie, DatetimeSerie,
     DisplayOptions, DurationSerie, Float32Serie, Float64Serie, Int32Serie, Int64Serie, ListSerie,
-    MapSerie, NestedSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie, TimeRangeSerie,
-    TimeSerie, TypedSerie, UInt64RangeSerie, UInt64Serie, VarcharSerie,
+    MapSerie, NestedSerie, NullSerie, Scalar, Serie, SerieRef, StructSerie, TemporalSerie,
+    TimeRangeSerie, TimeSerie, TypedSerie, UInt64RangeSerie, UInt64Serie, VarcharSerie,
 };
 
 #[test]
@@ -142,7 +143,8 @@ fn from_arrow_checks_field_type() {
 
 #[test]
 fn unsupported_arrow_type_errors() {
-    let array: ArrayRef = Arc::new(NullArray::new(3));
+    // a view type still has no serie backend (unlike Null, which now does)
+    let array: ArrayRef = Arc::new(StringViewArray::from(vec!["a", "b"]));
     let err = from_array("n", array).unwrap_err();
     assert!(matches!(err, crate::SerieError::Unsupported(_)));
 }
@@ -1178,6 +1180,41 @@ fn cast_primitive_and_struct_with_fill() {
         Scalar::Int(1)
     );
     assert!(casted.select("extra").unwrap().unwrap().is_null(0)); // filled column is null
+}
+
+#[test]
+fn cast_to_any_and_null_fast_paths() {
+    let s = Int32Serie::from_values("n", vec![Some(1), Some(2), None]);
+
+    // cast to `Any` is a no-op: the concrete type and values are kept
+    let any = s.cast(&DataType::Any).unwrap();
+    assert_eq!(any.data_type(), &DataType::int(32, true));
+    assert_eq!(any.value_at(0), Scalar::Int(1));
+    assert_eq!(any.len(), 3);
+
+    // cast to `Null` produces an all-null NullSerie (Arrow has no cast-to-Null)
+    let nulled = s.cast(&DataType::Null).unwrap();
+    assert_eq!(nulled.data_type(), &DataType::Null);
+    assert_eq!(nulled.len(), 3);
+    assert_eq!(nulled.null_count(), 3);
+    assert_eq!(nulled.value_at(0), Scalar::Null);
+    assert!(nulled.as_any().downcast_ref::<NullSerie>().is_some());
+
+    // cast *from* a Null column to any type is an all-null fill of that type
+    let from_null = nulled.cast(&DataType::varchar()).unwrap();
+    assert_eq!(from_null.data_type(), &DataType::varchar());
+    assert_eq!(from_null.len(), 3);
+    assert_eq!(from_null.value_at(1), Scalar::Null);
+
+    // a Null column round-trips losslessly through the column bytes
+    let back = from_bytes(&nulled.to_bytes().unwrap()).unwrap();
+    assert_eq!(back.data_type(), &DataType::Null);
+    assert_eq!(back.len(), 3);
+
+    // a Null column built directly, and its display, behave like any leaf column
+    let direct = NullSerie::from_len("z", 2);
+    assert_eq!(direct.value_at(0), Scalar::Null);
+    assert_eq!(direct.cast(&DataType::int(64, true)).unwrap().len(), 2);
 }
 
 #[test]

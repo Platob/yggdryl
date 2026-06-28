@@ -68,6 +68,25 @@ test('cast and categorical', () => {
   assert.throws(() => new Serie('n', [1, 2]).categoryCount) // not categorical
 })
 
+test('cast to any and null', () => {
+  const s = new Serie('n', [1, 2, 3])
+  // cast to `any` is a no-op that keeps the concrete type
+  assert.strictEqual(s.cast('any').dataType.toString(), 'int64')
+  assert.strictEqual(s.cast('any').valueAt(0), 1)
+  // cast to `null` builds an all-null column (Arrow has no cast-to-null)
+  const nulled = s.cast('null')
+  assert.strictEqual(nulled.dataType.toString(), 'null')
+  assert.strictEqual(nulled.numRows, 3)
+  assert.strictEqual(nulled.nullCount, 3)
+  assert.strictEqual(nulled.valueAt(0), null)
+  // a null column casts back to any type as an all-null fill
+  assert.strictEqual(nulled.cast('utf8').valueAt(0), null)
+  // build a null column directly, and round-trip it through the bytes
+  const direct = new Serie('z', [null, null], 'null')
+  assert.strictEqual(direct.dataType.toString(), 'null')
+  assert.strictEqual(Serie.fromBytes(direct.toBytes()).dataType.toString(), 'null')
+})
+
 test('lazy range and index', () => {
   const r = Serie.range(5)
   assert.strictEqual(r.isMaterialized, false)

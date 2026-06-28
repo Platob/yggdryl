@@ -84,6 +84,24 @@ def test_cast_and_categorical():
         yggdryl.Serie("n", [1, 2]).category_count  # not categorical
 
 
+def test_cast_to_any_and_null():
+    s = yggdryl.Serie("n", [1, 2, 3])
+    # cast to `any` is a no-op that keeps the concrete type
+    assert str(s.cast("any").data_type) == "int64"
+    assert s.cast("any").value_at(0) == 1
+    # cast to `null` builds an all-null column (Arrow has no cast-to-null)
+    nulled = s.cast("null")
+    assert str(nulled.data_type) == "null"
+    assert nulled.num_rows == 3 and nulled.null_count == 3
+    assert nulled.value_at(0) is None
+    # a null column casts back to any type as an all-null fill
+    assert nulled.cast("utf8").value_at(0) is None
+    # build a null column directly, and round-trip it through the bytes
+    direct = yggdryl.Serie("z", [None, None], dtype="null")
+    assert str(direct.data_type) == "null"
+    assert str(yggdryl.Serie.from_bytes(direct.to_bytes()).data_type) == "null"
+
+
 def test_lazy_range_and_index():
     r = yggdryl.Serie.range(5)
     assert r.is_materialized is False

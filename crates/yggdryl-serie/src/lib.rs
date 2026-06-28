@@ -112,6 +112,7 @@ pub use primitive::{
     Int32Serie,
     Int64Serie,
     Int8Serie,
+    NullSerie,
     PrimitiveSerie,
     UInt16Serie,
     UInt32Serie,

@@ -68,8 +68,8 @@ The design mirrors the schema crate's three [categories](../schema/datatype.md):
 - **`TypedSerie<T>`** — typed value access (`get` / `value` / `iter` / `to_vec`) over a
   column's native value type `T`.
 - The **primitive** concrete series — `PrimitiveSerie<A>` (Arrow numeric / date / interval
-  types), `BooleanSerie`, `VarcharSerie<O>` and `BinarySerie<O>`, with named aliases
-  (`Int32Serie`, `Float64Serie`, `Date32Serie`, …).
+  types), `BooleanSerie`, `VarcharSerie<O>`, `BinarySerie<O>` and `NullSerie` (the all-null
+  column), with named aliases (`Int32Serie`, `Float64Serie`, `Date32Serie`, …).
 - The **temporal** series — `DatetimeSerie`, `TimeSerie` and `DurationSerie` (unified
   columns over any unit, presenting core `DateTime` / `Time` / `Duration`) and the
   `TemporalSerie` trait (`datetime_at` / `date_at` / `time_at`).
@@ -525,6 +525,12 @@ narrowing casts, which yield null on overflow). A **struct → struct** cast mat
 children by name, casts each, **fills missing** target columns (null if nullable, else
 the type default) and drops extras. `dtype` is a `DataType` or a type string.
 
+The wildcard `any` and the `null` type are **fast cast** for any column, without invoking
+the Arrow kernel: casting **to `any`** is a no-op (every column already satisfies the
+wildcard, so the column keeps its concrete type), while casting **to or from `null`**
+builds an all-null column of the target type directly — the natural target for an all-null
+column, and a `null` column casts back to any type as an all-null fill.
+
 === "Python"
 
     ```python
@@ -534,6 +540,12 @@ the type default) and drops extras. `dtype` is a `DataType` or a type string.
     assert ints.cast("float64")[0] == 1.0
     big = yggdryl.Serie("n", [1000, 5]).cast("int8")    # narrowing
     assert big[0] is None                               # 1000 overflows int8
+
+    # fast casts: to `any` (no-op) and to / from `null`
+    assert str(ints.cast("any").data_type) == "int64"   # any keeps the concrete type
+    nulled = ints.cast("null")                          # -> an all-null column
+    assert str(nulled.data_type) == "null" and nulled.null_count == 3
+    assert nulled.cast("utf8").value_at(0) is None       # null casts back as all-null
     ```
 
 === "Node"
@@ -545,18 +557,31 @@ the type default) and drops extras. `dtype` is a `DataType` or a type string.
     if (ints.cast('float64').get(0) !== 1) throw new Error('cast')
     const big = new Serie('n', [1000, 5]).cast('int8')  // narrowing
     if (big.get(0) !== null) throw new Error('overflow') // 1000 overflows int8
+
+    // fast casts: to `any` (no-op) and to / from `null`
+    if (ints.cast('any').dataType.toString() !== 'int64') throw new Error('any')
+    const nulled = ints.cast('null')                    // -> an all-null column
+    if (nulled.dataType.toString() !== 'null' || nulled.nullCount !== 3) throw new Error('null')
+    if (nulled.cast('utf8').valueAt(0) !== null) throw new Error('from-null')
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_serie::{from_array, Int32Serie, StructSerie, DataType, Field, NestedSerie, Serie, Scalar, SerieRef};
+    use yggdryl_serie::{from_array, Int32Serie, NullSerie, StructSerie, DataType, Field, NestedSerie, Serie, Scalar, SerieRef};
     use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
     use std::sync::Arc;
 
     // primitive cast (lossy narrowing yields null on overflow)
     let ints = from_array("n", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef)?;
     assert_eq!(ints.cast(&DataType::float(64))?.value_at(0), Scalar::Float(1.0));
+
+    // fast casts: to `Any` (no-op) and to / from `Null`
+    assert_eq!(ints.cast(&DataType::Any)?.data_type(), &DataType::int(32, true));
+    let nulled = ints.cast(&DataType::Null)?;            // an all-null NullSerie
+    assert_eq!(nulled.null_count(), 3);
+    assert!(nulled.as_any().downcast_ref::<NullSerie>().is_some());
+    assert_eq!(nulled.cast(&DataType::varchar())?.value_at(0), Scalar::Null);
 
     // struct cast with a missing column filled
     let id: SerieRef = Arc::new(Int32Serie::from_values("id", vec![Some(1), Some(2)]));
@@ -711,7 +736,8 @@ columns. This is the canonical bytes form: Python `pickle` / `copy` and Node
 
 The primitive category is complete: integers (`int8`…`int64`, `uint8`…`uint64`),
 floats (`float16`/`32`/`64`), decimals (128/256), dates and intervals, boolean, UTF-8
-strings (`Utf8` / `LargeUtf8`) and binary (`Binary` / `LargeBinary`); timestamps, times
+strings (`Utf8` / `LargeUtf8`), binary (`Binary` / `LargeBinary`) and the all-null `null`
+(`NullSerie`); timestamps, times
 and durations unify into `DatetimeSerie` / `TimeSerie` / `DurationSerie`. The **nested**
 `StructSerie` (which holds **lazy children** — `from_children` stays lazy until
 `materialize`) / `ListSerie` / `MapSerie` (recursive), the lazy `UInt64RangeSerie` (which

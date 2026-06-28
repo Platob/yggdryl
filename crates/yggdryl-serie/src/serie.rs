@@ -16,7 +16,7 @@ use crate::error::{SerieError, SerieResult};
 #[allow(unused_imports)]
 use crate::log_event;
 use crate::nested::{ListSerie, MapSerie, NestedSerie, StructSerie};
-use crate::primitive::{BinarySerie, BooleanSerie, PrimitiveSerie, VarcharSerie};
+use crate::primitive::{BinarySerie, BooleanSerie, NullSerie, PrimitiveSerie, VarcharSerie};
 use crate::scalar::{scalar_at, Scalar};
 use crate::temporal::{DatetimeSerie, DurationSerie, TimeSerie};
 // The rich atomic value layer — the value written by [`Serie::set_at`] / [`Serie::push`].
@@ -206,7 +206,28 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// field's type, **fills missing** target columns (null if nullable, else the type
     /// default) and drops extras. The result keeps this column's name / nullability /
     /// metadata (only the type changes).
+    ///
+    /// The wildcard [`Any`](DataType::Any) and the [`Null`](DataType::Null) type are
+    /// **fast cast** without invoking the Arrow kernel: casting to `Any` is a no-op (every
+    /// column already satisfies the wildcard, so the column is returned with its concrete
+    /// type), while casting **to** or **from** `Null` produces an all-null array of the
+    /// target type directly (Arrow has no `cast`-to-`Null`, and casting *from* an all-null
+    /// column is just a null fill).
     fn cast(&self, dtype: &DataType) -> SerieResult<SerieRef> {
+        // `Any` accepts any column — a no-op that keeps the concrete type and values.
+        if dtype.is_any() {
+            return dispatch(self.field().clone(), self.array());
+        }
+        // To-Null (Arrow can't cast to it) or from-Null (an all-null fill): build the
+        // null array of the target type directly, skipping the kernel.
+        if dtype.is_null() || self.data_type().is_null() {
+            let target = dtype.to_arrow()?;
+            let array = crate::build::null_array(&target, self.len());
+            return dispatch(
+                self.field().copy(None, Some(dtype.clone()), None, None),
+                array,
+            );
+        }
         if self.data_type().is_struct() && dtype.is_struct() {
             return cast_struct(self, dtype);
         }
@@ -505,6 +526,15 @@ pub(crate) fn dispatch(field: Field, array: ArrayRef) -> SerieResult<SerieRef> {
             Arc::new(ListSerie::<i64>::from_parts(field, array)?) as SerieRef
         }
         ADataType::Map(_, _) => Arc::new(MapSerie::from_parts(field, array)?) as SerieRef,
+        // the all-null column — every cell is null, no values stored
+        ADataType::Null => {
+            let typed = array
+                .as_any()
+                .downcast_ref::<arrow_array::NullArray>()
+                .expect("data type matched the null array")
+                .clone();
+            Arc::new(NullSerie::from_parts(field, typed)) as SerieRef
+        }
         other => {
             return Err(SerieError::Unsupported(format!(
                 "no serie backend for arrow type '{other}' yet; nested, view, dictionary \
