@@ -1186,11 +1186,17 @@ fn cast_primitive_and_struct_with_fill() {
 fn cast_to_any_and_null_fast_paths() {
     let s = Int32Serie::from_values("n", vec![Some(1), Some(2), None]);
 
-    // cast to `Any` is a no-op: the concrete type and values are kept
+    // cast to `Any` is skipped: the concrete type and values are kept
     let any = s.cast(&DataType::Any).unwrap();
     assert_eq!(any.data_type(), &DataType::int(32, true));
     assert_eq!(any.value_at(0), Scalar::Int(1));
     assert_eq!(any.len(), 3);
+
+    // the skip keeps the concrete type — even a lazy column stays lazy (not materialised)
+    let range = UInt64RangeSerie::indices(4);
+    let same = range.cast(&DataType::Any).unwrap();
+    assert!(!same.is_materialized());
+    assert!(same.as_any().downcast_ref::<UInt64RangeSerie>().is_some());
 
     // cast to `Null` produces an all-null NullSerie (Arrow has no cast-to-Null)
     let nulled = s.cast(&DataType::Null).unwrap();

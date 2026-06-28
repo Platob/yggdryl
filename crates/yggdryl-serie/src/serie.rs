@@ -27,6 +27,23 @@ use yggdryl_scalar::Scalar as AtomicScalar;
 /// [factory](from_arrow) hand around.
 pub type SerieRef = Arc<dyn Serie>;
 
+/// Object-safe clone for a [`Serie`] handle. Cloning a column is cheap — the field is
+/// small and an Arrow array clones by sharing buffers (a lazy column clones its compact
+/// description) — so a column can be duplicated without re-typing or materialising it.
+/// This is what lets [`cast`](Serie::cast) to the [`Any`](DataType::Any) wildcard return
+/// the column **untouched**. The blanket impl covers every `Serie` (all concrete series
+/// are `Clone`), so no per-type code is needed.
+pub trait CloneSerie {
+    /// A boxed clone of this column, preserving its concrete type (and laziness).
+    fn clone_serie(&self) -> SerieRef;
+}
+
+impl<T: Serie + Clone + 'static> CloneSerie for T {
+    fn clone_serie(&self) -> SerieRef {
+        Arc::new(self.clone())
+    }
+}
+
 /// The object-safe **base** of every column: its [`Field`], the backing Arrow
 /// [`array`](Serie::array), the length / null bookkeeping, [`slice`](Serie::slice) and
 /// downcasting via [`as_any`](Serie::as_any). Typed value access is added by
@@ -36,7 +53,7 @@ pub type SerieRef = Arc<dyn Serie>;
 /// [`array`](Serie::array), so a new backend only has to supply those two and
 /// [`as_any`](Serie::as_any); concrete series override the length / null methods to
 /// read their typed array directly (no `Arc` clone per call).
-pub trait Serie: fmt::Debug + Send + Sync {
+pub trait Serie: fmt::Debug + Send + Sync + CloneSerie {
     /// The column's [`Field`] — its name, [`DataType`], nullability and metadata.
     fn field(&self) -> &Field;
 
@@ -214,9 +231,10 @@ pub trait Serie: fmt::Debug + Send + Sync {
     /// target type directly (Arrow has no `cast`-to-`Null`, and casting *from* an all-null
     /// column is just a null fill).
     fn cast(&self, dtype: &DataType) -> SerieResult<SerieRef> {
-        // `Any` accepts any column — a no-op that keeps the concrete type and values.
+        // `Any` accepts any column — **skip** the cast entirely and return the column
+        // untouched (a cheap clone that keeps its concrete type, values and laziness).
         if dtype.is_any() {
-            return dispatch(self.field().clone(), self.array());
+            return Ok(self.clone_serie());
         }
         // To-Null (Arrow can't cast to it) or from-Null (an all-null fill): build the
         // null array of the target type directly, skipping the kernel.
