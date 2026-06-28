@@ -245,7 +245,10 @@ response's own `send`.
 `header(name)` (case-insensitive) read the response headers; `request()` returns the
 originating prepared request and `session()` (Rust) the shared session it belongs to.
 After a redirect chain `request()` is the *original* request, so its method/URL may
-differ from the response's final `url`.
+differ from the response's final `url`. `negotiated_version` reports the HTTP version
+actually spoken — `"HTTP/1.1"` / `"HTTP/2.0"` / `"HTTP/3.0"` — which may differ from
+the session's `with_http_version` pin when `Auto` negotiation picks a version at
+runtime.
 
 === "Python"
 
@@ -256,6 +259,7 @@ differ from the response's final `url`.
     print(response.status, response.ok)         # 200 True
     print(response.header("content-type"))      # "application/json"
     print(response.request.url)                 # the originating request URL
+    print(response.http_version)                # "HTTP/1.1" / "HTTP/2.0" / "HTTP/3.0"
     ```
 
 === "Node"
@@ -267,17 +271,19 @@ differ from the response's final `url`.
     console.log(response.status, response.ok);    // 200 true
     console.log(response.header("content-type")); // "application/json"
     console.log(response.request.url);            // the originating request URL
+    console.log(response.httpVersion);            // "HTTP/1.1" / "HTTP/2.0" / "HTTP/3.0"
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_http::HttpSession;
+    use yggdryl_http::{HttpSession, HttpVersion};
 
     let response = HttpSession::new().get("https://httpbin.org/json", true)?;
     println!("{} {}", response.status(), response.ok());     // 200 true
     println!("{:?}", response.header("content-type"));       // Some("application/json")
     println!("{:?}", response.request().map(|r| r.url().to_string()));
+    println!("{:?}", response.negotiated_version());         // HttpVersion::Http11
     ```
 
 ## The body — bytes, text, JSON

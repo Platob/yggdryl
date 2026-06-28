@@ -191,6 +191,89 @@ long; `0` removes the bound. `with_max_redirects` (default 10) caps the 3xx hops
     honouring `NO_PROXY`); `with_proxy` overrides it. `with_pool_size` tunes the idle
     connection pool — reused keep-alive connections skip the TLS handshake.
 
+## Protocol version — HTTP/1.1, HTTP/2 and HTTP/3
+
+By default (`Auto`) the session negotiates the best mutually-supported version:
+**HTTP/1.1** (always available) or **HTTP/2** (over TLS via ALPN, when the `http2`
+cargo feature is on) or **HTTP/3 over QUIC** (when `http3` is on). You can pin a
+specific version for a session or a single request with `with_http_version`; the
+response reports the version actually spoken via `negotiated_version`. A pinned
+version whose feature is off raises `HttpError::Unsupported` — never a silent
+downgrade.
+
+| `HttpVersion` | requires feature | cleartext | TLS / QUIC |
+| --- | --- | --- | --- |
+| `Auto` (default) | — | HTTP/1.1 | ALPN → h2 then h1 |
+| `Http11` | — | HTTP/1.1 | HTTP/1.1 |
+| `Http2` | `http2` | h2c (prior knowledge) | ALPN → h2 only |
+| `Http3` | `http3` | ✗ | QUIC ALPN `h3` |
+
+The blocking HTTP/1.1 transport (ureq) is always available. HTTP/2 uses an internal
+async hyper runtime; HTTP/3 uses quinn over UDP — both hidden behind the same
+blocking API. Response bodies from h2 and h3 are **buffered** (the async path
+reads the full body before returning); the live [`HttpStream`](stream.md) seekable
+body is an HTTP/1.1 feature.
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    # Pin the session to HTTP/2 (requires the http2 cargo feature):
+    session = yggdryl.HttpSession(http_version="2")
+    response = session.get("https://httpbin.org/get")
+    print(response.http_version)   # "HTTP/2.0"
+
+    # Or pin a single request:
+    response = yggdryl.HttpSession().get(
+        "https://httpbin.org/get",
+        http_version="2",
+    )
+    ```
+
+=== "Node"
+
+    ```javascript
+    const { HttpSession } = require("yggdryl");
+
+    // httpVersion is the 5th constructor arg (0-indexed).
+    const session = new HttpSession(
+        undefined, undefined, undefined, undefined, "2",
+    );
+    const response = await session.get("https://httpbin.org/get");
+    console.log(response.httpVersion);  // "HTTP/2.0"
+
+    // Or pin one request:
+    const r = await new HttpSession().get(
+        "https://httpbin.org/get",
+        undefined, undefined, undefined, undefined,
+        undefined, undefined, "2",  // httpVersion positional arg
+    );
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_http::{HttpSession, HttpVersion};
+
+    // Pin the session — every request negotiates h2 only (feature = "http2").
+    let session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    let response = session.get("https://httpbin.org/get", true)?;
+    assert_eq!(response.negotiated_version(), HttpVersion::Http2);
+
+    // Pin one request:
+    use yggdryl_http::HttpRequest;
+    let r = HttpRequest::get("https://httpbin.org/get")?
+        .with_http_version(HttpVersion::Http2)
+        .send(true)?;
+    ```
+
+!!! note "h2c — HTTP/2 over cleartext"
+    Pinning `Http2` against an `http://` URL speaks h2c (RFC 7540 §3.4 "prior
+    knowledge"). This is useful for internal service-to-service calls behind a
+    TLS-terminating proxy. `Auto` over cleartext **never** attempts h2c — it stays
+    on HTTP/1.1 so plain `http://` URLs work out of the box.
+
 ## Concurrency — `send_many` (Rust)
 
 `send_many(requests)` runs an iterator of requests concurrently, **lazily** in batches

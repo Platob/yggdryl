@@ -2393,3 +2393,184 @@ fn http3_feature_marks_http3_available() {
     use crate::HttpVersion;
     assert!(HttpVersion::Http3.is_available());
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 edge-case sweep: bodies, headers, chunked TE, h2 flow-control.
+// ---------------------------------------------------------------------------
+
+/// HTTP/1.1 chunked transfer-encoding (no `Content-Length`): body framed in
+/// chunks, terminated by a zero-length chunk. ureq decodes it transparently.
+#[test]
+fn chunked_transfer_encoding_body_reads_correctly() {
+    let reply = concat!(
+        "HTTP/1.1 200 OK\r\n",
+        "Transfer-Encoding: chunked\r\n",
+        "Content-Type: text/plain\r\n",
+        "Connection: close\r\n\r\n",
+        "5\r\nhello\r\n",
+        "6\r\n world\r\n",
+        "0\r\n\r\n"
+    )
+    .as_bytes()
+    .to_vec();
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url, true).unwrap();
+    assert_eq!(response.text().unwrap(), "hello world");
+}
+
+/// A response with two `Set-Cookie` headers must populate both cookies in the
+/// jar; a follow-up request to the same host sends both.
+#[test]
+fn multiple_set_cookie_headers_are_all_stored() {
+    let reply = concat!(
+        "HTTP/1.1 200 OK\r\n",
+        "Set-Cookie: alpha=1; Path=/\r\n",
+        "Set-Cookie: beta=2; Path=/\r\n",
+        "Content-Length: 2\r\n",
+        "Connection: close\r\n\r\n",
+        "ok"
+    )
+    .as_bytes()
+    .to_vec();
+    let (url, _rx) = serve_once(reply);
+    let session = HttpSession::new();
+    session.get(&url, true).unwrap();
+    assert!(
+        session.cookies().get("alpha").is_some(),
+        "cookie 'alpha' missing"
+    );
+    assert!(
+        session.cookies().get("beta").is_some(),
+        "cookie 'beta' missing"
+    );
+    // A follow-up request sends both cookies.
+    let (url2, rx2) = serve_once(ok_reply("text/plain", b"ok"));
+    session.get(&url2, true).unwrap();
+    let req2 = String::from_utf8(rx2.recv().unwrap())
+        .unwrap()
+        .to_lowercase();
+    assert!(
+        req2.contains("alpha=1"),
+        "cookie alpha not forwarded: {req2}"
+    );
+    assert!(req2.contains("beta=2"), "cookie beta not forwarded: {req2}");
+}
+
+/// An empty `Content-Length: 0` body on a regular GET is read as zero bytes
+/// (distinct from the 204/HEAD special-casing which ureq also handles).
+#[test]
+fn zero_length_body_reads_as_empty() {
+    let reply = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url, true).unwrap();
+    assert!(response.ok());
+    assert_eq!(response.bytes().unwrap(), b"");
+}
+
+/// A body whose length equals the sliding-cache boundary (4 MiB) reads without
+/// a Range re-fetch while still exercising the cache fill-and-drain path.
+#[test]
+fn body_at_exact_cache_boundary_reads_correctly() {
+    const CACHE: usize = 4 * 1024 * 1024; // must match HttpStream's cache cap
+    let payload: Vec<u8> = (0..CACHE as u32).map(|n| (n % 251) as u8).collect();
+    let url = serve_ranges(payload.clone());
+    let session = HttpSession::new();
+    let mut stream = open_stream(&session, HttpRequest::get(&url).unwrap(), true);
+    let mut out = Vec::new();
+    stream.read_to_end(&mut out).unwrap();
+    assert_eq!(out, payload);
+    // The body fits exactly in the cache: seek back into it re-reads from
+    // memory without a Range request.
+    stream.seek(0, Whence::Start).unwrap();
+    let mut again = vec![0u8; 64];
+    stream.read(&mut again).unwrap();
+    assert_eq!(&again[..], &payload[..64]);
+}
+
+/// With the `http2` feature compiled in, `HttpVersion::Auto` over a plain
+/// `http://` URL still negotiates HTTP/1.1 (h2c requires an explicit pin —
+/// never assumed by Auto on cleartext). The server is a normal h1 server.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_auto_over_http_stays_on_http11() {
+    use crate::HttpVersion;
+    let (url, _rx) = serve_once(ok_reply("text/plain", b"ok"));
+    let response = HttpSession::new()
+        .with_http_version(HttpVersion::Auto)
+        .send(HttpRequest::get(&url).unwrap(), false)
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.negotiated_version(), HttpVersion::Http11);
+}
+
+/// A session-level `Http2` default applies to every request it builds, without
+/// needing a per-request pin.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_session_level_default_version_applies() {
+    use crate::HttpVersion;
+    let (url, _count) = serve_h2c();
+    let session = HttpSession::new().with_http_version(HttpVersion::Http2);
+    let response = session
+        .send(HttpRequest::get(&format!("{url}/echo")).unwrap(), false)
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.negotiated_version(), HttpVersion::Http2);
+}
+
+/// A body larger than the h2 initial flow-control window (65 535 bytes) is
+/// received correctly, verifying that hyper's window-update frames are issued
+/// and the full body is buffered without stalling.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_body_beyond_initial_flow_control_window() {
+    use crate::HttpVersion;
+    // 80 KiB body — exceeds the h2 default initial window (65 535 bytes).
+    // Use printable ASCII so `from_utf8_lossy` in the echo server is lossless
+    // and `bytes.ends_with(&big)` holds on the raw result.
+    let big: Vec<u8> = (0u32..80_000).map(|i| b' ' + ((i % 95) as u8)).collect();
+    let (url, _count) = serve_h2c();
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::post(&format!("{url}/echo"))
+                .unwrap()
+                .with_body(big.clone())
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let bytes = response.bytes().unwrap();
+    // The echo server prepends "POST /echo "; the big payload follows verbatim.
+    assert!(
+        bytes.ends_with(&big),
+        "h2 large body not echoed fully: got {} bytes, expected at least {}",
+        bytes.len(),
+        big.len() + "POST /echo ".len()
+    );
+}
+
+/// Duplicate response headers with the same name (e.g. two `X-Custom` values)
+/// are preserved — `get_all` returns all of them, `get` returns the first.
+#[test]
+fn duplicate_response_headers_are_preserved() {
+    let reply = concat!(
+        "HTTP/1.1 200 OK\r\n",
+        "X-Custom: first\r\n",
+        "X-Custom: second\r\n",
+        "Content-Length: 2\r\n",
+        "Connection: close\r\n\r\n",
+        "ok"
+    )
+    .as_bytes()
+    .to_vec();
+    let (url, _rx) = serve_once(reply);
+    let response = HttpSession::new().get(&url, true).unwrap();
+    // The first value is the one `get` returns.
+    assert_eq!(response.header("x-custom"), Some("first"));
+    // All values are accessible.
+    let all = response.headers().get_all("x-custom");
+    assert_eq!(all.len(), 2, "expected 2 x-custom values, got {all:?}");
+    assert_eq!(all[0], "first");
+    assert_eq!(all[1], "second");
+}
