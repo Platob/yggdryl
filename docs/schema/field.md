@@ -1,34 +1,37 @@
 # Field
 
-A `Field` names a [`DataType`](datatype.md), marks it nullable, attaches metadata,
-and can sit in a graph (an optional parent + child accessors). A field whose type is
-a struct **is a schema**. Fields are what make the type system recursive: a list
-item, struct member or map entry is itself a `Field`.
+A `Field` is a named [`DataType`](datatype.md) with optional byte-keyed metadata. It
+is the recursive node of the schema: a list item, struct member or union alternative is
+itself a `Field`, so a struct-typed field **is a schema**. A field is three things —
+a `name`, a `dtype` and an optional `metadata` map — and a handful of well-known
+metadata keys (`comment`, `index_name`, `index_level`) have typed accessors.
 
-## Construct & inspect
+## Construct & mutate
+
+A field is built from a `name` and a `dtype`; both are mutable in place.
 
 === "Python"
 
     ```python
     import yggdryl
 
-    f = yggdryl.Field("id", yggdryl.DataType.int(64), nullable=False)
+    f = yggdryl.Field("id", yggdryl.DataType.int64())
     assert f.name == "id"
-    assert not f.nullable
-    assert f.data_type == yggdryl.DataType.int(64)
-    assert str(f) == "id: int64 not null"
-    assert yggdryl.Field.from_str("id: int64 not null").name == "id"
+    assert f.dtype == yggdryl.DataType.int64()
+    f.name = "ident"
+    f.dtype = yggdryl.DataType.int32()
     ```
 
 === "Node"
 
     ```javascript
-    const yggdryl = require("yggdryl");
+    const { Field, DataType } = require("yggdryl");
 
-    const f = new yggdryl.Field("id", yggdryl.DataType.int(64), false);
-    f.name;        // "id"
-    f.nullable;    // false
-    f.toString();  // "id: int64 not null"
+    const f = new Field("id", DataType.int64());
+    f.name;                       // "id"
+    f.dtype.equals(DataType.int64()); // true
+    f.name = "ident";
+    f.dtype = DataType.int32();
     ```
 
 === "Rust"
@@ -36,42 +39,41 @@ item, struct member or map entry is itself a `Field`.
     ```rust
     use yggdryl_schema::{DataType, Field};
 
-    let f = Field::new("id", DataType::int(64, true), false);
-    assert_eq!(f.name(), "id");
-    assert_eq!(f.to_str(), "id: int64 not null");
+    let mut f = Field::new("id", DataType::int64());
+    assert_eq!(f.name, "id");
+    assert_eq!(f.dtype, DataType::int64());
+    f.name = "ident".into();
+    f.dtype = DataType::int32();
     ```
-
-!!! tip "Field string forms"
-    `from_str` accepts a `:` or a space between the name and type, an optional
-    trailing `not null`, and a name wrapped in `"…"`, `'…'`, `` `…` `` or `[…]` —
-    so SQL/Hive DDL works: `qty: int64 not null`, `col struct<a: str>`,
-    `"my col" varchar(255)`.
 
 ## Metadata
 
-Arbitrary string metadata, with `comment` as a named convenience getter/setter.
+The optional `metadata` is a `map<bytes, bytes>`. It is `None` until a key is set and
+clears back to `None` when emptied.
 
 === "Python"
 
     ```python
     import yggdryl
 
-    f = yggdryl.Field("id", yggdryl.DataType.int(64)).with_comment("primary key")
-    assert f.comment == "primary key"
-    f.set_metadata("unit", "count")
-    assert f.get_metadata("unit") == "count"
-    assert f.metadata()["unit"] == "count"
+    f = yggdryl.Field("id", yggdryl.DataType.int64())
+    assert f.metadata is None
+    f.metadata = {b"unit": b"count"}          # replace the whole map
+    assert f.metadata[b"unit"] == b"count"
+    f.metadata = {}                            # an empty map clears to None
+    assert f.metadata is None
     ```
 
 === "Node"
 
     ```javascript
-    const yggdryl = require("yggdryl");
+    const { Field, DataType } = require("yggdryl");
 
-    const f = new yggdryl.Field("id", yggdryl.DataType.int(64)).withComment("primary key");
-    f.comment;                 // "primary key"
-    f.setMetadata("unit", "count");
-    f.getMetadata("unit");     // "count"
+    const f = new Field("id", DataType.int64());
+    f.setMetadata(Buffer.from("unit"), Buffer.from("count"));
+    f.getMetadata(Buffer.from("unit")).toString();      // "count"
+    f.removeMetadata(Buffer.from("unit")).toString();   // "count"
+    f.getMetadata(Buffer.from("unit"));                 // null
     ```
 
 === "Rust"
@@ -79,51 +81,50 @@ Arbitrary string metadata, with `comment` as a named convenience getter/setter.
     ```rust
     use yggdryl_schema::{DataType, Field};
 
-    let f = Field::new("id", DataType::int(64, true), true).with_comment("primary key");
-    assert_eq!(f.comment(), Some("primary key"));
+    let mut f = Field::new("id", DataType::int64());
+    assert!(f.metadata.is_none());
+    f.set_metadata(b"unit".to_vec(), b"count".to_vec());
+    assert_eq!(f.get_metadata(b"unit"), Some(b"count".as_slice()));
+    assert_eq!(f.remove_metadata(b"unit"), Some(b"count".to_vec()));
+    assert!(f.metadata.is_none());              // emptied -> None
     ```
 
-## Schema graph
+## Reserved accessors
 
-A struct-typed field exposes its members through case-insensitive / index child
-accessors, and `with_linked_children` wires `parent` pointers for upward traversal.
-The `parent` is navigational only — it is excluded from equality, hashing and
-serialization, so it never breaks `Hash` / pickle and a linked schema compares equal
-to the unlinked one.
+Three well-known keys have typed getters/setters that mutate the metadata map in
+place: `comment` and `index_name` (UTF-8 strings) and `index_level` (a `u16`, stored as
+its decimal text). Setting `None` removes the key.
 
 === "Python"
 
     ```python
     import yggdryl
 
-    schema = yggdryl.Field("rec", yggdryl.DataType.struct_([
-        yggdryl.Field("Id", yggdryl.DataType.int(64), nullable=False),
-        yggdryl.Field("addr", yggdryl.DataType.struct_([
-            yggdryl.Field("City", yggdryl.DataType.varchar()),
-        ])),
-    ]), nullable=False)
-
-    assert schema.child("id").name == "Id"        # case-insensitive
-    assert schema.child_index("addr") == 1
-    linked = schema.with_linked_children()
-    assert linked.child("addr").child("city").root().name == "rec"
+    f = yggdryl.Field("x", yggdryl.DataType.int32())
+    f.comment = "a note"
+    f.index_name = "idx"
+    f.index_level = 7
+    assert f.comment == "a note"
+    assert f.index_level == 7
+    assert f.metadata[b"comment"] == b"a note"   # stored under reserved byte keys
+    f.comment = None                              # clears the key
+    assert f.comment is None
     ```
 
 === "Node"
 
     ```javascript
-    const yggdryl = require("yggdryl");
+    const { Field, DataType } = require("yggdryl");
 
-    const schema = new yggdryl.Field("rec", yggdryl.DataType.struct([
-      new yggdryl.Field("Id", yggdryl.DataType.int(64), false),
-      new yggdryl.Field("addr", yggdryl.DataType.struct([
-        new yggdryl.Field("City", yggdryl.DataType.varchar()),
-      ])),
-    ]), false);
-
-    schema.child("id").name;                 // "Id" (case-insensitive)
-    const linked = schema.withLinkedChildren();
-    linked.child("addr").child("city").root().name; // "rec"
+    const f = new Field("x", DataType.int32());
+    f.comment = "a note";
+    f.indexName = "idx";
+    f.indexLevel = 7;
+    f.comment;                                    // "a note"
+    f.indexLevel;                                 // 7
+    f.getMetadata(Buffer.from("comment")).toString(); // "a note"
+    f.comment = null;                             // clears the key
+    f.comment;                                    // null
     ```
 
 === "Rust"
@@ -131,67 +132,57 @@ to the unlinked one.
     ```rust
     use yggdryl_schema::{DataType, Field};
 
-    let schema = Field::new("rec", DataType::struct_(vec![
-        Field::new("id", DataType::int(64, true), false),
-    ]), false);
-    assert_eq!(schema.child("ID").unwrap().name(), "id"); // case-insensitive
+    let mut f = Field::new("x", DataType::int32());
+    f.set_comment(Some("a note"));
+    f.set_index_name(Some("idx"));
+    f.set_index_level(Some(7));
+    assert_eq!(f.comment().as_deref(), Some("a note"));
+    assert_eq!(f.index_level(), Some(7));
+    assert_eq!(f.get_metadata(b"comment"), Some(b"a note".as_slice()));
+    f.set_comment(None);                          // clears the key
+    assert_eq!(f.comment(), None);
     ```
 
-## Merge
+## Equality & hashing
 
-`merge` unifies two same-named fields under a strategy: the types merge
-([`DataType::merge`](datatype.md#coercion-merge)), the result is nullable if either
-side is, and metadata is unioned.
+A field is `==`-comparable and hashable over its `name`, `dtype` and `metadata`.
 
 === "Python"
 
     ```python
     import yggdryl
 
-    a = yggdryl.Field("x", yggdryl.DataType.int(8), nullable=False)
-    b = yggdryl.Field("x", yggdryl.DataType.int(32))
-    merged = a.merge(b, "promote")
-    assert merged.data_type == yggdryl.DataType.int(32)
-    assert merged.nullable
+    a = yggdryl.Field("id", yggdryl.DataType.int64())
+    b = yggdryl.Field("id", yggdryl.DataType.int64())
+    assert a == b
+    assert hash(a) == hash(b)
+    b.comment = "x"
+    assert a != b
     ```
 
 === "Node"
 
     ```javascript
-    const yggdryl = require("yggdryl");
+    const { Field, DataType } = require("yggdryl");
 
-    const a = new yggdryl.Field("x", yggdryl.DataType.int(8), false);
-    const b = new yggdryl.Field("x", yggdryl.DataType.int(32));
-    const merged = a.merge(b, "promote");
-    merged.dataType.equals(yggdryl.DataType.int(32)); // true
+    const a = new Field("id", DataType.int64());
+    const b = new Field("id", DataType.int64());
+    a.equals(b);                       // true
+    a.hashCode() === b.hashCode();     // true
+    b.comment = "x";
+    a.equals(b);                       // false
     ```
-
-=== "Rust"
-
-    ```rust
-    use yggdryl_schema::{DataType, Field, MergeStrategy};
-
-    let a = Field::new("x", DataType::int(8, true), false);
-    let b = Field::new("x", DataType::int(32, true), true);
-    let merged = a.merge(&b, MergeStrategy::Promote)?;
-    assert_eq!(merged.data_type(), &DataType::int(32, true));
-    ```
-
-## Schema ↔ Arrow
-
-In Rust (with the `arrow` feature), a struct-typed field converts to an
-`arrow_schema::Schema` and back.
 
 === "Rust"
 
     ```rust
     use yggdryl_schema::{DataType, Field};
 
-    let schema = Field::new("rec", DataType::struct_(vec![
-        Field::new("id", DataType::int(64, true), false),
-    ]), false);
-    let arrow = schema.to_arrow_schema()?;           // arrow_schema::Schema
-    let back = Field::from_arrow_schema("rec", &arrow, false);
+    let a = Field::new("id", DataType::int64());
+    let mut b = Field::new("id", DataType::int64());
+    assert_eq!(a, b);
+    b.set_comment(Some("x"));
+    assert_ne!(a, b);
     ```
 
 ## Next

@@ -1,258 +1,101 @@
-//! Logical-category types: the [`IntervalUnit`], the temporal / decimal /
-//! dictionary checks and their constructors. Temporal types reuse the core
-//! [`TimeUnit`](yggdryl_core::TimeUnit) and [`Timezone`](yggdryl_core::Timezone).
+//! The [`LogicalType`] — types whose logical meaning is richer than their physical
+//! storage (decimal, the temporal family, JSON/BSON) — and the [`IntervalUnit`].
 
-use std::fmt;
-
-use super::fixed::{Decimal128, Decimal256, Decimal32, Decimal64, FixedKind};
-use super::{DataType, SchemaError};
+use super::DataTypeId;
 use yggdryl_core::{TimeUnit, Timezone};
 
-/// The resolution of an [`Interval`](DataType::Interval) calendar type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// The resolution of an [`Interval`](LogicalType::Interval).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntervalUnit {
-    /// Whole months, as a 32-bit integer.
+    /// Whole months.
     YearMonth,
-    /// Days and milliseconds, as two 32-bit integers.
+    /// Days and milliseconds.
     DayTime,
     /// Months, days and nanoseconds.
     MonthDayNano,
 }
 
 impl IntervalUnit {
-    /// Parses an interval-unit token (case-insensitive).
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Result<IntervalUnit, SchemaError> {
-        match value
-            .trim()
-            .to_ascii_lowercase()
-            .replace(['-', ' '], "_")
-            .as_str()
-        {
-            "year_month" | "yearmonth" => Ok(IntervalUnit::YearMonth),
-            "day_time" | "daytime" => Ok(IntervalUnit::DayTime),
-            "month_day_nano" | "monthdaynano" => Ok(IntervalUnit::MonthDayNano),
-            _ => Err(SchemaError::UnknownUnit(value.to_string())),
+    /// Parses a canonical token (`"year_month"` / `"day_time"` / `"month_day_nano"`),
+    /// returning `None` for anything else.
+    pub fn from_name(value: &str) -> Option<IntervalUnit> {
+        match value {
+            "year_month" => Some(IntervalUnit::YearMonth),
+            "day_time" => Some(IntervalUnit::DayTime),
+            "month_day_nano" => Some(IntervalUnit::MonthDayNano),
+            _ => None,
         }
     }
 
-    /// The canonical token (`year_month` / `day_time` / `month_day_nano`).
-    pub fn as_str(&self) -> &'static str {
+    /// The canonical token (`"year_month"` / `"day_time"` / `"month_day_nano"`).
+    pub fn name(self) -> &'static str {
         match self {
             IntervalUnit::YearMonth => "year_month",
             IntervalUnit::DayTime => "day_time",
             IntervalUnit::MonthDayNano => "month_day_nano",
         }
     }
-
-    /// The physical width of this interval in bits.
-    pub fn bit_size(&self) -> u16 {
-        match self {
-            IntervalUnit::YearMonth => 32,
-            IntervalUnit::DayTime => 64,
-            IntervalUnit::MonthDayNano => 128,
-        }
-    }
 }
 
-impl fmt::Display for IntervalUnit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
+/// A logical type. Each carries the parameters that distinguish it (a decimal's
+/// `precision`/`scale`, a temporal type's [`TimeUnit`] / [`Timezone`], …).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LogicalType {
+    /// A decimal with `(precision, scale)`.
+    Decimal {
+        /// Total number of significant digits.
+        precision: u8,
+        /// Digits after the decimal point (may be negative).
+        scale: i8,
+    },
+    /// A calendar date.
+    Date,
+    /// A time of day in the given resolution.
+    Time {
+        /// Resolution.
+        unit: TimeUnit,
+    },
+    /// A timestamp in the given resolution, optionally zoned.
+    Timestamp {
+        /// Resolution.
+        unit: TimeUnit,
+        /// Display timezone, if zoned.
+        timezone: Option<Timezone>,
+    },
+    /// An elapsed duration in the given resolution.
+    Duration {
+        /// Resolution.
+        unit: TimeUnit,
+    },
+    /// A calendar interval in the given resolution.
+    Interval {
+        /// Resolution.
+        unit: IntervalUnit,
+    },
+    /// JSON text (string-backed).
+    Json,
+    /// A BSON document (binary-backed).
+    Bson,
 }
 
-impl DataType {
-    // ---- constructors ----
-
-    /// A day-resolution [`Date`](DataType::Date) (32-bit).
-    pub fn date() -> DataType {
-        DataType::Date { large: false }
-    }
-
-    /// A decimal with `(precision, scale)`, stored in 128 bits
-    /// ([`decimal128`](DataType::Decimal128)).
-    pub fn decimal(precision: u8, scale: i8) -> DataType {
-        DataType::decimal_with(precision, scale, 128)
-    }
-
-    /// The fixed-width decimal for an explicit storage width — the convenience builder
-    /// over the concrete [`Decimal32`](DataType::Decimal32) /
-    /// [`Decimal64`](DataType::Decimal64) / [`Decimal128`](DataType::Decimal128) /
-    /// [`Decimal256`](DataType::Decimal256) variants. A width that is not 32/64/256
-    /// defaults to the 128-bit decimal (the common case).
-    pub fn decimal_with(precision: u8, scale: i8, bits: u16) -> DataType {
-        match bits {
-            32 => Decimal32::new(precision, scale).into(),
-            64 => Decimal64::new(precision, scale).into(),
-            256 => Decimal256::new(precision, scale).into(),
-            _ => Decimal128::new(precision, scale).into(),
-        }
-    }
-
-    /// A 32-bit decimal with `(precision, scale)` ([`decimal32`](DataType::Decimal32)).
-    pub fn decimal32(precision: u8, scale: i8) -> DataType {
-        Decimal32::new(precision, scale).into()
-    }
-
-    /// A 64-bit decimal with `(precision, scale)` ([`decimal64`](DataType::Decimal64)).
-    pub fn decimal64(precision: u8, scale: i8) -> DataType {
-        Decimal64::new(precision, scale).into()
-    }
-
-    /// A 128-bit decimal with `(precision, scale)` ([`decimal128`](DataType::Decimal128)).
-    pub fn decimal128(precision: u8, scale: i8) -> DataType {
-        Decimal128::new(precision, scale).into()
-    }
-
-    /// A 256-bit decimal with `(precision, scale)` ([`decimal256`](DataType::Decimal256)).
-    pub fn decimal256(precision: u8, scale: i8) -> DataType {
-        Decimal256::new(precision, scale).into()
-    }
-
-    /// A [`Timestamp`](DataType::Timestamp); pass `timezone` for a zoned timestamp.
-    pub fn timestamp(unit: TimeUnit, timezone: Option<Timezone>) -> DataType {
-        DataType::Timestamp { unit, timezone }
-    }
-
-    /// A [`Dictionary`](DataType::Dictionary) of `key` indices into `value`s.
-    pub fn dictionary(key: DataType, value: DataType) -> DataType {
-        DataType::Dictionary {
-            key: Box::new(key),
-            value: Box::new(value),
-        }
-    }
-
-    /// JSON text (a string-backed logical type).
-    pub fn json() -> DataType {
-        DataType::Json
-    }
-
-    /// A BSON document (a binary-backed logical type).
-    pub fn bson() -> DataType {
-        DataType::Bson
-    }
-
-    // ---- checks ----
-
-    /// Whether this is a [logical](super::TypeCategory::Logical) type.
-    pub fn is_logical(&self) -> bool {
-        self.is_temporal()
-            || self.is_decimal()
-            || self.is_dictionary()
-            || self.is_json()
-            || self.is_bson()
-            || self.is_timezone()
-    }
-
-    /// Whether this is a temporal type (date / time / timestamp / duration / interval).
-    pub fn is_temporal(&self) -> bool {
-        matches!(
-            self,
-            DataType::Date { .. }
-                | DataType::Time { .. }
-                | DataType::Timestamp { .. }
-                | DataType::Duration { .. }
-                | DataType::Interval { .. }
-        )
-    }
-
-    /// Whether this is a decimal type (any storage width).
-    pub fn is_decimal(&self) -> bool {
-        self.fixed().map(|t| t.kind) == Some(FixedKind::Decimal)
-    }
-
-    /// Whether this is a [`Dictionary`](DataType::Dictionary) encoding.
-    pub fn is_dictionary(&self) -> bool {
-        matches!(self, DataType::Dictionary { .. })
-    }
-
-    /// Whether this is the [`Json`](DataType::Json) logical type.
-    pub fn is_json(&self) -> bool {
-        matches!(self, DataType::Json)
-    }
-
-    /// Whether this is the [`Bson`](DataType::Bson) logical type.
-    pub fn is_bson(&self) -> bool {
-        matches!(self, DataType::Bson)
-    }
-
-    /// Whether this is the [`Timezone`](DataType::Timezone) logical type (a column of
-    /// zone names — not the optional display timezone a
-    /// [`Timestamp`](DataType::Timestamp) carries; read that with
-    /// [`timezone`](DataType::timezone)).
-    pub fn is_timezone(&self) -> bool {
-        matches!(self, DataType::Timezone)
-    }
-
-    /// The [`TimeUnit`] of a temporal type that carries one, or `None`.
-    pub fn time_unit(&self) -> Option<TimeUnit> {
+impl LogicalType {
+    /// The [`DataTypeId`] of this type.
+    pub fn type_id(&self) -> DataTypeId {
+        use LogicalType::*;
         match self {
-            DataType::Time { unit }
-            | DataType::Timestamp { unit, .. }
-            | DataType::Duration { unit } => Some(*unit),
-            _ => None,
+            Decimal { .. } => DataTypeId::Decimal,
+            Date => DataTypeId::Date,
+            Time { .. } => DataTypeId::Time,
+            Timestamp { .. } => DataTypeId::Timestamp,
+            Duration { .. } => DataTypeId::Duration,
+            Interval { .. } => DataTypeId::Interval,
+            Json => DataTypeId::Json,
+            Bson => DataTypeId::Bson,
         }
     }
 
-    /// The display [`Timezone`] of a [`Timestamp`](DataType::Timestamp), or `None`.
-    pub fn timezone(&self) -> Option<&Timezone> {
-        match self {
-            DataType::Timestamp { timezone, .. } => timezone.as_ref(),
-            _ => None,
-        }
-    }
-
-    /// The `(precision, scale)` of a decimal type, or `None`.
-    pub fn decimal_parts(&self) -> Option<(u8, i8)> {
-        self.fixed().and_then(|t| t.decimal)
-    }
-
-    /// The total number of significant digits of a decimal type, or `None` for a
-    /// non-decimal.
-    pub fn precision(&self) -> Option<u8> {
-        self.decimal_parts().map(|(precision, _)| precision)
-    }
-
-    /// The number of digits after the decimal point of a decimal type (may be
-    /// negative), or `None` for a non-decimal.
-    pub fn scale(&self) -> Option<i8> {
-        self.decimal_parts().map(|(_, scale)| scale)
-    }
-
-    /// A copy of this type with a decimal's `precision` replaced (same storage width
-    /// and scale). A non-decimal type is returned unchanged.
-    ///
-    /// ```
-    /// use yggdryl_schema::DataType;
-    /// assert_eq!(DataType::decimal(10, 2).with_precision(20), DataType::decimal(20, 2));
-    /// assert_eq!(DataType::varchar().with_precision(20), DataType::varchar());
-    /// ```
-    pub fn with_precision(&self, precision: u8) -> DataType {
-        match self.fixed() {
-            Some(info) => match info.decimal {
-                Some((_, scale)) => DataType::decimal_with(precision, scale, info.bits),
-                None => self.clone(),
-            },
-            None => self.clone(),
-        }
-    }
-
-    /// A copy of this type with a decimal's `scale` replaced (same storage width and
-    /// precision). A non-decimal type is returned unchanged.
-    ///
-    /// ```
-    /// use yggdryl_schema::DataType;
-    /// assert_eq!(DataType::decimal(10, 2).with_scale(4), DataType::decimal(10, 4));
-    /// assert_eq!(DataType::int(32, true).with_scale(4), DataType::int(32, true));
-    /// ```
-    pub fn with_scale(&self, scale: i8) -> DataType {
-        match self.fixed() {
-            Some(info) => match info.decimal {
-                Some((precision, _)) => DataType::decimal_with(precision, scale, info.bits),
-                None => self.clone(),
-            },
-            None => self.clone(),
-        }
+    /// The canonical name (`"decimal"`, `"timestamp"`, …).
+    pub fn name(&self) -> &'static str {
+        self.type_id().name()
     }
 }

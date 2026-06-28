@@ -1,256 +1,116 @@
-//! The `Field` pyclass — a named, nullable :class:`DataType` graph node.
+//! The `Field` pyclass — a named :class:`DataType` with optional byte metadata and
+//! the reserved comment / index_name / index_level accessors.
+
+use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 
 use pyo3::prelude::*;
-use std::collections::BTreeMap;
-use yggdryl_schema::{Field as CoreField, MergeStrategy};
+use pyo3::types::{PyBytes, PyDict};
+use yggdryl_schema::Field as CoreField;
 
 use crate::datatype::DataType;
-use crate::{hash_str, schema_err};
 
-/// A named, nullable :class:`DataType` with metadata, an optional parent (for graph
-/// traversal) and child accessors. A struct-typed field is a schema.
+/// A named, typed schema node with optional byte-keyed metadata.
 #[pyclass(name = "Field", module = "yggdryl")]
 #[derive(Clone)]
 pub struct Field {
     pub(crate) inner: CoreField,
 }
 
-fn wrap(inner: CoreField) -> Field {
-    Field { inner }
-}
-
 #[pymethods]
 impl Field {
-    /// Build from a name, :class:`DataType` and nullability.
+    /// A field with the given `name` and `dtype`.
     #[new]
-    #[pyo3(signature = (name, data_type, nullable = true))]
-    fn new(name: &str, data_type: &DataType, nullable: bool) -> Self {
-        wrap(CoreField::new(name, data_type.inner.clone(), nullable))
-    }
-
-    /// Parse a ``"name: type"`` field string (``not null`` suffix = non-nullable).
-    #[staticmethod]
-    fn from_str(value: &str) -> PyResult<Self> {
-        CoreField::from_str(value).map(wrap).map_err(schema_err)
-    }
-
-    /// Build from a dict (``name`` / ``type`` / ``nullable`` / ``comment``).
-    #[staticmethod]
-    fn from_mapping(fields: BTreeMap<String, String>) -> PyResult<Self> {
-        CoreField::from_mapping(&fields)
-            .map(wrap)
-            .map_err(schema_err)
-    }
-
-    /// Parse from the structural JSON of :meth:`to_json`.
-    #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        CoreField::from_json(value).map(wrap).map_err(schema_err)
-    }
-
-    // ---- accessors ----
-
-    #[getter]
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    #[getter]
-    fn data_type(&self) -> DataType {
-        DataType {
-            inner: self.inner.data_type().clone(),
+    fn new(name: String, dtype: &DataType) -> Self {
+        Field {
+            inner: CoreField::new(name, dtype.inner.clone()),
         }
     }
 
+    /// The field name.
     #[getter]
-    fn nullable(&self) -> bool {
-        self.inner.is_nullable()
+    fn name(&self) -> &str {
+        &self.inner.name
+    }
+    #[setter]
+    fn set_name(&mut self, value: String) {
+        self.inner.name = value;
     }
 
-    /// The metadata dict.
-    fn metadata(&self) -> BTreeMap<String, String> {
-        self.inner.metadata().clone()
+    /// The field's :class:`DataType`.
+    #[getter]
+    fn dtype(&self) -> DataType {
+        DataType {
+            inner: self.inner.dtype.clone(),
+        }
+    }
+    #[setter]
+    fn set_dtype(&mut self, value: &DataType) {
+        self.inner.dtype = value.inner.clone();
     }
 
-    /// The ``comment`` metadata, if any.
+    // ---- metadata (bytes -> bytes) ----
+
+    /// The byte metadata as a ``dict[bytes, bytes]``, else ``None``.
     #[getter]
-    fn comment(&self) -> Option<&str> {
+    fn metadata<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyDict>> {
+        let map = self.inner.metadata.as_ref()?;
+        let dict = PyDict::new_bound(py);
+        for (key, value) in map {
+            let _ = dict.set_item(PyBytes::new_bound(py, key), PyBytes::new_bound(py, value));
+        }
+        Some(dict)
+    }
+    #[setter(metadata)]
+    fn replace_metadata(&mut self, value: Option<BTreeMap<Vec<u8>, Vec<u8>>>) {
+        self.inner.metadata = value.filter(|map| !map.is_empty());
+    }
+
+    // ---- reserved typed metadata (mutating setters) ----
+
+    /// The field's comment, if any.
+    #[getter]
+    fn comment(&self) -> Option<String> {
         self.inner.comment()
     }
-
-    /// Read one metadata value.
-    fn get_metadata(&self, key: &str) -> Option<String> {
-        self.inner.get_metadata(key).map(str::to_string)
+    #[setter]
+    fn set_comment(&mut self, value: Option<&str>) {
+        self.inner.set_comment(value);
     }
 
-    /// Set one metadata entry in place.
-    fn set_metadata(&mut self, key: &str, value: &str) {
-        self.inner.set_metadata(key, value);
-    }
-
-    /// Remove one metadata entry in place, returning the old value.
-    fn remove_metadata(&mut self, key: &str) -> Option<String> {
-        self.inner.remove_metadata(key)
-    }
-
-    /// Set the ``comment`` metadata in place.
-    fn set_comment(&mut self, comment: &str) {
-        self.inner.set_comment(comment);
-    }
-
-    // ---- builders (non-mutating) ----
-
-    fn with_name(&self, name: &str) -> Self {
-        wrap(self.inner.clone().with_name(name))
-    }
-
-    fn with_data_type(&self, data_type: &DataType) -> Self {
-        wrap(self.inner.clone().with_data_type(data_type.inner.clone()))
-    }
-
-    fn with_nullable(&self, nullable: bool) -> Self {
-        wrap(self.inner.clone().with_nullable(nullable))
-    }
-
-    fn with_metadata(&self, metadata: BTreeMap<String, String>) -> Self {
-        wrap(self.inner.clone().with_metadata(metadata))
-    }
-
-    fn with_metadata_entry(&self, key: &str, value: &str) -> Self {
-        wrap(self.inner.clone().with_metadata_entry(key, value))
-    }
-
-    fn with_comment(&self, comment: &str) -> Self {
-        wrap(self.inner.clone().with_comment(comment))
-    }
-
-    fn without_metadata(&self) -> Self {
-        wrap(self.inner.clone().without_metadata())
-    }
-
-    /// A copy overriding any component passed and keeping the rest.
-    #[pyo3(signature = (name = None, data_type = None, nullable = None, metadata = None))]
-    fn copy(
-        &self,
-        name: Option<String>,
-        data_type: Option<DataType>,
-        nullable: Option<bool>,
-        metadata: Option<BTreeMap<String, String>>,
-    ) -> Self {
-        wrap(
-            self.inner
-                .copy(name, data_type.map(|d| d.inner), nullable, metadata),
-        )
-    }
-
-    // ---- graph ----
-
-    /// The navigational parent, if linked.
+    /// The field's index name, if any.
     #[getter]
-    fn parent(&self) -> Option<Field> {
-        self.inner.parent().cloned().map(wrap)
+    fn index_name(&self) -> Option<String> {
+        self.inner.index_name()
+    }
+    #[setter]
+    fn set_index_name(&mut self, value: Option<&str>) {
+        self.inner.set_index_name(value);
     }
 
-    fn with_parent(&self, parent: &Field) -> Self {
-        wrap(self.inner.clone().with_parent(parent.inner.clone()))
-    }
-
-    fn set_parent(&mut self, parent: &Field) {
-        self.inner.set_parent(parent.inner.clone());
-    }
-
-    fn without_parent(&self) -> Self {
-        wrap(self.inner.clone().without_parent())
-    }
-
-    /// The topmost ancestor reachable via :attr:`parent` (or ``self``).
-    fn root(&self) -> Field {
-        wrap(self.inner.root().clone())
-    }
-
-    /// A copy with parent links wired throughout the struct tree.
-    fn with_linked_children(&self) -> Self {
-        wrap(self.inner.clone().with_linked_children())
-    }
-
-    /// The child fields (empty unless this is a struct).
-    fn children(&self) -> Vec<Field> {
-        self.inner.children().iter().cloned().map(wrap).collect()
-    }
-
-    /// The number of child fields.
+    /// The field's index level (a ``u16``), if any.
     #[getter]
-    fn child_count(&self) -> usize {
-        self.inner.child_count()
+    fn index_level(&self) -> Option<u16> {
+        self.inner.index_level()
+    }
+    #[setter]
+    fn set_index_level(&mut self, value: Option<u16>) {
+        self.inner.set_index_level(value);
     }
 
-    /// The child at `index`, if any.
-    fn child_at(&self, index: usize) -> Option<Field> {
-        self.inner.child_at(index).cloned().map(wrap)
-    }
-
-    /// The first child matching `name` (case-insensitive).
-    fn child(&self, name: &str) -> Option<Field> {
-        self.inner.child(name).cloned().map(wrap)
-    }
-
-    /// The first child matching `name` exactly (case-sensitive).
-    fn child_exact(&self, name: &str) -> Option<Field> {
-        self.inner.child_exact(name).cloned().map(wrap)
-    }
-
-    /// The index of the first child matching `name` (case-insensitive).
-    fn child_index(&self, name: &str) -> Option<usize> {
-        self.inner.child_index(name)
-    }
-
-    // ---- merge ----
-
-    /// Merge with `other` (names must match) under a strategy.
-    #[pyo3(signature = (other, strategy = "promote"))]
-    fn merge(&self, other: &Field, strategy: &str) -> PyResult<Field> {
-        let strategy = MergeStrategy::from_str(strategy).map_err(schema_err)?;
-        self.inner
-            .merge(&other.inner, strategy)
-            .map(wrap)
-            .map_err(schema_err)
-    }
-
-    // ---- serialisation ----
-
-    /// Render to a dict (``name`` / ``type`` / ``nullable`` / ``comment``).
-    fn to_mapping(&self) -> BTreeMap<String, String> {
-        self.inner.to_mapping()
-    }
-
-    /// Serialise to a lossless structural JSON string.
-    fn to_json(&self) -> String {
-        self.inner.to_json()
-    }
-
-    fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, pyo3::types::PyBytes> {
-        pyo3::types::PyBytes::new_bound(py, &self.inner.to_bytes())
-    }
-
-    fn __str__(&self) -> String {
-        self.inner.to_str()
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Field('{}')", self.inner.to_str())
-    }
+    // ---- dunders ----
 
     fn __eq__(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 
     fn __hash__(&self) -> u64 {
-        hash_str(&self.inner.to_json())
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        hasher.finish()
     }
 
-    /// Reconstruct losslessly through structural JSON.
-    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<(PyObject, (String,))> {
-        let from_json = py.get_type_bound::<Self>().getattr("from_json")?;
-        Ok((from_json.into(), (self.inner.to_json(),)))
+    fn __repr__(&self) -> String {
+        format!("Field({:?}, {})", self.inner.name, self.inner.dtype.name())
     }
 }

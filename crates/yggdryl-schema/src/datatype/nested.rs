@@ -1,153 +1,69 @@
-//! Nested-category types: the [`UnionMode`], the container checks, the child-field
-//! accessors and the nested constructors (`list`, `struct_`, `map`, …).
+//! The [`NestedType`] — containers of other fields or types (list, struct, map,
+//! union, dictionary, run-end encoding).
 
-use std::fmt;
-
-use super::{DataType, SchemaError};
+use super::{DataType, DataTypeId};
 use crate::Field;
 
-/// The physical layout of a [`Union`](DataType::Union).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum UnionMode {
-    /// Every child array is full-length; a value occupies its slot in each.
-    Sparse,
-    /// Child arrays are packed; an offsets buffer points into them.
-    Dense,
+/// A nested (container) type. Its children are [`Field`]s (named) or bare
+/// [`DataType`]s, depending on the container.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NestedType {
+    /// A list of one element [`Field`].
+    List(Box<Field>),
+    /// A composite of named, typed [`Field`]s. A struct-typed field **is** a schema.
+    Struct(Vec<Field>),
+    /// A map from a `key` type to a `value` type.
+    Map {
+        /// The key type.
+        key: Box<DataType>,
+        /// The value type.
+        value: Box<DataType>,
+    },
+    /// A union of typed alternatives.
+    Union(Vec<Field>),
+    /// Dictionary encoding: a `key` index type into a `value` dictionary type.
+    Dictionary {
+        /// The integer index type.
+        key: Box<DataType>,
+        /// The dictionary value type.
+        value: Box<DataType>,
+    },
+    /// Run-end encoding: a `run_ends` integer type and a `values` type.
+    RunEndEncoded {
+        /// The run-ends integer type.
+        run_ends: Box<DataType>,
+        /// The values type.
+        values: Box<DataType>,
+    },
 }
 
-impl UnionMode {
-    /// Parses a union-mode token (case-insensitive), `"sparse"` or `"dense"`.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Result<UnionMode, SchemaError> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "sparse" => Ok(UnionMode::Sparse),
-            "dense" => Ok(UnionMode::Dense),
-            _ => Err(SchemaError::UnknownUnit(value.to_string())),
-        }
-    }
-
-    /// The lowercase name (`"sparse"` / `"dense"`).
-    pub fn as_str(&self) -> &'static str {
+impl NestedType {
+    /// The [`DataTypeId`] of this type.
+    pub fn type_id(&self) -> DataTypeId {
+        use NestedType::*;
         match self {
-            UnionMode::Sparse => "sparse",
-            UnionMode::Dense => "dense",
-        }
-    }
-}
-
-impl fmt::Display for UnionMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl DataType {
-    // ---- constructors ----
-
-    /// A variable-length [`List`](DataType::List) of `item`.
-    pub fn list(item: Field) -> DataType {
-        DataType::List {
-            item: Box::new(item),
-            large: false,
-            view: false,
-            size: None,
+            List(_) => DataTypeId::List,
+            Struct(_) => DataTypeId::Struct,
+            Map { .. } => DataTypeId::Map,
+            Union(_) => DataTypeId::Union,
+            Dictionary { .. } => DataTypeId::Dictionary,
+            RunEndEncoded { .. } => DataTypeId::RunEndEncoded,
         }
     }
 
-    /// A 64-bit-offset [`LargeList`](DataType::List) of `item`.
-    pub fn large_list(item: Field) -> DataType {
-        DataType::List {
-            item: Box::new(item),
-            large: true,
-            view: false,
-            size: None,
-        }
+    /// The canonical name (`"list"`, `"struct"`, …).
+    pub fn name(&self) -> &'static str {
+        self.type_id().name()
     }
 
-    /// A fixed-length list of `item`, `size` elements long.
-    pub fn fixed_size_list(item: Field, size: i32) -> DataType {
-        DataType::List {
-            item: Box::new(item),
-            large: false,
-            view: false,
-            size: Some(size),
-        }
-    }
-
-    /// A [`Struct`](DataType::Struct) of the given fields.
-    pub fn struct_(fields: Vec<Field>) -> DataType {
-        DataType::Struct(fields)
-    }
-
-    /// A [`Map`](DataType::Map) from `key` to `value`.
-    pub fn map(key: DataType, value: DataType, sorted: bool) -> DataType {
-        DataType::Map {
-            key: Box::new(key),
-            value: Box::new(value),
-            sorted,
-        }
-    }
-
-    /// A [`Union`](DataType::Union) of the given alternatives.
-    pub fn union(fields: Vec<Field>, mode: UnionMode) -> DataType {
-        DataType::Union { fields, mode }
-    }
-
-    /// A [`RunEndEncoded`](DataType::RunEndEncoded) of `run_ends` (an integer) and `values`.
-    pub fn run_end_encoded(run_ends: DataType, values: DataType) -> DataType {
-        DataType::RunEndEncoded {
-            run_ends: Box::new(run_ends),
-            values: Box::new(values),
-        }
-    }
-
-    // ---- checks / accessors ----
-
-    /// Whether this is a [nested](super::TypeCategory::Nested) container.
-    pub fn is_nested(&self) -> bool {
-        use DataType::*;
-        matches!(
-            self,
-            List { .. } | Struct(_) | Map { .. } | Union { .. } | RunEndEncoded { .. }
-        )
-    }
-
-    /// Whether this is a [`List`](DataType::List) (any list kind).
-    pub fn is_list(&self) -> bool {
-        matches!(self, DataType::List { .. })
-    }
-
-    /// Whether this is a [`Struct`](DataType::Struct).
-    pub fn is_struct(&self) -> bool {
-        matches!(self, DataType::Struct(_))
-    }
-
-    /// Whether this is a [`Union`](DataType::Union).
-    pub fn is_union(&self) -> bool {
-        matches!(self, DataType::Union { .. })
-    }
-
-    /// Whether this is a [`Map`](DataType::Map).
-    pub fn is_map(&self) -> bool {
-        matches!(self, DataType::Map { .. })
-    }
-
-    /// The immediate child [`Field`]s of a nested type — the list item, the struct
-    /// members, or the union alternatives. Maps / run-end / dictionary types hold
-    /// child *types* (not fields) and report an empty slice here.
-    ///
-    /// ```
-    /// use yggdryl_schema::{DataType, Field};
-    /// let s = DataType::struct_(vec![Field::new("a", DataType::int(32, true), true)]);
-    /// assert_eq!(s.children().len(), 1);
-    /// assert!(DataType::int(32, true).children().is_empty());
-    /// ```
-    pub fn children(&self) -> Vec<&Field> {
+    /// The immediate child [`Field`]s — a list's element, a struct's members or a
+    /// union's alternatives. The key/value containers hold child *types*, not fields,
+    /// and report an empty slice here.
+    pub fn fields(&self) -> &[Field] {
         match self {
-            DataType::List { item, .. } => vec![item],
-            DataType::Struct(fields) | DataType::Union { fields, .. } => fields.iter().collect(),
-            _ => Vec::new(),
+            NestedType::List(item) => std::slice::from_ref(item),
+            NestedType::Struct(fields) | NestedType::Union(fields) => fields,
+            _ => &[],
         }
     }
 }

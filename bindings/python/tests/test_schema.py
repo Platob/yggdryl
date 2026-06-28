@@ -4,7 +4,6 @@ DateTime, Duration, Timezone).
 Run after building the module, e.g. ``maturin develop`` then ``pytest``.
 """
 
-import copy
 import pickle
 
 import pytest
@@ -14,135 +13,106 @@ import yggdryl
 
 # ---- DataType ----
 
-def test_datatype_parse_and_constructors():
-    assert yggdryl.DataType("int64") == yggdryl.DataType.int(64)
-    assert yggdryl.DataType.int(8, signed=False) == yggdryl.DataType("uint8")
-    assert yggdryl.DataType("string") == yggdryl.DataType.varchar()
-    assert str(yggdryl.DataType.float(64)) == "float64"
-    assert str(yggdryl.DataType.decimal(10, 2)) == "decimal128[10, 2]"
-    assert str(yggdryl.DataType.timestamp("us", "UTC")) == "timestamp[us, UTC]"
-
-
-def test_datatype_accessors_and_categories():
-    assert yggdryl.DataType.int(32).category == "primitive"
-    assert yggdryl.DataType.date().category == "logical"
-    assert yggdryl.DataType.struct_([]).category == "nested"
-    assert yggdryl.DataType.any().category == "any"
-    assert yggdryl.DataType.int(32).byte_size == 4
-    assert yggdryl.DataType.boolean().byte_size is None
-    assert yggdryl.DataType.varchar().byte_size is None
-    assert yggdryl.DataType.varchar(large=True).is_large
-    assert yggdryl.DataType.varchar(view=True).is_view
-    assert yggdryl.DataType.varchar(charset="latin1").charset == "latin1"
-    assert yggdryl.DataType.timestamp("ns", "Asia/Tokyo").time_unit == "ns"
-    assert yggdryl.DataType.timestamp("ns", "Asia/Tokyo").timezone.name == "Asia/Tokyo"
-    assert yggdryl.DataType.decimal(10, 2).decimal_parts == (10, 2)
-    # precision / scale accessors + with_* builders (the width is preserved).
-    d = yggdryl.DataType.decimal(10, 2)
-    assert (d.precision, d.scale) == (10, 2)
-    assert d.with_precision(20) == yggdryl.DataType.decimal(20, 2)
-    assert d.with_scale(4) == yggdryl.DataType.decimal(10, 4)
-    assert yggdryl.DataType.int(32).precision is None
-    assert yggdryl.DataType.varchar().scale is None
-    assert yggdryl.DataType.varchar().with_precision(5) == yggdryl.DataType.varchar()
-
-
-def test_datatype_predicates_and_children():
-    assert yggdryl.DataType.int(32).is_signed_integer()
-    assert yggdryl.DataType.int(32, signed=False).is_unsigned_integer()
-    assert yggdryl.DataType.float(32).is_numeric()
-    assert not yggdryl.DataType.decimal(1, 0).is_numeric()
-    assert yggdryl.DataType.varchar().is_string()
-    assert yggdryl.DataType.timestamp("s").is_temporal()
-    s = yggdryl.DataType.struct_([
-        yggdryl.Field("a", yggdryl.DataType.int(32)),
-        yggdryl.Field("b", yggdryl.DataType.varchar()),
-    ])
-    assert s.is_struct()
-    assert [f.name for f in s.children()] == ["a", "b"]
-
-
-def test_datatype_coercion_and_merge():
+def test_datatype_constructors_ids_and_categories():
     D = yggdryl.DataType
-    assert D.int(8).common_type(D.int(32)) == D.int(32)
-    assert D.int(32).common_type(D.float(32)) == D.float(64)
-    assert D.int(32).common_type(D.varchar()) is None
-    assert D.int(32).can_cast_to(D.varchar())
-    assert not D.int(32).can_cast_to(D.binary())
-    assert D.int(8).merge(D.int(64), "promote") == D.int(64)
+    assert D.int32().type_id == 4
+    assert D.int32().name == "int32"
+    assert D.int32().category == "primitive"
+    assert D.int32().is_primitive()
+    # the id, name and category line up across the registry.
+    assert D.boolean().name == "bool"
+    assert D.uint64().type_id == 9
+    assert D.decimal(10, 2).category == "logical"
+    assert D.decimal(10, 2).is_logical()
+    assert D.decimal(10, 2).decimal_parts == (10, 2)
+    assert D.utf8().decimal_parts is None
+    assert D.struct_([]).category == "nested"
+    assert D.struct_([]).is_nested()
+    # the decimal scale defaults to 0.
+    assert D.decimal(10) == D.decimal(10, 0)
+
+
+def test_datatype_temporal_and_nested_children():
+    D = yggdryl.DataType
+    ts = D.timestamp("us", "UTC")
+    assert ts.name == "timestamp"
+    assert ts.category == "logical"
+    assert D.interval("month_day_nano").name == "interval"
     with pytest.raises(ValueError):
-        D.int(8).merge(D.int(64), "strict")
-    assert D.int(8).merge(D.varchar(), "permissive") == D.any()
-
-
-def test_datatype_serialisation_roundtrips():
-    dt = yggdryl.DataType.struct_([
-        yggdryl.Field("id", yggdryl.DataType.int(64), nullable=False),
-        yggdryl.Field("name", yggdryl.DataType.varchar()),
+        D.interval("nope")
+    # nested types expose their child fields; scalars/logicals have none.
+    s = D.struct_([
+        yggdryl.Field("a", D.int32()),
+        yggdryl.Field("b", D.utf8()),
     ])
-    assert yggdryl.DataType.from_json(dt.to_json()) == dt
-    assert yggdryl.DataType.from_mapping(dt.to_mapping()) == dt
-    assert yggdryl.DataType.from_str(str(dt)) == dt
-    assert bytes(dt) == str(dt).encode()
-    # pickle / copy go through __reduce__ (lossless structural JSON).
-    assert pickle.loads(pickle.dumps(dt)) == dt
-    assert copy.deepcopy(dt) == dt
-    assert hash(dt) == hash(yggdryl.DataType.from_str(str(dt)))
+    assert s.is_nested()
+    assert [f.name for f in s.fields()] == ["a", "b"]
+    assert D.int32().fields() == []
+    assert D.list(yggdryl.Field("item", D.int32())).fields()[0].name == "item"
+
+
+def test_datatype_eq_hash_and_str():
+    D = yggdryl.DataType
+    assert D.int64() == D.int64()
+    assert D.int64() != D.int32()
+    assert hash(D.int64()) == hash(D.int64())
+    assert str(D.int32()) == "int32"
+    assert repr(D.float64()) == "DataType.float64"
+    # usable as a set/dict key.
+    assert {D.int32(), D.int32(), D.utf8()} == {D.int32(), D.utf8()}
 
 
 # ---- Field ----
 
-def test_field_surface_and_metadata():
-    f = yggdryl.Field("id", yggdryl.DataType.int(64), nullable=False).with_comment("pk")
+def test_field_surface_and_in_place_mutation():
+    f = yggdryl.Field("id", yggdryl.DataType.int64())
     assert f.name == "id"
-    assert not f.nullable
-    assert f.data_type == yggdryl.DataType.int(64)
-    assert f.comment == "pk"
-    assert str(f) == "id: int64 not null"
-    m = yggdryl.Field("id", yggdryl.DataType.int(64))
-    m.set_metadata("unit", "count")
-    assert m.get_metadata("unit") == "count"
-    assert m.metadata()["unit"] == "count"
-    assert m.remove_metadata("unit") == "count"
-    # mapping + json + pickle round-trips (metadata preserved).
-    assert yggdryl.Field.from_mapping(f.to_mapping()) == f
-    assert yggdryl.Field.from_json(f.to_json()) == f
-    assert pickle.loads(pickle.dumps(f)) == f
+    assert f.dtype == yggdryl.DataType.int64()
+    assert f.metadata is None
+    # name / dtype are mutable in place.
+    f.name = "ident"
+    f.dtype = yggdryl.DataType.int32()
+    assert f.name == "ident"
+    assert f.dtype == yggdryl.DataType.int32()
 
 
-def test_field_graph():
-    schema = yggdryl.Field("rec", yggdryl.DataType.struct_([
-        yggdryl.Field("Id", yggdryl.DataType.int(64), nullable=False),
-        yggdryl.Field("Name", yggdryl.DataType.varchar()),
-        yggdryl.Field("addr", yggdryl.DataType.struct_([
-            yggdryl.Field("City", yggdryl.DataType.varchar()),
-        ])),
-    ]), nullable=False)
-    assert schema.child_count == 3
-    assert schema.child("id").name == "Id"        # case-insensitive
-    assert schema.child("NAME").name == "Name"
-    assert schema.child_exact("id") is None        # case-sensitive
-    assert schema.child_index("name") == 1
-    assert schema.child_at(2).name == "addr"
-    # parent links after wiring.
-    linked = schema.with_linked_children()
-    addr = linked.child("addr")
-    assert addr.parent.name == "rec"
-    city = addr.child("city")
-    assert city.parent.name == "addr"
-    assert city.root().name == "rec"
-    # identity ignores parent.
-    assert linked == schema
+def test_field_reserved_metadata_accessors():
+    f = yggdryl.Field("x", yggdryl.DataType.int32())
+    assert f.comment is None
+    assert f.index_name is None
+    assert f.index_level is None
+    # setters mutate the metadata map in place.
+    f.comment = "a note"
+    f.index_name = "idx"
+    f.index_level = 7
+    assert f.comment == "a note"
+    assert f.index_name == "idx"
+    assert f.index_level == 7
+    # stored under the reserved byte keys.
+    assert f.metadata[b"comment"] == b"a note"
+    assert f.metadata[b"index_level"] == b"7"
+    # clearing a key with None removes it, leaving the others untouched.
+    f.comment = None
+    f.index_level = None
+    assert f.comment is None
+    assert f.index_level is None
+    assert f.index_name == "idx"
 
 
-def test_field_merge():
-    a = yggdryl.Field("x", yggdryl.DataType.int(8), nullable=False)
-    b = yggdryl.Field("x", yggdryl.DataType.int(32))
-    merged = a.merge(b, "promote")
-    assert merged.data_type == yggdryl.DataType.int(32)
-    assert merged.nullable
-    with pytest.raises(ValueError):
-        a.merge(yggdryl.Field("y", yggdryl.DataType.int(8)), "promote")
+def test_field_metadata_replace_eq_and_hash():
+    f = yggdryl.Field("id", yggdryl.DataType.int64())
+    f.metadata = {b"unit": b"count"}
+    assert f.metadata[b"unit"] == b"count"
+    # an empty map clears back to None.
+    f.metadata = {}
+    assert f.metadata is None
+    # equality + hashing cover name, dtype and metadata.
+    a = yggdryl.Field("id", yggdryl.DataType.int64())
+    b = yggdryl.Field("id", yggdryl.DataType.int64())
+    assert a == b
+    assert hash(a) == hash(b)
+    b.comment = "x"
+    assert a != b
 
 
 # ---- temporal ----
@@ -193,94 +163,7 @@ def test_timezone():
     assert pickle.loads(pickle.dumps(ny)) == ny
 
 
-def test_sql_and_hive_parsing():
-    assert yggdryl.DataType("bigint") == yggdryl.DataType.int(64)
-    assert yggdryl.DataType("VARCHAR(255)") == yggdryl.DataType.varchar()
-    assert yggdryl.DataType("double precision") == yggdryl.DataType.float(64)
-    assert yggdryl.DataType("decimal(10, 2)") == yggdryl.DataType.decimal(10, 2)
-    assert yggdryl.DataType("timestamp with time zone").timezone.name == "UTC"
-    # Hive angle brackets.
-    assert yggdryl.DataType("array<int>").is_list()
-    s = yggdryl.DataType("struct<a: int, b: string>")
-    assert [f.name for f in s.children()] == ["a", "b"]
-    # Field: colon / space separators + quoted names.
-    assert yggdryl.Field.from_str("qty: int64 not null").name == "qty"
-    assert yggdryl.Field.from_str("col struct<a: str>").name == "col"
-    assert yggdryl.Field.from_str('"my col": int64').name == "my col"
-    assert yggdryl.Field.from_str("`qty` int64").name == "qty"
-
-
-def test_schema_grammar_and_coercion_edge_cases():
-    D = yggdryl.DataType
-    # A raw POSIX timezone keeps its embedded commas through the timestamp grammar.
-    ts = D("timestamp[us, EST5EDT,M3.2.0,M11.1.0]")
-    assert ts.timezone.name == "EST5EDT,M3.2.0,M11.1.0"
-    assert D(str(ts)) == ts
-    # Differing interval units widen to month_day_nano (no calendar field dropped).
-    assert D("interval[year_month]").common_type(D("interval[day_time]")) == D(
-        "interval[month_day_nano]"
-    )
-    # A decimal that would exceed 76 digits widens to float64 instead of clamping.
-    assert D.decimal(76, 6).common_type(D.decimal(76, 10)) == D.float(64)
-    # Run-end encoding is transparent to casting / merging.
-    ree = D.run_end_encoded(D.int(32), D.int(8))
-    assert ree.can_cast_to(D.int(64))
-    assert ree.common_type(D.int(32)) == D.int(32)
-    # map rejects extra args; a stray bracket in a name is rejected.
-    with pytest.raises(ValueError):
-        D("map[utf8, int64, nope]")
-    with pytest.raises(ValueError):
-        D("struct[a]: int]")
-
-
-def test_fixed_numeric_json_bson_physical():
-    D = yggdryl.DataType
-    # Fixed integer widths: explicit constructors + the width builder agree.
-    assert D("int8") == D.int8() == D.int(8)
-    assert D("uint64") == D.uint64() == D.int(64, signed=False)
-    assert D.int() == D.int(64)  # default width
-    assert D.integer() == D.int(64)
-    # Arbitrary widths are no longer a type.
-    with pytest.raises(ValueError):
-        D("int24")
-    with pytest.raises(ValueError):
-        D("uint128")
-    # A non-standard width passed to the builder rounds up to the next fixed width.
-    assert D.int(24) == D.int32()
-    # Fixed float + decimal constructors.
-    assert D("float16") == D.float16() == D.float(16)
-    assert D("decimal256[76, 0]") == D.decimal256(76, 0)
-    # Native Rust storage type names (reused builtins / created f16,i256).
-    assert D.int32().name == "i32"
-    assert D.float16().name == "f16"
-    assert D.decimal128(10, 2).name == "i128"
-    assert D.decimal256(76, 0).name == "i256"
-    assert D.varchar().name is None
-    # Numeric interface: signed.
-    assert D.int(32, signed=False).signed is False
-    assert D.float(64).signed is True  # floats are always signed
-    assert D.decimal(10, 2).signed is True
-    assert D.varchar().signed is None
-    # Json / Bson logical types.
-    assert D("json") == D.json() and D("jsonb") == D.json()
-    assert D("bson") == D.bson()
-    assert str(D.json()) == "json"
-    assert D.json().is_json() and D.json().is_logical()
-    assert D.bson().is_bson()
-    assert D.json().category == "logical"
-    # Fixed vs variable size.
-    fixed = D("char[10]")
-    assert fixed == D.fixed_size_varchar(10)
-    assert fixed.is_fixed_size
-    assert str(fixed) == "char[10]"
-    assert D("varchar(255)") == D.varchar()  # still variable
-    assert not D.varchar().is_fixed_size
-    assert not D.binary().is_fixed_size
-    assert D.fixed_size_binary(16).is_fixed_size
-
-
 def test_temporal_math_empty_and_float():
-    D = yggdryl.DataType
     # Empty string decodes to the zero default.
     assert str(yggdryl.Date.from_str("")) == "1970-01-01"
     assert yggdryl.DateTime.from_str("").epoch_seconds == 0
@@ -302,9 +185,6 @@ def test_temporal_math_empty_and_float():
     # Temporal.from_datetime redirect.
     assert yggdryl.Date.from_datetime(dt) == yggdryl.Date(2024, 7, 1)
     assert yggdryl.Time.from_datetime(dt) == yggdryl.Time(12, 0, 0)
-    # Fixed-width float.
-    assert D("float16") == D.float16()
-    assert D.float() == D.float(64) and D.floating() == D.float(64)
 
 
 def test_temporal_conversions_and_parse():

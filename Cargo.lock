@@ -33,15 +33,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-schema"
-version = "59.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b3e786a0dd9103acd583a6fb486dbf2f3268466cc0bd571dcf34cef231c1f1"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
 name = "asn1-rs"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1969,10 +1960,6 @@ dependencies = [
 name = "yggdryl-schema"
 version = "0.1.1"
 dependencies = [
- "arrow-schema",
- "log",
- "serde",
- "serde_json",
  "yggdryl-core",
 ]
 

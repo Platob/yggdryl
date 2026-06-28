@@ -21,7 +21,7 @@ from `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
 
 The workspace is **three crates**: `yggdryl-core` (all the data types + byte IO +
 compression + the self-contained calendar/time module), `yggdryl-schema` (the
-Arrow-compatible `DataType` / `Field` schema layer) and `yggdryl-http` (the network
+`DataType` / `Field` schema layer) and `yggdryl-http` (the network
 client). `yggdryl-core` is **one file per type** — each concern is a module (or
 module directory) under
 `crates/yggdryl-core/src/`, with `lib.rs` as glue (a shared `log_event!` macro,
@@ -72,8 +72,8 @@ its concern wholly — do not scatter a concern's logic across modules:
   `from_datetime` (required) and a `from_temporal<T>` default that redirects through
   `to_datetime`. **All calendar/time logic lives here** — add a zone by appending one
   `(name, posix)` row to `ZONE_TABLE`.
-- `crates/yggdryl-schema/` — the Arrow-compatible schema layer. See its section
-  below. The `arrow-schema` SDK is a dependency of this crate only.
+- `crates/yggdryl-schema/` — the `DataType` / `Field` schema layer. See its section
+  below. It depends only on `yggdryl-core` (for the temporal `TimeUnit` / `Timezone`).
 - `crates/yggdryl-http/` — a blocking, `requests`-like HTTP client
   (`HttpSession` / `HttpRequest` / `HttpResponse`) whose bodies **stream over the
   `yggdryl-core` `Io` abstraction**. **All HTTP logic lives here** — the transport
@@ -197,68 +197,55 @@ with **no C compiler / cmake build dependency**, so the wheels / npm builds stay
 pure-Rust — keep `default-features = false` + `features = ["zlib-rs"]` on the `flate2`
 dep. When you add a codec, surface it in *both* bindings.
 
-### `yggdryl-schema` — Arrow-compatible `DataType` / `Field`
+### `yggdryl-schema` — the `DataType` / `Field` scaffold
 
 A compact schema layer built to back a future dataframe, **centred on two types**
 (`DataType` + `Field`) and split one-file-per-concern under
-`crates/yggdryl-schema/src/`:
+`crates/yggdryl-schema/src/`. It is a deliberately small **scaffold** — there is no
+canonical-string grammar, coercion lattice, intern pool, serde or Arrow conversion
+yet; add those back as their own concern-files when needed, mirroring the structure
+below.
 
-- `charset.rs` — the `Charset` of a string (`Utf8` default / `Utf16` / `Utf32` /
-  `Ascii` / `Latin1`).
-- `datatype/` (`mod` + `fixed.rs` + `primitive.rs` + `logical.rs` + `nested.rs` +
-  `numeric.rs` + `coerce.rs` + `intern.rs`) —
-  the central `DataType` enum, its `TypeCategory` (`Any` / `Primitive` / `Logical` /
-  `Nested`), the `SchemaError`, the canonical string **grammar** (`from_str` to parse;
-  the canonical render is **`Display`** only — `to_str` was removed, use
-  `.to_string()`, which also backs `to_bytes`/`to_mapping`) and the uniform physical
-  accessors (`byte_size` / `is_large` / `is_view` / `is_fixed_size` / `name` — `name`
-  returns the native Rust storage type — plus the `Numeric` trait's common `signed`
-  accessor). **The fixed-width numerics
-  are concrete, not parameterized** — `Int8`/`Int16`/`Int32`/`Int64` +
-  `UInt8`…`UInt64`, `Float16`/`Float32`/`Float64`, `Decimal32`/`Decimal64`/`Decimal128`/
-  `Decimal256{precision,scale}` (no arbitrary widths: `int24`/`float128` are **unknown**;
-  `int(bits,signed)`/`float(bits)` are width *builders* that round a non-standard width
-  up to the next fixed one, `integer()`/`floating()` default to `int64`/`float64`).
-  **`fixed.rs` is the home of the fixed types**: one Rust **struct per width**
-  (`Int8`…`Decimal256`, re-exported at the crate root), each **generic over its native
-  Rust storage type** and defaulting to the natural one — `Int64<i64>`, `Float16<f16>`,
-  `Decimal128<i128>`, `Decimal256<i256>`. The native type implements the small
-  **`Native`** trait (`const NAME` — reuse `i8`…`u64`/`f32`/`f64`/`i128`; the two Rust
-  lacks are **created here**: `f16` half-precision and `i256` 256-bit). Each struct owns
-  its own `bits`/`kind`/`head`/`native` and an `info() -> FixedInfo` snapshot (no
-  `FixedType` trait — the abstract surface lives on the struct, `DataType` delegates to
-  it). `DataType` **wraps** these structs in its variants (`Int32(fixed::Int32)`,
-  `Decimal128(fixed::Decimal128)`, …) and routes **every** numeric accessor through a
-  single dispatch point — `DataType::fixed() -> Option<FixedInfo>` — so each width's
-  behaviour lives on its own descriptor, never in a per-accessor match at the enum root
-  (`DataType::name()` returns the native storage name `"i64"`; add a width with one
-  `fixed_scalar!`/`fixed_decimal!` row + one enum variant). The other variants stay
-  parameterized:
-  `Varchar{charset,large,view,size}` (a `Some` `size`
-  is a fixed-length `char(n)`, rendered `char[…]`; `varchar(n)`'s length is a dropped
-  max-hint), `Binary{large,view,size}`, the **string-backed `Json` and binary-backed
-  `Bson`** logical types, the temporal types reuse the core `TimeUnit`/`Timezone`
-  (`Date{large}` / `Time{unit}` / `Timestamp{unit,tz}` / `Duration{unit}` /
-  `Interval{unit}`), and the nested `List{item,large,view,size}` / `Struct(Vec<Field>)`
-  / `Map{key,value,sorted}` / `Union{fields,mode}` / `RunEndEncoded` / `Dictionary`,
-  plus the `Any` wildcard. The category split lives across the sibling files
-  (`primitive`/`logical`/`nested` hold that category's checks + constructors, `numeric.rs`
-  the `Numeric` trait, `intern.rs` the intern pool); `coerce.rs` holds the
-  `MergeStrategy`, `can_cast_to`, `common_type` (the promotion lattice) and `merge`.
-  **All DataType logic lives here.**
-- `field.rs` — the `Field` graph node (name + `DataType` + nullable + metadata + an
-  optional, identity-excluded `parent`). Carries the metadata getters/setters
-  (`comment` is the named convenience), the case-insensitive / index child accessors,
-  `with_linked_children` / `root` graph wiring, and `merge`. A struct-typed `Field`
-  **is** a schema.
-- `arrow.rs` (feature `arrow`) — fast, near-total conversion to/from `arrow-schema`'s
-  `DataType` / `Field` / `Schema` (`to_arrow`/`from_arrow`, `Field::to_arrow_schema`
-  / `from_arrow_schema`). `Any` has no Arrow equivalent and errors; a non-UTF-8
-  `Charset` maps to UTF-8 (Arrow has no charset). **All Arrow conversion lives here.**
+- `datatype/` (`mod` + `id.rs` + `primitive.rs` + `logical.rs` + `nested.rs`) — the
+  central `DataType` enum and its three category types. `DataType` is exactly one of
+  `Primitive(PrimitiveType)` / `Logical(LogicalType)` / `Nested(NestedType)`, and every
+  type carries **two universal accessors**: a stable `type_id` (a `u8` `DataTypeId`) and
+  a `name` (the lowercase token from the id, e.g. `"int32"` / `"decimal"` / `"list"`;
+  note boolean's name is `"bool"`). `id.rs` owns the `DataTypeId` registry
+  (`#[repr(u8)]`, `Null = 0` … `RunEndEncoded = 28`) with its `as_u8` / `category` /
+  `name`, plus the `TypeCategory` enum (`Primitive` / `Logical` / `Nested`). Each
+  category file owns that category's type + its `type_id` / `name`:
+  - `primitive.rs` — `PrimitiveType` (parameter-less: `Null`, `Boolean`, `Int8`…`Int64`,
+    `UInt8`…`UInt64`, `Float16`/`Float32`/`Float64`, `Utf8`, `Binary`) with
+    `is_integer` / `is_float`. Widths are intrinsic to the variant, not parameters.
+  - `logical.rs` — `LogicalType` (`Decimal{precision:u8,scale:i8}`, `Date`,
+    `Time{unit}`, `Timestamp{unit,timezone}`, `Duration{unit}`, `Interval{unit}`,
+    `Json`, `Bson`) reusing the core `TimeUnit`/`Timezone`, plus the `IntervalUnit`
+    enum (`YearMonth`/`DayTime`/`MonthDayNano`, `from_name`/`name`).
+  - `nested.rs` — `NestedType` (`List(Box<Field>)`, `Struct(Vec<Field>)`,
+    `Map{key,value}`, `Union(Vec<Field>)`, `Dictionary{key,value}`,
+    `RunEndEncoded{run_ends,values}`) with `fields()` returning the immediate child
+    `Field`s (list/struct/union; the key/value containers report `&[]`).
+  `mod.rs` is the glue: the `DataType` enum, the universal `type_id`/`name`/`category`,
+  the category access (`as_primitive`/`as_logical`/`as_nested`, `is_*`), **all the
+  constructors** (`null`/`boolean`/`int8`…`uint64`/`float16`…/`utf8`/`binary`;
+  `decimal(p,s)`/`date`/`time`/`timestamp`/`duration`/`interval`/`json`/`bson`;
+  `list`/`struct_`/`map`/`union`/`dictionary`/`run_end_encoded`), `decimal_parts()` and
+  `fields()`. Add a type with one `DataTypeId` row + one category-enum variant + one
+  constructor. **All DataType logic lives here.**
+- `field.rs` — the `Field` node: a `name: String`, a `dtype: DataType` and an optional
+  `metadata: Option<Metadata>` (a `BTreeMap<Vec<u8>, Vec<u8>>` — ordered + hashable).
+  Carries raw byte-metadata CRUD (`get_metadata`/`set_metadata`/`remove_metadata`, the
+  map lazily created and cleared back to `None` when emptied) and three **reserved typed
+  accessors** that mutate the map in place: `comment` / `index_name` (UTF-8 strings) and
+  `index_level` (a `u16`, stored as decimal text), under the reserved byte keys
+  `b"comment"` / `b"index_name"` / `b"index_level"`. A struct-typed `Field` **is** a
+  schema.
 
-Features: `serde` (structural, lossless — DataType/Field derive, the enums derive),
-`json` (`to_json`/`from_json`, implies `serde`), `arrow`, `log`. The temporal types
-come from `yggdryl-core`. **Anything added here must be surfaced in both bindings.**
+Both types `derive(Debug, Clone, PartialEq, Eq, Hash)` — the `BTreeMap` metadata keeps
+`Field` hashable. There are **no cargo features**; the only dependency is `yggdryl-core`
+(for the temporal `TimeUnit`/`Timezone`). **Anything added here must be surfaced in both
+bindings.**
 
 ### `yggdryl-http` — a requests-like client streaming over `Io`
 

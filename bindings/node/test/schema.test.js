@@ -5,127 +5,100 @@ const { test } = require('node:test')
 const assert = require('node:assert')
 const { DataType, Field, Date: YDate, Time, DateTime, Duration, Timezone } = require('..')
 
-test('datatype parse and constructors', () => {
-  assert.ok(DataType.fromStr('int64').equals(DataType.int(64)))
-  assert.ok(DataType.int(8, false).equals(new DataType('uint8')))
-  assert.ok(new DataType('string').equals(DataType.varchar()))
-  assert.strictEqual(DataType.float(64).toString(), 'float64')
-  assert.strictEqual(DataType.decimal(10, 2).toString(), 'decimal128[10, 2]')
-  assert.strictEqual(DataType.timestamp('us', 'UTC').toString(), 'timestamp[us, UTC]')
-})
+// ---- DataType ----
 
-test('datatype accessors and categories', () => {
-  assert.strictEqual(DataType.int(32).category, 'primitive')
-  assert.strictEqual(DataType.date().category, 'logical')
-  assert.strictEqual(DataType.struct([]).category, 'nested')
-  assert.strictEqual(DataType.any().category, 'any')
-  assert.strictEqual(DataType.int(32).byteSize, 4)
-  assert.strictEqual(DataType.boolean().byteSize, null)
-  assert.strictEqual(DataType.varchar().byteSize, null)
-  assert.ok(DataType.varchar(undefined, true).isLarge)
-  assert.strictEqual(DataType.varchar('latin1').charset, 'latin1')
-  assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timeUnit, 'ns')
-  assert.strictEqual(DataType.timestamp('ns', 'Asia/Tokyo').timezone.name, 'Asia/Tokyo')
+test('datatype constructors, ids and categories', () => {
+  assert.strictEqual(DataType.int32().typeId, 4)
+  assert.strictEqual(DataType.int32().name, 'int32')
+  assert.strictEqual(DataType.int32().category, 'primitive')
+  assert.ok(DataType.int32().isPrimitive())
+  assert.strictEqual(DataType.boolean().name, 'bool')
+  assert.strictEqual(DataType.uint64().typeId, 9)
+  assert.strictEqual(DataType.decimal(10, 2).category, 'logical')
+  assert.ok(DataType.decimal(10, 2).isLogical())
   assert.deepStrictEqual(DataType.decimal(10, 2).decimalParts, [10, 2])
-  assert.strictEqual(DataType.int(32).decimalParts, null)
-  // precision / scale accessors + with_* builders (the width is preserved).
-  const dec = DataType.decimal(10, 2)
-  assert.strictEqual(dec.precision, 10)
-  assert.strictEqual(dec.scale, 2)
-  assert.ok(dec.withPrecision(20).equals(DataType.decimal(20, 2)))
-  assert.ok(dec.withScale(4).equals(DataType.decimal(10, 4)))
-  assert.strictEqual(DataType.int(32).precision, null)
-  assert.ok(DataType.varchar().withScale(3).equals(DataType.varchar()))
+  assert.strictEqual(DataType.utf8().decimalParts, null)
+  assert.strictEqual(DataType.struct([]).category, 'nested')
+  assert.ok(DataType.struct([]).isNested())
+  // the decimal scale defaults to 0.
+  assert.ok(DataType.decimal(10).equals(DataType.decimal(10, 0)))
 })
 
-test('datatype predicate parity', () => {
-  assert.ok(DataType.boolean().isBoolean())
-  assert.ok(DataType.dictionary(DataType.int(32), DataType.varchar()).isDictionary())
-  assert.ok(DataType.union([new Field('a', DataType.int(32))]).isUnion())
-})
-
-test('datatype predicates and children', () => {
-  assert.ok(DataType.int(32).isSignedInteger())
-  assert.ok(DataType.int(32, false).isUnsignedInteger())
-  assert.ok(DataType.float(32).isNumeric())
-  assert.ok(!DataType.decimal(1, 0).isNumeric())
-  assert.ok(DataType.varchar().isString())
+test('datatype temporal + nested children', () => {
+  const ts = DataType.timestamp('us', 'UTC')
+  assert.strictEqual(ts.name, 'timestamp')
+  assert.strictEqual(ts.category, 'logical')
+  assert.strictEqual(DataType.interval('month_day_nano').name, 'interval')
+  assert.throws(() => DataType.interval('nope'))
+  // nested types expose their child fields; scalars/logicals have none.
   const s = DataType.struct([
-    new Field('a', DataType.int(32)),
-    new Field('b', DataType.varchar()),
+    new Field('a', DataType.int32()),
+    new Field('b', DataType.utf8()),
   ])
-  assert.ok(s.isStruct())
-  assert.deepStrictEqual(s.children().map((f) => f.name), ['a', 'b'])
+  assert.ok(s.isNested())
+  assert.deepStrictEqual(s.fields().map((f) => f.name), ['a', 'b'])
+  assert.deepStrictEqual(DataType.int32().fields(), [])
+  assert.strictEqual(DataType.list(new Field('item', DataType.int32())).fields()[0].name, 'item')
 })
 
-test('datatype coercion and merge', () => {
-  assert.ok(DataType.int(8).commonType(DataType.int(32)).equals(DataType.int(32)))
-  assert.ok(DataType.int(32).commonType(DataType.float(32)).equals(DataType.float(64)))
-  assert.strictEqual(DataType.int(32).commonType(DataType.varchar()), null)
-  assert.ok(DataType.int(32).canCastTo(DataType.varchar()))
-  assert.ok(!DataType.int(32).canCastTo(DataType.binary()))
-  assert.ok(DataType.int(8).merge(DataType.int(64), 'promote').equals(DataType.int(64)))
-  assert.throws(() => DataType.int(8).merge(DataType.int(64), 'strict'))
-  assert.ok(DataType.int(8).merge(DataType.varchar(), 'permissive').equals(DataType.any()))
+test('datatype equals, hash and toString', () => {
+  assert.ok(DataType.int64().equals(DataType.int64()))
+  assert.ok(!DataType.int64().equals(DataType.int32()))
+  assert.strictEqual(DataType.int64().hashCode(), DataType.int64().hashCode())
+  assert.strictEqual(DataType.int32().toString(), 'int32')
 })
 
-test('datatype serialisation roundtrips', () => {
-  const dt = DataType.struct([
-    new Field('id', DataType.int(64), false),
-    new Field('name', DataType.varchar()),
-  ])
-  assert.ok(DataType.fromJSON(dt.toJSON()).equals(dt))
-  assert.ok(DataType.fromMapping(dt.toMapping()).equals(dt))
-  assert.ok(DataType.fromStr(dt.toString()).equals(dt))
-  assert.strictEqual(Buffer.from(dt.toBytes()).toString(), dt.toString())
-  assert.strictEqual(JSON.stringify(dt), JSON.stringify(dt.toJSON()))
-})
+// ---- Field ----
 
-test('field surface and metadata', () => {
-  const f = new Field('id', DataType.int(64), false).withComment('pk')
+test('field surface and in-place mutation', () => {
+  const f = new Field('id', DataType.int64())
   assert.strictEqual(f.name, 'id')
-  assert.ok(!f.nullable)
-  assert.ok(f.dataType.equals(DataType.int(64)))
-  assert.strictEqual(f.comment, 'pk')
-  assert.strictEqual(f.toString(), 'id: int64 not null')
-  const m = new Field('id', DataType.int(64))
-  m.setMetadata('unit', 'count')
-  assert.strictEqual(m.getMetadata('unit'), 'count')
-  assert.strictEqual(m.metadata.unit, 'count')
-  assert.strictEqual(m.removeMetadata('unit'), 'count')
-  assert.ok(Field.fromMapping(f.toMapping()).equals(f))
-  assert.ok(Field.fromJSON(f.toJSON()).equals(f))
-  // builders: withMetadata / withoutMetadata / copy.
-  const withMeta = new Field('id', DataType.int(64)).withMetadata({ a: '1', b: '2' })
-  assert.strictEqual(withMeta.getMetadata('a'), '1')
-  assert.deepStrictEqual(withMeta.withoutMetadata().metadata, {})
-  const copied = f.copy(undefined, undefined, true, undefined)
-  assert.ok(copied.nullable)
-  assert.strictEqual(copied.comment, 'pk')
-  // setParent (in place).
-  const child = new Field('c', DataType.int(8))
-  child.setParent(new Field('root', DataType.struct([])))
-  assert.strictEqual(child.parent.name, 'root')
+  assert.ok(f.dtype.equals(DataType.int64()))
+  // name / dtype are mutable in place.
+  f.name = 'ident'
+  f.dtype = DataType.int32()
+  assert.strictEqual(f.name, 'ident')
+  assert.ok(f.dtype.equals(DataType.int32()))
+  // raw byte metadata (Buffer keyed).
+  f.setMetadata(Buffer.from('unit'), Buffer.from('count'))
+  assert.strictEqual(f.getMetadata(Buffer.from('unit')).toString(), 'count')
+  assert.strictEqual(f.removeMetadata(Buffer.from('unit')).toString(), 'count')
+  assert.strictEqual(f.getMetadata(Buffer.from('unit')), null)
 })
 
-test('field graph', () => {
-  const schema = new Field('rec', DataType.struct([
-    new Field('Id', DataType.int(64), false),
-    new Field('Name', DataType.varchar()),
-    new Field('addr', DataType.struct([new Field('City', DataType.varchar())])),
-  ]), false)
-  assert.strictEqual(schema.childCount, 3)
-  assert.strictEqual(schema.child('id').name, 'Id') // case-insensitive
-  assert.strictEqual(schema.childExact('id'), null) // case-sensitive
-  assert.strictEqual(schema.childIndex('name'), 1)
-  assert.strictEqual(schema.childAt(2).name, 'addr')
-  const linked = schema.withLinkedChildren()
-  const addr = linked.child('addr')
-  assert.strictEqual(addr.parent.name, 'rec')
-  assert.strictEqual(addr.child('city').parent.name, 'addr')
-  assert.strictEqual(addr.child('city').root().name, 'rec')
-  assert.ok(linked.equals(schema)) // identity ignores parent
+test('field reserved metadata accessors', () => {
+  const f = new Field('x', DataType.int32())
+  assert.strictEqual(f.comment, null)
+  assert.strictEqual(f.indexName, null)
+  assert.strictEqual(f.indexLevel, null)
+  // setters mutate the metadata map in place.
+  f.comment = 'a note'
+  f.indexName = 'idx'
+  f.indexLevel = 7
+  assert.strictEqual(f.comment, 'a note')
+  assert.strictEqual(f.indexName, 'idx')
+  assert.strictEqual(f.indexLevel, 7)
+  // stored under the reserved byte keys.
+  assert.strictEqual(f.getMetadata(Buffer.from('comment')).toString(), 'a note')
+  assert.strictEqual(f.getMetadata(Buffer.from('index_level')).toString(), '7')
+  // clearing a key with null removes it, leaving the others untouched.
+  f.comment = null
+  f.indexLevel = null
+  assert.strictEqual(f.comment, null)
+  assert.strictEqual(f.indexLevel, null)
+  assert.strictEqual(f.indexName, 'idx')
 })
+
+test('field equals + hash', () => {
+  const a = new Field('id', DataType.int64())
+  const b = new Field('id', DataType.int64())
+  assert.ok(a.equals(b))
+  assert.strictEqual(a.hashCode(), b.hashCode())
+  b.comment = 'x'
+  assert.ok(!a.equals(b))
+})
+
+// ---- temporal ----
 
 test('date', () => {
   const d = new YDate(2024, 2, 29)
@@ -163,81 +136,7 @@ test('timezone dst', () => {
   assert.throws(() => new Timezone('Mars/Olympus'))
 })
 
-test('sql and hive parsing', () => {
-  assert.ok(DataType.fromStr('bigint').equals(DataType.int(64)))
-  assert.ok(DataType.fromStr('VARCHAR(255)').equals(DataType.varchar()))
-  assert.ok(DataType.fromStr('double precision').equals(DataType.float(64)))
-  assert.ok(DataType.fromStr('decimal(10, 2)').equals(DataType.decimal(10, 2)))
-  assert.strictEqual(DataType.fromStr('timestamp with time zone').timezone.name, 'UTC')
-  assert.ok(DataType.fromStr('array<int>').isList())
-  assert.deepStrictEqual(
-    DataType.fromStr('struct<a: int, b: string>').children().map((f) => f.name),
-    ['a', 'b'],
-  )
-  // Field colon / space separators + quoted names.
-  assert.strictEqual(Field.fromStr('qty: int64 not null').name, 'qty')
-  assert.strictEqual(Field.fromStr('col struct<a: str>').name, 'col')
-  assert.strictEqual(Field.fromStr('"my col": int64').name, 'my col')
-  assert.strictEqual(Field.fromStr('`qty` int64').name, 'qty')
-})
-
-test('schema grammar and coercion edge cases', () => {
-  // A raw POSIX timezone keeps its embedded commas through the timestamp grammar.
-  const ts = DataType.fromStr('timestamp[us, EST5EDT,M3.2.0,M11.1.0]')
-  assert.strictEqual(ts.timezone.name, 'EST5EDT,M3.2.0,M11.1.0')
-  assert.ok(DataType.fromStr(ts.toString()).equals(ts))
-  // Differing interval units widen to month_day_nano (no calendar field dropped).
-  const ym = DataType.fromStr('interval[year_month]')
-  const dtv = DataType.fromStr('interval[day_time]')
-  assert.ok(ym.commonType(dtv).equals(DataType.fromStr('interval[month_day_nano]')))
-  // map rejects extra args; stray brackets in a name are rejected.
-  assert.throws(() => DataType.fromStr('map[utf8, int64, nope]'))
-  assert.throws(() => DataType.fromStr('struct[a]: int]'))
-})
-
-test('fixed numeric widths + Numeric interface', () => {
-  // Explicit fixed constructors and the width builder agree.
-  assert.ok(DataType.fromStr('int8').equals(DataType.int8()))
-  assert.ok(DataType.uint64().equals(DataType.int(64, false)))
-  assert.ok(DataType.int().equals(DataType.int(64))) // default width
-  assert.ok(DataType.integer().equals(DataType.int(64)))
-  // Arbitrary widths are no longer a type.
-  assert.throws(() => DataType.fromStr('int24'))
-  assert.throws(() => DataType.fromStr('uint128'))
-  // A non-standard width rounds up to the next fixed width.
-  assert.ok(DataType.int(24).equals(DataType.int32()))
-  // Native Rust storage type names (reused builtins / created f16,i256).
-  assert.strictEqual(DataType.int32().name, 'i32')
-  assert.strictEqual(DataType.float16().name, 'f16')
-  assert.strictEqual(DataType.decimal128(10, 2).name, 'i128')
-  assert.strictEqual(DataType.decimal256(76, 0).name, 'i256')
-  assert.strictEqual(DataType.varchar().name, null)
-  // Numeric interface: signed.
-  assert.strictEqual(DataType.int(32, false).signed, false)
-  assert.strictEqual(DataType.float(64).signed, true) // floats are always signed
-  assert.strictEqual(DataType.decimal(10, 2).signed, true)
-  assert.strictEqual(DataType.varchar().signed, null)
-})
-
-test('json/bson logical + fixed size', () => {
-  assert.ok(DataType.fromStr('json').equals(DataType.json()))
-  assert.ok(DataType.fromStr('bson').equals(DataType.bson()))
-  assert.strictEqual(DataType.json().toString(), 'json')
-  assert.ok(DataType.json().isJson() && DataType.json().isLogical())
-  assert.ok(DataType.bson().isBson())
-  assert.strictEqual(DataType.json().category, 'logical')
-  // fixed vs variable size.
-  const fixed = DataType.fromStr('char[10]')
-  assert.ok(fixed.equals(DataType.fixedSizeVarchar(10)))
-  assert.ok(fixed.isFixedSize)
-  assert.strictEqual(fixed.toString(), 'char[10]')
-  assert.ok(DataType.fromStr('varchar(255)').equals(DataType.varchar())) // still variable
-  assert.ok(!DataType.varchar().isFixedSize)
-  assert.ok(!DataType.binary().isFixedSize)
-  assert.ok(DataType.fixedSizeBinary(16).isFixedSize)
-})
-
-test('temporal math, empty default, from_datetime, float generic', () => {
+test('temporal math, empty default, from_datetime', () => {
   // Empty string decodes to the zero default.
   assert.strictEqual(YDate.fromStr('').toString(), '1970-01-01')
   assert.strictEqual(DateTime.fromStr('').epochSeconds, 0)
@@ -260,10 +159,6 @@ test('temporal math, empty default, from_datetime, float generic', () => {
   // Temporal.fromDatetime redirect.
   assert.ok(YDate.fromDatetime(dt).equals(new YDate(2024, 7, 1)))
   assert.ok(Time.fromDatetime(dt).equals(new Time(12, 0, 0)))
-  // Fixed-width float.
-  assert.ok(DataType.fromStr('float16').equals(DataType.float16()))
-  assert.ok(DataType.float().equals(DataType.float(64)))
-  assert.ok(DataType.floating().equals(DataType.float(64)))
 })
 
 test('temporal conversions and parse', () => {

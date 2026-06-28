@@ -37,7 +37,6 @@ use yggdryl_core::VersionError;
 use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
 use yggdryl_core::{IoError, TimeError, TimeUnit, Whence};
 use yggdryl_http::HttpError;
-use yggdryl_schema::SchemaError;
 
 use crate::bytesio::BytesIO;
 use crate::compression::Compression;
@@ -85,10 +84,6 @@ pub(crate) fn http_err(err: HttpError) -> PyErr {
 }
 
 pub(crate) fn time_err(err: TimeError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn schema_err(err: SchemaError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
