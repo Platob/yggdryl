@@ -523,7 +523,10 @@ physical (the epoch count), while the Rust core presents the typed `DateTime` / 
 `cast(dtype)` converts a column's values (Arrow's cast kernel — including lossy /
 narrowing casts, which yield null on overflow). A **struct → struct** cast matches
 children by name, casts each, **fills missing** target columns (null if nullable, else
-the type default) and drops extras. `dtype` is a `DataType` or a type string.
+the type default) and drops extras. `dtype` is a `DataType` **or a type string** — the
+bindings accept either, and Rust adds `cast_str(&str)` next to the canonical
+`cast(&DataType)`; both spellings parse through `DataType::from_str` and run the one
+`cast` implementation.
 
 The wildcard `any` and the `null` type are **fast cast** for any column, without invoking
 the Arrow kernel: casting **to `any`** is a no-op (every column already satisfies the
@@ -572,9 +575,10 @@ column, and a `null` column casts back to any type as an all-null fill.
     use yggdryl_serie::arrow_array::{ArrayRef, Int32Array};
     use std::sync::Arc;
 
-    // primitive cast (lossy narrowing yields null on overflow)
+    // primitive cast (lossy narrowing yields null on overflow); by DataType or by string
     let ints = from_array("n", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef)?;
     assert_eq!(ints.cast(&DataType::float(64))?.value_at(0), Scalar::Float(1.0));
+    assert_eq!(ints.cast_str("float64")?.value_at(0), Scalar::Float(1.0)); // string convenience
 
     // fast casts: to `Any` (no-op) and to / from `Null`
     assert_eq!(ints.cast(&DataType::Any)?.data_type(), &DataType::int(32, true));

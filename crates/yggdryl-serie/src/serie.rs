@@ -241,6 +241,21 @@ pub trait Serie: fmt::Debug + Send + Sync {
         )
     }
 
+    /// Casts the column to the type named by `dtype` — the **string convenience** over
+    /// [`cast`](Serie::cast). It parses the canonical type string (e.g. `"int64"`,
+    /// `"list[item: int32]"`, `"any"`, `"null"`) with [`DataType::from_str`] and delegates
+    /// to the one canonical [`cast`](Serie::cast), so casting by string and by
+    /// [`DataType`] share a single implementation.
+    ///
+    /// ```
+    /// use yggdryl_serie::{Int32Serie, Scalar, Serie};
+    /// let s = Int32Serie::from_values("n", vec![Some(1), Some(2)]);
+    /// assert_eq!(s.cast_str("float64").unwrap().value_at(0), Scalar::Float(1.0));
+    /// ```
+    fn cast_str(&self, dtype: &str) -> SerieResult<SerieRef> {
+        self.cast(&DataType::from_str(dtype)?)
+    }
+
     /// Casts to `field`'s type, then applies `field` (its name, nullability and
     /// metadata) to the result — the [`cast`](Serie::cast) variant that re-fields the
     /// column in one step.

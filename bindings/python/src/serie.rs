@@ -421,8 +421,14 @@ impl Serie {
     /// Cast the column to `dtype` (a :class:`DataType` or type string), converting the
     /// values (lossy / narrowing casts yield null on overflow).
     fn cast(&self, dtype: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let dt = resolve_dtype(dtype)?;
-        self.inner.cast(&dt).map(wrap).map_err(serie_err)
+        // A `DataType` casts directly; a type string leverages the core's `cast_str`
+        // (one `DataType::from_str` path), so both spellings share one implementation.
+        if let Ok(dt) = dtype.extract::<DataType>() {
+            self.inner.cast(&dt.inner).map(wrap).map_err(serie_err)
+        } else {
+            let text: String = dtype.extract()?;
+            self.inner.cast_str(&text).map(wrap).map_err(serie_err)
+        }
     }
 
     /// A **dictionary-encoded** (categorical) view of the column for repeated values.

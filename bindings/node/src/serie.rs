@@ -505,8 +505,12 @@ impl Serie {
     /// (lossy / narrowing casts yield null on overflow).
     #[napi]
     pub fn cast(&self, dtype: Either<&DataType, String>) -> Result<Self> {
-        let dt = resolve_dtype(dtype)?;
-        self.inner.cast(&dt).map(wrap).map_err(err)
+        // A `DataType` casts directly; a type string leverages the core's `cast_str`
+        // (one `DataType::from_str` path), so both spellings share one implementation.
+        match dtype {
+            Either::A(dt) => self.inner.cast(&dt.inner).map(wrap).map_err(err),
+            Either::B(text) => self.inner.cast_str(&text).map(wrap).map_err(err),
+        }
     }
 
     /// A dictionary-encoded (categorical) view of the column for repeated values.

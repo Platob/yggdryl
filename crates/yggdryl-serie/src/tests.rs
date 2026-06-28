@@ -1218,6 +1218,29 @@ fn cast_to_any_and_null_fast_paths() {
 }
 
 #[test]
+fn cast_str_parses_and_delegates() {
+    let s = Int32Serie::from_values("n", vec![Some(1), Some(2), None]);
+
+    // a type string parses via DataType::from_str and delegates to the canonical cast
+    let wide = s.cast_str("int64").unwrap();
+    assert_eq!(wide.data_type(), &DataType::int(64, true));
+    assert_eq!(wide.value_at(0), Scalar::Int(1));
+
+    // the fast `any` / `null` types work by string too
+    assert_eq!(
+        s.cast_str("any").unwrap().data_type(),
+        &DataType::int(32, true)
+    );
+    assert_eq!(s.cast_str("null").unwrap().data_type(), &DataType::Null);
+
+    // a nested type string round-trips through the same path
+    assert!(s.cast_str("list[item: int32]").is_ok());
+
+    // a malformed type string surfaces the schema parse error
+    assert!(s.cast_str("not-a-type").is_err());
+}
+
+#[test]
 fn struct_from_children_is_lazy_until_materialized() {
     // a lazy child (a computed range) keeps the struct lazy until materialize
     let id: SerieRef = Arc::new(UInt64RangeSerie::new("id", 0, 1, 3));
