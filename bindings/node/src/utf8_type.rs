@@ -1,10 +1,11 @@
-//! Node wrapper for the string [`yggdryl_core::Utf8Type`] data type.
+//! Node wrapper for the string [`yggdryl_dtype::Utf8Type`] data type.
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use yggdryl_core::{BinaryBased, DataType, Jsonable, Utf8Type as CoreUtf8Type};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::{BinaryBased, DataType, Utf8Type as CoreUtf8Type};
 
 use crate::to_napi_err;
 

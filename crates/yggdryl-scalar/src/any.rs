@@ -1,13 +1,15 @@
 //! [`AnyScalar`] — the hashable, serializable carrier for any scalar value.
 
-use crate::datatype::{AnyType, DataType};
-use crate::error::ScalarError;
-use crate::scalar::{Binary, Scalar, Utf8};
+use yggdryl_core::ScalarError;
+use yggdryl_dtype::{AnyType, DataType};
+
+use crate::{Binary, Scalar, Utf8};
 
 /// A concrete scalar value of any type — what [`Scalar::cast`] returns.
 ///
 /// ```
-/// use yggdryl_core::{AnyScalar, Binary, BinaryType, Scalar, Utf8Type};
+/// use yggdryl_dtype::{BinaryType, Utf8Type};
+/// use yggdryl_scalar::{AnyScalar, Binary, Scalar};
 ///
 /// let bytes = Binary::from_bytes(b"hi");
 /// let cast = bytes.cast(&Utf8Type::new()).unwrap();
@@ -42,7 +44,7 @@ impl AnyScalar {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for AnyScalar {}
+impl yggdryl_core::Jsonable for AnyScalar {}
 
 impl From<Binary> for AnyScalar {
     fn from(inner: Binary) -> Self {

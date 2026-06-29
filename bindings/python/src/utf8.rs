@@ -1,10 +1,12 @@
-//! Python wrapper for the in-memory string value [`yggdryl_core::Utf8`].
+//! Python wrapper for the in-memory string value [`yggdryl_scalar::Utf8`].
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, Jsonable, Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::{BinaryBased, Utf8Type as CoreUtf8Type};
+use yggdryl_scalar::{Scalar, Utf8 as CoreUtf8};
 
 use crate::{anyscalar_to_py, anytype_to_py, hash_of, py_bool, py_to_anytype, value_err, Utf8Type};
 

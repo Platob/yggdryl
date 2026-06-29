@@ -14,7 +14,8 @@ mod utf8_type;
 mod whence;
 
 use napi::Either;
-use yggdryl_core::{AnyScalar, AnyType, DataType};
+use yggdryl_dtype::{AnyType, DataType};
+use yggdryl_scalar::AnyScalar;
 
 pub(crate) use binary::Binary;
 pub(crate) use binary_type::BinaryType;

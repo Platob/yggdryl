@@ -1,17 +1,29 @@
-//! Arrow-centric data types.
+//! # yggdryl-dtype
+//!
+//! Arrow-centric data types: the source of truth for the yggdryl type system.
 //!
 //! The type system mirrors Apache Arrow's: every type is one of three
 //! [categories](TypeCategory) — *primitive*, *nested* or *logical* — exposed
 //! through the base [`DataType`] trait and the marker sub-traits
 //! [`PrimitiveType`], [`NestedType`] and [`LogicalType`]. Concrete type
 //! descriptors live in their own module ([`BinaryType`], [`Utf8Type`], …) and the
-//! [`AnyType`] enum is the hashable, serializable carrier a [`Field`](crate::Field)
-//! stores. The matching in-memory *values* are the separate scalars
-//! [`Binary`](crate::Binary) and [`Utf8`](crate::Utf8).
+//! [`AnyType`] enum is the hashable, serializable carrier a field stores. The
+//! matching in-memory *values* are the `Binary` and `Utf8` scalars in
+//! `yggdryl-scalar`.
 //!
 //! This crate deliberately does **not** depend on `arrow-schema`; the conversion
 //! to Arrow's own `DataType` belongs to `yggdryl-schema`. Here the types only
 //! match Arrow's taxonomy and semantics.
+
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise. Shared by every submodule via `crate::log_event!`.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+pub(crate) use log_event;
 
 mod binary;
 mod string;
@@ -22,14 +34,14 @@ pub use string::Utf8Type;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use crate::error::TypeError;
+use yggdryl_core::TypeError;
 
 /// The three top-level categories an Arrow data type falls into.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TypeCategory {
     /// Fixed-width or variable-length binary-backed values (ints, floats,
-    /// [`Binary`], [`Utf8`], …).
+    /// `Binary`, `Utf8`, …).
     Primitive,
     /// Types built from child fields (`List`, `Struct`, `Map`, …).
     Nested,
@@ -96,12 +108,12 @@ pub trait BinaryBased: PrimitiveType {
 
 /// A concrete, hashable, serializable Arrow data type.
 ///
-/// `AnyType` is the carrier a [`Field`](crate::Field) stores and what every
-/// concrete type converts into via [`DataType::to_any`]. It serializes to its
-/// canonical string (`"binary"`, `"large_string"`, …).
+/// `AnyType` is the carrier a field stores and what every concrete type converts
+/// into via [`DataType::to_any`]. It serializes to its canonical string
+/// (`"binary"`, `"large_string"`, …).
 ///
 /// ```
-/// use yggdryl_core::{AnyType, BinaryType, DataType};
+/// use yggdryl_dtype::{AnyType, BinaryType, DataType};
 ///
 /// let ty = AnyType::from_str("large_binary").unwrap();
 /// assert_eq!(ty.to_str(), "large_binary");
@@ -148,7 +160,7 @@ impl AnyType {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for AnyType {}
+impl yggdryl_core::Jsonable for AnyType {}
 
 impl DataType for AnyType {
     fn type_name(&self) -> &'static str {

@@ -1,3 +1,5 @@
+//! # yggdryl-field
+//!
 //! Arrow fields — a named, nullable, typed column with optional metadata.
 //!
 //! [`Field`] is generic over its data type `T`, so a `Field<BinaryType>` carries
@@ -7,16 +9,27 @@
 //! mirror the type-side categories ([`PrimitiveType`], [`NestedType`],
 //! [`LogicalType`]) and are implemented automatically from `T`'s category.
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise. Shared by every submodule via `crate::log_event!`.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+pub(crate) use log_event;
+
 use std::collections::BTreeMap;
 
-use crate::datatype::{AnyType, DataType, LogicalType, NestedType, PrimitiveType};
-use crate::error::FieldError;
-use crate::mapping::{decode_pairs, encode_pairs};
+use yggdryl_core::mapping::{decode_pairs, encode_pairs};
+use yggdryl_core::FieldError;
+use yggdryl_dtype::{AnyType, DataType, LogicalType, NestedType, PrimitiveType};
 
 /// A named, nullable, typed field with string→string metadata.
 ///
 /// ```
-/// use yggdryl_core::{AnyField, BinaryType, DataType, Field};
+/// use yggdryl_dtype::{BinaryType, DataType};
+/// use yggdryl_field::{AnyField, Field};
 ///
 /// let field = Field::new("payload", BinaryType::new(), true);
 /// assert_eq!(field.name(), "payload");
@@ -194,7 +207,7 @@ impl AnyField {
 /// JSON (`{"name", "type", "nullable", "metadata"}`) for any field whose data type
 /// is itself serializable.
 #[cfg(feature = "json")]
-impl<T> crate::Jsonable for Field<T> where T: serde::Serialize + serde::de::DeserializeOwned {}
+impl<T> yggdryl_core::Jsonable for Field<T> where T: serde::Serialize + serde::de::DeserializeOwned {}
 
 /// A field whose data type is a [`PrimitiveType`].
 pub trait PrimitiveField {}

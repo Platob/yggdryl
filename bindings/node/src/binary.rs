@@ -1,11 +1,13 @@
-//! Node wrapper for the in-memory binary buffer [`yggdryl_core::Binary`].
+//! Node wrapper for the in-memory binary buffer [`yggdryl_scalar::Binary`].
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::{Binary as CoreBinary, BinaryType as CoreBinaryType, Io, Jsonable, Scalar};
+use yggdryl_core::{Io, Jsonable};
+use yggdryl_dtype::BinaryType as CoreBinaryType;
+use yggdryl_scalar::{Binary as CoreBinary, Scalar};
 
 use crate::{
     anyscalar_to_either, anytype_from_either, to_napi_err, BinaryType, Utf8, Utf8Type, Whence,
@@ -173,7 +175,9 @@ impl Binary {
     pub fn pread(&self, offset: f64, length: f64) -> napi::Result<Binary> {
         self.inner
             .pread(offset as u64, length as usize)
-            .map(|inner| Binary { inner })
+            .map(|buf| Binary {
+                inner: CoreBinary::from_buffer(buf),
+            })
             .map_err(to_napi_err)
     }
 
@@ -182,7 +186,9 @@ impl Binary {
     pub fn read(&mut self, length: f64) -> napi::Result<Binary> {
         self.inner
             .read(length as usize)
-            .map(|inner| Binary { inner })
+            .map(|buf| Binary {
+                inner: CoreBinary::from_buffer(buf),
+            })
             .map_err(to_napi_err)
     }
 

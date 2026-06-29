@@ -1,11 +1,12 @@
-//! Node wrapper for [`yggdryl_core::AnyField`].
+//! Node wrapper for [`yggdryl_field::AnyField`].
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::{AnyField, Jsonable};
+use yggdryl_core::Jsonable;
+use yggdryl_field::AnyField;
 
 use crate::{anytype_from_either, anytype_to_either, to_napi_err, BinaryType, Utf8Type};
 

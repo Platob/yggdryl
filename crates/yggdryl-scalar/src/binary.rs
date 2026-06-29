@@ -1,19 +1,19 @@
 //! The [`Binary`] scalar — a growable, in-memory binary buffer that implements
-//! [`Io`](crate::Io).
+//! [`Io`](yggdryl_core::Io).
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::buffer::Buffer;
-use crate::datatype::{AnyType, BinaryType, DataType};
-use crate::error::{IoError, ScalarError};
-use crate::io::{Io, Whence};
-use crate::mapping::{decode_hex, encode_hex};
-use crate::scalar::{AnyScalar, Scalar, Utf8};
+use yggdryl_core::mapping::{decode_hex, encode_hex};
+use yggdryl_core::{Buffer, Io, IoError, ScalarError, Whence};
+use yggdryl_dtype::{AnyType, BinaryType, DataType};
 
-/// A growable, in-memory binary value that doubles as an [`Io`](crate::Io) handle.
+use crate::{AnyScalar, Scalar, Utf8};
+
+/// A growable, in-memory binary value that doubles as an [`Io`](yggdryl_core::Io)
+/// handle.
 ///
 /// `Binary` owns a reference-counted byte store, so cloning is O(1) and reads hand
 /// back zero-copy `Binary` views that share the allocation. Writes are
@@ -23,7 +23,8 @@ use crate::scalar::{AnyScalar, Scalar, Utf8};
 /// capacity are not part of a value's identity.
 ///
 /// ```
-/// use yggdryl_core::{Binary, Io, Whence};
+/// use yggdryl_core::{Io, Whence};
+/// use yggdryl_scalar::Binary;
 ///
 /// let mut buf = Binary::new();
 /// buf.write(b"hello ").unwrap();
@@ -232,7 +233,7 @@ impl Scalar for Binary {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for Binary {}
+impl yggdryl_core::Jsonable for Binary {}
 
 impl Io for Binary {
     fn size(&self) -> u64 {
@@ -271,16 +272,11 @@ impl Io for Binary {
         Ok(n)
     }
 
-    fn pread(&self, offset: u64, len: usize) -> Result<Binary, IoError> {
+    fn pread(&self, offset: u64, len: usize) -> Result<Buffer, IoError> {
         let off = self.read_offset(offset)?;
         let n = len.min(self.size - off);
-        Ok(Self {
-            data_type: self.data_type,
-            store: Arc::clone(&self.store),
-            start: self.start + off,
-            size: n,
-            pos: 0,
-        })
+        let from = self.start + off;
+        Ok(Buffer::from_shared(Arc::clone(&self.store), from, from + n))
     }
 
     fn pwrite(&mut self, offset: u64, src: &[u8]) -> Result<usize, IoError> {

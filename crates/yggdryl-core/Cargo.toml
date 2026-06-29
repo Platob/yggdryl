@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Consolidated foundations for yggdryl: parsing, percent-encoding, Version, MIME/media types, URI/URL, byte-IO and streamed compression"
+description = "Dependency-light foundations for yggdryl: the zero-copy Buffer, the Io byte abstraction, Charset encodings, the Jsonable JSON/BSON trait, and the shared error and mapping types"
 keywords.workspace = true
 readme = "README.md"
 

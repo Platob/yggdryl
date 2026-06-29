@@ -1992,6 +1992,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "yggdryl-dtype"
+version = "0.1.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-core",
+]
+
+[[package]]
+name = "yggdryl-field"
+version = "0.1.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-core",
+ "yggdryl-dtype",
+]
+
+[[package]]
 name = "yggdryl-http"
 version = "0.1.1"
 dependencies = [
@@ -2024,7 +2045,10 @@ dependencies = [
  "napi-derive",
  "serde_json",
  "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
 ]
 
@@ -2035,8 +2059,23 @@ dependencies = [
  "pyo3",
  "serde_json",
  "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
  "yggdryl-http",
+ "yggdryl-scalar",
  "yggdryl-schema",
+]
+
+[[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
 ]
 
 [[package]]

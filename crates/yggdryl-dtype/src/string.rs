@@ -2,19 +2,19 @@
 
 use std::collections::BTreeMap;
 
-use crate::datatype::{AnyType, BinaryBased, DataType, PrimitiveType, TypeCategory};
-use crate::error::TypeError;
+use yggdryl_core::TypeError;
+
+use crate::{AnyType, BinaryBased, DataType, PrimitiveType, TypeCategory};
 
 /// Arrow's variable-length UTF-8 string type, in both its 32-bit (`string`) and
 /// 64-bit (`large_string`) offset flavours.
 ///
-/// This is the *type* descriptor; the in-memory string *value* is
-/// [`Utf8`](crate::Utf8). Named with the `Type` suffix to mirror
-/// [`BinaryType`](crate::BinaryType); `from_str` also accepts the aliases
-/// `"utf8"` / `"large_utf8"`.
+/// This is the *type* descriptor; the in-memory string *value* is the `Utf8`
+/// scalar in `yggdryl-scalar`. Named with the `Type` suffix to mirror
+/// [`BinaryType`]; `from_str` also accepts the aliases `"utf8"` / `"large_utf8"`.
 ///
 /// ```
-/// use yggdryl_core::{BinaryBased, DataType, Utf8Type};
+/// use yggdryl_dtype::{BinaryBased, DataType, Utf8Type};
 ///
 /// let s = Utf8Type::new();
 /// assert_eq!(s.type_name(), "string");
@@ -67,7 +67,7 @@ impl Utf8Type {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for Utf8Type {}
+impl yggdryl_core::Jsonable for Utf8Type {}
 
 impl DataType for Utf8Type {
     fn type_name(&self) -> &'static str {

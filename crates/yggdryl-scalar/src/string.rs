@@ -2,10 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::buffer::Buffer;
-use crate::datatype::{AnyType, DataType, Utf8Type};
-use crate::error::ScalarError;
-use crate::scalar::{AnyScalar, Binary, Scalar};
+use yggdryl_core::{Buffer, ScalarError};
+use yggdryl_dtype::{AnyType, DataType, Utf8Type};
+
+use crate::{AnyScalar, Binary, Scalar};
 
 /// An in-memory UTF-8 string value.
 ///
@@ -16,7 +16,7 @@ use crate::scalar::{AnyScalar, Binary, Scalar};
 /// break the UTF-8 invariant); [`cast`](Scalar::cast) to a `Binary` for IO.
 ///
 /// ```
-/// use yggdryl_core::{Scalar, Utf8};
+/// use yggdryl_scalar::{Scalar, Utf8};
 ///
 /// let s = Utf8::new("yggdryl");
 /// assert_eq!(s.as_str(), "yggdryl");
@@ -170,7 +170,7 @@ impl Scalar for Utf8 {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for Utf8 {}
+impl yggdryl_core::Jsonable for Utf8 {}
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Utf8 {

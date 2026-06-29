@@ -1,57 +1,10 @@
-//! Cross-cutting tests for the data-type, scalar/IO and field layers.
+//! Tests for the scalar value layer (including its cross-cutting JSON surface).
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use crate::{
-    AnyField, AnyScalar, AnyType, Binary, BinaryBased, BinaryType, DataType, Field, Io,
-    PrimitiveField, Scalar, TypeCategory, TypeError, Utf8, Utf8Type, Whence,
-};
-
-#[test]
-fn datatype_string_round_trips() {
-    for (name, expected) in [
-        ("binary", AnyType::Binary(BinaryType::new())),
-        ("large_binary", AnyType::Binary(BinaryType::large())),
-        ("string", AnyType::Utf8(Utf8Type::new())),
-        ("large_string", AnyType::Utf8(Utf8Type::large())),
-    ] {
-        let parsed = AnyType::from_str(name).unwrap();
-        assert_eq!(parsed, expected);
-        assert_eq!(parsed.to_str(), name);
-        assert_eq!(AnyType::from_bytes(&parsed.to_bytes()).unwrap(), parsed);
-        assert_eq!(AnyType::from_mapping(&parsed.to_mapping()).unwrap(), parsed);
-    }
-}
-
-#[test]
-fn datatype_aliases_and_errors() {
-    assert_eq!(Utf8Type::from_str("utf8").unwrap(), Utf8Type::new());
-    assert_eq!(Utf8Type::from_str("large_utf8").unwrap(), Utf8Type::large());
-    assert!(matches!(
-        AnyType::from_str("flob"),
-        Err(TypeError::UnknownType(_))
-    ));
-}
-
-#[test]
-fn datatype_categories_and_flags() {
-    assert_eq!(BinaryType::new().category(), TypeCategory::Primitive);
-    assert!(!BinaryType::new().is_utf8());
-    assert!(BinaryType::large().is_large());
-    assert!(Utf8Type::new().is_utf8());
-    assert!(!Utf8Type::new().is_large());
-}
-
-#[test]
-fn datatype_is_hashable() {
-    let mut counts: HashMap<AnyType, u32> = HashMap::new();
-    *counts.entry(BinaryType::new().to_any()).or_default() += 1;
-    *counts.entry(BinaryType::new().to_any()).or_default() += 1;
-    *counts.entry(Utf8Type::new().to_any()).or_default() += 1;
-    assert_eq!(counts[&AnyType::Binary(BinaryType::new())], 2);
-    assert_eq!(counts[&AnyType::Utf8(Utf8Type::new())], 1);
-}
+use yggdryl_core::{Io, Whence};
+use yggdryl_dtype::{AnyType, BinaryType, Utf8Type};
+use yggdryl_scalar::{AnyScalar, Binary, Scalar, Utf8};
 
 #[test]
 fn binary_value_and_io() {
@@ -67,7 +20,7 @@ fn binary_value_and_io() {
     io.write(b"world").unwrap();
     assert_eq!(io.size(), 11);
     io.seek(0, Whence::Start).unwrap();
-    assert_eq!(io.read(5).unwrap().as_slice(), b"hello");
+    assert_eq!(io.read(5).unwrap().as_slice(), b"hello"); // zero-copy Buffer view
     assert_eq!(io.pread(6, 5).unwrap().as_slice(), b"world");
     assert!(io.seek(-100, Whence::Start).is_err());
 }
@@ -127,48 +80,9 @@ fn scalar_cast_and_set_data_type() {
         .is_ok());
 }
 
-#[test]
-fn field_round_trips_with_metadata() {
-    let mut metadata = BTreeMap::new();
-    metadata.insert("unit".to_string(), "bytes".to_string());
-    let field = Field::new("payload", BinaryType::large().to_any(), false).with_metadata(metadata);
-
-    let mapping = field.to_mapping();
-    assert_eq!(mapping["type"], "large_binary");
-    assert_eq!(AnyField::from_mapping(&mapping).unwrap(), field);
-    assert_eq!(AnyField::from_bytes(&field.to_bytes()).unwrap(), field);
-}
-
-#[test]
-fn field_nullable_defaults_to_true() {
-    let mut mapping = BTreeMap::new();
-    mapping.insert("name".to_string(), "id".to_string());
-    mapping.insert("type".to_string(), "string".to_string());
-    assert!(AnyField::from_mapping(&mapping).unwrap().is_nullable());
-}
-
-#[test]
-fn typed_field_is_a_primitive_field() {
-    fn assert_primitive<F: PrimitiveField>(_: &F) {}
-    let field = Field::new("x", Utf8Type::new(), false);
-    assert_primitive(&field); // compile-time proof Field<Utf8Type>: PrimitiveField
-    assert_eq!(field.to_any().data_type().to_str(), "string");
-}
-
 #[cfg(feature = "serde")]
 #[test]
-fn serde_round_trips_through_json() {
-    let ty = AnyType::Utf8(Utf8Type::large());
-    assert_eq!(serde_json::to_string(&ty).unwrap(), "\"large_string\"");
-    assert_eq!(
-        serde_json::from_str::<AnyType>("\"large_string\"").unwrap(),
-        ty
-    );
-
-    let field = Field::new("c", BinaryType::new().to_any(), true);
-    let json = serde_json::to_string(&field).unwrap();
-    assert_eq!(serde_json::from_str::<AnyField>(&json).unwrap(), field);
-
+fn scalar_serde_round_trips_through_json() {
     let buf = Binary::from_bytes(b"hi");
     assert_eq!(
         serde_json::from_str::<Binary>(&serde_json::to_string(&buf).unwrap()).unwrap(),
@@ -181,17 +95,17 @@ fn serde_round_trips_through_json() {
     assert_eq!(serde_json::from_str::<Utf8>(&json).unwrap(), text);
 }
 
+// The JSON form is cross-cutting: it ties the scalar values, the data types and a
+// field together, so it lives here with `yggdryl-field` as a dev-dependency.
 #[cfg(feature = "json")]
 #[test]
 fn json_helpers_round_trip() {
-    use crate::Jsonable;
-
-    let ty = AnyType::Binary(BinaryType::large());
-    assert_eq!(AnyType::from_json(&ty.to_json()).unwrap(), ty);
-    assert_eq!(AnyType::from_bson(&ty.to_bson()).unwrap(), ty); // bytes round-trip too
+    use yggdryl_core::Jsonable;
+    use yggdryl_dtype::DataType;
+    use yggdryl_field::Field;
 
     let field = Field::new("c", Utf8Type::new().to_any(), false);
-    assert_eq!(AnyField::from_json(&field.to_json()).unwrap(), field);
+    assert_eq!(Field::from_json(&field.to_json()).unwrap(), field);
 
     let buf = Binary::from_bytes(&[9u8, 9, 9]);
     assert_eq!(Binary::from_json(&buf.to_json()).unwrap(), buf);
@@ -204,7 +118,11 @@ fn json_helpers_round_trip() {
 #[cfg(feature = "json")]
 #[test]
 fn global_json_params_control_to_json() {
-    use crate::{json_params, reset_json_params, set_json_params, Charset, JsonParams, Jsonable};
+    use yggdryl_core::{
+        json_params, reset_json_params, set_json_params, Charset, JsonParams, Jsonable,
+    };
+    use yggdryl_dtype::DataType;
+    use yggdryl_field::Field;
 
     let field = Field::new("c", BinaryType::new().to_any(), true);
     assert!(!field.to_json().contains('\n')); // compact by default
@@ -213,10 +131,9 @@ fn global_json_params_control_to_json() {
     assert!(json_params().is_pretty());
     let pretty = field.to_json();
     assert!(pretty.contains('\n') && pretty.contains("  \"name\""));
-    assert_eq!(AnyField::from_json(&pretty).unwrap(), field); // still round-trips
+    assert_eq!(Field::from_json(&pretty).unwrap(), field); // still round-trips
 
-    // the charset drives the byte form: Latin-1 encodes 'é' as one byte (0xE9),
-    // not the two UTF-8 bytes, and still round-trips.
+    // the charset drives the byte form: Latin-1 encodes 'é' as one byte (0xE9).
     set_json_params(JsonParams::compact().with_charset(Charset::Latin1));
     let text = Utf8::new("é");
     assert!(text.to_bson().contains(&0xe9));

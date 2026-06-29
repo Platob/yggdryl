@@ -1,10 +1,12 @@
-//! Python wrapper for [`yggdryl_core::AnyField`].
+//! Python wrapper for [`yggdryl_field::AnyField`].
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{AnyField, DataType, Jsonable};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::DataType;
+use yggdryl_field::AnyField;
 
 use crate::{anytype_to_py, hash_of, py_bool, py_to_anytype, value_err};
 

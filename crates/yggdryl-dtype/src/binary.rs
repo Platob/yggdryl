@@ -2,17 +2,18 @@
 
 use std::collections::BTreeMap;
 
-use crate::datatype::{AnyType, BinaryBased, DataType, PrimitiveType, TypeCategory};
-use crate::error::TypeError;
+use yggdryl_core::TypeError;
+
+use crate::{AnyType, BinaryBased, DataType, PrimitiveType, TypeCategory};
 
 /// Arrow's variable-length binary type, in both its 32-bit (`binary`) and 64-bit
 /// (`large_binary`) offset flavours.
 ///
-/// This is the *type* descriptor; the in-memory binary *value* is
-/// [`Binary`](crate::Binary).
+/// This is the *type* descriptor; the in-memory binary *value* is the `Binary`
+/// scalar in `yggdryl-scalar`.
 ///
 /// ```
-/// use yggdryl_core::{BinaryBased, BinaryType, DataType};
+/// use yggdryl_dtype::{BinaryBased, BinaryType, DataType};
 ///
 /// let b = BinaryType::new();
 /// assert_eq!(b.type_name(), "binary");
@@ -65,7 +66,7 @@ impl BinaryType {
 }
 
 #[cfg(feature = "json")]
-impl crate::Jsonable for BinaryType {}
+impl yggdryl_core::Jsonable for BinaryType {}
 
 impl DataType for BinaryType {
     fn type_name(&self) -> &'static str {

@@ -27,20 +27,38 @@ handles, HTTP bodies, sessions). When a field cannot be part of a value's identi
 
 ## Workspace layout
 
-The workspace is **three Rust crates plus two thin bindings**:
+The workspace is **five Rust crates plus two thin bindings**. The type system is
+split into one crate per layer, each depending only on the layers below it:
 
-- `crates/yggdryl-core` — the Rust core foundations (all the data types + byte IO).
+- `crates/yggdryl-core` — the dependency-light foundations every other crate builds
+  on: the zero-copy `Buffer`, the `Io` / `Whence` byte abstraction, the `Charset`
+  encodings, the global `JsonParams` + the `Jsonable` JSON/BSON trait, the shared
+  error types and the `mapping` component-map codec. No Arrow vocabulary lives here.
+- `crates/yggdryl-dtype` — the Arrow data types: the `DataType` trait hierarchy
+  (`PrimitiveType` / `NestedType` / `LogicalType`, plus `BinaryBased`) and the
+  `BinaryType` / `Utf8Type` descriptors carried by `AnyType`. Depends on `core`.
+- `crates/yggdryl-scalar` — the scalar *values*: the in-memory `Binary` buffer
+  (which implements `core`'s `Io`), the validated `Utf8` string and the `AnyScalar`
+  carrier, behind the `Scalar` trait. Depends on `core` + `dtype`.
+- `crates/yggdryl-field` — the `Field` / `AnyField` column type and its category
+  markers. Depends on `core` + `dtype`.
 - `crates/yggdryl-schema` — the Arrow-compatible schema layer. The `arrow-schema`
   SDK is a dependency of this crate only.
 - `crates/yggdryl-http` — the network client. Its transport SDK is a dependency of
   this crate only.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
-  wrappers**. They only translate types/errors and call the core; they contain no
-  logic. Anything added to the core must be surfaced in *both* bindings.
+  wrappers**. They only translate types/errors and call the crates above; they
+  contain no logic. Anything added to a core layer must be surfaced in *both*
+  bindings.
+
+Keep the dependency arrows pointing one way: a lower layer never imports an upper
+one (a reader needing the other direction means the abstraction belongs lower). The
+`Io` trait hands back zero-copy `core::Buffer` views rather than a `scalar::Binary`,
+so `core` stays free of the type layers above it.
 
 Each crate is **one file per type** — each concern is its own module (or module
-directory) under `src/`, with `lib.rs` as glue (a shared `log_event!` macro, `mod`
-declarations, and `pub use` re-exports of every type at the crate root). Each
+directory) under `src/`, with `lib.rs` as glue (a crate-local `log_event!` macro,
+`mod` declarations, and `pub use` re-exports of every type at the crate root). Each
 module owns its concern wholly — do not scatter a concern's logic across modules,
 and do not pull a heavy SDK into a crate that should not depend on it.
 

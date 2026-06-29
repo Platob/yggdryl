@@ -54,14 +54,21 @@ impl Buffer {
     }
 
     /// Builds a buffer over an existing shared allocation and byte range, without
-    /// copying. Used by in-memory IO to hand out zero-copy views of its store.
-    pub(crate) fn from_shared(data: Arc<[u8]>, start: usize, end: usize) -> Self {
-        debug_assert!(start <= end && end <= data.len());
+    /// copying. Low-level zero-copy constructor used by in-memory IO and the scalar
+    /// values to hand out views that share a store. Panics if the range falls
+    /// outside `0..data.len()`.
+    pub fn from_shared(data: Arc<[u8]>, start: usize, end: usize) -> Self {
+        assert!(
+            start <= end && end <= data.len(),
+            "Buffer::from_shared range {start}..{end} out of bounds for length {}",
+            data.len()
+        );
         Self { data, start, end }
     }
 
-    /// The buffer's shared allocation and live byte range, for zero-copy reuse.
-    pub(crate) fn as_parts(&self) -> (&Arc<[u8]>, usize, usize) {
+    /// The buffer's shared allocation and live byte range, for zero-copy reuse by
+    /// other byte-backed types in the workspace.
+    pub fn as_parts(&self) -> (&Arc<[u8]>, usize, usize) {
         (&self.data, self.start, self.end)
     }
 

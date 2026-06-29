@@ -1,10 +1,11 @@
-//! Python wrapper for the string [`yggdryl_core::Utf8Type`] data type.
+//! Python wrapper for the string [`yggdryl_dtype::Utf8Type`] data type.
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, DataType, Jsonable, Utf8Type as CoreUtf8Type};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::{BinaryBased, DataType, Utf8Type as CoreUtf8Type};
 
 use crate::{hash_of, py_bool, value_err};
 

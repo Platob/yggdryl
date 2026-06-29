@@ -1,10 +1,11 @@
-//! Python wrapper for the binary [`yggdryl_core::BinaryType`] data type.
+//! Python wrapper for the binary [`yggdryl_dtype::BinaryType`] data type.
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, BinaryType as CoreBinaryType, DataType, Jsonable};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::{BinaryBased, BinaryType as CoreBinaryType, DataType};
 
 use crate::{hash_of, py_bool, value_err};
 

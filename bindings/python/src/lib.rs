@@ -23,7 +23,8 @@ use std::hash::{Hash, Hasher};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use yggdryl_core::{AnyScalar, AnyType, DataType};
+use yggdryl_dtype::{AnyType, DataType};
+use yggdryl_scalar::AnyScalar;
 
 pub(crate) use binary::Binary;
 pub(crate) use binary_type::BinaryType;

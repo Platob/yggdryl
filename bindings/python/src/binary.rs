@@ -1,12 +1,12 @@
-//! Python wrapper for the in-memory binary buffer [`yggdryl_core::Binary`].
+//! Python wrapper for the in-memory binary buffer [`yggdryl_scalar::Binary`].
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{
-    Binary as CoreBinary, BinaryBased, BinaryType as CoreBinaryType, Io, Jsonable, Scalar,
-};
+use yggdryl_core::{Io, Jsonable};
+use yggdryl_dtype::{BinaryBased, BinaryType as CoreBinaryType};
+use yggdryl_scalar::{Binary as CoreBinary, Scalar};
 
 use crate::{
     anyscalar_to_py, anytype_to_py, hash_of, py_bool, py_to_anytype, value_err, BinaryType, Whence,
@@ -147,7 +147,9 @@ impl Binary {
     fn pread(&self, offset: u64, length: usize) -> PyResult<Self> {
         self.inner
             .pread(offset, length)
-            .map(|inner| Binary { inner })
+            .map(|buf| Binary {
+                inner: CoreBinary::from_buffer(buf),
+            })
             .map_err(value_err)
     }
 
@@ -155,7 +157,9 @@ impl Binary {
     fn read(&mut self, length: usize) -> PyResult<Self> {
         self.inner
             .read(length)
-            .map(|inner| Binary { inner })
+            .map(|buf| Binary {
+                inner: CoreBinary::from_buffer(buf),
+            })
             .map_err(value_err)
     }
 

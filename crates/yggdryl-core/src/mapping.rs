@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 /// Encodes a component map into its canonical, length-prefixed byte form.
-pub(crate) fn encode_pairs(pairs: &BTreeMap<String, String>) -> Vec<u8> {
+pub fn encode_pairs(pairs: &BTreeMap<String, String>) -> Vec<u8> {
     debug_assert!(
         pairs.len() <= u32::MAX as usize,
         "mapping has too many entries to encode (max {})",
@@ -38,7 +38,7 @@ pub(crate) fn encode_pairs(pairs: &BTreeMap<String, String>) -> Vec<u8> {
 
 /// Encodes bytes as a lowercase hex string (the byte-safe textual form a scalar
 /// uses for its `to_mapping` value, since component maps hold only strings).
-pub(crate) fn encode_hex(bytes: &[u8]) -> String {
+pub fn encode_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         out.push(char::from_digit((byte >> 4) as u32, 16).expect("nibble"));
@@ -48,7 +48,7 @@ pub(crate) fn encode_hex(bytes: &[u8]) -> String {
 }
 
 /// Decodes the lowercase hex string produced by [`encode_hex`].
-pub(crate) fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
+pub fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
     if !text.len().is_multiple_of(2) {
         return Err("hex string has an odd number of digits".to_string());
     }
@@ -67,7 +67,7 @@ pub(crate) fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Decodes the byte form produced by [`encode_pairs`] back into a component map.
-pub(crate) fn decode_pairs(bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
+pub fn decode_pairs(bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
     let mut cursor = 0usize;
 
     fn take_u32(bytes: &[u8], cursor: &mut usize) -> Result<u32, String> {

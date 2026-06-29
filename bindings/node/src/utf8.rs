@@ -1,11 +1,13 @@
-//! Node wrapper for the in-memory string value [`yggdryl_core::Utf8`].
+//! Node wrapper for the in-memory string value [`yggdryl_scalar::Utf8`].
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::{Jsonable, Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::Utf8Type as CoreUtf8Type;
+use yggdryl_scalar::{Scalar, Utf8 as CoreUtf8};
 
 use crate::{anyscalar_to_either, anytype_from_either, to_napi_err, Binary, BinaryType, Utf8Type};
 

@@ -1,10 +1,11 @@
-//! Node wrapper for the binary [`yggdryl_core::BinaryType`] data type.
+//! Node wrapper for the binary [`yggdryl_dtype::BinaryType`] data type.
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use yggdryl_core::{BinaryBased, BinaryType as CoreBinaryType, DataType, Jsonable};
+use yggdryl_core::Jsonable;
+use yggdryl_dtype::{BinaryBased, BinaryType as CoreBinaryType, DataType};
 
 use crate::to_napi_err;
 
