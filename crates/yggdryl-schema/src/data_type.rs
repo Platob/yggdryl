@@ -1,4 +1,5 @@
-//! The [`DataType`] base trait every yggdryl data type implements.
+//! The [`DataType`] base trait every yggdryl data type implements, plus the
+//! [`PhysicalType`] / [`LogicalType`] / [`NestedType`] category markers.
 
 use crate::data_type_id::DataTypeId;
 
@@ -9,10 +10,12 @@ use crate::data_type_id::DataTypeId;
 /// ([`is_physical`](DataType::is_physical),
 /// [`is_logical`](DataType::is_logical), [`is_nested`](DataType::is_nested))
 /// follow from the id's block by default, so an implementor only supplies the two
-/// required accessors (plus the Arrow conversion under the `arrow` feature).
+/// required accessors (plus the Arrow conversion under the `arrow` feature). Each
+/// concrete type also implements the matching category marker — [`PhysicalType`],
+/// [`LogicalType`] or [`NestedType`].
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId};
+/// use yggdryl_schema::{DataType, DataTypeId, PhysicalType};
 ///
 /// struct Int32;
 /// impl DataType for Int32 {
@@ -23,9 +26,12 @@ use crate::data_type_id::DataTypeId;
 /// #     #[cfg(feature = "arrow")]
 /// #     fn from_arrow(_dtype: &arrow_schema::DataType) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
 /// }
+/// impl PhysicalType for Int32 {}
+///
+/// fn assert_physical<T: PhysicalType>(value: &T) { assert!(value.is_physical()); }
 ///
 /// assert_eq!(Int32.name(), "int32");
-/// assert!(Int32.is_physical());
+/// assert_physical(&Int32);
 /// assert!(!Int32.is_nested());
 /// ```
 pub trait DataType {
@@ -61,3 +67,21 @@ pub trait DataType {
     where
         Self: Sized;
 }
+
+/// Marker for *physical* (storage) types — fixed-width or variable-length
+/// binary-backed values that hold no child fields. Implement it for types whose
+/// [`type_id`](DataType::type_id) is in the physical block, so
+/// [`is_physical`](DataType::is_physical) is `true`.
+pub trait PhysicalType: DataType {}
+
+/// Marker for *logical* types — a physical type reinterpreted with extra meaning
+/// (a date, a decimal, a dictionary, …). Implement it for types whose
+/// [`type_id`](DataType::type_id) is in the logical block, so
+/// [`is_logical`](DataType::is_logical) is `true`.
+pub trait LogicalType: DataType {}
+
+/// Marker for *nested* types — those built from one or more child fields (a list,
+/// a struct, a map, …). Implement it for types whose
+/// [`type_id`](DataType::type_id) is in the nested block, so
+/// [`is_nested`](DataType::is_nested) is `true`.
+pub trait NestedType: DataType {}

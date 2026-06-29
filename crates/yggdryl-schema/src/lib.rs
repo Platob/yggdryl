@@ -2,7 +2,9 @@
 //!
 //! The Arrow-compatible schema layer for yggdryl. [`DataType`] is the base trait
 //! every data type implements — it knows its [`name`](DataType::name) and
-//! [`DataTypeId`], from which the physical / logical / nested category follows.
+//! [`DataTypeId`], from which the physical / logical / nested category follows;
+//! each concrete type also carries the matching marker ([`PhysicalType`],
+//! [`LogicalType`] or [`NestedType`]).
 //! [`Field`] pairs a name with a `DataType`, a nullability flag and byte-keyed
 //! [`Metadata`], and offers the functional `copy` / `with_*` updates.
 //!
@@ -17,7 +19,7 @@ mod data_type_id;
 mod error;
 mod field;
 
-pub use data_type::DataType;
+pub use data_type::{DataType, LogicalType, NestedType, PhysicalType};
 pub use data_type_id::DataTypeId;
 #[cfg(feature = "arrow")]
 pub use error::SchemaError;
