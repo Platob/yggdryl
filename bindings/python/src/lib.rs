@@ -9,10 +9,10 @@
 #![allow(clippy::useless_conversion)]
 
 mod binary;
-mod binary_scalar;
+mod binary_type;
 mod field;
 mod string;
-mod string_scalar;
+mod whence;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -22,10 +22,10 @@ use pyo3::prelude::*;
 use yggdryl_core::{AnyType, DataType};
 
 pub(crate) use binary::Binary;
-pub(crate) use binary_scalar::BinaryScalar;
+pub(crate) use binary_type::BinaryType;
 pub(crate) use field::Field;
 pub(crate) use string::Utf8;
-pub(crate) use string_scalar::StringScalar;
+pub(crate) use whence::Whence;
 
 /// Maps any core error to a Python `ValueError`.
 pub(crate) fn value_err<E: std::fmt::Display>(err: E) -> PyErr {
@@ -51,31 +51,31 @@ pub(crate) fn py_bool(value: bool) -> &'static str {
 /// Wraps a core [`AnyType`] in the matching Python data-type object.
 pub(crate) fn anytype_to_py(py: Python<'_>, ty: &AnyType) -> PyResult<PyObject> {
     Ok(match ty {
-        AnyType::Binary(inner) => Py::new(py, Binary { inner: *inner })?.into_any(),
+        AnyType::Binary(inner) => Py::new(py, BinaryType { inner: *inner })?.into_any(),
         AnyType::Utf8(inner) => Py::new(py, Utf8 { inner: *inner })?.into_any(),
     })
 }
 
-/// Extracts a core [`AnyType`] from a Python data-type object (`Binary`/`Utf8`).
+/// Extracts a core [`AnyType`] from a Python data-type object (`BinaryType`/`Utf8`).
 pub(crate) fn py_to_anytype(obj: &Bound<'_, PyAny>) -> PyResult<AnyType> {
-    if let Ok(binary) = obj.extract::<Binary>() {
+    if let Ok(binary) = obj.extract::<BinaryType>() {
         return Ok(binary.inner.to_any());
     }
     if let Ok(utf8) = obj.extract::<Utf8>() {
         return Ok(utf8.inner.to_any());
     }
     Err(PyValueError::new_err(
-        "expected a yggdryl data type (Binary or Utf8)",
+        "expected a yggdryl data type (BinaryType or Utf8)",
     ))
 }
 
 /// The compiled `yggdryl` extension module.
 #[pymodule]
 fn yggdryl(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Binary>()?;
+    module.add_class::<BinaryType>()?;
     module.add_class::<Utf8>()?;
     module.add_class::<Field>()?;
-    module.add_class::<BinaryScalar>()?;
-    module.add_class::<StringScalar>()?;
+    module.add_class::<Binary>()?;
+    module.add_class::<Whence>()?;
     Ok(())
 }

@@ -1,4 +1,4 @@
-//! The [`Binary`] data type — variable-length, opaque byte strings.
+//! The [`BinaryType`] data type — variable-length, opaque byte strings.
 
 use std::collections::BTreeMap;
 
@@ -8,23 +8,26 @@ use crate::error::TypeError;
 /// Arrow's variable-length binary type, in both its 32-bit (`binary`) and 64-bit
 /// (`large_binary`) offset flavours.
 ///
-/// ```
-/// use yggdryl_core::{Binary, BinaryBased, DataType};
+/// This is the *type* descriptor; the in-memory binary *value* is
+/// [`Binary`](crate::Binary).
 ///
-/// let b = Binary::new();
+/// ```
+/// use yggdryl_core::{BinaryBased, BinaryType, DataType};
+///
+/// let b = BinaryType::new();
 /// assert_eq!(b.type_name(), "binary");
 /// assert!(!b.is_large());
-/// assert_eq!(Binary::large().type_name(), "large_binary");
-/// assert_eq!(Binary::from_str("large_binary").unwrap(), Binary::large());
+/// assert_eq!(BinaryType::large().type_name(), "large_binary");
+/// assert_eq!(BinaryType::from_str("large_binary").unwrap(), BinaryType::large());
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(into = "String", try_from = "String"))]
-pub struct Binary {
+pub struct BinaryType {
     large: bool,
 }
 
-impl Binary {
+impl BinaryType {
     /// The 32-bit-offset `binary` type.
     pub fn new() -> Self {
         Self { large: false }
@@ -38,7 +41,7 @@ impl Binary {
     /// Parses `"binary"` or `"large_binary"`.
     #[allow(clippy::should_implement_trait)] // `from_str` is the crate-wide naming convention.
     pub fn from_str(value: &str) -> Result<Self, TypeError> {
-        crate::log_event!(trace, "Binary::from_str {:?}", value);
+        crate::log_event!(trace, "BinaryType::from_str {:?}", value);
         match value {
             "binary" => Ok(Self { large: false }),
             "large_binary" => Ok(Self { large: true }),
@@ -63,17 +66,17 @@ impl Binary {
     /// The JSON form (the canonical string as a JSON string).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("Binary serializes to a JSON string")
+        serde_json::to_string(self).expect("BinaryType serializes to a JSON string")
     }
 
-    /// Parses the JSON form produced by [`Binary::to_json`].
+    /// Parses the JSON form produced by [`BinaryType::to_json`].
     #[cfg(feature = "json")]
     pub fn from_json(value: &str) -> Result<Self, TypeError> {
         serde_json::from_str(value).map_err(|err| TypeError::InvalidMapping(err.to_string()))
     }
 }
 
-impl DataType for Binary {
+impl DataType for BinaryType {
     fn type_name(&self) -> &'static str {
         if self.large {
             "large_binary"
@@ -91,9 +94,9 @@ impl DataType for Binary {
     }
 }
 
-impl PrimitiveType for Binary {}
+impl PrimitiveType for BinaryType {}
 
-impl BinaryBased for Binary {
+impl BinaryBased for BinaryType {
     fn is_utf8(&self) -> bool {
         false
     }
@@ -103,16 +106,16 @@ impl BinaryBased for Binary {
     }
 }
 
-impl From<Binary> for String {
-    fn from(value: Binary) -> Self {
+impl From<BinaryType> for String {
+    fn from(value: BinaryType) -> Self {
         value.type_name().to_string()
     }
 }
 
-impl TryFrom<String> for Binary {
+impl TryFrom<String> for BinaryType {
     type Error = TypeError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Binary::from_str(&value)
+        BinaryType::from_str(&value)
     }
 }

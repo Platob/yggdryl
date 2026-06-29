@@ -1,17 +1,13 @@
 //! The [`Io`] byte abstraction and its in-memory implementation.
 //!
 //! `Io` centralises positional and cursor-based byte access behind one trait, so
-//! every byte source (an in-memory [`MemoryIo`] today; files / cloud objects /
-//! HTTP bodies later) exposes the same `pread`/`pwrite`, `size`, `tell`/`seek`
+//! every byte source (the in-memory [`Binary`] buffer today; files / cloud objects
+//! / HTTP bodies later) exposes the same `pread`/`pwrite`, `size`, `tell`/`seek`
 //! and capacity surface. Memory-resident sources hand reads back as zero-copy
-//! [`BinaryScalar`] views, so a read does not copy the bytes out of the store.
-
-mod memory;
-
-pub use memory::MemoryIo;
+//! [`Binary`] views, so a read does not copy the bytes out of the store.
 
 use crate::error::IoError;
-use crate::scalar::BinaryScalar;
+use crate::scalar::Binary;
 
 /// Where a [`seek`](Io::seek) offset is measured from (`SEEK_SET`/`CUR`/`END`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -48,8 +44,8 @@ pub trait Io {
     fn pread_into(&self, offset: u64, dst: &mut [u8]) -> Result<usize, IoError>;
 
     /// Reads up to `len` bytes at absolute `offset` as a (zero-copy, when in
-    /// memory) [`BinaryScalar`]. Does not move the cursor.
-    fn pread(&self, offset: u64, len: usize) -> Result<BinaryScalar, IoError>;
+    /// memory) [`Binary`]. Does not move the cursor.
+    fn pread(&self, offset: u64, len: usize) -> Result<Binary, IoError>;
 
     /// Writes `src` at absolute `offset`, growing the stream if needed; returns
     /// the number of bytes written. Does not move the cursor.
@@ -73,11 +69,11 @@ pub trait Io {
 
     /// Cursor-based read of up to `len` bytes; advances the cursor by the number
     /// of bytes read.
-    fn read(&mut self, len: usize) -> Result<BinaryScalar, IoError> {
-        let scalar = self.pread(self.tell(), len)?;
-        let read = scalar.len().unwrap_or(0);
+    fn read(&mut self, len: usize) -> Result<Binary, IoError> {
+        let chunk = self.pread(self.tell(), len)?;
+        let read = chunk.len();
         self.seek(read as i64, Whence::Current)?;
-        Ok(scalar)
+        Ok(chunk)
     }
 
     /// Cursor-based read into `dst`; advances the cursor by the number of bytes

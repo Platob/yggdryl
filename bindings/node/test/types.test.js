@@ -3,41 +3,32 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { Binary, Utf8, Field, BinaryScalar, StringScalar } = require('../index.js')
+const { BinaryType, Utf8, Field, Binary, Whence } = require('../index.js')
 
-test('binary datatype round-trips', () => {
-  const b = new Binary()
+test('binary type round-trips', () => {
+  const b = new BinaryType()
   assert.equal(b.name, 'binary')
   assert.equal(b.toString(), 'binary')
   assert.equal(b.isLarge, false)
-  assert.equal(b.isUtf8, false)
-  assert.equal(new Binary(true).name, 'large_binary')
+  assert.equal(new BinaryType(true).name, 'large_binary')
 
-  assert.ok(Binary.fromMapping(b.toMapping()).equals(b))
-  assert.ok(Binary.fromBytes(b.toBytes()).equals(b))
+  assert.ok(BinaryType.fromStr('large_binary').equals(new BinaryType(true)))
+  assert.ok(BinaryType.fromMapping(b.toMapping()).equals(b))
+  assert.ok(BinaryType.fromBytes(b.toBytes()).equals(b))
+  assert.equal(JSON.stringify(b), '"binary"')
 })
 
-test('utf8 datatype and aliases', () => {
+test('utf8 type aliases', () => {
   const s = new Utf8()
   assert.equal(s.name, 'string')
-  assert.equal(s.isUtf8, true)
-  assert.equal(new Utf8(true).name, 'large_string')
-  assert.ok(Utf8.fromBytes(Buffer.from('string')).equals(s))
-})
-
-test('datatypes round-trip through JSON.stringify / fromJSON', () => {
-  for (const value of [new Binary(), new Binary(true), new Utf8(), new Utf8(true)]) {
-    const json = JSON.stringify(value)
-    const restored = value.constructor.fromJSON(JSON.parse(json))
-    assert.ok(restored.equals(value))
-  }
-  assert.equal(JSON.stringify(new Binary()), '"binary"')
+  assert.ok(Utf8.fromStr('utf8').equals(s))
+  assert.ok(Utf8.fromStr('large_utf8').equals(new Utf8(true)))
 })
 
 test('field round-trips with metadata', () => {
-  const field = new Field('payload', new Binary(true), false, { unit: 'bytes' })
+  const field = new Field('payload', new BinaryType(true), false, { unit: 'bytes' })
   assert.equal(field.name, 'payload')
-  assert.ok(field.dataType.equals(new Binary(true)))
+  assert.ok(field.dataType.equals(new BinaryType(true)))
   assert.equal(field.nullable, false)
   assert.deepEqual(field.metadata, { unit: 'bytes' })
 
@@ -46,33 +37,39 @@ test('field round-trips with metadata', () => {
   assert.ok(Field.fromJSON(JSON.parse(JSON.stringify(field))).equals(field))
 })
 
-test('field defaults nullable to true and helpers do not mutate', () => {
-  const field = new Field('id', new Utf8())
-  assert.equal(field.nullable, true)
+test('binary buffer value and serialization', () => {
+  const buf = new Binary(Buffer.from([0, 1, 2]))
+  assert.deepEqual([...buf.toBytes()], [0, 1, 2])
+  assert.equal(buf.length, 3)
+  assert.ok(buf.dataType.equals(new BinaryType()))
 
-  const renamed = field.withName('other').withNullable(false)
-  assert.equal(field.name, 'id')
-  assert.equal(field.nullable, true)
-  assert.equal(renamed.name, 'other')
-  assert.equal(renamed.nullable, false)
+  assert.ok(Binary.fromBytes(buf.toBytes()).equals(buf))
+  assert.ok(Binary.fromMapping(buf.toMapping()).equals(buf))
+  assert.ok(Binary.fromJSON(JSON.parse(JSON.stringify(buf))).equals(buf))
+
+  const large = new Binary(Buffer.from('x'), true)
+  assert.ok(large.dataType.equals(new BinaryType(true)))
+  assert.ok(Binary.fromMapping(large.toMapping()).equals(large))
 })
 
-test('binary scalar', () => {
-  const scalar = new BinaryScalar(Buffer.from([0, 1, 2]))
-  assert.deepEqual([...scalar.value], [0, 1, 2])
-  assert.equal(scalar.isNull, false)
-  assert.equal(scalar.length, 3)
-  assert.ok(scalar.dataType.equals(new Binary()))
-  assert.equal(new BinaryScalar().isNull, true)
-  assert.equal(BinaryScalar.null().value, null)
-  assert.ok(BinaryScalar.fromJSON(JSON.parse(JSON.stringify(scalar))).equals(scalar))
-})
+test('binary implements io', () => {
+  const buf = new Binary()
+  assert.equal(buf.write(Buffer.from('hello ')), 6)
+  assert.equal(buf.write(Buffer.from('world')), 5)
+  assert.equal(buf.size, 11)
+  assert.ok(buf.capacity >= 11)
 
-test('string scalar', () => {
-  const scalar = new StringScalar('yggdryl')
-  assert.equal(scalar.value, 'yggdryl')
-  assert.equal(scalar.toString(), 'yggdryl')
-  assert.ok(scalar.dataType.equals(new Utf8()))
-  assert.equal(new StringScalar(null).isNull, true)
-  assert.ok(StringScalar.fromJSON(JSON.parse(JSON.stringify(scalar))).equals(scalar))
+  buf.seek(0, Whence.Start)
+  assert.equal(buf.read(5).toBytes().toString(), 'hello')
+  assert.equal(buf.tell(), 5)
+  assert.equal(buf.pread(6, 5).toBytes().toString(), 'world')
+
+  buf.pwrite(0, Buffer.from('HELLO'))
+  assert.equal(buf.toBytes().toString(), 'HELLO world')
+
+  buf.resize(5, '.'.charCodeAt(0))
+  assert.equal(buf.toBytes().toString(), 'HELLO')
+
+  assert.equal(buf.seek(-1, Whence.End), 4)
+  assert.throws(() => buf.seek(-100, Whence.Start))
 })

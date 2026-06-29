@@ -60,6 +60,11 @@ impl Buffer {
         Self { data, start, end }
     }
 
+    /// The buffer's shared allocation and live byte range, for zero-copy reuse.
+    pub(crate) fn as_parts(&self) -> (&Arc<[u8]>, usize, usize) {
+        (&self.data, self.start, self.end)
+    }
+
     /// The buffer's bytes, borrowed without copying.
     pub fn as_slice(&self) -> &[u8] {
         &self.data[self.start..self.end]

@@ -1,7 +1,7 @@
 //! Arrow fields — a named, nullable, typed column with optional metadata.
 //!
-//! [`Field`] is generic over its data type `T`, so a `Field<Binary>` carries the
-//! static knowledge that it is a [`PrimitiveField`], while the type-erased
+//! [`Field`] is generic over its data type `T`, so a `Field<BinaryType>` carries
+//! the static knowledge that it is a [`PrimitiveField`], while the type-erased
 //! [`AnyField`] (`Field<AnyType>`) is what the bindings and schemas store. The
 //! category marker traits ([`PrimitiveField`], [`NestedField`], [`LogicalField`])
 //! mirror the type-side categories ([`PrimitiveType`], [`NestedType`],
@@ -16,9 +16,9 @@ use crate::mapping::{decode_pairs, encode_pairs};
 /// A named, nullable, typed field with string→string metadata.
 ///
 /// ```
-/// use yggdryl_core::{AnyField, Binary, DataType, Field};
+/// use yggdryl_core::{AnyField, BinaryType, DataType, Field};
 ///
-/// let field = Field::new("payload", Binary::new(), true);
+/// let field = Field::new("payload", BinaryType::new(), true);
 /// assert_eq!(field.name(), "payload");
 /// assert!(field.is_nullable());
 ///

@@ -1,18 +1,15 @@
-//! Scalar values — a single, typed cell of data.
+//! Scalar values.
 //!
-//! Every scalar carries its [`AnyType`] and may be *null*. The byte-backed
-//! scalars ([`BinaryScalar`], [`StringScalar`]) hold their payload in a
-//! [`Buffer`](crate::Buffer), so cloning is O(1) and the bytes are borrowed, not
-//! copied, by their accessors. Each scalar round-trips through JSON (the base
-//! trait's [`to_json`](Scalar::to_json)/[`from_json`](Scalar::from_json)) and
-//! through a compact binary frame and component map (per-type `to_bytes` /
-//! `to_mapping`).
+//! The crate's one scalar today is [`Binary`] — a growable, in-memory binary
+//! buffer that holds its payload in a shared allocation (O(1) clone, borrowed and
+//! zero-copy access) and implements [`Io`](crate::Io). Every scalar round-trips
+//! through JSON (the base trait's [`to_json`](Scalar::to_json) /
+//! [`from_json`](Scalar::from_json)) and, per type, through a compact binary frame
+//! and a component map.
 
 mod binary;
-mod string;
 
-pub use binary::BinaryScalar;
-pub use string::StringScalar;
+pub use binary::Binary;
 
 use crate::datatype::AnyType;
 #[cfg(feature = "json")]
@@ -22,9 +19,6 @@ use crate::error::ScalarError;
 pub trait Scalar {
     /// The scalar's data type.
     fn data_type(&self) -> AnyType;
-
-    /// Whether the scalar holds the null value.
-    fn is_null(&self) -> bool;
 
     /// The JSON form.
     #[cfg(feature = "json")]

@@ -4,8 +4,9 @@
 //! [categories](TypeCategory) — *primitive*, *nested* or *logical* — exposed
 //! through the base [`DataType`] trait and the marker sub-traits
 //! [`PrimitiveType`], [`NestedType`] and [`LogicalType`]. Concrete types live in
-//! their own module ([`Binary`], [`Utf8`], …) and the [`AnyType`] enum is the
-//! hashable, serializable carrier a [`Field`](crate::Field) stores.
+//! their own module ([`BinaryType`], [`Utf8`], …) and the [`AnyType`] enum is the
+//! hashable, serializable carrier a [`Field`](crate::Field) stores. The in-memory
+//! binary *value* is [`Binary`](crate::Binary), a separate scalar.
 //!
 //! This crate deliberately does **not** depend on `arrow-schema`; the conversion
 //! to Arrow's own `DataType` belongs to `yggdryl-schema`. Here the types only
@@ -14,7 +15,7 @@
 mod binary;
 mod string;
 
-pub use binary::Binary;
+pub use binary::BinaryType;
 pub use string::Utf8;
 
 use std::borrow::Cow;
@@ -99,18 +100,18 @@ pub trait BinaryBased: PrimitiveType {
 /// canonical string (`"binary"`, `"large_string"`, …).
 ///
 /// ```
-/// use yggdryl_core::{AnyType, Binary, DataType};
+/// use yggdryl_core::{AnyType, BinaryType, DataType};
 ///
 /// let ty = AnyType::from_str("large_binary").unwrap();
 /// assert_eq!(ty.to_str(), "large_binary");
-/// assert_eq!(ty, AnyType::from(Binary::large()));
+/// assert_eq!(ty, AnyType::from(BinaryType::large()));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(into = "String", try_from = "String"))]
 pub enum AnyType {
-    /// A [`Binary`] (or `large_binary`) type.
-    Binary(Binary),
+    /// A [`BinaryType`] (`binary` / `large_binary`).
+    Binary(BinaryType),
     /// A [`Utf8`] (`string` / `large_string`) type.
     Utf8(Utf8),
 }
@@ -120,7 +121,7 @@ impl AnyType {
     #[allow(clippy::should_implement_trait)] // `from_str` is the crate-wide naming convention.
     pub fn from_str(value: &str) -> Result<Self, TypeError> {
         crate::log_event!(trace, "AnyType::from_str {:?}", value);
-        if let Ok(binary) = Binary::from_str(value) {
+        if let Ok(binary) = BinaryType::from_str(value) {
             return Ok(AnyType::Binary(binary));
         }
         if let Ok(utf8) = Utf8::from_str(value) {
@@ -177,8 +178,8 @@ impl DataType for AnyType {
     }
 }
 
-impl From<Binary> for AnyType {
-    fn from(inner: Binary) -> Self {
+impl From<BinaryType> for AnyType {
+    fn from(inner: BinaryType) -> Self {
         AnyType::Binary(inner)
     }
 }

@@ -1,48 +1,46 @@
-//! Node wrapper for [`yggdryl_core::Utf8`].
+//! Node wrapper for the binary [`yggdryl_core::BinaryType`] data type.
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use yggdryl_core::{BinaryBased, DataType, Utf8 as CoreUtf8};
+use yggdryl_core::{BinaryBased, BinaryType as CoreBinaryType, DataType};
 
 use crate::to_napi_err;
 
-/// Arrow's variable-length UTF-8 string type (`string` / `large_string`).
-///
-/// Named `Utf8` to stay clear of the JavaScript `String` global; `fromBytes` and
-/// the core parser also accept the aliases `"utf8"` / `"large_utf8"`.
+/// Arrow's variable-length binary type (`binary` / `large_binary`). The in-memory
+/// binary *value* is `Binary`.
 #[napi]
-pub struct Utf8 {
-    pub(crate) inner: CoreUtf8,
+pub struct BinaryType {
+    pub(crate) inner: CoreBinaryType,
 }
 
 #[napi]
-impl Utf8 {
+impl BinaryType {
     #[napi(constructor)]
     pub fn new(large: Option<bool>) -> Self {
-        Utf8 {
+        BinaryType {
             inner: if large.unwrap_or(false) {
-                CoreUtf8::large()
+                CoreBinaryType::large()
             } else {
-                CoreUtf8::new()
+                CoreBinaryType::new()
             },
         }
     }
 
-    /// The canonical type name (`"string"` or `"large_string"`).
+    /// The canonical type name (`"binary"` or `"large_binary"`).
     #[napi(getter)]
     pub fn name(&self) -> String {
         self.inner.type_name().to_string()
     }
 
-    /// Whether offsets are 64-bit (`large_string`).
+    /// Whether offsets are 64-bit (`large_binary`).
     #[napi(getter)]
     pub fn is_large(&self) -> bool {
         self.inner.is_large()
     }
 
-    /// Whether the bytes are guaranteed UTF-8 (always `true` for strings).
+    /// Whether the bytes are guaranteed UTF-8 (always `false` for binary).
     #[napi(getter)]
     pub fn is_utf8(&self) -> bool {
         self.inner.is_utf8()
@@ -56,9 +54,9 @@ impl Utf8 {
 
     /// Reconstructs the type from its canonical string (accepts the aliases).
     #[napi(js_name = "fromStr", factory)]
-    pub fn from_str(value: String) -> napi::Result<Utf8> {
-        CoreUtf8::from_str(&value)
-            .map(|inner| Utf8 { inner })
+    pub fn from_str(value: String) -> napi::Result<BinaryType> {
+        CoreBinaryType::from_str(&value)
+            .map(|inner| BinaryType { inner })
             .map_err(to_napi_err)
     }
 
@@ -70,10 +68,10 @@ impl Utf8 {
 
     /// Reconstructs the type from its component map.
     #[napi(factory)]
-    pub fn from_mapping(mapping: HashMap<String, String>) -> napi::Result<Utf8> {
+    pub fn from_mapping(mapping: HashMap<String, String>) -> napi::Result<BinaryType> {
         let mapping: BTreeMap<String, String> = mapping.into_iter().collect();
-        CoreUtf8::from_mapping(&mapping)
-            .map(|inner| Utf8 { inner })
+        CoreBinaryType::from_mapping(&mapping)
+            .map(|inner| BinaryType { inner })
             .map_err(to_napi_err)
     }
 
@@ -85,23 +83,23 @@ impl Utf8 {
 
     /// Reconstructs the type from its byte form.
     #[napi(factory)]
-    pub fn from_bytes(data: Buffer) -> napi::Result<Utf8> {
-        CoreUtf8::from_bytes(data.as_ref())
-            .map(|inner| Utf8 { inner })
+    pub fn from_bytes(data: Buffer) -> napi::Result<BinaryType> {
+        CoreBinaryType::from_bytes(data.as_ref())
+            .map(|inner| BinaryType { inner })
             .map_err(to_napi_err)
     }
 
     /// The JSON value (used by `JSON.stringify`).
     #[napi(js_name = "toJSON")]
     pub fn to_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.inner).expect("Utf8 serializes to JSON")
+        serde_json::to_value(self.inner).expect("BinaryType serializes to JSON")
     }
 
     /// Reconstructs the type from its JSON value.
     #[napi(js_name = "fromJSON", factory)]
-    pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8> {
+    pub fn from_json(value: serde_json::Value) -> napi::Result<BinaryType> {
         serde_json::from_value(value)
-            .map(|inner| Utf8 { inner })
+            .map(|inner| BinaryType { inner })
             .map_err(to_napi_err)
     }
 
@@ -110,9 +108,9 @@ impl Utf8 {
         self.inner.to_str().into_owned()
     }
 
-    /// Structural equality with another `Utf8`.
+    /// Structural equality with another `BinaryType`.
     #[napi]
-    pub fn equals(&self, other: &Utf8) -> bool {
+    pub fn equals(&self, other: &BinaryType) -> bool {
         self.inner == other.inner
     }
 }
