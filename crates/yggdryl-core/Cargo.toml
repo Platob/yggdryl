@@ -6,29 +6,13 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Consolidated foundations for yggdryl: parsing, percent-encoding, Version, MIME/media types, URI/URL, byte-IO and streamed compression"
+description = "Dependency-light foundations for yggdryl: the zero-copy Buffer, the Io byte abstraction, Charset encodings, the Jsonable JSON/BSON trait, and the shared error and mapping types"
 keywords.workspace = true
 readme = "README.md"
 
 [lib]
 name = "yggdryl_core"
 path = "src/lib.rs"
-
-[[bench]]
-name = "version"
-harness = false
-
-[[bench]]
-name = "url"
-harness = false
-
-[[bench]]
-name = "io"
-harness = false
-
-[[bench]]
-name = "compression"
-harness = false
 
 [dependencies]
 # All heavy dependencies are optional and off by default (except the compression
@@ -68,7 +52,7 @@ mmap = ["dep:memmap2"]
 # `media_type()` / `from_mime` / `from_media` / `from_stats` accessors on the
 # `Io` / `Path` / compression layers.
 media = []
-json = ["dep:serde_json"]
+json = ["serde", "dep:serde_json"]
 # `Serialize` / `Deserialize` for every value type. Each renders to its canonical
 # string (a `Url` is `"https://…"`, a `MimeType` is `"image/png"`); the plain
 # enums / structs (`Mode`, `Whence`, `Kind`, `IoStats`, `Signature`) derive.

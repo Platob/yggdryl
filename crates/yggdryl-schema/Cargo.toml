@@ -14,10 +14,6 @@ readme = "README.md"
 name = "yggdryl_schema"
 path = "src/lib.rs"
 
-[[bench]]
-name = "schema"
-harness = false
-
 [dependencies]
 # The consolidated core supplies the shared `Mapping` component map (reused for
 # field / schema metadata) so the `from_mapping` / `to_mapping` surface matches the

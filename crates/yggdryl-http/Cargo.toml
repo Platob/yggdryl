@@ -14,10 +14,6 @@ readme = "README.md"
 name = "yggdryl_http"
 path = "src/lib.rs"
 
-[[bench]]
-name = "http"
-harness = false
-
 [dependencies]
 # The consolidated core: the byte-IO foundation (a response body is a
 # `Box<dyn Io>` — a seekable `HttpStream` when streamed, a `BytesIO` when

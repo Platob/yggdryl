@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-field",
     "crates/yggdryl-http",
     "crates/yggdryl-schema",
     "bindings/python",
@@ -12,6 +15,9 @@ members = [
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-field",
     "crates/yggdryl-http",
     "crates/yggdryl-schema",
 ]
@@ -28,6 +34,9 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
+yggdryl-dtype = { path = "crates/yggdryl-dtype", version = "0.1.0", default-features = false }
+yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0", default-features = false }
+yggdryl-field = { path = "crates/yggdryl-field", version = "0.1.0", default-features = false }
 yggdryl-http = { path = "crates/yggdryl-http", version = "0.1.0" }
 yggdryl-schema = { path = "crates/yggdryl-schema", version = "0.1.0", default-features = false }
 

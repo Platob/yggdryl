@@ -1,106 +1,58 @@
 //! Node.js extension for **yggdryl**.
 //!
-//! Thin napi-rs wrappers around [`yggdryl_core::Uri`]/[`yggdryl_core::Url`],
-//! [`yggdryl_core::Version`], [`yggdryl_core::MimeType`] and
-//! [`yggdryl_core::MediaType`]; each type lives in its own module, mirroring the
-//! Rust crates. All logic lives in the shared core so the Node and Python
-//! bindings stay in lockstep.
+//! Thin napi-rs wrappers over the Arrow-centric `yggdryl_core` types; each type
+//! lives in its own module mirroring the Rust crate. All logic lives in the shared
+//! core so the Node and Python bindings behave identically.
 
-mod bytesio;
-mod compression;
-mod datatype;
-mod date;
-mod datetime;
-mod duration;
+mod binary;
+mod binary_type;
+mod charset;
 mod field;
-mod http;
-mod iostats;
-mod localpath;
-mod media;
-mod mime;
-mod time;
-mod timezone;
-mod uri;
-mod url;
-mod version;
+mod jsonparams;
+mod utf8;
+mod utf8_type;
+mod whence;
 
-// Re-export the module-level HTTP verbs (backed by the shared `HttpSession`
-// singleton) so they are part of the crate's public surface — napi exports them
-// to JS regardless, this just keeps plain `cargo` from flagging them unused.
-pub use http::{http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url};
+use napi::Either;
+use yggdryl_dtype::{AnyType, DataType};
+use yggdryl_scalar::AnyScalar;
 
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+pub(crate) use binary::Binary;
+pub(crate) use binary_type::BinaryType;
+pub(crate) use charset::Charset;
+pub(crate) use utf8::Utf8;
+pub(crate) use utf8_type::Utf8Type;
+pub(crate) use whence::Whence;
 
-use napi::bindgen_prelude::*;
-use napi_derive::napi;
-use yggdryl_core::Whence;
-use yggdryl_core::{percent_decode, percent_encode};
+// Re-export the module-level JSON-params functions so plain `cargo`/`clippy` does
+// not flag them unused; napi exports them to JS regardless.
+pub use jsonparams::{json_params, reset_json_params, set_json_params};
 
-/// Converts a JS object (`HashMap`) into the core ordered `BTreeMap`.
-pub(crate) fn to_mapping(fields: HashMap<String, String>) -> BTreeMap<String, String> {
-    fields.into_iter().collect()
+/// Maps any core error to a JavaScript `Error`.
+pub(crate) fn to_napi_err<E: std::fmt::Display>(err: E) -> napi::Error {
+    napi::Error::from_reason(err.to_string())
 }
 
-/// Converts any displayable error (core / schema / time) into a thrown JS `Error`.
-pub(crate) fn err<E: std::fmt::Display>(error: E) -> Error {
-    Error::from_reason(error.to_string())
-}
-
-/// Converts a JS `BigInt` to an `i128`, throwing if the value does not fit (rather
-/// than silently truncating, the way `get_i128().0` would). Shared by the
-/// nanosecond-valued constructors.
-pub(crate) fn bigint_i128(value: BigInt) -> Result<i128> {
-    let (signed, lossless) = value.get_i128();
-    if lossless {
-        Ok(signed)
-    } else {
-        Err(Error::from_reason(
-            "BigInt value does not fit in a signed 128-bit integer",
-        ))
+/// Wraps a core [`AnyType`] in the matching JS data-type object.
+pub(crate) fn anytype_to_either(ty: &AnyType) -> Either<BinaryType, Utf8Type> {
+    match ty {
+        AnyType::Binary(inner) => Either::A(BinaryType { inner: *inner }),
+        AnyType::Utf8(inner) => Either::B(Utf8Type { inner: *inner }),
     }
 }
 
-/// Maps a `whence` integer (`0` start, `1` current, `2` end) to the core
-/// [`Whence`], throwing on any other value. Shared by the seekable IO types.
-pub(crate) fn whence_from(whence: u8) -> Result<Whence> {
-    match whence {
-        0 => Ok(Whence::Start),
-        1 => Ok(Whence::Current),
-        2 => Ok(Whence::End),
-        other => Err(Error::from_reason(format!(
-            "invalid whence ({other}), expected 0, 1 or 2"
-        ))),
+/// Extracts a core [`AnyType`] from a JS data-type object.
+pub(crate) fn anytype_from_either(data_type: Either<&BinaryType, &Utf8Type>) -> AnyType {
+    match data_type {
+        Either::A(binary) => binary.inner.to_any(),
+        Either::B(utf8) => utf8.inner.to_any(),
     }
 }
 
-/// URL-safe percent-encode `input` (e.g. a space becomes `%20`).
-#[napi(js_name = "percentEncode")]
-pub fn percent_encode_js(input: String) -> String {
-    percent_encode(&input)
-}
-
-/// Percent-decode `input`, throwing on a malformed escape.
-#[napi(js_name = "percentDecode")]
-pub fn percent_decode_js(input: String) -> Result<String> {
-    percent_decode(&input)
-        .map(|decoded| decoded.into_owned())
-        .map_err(|e| Error::from_reason(e.to_string()))
-}
-
-/// Open a byte-IO handle for `location`, dispatching on its URL scheme (the core
-/// `Io` factory): a bare path or `file://` URL opens a `LocalPath`. Remote schemes
-/// (`http` / `https`) are served by `HttpSession`; any other scheme throws.
-#[napi]
-pub fn open(location: String) -> Result<crate::localpath::LocalPath> {
-    let uri =
-        yggdryl_core::Uri::from_str(&location).map_err(|e| Error::from_reason(e.to_string()))?;
-    match uri.scheme() {
-        "file" | "" => Ok(crate::localpath::LocalPath {
-            inner: yggdryl_core::LocalPath::from_uri(&uri),
-        }),
-        other => Err(Error::from_reason(format!(
-            "no local Io handle for scheme {other:?}; use HttpSession for http/https"
-        ))),
+/// Wraps a core [`AnyScalar`] in the matching JS scalar value object.
+pub(crate) fn anyscalar_to_either(scalar: AnyScalar) -> Either<Binary, Utf8> {
+    match scalar {
+        AnyScalar::Binary(inner) => Either::A(Binary { inner }),
+        AnyScalar::Utf8(inner) => Either::B(Utf8 { inner }),
     }
 }

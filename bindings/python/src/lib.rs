@@ -1,229 +1,103 @@
 //! Python extension for **yggdryl**.
 //!
-//! Thin PyO3 wrappers around [`yggdryl_core::Uri`]/[`yggdryl_core::Url`],
-//! [`yggdryl_core::Version`], [`yggdryl_core::MimeType`] and
-//! [`yggdryl_core::MediaType`]; each type lives in its own module, mirroring the
-//! Rust crates. All logic lives in the shared core, so the Python and Node
-//! bindings behave identically.
+//! Thin PyO3 wrappers over the Arrow-centric `yggdryl_core` types; each type lives
+//! in its own module mirroring the Rust crate. All logic lives in the shared core
+//! so the Python and Node bindings behave identically.
 
-// The `#[pymethods]` macro injects an `.into()` on returned errors; because our
-// fallible methods already return `PyErr`, clippy flags it as a useless
-// conversion. The lint fires on macro-generated code, so allow it crate-wide.
+// The `#[pymethods]` macro injects an `.into()` on returned errors; our fallible
+// methods already return `PyErr`, so clippy flags the macro-generated conversion.
 #![allow(clippy::useless_conversion)]
 
-mod bytesio;
-mod compression;
-mod datatype;
-mod date;
-mod datetime;
-mod duration;
+mod binary;
+mod binary_type;
+mod charset;
 mod field;
-mod http;
-mod iostats;
-mod localpath;
-mod media;
-mod mime;
-mod pytime;
-mod timezone;
-mod uri;
-mod url;
-mod version;
+mod jsonparams;
+mod utf8;
+mod utf8_type;
+mod whence;
+
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use yggdryl_core::MediaError;
-use yggdryl_core::VersionError;
-use yggdryl_core::{percent_decode, percent_encode, UriError, UrlError};
-use yggdryl_core::{IoError, TimeError, TimeUnit, Whence};
-use yggdryl_http::HttpError;
-use yggdryl_schema::SchemaError;
+use yggdryl_dtype::{AnyType, DataType};
+use yggdryl_scalar::AnyScalar;
 
-use crate::bytesio::BytesIO;
-use crate::compression::Compression;
-use crate::datatype::DataType;
-use crate::date::Date;
-use crate::datetime::DateTime;
-use crate::duration::Duration;
-use crate::field::Field;
-use crate::http::{
-    http_delete, http_get, http_head, http_patch, http_post, http_put, http_request, set_base_url,
-    HttpRequest, HttpResponse, HttpSession,
-};
-use crate::iostats::IoStats;
-use crate::localpath::LocalPath;
-use crate::media::MediaType;
-use crate::mime::MimeType;
-use crate::pytime::Time;
-use crate::timezone::Timezone;
-use crate::uri::Uri;
-use crate::url::Url;
-use crate::version::Version;
+pub(crate) use binary::Binary;
+pub(crate) use binary_type::BinaryType;
+pub(crate) use charset::Charset;
+pub(crate) use field::Field;
+pub(crate) use jsonparams::JsonParams;
+pub(crate) use utf8::Utf8;
+pub(crate) use utf8_type::Utf8Type;
+pub(crate) use whence::Whence;
 
-pub(crate) fn uri_err(err: UriError) -> PyErr {
+/// Maps any core error to a Python `ValueError`.
+pub(crate) fn value_err<E: std::fmt::Display>(err: E) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
 
-pub(crate) fn url_err(err: UrlError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn version_err(err: VersionError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn media_err(err: MediaError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn io_err(err: IoError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn http_err(err: HttpError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn time_err(err: TimeError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-pub(crate) fn schema_err(err: SchemaError) -> PyErr {
-    PyValueError::new_err(err.to_string())
-}
-
-/// Parses a time-unit string (``s`` / ``ms`` / ``us`` / ``ns``) to a [`TimeUnit`],
-/// raising ``ValueError`` on a bad token. Shared by the schema / duration types.
-pub(crate) fn time_unit_from(unit: &str) -> PyResult<TimeUnit> {
-    TimeUnit::from_str(unit).map_err(time_err)
-}
-
-/// Converts a `serde_json::Value` (from [`yggdryl_core::Io::json`]) into the
-/// matching Python object, so JSON is parsed in Rust and handed back natively.
-pub(crate) fn json_to_py(py: Python<'_>, value: &serde_json::Value) -> PyObject {
-    use pyo3::types::{PyDict, PyList};
-    use serde_json::Value;
-    match value {
-        Value::Null => py.None(),
-        Value::Bool(b) => b.into_py(py),
-        Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                i.into_py(py)
-            } else if let Some(u) = n.as_u64() {
-                u.into_py(py)
-            } else {
-                n.as_f64().unwrap_or(f64::NAN).into_py(py)
-            }
-        }
-        Value::String(s) => s.into_py(py),
-        Value::Array(items) => {
-            let list = PyList::empty_bound(py);
-            for item in items {
-                let _ = list.append(json_to_py(py, item));
-            }
-            list.into()
-        }
-        Value::Object(map) => {
-            let dict = PyDict::new_bound(py);
-            for (key, value) in map {
-                let _ = dict.set_item(key, json_to_py(py, value));
-            }
-            dict.into()
-        }
-    }
-}
-
-/// Maps a Python ``whence`` integer (``SEEK_SET`` / ``SEEK_CUR`` / ``SEEK_END``)
-/// to the core [`Whence`], raising ``ValueError`` on any other value. Shared by
-/// the seekable IO types.
-pub(crate) fn whence_from(whence: i64) -> PyResult<Whence> {
-    match whence {
-        0 => Ok(Whence::Start),
-        1 => Ok(Whence::Current),
-        2 => Ok(Whence::End),
-        other => Err(PyValueError::new_err(format!(
-            "invalid whence ({other}), expected 0, 1 or 2"
-        ))),
-    }
-}
-
-/// Stable hash of a string for `__hash__`.
-pub(crate) fn hash_str(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut hasher);
+/// Hashes a core value the same way the bindings expose it through `__hash__`.
+pub(crate) fn hash_of<T: Hash>(value: &T) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
     hasher.finish()
 }
 
-/// URL-safe percent-encode ``value`` (e.g. a space becomes ``%20``).
-#[pyfunction]
-#[pyo3(name = "percent_encode")]
-fn py_percent_encode(value: &str) -> String {
-    percent_encode(value)
-}
-
-/// Percent-decode ``value``, raising ``ValueError`` on a malformed escape.
-#[pyfunction]
-#[pyo3(name = "percent_decode")]
-fn py_percent_decode(value: &str) -> PyResult<String> {
-    percent_decode(value)
-        .map(|decoded| decoded.into_owned())
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-}
-
-/// Open a byte-IO handle for ``location``, dispatching on its URL scheme (the
-/// core ``Io`` factory): a bare path or ``file://`` URL opens a
-/// :class:`LocalPath`. Remote schemes (``http`` / ``https``) are served by
-/// :class:`HttpSession`; any other scheme raises ``ValueError``.
-#[pyfunction]
-#[pyo3(name = "open")]
-fn py_open(location: &str) -> PyResult<LocalPath> {
-    let uri = yggdryl_core::Uri::from_str(location).map_err(uri_err)?;
-    match uri.scheme() {
-        "file" | "" => Ok(LocalPath {
-            inner: yggdryl_core::LocalPath::from_uri(&uri),
-        }),
-        other => Err(PyValueError::new_err(format!(
-            "no local Io handle for scheme {other:?}; use HttpSession for http/https"
-        ))),
+/// Renders a Rust `bool` as a Python `repr` (`True` / `False`).
+pub(crate) fn py_bool(value: bool) -> &'static str {
+    if value {
+        "True"
+    } else {
+        "False"
     }
 }
 
-/// The ``yggdryl`` Python module.
+/// Wraps a core [`AnyType`] in the matching Python data-type object.
+pub(crate) fn anytype_to_py(py: Python<'_>, ty: &AnyType) -> PyResult<PyObject> {
+    Ok(match ty {
+        AnyType::Binary(inner) => Py::new(py, BinaryType { inner: *inner })?.into_any(),
+        AnyType::Utf8(inner) => Py::new(py, Utf8Type { inner: *inner })?.into_any(),
+    })
+}
+
+/// Extracts a core [`AnyType`] from a Python data-type object.
+pub(crate) fn py_to_anytype(obj: &Bound<'_, PyAny>) -> PyResult<AnyType> {
+    if let Ok(binary) = obj.extract::<BinaryType>() {
+        return Ok(binary.inner.to_any());
+    }
+    if let Ok(utf8) = obj.extract::<Utf8Type>() {
+        return Ok(utf8.inner.to_any());
+    }
+    Err(PyValueError::new_err(
+        "expected a yggdryl data type (BinaryType or Utf8Type)",
+    ))
+}
+
+/// Wraps a core [`AnyScalar`] in the matching Python scalar value object.
+pub(crate) fn anyscalar_to_py(py: Python<'_>, scalar: AnyScalar) -> PyResult<PyObject> {
+    Ok(match scalar {
+        AnyScalar::Binary(inner) => Py::new(py, Binary { inner })?.into_any(),
+        AnyScalar::Utf8(inner) => Py::new(py, Utf8 { inner })?.into_any(),
+    })
+}
+
+/// The compiled `yggdryl` extension module.
 #[pymodule]
-fn yggdryl(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_class::<Uri>()?;
-    m.add_class::<Url>()?;
-    m.add_class::<Version>()?;
-    m.add_class::<MimeType>()?;
-    m.add_class::<MediaType>()?;
-    m.add_class::<BytesIO>()?;
-    m.add_class::<IoStats>()?;
-    m.add_class::<LocalPath>()?;
-    m.add_class::<Compression>()?;
-    m.add_class::<DataType>()?;
-    m.add_class::<Field>()?;
-    m.add_class::<Date>()?;
-    m.add_class::<Time>()?;
-    m.add_class::<DateTime>()?;
-    m.add_class::<Duration>()?;
-    m.add_class::<Timezone>()?;
-    m.add_class::<HttpSession>()?;
-    m.add_class::<HttpRequest>()?;
-    m.add_class::<HttpResponse>()?;
-    m.add_function(wrap_pyfunction!(py_percent_encode, m)?)?;
-    m.add_function(wrap_pyfunction!(py_percent_decode, m)?)?;
-    m.add_function(wrap_pyfunction!(py_open, m)?)?;
-    // Module-level HTTP verbs backed by the shared `HttpSession` singleton,
-    // mirroring `requests.get(...)` and friends.
-    m.add_function(wrap_pyfunction!(http_get, m)?)?;
-    m.add_function(wrap_pyfunction!(http_head, m)?)?;
-    m.add_function(wrap_pyfunction!(http_delete, m)?)?;
-    m.add_function(wrap_pyfunction!(http_post, m)?)?;
-    m.add_function(wrap_pyfunction!(http_put, m)?)?;
-    m.add_function(wrap_pyfunction!(http_patch, m)?)?;
-    m.add_function(wrap_pyfunction!(http_request, m)?)?;
-    m.add_function(wrap_pyfunction!(set_base_url, m)?)?;
+fn yggdryl(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<BinaryType>()?;
+    module.add_class::<Utf8Type>()?;
+    module.add_class::<Field>()?;
+    module.add_class::<Binary>()?;
+    module.add_class::<Utf8>()?;
+    module.add_class::<Whence>()?;
+    module.add_class::<Charset>()?;
+    module.add_class::<JsonParams>()?;
+    module.add_function(wrap_pyfunction!(jsonparams::set_json_params, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonparams::json_params, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonparams::reset_json_params, module)?)?;
     Ok(())
 }

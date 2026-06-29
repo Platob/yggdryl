@@ -1,29 +1,32 @@
 //! # yggdryl-core
 //!
-//! The consolidated foundations of the **yggdryl** project. One crate now holds
-//! what used to be five:
+//! The dependency-light foundations shared by the yggdryl type crates:
 //!
-//! - the [`Params`] query-parameter map (component maps are a plain
-//!   `BTreeMap<String, String>`), plus URL-safe percent-encoding
-//!   ([`percent_encode`] / [`percent_decode`]) and the component helpers (each
-//!   value type pairs its `from_str` / `from_mapping` parsers with inherent
-//!   `to_str` / `to_mapping` renderers);
-//! - the [`Version`] (`major.minor.patch`) value type;
-//! - the [`MimeType`] enum (backed by a mutable global registry) and the
-//!   [`MediaType`] extension stack;
-//! - the [`Uri`] / [`Url`] value types;
-//! - the byte-IO foundation — the [`Io`] handle trait, [`BytesIO`], [`LocalPath`],
-//!   the [`Codec`] / [`Frames`] value coders, and the [`from_str`] /
-//!   [`register_scheme`] factory;
-//! - streamed byte [`Compression`] (gzip / Zstandard / Snappy) over any `Io`
-//!   handle, plus the [`CompressIo`] extension trait.
+//! - [`Buffer`] — an `Arc`-backed, zero-copy byte buffer (O(1) clone, zero-copy
+//!   slicing).
+//! - [`Charset`] — text encodings (UTF-8, ASCII, Latin-1) for the JSON byte form.
+//! - [`Io`] / [`Whence`] — positional and cursor byte access; reads hand back
+//!   zero-copy [`Buffer`] views.
+//! - [`Jsonable`] / [`JsonParams`] — the JSON/BSON serialization trait and its
+//!   process-global format + charset parameters.
+//! - The error types ([`TypeError`], [`ScalarError`], [`FieldError`], [`IoError`],
+//!   [`CharsetError`]) and the [`mapping`] component-map codec.
 //!
-//! The blocking HTTP client lives in the separate `yggdryl-http` crate, which
-//! depends on this one.
+//! The Arrow-centric types built on these foundations live in the sibling crates
+//! `yggdryl-dtype` (data types), `yggdryl-scalar` (values) and `yggdryl-field`
+//! (fields).
+//!
+//! ```
+//! use yggdryl_core::{Buffer, Charset};
+//!
+//! let buf = Buffer::from_slice(b"hello world");
+//! assert_eq!(buf.slice(0..5).as_slice(), b"hello"); // zero-copy view
+//! assert_eq!(Charset::Latin1.encode("é"), vec![0xe9]);
+//! ```
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
-/// cost). Shared by every submodule via `pub(crate) use log_event`.
+/// cost). Shared by every submodule via `crate::log_event!`.
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
@@ -32,40 +35,19 @@ macro_rules! log_event {
 }
 pub(crate) use log_event;
 
+mod buffer;
 mod charset;
-mod encoding;
-mod mapping;
-mod version;
-
-mod media;
-mod url;
-
-mod time;
-
-mod compression;
+mod error;
 mod io;
-
-pub use charset::{Charset, CharsetError};
-pub use encoding::{
-    encode_component, percent_decode, percent_encode, validate_percent_encoding, EncodingError,
-};
-pub use mapping::Params;
-pub use version::{Version, VersionError};
-
-pub use media::{Category, MediaError, MediaType, MimeType, Signature};
-
-pub use url::{JoinInput, Uri, UriError, Url, UrlError};
-
-pub use time::{Date, DateTime, Duration, Temporal, Time, TimeError, TimeUnit, Timezone};
-
-pub use io::{
-    copy, from_str, from_uri, from_url, register_scheme, BytesIO, Codec, Frames, Io, IoError,
-    IoStats, Kind, LocalPath, Mode, Path, RemotePath, SchemeOpener, Stream, Whence, STREAM_CHUNK,
-};
-
-pub use compression::{CompressIo, Compression, Decoder, Encoder};
-
-/// Re-export of `serde_json` (under the `json` feature) so dependents can name the
-/// [`Value`](serde_json::Value) that [`Io::json`] returns without a direct dep.
 #[cfg(feature = "json")]
-pub use serde_json;
+mod json;
+pub mod mapping;
+
+pub use buffer::Buffer;
+pub use charset::Charset;
+#[cfg(feature = "json")]
+pub use error::JsonError;
+pub use error::{CharsetError, FieldError, IoError, ScalarError, TypeError};
+pub use io::{Io, Whence};
+#[cfg(feature = "json")]
+pub use json::{json_params, reset_json_params, set_json_params, JsonParams, Jsonable};
