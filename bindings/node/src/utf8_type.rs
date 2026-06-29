@@ -1,31 +1,30 @@
-//! Node wrapper for [`yggdryl_core::Utf8`].
+//! Node wrapper for the string [`yggdryl_core::Utf8Type`] data type.
 
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use yggdryl_core::{BinaryBased, DataType, Utf8 as CoreUtf8};
+use yggdryl_core::{BinaryBased, DataType, Utf8Type as CoreUtf8Type};
 
 use crate::to_napi_err;
 
-/// Arrow's variable-length UTF-8 string type (`string` / `large_string`).
-///
-/// Named `Utf8` to stay clear of the JavaScript `String` global; `fromBytes` and
-/// the core parser also accept the aliases `"utf8"` / `"large_utf8"`.
+/// Arrow's variable-length UTF-8 string type (`string` / `large_string`). The
+/// in-memory string *value* is `Utf8`. `fromStr` accepts the aliases `"utf8"` /
+/// `"large_utf8"`.
 #[napi]
-pub struct Utf8 {
-    pub(crate) inner: CoreUtf8,
+pub struct Utf8Type {
+    pub(crate) inner: CoreUtf8Type,
 }
 
 #[napi]
-impl Utf8 {
+impl Utf8Type {
     #[napi(constructor)]
     pub fn new(large: Option<bool>) -> Self {
-        Utf8 {
+        Utf8Type {
             inner: if large.unwrap_or(false) {
-                CoreUtf8::large()
+                CoreUtf8Type::large()
             } else {
-                CoreUtf8::new()
+                CoreUtf8Type::new()
             },
         }
     }
@@ -56,9 +55,9 @@ impl Utf8 {
 
     /// Reconstructs the type from its canonical string (accepts the aliases).
     #[napi(js_name = "fromStr", factory)]
-    pub fn from_str(value: String) -> napi::Result<Utf8> {
-        CoreUtf8::from_str(&value)
-            .map(|inner| Utf8 { inner })
+    pub fn from_str(value: String) -> napi::Result<Utf8Type> {
+        CoreUtf8Type::from_str(&value)
+            .map(|inner| Utf8Type { inner })
             .map_err(to_napi_err)
     }
 
@@ -70,10 +69,10 @@ impl Utf8 {
 
     /// Reconstructs the type from its component map.
     #[napi(factory)]
-    pub fn from_mapping(mapping: HashMap<String, String>) -> napi::Result<Utf8> {
+    pub fn from_mapping(mapping: HashMap<String, String>) -> napi::Result<Utf8Type> {
         let mapping: BTreeMap<String, String> = mapping.into_iter().collect();
-        CoreUtf8::from_mapping(&mapping)
-            .map(|inner| Utf8 { inner })
+        CoreUtf8Type::from_mapping(&mapping)
+            .map(|inner| Utf8Type { inner })
             .map_err(to_napi_err)
     }
 
@@ -85,23 +84,23 @@ impl Utf8 {
 
     /// Reconstructs the type from its byte form.
     #[napi(factory)]
-    pub fn from_bytes(data: Buffer) -> napi::Result<Utf8> {
-        CoreUtf8::from_bytes(data.as_ref())
-            .map(|inner| Utf8 { inner })
+    pub fn from_bytes(data: Buffer) -> napi::Result<Utf8Type> {
+        CoreUtf8Type::from_bytes(data.as_ref())
+            .map(|inner| Utf8Type { inner })
             .map_err(to_napi_err)
     }
 
     /// The JSON value (used by `JSON.stringify`).
     #[napi(js_name = "toJSON")]
     pub fn to_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.inner).expect("Utf8 serializes to JSON")
+        serde_json::to_value(self.inner).expect("Utf8Type serializes to JSON")
     }
 
     /// Reconstructs the type from its JSON value.
     #[napi(js_name = "fromJSON", factory)]
-    pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8> {
+    pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8Type> {
         serde_json::from_value(value)
-            .map(|inner| Utf8 { inner })
+            .map(|inner| Utf8Type { inner })
             .map_err(to_napi_err)
     }
 
@@ -110,9 +109,9 @@ impl Utf8 {
         self.inner.to_str().into_owned()
     }
 
-    /// Structural equality with another `Utf8`.
+    /// Structural equality with another `Utf8Type`.
     #[napi]
-    pub fn equals(&self, other: &Utf8) -> bool {
+    pub fn equals(&self, other: &Utf8Type) -> bool {
         self.inner == other.inner
     }
 }

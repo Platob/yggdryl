@@ -3,10 +3,11 @@
 //! The type system mirrors Apache Arrow's: every type is one of three
 //! [categories](TypeCategory) — *primitive*, *nested* or *logical* — exposed
 //! through the base [`DataType`] trait and the marker sub-traits
-//! [`PrimitiveType`], [`NestedType`] and [`LogicalType`]. Concrete types live in
-//! their own module ([`BinaryType`], [`Utf8`], …) and the [`AnyType`] enum is the
-//! hashable, serializable carrier a [`Field`](crate::Field) stores. The in-memory
-//! binary *value* is [`Binary`](crate::Binary), a separate scalar.
+//! [`PrimitiveType`], [`NestedType`] and [`LogicalType`]. Concrete type
+//! descriptors live in their own module ([`BinaryType`], [`Utf8Type`], …) and the
+//! [`AnyType`] enum is the hashable, serializable carrier a [`Field`](crate::Field)
+//! stores. The matching in-memory *values* are the separate scalars
+//! [`Binary`](crate::Binary) and [`Utf8`](crate::Utf8).
 //!
 //! This crate deliberately does **not** depend on `arrow-schema`; the conversion
 //! to Arrow's own `DataType` belongs to `yggdryl-schema`. Here the types only
@@ -16,7 +17,7 @@ mod binary;
 mod string;
 
 pub use binary::BinaryType;
-pub use string::Utf8;
+pub use string::Utf8Type;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -112,8 +113,8 @@ pub trait BinaryBased: PrimitiveType {
 pub enum AnyType {
     /// A [`BinaryType`] (`binary` / `large_binary`).
     Binary(BinaryType),
-    /// A [`Utf8`] (`string` / `large_string`) type.
-    Utf8(Utf8),
+    /// A [`Utf8Type`] (`string` / `large_string`).
+    Utf8(Utf8Type),
 }
 
 impl AnyType {
@@ -124,7 +125,7 @@ impl AnyType {
         if let Ok(binary) = BinaryType::from_str(value) {
             return Ok(AnyType::Binary(binary));
         }
-        if let Ok(utf8) = Utf8::from_str(value) {
+        if let Ok(utf8) = Utf8Type::from_str(value) {
             return Ok(AnyType::Utf8(utf8));
         }
         crate::log_event!(warn, "AnyType::from_str unknown type {:?}", value);
@@ -184,8 +185,8 @@ impl From<BinaryType> for AnyType {
     }
 }
 
-impl From<Utf8> for AnyType {
-    fn from(inner: Utf8) -> Self {
+impl From<Utf8Type> for AnyType {
+    fn from(inner: Utf8Type) -> Self {
         AnyType::Utf8(inner)
     }
 }

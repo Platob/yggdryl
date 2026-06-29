@@ -6,7 +6,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use yggdryl_core::{Binary as CoreBinary, BinaryBased, BinaryType as CoreBinaryType, Io, Scalar};
 
-use crate::{anytype_to_py, hash_of, py_bool, value_err, BinaryType, Whence};
+use crate::{
+    anyscalar_to_py, anytype_to_py, hash_of, py_bool, py_to_anytype, value_err, BinaryType, Whence,
+};
 
 /// A growable, in-memory binary buffer that also implements the IO surface
 /// (`read`/`write`/`seek`/`pread`/`pwrite`/`resize`).
@@ -85,6 +87,20 @@ impl Binary {
         CoreBinary::from_json(value)
             .map(|inner| Binary { inner })
             .map_err(value_err)
+    }
+
+    /// Casts the value to `data_type` (a `BinaryType` or `Utf8Type`), returning a
+    /// new `Binary` or `Utf8` (binary → string fails on non-UTF-8 bytes).
+    fn cast(&self, py: Python<'_>, data_type: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        let data_type = py_to_anytype(data_type)?;
+        let scalar = self.inner.cast(&data_type).map_err(value_err)?;
+        anyscalar_to_py(py, scalar)
+    }
+
+    /// Sets the data type in place (same-family only); use `cast` to convert.
+    fn set_data_type(&mut self, data_type: &Bound<'_, PyAny>) -> PyResult<()> {
+        let data_type = py_to_anytype(data_type)?;
+        self.inner.set_data_type(&data_type).map_err(value_err)
     }
 
     // --- IO surface ---

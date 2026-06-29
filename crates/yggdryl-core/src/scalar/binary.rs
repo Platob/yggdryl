@@ -11,7 +11,7 @@ use crate::datatype::{AnyType, BinaryType, DataType};
 use crate::error::{IoError, ScalarError};
 use crate::io::{Io, Whence};
 use crate::mapping::{decode_hex, encode_hex};
-use crate::scalar::Scalar;
+use crate::scalar::{AnyScalar, Scalar, Utf8};
 
 /// A growable, in-memory binary value that doubles as an [`Io`](crate::Io) handle.
 ///
@@ -207,6 +207,28 @@ impl Default for Binary {
 impl Scalar for Binary {
     fn data_type(&self) -> AnyType {
         self.data_type.to_any()
+    }
+
+    fn set_data_type(&mut self, data_type: &dyn DataType) -> Result<(), ScalarError> {
+        match data_type.to_any() {
+            AnyType::Binary(binary) => {
+                self.data_type = binary;
+                Ok(())
+            }
+            other => Err(ScalarError::IncompatibleType(format!(
+                "cannot set type \"{}\" on a binary scalar; use cast",
+                other.to_str()
+            ))),
+        }
+    }
+
+    fn cast(&self, data_type: &dyn DataType) -> Result<AnyScalar, ScalarError> {
+        match data_type.to_any() {
+            AnyType::Binary(binary) => Ok(AnyScalar::Binary(self.with_data_type(binary))),
+            AnyType::Utf8(utf8) => Ok(AnyScalar::Utf8(
+                Utf8::from_bytes(self.as_slice())?.with_data_type(utf8),
+            )),
+        }
     }
 }
 

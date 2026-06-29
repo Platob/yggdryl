@@ -7,7 +7,7 @@ use napi::Either;
 use napi_derive::napi;
 use yggdryl_core::AnyField;
 
-use crate::{anytype_from_either, anytype_to_either, to_napi_err, BinaryType, Utf8};
+use crate::{anytype_from_either, anytype_to_either, to_napi_err, BinaryType, Utf8Type};
 
 /// A named, nullable, typed field with string→string metadata.
 #[napi]
@@ -20,7 +20,7 @@ impl Field {
     #[napi(constructor)]
     pub fn new(
         name: String,
-        data_type: Either<&BinaryType, &Utf8>,
+        data_type: Either<&BinaryType, &Utf8Type>,
         nullable: Option<bool>,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
@@ -38,9 +38,9 @@ impl Field {
         self.inner.name().to_string()
     }
 
-    /// The field's data type (a `BinaryType` or `Utf8` object).
+    /// The field's data type (a `BinaryType` or `Utf8Type` object).
     #[napi(getter)]
-    pub fn data_type(&self) -> Either<BinaryType, Utf8> {
+    pub fn data_type(&self) -> Either<BinaryType, Utf8Type> {
         anytype_to_either(self.inner.data_type())
     }
 

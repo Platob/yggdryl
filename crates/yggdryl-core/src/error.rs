@@ -43,6 +43,8 @@ pub enum ScalarError {
     InvalidUtf8,
     /// A scalar's serialized bytes could not be decoded back into a value.
     InvalidEncoding(String),
+    /// A type was set on, or cast requested for, a scalar that cannot hold it.
+    IncompatibleType(String),
     /// The scalar's data type could not be resolved.
     Type(TypeError),
 }
@@ -54,6 +56,7 @@ impl fmt::Display for ScalarError {
                 write!(f, "string scalar bytes were not valid UTF-8")
             }
             ScalarError::InvalidEncoding(msg) => write!(f, "invalid scalar encoding: {msg}"),
+            ScalarError::IncompatibleType(msg) => write!(f, "incompatible scalar type: {msg}"),
             ScalarError::Type(err) => write!(f, "{err}"),
         }
     }

@@ -1,4 +1,4 @@
-//! The [`Utf8`] data type — variable-length UTF-8 strings.
+//! The [`Utf8Type`] data type — variable-length UTF-8 strings.
 
 use std::collections::BTreeMap;
 
@@ -8,27 +8,28 @@ use crate::error::TypeError;
 /// Arrow's variable-length UTF-8 string type, in both its 32-bit (`string`) and
 /// 64-bit (`large_string`) offset flavours.
 ///
-/// Named `Utf8` after Arrow's own type (and to stay clear of Rust's `String` and
-/// the JavaScript `String` global); `from_str` also accepts the aliases `"utf8"`
-/// and `"large_utf8"`.
+/// This is the *type* descriptor; the in-memory string *value* is
+/// [`Utf8`](crate::Utf8). Named with the `Type` suffix to mirror
+/// [`BinaryType`](crate::BinaryType); `from_str` also accepts the aliases
+/// `"utf8"` / `"large_utf8"`.
 ///
 /// ```
-/// use yggdryl_core::{BinaryBased, DataType, Utf8};
+/// use yggdryl_core::{BinaryBased, DataType, Utf8Type};
 ///
-/// let s = Utf8::new();
+/// let s = Utf8Type::new();
 /// assert_eq!(s.type_name(), "string");
 /// assert!(s.is_utf8());
-/// assert_eq!(Utf8::from_str("utf8").unwrap(), Utf8::new());
-/// assert_eq!(Utf8::large().type_name(), "large_string");
+/// assert_eq!(Utf8Type::from_str("utf8").unwrap(), Utf8Type::new());
+/// assert_eq!(Utf8Type::large().type_name(), "large_string");
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(into = "String", try_from = "String"))]
-pub struct Utf8 {
+pub struct Utf8Type {
     large: bool,
 }
 
-impl Utf8 {
+impl Utf8Type {
     /// The 32-bit-offset `string` type.
     pub fn new() -> Self {
         Self { large: false }
@@ -42,7 +43,7 @@ impl Utf8 {
     /// Parses `"string"`/`"utf8"` or `"large_string"`/`"large_utf8"`.
     #[allow(clippy::should_implement_trait)] // `from_str` is the crate-wide naming convention.
     pub fn from_str(value: &str) -> Result<Self, TypeError> {
-        crate::log_event!(trace, "Utf8::from_str {:?}", value);
+        crate::log_event!(trace, "Utf8Type::from_str {:?}", value);
         match value {
             "string" | "utf8" => Ok(Self { large: false }),
             "large_string" | "large_utf8" => Ok(Self { large: true }),
@@ -67,17 +68,17 @@ impl Utf8 {
     /// The JSON form (the canonical string as a JSON string).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("Utf8 serializes to a JSON string")
+        serde_json::to_string(self).expect("Utf8Type serializes to a JSON string")
     }
 
-    /// Parses the JSON form produced by [`Utf8::to_json`].
+    /// Parses the JSON form produced by [`Utf8Type::to_json`].
     #[cfg(feature = "json")]
     pub fn from_json(value: &str) -> Result<Self, TypeError> {
         serde_json::from_str(value).map_err(|err| TypeError::InvalidMapping(err.to_string()))
     }
 }
 
-impl DataType for Utf8 {
+impl DataType for Utf8Type {
     fn type_name(&self) -> &'static str {
         if self.large {
             "large_string"
@@ -95,9 +96,9 @@ impl DataType for Utf8 {
     }
 }
 
-impl PrimitiveType for Utf8 {}
+impl PrimitiveType for Utf8Type {}
 
-impl BinaryBased for Utf8 {
+impl BinaryBased for Utf8Type {
     fn is_utf8(&self) -> bool {
         true
     }
@@ -107,16 +108,16 @@ impl BinaryBased for Utf8 {
     }
 }
 
-impl From<Utf8> for String {
-    fn from(value: Utf8) -> Self {
+impl From<Utf8Type> for String {
+    fn from(value: Utf8Type) -> Self {
         value.type_name().to_string()
     }
 }
 
-impl TryFrom<String> for Utf8 {
+impl TryFrom<String> for Utf8Type {
     type Error = TypeError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Utf8::from_str(&value)
+        Utf8Type::from_str(&value)
     }
 }

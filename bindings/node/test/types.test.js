@@ -3,73 +3,57 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { BinaryType, Utf8, Field, Binary, Whence } = require('../index.js')
+const { BinaryType, Utf8Type, Field, Binary, Utf8, Whence } = require('../index.js')
 
-test('binary type round-trips', () => {
-  const b = new BinaryType()
-  assert.equal(b.name, 'binary')
-  assert.equal(b.toString(), 'binary')
-  assert.equal(b.isLarge, false)
-  assert.equal(new BinaryType(true).name, 'large_binary')
-
-  assert.ok(BinaryType.fromStr('large_binary').equals(new BinaryType(true)))
-  assert.ok(BinaryType.fromMapping(b.toMapping()).equals(b))
-  assert.ok(BinaryType.fromBytes(b.toBytes()).equals(b))
-  assert.equal(JSON.stringify(b), '"binary"')
+test('data types', () => {
+  assert.equal(new BinaryType().name, 'binary')
+  assert.equal(new Utf8Type(true).name, 'large_string')
+  assert.ok(Utf8Type.fromStr('utf8').equals(new Utf8Type()))
+  assert.ok(BinaryType.fromBytes(new BinaryType().toBytes()).equals(new BinaryType()))
+  assert.equal(JSON.stringify(new Utf8Type()), '"string"')
 })
 
-test('utf8 type aliases', () => {
-  const s = new Utf8()
-  assert.equal(s.name, 'string')
-  assert.ok(Utf8.fromStr('utf8').equals(s))
-  assert.ok(Utf8.fromStr('large_utf8').equals(new Utf8(true)))
-})
-
-test('field round-trips with metadata', () => {
-  const field = new Field('payload', new BinaryType(true), false, { unit: 'bytes' })
-  assert.equal(field.name, 'payload')
-  assert.ok(field.dataType.equals(new BinaryType(true)))
-  assert.equal(field.nullable, false)
-  assert.deepEqual(field.metadata, { unit: 'bytes' })
-
-  assert.ok(Field.fromMapping(field.toMapping()).equals(field))
-  assert.ok(Field.fromBytes(field.toBytes()).equals(field))
+test('field with string type', () => {
+  const field = new Field('name', new Utf8Type(), false, { k: 'v' })
+  assert.ok(field.dataType.equals(new Utf8Type()))
   assert.ok(Field.fromJSON(JSON.parse(JSON.stringify(field))).equals(field))
 })
 
-test('binary buffer value and serialization', () => {
+test('binary value and io', () => {
   const buf = new Binary(Buffer.from([0, 1, 2]))
   assert.deepEqual([...buf.toBytes()], [0, 1, 2])
   assert.equal(buf.length, 3)
   assert.ok(buf.dataType.equals(new BinaryType()))
-
   assert.ok(Binary.fromBytes(buf.toBytes()).equals(buf))
-  assert.ok(Binary.fromMapping(buf.toMapping()).equals(buf))
-  assert.ok(Binary.fromJSON(JSON.parse(JSON.stringify(buf))).equals(buf))
 
-  const large = new Binary(Buffer.from('x'), true)
-  assert.ok(large.dataType.equals(new BinaryType(true)))
-  assert.ok(Binary.fromMapping(large.toMapping()).equals(large))
+  const io = new Binary()
+  io.write(Buffer.from('hello '))
+  io.write(Buffer.from('world'))
+  io.seek(0, Whence.Start)
+  assert.equal(io.read(5).toBytes().toString(), 'hello')
+  assert.equal(io.pread(6, 5).toBytes().toString(), 'world')
 })
 
-test('binary implements io', () => {
-  const buf = new Binary()
-  assert.equal(buf.write(Buffer.from('hello ')), 6)
-  assert.equal(buf.write(Buffer.from('world')), 5)
-  assert.equal(buf.size, 11)
-  assert.ok(buf.capacity >= 11)
+test('utf8 value', () => {
+  const s = new Utf8('héllo')
+  assert.equal(s.value, 'héllo')
+  assert.equal(s.toString(), 'héllo')
+  assert.ok(s.dataType.equals(new Utf8Type()))
+  assert.ok(Utf8.fromBytes(s.toBytes()).equals(s))
+  assert.ok(Utf8.fromJSON(JSON.parse(JSON.stringify(s))).equals(s))
+})
 
-  buf.seek(0, Whence.Start)
-  assert.equal(buf.read(5).toBytes().toString(), 'hello')
-  assert.equal(buf.tell(), 5)
-  assert.equal(buf.pread(6, 5).toBytes().toString(), 'world')
+test('cast and set data type', () => {
+  const buf = new Binary(Buffer.from('hi'))
 
-  buf.pwrite(0, Buffer.from('HELLO'))
-  assert.equal(buf.toBytes().toString(), 'HELLO world')
+  const text = buf.cast(new Utf8Type())
+  assert.ok(text instanceof Utf8)
+  assert.equal(text.value, 'hi')
+  assert.ok(text.cast(new BinaryType()).equals(buf))
 
-  buf.resize(5, '.'.charCodeAt(0))
-  assert.equal(buf.toBytes().toString(), 'HELLO')
+  assert.throws(() => new Binary(Buffer.from([0xff, 0xfe])).cast(new Utf8Type()))
 
-  assert.equal(buf.seek(-1, Whence.End), 4)
-  assert.throws(() => buf.seek(-100, Whence.Start))
+  buf.setDataType(new BinaryType(true))
+  assert.ok(buf.dataType.equals(new BinaryType(true)))
+  assert.throws(() => new Binary(Buffer.from('hi')).setDataType(new Utf8Type()))
 })

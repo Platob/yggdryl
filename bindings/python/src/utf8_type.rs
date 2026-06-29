@@ -1,33 +1,32 @@
-//! Python wrapper for [`yggdryl_core::Utf8`].
+//! Python wrapper for the string [`yggdryl_core::Utf8Type`] data type.
 
 use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, DataType, Utf8 as CoreUtf8};
+use yggdryl_core::{BinaryBased, DataType, Utf8Type as CoreUtf8Type};
 
 use crate::{hash_of, py_bool, value_err};
 
-/// Arrow's variable-length UTF-8 string type (`string` / `large_string`).
-///
-/// Named `Utf8` to stay clear of Python's built-in `str`; `from_str` also accepts
-/// the aliases `"utf8"` / `"large_utf8"`.
-#[pyclass(module = "yggdryl", name = "Utf8", frozen)]
+/// Arrow's variable-length UTF-8 string type (`string` / `large_string`). The
+/// in-memory string *value* is `Utf8`. `from_str` also accepts the aliases
+/// `"utf8"` / `"large_utf8"`.
+#[pyclass(module = "yggdryl", name = "Utf8Type", frozen)]
 #[derive(Clone)]
-pub struct Utf8 {
-    pub(crate) inner: CoreUtf8,
+pub struct Utf8Type {
+    pub(crate) inner: CoreUtf8Type,
 }
 
 #[pymethods]
-impl Utf8 {
+impl Utf8Type {
     #[new]
     #[pyo3(signature = (large = false))]
     fn new(large: bool) -> Self {
-        Utf8 {
+        Utf8Type {
             inner: if large {
-                CoreUtf8::large()
+                CoreUtf8Type::large()
             } else {
-                CoreUtf8::new()
+                CoreUtf8Type::new()
             },
         }
     }
@@ -58,8 +57,8 @@ impl Utf8 {
     /// Reconstructs the type from its canonical string (accepts the aliases).
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
-        CoreUtf8::from_str(value)
-            .map(|inner| Utf8 { inner })
+        CoreUtf8Type::from_str(value)
+            .map(|inner| Utf8Type { inner })
             .map_err(value_err)
     }
 
@@ -71,8 +70,8 @@ impl Utf8 {
     /// Reconstructs the type from its component map.
     #[staticmethod]
     fn from_mapping(mapping: BTreeMap<String, String>) -> PyResult<Self> {
-        CoreUtf8::from_mapping(&mapping)
-            .map(|inner| Utf8 { inner })
+        CoreUtf8Type::from_mapping(&mapping)
+            .map(|inner| Utf8Type { inner })
             .map_err(value_err)
     }
 
@@ -84,8 +83,8 @@ impl Utf8 {
     /// Reconstructs the type from its byte form.
     #[staticmethod]
     fn from_bytes(data: &[u8]) -> PyResult<Self> {
-        CoreUtf8::from_bytes(data)
-            .map(|inner| Utf8 { inner })
+        CoreUtf8Type::from_bytes(data)
+            .map(|inner| Utf8Type { inner })
             .map_err(value_err)
     }
 
@@ -97,8 +96,8 @@ impl Utf8 {
     /// Reconstructs the type from its JSON form.
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
-        CoreUtf8::from_json(value)
-            .map(|inner| Utf8 { inner })
+        CoreUtf8Type::from_json(value)
+            .map(|inner| Utf8Type { inner })
             .map_err(value_err)
     }
 
@@ -107,11 +106,13 @@ impl Utf8 {
     }
 
     fn __repr__(&self) -> String {
-        format!("Utf8(large={})", py_bool(self.inner.is_large()))
+        format!("Utf8Type(large={})", py_bool(self.inner.is_large()))
     }
 
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
-        other.extract::<Utf8>().is_ok_and(|o| self.inner == o.inner)
+        other
+            .extract::<Utf8Type>()
+            .is_ok_and(|o| self.inner == o.inner)
     }
 
     fn __hash__(&self) -> u64 {

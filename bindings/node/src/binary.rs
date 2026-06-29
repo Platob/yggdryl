@@ -3,10 +3,13 @@
 use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
+use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::{Binary as CoreBinary, BinaryType as CoreBinaryType, Io};
+use yggdryl_core::{Binary as CoreBinary, BinaryType as CoreBinaryType, Io, Scalar};
 
-use crate::{to_napi_err, BinaryType, Whence};
+use crate::{
+    anyscalar_to_either, anytype_from_either, to_napi_err, BinaryType, Utf8, Utf8Type, Whence,
+};
 
 /// A growable, in-memory binary buffer that also implements the IO surface
 /// (`read`/`write`/`seek`/`pread`/`pwrite`/`resize`).
@@ -89,6 +92,25 @@ impl Binary {
         serde_json::from_value(value)
             .map(|inner| Binary { inner })
             .map_err(to_napi_err)
+    }
+
+    /// Casts the value to `dataType`, returning a new `Binary` or `Utf8` (binary →
+    /// string fails on non-UTF-8 bytes).
+    #[napi]
+    pub fn cast(
+        &self,
+        data_type: Either<&BinaryType, &Utf8Type>,
+    ) -> napi::Result<Either<Binary, Utf8>> {
+        let data_type = anytype_from_either(data_type);
+        let scalar = self.inner.cast(&data_type).map_err(to_napi_err)?;
+        Ok(anyscalar_to_either(scalar))
+    }
+
+    /// Sets the data type in place (same-family only); use `cast` to convert.
+    #[napi]
+    pub fn set_data_type(&mut self, data_type: Either<&BinaryType, &Utf8Type>) -> napi::Result<()> {
+        let data_type = anytype_from_either(data_type);
+        self.inner.set_data_type(&data_type).map_err(to_napi_err)
     }
 
     // --- IO surface ---
