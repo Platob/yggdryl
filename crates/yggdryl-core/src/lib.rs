@@ -12,7 +12,11 @@
 //!   type-erased form. [`PrimitiveField`] / [`NestedField`] / [`LogicalField`]
 //!   mirror the type categories.
 //! - [`Scalar`] is a single typed cell; [`BinaryScalar`] / [`StringScalar`] keep
-//!   their payload in a shared [`Buffer`] for O(1) clones and borrowed access.
+//!   their payload in a shared [`Buffer`] for O(1) clones and borrowed access,
+//!   and round-trip through a canonical binary frame, a component map and JSON.
+//! - [`Io`] centralises byte access (`pread`/`pwrite`, `size`, `tell`/`seek`,
+//!   capacity/resize); [`MemoryIo`] is a growable in-memory handle whose reads are
+//!   zero-copy [`BinaryScalar`] views of its store.
 //!
 //! Every value type round-trips through a canonical string, a component map,
 //! bytes and (under the `serde` / `json` features) `serde` / JSON, and derives
@@ -48,6 +52,7 @@ mod buffer;
 mod datatype;
 mod error;
 mod field;
+mod io;
 mod mapping;
 mod scalar;
 
@@ -56,8 +61,9 @@ pub use datatype::{
     AnyType, Binary, BinaryBased, DataType, LogicalType, NestedType, PrimitiveType, TypeCategory,
     Utf8,
 };
-pub use error::{FieldError, ScalarError, TypeError};
+pub use error::{FieldError, IoError, ScalarError, TypeError};
 pub use field::{AnyField, Field, LogicalField, NestedField, PrimitiveField};
+pub use io::{Io, MemoryIo, Whence};
 pub use scalar::{BinaryScalar, Scalar, StringScalar};
 
 #[cfg(test)]

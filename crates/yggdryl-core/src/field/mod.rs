@@ -146,6 +146,7 @@ impl AnyField {
     /// [`to_mapping`](Field::to_mapping). A missing `nullable` defaults to `true`
     /// (Arrow's convention).
     pub fn from_mapping(map: &BTreeMap<String, String>) -> Result<Self, FieldError> {
+        crate::log_event!(trace, "AnyField::from_mapping");
         let name = map
             .get("name")
             .ok_or(FieldError::MissingKey("name"))?
@@ -153,8 +154,15 @@ impl AnyField {
         let type_name = map.get("type").ok_or(FieldError::MissingKey("type"))?;
         let data_type = AnyType::from_str(type_name)?;
         let nullable = match map.get("nullable").map(String::as_str) {
-            None | Some("true") => true,
+            Some("true") => true,
             Some("false") => false,
+            None => {
+                crate::log_event!(
+                    warn,
+                    "AnyField::from_mapping missing \"nullable\", defaulting to true"
+                );
+                true
+            }
             Some(other) => {
                 return Err(FieldError::InvalidMapping(format!(
                     "nullable must be \"true\" or \"false\", got {other:?}"
@@ -177,6 +185,7 @@ impl AnyField {
 
     /// Reconstructs a field from the bytes produced by [`to_bytes`](Field::to_bytes).
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, FieldError> {
+        crate::log_event!(trace, "AnyField::from_bytes {} bytes", bytes.len());
         let map = decode_pairs(bytes).map_err(FieldError::InvalidMapping)?;
         Self::from_mapping(&map)
     }

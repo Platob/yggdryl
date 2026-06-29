@@ -98,3 +98,38 @@ impl From<TypeError> for FieldError {
         FieldError::Type(err)
     }
 }
+
+/// Failure while reading from or writing to an [`Io`](crate::Io) handle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum IoError {
+    /// A positional access fell outside the handle's valid range.
+    OutOfBounds {
+        /// The requested absolute offset.
+        offset: u64,
+        /// The handle's current size.
+        size: u64,
+    },
+    /// A seek resolved to a negative position.
+    InvalidSeek(String),
+    /// The handle does not support the requested operation (e.g. a read-only
+    /// source asked to resize).
+    Unsupported(&'static str),
+}
+
+impl fmt::Display for IoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IoError::OutOfBounds { offset, size } => write!(
+                f,
+                "offset {offset} is out of bounds for an IO of size {size}"
+            ),
+            IoError::InvalidSeek(msg) => write!(f, "invalid seek: {msg}"),
+            IoError::Unsupported(op) => {
+                write!(f, "this IO handle does not support {op}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for IoError {}

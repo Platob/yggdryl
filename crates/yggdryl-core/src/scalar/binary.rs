@@ -1,7 +1,11 @@
 //! The [`BinaryScalar`] — a single binary value (or null).
 
+use std::collections::BTreeMap;
+
 use crate::buffer::Buffer;
-use crate::datatype::{AnyType, Binary, DataType};
+use crate::datatype::{AnyType, Binary, BinaryBased, DataType};
+use crate::error::ScalarError;
+use crate::mapping::{decode_hex, encode_hex};
 use crate::scalar::Scalar;
 
 /// A single [`Binary`] value, or null.
@@ -15,6 +19,7 @@ use crate::scalar::Scalar;
 /// let scalar = BinaryScalar::new(b"\x00\x01\x02".as_slice());
 /// assert_eq!(scalar.as_bytes(), Some(b"\x00\x01\x02".as_slice()));
 /// assert!(!scalar.is_null());
+/// assert_eq!(BinaryScalar::from_bytes(&scalar.to_bytes()).unwrap(), scalar);
 /// assert!(BinaryScalar::null().is_null());
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -26,12 +31,21 @@ pub struct BinaryScalar {
 }
 
 impl BinaryScalar {
-    /// A non-null scalar holding `value`. Building from an owned `Vec`/`Buffer`
-    /// does not copy; building from a borrowed slice copies once.
+    /// A non-null scalar holding `value`. Building from an existing [`Buffer`] is
+    /// O(1) (the payload is shared); building from a `Vec` or a borrowed slice
+    /// copies the bytes once into a fresh allocation.
     pub fn new(value: impl Into<Buffer>) -> Self {
         Self {
             data_type: Binary::new(),
             value: Some(value.into()),
+        }
+    }
+
+    /// A non-null scalar sharing `buffer` without copying.
+    pub fn from_buffer(buffer: Buffer) -> Self {
+        Self {
+            data_type: Binary::new(),
+            value: Some(buffer),
         }
     }
 
@@ -45,7 +59,7 @@ impl BinaryScalar {
 
     /// Returns a copy of this scalar carrying the given `binary` type variant
     /// (`binary` vs `large_binary`); the payload is shared, not copied.
-    pub fn with_type(&self, data_type: Binary) -> Self {
+    pub fn with_data_type(&self, data_type: Binary) -> Self {
         Self {
             data_type,
             value: self.value.clone(),
@@ -77,17 +91,92 @@ impl BinaryScalar {
         self.data_type
     }
 
-    /// The JSON form (`{"type": …, "value": …}`).
-    #[cfg(feature = "json")]
-    pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("BinaryScalar serializes to JSON")
+    /// The compact binary frame: `[type tag][null flag][raw payload]`. The raw
+    /// bytes are stored verbatim (no hex/JSON expansion).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let tag = if self.data_type.is_large() { 1u8 } else { 0u8 };
+        match &self.value {
+            Some(buffer) => {
+                let mut out = Vec::with_capacity(2 + buffer.len());
+                out.push(tag);
+                out.push(0); // not null
+                out.extend_from_slice(buffer.as_slice());
+                out
+            }
+            None => vec![tag, 1],
+        }
     }
 
-    /// Parses the JSON form produced by [`BinaryScalar::to_json`].
-    #[cfg(feature = "json")]
-    pub fn from_json(value: &str) -> Result<Self, crate::error::ScalarError> {
-        serde_json::from_str(value)
-            .map_err(|err| crate::error::ScalarError::InvalidEncoding(err.to_string()))
+    /// Parses the binary frame produced by [`to_bytes`](BinaryScalar::to_bytes).
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ScalarError> {
+        let (&tag, rest) = bytes
+            .split_first()
+            .ok_or_else(|| ScalarError::InvalidEncoding("empty binary scalar frame".to_string()))?;
+        let large = match tag {
+            0 => false,
+            1 => true,
+            other => {
+                return Err(ScalarError::InvalidEncoding(format!(
+                    "expected a binary type tag (0 or 1), got {other}"
+                )))
+            }
+        };
+        let (&null_flag, payload) = rest
+            .split_first()
+            .ok_or_else(|| ScalarError::InvalidEncoding("missing null flag".to_string()))?;
+        let value = match null_flag {
+            0 => Some(Buffer::from_slice(payload)),
+            1 if payload.is_empty() => None,
+            1 => {
+                return Err(ScalarError::InvalidEncoding(
+                    "a null scalar must carry no payload".to_string(),
+                ))
+            }
+            other => {
+                return Err(ScalarError::InvalidEncoding(format!(
+                    "null flag must be 0 or 1, got {other}"
+                )))
+            }
+        };
+        Ok(Self {
+            data_type: if large {
+                Binary::large()
+            } else {
+                Binary::new()
+            },
+            value,
+        })
+    }
+
+    /// The component map (`type`, plus `value` as hex or a `null` marker).
+    pub fn to_mapping(&self) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
+        map.insert("type".to_string(), self.data_type.type_name().to_string());
+        match &self.value {
+            Some(buffer) => {
+                map.insert("value".to_string(), encode_hex(buffer.as_slice()));
+            }
+            None => {
+                map.insert("null".to_string(), "true".to_string());
+            }
+        }
+        map
+    }
+
+    /// Reconstructs a scalar from the component map produced by
+    /// [`to_mapping`](BinaryScalar::to_mapping).
+    pub fn from_mapping(map: &BTreeMap<String, String>) -> Result<Self, ScalarError> {
+        let type_name = map
+            .get("type")
+            .ok_or_else(|| ScalarError::InvalidEncoding("missing \"type\" key".to_string()))?;
+        let data_type = Binary::from_str(type_name)?;
+        let value = match map.get("value") {
+            Some(hex) => Some(Buffer::from_vec(
+                decode_hex(hex).map_err(ScalarError::InvalidEncoding)?,
+            )),
+            None => None,
+        };
+        Ok(Self { data_type, value })
     }
 }
 

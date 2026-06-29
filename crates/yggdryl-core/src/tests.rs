@@ -146,3 +146,75 @@ fn json_helpers_round_trip() {
     let scalar = BinaryScalar::new(vec![9u8, 9, 9]);
     assert_eq!(BinaryScalar::from_json(&scalar.to_json()).unwrap(), scalar);
 }
+
+#[test]
+fn binary_scalar_byte_and_mapping_round_trips() {
+    for scalar in [
+        BinaryScalar::new(vec![0u8, 1, 255]),
+        BinaryScalar::null(),
+        BinaryScalar::new(Vec::new()),
+    ] {
+        assert_eq!(
+            BinaryScalar::from_bytes(&scalar.to_bytes()).unwrap(),
+            scalar
+        );
+        assert_eq!(
+            BinaryScalar::from_mapping(&scalar.to_mapping()).unwrap(),
+            scalar
+        );
+    }
+    let large = BinaryScalar::new(vec![7u8]).with_data_type(Binary::large());
+    assert_eq!(large.binary_type(), Binary::large());
+    assert_eq!(BinaryScalar::from_bytes(&large.to_bytes()).unwrap(), large);
+}
+
+#[test]
+fn string_scalar_byte_and_mapping_round_trips() {
+    for scalar in [
+        StringScalar::new("héllo"),
+        StringScalar::null(),
+        StringScalar::new(""),
+    ] {
+        assert_eq!(
+            StringScalar::from_bytes(&scalar.to_bytes()).unwrap(),
+            scalar
+        );
+        assert_eq!(
+            StringScalar::from_mapping(&scalar.to_mapping()).unwrap(),
+            scalar
+        );
+    }
+    // Invalid UTF-8 in a string frame, and a non-string type tag, are rejected.
+    assert!(StringScalar::from_bytes(&[2u8, 0, 0xff, 0xfe]).is_err());
+    assert!(StringScalar::from_bytes(&[0u8, 1]).is_err());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn string_scalar_json_is_human_readable() {
+    let json = StringScalar::new("héllo").to_json();
+    assert_eq!(json, r#"{"type":"string","value":"héllo"}"#);
+    assert_eq!(
+        StringScalar::from_json(&json).unwrap(),
+        StringScalar::new("héllo")
+    );
+}
+
+#[test]
+fn memory_io_zero_copy_view_and_round_trip() {
+    use crate::{Io, MemoryIo};
+
+    let mut io = MemoryIo::new();
+    io.write(b"hello ").unwrap();
+    io.write(b"world").unwrap();
+    assert_eq!(io.size(), 11);
+
+    io.seek(0, crate::Whence::Start).unwrap();
+    assert_eq!(io.read(5).unwrap().as_bytes(), Some(b"hello".as_slice()));
+    assert_eq!(io.tell(), 5);
+
+    // The whole stream as a zero-copy scalar buffer view, and back.
+    let snapshot = io.to_scalar();
+    assert_eq!(snapshot.as_bytes(), Some(b"hello world".as_slice()));
+    assert_eq!(MemoryIo::from_scalar(&snapshot).as_slice(), b"hello world");
+}

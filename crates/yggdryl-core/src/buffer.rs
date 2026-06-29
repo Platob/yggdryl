@@ -10,10 +10,11 @@ use std::sync::Arc;
 ///
 /// Cloning only bumps an [`Arc`] refcount and [`slice`](Buffer::slice) only moves
 /// a pair of offsets, so neither touches the underlying bytes; the data is copied
-/// exactly once, when the buffer is first built from a borrowed slice. Building
-/// from an owned `Vec` does not copy at all. Equality, ordering and hashing all
-/// run over the live byte range, so a sliced buffer compares equal to a fresh
-/// buffer holding the same bytes.
+/// exactly once, when the buffer is first built (from either a borrowed slice or
+/// an owned `Vec` — an `Arc<[u8]>` stores its refcount inline and so cannot reuse
+/// a `Vec`'s allocation). Equality, ordering and hashing all run over the live
+/// byte range, so a sliced buffer compares equal to a fresh buffer holding the
+/// same bytes.
 ///
 /// ```
 /// use yggdryl_core::Buffer;
@@ -37,7 +38,8 @@ impl Buffer {
         Self::from_arc(Arc::from(bytes))
     }
 
-    /// Builds a buffer that takes ownership of `bytes` without re-copying it.
+    /// Builds a buffer from an owned `Vec`, copying its bytes into the `Arc`
+    /// allocation (an `Arc<[u8]>` cannot reuse a `Vec`'s allocation).
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         Self::from_arc(Arc::from(bytes))
     }
@@ -49,6 +51,13 @@ impl Buffer {
             start: 0,
             end,
         }
+    }
+
+    /// Builds a buffer over an existing shared allocation and byte range, without
+    /// copying. Used by in-memory IO to hand out zero-copy views of its store.
+    pub(crate) fn from_shared(data: Arc<[u8]>, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end && end <= data.len());
+        Self { data, start, end }
     }
 
     /// The buffer's bytes, borrowed without copying.
@@ -79,11 +88,11 @@ impl Buffer {
         let len = self.len();
         let start = match range.start_bound() {
             Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n + 1,
+            Bound::Excluded(&n) => n.saturating_add(1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(&n) => n + 1,
+            Bound::Included(&n) => n.saturating_add(1),
             Bound::Excluded(&n) => n,
             Bound::Unbounded => len,
         };
