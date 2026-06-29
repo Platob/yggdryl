@@ -26,6 +26,15 @@ takes the body out for seekable access. Either way you get the full
     footer-without-download trick below is therefore a Rust example; the binding
     tabs show the same calls over the buffered body.
 
+!!! note "HTTP/2 and HTTP/3 bodies stream but cannot re-fetch"
+    An HTTP/2 or HTTP/3 response body is also a **live streaming `Io`** — it is never
+    buffered into memory before the caller reads it. Sequential reads and forward seeks
+    pull frames off the connection on demand, keeping the same 4 MiB sliding cache for
+    short seek-backs. However, HTTP/2 and HTTP/3 do **not** support `Range` requests
+    on the same stream: a backward seek past the cache window returns
+    `IoError::Unsupported`. For random-access patterns over h2/h3, consume the body
+    sequentially (use `read_to_end` or `into_bytesio`) and then seek in memory.
+
 !!! note "The canonical remote `Io`"
     `HttpStream` is the network counterpart of `LocalPath`: a `LocalPath` memory-maps
     a file lazily, an `HttpStream` streams a URL lazily. Both implement the one `Io`

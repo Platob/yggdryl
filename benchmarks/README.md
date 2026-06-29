@@ -35,6 +35,17 @@ retries with resume-on-drop, a **seekable** body, and `send_many` concurrency.
 | 64 small requests (5 ms latency) — sequential vs `send_many` (8) | 344 ms → **56 ms (≈6.1×)** |
 | 200 tiny requests — pooled keep-alive vs reconnect-each | 23 ms vs 40 ms |
 
+### HTTP/2 vs HTTP/1.1 — `cargo bench -p yggdryl-http --features http2`
+
+H2c bodies now **stream on demand** via a bounded tokio channel rather than being
+buffered; the gap below reflects connection-setup cost (h2c opens a fresh connection
+per request; h1 reuses the pool), not body-buffering overhead.
+
+| workload (64 KiB body) | result |
+| --- | --- |
+| h1 GET, pooled keep-alive | **514 MiB/s** (0.12 ms/iter) |
+| h2c GET, new conn each | **164 MiB/s** (0.38 ms/iter) |
+
 ### From Python — vs `requests` / `httpx`
 
 | workload | yggdryl | requests | httpx | vs requests |
