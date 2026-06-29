@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, BinaryType as CoreBinaryType, DataType};
+use yggdryl_core::{BinaryBased, BinaryType as CoreBinaryType, DataType, Jsonable};
 
 use crate::{hash_of, py_bool, value_err};
 
@@ -96,6 +96,19 @@ impl BinaryType {
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreBinaryType::from_json(value)
+            .map(|inner| BinaryType { inner })
+            .map_err(value_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    fn to_bson<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.to_bson())
+    }
+
+    /// Reconstructs the type from its JSON bytes.
+    #[staticmethod]
+    fn from_bson(data: &[u8]) -> PyResult<Self> {
+        CoreBinaryType::from_bson(data)
             .map(|inner| BinaryType { inner })
             .map_err(value_err)
     }

@@ -131,8 +131,7 @@ impl Binary {
 
     /// The buffer's raw bytes as an owned `Vec`. This is the content only; the
     /// `binary` vs `large_binary` variant round-trips through
-    /// [`to_mapping`](Binary::to_mapping) / [`to_json`](Scalar::to_json), not the
-    /// raw bytes.
+    /// [`to_mapping`](Binary::to_mapping) / `to_json`, not the raw bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.as_slice().to_vec()
     }
@@ -231,6 +230,9 @@ impl Scalar for Binary {
         }
     }
 }
+
+#[cfg(feature = "json")]
+impl crate::Jsonable for Binary {}
 
 impl Io for Binary {
     fn size(&self) -> u64 {

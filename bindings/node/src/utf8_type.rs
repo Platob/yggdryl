@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use yggdryl_core::{BinaryBased, DataType, Utf8Type as CoreUtf8Type};
+use yggdryl_core::{BinaryBased, DataType, Jsonable, Utf8Type as CoreUtf8Type};
 
 use crate::to_napi_err;
 
@@ -96,7 +96,7 @@ impl Utf8Type {
         serde_json::to_value(self.inner).expect("Utf8Type serializes to JSON")
     }
 
-    /// The JSON string, formatted per the global `JsonFormat`.
+    /// The JSON string, formatted per the global `JsonParams`.
     #[napi(js_name = "toJsonString")]
     pub fn to_json_string(&self) -> String {
         self.inner.to_json()
@@ -106,6 +106,20 @@ impl Utf8Type {
     #[napi(js_name = "fromJSON", factory)]
     pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8Type> {
         serde_json::from_value(value)
+            .map(|inner| Utf8Type { inner })
+            .map_err(to_napi_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    #[napi]
+    pub fn to_bson(&self) -> Buffer {
+        self.inner.to_bson().into()
+    }
+
+    /// Reconstructs the type from its JSON bytes.
+    #[napi(factory)]
+    pub fn from_bson(data: Buffer) -> napi::Result<Utf8Type> {
+        CoreUtf8Type::from_bson(data.as_ref())
             .map(|inner| Utf8Type { inner })
             .map_err(to_napi_err)
     }

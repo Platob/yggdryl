@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use napi::bindgen_prelude::Buffer;
 use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::{Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
+use yggdryl_core::{Jsonable, Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
 
 use crate::{anyscalar_to_either, anytype_from_either, to_napi_err, Binary, BinaryType, Utf8Type};
 
@@ -90,7 +90,7 @@ impl Utf8 {
         serde_json::to_value(&self.inner).expect("Utf8 serializes to JSON")
     }
 
-    /// The JSON string, formatted per the global `JsonFormat`.
+    /// The JSON string, formatted per the global `JsonParams`.
     #[napi(js_name = "toJsonString")]
     pub fn to_json_string(&self) -> String {
         self.inner.to_json()
@@ -100,6 +100,20 @@ impl Utf8 {
     #[napi(js_name = "fromJSON", factory)]
     pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8> {
         serde_json::from_value(value)
+            .map(|inner| Utf8 { inner })
+            .map_err(to_napi_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    #[napi]
+    pub fn to_bson(&self) -> Buffer {
+        self.inner.to_bson().into()
+    }
+
+    /// Reconstructs a value from its JSON bytes.
+    #[napi(factory)]
+    pub fn from_bson(data: Buffer) -> napi::Result<Utf8> {
+        CoreUtf8::from_bson(data.as_ref())
             .map(|inner| Utf8 { inner })
             .map_err(to_napi_err)
     }

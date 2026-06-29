@@ -102,6 +102,67 @@ impl From<TypeError> for FieldError {
     }
 }
 
+/// Failure while encoding or decoding text through a [`Charset`](crate::Charset).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CharsetError {
+    /// The charset name is not one this crate knows.
+    UnknownCharset(String),
+    /// Bytes could not be decoded as the named charset.
+    InvalidBytes {
+        /// The charset that rejected the bytes.
+        charset: &'static str,
+    },
+}
+
+impl fmt::Display for CharsetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CharsetError::UnknownCharset(name) => write!(
+                f,
+                "unknown charset {name:?}; expected one of: utf8, ascii, latin1"
+            ),
+            CharsetError::InvalidBytes { charset } => {
+                write!(f, "bytes are not valid {charset}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CharsetError {}
+
+/// Failure while rendering or parsing a value's JSON form via
+/// [`Jsonable`](crate::Jsonable).
+#[cfg(feature = "json")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum JsonError {
+    /// The JSON bytes could not be (de)coded with the active charset.
+    Charset(CharsetError),
+    /// The JSON text was malformed.
+    Parse(String),
+}
+
+#[cfg(feature = "json")]
+impl fmt::Display for JsonError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsonError::Charset(err) => write!(f, "{err}"),
+            JsonError::Parse(msg) => write!(f, "invalid JSON: {msg}"),
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl std::error::Error for JsonError {}
+
+#[cfg(feature = "json")]
+impl From<CharsetError> for JsonError {
+    fn from(err: CharsetError) -> Self {
+        JsonError::Charset(err)
+    }
+}
+
 /// Failure while reading from or writing to an [`Io`](crate::Io) handle.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]

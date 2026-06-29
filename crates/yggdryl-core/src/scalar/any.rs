@@ -41,6 +41,9 @@ impl AnyScalar {
     }
 }
 
+#[cfg(feature = "json")]
+impl crate::Jsonable for AnyScalar {}
+
 impl From<Binary> for AnyScalar {
     fn from(inner: Binary) -> Self {
         AnyScalar::Binary(inner)

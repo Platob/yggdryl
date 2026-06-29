@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{Binary as CoreBinary, BinaryBased, BinaryType as CoreBinaryType, Io, Scalar};
+use yggdryl_core::{
+    Binary as CoreBinary, BinaryBased, BinaryType as CoreBinaryType, Io, Jsonable, Scalar,
+};
 
 use crate::{
     anyscalar_to_py, anytype_to_py, hash_of, py_bool, py_to_anytype, value_err, BinaryType, Whence,
@@ -85,6 +87,19 @@ impl Binary {
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreBinary::from_json(value)
+            .map(|inner| Binary { inner })
+            .map_err(value_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    fn to_bson<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.to_bson())
+    }
+
+    /// Reconstructs a buffer from its JSON bytes.
+    #[staticmethod]
+    fn from_bson(data: &[u8]) -> PyResult<Self> {
+        CoreBinary::from_bson(data)
             .map(|inner| Binary { inner })
             .map_err(value_err)
     }

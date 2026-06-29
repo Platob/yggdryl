@@ -32,22 +32,4 @@ pub trait Scalar {
     /// same-family cast only re-labels the variant; a cross-family cast converts
     /// the payload (and may fail, e.g. binary → string on non-UTF-8 bytes).
     fn cast(&self, data_type: &dyn DataType) -> Result<AnyScalar, ScalarError>;
-
-    /// The JSON form.
-    #[cfg(feature = "json")]
-    fn to_json(&self) -> String
-    where
-        Self: Sized + serde::Serialize,
-    {
-        crate::json::render(self)
-    }
-
-    /// Parses the JSON form produced by [`to_json`](Scalar::to_json).
-    #[cfg(feature = "json")]
-    fn from_json(value: &str) -> Result<Self, ScalarError>
-    where
-        Self: Sized + serde::de::DeserializeOwned,
-    {
-        serde_json::from_str(value).map_err(|err| ScalarError::InvalidEncoding(err.to_string()))
-    }
 }

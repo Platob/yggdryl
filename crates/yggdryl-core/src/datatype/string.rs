@@ -64,19 +64,10 @@ impl Utf8Type {
         let name = std::str::from_utf8(bytes).map_err(|_| TypeError::InvalidUtf8)?;
         Self::from_str(name)
     }
-
-    /// The JSON form (the canonical string as a JSON string).
-    #[cfg(feature = "json")]
-    pub fn to_json(&self) -> String {
-        crate::json::render(self)
-    }
-
-    /// Parses the JSON form produced by [`Utf8Type::to_json`].
-    #[cfg(feature = "json")]
-    pub fn from_json(value: &str) -> Result<Self, TypeError> {
-        serde_json::from_str(value).map_err(|err| TypeError::InvalidMapping(err.to_string()))
-    }
 }
+
+#[cfg(feature = "json")]
+impl crate::Jsonable for Utf8Type {}
 
 impl DataType for Utf8Type {
     fn type_name(&self) -> &'static str {

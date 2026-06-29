@@ -6,7 +6,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import Binary, BinaryType, Field, JsonFormat, Utf8, Utf8Type, Whence
+from yggdryl import Binary, BinaryType, Charset, Field, JsonParams, Utf8, Utf8Type, Whence
 
 
 def test_data_types():
@@ -35,6 +35,7 @@ def test_binary_value_and_io():
     assert buf.data_type == BinaryType()
     assert Binary.from_bytes(buf.to_bytes()) == buf
     assert Binary.from_json(buf.to_json()) == buf
+    assert Binary.from_bson(buf.to_bson()) == buf
 
     buf = Binary()
     buf.write(b"hello ")
@@ -96,20 +97,28 @@ def test_pickle_and_copy_round_trip(value):
     assert copy.deepcopy(value) == value
 
 
-def test_global_json_format():
+def test_global_json_params():
     field = Field("c", BinaryType(), nullable=True)
     assert "\n" not in field.to_json()
     try:
-        yggdryl.set_json_format(JsonFormat(pretty=True, indent=2))
-        assert yggdryl.json_format().is_pretty
-        assert yggdryl.json_format() == JsonFormat(pretty=True, indent=2)
+        yggdryl.set_json_params(JsonParams(pretty=True, indent=2))
+        assert yggdryl.json_params().is_pretty
+        assert yggdryl.json_params() == JsonParams(pretty=True, indent=2)
+        assert yggdryl.json_params().charset == Charset.Utf8
         assert "\n" in field.to_json()
+
+        # the charset drives the byte form: Latin-1 packs 'é' into one byte.
+        yggdryl.set_json_params(JsonParams(charset=Charset.Latin1))
+        text = Utf8("é")
+        assert 0xE9 in text.to_bson()
+        assert Utf8.from_bson(text.to_bson()) == text
     finally:
-        yggdryl.reset_json_format()
+        yggdryl.reset_json_params()
     assert "\n" not in field.to_json()
-    assert yggdryl.json_format() == JsonFormat()
+    assert yggdryl.json_params() == JsonParams()
 
 
 def test_module_exposes_expected_names():
-    for name in ("BinaryType", "Utf8Type", "Field", "Binary", "Utf8", "Whence", "JsonFormat"):
+    names = ("BinaryType", "Utf8Type", "Field", "Binary", "Utf8", "Whence", "Charset", "JsonParams")
+    for name in names:
         assert hasattr(yggdryl, name)

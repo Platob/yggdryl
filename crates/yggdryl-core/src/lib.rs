@@ -48,6 +48,7 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod buffer;
+mod charset;
 mod datatype;
 mod error;
 mod field;
@@ -58,15 +59,18 @@ mod mapping;
 mod scalar;
 
 pub use buffer::Buffer;
+pub use charset::Charset;
 pub use datatype::{
     AnyType, BinaryBased, BinaryType, DataType, LogicalType, NestedType, PrimitiveType,
     TypeCategory, Utf8Type,
 };
-pub use error::{FieldError, IoError, ScalarError, TypeError};
+#[cfg(feature = "json")]
+pub use error::JsonError;
+pub use error::{CharsetError, FieldError, IoError, ScalarError, TypeError};
 pub use field::{AnyField, Field, LogicalField, NestedField, PrimitiveField};
 pub use io::{Io, Whence};
 #[cfg(feature = "json")]
-pub use json::{json_format, reset_json_format, set_json_format, JsonFormat};
+pub use json::{json_params, reset_json_params, set_json_params, JsonParams, Jsonable};
 pub use scalar::{AnyScalar, Binary, Scalar, Utf8};
 
 #[cfg(test)]

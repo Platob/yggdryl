@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use napi::bindgen_prelude::Buffer;
 use napi::Either;
 use napi_derive::napi;
-use yggdryl_core::AnyField;
+use yggdryl_core::{AnyField, Jsonable};
 
 use crate::{anytype_from_either, anytype_to_either, to_napi_err, BinaryType, Utf8Type};
 
@@ -123,7 +123,7 @@ impl Field {
         serde_json::to_value(&self.inner).expect("Field serializes to JSON")
     }
 
-    /// The JSON string, formatted per the global `JsonFormat`.
+    /// The JSON string, formatted per the global `JsonParams`.
     #[napi(js_name = "toJsonString")]
     pub fn to_json_string(&self) -> String {
         self.inner.to_json()
@@ -133,6 +133,20 @@ impl Field {
     #[napi(js_name = "fromJSON", factory)]
     pub fn from_json(value: serde_json::Value) -> napi::Result<Field> {
         serde_json::from_value(value)
+            .map(|inner| Field { inner })
+            .map_err(to_napi_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    #[napi]
+    pub fn to_bson(&self) -> Buffer {
+        self.inner.to_bson().into()
+    }
+
+    /// Reconstructs a field from its JSON bytes.
+    #[napi(factory)]
+    pub fn from_bson(data: Buffer) -> napi::Result<Field> {
+        AnyField::from_bson(data.as_ref())
             .map(|inner| Field { inner })
             .map_err(to_napi_err)
     }

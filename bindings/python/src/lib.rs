@@ -10,8 +10,9 @@
 
 mod binary;
 mod binary_type;
+mod charset;
 mod field;
-mod jsonfmt;
+mod jsonparams;
 mod utf8;
 mod utf8_type;
 mod whence;
@@ -26,8 +27,9 @@ use yggdryl_core::{AnyScalar, AnyType, DataType};
 
 pub(crate) use binary::Binary;
 pub(crate) use binary_type::BinaryType;
+pub(crate) use charset::Charset;
 pub(crate) use field::Field;
-pub(crate) use jsonfmt::JsonFormat;
+pub(crate) use jsonparams::JsonParams;
 pub(crate) use utf8::Utf8;
 pub(crate) use utf8_type::Utf8Type;
 pub(crate) use whence::Whence;
@@ -91,9 +93,10 @@ fn yggdryl(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Binary>()?;
     module.add_class::<Utf8>()?;
     module.add_class::<Whence>()?;
-    module.add_class::<JsonFormat>()?;
-    module.add_function(wrap_pyfunction!(jsonfmt::set_json_format, module)?)?;
-    module.add_function(wrap_pyfunction!(jsonfmt::json_format, module)?)?;
-    module.add_function(wrap_pyfunction!(jsonfmt::reset_json_format, module)?)?;
+    module.add_class::<Charset>()?;
+    module.add_class::<JsonParams>()?;
+    module.add_function(wrap_pyfunction!(jsonparams::set_json_params, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonparams::json_params, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonparams::reset_json_params, module)?)?;
     Ok(())
 }

@@ -10,10 +10,11 @@ const {
   Binary,
   Utf8,
   Whence,
-  JsonFormat,
-  setJsonFormat,
-  jsonFormat,
-  resetJsonFormat,
+  Charset,
+  JsonParams,
+  setJsonParams,
+  jsonParams,
+  resetJsonParams,
 } = require('../index.js')
 
 test('data types', () => {
@@ -36,6 +37,7 @@ test('binary value and io', () => {
   assert.equal(buf.length, 3)
   assert.ok(buf.dataType.equals(new BinaryType()))
   assert.ok(Binary.fromBytes(buf.toBytes()).equals(buf))
+  assert.ok(Binary.fromBson(buf.toBson()).equals(buf))
 
   const io = new Binary()
   io.write(Buffer.from('hello '))
@@ -69,15 +71,22 @@ test('cast and set data type', () => {
   assert.throws(() => new Binary(Buffer.from('hi')).setDataType(new Utf8Type()))
 })
 
-test('global json format', () => {
+test('global json params', () => {
   const field = new Field('c', new BinaryType(), true)
   assert.ok(!field.toJsonString().includes('\n'))
   try {
-    setJsonFormat(new JsonFormat(true, 2))
-    assert.ok(jsonFormat().isPretty)
+    setJsonParams(new JsonParams(true, 2))
+    assert.ok(jsonParams().isPretty)
+    assert.equal(jsonParams().charset, Charset.Utf8)
     assert.ok(field.toJsonString().includes('\n'))
+
+    // the charset drives the byte form: Latin-1 packs 'é' into one byte.
+    setJsonParams(new JsonParams(false, 2, Charset.Latin1))
+    const text = new Utf8('é')
+    assert.ok([...text.toBson()].includes(0xe9))
+    assert.ok(Utf8.fromBson(text.toBson()).equals(text))
   } finally {
-    resetJsonFormat()
+    resetJsonParams()
   }
   assert.ok(!field.toJsonString().includes('\n'))
 })

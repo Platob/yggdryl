@@ -184,14 +184,18 @@ fn serde_round_trips_through_json() {
 #[cfg(feature = "json")]
 #[test]
 fn json_helpers_round_trip() {
+    use crate::Jsonable;
+
     let ty = AnyType::Binary(BinaryType::large());
     assert_eq!(AnyType::from_json(&ty.to_json()).unwrap(), ty);
+    assert_eq!(AnyType::from_bson(&ty.to_bson()).unwrap(), ty); // bytes round-trip too
 
     let field = Field::new("c", Utf8Type::new().to_any(), false);
     assert_eq!(AnyField::from_json(&field.to_json()).unwrap(), field);
 
     let buf = Binary::from_bytes(&[9u8, 9, 9]);
     assert_eq!(Binary::from_json(&buf.to_json()).unwrap(), buf);
+    assert_eq!(Binary::from_bson(&buf.to_bson()).unwrap(), buf);
 
     let text = Utf8::new("hi");
     assert_eq!(Utf8::from_json(&text.to_json()).unwrap(), text);
@@ -199,19 +203,26 @@ fn json_helpers_round_trip() {
 
 #[cfg(feature = "json")]
 #[test]
-fn global_json_format_controls_to_json() {
-    use crate::{json_format, reset_json_format, set_json_format, JsonFormat};
+fn global_json_params_control_to_json() {
+    use crate::{json_params, reset_json_params, set_json_params, Charset, JsonParams, Jsonable};
 
     let field = Field::new("c", BinaryType::new().to_any(), true);
     assert!(!field.to_json().contains('\n')); // compact by default
 
-    set_json_format(JsonFormat::pretty().with_indent(2));
-    assert!(json_format().is_pretty());
+    set_json_params(JsonParams::pretty().with_indent(2));
+    assert!(json_params().is_pretty());
     let pretty = field.to_json();
     assert!(pretty.contains('\n') && pretty.contains("  \"name\""));
     assert_eq!(AnyField::from_json(&pretty).unwrap(), field); // still round-trips
 
-    reset_json_format();
+    // the charset drives the byte form: Latin-1 encodes 'é' as one byte (0xE9),
+    // not the two UTF-8 bytes, and still round-trips.
+    set_json_params(JsonParams::compact().with_charset(Charset::Latin1));
+    let text = Utf8::new("é");
+    assert!(text.to_bson().contains(&0xe9));
+    assert_eq!(Utf8::from_bson(&text.to_bson()).unwrap(), text);
+
+    reset_json_params();
     assert!(!field.to_json().contains('\n'));
-    assert_eq!(json_format(), JsonFormat::default());
+    assert_eq!(json_params(), JsonParams::default());
 }

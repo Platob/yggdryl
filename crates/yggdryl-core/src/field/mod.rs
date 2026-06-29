@@ -189,19 +189,12 @@ impl AnyField {
         let map = decode_pairs(bytes).map_err(FieldError::InvalidMapping)?;
         Self::from_mapping(&map)
     }
-
-    /// The JSON form (`{"name", "type", "nullable", "metadata"}`).
-    #[cfg(feature = "json")]
-    pub fn to_json(&self) -> String {
-        crate::json::render(self)
-    }
-
-    /// Parses the JSON form produced by [`AnyField::to_json`].
-    #[cfg(feature = "json")]
-    pub fn from_json(value: &str) -> Result<Self, FieldError> {
-        serde_json::from_str(value).map_err(|err| FieldError::InvalidMapping(err.to_string()))
-    }
 }
+
+/// JSON (`{"name", "type", "nullable", "metadata"}`) for any field whose data type
+/// is itself serializable.
+#[cfg(feature = "json")]
+impl<T> crate::Jsonable for Field<T> where T: serde::Serialize + serde::de::DeserializeOwned {}
 
 /// A field whose data type is a [`PrimitiveType`].
 pub trait PrimitiveField {}

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_core::{BinaryBased, Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
+use yggdryl_core::{BinaryBased, Jsonable, Scalar, Utf8 as CoreUtf8, Utf8Type as CoreUtf8Type};
 
 use crate::{anyscalar_to_py, anytype_to_py, hash_of, py_bool, py_to_anytype, value_err, Utf8Type};
 
@@ -82,6 +82,19 @@ impl Utf8 {
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreUtf8::from_json(value)
+            .map(|inner| Utf8 { inner })
+            .map_err(value_err)
+    }
+
+    /// The JSON bytes (JSON text encoded with the global charset).
+    fn to_bson<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.to_bson())
+    }
+
+    /// Reconstructs a value from its JSON bytes.
+    #[staticmethod]
+    fn from_bson(data: &[u8]) -> PyResult<Self> {
+        CoreUtf8::from_bson(data)
             .map(|inner| Utf8 { inner })
             .map_err(value_err)
     }

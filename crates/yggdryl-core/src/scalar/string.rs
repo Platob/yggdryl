@@ -101,7 +101,7 @@ impl Utf8 {
 
     /// The string's raw UTF-8 bytes as an owned `Vec`. The `string` vs
     /// `large_string` variant round-trips through [`to_mapping`](Utf8::to_mapping)
-    /// / [`to_json`](Scalar::to_json), not the raw bytes.
+    /// / `to_json`, not the raw bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         self.as_bytes().to_vec()
     }
@@ -168,6 +168,9 @@ impl Scalar for Utf8 {
         }
     }
 }
+
+#[cfg(feature = "json")]
+impl crate::Jsonable for Utf8 {}
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Utf8 {
