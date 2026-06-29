@@ -1,0 +1,118 @@
+//! The [`Binary`] data type — variable-length, opaque byte strings.
+
+use std::collections::BTreeMap;
+
+use crate::datatype::{AnyType, BinaryBased, DataType, PrimitiveType, TypeCategory};
+use crate::error::TypeError;
+
+/// Arrow's variable-length binary type, in both its 32-bit (`binary`) and 64-bit
+/// (`large_binary`) offset flavours.
+///
+/// ```
+/// use yggdryl_core::{Binary, BinaryBased, DataType};
+///
+/// let b = Binary::new();
+/// assert_eq!(b.type_name(), "binary");
+/// assert!(!b.is_large());
+/// assert_eq!(Binary::large().type_name(), "large_binary");
+/// assert_eq!(Binary::from_str("large_binary").unwrap(), Binary::large());
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(into = "String", try_from = "String"))]
+pub struct Binary {
+    large: bool,
+}
+
+impl Binary {
+    /// The 32-bit-offset `binary` type.
+    pub fn new() -> Self {
+        Self { large: false }
+    }
+
+    /// The 64-bit-offset `large_binary` type.
+    pub fn large() -> Self {
+        Self { large: true }
+    }
+
+    /// Parses `"binary"` or `"large_binary"`.
+    #[allow(clippy::should_implement_trait)] // `from_str` is the crate-wide naming convention.
+    pub fn from_str(value: &str) -> Result<Self, TypeError> {
+        crate::log_event!(trace, "Binary::from_str {:?}", value);
+        match value {
+            "binary" => Ok(Self { large: false }),
+            "large_binary" => Ok(Self { large: true }),
+            other => Err(TypeError::UnknownType(other.to_string())),
+        }
+    }
+
+    /// Reconstructs the type from its component map (reads the `"type"` key).
+    pub fn from_mapping(map: &BTreeMap<String, String>) -> Result<Self, TypeError> {
+        let name = map
+            .get("type")
+            .ok_or_else(|| TypeError::InvalidMapping("missing \"type\" key".to_string()))?;
+        Self::from_str(name)
+    }
+
+    /// Reconstructs the type from the bytes produced by [`DataType::to_bytes`].
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, TypeError> {
+        let name = std::str::from_utf8(bytes).map_err(|_| TypeError::InvalidUtf8)?;
+        Self::from_str(name)
+    }
+
+    /// The JSON form (the canonical string as a JSON string).
+    #[cfg(feature = "json")]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("Binary serializes to a JSON string")
+    }
+
+    /// Parses the JSON form produced by [`Binary::to_json`].
+    #[cfg(feature = "json")]
+    pub fn from_json(value: &str) -> Result<Self, TypeError> {
+        serde_json::from_str(value).map_err(|err| TypeError::InvalidMapping(err.to_string()))
+    }
+}
+
+impl DataType for Binary {
+    fn type_name(&self) -> &'static str {
+        if self.large {
+            "large_binary"
+        } else {
+            "binary"
+        }
+    }
+
+    fn category(&self) -> TypeCategory {
+        TypeCategory::Primitive
+    }
+
+    fn to_any(&self) -> AnyType {
+        AnyType::Binary(*self)
+    }
+}
+
+impl PrimitiveType for Binary {}
+
+impl BinaryBased for Binary {
+    fn is_utf8(&self) -> bool {
+        false
+    }
+
+    fn is_large(&self) -> bool {
+        self.large
+    }
+}
+
+impl From<Binary> for String {
+    fn from(value: Binary) -> Self {
+        value.type_name().to_string()
+    }
+}
+
+impl TryFrom<String> for Binary {
+    type Error = TypeError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Binary::from_str(&value)
+    }
+}

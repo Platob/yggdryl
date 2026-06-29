@@ -52,7 +52,7 @@ mmap = ["dep:memmap2"]
 # `media_type()` / `from_mime` / `from_media` / `from_stats` accessors on the
 # `Io` / `Path` / compression layers.
 media = []
-json = ["dep:serde_json"]
+json = ["serde", "dep:serde_json"]
 # `Serialize` / `Deserialize` for every value type. Each renders to its canonical
 # string (a `Url` is `"https://…"`, a `MimeType` is `"image/png"`); the plain
 # enums / structs (`Mode`, `Whence`, `Kind`, `IoStats`, `Signature`) derive.
