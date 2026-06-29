@@ -13,8 +13,12 @@
 
 mod data_type;
 mod data_type_id;
+#[cfg(feature = "arrow")]
+mod error;
 mod field;
 
 pub use data_type::DataType;
 pub use data_type_id::DataTypeId;
+#[cfg(feature = "arrow")]
+pub use error::SchemaError;
 pub use field::{Field, Metadata};

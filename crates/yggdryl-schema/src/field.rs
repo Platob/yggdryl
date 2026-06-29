@@ -13,9 +13,11 @@ pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
 /// A named column: a [`name`](Field::name), its [`dtype`](Field::dtype), whether it
 /// is [`nullable`](Field::nullable), and its [`metadata`](Field::metadata).
 ///
-/// [`copy`](Field::copy) is the single functional-update primitive — it rebuilds
-/// the field with selected components overridden, taking the rest from `self`. The
-/// `with_*` helpers are one-line delegations to it.
+/// [`from_parts`](Field::from_parts) is the single constructor primitive; the
+/// functional [`copy`](Field::copy) and the `with_*` helpers are one-line
+/// delegations to it. Under the `arrow` feature, [`to_arrow`](Field::to_arrow) /
+/// [`from_arrow`](Field::from_arrow) bridge to Apache Arrow, leveraging
+/// [`DataType::to_arrow`] / [`DataType::from_arrow`] for the data type.
 ///
 /// ```
 /// use yggdryl_schema::{DataType, DataTypeId, Field, Metadata};
@@ -25,6 +27,10 @@ pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
 /// impl DataType for Int32 {
 ///     fn name(&self) -> &'static str { "int32" }
 ///     fn type_id(&self) -> DataTypeId { DataTypeId::Int32 }
+/// #     #[cfg(feature = "arrow")]
+/// #     fn to_arrow(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
+/// #     #[cfg(feature = "arrow")]
+/// #     fn from_arrow(_dtype: &arrow_schema::DataType) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
 /// }
 ///
 /// struct Col { name: String, dtype: Int32, nullable: bool, metadata: Metadata }
@@ -34,23 +40,18 @@ pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
 ///     fn dtype(&self) -> &Int32 { &self.dtype }
 ///     fn nullable(&self) -> bool { self.nullable }
 ///     fn metadata(&self) -> &Metadata { &self.metadata }
-///     fn copy(&self, name: Option<String>, dtype: Option<Int32>, nullable: Option<bool>, metadata: Option<Metadata>) -> Self {
-///         Col {
-///             name: name.unwrap_or_else(|| self.name.clone()),
-///             dtype: dtype.unwrap_or_else(|| self.dtype.clone()),
-///             nullable: nullable.unwrap_or(self.nullable),
-///             metadata: metadata.unwrap_or_else(|| self.metadata.clone()),
-///         }
+///     fn from_parts(name: String, dtype: Int32, nullable: bool, metadata: Metadata) -> Self {
+///         Col { name, dtype, nullable, metadata }
 ///     }
 /// }
 ///
-/// let col = Col { name: "id".into(), dtype: Int32, nullable: false, metadata: Metadata::new() };
+/// let col = Col::from_parts("id".into(), Int32, false, Metadata::new());
 /// assert!(col.with_nullable(true).nullable());
 /// assert_eq!(col.with_name("key".into()).name(), "key");
 /// ```
 pub trait Field {
     /// The concrete [`DataType`] this field's values carry.
-    type Type: DataType;
+    type Type: DataType + Clone;
 
     /// The column name.
     fn name(&self) -> &str;
@@ -64,8 +65,14 @@ pub trait Field {
     /// The column's key/value metadata.
     fn metadata(&self) -> &Metadata;
 
+    /// Builds a field from its parts — the single constructor the other helpers
+    /// build on.
+    fn from_parts(name: String, dtype: Self::Type, nullable: bool, metadata: Metadata) -> Self
+    where
+        Self: Sized;
+
     /// Returns a copy with the given components overridden; each `None` is taken
-    /// from `self`. The single primitive the `with_*` helpers delegate to.
+    /// from `self`.
     fn copy(
         &self,
         name: Option<String>,
@@ -74,7 +81,15 @@ pub trait Field {
         metadata: Option<Metadata>,
     ) -> Self
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        Self::from_parts(
+            name.unwrap_or_else(|| self.name().to_owned()),
+            dtype.unwrap_or_else(|| self.dtype().clone()),
+            nullable.unwrap_or_else(|| self.nullable()),
+            metadata.unwrap_or_else(|| self.metadata().clone()),
+        )
+    }
 
     /// Returns a copy with a new name.
     fn with_name(&self, name: String) -> Self
@@ -106,5 +121,51 @@ pub trait Field {
         Self: Sized,
     {
         self.copy(None, None, None, Some(metadata))
+    }
+
+    /// Converts this field to an Apache Arrow [`Field`](arrow_schema::Field),
+    /// leveraging [`DataType::to_arrow`]. Errors if any metadata key or value is
+    /// not valid UTF-8 (Arrow field metadata is string-keyed).
+    #[cfg(feature = "arrow")]
+    fn to_arrow(&self) -> Result<arrow_schema::Field, crate::SchemaError>
+    where
+        Self: Sized,
+    {
+        let metadata = self
+            .metadata()
+            .iter()
+            .map(|(key, value)| {
+                let key = String::from_utf8(key.clone())
+                    .map_err(|_| crate::SchemaError::NonUtf8Metadata)?;
+                let value = String::from_utf8(value.clone())
+                    .map_err(|_| crate::SchemaError::NonUtf8Metadata)?;
+                Ok((key, value))
+            })
+            .collect::<Result<std::collections::HashMap<String, String>, crate::SchemaError>>()?;
+        Ok(
+            arrow_schema::Field::new(self.name(), self.dtype().to_arrow(), self.nullable())
+                .with_metadata(metadata),
+        )
+    }
+
+    /// Builds a field from an Apache Arrow [`Field`](arrow_schema::Field),
+    /// leveraging [`DataType::from_arrow`].
+    #[cfg(feature = "arrow")]
+    fn from_arrow(field: &arrow_schema::Field) -> Result<Self, crate::SchemaError>
+    where
+        Self: Sized,
+    {
+        let dtype = Self::Type::from_arrow(field.data_type())?;
+        let metadata = field
+            .metadata()
+            .iter()
+            .map(|(key, value)| (key.clone().into_bytes(), value.clone().into_bytes()))
+            .collect();
+        Ok(Self::from_parts(
+            field.name().to_owned(),
+            dtype,
+            field.is_nullable(),
+            metadata,
+        ))
     }
 }

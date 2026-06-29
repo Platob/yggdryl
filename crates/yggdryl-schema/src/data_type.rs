@@ -9,7 +9,7 @@ use crate::data_type_id::DataTypeId;
 /// ([`is_physical`](DataType::is_physical),
 /// [`is_logical`](DataType::is_logical), [`is_nested`](DataType::is_nested))
 /// follow from the id's block by default, so an implementor only supplies the two
-/// required methods.
+/// required accessors (plus the Arrow conversion under the `arrow` feature).
 ///
 /// ```
 /// use yggdryl_schema::{DataType, DataTypeId};
@@ -18,6 +18,10 @@ use crate::data_type_id::DataTypeId;
 /// impl DataType for Int32 {
 ///     fn name(&self) -> &'static str { "int32" }
 ///     fn type_id(&self) -> DataTypeId { DataTypeId::Int32 }
+/// #     #[cfg(feature = "arrow")]
+/// #     fn to_arrow(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
+/// #     #[cfg(feature = "arrow")]
+/// #     fn from_arrow(_dtype: &arrow_schema::DataType) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
 /// }
 ///
 /// assert_eq!(Int32.name(), "int32");
@@ -45,4 +49,15 @@ pub trait DataType {
     fn is_nested(&self) -> bool {
         self.type_id().is_nested()
     }
+
+    /// Converts this type to its Apache Arrow equivalent.
+    #[cfg(feature = "arrow")]
+    fn to_arrow(&self) -> arrow_schema::DataType;
+
+    /// Builds this type from its Apache Arrow equivalent, erroring on an Arrow
+    /// type with no yggdryl match.
+    #[cfg(feature = "arrow")]
+    fn from_arrow(dtype: &arrow_schema::DataType) -> Result<Self, crate::SchemaError>
+    where
+        Self: Sized;
 }
