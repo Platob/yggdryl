@@ -39,7 +39,7 @@ pub trait Scalar {
     where
         Self: Sized + serde::Serialize,
     {
-        serde_json::to_string(self).expect("scalar serializes to JSON")
+        crate::json::render(self)
     }
 
     /// Parses the JSON form produced by [`to_json`](Scalar::to_json).

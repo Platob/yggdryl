@@ -6,7 +6,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import Binary, BinaryType, Field, Utf8, Utf8Type, Whence
+from yggdryl import Binary, BinaryType, Field, JsonFormat, Utf8, Utf8Type, Whence
 
 
 def test_data_types():
@@ -96,6 +96,20 @@ def test_pickle_and_copy_round_trip(value):
     assert copy.deepcopy(value) == value
 
 
+def test_global_json_format():
+    field = Field("c", BinaryType(), nullable=True)
+    assert "\n" not in field.to_json()
+    try:
+        yggdryl.set_json_format(JsonFormat(pretty=True, indent=2))
+        assert yggdryl.json_format().is_pretty
+        assert yggdryl.json_format() == JsonFormat(pretty=True, indent=2)
+        assert "\n" in field.to_json()
+    finally:
+        yggdryl.reset_json_format()
+    assert "\n" not in field.to_json()
+    assert yggdryl.json_format() == JsonFormat()
+
+
 def test_module_exposes_expected_names():
-    for name in ("BinaryType", "Utf8Type", "Field", "Binary", "Utf8", "Whence"):
+    for name in ("BinaryType", "Utf8Type", "Field", "Binary", "Utf8", "Whence", "JsonFormat"):
         assert hasattr(yggdryl, name)

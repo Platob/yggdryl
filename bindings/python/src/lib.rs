@@ -11,6 +11,7 @@
 mod binary;
 mod binary_type;
 mod field;
+mod jsonfmt;
 mod utf8;
 mod utf8_type;
 mod whence;
@@ -20,11 +21,13 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 use yggdryl_core::{AnyScalar, AnyType, DataType};
 
 pub(crate) use binary::Binary;
 pub(crate) use binary_type::BinaryType;
 pub(crate) use field::Field;
+pub(crate) use jsonfmt::JsonFormat;
 pub(crate) use utf8::Utf8;
 pub(crate) use utf8_type::Utf8Type;
 pub(crate) use whence::Whence;
@@ -88,5 +91,9 @@ fn yggdryl(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Binary>()?;
     module.add_class::<Utf8>()?;
     module.add_class::<Whence>()?;
+    module.add_class::<JsonFormat>()?;
+    module.add_function(wrap_pyfunction!(jsonfmt::set_json_format, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonfmt::json_format, module)?)?;
+    module.add_function(wrap_pyfunction!(jsonfmt::reset_json_format, module)?)?;
     Ok(())
 }

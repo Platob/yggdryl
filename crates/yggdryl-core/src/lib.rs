@@ -52,6 +52,8 @@ mod datatype;
 mod error;
 mod field;
 mod io;
+#[cfg(feature = "json")]
+mod json;
 mod mapping;
 mod scalar;
 
@@ -63,6 +65,8 @@ pub use datatype::{
 pub use error::{FieldError, IoError, ScalarError, TypeError};
 pub use field::{AnyField, Field, LogicalField, NestedField, PrimitiveField};
 pub use io::{Io, Whence};
+#[cfg(feature = "json")]
+pub use json::{json_format, reset_json_format, set_json_format, JsonFormat};
 pub use scalar::{AnyScalar, Binary, Scalar, Utf8};
 
 #[cfg(test)]

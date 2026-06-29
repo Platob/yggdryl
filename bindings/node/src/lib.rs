@@ -7,6 +7,7 @@
 mod binary;
 mod binary_type;
 mod field;
+mod jsonfmt;
 mod utf8;
 mod utf8_type;
 mod whence;
@@ -19,6 +20,10 @@ pub(crate) use binary_type::BinaryType;
 pub(crate) use utf8::Utf8;
 pub(crate) use utf8_type::Utf8Type;
 pub(crate) use whence::Whence;
+
+// Re-export the module-level JSON-format functions so plain `cargo`/`clippy` does
+// not flag them unused; napi exports them to JS regardless.
+pub use jsonfmt::{json_format, reset_json_format, set_json_format};
 
 /// Maps any core error to a JavaScript `Error`.
 pub(crate) fn to_napi_err<E: std::fmt::Display>(err: E) -> napi::Error {

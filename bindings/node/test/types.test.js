@@ -3,7 +3,18 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { BinaryType, Utf8Type, Field, Binary, Utf8, Whence } = require('../index.js')
+const {
+  BinaryType,
+  Utf8Type,
+  Field,
+  Binary,
+  Utf8,
+  Whence,
+  JsonFormat,
+  setJsonFormat,
+  jsonFormat,
+  resetJsonFormat,
+} = require('../index.js')
 
 test('data types', () => {
   assert.equal(new BinaryType().name, 'binary')
@@ -56,4 +67,17 @@ test('cast and set data type', () => {
   buf.setDataType(new BinaryType(true))
   assert.ok(buf.dataType.equals(new BinaryType(true)))
   assert.throws(() => new Binary(Buffer.from('hi')).setDataType(new Utf8Type()))
+})
+
+test('global json format', () => {
+  const field = new Field('c', new BinaryType(), true)
+  assert.ok(!field.toJsonString().includes('\n'))
+  try {
+    setJsonFormat(new JsonFormat(true, 2))
+    assert.ok(jsonFormat().isPretty)
+    assert.ok(field.toJsonString().includes('\n'))
+  } finally {
+    resetJsonFormat()
+  }
+  assert.ok(!field.toJsonString().includes('\n'))
 })

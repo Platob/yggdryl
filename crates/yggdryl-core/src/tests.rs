@@ -196,3 +196,22 @@ fn json_helpers_round_trip() {
     let text = Utf8::new("hi");
     assert_eq!(Utf8::from_json(&text.to_json()).unwrap(), text);
 }
+
+#[cfg(feature = "json")]
+#[test]
+fn global_json_format_controls_to_json() {
+    use crate::{json_format, reset_json_format, set_json_format, JsonFormat};
+
+    let field = Field::new("c", BinaryType::new().to_any(), true);
+    assert!(!field.to_json().contains('\n')); // compact by default
+
+    set_json_format(JsonFormat::pretty().with_indent(2));
+    assert!(json_format().is_pretty());
+    let pretty = field.to_json();
+    assert!(pretty.contains('\n') && pretty.contains("  \"name\""));
+    assert_eq!(AnyField::from_json(&pretty).unwrap(), field); // still round-trips
+
+    reset_json_format();
+    assert!(!field.to_json().contains('\n'));
+    assert_eq!(json_format(), JsonFormat::default());
+}

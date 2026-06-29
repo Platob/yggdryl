@@ -66,7 +66,7 @@ impl BinaryType {
     /// The JSON form (the canonical string as a JSON string).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("BinaryType serializes to a JSON string")
+        crate::json::render(self)
     }
 
     /// Parses the JSON form produced by [`BinaryType::to_json`].

@@ -68,7 +68,7 @@ impl Utf8Type {
     /// The JSON form (the canonical string as a JSON string).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("Utf8Type serializes to a JSON string")
+        crate::json::render(self)
     }
 
     /// Parses the JSON form produced by [`Utf8Type::to_json`].

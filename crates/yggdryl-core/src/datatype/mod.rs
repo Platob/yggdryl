@@ -149,7 +149,7 @@ impl AnyType {
     /// The JSON form (the canonical string as a JSON string).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("AnyType serializes to a JSON string")
+        crate::json::render(self)
     }
 
     /// Parses the JSON form produced by [`AnyType::to_json`].

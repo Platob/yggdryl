@@ -193,7 +193,7 @@ impl AnyField {
     /// The JSON form (`{"name", "type", "nullable", "metadata"}`).
     #[cfg(feature = "json")]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("AnyField serializes to JSON")
+        crate::json::render(self)
     }
 
     /// Parses the JSON form produced by [`AnyField::to_json`].

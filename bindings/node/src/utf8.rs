@@ -90,6 +90,12 @@ impl Utf8 {
         serde_json::to_value(&self.inner).expect("Utf8 serializes to JSON")
     }
 
+    /// The JSON string, formatted per the global `JsonFormat`.
+    #[napi(js_name = "toJsonString")]
+    pub fn to_json_string(&self) -> String {
+        self.inner.to_json()
+    }
+
     /// Reconstructs a value from its JSON value.
     #[napi(js_name = "fromJSON", factory)]
     pub fn from_json(value: serde_json::Value) -> napi::Result<Utf8> {
