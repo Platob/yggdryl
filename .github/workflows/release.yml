@@ -140,6 +140,7 @@ jobs:
         run: |
           cargo publish -p yggdryl-core
           cargo publish -p yggdryl-schema
+          cargo publish -p yggdryl-scalar
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

@@ -27,8 +27,8 @@ handles, HTTP bodies, sessions). When a field cannot be part of a value's identi
 
 ## Workspace layout
 
-The workspace is **two Rust crates plus two thin bindings**, the buildable scaffold
-left after the reset:
+The workspace is **three Rust crates plus two thin bindings**, the layers of the
+Arrow-centric type system growing back after the reset:
 
 - `crates/yggdryl-core` — the dependency-light foundations every other crate and
   binding builds on. Currently a scaffold exposing only `version()`; reintroduce
@@ -39,7 +39,10 @@ left after the reset:
 - `crates/yggdryl-schema` — the Arrow-compatible schema layer (`DataType` / `Field`
   and the schema types), holding the conversion to and from Apache Arrow's
   `arrow-schema` behind its `arrow` feature. The `arrow-schema` SDK is a dependency
-  of this crate only. A scaffold for now; depends only on `core`.
+  of this crate only. Depends only on `core`.
+- `crates/yggdryl-scalar` — the scalar *values*: the `Scalar` trait (a value's
+  `dtype` plus its `to_bytes` / `from_bytes` byte form) and the byte-backed
+  `Binary` value carrying any binary data type. Depends on `core` + `schema`.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the crates above; they
   contain no logic. Anything added to a crate must be surfaced in *both* bindings.

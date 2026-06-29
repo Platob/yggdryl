@@ -24,14 +24,14 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (all features)
         run: |
-          for c in yggdryl-core yggdryl-schema; do
+          for c in yggdryl-core yggdryl-schema yggdryl-scalar; do
             cargo clippy -p $c --all-targets --all-features -- -D warnings
           done
       - name: Test
         run: cargo test
       - name: Test (all features)
         run: |
-          for c in yggdryl-core yggdryl-schema; do
+          for c in yggdryl-core yggdryl-schema yggdryl-scalar; do
             cargo test -p $c --all-features
           done
 

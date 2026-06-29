@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/yggdryl-core",
     "crates/yggdryl-schema",
+    "crates/yggdryl-scalar",
     "bindings/python",
     "bindings/node",
 ]
@@ -12,6 +13,7 @@ members = [
 default-members = [
     "crates/yggdryl-core",
     "crates/yggdryl-schema",
+    "crates/yggdryl-scalar",
 ]
 
 [workspace.package]
@@ -27,6 +29,7 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
 yggdryl-schema = { path = "crates/yggdryl-schema", version = "0.1.0", default-features = false }
+yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0", default-features = false }
 
 [profile.release]
 lto = true
