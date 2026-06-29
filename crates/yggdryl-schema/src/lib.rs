@@ -4,21 +4,37 @@
 //! every data type implements — it knows its [`name`](DataType::name) and
 //! [`DataTypeId`], from which the physical / logical / nested category follows;
 //! each concrete type also carries the matching marker ([`PhysicalType`],
-//! [`LogicalType`] or [`NestedType`]).
+//! [`LogicalType`] or [`NestedType`]). The binary types ([`BinaryType`],
+//! [`LargeBinaryType`], [`BinaryViewType`], [`LargeBinaryViewType`],
+//! [`FixedSizeBinaryType`]) are the first concrete physical types.
 //! [`Field`] pairs a name with a `DataType`, a nullability flag and byte-keyed
 //! [`Metadata`], and offers the functional `copy` / `with_*` updates.
 //!
-//! Conversion to and from Apache Arrow's `arrow-schema` (gated behind the `arrow`
-//! feature) and the concrete data-type / field structs land here next, one module
-//! per concern, following the rules in `CLAUDE.md`. Add a crate-local `log_event!`
-//! macro to this file once a module performs a loggable action.
+//! Conversion to and from Apache Arrow's `arrow-schema` is gated behind the
+//! `arrow` feature. New types land here one module per concern, following the
+//! rules in `CLAUDE.md`.
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise (so the crate stays dependency-free by default and pays no runtime
+/// cost). Shared by every submodule via `crate::log_event!`.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+pub(crate) use log_event;
+
+mod binary;
 mod data_type;
 mod data_type_id;
 #[cfg(feature = "arrow")]
 mod error;
 mod field;
 
+pub use binary::{
+    BinaryType, BinaryViewType, FixedSizeBinaryType, LargeBinaryType, LargeBinaryViewType,
+};
 pub use data_type::{DataType, LogicalType, NestedType, PhysicalType};
 pub use data_type_id::DataTypeId;
 #[cfg(feature = "arrow")]

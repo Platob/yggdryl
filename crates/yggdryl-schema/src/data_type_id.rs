@@ -58,6 +58,10 @@ pub enum DataTypeId {
     Utf8 = 0x10,
     /// Variable-length UTF-8 string (64-bit offsets).
     LargeUtf8 = 0x11,
+    /// View-backed variable-length bytes.
+    BinaryView = 0x12,
+    /// View-backed variable-length bytes (64-bit sizing).
+    LargeBinaryView = 0x13,
 
     // ---- logical (reinterpreted) types: 0x40–0x7F ----
     /// A 128-bit fixed-point decimal.
