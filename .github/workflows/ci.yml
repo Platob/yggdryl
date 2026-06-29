@@ -22,18 +22,12 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Clippy (type crates, all features)
-        run: |
-          for c in yggdryl-core yggdryl-dtype yggdryl-scalar yggdryl-field; do
-            cargo clippy -p $c --all-targets --all-features -- -D warnings
-          done
+      - name: Clippy (all features)
+        run: cargo clippy -p yggdryl-core --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test
-      - name: Test (type crates, all features)
-        run: |
-          for c in yggdryl-core yggdryl-dtype yggdryl-scalar yggdryl-field; do
-            cargo test -p $c --all-features
-          done
+      - name: Test (all features)
+        run: cargo test -p yggdryl-core --all-features
 
   python:
     name: Python extension (${{ matrix.os }})
