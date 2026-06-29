@@ -43,6 +43,11 @@ left after the reset:
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the crates above; they
   contain no logic. Anything added to a crate must be surfaced in *both* bindings.
+  **Each Rust crate is exposed as a submodule of the top-level package**, mirroring
+  the crate tree: `yggdryl-core` → `yggdryl.core`, `yggdryl-schema` →
+  `yggdryl.schema` (Python submodules registered in `sys.modules`; Node `#[napi(namespace
+  = "…")]` exports). The binding source mirrors this too — `src/<crate>.rs` or
+  `src/<crate>/` per crate, with `src/lib.rs` only wiring the submodules together.
 
 As the Arrow-centric type system grows back it is **split into one crate per
 layer** (data types, then scalar *values*, then fields), each depending only on

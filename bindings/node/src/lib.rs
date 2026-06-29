@@ -1,16 +1,14 @@
 //! Node.js extension for **yggdryl**.
 //!
-//! Thin napi-rs wrappers over the `yggdryl_core` types; each type gets its own
-//! module mirroring the Rust crate, with all logic living in the shared core so
-//! the Node and Python bindings behave identically.
-//!
-//! The implementation was removed in a project reset; this scaffold surfaces only
-//! `version()` so the addon builds and the cross-language pattern is in place.
+//! Each Rust crate is exposed under its own JS namespace — `yggdryl.core` (the
+//! foundations) and `yggdryl.schema` (the Arrow schema layer) — mirroring the
+//! crate tree. The wrappers are thin: all logic lives in the Rust crates, so the
+//! Node and Python bindings behave identically.
 
-use napi_derive::napi;
+mod core;
+mod schema;
 
-/// The `yggdryl-core` version string.
-#[napi]
-pub fn version() -> String {
-    yggdryl_core::version().to_string()
-}
+// Re-export so plain `cargo` / `clippy` does not flag the napi items as unused;
+// napi exports them under their namespaces regardless.
+pub use core::version;
+pub use schema::DataTypeId;

@@ -1,0 +1,9 @@
+//! The `yggdryl.core` namespace — thin wrappers over the `yggdryl-core` crate.
+
+use napi_derive::napi;
+
+/// The `yggdryl-core` version string.
+#[napi(namespace = "core")]
+pub fn version() -> String {
+    yggdryl_core::version().to_string()
+}

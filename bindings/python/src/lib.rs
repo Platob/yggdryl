@@ -1,24 +1,36 @@
 //! Python extension for **yggdryl**.
 //!
-//! Thin PyO3 wrappers over the `yggdryl_core` types; each type gets its own module
-//! mirroring the Rust crate, with all logic living in the shared core so the
-//! Python and Node bindings behave identically.
-//!
-//! The implementation was removed in a project reset; this scaffold surfaces only
-//! `version()` so the extension builds and the cross-language pattern is in place.
+//! Each Rust crate is exposed as a submodule of the top-level `yggdryl` package —
+//! `yggdryl.core` (the foundations) and `yggdryl.schema` (the Arrow schema layer)
+//! — mirroring the crate tree. The wrappers are thin: all logic lives in the Rust
+//! crates, so the Python and Node bindings behave identically.
 
 use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
 
-/// The `yggdryl-core` version string.
-#[pyfunction]
-fn version() -> &'static str {
-    yggdryl_core::version()
+mod core;
+mod schema;
+
+/// Builds a child module, runs `populate`, attaches it to `parent`, and registers
+/// it in `sys.modules` so `import yggdryl.<name>` works as well as attribute access.
+fn add_submodule(
+    py: Python<'_>,
+    parent: &Bound<'_, PyModule>,
+    name: &str,
+    populate: impl FnOnce(&Bound<'_, PyModule>) -> PyResult<()>,
+) -> PyResult<()> {
+    let child = PyModule::new_bound(py, name)?;
+    populate(&child)?;
+    parent.add_submodule(&child)?;
+    py.import_bound("sys")?
+        .getattr("modules")?
+        .set_item(format!("yggdryl.{name}"), &child)?;
+    Ok(())
 }
 
 /// The compiled `yggdryl` extension module.
 #[pymodule]
-fn yggdryl(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(version, module)?)?;
+fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
+    add_submodule(py, module, "core", core::register)?;
+    add_submodule(py, module, "schema", schema::register)?;
     Ok(())
 }
