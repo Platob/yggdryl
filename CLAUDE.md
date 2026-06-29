@@ -27,7 +27,7 @@ handles, HTTP bodies, sessions). When a field cannot be part of a value's identi
 
 ## Workspace layout
 
-The workspace is **five Rust crates plus two thin bindings**. The type system is
+The workspace is **four Rust crates plus two thin bindings**. The type system is
 split into one crate per layer, each depending only on the layers below it:
 
 - `crates/yggdryl-core` — the dependency-light foundations every other crate builds
@@ -42,10 +42,6 @@ split into one crate per layer, each depending only on the layers below it:
   carrier, behind the `Scalar` trait. Depends on `core` + `dtype`.
 - `crates/yggdryl-field` — the `Field` / `AnyField` column type and its category
   markers. Depends on `core` + `dtype`.
-- `crates/yggdryl-schema` — the Arrow-compatible schema layer. The `arrow-schema`
-  SDK is a dependency of this crate only.
-- `crates/yggdryl-http` — the network client. Its transport SDK is a dependency of
-  this crate only.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the crates above; they
   contain no logic. Anything added to a core layer must be surfaced in *both*

@@ -11,9 +11,8 @@
 //! matching in-memory *values* are the `Binary` and `Utf8` scalars in
 //! `yggdryl-scalar`.
 //!
-//! This crate deliberately does **not** depend on `arrow-schema`; the conversion
-//! to Arrow's own `DataType` belongs to `yggdryl-schema`. Here the types only
-//! match Arrow's taxonomy and semantics.
+//! This crate deliberately does **not** depend on `arrow-schema`; here the types
+//! only match Arrow's taxonomy and semantics.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise. Shared by every submodule via `crate::log_event!`.

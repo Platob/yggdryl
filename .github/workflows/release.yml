@@ -139,7 +139,6 @@ jobs:
       - name: cargo publish (in dependency order)
         run: |
           cargo publish -p yggdryl-core
-          cargo publish -p yggdryl-http
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

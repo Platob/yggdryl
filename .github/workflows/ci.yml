@@ -27,8 +27,6 @@ jobs:
           for c in yggdryl-core yggdryl-dtype yggdryl-scalar yggdryl-field; do
             cargo clippy -p $c --all-targets --all-features -- -D warnings
           done
-      - name: Clippy (yggdryl-http, all features)
-        run: cargo clippy -p yggdryl-http --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test
       - name: Test (type crates, all features)
@@ -36,8 +34,6 @@ jobs:
           for c in yggdryl-core yggdryl-dtype yggdryl-scalar yggdryl-field; do
             cargo test -p $c --all-features
           done
-      - name: Test (yggdryl-http, all features)
-        run: cargo test -p yggdryl-http --all-features
 
   python:
     name: Python extension (${{ matrix.os }})

@@ -24,9 +24,6 @@ yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features
 yggdryl-dtype = { path = "../../crates/yggdryl-dtype", version = "0.1.0", features = ["json"] }
 yggdryl-scalar = { path = "../../crates/yggdryl-scalar", version = "0.1.0", features = ["json"] }
 yggdryl-field = { path = "../../crates/yggdryl-field", version = "0.1.0", features = ["json"] }
-yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
-# The schema layer (DataType / Field) with JSON (de)serialisation and Arrow conversion.
-yggdryl-schema = { path = "../../crates/yggdryl-schema", version = "0.1.0", features = ["json", "arrow"] }
 # Converts the `serde_json::Value` from `Io::json()` into Python objects.
 serde_json = "1"
 
