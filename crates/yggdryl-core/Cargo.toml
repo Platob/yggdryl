@@ -14,22 +14,6 @@ readme = "README.md"
 name = "yggdryl_core"
 path = "src/lib.rs"
 
-[[bench]]
-name = "version"
-harness = false
-
-[[bench]]
-name = "url"
-harness = false
-
-[[bench]]
-name = "io"
-harness = false
-
-[[bench]]
-name = "compression"
-harness = false
-
 [dependencies]
 # All heavy dependencies are optional and off by default (except the compression
 # codec backends, on by `default`):
