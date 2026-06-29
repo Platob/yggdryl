@@ -83,6 +83,8 @@ macro_rules! log_event {
     }};
 }
 
+#[cfg(any(feature = "http2", feature = "http3"))]
+mod async_body;
 mod auth;
 mod bridge;
 mod cookies;

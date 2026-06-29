@@ -6,9 +6,6 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use yggdryl_core::{Io, Url};
-// Buffering a body into a `BytesIO` now only happens on the async (h2/h3) path.
-#[cfg(any(feature = "http2", feature = "http3"))]
-use yggdryl_core::BytesIO;
 
 use crate::bridge::IoBridge;
 use crate::cookies::{Cookie, HttpCookies};
@@ -1057,8 +1054,8 @@ impl HttpSession {
     }
 
     /// Dispatches one hop over the optional async HTTP/2 transport, buffering the
-    /// response (its body is a seekable [`BytesIO`](yggdryl_core::BytesIO)). The
-    /// request body is read into memory first, so it stays replayable across the
+    /// The response body is fed lazily from the network via a tokio feeder task.
+    /// The request body is buffered once up front so it stays replayable across the
     /// retry loop; transient statuses are retried under the session's
     /// [`RetryConfig`], the same policy the HTTP/1.1 path uses.
     #[cfg(any(feature = "http2", feature = "http3"))]
@@ -1096,20 +1093,20 @@ impl HttpSession {
                     if attempt < self.retry.max_retries
                         && self.retry.retryable_status(raw.status, attempt)
                     {
+                        // Drop the streaming body (closes the channel; the feeder
+                        // task exits on its next send attempt) then retry.
+                        drop(raw.body);
                         std::thread::sleep(self.retry.backoff(attempt, raw.headers.retry_after()));
                         attempt += 1;
                         continue;
                     }
-                    let received_at = Instant::new();
-                    received_at.stamp_once();
-                    let body_io: Box<dyn Io> = Box::new(BytesIO::from_bytes(raw.body));
                     return Ok(HttpResponse::new(
                         raw.status,
                         url,
                         raw.headers,
-                        body_io,
+                        raw.body,
                         sent_at,
-                        received_at,
+                        raw.received_at,
                         raw.version,
                     ));
                 }

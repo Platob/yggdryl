@@ -2393,3 +2393,192 @@ fn http3_feature_marks_http3_available() {
     use crate::HttpVersion;
     assert!(HttpVersion::Http3.is_available());
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — AsyncBody edge cases (h2c hermetic servers)
+// ---------------------------------------------------------------------------
+
+/// An h2c response with `Content-Length: 0` and no DATA frames produces an empty
+/// body: `AsyncBody::next_chunk()` receives a clean channel close immediately, so
+/// `bytes()` returns an empty slice without blocking or panicking.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_empty_body_is_readable() {
+    use crate::HttpVersion;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/empty");
+
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(|_req| async move {
+                Ok::<_, std::convert::Infallible>(
+                    hyper::Response::builder()
+                        .status(200)
+                        .header("content-length", "0")
+                        .body(http_body_util::Full::new(hyper::body::Bytes::new()))
+                        .unwrap(),
+                )
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body = response.bytes().unwrap();
+    assert!(body.is_empty(), "expected empty h2c body, got {body:?}");
+    server.join().unwrap();
+}
+
+/// An h2c response with a 1 MiB body exercises multiple channel reads in
+/// `AsyncBody`: the bounded channel (4 slots) creates back-pressure and the
+/// feeder task blocks while the consumer drains. Every byte must arrive intact
+/// and in order.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_large_body_streams_fully() {
+    use crate::HttpVersion;
+
+    const SIZE: usize = 1024 * 1024; // 1 MiB — forces many channel round-trips
+    let payload: Vec<u8> = (0..SIZE).map(|i| (i % 251) as u8).collect();
+    let expected = payload.clone();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/large");
+
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(move |_req| {
+                let payload = payload.clone();
+                async move {
+                    Ok::<_, std::convert::Infallible>(
+                        hyper::Response::builder()
+                            .status(200)
+                            .header("content-length", SIZE.to_string())
+                            .body(http_body_util::Full::new(hyper::body::Bytes::from(payload)))
+                            .unwrap(),
+                    )
+                }
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body = response.bytes().unwrap();
+    assert_eq!(
+        body.len(),
+        SIZE,
+        "body length mismatch: got {} bytes",
+        body.len()
+    );
+    assert_eq!(body, expected, "body content mismatch");
+    server.join().unwrap();
+}
+
+/// Forward seeks drain intervening frames into the sliding cache; a backward seek
+/// within the cache returns already-delivered bytes without a new request.
+/// Both paths through `AsyncBody::seek` must work on a live h2c stream.
+#[cfg(feature = "http2")]
+#[test]
+fn http2_streaming_body_seek_back_within_cache() {
+    use crate::HttpVersion;
+
+    // 32 bytes: 'A'..='P' twice, so seek-back land on predictable bytes.
+    let body_bytes: Vec<u8> = (b'A'..=b'P').chain(b'A'..=b'P').collect();
+    let full_payload = body_bytes.clone();
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/seektest");
+
+    let server = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let service = hyper::service::service_fn(move |_req| {
+                let body_bytes = body_bytes.clone();
+                async move {
+                    Ok::<_, std::convert::Infallible>(hyper::Response::new(
+                        http_body_util::Full::new(hyper::body::Bytes::from(body_bytes)),
+                    ))
+                }
+            });
+            hyper::server::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+                .ok();
+        });
+    });
+
+    let mut response = HttpSession::new()
+        .send(
+            HttpRequest::get(&url)
+                .unwrap()
+                .with_http_version(HttpVersion::Http2),
+            false,
+        )
+        .unwrap();
+
+    // Read the first 16 bytes — they enter the sliding cache.
+    let mut first = [0u8; 16];
+    response.body_mut().read_exact(&mut first).unwrap();
+    assert_eq!(&first, b"ABCDEFGHIJKLMNOP");
+
+    // Seek back to the start — within the 4 MiB cache window, no new request.
+    let pos = response.body_mut().seek(0, Whence::Start).unwrap();
+    assert_eq!(pos, 0, "seek to start should return position 0");
+
+    // Read all 32 bytes: first 16 from cache, next 16 from the current chunk.
+    let mut all = [0u8; 32];
+    response.body_mut().read_exact(&mut all).unwrap();
+    assert_eq!(&all, full_payload.as_slice());
+
+    server.join().unwrap();
+}

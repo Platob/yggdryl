@@ -5,10 +5,7 @@
 //! [`HttpVersion::Http3`], or [`HttpVersion::Auto`] picking `h2` through TLS ALPN —
 //! the blocking layer funnels it here instead. This module owns a small
 //! **multi-threaded tokio runtime** and drives [`hyper`]'s h2 client (over TCP/TLS)
-//! or the `quinn` + `h3` client (over QUIC/UDP) on it, presenting the same buffered
-//! request/response shape (`RawResponse`) the rest of the crate consumes, so
-//! redirects, cookies and retries in [`HttpSession::send`](crate::HttpSession::send)
-//! work identically whatever the protocol.
+//! or the `quinn` + `h3` client (over QUIC/UDP) on it.
 //!
 //! Transport selection (see [`route_for`]):
 //! - `https` + pinned `h2` → TLS offering only `h2` (errors if the server refuses);
@@ -17,25 +14,29 @@
 //! - `http` (cleartext) + pinned `h2` → h2c (HTTP/2 with prior knowledge);
 //! - `https` + pinned `h3` → QUIC with ALPN `h3` (HTTP/3 is TLS-only).
 //!
-//! Each path **buffers** the response body into memory (the returned body is a
-//! seekable [`BytesIO`](yggdryl_core::BytesIO)); streaming a body — and a
-//! per-response size cap (none yet, as on the buffered HTTP/1.1 path) — are later
-//! refinements. Request bodies are buffered too, so they are replayable on a retry.
-//! A coarse [`REQUEST_TIMEOUT`] bounds the whole round-trip so a stalled server
-//! cannot pin the calling thread indefinitely. TLS certificate verification follows
-//! the session's [`verify`](crate::HttpSession::verify) flag. No HTTP `CONNECT`
-//! proxy support yet: the transport connects directly, so it needs direct egress.
+//! Once the response headers are received, a tokio feeder task drains the body
+//! DATA frames into a bounded `tokio::sync::mpsc` channel while the blocking caller
+//! reads via [`AsyncBody`](crate::async_body::AsyncBody)'s `blocking_recv`. The
+//! connection / driver task stays alive until the feeder finishes, then is aborted.
+//! Request bodies are buffered so they are replayable on a retry. A coarse
+//! [`REQUEST_TIMEOUT`] covers connect → TLS → request → first-response-byte; body
+//! reading is bounded by the session `read_timeout` (applied by each channel recv
+//! on the caller thread). TLS certificate verification follows the session's
+//! [`verify`](crate::HttpSession::verify) flag. No HTTP `CONNECT` proxy support
+//! yet: the transport connects directly, so it needs direct egress.
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::runtime::Runtime;
 use tokio_rustls::rustls::ClientConfig;
-use yggdryl_core::Url;
+use yggdryl_core::{Io, Url};
 
+use crate::async_body::AsyncBody;
 use crate::error::HttpError;
 use crate::headers::HttpHeaders;
 use crate::method::Method;
+use crate::time::Instant;
 use crate::version::HttpVersion;
 
 #[cfg(feature = "http2")]
@@ -85,21 +86,30 @@ pub(crate) struct AsyncRequest<'a> {
     pub(crate) ca_certs: &'a [Vec<u8>],
 }
 
-/// The buffered result of an async round-trip: status, response headers, the whole
-/// body, and the protocol [`version`](RawResponse::version) actually spoken.
+/// The result of an async round-trip: status, response headers, the streaming
+/// body [`Io`] (fed from the network via a tokio feeder task), the protocol
+/// [`version`](RawResponse::version) actually spoken, and the `received_at`
+/// instant shared with the body — stamped when the body reaches EOF or is closed.
 pub(crate) struct RawResponse {
     pub(crate) status: u16,
     pub(crate) headers: HttpHeaders,
-    pub(crate) body: Vec<u8>,
+    /// The streaming response body. For callers that retry on a transient status,
+    /// this `Box<dyn Io>` is simply dropped (closing the channel, which causes the
+    /// feeder task to exit on its next send attempt).
+    pub(crate) body: Box<dyn Io>,
     pub(crate) version: HttpVersion,
+    /// Shared with the body; stamped by [`AsyncBody`] when it reaches EOF or is
+    /// closed, so [`HttpResponse::received_at`](crate::HttpResponse::received_at)
+    /// reflects when the caller finished consuming the body.
+    pub(crate) received_at: Instant,
 }
 
 /// The process-wide tokio runtime the async transport runs on, built on first use.
 ///
 /// A **multi-threaded** runtime (a small worker pool) is used rather than a
-/// current-thread one so spawned connection tasks keep being driven *between*
-/// `block_on` calls: that lets the connection task close its socket promptly when
-/// aborted after the body is buffered, and lets concurrent
+/// current-thread one so spawned feeder tasks keep being driven *between*
+/// `block_on` calls: that lets feeder tasks stream body frames to the caller's
+/// channel independently, and lets concurrent
 /// [`send_many`](crate::HttpSession::send_many) requests each `block_on` the shared
 /// runtime without serialising.
 fn runtime() -> &'static Runtime {
@@ -113,13 +123,15 @@ fn runtime() -> &'static Runtime {
     })
 }
 
-/// A coarse safety backstop on a single round-trip, so a black-hole server (accepts
-/// the socket but never completes TLS / never answers) cannot pin the calling
-/// thread forever. It bounds the whole connect→TLS→request→body sequence.
+/// A coarse safety backstop covering connect→TLS→request→first-response-byte, so a
+/// black-hole server cannot pin the calling thread forever. Body streaming happens
+/// after `block_on` returns (the feeder task runs on the runtime's worker threads),
+/// so this timeout does not limit how long a body takes to drain.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Runs one async request to completion on the transport runtime, blocking the
-/// calling thread until the response is buffered (or [`REQUEST_TIMEOUT`] elapses).
+/// Runs one async request until response headers are received, launching a feeder
+/// task for the body, then returning a [`RawResponse`] with the streaming body.
+/// Blocks the calling thread until the first byte of the response is available.
 pub(crate) fn send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
     log_event!(
         debug,
@@ -328,7 +340,7 @@ fn is_hop_by_hop(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Opens the connection (h2c / TLS+ALPN), speaks the negotiated protocol and
-/// buffers the response.
+/// returns a [`RawResponse`] with a streaming body.
 #[cfg(feature = "http2")]
 async fn h2_send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
     let url = request.url;
@@ -374,12 +386,11 @@ async fn h2_send(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
     }
 }
 
-/// Performs an HTTP/2 request over an established `stream`, returning the buffered
-/// response (its [`version`](RawResponse::version) is [`Http2`](HttpVersion::Http2)).
+/// Performs an HTTP/2 request over an established `stream`. Returns a
+/// [`RawResponse`] whose body is fed from the network by a tokio feeder task.
 ///
-/// The connection future is spawned to drive the request, then **aborted** once the
-/// body is buffered: the runtime's worker drops the aborted task promptly, closing
-/// the socket instead of leaving it open for a connection we will not reuse.
+/// The hyper connection task is kept alive until the feeder task finishes draining
+/// the body, at which point the feeder aborts it so the socket is released promptly.
 #[cfg(feature = "http2")]
 async fn h2_request<S>(stream: S, request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
 where
@@ -393,25 +404,28 @@ where
     let conn = tokio::spawn(async move {
         let _ = conn.await;
     });
-    let result = async {
-        sender
-            .ready()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = sender
-            .send_request(hyper_request)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        collect(response, HttpVersion::Http2).await
-    }
-    .await;
-    conn.abort();
-    result
+    sender
+        .ready()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    let response = match sender.send_request(hyper_request).await {
+        Ok(r) => r,
+        Err(err) => {
+            conn.abort();
+            return Err(HttpError::Transport(err.to_string()));
+        }
+    };
+    Ok(spawn_body_feeder(
+        response,
+        HttpVersion::Http2,
+        request.url,
+        conn,
+    ))
 }
 
 /// Performs an HTTP/1.1 request over an established `stream` (the Auto ALPN
-/// fallback when a TLS server declines `h2`). Like [`h2_request`], the connection
-/// task is aborted once the body is buffered.
+/// fallback when a TLS server declines `h2`). The connection task is kept alive
+/// until the feeder task finishes, then aborted.
 #[cfg(feature = "http2")]
 async fn h1_request<S>(stream: S, request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
 where
@@ -425,20 +439,86 @@ where
     let conn = tokio::spawn(async move {
         let _ = conn.await;
     });
-    let result = async {
-        sender
-            .ready()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = sender
-            .send_request(hyper_request)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        collect(response, HttpVersion::Http11).await
+    sender
+        .ready()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    let response = match sender.send_request(hyper_request).await {
+        Ok(r) => r,
+        Err(err) => {
+            conn.abort();
+            return Err(HttpError::Transport(err.to_string()));
+        }
+    };
+    Ok(spawn_body_feeder(
+        response,
+        HttpVersion::Http11,
+        request.url,
+        conn,
+    ))
+}
+
+/// Extracts status/headers from a hyper response, spawns a tokio feeder task that
+/// drains the body DATA frames into a bounded channel, and returns a
+/// [`RawResponse`] with the streaming [`AsyncBody`].
+///
+/// The `conn` task is passed to the feeder; it is aborted once the feeder finishes
+/// so the socket is released promptly without waiting for an idle timeout.
+#[cfg(feature = "http2")]
+fn spawn_body_feeder(
+    response: hyper::Response<hyper::body::Incoming>,
+    version: HttpVersion,
+    url: &Url,
+    conn: tokio::task::JoinHandle<()>,
+) -> RawResponse {
+    let status = response.status().as_u16();
+    let mut headers = HttpHeaders::new();
+    let mut content_type: Option<String> = None;
+    for (name, value) in response.headers() {
+        if let Ok(value) = value.to_str() {
+            if name.as_str().eq_ignore_ascii_case("content-type") {
+                content_type = Some(value.to_string());
+            }
+            headers.insert(name.as_str(), value);
+        }
     }
-    .await;
-    conn.abort();
-    result
+    // Content-Length, if present, lets the body know its total size up front.
+    let size = headers.content_size();
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, HttpError>>(4);
+    let received_at = Instant::new();
+
+    let incoming = response.into_body();
+    tokio::spawn(async move {
+        let mut body = incoming;
+        loop {
+            match body.frame().await {
+                Some(Ok(frame)) => {
+                    if let Ok(data) = frame.into_data() {
+                        if !data.is_empty() && tx.send(Ok(data.to_vec())).await.is_err() {
+                            break; // receiver was dropped (retry or early close)
+                        }
+                    }
+                }
+                Some(Err(err)) => {
+                    let _ = tx.send(Err(HttpError::Transport(err.to_string()))).await;
+                    break;
+                }
+                None => break, // clean EOF: all DATA frames received
+            }
+        }
+        conn.abort();
+        // tx drops here, closing the channel and signaling EOF to AsyncBody.
+    });
+
+    let body = AsyncBody::new(rx, size, url.clone(), content_type, received_at.clone());
+    RawResponse {
+        status,
+        headers,
+        body: Box::new(body),
+        version,
+        received_at,
+    }
 }
 
 /// Builds the `hyper` request from our prepared one. `with_host` adds a `Host`
@@ -481,35 +561,6 @@ fn build_request(
         .map_err(|err| HttpError::InvalidHeader(err.to_string()))
 }
 
-/// Drains a hyper response into a [`RawResponse`], tagging it with the protocol
-/// `version` it was delivered over.
-#[cfg(feature = "http2")]
-async fn collect(
-    response: hyper::Response<hyper::body::Incoming>,
-    version: HttpVersion,
-) -> Result<RawResponse, HttpError> {
-    let status = response.status().as_u16();
-    let mut headers = HttpHeaders::new();
-    for (name, value) in response.headers() {
-        if let Ok(value) = value.to_str() {
-            headers.insert(name.as_str(), value);
-        }
-    }
-    let body = response
-        .into_body()
-        .collect()
-        .await
-        .map_err(|err| HttpError::Transport(err.to_string()))?
-        .to_bytes()
-        .to_vec();
-    Ok(RawResponse {
-        status,
-        headers,
-        body,
-        version,
-    })
-}
-
 /// Wraps `stream` in a rustls TLS session for `host`, offering `alpn` and verifying
 /// the certificate unless `verify` is `false`. The negotiated ALPN id is read back
 /// by the caller.
@@ -548,13 +599,11 @@ where
 // HTTP/3 over QUIC (quinn + h3).
 // ---------------------------------------------------------------------------
 
-/// Performs an HTTP/3 request over a fresh QUIC connection, buffering the response.
+/// Performs an HTTP/3 request over a fresh QUIC connection. Returns a
+/// [`RawResponse`] whose body is streamed from a tokio feeder task.
 /// HTTP/3 is TLS-only, so the URL must be `https`; the connection offers ALPN `h3`.
-/// The connection driver is spawned and aborted once the body is buffered.
 #[cfg(feature = "http3")]
 async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError> {
-    use bytes::Buf;
-
     let url = request.url;
     let host = url.host().to_string();
     if host.is_empty() {
@@ -598,63 +647,80 @@ async fn h3_request(request: AsyncRequest<'_>) -> Result<RawResponse, HttpError>
         let _ = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
     });
 
-    let result = async {
-        let req = build_h3_request(&request)?;
-        let mut stream = send_request
-            .send_request(req)
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        if !request.body.is_empty() {
-            stream
-                .send_data(bytes::Bytes::copy_from_slice(request.body))
-                .await
-                .map_err(|err| HttpError::Transport(err.to_string()))?;
-        }
+    let req = build_h3_request(&request)?;
+    let mut stream = send_request
+        .send_request(req)
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+    if !request.body.is_empty() {
         stream
-            .finish()
+            .send_data(bytes::Bytes::copy_from_slice(request.body))
             .await
             .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let response = stream
-            .recv_response()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?;
-        let status = response.status().as_u16();
-        let mut headers = HttpHeaders::new();
-        for (name, value) in response.headers() {
-            if let Ok(value) = value.to_str() {
-                headers.insert(name.as_str(), value);
-            }
-        }
-        let mut body = Vec::new();
-        while let Some(mut chunk) = stream
-            .recv_data()
-            .await
-            .map_err(|err| HttpError::Transport(err.to_string()))?
-        {
-            while chunk.has_remaining() {
-                let bytes = chunk.chunk();
-                body.extend_from_slice(bytes);
-                let len = bytes.len();
-                chunk.advance(len);
-            }
-        }
-        Ok(RawResponse {
-            status,
-            headers,
-            body,
-            version: HttpVersion::Http3,
-        })
     }
-    .await;
+    stream
+        .finish()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
 
-    driver.abort();
-    // Queue a CONNECTION_CLOSE and drop the endpoint (we do not pool QUIC
-    // connections yet). This is best-effort: the body is already fully buffered, so
-    // we do not `wait_idle()` to flush the close frame — a server learns of the
-    // close via its idle timeout at worst, and we avoid adding teardown latency to
-    // every request.
-    endpoint.close(0u32.into(), b"done");
-    result
+    let response = stream
+        .recv_response()
+        .await
+        .map_err(|err| HttpError::Transport(err.to_string()))?;
+
+    let status = response.status().as_u16();
+    let mut headers = HttpHeaders::new();
+    let mut content_type: Option<String> = None;
+    for (name, value) in response.headers() {
+        if let Ok(value) = value.to_str() {
+            if name.as_str().eq_ignore_ascii_case("content-type") {
+                content_type = Some(value.to_string());
+            }
+            headers.insert(name.as_str(), value);
+        }
+    }
+    let size = headers.content_size();
+
+    // Spawn a feeder task that drains the h3 body frames into the channel.
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, HttpError>>(4);
+    let received_at = Instant::new();
+
+    tokio::spawn(async move {
+        use bytes::Buf;
+        loop {
+            match stream.recv_data().await {
+                Ok(Some(mut chunk)) => {
+                    let mut bytes = Vec::with_capacity(chunk.remaining());
+                    while chunk.has_remaining() {
+                        let b = chunk.chunk();
+                        bytes.extend_from_slice(b);
+                        let len = b.len();
+                        chunk.advance(len);
+                    }
+                    if !bytes.is_empty() && tx.send(Ok(bytes)).await.is_err() {
+                        break; // receiver dropped
+                    }
+                }
+                Ok(None) => break, // clean EOF
+                Err(err) => {
+                    let _ = tx.send(Err(HttpError::Transport(err.to_string()))).await;
+                    break;
+                }
+            }
+        }
+        driver.abort();
+        endpoint.close(0u32.into(), b"done");
+        // tx drops here, closing the channel.
+    });
+
+    let body = AsyncBody::new(rx, size, url.clone(), content_type, received_at.clone());
+    Ok(RawResponse {
+        status,
+        headers,
+        body: Box::new(body),
+        version: HttpVersion::Http3,
+        received_at,
+    })
 }
 
 /// Wraps a QUIC connect error, adding the self-signed-certificate hint only when
