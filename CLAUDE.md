@@ -132,6 +132,14 @@ Rules:
   doctest. Match the existing terse style.
 - **Bindings**: each wrapper method is one or two lines delegating to
   `self.inner`. Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+- **One-line functional updates**: write the non-mutating helpers as a single
+  expression. `copy` is the one primitive that rebuilds the value with selected
+  fields overridden (omitted ones taken from `self`); every `with_<field>` /
+  `without_<field>` is a one-line delegation to it — e.g.
+  `fn with_name(&self, name: String) -> Self { self.copy(Some(name), None, None, None) }`.
+  Favour concise functional one-liners wherever they stay readable, and define the
+  trait method signatures so an implementor can satisfy them on one line; only
+  expand to a multi-line body when the logic genuinely needs it.
 
 ## Performance: zero-copy with checks
 
