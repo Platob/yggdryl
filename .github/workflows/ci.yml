@@ -23,11 +23,17 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (all features)
-        run: cargo clippy -p yggdryl-core --all-targets --all-features -- -D warnings
+        run: |
+          for c in yggdryl-core yggdryl-schema; do
+            cargo clippy -p $c --all-targets --all-features -- -D warnings
+          done
       - name: Test
         run: cargo test
       - name: Test (all features)
-        run: cargo test -p yggdryl-core --all-features
+        run: |
+          for c in yggdryl-core yggdryl-schema; do
+            cargo test -p $c --all-features
+          done
 
   python:
     name: Python extension (${{ matrix.os }})

@@ -1,0 +1,52 @@
+[package]
+name = "yggdryl-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-compatible schema layer for yggdryl (DataType / Field / schema types) with conversion to and from Apache Arrow"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_schema"
+path = "src/lib.rs"
+
+[dependencies]
+# The dependency-light core supplies the shared foundations the schema types build
+# on. Nothing else is pulled in by default.
+yggdryl-core = { workspace = true, default-features = false }
+# All heavy dependencies are optional and off by default:
+#   log    structured logging via the `log` facade;
+#   serde  `Serialize` / `Deserialize` for every type (structural, lossless);
+#   json   `to_json` / `from_json` on every type (implies `serde`);
+#   arrow  fast, total conversion to / from `arrow-schema` — the foundation for an
+#          Arrow-backed dataframe and the bridge the bindings hand to pyarrow /
+#          arrow-js.
+log = { version = "0.4", optional = true }
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = { version = "1", optional = true }
+# `arrow-schema` is a light, zero-array crate (just the schema types). `ffi`
+# exposes the Arrow C Data Interface (`FFI_ArrowSchema`), the zero-copy bridge the
+# bindings use; `default-features = false` keeps it lean.
+arrow-schema = { version = "59", optional = true, default-features = false, features = ["ffi"] }
+
+[dev-dependencies]
+# Round-trip the `serde` impls through a concrete format in the tests, and exercise
+# the Arrow conversion both ways.
+serde_json = { version = "1" }
+arrow-schema = { version = "59", default-features = false, features = ["ffi"] }
+
+[features]
+default = []
+log = ["dep:log", "yggdryl-core/log"]
+# Structural `Serialize` / `Deserialize` for the recursive schema types (lossless,
+# unlike a canonical string form).
+serde = ["dep:serde"]
+# `to_json` / `from_json` on every type (implies `serde`). Used by the bindings.
+json = ["serde", "dep:serde_json"]
+# Fast conversion to / from `arrow-schema` (DataType / Field / Schema), plus the
+# Arrow C Data Interface export the bindings build on.
+arrow = ["dep:arrow-schema"]
