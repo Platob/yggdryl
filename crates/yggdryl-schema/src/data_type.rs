@@ -56,6 +56,13 @@ pub trait DataType {
         self.type_id().is_nested()
     }
 
+    /// The maximum number of bytes a value of this type may hold, or `None` if it
+    /// is unbounded. Fixed- and max-size types report their width here, which the
+    /// scalar layer uses to truncate over-long byte payloads.
+    fn max_byte_size(&self) -> Option<i64> {
+        None
+    }
+
     /// Converts this type to its Apache Arrow equivalent.
     #[cfg(feature = "arrow")]
     fn to_arrow(&self) -> arrow_schema::DataType;

@@ -6,7 +6,8 @@
 //! each concrete type also carries the matching marker ([`PhysicalType`],
 //! [`LogicalType`] or [`NestedType`]). The binary types ([`BinaryType`],
 //! [`LargeBinaryType`], [`BinaryViewType`], [`LargeBinaryViewType`],
-//! [`FixedSizeBinaryType`]) are the first concrete physical types.
+//! [`FixedSizeBinaryType`], [`MaxSizeBinaryType`]) are the first concrete physical
+//! types.
 //! [`Field`] pairs a name with a `DataType`, a nullability flag and byte-keyed
 //! [`Metadata`], and offers the functional `copy` / `with_*` updates.
 //!
@@ -34,6 +35,7 @@ mod field;
 
 pub use binary::{
     BinaryType, BinaryViewType, FixedSizeBinaryType, LargeBinaryType, LargeBinaryViewType,
+    MaxSizeBinaryType,
 };
 pub use data_type::{DataType, LogicalType, NestedType, PhysicalType};
 pub use data_type_id::DataTypeId;

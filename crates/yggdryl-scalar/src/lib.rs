@@ -9,6 +9,16 @@
 //! New value types land here one module per concern, following the rules in
 //! `CLAUDE.md`.
 
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise. Shared by every submodule via `crate::log_event!`.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
+}
+pub(crate) use log_event;
+
 mod binary;
 mod scalar;
 

@@ -62,6 +62,8 @@ pub enum DataTypeId {
     BinaryView = 0x12,
     /// View-backed variable-length bytes (64-bit sizing).
     LargeBinaryView = 0x13,
+    /// Variable-length bytes capped at a maximum size.
+    MaxSizeBinary = 0x14,
 
     // ---- logical (reinterpreted) types: 0x40–0x7F ----
     /// A 128-bit fixed-point decimal.
@@ -119,5 +121,11 @@ impl DataTypeId {
     /// Whether this is a nested (child-bearing) type.
     pub fn is_nested(self) -> bool {
         (self as u8) >= Self::NESTED_BASE
+    }
+
+    /// Whether values of this type have a fixed (exact) byte width — as opposed to
+    /// variable-length or merely size-capped.
+    pub fn is_fixed_size(self) -> bool {
+        matches!(self, Self::FixedSizeBinary | Self::FixedSizeList)
     }
 }

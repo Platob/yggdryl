@@ -2,7 +2,7 @@
 
 use yggdryl_schema::{
     BinaryType, BinaryViewType, DataType, DataTypeId, FixedSizeBinaryType, LargeBinaryType,
-    LargeBinaryViewType, PhysicalType,
+    LargeBinaryViewType, MaxSizeBinaryType, PhysicalType,
 };
 
 fn assert_physical<T: PhysicalType>(_: &T) {}
@@ -23,17 +23,37 @@ fn names_ids_and_category() {
         DataTypeId::FixedSizeBinary
     );
 
+    assert_eq!(MaxSizeBinaryType::new(8).name(), "max_size_binary");
+    assert_eq!(
+        MaxSizeBinaryType::new(8).type_id(),
+        DataTypeId::MaxSizeBinary
+    );
+
     for id in [
         DataTypeId::Binary,
         DataTypeId::LargeBinary,
         DataTypeId::BinaryView,
         DataTypeId::LargeBinaryView,
         DataTypeId::FixedSizeBinary,
+        DataTypeId::MaxSizeBinary,
     ] {
         assert!(id.is_physical());
     }
     assert_physical(&BinaryType);
     assert_physical(&FixedSizeBinaryType::new(8));
+    assert_physical(&MaxSizeBinaryType::new(8));
+}
+
+#[test]
+fn fixed_and_max_size_limits() {
+    // Fixed size is an exact width; max size is a cap. Both report a max byte size.
+    assert!(DataTypeId::FixedSizeBinary.is_fixed_size());
+    assert!(!DataTypeId::MaxSizeBinary.is_fixed_size());
+    assert!(!DataTypeId::Binary.is_fixed_size());
+
+    assert_eq!(FixedSizeBinaryType::new(4).max_byte_size(), Some(4));
+    assert_eq!(MaxSizeBinaryType::new(4).max_byte_size(), Some(4));
+    assert_eq!(BinaryType.max_byte_size(), None);
 }
 
 #[test]
@@ -64,7 +84,7 @@ mod arrow {
     use arrow_schema::DataType as ArrowType;
     use yggdryl_schema::{
         BinaryType, BinaryViewType, DataType, FixedSizeBinaryType, LargeBinaryType,
-        LargeBinaryViewType,
+        LargeBinaryViewType, MaxSizeBinaryType,
     };
 
     #[test]
@@ -78,6 +98,9 @@ mod arrow {
             FixedSizeBinaryType::new(12).to_arrow(),
             ArrowType::FixedSizeBinary(12)
         );
+        // Arrow has no size-capped binary: lossy map to Binary; it cannot map back.
+        assert_eq!(MaxSizeBinaryType::new(4).to_arrow(), ArrowType::Binary);
+        assert!(MaxSizeBinaryType::from_arrow(&ArrowType::Binary).is_err());
     }
 
     #[test]

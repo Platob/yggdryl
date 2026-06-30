@@ -25,6 +25,12 @@ pub trait Scalar {
     /// The value's data type (accessor).
     fn dtype(&self) -> &Self::Type;
 
+    /// Whether the value's type has a fixed (exact) byte width. Defaults to the
+    /// data type's category.
+    fn is_fixed_size(&self) -> bool {
+        self.dtype().type_id().is_fixed_size()
+    }
+
     /// Serializes the value to its raw bytes.
     fn to_bytes(&self) -> Vec<u8>;
 

@@ -29,6 +29,7 @@ pub enum DataTypeId {
     LargeUtf8 = 0x11,
     BinaryView = 0x12,
     LargeBinaryView = 0x13,
+    MaxSizeBinary = 0x14,
     Decimal128 = 0x40,
     Decimal256 = 0x41,
     Date32 = 0x42,

@@ -9,16 +9,23 @@ use crate::scalar::Scalar;
 /// [`FixedSizeBinaryType`](yggdryl_schema::FixedSizeBinaryType)).
 ///
 /// Generic over the concrete binary type `T`, so the same value type serves every
-/// binary data type.
+/// binary data type. When the type caps its size (a fixed- or max-size type), a
+/// payload longer than [`max_byte_size`](yggdryl_schema::DataType::max_byte_size)
+/// is truncated to that maximum.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId, FixedSizeBinaryType};
+/// use yggdryl_schema::{DataType, DataTypeId, FixedSizeBinaryType, MaxSizeBinaryType};
 /// use yggdryl_scalar::{Binary, Scalar};
 ///
 /// let value = Binary::new(FixedSizeBinaryType::new(2), vec![1u8, 2]);
 /// assert_eq!(value.dtype().type_id(), DataTypeId::FixedSizeBinary);
 /// assert_eq!(value.as_bytes(), b"\x01\x02");
-/// assert_eq!(value.to_bytes(), vec![1u8, 2]);
+/// assert!(value.is_fixed_size());
+///
+/// // A max-size type truncates an over-long payload.
+/// let capped = Binary::new(MaxSizeBinaryType::new(3), b"hello".to_vec());
+/// assert_eq!(capped.as_bytes(), b"hel");
+/// assert!(!capped.is_fixed_size());
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -28,8 +35,24 @@ pub struct Binary<T: DataType> {
 }
 
 impl<T: DataType> Binary<T> {
-    /// A binary value of type `dtype` holding `bytes`.
-    pub fn new(dtype: T, bytes: Vec<u8>) -> Self {
+    /// A binary value of type `dtype` holding `bytes`. If the type caps its size,
+    /// an over-long payload is truncated to [`DataType::max_byte_size`].
+    pub fn new(dtype: T, mut bytes: Vec<u8>) -> Self {
+        if let Some(max) = dtype
+            .max_byte_size()
+            .and_then(|max| usize::try_from(max).ok())
+        {
+            if bytes.len() > max {
+                crate::log_event!(
+                    warn,
+                    "Binary value of {} bytes truncated to the {} maximum of {}",
+                    bytes.len(),
+                    dtype.name(),
+                    max
+                );
+                bytes.truncate(max);
+            }
+        }
         Self { dtype, bytes }
     }
 
@@ -51,9 +74,6 @@ impl<T: DataType> Scalar for Binary<T> {
     }
 
     fn from_bytes(dtype: T, bytes: &[u8]) -> Self {
-        Self {
-            dtype,
-            bytes: bytes.to_vec(),
-        }
+        Self::new(dtype, bytes.to_vec())
     }
 }
