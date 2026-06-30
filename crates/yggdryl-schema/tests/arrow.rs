@@ -1,11 +1,12 @@
 //! Round-trips a [`Field`] through Apache Arrow, exercising the trait-default
-//! `to_arrow` / `from_arrow` that leverage [`DataType`]'s conversion.
+//! `to_arrow_field` / `from_arrow_field` that leverage [`DataType`]'s conversion
+//! and the metadata strategy for types Arrow cannot represent exactly.
 #![cfg(feature = "arrow")]
 
 use std::collections::BTreeMap;
 
 use arrow_schema::DataType as ArrowType;
-use yggdryl_schema::{DataType, DataTypeId, Field, Metadata, SchemaError};
+use yggdryl_schema::{DataType, DataTypeId, Field, MaxedSizeBinaryType, Metadata, SchemaError};
 
 /// A minimal physical type used to exercise the trait machinery.
 #[derive(Clone, Debug, PartialEq)]
@@ -20,11 +21,11 @@ impl DataType for Int32 {
         DataTypeId::Int32
     }
 
-    fn to_arrow(&self) -> ArrowType {
+    fn to_arrow_type(&self) -> ArrowType {
         ArrowType::Int32
     }
 
-    fn from_arrow(dtype: &ArrowType) -> Result<Self, SchemaError> {
+    fn from_arrow_type(dtype: &ArrowType, _metadata: &Metadata) -> Result<Self, SchemaError> {
         match dtype {
             ArrowType::Int32 => Ok(Int32),
             other => Err(SchemaError::UnsupportedArrowType(other.clone())),
@@ -32,23 +33,24 @@ impl DataType for Int32 {
     }
 }
 
-/// A concrete field that only supplies the accessors and `from_parts`.
+/// A concrete field generic over its data type, supplying only the accessors and
+/// `from_parts`.
 #[derive(Clone, Debug, PartialEq)]
-struct Col {
+struct Col<T> {
     name: String,
-    dtype: Int32,
+    dtype: T,
     nullable: bool,
     metadata: Metadata,
 }
 
-impl Field for Col {
-    type Type = Int32;
+impl<T: DataType + Clone> Field for Col<T> {
+    type Type = T;
 
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn dtype(&self) -> &Int32 {
+    fn dtype(&self) -> &T {
         &self.dtype
     }
 
@@ -60,7 +62,7 @@ impl Field for Col {
         &self.metadata
     }
 
-    fn from_parts(name: String, dtype: Int32, nullable: bool, metadata: Metadata) -> Self {
+    fn from_parts(name: String, dtype: T, nullable: bool, metadata: Metadata) -> Self {
         Col {
             name,
             dtype,
@@ -76,7 +78,7 @@ fn field_round_trips_through_arrow() {
     metadata.insert(b"unit".to_vec(), b"count".to_vec());
     let col = Col::from_parts("id".into(), Int32, false, metadata);
 
-    let arrow = col.to_arrow().unwrap();
+    let arrow = col.to_arrow_field().unwrap();
     assert_eq!(arrow.name(), "id");
     assert_eq!(arrow.data_type(), &ArrowType::Int32);
     assert!(!arrow.is_nullable());
@@ -85,13 +87,46 @@ fn field_round_trips_through_arrow() {
         Some("count")
     );
 
-    let back = Col::from_arrow(&arrow).unwrap();
+    let back = Col::from_arrow_field(&arrow).unwrap();
     assert_eq!(back, col);
 }
 
 #[test]
+fn maxed_size_round_trips_via_metadata() {
+    let col: Col<MaxedSizeBinaryType> = Col::from_parts(
+        "blob".into(),
+        MaxedSizeBinaryType::new(64),
+        true,
+        Metadata::new(),
+    );
+
+    let arrow = col.to_arrow_field().unwrap();
+    // The storage type is a plain Binary; the cap lives in reserved metadata.
+    assert_eq!(arrow.data_type(), &ArrowType::Binary);
+    assert_eq!(
+        arrow
+            .metadata()
+            .get("yggdryl:byte_size")
+            .map(String::as_str),
+        Some("64")
+    );
+
+    let back = Col::<MaxedSizeBinaryType>::from_arrow_field(&arrow).unwrap();
+    assert_eq!(back.dtype(), &MaxedSizeBinaryType::new(64));
+    // The reserved key is consumed by the type rebuild, not surfaced as user metadata.
+    assert!(back.metadata().is_empty());
+}
+
+#[test]
+fn maxed_size_without_metadata_errors() {
+    let arrow = arrow_schema::Field::new("blob", ArrowType::Binary, true);
+    let err = Col::<MaxedSizeBinaryType>::from_arrow_field(&arrow).unwrap_err();
+    assert!(matches!(err, SchemaError::MissingTypeMetadata("byte_size")));
+}
+
+#[test]
 fn unsupported_arrow_type_errors() {
-    let err = Int32::from_arrow(&ArrowType::Utf8).unwrap_err();
+    let err = Int32::from_arrow_type(&ArrowType::Utf8, &Metadata::new()).unwrap_err();
     assert!(matches!(err, SchemaError::UnsupportedArrowType(_)));
 }
 
@@ -101,7 +136,7 @@ fn non_utf8_metadata_errors() {
     metadata.insert(vec![0xff, 0xfe], b"x".to_vec());
     let col = Col::from_parts("c".into(), Int32, true, metadata);
     assert!(matches!(
-        col.to_arrow().unwrap_err(),
+        col.to_arrow_field().unwrap_err(),
         SchemaError::NonUtf8Metadata
     ));
 }

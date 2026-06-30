@@ -3,7 +3,7 @@
 use yggdryl_scalar::{Binary, Scalar};
 use yggdryl_schema::{
     BinaryType, BinaryViewType, DataType, DataTypeId, FixedSizeBinaryType, LargeBinaryType,
-    LargeBinaryViewType, MaxSizeBinaryType,
+    LargeBinaryViewType, MaxedSizeBinaryType,
 };
 
 #[test]
@@ -49,19 +49,19 @@ fn to_from_bytes_round_trip() {
 fn is_fixed_size() {
     assert!(Binary::new(FixedSizeBinaryType::new(2), b"ab".to_vec()).is_fixed_size());
     assert!(!Binary::new(BinaryType, b"ab".to_vec()).is_fixed_size());
-    assert!(!Binary::new(MaxSizeBinaryType::new(2), b"ab".to_vec()).is_fixed_size());
+    assert!(!Binary::new(MaxedSizeBinaryType::new(2), b"ab".to_vec()).is_fixed_size());
 }
 
 #[test]
 fn over_long_payload_is_truncated() {
     // A max-size type truncates anything beyond its cap.
-    let capped = Binary::new(MaxSizeBinaryType::new(3), b"hello".to_vec());
+    let capped = Binary::new(MaxedSizeBinaryType::new(3), b"hello".to_vec());
     assert_eq!(capped.as_bytes(), b"hel");
     // So does a fixed-size type (its exact width is also the maximum).
     let fixed = Binary::new(FixedSizeBinaryType::new(2), b"hello".to_vec());
     assert_eq!(fixed.as_bytes(), b"he");
     // from_bytes applies the same rule.
-    let via_bytes = Binary::from_bytes(MaxSizeBinaryType::new(1), b"hello");
+    let via_bytes = Binary::from_bytes(MaxedSizeBinaryType::new(1), b"hello");
     assert_eq!(via_bytes.as_bytes(), b"h");
     // Unbounded types keep every byte.
     let unbounded = Binary::new(BinaryType, b"hello".to_vec());

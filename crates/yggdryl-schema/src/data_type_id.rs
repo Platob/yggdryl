@@ -63,7 +63,7 @@ pub enum DataTypeId {
     /// View-backed variable-length bytes (64-bit sizing).
     LargeBinaryView = 0x13,
     /// Variable-length bytes capped at a maximum size.
-    MaxSizeBinary = 0x14,
+    MaxedSizeBinary = 0x14,
 
     // ---- logical (reinterpreted) types: 0x40–0x7F ----
     /// A 128-bit fixed-point decimal.

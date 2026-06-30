@@ -14,7 +14,7 @@ use crate::scalar::Scalar;
 /// is truncated to that maximum.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId, FixedSizeBinaryType, MaxSizeBinaryType};
+/// use yggdryl_schema::{DataType, DataTypeId, FixedSizeBinaryType, MaxedSizeBinaryType};
 /// use yggdryl_scalar::{Binary, Scalar};
 ///
 /// let value = Binary::new(FixedSizeBinaryType::new(2), vec![1u8, 2]);
@@ -23,7 +23,7 @@ use crate::scalar::Scalar;
 /// assert!(value.is_fixed_size());
 ///
 /// // A max-size type truncates an over-long payload.
-/// let capped = Binary::new(MaxSizeBinaryType::new(3), b"hello".to_vec());
+/// let capped = Binary::new(MaxedSizeBinaryType::new(3), b"hello".to_vec());
 /// assert_eq!(capped.as_bytes(), b"hel");
 /// assert!(!capped.is_fixed_size());
 /// ```

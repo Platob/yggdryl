@@ -1,7 +1,7 @@
 //! Arrow's binary data types: the variable-length [`BinaryType`] /
 //! [`LargeBinaryType`], the view-backed [`BinaryViewType`] /
-//! [`LargeBinaryViewType`], and the fixed-width [`FixedSizeBinaryType`]. All are
-//! [`PhysicalType`]s.
+//! [`LargeBinaryViewType`], the fixed-width [`FixedSizeBinaryType`], and the
+//! size-capped [`MaxedSizeBinaryType`]. All are [`PhysicalType`]s.
 //!
 //! ```
 //! use yggdryl_schema::{BinaryType, DataType, DataTypeId, FixedSizeBinaryType};
@@ -39,12 +39,15 @@ macro_rules! binary_type {
             }
 
             #[cfg(feature = "arrow")]
-            fn to_arrow(&self) -> arrow_schema::DataType {
+            fn to_arrow_type(&self) -> arrow_schema::DataType {
                 $arrow
             }
 
             #[cfg(feature = "arrow")]
-            fn from_arrow(dtype: &arrow_schema::DataType) -> Result<Self, crate::SchemaError> {
+            fn from_arrow_type(
+                dtype: &arrow_schema::DataType,
+                _metadata: &crate::Metadata,
+            ) -> Result<Self, crate::SchemaError> {
                 if *dtype == $arrow {
                     Ok($name)
                 } else {
@@ -74,8 +77,8 @@ binary_type! {
 
 binary_type! {
     /// A 64-bit-sized, view-backed variable-length binary type. Arrow has no large
-    /// binary-view, so [`to_arrow`](DataType::to_arrow) maps it to `BinaryView`
-    /// (the `large` distinction is not preserved on round-trip).
+    /// binary-view, so [`to_arrow_type`](DataType::to_arrow_type) maps it to
+    /// `BinaryView` (the `large` distinction is not preserved on round-trip).
     LargeBinaryViewType => "large_binary_view", LargeBinaryView, arrow_schema::DataType::BinaryView
 }
 
@@ -156,12 +159,15 @@ impl DataType for FixedSizeBinaryType {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow(&self) -> arrow_schema::DataType {
+    fn to_arrow_type(&self) -> arrow_schema::DataType {
         arrow_schema::DataType::FixedSizeBinary(self.byte_size)
     }
 
     #[cfg(feature = "arrow")]
-    fn from_arrow(dtype: &arrow_schema::DataType) -> Result<Self, crate::SchemaError> {
+    fn from_arrow_type(
+        dtype: &arrow_schema::DataType,
+        _metadata: &crate::Metadata,
+    ) -> Result<Self, crate::SchemaError> {
         match dtype {
             arrow_schema::DataType::FixedSizeBinary(byte_size) => Ok(Self::new(*byte_size)),
             other => Err(crate::SchemaError::UnsupportedArrowType(other.clone())),
@@ -174,35 +180,40 @@ impl PhysicalType for FixedSizeBinaryType {}
 /// A variable-length binary type capped at a maximum byte size. Unlike
 /// [`FixedSizeBinaryType`] (an exact width), values may be shorter; the scalar
 /// layer truncates any payload longer than
-/// [`byte_size`](MaxSizeBinaryType::byte_size).
+/// [`byte_size`](MaxedSizeBinaryType::byte_size).
+///
+/// Arrow has no size-capped binary, so [`to_arrow_type`](DataType::to_arrow_type)
+/// maps to a plain `Binary` and the cap is stashed in
+/// [`arrow_type_metadata`](DataType::arrow_type_metadata); the two together rebuild
+/// the type in [`from_arrow_type`](DataType::from_arrow_type).
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId, MaxSizeBinaryType};
+/// use yggdryl_schema::{DataType, DataTypeId, MaxedSizeBinaryType};
 ///
-/// let ty = MaxSizeBinaryType::new(8);
-/// assert_eq!(ty.name(), "max_size_binary");
-/// assert_eq!(ty.type_id(), DataTypeId::MaxSizeBinary);
+/// let ty = MaxedSizeBinaryType::new(8);
+/// assert_eq!(ty.name(), "maxed_size_binary");
+/// assert_eq!(ty.type_id(), DataTypeId::MaxedSizeBinary);
 /// assert_eq!(ty.byte_size(), 8);
 /// assert_eq!(ty.max_byte_size(), Some(8));
 /// assert!(ty.is_physical());
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct MaxSizeBinaryType {
+pub struct MaxedSizeBinaryType {
     byte_size: i32,
 }
 
-impl MaxSizeBinaryType {
+impl MaxedSizeBinaryType {
     byte_size_accessors!();
 }
 
-impl DataType for MaxSizeBinaryType {
+impl DataType for MaxedSizeBinaryType {
     fn name(&self) -> &'static str {
-        "max_size_binary"
+        "maxed_size_binary"
     }
 
     fn type_id(&self) -> DataTypeId {
-        DataTypeId::MaxSizeBinary
+        DataTypeId::MaxedSizeBinary
     }
 
     fn max_byte_size(&self) -> Option<i64> {
@@ -210,17 +221,37 @@ impl DataType for MaxSizeBinaryType {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow(&self) -> arrow_schema::DataType {
+    fn to_arrow_type(&self) -> arrow_schema::DataType {
         // Arrow has no size-capped binary; map to the closest variable type.
         arrow_schema::DataType::Binary
     }
 
     #[cfg(feature = "arrow")]
-    fn from_arrow(dtype: &arrow_schema::DataType) -> Result<Self, crate::SchemaError> {
-        // A plain Arrow Binary carries no maximum, so it cannot reconstruct a
-        // specific MaxSizeBinaryType.
-        Err(crate::SchemaError::UnsupportedArrowType(dtype.clone()))
+    fn arrow_type_metadata(&self) -> crate::Metadata {
+        // Stash the cap Arrow drops, so `from_arrow_type` can rebuild the exact type.
+        let mut metadata = crate::Metadata::new();
+        metadata.insert(
+            crate::metadata::reserved_key("byte_size"),
+            self.byte_size().to_string().into_bytes(),
+        );
+        metadata
+    }
+
+    #[cfg(feature = "arrow")]
+    fn from_arrow_type(
+        dtype: &arrow_schema::DataType,
+        metadata: &crate::Metadata,
+    ) -> Result<Self, crate::SchemaError> {
+        if *dtype != arrow_schema::DataType::Binary {
+            return Err(crate::SchemaError::UnsupportedArrowType(dtype.clone()));
+        }
+        let byte_size = metadata
+            .get(&crate::metadata::reserved_key("byte_size"))
+            .and_then(|value| std::str::from_utf8(value).ok())
+            .and_then(|value| value.parse::<i32>().ok())
+            .ok_or(crate::SchemaError::MissingTypeMetadata("byte_size"))?;
+        Ok(Self::new(byte_size))
     }
 }
 
-impl PhysicalType for MaxSizeBinaryType {}
+impl PhysicalType for MaxedSizeBinaryType {}

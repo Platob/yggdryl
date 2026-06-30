@@ -2,6 +2,8 @@
 //! [`PhysicalType`] / [`LogicalType`] / [`NestedType`] category markers.
 
 use crate::data_type_id::DataTypeId;
+#[cfg(feature = "arrow")]
+use crate::metadata::Metadata;
 
 /// Behaviour shared by every yggdryl data type.
 ///
@@ -22,9 +24,9 @@ use crate::data_type_id::DataTypeId;
 ///     fn name(&self) -> &'static str { "int32" }
 ///     fn type_id(&self) -> DataTypeId { DataTypeId::Int32 }
 /// #     #[cfg(feature = "arrow")]
-/// #     fn to_arrow(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
+/// #     fn to_arrow_type(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
 /// #     #[cfg(feature = "arrow")]
-/// #     fn from_arrow(_dtype: &arrow_schema::DataType) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
+/// #     fn from_arrow_type(_d: &arrow_schema::DataType, _m: &yggdryl_schema::Metadata) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
 /// }
 /// impl PhysicalType for Int32 {}
 ///
@@ -63,14 +65,28 @@ pub trait DataType {
         None
     }
 
-    /// Converts this type to its Apache Arrow equivalent.
+    /// Converts this type to its Apache Arrow storage type. May be lossy where
+    /// Arrow has no exact equivalent; the lost information lives in
+    /// [`arrow_type_metadata`](DataType::arrow_type_metadata).
     #[cfg(feature = "arrow")]
-    fn to_arrow(&self) -> arrow_schema::DataType;
+    fn to_arrow_type(&self) -> arrow_schema::DataType;
 
-    /// Builds this type from its Apache Arrow equivalent, erroring on an Arrow
-    /// type with no yggdryl match.
+    /// The reserved metadata entries to persist alongside
+    /// [`to_arrow_type`](DataType::to_arrow_type) so the exact type can be rebuilt.
+    /// Empty when Arrow already represents the type exactly.
     #[cfg(feature = "arrow")]
-    fn from_arrow(dtype: &arrow_schema::DataType) -> Result<Self, crate::SchemaError>
+    fn arrow_type_metadata(&self) -> Metadata {
+        Metadata::new()
+    }
+
+    /// Rebuilds the type from the combination of its Arrow storage type and the
+    /// metadata produced by [`arrow_type_metadata`](DataType::arrow_type_metadata),
+    /// erroring on an Arrow type with no yggdryl match.
+    #[cfg(feature = "arrow")]
+    fn from_arrow_type(
+        dtype: &arrow_schema::DataType,
+        metadata: &Metadata,
+    ) -> Result<Self, crate::SchemaError>
     where
         Self: Sized;
 }

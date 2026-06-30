@@ -9,6 +9,9 @@ pub enum SchemaError {
     /// Field metadata that is not valid UTF-8. Arrow field metadata is
     /// string-keyed, so byte metadata must decode as UTF-8 to convert.
     NonUtf8Metadata,
+    /// A reserved metadata entry needed to rebuild a yggdryl type (one Arrow
+    /// cannot represent) is missing or malformed. Carries the key suffix.
+    MissingTypeMetadata(&'static str),
 }
 
 impl std::fmt::Display for SchemaError {
@@ -19,6 +22,10 @@ impl std::fmt::Display for SchemaError {
             }
             SchemaError::NonUtf8Metadata => f.write_str(
                 "field metadata keys and values must be valid UTF-8 to convert to Arrow",
+            ),
+            SchemaError::MissingTypeMetadata(key) => write!(
+                f,
+                "missing or malformed reserved metadata `yggdryl:{key}` needed to rebuild the type"
             ),
         }
     }

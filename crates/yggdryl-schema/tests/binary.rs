@@ -2,7 +2,7 @@
 
 use yggdryl_schema::{
     BinaryType, BinaryViewType, DataType, DataTypeId, FixedSizeBinaryType, LargeBinaryType,
-    LargeBinaryViewType, MaxSizeBinaryType, PhysicalType,
+    LargeBinaryViewType, MaxedSizeBinaryType, PhysicalType,
 };
 
 fn assert_physical<T: PhysicalType>(_: &T) {}
@@ -22,11 +22,10 @@ fn names_ids_and_category() {
         FixedSizeBinaryType::new(8).type_id(),
         DataTypeId::FixedSizeBinary
     );
-
-    assert_eq!(MaxSizeBinaryType::new(8).name(), "max_size_binary");
+    assert_eq!(MaxedSizeBinaryType::new(8).name(), "maxed_size_binary");
     assert_eq!(
-        MaxSizeBinaryType::new(8).type_id(),
-        DataTypeId::MaxSizeBinary
+        MaxedSizeBinaryType::new(8).type_id(),
+        DataTypeId::MaxedSizeBinary
     );
 
     for id in [
@@ -35,24 +34,24 @@ fn names_ids_and_category() {
         DataTypeId::BinaryView,
         DataTypeId::LargeBinaryView,
         DataTypeId::FixedSizeBinary,
-        DataTypeId::MaxSizeBinary,
+        DataTypeId::MaxedSizeBinary,
     ] {
         assert!(id.is_physical());
     }
     assert_physical(&BinaryType);
     assert_physical(&FixedSizeBinaryType::new(8));
-    assert_physical(&MaxSizeBinaryType::new(8));
+    assert_physical(&MaxedSizeBinaryType::new(8));
 }
 
 #[test]
 fn fixed_and_max_size_limits() {
-    // Fixed size is an exact width; max size is a cap. Both report a max byte size.
+    // Fixed size is an exact width; maxed size is a cap. Both report a max byte size.
     assert!(DataTypeId::FixedSizeBinary.is_fixed_size());
-    assert!(!DataTypeId::MaxSizeBinary.is_fixed_size());
+    assert!(!DataTypeId::MaxedSizeBinary.is_fixed_size());
     assert!(!DataTypeId::Binary.is_fixed_size());
 
     assert_eq!(FixedSizeBinaryType::new(4).max_byte_size(), Some(4));
-    assert_eq!(MaxSizeBinaryType::new(4).max_byte_size(), Some(4));
+    assert_eq!(MaxedSizeBinaryType::new(4).max_byte_size(), Some(4));
     assert_eq!(BinaryType.max_byte_size(), None);
 }
 
@@ -84,44 +83,63 @@ mod arrow {
     use arrow_schema::DataType as ArrowType;
     use yggdryl_schema::{
         BinaryType, BinaryViewType, DataType, FixedSizeBinaryType, LargeBinaryType,
-        LargeBinaryViewType, MaxSizeBinaryType,
+        LargeBinaryViewType, MaxedSizeBinaryType, Metadata,
     };
 
     #[test]
     fn map_to_arrow() {
-        assert_eq!(BinaryType.to_arrow(), ArrowType::Binary);
-        assert_eq!(LargeBinaryType.to_arrow(), ArrowType::LargeBinary);
-        assert_eq!(BinaryViewType.to_arrow(), ArrowType::BinaryView);
+        assert_eq!(BinaryType.to_arrow_type(), ArrowType::Binary);
+        assert_eq!(LargeBinaryType.to_arrow_type(), ArrowType::LargeBinary);
+        assert_eq!(BinaryViewType.to_arrow_type(), ArrowType::BinaryView);
         // Arrow has no large binary-view: lossy map to BinaryView.
-        assert_eq!(LargeBinaryViewType.to_arrow(), ArrowType::BinaryView);
+        assert_eq!(LargeBinaryViewType.to_arrow_type(), ArrowType::BinaryView);
         assert_eq!(
-            FixedSizeBinaryType::new(12).to_arrow(),
+            FixedSizeBinaryType::new(12).to_arrow_type(),
             ArrowType::FixedSizeBinary(12)
         );
-        // Arrow has no size-capped binary: lossy map to Binary; it cannot map back.
-        assert_eq!(MaxSizeBinaryType::new(4).to_arrow(), ArrowType::Binary);
-        assert!(MaxSizeBinaryType::from_arrow(&ArrowType::Binary).is_err());
+        // Arrow has no size-capped binary: lossy map to Binary; the cap is stashed
+        // in the reserved metadata instead.
+        assert_eq!(
+            MaxedSizeBinaryType::new(4).to_arrow_type(),
+            ArrowType::Binary
+        );
+        assert_eq!(
+            MaxedSizeBinaryType::new(4)
+                .arrow_type_metadata()
+                .get(b"yggdryl:byte_size".as_slice())
+                .map(Vec::as_slice),
+            Some(b"4".as_slice())
+        );
     }
 
     #[test]
     fn round_trip_from_arrow() {
+        let none = Metadata::new();
         assert_eq!(
-            BinaryType::from_arrow(&ArrowType::Binary).unwrap(),
+            BinaryType::from_arrow_type(&ArrowType::Binary, &none).unwrap(),
             BinaryType
         );
         assert_eq!(
-            LargeBinaryType::from_arrow(&ArrowType::LargeBinary).unwrap(),
+            LargeBinaryType::from_arrow_type(&ArrowType::LargeBinary, &none).unwrap(),
             LargeBinaryType
         );
         assert_eq!(
-            BinaryViewType::from_arrow(&ArrowType::BinaryView).unwrap(),
+            BinaryViewType::from_arrow_type(&ArrowType::BinaryView, &none).unwrap(),
             BinaryViewType
         );
         assert_eq!(
-            FixedSizeBinaryType::from_arrow(&ArrowType::FixedSizeBinary(7)).unwrap(),
+            FixedSizeBinaryType::from_arrow_type(&ArrowType::FixedSizeBinary(7), &none).unwrap(),
             FixedSizeBinaryType::new(7)
         );
         // A non-matching Arrow type errors.
-        assert!(BinaryType::from_arrow(&ArrowType::Utf8).is_err());
+        assert!(BinaryType::from_arrow_type(&ArrowType::Utf8, &none).is_err());
+        // A maxed-size type needs its cap in the metadata to rebuild.
+        let mut metadata = Metadata::new();
+        metadata.insert(b"yggdryl:byte_size".to_vec(), b"4".to_vec());
+        assert_eq!(
+            MaxedSizeBinaryType::from_arrow_type(&ArrowType::Binary, &metadata).unwrap(),
+            MaxedSizeBinaryType::new(4)
+        );
+        assert!(MaxedSizeBinaryType::from_arrow_type(&ArrowType::Binary, &none).is_err());
     }
 }

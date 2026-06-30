@@ -1,23 +1,18 @@
 //! The [`Field`] trait — a named, typed, nullable column with byte-keyed metadata.
 
-use std::collections::BTreeMap;
-
 use crate::data_type::DataType;
-
-/// Column metadata: an ordered map of opaque byte-string key/value pairs.
-///
-/// `BTreeMap` keeps the entries ordered so the map hashes and serializes
-/// deterministically.
-pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
+use crate::metadata::Metadata;
 
 /// A named column: a [`name`](Field::name), its [`dtype`](Field::dtype), whether it
 /// is [`nullable`](Field::nullable), and its [`metadata`](Field::metadata).
 ///
 /// [`from_parts`](Field::from_parts) is the single constructor primitive; the
 /// functional [`copy`](Field::copy) and the `with_*` helpers are one-line
-/// delegations to it. Under the `arrow` feature, [`to_arrow`](Field::to_arrow) /
-/// [`from_arrow`](Field::from_arrow) bridge to Apache Arrow, leveraging
-/// [`DataType::to_arrow`] / [`DataType::from_arrow`] for the data type.
+/// delegations to it. Under the `arrow` feature,
+/// [`to_arrow_field`](Field::to_arrow_field) /
+/// [`from_arrow_field`](Field::from_arrow_field) bridge to Apache Arrow, leveraging
+/// [`DataType::to_arrow_type`] / [`DataType::from_arrow_type`] for the data type
+/// and stashing any information Arrow drops under the field metadata.
 ///
 /// ```
 /// use yggdryl_schema::{DataType, DataTypeId, Field, Metadata};
@@ -28,9 +23,9 @@ pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
 ///     fn name(&self) -> &'static str { "int32" }
 ///     fn type_id(&self) -> DataTypeId { DataTypeId::Int32 }
 /// #     #[cfg(feature = "arrow")]
-/// #     fn to_arrow(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
+/// #     fn to_arrow_type(&self) -> arrow_schema::DataType { arrow_schema::DataType::Int32 }
 /// #     #[cfg(feature = "arrow")]
-/// #     fn from_arrow(_dtype: &arrow_schema::DataType) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
+/// #     fn from_arrow_type(_d: &arrow_schema::DataType, _m: &Metadata) -> Result<Self, yggdryl_schema::SchemaError> { Ok(Int32) }
 /// }
 ///
 /// struct Col { name: String, dtype: Int32, nullable: bool, metadata: Metadata }
@@ -124,15 +119,19 @@ pub trait Field {
     }
 
     /// Converts this field to an Apache Arrow [`Field`](arrow_schema::Field),
-    /// leveraging [`DataType::to_arrow`]. Errors if any metadata key or value is
-    /// not valid UTF-8 (Arrow field metadata is string-keyed).
+    /// leveraging [`DataType::to_arrow_type`]. The user metadata is merged with the
+    /// type's [`arrow_type_metadata`](DataType::arrow_type_metadata) (so a type
+    /// Arrow cannot represent exactly survives the round-trip). Errors if any
+    /// metadata key or value is not valid UTF-8 (Arrow field metadata is
+    /// string-keyed).
     #[cfg(feature = "arrow")]
-    fn to_arrow(&self) -> Result<arrow_schema::Field, crate::SchemaError>
+    fn to_arrow_field(&self) -> Result<arrow_schema::Field, crate::SchemaError>
     where
         Self: Sized,
     {
-        let metadata = self
-            .metadata()
+        let mut entries = self.metadata().clone();
+        entries.extend(self.dtype().arrow_type_metadata());
+        let metadata = entries
             .iter()
             .map(|(key, value)| {
                 let key = String::from_utf8(key.clone())
@@ -143,23 +142,30 @@ pub trait Field {
             })
             .collect::<Result<std::collections::HashMap<String, String>, crate::SchemaError>>()?;
         Ok(
-            arrow_schema::Field::new(self.name(), self.dtype().to_arrow(), self.nullable())
+            arrow_schema::Field::new(self.name(), self.dtype().to_arrow_type(), self.nullable())
                 .with_metadata(metadata),
         )
     }
 
     /// Builds a field from an Apache Arrow [`Field`](arrow_schema::Field),
-    /// leveraging [`DataType::from_arrow`].
+    /// rebuilding the data type from the combination of the Arrow type and the
+    /// field metadata via [`DataType::from_arrow_type`]. yggdryl's reserved
+    /// metadata keys are consumed by that step and excluded from the field's
+    /// user metadata.
     #[cfg(feature = "arrow")]
-    fn from_arrow(field: &arrow_schema::Field) -> Result<Self, crate::SchemaError>
+    fn from_arrow_field(field: &arrow_schema::Field) -> Result<Self, crate::SchemaError>
     where
         Self: Sized,
     {
-        let dtype = Self::Type::from_arrow(field.data_type())?;
-        let metadata = field
+        let metadata: Metadata = field
             .metadata()
             .iter()
             .map(|(key, value)| (key.clone().into_bytes(), value.clone().into_bytes()))
+            .collect();
+        let dtype = Self::Type::from_arrow_type(field.data_type(), &metadata)?;
+        let metadata = metadata
+            .into_iter()
+            .filter(|(key, _)| !crate::metadata::is_reserved(key))
             .collect();
         Ok(Self::from_parts(
             field.name().to_owned(),
