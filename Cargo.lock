@@ -2026,6 +2026,7 @@ dependencies = [
  "log",
  "quinn",
  "rcgen",
+ "rustls",
  "rustls-pemfile",
  "serde",
  "serde_json",

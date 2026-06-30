@@ -40,6 +40,7 @@ log = { version = "0.4", optional = true }
 # stays the lean blocking `ureq` HTTP/1.1 client.
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "net", "io-util", "time"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring"], optional = true }
 webpki-roots = { version = "1", optional = true }
 http = { version = "1", optional = true }
 hyper = { version = "1", default-features = false, features = ["client", "http1", "http2"], optional = true }
@@ -73,7 +74,7 @@ media = ["yggdryl-core/media"]
 serde = ["dep:serde", "yggdryl-core/serde"]
 # Internal: the shared async runtime + TLS stack both wire transports build on.
 # Not meant to be enabled directly — `http2` / `http3` pull it in.
-_async = ["dep:tokio", "dep:tokio-rustls", "dep:webpki-roots", "dep:http"]
+_async = ["dep:tokio", "dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "dep:http"]
 # `http2` wires the optional hyper/tokio async transport so an `HttpVersion::Http2`
 # request (or `Auto` negotiating `h2` via TLS ALPN) actually speaks HTTP/2 — over
 # TLS for `https`, or h2c (prior knowledge) for cleartext `http`. With it off,

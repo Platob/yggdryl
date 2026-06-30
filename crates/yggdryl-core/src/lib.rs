@@ -37,6 +37,13 @@ pub(crate) use log_event;
 
 mod buffer;
 mod charset;
+#[cfg(any(
+    feature = "gzip",
+    feature = "zstd",
+    feature = "snappy",
+    feature = "brotli"
+))]
+pub mod compress;
 mod error;
 mod io;
 #[cfg(feature = "json")]

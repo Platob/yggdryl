@@ -179,6 +179,9 @@ pub enum IoError {
     /// The handle does not support the requested operation (e.g. a read-only
     /// source asked to resize).
     Unsupported(&'static str),
+    /// A remote I/O source (e.g. HTTP Range request) could not be reached or
+    /// returned an unexpected result.
+    Remote(String),
 }
 
 impl fmt::Display for IoError {
@@ -192,6 +195,7 @@ impl fmt::Display for IoError {
             IoError::Unsupported(op) => {
                 write!(f, "this IO handle does not support {op}")
             }
+            IoError::Remote(msg) => write!(f, "remote IO error: {msg}"),
         }
     }
 }
