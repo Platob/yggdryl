@@ -54,10 +54,6 @@ pub enum DataTypeId {
     LargeBinary = 0x0E,
     /// Fixed-width bytes.
     FixedSizeBinary = 0x0F,
-    /// Variable-length UTF-8 string (32-bit offsets).
-    Utf8 = 0x10,
-    /// Variable-length UTF-8 string (64-bit offsets).
-    LargeUtf8 = 0x11,
     /// View-backed variable-length bytes.
     BinaryView = 0x12,
     /// View-backed variable-length bytes (64-bit sizing).
@@ -86,6 +82,14 @@ pub enum DataTypeId {
     Interval = 0x48,
     /// A dictionary-encoded value.
     Dictionary = 0x49,
+    /// A string: binary bytes (32-bit offsets) read with a charset.
+    String = 0x4A,
+    /// A string: large binary bytes (64-bit offsets) read with a charset.
+    LargeString = 0x4B,
+    /// A view-backed string.
+    StringView = 0x4C,
+    /// A 64-bit view-backed string.
+    LargeStringView = 0x4D,
 
     // ---- nested (child-bearing) types: 0x80–0xBF ----
     /// A list of a single child type (32-bit offsets).

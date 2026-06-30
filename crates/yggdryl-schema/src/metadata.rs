@@ -23,6 +23,9 @@ pub type Metadata = BTreeMap<Vec<u8>, Vec<u8>>;
 /// the exact yggdryl type can be rebuilt from the Arrow type plus the metadata.
 pub const RESERVED_PREFIX: &[u8] = b"yggdryl:";
 
+/// The reserved key under which every data type records its canonical name.
+pub const TYPE_KEY: &str = "type";
+
 /// Builds the reserved metadata key for `name` (e.g. `yggdryl:byte_size`).
 pub fn reserved_key(name: &str) -> Vec<u8> {
     [RESERVED_PREFIX, name.as_bytes()].concat()
@@ -31,4 +34,14 @@ pub fn reserved_key(name: &str) -> Vec<u8> {
 /// Whether `key` is one of yggdryl's reserved metadata keys.
 pub fn is_reserved(key: &[u8]) -> bool {
     key.starts_with(RESERVED_PREFIX)
+}
+
+/// The base metadata recording a type's identity — its canonical `name` under the
+/// reserved [`TYPE_KEY`]. Every [`DataType`](crate::DataType) contributes this (and
+/// may add parameters) so the exact yggdryl type is recoverable from an Arrow
+/// field's metadata.
+pub fn type_metadata(name: &str) -> Metadata {
+    let mut metadata = Metadata::new();
+    metadata.insert(reserved_key(TYPE_KEY), name.as_bytes().to_vec());
+    metadata
 }

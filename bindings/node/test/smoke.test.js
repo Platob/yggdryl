@@ -11,6 +11,7 @@ test('core.version', () => {
 })
 
 test('schema.DataTypeId', () => {
-  assert.equal(yggdryl.schema.DataTypeId.Int32, 0x04)
-  assert.notEqual(yggdryl.schema.DataTypeId.Int32, yggdryl.schema.DataTypeId.Utf8)
+  assert.equal(yggdryl.schema.DataTypeId.Binary, 0x0d)
+  assert.equal(yggdryl.schema.DataTypeId.String, 0x4a)
+  assert.notEqual(yggdryl.schema.DataTypeId.Binary, yggdryl.schema.DataTypeId.String)
 })

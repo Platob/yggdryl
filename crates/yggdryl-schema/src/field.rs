@@ -119,9 +119,9 @@ pub trait Field {
     }
 
     /// Converts this field to an Apache Arrow [`Field`](arrow_schema::Field),
-    /// leveraging [`DataType::to_arrow_type`]. The user metadata is merged with the
-    /// type's [`arrow_type_metadata`](DataType::arrow_type_metadata) (so a type
-    /// Arrow cannot represent exactly survives the round-trip). Errors if any
+    /// leveraging [`DataType::to_arrow_type`]. The field metadata is merged with the
+    /// data type's [`metadata`](DataType::metadata) (its identity and anything Arrow
+    /// cannot represent), so the exact type survives the round-trip. Errors if any
     /// metadata key or value is not valid UTF-8 (Arrow field metadata is
     /// string-keyed).
     #[cfg(feature = "arrow")]
@@ -130,7 +130,7 @@ pub trait Field {
         Self: Sized,
     {
         let mut entries = self.metadata().clone();
-        entries.extend(self.dtype().arrow_type_metadata());
+        entries.extend(self.dtype().metadata());
         let metadata = entries
             .iter()
             .map(|(key, value)| {

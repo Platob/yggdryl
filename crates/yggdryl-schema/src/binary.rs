@@ -184,8 +184,8 @@ impl PhysicalType for FixedSizeBinaryType {}
 ///
 /// Arrow has no size-capped binary, so [`to_arrow_type`](DataType::to_arrow_type)
 /// maps to a plain `Binary` and the cap is stashed in
-/// [`arrow_type_metadata`](DataType::arrow_type_metadata); the two together rebuild
-/// the type in [`from_arrow_type`](DataType::from_arrow_type).
+/// [`metadata`](DataType::metadata); the two together rebuild the type in
+/// [`from_arrow_type`](DataType::from_arrow_type).
 ///
 /// ```
 /// use yggdryl_schema::{DataType, DataTypeId, MaxedSizeBinaryType};
@@ -220,21 +220,21 @@ impl DataType for MaxedSizeBinaryType {
         Some(self.large_byte_size())
     }
 
-    #[cfg(feature = "arrow")]
-    fn to_arrow_type(&self) -> arrow_schema::DataType {
-        // Arrow has no size-capped binary; map to the closest variable type.
-        arrow_schema::DataType::Binary
-    }
-
-    #[cfg(feature = "arrow")]
-    fn arrow_type_metadata(&self) -> crate::Metadata {
-        // Stash the cap Arrow drops, so `from_arrow_type` can rebuild the exact type.
-        let mut metadata = crate::Metadata::new();
+    fn metadata(&self) -> crate::Metadata {
+        // Record the identity plus the cap Arrow drops, so `from_arrow_type` can
+        // rebuild the exact type.
+        let mut metadata = crate::metadata::type_metadata(self.name());
         metadata.insert(
             crate::metadata::reserved_key("byte_size"),
             self.byte_size().to_string().into_bytes(),
         );
         metadata
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_arrow_type(&self) -> arrow_schema::DataType {
+        // Arrow has no size-capped binary; map to the closest variable type.
+        arrow_schema::DataType::Binary
     }
 
     #[cfg(feature = "arrow")]

@@ -105,7 +105,7 @@ mod arrow {
         );
         assert_eq!(
             MaxedSizeBinaryType::new(4)
-                .arrow_type_metadata()
+                .metadata()
                 .get(b"yggdryl:byte_size".as_slice())
                 .map(Vec::as_slice),
             Some(b"4".as_slice())

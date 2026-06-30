@@ -2,7 +2,6 @@
 //! [`PhysicalType`] / [`LogicalType`] / [`NestedType`] category markers.
 
 use crate::data_type_id::DataTypeId;
-#[cfg(feature = "arrow")]
 use crate::metadata::Metadata;
 
 /// Behaviour shared by every yggdryl data type.
@@ -65,23 +64,24 @@ pub trait DataType {
         None
     }
 
+    /// The metadata describing this type's identity — its
+    /// [`name`](DataType::name) under the reserved `type` key, plus any parameters
+    /// Arrow cannot represent. [`Field::to_arrow_field`](crate::Field::to_arrow_field)
+    /// stamps it into the Arrow field so the exact yggdryl type round-trips.
+    /// Override to add parameters.
+    fn metadata(&self) -> Metadata {
+        crate::metadata::type_metadata(self.name())
+    }
+
     /// Converts this type to its Apache Arrow storage type. May be lossy where
     /// Arrow has no exact equivalent; the lost information lives in
-    /// [`arrow_type_metadata`](DataType::arrow_type_metadata).
+    /// [`metadata`](DataType::metadata).
     #[cfg(feature = "arrow")]
     fn to_arrow_type(&self) -> arrow_schema::DataType;
 
-    /// The reserved metadata entries to persist alongside
-    /// [`to_arrow_type`](DataType::to_arrow_type) so the exact type can be rebuilt.
-    /// Empty when Arrow already represents the type exactly.
-    #[cfg(feature = "arrow")]
-    fn arrow_type_metadata(&self) -> Metadata {
-        Metadata::new()
-    }
-
     /// Rebuilds the type from the combination of its Arrow storage type and the
-    /// metadata produced by [`arrow_type_metadata`](DataType::arrow_type_metadata),
-    /// erroring on an Arrow type with no yggdryl match.
+    /// field [`metadata`](DataType::metadata), erroring on an Arrow type with no
+    /// yggdryl match.
     #[cfg(feature = "arrow")]
     fn from_arrow_type(
         dtype: &arrow_schema::DataType,
@@ -97,11 +97,18 @@ pub trait DataType {
 /// [`is_physical`](DataType::is_physical) is `true`.
 pub trait PhysicalType: DataType {}
 
-/// Marker for *logical* types — a physical type reinterpreted with extra meaning
-/// (a date, a decimal, a dictionary, …). Implement it for types whose
-/// [`type_id`](DataType::type_id) is in the logical block, so
-/// [`is_logical`](DataType::is_logical) is `true`.
-pub trait LogicalType: DataType {}
+/// A *logical* type — a [physical](PhysicalType) type reinterpreted with extra
+/// meaning (a string is binary bytes read with a charset, a date is an integer,
+/// …). It names its backing [`Physical`](LogicalType::Physical) storage type.
+/// Implement it for types whose [`type_id`](DataType::type_id) is in the logical
+/// block, so [`is_logical`](DataType::is_logical) is `true`.
+pub trait LogicalType: DataType {
+    /// The physical storage type this logical type is backed by.
+    type Physical: PhysicalType;
+
+    /// The backing physical type.
+    fn physical(&self) -> Self::Physical;
+}
 
 /// Marker for *nested* types — those built from one or more child fields (a list,
 /// a struct, a map, …). Implement it for types whose

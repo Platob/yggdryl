@@ -12,6 +12,6 @@ def test_core_version():
 
 def test_schema_data_type_id():
     assert schema.DataTypeId is DataTypeId
-    assert DataTypeId.Int32 != DataTypeId.Utf8
+    assert DataTypeId.Binary != DataTypeId.String
     # hashable → usable as a dict key
-    assert {DataTypeId.Int32: 1}[DataTypeId.Int32] == 1
+    assert {DataTypeId.Binary: 1}[DataTypeId.Binary] == 1
