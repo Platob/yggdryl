@@ -15,7 +15,9 @@ name = "yggdryl_scalar"
 path = "src/lib.rs"
 
 [dependencies]
-# The schema layer supplies the `DataType` the scalars carry.
+# The core supplies the zero-copy `Buffer` the scalars store their bytes in; the
+# schema layer supplies the `DataType` they carry.
+yggdryl-core = { workspace = true, default-features = false }
 yggdryl-schema = { workspace = true, default-features = false }
 # All off by default, mirroring the other crates.
 log = { version = "0.4", optional = true }
@@ -29,7 +31,7 @@ serde_json = { version = "1" }
 default = []
 # Structured logging via the `log` facade (e.g. when a value is truncated to its
 # type's maximum byte size), also turning it on in the schema layer.
-log = ["dep:log", "yggdryl-schema/log"]
+log = ["dep:log", "yggdryl-core/log", "yggdryl-schema/log"]
 # Structural `Serialize` / `Deserialize` for every value type; also turns on the
-# schema layer's `serde` so the carried data types serialize.
-serde = ["dep:serde", "yggdryl-schema/serde"]
+# core and schema `serde` so the buffer and carried data types serialize.
+serde = ["dep:serde", "yggdryl-core/serde", "yggdryl-schema/serde"]

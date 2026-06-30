@@ -395,6 +395,7 @@ name = "yggdryl-core"
 version = "0.1.1"
 dependencies = [
  "log",
+ "serde",
 ]
 
 [[package]]
@@ -422,6 +423,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "yggdryl-core",
  "yggdryl-schema",
 ]
 

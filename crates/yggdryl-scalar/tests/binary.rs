@@ -36,6 +36,25 @@ fn cast_re_tags_bytes() {
 }
 
 #[test]
+fn view_scalars_share_the_buffer() {
+    let s = Binary::new(BinaryViewType, b"hello".to_vec());
+    let base = s.as_bytes().as_ptr();
+
+    // Cloning shares the allocation (no deep copy) — same address.
+    assert_eq!(s.clone().as_bytes().as_ptr(), base);
+
+    // Casting between view types shares it too.
+    let cast = s.cast(LargeBinaryViewType);
+    assert_eq!(cast.dtype().type_id(), DataTypeId::LargeBinaryView);
+    assert_eq!(cast.as_bytes().as_ptr(), base);
+
+    // A truncating cast still shares the allocation (a zero-copy slice).
+    let truncated = s.cast(FixedSizeBinaryType::new(2));
+    assert_eq!(truncated.as_bytes(), b"he");
+    assert_eq!(truncated.as_bytes().as_ptr(), base);
+}
+
+#[test]
 fn dtype_for_all_binary_types() {
     assert_eq!(
         Binary::new(BinaryType, b"a".to_vec()).dtype().type_id(),

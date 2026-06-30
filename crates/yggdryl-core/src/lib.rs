@@ -3,10 +3,9 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! The previous implementation was removed in a project reset; this is the
-//! buildable scaffold. Reintroduce the foundational types here — one module per
-//! concern, each re-exported at the crate root — following the rules in
-//! `CLAUDE.md`.
+//! It currently holds the zero-copy [`Buffer`]; reintroduce the rest of the
+//! foundational types here — one module per concern, each re-exported at the crate
+//! root — following the rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
@@ -18,6 +17,10 @@ macro_rules! log_event {
         log::$level!($($arg)+);
     }};
 }
+
+mod buffer;
+
+pub use buffer::Buffer;
 
 /// The crate version, as declared in `Cargo.toml`.
 ///
