@@ -64,6 +64,7 @@ impl<T: DataType> Binary<T> {
 
 impl<T: DataType> Scalar for Binary<T> {
     type Type = T;
+    type Cast<D: DataType> = Binary<D>;
 
     fn dtype(&self) -> &T {
         &self.dtype
@@ -75,5 +76,13 @@ impl<T: DataType> Scalar for Binary<T> {
 
     fn from_bytes(dtype: T, bytes: &[u8]) -> Self {
         Self::new(dtype, bytes.to_vec())
+    }
+
+    /// Binary scalars hold raw bytes, so a cast never transforms the value — it
+    /// re-tags the bytes as `dtype`, truncating them to that type's maximum byte
+    /// size (a cast to the same type leaves them unchanged). Crossing into a
+    /// non-byte-backed type is therefore the caller's responsibility to validate.
+    fn cast<D: DataType>(&self, dtype: D) -> Binary<D> {
+        Binary::new(dtype, self.bytes.clone())
     }
 }

@@ -1,10 +1,39 @@
 //! Tests for the [`Binary`] scalar across every current (binary) data type.
 
-use yggdryl_scalar::{Binary, Scalar};
+use yggdryl_scalar::{Binary, Scalar, ScalarError};
 use yggdryl_schema::{
     BinaryType, BinaryViewType, DataType, DataTypeId, FixedSizeBinaryType, LargeBinaryType,
     LargeBinaryViewType, MaxedSizeBinaryType,
 };
+
+#[test]
+fn encode_decode_native_values() {
+    let s = Binary::encode(BinaryType, "héllo");
+    assert_eq!(s.as_bytes(), "héllo".as_bytes());
+    assert_eq!(s.decode::<String>().unwrap(), "héllo");
+    assert_eq!(s.decode::<Vec<u8>>().unwrap(), "héllo".as_bytes().to_vec());
+
+    // Raw bytes round-trip too.
+    let raw = Binary::encode(BinaryType, b"\x00\x01".as_slice());
+    assert_eq!(raw.decode::<Vec<u8>>().unwrap(), vec![0, 1]);
+
+    // Invalid UTF-8 fails to decode as a string.
+    let bad = Binary::new(BinaryType, vec![0xff, 0xfe]);
+    assert_eq!(bad.decode::<String>(), Err(ScalarError::NonUtf8));
+}
+
+#[test]
+fn cast_re_tags_bytes() {
+    let s = Binary::new(BinaryType, b"hi".to_vec());
+    // Casting to another binary type keeps the bytes and swaps the type.
+    let large = s.cast(LargeBinaryType);
+    assert_eq!(large.dtype().type_id(), DataTypeId::LargeBinary);
+    assert_eq!(large.as_bytes(), b"hi");
+    // Casting to a smaller fixed type truncates.
+    assert_eq!(s.cast(FixedSizeBinaryType::new(1)).as_bytes(), b"h");
+    // Casting to the same type leaves the bytes unchanged.
+    assert_eq!(s.cast(BinaryType).as_bytes(), b"hi");
+}
 
 #[test]
 fn dtype_for_all_binary_types() {
