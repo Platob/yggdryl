@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use arrow_schema::DataType as ArrowType;
-use yggdryl_schema::{DataType, DataTypeId, Field, MaxedSizeBinaryType, Metadata, SchemaError};
+use yggdryl_schema::{BinaryType, DataType, DataTypeId, Field, Metadata, SchemaError};
 
 /// A minimal physical type used to exercise the trait machinery.
 #[derive(Clone, Debug, PartialEq)]
@@ -92,10 +92,10 @@ fn field_round_trips_through_arrow() {
 }
 
 #[test]
-fn maxed_size_round_trips_via_metadata() {
-    let col: Col<MaxedSizeBinaryType> = Col::from_parts(
+fn byte_size_cap_round_trips_via_metadata() {
+    let col: Col<BinaryType> = Col::from_parts(
         "blob".into(),
-        MaxedSizeBinaryType::new(64),
+        BinaryType::new().with_byte_size(64),
         true,
         Metadata::new(),
     );
@@ -111,17 +111,18 @@ fn maxed_size_round_trips_via_metadata() {
         Some("64")
     );
 
-    let back = Col::<MaxedSizeBinaryType>::from_arrow_field(&arrow).unwrap();
-    assert_eq!(back.dtype(), &MaxedSizeBinaryType::new(64));
+    let back = Col::<BinaryType>::from_arrow_field(&arrow).unwrap();
+    assert_eq!(back.dtype(), &BinaryType::new().with_byte_size(64));
     // The reserved key is consumed by the type rebuild, not surfaced as user metadata.
     assert!(back.metadata().is_empty());
 }
 
 #[test]
-fn maxed_size_without_metadata_errors() {
+fn binary_without_cap_metadata_is_unbounded() {
+    // A plain Arrow Binary with no reserved metadata rebuilds as an unbounded type.
     let arrow = arrow_schema::Field::new("blob", ArrowType::Binary, true);
-    let err = Col::<MaxedSizeBinaryType>::from_arrow_field(&arrow).unwrap_err();
-    assert!(matches!(err, SchemaError::MissingTypeMetadata("byte_size")));
+    let back = Col::<BinaryType>::from_arrow_field(&arrow).unwrap();
+    assert_eq!(back.dtype(), &BinaryType::new());
 }
 
 #[test]

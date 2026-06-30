@@ -61,6 +61,17 @@ fn backing_physical_types() {
 }
 
 #[test]
+fn byte_size_propagates_to_physical() {
+    let s = StringType::new().with_byte_size(32);
+    assert_eq!(s.byte_size(), Some(32));
+    assert_eq!(s.max_byte_size(), Some(32));
+    // The cap propagates to the backing physical type.
+    assert_eq!(s.physical().max_byte_size(), Some(32));
+    // without_byte_size clears it.
+    assert_eq!(s.without_byte_size().byte_size(), None);
+}
+
+#[test]
 fn metadata_records_identity_and_charset() {
     // The default charset is implied: only the type identity is stored.
     let default = StringType::new().metadata();
@@ -133,6 +144,10 @@ mod arrow {
             StringType::new(),
             StringType::new().with_charset(Charset::Latin1),
             StringType::new().with_charset(Charset::Ascii),
+            StringType::new().with_byte_size(16),
+            StringType::new()
+                .with_charset(Charset::Latin1)
+                .with_byte_size(8),
         ] {
             let rebuilt = StringType::from_arrow_type(&ty.to_arrow_type(), &ty.metadata()).unwrap();
             assert_eq!(rebuilt, ty);
@@ -141,5 +156,18 @@ mod arrow {
         assert!(StringType::from_arrow_type(&ArrowType::Date32, &Metadata::new()).is_err());
         // A bare Binary with no charset metadata is not a (UTF-8) string.
         assert!(StringType::from_arrow_type(&ArrowType::Binary, &Metadata::new()).is_err());
+    }
+
+    #[test]
+    fn byte_size_cap_travels_in_metadata() {
+        // The cap doesn't change the Arrow type (still Utf8); it rides in metadata.
+        let s = StringType::new().with_byte_size(16);
+        assert_eq!(s.to_arrow_type(), ArrowType::Utf8);
+        assert_eq!(
+            s.metadata()
+                .get(b"yggdryl:byte_size".as_slice())
+                .map(Vec::as_slice),
+            Some(b"16".as_slice())
+        );
     }
 }

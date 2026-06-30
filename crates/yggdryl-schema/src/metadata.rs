@@ -2,10 +2,10 @@
 //! that Apache Arrow cannot represent exactly.
 //!
 //! Arrow's type system is narrower than ours, so [`DataType::to_arrow_type`] is
-//! sometimes lossy (a `MaxedSizeBinaryType` becomes a plain `Binary`). The lost
-//! information is stored under [reserved](reserved_key) metadata keys, so the
-//! exact type can be rebuilt from the Arrow type **plus** the metadata via
-//! [`DataType::from_arrow_type`].
+//! sometimes lossy (a byte-size-capped `BinaryType` becomes a plain `Binary`, and a
+//! `LargeBinaryViewType` becomes a `BinaryView`). The lost information is stored
+//! under [reserved](reserved_key) metadata keys, so the exact type can be rebuilt
+//! from the Arrow type **plus** the metadata via [`DataType::from_arrow_type`].
 //!
 //! [`DataType::to_arrow_type`]: crate::DataType::to_arrow_type
 //! [`DataType::from_arrow_type`]: crate::DataType::from_arrow_type
@@ -44,4 +44,27 @@ pub fn type_metadata(name: &str) -> Metadata {
     let mut metadata = Metadata::new();
     metadata.insert(reserved_key(TYPE_KEY), name.as_bytes().to_vec());
     metadata
+}
+
+/// Records a `byte_size` cap in `metadata` when present (Arrow cannot represent the
+/// cap, so it travels in the metadata).
+pub fn set_byte_size(metadata: &mut Metadata, byte_size: Option<i32>) {
+    if let Some(value) = byte_size {
+        metadata.insert(reserved_key("byte_size"), value.to_string().into_bytes());
+    }
+}
+
+/// Reads the `byte_size` cap recorded by [`set_byte_size`] — `None` when absent, an
+/// error when present but malformed.
+#[cfg(feature = "arrow")]
+pub fn get_byte_size(metadata: &Metadata) -> Result<Option<i32>, crate::SchemaError> {
+    metadata
+        .get(&reserved_key("byte_size"))
+        .map(|value| {
+            std::str::from_utf8(value)
+                .ok()
+                .and_then(|text| text.parse::<i32>().ok())
+                .ok_or(crate::SchemaError::MissingTypeMetadata("byte_size"))
+        })
+        .transpose()
 }

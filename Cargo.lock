@@ -432,7 +432,6 @@ name = "yggdryl-schema"
 version = "0.1.1"
 dependencies = [
  "arrow-schema",
- "log",
  "serde",
  "serde_json",
  "yggdryl-core",

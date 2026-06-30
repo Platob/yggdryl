@@ -7,32 +7,32 @@ use crate::codec::Decode;
 use crate::error::ScalarError;
 use crate::scalar::Scalar;
 
-/// A binary scalar value: a byte payload tagged with its binary data type (e.g.
-/// [`BinaryType`](yggdryl_schema::BinaryType) or
-/// [`FixedSizeBinaryType`](yggdryl_schema::FixedSizeBinaryType)).
+/// A binary scalar value: a byte payload tagged with its binary
+/// [`DataType`](yggdryl_schema::DataType) (e.g.
+/// [`BinaryType`](yggdryl_schema::BinaryType)).
 ///
 /// Generic over the concrete binary type `T`, so the same value type serves every
 /// binary data type. The bytes live in a zero-copy [`Buffer`], so cloning,
 /// slicing and [`cast`](Scalar::cast)ing share the allocation rather than
 /// deep-copying — the property the view-backed types (`BinaryViewType`,
-/// `StringViewType`, …) need. When the type caps its size (a fixed- or max-size
-/// type), a payload longer than
-/// [`max_byte_size`](yggdryl_schema::DataType::max_byte_size) is truncated to that
-/// maximum (a zero-copy slice).
+/// `StringViewType`, …) need. When the type declares a `byte_size` cap, a payload
+/// longer than [`max_byte_size`](yggdryl_schema::DataType::max_byte_size) is
+/// truncated to it (a zero-copy slice).
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId, FixedSizeBinaryType, MaxedSizeBinaryType};
+/// use yggdryl_schema::{BinaryType, DataType, DataTypeId};
 /// use yggdryl_scalar::{Binary, Scalar};
 ///
-/// let value = Binary::new(FixedSizeBinaryType::new(2), vec![1u8, 2]);
-/// assert_eq!(value.dtype().type_id(), DataTypeId::FixedSizeBinary);
+/// // A byte-size cap truncates an over-long payload.
+/// let value = Binary::new(BinaryType::new().with_byte_size(2), vec![1u8, 2, 3]);
+/// assert_eq!(value.dtype().type_id(), DataTypeId::Binary);
 /// assert_eq!(value.as_bytes(), b"\x01\x02");
 /// assert!(value.is_fixed_size());
 ///
-/// // A max-size type truncates an over-long payload.
-/// let capped = Binary::new(MaxedSizeBinaryType::new(3), b"hello".to_vec());
-/// assert_eq!(capped.as_bytes(), b"hel");
-/// assert!(!capped.is_fixed_size());
+/// // Unbounded by default.
+/// let unbounded = Binary::new(BinaryType::new(), b"hello".to_vec());
+/// assert_eq!(unbounded.as_bytes(), b"hello");
+/// assert!(!unbounded.is_fixed_size());
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -17,13 +17,13 @@ use crate::error::ScalarError;
 /// use yggdryl_schema::{BinaryType, DataType, DataTypeId, LargeBinaryType};
 /// use yggdryl_scalar::{Binary, Scalar};
 ///
-/// let value = Binary::encode(BinaryType, "hi");
+/// let value = Binary::encode(BinaryType::new(), "hi");
 /// assert_eq!(value.dtype().type_id(), DataTypeId::Binary);
 /// assert_eq!(value.decode::<String>().unwrap(), "hi");
 /// assert_eq!(value.to_bytes(), b"hi".to_vec());
 ///
 /// // A cast re-tags the value as another type.
-/// let large = value.cast(LargeBinaryType);
+/// let large = value.cast(LargeBinaryType::new());
 /// assert_eq!(large.dtype().type_id(), DataTypeId::LargeBinary);
 /// assert_eq!(large.to_bytes(), b"hi".to_vec());
 /// ```
@@ -37,10 +37,9 @@ pub trait Scalar {
     /// The value's data type (accessor).
     fn dtype(&self) -> &Self::Type;
 
-    /// Whether the value's type has a fixed (exact) byte width. Defaults to the
-    /// data type's category.
+    /// Whether the value's type declares a byte-size cap (i.e. a bounded width).
     fn is_fixed_size(&self) -> bool {
-        self.dtype().type_id().is_fixed_size()
+        self.dtype().max_byte_size().is_some()
     }
 
     /// Serializes the value to its raw bytes.

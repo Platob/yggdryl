@@ -19,13 +19,11 @@ path = "src/lib.rs"
 # on. Nothing else is pulled in by default.
 yggdryl-core = { workspace = true, default-features = false }
 # All heavy dependencies are optional and off by default:
-#   log    structured logging via the `log` facade;
 #   serde  `Serialize` / `Deserialize` for every type (structural, lossless);
 #   json   `to_json` / `from_json` on every type (implies `serde`);
 #   arrow  fast, total conversion to / from `arrow-schema` — the foundation for an
 #          Arrow-backed dataframe and the bridge the bindings hand to pyarrow /
 #          arrow-js.
-log = { version = "0.4", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
 # `arrow-schema` is a light, zero-array crate (just the schema types). `ffi`
@@ -41,7 +39,8 @@ arrow-schema = { version = "59", default-features = false, features = ["ffi"] }
 
 [features]
 default = []
-log = ["dep:log", "yggdryl-core/log"]
+# The schema types perform no logging of their own; forward the feature to the core.
+log = ["yggdryl-core/log"]
 # Structural `Serialize` / `Deserialize` for the recursive schema types (lossless,
 # unlike a canonical string form).
 serde = ["dep:serde"]

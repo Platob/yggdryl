@@ -1,11 +1,12 @@
 //! The string data types: [`StringType`], [`LargeStringType`], [`StringViewType`]
 //! and [`LargeStringViewType`]. Each is a [`LogicalType`] backed by the matching
 //! binary [`PhysicalType`](crate::PhysicalType), carrying a [`Charset`] (default
-//! [UTF-8](Charset::Utf8)) — a string is just binary bytes read with a charset.
+//! [UTF-8](Charset::Utf8)) and the same optional `byte_size` cap as the binary
+//! types — a string is just (capped) binary bytes read with a charset.
 //!
 //! Arrow only has UTF-8 strings: a UTF-8 string maps to the Arrow string type,
-//! while any other charset falls back to its binary storage type (with the charset
-//! preserved in the field metadata).
+//! while any other charset falls back to its binary storage type. The `byte_size`
+//! cap (Arrow can't represent it) always travels in the field metadata.
 //!
 //! ```
 //! use yggdryl_schema::{Charset, DataType, DataTypeId, LogicalType, StringType};
@@ -15,10 +16,12 @@
 //! assert_eq!(s.type_id(), DataTypeId::String);
 //! assert!(s.is_logical());
 //! assert_eq!(s.charset(), Charset::Utf8);
+//! assert_eq!(s.byte_size(), None);
 //! assert_eq!(s.physical().type_id(), DataTypeId::Binary);
 //!
-//! let latin1 = s.with_charset(Charset::Latin1);
-//! assert_eq!(latin1.charset(), Charset::Latin1);
+//! let capped = s.with_charset(Charset::Latin1).with_byte_size(32);
+//! assert_eq!(capped.charset(), Charset::Latin1);
+//! assert_eq!(capped.max_byte_size(), Some(32));
 //! ```
 
 use crate::binary::{BinaryType, BinaryViewType, LargeBinaryType, LargeBinaryViewType};
@@ -26,8 +29,9 @@ use crate::charset::Charset;
 use crate::data_type::{DataType, LogicalType};
 use crate::data_type_id::DataTypeId;
 
-/// Defines a string logical type: a charset-carrying unit-ish struct backed by the
-/// binary physical type `$physical`, mapping to the Arrow string type `$arrow`.
+/// Defines a string logical type: a charset- and `byte_size`-carrying struct backed
+/// by the binary physical type `$physical`, mapping to the Arrow string type
+/// `$arrow` when its charset is UTF-8.
 macro_rules! string_type {
     ($(#[$meta:meta])* $name:ident => $type_name:literal, $id:ident, $physical:ty, $arrow:expr) => {
         $(#[$meta])*
@@ -35,10 +39,11 @@ macro_rules! string_type {
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name {
             charset: Charset,
+            byte_size: Option<i32>,
         }
 
         impl $name {
-            /// A string of the default ([UTF-8](Charset::Utf8)) charset.
+            /// An unbounded string of the default ([UTF-8](Charset::Utf8)) charset.
             pub fn new() -> Self {
                 Self::default()
             }
@@ -48,9 +53,24 @@ macro_rules! string_type {
                 self.charset
             }
 
+            /// The optional byte-size cap (`None` when unbounded).
+            pub fn byte_size(&self) -> Option<i32> {
+                self.byte_size
+            }
+
             /// Returns a copy with a new charset.
             pub fn with_charset(&self, charset: Charset) -> Self {
-                Self { charset }
+                Self { charset, byte_size: self.byte_size }
+            }
+
+            /// Returns a copy capped at `byte_size` bytes.
+            pub fn with_byte_size(&self, byte_size: i32) -> Self {
+                Self { charset: self.charset, byte_size: Some(byte_size) }
+            }
+
+            /// Returns a copy with no byte-size cap.
+            pub fn without_byte_size(&self) -> Self {
+                Self { charset: self.charset, byte_size: None }
             }
         }
 
@@ -63,6 +83,10 @@ macro_rules! string_type {
                 DataTypeId::$id
             }
 
+            fn max_byte_size(&self) -> Option<i64> {
+                self.byte_size.map(i64::from)
+            }
+
             fn metadata(&self) -> crate::Metadata {
                 let mut metadata = crate::metadata::type_metadata(self.name());
                 // The default charset is implied; store only a non-default one.
@@ -72,6 +96,7 @@ macro_rules! string_type {
                         self.charset.name().as_bytes().to_vec(),
                     );
                 }
+                crate::metadata::set_byte_size(&mut metadata, self.byte_size);
                 metadata
             }
 
@@ -98,9 +123,10 @@ macro_rules! string_type {
                         .ok_or(crate::SchemaError::MissingTypeMetadata("charset"))?,
                     None => Charset::Utf8,
                 };
+                let byte_size = crate::metadata::get_byte_size(metadata)?;
                 // The Arrow type must match what this charset would produce — a
                 // string type for UTF-8, the binary storage otherwise.
-                let candidate = Self { charset };
+                let candidate = Self { charset, byte_size };
                 if *dtype == candidate.to_arrow_type() {
                     Ok(candidate)
                 } else {
@@ -113,7 +139,11 @@ macro_rules! string_type {
             type Physical = $physical;
 
             fn physical(&self) -> $physical {
-                <$physical>::default()
+                let physical = <$physical>::new();
+                match self.byte_size {
+                    Some(byte_size) => physical.with_byte_size(byte_size),
+                    None => physical,
+                }
             }
         }
     };
