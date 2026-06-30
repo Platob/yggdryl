@@ -3,6 +3,8 @@
 use yggdryl_core::Buffer;
 use yggdryl_schema::DataType;
 
+use crate::codec::Decode;
+use crate::error::ScalarError;
 use crate::scalar::Scalar;
 
 /// A binary scalar value: a byte payload tagged with its binary data type (e.g.
@@ -97,5 +99,11 @@ impl<T: DataType> Scalar for Binary<T> {
     /// caller's responsibility to validate.
     fn cast<D: DataType>(&self, dtype: D) -> Binary<D> {
         Binary::from_buffer(dtype, self.bytes.clone())
+    }
+
+    fn decode<V: Decode>(&self) -> Result<V, ScalarError> {
+        // Decode straight from the shared buffer (zero-copy borrow), avoiding the
+        // intermediate `Vec` the default `to_bytes()` path would allocate.
+        V::decode(self.as_bytes())
     }
 }
