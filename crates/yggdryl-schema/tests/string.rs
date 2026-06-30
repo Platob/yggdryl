@@ -94,7 +94,7 @@ mod arrow {
     };
 
     #[test]
-    fn map_to_arrow() {
+    fn utf8_maps_to_arrow_string() {
         assert_eq!(StringType::new().to_arrow_type(), ArrowType::Utf8);
         assert_eq!(LargeStringType::new().to_arrow_type(), ArrowType::LargeUtf8);
         assert_eq!(StringViewType::new().to_arrow_type(), ArrowType::Utf8View);
@@ -106,17 +106,40 @@ mod arrow {
     }
 
     #[test]
-    fn round_trip_charset_via_metadata() {
-        // The default charset rebuilds from empty metadata.
+    fn non_utf8_falls_back_to_binary_storage() {
         assert_eq!(
-            StringType::from_arrow_type(&ArrowType::Utf8, &Metadata::new()).unwrap(),
             StringType::new()
+                .with_charset(Charset::Latin1)
+                .to_arrow_type(),
+            ArrowType::Binary
         );
-        // A non-default charset round-trips through the metadata it produced.
-        let latin1 = StringType::new().with_charset(Charset::Latin1);
-        let rebuilt = StringType::from_arrow_type(&ArrowType::Utf8, &latin1.metadata()).unwrap();
-        assert_eq!(rebuilt, latin1);
-        // A wrong Arrow type errors.
+        assert_eq!(
+            LargeStringType::new()
+                .with_charset(Charset::Latin1)
+                .to_arrow_type(),
+            ArrowType::LargeBinary
+        );
+        assert_eq!(
+            StringViewType::new()
+                .with_charset(Charset::Ascii)
+                .to_arrow_type(),
+            ArrowType::BinaryView
+        );
+    }
+
+    #[test]
+    fn round_trips_through_to_arrow_type() {
+        for ty in [
+            StringType::new(),
+            StringType::new().with_charset(Charset::Latin1),
+            StringType::new().with_charset(Charset::Ascii),
+        ] {
+            let rebuilt = StringType::from_arrow_type(&ty.to_arrow_type(), &ty.metadata()).unwrap();
+            assert_eq!(rebuilt, ty);
+        }
+        // An Arrow type that no charset would produce errors.
+        assert!(StringType::from_arrow_type(&ArrowType::Date32, &Metadata::new()).is_err());
+        // A bare Binary with no charset metadata is not a (UTF-8) string.
         assert!(StringType::from_arrow_type(&ArrowType::Binary, &Metadata::new()).is_err());
     }
 }

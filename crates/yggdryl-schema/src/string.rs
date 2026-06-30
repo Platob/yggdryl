@@ -3,6 +3,10 @@
 //! binary [`PhysicalType`](crate::PhysicalType), carrying a [`Charset`] (default
 //! [UTF-8](Charset::Utf8)) — a string is just binary bytes read with a charset.
 //!
+//! Arrow only has UTF-8 strings: a UTF-8 string maps to the Arrow string type,
+//! while any other charset falls back to its binary storage type (with the charset
+//! preserved in the field metadata).
+//!
 //! ```
 //! use yggdryl_schema::{Charset, DataType, DataTypeId, LogicalType, StringType};
 //!
@@ -73,7 +77,13 @@ macro_rules! string_type {
 
             #[cfg(feature = "arrow")]
             fn to_arrow_type(&self) -> arrow_schema::DataType {
-                $arrow
+                if self.charset == Charset::Utf8 {
+                    $arrow
+                } else {
+                    // Arrow only has UTF-8 strings; a non-UTF-8 charset falls back to
+                    // the binary physical storage (its charset lives in metadata).
+                    self.physical().to_arrow_type()
+                }
             }
 
             #[cfg(feature = "arrow")]
@@ -81,9 +91,6 @@ macro_rules! string_type {
                 dtype: &arrow_schema::DataType,
                 metadata: &crate::Metadata,
             ) -> Result<Self, crate::SchemaError> {
-                if *dtype != $arrow {
-                    return Err(crate::SchemaError::UnsupportedArrowType(dtype.clone()));
-                }
                 let charset = match metadata.get(&crate::metadata::reserved_key("charset")) {
                     Some(value) => std::str::from_utf8(value)
                         .ok()
@@ -91,7 +98,14 @@ macro_rules! string_type {
                         .ok_or(crate::SchemaError::MissingTypeMetadata("charset"))?,
                     None => Charset::Utf8,
                 };
-                Ok(Self { charset })
+                // The Arrow type must match what this charset would produce — a
+                // string type for UTF-8, the binary storage otherwise.
+                let candidate = Self { charset };
+                if *dtype == candidate.to_arrow_type() {
+                    Ok(candidate)
+                } else {
+                    Err(crate::SchemaError::UnsupportedArrowType(dtype.clone()))
+                }
             }
         }
 
