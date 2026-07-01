@@ -112,6 +112,19 @@ impl<T, I: Io<T>> Io<T> for IoCursor<I> {
         self.io.pwrite_array(at, Whence::Start, values)
     }
 
+    fn pwrite_io<S: Io<T> + ?Sized>(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &S,
+    ) -> Result<usize, IoError>
+    where
+        T: Clone,
+    {
+        let at = self.resolve(position, whence)?;
+        self.io.pwrite_io(at, Whence::Start, source)
+    }
+
     fn resize(&mut self, len: usize) -> Result<(), IoError>
     where
         T: Default + Clone,

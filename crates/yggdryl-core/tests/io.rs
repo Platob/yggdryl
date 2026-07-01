@@ -107,6 +107,39 @@ fn resize_grows_with_the_default_and_shrinks() {
     assert_eq!(io, vec![1, 2]);
 }
 
+#[test]
+fn pread_io_is_a_zero_copy_view_that_clamps() {
+    let io = vec![10u8, 20, 30, 40, 50];
+    // The view borrows `io` and re-bases to its own `0..len`.
+    let view = io.pread_io(1, Whence::Start, 3).unwrap();
+    assert_eq!(view.len().unwrap(), 3);
+    assert_eq!(view.pread(0, Whence::Start).unwrap(), 20);
+    assert_eq!(
+        view.pread_array(0, Whence::Start, 10).unwrap(),
+        vec![20, 30, 40]
+    );
+    // The borrowed source is read-only through the view.
+    let mut view = io.pread_io(0, Whence::Start, 5).unwrap();
+    assert_eq!(view.pwrite(0, Whence::Start, 99), Err(IoError::ReadOnly));
+}
+
+#[test]
+fn pwrite_io_streams_another_io_in() {
+    let src = vec![7u8, 8, 9];
+    let mut dst = vec![1u8, 2, 3, 4, 5];
+    // Overwrites in place, returning the count written.
+    assert_eq!(dst.pwrite_io(1, Whence::Start, &src).unwrap(), 3);
+    assert_eq!(dst, vec![1, 7, 8, 9, 5]);
+    // Overwrites the tail and extends past the end in one transfer.
+    assert_eq!(dst.pwrite_io(0, Whence::End, &src).unwrap(), 3);
+    assert_eq!(dst, vec![1, 7, 8, 9, 5, 7, 8, 9]);
+    // A zero-copy view round-trips through pwrite_io.
+    let view = dst.pread_io(0, Whence::Start, 3).unwrap();
+    let mut copy = vec![0u8; 3];
+    assert_eq!(copy.pwrite_io(0, Whence::Start, &view).unwrap(), 3);
+    assert_eq!(copy, vec![1, 7, 8]);
+}
+
 // A minimal source that implements only the single-element primitives, so the
 // trait's default `pread_array` / `pwrite_array` (looping those primitives) are the
 // ones under test here — the "array IO for free" path a new source inherits.

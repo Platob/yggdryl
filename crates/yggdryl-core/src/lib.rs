@@ -6,9 +6,11 @@
 //! It holds the byte/array-IO foundation: the positional [`Io`] trait — a
 //! random-access array of `T` values addressed from a [`Whence`] origin via
 //! [`pread`](Io::pread) / [`pwrite`](Io::pwrite), with the in-memory [`Vec`] as its
-//! leaf implementation — plus the [`IoCursor`] (a stateful cursor) and [`IoSlice`]
-//! (a bounded window) that wrap an inner [`Io`], and the [`hello`] / [`version`]
-//! scaffold. Reintroduce the rest of the foundational types here as the design lands
+//! leaf implementation, plus zero-copy whole-source transfers via
+//! [`pread_io`](Io::pread_io) / [`pwrite_io`](Io::pwrite_io) — plus the [`IoCursor`]
+//! (a stateful cursor) and [`IoSlice`] (a bounded window) that wrap an inner [`Io`],
+//! and the [`hello`] / [`version`] scaffold. Reintroduce the rest of the foundational
+//! types here as the design lands
 //! — one module per concern, each re-exported at the crate root — following the rules
 //! in `CLAUDE.md`.
 

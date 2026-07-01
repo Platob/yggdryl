@@ -1,6 +1,7 @@
 //! The positional [`Io`] array abstraction, its [`IoError`], and the in-memory
 //! [`Vec`] leaf implementation.
 
+use crate::io_slice::IoSlice;
 use crate::whence::Whence;
 
 /// An error raised by an [`Io`] operation.
@@ -40,7 +41,9 @@ impl std::error::Error for IoError {}
 /// [`Whence::Current`] addresses its cursor and a seek retains the move. The size
 /// hooks [`capacity`](Io::capacity) / [`with_capacity`](Io::with_capacity) /
 /// [`resize`](Io::resize) manage the backing storage, growing it with
-/// [`default`](Io::default); a growable source overrides them.
+/// [`default`](Io::default); a growable source overrides them. Whole-source transfers
+/// go through [`pread_io`](Io::pread_io) (a zero-copy borrowing view) and
+/// [`pwrite_io`](Io::pwrite_io) (which streams another `Io` in, copied at most once).
 ///
 /// ```
 /// use yggdryl_core::{Io, Whence};
@@ -52,6 +55,12 @@ impl std::error::Error for IoError {}
 /// io.pwrite_array(0, Whence::End, &[6, 7]).unwrap(); // append two more
 /// assert_eq!(io, vec![1, 2, 3, 4, 5, 6, 7]);
 /// assert_eq!(io.seek(1, Whence::End).unwrap(), 6); // one element before the end
+///
+/// // A zero-copy view over `io[0..3]`, streamed into another Io without leaving Rust.
+/// let view = io.pread_io(0, Whence::Start, 3).unwrap();
+/// let mut dst = vec![0u8; 5];
+/// assert_eq!(dst.pwrite_io(1, Whence::Start, &view).unwrap(), 3);
+/// assert_eq!(dst, vec![0, 1, 2, 3, 0]);
 /// ```
 pub trait Io<T> {
     /// The total number of `T` elements in the source.
@@ -194,6 +203,99 @@ pub trait Io<T> {
         }
         Ok(())
     }
+
+    /// Reads up to `len` elements at `position` measured from `whence` as a
+    /// **zero-copy** [`IoSlice`] window that borrows `self` — nothing is allocated or
+    /// copied, unlike [`pread_array`](Io::pread_array). The window is clamped to the
+    /// source, and (borrowing a shared reference) is read-only. Errors
+    /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is past the end.
+    fn pread_io(
+        &self,
+        position: usize,
+        whence: Whence,
+        len: usize,
+    ) -> Result<IoSlice<&Self>, IoError>
+    where
+        Self: Sized,
+    {
+        let start = self.resolve(position, whence)?;
+        let count = len.min(self.len()?.saturating_sub(start));
+        Ok(IoSlice::new(self, start, count))
+    }
+
+    /// Writes the whole of another [`Io`] `source` at `position` measured from
+    /// `whence`, overwriting and extending as [`pwrite_array`](Io::pwrite_array) does,
+    /// and returns the number of elements written. The data is read from `source` once
+    /// and never leaves Rust; a memory-resident sink overrides this to *move* it in
+    /// (copied at most once). Errors as [`pwrite_array`](Io::pwrite_array) does.
+    fn pwrite_io<S: Io<T> + ?Sized>(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &S,
+    ) -> Result<usize, IoError>
+    where
+        T: Clone,
+        Self: Sized,
+    {
+        let data = source.pread_array(0, Whence::Start, source.len()?)?;
+        self.pwrite_array(position, whence, &data)
+    }
+}
+
+/// A shared reference is a **read-only** [`Io`]: reads delegate to the borrowed
+/// source (so a [`pread_io`](Io::pread_io) view is usable), while every write errors
+/// [`ReadOnly`](IoError::ReadOnly).
+impl<T, I: Io<T> + ?Sized> Io<T> for &I {
+    fn len(&self) -> Result<usize, IoError> {
+        <I as Io<T>>::len(self)
+    }
+
+    fn capacity(&self) -> Result<usize, IoError> {
+        <I as Io<T>>::capacity(self)
+    }
+
+    fn default(&self) -> T
+    where
+        T: Default,
+    {
+        <I as Io<T>>::default(self)
+    }
+
+    fn position(&self) -> Result<usize, IoError> {
+        <I as Io<T>>::position(self)
+    }
+
+    fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError> {
+        <I as Io<T>>::pread(self, position, whence)
+    }
+
+    fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
+        <I as Io<T>>::pread_array(self, position, whence, len)
+    }
+
+    fn pwrite(&mut self, _position: usize, _whence: Whence, _value: T) -> Result<(), IoError> {
+        Err(IoError::ReadOnly)
+    }
+
+    fn pwrite_array(
+        &mut self,
+        _position: usize,
+        _whence: Whence,
+        _values: &[T],
+    ) -> Result<usize, IoError>
+    where
+        T: Clone,
+    {
+        Err(IoError::ReadOnly)
+    }
+
+    fn resize(&mut self, _len: usize) -> Result<(), IoError>
+    where
+        T: Default + Clone,
+    {
+        Err(IoError::ReadOnly)
+    }
 }
 
 /// [`Vec`] is the in-memory array leaf: a read clones the element at the position; a
@@ -263,5 +365,22 @@ impl<T: Clone> Io<T> for Vec<T> {
         self[start..start + overlap].clone_from_slice(&values[..overlap]);
         self.extend_from_slice(&values[overlap..]);
         Ok(values.len())
+    }
+
+    fn pwrite_io<S: Io<T> + ?Sized>(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &S,
+    ) -> Result<usize, IoError> {
+        let start = self.resolve(position, whence)?;
+        // Read the source once, then *move* those elements into place (splice consumes
+        // `data`), so the transfer copies at most once — never a second clone.
+        let data = source.pread_array(0, Whence::Start, source.len()?)?;
+        let count = data.len();
+        crate::log_event!(trace, "Vec::pwrite_io start={start} len={count}");
+        let end = start.saturating_add(count).min(self.as_slice().len());
+        self.splice(start..end, data);
+        Ok(count)
     }
 }
