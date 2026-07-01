@@ -31,7 +31,7 @@ Arrow-centric type system growing back after the reset:
 
 - `crates/yggdryl-core` — the dependency-light foundations every other crate and
   binding builds on. Currently a scaffold exposing only `version()`; reintroduce
-  the foundational types here (the zero-copy `Buffer`, the `Io` / `Whence` byte
+  the foundational types here (the zero-copy `Buffer`, the `ByteIo` / `Whence` byte
   abstraction, the `Charset` encodings, the global `JsonParams` + the `Jsonable`
   JSON/BSON trait and the shared error types), one module per concern, with no Arrow
   vocabulary living here.
@@ -55,7 +55,7 @@ As the Arrow-centric type system grows back it is **split into one crate per
 layer** (data types, then scalar *values*, then fields), each depending only on
 the layers below it. Keep the dependency arrows pointing one way: a lower layer
 never imports an upper one (a reader needing the other direction means the
-abstraction belongs lower). The `Io` trait hands back zero-copy `core::Buffer`
+abstraction belongs lower). The `ByteIo` trait hands back zero-copy `core::Buffer`
 views rather than a higher-layer value, so `core` stays free of the type layers
 above it.
 
