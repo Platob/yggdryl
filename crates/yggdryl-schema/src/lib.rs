@@ -1,29 +1,31 @@
 //! # yggdryl-schema
 //!
-//! The Arrow-flavoured schema layer for yggdryl. [`DataType`] is the base trait
-//! every data type implements — it knows its [`DataTypeId`] and its
-//! [`type_name`](DataType::type_name). Each concrete type also carries a category
-//! marker: [`PrimitiveType`], [`LogicalType`] (which exposes an
-//! [`inner_type`](LogicalType::inner_type)) or [`NestedType`] (which exposes child
-//! [`Field`]s). [`BinaryType`] is the first concrete type. [`Field`] pairs a name
-//! with a data type and optional byte-keyed metadata, offering the functional
-//! [`copy`](Field::copy) / `with_*` updates.
+//! The Arrow-flavoured schema layer for yggdryl. It is built as two mirror-image
+//! layers — the data types under [`dtype`](mod@self) and the fields under
+//! `field` — that follow the same pattern (see `CLAUDE.md`):
 //!
-//! New types land here one module per concern, each re-exported at the crate root,
-//! following the rules in `CLAUDE.md`.
+//! - [`DataType`] / [`Field`] are the object-safe base traits. Both are
+//!   [`NestedFields`], so the child-field lookups
+//!   ([`children_fields`](NestedFields::children_fields) /
+//!   [`child_field_at`](NestedFields::child_field_at) /
+//!   [`child_field_by`](NestedFields::child_field_by) /
+//!   [`child_field`](NestedFields::child_field)) work on both.
+//! - Category markers pair up: [`PrimitiveType`] / [`PrimitiveField`],
+//!   [`LogicalType`] (`inner_type`) / [`LogicalField`] (`inner_field`), and
+//!   [`NestedType`] / [`NestedField`].
+//! - [`BinaryType`] / [`BinaryField`] are the first concrete pair (both primitive).
+//! - [`DataTypeId`] is the type discriminant, [`Metadata`] the byte-keyed field
+//!   metadata, and [`SchemaError`] the error type.
+//!
+//! New types land one module per concern, and a change to one layer is mirrored in
+//! the other.
 
-mod binary_type;
-mod data_type;
-mod data_type_id;
+mod dtype;
+mod error;
 mod field;
-mod logical_type;
-mod nested_type;
-mod primitive_type;
+mod nested_fields;
 
-pub use binary_type::BinaryType;
-pub use data_type::DataType;
-pub use data_type_id::DataTypeId;
-pub use field::Field;
-pub use logical_type::LogicalType;
-pub use nested_type::NestedType;
-pub use primitive_type::PrimitiveType;
+pub use dtype::{BinaryType, DataType, DataTypeId, LogicalType, NestedType, PrimitiveType};
+pub use error::SchemaError;
+pub use field::{BinaryField, Field, LogicalField, Metadata, NestedField, PrimitiveField};
+pub use nested_fields::NestedFields;

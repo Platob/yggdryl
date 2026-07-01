@@ -138,6 +138,31 @@ Rules:
   trait method signatures so an implementor can satisfy them on one line; only
   expand to a multi-line body when the logic genuinely needs it.
 
+### `DataType` and `Field` move in lockstep
+
+The schema layer is **two mirror-image layers** — the data types under `dtype/` and
+the fields under `field/` — that follow the *same* pattern. Whenever you touch one,
+mirror it in the other; a change is not done until both sides match:
+
+- **Parallel base traits.** `DataType` and `Field` are both object-safe base traits
+  that are `NestedFields` and carry the same value-like hooks (`clone_box` /
+  `dyn_eq` / `dyn_hash`, the `dyn_*` defaulted). The shared child-field lookups
+  (`children_fields` / `child_field_at` / `child_field_by` / `child_field`) live once
+  on `NestedFields` so a data type and a field are queried identically.
+- **Parallel category markers, one file per type.** The categories pair up —
+  `PrimitiveType`↔`PrimitiveField`, `LogicalType`(`inner_type`)↔`LogicalField`
+  (`inner_field`), `NestedType`↔`NestedField` — and each type lives in its own module
+  under the matching directory (`dtype/binary_type.rs` ↔ `field/binary_field.rs`).
+  Adding a concrete data type means adding its field counterpart in the same change.
+- **Consistent behaviour per category.** A primitive returns empty
+  `children_fields` (the default); a logical returns its inner (`inner_type` /
+  `inner_field`); a nested overrides `children_fields`. Parameterless types use the
+  default `dyn_eq` / `dyn_hash` (over `type_id` / name+dtype+metadata); parametrized
+  types override them.
+
+Before committing a schema change, re-check this parity: same trait shape, same
+method names, same category behaviour, mirrored module locations.
+
 ## Performance: zero-copy with checks
 
 Prefer **borrowing over copying**. A function that returns string data should hand

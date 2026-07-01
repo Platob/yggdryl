@@ -1,10 +1,7 @@
 //! The [`BinaryType`] — variable-length bytes.
 
-use std::hash::{Hash, Hasher};
-
-use crate::data_type::DataType;
-use crate::data_type_id::DataTypeId;
-use crate::primitive_type::PrimitiveType;
+use crate::dtype::{DataType, DataTypeId, PrimitiveType};
+use crate::nested_fields::NestedFields;
 
 /// The variable-length binary type — a string of bytes. The first concrete
 /// [`DataType`], and a [`PrimitiveType`].
@@ -15,7 +12,7 @@ use crate::primitive_type::PrimitiveType;
 /// let dt = BinaryType::new();
 /// assert_eq!(dt.type_id(), DataTypeId::Binary);
 /// assert_eq!(dt.type_name(), "binary");
-/// assert_eq!(BinaryType::new(), dt);
+/// assert!(dt.dyn_eq(&BinaryType::new()));
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct BinaryType;
@@ -26,6 +23,9 @@ impl BinaryType {
         Self
     }
 }
+
+// A primitive has no children — the empty `NestedFields` default is exactly right.
+impl NestedFields for BinaryType {}
 
 impl DataType for BinaryType {
     fn type_id(&self) -> DataTypeId {
@@ -38,15 +38,6 @@ impl DataType for BinaryType {
 
     fn clone_box(&self) -> Box<dyn DataType> {
         Box::new(*self)
-    }
-
-    fn dyn_eq(&self, other: &dyn DataType) -> bool {
-        // Parameterless: two binary types are equal when the discriminants match.
-        other.type_id() == self.type_id()
-    }
-
-    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
-        self.type_id().hash(&mut state);
     }
 }
 
