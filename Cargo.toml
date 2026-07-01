@@ -2,14 +2,16 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-schema",
     "bindings/python",
     "bindings/node",
 ]
-# `cargo build` / `cargo test` with no args only touches the pure-Rust core.
+# `cargo build` / `cargo test` with no args only touches the pure-Rust crates.
 # The Python and Node bindings are built through their own toolchains
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-schema",
 ]
 
 [workspace.package]

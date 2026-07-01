@@ -1,0 +1,19 @@
+[package]
+name = "yggdryl-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-flavoured schema layer for yggdryl (DataType / Field)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_schema"
+path = "src/lib.rs"
+
+[dependencies]
+# Kept dependency-free for now — the base traits and the first concrete type carry
+# no external dependencies. Serialization and the Arrow bridge land later.
