@@ -2,10 +2,11 @@
 
 > **Project status: reset.** The implementation has been removed and the project
 > is being rebuilt around an **Arrow-centralized** design. What remains is the
-> buildable skeleton (the Cargo workspace, the crate and binding manifests, CI,
-> and empty stub `lib.rs` files) and these foundational rules. The detailed
-> per-module architecture that used to live here was dropped with the code it
-> described; reintroduce architecture docs as you build, following the rules
+> buildable skeleton — the Cargo workspace, the `yggdryl-core` crate and the two
+> binding manifests, CI, and a minimal `version()` / `hello()` print example that
+> round-trips through all three languages — plus these foundational rules. The
+> detailed per-module architecture that used to live here was dropped with the code
+> it described; reintroduce architecture docs as you build, following the rules
 > below.
 
 **Keep all new code uniform.** Before adding anything, read the nearest existing
@@ -26,38 +27,32 @@ HTTP bodies, sessions). When a field cannot be part of a value's identity
 
 ## Workspace layout
 
-The workspace is **three Rust crates plus two thin bindings**, the layers of the
-Arrow-centric type system growing back after the reset:
+The project has been **reset to its minimal skeleton**: a single Rust crate plus two
+thin bindings. Grow the Arrow-centric type system back from here, **one crate per
+layer**.
 
 - `crates/yggdryl-core` — the dependency-light foundations every other crate and
-  binding builds on. Currently a scaffold exposing only `version()`; reintroduce
-  the foundational types here (the zero-copy `Buffer`, the `ByteIo` / `Whence` byte
-  abstraction, the `Charset` encodings, the global `JsonParams` + the `Jsonable`
-  JSON/BSON trait and the shared error types), one module per concern, with no Arrow
-  vocabulary living here.
-- `crates/yggdryl-schema` — the Arrow-compatible schema layer (`DataType` / `Field`
-  and the schema types), holding the conversion to and from Apache Arrow's
-  `arrow-schema` behind its `arrow` feature. The `arrow-schema` SDK is a dependency
-  of this crate only. Depends only on `core`.
-- `crates/yggdryl-scalar` — the scalar *values*: the `Scalar` trait (a value's
-  `dtype` plus its `to_bytes` / `from_bytes` byte form) and the byte-backed
-  `Binary` value carrying any binary data type. Depends on `core` + `schema`.
+  binding builds on. Currently a scaffold exposing only `version()` and the
+  `hello()` print example; reintroduce the foundational types here (the zero-copy
+  `Buffer`, the byte-IO abstraction, the `Charset` encodings, the global
+  `JsonParams` + the `Jsonable` JSON/BSON trait and the shared error types), one
+  module per concern, with no Arrow vocabulary living here.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
-  wrappers**. They only translate types/errors and call the crates above; they
+  wrappers**. They only translate types/errors and call the crate(s) above; they
   contain no logic. Anything added to a crate must be surfaced in *both* bindings.
   **Each Rust crate is exposed as a submodule of the top-level package**, mirroring
-  the crate tree: `yggdryl-core` → `yggdryl.core`, `yggdryl-schema` →
-  `yggdryl.schema` (Python submodules registered in `sys.modules`; Node `#[napi(namespace
-  = "…")]` exports). The binding source mirrors this too — `src/<crate>.rs` or
-  `src/<crate>/` per crate, with `src/lib.rs` only wiring the submodules together.
+  the crate tree: `yggdryl-core` → `yggdryl.core` (Python submodules registered in
+  `sys.modules`; Node `#[napi(namespace = "…")]` exports). The binding source mirrors
+  this too — `src/<crate>.rs` or `src/<crate>/` per crate, with `src/lib.rs` only
+  wiring the submodules together.
 
 As the Arrow-centric type system grows back it is **split into one crate per
-layer** (data types, then scalar *values*, then fields), each depending only on
-the layers below it. Keep the dependency arrows pointing one way: a lower layer
-never imports an upper one (a reader needing the other direction means the
-abstraction belongs lower). The `ByteIo` trait hands back zero-copy `core::Buffer`
-views rather than a higher-layer value, so `core` stays free of the type layers
-above it.
+layer** (the schema data types, then the scalar *values*, then fields), each
+depending only on the layers below it and re-added to the workspace members. Keep the
+dependency arrows pointing one way: a lower layer never imports an upper one (a reader
+needing the other direction means the abstraction belongs lower). The byte-IO layer
+hands back zero-copy `core::Buffer` views rather than a higher-layer value, so `core`
+stays free of the type layers above it.
 
 Each crate is **one file per type** — each concern is its own module (or module
 directory) under `src/`, with `lib.rs` as glue (a crate-local `log_event!` macro,

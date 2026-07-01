@@ -9,8 +9,15 @@ fn version() -> &'static str {
     yggdryl_core::version()
 }
 
+/// Prints a greeting to standard output — the minimal cross-language example.
+#[pyfunction]
+fn hello() {
+    yggdryl_core::hello()
+}
+
 /// Populates the `core` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
+    module.add_function(wrap_pyfunction!(hello, module)?)?;
     Ok(())
 }

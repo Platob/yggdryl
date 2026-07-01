@@ -12,15 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-schema"
-version = "59.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b3e786a0dd9103acd583a6fb486dbf2f3268466cc0bd571dcf34cef231c1f1"
-dependencies = [
- "bitflags",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -313,7 +304,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
- "serde_derive",
 ]
 
 [[package]]
@@ -414,27 +404,6 @@ name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
  "pyo3",
- "yggdryl-core",
-]
-
-[[package]]
-name = "yggdryl-scalar"
-version = "0.1.1"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "yggdryl-core",
- "yggdryl-schema",
-]
-
-[[package]]
-name = "yggdryl-schema"
-version = "0.1.1"
-dependencies = [
- "arrow-schema",
- "serde",
- "serde_json",
  "yggdryl-core",
 ]
 

@@ -7,3 +7,9 @@ use napi_derive::napi;
 pub fn version() -> String {
     yggdryl_core::version().to_string()
 }
+
+/// Prints a greeting to standard output — the minimal cross-language example.
+#[napi(namespace = "core")]
+pub fn hello() {
+    yggdryl_core::hello()
+}

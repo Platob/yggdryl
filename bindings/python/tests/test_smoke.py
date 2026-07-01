@@ -1,8 +1,7 @@
-"""Smoke test for the yggdryl Python binding submodules."""
+"""Smoke test for the yggdryl Python binding."""
 
 import yggdryl
-from yggdryl import core, schema
-from yggdryl.schema import DataTypeId
+from yggdryl import core
 
 
 def test_core_version():
@@ -10,8 +9,7 @@ def test_core_version():
     assert core.version()
 
 
-def test_schema_data_type_id():
-    assert schema.DataTypeId is DataTypeId
-    assert DataTypeId.Binary != DataTypeId.Decimal128
-    # hashable → usable as a dict key
-    assert {DataTypeId.Binary: 1}[DataTypeId.Binary] == 1
+def test_core_hello(capfd):
+    assert core.hello() is None
+    out, _ = capfd.readouterr()
+    assert "Hello from yggdryl" in out
