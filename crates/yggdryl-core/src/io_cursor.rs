@@ -18,7 +18,7 @@ use crate::whence::Whence;
 /// let mut io = IoCursor::new(vec![1u8, 2, 3, 4]);
 /// io.seek(2, Whence::Start).unwrap();
 /// assert_eq!(io.position().unwrap(), 2);
-/// assert_eq!(io.pread(0, Whence::Current).unwrap(), 3); // reads at the cursor
+/// assert_eq!(io.pread_one(0, Whence::Current).unwrap(), 3); // reads at the cursor
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct IoCursor<I> {
@@ -84,9 +84,9 @@ impl<T, I: Io<T>> Io<T> for IoCursor<I> {
         Ok(target)
     }
 
-    fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError> {
+    fn pread_one(&self, position: usize, whence: Whence) -> Result<T, IoError> {
         self.io
-            .pread(self.resolve(position, whence)?, Whence::Start)
+            .pread_one(self.resolve(position, whence)?, Whence::Start)
     }
 
     fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
@@ -94,9 +94,9 @@ impl<T, I: Io<T>> Io<T> for IoCursor<I> {
             .pread_array(self.resolve(position, whence)?, Whence::Start, len)
     }
 
-    fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
+    fn pwrite_one(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
         let at = self.resolve(position, whence)?;
-        self.io.pwrite(at, Whence::Start, value)
+        self.io.pwrite_one(at, Whence::Start, value)
     }
 
     fn pwrite_array(

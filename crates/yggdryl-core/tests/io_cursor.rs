@@ -15,20 +15,20 @@ fn seek_retains_the_move_and_current_addresses_it() {
     assert_eq!(io.seek(2, Whence::Start).unwrap(), 2);
     assert_eq!(io.position().unwrap(), 2);
     // A read with Current is anchored at the cursor...
-    assert_eq!(io.pread(0, Whence::Current).unwrap(), 30);
-    assert_eq!(io.pread(1, Whence::Current).unwrap(), 40);
+    assert_eq!(io.pread_one(0, Whence::Current).unwrap(), 30);
+    assert_eq!(io.pread_one(1, Whence::Current).unwrap(), 40);
     // ...but does not move it (reads are positional).
     assert_eq!(io.position().unwrap(), 2);
     // Seeking relative to Current advances from the cursor.
     assert_eq!(io.seek(1, Whence::Current).unwrap(), 3);
-    assert_eq!(io.pread(0, Whence::Current).unwrap(), 40);
+    assert_eq!(io.pread_one(0, Whence::Current).unwrap(), 40);
 }
 
 #[test]
 fn writes_and_reads_delegate_to_the_inner() {
     let mut io = IoCursor::new(vec![1u8, 2, 3]);
     io.seek(1, Whence::Start).unwrap();
-    io.pwrite(0, Whence::Current, 20).unwrap();
+    io.pwrite_one(0, Whence::Current, 20).unwrap();
     io.pwrite_array(1, Whence::Current, &[30, 4]).unwrap(); // overwrite + extend
     assert_eq!(
         io.pread_array(0, Whence::Start, 4).unwrap(),

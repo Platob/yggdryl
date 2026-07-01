@@ -13,7 +13,7 @@ use crate::whence::Whence;
 ///
 /// let io = IoSlice::new(vec![1u8, 2, 3, 4, 5], 1, 3); // the window [2, 3, 4]
 /// assert_eq!(io.len().unwrap(), 3);
-/// assert_eq!(io.pread(0, Whence::Start).unwrap(), 2);
+/// assert_eq!(io.pread_one(0, Whence::Start).unwrap(), 2);
 /// assert_eq!(io.pread_array(0, Whence::Start, 10).unwrap(), vec![2, 3, 4]);
 /// ```
 #[derive(Clone, Debug, Default)]
@@ -60,12 +60,12 @@ impl<T, I: Io<T>> Io<T> for IoSlice<I> {
         self.io.default()
     }
 
-    fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError> {
+    fn pread_one(&self, position: usize, whence: Whence) -> Result<T, IoError> {
         let at = self.resolve(position, whence)?;
         if at >= self.len {
             return Err(IoError::OutOfBounds);
         }
-        self.io.pread(self.offset + at, Whence::Start)
+        self.io.pread_one(self.offset + at, Whence::Start)
     }
 
     fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
@@ -74,12 +74,12 @@ impl<T, I: Io<T>> Io<T> for IoSlice<I> {
         self.io.pread_array(self.offset + at, Whence::Start, count)
     }
 
-    fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
+    fn pwrite_one(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
         let at = self.resolve(position, whence)?;
         if at >= self.len {
             return Err(IoError::OutOfBounds);
         }
-        self.io.pwrite(self.offset + at, Whence::Start, value)
+        self.io.pwrite_one(self.offset + at, Whence::Start, value)
     }
 
     fn pwrite_array(
