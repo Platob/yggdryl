@@ -33,43 +33,55 @@ macro_rules! integer_fields {
         pub struct $name {
             name: String,
             dtype: $dtype,
+            nullable: bool,
             metadata: Option<Metadata>,
         }
 
         impl $name {
-            #[doc = concat!("A `", $type_name, "` field named `name`, with no metadata.")]
+            #[doc = concat!("A non-nullable `", $type_name, "` field named `name`, with no metadata.")]
             pub fn new(name: impl Into<String>) -> Self {
-                Self { name: name.into(), dtype: $dtype::new(), metadata: None }
+                Self { name: name.into(), dtype: $dtype::new(), nullable: false, metadata: None }
             }
 
             /// The field from its explicit parts.
-            pub fn from_parts(name: String, metadata: Option<Metadata>) -> Self {
-                Self { name, dtype: $dtype::new(), metadata }
+            pub fn from_parts(name: String, nullable: bool, metadata: Option<Metadata>) -> Self {
+                Self { name, dtype: $dtype::new(), nullable, metadata }
             }
 
             /// A copy with the given parts overridden; omitted parts come from `self`.
             /// (The data type is fixed and so is not a parameter.)
-            pub fn copy(&self, name: Option<String>, metadata: Option<Option<Metadata>>) -> Self {
+            pub fn copy(
+                &self,
+                name: Option<String>,
+                nullable: Option<bool>,
+                metadata: Option<Option<Metadata>>,
+            ) -> Self {
                 Self {
                     name: name.unwrap_or_else(|| self.name.clone()),
                     dtype: self.dtype,
+                    nullable: nullable.unwrap_or(self.nullable),
                     metadata: metadata.unwrap_or_else(|| self.metadata.clone()),
                 }
             }
 
             /// A copy renamed to `name`.
             pub fn with_name(&self, name: String) -> Self {
-                self.copy(Some(name), None)
+                self.copy(Some(name), None, None)
+            }
+
+            /// A copy with the nullability set to `nullable`.
+            pub fn with_nullable(&self, nullable: bool) -> Self {
+                self.copy(None, Some(nullable), None)
             }
 
             /// A copy carrying `metadata`.
             pub fn with_metadata(&self, metadata: Metadata) -> Self {
-                self.copy(None, Some(Some(metadata)))
+                self.copy(None, None, Some(Some(metadata)))
             }
 
             /// A copy with the metadata cleared.
             pub fn without_metadata(&self) -> Self {
-                self.copy(None, Some(None))
+                self.copy(None, None, Some(None))
             }
         }
 
@@ -82,6 +94,10 @@ macro_rules! integer_fields {
 
             fn dtype(&self) -> &$dtype {
                 &self.dtype
+            }
+
+            fn nullable(&self) -> bool {
+                self.nullable
             }
 
             fn metadata(&self) -> Option<&Metadata> {

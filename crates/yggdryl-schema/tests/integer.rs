@@ -26,6 +26,7 @@ fn integer_fields_wrap_their_type_and_default() {
     let field = Int32Field::new("count");
     assert_eq!(field.name(), "count");
     assert_eq!(field.dtype().type_id(), DataTypeId::Int32);
+    assert!(!field.nullable()); // non-nullable by default
     assert_eq!(field.default(), 0i32);
     assert!(field.metadata().is_none());
     assert_primitive_field(&field);
@@ -43,6 +44,12 @@ fn integer_field_with_updates_are_non_mutating() {
     let field = UInt64Field::new("a");
     assert_eq!(field.with_name("b".to_string()).name(), "b");
     assert_eq!(field.name(), "a"); // original untouched
+
+    // Nullability is a non-mutating flag.
+    let nullable = field.with_nullable(true);
+    assert!(nullable.nullable());
+    assert!(!field.nullable()); // original untouched
+    assert_eq!(nullable.name(), "a"); // other parts preserved
 
     let mut meta = Metadata::new();
     meta.insert(b"unit".to_vec(), b"bytes".to_vec());
