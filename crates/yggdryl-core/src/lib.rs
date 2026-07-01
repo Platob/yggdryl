@@ -6,9 +6,9 @@
 //! It holds the zero-copy [`Buffer`] and the byte-IO layer built on it: the
 //! positional [`ByteIo`] trait (with `Buffer` as its in-memory leaf), the bounded
 //! [`ByteSlice`] window, the [`ByteCursor`] sequential cursor, the [`Whence`] seek
-//! origin, and the bit-addressed [`BitIo`] layered on top. Reintroduce the rest of
-//! the foundational types here — one module per concern, each re-exported at the
-//! crate root — following the rules in `CLAUDE.md`.
+//! origin, the bit-addressed [`BitIo`] layered on top, and the [`BitSlice`]
+//! bit-window. Reintroduce the rest of the foundational types here — one module per
+//! concern, each re-exported at the crate root — following the rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
@@ -22,6 +22,7 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod bit_io;
+mod bit_slice;
 mod buffer;
 mod byte_cursor;
 mod byte_io;
@@ -29,6 +30,7 @@ mod byte_slice;
 mod whence;
 
 pub use bit_io::BitIo;
+pub use bit_slice::BitSlice;
 pub use buffer::Buffer;
 pub use byte_cursor::ByteCursor;
 pub use byte_io::{ByteIo, IoError};
