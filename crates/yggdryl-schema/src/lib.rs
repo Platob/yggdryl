@@ -18,14 +18,18 @@
 //!   a [`Struct`] — an array of [`Any`]. An Arrow schema is just a `StructField`.
 //! - [`DataTypeId`] is the type discriminant and [`Metadata`] the byte-keyed field
 //!   metadata.
+//! - Every type and field round-trips through Apache Arrow via the [`ArrowSchema`]
+//!   node ([`to_arrow`](StructField::to_arrow) / [`from_arrow`](StructField::from_arrow)).
 //!
 //! New types land one module per concern, and a change to one layer is mirrored in
 //! the other.
 
+mod arrow;
 mod dtype;
 mod field;
 mod value;
 
+pub use arrow::{ArrowError, ArrowSchema};
 pub use dtype::{
     AnyType, DataType, DataTypeId, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type,
     Int8Type, PrimitiveType, StructType, UInt128Type, UInt16Type, UInt256Type, UInt32Type,
