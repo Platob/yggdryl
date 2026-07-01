@@ -2,8 +2,8 @@
 //! [`ArrowSchema`] node and rebuilds from one losslessly.
 
 use yggdryl_schema::{
-    AnyField, AnyType, ArrowError, ArrowSchema, DataType, DataTypeId, Int128Type, Int32Type,
-    Metadata, StructField, StructType, UInt256Type,
+    AnyField, AnyType, ArrowError, ArrowSchema, DataType, DataTypeId, Field, Int128Type, Int32Type,
+    Int64Field, Metadata, StructField, StructType, UInt256Field, UInt256Type,
 };
 
 /// The Arrow metadata key an extension type records its name under.
@@ -169,5 +169,65 @@ fn from_arrow_rejects_unmodelled_and_malformed_nodes() {
     assert_eq!(
         StructField::from_arrow(&scalar),
         Err(ArrowError::NotAStruct("i".to_string()))
+    );
+}
+
+#[test]
+fn scalar_type_round_trips() {
+    let node = Int32Type::new().to_arrow_scalar();
+    assert_eq!(node.format(), "i");
+    assert_eq!(
+        Int32Type::from_arrow_scalar(&node).unwrap(),
+        Int32Type::new()
+    );
+
+    // A wide integer carries its extension type through the scalar path too.
+    let wide = Int128Type::new().to_arrow_scalar();
+    assert_eq!(wide.format(), "w:16");
+    assert!(wide.metadata().contains_key(EXT_KEY));
+    assert_eq!(
+        Int128Type::from_arrow_scalar(&wide).unwrap(),
+        Int128Type::new()
+    );
+}
+
+#[test]
+fn scalar_field_round_trips_with_attributes() {
+    let field = UInt256Field::new("amount")
+        .with_nullable(true)
+        .with_metadata(metadata(&[("unit", "wei")]));
+    let node = field.to_arrow_scalar();
+    assert_eq!(node.name(), "amount");
+    assert!(node.nullable());
+    assert!(node.metadata().contains_key(EXT_KEY));
+
+    let rebuilt = UInt256Field::from_arrow_scalar(&node).unwrap();
+    assert_eq!(rebuilt.name(), "amount");
+    assert!(rebuilt.nullable());
+    assert_eq!(rebuilt.dtype().type_id(), DataTypeId::UInt256);
+    assert_eq!(rebuilt.metadata(), Some(&metadata(&[("unit", "wei")])));
+}
+
+#[test]
+fn scalar_from_arrow_rejects_a_mismatched_type() {
+    // A type asked to decode a different type's node.
+    let utf8 = AnyType::primitive(DataTypeId::Utf8).to_arrow();
+    assert_eq!(
+        Int32Type::from_arrow_scalar(&utf8),
+        Err(ArrowError::TypeMismatch {
+            expected: DataTypeId::Int32,
+            found: DataTypeId::Utf8,
+        })
+    );
+
+    // A field asked to decode a node of the wrong scalar type. (Concrete fields are
+    // not `PartialEq`, so compare the error rather than the whole `Result`.)
+    let int32_node = Int32Type::new().to_arrow_scalar();
+    assert_eq!(
+        Int64Field::from_arrow_scalar(&int32_node).unwrap_err(),
+        ArrowError::TypeMismatch {
+            expected: DataTypeId::Int64,
+            found: DataTypeId::Int32,
+        }
     );
 }

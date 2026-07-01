@@ -14,13 +14,19 @@
 //! let renamed = field.with_name("total".to_string());
 //! assert_eq!(field.name(), "count"); // original untouched
 //! assert_eq!(renamed.name(), "total");
+//!
+//! // Each scalar field round-trips through an Arrow field node.
+//! let node = field.to_arrow_scalar();
+//! assert_eq!(node.name(), "count");
+//! assert_eq!(Int64Field::from_arrow_scalar(&node).unwrap().name(), "count");
 //! ```
 
+use crate::arrow::{ArrowError, ArrowSchema};
 use crate::dtype::{
-    Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type, UInt16Type,
-    UInt256Type, UInt32Type, UInt64Type, UInt8Type,
+    AnyType, DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type,
+    UInt128Type, UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
 };
-use crate::field::{Field, Metadata, PrimitiveField};
+use crate::field::{AnyField, Field, Metadata, PrimitiveField};
 use yggdryl_core::{I256, U256};
 
 /// Defines a primitive integer field wrapping the given integer type: a `name`, that
@@ -82,6 +88,28 @@ macro_rules! integer_fields {
             /// A copy with the metadata cleared.
             pub fn without_metadata(&self) -> Self {
                 self.copy(None, None, Some(None))
+            }
+
+            #[doc = concat!("This `", $type_name, "` field as a scalar Arrow field node.")]
+            pub fn to_arrow_scalar(&self) -> ArrowSchema {
+                AnyField::from_parts(
+                    self.name.clone(),
+                    AnyType::primitive(self.dtype.type_id()),
+                    self.nullable,
+                    self.metadata.clone(),
+                )
+                .to_arrow()
+            }
+
+            #[doc = concat!("A `", $type_name, "` field from a scalar Arrow node, erroring unless its type matches.")]
+            pub fn from_arrow_scalar(schema: &ArrowSchema) -> Result<Self, ArrowError> {
+                let field = AnyField::from_arrow(schema)?;
+                crate::arrow::check_id($dtype::new().type_id(), field.any_type().type_id())?;
+                Ok(Self::from_parts(
+                    field.name().to_owned(),
+                    field.nullable(),
+                    field.metadata().cloned(),
+                ))
             }
         }
 

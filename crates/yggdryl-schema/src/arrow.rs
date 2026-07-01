@@ -165,7 +165,7 @@ impl ArrowSchema {
 
     /// A nameless type node for a primitive `id`, stamped with its extension-type
     /// metadata when Arrow has no native encoding for it.
-    fn primitive(id: DataTypeId) -> Self {
+    pub(crate) fn primitive(id: DataTypeId) -> Self {
         let mut metadata = Metadata::new();
         if let Some(ext) = id.arrow_extension_name() {
             metadata.insert(ARROW_EXTENSION_NAME_KEY.to_vec(), ext.as_bytes().to_vec());
@@ -345,6 +345,16 @@ fn field_metadata(schema: &ArrowSchema) -> Option<Metadata> {
     (!meta.is_empty()).then_some(meta)
 }
 
+/// Checks that a decoded type id matches the one a scalar `to_arrow_scalar` /
+/// `from_arrow_scalar` expects, so a concrete type/field rejects a mismatched node.
+pub(crate) fn check_id(expected: DataTypeId, found: DataTypeId) -> Result<(), ArrowError> {
+    if expected == found {
+        Ok(())
+    } else {
+        Err(ArrowError::TypeMismatch { expected, found })
+    }
+}
+
 /// Checks that an Arrow format string denotes a struct.
 fn expect_struct(format: &str) -> Result<(), ArrowError> {
     if format == DataTypeId::Struct.arrow_format() {
@@ -365,6 +375,13 @@ pub enum ArrowError {
     UnknownExtension(String),
     /// A struct decode was asked of a non-struct node.
     NotAStruct(String),
+    /// A scalar decode found a node of a different type than the one expected.
+    TypeMismatch {
+        /// The type the concrete `from_arrow_scalar` was called on.
+        expected: DataTypeId,
+        /// The type the Arrow node actually resolved to.
+        found: DataTypeId,
+    },
 }
 
 impl fmt::Display for ArrowError {
@@ -390,6 +407,12 @@ impl fmt::Display for ArrowError {
             ArrowError::NotAStruct(format) => write!(
                 f,
                 "expected an Arrow struct (\"+s\"), found format {format:?}"
+            ),
+            ArrowError::TypeMismatch { expected, found } => write!(
+                f,
+                "expected an Arrow {} node, found {}",
+                expected.name(),
+                found.name()
             ),
         }
     }

@@ -9,9 +9,15 @@
 //! assert_eq!(Int32Type::new().default(), 0i32);
 //! assert_eq!(UInt8Type::new().type_id(), DataTypeId::UInt8);
 //! assert_eq!(Int256Type::new().default(), I256::ZERO);
+//!
+//! // Each scalar type round-trips through an Arrow type node.
+//! let node = Int32Type::new().to_arrow_scalar();
+//! assert_eq!(node.format(), "i");
+//! assert_eq!(Int32Type::from_arrow_scalar(&node).unwrap(), Int32Type::new());
 //! ```
 
-use crate::dtype::{DataType, DataTypeId, PrimitiveType};
+use crate::arrow::{ArrowError, ArrowSchema};
+use crate::dtype::{AnyType, DataType, DataTypeId, PrimitiveType};
 use yggdryl_core::{I256, U256};
 
 /// Defines a parameterless primitive integer type over its native value type: a
@@ -26,6 +32,17 @@ macro_rules! integer_types {
             #[doc = concat!("A new `", $type_name, "` type.")]
             pub fn new() -> Self {
                 Self
+            }
+
+            #[doc = concat!("This `", $type_name, "` type as a scalar Arrow type node.")]
+            pub fn to_arrow_scalar(&self) -> ArrowSchema {
+                ArrowSchema::primitive(self.type_id())
+            }
+
+            #[doc = concat!("A `", $type_name, "` type from a scalar Arrow node, erroring unless its format matches.")]
+            pub fn from_arrow_scalar(schema: &ArrowSchema) -> Result<Self, ArrowError> {
+                crate::arrow::check_id(DataTypeId::$id, AnyType::from_arrow(schema)?.type_id())?;
+                Ok(Self)
             }
         }
 
