@@ -1,41 +1,35 @@
-//! Apache Arrow interoperability — every schema node round-trips through Arrow.
+//! Apache Arrow interoperability for the schema layer.
 //!
 //! The bridge is the [`ArrowSchema`] node, a dependency-free mirror of Apache Arrow's
 //! [C Data Interface] schema: a `format` string, a `name`, a `nullable` flag,
-//! byte-keyed `metadata`, and ordered `children`. Because an Arrow schema is just a
-//! [`StructField`], nesting is fully recursive — a struct's children are their own
-//! nodes.
+//! byte-keyed `metadata`, and ordered `children`. Every [`DataType`](crate::DataType)
+//! has an Arrow format string ([`DataTypeId::arrow_format`]); the concrete primitive
+//! types and fields round-trip through [`to_arrow_scalar`](crate::Int32Type::to_arrow_scalar)
+//! / [`from_arrow_scalar`](crate::Int32Type::from_arrow_scalar). The dynamic /
+//! recursive schema (structs) and its round-trip live in the `yggdryl-scalar` crate,
+//! built on the [`ArrowSchema`] / [`ArrowArray`] nodes and the public helpers here.
 //!
-//! Every [`DataType`](crate::DataType) has an Arrow format string
-//! ([`DataTypeId::arrow_format`]); the dynamic [`AnyType`] / [`AnyField`] /
-//! [`StructType`] / [`StructField`] carry the full [`to_arrow`](StructField::to_arrow)
-//! / [`from_arrow`](StructField::from_arrow) round-trip (names, nullability, nesting
-//! and metadata). The 128- and 256-bit integers have no native Arrow type, so they
-//! encode as a `FixedSizeBinary` (`w:16` / `w:32`) tagged with an Arrow **extension
-//! type** (`ARROW:extension:name = yggdryl.int128`, …) — standard Arrow that any
-//! reader carries verbatim and from which we recover the exact type losslessly.
+//! The 128- and 256-bit integers have no native Arrow type, so they encode as a
+//! `FixedSizeBinary` (`w:16` / `w:32`) tagged with an Arrow **extension type**
+//! (`ARROW:extension:name = yggdryl.int128`, …) — standard Arrow that any reader
+//! carries verbatim and from which we recover the exact type losslessly.
 //!
 //! [C Data Interface]: https://arrow.apache.org/docs/format/CDataInterface.html
 //!
 //! ```
-//! use yggdryl_schema::{AnyField, AnyType, DataTypeId, StructField};
+//! use yggdryl_schema::{Int32Type, UInt256Type};
 //!
-//! let schema = StructField::new(
-//!     "record",
-//!     vec![
-//!         AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-//!         AnyField::new("big", AnyType::primitive(DataTypeId::Int128)),
-//!     ],
-//! );
-//! let arrow = schema.to_arrow();
-//! assert_eq!(arrow.format(), "+s");
-//! assert_eq!(StructField::from_arrow(&arrow).unwrap(), schema); // lossless
+//! let node = Int32Type::new().to_arrow_scalar();
+//! assert_eq!(node.format(), "i");
+//! assert_eq!(Int32Type::from_arrow_scalar(&node).unwrap(), Int32Type::new());
+//! // The wide integers ride a tagged FixedSizeBinary.
+//! assert_eq!(UInt256Type::new().to_arrow_scalar().format(), "w:32");
 //! ```
 
 use std::fmt;
 
-use crate::dtype::{AnyType, DataTypeId, StructType};
-use crate::field::{AnyField, Field, Metadata, StructField};
+use crate::dtype::DataTypeId;
+use crate::field::Metadata;
 
 /// The Arrow metadata key under which an extension type records its name.
 const ARROW_EXTENSION_NAME_KEY: &[u8] = b"ARROW:extension:name";
@@ -98,18 +92,22 @@ impl DataTypeId {
 /// A node of an Apache Arrow schema — a dependency-free mirror of the Arrow
 /// [C Data Interface] `ArrowSchema`. It pairs a `format` string with a `name`, a
 /// `nullable` flag, byte-keyed `metadata` and ordered `children`; an Arrow schema is
-/// one of these with `format` `"+s"`. Build our schema nodes with
-/// [`to_arrow`](StructField::to_arrow) and read foreign ones back with
-/// [`from_arrow`](StructField::from_arrow).
+/// one of these with `format` `"+s"`. The concrete primitive types build nodes with
+/// [`to_arrow_scalar`](crate::Int32Type::to_arrow_scalar); the dynamic layer in
+/// `yggdryl-scalar` builds recursive ones from the [`primitive`](ArrowSchema::primitive)
+/// / [`field`](ArrowSchema::field) constructors and the
+/// [`primitive_id`](ArrowSchema::primitive_id) / [`field_metadata`](ArrowSchema::field_metadata)
+/// readers.
 ///
 /// [C Data Interface]: https://arrow.apache.org/docs/format/CDataInterface.html
 ///
 /// ```
-/// use yggdryl_schema::{AnyType, DataTypeId};
+/// use yggdryl_schema::{DataTypeId, Int32Type};
 ///
-/// let node = AnyType::primitive(DataTypeId::Int32).to_arrow();
+/// let node = Int32Type::new().to_arrow_scalar();
 /// assert_eq!(node.format(), "i");
 /// assert!(node.children().is_empty());
+/// assert_eq!(node.primitive_id().unwrap(), DataTypeId::Int32);
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ArrowSchema {
@@ -163,32 +161,9 @@ impl ArrowSchema {
         &self.children
     }
 
-    /// This Arrow schema built from a [`StructField`] — the canonical schema type,
-    /// since an Arrow schema *is* a `StructField`. The inverse of
-    /// [`to_struct_field`](ArrowSchema::to_struct_field).
-    ///
-    /// ```
-    /// use yggdryl_schema::{AnyField, AnyType, ArrowSchema, DataTypeId, StructField};
-    ///
-    /// let schema =
-    ///     StructField::new("row", vec![AnyField::new("id", AnyType::primitive(DataTypeId::Int64))]);
-    /// let arrow = ArrowSchema::from_struct_field(&schema);
-    /// assert_eq!(arrow.format(), "+s");
-    /// assert_eq!(arrow.to_struct_field().unwrap(), schema); // round-trips
-    /// ```
-    pub fn from_struct_field(field: &StructField) -> Self {
-        field.to_arrow()
-    }
-
-    /// This Arrow schema converted to a [`StructField`], or an [`ArrowError`] if it is
-    /// not a struct (`"+s"`) node or holds an unmodelled child type.
-    pub fn to_struct_field(&self) -> Result<StructField, ArrowError> {
-        StructField::from_arrow(self)
-    }
-
     /// A nameless type node for a primitive `id`, stamped with its extension-type
     /// metadata when Arrow has no native encoding for it.
-    pub(crate) fn primitive(id: DataTypeId) -> Self {
+    pub fn primitive(id: DataTypeId) -> Self {
         let mut metadata = Metadata::new();
         if let Some(ext) = id.arrow_extension_name() {
             metadata.insert(ARROW_EXTENSION_NAME_KEY.to_vec(), ext.as_bytes().to_vec());
@@ -204,7 +179,7 @@ impl ArrowSchema {
 
     /// A field node: the data type's `type_node`, stamped with the field's `name`,
     /// `nullable` flag and metadata (merged over any type-level extension metadata).
-    fn field(
+    pub fn field(
         type_node: ArrowSchema,
         name: &str,
         nullable: bool,
@@ -222,6 +197,44 @@ impl ArrowSchema {
             children: type_node.children,
         }
     }
+
+    /// The [`DataTypeId`] of a primitive node, disambiguating the wide integers by
+    /// their extension name. Errors on a format this layer does not model (including a
+    /// struct `"+s"`, which the dynamic layer handles).
+    pub fn primitive_id(&self) -> Result<DataTypeId, ArrowError> {
+        let ext = self
+            .metadata
+            .get(ARROW_EXTENSION_NAME_KEY)
+            .map(Vec::as_slice);
+        let id = match self.format.as_str() {
+            "n" => DataTypeId::Null,
+            "b" => DataTypeId::Boolean,
+            "c" => DataTypeId::Int8,
+            "s" => DataTypeId::Int16,
+            "i" => DataTypeId::Int32,
+            "l" => DataTypeId::Int64,
+            "C" => DataTypeId::UInt8,
+            "S" => DataTypeId::UInt16,
+            "I" => DataTypeId::UInt32,
+            "L" => DataTypeId::UInt64,
+            "u" => DataTypeId::Utf8,
+            "w:16" | "w:32" => return wide_id(&self.format, ext),
+            other => return Err(ArrowError::UnsupportedFormat(other.to_owned())),
+        };
+        Ok(id)
+    }
+
+    /// The field metadata this node carries, stripped of the internal extension-name
+    /// key so a field round-trips to exactly what it was built from.
+    pub fn field_metadata(&self) -> Option<Metadata> {
+        let meta: Metadata = self
+            .metadata
+            .iter()
+            .filter(|(k, _)| k.as_slice() != ARROW_EXTENSION_NAME_KEY)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        (!meta.is_empty()).then_some(meta)
+    }
 }
 
 /// The data half of an Apache Arrow array — a dependency-free mirror of the Arrow
@@ -229,19 +242,18 @@ impl ArrowSchema {
 /// arrays; the value buffers are the array layer's concern, not the schema's). It is
 /// the companion of an [`ArrowSchema`]: pairing the two rebuilds a field whose
 /// nullability is what the data *actually* contains — a positive (or unknown, `-1`)
-/// `null_count` means the field is nullable — via
-/// [`from_arrow_array`](StructField::from_arrow_array).
+/// `null_count` means the field is nullable.
 ///
 /// [C Data Interface]: https://arrow.apache.org/docs/format/CDataInterface.html
 ///
 /// ```
-/// use yggdryl_schema::{AnyField, AnyType, ArrowArray, DataTypeId};
+/// use yggdryl_schema::{ArrowArray, Field, Int32Field};
 ///
 /// // A non-nullable Int32 schema paired with an array that holds nulls…
-/// let schema = AnyField::new("id", AnyType::primitive(DataTypeId::Int32)).to_arrow();
+/// let schema = Int32Field::new("id").to_arrow_scalar();
 /// let array = ArrowArray::from_parts(10, 2, vec![]);
 /// // …rebuilds a *nullable* field, because the data has nulls.
-/// assert!(AnyField::from_arrow_array(&schema, &array).unwrap().nullable());
+/// assert!(Int32Field::from_arrow_array(&schema, &array).unwrap().nullable());
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ArrowArray {
@@ -283,179 +295,6 @@ impl ArrowArray {
     }
 }
 
-impl AnyType {
-    /// The type encoded as an Arrow node (with no name).
-    pub fn to_arrow(&self) -> ArrowSchema {
-        match self {
-            AnyType::Primitive(id) => ArrowSchema::primitive(*id),
-            AnyType::Struct(ty) => ty.to_arrow(),
-        }
-    }
-
-    /// The type built from an Arrow node, or an [`ArrowError`] if its format is one
-    /// this schema layer does not model.
-    pub fn from_arrow(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-        if schema.format == DataTypeId::Struct.arrow_format() {
-            StructType::from_arrow(schema).map(AnyType::Struct)
-        } else {
-            primitive_id(schema).map(AnyType::Primitive)
-        }
-    }
-
-    /// The type built from a `(schema, array)` pair. Identical to [`from_arrow`](AnyType::from_arrow)
-    /// for a primitive; for a struct it threads the child arrays through so each child
-    /// field takes its nullability from the data.
-    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
-        if schema.format == DataTypeId::Struct.arrow_format() {
-            StructType::from_arrow_array(schema, array).map(AnyType::Struct)
-        } else {
-            primitive_id(schema).map(AnyType::Primitive)
-        }
-    }
-}
-
-impl StructType {
-    /// The struct type encoded as an Arrow `"+s"` node whose children are its fields.
-    pub fn to_arrow(&self) -> ArrowSchema {
-        ArrowSchema {
-            format: DataTypeId::Struct.arrow_format().to_owned(),
-            name: String::new(),
-            nullable: false,
-            metadata: Metadata::new(),
-            children: self.fields().iter().map(AnyField::to_arrow).collect(),
-        }
-    }
-
-    /// The struct type built from an Arrow `"+s"` node, recursing into its children.
-    pub fn from_arrow(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-        expect_struct(&schema.format)?;
-        let fields = schema
-            .children
-            .iter()
-            .map(AnyField::from_arrow)
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(StructType::new(fields))
-    }
-
-    /// The struct type built from a `(schema, array)` pair, pairing each child schema
-    /// with its child array so every child field's nullability comes from the data.
-    /// Errors if the schema and array disagree on the number of children.
-    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
-        expect_struct(&schema.format)?;
-        if schema.children.len() != array.children.len() {
-            return Err(ArrowError::ChildCountMismatch {
-                schema: schema.children.len(),
-                array: array.children.len(),
-            });
-        }
-        let fields = schema
-            .children
-            .iter()
-            .zip(array.children.iter())
-            .map(|(s, a)| AnyField::from_arrow_array(s, a))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(StructType::new(fields))
-    }
-}
-
-impl AnyField {
-    /// The field encoded as an Arrow node (its type, stamped with name/nullability
-    /// and metadata).
-    pub fn to_arrow(&self) -> ArrowSchema {
-        ArrowSchema::field(
-            self.any_type().to_arrow(),
-            self.name(),
-            self.nullable(),
-            self.metadata(),
-        )
-    }
-
-    /// The field built from an Arrow node, or an [`ArrowError`] on an unmodelled type.
-    pub fn from_arrow(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-        let dtype = AnyType::from_arrow(schema)?;
-        Ok(AnyField::from_parts(
-            schema.name.clone(),
-            dtype,
-            schema.nullable,
-            field_metadata(schema),
-        ))
-    }
-
-    /// The field built from a `(schema, array)` pair. Unlike [`from_arrow`](AnyField::from_arrow),
-    /// which trusts the schema's flag, this takes the field's nullability from the
-    /// array's `null_count` — the nulls the data actually holds.
-    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
-        let dtype = AnyType::from_arrow_array(schema, array)?;
-        Ok(AnyField::from_parts(
-            schema.name.clone(),
-            dtype,
-            array.nullable(),
-            field_metadata(schema),
-        ))
-    }
-}
-
-impl StructField {
-    /// The schema encoded as an Arrow `"+s"` node — the canonical Arrow schema form.
-    pub fn to_arrow(&self) -> ArrowSchema {
-        ArrowSchema::field(
-            self.dtype().to_arrow(),
-            self.name(),
-            self.nullable(),
-            self.metadata(),
-        )
-    }
-
-    /// The schema built from an Arrow `"+s"` node, or an [`ArrowError`] if the node is
-    /// not a struct or holds an unmodelled child type.
-    pub fn from_arrow(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-        let dtype = StructType::from_arrow(schema)?;
-        Ok(StructField::from_parts(
-            schema.name.clone(),
-            dtype,
-            schema.nullable,
-            field_metadata(schema),
-        ))
-    }
-
-    /// The schema built from a `(schema, array)` pair, taking this struct's — and,
-    /// recursively, every child field's — nullability from the arrays' `null_count`.
-    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
-        let dtype = StructType::from_arrow_array(schema, array)?;
-        Ok(StructField::from_parts(
-            schema.name.clone(),
-            dtype,
-            array.nullable(),
-            field_metadata(schema),
-        ))
-    }
-}
-
-/// The [`DataTypeId`] of a primitive Arrow node, disambiguating the wide integers by
-/// their extension name.
-fn primitive_id(schema: &ArrowSchema) -> Result<DataTypeId, ArrowError> {
-    let ext = schema
-        .metadata
-        .get(ARROW_EXTENSION_NAME_KEY)
-        .map(Vec::as_slice);
-    let id = match schema.format.as_str() {
-        "n" => DataTypeId::Null,
-        "b" => DataTypeId::Boolean,
-        "c" => DataTypeId::Int8,
-        "s" => DataTypeId::Int16,
-        "i" => DataTypeId::Int32,
-        "l" => DataTypeId::Int64,
-        "C" => DataTypeId::UInt8,
-        "S" => DataTypeId::UInt16,
-        "I" => DataTypeId::UInt32,
-        "L" => DataTypeId::UInt64,
-        "u" => DataTypeId::Utf8,
-        "w:16" | "w:32" => return wide_id(&schema.format, ext),
-        other => return Err(ArrowError::UnsupportedFormat(other.to_owned())),
-    };
-    Ok(id)
-}
-
 /// The 128-/256-bit [`DataTypeId`] a `FixedSizeBinary` node stands for, recovered
 /// from its extension name (the inverse of [`DataTypeId::arrow_extension_name`]).
 fn wide_id(format: &str, ext: Option<&[u8]>) -> Result<DataTypeId, ArrowError> {
@@ -471,18 +310,6 @@ fn wide_id(format: &str, ext: Option<&[u8]>) -> Result<DataTypeId, ArrowError> {
     .ok_or_else(|| ArrowError::UnknownExtension(String::from_utf8_lossy(name).into_owned()))
 }
 
-/// The field metadata carried by an Arrow node, stripped of the internal
-/// extension-name key so a field round-trips to exactly what it was built from.
-fn field_metadata(schema: &ArrowSchema) -> Option<Metadata> {
-    let meta: Metadata = schema
-        .metadata
-        .iter()
-        .filter(|(k, _)| k.as_slice() != ARROW_EXTENSION_NAME_KEY)
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-    (!meta.is_empty()).then_some(meta)
-}
-
 /// Checks that a decoded type id matches the one a scalar `to_arrow_scalar` /
 /// `from_arrow_scalar` expects, so a concrete type/field rejects a mismatched node.
 pub(crate) fn check_id(expected: DataTypeId, found: DataTypeId) -> Result<(), ArrowError> {
@@ -490,15 +317,6 @@ pub(crate) fn check_id(expected: DataTypeId, found: DataTypeId) -> Result<(), Ar
         Ok(())
     } else {
         Err(ArrowError::TypeMismatch { expected, found })
-    }
-}
-
-/// Checks that an Arrow format string denotes a struct.
-fn expect_struct(format: &str) -> Result<(), ArrowError> {
-    if format == DataTypeId::Struct.arrow_format() {
-        Ok(())
-    } else {
-        Err(ArrowError::NotAStruct(format.to_owned()))
     }
 }
 

@@ -1,9 +1,7 @@
 //! The [`Any`] dynamic scalar.
 
-use crate::Scalar;
-use yggdryl_schema::{
-    Any as AnyValue, AnyField, AnyType, DataTypeId, Struct as StructValue, I256, U256,
-};
+use crate::{AnyField, AnyType, AnyValue, Scalar, StructValue};
+use yggdryl_schema::{DataTypeId, I256, U256};
 
 /// Generates the delegating `as_<type>` accessors — the scalar's atomic value
 /// interface, forwarding to the wrapped [`Any`](yggdryl_schema::Any) value.

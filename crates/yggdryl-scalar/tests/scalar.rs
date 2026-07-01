@@ -3,8 +3,7 @@
 
 use std::collections::HashSet;
 
-use yggdryl_scalar::{Any, Int32, Scalar, Struct, UInt256};
-use yggdryl_schema::{Any as AnyValue, DataType, DataTypeId, U256};
+use yggdryl_scalar::{Any, AnyValue, DataType, DataTypeId, Int32, Scalar, Struct, UInt256, U256};
 
 #[test]
 fn primitive_scalar_builds_from_native() {

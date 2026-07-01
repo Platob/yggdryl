@@ -23,10 +23,10 @@
 
 use crate::arrow::{ArrowArray, ArrowError, ArrowSchema};
 use crate::dtype::{
-    AnyType, DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type,
-    UInt128Type, UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
+    DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type,
+    UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
 };
-use crate::field::{AnyField, Field, Metadata, PrimitiveField};
+use crate::field::{Field, Metadata, PrimitiveField};
 use yggdryl_core::{I256, U256};
 
 /// Defines a primitive integer field wrapping the given integer type: a `name`, that
@@ -92,23 +92,21 @@ macro_rules! integer_fields {
 
             #[doc = concat!("This `", $type_name, "` field as a scalar Arrow field node.")]
             pub fn to_arrow_scalar(&self) -> ArrowSchema {
-                AnyField::from_parts(
-                    self.name.clone(),
-                    AnyType::primitive(self.dtype.type_id()),
+                ArrowSchema::field(
+                    ArrowSchema::primitive(self.dtype.type_id()),
+                    &self.name,
                     self.nullable,
-                    self.metadata.clone(),
+                    self.metadata.as_ref(),
                 )
-                .to_arrow()
             }
 
             #[doc = concat!("A `", $type_name, "` field from a scalar Arrow node, erroring unless its type matches.")]
             pub fn from_arrow_scalar(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-                let field = AnyField::from_arrow(schema)?;
-                crate::arrow::check_id($dtype::new().type_id(), field.any_type().type_id())?;
+                crate::arrow::check_id($dtype::new().type_id(), schema.primitive_id()?)?;
                 Ok(Self::from_parts(
-                    field.name().to_owned(),
-                    field.nullable(),
-                    field.metadata().cloned(),
+                    schema.name().to_owned(),
+                    schema.nullable(),
+                    schema.field_metadata(),
                 ))
             }
 
@@ -117,12 +115,11 @@ macro_rules! integer_fields {
                 schema: &ArrowSchema,
                 array: &ArrowArray,
             ) -> Result<Self, ArrowError> {
-                let field = AnyField::from_arrow_array(schema, array)?;
-                crate::arrow::check_id($dtype::new().type_id(), field.any_type().type_id())?;
+                crate::arrow::check_id($dtype::new().type_id(), schema.primitive_id()?)?;
                 Ok(Self::from_parts(
-                    field.name().to_owned(),
-                    field.nullable(),
-                    field.metadata().cloned(),
+                    schema.name().to_owned(),
+                    array.nullable(),
+                    schema.field_metadata(),
                 ))
             }
         }

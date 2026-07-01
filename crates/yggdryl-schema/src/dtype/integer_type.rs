@@ -17,7 +17,7 @@
 //! ```
 
 use crate::arrow::{ArrowError, ArrowSchema};
-use crate::dtype::{AnyType, DataType, DataTypeId, PrimitiveType};
+use crate::dtype::{DataType, DataTypeId, PrimitiveType};
 use yggdryl_core::{I256, U256};
 
 /// Defines a parameterless primitive integer type over its native value type: a
@@ -41,7 +41,7 @@ macro_rules! integer_types {
 
             #[doc = concat!("A `", $type_name, "` type from a scalar Arrow node, erroring unless its format matches.")]
             pub fn from_arrow_scalar(schema: &ArrowSchema) -> Result<Self, ArrowError> {
-                crate::arrow::check_id(DataTypeId::$id, AnyType::from_arrow(schema)?.type_id())?;
+                crate::arrow::check_id(DataTypeId::$id, schema.primitive_id()?)?;
                 Ok(Self)
             }
         }

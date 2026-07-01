@@ -1,10 +1,10 @@
-//! Tests for Apache Arrow interoperability: every `DataType` / `Field` encodes to an
-//! [`ArrowSchema`] node and rebuilds from one losslessly.
+//! Tests for the schema layer's Arrow interop: `DataTypeId` format strings and the
+//! primitive types'/fields' scalar round-trip. The dynamic / nested Arrow round-trip
+//! is tested in the `yggdryl-scalar` crate.
 
 use yggdryl_schema::{
-    AnyField, AnyType, ArrowArray, ArrowError, ArrowSchema, DataType, DataTypeId, Field,
-    Int128Type, Int32Type, Int64Field, Metadata, StructField, StructType, UInt256Field,
-    UInt256Type,
+    ArrowArray, ArrowError, ArrowSchema, DataType, DataTypeId, Field, Int128Type, Int32Type,
+    Int64Field, Metadata, UInt256Field, UInt256Type,
 };
 
 /// The Arrow metadata key an extension type records its name under.
@@ -36,147 +36,10 @@ fn primitive_types_carry_arrow_format_strings() {
 }
 
 #[test]
-fn primitive_type_round_trips() {
-    for id in [
-        DataTypeId::Int8,
-        DataTypeId::Int64,
-        DataTypeId::UInt16,
-        DataTypeId::Utf8,
-    ] {
-        let ty = AnyType::primitive(id);
-        let node = ty.to_arrow();
-        assert_eq!(node.format(), id.arrow_format());
-        assert!(node.metadata().is_empty()); // no extension for native types
-        assert_eq!(AnyType::from_arrow(&node).unwrap(), ty);
-    }
-}
-
-#[test]
-fn wide_integer_uses_an_extension_type() {
-    let ty = AnyType::primitive(DataTypeId::Int128);
-    let node = ty.to_arrow();
-    assert_eq!(node.format(), "w:16");
-    // The extension name rides in the node metadata under the Arrow key.
-    assert_eq!(
-        node.metadata().get(EXT_KEY).map(Vec::as_slice),
-        Some(b"yggdryl.int128".as_slice())
-    );
-    assert_eq!(AnyType::from_arrow(&node).unwrap(), ty);
-}
-
-#[test]
-fn field_round_trips_with_nullability_and_metadata() {
-    let field = AnyField::from_parts(
-        "amount".to_string(),
-        AnyType::primitive(DataTypeId::UInt256),
-        true,
-        Some(metadata(&[("unit", "wei")])),
-    );
-    let node = field.to_arrow();
-    assert_eq!(node.name(), "amount");
-    assert!(node.nullable());
-    // Both the extension name and the user metadata are present on the node.
-    assert!(node.metadata().contains_key(EXT_KEY));
-    assert_eq!(
-        node.metadata().get(b"unit".as_slice()).map(Vec::as_slice),
-        Some(b"wei".as_slice())
-    );
-    // Rebuilt field is identical — the internal extension key is stripped back out.
-    let rebuilt = AnyField::from_arrow(&node).unwrap();
-    assert_eq!(rebuilt, field);
-    assert_eq!(rebuilt.metadata(), Some(&metadata(&[("unit", "wei")])));
-}
-
-#[test]
-fn field_without_metadata_round_trips_to_none() {
-    let field = AnyField::new("id", AnyType::primitive(DataTypeId::Int32));
-    let rebuilt = AnyField::from_arrow(&field.to_arrow()).unwrap();
-    assert_eq!(rebuilt, field);
-    assert_eq!(rebuilt.metadata(), None); // empty node metadata → None, not Some({})
-}
-
-#[test]
-fn struct_schema_round_trips_recursively() {
-    let inner = AnyType::struct_type(StructType::new(vec![
-        AnyField::new("x", AnyType::primitive(DataTypeId::Int32)),
-        AnyField::new("y", AnyType::primitive(DataTypeId::Int32)),
-    ]));
-    let schema = StructField::new(
-        "record",
-        vec![
-            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-            AnyField::new("big", AnyType::primitive(DataTypeId::Int128)),
-            AnyField::new("point", inner),
-        ],
-    )
-    .with_nullable(true)
-    .with_metadata(metadata(&[("origin", "test")]));
-
-    let node = schema.to_arrow();
-    assert_eq!(node.format(), "+s");
-    assert_eq!(node.children().len(), 3);
-    // The nested struct is itself a "+s" node with its own children.
-    assert_eq!(node.children()[2].format(), "+s");
-    assert_eq!(node.children()[2].children().len(), 2);
-
-    assert_eq!(StructField::from_arrow(&node).unwrap(), schema);
-}
-
-#[test]
-fn from_arrow_rejects_unmodelled_and_malformed_nodes() {
-    // An unknown format string.
-    let bogus = ArrowSchema::from_parts(
-        "z".to_string(),
-        String::new(),
-        false,
-        Metadata::new(),
-        Vec::new(),
-    );
-    assert_eq!(
-        AnyType::from_arrow(&bogus),
-        Err(ArrowError::UnsupportedFormat("z".to_string()))
-    );
-
-    // A FixedSizeBinary with no extension name — a type we cannot resolve.
-    let untagged = ArrowSchema::from_parts(
-        "w:16".to_string(),
-        String::new(),
-        false,
-        Metadata::new(),
-        Vec::new(),
-    );
-    assert_eq!(
-        AnyType::from_arrow(&untagged),
-        Err(ArrowError::MissingExtension("w:16".to_string()))
-    );
-
-    // A FixedSizeBinary tagged with an extension we don't know.
-    let mut foreign_meta = Metadata::new();
-    foreign_meta.insert(EXT_KEY.to_vec(), b"arrow.uuid".to_vec());
-    let foreign = ArrowSchema::from_parts(
-        "w:16".to_string(),
-        String::new(),
-        false,
-        foreign_meta,
-        Vec::new(),
-    );
-    assert_eq!(
-        AnyType::from_arrow(&foreign),
-        Err(ArrowError::UnknownExtension("arrow.uuid".to_string()))
-    );
-
-    // Asking for a struct from a non-struct node.
-    let scalar = AnyType::primitive(DataTypeId::Int32).to_arrow();
-    assert_eq!(
-        StructField::from_arrow(&scalar),
-        Err(ArrowError::NotAStruct("i".to_string()))
-    );
-}
-
-#[test]
 fn scalar_type_round_trips() {
     let node = Int32Type::new().to_arrow_scalar();
     assert_eq!(node.format(), "i");
+    assert_eq!(node.primitive_id().unwrap(), DataTypeId::Int32);
     assert_eq!(
         Int32Type::from_arrow_scalar(&node).unwrap(),
         Int32Type::new()
@@ -211,8 +74,8 @@ fn scalar_field_round_trips_with_attributes() {
 
 #[test]
 fn scalar_from_arrow_rejects_a_mismatched_type() {
-    // A type asked to decode a different type's node.
-    let utf8 = AnyType::primitive(DataTypeId::Utf8).to_arrow();
+    // A utf8 type node decoded as Int32 → mismatch.
+    let utf8 = ArrowSchema::primitive(DataTypeId::Utf8);
     assert_eq!(
         Int32Type::from_arrow_scalar(&utf8),
         Err(ArrowError::TypeMismatch {
@@ -221,7 +84,6 @@ fn scalar_from_arrow_rejects_a_mismatched_type() {
         })
     );
 
-    // A field asked to decode a node of the wrong scalar type.
     let int32_node = Int32Type::new().to_arrow_scalar();
     assert_eq!(
         Int64Field::from_arrow_scalar(&int32_node),
@@ -233,49 +95,19 @@ fn scalar_from_arrow_rejects_a_mismatched_type() {
 }
 
 #[test]
-fn arrow_schema_converts_to_and_from_struct_field() {
-    let schema = StructField::new(
-        "record",
-        vec![
-            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-            AnyField::new("tag", AnyType::primitive(DataTypeId::Utf8)),
-        ],
-    )
-    .with_nullable(true);
-
-    let arrow = ArrowSchema::from_struct_field(&schema);
-    assert_eq!(arrow.format(), "+s");
-    assert_eq!(arrow, schema.to_arrow()); // same node the StructField encodes to
-    assert_eq!(arrow.to_struct_field().unwrap(), schema);
-
-    // A non-struct node cannot become a StructField.
-    let scalar = AnyType::primitive(DataTypeId::Int32).to_arrow();
-    assert_eq!(
-        scalar.to_struct_field().unwrap_err(),
-        ArrowError::NotAStruct("i".to_string())
+fn scalar_from_arrow_rejects_a_struct_node() {
+    // The primitive decoders can't resolve a struct node — that's the dynamic layer.
+    let struct_node = ArrowSchema::from_parts(
+        "+s".to_string(),
+        String::new(),
+        false,
+        Metadata::new(),
+        vec![],
     );
-}
-
-#[test]
-fn field_from_arrow_array_takes_nullability_from_null_count() {
-    // A non-nullable Int64 schema…
-    let schema = AnyField::new("id", AnyType::primitive(DataTypeId::Int64)).to_arrow();
-    assert!(!schema.nullable());
-
-    // …no nulls in the data ⇒ non-nullable field.
-    let none = AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, 0, vec![])).unwrap();
-    assert!(!none.nullable());
-    assert_eq!(none.name(), "id");
-    assert_eq!(none.any_type().type_id(), DataTypeId::Int64);
-
-    // …some nulls ⇒ nullable, overriding the schema's flag.
-    let some = AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, 1, vec![])).unwrap();
-    assert!(some.nullable());
-
-    // …unknown null count (-1) ⇒ treated as nullable.
-    let unknown =
-        AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, -1, vec![])).unwrap();
-    assert!(unknown.nullable());
+    assert_eq!(
+        Int32Type::from_arrow_scalar(&struct_node),
+        Err(ArrowError::UnsupportedFormat("+s".to_string()))
+    );
 }
 
 #[test]
@@ -287,50 +119,12 @@ fn concrete_field_from_arrow_array_sets_nullable() {
     assert!(field.nullable());
 
     // A mismatched type is still rejected.
-    let utf8 = AnyType::primitive(DataTypeId::Utf8).to_arrow();
+    let utf8 = ArrowSchema::primitive(DataTypeId::Utf8);
     assert_eq!(
-        Int64Field::from_arrow_array(&utf8, &ArrowArray::from_parts(0, 0, vec![])).unwrap_err(),
-        ArrowError::TypeMismatch {
+        Int64Field::from_arrow_array(&utf8, &ArrowArray::from_parts(0, 0, vec![])),
+        Err(ArrowError::TypeMismatch {
             expected: DataTypeId::Int64,
             found: DataTypeId::Utf8,
-        }
-    );
-}
-
-#[test]
-fn struct_from_arrow_array_threads_nullability_into_children() {
-    let schema = StructField::new(
-        "record",
-        vec![
-            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-            AnyField::new("name", AnyType::primitive(DataTypeId::Utf8)),
-        ],
-    )
-    .to_arrow();
-
-    // Struct array: itself non-null, first child holds nulls, second does not.
-    let array = ArrowArray::from_parts(
-        4,
-        0,
-        vec![
-            ArrowArray::from_parts(4, 1, vec![]),
-            ArrowArray::from_parts(4, 0, vec![]),
-        ],
-    );
-
-    let field = StructField::from_arrow_array(&schema, &array).unwrap();
-    assert!(!field.nullable()); // the struct array had no nulls
-    let children = field.dtype().fields();
-    assert!(children[0].nullable()); // id: its data had nulls
-    assert!(!children[1].nullable()); // name: its data had none
-
-    // A schema/array child-count disagreement is an error.
-    let short = ArrowArray::from_parts(4, 0, vec![ArrowArray::from_parts(4, 0, vec![])]);
-    assert_eq!(
-        StructField::from_arrow_array(&schema, &short).unwrap_err(),
-        ArrowError::ChildCountMismatch {
-            schema: 2,
-            array: 1,
-        }
+        })
     );
 }

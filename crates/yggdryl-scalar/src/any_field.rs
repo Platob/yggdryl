@@ -1,16 +1,17 @@
 //! The [`AnyField`] dynamic field.
 
-use crate::dtype::AnyType;
-use crate::field::{Field, Metadata};
-use crate::value::Any;
+use yggdryl_schema::{Field, Metadata};
+
+use crate::{AnyType, AnyValue};
 
 /// A field of any type, resolved at run time — the child-field node of a
 /// [`StructType`](crate::StructType). It pairs a `name` with an [`AnyType`], a
 /// nullability flag and optional [`Metadata`], and is a [`Field`] over the dynamic
-/// [`Any`] value. The `with_*` / [`copy`](AnyField::copy) updates are non-mutating.
+/// [`AnyValue`]. The `with_*` / [`copy`](AnyField::copy) updates are non-mutating.
 ///
 /// ```
-/// use yggdryl_schema::{AnyField, AnyType, DataType, DataTypeId};
+/// use yggdryl_scalar::{AnyField, AnyType};
+/// use yggdryl_schema::{DataType, DataTypeId};
 ///
 /// let field = AnyField::new("id", AnyType::primitive(DataTypeId::Int64));
 /// assert_eq!(field.name(), "id");
@@ -108,7 +109,7 @@ impl AnyField {
     }
 }
 
-impl Field<Any> for AnyField {
+impl Field<AnyValue> for AnyField {
     type DType = AnyType;
 
     fn name(&self) -> &str {

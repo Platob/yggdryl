@@ -1,15 +1,17 @@
 //! The [`AnyType`] dynamic data type.
 
-use crate::dtype::{DataType, DataTypeId, StructType};
-use crate::value::Any;
+use yggdryl_schema::{DataType, DataTypeId};
+
+use crate::{AnyValue, StructType};
 
 /// A data type of any kind, resolved at run time — the dynamic counterpart of the
-/// typed `DataType<T>` impls, used for the heterogeneous children of a
-/// [`StructType`]. It is a [`DataType`] over the dynamic [`Any`] value: either a
-/// primitive (by [`DataTypeId`]) or a nested [`StructType`].
+/// typed `DataType<T>` impls, used for the heterogeneous children of a [`StructType`].
+/// It is a [`DataType`] over the dynamic [`AnyValue`]: either a primitive (by
+/// [`DataTypeId`]) or a nested [`StructType`].
 ///
 /// ```
-/// use yggdryl_schema::{AnyType, DataType, DataTypeId};
+/// use yggdryl_scalar::AnyType;
+/// use yggdryl_schema::{DataType, DataTypeId};
 ///
 /// let ty = AnyType::primitive(DataTypeId::Int32);
 /// assert_eq!(ty.type_id(), DataTypeId::Int32);
@@ -35,7 +37,7 @@ impl AnyType {
     }
 }
 
-impl DataType<Any> for AnyType {
+impl DataType<AnyValue> for AnyType {
     fn type_id(&self) -> DataTypeId {
         match self {
             AnyType::Primitive(id) => *id,

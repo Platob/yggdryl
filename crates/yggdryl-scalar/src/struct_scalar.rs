@@ -1,9 +1,7 @@
 //! The [`Struct`] nested scalar.
 
-use crate::{Any, Scalar};
-use yggdryl_schema::{
-    Any as AnyValue, AnyField, AnyType, Field, Struct as StructValue, StructField,
-};
+use crate::{Any, AnyField, AnyType, AnyValue, Scalar, StructField, StructValue};
+use yggdryl_schema::Field;
 
 /// A struct scalar — a row built from a **collection** of child [`Any`] scalars. It
 /// pairs a [`StructField`] (the child fields) with a [`Struct`](yggdryl_schema::Struct)

@@ -13,11 +13,10 @@
 //! assert_eq!(s.dtype().type_id(), DataTypeId::Int64);
 //! ```
 
-use crate::{Any, PrimitiveScalar, Scalar};
+use crate::{Any, AnyField, AnyType, AnyValue, PrimitiveScalar, Scalar};
 use yggdryl_schema::{
-    Any as AnyValue, AnyField, AnyType, DataTypeId, Field, Int128Field, Int16Field, Int256Field,
-    Int32Field, Int64Field, Int8Field, UInt128Field, UInt16Field, UInt256Field, UInt32Field,
-    UInt64Field, UInt8Field, I256, U256,
+    DataTypeId, Field, Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field,
+    UInt128Field, UInt16Field, UInt256Field, UInt32Field, UInt64Field, UInt8Field, I256, U256,
 };
 
 /// Defines a primitive integer scalar pairing a native value with its field: the

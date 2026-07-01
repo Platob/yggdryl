@@ -1,16 +1,17 @@
 //! The [`StructType`] nested data type.
 
-use crate::dtype::{DataType, DataTypeId};
-use crate::field::AnyField;
-use crate::value::Struct;
+use yggdryl_schema::{DataType, DataTypeId};
+
+use crate::{AnyField, StructValue};
 
 /// A struct type — a composite of named, heterogeneous child [`AnyField`]s. It is a
-/// [`DataType`] over the [`Struct`] value (an array of `Any`). Because a child field
-/// can itself be a struct, nesting is fully recursive; an Arrow *schema* is just a
-/// [`StructField`](crate::StructField) wrapping one of these.
+/// [`DataType`] over the [`StructValue`] (an array of `AnyValue`). Because a child
+/// field can itself be a struct, nesting is fully recursive; an Arrow *schema* is just
+/// a [`StructField`](crate::StructField) wrapping one of these.
 ///
 /// ```
-/// use yggdryl_schema::{AnyField, AnyType, DataType, DataTypeId, StructType};
+/// use yggdryl_scalar::{AnyField, AnyType, StructType};
+/// use yggdryl_schema::{DataType, DataTypeId};
 ///
 /// let ty = StructType::new(vec![
 ///     AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
@@ -57,7 +58,7 @@ impl StructType {
     }
 }
 
-impl DataType<Struct> for StructType {
+impl DataType<StructValue> for StructType {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Struct
     }
