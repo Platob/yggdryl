@@ -1,7 +1,18 @@
 //! The [`AnyScalar`] dynamic scalar.
 
 use crate::Scalar;
-use yggdryl_schema::{Any, AnyField, AnyType, DataTypeId, I256, U256};
+use yggdryl_schema::{Any, AnyField, AnyType, DataTypeId, Struct, I256, U256};
+
+/// Generates the delegating `as_<type>` accessors — the scalar's atomic value
+/// interface, forwarding to the wrapped [`Any`].
+macro_rules! any_scalar_accessors {
+    ($($method:ident : $native:ty),+ $(,)?) => {$(
+        #[doc = concat!("The scalar's value as `", stringify!($native), "`, or `None` if it is another type.")]
+        pub fn $method(&self) -> Option<$native> {
+            self.value.$method()
+        }
+    )+};
+}
 
 /// A scalar of any type, resolved at run time — the dynamic counterpart of the typed
 /// [`Scalar`] impls (mirroring [`AnyField`]). It pairs an [`Any`] value with an
@@ -16,6 +27,9 @@ use yggdryl_schema::{Any, AnyField, AnyType, DataTypeId, I256, U256};
 /// assert_eq!(*scalar.value(), Any::UInt8(9));
 /// assert_eq!(scalar.name(), "age");
 /// assert_eq!(scalar.field().any_type().type_id(), DataTypeId::UInt8);
+/// // Atomic accessors read the value at its native type.
+/// assert_eq!(scalar.as_u8(), Some(9));
+/// assert_eq!(scalar.as_i8(), None); // wrong type → None
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnyScalar {
@@ -48,6 +62,36 @@ impl AnyScalar {
             field: self.field.clone(),
             value,
         }
+    }
+
+    /// Whether the scalar's value is [`Null`](Any::Null).
+    pub fn is_null(&self) -> bool {
+        self.value.is_null()
+    }
+
+    /// Whether the scalar's value is a struct.
+    pub fn is_struct(&self) -> bool {
+        self.value.is_struct()
+    }
+
+    any_scalar_accessors! {
+        as_i8: i8,
+        as_i16: i16,
+        as_i32: i32,
+        as_i64: i64,
+        as_i128: i128,
+        as_i256: I256,
+        as_u8: u8,
+        as_u16: u16,
+        as_u32: u32,
+        as_u64: u64,
+        as_u128: u128,
+        as_u256: U256,
+    }
+
+    /// The scalar's value as a [`Struct`], or `None` if it is another type.
+    pub fn as_struct(&self) -> Option<&Struct> {
+        self.value.as_struct()
     }
 }
 

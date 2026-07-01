@@ -93,6 +93,40 @@ fn struct_scalars_nest_recursively() {
 }
 
 #[test]
+fn any_scalar_atomic_accessors_read_the_native_value() {
+    let s = AnyScalar::from(42i64);
+    assert_eq!(s.as_i64(), Some(42));
+    assert_eq!(s.as_i32(), None); // wrong type → None
+    assert_eq!(s.as_u64(), None);
+    assert!(!s.is_null());
+    assert!(!s.is_struct());
+}
+
+#[test]
+fn struct_scalar_navigates_children_atomically() {
+    let row = StructScalar::new(
+        "point",
+        vec![
+            Int32Scalar::from(1).with_name("x".to_string()).into(),
+            Int32Scalar::from(2).with_name("y".to_string()).into(),
+        ],
+    );
+
+    // Positional and named atomic access.
+    assert_eq!(row.scalar_at(0).unwrap().as_i32(), Some(1));
+    assert_eq!(row.scalar_by("y").unwrap().as_i32(), Some(2));
+    assert_eq!(row.scalar_by("y").unwrap().name(), "y");
+    assert!(row.scalar_at(2).is_none()); // out of range
+    assert!(row.scalar_by("z").is_none()); // unknown name
+
+    // A struct-valued scalar reports as a struct and yields its Struct value.
+    let nested: AnyScalar = row.into();
+    assert!(nested.is_struct());
+    assert_eq!(nested.as_struct().unwrap().len(), 2);
+    assert_eq!(nested.as_i32(), None);
+}
+
+#[test]
 fn scalars_are_hashable_and_eq() {
     let a = Int32Scalar::from(1).with_name("n".to_string());
     let b = Int32Scalar::from(1).with_name("n".to_string());

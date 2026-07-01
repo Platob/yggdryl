@@ -25,6 +25,8 @@ use yggdryl_schema::{Any, AnyField, AnyType, Field, Struct, StructField};
 /// assert_eq!(row.value().len(), 2);
 /// assert_eq!(row.scalars()[0].name(), "x");
 /// assert_eq!(row.dtype().type_id(), DataTypeId::Struct);
+/// // Navigate to a child scalar and read its atom.
+/// assert_eq!(row.scalar_by("y").unwrap().as_i32(), Some(2));
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct StructScalar {
@@ -71,6 +73,24 @@ impl StructScalar {
             .zip(self.value.values())
             .map(|(field, value)| AnyScalar::from_parts(field.clone(), value.clone()))
             .collect()
+    }
+
+    /// The child scalar at `index`, if any — pairing the child field with its value.
+    pub fn scalar_at(&self, index: usize) -> Option<AnyScalar> {
+        let field = self.field.dtype().field_at(index)?;
+        let value = self.value.get(index)?;
+        Some(AnyScalar::from_parts(field.clone(), value.clone()))
+    }
+
+    /// The first child scalar named `name`, if any.
+    pub fn scalar_by(&self, name: &str) -> Option<AnyScalar> {
+        let index = self
+            .field
+            .dtype()
+            .fields()
+            .iter()
+            .position(|field| field.name() == name)?;
+        self.scalar_at(index)
     }
 }
 

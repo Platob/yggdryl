@@ -5,6 +5,20 @@ use yggdryl_core::{I256, U256};
 use crate::dtype::DataTypeId;
 use crate::value::Struct;
 
+/// Generates the `as_<type>` accessors, each returning the wrapped native value or
+/// `None` when the value is of another type.
+macro_rules! any_accessors {
+    ($($variant:ident => $method:ident : $native:ty),+ $(,)?) => {$(
+        #[doc = concat!("The wrapped `", stringify!($native), "`, or `None` if this value is another type.")]
+        pub fn $method(&self) -> Option<$native> {
+            match self {
+                Any::$variant(value) => Some(*value),
+                _ => None,
+            }
+        }
+    )+};
+}
+
 /// A value of any type — the dynamic counterpart of [`AnyType`](crate::AnyType). It
 /// covers the primitive values plus the recursive [`Struct`], so a struct value is
 /// an array of `Any`. Defaults to [`Null`](Any::Null).
@@ -14,6 +28,8 @@ use crate::value::Struct;
 ///
 /// assert_eq!(Any::default(), Any::Null);
 /// assert_eq!(Any::Int32(7).type_id(), DataTypeId::Int32);
+/// assert_eq!(Any::Int32(7).as_i32(), Some(7));
+/// assert_eq!(Any::Int32(7).as_i64(), None); // wrong type → None
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Any {
@@ -73,5 +89,33 @@ impl Any {
     /// Whether this is the [`Null`](Any::Null) value.
     pub fn is_null(&self) -> bool {
         matches!(self, Any::Null)
+    }
+
+    any_accessors! {
+        Int8 => as_i8 : i8,
+        Int16 => as_i16 : i16,
+        Int32 => as_i32 : i32,
+        Int64 => as_i64 : i64,
+        Int128 => as_i128 : i128,
+        Int256 => as_i256 : I256,
+        UInt8 => as_u8 : u8,
+        UInt16 => as_u16 : u16,
+        UInt32 => as_u32 : u32,
+        UInt64 => as_u64 : u64,
+        UInt128 => as_u128 : u128,
+        UInt256 => as_u256 : U256,
+    }
+
+    /// Whether this is a [`Struct`](Any::Struct) value.
+    pub fn is_struct(&self) -> bool {
+        matches!(self, Any::Struct(_))
+    }
+
+    /// The wrapped [`Struct`](Any::Struct), or `None` if this value is another type.
+    pub fn as_struct(&self) -> Option<&Struct> {
+        match self {
+            Any::Struct(value) => Some(value),
+            _ => None,
+        }
     }
 }
