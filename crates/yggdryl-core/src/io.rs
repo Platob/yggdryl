@@ -40,8 +40,8 @@ impl std::error::Error for IoError {}
 /// use yggdryl_core::{Io, Whence};
 ///
 /// let mut io = vec![1u8, 2, 3, 4];
-/// assert_eq!(io.pread(1, Whence::Start, 2).unwrap(), vec![2, 3]);
-/// io.pwrite(0, Whence::End, &[5]).unwrap(); // append at the end
+/// assert_eq!(io.pread(1, Whence::Start).unwrap(), 2);
+/// io.pwrite(0, Whence::End, 5).unwrap(); // append at the end
 /// assert_eq!(io, vec![1, 2, 3, 4, 5]);
 /// ```
 pub trait Io<T> {
@@ -84,18 +84,16 @@ pub trait Io<T> {
         Ok(index)
     }
 
-    /// Reads up to `len` elements starting at `position` measured from `whence`,
-    /// returning those actually available there (fewer than `len` near the end,
-    /// empty at the end). Errors [`OutOfBounds`](IoError::OutOfBounds) if the
-    /// resolved position is past the end.
-    fn pread(&self, position: u64, whence: Whence, len: usize) -> Result<Vec<T>, IoError>;
+    /// Reads the single `T` at `position` measured from `whence`. Errors
+    /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is at or past
+    /// the end, where no element lives.
+    fn pread(&self, position: u64, whence: Whence) -> Result<T, IoError>;
 
-    /// Writes `values` at `position` measured from `whence` — overwriting, and
-    /// extending the source when the write runs past the end — and returns the
-    /// number of elements written. Errors [`ReadOnly`](IoError::ReadOnly) on a
-    /// read-only source or [`OutOfBounds`](IoError::OutOfBounds) if the resolved
-    /// position is past the end.
-    fn pwrite(&mut self, position: u64, whence: Whence, values: &[T]) -> Result<usize, IoError>;
+    /// Writes `value` at `position` measured from `whence` — overwriting the element
+    /// there, or appending it when the position is exactly the end. Errors
+    /// [`ReadOnly`](IoError::ReadOnly) on a read-only source or
+    /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is past the end.
+    fn pwrite(&mut self, position: u64, whence: Whence, value: T) -> Result<(), IoError>;
 }
 
 /// Narrows a resolved `u64` position to a `usize` index, erroring
@@ -104,28 +102,28 @@ fn index(position: u64) -> Result<usize, IoError> {
     usize::try_from(position).map_err(|_| IoError::OutOfBounds)
 }
 
-/// [`Vec`] is the in-memory array leaf: a read clones the requested window; a write
-/// overwrites the overlapping elements and appends any that run past the end (the
-/// resolved position is `<= len`, so a write is always contiguous — it never opens
-/// a gap).
+/// [`Vec`] is the in-memory array leaf: a read clones the element at the position; a
+/// write overwrites it, or appends when the position is exactly the end (the
+/// resolved position is `<= len`, so a write never opens a gap).
 impl<T: Clone> Io<T> for Vec<T> {
     fn len(&self) -> Result<u64, IoError> {
         Ok(self.as_slice().len() as u64)
     }
 
-    fn pread(&self, position: u64, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
-        let start = index(self.resolve(position, whence)?)?;
-        crate::log_event!(trace, "Vec::pread start={start} len={len}");
-        let end = start.saturating_add(len).min(self.as_slice().len());
-        Ok(self[start..end].to_vec())
+    fn pread(&self, position: u64, whence: Whence) -> Result<T, IoError> {
+        let at = index(self.resolve(position, whence)?)?;
+        crate::log_event!(trace, "Vec::pread at={at}");
+        self.get(at).cloned().ok_or(IoError::OutOfBounds)
     }
 
-    fn pwrite(&mut self, position: u64, whence: Whence, values: &[T]) -> Result<usize, IoError> {
-        let start = index(self.resolve(position, whence)?)?;
-        crate::log_event!(trace, "Vec::pwrite start={start} len={}", values.len());
-        let overlap = values.len().min(self.as_slice().len() - start);
-        self[start..start + overlap].clone_from_slice(&values[..overlap]);
-        self.extend_from_slice(&values[overlap..]);
-        Ok(values.len())
+    fn pwrite(&mut self, position: u64, whence: Whence, value: T) -> Result<(), IoError> {
+        let at = index(self.resolve(position, whence)?)?;
+        crate::log_event!(trace, "Vec::pwrite at={at}");
+        if at == self.as_slice().len() {
+            self.push(value);
+        } else {
+            self[at] = value;
+        }
+        Ok(())
     }
 }
