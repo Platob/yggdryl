@@ -104,7 +104,6 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 
 | Concept | Name |
 | --- | --- |
-| Construct from any supported input | `from_` (Rust trait `FromInput`) |
 | Construct from explicit parts | `from_parts(...)` |
 | Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
 | JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
