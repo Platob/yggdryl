@@ -2,14 +2,13 @@
 
 use crate::dtype::DataType;
 
-/// Marks a primitive type — a scalar with no child fields (its
-/// [`children_fields`](crate::NestedFields::children_fields) is empty) and no inner
-/// type (e.g. an integer type, a boolean).
+/// Marks a primitive type — a scalar (e.g. an integer), generic over its native
+/// value type `T`.
 ///
 /// ```
 /// use yggdryl_schema::{Int32Type, PrimitiveType};
 ///
-/// fn takes_primitive<T: PrimitiveType>(_t: &T) {}
+/// fn takes_primitive<T, D: PrimitiveType<T>>(_d: &D) {}
 /// takes_primitive(&Int32Type::new());
 /// ```
-pub trait PrimitiveType: DataType {}
+pub trait PrimitiveType<T>: DataType<T> {}

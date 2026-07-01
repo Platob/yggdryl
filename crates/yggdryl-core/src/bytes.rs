@@ -88,3 +88,7 @@ impl_bytes_le!(u8, 1);
 impl_bytes_le!(u16, 2);
 impl_bytes_le!(u32, 4);
 impl_bytes_le!(u64, 8);
+
+// The custom 256-bit integers serialize as their 32 little-endian bytes.
+impl_bytes_le!(crate::int256::I256, 32);
+impl_bytes_le!(crate::int256::U256, 32);

@@ -1,35 +1,41 @@
 //! Tests for the concrete integer type / field families.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
-
 use yggdryl_schema::{
-    DataType, DataTypeId, Field, Int32Field, Int32Type, Int64Type, Metadata, NestedFields,
-    PrimitiveField, PrimitiveType, UInt64Field, UInt8Type,
+    DataType, DataTypeId, Field, Int256Field, Int256Type, Int32Field, Int32Type, Metadata,
+    PrimitiveField, PrimitiveType, UInt64Field, UInt8Type, I256, U256,
 };
 
-fn assert_primitive_type<T: PrimitiveType>(_t: &T) {}
-fn assert_primitive_field<F: PrimitiveField>(_f: &F) {}
+fn assert_primitive_type<T, D: PrimitiveType<T>>(_d: &D) {}
+fn assert_primitive_field<T, F: PrimitiveField<T>>(_f: &F) {}
 
 #[test]
-fn integer_types_report_identity_and_category() {
+fn integer_types_report_identity_default_and_category() {
     assert_eq!(Int32Type::new().type_name(), "int32");
     assert_eq!(Int32Type::new().type_id(), DataTypeId::Int32);
-    assert_eq!(UInt8Type::new().type_name(), "uint8");
+    assert_eq!(Int32Type::new().default(), 0i32);
     assert_eq!(UInt8Type::new().type_id(), DataTypeId::UInt8);
-    assert!(Int32Type::new().children_fields().is_empty());
+    assert_eq!(UInt8Type::new().default(), 0u8);
+    // The 256-bit types default over the custom native structs.
+    assert_eq!(Int256Type::new().default(), I256::ZERO);
     assert_primitive_type(&Int32Type::new());
-    assert_primitive_type(&UInt8Type::new());
+    assert_primitive_type(&Int256Type::new());
 }
 
 #[test]
-fn integer_fields_wrap_their_type() {
+fn integer_fields_wrap_their_type_and_default() {
     let field = Int32Field::new("count");
     assert_eq!(field.name(), "count");
     assert_eq!(field.dtype().type_id(), DataTypeId::Int32);
+    assert_eq!(field.default(), 0i32);
     assert!(field.metadata().is_none());
-    assert!(field.children_fields().is_empty());
     assert_primitive_field(&field);
+
+    // The 256-bit field delegates its default to the custom native type.
+    assert_eq!(Int256Field::new("big").default(), I256::ZERO);
+    assert_eq!(
+        yggdryl_schema::UInt256Field::new("big").default(),
+        U256::ZERO
+    );
 }
 
 #[test]
@@ -43,28 +49,4 @@ fn integer_field_with_updates_are_non_mutating() {
     let with = field.with_metadata(meta.clone());
     assert_eq!(with.metadata(), Some(&meta));
     assert!(with.without_metadata().metadata().is_none());
-}
-
-#[test]
-fn distinct_types_differ_but_a_clone_is_equal() {
-    let a: Box<dyn DataType> = Box::new(Int32Type::new());
-    let b: Box<dyn DataType> = Box::new(Int64Type::new());
-    assert!(!a.dyn_eq(b.as_ref()));
-    assert!(a.dyn_eq(a.clone_box().as_ref()));
-}
-
-#[test]
-fn fields_of_different_types_are_not_equal() {
-    let a: Box<dyn Field> = Box::new(Int32Field::new("x"));
-    let b: Box<dyn Field> = Box::new(UInt64Field::new("x"));
-    // Same name, different data type → not equal.
-    assert!(!a.dyn_eq(b.as_ref()));
-    // A clone hashes the same.
-    assert_eq!(field_hash(a.as_ref()), field_hash(a.clone_box().as_ref()));
-}
-
-fn field_hash(field: &dyn Field) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    field.dyn_hash(&mut hasher);
-    hasher.finish()
 }

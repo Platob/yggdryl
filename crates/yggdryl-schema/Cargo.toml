@@ -15,5 +15,6 @@ name = "yggdryl_schema"
 path = "src/lib.rs"
 
 [dependencies]
-# Kept dependency-free for now — the base traits and the first concrete type carry
-# no external dependencies. Serialization and the Arrow bridge land later.
+# The dependency-light core supplies the foundational value types the schema types
+# build on (the custom 256-bit integers I256 / U256).
+yggdryl-core = { workspace = true }

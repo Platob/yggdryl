@@ -2,13 +2,13 @@
 
 use crate::field::Field;
 
-/// Marks a field whose type is primitive — no child fields (mirrors
-/// [`PrimitiveType`](crate::PrimitiveType)).
+/// Marks a field whose type is primitive — generic over its native value type `T`
+/// (mirrors [`PrimitiveType`](crate::PrimitiveType)).
 ///
 /// ```
 /// use yggdryl_schema::{Int32Field, PrimitiveField};
 ///
-/// fn takes_primitive<F: PrimitiveField>(_f: &F) {}
+/// fn takes_primitive<T, F: PrimitiveField<T>>(_f: &F) {}
 /// takes_primitive(&Int32Field::new("x"));
 /// ```
-pub trait PrimitiveField: Field {}
+pub trait PrimitiveField<T>: Field<T> {}

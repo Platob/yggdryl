@@ -10,7 +10,8 @@
 //! [`pread_io`](Io::pread_io) / [`pwrite_io`](Io::pwrite_io) — plus the [`IoCursor`]
 //! (a stateful cursor) and [`IoSlice`] (a bounded window) that wrap an inner [`Io`],
 //! the [`Bytes`] trait that serializes a value to / from bytes through a byte [`Io`],
-//! and the [`hello`] / [`version`] scaffold. Reintroduce the rest of the foundational
+//! the custom 256-bit integers [`I256`] / [`U256`], and the [`hello`] / [`version`]
+//! scaffold. Reintroduce the rest of the foundational
 //! types here as the design lands — one module per concern, each re-exported at the
 //! crate root — following the rules in `CLAUDE.md`.
 
@@ -26,12 +27,14 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod bytes;
+mod int256;
 mod io;
 mod io_cursor;
 mod io_slice;
 mod whence;
 
 pub use bytes::Bytes;
+pub use int256::{I256, U256};
 pub use io::{Io, IoError};
 pub use io_cursor::IoCursor;
 pub use io_slice::IoSlice;

@@ -138,28 +138,24 @@ Rules:
   trait method signatures so an implementor can satisfy them on one line; only
   expand to a multi-line body when the logic genuinely needs it.
 
-### `DataType` and `Field` move in lockstep
+### `DataType<T>` and `Field<T>` move in lockstep
 
 The schema layer is **two mirror-image layers** — the data types under `dtype/` and
 the fields under `field/` — that follow the *same* pattern. Whenever you touch one,
 mirror it in the other; a change is not done until both sides match:
 
-- **Parallel base traits.** `DataType` and `Field` are both object-safe base traits
-  that are `NestedFields` and carry the same value-like hooks (`clone_box` /
-  `dyn_eq` / `dyn_hash`, the `dyn_*` defaulted). The shared child-field lookups
-  (`children_fields` / `child_field_at` / `child_field_by` / `child_field`) live once
-  on `NestedFields` so a data type and a field are queried identically.
-- **Parallel category markers, one file per type.** The categories pair up —
-  `PrimitiveType`↔`PrimitiveField`, `LogicalType`(`inner_type`)↔`LogicalField`
-  (`inner_field`), `NestedType`↔`NestedField` — and each type (or a closely-related
+- **Parallel generic base traits.** `DataType<T>` and `Field<T>` are both generic
+  over the native value type `T` they describe, and both expose `default() -> T`
+  (the zero of `T`). A `DataType<T>` adds `type_id` / `type_name`; a `Field<T>` adds
+  `name` / `dtype` (an associated `DataType<T>`) / `metadata`.
+- **Parallel category markers, one file per type (or family).** The categories pair
+  up — `PrimitiveType<T>`↔`PrimitiveField<T>` — and each type (or a closely-related
   family generated together) lives in its own module under the matching directory
   (`dtype/integer_type.rs` ↔ `field/integer_field.rs`). Adding a concrete data type
   means adding its field counterpart in the same change.
-- **Consistent behaviour per category.** A primitive returns empty
-  `children_fields` (the default); a logical returns its inner (`inner_type` /
-  `inner_field`); a nested overrides `children_fields`. Parameterless types use the
-  default `dyn_eq` / `dyn_hash` (over `type_id` / name+dtype+metadata); parametrized
-  types override them.
+- **Concrete types are plain values.** They derive `Clone` / `Debug` (and, where it
+  fits, `Copy` / `PartialEq` / `Eq` / `Hash`) directly — no trait-object machinery.
+  A field's `default()` delegates to its data type's.
 
 Before committing a schema change, re-check this parity: same trait shape, same
 method names, same category behaviour, mirrored module locations.

@@ -1,13 +1,15 @@
 //! The primitive integer [`Field`]s — the field-level counterparts of the integer
-//! types (`Int8Field`…`UInt64Field`), generated together by one macro to mirror
-//! [`integer_type`](crate::dtype).
+//! types (`Int8Field`…`UInt256Field`), generated together by one macro to mirror
+//! [`integer_type`](crate::dtype). Each is a `Field<T>` over the same native value
+//! type as its data type.
 //!
 //! ```
-//! use yggdryl_schema::{DataTypeId, Field, Int64Field};
+//! use yggdryl_schema::{DataType, DataTypeId, Field, Int64Field};
 //!
 //! let field = Int64Field::new("count");
 //! assert_eq!(field.name(), "count");
 //! assert_eq!(field.dtype().type_id(), DataTypeId::Int64);
+//! assert_eq!(field.default(), 0i64);
 //!
 //! let renamed = field.with_name("total".to_string());
 //! assert_eq!(field.name(), "count"); // original untouched
@@ -15,17 +17,17 @@
 //! ```
 
 use crate::dtype::{
-    DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type,
-    UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
+    Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type, UInt16Type,
+    UInt256Type, UInt32Type, UInt64Type, UInt8Type,
 };
 use crate::field::{Field, Metadata, PrimitiveField};
-use crate::nested_fields::NestedFields;
+use yggdryl_core::{I256, U256};
 
 /// Defines a primitive integer field wrapping the given integer type: a `name`, that
 /// fixed `dtype`, and optional [`Metadata`], with the non-mutating `with_*` / `copy`
-/// updates and a [`Field`] + [`PrimitiveField`] impl.
+/// updates and a [`Field`] + [`PrimitiveField`] impl over the native value type.
 macro_rules! integer_fields {
-    ($($name:ident => $dtype:ident : $type_name:literal),+ $(,)?) => {$(
+    ($($name:ident => $dtype:ident : $type_name:literal : $native:ty),+ $(,)?) => {$(
         #[doc = concat!("A field whose data type is [`", stringify!($dtype), "`](crate::", stringify!($dtype), ").")]
         #[derive(Clone, Debug)]
         pub struct $name {
@@ -71,41 +73,37 @@ macro_rules! integer_fields {
             }
         }
 
-        impl NestedFields for $name {}
+        impl Field<$native> for $name {
+            type DType = $dtype;
 
-        impl Field for $name {
             fn name(&self) -> &str {
                 &self.name
             }
 
-            fn dtype(&self) -> &dyn DataType {
+            fn dtype(&self) -> &$dtype {
                 &self.dtype
             }
 
             fn metadata(&self) -> Option<&Metadata> {
                 self.metadata.as_ref()
             }
-
-            fn clone_box(&self) -> Box<dyn Field> {
-                Box::new(self.clone())
-            }
         }
 
-        impl PrimitiveField for $name {}
+        impl PrimitiveField<$native> for $name {}
     )+};
 }
 
 integer_fields! {
-    Int8Field => Int8Type : "int8",
-    Int16Field => Int16Type : "int16",
-    Int32Field => Int32Type : "int32",
-    Int64Field => Int64Type : "int64",
-    Int128Field => Int128Type : "int128",
-    Int256Field => Int256Type : "int256",
-    UInt8Field => UInt8Type : "uint8",
-    UInt16Field => UInt16Type : "uint16",
-    UInt32Field => UInt32Type : "uint32",
-    UInt64Field => UInt64Type : "uint64",
-    UInt128Field => UInt128Type : "uint128",
-    UInt256Field => UInt256Type : "uint256",
+    Int8Field => Int8Type : "int8" : i8,
+    Int16Field => Int16Type : "int16" : i16,
+    Int32Field => Int32Type : "int32" : i32,
+    Int64Field => Int64Type : "int64" : i64,
+    Int128Field => Int128Type : "int128" : i128,
+    Int256Field => Int256Type : "int256" : I256,
+    UInt8Field => UInt8Type : "uint8" : u8,
+    UInt16Field => UInt16Type : "uint16" : u16,
+    UInt32Field => UInt32Type : "uint32" : u32,
+    UInt64Field => UInt64Type : "uint64" : u64,
+    UInt128Field => UInt128Type : "uint128" : u128,
+    UInt256Field => UInt256Type : "uint256" : U256,
 }
