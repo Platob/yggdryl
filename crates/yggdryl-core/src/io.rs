@@ -33,8 +33,9 @@ impl std::error::Error for IoError {}
 /// An implementor supplies [`len`](Io::len) and the two positional primitives
 /// [`pread`](Io::pread) / [`pwrite`](Io::pwrite); the default
 /// [`resolve`](Io::resolve) turns a `(position, whence)` pair into an absolute
-/// index for them. A stateful source overrides [`position`](Io::position) so that
-/// [`Whence::Current`] addresses its cursor.
+/// index for them. A stateful source overrides [`position`](Io::position) /
+/// [`seek`](Io::seek) so that [`Whence::Current`] addresses its cursor and a seek
+/// retains the move.
 ///
 /// ```
 /// use yggdryl_core::{Io, Whence};
@@ -43,6 +44,7 @@ impl std::error::Error for IoError {}
 /// assert_eq!(io.pread(1, Whence::Start).unwrap(), 2);
 /// io.pwrite(0, Whence::End, 5).unwrap(); // append at the end
 /// assert_eq!(io, vec![1, 2, 3, 4, 5]);
+/// assert_eq!(io.seek(1, Whence::End).unwrap(), 4); // one element before the end
 /// ```
 pub trait Io<T> {
     /// The total number of `T` elements in the source.
@@ -82,6 +84,16 @@ pub trait Io<T> {
             return Err(IoError::OutOfBounds);
         }
         Ok(index)
+    }
+
+    /// Moves the cursor to `position` measured from `whence`, returning the new
+    /// absolute cursor position (an index in `0..=len`). The default resolves the
+    /// target without retaining it — a cursorless source (e.g. a bare [`Vec`]) has a
+    /// fixed cursor at the start, so a stateful source overrides this to store the
+    /// move. Errors [`OutOfBounds`](IoError::OutOfBounds) when the target falls
+    /// outside the source.
+    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IoError> {
+        self.resolve(position, whence)
     }
 
     /// Reads the single `T` at `position` measured from `whence`. Errors

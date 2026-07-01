@@ -46,6 +46,22 @@ fn pwrite_overwrites_and_appends() {
 }
 
 #[test]
+fn seek_resolves_the_target_from_each_whence_origin() {
+    let mut io = vec![1u8, 2, 3, 4, 5];
+    // Start / Current count forward; the cursor is `0` for a cursorless Vec.
+    assert_eq!(io.seek(2, Whence::Start).unwrap(), 2);
+    assert_eq!(io.seek(2, Whence::Current).unwrap(), 2);
+    // End counts back; offset `0` lands on the end (past the last element).
+    assert_eq!(io.seek(1, Whence::End).unwrap(), 4);
+    assert_eq!(io.seek(0, Whence::End).unwrap(), 5);
+    // A cursorless Vec does not retain the move.
+    assert_eq!(Io::position(&io).unwrap(), 0);
+    // Seeking past the end errors.
+    assert_eq!(io.seek(6, Whence::Start), Err(IoError::OutOfBounds));
+    assert_eq!(io.seek(6, Whence::End), Err(IoError::OutOfBounds));
+}
+
+#[test]
 fn len_reports_the_element_count() {
     let io = vec![0u16; 4];
     assert_eq!(Io::len(&io).unwrap(), 4);
