@@ -15,12 +15,11 @@ reader should not be able to tell which type they are looking at from the shape 
 the code.
 
 **Everything must be serializable and hashable.** Do your best to make every value
-type round-trip through *all* of: a canonical string (`from_str`/`to_str`), a
-component map (`from_mapping`/`to_mapping`), JSON (`serde`, plus `to_json`/`from_json`
-where a crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and
-to derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the
-bindings this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a
-static `fromJSON()` in Node. The only exceptions are live/stream resources (IO
+type round-trip through *all* of: a canonical string (`from_str`/`to_str`), JSON
+(`serde`, plus `to_json`/`from_json` where a crate exposes a `json` feature) and
+**bytes** (`to_bytes`/`from_bytes`), and to derive (or hand-implement) `Hash` + `Eq`
+so it can key a map or set. In the bindings this means `__hash__` + `__reduce__`
+(pickle) in Python and `toJSON()` + a static `fromJSON()` in Node. The only exceptions are live/stream resources (IO
 handles, HTTP bodies, sessions). When a field cannot be part of a value's identity
 (e.g. a navigational `parent` pointer, which would create cycles), exclude it from
 `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
@@ -34,8 +33,8 @@ Arrow-centric type system growing back after the reset:
   binding builds on. Currently a scaffold exposing only `version()`; reintroduce
   the foundational types here (the zero-copy `Buffer`, the `Io` / `Whence` byte
   abstraction, the `Charset` encodings, the global `JsonParams` + the `Jsonable`
-  JSON/BSON trait, the shared error types and the `mapping` component-map codec),
-  one module per concern, with no Arrow vocabulary living here.
+  JSON/BSON trait and the shared error types), one module per concern, with no Arrow
+  vocabulary living here.
 - `crates/yggdryl-schema` — the Arrow-compatible schema layer (`DataType` / `Field`
   and the schema types), holding the conversion to and from Apache Arrow's
   `arrow-schema` behind its `arrow` feature. The `arrow-schema` SDK is a dependency
@@ -106,10 +105,9 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Concept | Name |
 | --- | --- |
 | Construct from a string | `from_str(value)` |
-| Construct from a component mapping | `from_mapping(fields)` |
 | Construct from any supported input | `from_` (Rust trait `FromInput`) |
 | Construct from explicit parts | `from_parts(...)` |
-| Render to canonical string / mapping | `to_str()` / `to_mapping()` |
+| Render to canonical string | `to_str()` |
 | Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
 | JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
