@@ -1,6 +1,8 @@
 //! Tests for the dynamic [`AnyType`] carrier.
 
-use yggdryl_schema::{AnyType, BinaryType, DataType, DataTypeId, LargeBinaryViewType, StringType};
+use yggdryl_schema::{
+    AnyType, BinaryType, BinaryViewType, DataType, DataTypeId, LargeBinaryViewType,
+};
 
 #[test]
 fn wraps_and_delegates_every_type() {
@@ -13,14 +15,17 @@ fn wraps_and_delegates_every_type() {
             "large_binary_view",
             DataTypeId::LargeBinaryView,
         ),
-        (StringType::new().into(), "string", DataTypeId::String),
+        (
+            BinaryViewType::new().into(),
+            "binary_view",
+            DataTypeId::BinaryView,
+        ),
     ];
     for (any, name, id) in cases {
         assert_eq!(any.name(), name);
         assert_eq!(any.type_id(), id);
     }
     assert!(AnyType::from(BinaryType::new()).is_physical());
-    assert!(AnyType::from(StringType::new()).is_logical());
 }
 
 #[test]
@@ -45,13 +50,7 @@ fn delegates_byte_size_and_metadata() {
 #[cfg(feature = "serde")]
 #[test]
 fn serde_round_trip() {
-    use yggdryl_schema::Charset;
-
-    let any = AnyType::from(
-        StringType::new()
-            .with_charset(Charset::Latin1)
-            .with_byte_size(4),
-    );
+    let any = AnyType::from(BinaryType::new().with_byte_size(4));
     let json = serde_json::to_string(&any).unwrap();
     assert_eq!(serde_json::from_str::<AnyType>(&json).unwrap(), any);
 }
@@ -59,9 +58,7 @@ fn serde_round_trip() {
 #[cfg(feature = "arrow")]
 mod arrow {
     use arrow_schema::DataType as ArrowType;
-    use yggdryl_schema::{
-        AnyType, BinaryType, DataType, LargeBinaryViewType, Metadata, StringType,
-    };
+    use yggdryl_schema::{AnyType, BinaryType, DataType, LargeBinaryViewType, Metadata};
 
     #[test]
     fn to_arrow_type_delegates() {
@@ -73,10 +70,6 @@ mod arrow {
         assert_eq!(
             AnyType::from(LargeBinaryViewType::new()).to_arrow_type(),
             ArrowType::BinaryView
-        );
-        assert_eq!(
-            AnyType::from(StringType::new()).to_arrow_type(),
-            ArrowType::Utf8
         );
     }
 
@@ -97,10 +90,6 @@ mod arrow {
         assert_eq!(
             AnyType::from_arrow_type(&ArrowType::Binary, &none).unwrap(),
             AnyType::from(BinaryType::new())
-        );
-        assert_eq!(
-            AnyType::from_arrow_type(&ArrowType::Utf8, &none).unwrap(),
-            AnyType::from(StringType::new())
         );
         // An Arrow type with no yggdryl equivalent errors.
         assert!(AnyType::from_arrow_type(&ArrowType::Int32, &none).is_err());

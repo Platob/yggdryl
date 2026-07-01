@@ -15,7 +15,7 @@ use crate::scalar::Scalar;
 /// binary data type. The bytes live in a zero-copy [`Buffer`], so cloning,
 /// slicing and [`cast`](Scalar::cast)ing share the allocation rather than
 /// deep-copying — the property the view-backed types (`BinaryViewType`,
-/// `StringViewType`, …) need. When the type declares a `byte_size` cap, a payload
+/// `LargeBinaryViewType`) need. When the type declares a `byte_size` cap, a payload
 /// longer than [`max_byte_size`](yggdryl_schema::DataType::max_byte_size) is
 /// truncated to it (a zero-copy slice).
 ///

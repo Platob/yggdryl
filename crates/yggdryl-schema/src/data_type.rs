@@ -98,8 +98,8 @@ pub trait DataType {
 pub trait PhysicalType: DataType {}
 
 /// A *logical* type — a [physical](PhysicalType) type reinterpreted with extra
-/// meaning (a string is binary bytes read with a charset, a date is an integer,
-/// …). It names its backing [`Physical`](LogicalType::Physical) storage type.
+/// meaning (a date is an integer, a decimal is an integer with a scale, …). It
+/// names its backing [`Physical`](LogicalType::Physical) storage type.
 /// Implement it for types whose [`type_id`](DataType::type_id) is in the logical
 /// block, so [`is_logical`](DataType::is_logical) is `true`.
 pub trait LogicalType: DataType {

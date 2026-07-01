@@ -10,7 +10,7 @@
 //! falling back to the plain Arrow type when that metadata is absent.
 //!
 //! ```
-//! use yggdryl_schema::{AnyType, BinaryType, DataType, DataTypeId, StringType};
+//! use yggdryl_schema::{AnyType, BinaryType, DataType, DataTypeId, LargeBinaryViewType};
 //!
 //! let ty = AnyType::from(BinaryType::new().with_byte_size(8));
 //! assert_eq!(ty.name(), "binary");
@@ -18,17 +18,15 @@
 //! assert_eq!(ty.max_byte_size(), Some(8));
 //! assert!(ty.is_physical());
 //!
-//! // A logical type reports its own category through the same enum.
-//! let s = AnyType::from(StringType::new());
-//! assert_eq!(s.type_id(), DataTypeId::String);
-//! assert!(s.is_logical());
+//! // A lossily-mapped type still reports its own identity through the enum.
+//! let view = AnyType::from(LargeBinaryViewType::new());
+//! assert_eq!(view.type_id(), DataTypeId::LargeBinaryView);
 //! ```
 
 use crate::binary::{BinaryType, BinaryViewType, LargeBinaryType, LargeBinaryViewType};
 use crate::data_type::DataType;
 use crate::data_type_id::DataTypeId;
 use crate::metadata::Metadata;
-use crate::string::{LargeStringType, LargeStringViewType, StringType, StringViewType};
 
 /// A concrete, hashable, serializable yggdryl data type — the dynamic carrier a
 /// [`Field`](crate::Field) stores when its type is chosen at run time. Every
@@ -45,14 +43,6 @@ pub enum AnyType {
     BinaryView(BinaryViewType),
     /// A [`LargeBinaryViewType`].
     LargeBinaryView(LargeBinaryViewType),
-    /// A [`StringType`].
-    String(StringType),
-    /// A [`LargeStringType`].
-    LargeString(LargeStringType),
-    /// A [`StringViewType`].
-    StringView(StringViewType),
-    /// A [`LargeStringViewType`].
-    LargeStringView(LargeStringViewType),
 }
 
 /// Runs `$body` against the wrapped concrete type, bound as `$inner`, whichever
@@ -64,10 +54,6 @@ macro_rules! dispatch {
             AnyType::LargeBinary($inner) => $body,
             AnyType::BinaryView($inner) => $body,
             AnyType::LargeBinaryView($inner) => $body,
-            AnyType::String($inner) => $body,
-            AnyType::LargeString($inner) => $body,
-            AnyType::StringView($inner) => $body,
-            AnyType::LargeStringView($inner) => $body,
         }
     };
 }
@@ -134,16 +120,6 @@ impl AnyType {
             "large_binary_view" => {
                 LargeBinaryViewType::from_arrow_type(dtype, metadata).map(AnyType::LargeBinaryView)
             }
-            "string" => StringType::from_arrow_type(dtype, metadata).map(AnyType::String),
-            "large_string" => {
-                LargeStringType::from_arrow_type(dtype, metadata).map(AnyType::LargeString)
-            }
-            "string_view" => {
-                StringViewType::from_arrow_type(dtype, metadata).map(AnyType::StringView)
-            }
-            "large_string_view" => {
-                LargeStringViewType::from_arrow_type(dtype, metadata).map(AnyType::LargeStringView)
-            }
             _ => Err(crate::SchemaError::UnsupportedArrowType(dtype.clone())),
         }
     }
@@ -160,9 +136,6 @@ impl AnyType {
             ArrowType::Binary => "binary",
             ArrowType::LargeBinary => "large_binary",
             ArrowType::BinaryView => "binary_view",
-            ArrowType::Utf8 => "string",
-            ArrowType::LargeUtf8 => "large_string",
-            ArrowType::Utf8View => "string_view",
             other => return Err(crate::SchemaError::UnsupportedArrowType(other.clone())),
         };
         Self::from_named_arrow_type(name, dtype, metadata)
@@ -185,8 +158,4 @@ any_from! {
     LargeBinary => LargeBinaryType,
     BinaryView => BinaryViewType,
     LargeBinaryView => LargeBinaryViewType,
-    String => StringType,
-    LargeString => LargeStringType,
-    StringView => StringViewType,
-    LargeStringView => LargeStringViewType,
 }

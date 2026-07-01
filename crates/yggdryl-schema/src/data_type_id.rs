@@ -78,14 +78,6 @@ pub enum DataTypeId {
     Interval = 0x48,
     /// A dictionary-encoded value.
     Dictionary = 0x49,
-    /// A string: binary bytes (32-bit offsets) read with a charset.
-    String = 0x4A,
-    /// A string: large binary bytes (64-bit offsets) read with a charset.
-    LargeString = 0x4B,
-    /// A view-backed string.
-    StringView = 0x4C,
-    /// A 64-bit view-backed string.
-    LargeStringView = 0x4D,
 
     // ---- nested (child-bearing) types: 0x80–0xBF ----
     /// A list of a single child type (32-bit offsets).

@@ -13,7 +13,7 @@ import yggdryl
 from yggdryl.schema import DataTypeId
 
 print(yggdryl.core.version())
-assert DataTypeId.Int32 != DataTypeId.String
+assert DataTypeId.Int32 != DataTypeId.Binary
 ```
 
 > **Project reset.** A thin scaffold over the Arrow-centralized Rust core. See

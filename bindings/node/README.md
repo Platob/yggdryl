@@ -11,7 +11,7 @@ Each Rust crate is exposed under its own JS namespace, mirroring the crate tree:
 const yggdryl = require('yggdryl')
 
 console.log(yggdryl.core.version())
-console.assert(yggdryl.schema.DataTypeId.Int32 !== yggdryl.schema.DataTypeId.String)
+console.assert(yggdryl.schema.DataTypeId.Int32 !== yggdryl.schema.DataTypeId.Binary)
 ```
 
 > **Project reset.** A thin scaffold over the Arrow-centralized Rust core. See

@@ -162,13 +162,12 @@ add the check and borrow. Never copy speculatively; never re-scan what a single
 pass can decide.
 
 **Prefer view types by default.** When nothing forces a particular layout, default
-to the *view* variant of the binary/string types (`BinaryViewType` / `StringViewType`
-and their `Large*` siblings) over the offset-backed `BinaryType` / `StringType`.
-View values share their bytes through the zero-copy `Buffer`, so cloning, slicing and
-casting them never deep-copy. A constructor picking a default type, a binding
-exposing one, or a doc example that just needs "some bytes" / "a string" should reach
-for the view type; choose a non-view variant only when an external format, an
-offset-width requirement, or a fixed-/max-size cap demands it.
+to the *view* variant of the binary types (`BinaryViewType` and its `Large*` sibling)
+over the offset-backed `BinaryType` / `LargeBinaryType`. View values share their bytes
+through the zero-copy `Buffer`, so cloning, slicing and casting them never deep-copy. A
+constructor picking a default type, a binding exposing one, or a doc example that just
+needs "some bytes" should reach for the view type; choose a non-view variant only when
+an external format, an offset-width requirement, or a size cap demands it.
 
 **Centralise byte/memory access behind one IO abstraction.** A new byte source
 (memory buffer, local file, cloud object, HTTP body) should implement that single
