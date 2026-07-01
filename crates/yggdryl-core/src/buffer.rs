@@ -21,8 +21,11 @@ use std::sync::Arc;
 /// assert_eq!(world.as_slice(), b"world");
 /// // The slice shares the original allocation — same address, no copy.
 /// assert_eq!(world.as_slice().as_ptr(), buf.as_slice()[6..].as_ptr());
+///
+/// // The default is an empty buffer.
+/// assert!(Buffer::default().is_empty());
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Buffer {
     storage: Arc<Vec<u8>>,
     offset: usize,
