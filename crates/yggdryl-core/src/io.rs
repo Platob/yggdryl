@@ -37,7 +37,10 @@ impl std::error::Error for IoError {}
 /// [`pwrite_array`](Io::pwrite_array) default to looping those primitives, and a
 /// memory-resident source overrides them for a bulk copy. A stateful source
 /// overrides [`position`](Io::position) / [`seek`](Io::seek) so that
-/// [`Whence::Current`] addresses its cursor and a seek retains the move.
+/// [`Whence::Current`] addresses its cursor and a seek retains the move. The size
+/// hooks [`capacity`](Io::capacity) / [`with_capacity`](Io::with_capacity) /
+/// [`resize`](Io::resize) manage the backing storage, growing it with
+/// [`default`](Io::default); a growable source overrides them.
 ///
 /// ```
 /// use yggdryl_core::{Io, Whence};
@@ -60,6 +63,29 @@ pub trait Io<T> {
     /// Whether the source holds no elements.
     fn is_empty(&self) -> Result<bool, IoError> {
         Ok(self.len()? == 0)
+    }
+
+    /// The number of elements the source can hold before it must grow its storage.
+    /// Defaults to [`len`](Io::len) for a source with no spare capacity; a growable
+    /// source (e.g. a [`Vec`]) reports its true capacity.
+    fn capacity(&self) -> Result<usize, IoError> {
+        self.len()
+    }
+
+    /// Ensures the source can hold at least `capacity` elements without growing its
+    /// storage again, never shrinking it and never changing the elements. The default
+    /// is a no-op for a fixed-capacity source; a growable source reserves the room.
+    fn with_capacity(&mut self, _capacity: usize) -> Result<(), IoError> {
+        Ok(())
+    }
+
+    /// The value new slots are filled with when the source grows — [`T::default`].
+    /// A source overrides it to fill with a different sentinel.
+    fn default(&self) -> T
+    where
+        T: Default,
+    {
+        T::default()
     }
 
     /// The current cursor position (an element index), against which
@@ -146,6 +172,28 @@ pub trait Io<T> {
         }
         Ok(values.len())
     }
+
+    /// Resizes the source to `len` elements, filling the new slots with
+    /// [`default`](Io::default) when it grows. The default can only grow (it appends
+    /// through [`pwrite_array`](Io::pwrite_array)); a shrink is skipped, as the base
+    /// trait cannot truncate, so a source whose storage supports truncation overrides
+    /// this to also shrink.
+    fn resize(&mut self, len: usize) -> Result<(), IoError>
+    where
+        T: Default + Clone,
+    {
+        let current = self.len()?;
+        if len > current {
+            let fill = vec![self.default(); len - current];
+            self.pwrite_array(current, Whence::Start, &fill)?;
+        } else if len < current {
+            crate::log_event!(
+                warn,
+                "Io::resize skipping shrink {current} -> {len}; override resize to truncate"
+            );
+        }
+        Ok(())
+    }
 }
 
 /// [`Vec`] is the in-memory array leaf: a read clones the element at the position; a
@@ -154,6 +202,25 @@ pub trait Io<T> {
 impl<T: Clone> Io<T> for Vec<T> {
     fn len(&self) -> Result<usize, IoError> {
         Ok(self.as_slice().len())
+    }
+
+    fn capacity(&self) -> Result<usize, IoError> {
+        Ok(Vec::capacity(self))
+    }
+
+    fn with_capacity(&mut self, capacity: usize) -> Result<(), IoError> {
+        self.reserve(capacity.saturating_sub(self.as_slice().len()));
+        Ok(())
+    }
+
+    fn resize(&mut self, len: usize) -> Result<(), IoError>
+    where
+        T: Default,
+    {
+        let fill = self.default();
+        crate::log_event!(trace, "Vec::resize len={len}");
+        Vec::resize(self, len, fill);
+        Ok(())
     }
 
     fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError> {

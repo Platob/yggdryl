@@ -82,6 +82,31 @@ fn pwrite_array_overwrites_and_extends() {
     assert_eq!(io, vec![1, 20, 31, 4, 5, 6, 7]);
 }
 
+#[test]
+fn capacity_and_with_capacity_manage_spare_room() {
+    // `Io::capacity` / `Io::resize` are reached through `Io::` on a bare Vec, whose
+    // inherent `capacity` / `resize` would otherwise shadow them.
+    let mut io = vec![1u8, 2, 3];
+    assert!(Io::capacity(&io).unwrap() >= 3);
+    // Reserving grows the capacity without touching the length or the elements.
+    io.with_capacity(64).unwrap();
+    assert!(Io::capacity(&io).unwrap() >= 64);
+    assert_eq!(io, vec![1, 2, 3]);
+}
+
+#[test]
+fn resize_grows_with_the_default_and_shrinks() {
+    let mut io = vec![1u8, 2, 3];
+    // The fill value is `T::default()`.
+    assert_eq!(Io::default(&io), 0u8);
+    // Growing fills the new slots with the default element.
+    Io::resize(&mut io, 5).unwrap();
+    assert_eq!(io, vec![1, 2, 3, 0, 0]);
+    // Shrinking truncates.
+    Io::resize(&mut io, 2).unwrap();
+    assert_eq!(io, vec![1, 2]);
+}
+
 // A minimal source that implements only the single-element primitives, so the
 // trait's default `pread_array` / `pwrite_array` (looping those primitives) are the
 // ones under test here — the "array IO for free" path a new source inherits.
@@ -108,6 +133,17 @@ fn default_array_methods_loop_the_single_element_primitives() {
     // Overwrites then extends contiguously.
     assert_eq!(io.pwrite_array(1, Whence::Start, &[20, 30, 40]).unwrap(), 3);
     assert_eq!(io.0, vec![1, 20, 30, 40]);
+}
+
+#[test]
+fn default_resize_grows_with_fill_but_cannot_shrink() {
+    let mut io = Bare(vec![1u8, 2, 3]);
+    // The trait default grows through `pwrite_array`, filling with the default.
+    io.resize(5).unwrap();
+    assert_eq!(io.0, vec![1, 2, 3, 0, 0]);
+    // A shrink is skipped — the base trait cannot truncate.
+    io.resize(1).unwrap();
+    assert_eq!(io.0, vec![1, 2, 3, 0, 0]);
 }
 
 #[test]
