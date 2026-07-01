@@ -46,6 +46,71 @@ fn pwrite_overwrites_and_appends() {
 }
 
 #[test]
+fn pread_array_reads_a_window_and_clamps_at_the_end() {
+    let io = vec![10u8, 20, 30, 40, 50];
+    // A window from each origin.
+    assert_eq!(io.pread_array(1, Whence::Start, 2).unwrap(), vec![20, 30]);
+    assert_eq!(io.pread_array(2, Whence::End, 5).unwrap(), vec![40, 50]);
+    // More than is available returns only what's there.
+    assert_eq!(io.pread_array(3, Whence::Start, 10).unwrap(), vec![40, 50]);
+    // Reading exactly at the end yields nothing.
+    assert!(io.pread_array(5, Whence::Start, 3).unwrap().is_empty());
+    // Starting past the end errors.
+    assert_eq!(
+        io.pread_array(6, Whence::Start, 1),
+        Err(IoError::OutOfBounds)
+    );
+}
+
+#[test]
+fn pwrite_array_overwrites_and_extends() {
+    let mut io = vec![1u8, 2, 3];
+    // Overwrite in place.
+    assert_eq!(io.pwrite_array(1, Whence::Start, &[20, 30]).unwrap(), 2);
+    assert_eq!(io, vec![1, 20, 30]);
+    // Overwrite the tail and extend past the end in one write.
+    assert_eq!(io.pwrite_array(2, Whence::Start, &[31, 4, 5]).unwrap(), 3);
+    assert_eq!(io, vec![1, 20, 31, 4, 5]);
+    // An End offset of `0` appends at the very end.
+    assert_eq!(io.pwrite_array(0, Whence::End, &[6, 7]).unwrap(), 2);
+    assert_eq!(io, vec![1, 20, 31, 4, 5, 6, 7]);
+    // Starting past the end errors, leaving the source untouched.
+    assert_eq!(
+        io.pwrite_array(9, Whence::Start, &[8]),
+        Err(IoError::OutOfBounds)
+    );
+    assert_eq!(io, vec![1, 20, 31, 4, 5, 6, 7]);
+}
+
+// A minimal source that implements only the single-element primitives, so the
+// trait's default `pread_array` / `pwrite_array` (looping those primitives) are the
+// ones under test here — the "array IO for free" path a new source inherits.
+struct Bare(Vec<u8>);
+
+impl Io<u8> for Bare {
+    fn len(&self) -> Result<usize, IoError> {
+        Io::len(&self.0)
+    }
+    fn pread(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
+        self.0.pread(position, whence)
+    }
+    fn pwrite(&mut self, position: usize, whence: Whence, value: u8) -> Result<(), IoError> {
+        self.0.pwrite(position, whence, value)
+    }
+}
+
+#[test]
+fn default_array_methods_loop_the_single_element_primitives() {
+    let mut io = Bare(vec![1u8, 2, 3]);
+    assert_eq!(io.pread_array(0, Whence::Start, 2).unwrap(), vec![1, 2]);
+    // Clamps at the end just like the bulk override.
+    assert_eq!(io.pread_array(1, Whence::Start, 10).unwrap(), vec![2, 3]);
+    // Overwrites then extends contiguously.
+    assert_eq!(io.pwrite_array(1, Whence::Start, &[20, 30, 40]).unwrap(), 3);
+    assert_eq!(io.0, vec![1, 20, 30, 40]);
+}
+
+#[test]
 fn seek_resolves_the_target_from_each_whence_origin() {
     let mut io = vec![1u8, 2, 3, 4, 5];
     // Start / Current count forward; the cursor is `0` for a cursorless Vec.

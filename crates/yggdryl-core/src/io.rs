@@ -33,18 +33,22 @@ impl std::error::Error for IoError {}
 /// An implementor supplies [`len`](Io::len) and the two positional primitives
 /// [`pread`](Io::pread) / [`pwrite`](Io::pwrite); the default
 /// [`resolve`](Io::resolve) turns a `(position, whence)` pair into an absolute
-/// index for them. A stateful source overrides [`position`](Io::position) /
-/// [`seek`](Io::seek) so that [`Whence::Current`] addresses its cursor and a seek
-/// retains the move.
+/// index for them. The array forms [`pread_array`](Io::pread_array) /
+/// [`pwrite_array`](Io::pwrite_array) default to looping those primitives, and a
+/// memory-resident source overrides them for a bulk copy. A stateful source
+/// overrides [`position`](Io::position) / [`seek`](Io::seek) so that
+/// [`Whence::Current`] addresses its cursor and a seek retains the move.
 ///
 /// ```
 /// use yggdryl_core::{Io, Whence};
 ///
 /// let mut io = vec![1u8, 2, 3, 4];
 /// assert_eq!(io.pread(1, Whence::Start).unwrap(), 2);
-/// io.pwrite(0, Whence::End, 5).unwrap(); // append at the end
-/// assert_eq!(io, vec![1, 2, 3, 4, 5]);
-/// assert_eq!(io.seek(1, Whence::End).unwrap(), 4); // one element before the end
+/// assert_eq!(io.pread_array(0, Whence::Start, 3).unwrap(), vec![1, 2, 3]);
+/// io.pwrite(0, Whence::End, 5).unwrap(); // append one at the end
+/// io.pwrite_array(0, Whence::End, &[6, 7]).unwrap(); // append two more
+/// assert_eq!(io, vec![1, 2, 3, 4, 5, 6, 7]);
+/// assert_eq!(io.seek(1, Whence::End).unwrap(), 6); // one element before the end
 /// ```
 pub trait Io<T> {
     /// The total number of `T` elements in the source.
@@ -101,11 +105,47 @@ pub trait Io<T> {
     /// the end, where no element lives.
     fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError>;
 
+    /// Reads up to `len` elements starting at `position` measured from `whence`,
+    /// returning those actually available there (fewer than `len` near the end,
+    /// empty at the end). The default loops [`pread`](Io::pread); a memory-resident
+    /// source overrides it for a bulk copy. Errors
+    /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is past the end.
+    fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
+        let start = self.resolve(position, whence)?;
+        let count = len.min(self.len()?.saturating_sub(start));
+        let mut out = Vec::with_capacity(count);
+        for offset in 0..count {
+            out.push(self.pread(start + offset, Whence::Start)?);
+        }
+        Ok(out)
+    }
+
     /// Writes `value` at `position` measured from `whence` — overwriting the element
     /// there, or appending it when the position is exactly the end. Errors
     /// [`ReadOnly`](IoError::ReadOnly) on a read-only source or
     /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is past the end.
     fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError>;
+
+    /// Writes `values` at `position` measured from `whence` — overwriting, and
+    /// extending the source when the write runs past the end — and returns the number
+    /// of elements written. The default loops [`pwrite`](Io::pwrite); a
+    /// memory-resident source overrides it for a bulk copy. Errors as
+    /// [`pwrite`](Io::pwrite) does.
+    fn pwrite_array(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        values: &[T],
+    ) -> Result<usize, IoError>
+    where
+        T: Clone,
+    {
+        let start = self.resolve(position, whence)?;
+        for (offset, value) in values.iter().enumerate() {
+            self.pwrite(start + offset, Whence::Start, value.clone())?;
+        }
+        Ok(values.len())
+    }
 }
 
 /// [`Vec`] is the in-memory array leaf: a read clones the element at the position; a
@@ -122,6 +162,13 @@ impl<T: Clone> Io<T> for Vec<T> {
         self.get(at).cloned().ok_or(IoError::OutOfBounds)
     }
 
+    fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
+        let start = self.resolve(position, whence)?;
+        crate::log_event!(trace, "Vec::pread_array start={start} len={len}");
+        let end = start.saturating_add(len).min(self.as_slice().len());
+        Ok(self[start..end].to_vec())
+    }
+
     fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
         let at = self.resolve(position, whence)?;
         crate::log_event!(trace, "Vec::pwrite at={at}");
@@ -131,5 +178,23 @@ impl<T: Clone> Io<T> for Vec<T> {
             self[at] = value;
         }
         Ok(())
+    }
+
+    fn pwrite_array(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        values: &[T],
+    ) -> Result<usize, IoError> {
+        let start = self.resolve(position, whence)?;
+        crate::log_event!(
+            trace,
+            "Vec::pwrite_array start={start} len={}",
+            values.len()
+        );
+        let overlap = values.len().min(self.as_slice().len() - start);
+        self[start..start + overlap].clone_from_slice(&values[..overlap]);
+        self.extend_from_slice(&values[overlap..]);
+        Ok(values.len())
     }
 }
