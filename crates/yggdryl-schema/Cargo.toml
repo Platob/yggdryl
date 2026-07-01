@@ -41,8 +41,7 @@ arrow-schema = { version = "59", default-features = false, features = ["ffi"] }
 default = []
 # The schema types perform no logging of their own; forward the feature to the core.
 log = ["yggdryl-core/log"]
-# Structural `Serialize` / `Deserialize` for the recursive schema types (lossless,
-# unlike a canonical string form).
+# Structural `Serialize` / `Deserialize` for the recursive schema types (lossless).
 serde = ["dep:serde"]
 # `to_json` / `from_json` on every type (implies `serde`). Used by the bindings.
 json = ["serde", "dep:serde_json"]

@@ -15,12 +15,12 @@ reader should not be able to tell which type they are looking at from the shape 
 the code.
 
 **Everything must be serializable and hashable.** Do your best to make every value
-type round-trip through *all* of: a canonical string (`from_str`/`to_str`), JSON
-(`serde`, plus `to_json`/`from_json` where a crate exposes a `json` feature) and
-**bytes** (`to_bytes`/`from_bytes`), and to derive (or hand-implement) `Hash` + `Eq`
-so it can key a map or set. In the bindings this means `__hash__` + `__reduce__`
-(pickle) in Python and `toJSON()` + a static `fromJSON()` in Node. The only exceptions are live/stream resources (IO
-handles, HTTP bodies, sessions). When a field cannot be part of a value's identity
+type round-trip through *all* of: JSON (`serde`, plus `to_json`/`from_json` where a
+crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and to
+derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the bindings
+this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a static
+`fromJSON()` in Node. The only exceptions are live/stream resources (IO handles,
+HTTP bodies, sessions). When a field cannot be part of a value's identity
 (e.g. a navigational `parent` pointer, which would create cycles), exclude it from
 `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
 
@@ -90,8 +90,8 @@ half-applied.
 
 Every value type is **serializable**, but the mechanism is idiomatic per language
 (adapt to each, keep the semantics identical). In Rust it is the off-by-default
-`serde` feature: value types with a canonical string render to **that string**, and
-the plain enums/structs `derive`. The bindings surface the same: **Python**
+`serde` feature: value types `derive` a structural `Serialize` / `Deserialize`. The
+bindings surface the same: **Python**
 implements `__reduce__` (so `pickle` / `copy` reconstruct through the existing
 constructors), **Node** implements `toJSON()` + a static `fromJSON()` (used by
 `JSON.stringify`). Live/stream resources (IO handles, an HTTP body, a session) are
@@ -104,10 +104,8 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 
 | Concept | Name |
 | --- | --- |
-| Construct from a string | `from_str(value)` |
 | Construct from any supported input | `from_` (Rust trait `FromInput`) |
 | Construct from explicit parts | `from_parts(...)` |
-| Render to canonical string | `to_str()` |
 | Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
 | JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
