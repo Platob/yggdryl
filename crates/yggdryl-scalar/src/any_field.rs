@@ -10,12 +10,14 @@ use crate::{Any, AnyType};
 /// [`Any`]. The `with_*` / [`copy`](AnyField::copy) updates are non-mutating.
 ///
 /// ```
-/// use yggdryl_scalar::{AnyField, AnyType};
-/// use yggdryl_schema::{DataType, DataTypeId};
+/// use yggdryl_scalar::{AnyField, DataTypeId};
 ///
-/// let field = AnyField::new("id", AnyType::primitive(DataTypeId::Int64));
+/// // A `DataTypeId` redirects to the correct `AnyType`…
+/// let field = AnyField::new("id", DataTypeId::Int64);
 /// assert_eq!(field.name(), "id");
-/// assert_eq!(field.any_type().type_id(), DataTypeId::Int64);
+/// assert_eq!(field.any_type().as_primitive(), Some(DataTypeId::Int64));
+/// // …or use a typed constructor directly.
+/// assert_eq!(AnyField::int64("id"), field);
 /// assert!(!field.nullable());
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -26,15 +28,32 @@ pub struct AnyField {
     metadata: Option<Metadata>,
 }
 
+/// Generates the typed field constructors (e.g. [`AnyField::int64`]).
+macro_rules! primitive_field_ctors {
+    ($($method:ident),+ $(,)?) => {$(
+        #[doc = concat!("A non-nullable `", stringify!($method), "` field named `name`.")]
+        pub fn $method(name: impl Into<String>) -> Self {
+            Self::new(name, AnyType::$method())
+        }
+    )+};
+}
+
 impl AnyField {
-    /// A non-nullable field named `name` of type `dtype`, with no metadata.
-    pub fn new(name: impl Into<String>, dtype: AnyType) -> Self {
+    /// A non-nullable field named `name` of type `dtype` (anything that converts into
+    /// an [`AnyType`] — an [`AnyType`], a [`DataTypeId`], or a [`StructType`](crate::StructType)),
+    /// with no metadata.
+    pub fn new(name: impl Into<String>, dtype: impl Into<AnyType>) -> Self {
         Self {
             name: name.into(),
-            dtype,
+            dtype: dtype.into(),
             nullable: false,
             metadata: None,
         }
+    }
+
+    primitive_field_ctors! {
+        null, boolean, int8, int16, int32, int64, int128, int256, uint8, uint16, uint32, uint64,
+        uint128, uint256, utf8,
     }
 
     /// The field from its explicit parts.

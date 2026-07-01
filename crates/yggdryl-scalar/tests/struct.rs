@@ -6,8 +6,8 @@ use yggdryl_scalar::{AnyField, AnyType, DataType, DataTypeId, Field, StructField
 #[test]
 fn struct_type_holds_heterogeneous_child_fields() {
     let ty = StructType::new(vec![
-        AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-        AnyField::new("tag", AnyType::primitive(DataTypeId::Utf8)),
+        AnyField::int64("id"),
+        AnyField::new("tag", DataTypeId::Utf8), // a DataTypeId redirects to the type
     ]);
     assert_eq!(ty.type_id(), DataTypeId::Struct);
     assert_eq!(ty.type_name(), "struct");
@@ -24,16 +24,10 @@ fn struct_type_holds_heterogeneous_child_fields() {
 #[test]
 fn struct_field_is_the_recursive_schema_node() {
     // A struct field whose children include a nested struct — full recursivity.
-    let inner = AnyType::struct_type(StructType::new(vec![AnyField::new(
-        "x",
-        AnyType::primitive(DataTypeId::Int32),
-    )]));
+    let inner = AnyType::struct_type(StructType::new(vec![AnyField::int32("x")]));
     let schema = StructField::new(
         "record",
-        vec![
-            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-            AnyField::new("point", inner),
-        ],
+        vec![AnyField::int64("id"), AnyField::new("point", inner)],
     );
 
     assert_eq!(schema.name(), "record");
@@ -54,7 +48,7 @@ fn struct_field_is_the_recursive_schema_node() {
 
 #[test]
 fn field_updates_are_non_mutating() {
-    let field = AnyField::new("a", AnyType::primitive(DataTypeId::Int32));
+    let field = AnyField::int32("a");
     let nullable = field.with_nullable(true);
     assert!(nullable.nullable());
     assert!(!field.nullable()); // original untouched

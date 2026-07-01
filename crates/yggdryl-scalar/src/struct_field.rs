@@ -10,16 +10,10 @@ use crate::{AnyField, Struct, StructType};
 /// The `with_*` / [`copy`](StructField::copy) updates are non-mutating.
 ///
 /// ```
-/// use yggdryl_scalar::{AnyField, AnyType, StructField};
-/// use yggdryl_schema::{DataTypeId, Field};
+/// use yggdryl_scalar::{AnyField, StructField};
+/// use yggdryl_schema::Field;
 ///
-/// let schema = StructField::new(
-///     "record",
-///     vec![
-///         AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-///         AnyField::new("name", AnyType::primitive(DataTypeId::Utf8)),
-///     ],
-/// );
+/// let schema = StructField::new("record", vec![AnyField::int64("id"), AnyField::utf8("name")]);
 /// assert_eq!(schema.name(), "record");
 /// assert_eq!(schema.dtype().len(), 2);
 /// assert_eq!(schema.dtype().field_by("id").map(AnyField::name), Some("id"));

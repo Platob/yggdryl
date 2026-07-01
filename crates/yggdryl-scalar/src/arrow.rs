@@ -8,16 +8,9 @@
 //! schema *is* a [`StructField`], nesting is fully recursive.
 //!
 //! ```
-//! use yggdryl_scalar::{AnyField, AnyType, StructField};
-//! use yggdryl_schema::DataTypeId;
+//! use yggdryl_scalar::{AnyField, StructField};
 //!
-//! let schema = StructField::new(
-//!     "record",
-//!     vec![
-//!         AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-//!         AnyField::new("big", AnyType::primitive(DataTypeId::Int128)),
-//!     ],
-//! );
+//! let schema = StructField::new("record", vec![AnyField::int64("id"), AnyField::int128("big")]);
 //! let arrow = schema.to_arrow();
 //! assert_eq!(arrow.format(), "+s");
 //! assert_eq!(StructField::from_arrow(&arrow).unwrap(), schema); // lossless

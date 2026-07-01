@@ -10,13 +10,10 @@ use crate::{AnyField, Struct};
 /// a [`StructField`](crate::StructField) wrapping one of these.
 ///
 /// ```
-/// use yggdryl_scalar::{AnyField, AnyType, StructType};
+/// use yggdryl_scalar::{AnyField, StructType};
 /// use yggdryl_schema::{DataType, DataTypeId};
 ///
-/// let ty = StructType::new(vec![
-///     AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
-///     AnyField::new("tag", AnyType::primitive(DataTypeId::Utf8)),
-/// ]);
+/// let ty = StructType::new(vec![AnyField::int64("id"), AnyField::utf8("tag")]);
 /// assert_eq!(ty.type_id(), DataTypeId::Struct);
 /// assert_eq!(ty.len(), 2);
 /// assert_eq!(ty.field_by("tag").map(AnyField::name), Some("tag"));
