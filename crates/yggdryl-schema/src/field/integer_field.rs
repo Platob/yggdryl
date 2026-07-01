@@ -9,7 +9,7 @@
 //! let field = Int64Field::new("count");
 //! assert_eq!(field.name(), "count");
 //! assert_eq!(field.dtype().type_id(), DataTypeId::Int64);
-//! assert_eq!(field.default(), 0i64);
+//! assert_eq!(field.default(), Some(0i64)); // non-nullable → Some
 //!
 //! let renamed = field.with_name("total".to_string());
 //! assert_eq!(field.name(), "count"); // original untouched

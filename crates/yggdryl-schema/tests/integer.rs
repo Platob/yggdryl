@@ -27,15 +27,16 @@ fn integer_fields_wrap_their_type_and_default() {
     assert_eq!(field.name(), "count");
     assert_eq!(field.dtype().type_id(), DataTypeId::Int32);
     assert!(!field.nullable()); // non-nullable by default
-    assert_eq!(field.default(), 0i32);
+    assert_eq!(field.default(), Some(0i32)); // non-nullable → Some
+    assert_eq!(field.with_nullable(true).default(), None); // nullable → None
     assert!(field.metadata().is_none());
     assert_primitive_field(&field);
 
     // The 256-bit field delegates its default to the custom native type.
-    assert_eq!(Int256Field::new("big").default(), I256::ZERO);
+    assert_eq!(Int256Field::new("big").default(), Some(I256::ZERO));
     assert_eq!(
         yggdryl_schema::UInt256Field::new("big").default(),
-        U256::ZERO
+        Some(U256::ZERO)
     );
 }
 
