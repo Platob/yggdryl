@@ -49,7 +49,7 @@ pub trait Io<T> {
     ///
     /// Named `len` for the element count; a leaf reaches through to its own storage
     /// (e.g. [`Vec::as_slice`]`().len()`) to answer it.
-    fn len(&self) -> Result<u64, IoError>;
+    fn len(&self) -> Result<usize, IoError>;
 
     /// Whether the source holds no elements.
     fn is_empty(&self) -> Result<bool, IoError> {
@@ -59,7 +59,7 @@ pub trait Io<T> {
     /// The current cursor position (an element index), against which
     /// [`Whence::Current`] is resolved. Defaults to `0` for a cursorless source; a
     /// stateful source overrides it.
-    fn position(&self) -> Result<u64, IoError> {
+    fn position(&self) -> Result<usize, IoError> {
         Ok(0)
     }
 
@@ -68,7 +68,7 @@ pub trait Io<T> {
     /// (from the start / the cursor); a [`Whence::End`] offset counts back from the
     /// end. Errors [`OutOfBounds`](IoError::OutOfBounds) when it falls outside the
     /// source.
-    fn resolve(&self, position: u64, whence: Whence) -> Result<u64, IoError> {
+    fn resolve(&self, position: usize, whence: Whence) -> Result<usize, IoError> {
         let len = self.len()?;
         let index = match whence {
             Whence::Start => position,
@@ -87,37 +87,31 @@ pub trait Io<T> {
     /// Reads the single `T` at `position` measured from `whence`. Errors
     /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is at or past
     /// the end, where no element lives.
-    fn pread(&self, position: u64, whence: Whence) -> Result<T, IoError>;
+    fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError>;
 
     /// Writes `value` at `position` measured from `whence` — overwriting the element
     /// there, or appending it when the position is exactly the end. Errors
     /// [`ReadOnly`](IoError::ReadOnly) on a read-only source or
     /// [`OutOfBounds`](IoError::OutOfBounds) if the resolved position is past the end.
-    fn pwrite(&mut self, position: u64, whence: Whence, value: T) -> Result<(), IoError>;
-}
-
-/// Narrows a resolved `u64` position to a `usize` index, erroring
-/// [`OutOfBounds`](IoError::OutOfBounds) when it does not fit the address space.
-fn index(position: u64) -> Result<usize, IoError> {
-    usize::try_from(position).map_err(|_| IoError::OutOfBounds)
+    fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError>;
 }
 
 /// [`Vec`] is the in-memory array leaf: a read clones the element at the position; a
 /// write overwrites it, or appends when the position is exactly the end (the
 /// resolved position is `<= len`, so a write never opens a gap).
 impl<T: Clone> Io<T> for Vec<T> {
-    fn len(&self) -> Result<u64, IoError> {
-        Ok(self.as_slice().len() as u64)
+    fn len(&self) -> Result<usize, IoError> {
+        Ok(self.as_slice().len())
     }
 
-    fn pread(&self, position: u64, whence: Whence) -> Result<T, IoError> {
-        let at = index(self.resolve(position, whence)?)?;
+    fn pread(&self, position: usize, whence: Whence) -> Result<T, IoError> {
+        let at = self.resolve(position, whence)?;
         crate::log_event!(trace, "Vec::pread at={at}");
         self.get(at).cloned().ok_or(IoError::OutOfBounds)
     }
 
-    fn pwrite(&mut self, position: u64, whence: Whence, value: T) -> Result<(), IoError> {
-        let at = index(self.resolve(position, whence)?)?;
+    fn pwrite(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
+        let at = self.resolve(position, whence)?;
         crate::log_event!(trace, "Vec::pwrite at={at}");
         if at == self.as_slice().len() {
             self.push(value);
