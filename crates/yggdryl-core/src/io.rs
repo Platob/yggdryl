@@ -327,20 +327,17 @@ impl<T: Clone> Io<T> for Vec<T> {
 
     fn pread_one(&self, position: usize, whence: Whence) -> Result<T, IoError> {
         let at = self.resolve(position, whence)?;
-        crate::log_event!(trace, "Vec::pread_one at={at}");
         self.get(at).cloned().ok_or(IoError::OutOfBounds)
     }
 
     fn pread_array(&self, position: usize, whence: Whence, len: usize) -> Result<Vec<T>, IoError> {
         let start = self.resolve(position, whence)?;
-        crate::log_event!(trace, "Vec::pread_array start={start} len={len}");
         let end = start.saturating_add(len).min(self.as_slice().len());
         Ok(self[start..end].to_vec())
     }
 
     fn pwrite_one(&mut self, position: usize, whence: Whence, value: T) -> Result<(), IoError> {
         let at = self.resolve(position, whence)?;
-        crate::log_event!(trace, "Vec::pwrite_one at={at}");
         if at == self.as_slice().len() {
             self.push(value);
         } else {
@@ -356,11 +353,6 @@ impl<T: Clone> Io<T> for Vec<T> {
         values: &[T],
     ) -> Result<usize, IoError> {
         let start = self.resolve(position, whence)?;
-        crate::log_event!(
-            trace,
-            "Vec::pwrite_array start={start} len={}",
-            values.len()
-        );
         let overlap = values.len().min(self.as_slice().len() - start);
         self[start..start + overlap].clone_from_slice(&values[..overlap]);
         self.extend_from_slice(&values[overlap..]);
@@ -378,7 +370,6 @@ impl<T: Clone> Io<T> for Vec<T> {
         // `data`), so the transfer copies at most once — never a second clone.
         let data = source.pread_array(0, Whence::Start, source.len()?)?;
         let count = data.len();
-        crate::log_event!(trace, "Vec::pwrite_io start={start} len={count}");
         let end = start.saturating_add(count).min(self.as_slice().len());
         self.splice(start..end, data);
         Ok(count)
