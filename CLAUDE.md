@@ -15,46 +15,49 @@ reader should not be able to tell which type they are looking at from the shape 
 the code.
 
 **Everything must be serializable and hashable.** Do your best to make every value
-type round-trip through *all* of: a canonical string (`from_str`/`to_str`), a
-component map (`from_mapping`/`to_mapping`), JSON (`serde`, plus `to_json`/`from_json`
-where a crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and
-to derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the
-bindings this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a
-static `fromJSON()` in Node. The only exceptions are live/stream resources (IO
-handles, HTTP bodies, sessions). When a field cannot be part of a value's identity
+type round-trip through *all* of: JSON (`serde`, plus `to_json`/`from_json` where a
+crate exposes a `json` feature) and **bytes** (`to_bytes`/`from_bytes`), and to
+derive (or hand-implement) `Hash` + `Eq` so it can key a map or set. In the bindings
+this means `__hash__` + `__reduce__` (pickle) in Python and `toJSON()` + a static
+`fromJSON()` in Node. The only exceptions are live/stream resources (IO handles,
+HTTP bodies, sessions). When a field cannot be part of a value's identity
 (e.g. a navigational `parent` pointer, which would create cycles), exclude it from
 `Hash`/`Eq`/`serde` rather than dropping hashability — and document why.
 
 ## Workspace layout
 
-The workspace is **five Rust crates plus two thin bindings**. The type system is
-split into one crate per layer, each depending only on the layers below it:
+The workspace is **three Rust crates plus two thin bindings**, the layers of the
+Arrow-centric type system growing back after the reset:
 
-- `crates/yggdryl-core` — the dependency-light foundations every other crate builds
-  on: the zero-copy `Buffer`, the `Io` / `Whence` byte abstraction, the `Charset`
-  encodings, the global `JsonParams` + the `Jsonable` JSON/BSON trait, the shared
-  error types and the `mapping` component-map codec. No Arrow vocabulary lives here.
-- `crates/yggdryl-dtype` — the Arrow data types: the `DataType` trait hierarchy
-  (`PrimitiveType` / `NestedType` / `LogicalType`, plus `BinaryBased`) and the
-  `BinaryType` / `Utf8Type` descriptors carried by `AnyType`. Depends on `core`.
-- `crates/yggdryl-scalar` — the scalar *values*: the in-memory `Binary` buffer
-  (which implements `core`'s `Io`), the validated `Utf8` string and the `AnyScalar`
-  carrier, behind the `Scalar` trait. Depends on `core` + `dtype`.
-- `crates/yggdryl-field` — the `Field` / `AnyField` column type and its category
-  markers. Depends on `core` + `dtype`.
-- `crates/yggdryl-schema` — the Arrow-compatible schema layer. The `arrow-schema`
-  SDK is a dependency of this crate only.
-- `crates/yggdryl-http` — the network client. Its transport SDK is a dependency of
-  this crate only.
+- `crates/yggdryl-core` — the dependency-light foundations every other crate and
+  binding builds on. Currently a scaffold exposing only `version()`; reintroduce
+  the foundational types here (the zero-copy `Buffer`, the `ByteIo` / `Whence` byte
+  abstraction, the `Charset` encodings, the global `JsonParams` + the `Jsonable`
+  JSON/BSON trait and the shared error types), one module per concern, with no Arrow
+  vocabulary living here.
+- `crates/yggdryl-schema` — the Arrow-compatible schema layer (`DataType` / `Field`
+  and the schema types), holding the conversion to and from Apache Arrow's
+  `arrow-schema` behind its `arrow` feature. The `arrow-schema` SDK is a dependency
+  of this crate only. Depends only on `core`.
+- `crates/yggdryl-scalar` — the scalar *values*: the `Scalar` trait (a value's
+  `dtype` plus its `to_bytes` / `from_bytes` byte form) and the byte-backed
+  `Binary` value carrying any binary data type. Depends on `core` + `schema`.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**. They only translate types/errors and call the crates above; they
-  contain no logic. Anything added to a core layer must be surfaced in *both*
-  bindings.
+  contain no logic. Anything added to a crate must be surfaced in *both* bindings.
+  **Each Rust crate is exposed as a submodule of the top-level package**, mirroring
+  the crate tree: `yggdryl-core` → `yggdryl.core`, `yggdryl-schema` →
+  `yggdryl.schema` (Python submodules registered in `sys.modules`; Node `#[napi(namespace
+  = "…")]` exports). The binding source mirrors this too — `src/<crate>.rs` or
+  `src/<crate>/` per crate, with `src/lib.rs` only wiring the submodules together.
 
-Keep the dependency arrows pointing one way: a lower layer never imports an upper
-one (a reader needing the other direction means the abstraction belongs lower). The
-`Io` trait hands back zero-copy `core::Buffer` views rather than a `scalar::Binary`,
-so `core` stays free of the type layers above it.
+As the Arrow-centric type system grows back it is **split into one crate per
+layer** (data types, then scalar *values*, then fields), each depending only on
+the layers below it. Keep the dependency arrows pointing one way: a lower layer
+never imports an upper one (a reader needing the other direction means the
+abstraction belongs lower). The `ByteIo` trait hands back zero-copy `core::Buffer`
+views rather than a higher-layer value, so `core` stays free of the type layers
+above it.
 
 Each crate is **one file per type** — each concern is its own module (or module
 directory) under `src/`, with `lib.rs` as glue (a crate-local `log_event!` macro,
@@ -87,8 +90,8 @@ half-applied.
 
 Every value type is **serializable**, but the mechanism is idiomatic per language
 (adapt to each, keep the semantics identical). In Rust it is the off-by-default
-`serde` feature: value types with a canonical string render to **that string**, and
-the plain enums/structs `derive`. The bindings surface the same: **Python**
+`serde` feature: value types `derive` a structural `Serialize` / `Deserialize`. The
+bindings surface the same: **Python**
 implements `__reduce__` (so `pickle` / `copy` reconstruct through the existing
 constructors), **Node** implements `toJSON()` + a static `fromJSON()` (used by
 `JSON.stringify`). Live/stream resources (IO handles, an HTTP body, a session) are
@@ -101,17 +104,12 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 
 | Concept | Name |
 | --- | --- |
-| Construct from a string | `from_str(value)` |
-| Construct from a component mapping | `from_mapping(fields)` |
-| Construct from any supported input | `from_` (Rust trait `FromInput`) |
 | Construct from explicit parts | `from_parts(...)` |
-| Render to canonical string / mapping | `to_str()` / `to_mapping()` |
 | Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
 | JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
 | Single-field functional update | `with_<field>(value)` returns a new value |
 | Clear an optional field | `without_<field>()` |
-| Type conversions | `to_<type>` / `from_<type>` |
 
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use
@@ -136,6 +134,14 @@ Rules:
   doctest. Match the existing terse style.
 - **Bindings**: each wrapper method is one or two lines delegating to
   `self.inner`. Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+- **One-line functional updates**: write the non-mutating helpers as a single
+  expression. `copy` is the one primitive that rebuilds the value with selected
+  fields overridden (omitted ones taken from `self`); every `with_<field>` /
+  `without_<field>` is a one-line delegation to it — e.g.
+  `fn with_name(&self, name: String) -> Self { self.copy(Some(name), None, None, None) }`.
+  Favour concise functional one-liners wherever they stay readable, and define the
+  trait method signatures so an implementor can satisfy them on one line; only
+  expand to a multi-line body when the logic genuinely needs it.
 
 ## Performance: zero-copy with checks
 
@@ -154,6 +160,14 @@ change** — guarded by a cheap up-front check:
 When you add a hot path, ask "does this allocate when nothing changed?" — if so,
 add the check and borrow. Never copy speculatively; never re-scan what a single
 pass can decide.
+
+**Prefer view types by default.** When nothing forces a particular layout, default
+to the *view* variant of the binary types (`BinaryViewType` and its `Large*` sibling)
+over the offset-backed `BinaryType` / `LargeBinaryType`. View values share their bytes
+through the zero-copy `Buffer`, so cloning, slicing and casting them never deep-copy. A
+constructor picking a default type, a binding exposing one, or a doc example that just
+needs "some bytes" should reach for the view type; choose a non-view variant only when
+an external format, an offset-width requirement, or a size cap demands it.
 
 **Centralise byte/memory access behind one IO abstraction.** A new byte source
 (memory buffer, local file, cloud object, HTTP body) should implement that single

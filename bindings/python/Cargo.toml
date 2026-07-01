@@ -16,19 +16,8 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# The foundations: Buffer, the Io / Whence byte abstraction, Charset, the global
-# JsonParams + the Jsonable trait, and the shared error types.
-yggdryl-core = { path = "../../crates/yggdryl-core", version = "0.1.0", features = ["mmap", "media", "json", "serde"] }
-# The Arrow-centric type layers built on the core — data types, scalar values and
-# fields — with JSON (de)serialisation enabled.
-yggdryl-dtype = { path = "../../crates/yggdryl-dtype", version = "0.1.0", features = ["json"] }
-yggdryl-scalar = { path = "../../crates/yggdryl-scalar", version = "0.1.0", features = ["json"] }
-yggdryl-field = { path = "../../crates/yggdryl-field", version = "0.1.0", features = ["json"] }
-yggdryl-http = { path = "../../crates/yggdryl-http", version = "0.1.0", features = ["compression", "media"] }
-# The schema layer (DataType / Field) with JSON (de)serialisation and Arrow conversion.
-yggdryl-schema = { path = "../../crates/yggdryl-schema", version = "0.1.0", features = ["json", "arrow"] }
-# Converts the `serde_json::Value` from `Io::json()` into Python objects.
-serde_json = "1"
+# The dependency-light Rust core; all logic lives here.
+yggdryl-core = { workspace = true }
 
 [dependencies.pyo3]
 version = "0.22"

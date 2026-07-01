@@ -9,8 +9,6 @@ A Rust-core library with Python and Node.js extensions.
 ## Layout
 
 - `crates/yggdryl-core` — the Rust core foundations.
-- `crates/yggdryl-schema` — the Arrow-compatible schema layer.
-- `crates/yggdryl-http` — the HTTP client.
 - `bindings/python` — the Python extension (PyO3 / maturin).
 - `bindings/node` — the Node.js extension (napi-rs).
 

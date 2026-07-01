@@ -1,38 +1,32 @@
 //! # yggdryl-scalar
 //!
-//! Arrow-centric scalar **values**.
+//! Arrow-centric scalar **values**. [`Scalar`] is the trait every value implements
+//! — it knows its [`dtype`](Scalar::dtype), round-trips through its raw byte form
+//! ([`to_bytes`](Scalar::to_bytes) / [`from_bytes`](Scalar::from_bytes)),
+//! [`encode`](Scalar::encode)s / [`decode`](Scalar::decode)s native Rust values
+//! (Arrow scalar values) via the [`Encode`] / [`Decode`] codecs, and
+//! [`cast`](Scalar::cast)s to another data type. [`Binary`] is the byte-backed
+//! value carrying any binary [`DataType`](yggdryl_schema::DataType).
 //!
-//! The crate's scalars are [`Binary`] (a growable, in-memory binary buffer that
-//! also implements [`Io`](yggdryl_core::Io)) and [`Utf8`] (a validated UTF-8
-//! string value). Both hold their payload in a shared allocation (O(1) clone,
-//! borrowed access), expose a data-type accessor/mutator and a
-//! [`cast`](Scalar::cast) to another type, and round-trip through JSON, a
-//! binary/text form and a component map. The type-erased result of a cast is an
-//! [`AnyScalar`].
+//! New value types land here one module per concern, following the rules in
+//! `CLAUDE.md`.
 
-mod any;
-mod binary;
-mod string;
-
-pub use any::AnyScalar;
-pub use binary::Binary;
-pub use string::Utf8;
-
-use yggdryl_core::ScalarError;
-use yggdryl_dtype::{AnyType, DataType};
-
-/// Behaviour shared by every scalar value.
-pub trait Scalar {
-    /// The scalar's data type (accessor).
-    fn data_type(&self) -> AnyType;
-
-    /// Sets the scalar's data type **in place**, keeping the payload. Errors if
-    /// the new type is a different family (e.g. a string type on a binary scalar)
-    /// — use [`cast`](Scalar::cast) to convert across families.
-    fn set_data_type(&mut self, data_type: &dyn DataType) -> Result<(), ScalarError>;
-
-    /// Casts the value to `data_type`, returning a new [`AnyScalar`]. A
-    /// same-family cast only re-labels the variant; a cross-family cast converts
-    /// the payload (and may fail, e.g. binary → string on non-UTF-8 bytes).
-    fn cast(&self, data_type: &dyn DataType) -> Result<AnyScalar, ScalarError>;
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise. Shared by every submodule via `crate::log_event!`.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        log::$level!($($arg)+);
+    }};
 }
+pub(crate) use log_event;
+
+mod binary;
+mod codec;
+mod error;
+mod scalar;
+
+pub use binary::Binary;
+pub use codec::{Decode, Encode};
+pub use error::ScalarError;
+pub use scalar::Scalar;

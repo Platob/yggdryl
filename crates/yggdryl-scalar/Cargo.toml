@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Arrow-centric scalar values for yggdryl: the in-memory Binary buffer (which implements Io) and the validated Utf8 string value"
+description = "Arrow-centric scalar values for yggdryl: byte-backed values carrying their schema data type"
 keywords.workspace = true
 readme = "README.md"
 
@@ -15,22 +15,23 @@ name = "yggdryl_scalar"
 path = "src/lib.rs"
 
 [dependencies]
-# The foundations (Buffer, Io/Whence, errors, the mapping codec, Jsonable) and the
-# data-type descriptors the scalars carry and cast between.
+# The core supplies the zero-copy `Buffer` the scalars store their bytes in; the
+# schema layer supplies the `DataType` they carry.
 yggdryl-core = { workspace = true, default-features = false }
-yggdryl-dtype = { workspace = true, default-features = false }
-# All heavy dependencies are optional and off by default (mirroring the core).
+yggdryl-schema = { workspace = true, default-features = false }
+# All off by default, mirroring the other crates.
 log = { version = "0.4", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
-# Round-trip the `serde` impls through a concrete format, and exercise the
-# cross-cutting JSON surface against fields.
+# Round-trip the `serde` impls through a concrete format in the tests.
 serde_json = { version = "1" }
-yggdryl-field = { workspace = true, features = ["json"] }
 
 [features]
 default = []
-log = ["dep:log", "yggdryl-core/log", "yggdryl-dtype/log"]
-serde = ["dep:serde", "yggdryl-core/serde", "yggdryl-dtype/serde"]
-json = ["serde", "yggdryl-core/json", "yggdryl-dtype/json"]
+# Structured logging via the `log` facade (e.g. when a value is truncated to its
+# type's maximum byte size), also turning it on in the schema layer.
+log = ["dep:log", "yggdryl-core/log", "yggdryl-schema/log"]
+# Structural `Serialize` / `Deserialize` for every value type; also turns on the
+# core and schema `serde` so the buffer and carried data types serialize.
+serde = ["dep:serde", "yggdryl-core/serde", "yggdryl-schema/serde"]

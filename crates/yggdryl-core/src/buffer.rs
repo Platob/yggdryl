@@ -1,128 +1,85 @@
-//! [`Buffer`] — the zero-copy byte backbone shared by every scalar value.
+//! The zero-copy [`Buffer`].
 
-use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-use std::ops::{Bound, RangeBounds};
+use std::ops::{Deref, Range};
 use std::sync::Arc;
 
-/// An immutable, reference-counted byte buffer with O(1) clone and zero-copy
-/// slicing.
+/// An `Arc`-backed byte buffer.
 ///
-/// Cloning only bumps an [`Arc`] refcount and [`slice`](Buffer::slice) only moves
-/// a pair of offsets, so neither touches the underlying bytes; the data is copied
-/// exactly once, when the buffer is first built (from either a borrowed slice or
-/// an owned `Vec` — an `Arc<[u8]>` stores its refcount inline and so cannot reuse
-/// a `Vec`'s allocation). Equality, ordering and hashing all run over the live
-/// byte range, so a sliced buffer compares equal to a fresh buffer holding the
-/// same bytes.
+/// Cloning shares the underlying allocation (O(1), no copy) and
+/// [`slice`](Buffer::slice) returns a sub-view that shares it too — the zero-copy
+/// foundation the view-backed scalar types rely on. Equality, ordering and hashing
+/// are by byte content, so a `Buffer` keys a map the same as its bytes would.
 ///
 /// ```
 /// use yggdryl_core::Buffer;
 ///
-/// let buf = Buffer::from_slice(b"hello world");
-/// let world = buf.slice(6..); // no copy — shares the same allocation
-/// assert_eq!(world.as_slice(), b"world");
+/// let buf = Buffer::from_vec(b"hello world".to_vec());
 /// assert_eq!(buf.as_slice(), b"hello world");
-/// assert_eq!(world, Buffer::from_slice(b"world"));
+///
+/// let world = buf.slice(6..11);
+/// assert_eq!(world.as_slice(), b"world");
+/// // The slice shares the original allocation — same address, no copy.
+/// assert_eq!(world.as_slice().as_ptr(), buf.as_slice()[6..].as_ptr());
+///
+/// // The default is an empty buffer.
+/// assert!(Buffer::default().is_empty());
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Buffer {
-    data: Arc<[u8]>,
-    start: usize,
-    end: usize,
+    storage: Arc<Vec<u8>>,
+    offset: usize,
+    len: usize,
 }
 
 impl Buffer {
-    /// Builds a buffer by copying `bytes` into a fresh allocation.
-    pub fn from_slice(bytes: &[u8]) -> Self {
-        Self::from_arc(Arc::from(bytes))
-    }
-
-    /// Builds a buffer from an owned `Vec`, copying its bytes into the `Arc`
-    /// allocation (an `Arc<[u8]>` cannot reuse a `Vec`'s allocation).
+    /// Wraps `bytes`, taking ownership without copying.
     pub fn from_vec(bytes: Vec<u8>) -> Self {
-        Self::from_arc(Arc::from(bytes))
-    }
-
-    fn from_arc(data: Arc<[u8]>) -> Self {
-        let end = data.len();
+        let len = bytes.len();
         Self {
-            data,
-            start: 0,
-            end,
+            storage: Arc::new(bytes),
+            offset: 0,
+            len,
         }
     }
 
-    /// Builds a buffer over an existing shared allocation and byte range, without
-    /// copying. Low-level zero-copy constructor used by in-memory IO and the scalar
-    /// values to hand out views that share a store. Panics if the range falls
-    /// outside `0..data.len()`.
-    pub fn from_shared(data: Arc<[u8]>, start: usize, end: usize) -> Self {
-        assert!(
-            start <= end && end <= data.len(),
-            "Buffer::from_shared range {start}..{end} out of bounds for length {}",
-            data.len()
-        );
-        Self { data, start, end }
-    }
-
-    /// The buffer's shared allocation and live byte range, for zero-copy reuse by
-    /// other byte-backed types in the workspace.
-    pub fn as_parts(&self) -> (&Arc<[u8]>, usize, usize) {
-        (&self.data, self.start, self.end)
-    }
-
-    /// The buffer's bytes, borrowed without copying.
+    /// The buffer's bytes, borrowed (zero-copy).
     pub fn as_slice(&self) -> &[u8] {
-        &self.data[self.start..self.end]
+        &self.storage[self.offset..self.offset + self.len]
     }
 
-    /// The number of live bytes in the buffer.
+    /// The number of bytes.
     pub fn len(&self) -> usize {
-        self.end - self.start
+        self.len
     }
 
-    /// Whether the buffer holds no bytes.
+    /// Whether the buffer is empty.
     pub fn is_empty(&self) -> bool {
-        self.start == self.end
+        self.len == 0
     }
 
-    /// A zero-copy sub-range of this buffer, sharing the same allocation.
+    /// A zero-copy sub-view over `range`, sharing the same allocation.
     ///
-    /// Panics if the range falls outside `0..self.len()`.
+    /// # Panics
     ///
-    /// ```
-    /// use yggdryl_core::Buffer;
-    /// let buf = Buffer::from_slice(b"yggdryl");
-    /// assert_eq!(buf.slice(0..3).as_slice(), b"ygg");
-    /// ```
-    pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-        let len = self.len();
-        let start = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n.saturating_add(1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&n) => n.saturating_add(1),
-            Bound::Excluded(&n) => n,
-            Bound::Unbounded => len,
-        };
+    /// Panics if `range` is out of bounds.
+    pub fn slice(&self, range: Range<usize>) -> Self {
         assert!(
-            start <= end && end <= len,
-            "Buffer::slice range {start}..{end} out of bounds for length {len}"
+            range.start <= range.end && range.end <= self.len,
+            "buffer slice {range:?} out of bounds for length {}",
+            self.len
         );
-        crate::log_event!(trace, "Buffer::slice {}..{} of {}", start, end, len);
         Self {
-            data: Arc::clone(&self.data),
-            start: self.start + start,
-            end: self.start + end,
+            storage: Arc::clone(&self.storage),
+            offset: self.offset + range.start,
+            len: range.end - range.start,
         }
     }
+}
 
-    /// Copies the live bytes into an owned `Vec`.
-    pub fn to_vec(&self) -> Vec<u8> {
-        self.as_slice().to_vec()
+impl From<Vec<u8>> for Buffer {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::from_vec(bytes)
     }
 }
 
@@ -132,34 +89,17 @@ impl AsRef<[u8]> for Buffer {
     }
 }
 
-impl From<&[u8]> for Buffer {
-    fn from(bytes: &[u8]) -> Self {
-        Buffer::from_slice(bytes)
-    }
-}
+impl Deref for Buffer {
+    type Target = [u8];
 
-impl From<Vec<u8>> for Buffer {
-    fn from(bytes: Vec<u8>) -> Self {
-        Buffer::from_vec(bytes)
-    }
-}
-
-impl From<&str> for Buffer {
-    fn from(text: &str) -> Self {
-        Buffer::from_slice(text.as_bytes())
-    }
-}
-
-impl From<String> for Buffer {
-    fn from(text: String) -> Self {
-        Buffer::from_vec(text.into_bytes())
+    fn deref(&self) -> &[u8] {
+        self.as_slice()
     }
 }
 
 impl std::fmt::Debug for Buffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Avoid dumping the full contents; report the length only.
-        f.debug_struct("Buffer").field("len", &self.len()).finish()
+        f.debug_tuple("Buffer").field(&self.as_slice()).finish()
     }
 }
 
@@ -172,13 +112,13 @@ impl PartialEq for Buffer {
 impl Eq for Buffer {}
 
 impl PartialOrd for Buffer {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Buffer {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_slice().cmp(other.as_slice())
     }
 }
@@ -192,76 +132,13 @@ impl Hash for Buffer {
 #[cfg(feature = "serde")]
 impl serde::Serialize for Buffer {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(self.as_slice())
+        self.as_slice().serialize(serializer)
     }
 }
 
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Buffer {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct BufferVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for BufferVisitor {
-            type Value = Buffer;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a byte buffer")
-            }
-
-            fn visit_bytes<E: serde::de::Error>(self, v: &[u8]) -> Result<Buffer, E> {
-                Ok(Buffer::from_slice(v))
-            }
-
-            fn visit_byte_buf<E: serde::de::Error>(self, v: Vec<u8>) -> Result<Buffer, E> {
-                Ok(Buffer::from_vec(v))
-            }
-
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(
-                self,
-                mut seq: A,
-            ) -> Result<Buffer, A::Error> {
-                let mut bytes = Vec::with_capacity(seq.size_hint().unwrap_or(0));
-                while let Some(byte) = seq.next_element::<u8>()? {
-                    bytes.push(byte);
-                }
-                Ok(Buffer::from_vec(bytes))
-            }
-        }
-
-        deserializer.deserialize_byte_buf(BufferVisitor)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clone_and_slice_share_the_allocation() {
-        let buf = Buffer::from_slice(b"hello world");
-        assert_eq!(Arc::strong_count(&buf.data), 1);
-        let clone = buf.clone();
-        let world = buf.slice(6..);
-        // Clone and slice both share the original allocation, no byte copies.
-        assert_eq!(Arc::strong_count(&buf.data), 3);
-        assert_eq!(world.as_slice(), b"world");
-        assert_eq!(clone.as_slice(), b"hello world");
-    }
-
-    #[test]
-    fn slice_compares_equal_to_a_fresh_buffer() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hash;
-
-        let world = Buffer::from_slice(b"hello world").slice(6..);
-        let fresh = Buffer::from_slice(b"world");
-        assert_eq!(world, fresh);
-
-        let hash = |b: &Buffer| {
-            let mut h = DefaultHasher::new();
-            b.hash(&mut h);
-            h.finish()
-        };
-        assert_eq!(hash(&world), hash(&fresh));
+        Vec::<u8>::deserialize(deserializer).map(Buffer::from_vec)
     }
 }
