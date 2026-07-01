@@ -3,39 +3,22 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! It holds the zero-copy [`Buffer`] and the byte-IO layer built on it: the
-//! positional [`ByteIo`] trait (with `Buffer` as its in-memory leaf), the bounded
-//! [`ByteSlice`] window, the [`ByteCursor`] sequential cursor, the [`Whence`] seek
-//! origin, the bit-addressed [`BitIo`] layered on top, and the [`BitSlice`]
-//! bit-window. Reintroduce the rest of the foundational types here — one module per
-//! concern, each re-exported at the crate root — following the rules in `CLAUDE.md`.
+//! The project has been reset to a minimal scaffold: the crate exposes only
+//! [`version`] and the [`hello`] print example, so the Rust core and its Python and
+//! Node bindings build and round-trip end to end. Reintroduce the foundational types
+//! here as the design lands — one module per concern, each re-exported at the crate
+//! root — following the rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
-/// cost). Submodules reach it via `crate::log_event!`.
+/// cost). Once submodules return, re-export it with `pub(crate) use log_event;` so
+/// they can reach it via `crate::log_event!`.
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
         log::$level!($($arg)+);
     }};
 }
-pub(crate) use log_event;
-
-mod bit_io;
-mod bit_slice;
-mod buffer;
-mod byte_cursor;
-mod byte_io;
-mod byte_slice;
-mod whence;
-
-pub use bit_io::BitIo;
-pub use bit_slice::BitSlice;
-pub use buffer::Buffer;
-pub use byte_cursor::ByteCursor;
-pub use byte_io::{ByteIo, IoError};
-pub use byte_slice::ByteSlice;
-pub use whence::Whence;
 
 /// The crate version, as declared in `Cargo.toml`.
 ///
@@ -48,4 +31,15 @@ pub use whence::Whence;
 pub fn version() -> &'static str {
     log_event!(trace, "yggdryl_core::version");
     env!("CARGO_PKG_VERSION")
+}
+
+/// Prints a greeting to standard output — the minimal cross-language example,
+/// surfaced identically from the Python and Node bindings.
+///
+/// ```
+/// yggdryl_core::hello();
+/// ```
+pub fn hello() {
+    log_event!(debug, "yggdryl_core::hello");
+    println!("Hello from yggdryl {}!", version());
 }

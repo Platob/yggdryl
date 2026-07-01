@@ -10,8 +10,6 @@ test('core.version', () => {
   assert.ok(yggdryl.core.version().length > 0)
 })
 
-test('schema.DataTypeId', () => {
-  assert.equal(yggdryl.schema.DataTypeId.Binary, 0x0d)
-  assert.equal(yggdryl.schema.DataTypeId.Decimal128, 0x40)
-  assert.notEqual(yggdryl.schema.DataTypeId.Binary, yggdryl.schema.DataTypeId.Decimal128)
+test('core.hello', () => {
+  assert.doesNotThrow(() => yggdryl.core.hello())
 })
