@@ -160,6 +160,20 @@ mirror it in the other; a change is not done until both sides match:
 Before committing a schema change, re-check this parity: same trait shape, same
 method names, same category behaviour, mirrored module locations.
 
+### Arrow interoperability — everything round-trips through Arrow
+
+The schema centralises on **`DataType` and `Field`**: an Arrow *schema* is just a
+`StructField` (a field of `StructType`), so nesting is fully recursive — a struct
+holds fields, a field can be a struct, and so on. Because of that, there is no
+separate `Schema` type; build and pass a `StructField`.
+
+**Every `DataType` and `Field` must round-trip through Apache Arrow** — it can be
+*encoded to* Arrow and *built from* Arrow, losslessly. When you add or change a type
+or field, add its Arrow encode/decode in the same change (mirrored on the `dtype`
+and `field` sides, as above), and cover the round-trip with a test. The value side
+mirrors this: `Any` is the dynamic value (a struct value is a `Struct`, an array of
+`Any`), so a value round-trips alongside its type.
+
 ## Performance: zero-copy with checks
 
 Prefer **borrowing over copying**. A function that returns string data should hand

@@ -13,6 +13,9 @@
 //!   (with their [`Int8Field`]…[`UInt256Field`] counterparts) are the first concrete
 //!   types — all primitive. Their native types are the Rust integers `i8`…`i128` /
 //!   `u8`…`u128`, plus the core [`I256`] / [`U256`] for the 256-bit widths.
+//! - [`StructType`] / [`StructField`] are the recursive composite: a struct holds
+//!   heterogeneous child [`AnyField`]s (a dynamic [`AnyType`] each), and its value is
+//!   a [`Struct`] — an array of [`Any`]. An Arrow schema is just a `StructField`.
 //! - [`DataTypeId`] is the type discriminant and [`Metadata`] the byte-keyed field
 //!   metadata.
 //!
@@ -21,14 +24,18 @@
 
 mod dtype;
 mod field;
+mod value;
 
 pub use dtype::{
-    DataType, DataTypeId, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type,
-    PrimitiveType, UInt128Type, UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
+    AnyType, DataType, DataTypeId, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type,
+    Int8Type, PrimitiveType, StructType, UInt128Type, UInt16Type, UInt256Type, UInt32Type,
+    UInt64Type, UInt8Type,
 };
 pub use field::{
-    Field, Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field, Metadata,
-    PrimitiveField, UInt128Field, UInt16Field, UInt256Field, UInt32Field, UInt64Field, UInt8Field,
+    AnyField, Field, Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field,
+    Metadata, PrimitiveField, StructField, UInt128Field, UInt16Field, UInt256Field, UInt32Field,
+    UInt64Field, UInt8Field,
 };
+pub use value::{Any, Struct};
 // The 256-bit native value types live in the core crate; re-export for convenience.
 pub use yggdryl_core::{I256, U256};

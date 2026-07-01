@@ -48,3 +48,28 @@ pub enum DataTypeId {
     /// A composite of named child fields.
     Struct = 16,
 }
+
+impl DataTypeId {
+    /// The type's canonical name (e.g. `"int32"`, `"struct"`).
+    pub const fn name(self) -> &'static str {
+        match self {
+            DataTypeId::Null => "null",
+            DataTypeId::Boolean => "bool",
+            DataTypeId::Int8 => "int8",
+            DataTypeId::Int16 => "int16",
+            DataTypeId::Int32 => "int32",
+            DataTypeId::Int64 => "int64",
+            DataTypeId::Int128 => "int128",
+            DataTypeId::Int256 => "int256",
+            DataTypeId::UInt8 => "uint8",
+            DataTypeId::UInt16 => "uint16",
+            DataTypeId::UInt32 => "uint32",
+            DataTypeId::UInt64 => "uint64",
+            DataTypeId::UInt128 => "uint128",
+            DataTypeId::UInt256 => "uint256",
+            DataTypeId::Utf8 => "utf8",
+            DataTypeId::List => "list",
+            DataTypeId::Struct => "struct",
+        }
+    }
+}

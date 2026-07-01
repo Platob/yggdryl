@@ -1,13 +1,16 @@
 //! The field layer: the [`Field`] base trait, its [`PrimitiveField`] category marker
 //! and the concrete fields. It mirrors the [`dtype`](crate::dtype) layer one-to-one.
 
+mod any_field;
 // `field/field.rs` holds the base `Field` trait, mirroring `dtype/data_type.rs`.
 #[allow(clippy::module_inception)]
 mod field;
 mod integer_field;
 mod metadata;
 mod primitive_field;
+mod struct_field;
 
+pub use any_field::AnyField;
 pub use field::Field;
 pub use integer_field::{
     Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field, UInt128Field,
@@ -15,3 +18,4 @@ pub use integer_field::{
 };
 pub use metadata::Metadata;
 pub use primitive_field::PrimitiveField;
+pub use struct_field::StructField;
