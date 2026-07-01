@@ -110,7 +110,6 @@ These names are identical in Rust, Python and JS (JS uses camelCase):
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
 | Single-field functional update | `with_<field>(value)` returns a new value |
 | Clear an optional field | `without_<field>()` |
-| Type conversions | `to_<type>` / `from_<type>` |
 
 Rules:
 - Parsing entry points are `from_*`, never `parse*` (the public API does not use
