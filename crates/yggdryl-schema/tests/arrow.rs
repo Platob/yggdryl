@@ -221,15 +221,14 @@ fn scalar_from_arrow_rejects_a_mismatched_type() {
         })
     );
 
-    // A field asked to decode a node of the wrong scalar type. (Concrete fields are
-    // not `PartialEq`, so compare the error rather than the whole `Result`.)
+    // A field asked to decode a node of the wrong scalar type.
     let int32_node = Int32Type::new().to_arrow_scalar();
     assert_eq!(
-        Int64Field::from_arrow_scalar(&int32_node).unwrap_err(),
-        ArrowError::TypeMismatch {
+        Int64Field::from_arrow_scalar(&int32_node),
+        Err(ArrowError::TypeMismatch {
             expected: DataTypeId::Int64,
             found: DataTypeId::Int32,
-        }
+        })
     );
 }
 

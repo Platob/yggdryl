@@ -35,7 +35,7 @@ use yggdryl_core::{I256, U256};
 macro_rules! integer_fields {
     ($($name:ident => $dtype:ident : $type_name:literal : $native:ty),+ $(,)?) => {$(
         #[doc = concat!("A field whose data type is [`", stringify!($dtype), "`](crate::", stringify!($dtype), ").")]
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub struct $name {
             name: String,
             dtype: $dtype,

@@ -1,0 +1,21 @@
+[package]
+name = "yggdryl-scalar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Scalar value layer for yggdryl (a value paired with its Field)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_scalar"
+path = "src/lib.rs"
+
+[dependencies]
+# The scalar layer pairs a native value with a schema Field, so it builds on the
+# schema layer (and, through it, the core 256-bit integers).
+yggdryl-core = { workspace = true }
+yggdryl-schema = { workspace = true }
