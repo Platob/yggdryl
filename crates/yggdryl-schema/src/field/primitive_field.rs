@@ -6,9 +6,9 @@ use crate::field::Field;
 /// [`PrimitiveType`](crate::PrimitiveType)).
 ///
 /// ```
-/// use yggdryl_schema::{BinaryField, PrimitiveField};
+/// use yggdryl_schema::{Int32Field, PrimitiveField};
 ///
 /// fn takes_primitive<F: PrimitiveField>(_f: &F) {}
-/// takes_primitive(&BinaryField::new("x"));
+/// takes_primitive(&Int32Field::new("x"));
 /// ```
 pub trait PrimitiveField: Field {}

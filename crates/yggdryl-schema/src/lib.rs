@@ -13,7 +13,9 @@
 //! - Category markers pair up: [`PrimitiveType`] / [`PrimitiveField`],
 //!   [`LogicalType`] (`inner_type`) / [`LogicalField`] (`inner_field`), and
 //!   [`NestedType`] / [`NestedField`].
-//! - [`BinaryType`] / [`BinaryField`] are the first concrete pair (both primitive).
+//! - The signed [`Int8Type`]…[`Int64Type`] and unsigned [`UInt8Type`]…[`UInt64Type`]
+//!   (with their [`Int8Field`]…[`UInt64Field`] counterparts) are the first concrete
+//!   types — all primitive.
 //! - [`DataTypeId`] is the type discriminant, [`Metadata`] the byte-keyed field
 //!   metadata, and [`SchemaError`] the error type.
 //!
@@ -25,7 +27,13 @@ mod error;
 mod field;
 mod nested_fields;
 
-pub use dtype::{BinaryType, DataType, DataTypeId, LogicalType, NestedType, PrimitiveType};
+pub use dtype::{
+    DataType, DataTypeId, Int16Type, Int32Type, Int64Type, Int8Type, LogicalType, NestedType,
+    PrimitiveType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+};
 pub use error::SchemaError;
-pub use field::{BinaryField, Field, LogicalField, Metadata, NestedField, PrimitiveField};
+pub use field::{
+    Field, Int16Field, Int32Field, Int64Field, Int8Field, LogicalField, Metadata, NestedField,
+    PrimitiveField, UInt16Field, UInt32Field, UInt64Field, UInt8Field,
+};
 pub use nested_fields::NestedFields;

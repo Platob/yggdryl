@@ -15,11 +15,11 @@ use crate::nested_fields::NestedFields;
 /// [`LogicalField`](crate::LogicalField) or [`NestedField`](crate::NestedField)).
 ///
 /// ```
-/// use yggdryl_schema::{BinaryField, DataTypeId, Field, NestedFields};
+/// use yggdryl_schema::{DataTypeId, Field, Int32Field, NestedFields};
 ///
-/// let field = BinaryField::new("payload");
-/// assert_eq!(field.name(), "payload");
-/// assert_eq!(field.dtype().type_id(), DataTypeId::Binary);
+/// let field = Int32Field::new("count");
+/// assert_eq!(field.name(), "count");
+/// assert_eq!(field.dtype().type_id(), DataTypeId::Int32);
 /// assert!(field.children_fields().is_empty());
 /// ```
 pub trait Field: NestedFields + std::fmt::Debug {

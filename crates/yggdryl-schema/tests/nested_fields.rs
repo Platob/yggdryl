@@ -2,10 +2,8 @@
 //! [`LogicalType`] `inner_type` accessor (via a dummy logical type). No concrete
 //! nested/logical type ships yet.
 
-use std::hash::Hasher;
-
 use yggdryl_schema::{
-    BinaryField, BinaryType, DataType, DataTypeId, Field, LogicalType, NestedFields, NestedType,
+    DataType, DataTypeId, Field, Int32Field, Int32Type, LogicalType, NestedFields, NestedType,
     SchemaError,
 };
 
@@ -35,8 +33,8 @@ impl NestedType for Structish {}
 
 fn structish() -> Structish {
     Structish(vec![
-        Box::new(BinaryField::new("Id")),
-        Box::new(BinaryField::new("Body")),
+        Box::new(Int32Field::new("Id")),
+        Box::new(Int32Field::new("Body")),
     ])
 }
 
@@ -103,7 +101,7 @@ fn child_field_combines_index_and_name() {
 
 /// A stand-in logical type wrapping a physical storage type.
 #[derive(Debug)]
-struct Dictish(BinaryType);
+struct Dictish(Int32Type);
 
 impl NestedFields for Dictish {}
 
@@ -117,10 +115,6 @@ impl DataType for Dictish {
     fn clone_box(&self) -> Box<dyn DataType> {
         Box::new(Dictish(self.0))
     }
-    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
-        use std::hash::Hash;
-        self.type_id().hash(&mut state);
-    }
 }
 
 impl LogicalType for Dictish {
@@ -131,9 +125,9 @@ impl LogicalType for Dictish {
 
 #[test]
 fn logical_type_exposes_its_inner_type() {
-    let ty = Dictish(BinaryType::new());
+    let ty = Dictish(Int32Type::new());
     assert_eq!(ty.type_name(), "dictionary");
-    assert_eq!(ty.inner_type().type_id(), DataTypeId::Binary);
+    assert_eq!(ty.inner_type().type_id(), DataTypeId::Int32);
     // A logical leaf still has no child fields here.
     assert!(ty.children_fields().is_empty());
 }

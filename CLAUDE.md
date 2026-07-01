@@ -151,9 +151,10 @@ mirror it in the other; a change is not done until both sides match:
   on `NestedFields` so a data type and a field are queried identically.
 - **Parallel category markers, one file per type.** The categories pair up —
   `PrimitiveType`↔`PrimitiveField`, `LogicalType`(`inner_type`)↔`LogicalField`
-  (`inner_field`), `NestedType`↔`NestedField` — and each type lives in its own module
-  under the matching directory (`dtype/binary_type.rs` ↔ `field/binary_field.rs`).
-  Adding a concrete data type means adding its field counterpart in the same change.
+  (`inner_field`), `NestedType`↔`NestedField` — and each type (or a closely-related
+  family generated together) lives in its own module under the matching directory
+  (`dtype/integer_type.rs` ↔ `field/integer_field.rs`). Adding a concrete data type
+  means adding its field counterpart in the same change.
 - **Consistent behaviour per category.** A primitive returns empty
   `children_fields` (the default); a logical returns its inner (`inner_type` /
   `inner_field`); a nested overrides `children_fields`. Parameterless types use the

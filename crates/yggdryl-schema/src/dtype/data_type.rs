@@ -18,11 +18,11 @@ use crate::nested_fields::NestedFields;
 /// parametrized type overrides.
 ///
 /// ```
-/// use yggdryl_schema::{BinaryType, DataType, DataTypeId, NestedFields};
+/// use yggdryl_schema::{DataType, DataTypeId, Int32Type, NestedFields};
 ///
-/// let dt = BinaryType::new();
-/// assert_eq!(dt.type_id(), DataTypeId::Binary);
-/// assert_eq!(dt.type_name(), "binary");
+/// let dt = Int32Type::new();
+/// assert_eq!(dt.type_id(), DataTypeId::Int32);
+/// assert_eq!(dt.type_name(), "int32");
 /// assert!(dt.children_fields().is_empty()); // a primitive has no children
 /// ```
 pub trait DataType: NestedFields + std::fmt::Debug {
