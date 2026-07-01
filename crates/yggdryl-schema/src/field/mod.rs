@@ -13,8 +13,8 @@ mod primitive_field;
 
 pub use field::Field;
 pub use integer_field::{
-    Int16Field, Int32Field, Int64Field, Int8Field, UInt16Field, UInt32Field, UInt64Field,
-    UInt8Field,
+    Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field, UInt128Field,
+    UInt16Field, UInt256Field, UInt32Field, UInt64Field, UInt8Field,
 };
 pub use logical_field::LogicalField;
 pub use metadata::Metadata;

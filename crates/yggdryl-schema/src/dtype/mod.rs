@@ -11,7 +11,8 @@ mod primitive_type;
 pub use data_type::DataType;
 pub use data_type_id::DataTypeId;
 pub use integer_type::{
-    Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+    Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type, UInt16Type,
+    UInt256Type, UInt32Type, UInt64Type, UInt8Type,
 };
 pub use logical_type::LogicalType;
 pub use nested_type::NestedType;

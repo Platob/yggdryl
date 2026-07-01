@@ -53,8 +53,12 @@ integer_types! {
     Int16Type => Int16 : "int16",
     Int32Type => Int32 : "int32",
     Int64Type => Int64 : "int64",
+    Int128Type => Int128 : "int128",
+    Int256Type => Int256 : "int256",
     UInt8Type => UInt8 : "uint8",
     UInt16Type => UInt16 : "uint16",
     UInt32Type => UInt32 : "uint32",
     UInt64Type => UInt64 : "uint64",
+    UInt128Type => UInt128 : "uint128",
+    UInt256Type => UInt256 : "uint256",
 }

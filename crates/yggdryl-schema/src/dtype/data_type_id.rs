@@ -25,18 +25,26 @@ pub enum DataTypeId {
     Int32 = 4,
     /// A 64-bit signed integer.
     Int64 = 5,
+    /// A 128-bit signed integer.
+    Int128 = 6,
+    /// A 256-bit signed integer.
+    Int256 = 7,
     /// An 8-bit unsigned integer.
-    UInt8 = 6,
+    UInt8 = 8,
     /// A 16-bit unsigned integer.
-    UInt16 = 7,
+    UInt16 = 9,
     /// A 32-bit unsigned integer.
-    UInt32 = 8,
+    UInt32 = 10,
     /// A 64-bit unsigned integer.
-    UInt64 = 9,
+    UInt64 = 11,
+    /// A 128-bit unsigned integer.
+    UInt128 = 12,
+    /// A 256-bit unsigned integer.
+    UInt256 = 13,
     /// Variable-length UTF-8 text.
-    Utf8 = 10,
+    Utf8 = 14,
     /// A variable-length list of a single child type.
-    List = 11,
+    List = 15,
     /// A composite of named child fields.
-    Struct = 12,
+    Struct = 16,
 }

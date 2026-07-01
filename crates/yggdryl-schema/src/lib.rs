@@ -28,12 +28,14 @@ mod field;
 mod nested_fields;
 
 pub use dtype::{
-    DataType, DataTypeId, Int16Type, Int32Type, Int64Type, Int8Type, LogicalType, NestedType,
-    PrimitiveType, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+    DataType, DataTypeId, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type,
+    LogicalType, NestedType, PrimitiveType, UInt128Type, UInt16Type, UInt256Type, UInt32Type,
+    UInt64Type, UInt8Type,
 };
 pub use error::SchemaError;
 pub use field::{
-    Field, Int16Field, Int32Field, Int64Field, Int8Field, LogicalField, Metadata, NestedField,
-    PrimitiveField, UInt16Field, UInt32Field, UInt64Field, UInt8Field,
+    Field, Int128Field, Int16Field, Int256Field, Int32Field, Int64Field, Int8Field, LogicalField,
+    Metadata, NestedField, PrimitiveField, UInt128Field, UInt16Field, UInt256Field, UInt32Field,
+    UInt64Field, UInt8Field,
 };
 pub use nested_fields::NestedFields;

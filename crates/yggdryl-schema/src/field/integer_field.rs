@@ -15,8 +15,8 @@
 //! ```
 
 use crate::dtype::{
-    DataType, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type,
-    UInt8Type,
+    DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type, UInt128Type,
+    UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
 };
 use crate::field::{Field, Metadata, PrimitiveField};
 use crate::nested_fields::NestedFields;
@@ -100,8 +100,12 @@ integer_fields! {
     Int16Field => Int16Type : "int16",
     Int32Field => Int32Type : "int32",
     Int64Field => Int64Type : "int64",
+    Int128Field => Int128Type : "int128",
+    Int256Field => Int256Type : "int256",
     UInt8Field => UInt8Type : "uint8",
     UInt16Field => UInt16Type : "uint16",
     UInt32Field => UInt32Type : "uint32",
     UInt64Field => UInt64Type : "uint64",
+    UInt128Field => UInt128Type : "uint128",
+    UInt256Field => UInt256Type : "uint256",
 }
