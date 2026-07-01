@@ -1,29 +1,7 @@
-//! Tests for the recursive struct model: `StructValue` / `AnyValue` values and
-//! `StructType` / `StructField` / `AnyType` / `AnyField` schema nodes.
+//! Tests for the recursive schema nodes: `StructType` / `StructField` / `AnyType` /
+//! `AnyField`. (The `Any` / `Struct` values themselves are tested in `scalar.rs`.)
 
-use yggdryl_scalar::{
-    AnyField, AnyType, AnyValue, DataType, DataTypeId, Field, StructField, StructType, StructValue,
-};
-
-#[test]
-fn any_values_report_their_type() {
-    assert_eq!(AnyValue::default(), AnyValue::Null);
-    assert!(AnyValue::Null.is_null());
-    assert_eq!(AnyValue::Int32(7).type_id(), DataTypeId::Int32);
-    assert_eq!(AnyValue::UInt8(255).type_id(), DataTypeId::UInt8);
-}
-
-#[test]
-fn struct_value_is_an_array_of_any() {
-    let row = StructValue::new(vec![AnyValue::Int32(1), AnyValue::Null, AnyValue::UInt8(2)]);
-    assert_eq!(row.len(), 3);
-    assert!(!row.is_empty());
-    assert_eq!(row.get(0), Some(&AnyValue::Int32(1)));
-    assert_eq!(row.values()[1], AnyValue::Null);
-    // A struct can nest another struct value.
-    let nested = AnyValue::Struct(StructValue::new(vec![AnyValue::Int64(9)]));
-    assert_eq!(nested.type_id(), DataTypeId::Struct);
-}
+use yggdryl_scalar::{AnyField, AnyType, DataType, DataTypeId, Field, StructField, StructType};
 
 #[test]
 fn struct_type_holds_heterogeneous_child_fields() {

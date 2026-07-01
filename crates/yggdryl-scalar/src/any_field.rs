@@ -2,12 +2,12 @@
 
 use yggdryl_schema::{Field, Metadata};
 
-use crate::{AnyType, AnyValue};
+use crate::{Any, AnyType};
 
 /// A field of any type, resolved at run time — the child-field node of a
 /// [`StructType`](crate::StructType). It pairs a `name` with an [`AnyType`], a
 /// nullability flag and optional [`Metadata`], and is a [`Field`] over the dynamic
-/// [`AnyValue`]. The `with_*` / [`copy`](AnyField::copy) updates are non-mutating.
+/// [`Any`]. The `with_*` / [`copy`](AnyField::copy) updates are non-mutating.
 ///
 /// ```
 /// use yggdryl_scalar::{AnyField, AnyType};
@@ -109,7 +109,7 @@ impl AnyField {
     }
 }
 
-impl Field<AnyValue> for AnyField {
+impl Field<Any> for AnyField {
     type DType = AnyType;
 
     fn name(&self) -> &str {

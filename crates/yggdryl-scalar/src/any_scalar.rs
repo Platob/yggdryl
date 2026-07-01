@@ -1,127 +1,146 @@
-//! The [`Any`] dynamic scalar.
+//! The [`Any`] dynamic scalar value.
 
-use crate::{AnyField, AnyType, AnyValue, Scalar, StructValue};
-use yggdryl_schema::{DataTypeId, I256, U256};
+use yggdryl_core::{I256, U256};
+use yggdryl_schema::DataTypeId;
 
-/// Generates the delegating `as_<type>` accessors — the scalar's atomic value
-/// interface, forwarding to the wrapped [`Any`](yggdryl_schema::Any) value.
-macro_rules! any_scalar_accessors {
-    ($($method:ident : $native:ty),+ $(,)?) => {$(
-        #[doc = concat!("The scalar's value as `", stringify!($native), "`, or `None` if it is another type.")]
+use crate::Struct;
+
+/// Generates the `as_<type>` accessors, each returning the wrapped native value or
+/// `None` when the value is of another type.
+macro_rules! any_accessors {
+    ($($variant:ident => $method:ident : $native:ty),+ $(,)?) => {$(
+        #[doc = concat!("The wrapped `", stringify!($native), "`, or `None` if this value is another type.")]
         pub fn $method(&self) -> Option<$native> {
-            self.value.$method()
-        }
-    )+};
-}
-
-/// A scalar of any type, resolved at run time — the dynamic counterpart of the typed
-/// [`Scalar`] impls (mirroring [`AnyField`]). It pairs an
-/// [`Any`](yggdryl_schema::Any) value with an [`AnyField`], builds straight from any
-/// native type, and is the child scalar a [`Struct`](crate::Struct) holds.
-///
-/// ```
-/// use yggdryl_scalar::{Any, Scalar};
-/// use yggdryl_schema::{DataType, DataTypeId};
-///
-/// let scalar = Any::from(9u8).with_name("age".to_string());
-/// assert_eq!(scalar.name(), "age");
-/// assert_eq!(scalar.field().any_type().type_id(), DataTypeId::UInt8);
-/// // Atomic accessors read the value at its native type.
-/// assert_eq!(scalar.as_u8(), Some(9));
-/// assert_eq!(scalar.as_i8(), None); // wrong type → None
-/// ```
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Any {
-    field: AnyField,
-    value: AnyValue,
-}
-
-impl Any {
-    /// The scalar from its explicit field and value.
-    pub fn from_parts(field: AnyField, value: AnyValue) -> Self {
-        Self { field, value }
-    }
-
-    /// A copy carrying `field`.
-    pub fn with_field(&self, field: AnyField) -> Self {
-        Self {
-            field,
-            value: self.value.clone(),
-        }
-    }
-
-    /// A copy renamed to `name`.
-    pub fn with_name(&self, name: String) -> Self {
-        self.with_field(self.field.with_name(name))
-    }
-
-    /// A copy holding `value`.
-    pub fn with_value(&self, value: AnyValue) -> Self {
-        Self {
-            field: self.field.clone(),
-            value,
-        }
-    }
-
-    /// Whether the scalar's value is null.
-    pub fn is_null(&self) -> bool {
-        self.value.is_null()
-    }
-
-    /// Whether the scalar's value is a struct.
-    pub fn is_struct(&self) -> bool {
-        self.value.is_struct()
-    }
-
-    any_scalar_accessors! {
-        as_i8: i8,
-        as_i16: i16,
-        as_i32: i32,
-        as_i64: i64,
-        as_i128: i128,
-        as_i256: I256,
-        as_u8: u8,
-        as_u16: u16,
-        as_u32: u32,
-        as_u64: u64,
-        as_u128: u128,
-        as_u256: U256,
-    }
-
-    /// The scalar's value as a struct value, or `None` if it is another type.
-    pub fn as_struct(&self) -> Option<&StructValue> {
-        self.value.as_struct()
-    }
-}
-
-/// Generates the `From<native>` builders, each pairing the native value with an
-/// unnamed primitive field of the matching type.
-macro_rules! any_scalar_from_native {
-    ($($native:ty => $variant:ident),+ $(,)?) => {$(
-        impl From<$native> for Any {
-            fn from(value: $native) -> Self {
-                Self::from_parts(
-                    AnyField::new("", AnyType::primitive(DataTypeId::$variant)),
-                    AnyValue::$variant(value),
-                )
+            match self {
+                Any::$variant(value) => Some(*value),
+                _ => None,
             }
         }
     )+};
 }
 
-any_scalar_from_native! {
+/// A scalar of any type — the dynamic value. It is either null, a primitive, or a
+/// nested [`Struct`] (an array of `Any`), so scalars nest recursively. Along with
+/// [`Struct`] and the native Rust values it implements the [`Scalar`](crate::Scalar)
+/// trait. Defaults to [`Null`](Any::Null).
+///
+/// ```
+/// use yggdryl_scalar::{Any, Scalar};
+/// use yggdryl_schema::DataTypeId;
+///
+/// let v = Any::from(7i32);
+/// assert_eq!(v, Any::Int32(7));
+/// assert_eq!(v.type_id(), DataTypeId::Int32);
+/// assert_eq!(v.as_i32(), Some(7));
+/// assert_eq!(v.as_i64(), None); // wrong type → None
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Any {
+    /// The null value.
+    #[default]
+    Null,
+    /// An 8-bit signed integer.
+    Int8(i8),
+    /// A 16-bit signed integer.
+    Int16(i16),
+    /// A 32-bit signed integer.
+    Int32(i32),
+    /// A 64-bit signed integer.
+    Int64(i64),
+    /// A 128-bit signed integer.
+    Int128(i128),
+    /// A 256-bit signed integer.
+    Int256(I256),
+    /// An 8-bit unsigned integer.
+    UInt8(u8),
+    /// A 16-bit unsigned integer.
+    UInt16(u16),
+    /// A 32-bit unsigned integer.
+    UInt32(u32),
+    /// A 64-bit unsigned integer.
+    UInt64(u64),
+    /// A 128-bit unsigned integer.
+    UInt128(u128),
+    /// A 256-bit unsigned integer.
+    UInt256(U256),
+    /// A nested struct value — an array of `Any`.
+    Struct(Struct),
+}
+
+impl Any {
+    /// The [`DataTypeId`] of this value's type. [`Null`](Any::Null) reports
+    /// [`Null`](DataTypeId::Null).
+    pub fn type_id(&self) -> DataTypeId {
+        match self {
+            Any::Null => DataTypeId::Null,
+            Any::Int8(_) => DataTypeId::Int8,
+            Any::Int16(_) => DataTypeId::Int16,
+            Any::Int32(_) => DataTypeId::Int32,
+            Any::Int64(_) => DataTypeId::Int64,
+            Any::Int128(_) => DataTypeId::Int128,
+            Any::Int256(_) => DataTypeId::Int256,
+            Any::UInt8(_) => DataTypeId::UInt8,
+            Any::UInt16(_) => DataTypeId::UInt16,
+            Any::UInt32(_) => DataTypeId::UInt32,
+            Any::UInt64(_) => DataTypeId::UInt64,
+            Any::UInt128(_) => DataTypeId::UInt128,
+            Any::UInt256(_) => DataTypeId::UInt256,
+            Any::Struct(_) => DataTypeId::Struct,
+        }
+    }
+
+    /// Whether this is the [`Null`](Any::Null) value.
+    pub fn is_null(&self) -> bool {
+        matches!(self, Any::Null)
+    }
+
+    any_accessors! {
+        Int8 => as_i8 : i8,
+        Int16 => as_i16 : i16,
+        Int32 => as_i32 : i32,
+        Int64 => as_i64 : i64,
+        Int128 => as_i128 : i128,
+        Int256 => as_i256 : I256,
+        UInt8 => as_u8 : u8,
+        UInt16 => as_u16 : u16,
+        UInt32 => as_u32 : u32,
+        UInt64 => as_u64 : u64,
+        UInt128 => as_u128 : u128,
+        UInt256 => as_u256 : U256,
+    }
+
+    /// Whether this is a [`Struct`](Any::Struct) value.
+    pub fn is_struct(&self) -> bool {
+        matches!(self, Any::Struct(_))
+    }
+
+    /// The wrapped [`Struct`], or `None` if this value is another type.
+    pub fn as_struct(&self) -> Option<&Struct> {
+        match self {
+            Any::Struct(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+/// Generates the `From<native>` builders.
+macro_rules! any_from_native {
+    ($($native:ty => $variant:ident),+ $(,)?) => {$(
+        impl From<$native> for Any {
+            fn from(value: $native) -> Self {
+                Any::$variant(value)
+            }
+        }
+    )+};
+}
+
+any_from_native! {
     i8 => Int8, i16 => Int16, i32 => Int32, i64 => Int64, i128 => Int128, I256 => Int256,
     u8 => UInt8, u16 => UInt16, u32 => UInt32, u64 => UInt64, u128 => UInt128, U256 => UInt256,
 }
 
-impl Scalar<AnyValue> for Any {
-    type Field = AnyField;
-
-    fn field(&self) -> &AnyField {
-        &self.field
-    }
-
-    fn value(&self) -> &AnyValue {
-        &self.value
+impl From<Struct> for Any {
+    fn from(value: Struct) -> Self {
+        Any::Struct(value)
     }
 }

@@ -2,10 +2,10 @@
 
 use yggdryl_schema::{DataType, DataTypeId};
 
-use crate::{AnyField, StructValue};
+use crate::{AnyField, Struct};
 
 /// A struct type — a composite of named, heterogeneous child [`AnyField`]s. It is a
-/// [`DataType`] over the [`StructValue`] (an array of `AnyValue`). Because a child
+/// [`DataType`] over the [`Struct`] value (an array of `Any`). Because a child
 /// field can itself be a struct, nesting is fully recursive; an Arrow *schema* is just
 /// a [`StructField`](crate::StructField) wrapping one of these.
 ///
@@ -58,7 +58,7 @@ impl StructType {
     }
 }
 
-impl DataType<StructValue> for StructType {
+impl DataType<Struct> for StructType {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Struct
     }

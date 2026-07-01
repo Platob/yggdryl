@@ -2,10 +2,10 @@
 
 use yggdryl_schema::{Field, Metadata};
 
-use crate::{AnyField, StructType, StructValue};
+use crate::{AnyField, Struct, StructType};
 
 /// A field whose data type is a [`StructType`] — a named, nullable struct with
-/// optional [`Metadata`]. It is a [`Field`] over the [`StructValue`]. Because a struct
+/// optional [`Metadata`]. It is a [`Field`] over the [`Struct`] value. Because a struct
 /// field is *the* recursive schema node, an Arrow schema is simply a `StructField`.
 /// The `with_*` / [`copy`](StructField::copy) updates are non-mutating.
 ///
@@ -95,7 +95,7 @@ impl StructField {
     }
 }
 
-impl Field<StructValue> for StructField {
+impl Field<Struct> for StructField {
     type DType = StructType;
 
     fn name(&self) -> &str {
