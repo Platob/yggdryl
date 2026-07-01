@@ -29,7 +29,7 @@ mod dtype;
 mod field;
 mod value;
 
-pub use arrow::{ArrowError, ArrowSchema};
+pub use arrow::{ArrowArray, ArrowError, ArrowSchema};
 pub use dtype::{
     AnyType, DataType, DataTypeId, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type,
     Int8Type, PrimitiveType, StructType, UInt128Type, UInt16Type, UInt256Type, UInt32Type,

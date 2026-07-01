@@ -201,6 +201,65 @@ impl ArrowSchema {
     }
 }
 
+/// The data half of an Apache Arrow array — a dependency-free mirror of the Arrow
+/// [C Data Interface] `ArrowArray` header (its `length`, `null_count` and child
+/// arrays; the value buffers are the array layer's concern, not the schema's). It is
+/// the companion of an [`ArrowSchema`]: pairing the two rebuilds a field whose
+/// nullability is what the data *actually* contains — a positive (or unknown, `-1`)
+/// `null_count` means the field is nullable — via
+/// [`from_arrow_array`](StructField::from_arrow_array).
+///
+/// [C Data Interface]: https://arrow.apache.org/docs/format/CDataInterface.html
+///
+/// ```
+/// use yggdryl_schema::{AnyField, AnyType, ArrowArray, DataTypeId};
+///
+/// // A non-nullable Int32 schema paired with an array that holds nulls…
+/// let schema = AnyField::new("id", AnyType::primitive(DataTypeId::Int32)).to_arrow();
+/// let array = ArrowArray::from_parts(10, 2, vec![]);
+/// // …rebuilds a *nullable* field, because the data has nulls.
+/// assert!(AnyField::from_arrow_array(&schema, &array).unwrap().nullable());
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ArrowArray {
+    length: i64,
+    null_count: i64,
+    children: Vec<ArrowArray>,
+}
+
+impl ArrowArray {
+    /// An array header from its explicit parts. A `null_count` of `-1` means the
+    /// producer left it unknown (Arrow's sentinel), which we treat as nullable.
+    pub fn from_parts(length: i64, null_count: i64, children: Vec<ArrowArray>) -> Self {
+        Self {
+            length,
+            null_count,
+            children,
+        }
+    }
+
+    /// The number of elements in the array.
+    pub fn length(&self) -> i64 {
+        self.length
+    }
+
+    /// The number of null elements (`-1` if the producer left it unknown).
+    pub fn null_count(&self) -> i64 {
+        self.null_count
+    }
+
+    /// The child arrays, in order (a struct's field arrays).
+    pub fn children(&self) -> &[ArrowArray] {
+        &self.children
+    }
+
+    /// Whether the data contains (or may contain) nulls — a positive or unknown
+    /// (`-1`) `null_count`. This is the nullability a field built from the array takes.
+    pub fn nullable(&self) -> bool {
+        self.null_count != 0
+    }
+}
+
 impl AnyType {
     /// The type encoded as an Arrow node (with no name).
     pub fn to_arrow(&self) -> ArrowSchema {
@@ -215,6 +274,17 @@ impl AnyType {
     pub fn from_arrow(schema: &ArrowSchema) -> Result<Self, ArrowError> {
         if schema.format == DataTypeId::Struct.arrow_format() {
             StructType::from_arrow(schema).map(AnyType::Struct)
+        } else {
+            primitive_id(schema).map(AnyType::Primitive)
+        }
+    }
+
+    /// The type built from a `(schema, array)` pair. Identical to [`from_arrow`](AnyType::from_arrow)
+    /// for a primitive; for a struct it threads the child arrays through so each child
+    /// field takes its nullability from the data.
+    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
+        if schema.format == DataTypeId::Struct.arrow_format() {
+            StructType::from_arrow_array(schema, array).map(AnyType::Struct)
         } else {
             primitive_id(schema).map(AnyType::Primitive)
         }
@@ -243,6 +313,26 @@ impl StructType {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StructType::new(fields))
     }
+
+    /// The struct type built from a `(schema, array)` pair, pairing each child schema
+    /// with its child array so every child field's nullability comes from the data.
+    /// Errors if the schema and array disagree on the number of children.
+    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
+        expect_struct(&schema.format)?;
+        if schema.children.len() != array.children.len() {
+            return Err(ArrowError::ChildCountMismatch {
+                schema: schema.children.len(),
+                array: array.children.len(),
+            });
+        }
+        let fields = schema
+            .children
+            .iter()
+            .zip(array.children.iter())
+            .map(|(s, a)| AnyField::from_arrow_array(s, a))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StructType::new(fields))
+    }
 }
 
 impl AnyField {
@@ -267,6 +357,19 @@ impl AnyField {
             field_metadata(schema),
         ))
     }
+
+    /// The field built from a `(schema, array)` pair. Unlike [`from_arrow`](AnyField::from_arrow),
+    /// which trusts the schema's flag, this takes the field's nullability from the
+    /// array's `null_count` — the nulls the data actually holds.
+    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
+        let dtype = AnyType::from_arrow_array(schema, array)?;
+        Ok(AnyField::from_parts(
+            schema.name.clone(),
+            dtype,
+            array.nullable(),
+            field_metadata(schema),
+        ))
+    }
 }
 
 impl StructField {
@@ -288,6 +391,18 @@ impl StructField {
             schema.name.clone(),
             dtype,
             schema.nullable,
+            field_metadata(schema),
+        ))
+    }
+
+    /// The schema built from a `(schema, array)` pair, taking this struct's — and,
+    /// recursively, every child field's — nullability from the arrays' `null_count`.
+    pub fn from_arrow_array(schema: &ArrowSchema, array: &ArrowArray) -> Result<Self, ArrowError> {
+        let dtype = StructType::from_arrow_array(schema, array)?;
+        Ok(StructField::from_parts(
+            schema.name.clone(),
+            dtype,
+            array.nullable(),
             field_metadata(schema),
         ))
     }
@@ -382,6 +497,13 @@ pub enum ArrowError {
         /// The type the Arrow node actually resolved to.
         found: DataTypeId,
     },
+    /// A struct's schema and array disagreed on the number of child nodes.
+    ChildCountMismatch {
+        /// The number of child fields the schema declares.
+        schema: usize,
+        /// The number of child arrays the data supplies.
+        array: usize,
+    },
 }
 
 impl fmt::Display for ArrowError {
@@ -413,6 +535,11 @@ impl fmt::Display for ArrowError {
                 "expected an Arrow {} node, found {}",
                 expected.name(),
                 found.name()
+            ),
+            ArrowError::ChildCountMismatch { schema, array } => write!(
+                f,
+                "Arrow struct schema declares {schema} child field(s) but the array \
+                 supplies {array}"
             ),
         }
     }

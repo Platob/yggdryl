@@ -2,8 +2,9 @@
 //! [`ArrowSchema`] node and rebuilds from one losslessly.
 
 use yggdryl_schema::{
-    AnyField, AnyType, ArrowError, ArrowSchema, DataType, DataTypeId, Field, Int128Type, Int32Type,
-    Int64Field, Metadata, StructField, StructType, UInt256Field, UInt256Type,
+    AnyField, AnyType, ArrowArray, ArrowError, ArrowSchema, DataType, DataTypeId, Field,
+    Int128Type, Int32Type, Int64Field, Metadata, StructField, StructType, UInt256Field,
+    UInt256Type,
 };
 
 /// The Arrow metadata key an extension type records its name under.
@@ -228,6 +229,85 @@ fn scalar_from_arrow_rejects_a_mismatched_type() {
         ArrowError::TypeMismatch {
             expected: DataTypeId::Int64,
             found: DataTypeId::Int32,
+        }
+    );
+}
+
+#[test]
+fn field_from_arrow_array_takes_nullability_from_null_count() {
+    // A non-nullable Int64 schema…
+    let schema = AnyField::new("id", AnyType::primitive(DataTypeId::Int64)).to_arrow();
+    assert!(!schema.nullable());
+
+    // …no nulls in the data ⇒ non-nullable field.
+    let none = AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, 0, vec![])).unwrap();
+    assert!(!none.nullable());
+    assert_eq!(none.name(), "id");
+    assert_eq!(none.any_type().type_id(), DataTypeId::Int64);
+
+    // …some nulls ⇒ nullable, overriding the schema's flag.
+    let some = AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, 1, vec![])).unwrap();
+    assert!(some.nullable());
+
+    // …unknown null count (-1) ⇒ treated as nullable.
+    let unknown =
+        AnyField::from_arrow_array(&schema, &ArrowArray::from_parts(5, -1, vec![])).unwrap();
+    assert!(unknown.nullable());
+}
+
+#[test]
+fn concrete_field_from_arrow_array_sets_nullable() {
+    let schema = Int64Field::new("count").to_arrow_scalar();
+    let field =
+        Int64Field::from_arrow_array(&schema, &ArrowArray::from_parts(3, 2, vec![])).unwrap();
+    assert_eq!(field.name(), "count");
+    assert!(field.nullable());
+
+    // A mismatched type is still rejected.
+    let utf8 = AnyType::primitive(DataTypeId::Utf8).to_arrow();
+    assert_eq!(
+        Int64Field::from_arrow_array(&utf8, &ArrowArray::from_parts(0, 0, vec![])).unwrap_err(),
+        ArrowError::TypeMismatch {
+            expected: DataTypeId::Int64,
+            found: DataTypeId::Utf8,
+        }
+    );
+}
+
+#[test]
+fn struct_from_arrow_array_threads_nullability_into_children() {
+    let schema = StructField::new(
+        "record",
+        vec![
+            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
+            AnyField::new("name", AnyType::primitive(DataTypeId::Utf8)),
+        ],
+    )
+    .to_arrow();
+
+    // Struct array: itself non-null, first child holds nulls, second does not.
+    let array = ArrowArray::from_parts(
+        4,
+        0,
+        vec![
+            ArrowArray::from_parts(4, 1, vec![]),
+            ArrowArray::from_parts(4, 0, vec![]),
+        ],
+    );
+
+    let field = StructField::from_arrow_array(&schema, &array).unwrap();
+    assert!(!field.nullable()); // the struct array had no nulls
+    let children = field.dtype().fields();
+    assert!(children[0].nullable()); // id: its data had nulls
+    assert!(!children[1].nullable()); // name: its data had none
+
+    // A schema/array child-count disagreement is an error.
+    let short = ArrowArray::from_parts(4, 0, vec![ArrowArray::from_parts(4, 0, vec![])]);
+    assert_eq!(
+        StructField::from_arrow_array(&schema, &short).unwrap_err(),
+        ArrowError::ChildCountMismatch {
+            schema: 2,
+            array: 1,
         }
     );
 }

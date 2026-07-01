@@ -21,7 +21,7 @@
 //! assert_eq!(Int64Field::from_arrow_scalar(&node).unwrap().name(), "count");
 //! ```
 
-use crate::arrow::{ArrowError, ArrowSchema};
+use crate::arrow::{ArrowArray, ArrowError, ArrowSchema};
 use crate::dtype::{
     AnyType, DataType, Int128Type, Int16Type, Int256Type, Int32Type, Int64Type, Int8Type,
     UInt128Type, UInt16Type, UInt256Type, UInt32Type, UInt64Type, UInt8Type,
@@ -104,6 +104,20 @@ macro_rules! integer_fields {
             #[doc = concat!("A `", $type_name, "` field from a scalar Arrow node, erroring unless its type matches.")]
             pub fn from_arrow_scalar(schema: &ArrowSchema) -> Result<Self, ArrowError> {
                 let field = AnyField::from_arrow(schema)?;
+                crate::arrow::check_id($dtype::new().type_id(), field.any_type().type_id())?;
+                Ok(Self::from_parts(
+                    field.name().to_owned(),
+                    field.nullable(),
+                    field.metadata().cloned(),
+                ))
+            }
+
+            #[doc = concat!("A `", $type_name, "` field from a `(schema, array)` pair, taking nullability from the array's null count.")]
+            pub fn from_arrow_array(
+                schema: &ArrowSchema,
+                array: &ArrowArray,
+            ) -> Result<Self, ArrowError> {
+                let field = AnyField::from_arrow_array(schema, array)?;
                 crate::arrow::check_id($dtype::new().type_id(), field.any_type().type_id())?;
                 Ok(Self::from_parts(
                     field.name().to_owned(),
