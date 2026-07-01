@@ -163,6 +163,29 @@ impl ArrowSchema {
         &self.children
     }
 
+    /// This Arrow schema built from a [`StructField`] — the canonical schema type,
+    /// since an Arrow schema *is* a `StructField`. The inverse of
+    /// [`to_struct_field`](ArrowSchema::to_struct_field).
+    ///
+    /// ```
+    /// use yggdryl_schema::{AnyField, AnyType, ArrowSchema, DataTypeId, StructField};
+    ///
+    /// let schema =
+    ///     StructField::new("row", vec![AnyField::new("id", AnyType::primitive(DataTypeId::Int64))]);
+    /// let arrow = ArrowSchema::from_struct_field(&schema);
+    /// assert_eq!(arrow.format(), "+s");
+    /// assert_eq!(arrow.to_struct_field().unwrap(), schema); // round-trips
+    /// ```
+    pub fn from_struct_field(field: &StructField) -> Self {
+        field.to_arrow()
+    }
+
+    /// This Arrow schema converted to a [`StructField`], or an [`ArrowError`] if it is
+    /// not a struct (`"+s"`) node or holds an unmodelled child type.
+    pub fn to_struct_field(&self) -> Result<StructField, ArrowError> {
+        StructField::from_arrow(self)
+    }
+
     /// A nameless type node for a primitive `id`, stamped with its extension-type
     /// metadata when Arrow has no native encoding for it.
     pub(crate) fn primitive(id: DataTypeId) -> Self {

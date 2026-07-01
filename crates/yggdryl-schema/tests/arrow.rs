@@ -234,6 +234,30 @@ fn scalar_from_arrow_rejects_a_mismatched_type() {
 }
 
 #[test]
+fn arrow_schema_converts_to_and_from_struct_field() {
+    let schema = StructField::new(
+        "record",
+        vec![
+            AnyField::new("id", AnyType::primitive(DataTypeId::Int64)),
+            AnyField::new("tag", AnyType::primitive(DataTypeId::Utf8)),
+        ],
+    )
+    .with_nullable(true);
+
+    let arrow = ArrowSchema::from_struct_field(&schema);
+    assert_eq!(arrow.format(), "+s");
+    assert_eq!(arrow, schema.to_arrow()); // same node the StructField encodes to
+    assert_eq!(arrow.to_struct_field().unwrap(), schema);
+
+    // A non-struct node cannot become a StructField.
+    let scalar = AnyType::primitive(DataTypeId::Int32).to_arrow();
+    assert_eq!(
+        scalar.to_struct_field().unwrap_err(),
+        ArrowError::NotAStruct("i".to_string())
+    );
+}
+
+#[test]
 fn field_from_arrow_array_takes_nullability_from_null_count() {
     // A non-nullable Int64 schema…
     let schema = AnyField::new("id", AnyType::primitive(DataTypeId::Int64)).to_arrow();
