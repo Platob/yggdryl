@@ -1,53 +1,54 @@
-//! The [`StructScalar`] nested scalar.
+//! The [`Struct`] nested scalar.
 
-use crate::{AnyScalar, Scalar};
-use yggdryl_schema::{Any, AnyField, AnyType, Field, Struct, StructField};
+use crate::{Any, Scalar};
+use yggdryl_schema::{
+    Any as AnyValue, AnyField, AnyType, Field, Struct as StructValue, StructField,
+};
 
-/// A struct scalar — a row built from a **collection** of child [`AnyScalar`]s. It
-/// pairs a [`StructField`] (the child fields) with a [`Struct`] value (the child
-/// values), so it is a [`Scalar`] over [`Struct`] and mirrors
+/// A struct scalar — a row built from a **collection** of child [`Any`] scalars. It
+/// pairs a [`StructField`] (the child fields) with a [`Struct`](yggdryl_schema::Struct)
+/// value (the child values), so it is a [`Scalar`] over that value and mirrors
 /// [`StructField`](yggdryl_schema::StructField). Because a child scalar can itself be a
-/// struct (via [`From<StructScalar>`](AnyScalar) for [`AnyScalar`]), scalars nest
-/// recursively.
+/// struct (via `From<Struct>` for [`Any`]), scalars nest recursively.
 ///
 /// ```
-/// use yggdryl_scalar::{Int32Scalar, Scalar, StructScalar};
+/// use yggdryl_scalar::{Int32, Scalar, Struct};
 /// use yggdryl_schema::{DataType, DataTypeId};
 ///
-/// let row = StructScalar::new(
+/// let row = Struct::new(
 ///     "point",
 ///     vec![
-///         Int32Scalar::from(1).with_name("x".to_string()).into(),
-///         Int32Scalar::from(2).with_name("y".to_string()).into(),
+///         Int32::from(1).with_name("x".to_string()).into(),
+///         Int32::from(2).with_name("y".to_string()).into(),
 ///     ],
 /// );
 /// assert_eq!(row.name(), "point");
-/// assert_eq!(row.value().len(), 2);
+/// assert_eq!(row.len(), 2);
 /// assert_eq!(row.scalars()[0].name(), "x");
 /// assert_eq!(row.dtype().type_id(), DataTypeId::Struct);
 /// // Navigate to a child scalar and read its atom.
 /// assert_eq!(row.scalar_by("y").unwrap().as_i32(), Some(2));
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct StructScalar {
+pub struct Struct {
     field: StructField,
-    value: Struct,
+    value: StructValue,
 }
 
-impl StructScalar {
+impl Struct {
     /// A struct scalar named `name` from a collection of child scalars — its field is
     /// their fields, its value their values.
-    pub fn new(name: impl Into<String>, scalars: Vec<AnyScalar>) -> Self {
+    pub fn new(name: impl Into<String>, scalars: Vec<Any>) -> Self {
         let fields = scalars.iter().map(|s| s.field().clone()).collect();
         let values = scalars.iter().map(|s| s.value().clone()).collect();
         Self {
             field: StructField::new(name, fields),
-            value: Struct::new(values),
+            value: StructValue::new(values),
         }
     }
 
     /// The scalar from its explicit field and value.
-    pub fn from_parts(field: StructField, value: Struct) -> Self {
+    pub fn from_parts(field: StructField, value: StructValue) -> Self {
         Self { field, value }
     }
 
@@ -64,26 +65,36 @@ impl StructScalar {
         self.with_field(self.field.with_name(name))
     }
 
+    /// The number of child scalars.
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    /// Whether the struct holds no child scalars.
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
+
     /// The child scalars, rebuilt by pairing each child field with its value.
-    pub fn scalars(&self) -> Vec<AnyScalar> {
+    pub fn scalars(&self) -> Vec<Any> {
         self.field
             .dtype()
             .fields()
             .iter()
             .zip(self.value.values())
-            .map(|(field, value)| AnyScalar::from_parts(field.clone(), value.clone()))
+            .map(|(field, value)| Any::from_parts(field.clone(), value.clone()))
             .collect()
     }
 
     /// The child scalar at `index`, if any — pairing the child field with its value.
-    pub fn scalar_at(&self, index: usize) -> Option<AnyScalar> {
+    pub fn scalar_at(&self, index: usize) -> Option<Any> {
         let field = self.field.dtype().field_at(index)?;
         let value = self.value.get(index)?;
-        Some(AnyScalar::from_parts(field.clone(), value.clone()))
+        Some(Any::from_parts(field.clone(), value.clone()))
     }
 
     /// The first child scalar named `name`, if any.
-    pub fn scalar_by(&self, name: &str) -> Option<AnyScalar> {
+    pub fn scalar_by(&self, name: &str) -> Option<Any> {
         let index = self
             .field
             .dtype()
@@ -94,32 +105,32 @@ impl StructScalar {
     }
 }
 
-impl From<Vec<AnyScalar>> for StructScalar {
-    fn from(scalars: Vec<AnyScalar>) -> Self {
+impl From<Vec<Any>> for Struct {
+    fn from(scalars: Vec<Any>) -> Self {
         Self::new("", scalars)
     }
 }
 
-impl From<StructScalar> for AnyScalar {
-    fn from(scalar: StructScalar) -> Self {
+impl From<Struct> for Any {
+    fn from(scalar: Struct) -> Self {
         let field = AnyField::from_parts(
             scalar.field.name().to_owned(),
             AnyType::struct_type(scalar.field.dtype().clone()),
             scalar.field.nullable(),
             scalar.field.metadata().cloned(),
         );
-        AnyScalar::from_parts(field, Any::Struct(scalar.value))
+        Any::from_parts(field, AnyValue::Struct(scalar.value))
     }
 }
 
-impl Scalar<Struct> for StructScalar {
+impl Scalar<StructValue> for Struct {
     type Field = StructField;
 
     fn field(&self) -> &StructField {
         &self.field
     }
 
-    fn value(&self) -> &Struct {
+    fn value(&self) -> &StructValue {
         &self.value
     }
 }

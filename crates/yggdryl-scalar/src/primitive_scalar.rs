@@ -7,9 +7,9 @@ use crate::Scalar;
 /// [`PrimitiveField`](yggdryl_schema::PrimitiveField).
 ///
 /// ```
-/// use yggdryl_scalar::{Int32Scalar, PrimitiveScalar};
+/// use yggdryl_scalar::{Int32, PrimitiveScalar};
 ///
 /// fn takes_primitive<T, S: PrimitiveScalar<T>>(_s: &S) {}
-/// takes_primitive(&Int32Scalar::from(1));
+/// takes_primitive(&Int32::from(1));
 /// ```
 pub trait PrimitiveScalar<T>: Scalar<T> {}

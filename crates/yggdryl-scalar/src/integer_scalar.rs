@@ -1,28 +1,28 @@
-//! The primitive integer [`Scalar`]s — the signed `Int8Scalar`…`Int256Scalar` and
-//! unsigned `UInt8Scalar`…`UInt256Scalar`, generated together by one macro to mirror
+//! The primitive integer [`Scalar`]s — the signed `Int8`…`Int256` and unsigned
+//! `UInt8`…`UInt256`, generated together by one macro to mirror
 //! [`integer_field`](yggdryl_schema). Each pairs a native value with its
 //! [`Field`](yggdryl_schema::Field) and builds straight from the native type.
 //!
 //! ```
-//! use yggdryl_scalar::{Int64Scalar, Scalar};
+//! use yggdryl_scalar::{Int64, Scalar};
 //! use yggdryl_schema::{DataType, DataTypeId};
 //!
-//! let s = Int64Scalar::from(42).with_name("answer".to_string());
+//! let s = Int64::from(42).with_name("answer".to_string());
 //! assert_eq!(*s.value(), 42);
 //! assert_eq!(s.name(), "answer");
 //! assert_eq!(s.dtype().type_id(), DataTypeId::Int64);
 //! ```
 
-use crate::{AnyScalar, PrimitiveScalar, Scalar};
+use crate::{Any, PrimitiveScalar, Scalar};
 use yggdryl_schema::{
-    Any, AnyField, AnyType, DataTypeId, Field, Int128Field, Int16Field, Int256Field, Int32Field,
-    Int64Field, Int8Field, UInt128Field, UInt16Field, UInt256Field, UInt32Field, UInt64Field,
-    UInt8Field, I256, U256,
+    Any as AnyValue, AnyField, AnyType, DataTypeId, Field, Int128Field, Int16Field, Int256Field,
+    Int32Field, Int64Field, Int8Field, UInt128Field, UInt16Field, UInt256Field, UInt32Field,
+    UInt64Field, UInt8Field, I256, U256,
 };
 
 /// Defines a primitive integer scalar pairing a native value with its field: the
 /// non-mutating `with_*` updates, a `From<native>` builder, a `From<Self>` bridge into
-/// [`AnyScalar`], and a [`Scalar`] + [`PrimitiveScalar`] impl over the native type.
+/// [`Any`], and a [`Scalar`] + [`PrimitiveScalar`] impl over the native type.
 macro_rules! integer_scalars {
     ($($name:ident => $field:ident : $variant:ident : $type_name:literal : $native:ty),+ $(,)?) => {$(
         #[doc = concat!("A scalar `", $type_name, "` value paired with its [`", stringify!($field), "`](yggdryl_schema::", stringify!($field), ").")]
@@ -65,7 +65,7 @@ macro_rules! integer_scalars {
             }
         }
 
-        impl From<$name> for AnyScalar {
+        impl From<$name> for Any {
             fn from(scalar: $name) -> Self {
                 let field = AnyField::from_parts(
                     scalar.field.name().to_owned(),
@@ -73,7 +73,7 @@ macro_rules! integer_scalars {
                     scalar.field.nullable(),
                     scalar.field.metadata().cloned(),
                 );
-                AnyScalar::from_parts(field, Any::$variant(scalar.value))
+                Any::from_parts(field, AnyValue::$variant(scalar.value))
             }
         }
 
@@ -94,16 +94,16 @@ macro_rules! integer_scalars {
 }
 
 integer_scalars! {
-    Int8Scalar => Int8Field : Int8 : "int8" : i8,
-    Int16Scalar => Int16Field : Int16 : "int16" : i16,
-    Int32Scalar => Int32Field : Int32 : "int32" : i32,
-    Int64Scalar => Int64Field : Int64 : "int64" : i64,
-    Int128Scalar => Int128Field : Int128 : "int128" : i128,
-    Int256Scalar => Int256Field : Int256 : "int256" : I256,
-    UInt8Scalar => UInt8Field : UInt8 : "uint8" : u8,
-    UInt16Scalar => UInt16Field : UInt16 : "uint16" : u16,
-    UInt32Scalar => UInt32Field : UInt32 : "uint32" : u32,
-    UInt64Scalar => UInt64Field : UInt64 : "uint64" : u64,
-    UInt128Scalar => UInt128Field : UInt128 : "uint128" : u128,
-    UInt256Scalar => UInt256Field : UInt256 : "uint256" : U256,
+    Int8 => Int8Field : Int8 : "int8" : i8,
+    Int16 => Int16Field : Int16 : "int16" : i16,
+    Int32 => Int32Field : Int32 : "int32" : i32,
+    Int64 => Int64Field : Int64 : "int64" : i64,
+    Int128 => Int128Field : Int128 : "int128" : i128,
+    Int256 => Int256Field : Int256 : "int256" : I256,
+    UInt8 => UInt8Field : UInt8 : "uint8" : u8,
+    UInt16 => UInt16Field : UInt16 : "uint16" : u16,
+    UInt32 => UInt32Field : UInt32 : "uint32" : u32,
+    UInt64 => UInt64Field : UInt64 : "uint64" : u64,
+    UInt128 => UInt128Field : UInt128 : "uint128" : u128,
+    UInt256 => UInt256Field : UInt256 : "uint256" : U256,
 }

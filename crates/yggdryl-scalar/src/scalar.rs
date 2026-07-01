@@ -9,10 +9,10 @@ use yggdryl_schema::{Field, Metadata};
 /// [`metadata`](Scalar::metadata).
 ///
 /// ```
-/// use yggdryl_scalar::{Int32Scalar, Scalar};
+/// use yggdryl_scalar::{Int32, Scalar};
 /// use yggdryl_schema::{DataType, DataTypeId};
 ///
-/// let scalar = Int32Scalar::from(7);
+/// let scalar = Int32::from(7);
 /// assert_eq!(*scalar.value(), 7);
 /// assert_eq!(scalar.dtype().type_id(), DataTypeId::Int32);
 /// assert_eq!(scalar.name(), ""); // unnamed until `with_name`
