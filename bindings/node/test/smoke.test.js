@@ -13,3 +13,9 @@ test('core.version', () => {
 test('core.hello', () => {
   assert.doesNotThrow(() => yggdryl.core.hello())
 })
+
+test('core.Whence', () => {
+  assert.equal(yggdryl.core.Whence.Start, 0)
+  assert.equal(yggdryl.core.Whence.End, 2)
+  assert.notEqual(yggdryl.core.Whence.Start, yggdryl.core.Whence.End)
+})

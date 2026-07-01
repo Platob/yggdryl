@@ -3,22 +3,29 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! The project has been reset to a minimal scaffold: the crate exposes only
-//! [`version`] and the [`hello`] print example, so the Rust core and its Python and
-//! Node bindings build and round-trip end to end. Reintroduce the foundational types
-//! here as the design lands — one module per concern, each re-exported at the crate
-//! root — following the rules in `CLAUDE.md`.
+//! It holds the byte/array-IO foundation: the positional [`Io`] trait — a
+//! random-access array of `T` values addressed from a [`Whence`] origin via
+//! [`pread`](Io::pread) / [`pwrite`](Io::pwrite), with the in-memory [`Vec`] as its
+//! leaf implementation — plus the [`hello`] / [`version`] scaffold. Reintroduce the
+//! rest of the foundational types here as the design lands — one module per concern,
+//! each re-exported at the crate root — following the rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
-/// cost). Once submodules return, re-export it with `pub(crate) use log_event;` so
-/// they can reach it via `crate::log_event!`.
+/// cost). Submodules reach it via `crate::log_event!`.
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
         log::$level!($($arg)+);
     }};
 }
+pub(crate) use log_event;
+
+mod io;
+mod whence;
+
+pub use io::{Io, IoError};
+pub use whence::Whence;
 
 /// The crate version, as declared in `Cargo.toml`.
 ///

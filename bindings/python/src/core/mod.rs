@@ -3,6 +3,10 @@
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+mod whence;
+
+pub(crate) use whence::Whence;
+
 /// The `yggdryl-core` version string.
 #[pyfunction]
 fn version() -> &'static str {
@@ -19,5 +23,6 @@ fn hello() {
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(hello, module)?)?;
+    module.add_class::<Whence>()?;
     Ok(())
 }

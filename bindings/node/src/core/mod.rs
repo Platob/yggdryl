@@ -2,6 +2,10 @@
 
 use napi_derive::napi;
 
+mod whence;
+
+pub use whence::Whence;
+
 /// The `yggdryl-core` version string.
 #[napi(namespace = "core")]
 pub fn version() -> String {
