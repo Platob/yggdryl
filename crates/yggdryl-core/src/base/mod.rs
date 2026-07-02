@@ -9,8 +9,7 @@ mod error;
 pub use error::BaseError;
 
 /// The foundational trait every yggdryl value type implements: content-based
-/// serialization to and from JSON — as a string, as encoded bytes, and as the
-/// canonical byte form.
+/// serialization to and from JSON — as a string and as the canonical byte form.
 ///
 /// Every method has a default implementation built on `serde` and `serde_json`,
 /// so a value type opts in with an empty `impl Base for MyType {}` once it derives
@@ -18,16 +17,13 @@ pub use error::BaseError;
 ///
 /// - [`serialize_json`](Base::serialize_json) /
 ///   [`deserialize_json`](Base::deserialize_json) — a JSON string.
-/// - [`serialize_bson`](Base::serialize_bson) /
-///   [`deserialize_bson`](Base::deserialize_bson) — JSON bytes, optionally
-///   indented, encoded with any [`Charset`].
 /// - [`serialize_bytes`](Base::serialize_bytes) /
 ///   [`deserialize_bytes`](Base::deserialize_bytes) — the canonical byte form:
-///   compact UTF-8 JSON.
+///   the JSON string encoded as UTF-8 with the [`Utf8`] charset.
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use yggdryl_core::{Base, Utf8};
+/// use yggdryl_core::Base;
 ///
 /// #[derive(Debug, PartialEq, Serialize, Deserialize)]
 /// struct Point {
@@ -40,10 +36,6 @@ pub use error::BaseError;
 ///
 /// assert_eq!(p.serialize_json()?, r#"{"x":1,"y":2}"#);
 /// assert_eq!(Point::deserialize_json(&p.serialize_json()?)?, p);
-///
-/// // JSON bytes, pretty-printed with a two-space indent, encoded as UTF-8.
-/// let bytes = p.serialize_bson(Some(2), Utf8)?;
-/// assert_eq!(Point::deserialize_bson(&bytes, Utf8)?, p);
 ///
 /// // The canonical byte form is compact UTF-8 JSON.
 /// assert_eq!(p.serialize_bytes()?, br#"{"x":1,"y":2}"#.to_vec());
@@ -63,47 +55,16 @@ pub trait Base: Serialize + DeserializeOwned {
         Ok(serde_json::from_str(json)?)
     }
 
-    /// Serialize to JSON bytes: pretty-printed with `indent` spaces when `indent`
-    /// is `Some`, compact when `None`, then encoded with `charset`.
-    fn serialize_bson<C: Charset>(
-        &self,
-        indent: Option<usize>,
-        charset: C,
-    ) -> Result<Vec<u8>, BaseError> {
-        crate::log_event!(trace, "Base::serialize_bson indent={indent:?}");
-        let json = match indent {
-            Some(width) => to_pretty_json(self, width)?,
-            None => self.serialize_json()?,
-        };
-        Ok(charset.encode_bytes(&json)?)
-    }
-
-    /// Deserialize from JSON bytes decoded with `charset`.
-    fn deserialize_bson<C: Charset>(bytes: &[u8], charset: C) -> Result<Self, BaseError> {
-        crate::log_event!(trace, "Base::deserialize_bson");
-        let json = charset.decode_bytes(bytes)?;
-        Self::deserialize_json(&json)
-    }
-
-    /// Serialize to the canonical byte form: compact UTF-8 JSON.
+    /// Serialize to the canonical byte form: the compact JSON string encoded as
+    /// UTF-8.
     fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
         crate::log_event!(trace, "Base::serialize_bytes");
-        self.serialize_bson(None, Utf8)
+        Ok(Utf8.encode_bytes(&self.serialize_json()?)?)
     }
 
-    /// Deserialize from the canonical byte form: compact UTF-8 JSON.
+    /// Deserialize from the canonical byte form: UTF-8-encoded compact JSON.
     fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
         crate::log_event!(trace, "Base::deserialize_bytes");
-        Self::deserialize_bson(bytes, Utf8)
+        Self::deserialize_json(&Utf8.decode_bytes(bytes)?)
     }
-}
-
-/// Serialize `value` to pretty-printed JSON indented with `indent` spaces.
-fn to_pretty_json<T: Serialize + ?Sized>(value: &T, indent: usize) -> Result<String, BaseError> {
-    let spaces = vec![b' '; indent];
-    let formatter = serde_json::ser::PrettyFormatter::with_indent(&spaces);
-    let mut buf = Vec::new();
-    let mut serializer = serde_json::Serializer::with_formatter(&mut buf, formatter);
-    value.serialize(&mut serializer)?;
-    Ok(String::from_utf8(buf).expect("serde_json always emits valid UTF-8"))
 }

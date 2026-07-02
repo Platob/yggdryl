@@ -11,12 +11,12 @@ The Rust core foundations of **yggdryl**.
 The `Charset` trait encodes text to bytes and back through `encode_bytes` /
 `decode_bytes`; `Utf8` and `Latin1` implement it. Behind the off-by-default
 `json` feature, the `Base` trait gives every value type content-based JSON
-serialization — as a string, as encoded bytes (with any `Charset`), and as a
-canonical compact-UTF-8-JSON byte form:
+serialization — as a string and as a canonical compact-UTF-8-JSON byte form
+(encoded through the `Utf8` charset):
 
 ```rust
 use serde::{Deserialize, Serialize};
-use yggdryl_core::{Base, Latin1, Utf8};
+use yggdryl_core::Base;
 
 #[derive(Serialize, Deserialize)]
 struct Point {
@@ -26,10 +26,8 @@ struct Point {
 impl Base for Point {}
 
 let p = Point { x: 1, y: 2 };
-let _json = p.serialize_json()?;                  // {"x":1,"y":2}
-let _pretty = p.serialize_bson(Some(2), Utf8)?;   // indented JSON bytes, UTF-8
-let _latin1 = p.serialize_bson(None, Latin1)?;    // compact JSON bytes, Latin-1
-let _bytes = p.serialize_bytes()?;                // compact UTF-8 JSON
+let _json = p.serialize_json()?;    // {"x":1,"y":2}
+let _bytes = p.serialize_bytes()?;  // compact UTF-8 JSON
 # Ok::<(), yggdryl_core::BaseError>(())
 ```
 

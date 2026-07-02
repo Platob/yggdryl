@@ -2,7 +2,7 @@
 #![cfg(feature = "json")]
 
 use serde::{Deserialize, Serialize};
-use yggdryl_core::{Base, BaseError, Latin1, Utf8};
+use yggdryl_core::{Base, BaseError};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct Record {
@@ -41,32 +41,8 @@ fn bytes_are_compact_utf8_json() {
 }
 
 #[test]
-fn indent_pretty_prints_but_round_trips() {
-    let record = sample();
-    let compact = record.serialize_bson(None, Utf8).unwrap();
-    let pretty = record.serialize_bson(Some(2), Utf8).unwrap();
-    assert!(pretty.len() > compact.len());
-    assert!(pretty.starts_with(b"{\n  \"name\""));
-    assert_eq!(Record::deserialize_bson(&pretty, Utf8).unwrap(), record);
-}
-
-#[test]
-fn bson_honours_charset() {
-    let record = sample();
-    let utf8 = record.serialize_bson(None, Utf8).unwrap();
-    let latin1 = record.serialize_bson(None, Latin1).unwrap();
-    // 'é' is two bytes in UTF-8 but one in Latin-1; everything else is ASCII.
-    assert_eq!(latin1.len() + 1, utf8.len());
-    assert_eq!(Record::deserialize_bson(&latin1, Latin1).unwrap(), record);
-}
-
-#[test]
-fn charset_error_surfaces_as_base_error() {
-    // 'Ω' (U+03A9) is not representable in Latin-1.
-    let record = Record {
-        name: "Ω".to_string(),
-        tags: vec![],
-    };
-    let error = record.serialize_bson(None, Latin1).unwrap_err();
+fn invalid_utf8_bytes_surface_as_base_error() {
+    // 0xFF is not valid UTF-8, so decoding the byte form fails as a charset error.
+    let error = Record::deserialize_bytes(&[0xFF, 0xFF]).unwrap_err();
     assert!(matches!(error, BaseError::Charset(_)));
 }
