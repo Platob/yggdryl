@@ -29,7 +29,7 @@ let p = Point { x: 1, y: 2 };
 let _json = p.to_json()?;                  // {"x":1,"y":2}
 let _pretty = p.to_bson(Some(2), Utf8)?;   // indented JSON bytes, UTF-8
 let _latin1 = p.to_bson(None, Latin1)?;    // compact JSON bytes, Latin-1
-let _bytes = p.to_bytes()?;                // compact UTF-8 JSON
+let _bytes = p.serialize_bytes()?;         // compact UTF-8 JSON
 # Ok::<(), yggdryl_core::BaseError>(())
 ```
 

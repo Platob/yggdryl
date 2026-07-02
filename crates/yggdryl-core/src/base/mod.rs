@@ -19,8 +19,9 @@ pub use error::BaseError;
 /// - [`to_json`](Base::to_json) / [`from_json`](Base::from_json) — a JSON string.
 /// - [`to_bson`](Base::to_bson) / [`from_bson`](Base::from_bson) — JSON bytes,
 ///   optionally indented, encoded with any [`Charset`].
-/// - [`to_bytes`](Base::to_bytes) / [`from_bytes`](Base::from_bytes) — the
-///   canonical byte form: compact UTF-8 JSON.
+/// - [`serialize_bytes`](Base::serialize_bytes) /
+///   [`deserialize_bytes`](Base::deserialize_bytes) — the canonical byte form:
+///   compact UTF-8 JSON.
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
@@ -43,8 +44,8 @@ pub use error::BaseError;
 /// assert_eq!(Point::from_bson(&bytes, Utf8)?, p);
 ///
 /// // The canonical byte form is compact UTF-8 JSON.
-/// assert_eq!(p.to_bytes()?, br#"{"x":1,"y":2}"#.to_vec());
-/// assert_eq!(Point::from_bytes(&p.to_bytes()?)?, p);
+/// assert_eq!(p.serialize_bytes()?, br#"{"x":1,"y":2}"#.to_vec());
+/// assert_eq!(Point::deserialize_bytes(&p.serialize_bytes()?)?, p);
 /// # Ok::<(), yggdryl_core::BaseError>(())
 /// ```
 pub trait Base: Serialize + DeserializeOwned {
@@ -79,14 +80,14 @@ pub trait Base: Serialize + DeserializeOwned {
     }
 
     /// Serialize to the canonical byte form: compact UTF-8 JSON.
-    fn to_bytes(&self) -> Result<Vec<u8>, BaseError> {
-        crate::log_event!(trace, "Base::to_bytes");
+    fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
+        crate::log_event!(trace, "Base::serialize_bytes");
         self.to_bson(None, Utf8)
     }
 
     /// Deserialize from the canonical byte form: compact UTF-8 JSON.
-    fn from_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
-        crate::log_event!(trace, "Base::from_bytes");
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
+        crate::log_event!(trace, "Base::deserialize_bytes");
         Self::from_bson(bytes, Utf8)
     }
 }

@@ -31,11 +31,11 @@ fn json_string_round_trips() {
 fn bytes_are_compact_utf8_json() {
     let record = sample();
     assert_eq!(
-        record.to_bytes().unwrap(),
+        record.serialize_bytes().unwrap(),
         record.to_json().unwrap().into_bytes()
     );
     assert_eq!(
-        Record::from_bytes(&record.to_bytes().unwrap()).unwrap(),
+        Record::deserialize_bytes(&record.serialize_bytes().unwrap()).unwrap(),
         record
     );
 }

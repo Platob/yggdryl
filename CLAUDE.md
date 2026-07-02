@@ -28,12 +28,13 @@ type they are looking at from the shape of the code.
    adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
    `Option<T>` defaults). A change is never half-applied.
 5. **Serializable to and from bytes whenever possible.** Every value type
-   round-trips through bytes via `to_bytes()` / `from_bytes(bytes)`; the only
-   exceptions are live/stream resources (IO handles, HTTP bodies, sessions), which
-   carry no serializable value. `from_bytes` validates fully (length-check against
-   the type's width) and is the exact inverse of `to_bytes`. Bindings mirror the
-   pair, adapting to idioms (Node camelCase `toBytes()` / `fromBytes()`; Python
-   `__reduce__` so pickle round-trips too).
+   round-trips through bytes via `serialize_bytes()` / `deserialize_bytes(bytes)`;
+   the only exceptions are live/stream resources (IO handles, HTTP bodies,
+   sessions), which carry no serializable value. `deserialize_bytes` validates
+   fully (length-check against the type's width) and is the exact inverse of
+   `serialize_bytes`. Bindings mirror the pair, adapting to idioms (Node camelCase
+   `serializeBytes()` / `deserializeBytes()`; Python `__reduce__` so pickle
+   round-trips too).
 
 ## Workspace layout
 
