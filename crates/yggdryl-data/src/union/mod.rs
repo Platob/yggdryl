@@ -1,16 +1,16 @@
-//! The `union` type: [`Union`] and its field [`UnionField`].
+//! The `union` type: [`UnionType`] and its field [`UnionField`].
 //!
 //! A union value is exactly one of several child types, discriminated by a type id.
-//! [`Union`] carries the Arrow `(type id, child field)` pairs and mode losslessly;
-//! [`Union::optional`] names the two-variant union between [`Null`](crate::Null)
+//! [`UnionType`] carries the Arrow `(type id, child field)` pairs and mode losslessly;
+//! [`UnionType::optional`] names the two-variant union between [`Null`](crate::Null)
 //! and a value type — the storage of the logical
-//! [`Optional`](crate::Optional) type (see the [`optional`](crate::optional)
+//! [`OptionalType`](crate::OptionalType) type (see the [`optional`](crate::optional)
 //! module).
 //!
 //! ```
-//! use yggdryl_data::{Int64, Nested, RawDataType, RawField, Union, UnionField};
+//! use yggdryl_data::{Int64, Nested, RawDataType, RawField, UnionType, UnionField};
 //!
-//! let union = Union::optional(&Int64);
+//! let union = UnionType::optional(&Int64);
 //! assert_eq!((union.name(), union.child_count()), ("union", 2));
 //! assert_eq!(union.arrow_format(), "+us:0,1");
 //!
@@ -18,11 +18,16 @@
 //! assert_eq!(field.data_type(), &union);
 //!
 //! // The Arrow round trip is lossless for any union.
-//! assert_eq!(Union::from_arrow(&union.to_arrow()).unwrap(), union);
+//! assert_eq!(UnionType::from_arrow(&union.to_arrow()).unwrap(), union);
 //! ```
 
 mod data_type;
 mod field;
+mod raw_union;
+#[allow(clippy::module_inception)]
+mod union;
 
-pub use data_type::Union;
+pub use data_type::UnionType;
 pub use field::UnionField;
+pub use raw_union::RawUnion;
+pub use union::Union;

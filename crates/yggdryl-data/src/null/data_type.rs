@@ -6,7 +6,7 @@ use crate::{DataError, RawDataType};
 ///
 /// It is storage-free — no byte width, no codec — and is neither a
 /// [`Primitive`](crate::Primitive) nor a [`Nested`](crate::Nested) type. Its main
-/// structural role is as the null variant of a [`Union`](crate::Union) (see
+/// structural role is as the null variant of a [`UnionType`](crate::UnionType) (see
 /// [`OptionalScalar`](crate::OptionalScalar)).
 ///
 /// ```

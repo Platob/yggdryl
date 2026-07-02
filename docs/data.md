@@ -4,8 +4,9 @@ The `yggdryl-data` crate is the Apache Arrow-centralized **data-model layer**, b
 on `yggdryl-core`. It defines the physical type system — data types, fields and
 scalars — for zero-copy FFI and Arrow interop. The concrete families so far: the
 `integer` module (every signed and unsigned integer), the `null` module (the
-storage-free null type) and the `union` module (the union type, with the
-null-or-value `OptionalScalar`); more land as the layer grows.
+storage-free null type), the `union` module, the `optional` module (the logical
+null-or-value type over union storage) and the nested `list`, `map` and `struct`
+modules; more land as the layer grows.
 
 The bindings expose the layer as `yggdryl.data` (Python) and `yggdryl.data` (Node),
 adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
@@ -13,9 +14,12 @@ adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit ty
 (`OptionalInt64Scalar`, …) built straight from the native value. Three things stay
 **Rust-only**, stated here and in both binding module docs: the [Arrow
 interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange `arrow-schema` /
-`arrow-array` values that cannot cross the FFI boundary), construction of a `Union`
+`arrow-array` values that cannot cross the FFI boundary), construction of a `UnionType`
 from arbitrary child fields (reached in the bindings through an optional data type's
-`storage()`), and the [`DataTypeId`](#type-ids) classifier.
+`storage()`), the [`DataTypeId`](#type-ids) classifier, and the generic
+[nested families](#nested-types-list-map-and-struct) (`ListType` / `MapType` /
+`StructType` with their scalars) and per-family trait pairs, which have no
+concrete FFI shape yet.
 
 The type system is three layers of traits. None carries a lifetime parameter
 (FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
@@ -164,12 +168,12 @@ fn main() {
 ## The null, union and optional types
 
 The `null` module holds `Null` — the storage-free type whose every value is null —
-with its `NullField` and `NullScalar`. The `union` module holds `Union`, Apache
+with its `NullField` and `NullScalar`. The `union` module holds `UnionType`, Apache
 Arrow's union type: a value is exactly one of several child types, discriminated by
-a type id. `Union` carries its `UnionFields` and `UnionMode` exactly as Arrow models
+a type id. `UnionType` carries its `UnionFields` and `UnionMode` exactly as Arrow models
 them, so `to_arrow` / `from_arrow` round-trip *any* union losslessly.
 
-The `optional` module builds on both: `Optional<D>` is the first concrete
+The `optional` module builds on both: `OptionalType<D>` is the first concrete
 [Logical](#categories) type — a value of the value type `D`, or null, physically
 stored as `Union::optional(&D)` (the sparse two-variant union between null and the
 value type; `storage()` returns it). Its Arrow surface delegates to the storage,
@@ -180,7 +184,7 @@ answer through `S`), and so does the Arrow form: a one-element `UnionArray` whos
 type id selects the variant, `from_arrow` handing the value child back to `S`'s own
 `from_arrow`. The bindings expose the optional family as concrete per-type classes
 (`OptionalInt64`, `OptionalInt64Field`, `OptionalInt64Scalar`, …), the scalars built
-straight from the native value, and reach `Union` through an optional data type's
+straight from the native value, and reach `UnionType` through an optional data type's
 `storage()` (arbitrary child fields stay Rust-only).
 
 === "Python"
@@ -262,6 +266,45 @@ array whose type id selects the null variant, and `OptionalScalar::from_arrow` i
 its exact inverse; the typed byte codec of `Optional<Int64>` reads and writes plain
 `i64` bytes (the value type's codec).
 
+## Nested types: list, map and struct
+
+!!! note "Rust only"
+    The nested families are generic over their child types (or carry dynamic Arrow
+    fields), which has no concrete FFI shape yet — they are not exposed to Python or
+    Node.
+
+The `list`, `map` and `struct` modules follow the family pattern. `ListType<D>` is
+the variable-length sequence of one value type (single nullable `"item"` child);
+`MapType<K, V>` the sequence of key–value entries (single `"entries"` struct child);
+`StructType` the dynamic ordered set of named fields, carried losslessly like
+`UnionType`. Their scalars hold sequences of inner scalars (`ListScalar<D, S>`,
+`MapScalar<K, V, SK, SV>`) or one row of one-element Arrow columns
+(`StructScalar`), each round-tripping through a one-element Arrow array whose
+children redirect to the inner scalars' own `to_arrow` / `from_arrow`. The typed
+byte codecs concatenate the child codecs and split them back by fixed width (a
+variable-width child errors with `DataError::IndeterminateElementWidth` — decode
+those from Arrow).
+
+```rust
+use yggdryl_data::{
+    DataType, Int64, Int64Scalar, ListScalar, ListType, MapType, RawDataType, RawScalar, UInt8,
+};
+
+fn main() {
+    let list = ListType::new(Int64);
+    assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
+    assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
+    assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
+
+    let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    let arrow = numbers.to_arrow(); // a one-element ListArray
+    assert_eq!(ListScalar::from_arrow(arrow.as_ref()).unwrap(), numbers);
+
+    let map = MapType::new(UInt8, Int64);
+    assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
+}
+```
+
 ## The trait layers
 
 ### Untyped base
@@ -290,7 +333,12 @@ The same, tied to a native Rust type `T`:
 
 - **`DataType<T>: RawDataType`** — adds the byte codec `native_to_bytes` /
   `native_from_bytes` (a length mismatch on decode returns
-  `DataError::InvalidByteLength`).
+  `DataError::InvalidByteLength`), the associated `Scalar` type, and the
+  defaults: `default_value` (the type's default native value — `0` for the
+  integers, an empty sequence for lists and maps, the *first* data type's
+  default for a union) and `default_scalar` (a scalar holding it, except where
+  the scalar models nullness — an optional's default scalar is its null
+  variant).
 - **`Field<T>: RawField<Self::Type>`** — a field whose data type is a `DataType<T>`.
 - **`Scalar<T>: RawScalar<Self::Type, Value = T>`** — a scalar whose value is `T`.
 
@@ -325,6 +373,14 @@ How a type is shaped (each refines `RawDataType`):
   the null-or-value union — is the first concrete one.
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`);
   `child_count()` reports how many.
+
+Each composite family also carries its own raw/typed trait pair, mirroring the
+base layers: `RawOptional` / `Optional`, `RawUnion` / `Union` (a typed union's
+defaults are its *first* data type's), `RawList` / `List`, `RawMap` / `Map` and
+`RawStruct` / `Struct` — the concrete `OptionalType<D>`, `UnionType`,
+`ListType<D>`, `MapType<K, V>` and `StructType` implement the raw side, and the
+typed side wherever the child types have codecs (the dynamic `UnionType` and
+`StructType`, whose children are only known at runtime, stay raw-only).
 
 ## Type ids
 

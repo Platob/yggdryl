@@ -18,12 +18,14 @@
 //! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
 //! arrow-schema value — `Union` is reached through an optional data type's
 //! `storage()`),
-//! and the `DataTypeId` classifier (a method-bearing enum the bindings cannot
-//! model uniformly).
+//! the `DataTypeId` classifier (a method-bearing enum the bindings cannot
+//! model uniformly), and the generic nested families (`ListType` / `MapType` /
+//! `StructType` with their scalars) and per-family trait pairs, which have no
+//! concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
-use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar};
+use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar, RawUnion};
 
 fn data_error(error: yggdryl_data::DataError) -> Error {
     Error::from_reason(error.to_string())
@@ -56,7 +58,7 @@ fn bigint_to_u64(value: BigInt) -> Result<u64> {
 /// (arbitrary child fields stay Rust-only).
 #[napi(namespace = "data")]
 pub struct Union {
-    inner: yggdryl_data::Union,
+    inner: yggdryl_data::UnionType,
 }
 
 #[napi(namespace = "data")]
@@ -366,6 +368,14 @@ macro_rules! int_data_node {
                 self.inner.bit_width().map(|width| width as u32)
             }
 
+            /// The default scalar: a scalar holding `0`.
+            #[napi]
+            pub fn default_scalar(&self) -> $scalar {
+                $scalar {
+                    inner: self.inner.default_scalar(),
+                }
+            }
+
             /// The logical optional of this type (stored as the null-or-value
             /// union).
             #[napi]
@@ -378,7 +388,7 @@ macro_rules! int_data_node {
         #[napi(namespace = "data")]
         #[derive(Default)]
         pub struct $opt_ty {
-            inner: yggdryl_data::Optional<yggdryl_data::$ty>,
+            inner: yggdryl_data::OptionalType<yggdryl_data::$ty>,
         }
 
         #[napi(namespace = "data")]
@@ -418,6 +428,14 @@ macro_rules! int_data_node {
             #[napi]
             pub fn value_type(&self) -> $ty {
                 $ty::default()
+            }
+
+            /// The default scalar: the null variant (the scalar models nullness).
+            #[napi]
+            pub fn default_scalar(&self) -> $optional {
+                $optional {
+                    inner: self.inner.default_scalar(),
+                }
             }
 
             /// The physical storage: the sparse null-or-value union.
@@ -573,7 +591,7 @@ macro_rules! int_data_node {
 /// `number`: the data type's byte codec and the scalar / optional-scalar
 /// constructor and `value`, range-checked with an actionable error.
 macro_rules! int_wire_number_node {
-    ($ty:ident, $scalar:ident, $optional:ident, $native:ty, $name:literal) => {
+    ($ty:ident, $scalar:ident, $opt_ty:ident, $optional:ident, $native:ty, $name:literal) => {
         #[napi(namespace = "data")]
         impl $ty {
             /// Serialize a native value into its little-endian Arrow bytes.
@@ -591,6 +609,24 @@ macro_rules! int_wire_number_node {
                     .native_from_bytes(&bytes)
                     .map(i64::from)
                     .map_err(data_error)
+            }
+        }
+
+        #[napi(namespace = "data")]
+        impl $ty {
+            /// The type's default native value, `0`.
+            #[napi]
+            pub fn default_value(&self) -> i64 {
+                i64::from(DataType::default_value(&self.inner))
+            }
+        }
+
+        #[napi(namespace = "data")]
+        impl $opt_ty {
+            /// The default native value of the value type, `0`.
+            #[napi]
+            pub fn default_value(&self) -> i64 {
+                i64::from(DataType::default_value(&self.inner))
             }
         }
 
@@ -719,12 +755,54 @@ int_data_node!(
     "uint64"
 );
 
-int_wire_number_node!(Int8, Int8Scalar, OptionalInt8Scalar, i8, "int8");
-int_wire_number_node!(Int16, Int16Scalar, OptionalInt16Scalar, i16, "int16");
-int_wire_number_node!(Int32, Int32Scalar, OptionalInt32Scalar, i32, "int32");
-int_wire_number_node!(UInt8, UInt8Scalar, OptionalUInt8Scalar, u8, "uint8");
-int_wire_number_node!(UInt16, UInt16Scalar, OptionalUInt16Scalar, u16, "uint16");
-int_wire_number_node!(UInt32, UInt32Scalar, OptionalUInt32Scalar, u32, "uint32");
+int_wire_number_node!(
+    Int8,
+    Int8Scalar,
+    OptionalInt8,
+    OptionalInt8Scalar,
+    i8,
+    "int8"
+);
+int_wire_number_node!(
+    Int16,
+    Int16Scalar,
+    OptionalInt16,
+    OptionalInt16Scalar,
+    i16,
+    "int16"
+);
+int_wire_number_node!(
+    Int32,
+    Int32Scalar,
+    OptionalInt32,
+    OptionalInt32Scalar,
+    i32,
+    "int32"
+);
+int_wire_number_node!(
+    UInt8,
+    UInt8Scalar,
+    OptionalUInt8,
+    OptionalUInt8Scalar,
+    u8,
+    "uint8"
+);
+int_wire_number_node!(
+    UInt16,
+    UInt16Scalar,
+    OptionalUInt16,
+    OptionalUInt16Scalar,
+    u16,
+    "uint16"
+);
+int_wire_number_node!(
+    UInt32,
+    UInt32Scalar,
+    OptionalUInt32,
+    OptionalUInt32Scalar,
+    u32,
+    "uint32"
+);
 
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
 // the full range), so their width-dependent surface is written out per type.
@@ -747,6 +825,24 @@ impl Int64 {
             .native_from_bytes(&bytes)
             .map(BigInt::from)
             .map_err(data_error)
+    }
+}
+
+#[napi(namespace = "data")]
+impl Int64 {
+    /// The type's default native value, `0n`.
+    #[napi]
+    pub fn default_value(&self) -> BigInt {
+        BigInt::from(DataType::default_value(&self.inner))
+    }
+}
+
+#[napi(namespace = "data")]
+impl OptionalInt64 {
+    /// The default native value of the value type, `0n`.
+    #[napi]
+    pub fn default_value(&self) -> BigInt {
+        BigInt::from(DataType::<i64>::default_value(&self.inner))
     }
 }
 
@@ -804,6 +900,24 @@ impl UInt64 {
             .native_from_bytes(&bytes)
             .map(BigInt::from)
             .map_err(data_error)
+    }
+}
+
+#[napi(namespace = "data")]
+impl UInt64 {
+    /// The type's default native value, `0n`.
+    #[napi]
+    pub fn default_value(&self) -> BigInt {
+        BigInt::from(DataType::default_value(&self.inner))
+    }
+}
+
+#[napi(namespace = "data")]
+impl OptionalUInt64 {
+    /// The default native value of the value type, `0n`.
+    #[napi]
+    pub fn default_value(&self) -> BigInt {
+        BigInt::from(DataType::<u64>::default_value(&self.inner))
     }
 }
 

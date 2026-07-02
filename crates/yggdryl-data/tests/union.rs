@@ -4,7 +4,7 @@
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
     arrow_array, arrow_schema, DataError, DataTypeId, Int64, Nested, Null, NullField, NullScalar,
-    RawDataType, RawField, RawScalar, Union, UnionField,
+    RawDataType, RawField, RawScalar, RawUnion, UnionField, UnionType,
 };
 
 #[test]
@@ -43,15 +43,15 @@ fn null_describes_itself_and_round_trips() {
 
 #[test]
 fn union_describes_itself() {
-    let union = Union::optional(&Int64);
+    let union = UnionType::optional(&Int64);
     assert_eq!(union.name(), "union");
     assert_eq!(union.arrow_format(), "+us:0,1");
     assert_eq!(union.byte_width(), None);
     assert_eq!(union.child_count(), 2);
     assert_eq!(union.mode(), arrow_schema::UnionMode::Sparse);
-    assert_eq!(Union::ID, DataTypeId::Union);
-    assert_eq!(Union::ID.name(), union.name());
-    assert_eq!(Union::ID.arrow_format(), None); // parameterized at the id level
+    assert_eq!(UnionType::ID, DataTypeId::Union);
+    assert_eq!(UnionType::ID.name(), union.name());
+    assert_eq!(UnionType::ID.arrow_format(), None); // parameterized at the id level
 
     // The two variants carry the declared type ids and types.
     let children: Vec<_> = union
@@ -62,8 +62,8 @@ fn union_describes_itself() {
     assert_eq!(
         children,
         vec![
-            (Union::NULL_TYPE_ID, arrow_schema::DataType::Null),
-            (Union::VALUE_TYPE_ID, arrow_schema::DataType::Int64),
+            (UnionType::NULL_TYPE_ID, arrow_schema::DataType::Null),
+            (UnionType::VALUE_TYPE_ID, arrow_schema::DataType::Int64),
         ]
     );
 }
@@ -82,20 +82,20 @@ fn union_arrow_round_trips_losslessly() {
         ],
     )
     .unwrap();
-    let union = Union::new(fields, arrow_schema::UnionMode::Dense);
+    let union = UnionType::new(fields, arrow_schema::UnionMode::Dense);
     assert_eq!(union.arrow_format(), "+ud:2,7");
     let arrow = union.to_arrow();
-    assert_eq!(Union::from_arrow(&arrow).unwrap(), union);
+    assert_eq!(UnionType::from_arrow(&arrow).unwrap(), union);
 
     assert!(matches!(
-        Union::from_arrow(&arrow_schema::DataType::Int64),
+        UnionType::from_arrow(&arrow_schema::DataType::Int64),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
 
 #[test]
 fn union_field_round_trips_and_applies_the_metadata_policy() {
-    let field = UnionField::new("value", Union::optional(&Int64), true);
+    let field = UnionField::new("value", UnionType::optional(&Int64), true);
     let arrow = field.to_arrow();
     assert_eq!(arrow.name(), "value");
     assert!(arrow.is_nullable());
@@ -124,13 +124,14 @@ fn union_field_round_trips_and_applies_the_metadata_policy() {
 #[test]
 fn union_is_object_safe_and_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Union>();
+    assert_send_sync::<UnionType>();
     assert_send_sync::<UnionField>();
     assert_send_sync::<Null>();
     assert_send_sync::<NullScalar>();
 
     // A heterogeneous schema mixes primitives and unions through the vtable.
-    let types: Vec<Box<dyn RawDataType>> = vec![Box::new(Int64), Box::new(Union::optional(&Int64))];
+    let types: Vec<Box<dyn RawDataType>> =
+        vec![Box::new(Int64), Box::new(UnionType::optional(&Int64))];
     assert_eq!(types[1].name(), "union");
     assert_eq!(types[1].arrow_format(), "+us:0,1");
     assert!(matches!(

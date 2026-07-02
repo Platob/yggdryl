@@ -4,7 +4,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_data::{
     arrow_schema, Int64, Int64Field, Int64Scalar, Int8, Int8Scalar, OptionalScalar, RawDataType,
-    RawField, RawScalar, Union,
+    RawField, RawScalar, UnionType,
 };
 
 type OptionalInt64 = OptionalScalar<Int64, Int64Scalar>;
@@ -229,7 +229,7 @@ fn optional(c: &mut Criterion) {
     group.bench_function("union_optional_data_type", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Union::optional(&Int64));
+                black_box(UnionType::optional(&Int64));
             }
         })
     });

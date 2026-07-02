@@ -2,7 +2,7 @@
 //!
 //! [`Null`] is Apache Arrow's `Null` — the type whose every value is null. It carries
 //! no storage (no byte width, no codec) and exists so schemas, unions (see
-//! [`Union`](crate::Union)) and scalars can name "always null" as a first-class type.
+//! [`UnionType`](crate::UnionType)) and scalars can name "always null" as a first-class type.
 //!
 //! ```
 //! use yggdryl_data::{Null, NullField, NullScalar, RawDataType, RawField, RawScalar};

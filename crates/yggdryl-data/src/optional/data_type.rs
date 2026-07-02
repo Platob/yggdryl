@@ -1,27 +1,27 @@
-//! The [`Optional`] data type.
+//! The [`OptionalType`] data type.
 
 use std::sync::OnceLock;
 
-use crate::{DataError, DataType, Logical, RawDataType, Union};
+use crate::{DataError, DataType, Logical, RawDataType, UnionType};
 
 /// The logical `optional` data type: a value of the value type `D`, or null —
-/// physically stored as the sparse two-variant [`Union`] between
-/// [`Null`](crate::Null) and `D` ([`Union::optional`]).
+/// physically stored as the sparse two-variant [`UnionType`] between
+/// [`Null`](crate::Null) and `D` ([`UnionType::optional`]).
 ///
 /// It is the first concrete [`Logical`] type: [`storage`](Logical::storage) returns
-/// the backing [`Union`], and the Arrow surface delegates to it (`arrow_format` /
+/// the backing [`UnionType`], and the Arrow surface delegates to it (`arrow_format` /
 /// `to_arrow` describe the union — Arrow has no separate "optional" type, so this
 /// type has no [`DataTypeId`](crate::DataTypeId)). The typed layer delegates the
 /// other way: the [`DataType<T>`] byte codec is the *value type's* codec, so an
-/// `Optional<Int64>` reads and writes plain `i64` bytes.
+/// `OptionalType<Int64>` reads and writes plain `i64` bytes.
 ///
 /// The storage union is a pure function of the value type, so it is built lazily on
 /// first use and plays no part in equality.
 ///
 /// ```
-/// use yggdryl_data::{DataType, Int64, Logical, Optional, RawDataType};
+/// use yggdryl_data::{DataType, Int64, Logical, OptionalType, RawDataType, RawOptional};
 ///
-/// let optional = Optional::new(Int64);
+/// let optional = OptionalType::new(Int64);
 /// assert_eq!(optional.name(), "optional");
 /// assert_eq!(optional.value_type().name(), "int64");
 ///
@@ -35,15 +35,15 @@ use crate::{DataError, DataType, Logical, RawDataType, Union};
 /// assert_eq!(optional.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 ///
 /// // from_arrow is the exact inverse of to_arrow.
-/// assert_eq!(Optional::<Int64>::from_arrow(&optional.to_arrow()).unwrap(), optional);
+/// assert_eq!(OptionalType::<Int64>::from_arrow(&optional.to_arrow()).unwrap(), optional);
 /// ```
 #[derive(Debug)]
-pub struct Optional<D> {
+pub struct OptionalType<D> {
     value_type: D,
-    storage: OnceLock<Union>,
+    storage: OnceLock<UnionType>,
 }
 
-impl<D: RawDataType> Optional<D> {
+impl<D: RawDataType> OptionalType<D> {
     /// The optional of `value_type`.
     pub fn new(value_type: D) -> Self {
         Self {
@@ -51,20 +51,28 @@ impl<D: RawDataType> Optional<D> {
             storage: OnceLock::new(),
         }
     }
+}
 
-    /// The value type this optional wraps.
-    pub fn value_type(&self) -> &D {
+impl<D: RawDataType> super::RawOptional<D> for OptionalType<D> {
+    fn value_type(&self) -> &D {
         &self.value_type
     }
 }
 
-impl<D: RawDataType + Default> Default for Optional<D> {
+impl<T, D: DataType<T> + Default> super::Optional<T> for OptionalType<D>
+where
+    D::Scalar: crate::RawScalar<D>,
+{
+    type ValueType = D;
+}
+
+impl<D: RawDataType + Default> Default for OptionalType<D> {
     fn default() -> Self {
         Self::new(D::default())
     }
 }
 
-impl<D: Clone> Clone for Optional<D> {
+impl<D: Clone> Clone for OptionalType<D> {
     fn clone(&self) -> Self {
         Self {
             value_type: self.value_type.clone(),
@@ -73,7 +81,7 @@ impl<D: Clone> Clone for Optional<D> {
     }
 }
 
-impl<D: PartialEq> PartialEq for Optional<D> {
+impl<D: PartialEq> PartialEq for OptionalType<D> {
     // The storage union is a function of the value type, so equality is the value
     // type alone.
     fn eq(&self, other: &Self) -> bool {
@@ -81,9 +89,9 @@ impl<D: PartialEq> PartialEq for Optional<D> {
     }
 }
 
-impl<D: Eq> Eq for Optional<D> {}
+impl<D: Eq> Eq for OptionalType<D> {}
 
-impl<D: RawDataType> RawDataType for Optional<D> {
+impl<D: RawDataType> RawDataType for OptionalType<D> {
     fn name(&self) -> &str {
         "optional"
     }
@@ -116,8 +124,8 @@ impl<D: RawDataType> RawDataType for Optional<D> {
         else {
             return Err(incompatible());
         };
-        if null_id != Union::NULL_TYPE_ID
-            || value_id != Union::VALUE_TYPE_ID
+        if null_id != UnionType::NULL_TYPE_ID
+            || value_id != UnionType::VALUE_TYPE_ID
             || null_field.name() != "null"
             || !null_field.is_nullable()
             || null_field.data_type() != &arrow_schema::DataType::Null
@@ -136,7 +144,12 @@ impl<D: RawDataType> RawDataType for Optional<D> {
     }
 }
 
-impl<T, D: DataType<T>> DataType<T> for Optional<D> {
+impl<T, D: DataType<T> + Default> DataType<T> for OptionalType<D>
+where
+    D::Scalar: crate::RawScalar<D>,
+{
+    type Scalar = super::OptionalScalar<D, D::Scalar>;
+
     fn native_to_bytes(&self, value: &T) -> Vec<u8> {
         self.value_type.native_to_bytes(value)
     }
@@ -144,13 +157,23 @@ impl<T, D: DataType<T>> DataType<T> for Optional<D> {
     fn native_from_bytes(&self, bytes: &[u8]) -> Result<T, DataError> {
         self.value_type.native_from_bytes(bytes)
     }
+
+    fn default_value(&self) -> T {
+        self.value_type.default_value()
+    }
+
+    // The optional's scalar models nullness itself, so its default is the null
+    // variant — matching `OptionalScalar::default` and `Option::default`.
+    fn default_scalar(&self) -> Self::Scalar {
+        super::OptionalScalar::null()
+    }
 }
 
-impl<D: RawDataType> Logical for Optional<D> {
-    type Storage = Union;
+impl<D: RawDataType> Logical for OptionalType<D> {
+    type Storage = UnionType;
 
-    fn storage(&self) -> &Union {
+    fn storage(&self) -> &UnionType {
         self.storage
-            .get_or_init(|| Union::optional(&self.value_type))
+            .get_or_init(|| UnionType::optional(&self.value_type))
     }
 }

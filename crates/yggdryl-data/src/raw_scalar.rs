@@ -195,3 +195,31 @@ pub trait RawScalar<D: RawDataType>: std::fmt::Debug + Send + Sync {
         None
     }
 }
+
+/// One child array holding every element's one-element Arrow form, in order (an
+/// empty array of `value_type` for an empty sequence) — the shared builder behind
+/// the nested scalars' `to_arrow`.
+pub(crate) fn concat_scalar_arrays(
+    elements: Vec<arrow_array::ArrayRef>,
+    value_type: &arrow_schema::DataType,
+) -> arrow_array::ArrayRef {
+    if elements.is_empty() {
+        return arrow_array::new_empty_array(value_type);
+    }
+    let refs: Vec<&dyn arrow_array::Array> =
+        elements.iter().map(std::convert::AsRef::as_ref).collect();
+    arrow_select::concat::concat(&refs).expect("one-element arrays of one type concatenate")
+}
+
+/// Every element of `elements` read back through the scalar's own `from_arrow` —
+/// the shared reader behind the nested scalars' `from_arrow`.
+pub(crate) fn scalars_from_elements<D: RawDataType, S: RawScalar<D>>(
+    elements: &dyn arrow_array::Array,
+) -> Result<Vec<S>, DataError> {
+    (0..arrow_array::Array::len(elements))
+        .map(|index| {
+            let element = arrow_array::Array::slice(elements, index, 1);
+            S::from_arrow(element.as_ref())
+        })
+        .collect()
+}

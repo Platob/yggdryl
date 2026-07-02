@@ -24,6 +24,12 @@ pub enum DataError {
         /// The number of values the array actually held.
         got: usize,
     },
+    /// The element type has no fixed byte width, so a byte-encoded sequence cannot
+    /// be split into elements.
+    IndeterminateElementWidth {
+        /// The name of the element data type without a fixed width.
+        data_type: String,
+    },
 }
 
 impl std::fmt::Display for DataError {
@@ -39,6 +45,13 @@ impl std::fmt::Display for DataError {
                 write!(
                     f,
                     "a scalar converts from an Arrow array of exactly 1 value but got {got}"
+                )
+            }
+            DataError::IndeterminateElementWidth { data_type } => {
+                write!(
+                    f,
+                    "the element type {data_type} has no fixed byte width; decode from Arrow \
+                     instead of bytes"
                 )
             }
         }

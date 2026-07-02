@@ -20,6 +20,10 @@ path = "src/lib.rs"
 # builds a one-element `arrow_array` array (Arrow's own scalar representation).
 arrow-schema = { workspace = true }
 arrow-array = { workspace = true }
+# The nested scalars build their Arrow children: `arrow-buffer` for the list/map
+# offset buffers, `arrow-select` for concatenating per-element child arrays.
+arrow-buffer = { workspace = true }
+arrow-select = { workspace = true }
 # Optional structured logging via the `log` facade (the `log_event!` macro),
 # mirroring yggdryl-core; off by default.
 log = { version = "0.4", optional = true }

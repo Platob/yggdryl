@@ -7,13 +7,13 @@
 //! and [`int_scalar!`] — keeping every per-type file a single invocation while the
 //! logic lives in one place.
 
-/// Generates a fixed-width integer data type `$ty` (native Rust `$native`), with
-/// `$name` its lowercase name, `$format` its Arrow C Data Interface format string and
-/// `$width` its byte width. The `$ty` identifier doubles as the matching
-/// [`DataTypeId`](crate::DataTypeId) variant (exposed as `$ty::ID`) and the matching
-/// [`arrow_schema::DataType`] variant (`to_arrow` / `from_arrow`).
+/// Generates a fixed-width integer data type `$ty` (native Rust `$native`, scalar
+/// `$scalar`), with `$name` its lowercase name, `$format` its Arrow C Data Interface
+/// format string and `$width` its byte width. The `$ty` identifier doubles as the
+/// matching [`DataTypeId`](crate::DataTypeId) variant (exposed as `$ty::ID`) and the
+/// matching [`arrow_schema::DataType`] variant (`to_arrow` / `from_arrow`).
 macro_rules! int_data_type {
-    ($ty:ident, $native:ty, $name:literal, $format:literal, $width:literal) => {
+    ($ty:ident, $native:ty, $scalar:ident, $name:literal, $format:literal, $width:literal) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type: a fixed-width integer primitive (native `", stringify!($native), "`).")]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
         pub struct $ty;
@@ -50,8 +50,15 @@ macro_rules! int_data_type {
         }
 
         impl $crate::DataType<$native> for $ty {
+            type Scalar = $crate::$scalar;
             fn native_to_bytes(&self, value: &$native) -> Vec<u8> {
                 value.to_le_bytes().to_vec()
+            }
+            fn default_value(&self) -> $native {
+                <$native>::default()
+            }
+            fn default_scalar(&self) -> $crate::$scalar {
+                $crate::$scalar::new(<$native>::default())
             }
             fn native_from_bytes(&self, bytes: &[u8]) -> Result<$native, $crate::DataError> {
                 let array: [u8; $width] =

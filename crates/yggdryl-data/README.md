@@ -41,7 +41,10 @@ versions).
 The same, tied to a native Rust type `T`.
 
 - **`DataType<T>: RawDataType`** — adds the codec bridging a native `T` to and from its
-  Arrow bytes: `native_to_bytes` / `native_from_bytes`.
+  Arrow bytes (`native_to_bytes` / `native_from_bytes`), the associated `Scalar`
+  type, and the defaults: `default_value` (`0` for integers, empty for sequences,
+  the *first* data type's default for a union) and `default_scalar` (holding it,
+  except the optional, whose scalar models nullness and defaults to null).
 - **`Field<T>: RawField<Self::Type>`** — a field whose data type is a `DataType<T>`.
 - **`Scalar<T>: RawScalar<Self::Type, Value = T>`** — a scalar whose value is `T`.
 
@@ -51,7 +54,7 @@ How a type is shaped (each refines `RawDataType`).
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
 - **`Logical`** — a type layered over a physical `Storage` type (e.g. a timestamp over
-  `int64`; `Optional<D>` over its null-or-value union is the first concrete one).
+  `int64`; `OptionalType<D>` over its null-or-value union is the first concrete one).
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`).
 
 ## Type ids
@@ -99,17 +102,17 @@ assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar)
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 `Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
 
-## The null, union and optional modules
+## The composite modules: null, union, optional, list, map, struct
 
 `Null` is the storage-free type whose every value is null (`NullField`,
-`NullScalar`). `Union` is Apache Arrow's union — a value is exactly one of several
+`NullScalar`). `UnionType` is Apache Arrow's union — a value is exactly one of several
 child types, discriminated by a type id — carrying its `UnionFields` and
 `UnionMode` losslessly, so `to_arrow` / `from_arrow` round-trip any union
-(`UnionField` is its field; `Union::optional(&T)` names the sparse two-variant
+(`UnionField` is its field; `UnionType::optional(&T)` names the sparse two-variant
 union between null and a value type).
 
-`Optional<D>` is the first concrete `Logical` type: a value of the value type `D`,
-or null, physically stored as `Union::optional(&D)` (`storage()` returns the
+`OptionalType<D>` is the first concrete `Logical` type: a value of the value type `D`,
+or null, physically stored as `UnionType::optional(&D)` (`storage()` returns the
 union). Its Arrow surface delegates to the storage; its `DataType<T>` byte codec
 delegates to the value type. `OptionalField<D>` is its field, and
 `OptionalScalar<D, S>` its scalar: an inner scalar `S` or the null variant, with
@@ -117,12 +120,18 @@ delegates to the value type. `OptionalField<D>` is its field, and
 form a one-element `UnionArray` whose type id selects the variant (`from_arrow`
 redirects the value child back through `S::from_arrow`).
 
+Each composite family carries its own raw/typed trait pair (`RawOptional` /
+`Optional`, `RawUnion` / `Union`, `RawList` / `List`, `RawMap` / `Map`,
+`RawStruct` / `Struct`); the generic `ListType<D>` and `MapType<K, V>` (with
+`ListScalar` / `MapScalar` over inner scalars) and the dynamic `StructType` /
+`StructScalar` follow the same shape as the optional family.
+
 ```rust
-use yggdryl_data::{Int64, Int64Scalar, Logical, Optional, OptionalScalar, RawDataType, RawScalar};
+use yggdryl_data::{Int64, Int64Scalar, Logical, OptionalScalar, OptionalType, RawDataType, RawScalar};
 
 let answer = OptionalScalar::new(Int64Scalar::new(42));
 assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
-assert_eq!(answer.data_type(), &Optional::new(Int64)); // logical optional...
+assert_eq!(answer.data_type(), &OptionalType::new(Int64)); // logical optional...
 assert_eq!(answer.data_type().storage().name(), "union"); // ...over union storage
 assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 

@@ -96,6 +96,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80b3e786a0dd9103acd583a6fb486dbf2f3268466cc0bd571dcf34cef231c1f1"
 
 [[package]]
+name = "arrow-select"
+version = "59.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "067a67e0361f6c31f4a7248759f36ca4ca71b187a941ed4d49da1c7d3d4db624"
+dependencies = [
+ "ahash",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "num-traits",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1115,7 +1129,9 @@ name = "yggdryl-data"
 version = "0.1.1"
 dependencies = [
  "arrow-array",
+ "arrow-buffer",
  "arrow-schema",
+ "arrow-select",
  "criterion",
  "log",
 ]

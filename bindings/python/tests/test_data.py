@@ -38,6 +38,18 @@ def test_data_type_describes_itself(case):
 
 
 @pytest.mark.parametrize("case", INTEGERS, ids=IDS)
+def test_defaults(case):
+    data_type, _, _, _, _, _, _, _, _ = case
+    instance = data_type()
+    assert instance.default_value() == 0
+    assert instance.default_scalar().value() == 0
+
+    optional = instance.optional()
+    assert optional.default_value() == 0
+    assert optional.default_scalar().is_null() is True  # the null variant
+
+
+@pytest.mark.parametrize("case", INTEGERS, ids=IDS)
 def test_codec_round_trips(case):
     data_type, _, _, _, _, _, width, low, high = case
     instance = data_type()

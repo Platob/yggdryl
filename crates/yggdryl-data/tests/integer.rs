@@ -172,6 +172,12 @@ macro_rules! integer_tests {
             }
 
             #[test]
+            fn defaults_are_zero() {
+                assert_eq!($ty.default_value(), 0);
+                assert_eq!($ty.default_scalar(), $scalar::new(0));
+            }
+
+            #[test]
             fn scalar_builds_from_its_native_value() {
                 assert_eq!($scalar::from(42), $scalar::new(42));
                 assert_eq!($scalar::from(Some(42)), $scalar::new(42));

@@ -27,6 +27,16 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(instance.bitWidth(), width * 8)
   })
 
+  test(`${name} defaults`, () => {
+    const instance = new ty()
+    assert.equal(instance.defaultValue(), wire(0))
+    assert.equal(instance.defaultScalar().value(), wire(0))
+
+    const optional = instance.optional()
+    assert.equal(optional.defaultValue(), wire(0))
+    assert.equal(optional.defaultScalar().isNull(), true) // the null variant
+  })
+
   test(`${name} codec round-trips`, () => {
     const instance = new ty()
     for (const value of [low, wire(0), wire(42), high]) {

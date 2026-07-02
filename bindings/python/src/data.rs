@@ -17,13 +17,15 @@
 //! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
 //! arrow-schema value — `Union` is reached through an optional data type's
 //! `storage()`),
-//! and the `DataTypeId` classifier (a method-bearing enum the bindings cannot
-//! model uniformly).
+//! the `DataTypeId` classifier (a method-bearing enum the bindings cannot
+//! model uniformly), and the generic nested families (`ListType` / `MapType` /
+//! `StructType` with their scalars) and per-family trait pairs, which have no
+//! concrete FFI shape yet.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar};
+use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar, RawUnion};
 
 /// Wraps an [`yggdryl_data::DataError`] so pyo3 raises it as a Python `ValueError`.
 struct DataErr(yggdryl_data::DataError);
@@ -46,7 +48,7 @@ impl From<DataErr> for PyErr {
 #[pyclass]
 #[derive(Clone)]
 pub struct Union {
-    inner: yggdryl_data::Union,
+    inner: yggdryl_data::UnionType,
 }
 
 #[pymethods]
@@ -268,6 +270,18 @@ macro_rules! int_data_py {
                 Ok(self.inner.native_from_bytes(bytes)?)
             }
 
+            /// The type's default native value, `0`.
+            fn default_value(&self) -> $native {
+                self.inner.default_value()
+            }
+
+            /// The default scalar: a scalar holding `0`.
+            fn default_scalar(&self) -> $scalar {
+                $scalar {
+                    inner: self.inner.default_scalar(),
+                }
+            }
+
             /// The logical optional of this type (stored as the null-or-value
             /// union).
             fn optional(&self) -> $opt_ty {
@@ -279,7 +293,7 @@ macro_rules! int_data_py {
         #[pyclass]
         #[derive(Default)]
         pub struct $opt_ty {
-            inner: yggdryl_data::Optional<yggdryl_data::$ty>,
+            inner: yggdryl_data::OptionalType<yggdryl_data::$ty>,
         }
 
         #[pymethods]
@@ -319,6 +333,18 @@ macro_rules! int_data_py {
             fn storage(&self) -> Union {
                 Union {
                     inner: self.inner.storage().clone(),
+                }
+            }
+
+            /// The default native value: the value type's default, `0`.
+            fn default_value(&self) -> $native {
+                self.inner.default_value()
+            }
+
+            /// The default scalar: the null variant (the scalar models nullness).
+            fn default_scalar(&self) -> $optional {
+                $optional {
+                    inner: self.inner.default_scalar(),
                 }
             }
 

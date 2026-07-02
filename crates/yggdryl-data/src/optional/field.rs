@@ -1,16 +1,16 @@
-//! The [`OptionalField`] field of the [`Optional`](super::Optional) data type.
+//! The [`OptionalField`] field of the [`OptionalType`](super::OptionalType) data type.
 
-use super::Optional;
+use super::OptionalType;
 use crate::{DataError, DataType, Field, RawDataType, RawField};
 
-/// A nullable `optional` field: a name paired with the [`Optional`] of the value
+/// A nullable `optional` field: a name paired with the [`OptionalType`] of the value
 /// type `D`.
 ///
-/// It carries both trait layers: the raw [`RawField<Optional<D>>`] surface, and the
+/// It carries both trait layers: the raw [`RawField<OptionalType<D>>`] surface, and the
 /// typed [`Field<T>`] whenever the value type has a [`DataType<T>`] codec.
 ///
 /// ```
-/// use yggdryl_data::{Int64, OptionalField, RawDataType, RawField};
+/// use yggdryl_data::{Int64, OptionalField, RawDataType, RawField, RawOptional};
 ///
 /// let score = OptionalField::<Int64>::new("score", true);
 /// assert_eq!(score.name(), "score");
@@ -22,7 +22,7 @@ use crate::{DataError, DataType, Field, RawDataType, RawField};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OptionalField<D> {
     name: String,
-    data_type: Optional<D>,
+    data_type: OptionalType<D>,
     nullable: bool,
 }
 
@@ -31,18 +31,18 @@ impl<D: RawDataType + Default> OptionalField<D> {
     pub fn new(name: impl Into<String>, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type: Optional::default(),
+            data_type: OptionalType::default(),
             nullable,
         }
     }
 }
 
-impl<D: RawDataType> RawField<Optional<D>> for OptionalField<D> {
+impl<D: RawDataType> RawField<OptionalType<D>> for OptionalField<D> {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn data_type(&self) -> &Optional<D> {
+    fn data_type(&self) -> &OptionalType<D> {
         &self.data_type
     }
 
@@ -51,8 +51,8 @@ impl<D: RawDataType> RawField<Optional<D>> for OptionalField<D> {
     }
 
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
-        let data_type = Optional::from_arrow(field.data_type())?;
-        crate::raw_field::validate_field_metadata(field, "Optional")?;
+        let data_type = OptionalType::from_arrow(field.data_type())?;
+        crate::raw_field::validate_field_metadata(field, "OptionalType")?;
         Ok(Self {
             name: field.name().to_string(),
             data_type,
@@ -61,6 +61,9 @@ impl<D: RawDataType> RawField<Optional<D>> for OptionalField<D> {
     }
 }
 
-impl<T, D: DataType<T>> Field<T> for OptionalField<D> {
-    type Type = Optional<D>;
+impl<T, D: DataType<T> + Default> Field<T> for OptionalField<D>
+where
+    D::Scalar: crate::RawScalar<D>,
+{
+    type Type = OptionalType<D>;
 }
