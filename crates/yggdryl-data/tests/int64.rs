@@ -116,3 +116,14 @@ fn the_type_system_is_send_and_sync() {
     assert_send_sync::<Int64Scalar>();
     assert_send_sync::<Column>();
 }
+
+#[test]
+fn raw_data_type_is_object_safe() {
+    // A heterogeneous schema holds `Box<dyn RawDataType>` (and stays Send + Sync).
+    let types: Vec<Box<dyn RawDataType>> = vec![Box::new(Int64)];
+    assert_send_sync::<Box<dyn RawDataType>>();
+    assert_eq!(types[0].name(), "int64");
+    assert_eq!(types[0].arrow_format(), "l");
+    assert_eq!(types[0].byte_width(), Some(8));
+    assert_eq!(types[0].bit_width(), Some(64));
+}
