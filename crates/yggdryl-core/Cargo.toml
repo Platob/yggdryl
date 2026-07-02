@@ -26,9 +26,15 @@ serde_json = { version = "1", optional = true }
 [dev-dependencies]
 # Example value types in tests and doctests derive `Serialize` / `Deserialize`.
 serde = { version = "1", features = ["derive"] }
+# Benchmark harness for the buffer benches (stable Rust has no built-in bencher).
+criterion = "0.5"
 
 [features]
 log = ["dep:log"]
 serde = ["dep:serde"]
 # JSON serialization for the `Base` trait; pulls in `serde` and `serde_json`.
 json = ["serde", "dep:serde_json"]
+
+[[bench]]
+name = "buffers"
+harness = false
