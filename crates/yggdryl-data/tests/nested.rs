@@ -43,14 +43,20 @@ fn list_codec_concatenates_elements() {
     assert_eq!(list.native_from_bytes(&bytes).unwrap(), vec![1, 2, 3]);
     assert_eq!(list.native_from_bytes(&[]).unwrap(), Vec::<i64>::new());
 
-    // A remainder is a length error.
+    // A remainder is a length error naming the nearest whole-element length.
     assert!(matches!(
         list.native_from_bytes(&[0; 9]),
         Err(DataError::InvalidByteLength {
-            expected: 8,
+            expected: 16,
             got: 9
         })
     ));
+
+    // An optional element delegates its codec width to the value type, so the
+    // round trip stays exact even though the *physical* width is indeterminate.
+    let optional_list = ListType::new(OptionalType::new(Int64));
+    let bytes = optional_list.native_to_bytes(&vec![1, 2]);
+    assert_eq!(optional_list.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
 
     // A variable-width element cannot be split from bytes.
     let nested = ListType::new(ListType::new(Int64));
@@ -150,7 +156,8 @@ fn map_field_and_scalar_round_trip() {
     let scalar = RankMap::new(vec![
         (UInt8Scalar::new(7), Int64Scalar::new(42)),
         (UInt8Scalar::new(8), Int64Scalar::null()),
-    ]);
+    ])
+    .unwrap();
     let arrow = scalar.to_arrow();
     assert_eq!(arrow.len(), 1);
     assert_eq!(RankMap::from_arrow(arrow.as_ref()).unwrap(), scalar);
@@ -160,7 +167,12 @@ fn map_field_and_scalar_round_trip() {
         RankMap::from_arrow(missing.to_arrow().as_ref()).unwrap(),
         missing
     );
-    assert_eq!(RankMap::default(), RankMap::new(Vec::new()));
+    assert_eq!(RankMap::default(), RankMap::new(Vec::new()).unwrap());
+    // A null key is refused: Arrow map keys are non-nullable.
+    assert!(matches!(
+        RankMap::new(vec![(UInt8Scalar::null(), Int64Scalar::new(1))]),
+        Err(DataError::IncompatibleArrowType { .. })
+    ));
 }
 
 #[test]
@@ -213,7 +225,14 @@ fn struct_scalar_validates_and_round_trips() {
     let wrong: arrow_array::ArrayRef =
         std::sync::Arc::new(arrow_array::UInt8Array::from_iter_values([1]));
     assert!(matches!(
-        StructScalar::new(point, vec![wrong, column(2)]),
+        StructScalar::new(point.clone(), vec![wrong, column(2)]),
+        Err(DataError::IncompatibleArrowType { .. })
+    ));
+    // A null in a non-nullable child is refused at construction, not a panic later.
+    let null_column: arrow_array::ArrayRef =
+        std::sync::Arc::new(arrow_array::Int64Array::new_null(1));
+    assert!(matches!(
+        StructScalar::new(point, vec![null_column, column(2)]),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
@@ -244,7 +263,7 @@ fn defaults_flow_through_the_typed_layer() {
     );
     assert_eq!(
         MapType::new(UInt8, Int64).default_scalar(),
-        RankMap::new(Vec::new())
+        RankMap::default()
     );
 
     // Generic code reaches defaults through the typed trait pairs.

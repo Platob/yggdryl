@@ -18,7 +18,7 @@
 //! assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
 //! assert_eq!(map.default_value(), Vec::<(u8, i64)>::new());
 //!
-//! let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]);
+//! let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap();
 //! assert_eq!(ranks.value().map(<[_]>::len), Some(1));
 //! assert_eq!(MapScalar::from_arrow(ranks.to_arrow().as_ref()).unwrap(), ranks);
 //! ```

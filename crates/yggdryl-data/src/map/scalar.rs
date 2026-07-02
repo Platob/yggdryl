@@ -16,7 +16,7 @@ use crate::{DataError, RawDataType, RawScalar, Scalar};
 /// ```
 /// use yggdryl_data::{Int64, Int64Scalar, MapScalar, RawDataType, RawScalar, UInt8, UInt8Scalar};
 ///
-/// let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]);
+/// let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap();
 /// assert!(!ranks.is_null());
 /// assert_eq!(ranks.value().map(<[_]>::len), Some(1));
 /// assert_eq!(ranks.data_type().name(), "map");
@@ -43,12 +43,18 @@ where
     SV: RawScalar<V>,
 {
     /// A scalar holding the `entries` (an empty sequence is the empty map, not
-    /// null).
-    pub fn new(entries: Vec<(SK, SV)>) -> Self {
-        Self {
+    /// null). A null key errors: Arrow map keys are non-nullable.
+    pub fn new(entries: Vec<(SK, SV)>) -> Result<Self, DataError> {
+        if entries.iter().any(|(key, _)| key.is_null()) {
+            return Err(DataError::IncompatibleArrowType {
+                expected: "non-null map keys".to_string(),
+                got: "a null key scalar".to_string(),
+            });
+        }
+        Ok(Self {
             data_type: MapType::default(),
             entries: Some(entries),
-        }
+        })
     }
 
     /// The null map scalar.
@@ -69,20 +75,10 @@ where
 {
     /// The default map scalar: the empty map.
     fn default() -> Self {
-        Self::new(Vec::new())
-    }
-}
-
-impl<K, V, SK, SV> From<Vec<(SK, SV)>> for MapScalar<K, V, SK, SV>
-where
-    K: RawDataType + Default,
-    V: RawDataType + Default,
-    SK: RawScalar<K>,
-    SV: RawScalar<V>,
-{
-    /// A scalar holding the `entries`.
-    fn from(entries: Vec<(SK, SV)>) -> Self {
-        Self::new(entries)
+        Self {
+            data_type: MapType::default(),
+            entries: Some(Vec::new()),
+        }
     }
 }
 

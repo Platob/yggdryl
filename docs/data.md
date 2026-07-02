@@ -263,7 +263,7 @@ straight from the native value, and reach `UnionType` through an optional data t
 
 In Rust, the Arrow form round-trips too: `missing.to_arrow()` is a one-element union
 array whose type id selects the null variant, and `OptionalScalar::from_arrow` is
-its exact inverse; the typed byte codec of `Optional<Int64>` reads and writes plain
+its exact inverse; the typed byte codec of `OptionalType<Int64>` reads and writes plain
 `i64` bytes (the value type's codec).
 
 ## Nested types: list, map and struct

@@ -46,6 +46,16 @@ pub trait DataType<T>: RawDataType {
     /// returns [`DataError::InvalidByteLength`].
     fn native_from_bytes(&self, bytes: &[u8]) -> Result<T, DataError>;
 
+    /// The fixed size of one *encoded* native value, in bytes, or `None` when the
+    /// codec is variable-width. Defaults to the physical
+    /// [`byte_width`](crate::RawDataType::byte_width); a logical type whose codec
+    /// delegates (the optional writes plain value bytes while its storage is a
+    /// union) overrides it to the delegate's codec width. Sequence codecs split
+    /// their elements by this width.
+    fn codec_byte_width(&self) -> Option<usize> {
+        crate::RawDataType::byte_width(self)
+    }
+
     /// The type's default native value — `0` for the integers, an empty sequence
     /// for lists and maps, the first data type's default for a union.
     fn default_value(&self) -> T;

@@ -114,15 +114,17 @@ where
     }
 
     fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<T>, DataError> {
-        let width =
-            self.value_type
-                .byte_width()
-                .ok_or_else(|| DataError::IndeterminateElementWidth {
-                    data_type: self.value_type.name().to_string(),
-                })?;
-        if width == 0 || !bytes.len().is_multiple_of(width) {
+        let width = self
+            .value_type
+            .codec_byte_width()
+            .filter(|width| *width > 0)
+            .ok_or_else(|| DataError::IndeterminateElementWidth {
+                data_type: self.value_type.name().to_string(),
+            })?;
+        if !bytes.len().is_multiple_of(width) {
             return Err(DataError::InvalidByteLength {
-                expected: bytes.len() / width.max(1) * width.max(1),
+                // The nearest valid length: a whole number of elements, rounded up.
+                expected: bytes.len().div_ceil(width) * width,
                 got: bytes.len(),
             });
         }

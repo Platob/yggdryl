@@ -166,6 +166,12 @@ where
         self.value_type.native_from_bytes(bytes)
     }
 
+    // The codec is the value type's, so its width is too (the physical
+    // `byte_width` is the union storage's, `None`).
+    fn codec_byte_width(&self) -> Option<usize> {
+        self.value_type.codec_byte_width()
+    }
+
     fn default_value(&self) -> T {
         self.value_type.default_value()
     }

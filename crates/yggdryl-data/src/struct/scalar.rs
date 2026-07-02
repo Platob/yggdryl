@@ -67,6 +67,12 @@ impl StructScalar {
                     got: column.data_type().to_string(),
                 });
             }
+            if !field.is_nullable() && arrow_array::Array::logical_null_count(column.as_ref()) > 0 {
+                return Err(DataError::IncompatibleArrowType {
+                    expected: format!("a non-null value for the non-nullable \"{}\"", field.name()),
+                    got: "a null".to_string(),
+                });
+            }
         }
         Ok(Self {
             data_type,

@@ -16,8 +16,9 @@
 //!
 //! Concrete types live in per-family modules — the [`integer`] module holds every
 //! signed and unsigned integer, the [`null`] module the storage-free null type, the
-//! [`union`] module the union type, and the [`optional`] module the logical
-//! null-or-value [`OptionalType`] type over union storage (each type its own data type,
+//! [`union`] module the union type, the [`optional`] module the logical
+//! null-or-value [`OptionalType`] over union storage, and the [`list`], [`map`] and
+//! [`struct`](r#struct) modules the nested types (each type its own data type,
 //! field and scalar). Add more following the rules in `CLAUDE.md`.
 //!
 //! Every layer converts to and from its Apache Arrow equivalent (`to_arrow` /

@@ -154,22 +154,25 @@ where
     }
 
     fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<(TK, TV)>, DataError> {
-        let key_width =
-            self.key_type
-                .byte_width()
-                .ok_or_else(|| DataError::IndeterminateElementWidth {
-                    data_type: self.key_type.name().to_string(),
-                })?;
-        let value_width =
-            self.value_type
-                .byte_width()
-                .ok_or_else(|| DataError::IndeterminateElementWidth {
-                    data_type: self.value_type.name().to_string(),
-                })?;
+        let key_width = self
+            .key_type
+            .codec_byte_width()
+            .filter(|width| *width > 0)
+            .ok_or_else(|| DataError::IndeterminateElementWidth {
+                data_type: self.key_type.name().to_string(),
+            })?;
+        let value_width = self
+            .value_type
+            .codec_byte_width()
+            .filter(|width| *width > 0)
+            .ok_or_else(|| DataError::IndeterminateElementWidth {
+                data_type: self.value_type.name().to_string(),
+            })?;
         let entry_width = key_width + value_width;
-        if entry_width == 0 || !bytes.len().is_multiple_of(entry_width) {
+        if !bytes.len().is_multiple_of(entry_width) {
             return Err(DataError::InvalidByteLength {
-                expected: bytes.len() / entry_width.max(1) * entry_width.max(1),
+                // The nearest valid length: a whole number of entries, rounded up.
+                expected: bytes.len().div_ceil(entry_width) * entry_width,
                 got: bytes.len(),
             });
         }
@@ -190,7 +193,7 @@ where
 
     /// The default map scalar: the empty map.
     fn default_scalar(&self) -> Self::Scalar {
-        super::MapScalar::new(Vec::new())
+        super::MapScalar::default()
     }
 }
 
