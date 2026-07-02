@@ -5,7 +5,7 @@ use core::fmt;
 use arrow_buffer::i256;
 use arrow_schema::{DataType as ArrowDataType, DECIMAL256_MAX_PRECISION};
 
-use crate::{DataType, DataTypeError, PrimitiveType};
+use crate::{DataType, DataTypeError, DataTypeId, PrimitiveType};
 
 /// A fixed-point decimal backed by a 256-bit integer, mapping to Arrow
 /// `Decimal256(precision, scale)`.
@@ -85,6 +85,8 @@ impl Decimal256 {
 }
 
 impl DataType for Decimal256 {
+    const TYPE_ID: DataTypeId = DataTypeId::Decimal256;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Decimal256(self.precision, self.scale)
     }

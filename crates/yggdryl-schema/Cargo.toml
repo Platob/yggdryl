@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Arrow-centralized schema layer for yggdryl: typed data types and fields"
+description = "The yggdryl schema layer: typed, Arrow-backboned data types and fields shared by the Rust core and every language binding"
 keywords.workspace = true
 readme = "README.md"
 

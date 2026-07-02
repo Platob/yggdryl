@@ -5,7 +5,7 @@ use core::hash::Hash;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::DataTypeError;
+use crate::{DataTypeError, DataTypeId};
 
 /// A yggdryl data type: the typed description of a value's physical layout
 /// and semantics.
@@ -35,6 +35,15 @@ use crate::DataTypeError;
 /// [`LogicalType`]: crate::LogicalType
 /// [`NestedType`]: crate::NestedType
 pub trait DataType: Clone + Debug + Display + Eq + Hash + Send + Sync + Sized + 'static {
+    /// The identifier of this type's constructor, shared by every
+    /// parameterization.
+    const TYPE_ID: DataTypeId;
+
+    /// The identifier of this value's type constructor.
+    fn type_id(&self) -> DataTypeId {
+        Self::TYPE_ID
+    }
+
     /// The Arrow data type this type maps to.
     fn to_arrow(&self) -> ArrowDataType;
 

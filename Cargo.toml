@@ -21,8 +21,8 @@ license = "Apache-2.0"
 authors = ["yggdryl contributors"]
 repository = "https://github.com/Platob/yggdryl"
 homepage = "https://github.com/Platob/yggdryl"
-description = "yggdryl — an Arrow-centralized dataframe toolkit with a Rust core and Python and Node extensions"
-keywords = ["arrow", "dataframe", "schema", "ffi", "yggdryl"]
+description = "yggdryl — Arrow-backboned data toolkit: a zero-copy Rust core with identical Python and Node APIs, for lazy manipulation of huge data volumes across sources"
+keywords = ["arrow", "dataframe", "zero-copy", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }

@@ -4,7 +4,7 @@ use core::fmt;
 
 use arrow_schema::{DataType as ArrowDataType, DECIMAL128_MAX_PRECISION};
 
-use crate::{DataType, DataTypeError, PrimitiveType};
+use crate::{DataType, DataTypeError, DataTypeId, PrimitiveType};
 
 /// A fixed-point decimal backed by a 128-bit integer, mapping to Arrow
 /// `Decimal128(precision, scale)`.
@@ -84,6 +84,8 @@ impl Decimal128 {
 }
 
 impl DataType for Decimal128 {
+    const TYPE_ID: DataTypeId = DataTypeId::Decimal128;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Decimal128(self.precision, self.scale)
     }

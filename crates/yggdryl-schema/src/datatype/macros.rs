@@ -19,6 +19,8 @@ macro_rules! unit_data_type {
         pub struct $name;
 
         impl $crate::DataType for $name {
+            const TYPE_ID: $crate::DataTypeId = $crate::DataTypeId::$name;
+
             fn to_arrow(&self) -> ::arrow_schema::DataType {
                 ::arrow_schema::DataType::$arrow
             }

@@ -4,7 +4,7 @@ use core::fmt;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Int64, LogicalType, PrimitiveType, TimeUnit};
+use crate::{DataType, DataTypeError, DataTypeId, Int64, LogicalType, PrimitiveType, TimeUnit};
 
 /// An elapsed time as a 64-bit count of a unit, mapping to Arrow
 /// `Duration(unit)` and anchored on [`Int64`].
@@ -45,6 +45,8 @@ impl Duration {
 }
 
 impl DataType for Duration {
+    const TYPE_ID: DataTypeId = DataTypeId::Duration;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Duration(self.unit.to_arrow())
     }

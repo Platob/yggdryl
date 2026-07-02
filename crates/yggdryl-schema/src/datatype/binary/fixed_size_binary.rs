@@ -4,7 +4,7 @@ use core::fmt;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError};
+use crate::{DataType, DataTypeError, DataTypeId};
 
 /// Opaque bytes of a fixed size per value, mapping to Arrow
 /// `FixedSizeBinary(size)`.
@@ -59,6 +59,8 @@ impl FixedSizeBinary {
 }
 
 impl DataType for FixedSizeBinary {
+    const TYPE_ID: DataTypeId = DataTypeId::FixedSizeBinary;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::FixedSizeBinary(self.size)
     }

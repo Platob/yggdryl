@@ -1,7 +1,7 @@
 {
   "name": "yggdryl",
   "version": "0.1.1",
-  "description": "yggdryl — a Rust-core URI/URL library, exposed to Node.js",
+  "description": "yggdryl — Arrow-backboned data toolkit with a zero-copy Rust core, exposed to Node.js",
   "main": "index.js",
   "types": "index.d.ts",
   "license": "Apache-2.0",
@@ -10,7 +10,7 @@
     "url": "git+https://github.com/Platob/yggdryl.git"
   },
   "homepage": "https://github.com/Platob/yggdryl",
-  "keywords": ["uri", "url", "parser", "rust", "napi", "yggdryl"],
+  "keywords": ["arrow", "dataframe", "zero-copy", "rust", "napi", "yggdryl"],
   "napi": {
     "name": "yggdryl",
     "triples": {

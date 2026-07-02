@@ -5,12 +5,12 @@ build-backend = "maturin"
 [project]
 name = "yggdryl"
 version = "0.1.0"
-description = "yggdryl — a Rust-core URI/URL library, exposed to Python"
+description = "yggdryl — Arrow-backboned data toolkit with a zero-copy Rust core, exposed to Python"
 readme = "README.md"
 requires-python = ">=3.7"
 license = { text = "Apache-2.0" }
 authors = [{ name = "yggdryl contributors" }]
-keywords = ["uri", "url", "parser", "rust", "yggdryl"]
+keywords = ["arrow", "dataframe", "zero-copy", "rust", "yggdryl"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",

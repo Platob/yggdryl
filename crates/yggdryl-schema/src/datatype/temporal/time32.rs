@@ -4,7 +4,7 @@ use core::fmt;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Int32, LogicalType, PrimitiveType, TimeUnit};
+use crate::{DataType, DataTypeError, DataTypeId, Int32, LogicalType, PrimitiveType, TimeUnit};
 
 /// A time of day as a 32-bit offset since midnight, mapping to Arrow
 /// `Time32(unit)` and anchored on [`Int32`]. Only second and millisecond
@@ -63,6 +63,8 @@ impl Time32 {
 }
 
 impl DataType for Time32 {
+    const TYPE_ID: DataTypeId = DataTypeId::Time32;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Time32(self.unit.to_arrow())
     }

@@ -4,6 +4,7 @@
 mod binary;
 mod boolean;
 mod data_type;
+mod data_type_id;
 mod decimal;
 mod error;
 mod float;
@@ -19,6 +20,7 @@ mod temporal;
 pub use binary::{Binary, FixedSizeBinary, LargeBinary};
 pub use boolean::Boolean;
 pub use data_type::DataType;
+pub use data_type_id::DataTypeId;
 pub use decimal::{Decimal128, Decimal256};
 pub use error::DataTypeError;
 pub use float::{Float32, Float64};

@@ -5,9 +5,11 @@
 //!
 //! Every concrete type implements the base [`DataType`] trait — Arrow interop
 //! via [`to_arrow`](DataType::to_arrow) / [`from_arrow`](DataType::from_arrow)
-//! (total and reversible for the supported subset) and byte round-trips via
-//! [`to_bytes`](DataType::to_bytes) / [`from_bytes`](DataType::from_bytes) —
-//! plus the category subtraits that apply to it:
+//! (total and reversible for the supported subset), byte round-trips via
+//! [`to_bytes`](DataType::to_bytes) / [`from_bytes`](DataType::from_bytes),
+//! and the stable integer identifier of its constructor via
+//! [`type_id`](DataType::type_id) ([`DataTypeId`]) — plus the category
+//! subtraits that apply to it:
 //!
 //! - [`PrimitiveType`] — fixed-width types with a native Rust value type
 //!   ([`Int32`], [`Float64`], [`Decimal128`], …);
@@ -44,8 +46,8 @@ mod datatype;
 mod field;
 
 pub use datatype::{
-    Binary, Boolean, DataType, DataTypeError, Date32, Date64, Decimal128, Decimal256, Duration,
-    FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
+    Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128, Decimal256,
+    Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
     LargeUtf8, List, LogicalType, NestedType, PrimitiveType, Time32, Time64, TimeUnit, Timestamp,
     UInt16, UInt32, UInt64, UInt8, Utf8,
 };

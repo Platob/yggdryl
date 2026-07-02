@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Field, FieldRef, NestedType};
+use crate::{DataType, DataTypeError, DataTypeId, Field, FieldRef, NestedType};
 
 /// A variable-size list of `T` values with 64-bit offsets, mapping to Arrow
 /// `LargeList` over the child field.
@@ -48,6 +48,8 @@ impl<T: DataType> LargeList<T> {
 }
 
 impl<T: DataType> DataType for LargeList<T> {
+    const TYPE_ID: DataTypeId = DataTypeId::LargeList;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::LargeList(Arc::new(self.child.to_arrow()))
     }

@@ -2,9 +2,13 @@
 
 > **Project status: rebuilding.** The old implementation was removed; the project is
 > being rebuilt around an **Apache Arrow-centralized** data model, one workspace
-> crate per layer, targeting dataframe-style workloads. This file holds only the
-> **cross-cutting rules**; each crate documents its own design in its module doc
-> comments and README, so this file stays small as the workspace grows.
+> crate per layer. The goal: one Rust core exposed to Python and Node with the
+> **same code patterns**, so data code is written once and runs identically in all
+> three languages — manipulating huge volumes across data sources through
+> zero-copy, Arrow-backboned containers and lazy computation, at Rust performance.
+> This file holds only the **cross-cutting rules**; each crate documents its own
+> design in its module doc comments and README, so this file stays small as the
+> workspace grows.
 
 Before adding anything, read the nearest existing example and mirror its structure,
 naming, error handling, and doc style. A reader should not be able to tell which
@@ -47,6 +51,14 @@ type they are looking at from the shape of the code.
    behaviour added or changed anywhere is immediately replicated in the other two,
    adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
    `Option<T>` defaults). A change is never half-applied.
+9. **Own the containers, keep Arrow's layout.** yggdryl defines its own data
+   containers (`Scalar`, `Series`, and friends) rather than wrapping `arrow-array`
+   types — the move polars made with arrow2/polars-arrow. A container holds
+   `arrow_buffer::Buffer`s plus a validity bitmap, laid out exactly per the Arrow
+   columnar format spec, so `to_arrow` / `from_arrow` are zero-copy buffer
+   handoffs. All data manipulation is implemented on our own containers;
+   `arrow-array` appears only at the interop boundary, never as the storage or
+   compute representation.
 
 ## Workspace layout
 
@@ -57,10 +69,14 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   error types). **No Arrow vocabulary in core.** Byte sources implement the single
   IO abstraction and hand back zero-copy views; byte consumers take an IO/reader,
   never a pre-collected `Vec`.
-- `crates/yggdryl-data` — the Arrow data-model layer (`DataType`, `Field`,
-  `Scalar`, the object-safe `Datum` trait), built on `arrow-buffer` buffers.
-  Compute kernels are written once against `Datum`; future Array/Series types
-  implement the same trait.
+- `crates/yggdryl-schema` — the schema layer (`DataType`, `DataTypeId`, `Field`
+  and the category subtraits `PrimitiveType` / `LogicalType` / `NestedType`):
+  the typed vocabulary every upper layer and binding shares.
+- `crates/yggdryl-data` — the data-container layer (`Scalar`, `Series`, the
+  object-safe `Datum` trait): our own containers per hard rule 9, holding
+  `arrow-buffer` buffers and validity bitmaps in the Arrow columnar layout.
+  Compute kernels are written once against `Datum`; every container implements
+  the same trait.
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.

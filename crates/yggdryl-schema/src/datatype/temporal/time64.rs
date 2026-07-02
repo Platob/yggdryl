@@ -4,7 +4,7 @@ use core::fmt;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Int64, LogicalType, PrimitiveType, TimeUnit};
+use crate::{DataType, DataTypeError, DataTypeId, Int64, LogicalType, PrimitiveType, TimeUnit};
 
 /// A time of day as a 64-bit offset since midnight, mapping to Arrow
 /// `Time64(unit)` and anchored on [`Int64`]. Only microsecond and nanosecond
@@ -63,6 +63,8 @@ impl Time64 {
 }
 
 impl DataType for Time64 {
+    const TYPE_ID: DataTypeId = DataTypeId::Time64;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Time64(self.unit.to_arrow())
     }

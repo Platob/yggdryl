@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Int64, LogicalType, PrimitiveType, TimeUnit};
+use crate::{DataType, DataTypeError, DataTypeId, Int64, LogicalType, PrimitiveType, TimeUnit};
 
 /// An instant as a 64-bit offset since the UNIX epoch at a given resolution,
 /// with an optional timezone, mapping to Arrow `Timestamp(unit, timezone)`
@@ -67,6 +67,8 @@ impl Timestamp {
 }
 
 impl DataType for Timestamp {
+    const TYPE_ID: DataTypeId = DataTypeId::Timestamp;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Timestamp(self.unit.to_arrow(), self.timezone.clone())
     }

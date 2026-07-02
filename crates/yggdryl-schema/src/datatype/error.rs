@@ -51,6 +51,13 @@ pub enum DataTypeError {
         /// The rejected size.
         size: i32,
     },
+    /// An integer that is not an assigned data type identifier.
+    UnknownTypeId {
+        /// The rejected value.
+        id: u8,
+        /// The largest identifier currently assigned.
+        max: u8,
+    },
     /// A byte payload of the wrong length for a fixed-size encoding.
     InvalidByteLength {
         /// The length the encoding requires.
@@ -86,6 +93,9 @@ impl fmt::Display for DataTypeError {
             }
             Self::NegativeFixedSize { size } => {
                 write!(f, "negative size {size}, expected 0 or more")
+            }
+            Self::UnknownTypeId { id, max } => {
+                write!(f, "unknown data type id {id}, expected 0..={max}")
             }
             Self::InvalidByteLength { expected, actual } => {
                 write!(f, "expected {expected} bytes, got {actual}")

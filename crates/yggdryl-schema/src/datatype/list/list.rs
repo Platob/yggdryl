@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, Field, FieldRef, NestedType};
+use crate::{DataType, DataTypeError, DataTypeId, Field, FieldRef, NestedType};
 
 /// A variable-size list of `T` values with 32-bit offsets, mapping to Arrow
 /// `List` over the child field.
@@ -49,6 +49,8 @@ impl<T: DataType> List<T> {
 }
 
 impl<T: DataType> DataType for List<T> {
+    const TYPE_ID: DataTypeId = DataTypeId::List;
+
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::List(Arc::new(self.child.to_arrow()))
     }
