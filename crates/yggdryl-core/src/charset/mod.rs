@@ -12,8 +12,8 @@ pub use utf8::Utf8;
 /// A character encoding: the conversion between text and its byte representation.
 ///
 /// Implementations are zero-sized markers (for example [`Utf8`] and [`Latin1`])
-/// passed wherever bytes are produced or consumed — notably
-/// [`Base::to_bson`](crate::Base::to_bson) / [`from_bson`](crate::Base::from_bson).
+/// passed wherever bytes are produced or consumed — notably `Base::serialize_bson`
+/// and `Base::deserialize_bson`.
 ///
 /// ```
 /// use yggdryl_core::{Charset, Utf8};
