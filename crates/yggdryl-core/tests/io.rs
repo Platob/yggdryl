@@ -1,26 +1,45 @@
 //! Tests for the `RawIOBase` (bytes/bits) and typed `IOBase` positioned-I/O traits.
 
-use yggdryl_core::{IOBase, IOError, RawIOBase, Whence};
+use yggdryl_core::{IOBase, IOError, RawIOBase, Seekable, Whence};
 
-/// A byte buffer; bits are addressed MSB-first within each byte.
+/// A byte buffer with a cursor; bits are addressed MSB-first within each byte.
 #[derive(Default)]
 struct Mem {
     data: Vec<u8>,
+    cursor: usize,
 }
 
 impl Mem {
     fn byte_offset(&self, position: usize, whence: Whence) -> usize {
         match whence {
+            Whence::Current => self.cursor + position,
             Whence::End => self.data.len() + position,
-            _ => position, // Start (and, for this toy, Current) address from the front
+            _ => position, // Start
         }
     }
 
     fn bit_offset(&self, position: usize, whence: Whence) -> usize {
         match whence {
+            Whence::Current => self.cursor * 8 + position,
             Whence::End => self.data.len() * 8 + position,
             _ => position,
         }
+    }
+}
+
+impl Seekable for Mem {
+    fn tell(&self) -> usize {
+        self.cursor
+    }
+
+    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
+        let base = match whence {
+            Whence::Current => self.cursor,
+            Whence::End => self.data.len(),
+            _ => 0,
+        };
+        self.cursor = base + position;
+        Ok(self.cursor)
     }
 }
 
@@ -175,6 +194,28 @@ fn sizes_report_bytes_bits_and_items() {
     assert_eq!(mem.byte_size(), 8);
     assert_eq!(mem.bit_size(), 64); // default: byte_size * 8
     assert_eq!(mem.size(), 2); // 8 bytes / 4 bytes per u32
+}
+
+#[test]
+fn seek_and_tell_track_the_cursor() {
+    let mut mem = Mem::default();
+    mem.pwrite_byte_array(0, Whence::Start, &[10, 20, 30, 40])
+        .unwrap();
+    assert_eq!(mem.tell(), 0);
+    assert_eq!(mem.seek(2, Whence::Start).unwrap(), 2);
+    assert_eq!(mem.tell(), 2);
+    assert_eq!(mem.seek(1, Whence::Current).unwrap(), 3);
+    assert_eq!(mem.seek(0, Whence::End).unwrap(), 4);
+}
+
+#[test]
+fn current_relative_read_uses_the_cursor() {
+    let mut mem = Mem::default();
+    mem.pwrite_byte_array(0, Whence::Start, &[10, 20, 30, 40])
+        .unwrap();
+    mem.seek(1, Whence::Start).unwrap();
+    // Current + 1 == absolute byte 2 == 30.
+    assert_eq!(mem.pread_byte_one(1, Whence::Current).unwrap(), 30);
 }
 
 #[test]

@@ -11,11 +11,27 @@ use super::{IOError, RawIOBase, Whence};
 /// come for free — they serialize through it and delegate to the raw byte methods.
 ///
 /// ```
-/// use yggdryl_core::{IOBase, IOError, RawIOBase, Whence};
+/// use yggdryl_core::{IOBase, IOError, RawIOBase, Seekable, Whence};
 ///
 /// #[derive(Default)]
 /// struct Mem {
 ///     data: Vec<u8>,
+///     cursor: usize,
+/// }
+///
+/// impl Seekable for Mem {
+///     fn tell(&self) -> usize {
+///         self.cursor
+///     }
+///     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
+///         let base = match whence {
+///             Whence::Current => self.cursor,
+///             Whence::End => self.data.len(),
+///             _ => 0,
+///         };
+///         self.cursor = base + position;
+///         Ok(self.cursor)
+///     }
 /// }
 ///
 /// impl RawIOBase for Mem {

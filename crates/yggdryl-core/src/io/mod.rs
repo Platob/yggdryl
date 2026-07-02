@@ -1,16 +1,23 @@
-//! Positioned byte- and bit-I/O: the low-level [`RawIOBase`] trait, the typed
-//! [`IOBase`] layer on top of it, and the [`Whence`] reference point.
+//! Positioned byte- and bit-I/O: the [`Seekable`] cursor, the low-level
+//! [`RawIOBase`] trait built on it, the typed [`IOBase`] layer, and the [`Whence`]
+//! reference point.
 
 mod error;
+mod seekable;
 mod typed;
 mod whence;
 
 pub use error::IOError;
+pub use seekable::Seekable;
 pub use typed::IOBase;
 pub use whence::Whence;
 
 /// Positioned reads and writes over a resource, one or many `u8` bytes or `bool`
 /// bits at a time.
+///
+/// A resource is [`Seekable`], so [`Whence::Current`] is measured from its cursor
+/// ([`tell`](Seekable::tell)); positioned access does not move the cursor, whereas
+/// [`seek`](Seekable::seek) does.
 ///
 /// Every access names a `position` and the [`Whence`] it is measured from —
 /// counted in **bytes** for the `*_byte_*` methods and in **bits** (MSB-first, so
@@ -23,12 +30,28 @@ pub use whence::Whence;
 /// methods come for free from their default implementations.
 ///
 /// ```
-/// use yggdryl_core::{IOError, RawIOBase, Whence};
+/// use yggdryl_core::{IOError, RawIOBase, Seekable, Whence};
 ///
 /// // A byte buffer; this example addresses from the start, and bits are MSB-first.
 /// #[derive(Default)]
 /// struct Mem {
 ///     data: Vec<u8>,
+///     cursor: usize,
+/// }
+///
+/// impl Seekable for Mem {
+///     fn tell(&self) -> usize {
+///         self.cursor
+///     }
+///     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
+///         let base = match whence {
+///             Whence::Current => self.cursor,
+///             Whence::End => self.data.len(),
+///             _ => 0,
+///         };
+///         self.cursor = base + position;
+///         Ok(self.cursor)
+///     }
 /// }
 ///
 /// impl RawIOBase for Mem {
@@ -94,7 +117,7 @@ pub use whence::Whence;
 /// assert_eq!(mem.bit_size(), 8);
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
-pub trait RawIOBase {
+pub trait RawIOBase: Seekable {
     /// The resource's total size, in bytes.
     fn byte_size(&self) -> usize;
 

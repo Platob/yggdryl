@@ -56,8 +56,9 @@ Enable it with `features = ["json"]`.
 `RawIOBase` reads and writes bytes (`u8`) or bits (`bool`), one or many at a time, at
 a `position` measured from a `Whence` (`Start`, `Current`, or `End`) — counted in
 bytes for the `*_byte_*` methods and in bits (MSB-first) for the `*_bit_*` methods.
-Implement the four array primitives and the `*_one` methods come free from their
-defaults:
+Every resource is `Seekable` (`RawIOBase: Seekable`): `tell` reports the cursor and
+`seek` moves it, and `Whence::Current` addresses relative to that cursor. Implement
+the four array primitives and the `*_one` methods come free from their defaults:
 
 ```rust
 use yggdryl_core::{RawIOBase, Whence};

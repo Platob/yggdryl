@@ -4,10 +4,10 @@
 //! and binding builds.
 //!
 //! It exposes the [`Charset`] trait (with the [`Utf8`] and [`Latin1`] encodings),
-//! the positioned-I/O traits [`RawIOBase`] (raw bytes/bits) and [`IOBase`] (a typed
-//! layer over it) with their [`Whence`] reference point, and — behind the
-//! off-by-default `json` feature — the `Base` trait for content JSON plus an
-//! implementor-defined byte form. The [`version`] and [`hello`] entry points remain
+//! the positioned-I/O traits [`Seekable`] (a cursor), [`RawIOBase`] (raw bytes/bits,
+//! built on it) and [`IOBase`] (a typed layer) with their [`Whence`] reference
+//! point, and — behind the off-by-default `json` feature — the `Base` trait for
+//! content JSON plus an implementor-defined byte form. The [`version`] and [`hello`] entry points remain
 //! as the minimal cross-language round-trip example. Add further foundational types
 //! here as the design lands — one module per concern, each re-exported at the crate
 //! root — following the rules in `CLAUDE.md`.
@@ -28,7 +28,7 @@ mod charset;
 pub use charset::{Charset, CharsetError, Latin1, Utf8};
 
 mod io;
-pub use io::{IOBase, IOError, RawIOBase, Whence};
+pub use io::{IOBase, IOError, RawIOBase, Seekable, Whence};
 
 #[cfg(feature = "json")]
 mod base;
