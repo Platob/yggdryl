@@ -54,11 +54,12 @@ mod field;
 pub mod metadata;
 
 pub use datatype::{
-    AnyDataType, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64,
-    Day, Decimal128, Decimal256, Duration, FixedSizeBinary, Float32, Float64, Hour, Int16, Int32,
-    Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, LogicalType, Map, Microsecond,
-    Millisecond, Minute, Month, Nanosecond, NestedType, PrimitiveType, Quarter, Second, Struct,
-    Time32, Time64, TimeUnit, TimeUnitId, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8, Week,
-    Year,
+    AnyDataType, AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Binary, Boolean, DataType,
+    DataTypeError, DataTypeId, Date, Date32, Date64, Day, Decimal128, Decimal256, Duration,
+    FixedSizeBinary, Float32, Float64, Hour, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
+    LargeUtf8, List, LogicalType, Map, Microsecond, Millisecond, Minute, Month, Nanosecond,
+    NestedType, PrimitiveType, Quarter, Second, Struct, Time, Time32, Time32Unit, Time64,
+    Time64Unit, TimeUnit, TimeUnitId, Timestamp, TypedDuration, TypedTimestamp, UInt16, UInt32,
+    UInt64, UInt8, Utf8, Week, Year,
 };
 pub use field::{Field, FieldError, TypedField, TypedFieldRef};

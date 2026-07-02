@@ -37,6 +37,7 @@ pub use primitive_type::PrimitiveType;
 pub use string::{LargeUtf8, Utf8};
 pub use structure::Struct;
 pub use temporal::{
-    AnyTimeUnit, Date32, Date64, Day, Duration, Hour, Microsecond, Millisecond, Minute, Month,
-    Nanosecond, Quarter, Second, Time32, Time64, TimeUnit, TimeUnitId, Timestamp, Week, Year,
+    AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Date, Date32, Date64, Day, Duration, Hour,
+    Microsecond, Millisecond, Minute, Month, Nanosecond, Quarter, Second, Time, Time32, Time32Unit,
+    Time64, Time64Unit, TimeUnit, TimeUnitId, Timestamp, TypedDuration, TypedTimestamp, Week, Year,
 };

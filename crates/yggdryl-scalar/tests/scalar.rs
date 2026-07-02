@@ -2,9 +2,11 @@
 
 use arrow_buffer::Buffer;
 use yggdryl_scalar::{Scalar, ScalarError};
+use yggdryl_schema::Duration;
 use yggdryl_schema::{
-    Binary, Boolean, Decimal128, FixedSizeBinary, Float64, Int32, LargeUtf8, Millisecond,
-    Timestamp, Utf8,
+    Binary, Boolean, Decimal128, FixedSizeBinary, Float64, Int32, LargeUtf8, Millisecond, Minute,
+    Nanosecond, Second, Time, Time32, Time64, Timestamp, TypedDuration, TypedTimestamp, Utf8, Week,
+    Year,
 };
 
 #[test]
@@ -15,7 +17,7 @@ fn native_scalars_roundtrip_their_value() {
         Scalar::from_native(Decimal128::from_parts(38, 2).unwrap(), 123i128).as_native(),
         Some(123),
     );
-    let timestamp = Timestamp::from_parts(Millisecond, Some("UTC".into()));
+    let timestamp = TypedTimestamp::from_parts(Millisecond, Some("UTC".into()));
     assert_eq!(
         Scalar::from_native(timestamp, 1_700_000_000_000i64).as_native(),
         Some(1_700_000_000_000),
@@ -23,6 +25,47 @@ fn native_scalars_roundtrip_their_value() {
 
     assert!(Scalar::null(Int32).is_null());
     assert_eq!(Scalar::<Int32>::null(Int32).as_native(), None);
+}
+
+#[test]
+fn temporal_scalars_exist_for_every_unit_typed_implementation() {
+    // Timestamps and durations of any unit — native or anchored — plus both
+    // time widths and both dates hold scalars.
+    assert_eq!(
+        Scalar::from_native(TypedTimestamp::from_parts(Year, None), 55i64).as_native(),
+        Some(55),
+    );
+    assert_eq!(
+        Scalar::from_native(TypedDuration::from_parts(Minute), 90i64).as_native(),
+        Some(90),
+    );
+    assert_eq!(
+        Scalar::from_native(TypedDuration::from_parts(Nanosecond), 1_000i64).as_native(),
+        Some(1_000),
+    );
+    assert_eq!(
+        Scalar::from_native(Time32::from_parts(Second), 43_200i32).as_native(),
+        Some(43_200),
+    );
+    assert_eq!(
+        Scalar::from_native(Time64::from_parts(Nanosecond), 1_000_000i64).as_native(),
+        Some(1_000_000),
+    );
+    assert_eq!(
+        Scalar::from_native(yggdryl_schema::Date32, 20_000i32).as_native(),
+        Some(20_000),
+    );
+    assert_eq!(
+        Scalar::from_native(yggdryl_schema::Date64, 1_700_000_000_000i64).as_native(),
+        Some(1_700_000_000_000),
+    );
+    // A 32-bit time scalar really is 32-bit: 8 bytes are rejected.
+    assert!(Scalar::from_parts(
+        Time32::from_parts(Second),
+        Some(arrow_buffer::Buffer::from(0i64.to_le_bytes().to_vec())),
+    )
+    .is_err());
+    assert!(Scalar::null(TypedTimestamp::from_parts(Week, None)).is_null());
 }
 
 #[test]

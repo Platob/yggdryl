@@ -3,7 +3,7 @@
 use arrow_buffer::{NullBuffer, ScalarBuffer};
 use yggdryl_array::{Array, ArrayError, PrimitiveArray};
 use yggdryl_scalar::Scalar;
-use yggdryl_schema::{Decimal128, Float64, Int32, Millisecond, Timestamp, UInt8};
+use yggdryl_schema::{Decimal128, Float64, Int32, Millisecond, Timestamp, TypedTimestamp, UInt8};
 
 #[test]
 fn construction_and_access() {
@@ -26,7 +26,7 @@ fn construction_and_access() {
         .is_none());
 
     let timestamps = PrimitiveArray::from_native(
-        Timestamp::from_parts(Millisecond, Some("UTC".into())),
+        TypedTimestamp::from_parts(Millisecond, Some("UTC".into())),
         vec![1_700_000_000_000i64],
     );
     assert_eq!(timestamps.value(0), Some(1_700_000_000_000));

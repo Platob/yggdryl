@@ -1,7 +1,7 @@
 //! The 32-bit date data type.
 
 use crate::datatype::macros::primitive_data_type;
-use crate::{Int32, LogicalType};
+use crate::{Date, Day, Int32, LogicalType};
 
 primitive_data_type!(
     /// A date as days since the UNIX epoch, mapping to Arrow `Date32` and
@@ -21,5 +21,13 @@ impl LogicalType for Date32 {
 
     fn physical(&self) -> Int32 {
         Int32
+    }
+}
+
+impl Date for Date32 {
+    type Unit = Day;
+
+    fn unit(&self) -> Day {
+        Day
     }
 }

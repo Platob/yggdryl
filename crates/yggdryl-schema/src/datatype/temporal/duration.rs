@@ -1,127 +1,37 @@
-//! The elapsed-time data type.
+//! The abstract base every duration implementation satisfies.
 
-use core::fmt;
+use crate::{DataType, TimeUnit};
 
-use arrow_schema::DataType as ArrowDataType;
-
-use crate::{DataType, DataTypeError, DataTypeId, Int64, LogicalType, PrimitiveType, TimeUnitId};
-
-/// An elapsed time as a 64-bit count of a unit, mapping to Arrow
-/// `Duration(unit)` and anchored on [`Int64`]. Arrow durations only exist at
-/// the four sub-second resolutions, so coarser units are rejected.
+/// An elapsed time as a count of a unit: the abstract base implemented for
+/// every [`TimeUnit`] by the generic [`TypedDuration`](crate::TypedDuration).
+///
+/// Implementors supply [`from_parts`](Duration::from_parts) and the
+/// accessor; the functional updates come provided.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, Duration, TimeUnitId};
+/// use yggdryl_schema::{Duration, Second, TypedDuration, Week};
 ///
-/// let duration = Duration::from_parts(TimeUnitId::Second).unwrap();
-/// assert_eq!(Duration::from_arrow(&duration.to_arrow()), Ok(duration));
+/// assert_eq!(TypedDuration::from_parts(Second).unit(), Second);
+/// assert_eq!(TypedDuration::from_parts(Week).with_unit(Week).unit(), Week);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(try_from = "RawDuration")
-)]
-pub struct Duration {
-    unit: TimeUnitId,
-}
+pub trait Duration: DataType {
+    /// The resolution of the count.
+    type Unit: TimeUnit;
 
-impl Duration {
-    /// Builds the type from its resolution, rejecting units Arrow's
-    /// `Duration` lacks.
-    ///
-    /// ```
-    /// use yggdryl_schema::{Duration, TimeUnitId};
-    ///
-    /// assert!(Duration::from_parts(TimeUnitId::Minute).is_err()); // expected s, ms, us or ns
-    /// ```
-    pub fn from_parts(unit: TimeUnitId) -> Result<Self, DataTypeError> {
-        if unit.to_arrow().is_none() {
-            return Err(DataTypeError::TimeUnitMismatch {
-                expected: "s, ms, us or ns",
-                actual: unit,
-            });
-        }
-        Ok(Self { unit })
-    }
+    /// Builds the duration type from its resolution.
+    fn from_parts(unit: Self::Unit) -> Self;
 
     /// The resolution of the count.
-    pub fn unit(&self) -> TimeUnitId {
-        self.unit
-    }
+    fn unit(&self) -> Self::Unit;
 
     /// Returns a copy with any of the parts overridden; omitted parts come
     /// from `self`.
-    pub fn copy(&self, unit: Option<TimeUnitId>) -> Result<Self, DataTypeError> {
-        Self::from_parts(unit.unwrap_or(self.unit))
+    fn copy(&self, unit: Option<Self::Unit>) -> Self {
+        Self::from_parts(unit.unwrap_or_else(|| self.unit()))
     }
 
     /// Returns a copy with the resolution replaced.
-    pub fn with_unit(&self, unit: TimeUnitId) -> Result<Self, DataTypeError> {
+    fn with_unit(&self, unit: Self::Unit) -> Self {
         self.copy(Some(unit))
-    }
-}
-
-impl DataType for Duration {
-    fn type_id(&self) -> DataTypeId {
-        DataTypeId::Duration
-    }
-
-    fn to_arrow(&self) -> ArrowDataType {
-        ArrowDataType::Duration(self.unit.to_arrow().expect("validated sub-second unit"))
-    }
-
-    fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError> {
-        match data_type {
-            ArrowDataType::Duration(unit) => Self::from_parts(TimeUnitId::from_arrow(*unit)),
-            other => Err(DataTypeError::ArrowTypeMismatch {
-                expected: "duration",
-                actual: other.clone(),
-            }),
-        }
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.unit.to_bytes()
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        Self::from_parts(TimeUnitId::from_bytes(bytes)?)
-    }
-}
-
-impl PrimitiveType for Duration {
-    type Native = i64;
-    const BIT_WIDTH: usize = 64;
-}
-
-impl LogicalType for Duration {
-    type Physical = Int64;
-
-    fn physical(&self) -> Int64 {
-        Int64
-    }
-}
-
-impl fmt::Display for Duration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "duration({})", self.unit)
-    }
-}
-
-/// Mirror of the serialized fields, deserialized first so `try_from`
-/// re-validates on the way in.
-#[cfg(feature = "serde")]
-#[derive(serde::Deserialize)]
-struct RawDuration {
-    unit: TimeUnitId,
-}
-
-#[cfg(feature = "serde")]
-impl TryFrom<RawDuration> for Duration {
-    type Error = DataTypeError;
-
-    fn try_from(raw: RawDuration) -> Result<Self, Self::Error> {
-        Self::from_parts(raw.unit)
     }
 }

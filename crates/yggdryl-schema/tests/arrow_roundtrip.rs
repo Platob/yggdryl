@@ -8,8 +8,9 @@ use arrow_schema::DataType as ArrowDataType;
 use yggdryl_schema::{
     metadata, AnyDataType, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, Date32, Date64,
     Decimal128, Decimal256, Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32,
-    Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, Map, Minute, Nanosecond, Struct, Time32,
-    Time64, TimeUnitId, Timestamp, TypedField, UInt16, UInt32, UInt64, UInt8, Utf8, Year,
+    Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, Map, Microsecond, Millisecond, Minute,
+    Nanosecond, Second, Struct, Time, Time32, Time64, TimeUnitId, Timestamp, TypedDuration,
+    TypedField, TypedTimestamp, UInt16, UInt32, UInt64, UInt8, Utf8, Year,
 };
 
 const TIME_UNITS: [TimeUnitId; 4] = [
@@ -59,7 +60,7 @@ fn mismatched_arrow_type_is_rejected() {
         Err(DataTypeError::ArrowTypeMismatch { .. })
     ));
     assert!(matches!(
-        Timestamp::<Nanosecond>::from_arrow(&ArrowDataType::Date32),
+        TypedTimestamp::<Nanosecond>::from_arrow(&ArrowDataType::Date32),
         Err(DataTypeError::ArrowTypeMismatch { .. })
     ));
     assert!(matches!(
@@ -148,13 +149,13 @@ fn fixed_size_binary_roundtrips() {
 fn timestamps_roundtrip_over_units_and_timezones() {
     // A concrete unit type round-trips natively and rejects other units.
     for timezone in [None, Some("UTC"), Some("+02:00")] {
-        let timestamp = Timestamp::from_parts(Nanosecond, timezone.map(Into::into));
+        let timestamp = TypedTimestamp::from_parts(Nanosecond, timezone.map(Into::into));
         let arrow =
             ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, timezone.map(Into::into));
         assert_roundtrip(timestamp, arrow);
     }
     assert!(matches!(
-        Timestamp::<Nanosecond>::from_arrow(&ArrowDataType::Timestamp(
+        TypedTimestamp::<Nanosecond>::from_arrow(&ArrowDataType::Timestamp(
             arrow_schema::TimeUnit::Second,
             None
         )),
@@ -163,7 +164,7 @@ fn timestamps_roundtrip_over_units_and_timezones() {
 
     // The erased unit covers every native unit.
     for unit in TIME_UNITS {
-        let timestamp = Timestamp::from_parts(AnyTimeUnit::from(unit), Some("UTC".into()));
+        let timestamp = TypedTimestamp::from_parts(AnyTimeUnit::from(unit), Some("UTC".into()));
         let arrow = ArrowDataType::Timestamp(unit.to_arrow().unwrap(), Some("UTC".into()));
         assert_roundtrip(timestamp, arrow);
     }
@@ -175,7 +176,7 @@ fn extended_unit_timestamps_roundtrip_through_fields() {
     // metadata carried by the field.
     let minutes = TypedField::from_parts(
         "logged_at",
-        Timestamp::from_parts(Minute, Some("UTC".into())),
+        TypedTimestamp::from_parts(Minute, Some("UTC".into())),
         true,
         Default::default(),
     );
@@ -193,7 +194,7 @@ fn extended_unit_timestamps_roundtrip_through_fields() {
         .collect();
     let years = TypedField::from_parts(
         "vintage",
-        AnyDataType::from(Timestamp::from_parts(Year, None)),
+        AnyDataType::from(TypedTimestamp::from_parts(Year, None)),
         false,
         user_metadata,
     );
@@ -206,7 +207,7 @@ fn extended_unit_timestamps_roundtrip_through_fields() {
 
     // Without its metadata, a bare Int64 is never a timestamp.
     assert!(matches!(
-        Timestamp::<Minute>::from_arrow(&ArrowDataType::Int64),
+        TypedTimestamp::<Minute>::from_arrow(&ArrowDataType::Int64),
         Err(DataTypeError::MissingMetadata { .. })
     ));
 }
@@ -255,19 +256,33 @@ fn unknown_ygg_metadata_is_rejected() {
 
 #[test]
 fn times_roundtrip_and_validate_units() {
-    for unit in [TimeUnitId::Second, TimeUnitId::Millisecond] {
-        let time = Time32::from_parts(unit).unwrap();
-        assert_roundtrip(time, ArrowDataType::Time32(unit.to_arrow().unwrap()));
-        assert!(Time64::from_parts(unit).is_err());
-    }
-    for unit in [TimeUnitId::Microsecond, TimeUnitId::Nanosecond] {
-        let time = Time64::from_parts(unit).unwrap();
-        assert_roundtrip(time, ArrowDataType::Time64(unit.to_arrow().unwrap()));
-        assert!(Time32::from_parts(unit).is_err());
-    }
-    // An out-of-range unit is rejected on the way in from Arrow too.
+    assert_roundtrip(
+        Time32::from_parts(Second),
+        ArrowDataType::Time32(arrow_schema::TimeUnit::Second),
+    );
+    assert_roundtrip(
+        Time32::from_parts(Millisecond),
+        ArrowDataType::Time32(arrow_schema::TimeUnit::Millisecond),
+    );
+    assert_roundtrip(
+        Time64::from_parts(Microsecond),
+        ArrowDataType::Time64(arrow_schema::TimeUnit::Microsecond),
+    );
+    assert_roundtrip(
+        Time64::from_parts(Nanosecond),
+        ArrowDataType::Time64(arrow_schema::TimeUnit::Nanosecond),
+    );
+    // A concrete unit rejects another unit's Arrow type, and even the erased
+    // units reject what their width cannot hold (arrow-rs can represent a
+    // nanosecond Time32; the spec — and this crate — cannot).
+    assert!(matches!(
+        Time32::<Second>::from_arrow(&ArrowDataType::Time32(arrow_schema::TimeUnit::Millisecond)),
+        Err(DataTypeError::TimeUnitMismatch { .. })
+    ));
     assert_eq!(
-        Time32::from_arrow(&ArrowDataType::Time32(arrow_schema::TimeUnit::Nanosecond)),
+        yggdryl_schema::AnyDataType::from_arrow(&ArrowDataType::Time32(
+            arrow_schema::TimeUnit::Nanosecond
+        )),
         Err(DataTypeError::TimeUnitMismatch {
             expected: "s or ms",
             actual: TimeUnitId::Nanosecond
@@ -278,13 +293,25 @@ fn times_roundtrip_and_validate_units() {
 #[test]
 fn durations_roundtrip_over_units() {
     for unit in TIME_UNITS {
-        let duration = Duration::from_parts(unit).unwrap();
+        let duration = TypedDuration::from_parts(AnyTimeUnit::from(unit));
         assert_roundtrip(duration, ArrowDataType::Duration(unit.to_arrow().unwrap()));
     }
-    // Arrow durations stop at the sub-second units.
+    // Arrow durations stop at the sub-second units; the coarser ones anchor
+    // on Int64 plus ygg.* metadata, restored through a field.
+    let weeks = TypedField::from_parts(
+        "sprint",
+        TypedDuration::from_parts(yggdryl_schema::Week),
+        false,
+        Default::default(),
+    );
+    let arrow = weeks.to_arrow();
+    assert_eq!(arrow.data_type(), &ArrowDataType::Int64);
+    assert_eq!(arrow.metadata().get(metadata::TYPE).unwrap(), "duration");
+    assert_eq!(arrow.metadata().get(metadata::TIME_UNIT).unwrap(), "w");
+    assert_eq!(TypedField::from_arrow(&arrow), Ok(weeks));
     assert!(matches!(
-        Duration::from_parts(TimeUnitId::Minute),
-        Err(DataTypeError::TimeUnitMismatch { .. })
+        TypedDuration::<yggdryl_schema::Week>::from_arrow(&ArrowDataType::Int64),
+        Err(DataTypeError::MissingMetadata { .. })
     ));
 }
 
@@ -445,7 +472,7 @@ fn any_data_type_roundtrips_every_constructor() {
         Utf8.into(),
         FixedSizeBinary::from_parts(16).unwrap().into(),
         Date32.into(),
-        Timestamp::from_parts(Nanosecond, Some("UTC".into())).into(),
+        TypedTimestamp::from_parts(Nanosecond, Some("UTC".into())).into(),
         List::from_parts(item.clone()).into(),
         LargeList::from_parts(item).into(),
         person().into(),

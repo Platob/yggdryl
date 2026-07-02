@@ -1,79 +1,59 @@
-//! The 32-bit time-of-day data type.
+//! The 32-bit time-of-day data type, one per 32-bit unit.
 
 use core::fmt;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, DataTypeId, Int32, LogicalType, PrimitiveType, TimeUnitId};
+use crate::{
+    DataType, DataTypeError, DataTypeId, Int32, LogicalType, PrimitiveType, Time, Time32Unit,
+    TimeUnitId,
+};
 
 /// A time of day as a 32-bit offset since midnight, mapping to Arrow
-/// `Time32(unit)` and anchored on [`Int32`]. Only second and millisecond
-/// resolutions fit 32 bits.
+/// `Time32(unit)` and anchored on [`Int32`] — one type per [`Time32Unit`]
+/// (`Time32<Second>`, `Time32<Millisecond>`, and the erased
+/// `Time32<AnyTime32Unit>`), the resolutions the Arrow spec fits in 32 bits.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, Time32, TimeUnitId};
+/// use yggdryl_schema::{DataType, Millisecond, Time, Time32};
 ///
-/// let time = Time32::from_parts(TimeUnitId::Millisecond).unwrap();
+/// let time = Time32::from_parts(Millisecond);
 /// assert_eq!(Time32::from_arrow(&time.to_arrow()), Ok(time));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(try_from = "RawTime32")
-)]
-pub struct Time32 {
-    unit: TimeUnitId,
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Time32<U: Time32Unit> {
+    unit: U,
 }
 
-impl Time32 {
-    /// Builds the type from its resolution, rejecting units finer than a
-    /// millisecond.
-    ///
-    /// ```
-    /// use yggdryl_schema::{Time32, TimeUnitId};
-    ///
-    /// assert!(Time32::from_parts(TimeUnitId::Nanosecond).is_err()); // expected s or ms
-    /// ```
-    pub fn from_parts(unit: TimeUnitId) -> Result<Self, DataTypeError> {
-        match unit {
-            TimeUnitId::Second | TimeUnitId::Millisecond => Ok(Self { unit }),
-            other => Err(DataTypeError::TimeUnitMismatch {
-                expected: "s or ms",
-                actual: other,
-            }),
-        }
+impl<U: Time32Unit> Time for Time32<U> {
+    type Unit = U;
+
+    fn from_parts(unit: U) -> Self {
+        Self { unit }
     }
 
-    /// The resolution of the offset.
-    pub fn unit(&self) -> TimeUnitId {
-        self.unit
-    }
-
-    /// Returns a copy with any of the parts overridden; omitted parts come
-    /// from `self`.
-    pub fn copy(&self, unit: Option<TimeUnitId>) -> Result<Self, DataTypeError> {
-        Self::from_parts(unit.unwrap_or(self.unit))
-    }
-
-    /// Returns a copy with the resolution replaced.
-    pub fn with_unit(&self, unit: TimeUnitId) -> Result<Self, DataTypeError> {
-        self.copy(Some(unit))
+    fn unit(&self) -> U {
+        self.unit.clone()
     }
 }
 
-impl DataType for Time32 {
+impl<U: Time32Unit> DataType for Time32<U> {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Time32
     }
 
     fn to_arrow(&self) -> ArrowDataType {
-        ArrowDataType::Time32(self.unit.to_arrow().expect("validated sub-second unit"))
+        // `Time32Unit` restricts the unit to second/millisecond, which Arrow
+        // has natively.
+        ArrowDataType::Time32(self.unit.to_arrow().expect("validated 32-bit time unit"))
     }
 
     fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError> {
         match data_type {
-            ArrowDataType::Time32(unit) => Self::from_parts(TimeUnitId::from_arrow(*unit)),
+            ArrowDataType::Time32(unit) => Ok(Self::from_parts(U::from_unit_id(
+                TimeUnitId::from_arrow(*unit),
+            )?)),
             other => Err(DataTypeError::ArrowTypeMismatch {
                 expected: "time32",
                 actual: other.clone(),
@@ -82,20 +62,22 @@ impl DataType for Time32 {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.unit.to_bytes()
+        self.unit.unit_id().to_bytes()
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        Self::from_parts(TimeUnitId::from_bytes(bytes)?)
+        Ok(Self::from_parts(U::from_unit_id(TimeUnitId::from_bytes(
+            bytes,
+        )?)?))
     }
 }
 
-impl PrimitiveType for Time32 {
+impl<U: Time32Unit> PrimitiveType for Time32<U> {
     type Native = i32;
     const BIT_WIDTH: usize = 32;
 }
 
-impl LogicalType for Time32 {
+impl<U: Time32Unit> LogicalType for Time32<U> {
     type Physical = Int32;
 
     fn physical(&self) -> Int32 {
@@ -103,25 +85,8 @@ impl LogicalType for Time32 {
     }
 }
 
-impl fmt::Display for Time32 {
+impl<U: Time32Unit> fmt::Display for Time32<U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "time32({})", self.unit)
-    }
-}
-
-/// Mirror of the serialized fields, deserialized first so `try_from`
-/// re-validates on the way in.
-#[cfg(feature = "serde")]
-#[derive(serde::Deserialize)]
-struct RawTime32 {
-    unit: TimeUnitId,
-}
-
-#[cfg(feature = "serde")]
-impl TryFrom<RawTime32> for Time32 {
-    type Error = DataTypeError;
-
-    fn try_from(raw: RawTime32) -> Result<Self, Self::Error> {
-        Self::from_parts(raw.unit)
     }
 }

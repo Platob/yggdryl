@@ -6,9 +6,10 @@ use std::collections::BTreeMap;
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    metadata, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64,
-    Decimal128, Decimal256, Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
-    LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time32, Time64, TimeUnit, Timestamp,
+    metadata, AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError,
+    DataTypeId, Date32, Date64, Decimal128, Decimal256, Duration, FixedSizeBinary, Float32,
+    Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time,
+    Time32, Time32Unit, Time64, Time64Unit, TimeUnit, Timestamp, TypedDuration, TypedTimestamp,
     UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
@@ -120,14 +121,14 @@ pub enum AnyDataType {
     Date32(Date32),
     /// [`Date64`].
     Date64(Date64),
-    /// [`Time32`].
-    Time32(Time32),
-    /// [`Time64`].
-    Time64(Time64),
-    /// [`Timestamp`] over an erased unit.
-    Timestamp(Timestamp<AnyTimeUnit>),
-    /// [`Duration`].
-    Duration(Duration),
+    /// [`Time32`] over an erased unit.
+    Time32(Time32<AnyTime32Unit>),
+    /// [`Time64`] over an erased unit.
+    Time64(Time64<AnyTime64Unit>),
+    /// [`TypedTimestamp`] over an erased unit.
+    Timestamp(TypedTimestamp<AnyTimeUnit>),
+    /// [`TypedDuration`] over an erased unit.
+    Duration(TypedDuration<AnyTimeUnit>),
     /// [`List`] over an erased child.
     List(List<AnyDataType>),
     /// [`LargeList`] over an erased child.
@@ -181,8 +182,10 @@ impl DataType for AnyDataType {
             ArrowDataType::Date64 => Date64::from_arrow(data_type).map(Self::Date64),
             ArrowDataType::Time32(_) => Time32::from_arrow(data_type).map(Self::Time32),
             ArrowDataType::Time64(_) => Time64::from_arrow(data_type).map(Self::Time64),
-            ArrowDataType::Timestamp(..) => Timestamp::from_arrow(data_type).map(Self::Timestamp),
-            ArrowDataType::Duration(_) => Duration::from_arrow(data_type).map(Self::Duration),
+            ArrowDataType::Timestamp(..) => {
+                TypedTimestamp::from_arrow(data_type).map(Self::Timestamp)
+            }
+            ArrowDataType::Duration(_) => TypedDuration::from_arrow(data_type).map(Self::Duration),
             ArrowDataType::List(_) => List::from_arrow(data_type).map(Self::List),
             ArrowDataType::LargeList(_) => LargeList::from_arrow(data_type).map(Self::LargeList),
             ArrowDataType::Struct(_) => Struct::from_arrow(data_type).map(Self::Struct),
@@ -201,7 +204,10 @@ impl DataType for AnyDataType {
         match metadata_map.get(metadata::TYPE).map(String::as_str) {
             // The `ygg.type` marker names the anchored type to restore.
             Some("timestamp") => {
-                Timestamp::from_arrow_parts(data_type, metadata_map).map(Self::Timestamp)
+                TypedTimestamp::from_arrow_parts(data_type, metadata_map).map(Self::Timestamp)
+            }
+            Some("duration") => {
+                TypedDuration::from_arrow_parts(data_type, metadata_map).map(Self::Duration)
             }
             Some(other) => Err(DataTypeError::InvalidMetadata {
                 key: metadata::TYPE,
@@ -257,8 +263,8 @@ impl DataType for AnyDataType {
             DataTypeId::Date64 => Date64::from_bytes(payload).map(Self::Date64),
             DataTypeId::Time32 => Time32::from_bytes(payload).map(Self::Time32),
             DataTypeId::Time64 => Time64::from_bytes(payload).map(Self::Time64),
-            DataTypeId::Timestamp => Timestamp::from_bytes(payload).map(Self::Timestamp),
-            DataTypeId::Duration => Duration::from_bytes(payload).map(Self::Duration),
+            DataTypeId::Timestamp => TypedTimestamp::from_bytes(payload).map(Self::Timestamp),
+            DataTypeId::Duration => TypedDuration::from_bytes(payload).map(Self::Duration),
             DataTypeId::List => List::from_bytes(payload).map(Self::List),
             DataTypeId::LargeList => LargeList::from_bytes(payload).map(Self::LargeList),
             DataTypeId::Struct => Struct::from_bytes(payload).map(Self::Struct),
@@ -273,13 +279,43 @@ impl fmt::Display for AnyDataType {
     }
 }
 
-// `Timestamp` is generic over its unit, so its conversion erases the unit
-// into [`AnyTimeUnit`] instead of coming from the macro.
-impl<U: TimeUnit> From<Timestamp<U>> for AnyDataType {
-    fn from(timestamp: Timestamp<U>) -> Self {
-        Self::Timestamp(Timestamp::from_parts(
+// The temporal types are generic over their unit, so their conversions erase
+// the unit into the matching `Any*Unit` instead of coming from the macro.
+impl<U: TimeUnit> From<TypedTimestamp<U>> for AnyDataType {
+    fn from(timestamp: TypedTimestamp<U>) -> Self {
+        Self::Timestamp(TypedTimestamp::from_parts(
             AnyTimeUnit::from(timestamp.unit().unit_id()),
             timestamp.timezone().map(Into::into),
+        ))
+    }
+}
+
+impl<U: TimeUnit> From<TypedDuration<U>> for AnyDataType {
+    fn from(duration: TypedDuration<U>) -> Self {
+        Self::Duration(TypedDuration::from_parts(AnyTimeUnit::from(
+            duration.unit().unit_id(),
+        )))
+    }
+}
+
+impl<U: Time32Unit> From<Time32<U>> for AnyDataType {
+    fn from(time: Time32<U>) -> Self {
+        Self::Time32(Time32::from_parts(
+            // Every `Time32Unit` id is a 32-bit time unit, so the erased
+            // construction never fails.
+            AnyTime32Unit::from_unit_id(time.unit().unit_id())
+                .expect("Time32Unit is restricted to 32-bit time units"),
+        ))
+    }
+}
+
+impl<U: Time64Unit> From<Time64<U>> for AnyDataType {
+    fn from(time: Time64<U>) -> Self {
+        Self::Time64(Time64::from_parts(
+            // Every `Time64Unit` id is a 64-bit time unit, so the erased
+            // construction never fails.
+            AnyTime64Unit::from_unit_id(time.unit().unit_id())
+                .expect("Time64Unit is restricted to 64-bit time units"),
         ))
     }
 }
@@ -305,9 +341,6 @@ from_impls!(
     FixedSizeBinary: FixedSizeBinary,
     Date32: Date32,
     Date64: Date64,
-    Time32: Time32,
-    Time64: Time64,
-    Duration: Duration,
     List: List<AnyDataType>,
     LargeList: LargeList<AnyDataType>,
     Struct: Struct,

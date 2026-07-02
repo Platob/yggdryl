@@ -1,7 +1,7 @@
 //! The 64-bit date data type.
 
 use crate::datatype::macros::primitive_data_type;
-use crate::{Int64, LogicalType};
+use crate::{Date, Int64, LogicalType, Millisecond};
 
 primitive_data_type!(
     /// A date as milliseconds since the UNIX epoch, mapping to Arrow `Date64`
@@ -21,5 +21,13 @@ impl LogicalType for Date64 {
 
     fn physical(&self) -> Int64 {
         Int64
+    }
+}
+
+impl Date for Date64 {
+    type Unit = Millisecond;
+
+    fn unit(&self) -> Millisecond {
+        Millisecond
     }
 }

@@ -4,9 +4,10 @@ use core::mem::{align_of, size_of};
 use core::str;
 
 use yggdryl_schema::{
-    Binary, Boolean, DataType, Date32, Date64, Decimal128, Decimal256, Duration, FixedSizeBinary,
-    Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeUtf8, PrimitiveType, Time32,
-    Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
+    Binary, Boolean, DataType, Date32, Date64, Decimal128, Decimal256, FixedSizeBinary, Float32,
+    Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeUtf8, PrimitiveType, Time32, Time32Unit,
+    Time64, Time64Unit, TimeUnit, TypedDuration, TypedTimestamp, UInt16, UInt32, UInt64, UInt8,
+    Utf8,
 };
 
 use crate::ScalarError;
@@ -33,11 +34,12 @@ pub trait ScalarType: DataType {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError>;
 }
 
-/// Implements [`ScalarType`] for a fixed-width type: the value is exactly one
-/// native, aligned so typed reads stay zero-copy.
+/// Implements [`ScalarType`] for a fixed-width type — the value is exactly
+/// one native, aligned so typed reads stay zero-copy. A leading `[generics]`
+/// clause covers the unit-generic temporal types.
 macro_rules! fixed_width_scalar_type {
-    ($($name:ty),+ $(,)?) => {$(
-        impl ScalarType for $name {
+    (@impl [$($generics:tt)*] $name:ty) => {
+        impl<$($generics)*> ScalarType for $name {
             fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
                 let expected = size_of::<<$name as PrimitiveType>::Native>();
                 if bytes.len() != expected {
@@ -53,33 +55,20 @@ macro_rules! fixed_width_scalar_type {
                 Ok(())
             }
         }
-    )+};
+    };
+    ($($name:ty),+ $(,)?) => {
+        $(fixed_width_scalar_type!(@impl [] $name);)+
+    };
 }
 
 fixed_width_scalar_type!(
     Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64, Decimal128,
-    Decimal256, Date32, Date64, Time32, Time64, Duration,
+    Decimal256, Date32, Date64,
 );
-
-// `Timestamp` is generic over its unit, so its fixed-width layout contract is
-// written out once rather than coming from the macro; every unit shares the
-// same 64-bit native.
-impl<U: TimeUnit> ScalarType for Timestamp<U> {
-    fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
-        let expected = size_of::<<Self as PrimitiveType>::Native>();
-        if bytes.len() != expected {
-            return Err(ScalarError::InvalidByteLength {
-                expected,
-                actual: bytes.len(),
-            });
-        }
-        let align = align_of::<<Self as PrimitiveType>::Native>();
-        if !(bytes.as_ptr() as usize).is_multiple_of(align) {
-            return Err(ScalarError::MisalignedBuffer { align });
-        }
-        Ok(())
-    }
-}
+fixed_width_scalar_type!(@impl [U: TimeUnit] TypedTimestamp<U>);
+fixed_width_scalar_type!(@impl [U: TimeUnit] TypedDuration<U>);
+fixed_width_scalar_type!(@impl [U: Time32Unit] Time32<U>);
+fixed_width_scalar_type!(@impl [U: Time64Unit] Time64<U>);
 
 impl ScalarType for Boolean {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {

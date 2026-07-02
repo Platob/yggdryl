@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use yggdryl_schema::{
-    AnyDataType, AnyTimeUnit, Boolean, DataType, DataTypeError, Decimal128, Decimal256, Duration,
-    Field, FieldError, FixedSizeBinary, Float64, Int32, List, Map, Millisecond, Struct, Time32,
-    Time64, TimeUnitId, Timestamp, TypedField, Utf8,
+    AnyDataType, AnyTime32Unit, AnyTimeUnit, Boolean, DataType, DataTypeError, Decimal128,
+    Decimal256, Duration, Field, FieldError, FixedSizeBinary, Float64, Int32, List, Map,
+    Millisecond, Nanosecond, Second, Struct, Time, Time32, Time64, TimeUnit, TimeUnitId, Timestamp,
+    TypedDuration, TypedField, TypedTimestamp, Utf8,
 };
 
 fn assert_roundtrip<T: DataType>(value: T) {
@@ -33,33 +34,32 @@ fn parameterized_types_roundtrip() {
     assert_roundtrip(Decimal128::from_parts(38, -10).unwrap());
     assert_roundtrip(Decimal256::from_parts(76, 76).unwrap());
     assert_roundtrip(FixedSizeBinary::from_parts(16).unwrap());
-    assert_roundtrip(Time32::from_parts(TimeUnitId::Second).unwrap());
-    assert_roundtrip(Time64::from_parts(TimeUnitId::Nanosecond).unwrap());
-    for unit in [
-        TimeUnitId::Second,
-        TimeUnitId::Millisecond,
-        TimeUnitId::Microsecond,
-        TimeUnitId::Nanosecond,
-    ] {
-        assert_roundtrip(Duration::from_parts(unit).unwrap());
-    }
+    assert_roundtrip(Time32::from_parts(Second));
+    assert_roundtrip(Time64::from_parts(Nanosecond));
+    assert_roundtrip(Time32::from_parts(
+        AnyTime32Unit::from_unit_id(TimeUnitId::Millisecond).unwrap(),
+    ));
     // Every unit — including the ones Arrow lacks — round-trips through the
-    // erased timestamp, and unit ids round-trip on their own.
+    // erased timestamp and duration, and unit ids round-trip on their own.
     for id in 0..=10u8 {
         let unit = TimeUnitId::from_u8(id).unwrap();
         assert_eq!(TimeUnitId::from_bytes(&unit.to_bytes()), Ok(unit));
         let unit = AnyTimeUnit::from(unit);
-        assert_roundtrip(Timestamp::from_parts(unit, None));
-        assert_roundtrip(Timestamp::from_parts(unit, Some("Europe/Paris".into())));
+        assert_roundtrip(TypedDuration::from_parts(unit));
+        assert_roundtrip(TypedTimestamp::from_parts(unit, None));
+        assert_roundtrip(TypedTimestamp::from_parts(
+            unit,
+            Some("Europe/Paris".into()),
+        ));
     }
     // A typed unit round-trips its own tag and rejects another unit's; an
     // empty-string timezone stays distinct from no timezone.
-    assert_roundtrip(Timestamp::from_parts(Millisecond, None));
+    assert_roundtrip(TypedTimestamp::from_parts(Millisecond, None));
     assert!(matches!(
-        Timestamp::<Millisecond>::from_bytes(&[TimeUnitId::Year.to_u8(), 0]),
+        TypedTimestamp::<Millisecond>::from_bytes(&[TimeUnitId::Year.to_u8(), 0]),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
-    assert_roundtrip(Timestamp::from_parts(Millisecond, Some("".into())));
+    assert_roundtrip(TypedTimestamp::from_parts(Millisecond, Some("".into())));
 }
 
 #[test]
@@ -78,23 +78,27 @@ fn decoding_validates_payloads() {
         Err(DataTypeError::UnknownTimeUnitId { id: 99, .. })
     ));
     assert!(matches!(
-        Time32::from_bytes(&TimeUnitId::Nanosecond.to_bytes()),
+        Time32::<Second>::from_bytes(&TimeUnitId::Nanosecond.to_bytes()),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
     assert!(matches!(
-        Timestamp::<AnyTimeUnit>::from_bytes(&[0]),
+        Time32::<AnyTime32Unit>::from_bytes(&TimeUnitId::Nanosecond.to_bytes()),
+        Err(DataTypeError::TimeUnitMismatch { .. })
+    ));
+    assert!(matches!(
+        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0]),
         Err(DataTypeError::InvalidByteLength { expected: 2, .. })
     ));
     assert!(matches!(
-        Timestamp::<AnyTimeUnit>::from_bytes(&[0, 2]),
+        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 2]),
         Err(DataTypeError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        Timestamp::<AnyTimeUnit>::from_bytes(&[0, 1, 0xFF]),
+        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 1, 0xFF]),
         Err(DataTypeError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        Timestamp::<AnyTimeUnit>::from_bytes(&[0, 0, b'x']),
+        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 0, b'x']),
         Err(DataTypeError::InvalidBytes { .. })
     ));
     assert!(matches!(
@@ -204,7 +208,7 @@ fn structs_maps_and_erased_types_roundtrip_through_bytes() {
     let any = AnyDataType::from(map);
     assert_eq!(any.to_bytes()[0], any.type_id().to_u8());
     assert_roundtrip(any);
-    assert_roundtrip(AnyDataType::from(Timestamp::from_parts(
+    assert_roundtrip(AnyDataType::from(TypedTimestamp::from_parts(
         Millisecond,
         Some("UTC".into()),
     )));

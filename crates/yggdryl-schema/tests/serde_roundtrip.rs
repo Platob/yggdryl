@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use serde::{de::DeserializeOwned, Serialize};
 use yggdryl_schema::{
-    AnyDataType, Boolean, Decimal128, Field, FixedSizeBinary, Int32, List, Map, Nanosecond, Struct,
-    Time32, TimeUnitId, Timestamp, TypedField, Utf8,
+    AnyDataType, AnyTime32Unit, Boolean, Decimal128, Field, FixedSizeBinary, Int32, List, Map,
+    Millisecond, Nanosecond, Struct, Time, Time32, Timestamp, TypedField, TypedTimestamp, Utf8,
 };
 
 fn assert_roundtrip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: T) {
@@ -22,8 +22,8 @@ fn schema_types_roundtrip_through_json() {
     assert_roundtrip(Int32);
     assert_roundtrip(Decimal128::from_parts(38, 10).unwrap());
     assert_roundtrip(FixedSizeBinary::from_parts(16).unwrap());
-    assert_roundtrip(Time32::from_parts(TimeUnitId::Millisecond).unwrap());
-    assert_roundtrip(Timestamp::from_parts(Nanosecond, Some("UTC".into())));
+    assert_roundtrip(Time32::from_parts(Millisecond));
+    assert_roundtrip(TypedTimestamp::from_parts(Nanosecond, Some("UTC".into())));
 
     let metadata = [("k".to_string(), "v".to_string())].into_iter().collect();
     assert_roundtrip(TypedField::from_parts("id", Int32, false, metadata));
@@ -67,7 +67,10 @@ fn deserialization_revalidates_invariants() {
     assert!(serde_json::from_str::<Decimal128>(r#"{"precision":39,"scale":0}"#).is_err());
     assert!(serde_json::from_str::<Decimal128>(r#"{"precision":10,"scale":11}"#).is_err());
     assert!(serde_json::from_str::<FixedSizeBinary>(r#"{"size":-1}"#).is_err());
-    assert!(serde_json::from_str::<Time32>(r#"{"unit":"Nanosecond"}"#).is_err());
+    assert!(
+        serde_json::from_str::<Time32<AnyTime32Unit>>(r#"{"unit":{"unit_id":"Nanosecond"}}"#)
+            .is_err()
+    );
 
     // A map with a nullable key is re-validated on the way in.
     let person = Struct::from_parts(vec![
