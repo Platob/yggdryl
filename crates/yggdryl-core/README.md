@@ -9,26 +9,44 @@ The Rust core foundations of **yggdryl**.
 ## Serialization
 
 The `Charset` trait encodes text to bytes and back through `encode_bytes` /
-`decode_bytes`; `Utf8` and `Latin1` implement it. Behind the off-by-default
-`json` feature, the `Base` trait gives every value type content-based JSON
-serialization — as a string and as a canonical compact-UTF-8-JSON byte form
-(encoded through the `Utf8` charset):
+`decode_bytes`; `Utf8` and `Latin1` implement it.
+
+Behind the off-by-default `json` feature, the `Base` trait gives every value type a
+JSON string form for free from `serde` (`serialize_json` / `deserialize_json`) plus a
+required compact binary byte form (`serialize_bytes` / `deserialize_bytes`) that each
+type defines itself — never JSON:
 
 ```rust
 use serde::{Deserialize, Serialize};
-use yggdryl_core::Base;
+use yggdryl_core::{Base, BaseError};
 
 #[derive(Serialize, Deserialize)]
 struct Point {
     x: i32,
     y: i32,
 }
-impl Base for Point {}
 
-let p = Point { x: 1, y: 2 };
-let _json = p.serialize_json()?;    // {"x":1,"y":2}
-let _bytes = p.serialize_bytes()?;  // compact UTF-8 JSON
-# Ok::<(), yggdryl_core::BaseError>(())
+impl Base for Point {
+    // JSON is free from serde; define the compact byte layout yourself.
+    fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
+        let mut out = Vec::with_capacity(8);
+        out.extend_from_slice(&self.x.to_le_bytes());
+        out.extend_from_slice(&self.y.to_le_bytes());
+        Ok(out)
+    }
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
+        let a: [u8; 8] = bytes.try_into().map_err(|_| BaseError::InvalidBytes {
+            reason: format!("expected 8 bytes, got {}", bytes.len()),
+        })?;
+        Ok(Point {
+            x: i32::from_le_bytes([a[0], a[1], a[2], a[3]]),
+            y: i32::from_le_bytes([a[4], a[5], a[6], a[7]]),
+        })
+    }
+}
+
+// p.serialize_json()?  -> {"x":1,"y":2}       (free, JSON text)
+// p.serialize_bytes()? -> [1, 0, 0, 0, 2, 0, 0, 0]  (your binary layout)
 ```
 
 Enable it with `features = ["json"]`.

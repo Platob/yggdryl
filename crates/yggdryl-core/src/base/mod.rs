@@ -1,44 +1,59 @@
-//! The [`Base`] trait: content-based JSON serialization for every value type.
+//! The [`Base`] trait: JSON and byte serialization for every value type.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::charset::{Charset, Utf8};
-
 mod error;
 pub use error::BaseError;
 
-/// The foundational trait every yggdryl value type implements: content-based
-/// serialization to and from JSON — as a string and as the canonical byte form.
+/// The foundational trait every yggdryl value type implements.
 ///
-/// Every method has a default implementation built on `serde` and `serde_json`,
-/// so a value type opts in with an empty `impl Base for MyType {}` once it derives
-/// [`Serialize`](serde::Serialize) and [`Deserialize`](serde::Deserialize):
-///
-/// - [`serialize_json`](Base::serialize_json) /
-///   [`deserialize_json`](Base::deserialize_json) — a JSON string.
-/// - [`serialize_bytes`](Base::serialize_bytes) /
-///   [`deserialize_bytes`](Base::deserialize_bytes) — the canonical byte form:
-///   the JSON string encoded as UTF-8 with the [`Utf8`] charset.
+/// The JSON string form is free from `serde`: [`serialize_json`](Base::serialize_json)
+/// / [`deserialize_json`](Base::deserialize_json) have default implementations, so a
+/// value type gets them by deriving [`Serialize`](serde::Serialize) and
+/// [`Deserialize`](serde::Deserialize). The canonical byte form —
+/// [`serialize_bytes`](Base::serialize_bytes) /
+/// [`deserialize_bytes`](Base::deserialize_bytes) — is a compact binary layout each
+/// type defines itself (never JSON); `deserialize_bytes` validates its input fully
+/// and is the exact inverse of `serialize_bytes`.
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use yggdryl_core::Base;
+/// use yggdryl_core::{Base, BaseError};
 ///
 /// #[derive(Debug, PartialEq, Serialize, Deserialize)]
 /// struct Point {
 ///     x: i32,
 ///     y: i32,
 /// }
-/// impl Base for Point {}
+///
+/// impl Base for Point {
+///     fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
+///         let mut out = Vec::with_capacity(8);
+///         out.extend_from_slice(&self.x.to_le_bytes());
+///         out.extend_from_slice(&self.y.to_le_bytes());
+///         Ok(out)
+///     }
+///
+///     fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
+///         let a: [u8; 8] = bytes.try_into().map_err(|_| BaseError::InvalidBytes {
+///             reason: format!("expected 8 bytes, got {}", bytes.len()),
+///         })?;
+///         Ok(Point {
+///             x: i32::from_le_bytes([a[0], a[1], a[2], a[3]]),
+///             y: i32::from_le_bytes([a[4], a[5], a[6], a[7]]),
+///         })
+///     }
+/// }
 ///
 /// let p = Point { x: 1, y: 2 };
 ///
+/// // Content JSON is free from serde.
 /// assert_eq!(p.serialize_json()?, r#"{"x":1,"y":2}"#);
 /// assert_eq!(Point::deserialize_json(&p.serialize_json()?)?, p);
 ///
-/// // The canonical byte form is compact UTF-8 JSON.
-/// assert_eq!(p.serialize_bytes()?, br#"{"x":1,"y":2}"#.to_vec());
+/// // The byte form is the type's own compact binary layout — not JSON.
+/// assert_eq!(p.serialize_bytes()?, vec![1, 0, 0, 0, 2, 0, 0, 0]);
 /// assert_eq!(Point::deserialize_bytes(&p.serialize_bytes()?)?, p);
 /// # Ok::<(), yggdryl_core::BaseError>(())
 /// ```
@@ -55,16 +70,10 @@ pub trait Base: Serialize + DeserializeOwned {
         Ok(serde_json::from_str(json)?)
     }
 
-    /// Serialize to the canonical byte form: the compact JSON string encoded as
-    /// UTF-8.
-    fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
-        crate::log_event!(trace, "Base::serialize_bytes");
-        Ok(Utf8.encode_bytes(&self.serialize_json()?)?)
-    }
+    /// Serialize to the canonical byte form: a compact binary layout of the type's
+    /// choosing.
+    fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError>;
 
-    /// Deserialize from the canonical byte form: UTF-8-encoded compact JSON.
-    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
-        crate::log_event!(trace, "Base::deserialize_bytes");
-        Self::deserialize_json(&Utf8.decode_bytes(bytes)?)
-    }
+    /// Deserialize from the canonical byte form, validating the input fully.
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError>;
 }

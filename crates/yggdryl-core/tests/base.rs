@@ -5,44 +5,48 @@ use serde::{Deserialize, Serialize};
 use yggdryl_core::{Base, BaseError};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-struct Record {
-    name: String,
-    tags: Vec<String>,
+struct Point {
+    x: i32,
+    y: i32,
 }
 
-impl Base for Record {}
+impl Base for Point {
+    fn serialize_bytes(&self) -> Result<Vec<u8>, BaseError> {
+        let mut out = Vec::with_capacity(8);
+        out.extend_from_slice(&self.x.to_le_bytes());
+        out.extend_from_slice(&self.y.to_le_bytes());
+        Ok(out)
+    }
 
-fn sample() -> Record {
-    Record {
-        name: "café".to_string(),
-        tags: vec!["a".to_string(), "b".to_string()],
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
+        let a: [u8; 8] = bytes.try_into().map_err(|_| BaseError::InvalidBytes {
+            reason: format!("expected 8 bytes, got {}", bytes.len()),
+        })?;
+        Ok(Point {
+            x: i32::from_le_bytes([a[0], a[1], a[2], a[3]]),
+            y: i32::from_le_bytes([a[4], a[5], a[6], a[7]]),
+        })
     }
 }
 
 #[test]
-fn json_string_round_trips() {
-    let record = sample();
-    let json = record.serialize_json().unwrap();
-    assert_eq!(json, r#"{"name":"café","tags":["a","b"]}"#);
-    assert_eq!(Record::deserialize_json(&json).unwrap(), record);
+fn json_round_trips() {
+    let p = Point { x: -1, y: 258 };
+    let json = p.serialize_json().unwrap();
+    assert_eq!(json, r#"{"x":-1,"y":258}"#);
+    assert_eq!(Point::deserialize_json(&json).unwrap(), p);
 }
 
 #[test]
-fn bytes_are_compact_utf8_json() {
-    let record = sample();
-    assert_eq!(
-        record.serialize_bytes().unwrap(),
-        record.serialize_json().unwrap().into_bytes()
-    );
-    assert_eq!(
-        Record::deserialize_bytes(&record.serialize_bytes().unwrap()).unwrap(),
-        record
-    );
+fn bytes_use_the_implementor_layout_not_json() {
+    let p = Point { x: 1, y: 2 };
+    let bytes = p.serialize_bytes().unwrap();
+    assert_eq!(bytes, vec![1, 0, 0, 0, 2, 0, 0, 0]); // little-endian, not JSON text
+    assert_eq!(Point::deserialize_bytes(&bytes).unwrap(), p);
 }
 
 #[test]
-fn invalid_utf8_bytes_surface_as_base_error() {
-    // 0xFF is not valid UTF-8, so decoding the byte form fails as a charset error.
-    let error = Record::deserialize_bytes(&[0xFF, 0xFF]).unwrap_err();
-    assert!(matches!(error, BaseError::Charset(_)));
+fn wrong_length_bytes_error() {
+    let error = Point::deserialize_bytes(&[0, 1, 2]).unwrap_err();
+    assert!(matches!(error, BaseError::InvalidBytes { .. }));
 }
