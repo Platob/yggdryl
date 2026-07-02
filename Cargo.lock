@@ -451,6 +451,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
+name = "yggdryl-array"
+version = "0.1.1"
+dependencies = [
+ "arrow-buffer",
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-scalar",
+ "yggdryl-schema",
+]
+
+[[package]]
 name = "yggdryl-core"
 version = "0.1.1"
 dependencies = [
@@ -475,6 +487,17 @@ version = "0.1.1"
 dependencies = [
  "pyo3",
  "yggdryl-core",
+]
+
+[[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "arrow-buffer",
+ "log",
+ "serde",
+ "serde_json",
+ "yggdryl-schema",
 ]
 
 [[package]]

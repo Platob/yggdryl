@@ -51,6 +51,12 @@ pub enum DataTypeError {
         /// The rejected size.
         size: i32,
     },
+    /// A map entries field that is not a two-field struct with a
+    /// non-nullable key.
+    InvalidMapEntries {
+        /// What failed, and how to fix it.
+        message: String,
+    },
     /// An integer that is not an assigned data type identifier.
     UnknownTypeId {
         /// The rejected value.
@@ -94,6 +100,7 @@ impl fmt::Display for DataTypeError {
             Self::NegativeFixedSize { size } => {
                 write!(f, "negative size {size}, expected 0 or more")
             }
+            Self::InvalidMapEntries { message } => f.write_str(message),
             Self::UnknownTypeId { id, max } => {
                 write!(f, "unknown data type id {id}, expected 0..={max}")
             }
@@ -106,3 +113,11 @@ impl fmt::Display for DataTypeError {
 }
 
 impl Error for DataTypeError {}
+
+impl From<crate::bytes::BytesError> for DataTypeError {
+    fn from(error: crate::bytes::BytesError) -> Self {
+        Self::InvalidBytes {
+            message: error.to_string(),
+        }
+    }
+}

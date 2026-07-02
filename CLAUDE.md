@@ -52,8 +52,9 @@ type they are looking at from the shape of the code.
    adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
    `Option<T>` defaults). A change is never half-applied.
 9. **Own the containers, keep Arrow's layout.** yggdryl defines its own data
-   containers (`Scalar`, `Series`, and friends) rather than wrapping `arrow-array`
-   types — the move polars made with arrow2/polars-arrow. A container holds
+   containers (`Scalar`, the `Array` implementations, and friends) rather than
+   wrapping `arrow-array` types — the move polars made with arrow2/polars-arrow.
+   A container holds
    `arrow_buffer::Buffer`s plus a validity bitmap, laid out exactly per the Arrow
    columnar format spec, so `to_arrow` / `from_arrow` are zero-copy buffer
    handoffs. All data manipulation is implemented on our own containers;
@@ -69,14 +70,18 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   error types). **No Arrow vocabulary in core.** Byte sources implement the single
   IO abstraction and hand back zero-copy views; byte consumers take an IO/reader,
   never a pre-collected `Vec`.
-- `crates/yggdryl-schema` — the schema layer (`DataType`, `DataTypeId`, `Field`
-  and the category subtraits `PrimitiveType` / `LogicalType` / `NestedType`):
-  the typed vocabulary every upper layer and binding shares.
-- `crates/yggdryl-data` — the data-container layer (`Scalar`, `Series`, the
-  object-safe `Datum` trait): our own containers per hard rule 9, holding
-  `arrow-buffer` buffers and validity bitmaps in the Arrow columnar layout.
-  Compute kernels are written once against `Datum`; every container implements
-  the same trait.
+- `crates/yggdryl-schema` — the schema layer (`DataType`, `DataTypeId`, the
+  erased `AnyDataType`, the abstract `Field` base with its generic `TypedField`
+  implementation, and the category subtraits `PrimitiveType` / `LogicalType` /
+  `NestedType`): the typed vocabulary every upper layer and binding shares.
+- `crates/yggdryl-scalar` — the scalar container layer (`Scalar<T>`, the
+  `ScalarType` layout contract): one typed value over an `arrow-buffer`
+  `Buffer`, validated at construction and extracted from arrays as a zero-copy
+  slice.
+- `crates/yggdryl-array` — the array container layer (the abstract `Array`
+  base, `PrimitiveArray<T>`, further array types as they land): typed columns
+  over `arrow-buffer` buffers plus `NullBuffer` validity bitmaps in the Arrow
+  columnar layout; slicing and scalar extraction never copy.
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.
@@ -129,7 +134,7 @@ justifying it. Never pull a heavy SDK into a crate that should not depend on it.
   trait signatures so implementors can satisfy them in one line; expand to
   multi-line bodies only when the logic genuinely needs it.
 - Shared handles are `Arc` type aliases named `<Type>Ref` (e.g.
-  `pub type FieldRef = Arc<Field>`); the Arc clone IS the cheap sharing mechanism —
+  `pub type TypedFieldRef<T> = Arc<TypedField<T>>`); the Arc clone IS the cheap sharing mechanism —
   no view/borrowed variants.
 
 ## Errors and docs

@@ -59,7 +59,9 @@ impl FixedSizeBinary {
 }
 
 impl DataType for FixedSizeBinary {
-    const TYPE_ID: DataTypeId = DataTypeId::FixedSizeBinary;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::FixedSizeBinary
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::FixedSizeBinary(self.size)

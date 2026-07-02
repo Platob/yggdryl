@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use yggdryl_schema::{
-    Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128, Decimal256,
-    Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary,
-    LargeList, LargeUtf8, List, Time32, Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8,
-    Utf8,
+    AnyDataType, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128,
+    Decimal256, Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
+    LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time32, Time64, TimeUnit, Timestamp,
+    TypedField, UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
 #[test]
@@ -67,8 +67,18 @@ fn parameterized_types_share_their_constructor_id() {
     );
 
     // Every parameterization of a generic list shares the constructor id.
-    let int_item = Arc::new(Field::from_parts("item", Int32, true, Default::default()));
-    let utf8_item = Arc::new(Field::from_parts("item", Utf8, true, Default::default()));
+    let int_item = Arc::new(TypedField::from_parts(
+        "item",
+        Int32,
+        true,
+        Default::default(),
+    ));
+    let utf8_item = Arc::new(TypedField::from_parts(
+        "item",
+        Utf8,
+        true,
+        Default::default(),
+    ));
     assert_eq!(
         List::from_parts(int_item.clone()).type_id(),
         DataTypeId::List
@@ -79,9 +89,33 @@ fn parameterized_types_share_their_constructor_id() {
         DataTypeId::LargeList
     );
 
-    // The associated const matches the method.
-    assert_eq!(<Decimal128 as DataType>::TYPE_ID, DataTypeId::Decimal128);
-    assert_eq!(<List<Int32> as DataType>::TYPE_ID, DataTypeId::List);
+    let entries = Struct::from_parts(vec![
+        Arc::new(TypedField::from_parts(
+            "key",
+            Utf8.into(),
+            false,
+            Default::default(),
+        )),
+        Arc::new(TypedField::from_parts(
+            "value",
+            Int32.into(),
+            true,
+            Default::default(),
+        )),
+    ]);
+    assert_eq!(entries.type_id(), DataTypeId::Struct);
+    let entries = Arc::new(TypedField::from_parts(
+        "entries",
+        entries,
+        false,
+        Default::default(),
+    ));
+    let map = Map::from_parts(entries, false).unwrap();
+    assert_eq!(map.type_id(), DataTypeId::Map);
+
+    // The erased type reports the wrapped constructor's id.
+    assert_eq!(AnyDataType::from(Int32).type_id(), DataTypeId::Int32);
+    assert_eq!(AnyDataType::from(map).type_id(), DataTypeId::Map);
 }
 
 #[test]
@@ -98,7 +132,7 @@ fn ids_roundtrip_exhaustively_and_reject_unassigned_values() {
             Err(other) => panic!("unexpected error for {value}: {other}"),
         }
     }
-    assert_eq!(assigned, 26);
+    assert_eq!(assigned, 28);
 
     assert!(matches!(
         DataTypeId::from_bytes(&[]),

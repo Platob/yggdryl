@@ -1,11 +1,11 @@
 //! `Field` construction, functional updates and rendering.
 
-use yggdryl_schema::{Field, FieldRef, Int32, Utf8};
+use yggdryl_schema::{Field, Int32, TypedField, TypedFieldRef, Utf8};
 
 #[test]
 fn copy_overrides_only_the_given_parts() {
     let metadata = [("k".to_string(), "v".to_string())].into_iter().collect();
-    let field = Field::from_parts("id", Int32, false, metadata);
+    let field = TypedField::from_parts("id", Int32, false, metadata);
 
     let renamed = field.copy(Some("key".to_string()), None, None, None);
     assert_eq!(renamed.name(), "key");
@@ -19,7 +19,7 @@ fn copy_overrides_only_the_given_parts() {
 
 #[test]
 fn with_and_without_delegate_to_copy() {
-    let field = Field::from_parts("id", Int32, false, Default::default());
+    let field = TypedField::from_parts("id", Int32, false, Default::default());
 
     assert_eq!(field.with_name("key").name(), "key");
     assert_eq!(field.with_data_type(Int32), field);
@@ -38,18 +38,19 @@ fn with_and_without_delegate_to_copy() {
 #[test]
 fn display_renders_name_type_and_nullability() {
     assert_eq!(
-        Field::from_parts("id", Int32, false, Default::default()).to_string(),
+        TypedField::from_parts("id", Int32, false, Default::default()).to_string(),
         "id: int32"
     );
     assert_eq!(
-        Field::from_parts("name", Utf8, true, Default::default()).to_string(),
+        TypedField::from_parts("name", Utf8, true, Default::default()).to_string(),
         "name: utf8?"
     );
 }
 
 #[test]
 fn field_ref_is_the_shared_handle() {
-    let field: FieldRef<Int32> = Field::from_parts("id", Int32, false, Default::default()).into();
+    let field: TypedFieldRef<Int32> =
+        TypedField::from_parts("id", Int32, false, Default::default()).into();
     let shared = field.clone();
     assert_eq!(*shared, *field);
 }

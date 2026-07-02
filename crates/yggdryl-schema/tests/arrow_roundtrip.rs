@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl_schema::{
-    Binary, Boolean, DataType, DataTypeError, Date32, Date64, Decimal128, Decimal256, Duration,
-    Field, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
-    LargeUtf8, List, Time32, Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
+    AnyDataType, Binary, Boolean, DataType, DataTypeError, Date32, Date64, Decimal128, Decimal256,
+    Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary,
+    LargeList, LargeUtf8, List, Map, Struct, Time32, Time64, TimeUnit, Timestamp, TypedField,
+    UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
 const TIME_UNITS: [TimeUnit; 4] = [
@@ -186,7 +187,12 @@ fn durations_roundtrip_over_units() {
 
 #[test]
 fn lists_roundtrip_including_nesting() {
-    let item = Arc::new(Field::from_parts("item", Int32, true, Default::default()));
+    let item = Arc::new(TypedField::from_parts(
+        "item",
+        Int32,
+        true,
+        Default::default(),
+    ));
     assert_roundtrip(
         List::from_parts(item.clone()),
         ArrowDataType::List(Arc::new(item.to_arrow())),
@@ -197,7 +203,7 @@ fn lists_roundtrip_including_nesting() {
     );
 
     let inner = List::from_parts(item);
-    let outer = List::from_parts(Arc::new(Field::from_parts(
+    let outer = List::from_parts(Arc::new(TypedField::from_parts(
         "rows",
         inner,
         false,
@@ -215,10 +221,140 @@ fn fields_roundtrip_with_metadata() {
     let metadata = [("origin".to_string(), "sensor-7".to_string())]
         .into_iter()
         .collect();
-    let field = Field::from_parts("reading", Float64, true, metadata);
+    let field = TypedField::from_parts("reading", Float64, true, metadata);
     let arrow = field.to_arrow();
     assert_eq!(arrow.name(), "reading");
     assert!(arrow.is_nullable());
     assert_eq!(arrow.metadata().get("origin").unwrap(), "sensor-7");
-    assert_eq!(Field::from_arrow(&arrow), Ok(field));
+    assert_eq!(TypedField::from_arrow(&arrow), Ok(field));
+}
+
+fn person() -> Struct {
+    Struct::from_parts(vec![
+        Arc::new(TypedField::from_parts(
+            "id",
+            Int32.into(),
+            false,
+            Default::default(),
+        )),
+        Arc::new(TypedField::from_parts(
+            "name",
+            Utf8.into(),
+            true,
+            Default::default(),
+        )),
+    ])
+}
+
+#[test]
+fn structs_roundtrip_including_empty_and_nested() {
+    let person = person();
+    assert_eq!(Struct::from_arrow(&person.to_arrow()), Ok(person.clone()));
+    assert_eq!(
+        Struct::from_arrow(&Struct::from_parts(vec![]).to_arrow()),
+        Ok(Struct::from_parts(vec![]))
+    );
+
+    // A struct of a struct round-trips too.
+    let nested = Struct::from_parts(vec![Arc::new(TypedField::from_parts(
+        "person",
+        person.into(),
+        true,
+        Default::default(),
+    ))]);
+    assert_eq!(Struct::from_arrow(&nested.to_arrow()), Ok(nested));
+    assert!(Struct::from_arrow(&ArrowDataType::Int32).is_err());
+}
+
+#[test]
+fn maps_roundtrip_and_validate_entries() {
+    let entries = Arc::new(TypedField::from_parts(
+        "entries",
+        person(),
+        false,
+        Default::default(),
+    ));
+    for sorted in [false, true] {
+        let map = Map::from_parts(entries.clone(), sorted).unwrap();
+        assert_eq!(Map::from_arrow(&map.to_arrow()), Ok(map));
+    }
+
+    // A nullable key or a wrong field count is rejected, from Arrow too.
+    let nullable_key = Struct::from_parts(vec![
+        Arc::new(TypedField::from_parts(
+            "key",
+            Utf8.into(),
+            true,
+            Default::default(),
+        )),
+        Arc::new(TypedField::from_parts(
+            "value",
+            Int32.into(),
+            true,
+            Default::default(),
+        )),
+    ]);
+    let nullable_key = Arc::new(TypedField::from_parts(
+        "entries",
+        nullable_key,
+        false,
+        Default::default(),
+    ));
+    assert!(matches!(
+        Map::from_parts(nullable_key, false),
+        Err(DataTypeError::InvalidMapEntries { .. })
+    ));
+    let one_field = Struct::from_parts(vec![Arc::new(TypedField::from_parts(
+        "key",
+        Utf8.into(),
+        false,
+        Default::default(),
+    ))]);
+    let one_field = Arc::new(TypedField::from_parts(
+        "entries",
+        one_field,
+        false,
+        Default::default(),
+    ));
+    assert!(Map::from_parts(one_field, false).is_err());
+}
+
+#[test]
+fn any_data_type_roundtrips_every_constructor() {
+    let item = Arc::new(TypedField::from_parts(
+        "item",
+        AnyDataType::from(Int32),
+        true,
+        Default::default(),
+    ));
+    let entries = Arc::new(TypedField::from_parts(
+        "entries",
+        person(),
+        false,
+        Default::default(),
+    ));
+    let values: Vec<AnyDataType> = vec![
+        Boolean.into(),
+        Int8.into(),
+        UInt64.into(),
+        Float64.into(),
+        Decimal128::from_parts(38, 2).unwrap().into(),
+        Utf8.into(),
+        FixedSizeBinary::from_parts(16).unwrap().into(),
+        Date32.into(),
+        Timestamp::from_parts(TimeUnit::Nanosecond, Some("UTC".into())).into(),
+        List::from_parts(item.clone()).into(),
+        LargeList::from_parts(item).into(),
+        person().into(),
+        Map::from_parts(entries, true).unwrap().into(),
+    ];
+    for value in values {
+        assert_eq!(AnyDataType::from_arrow(&value.to_arrow()), Ok(value));
+    }
+
+    // Unsupported Arrow types are rejected with a typed error.
+    assert!(matches!(
+        AnyDataType::from_arrow(&ArrowDataType::Float16),
+        Err(DataTypeError::ArrowTypeMismatch { .. })
+    ));
 }

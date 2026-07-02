@@ -63,7 +63,9 @@ impl Time32 {
 }
 
 impl DataType for Time32 {
-    const TYPE_ID: DataTypeId = DataTypeId::Time32;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::Time32
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Time32(self.unit.to_arrow())

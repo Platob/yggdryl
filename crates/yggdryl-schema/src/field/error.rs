@@ -9,11 +9,11 @@ use crate::DataTypeError;
 /// Why a field could not be converted.
 ///
 /// ```
-/// use yggdryl_schema::{Field, FieldError, Int8};
+/// use yggdryl_schema::{Field, FieldError, Int8, TypedField};
 ///
 /// let arrow = arrow_schema::Field::new("id", arrow_schema::DataType::Utf8, false);
 /// assert!(matches!(
-///     Field::<Int8>::from_arrow(&arrow),
+///     TypedField::<Int8>::from_arrow(&arrow),
 ///     Err(FieldError::DataType(_))
 /// ));
 /// ```

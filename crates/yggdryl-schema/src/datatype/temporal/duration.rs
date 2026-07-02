@@ -45,7 +45,9 @@ impl Duration {
 }
 
 impl DataType for Duration {
-    const TYPE_ID: DataTypeId = DataTypeId::Duration;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::Duration
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Duration(self.unit.to_arrow())

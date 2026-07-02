@@ -15,19 +15,26 @@
 //!   ([`Int32`], [`Float64`], [`Decimal128`], …);
 //! - [`LogicalType`] — types carrying semantics over a physical anchor
 //!   ([`Date32`] over [`Int32`], [`Timestamp`] over [`Int64`], …);
-//! - [`NestedType`] — types containing child fields ([`List`], [`LargeList`]).
+//! - [`NestedType`] — types containing child fields ([`List`], [`Struct`],
+//!   [`Map`], …).
 //!
 //! Types are grouped one module per category (`integer`, `float`, `decimal`,
-//! `string`, `binary`, `temporal`, `list`), one file per type, and re-exported
-//! flat at the crate root. The trait is deliberately not object safe; the
-//! object-safe erasure arrives with the `Datum` layer above this crate.
+//! `string`, `binary`, `temporal`, `list`, …), one file per type, and
+//! re-exported flat at the crate root. Heterogeneous collections hold the
+//! erased [`AnyDataType`], which implements [`DataType`] by delegating to the
+//! wrapped concrete type.
+//!
+//! Fields follow the same shape: the abstract [`Field`] base defines the
+//! surface (a name, a data type, nullability, metadata, plus the provided
+//! Arrow and byte conversions) and the generic [`TypedField`] is the
+//! implementation covering every data type.
 //!
 //! ```
-//! use yggdryl_schema::{DataType, Field, Int32};
+//! use yggdryl_schema::{DataType, Field, Int32, TypedField};
 //!
-//! let field = Field::from_parts("id", Int32, false, Default::default());
+//! let field = TypedField::from_parts("id", Int32, false, Default::default());
 //! let arrow = field.to_arrow();
-//! assert_eq!(Field::from_arrow(&arrow), Ok(field));
+//! assert_eq!(TypedField::from_arrow(&arrow), Ok(field));
 //! ```
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
@@ -46,9 +53,9 @@ mod datatype;
 mod field;
 
 pub use datatype::{
-    Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128, Decimal256,
-    Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
-    LargeUtf8, List, LogicalType, NestedType, PrimitiveType, Time32, Time64, TimeUnit, Timestamp,
-    UInt16, UInt32, UInt64, UInt8, Utf8,
+    AnyDataType, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128,
+    Decimal256, Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
+    LargeBinary, LargeList, LargeUtf8, List, LogicalType, Map, NestedType, PrimitiveType, Struct,
+    Time32, Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
 };
-pub use field::{Field, FieldError, FieldRef};
+pub use field::{Field, FieldError, TypedField, TypedFieldRef};

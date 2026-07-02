@@ -24,6 +24,8 @@ sources with zero-copy containers and lazy computation, at Rust performance.
 
 - `crates/yggdryl-core` — the Rust core foundations.
 - `crates/yggdryl-schema` — the Arrow-centralized schema layer (typed data types and fields).
+- `crates/yggdryl-scalar` — the scalar container (one typed value over an Arrow-layout buffer).
+- `crates/yggdryl-array` — the array container (typed columns with validity bitmaps, zero-copy).
 - `bindings/python` — the Python extension (PyO3 / maturin).
 - `bindings/node` — the Node.js extension (napi-rs).
 

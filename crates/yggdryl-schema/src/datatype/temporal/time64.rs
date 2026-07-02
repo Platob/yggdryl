@@ -63,7 +63,9 @@ impl Time64 {
 }
 
 impl DataType for Time64 {
-    const TYPE_ID: DataTypeId = DataTypeId::Time64;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::Time64
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Time64(self.unit.to_arrow())

@@ -67,7 +67,9 @@ impl Timestamp {
 }
 
 impl DataType for Timestamp {
-    const TYPE_ID: DataTypeId = DataTypeId::Timestamp;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::Timestamp
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Timestamp(self.unit.to_arrow(), self.timezone.clone())

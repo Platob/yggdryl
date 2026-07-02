@@ -17,8 +17,8 @@ use crate::{DataTypeError, DataTypeId};
 /// conversion and validates fully, and `to_arrow` always round-trips back.
 ///
 /// The trait is deliberately not object safe (`from_arrow` and `from_bytes`
-/// are constructors); the object-safe erasure arrives with the `Datum` layer
-/// above this crate.
+/// are constructors); heterogeneous collections hold the erased
+/// [`AnyDataType`](crate::AnyDataType) instead.
 ///
 /// ```
 /// use yggdryl_schema::{DataType, DataTypeError, Int8};
@@ -35,14 +35,10 @@ use crate::{DataTypeError, DataTypeId};
 /// [`LogicalType`]: crate::LogicalType
 /// [`NestedType`]: crate::NestedType
 pub trait DataType: Clone + Debug + Display + Eq + Hash + Send + Sync + Sized + 'static {
-    /// The identifier of this type's constructor, shared by every
-    /// parameterization.
-    const TYPE_ID: DataTypeId;
-
-    /// The identifier of this value's type constructor.
-    fn type_id(&self) -> DataTypeId {
-        Self::TYPE_ID
-    }
+    /// The identifier of this value's type constructor, shared by every
+    /// parameterization (a method rather than a constant so erased types like
+    /// [`AnyDataType`](crate::AnyDataType) can implement it per value).
+    fn type_id(&self) -> DataTypeId;
 
     /// The Arrow data type this type maps to.
     fn to_arrow(&self) -> ArrowDataType;

@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use yggdryl_schema::{
-    Boolean, DataType, DataTypeError, Decimal128, Decimal256, Duration, Field, FieldError,
-    FixedSizeBinary, Float64, Int32, List, Time32, Time64, TimeUnit, Timestamp, Utf8,
+    AnyDataType, Boolean, DataType, DataTypeError, Decimal128, Decimal256, Duration, Field,
+    FieldError, FixedSizeBinary, Float64, Int32, List, Map, Struct, Time32, Time64, TimeUnit,
+    Timestamp, TypedField, Utf8,
 };
 
 fn assert_roundtrip<T: DataType>(value: T) {
@@ -98,48 +99,105 @@ fn fields_roundtrip_with_every_part() {
     ]
     .into_iter()
     .collect();
-    let field = Field::from_parts("reading", Float64, true, metadata);
-    assert_eq!(Field::from_bytes(&field.to_bytes()), Ok(field));
+    let field = TypedField::from_parts("reading", Float64, true, metadata);
+    assert_eq!(TypedField::from_bytes(&field.to_bytes()), Ok(field));
 
-    let empty_name = Field::from_parts("", Int32, false, Default::default());
-    assert_eq!(Field::from_bytes(&empty_name.to_bytes()), Ok(empty_name));
+    let empty_name = TypedField::from_parts("", Int32, false, Default::default());
+    assert_eq!(
+        TypedField::from_bytes(&empty_name.to_bytes()),
+        Ok(empty_name)
+    );
 }
 
 #[test]
 fn field_decoding_validates_payloads() {
-    let field = Field::from_parts("id", Int32, false, Default::default());
+    let field = TypedField::from_parts("id", Int32, false, Default::default());
     let encoded = field.to_bytes();
 
     assert!(matches!(
-        Field::<Int32>::from_bytes(&[]),
+        TypedField::<Int32>::from_bytes(&[]),
         Err(FieldError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        Field::<Int32>::from_bytes(&encoded[..encoded.len() - 1]),
+        TypedField::<Int32>::from_bytes(&encoded[..encoded.len() - 1]),
         Err(FieldError::InvalidBytes { .. })
     ));
     let mut trailing = encoded.clone();
     trailing.push(0);
     assert!(matches!(
-        Field::<Int32>::from_bytes(&trailing),
+        TypedField::<Int32>::from_bytes(&trailing),
         Err(FieldError::InvalidBytes { .. })
     ));
     let mut bad_flag = encoded;
     bad_flag[0] = 2;
     assert!(matches!(
-        Field::<Int32>::from_bytes(&bad_flag),
+        TypedField::<Int32>::from_bytes(&bad_flag),
         Err(FieldError::InvalidBytes { .. })
     ));
 }
 
 #[test]
 fn nested_lists_roundtrip_through_bytes() {
-    let item = Arc::new(Field::from_parts("item", Int32, true, Default::default()));
-    let outer = List::from_parts(Arc::new(Field::from_parts(
+    let item = Arc::new(TypedField::from_parts(
+        "item",
+        Int32,
+        true,
+        Default::default(),
+    ));
+    let outer = List::from_parts(Arc::new(TypedField::from_parts(
         "rows",
         List::from_parts(item),
         false,
         Default::default(),
     )));
     assert_eq!(List::from_bytes(&outer.to_bytes()), Ok(outer));
+}
+
+#[test]
+fn structs_maps_and_erased_types_roundtrip_through_bytes() {
+    let person = Struct::from_parts(vec![
+        Arc::new(TypedField::from_parts(
+            "id",
+            Int32.into(),
+            false,
+            Default::default(),
+        )),
+        Arc::new(TypedField::from_parts(
+            "name",
+            Utf8.into(),
+            true,
+            Default::default(),
+        )),
+    ]);
+    assert_roundtrip(person.clone());
+    assert_roundtrip(Struct::from_parts(vec![]));
+
+    let entries = Arc::new(TypedField::from_parts(
+        "entries",
+        person.clone(),
+        false,
+        Default::default(),
+    ));
+    let map = Map::from_parts(entries, true).unwrap();
+    assert_roundtrip(map.clone());
+    // The sorted flag is validated on decode.
+    let mut corrupted = map.to_bytes();
+    corrupted[0] = 9;
+    assert!(matches!(
+        Map::from_bytes(&corrupted),
+        Err(DataTypeError::InvalidBytes { .. })
+    ));
+
+    // The erased encoding is the concrete payload behind the type id tag.
+    let any = AnyDataType::from(map);
+    assert_eq!(any.to_bytes()[0], any.type_id().to_u8());
+    assert_roundtrip(any);
+    assert_roundtrip(AnyDataType::from(Timestamp::from_parts(
+        TimeUnit::Millisecond,
+        Some("UTC".into()),
+    )));
+    assert!(matches!(
+        AnyDataType::from_bytes(&[200]),
+        Err(DataTypeError::UnknownTypeId { .. })
+    ));
 }

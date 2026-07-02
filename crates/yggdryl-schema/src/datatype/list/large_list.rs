@@ -5,50 +5,52 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataType, DataTypeError, DataTypeId, Field, FieldRef, NestedType};
+use crate::{DataType, DataTypeError, DataTypeId, Field, NestedType, TypedField, TypedFieldRef};
 
 /// A variable-size list of `T` values with 64-bit offsets, mapping to Arrow
 /// `LargeList` over the child field.
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl_schema::{DataType, Field, LargeList, Utf8};
+/// use yggdryl_schema::{DataType, Field, LargeList, TypedField, Utf8};
 ///
-/// let item = Arc::new(Field::from_parts("item", Utf8, true, Default::default()));
+/// let item = Arc::new(TypedField::from_parts("item", Utf8, true, Default::default()));
 /// let list = LargeList::from_parts(item);
 /// assert_eq!(LargeList::from_arrow(&list.to_arrow()), Ok(list.clone()));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LargeList<T: DataType> {
-    child: FieldRef<T>,
+    child: TypedFieldRef<T>,
 }
 
 impl<T: DataType> LargeList<T> {
     /// Builds the list type from its child field.
-    pub fn from_parts(child: FieldRef<T>) -> Self {
+    pub fn from_parts(child: TypedFieldRef<T>) -> Self {
         Self { child }
     }
 
     /// The child field describing the list's values.
-    pub fn child(&self) -> &FieldRef<T> {
+    pub fn child(&self) -> &TypedFieldRef<T> {
         &self.child
     }
 
     /// Returns a copy with any of the parts overridden; omitted parts come
     /// from `self`.
-    pub fn copy(&self, child: Option<FieldRef<T>>) -> Self {
+    pub fn copy(&self, child: Option<TypedFieldRef<T>>) -> Self {
         Self::from_parts(child.unwrap_or_else(|| self.child.clone()))
     }
 
     /// Returns a copy with the child field replaced.
-    pub fn with_child(&self, child: FieldRef<T>) -> Self {
+    pub fn with_child(&self, child: TypedFieldRef<T>) -> Self {
         self.copy(Some(child))
     }
 }
 
 impl<T: DataType> DataType for LargeList<T> {
-    const TYPE_ID: DataTypeId = DataTypeId::LargeList;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::LargeList
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::LargeList(Arc::new(self.child.to_arrow()))
@@ -57,7 +59,7 @@ impl<T: DataType> DataType for LargeList<T> {
     fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError> {
         match data_type {
             ArrowDataType::LargeList(child) => {
-                Ok(Self::from_parts(Arc::new(Field::from_arrow(child)?)))
+                Ok(Self::from_parts(Arc::new(TypedField::from_arrow(child)?)))
             }
             other => Err(DataTypeError::ArrowTypeMismatch {
                 expected: "large_list",
@@ -71,7 +73,7 @@ impl<T: DataType> DataType for LargeList<T> {
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        Ok(Self::from_parts(Arc::new(Field::from_bytes(bytes)?)))
+        Ok(Self::from_parts(Arc::new(TypedField::from_bytes(bytes)?)))
     }
 }
 

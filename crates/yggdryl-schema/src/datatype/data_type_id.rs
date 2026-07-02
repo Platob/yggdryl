@@ -6,7 +6,7 @@ use crate::DataTypeError;
 
 /// The largest identifier currently assigned; update when appending a
 /// variant.
-const MAX_TYPE_ID: u8 = DataTypeId::LargeList as u8;
+const MAX_TYPE_ID: u8 = DataTypeId::Map as u8;
 
 /// The integer identifier of a [`DataType`](crate::DataType) constructor,
 /// shared by every parameterization of that constructor (every
@@ -80,6 +80,10 @@ pub enum DataTypeId {
     List = 24,
     /// [`LargeList`](crate::LargeList).
     LargeList = 25,
+    /// [`Struct`](crate::Struct).
+    Struct = 26,
+    /// [`Map`](crate::Map).
+    Map = 27,
 }
 
 impl DataTypeId {
@@ -128,6 +132,8 @@ impl DataTypeId {
             23 => Ok(Self::Duration),
             24 => Ok(Self::List),
             25 => Ok(Self::LargeList),
+            26 => Ok(Self::Struct),
+            27 => Ok(Self::Map),
             _ => Err(DataTypeError::UnknownTypeId {
                 id,
                 max: MAX_TYPE_ID,
@@ -182,6 +188,8 @@ impl fmt::Display for DataTypeId {
             Self::Duration => "duration",
             Self::List => "list",
             Self::LargeList => "large_list",
+            Self::Struct => "struct",
+            Self::Map => "map",
         })
     }
 }

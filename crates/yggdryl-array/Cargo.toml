@@ -1,0 +1,33 @@
+[package]
+name = "yggdryl-array"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "The yggdryl array container: typed columns over Arrow-layout buffers and validity bitmaps, zero-copy"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_array"
+path = "src/lib.rs"
+
+[dependencies]
+yggdryl-schema = { workspace = true }
+yggdryl-scalar = { workspace = true }
+arrow-buffer = { workspace = true }
+# Both off by default, mirroring the sibling crates:
+#   log    structured logging via the `log` facade (the `log_event!` macro);
+#   serde  content-based `Serialize` / `Deserialize` for the value types.
+log = { version = "0.4", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# Round-trip the `serde` impls through a concrete format in the tests.
+serde_json = { version = "1" }
+
+[features]
+log = ["dep:log"]
+serde = ["dep:serde", "yggdryl-schema/serde", "yggdryl-scalar/serde"]

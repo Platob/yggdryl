@@ -84,7 +84,9 @@ impl Decimal128 {
 }
 
 impl DataType for Decimal128 {
-    const TYPE_ID: DataTypeId = DataTypeId::Decimal128;
+    fn type_id(&self) -> DataTypeId {
+        DataTypeId::Decimal128
+    }
 
     fn to_arrow(&self) -> ArrowDataType {
         ArrowDataType::Decimal128(self.precision, self.scale)

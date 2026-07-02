@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/yggdryl-core",
     "crates/yggdryl-schema",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-array",
     "bindings/python",
     "bindings/node",
 ]
@@ -12,6 +14,8 @@ members = [
 default-members = [
     "crates/yggdryl-core",
     "crates/yggdryl-schema",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-array",
 ]
 
 [workspace.package]
@@ -27,6 +31,7 @@ keywords = ["arrow", "dataframe", "zero-copy", "ffi", "yggdryl"]
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
 yggdryl-schema = { path = "crates/yggdryl-schema", version = "0.1.1", default-features = false }
+yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.1", default-features = false }
 # Arrow subset crates only — never the `arrow` umbrella. `arrow-schema` is the
 # interop vocabulary every `to_arrow` / `from_arrow` targets; `arrow-buffer`
 # supplies `i256`, the native value type behind `Decimal256`.
