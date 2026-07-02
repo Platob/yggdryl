@@ -6,7 +6,7 @@ use core::str;
 use yggdryl_schema::{
     Binary, Boolean, DataType, Date32, Date64, Decimal128, Decimal256, Duration, FixedSizeBinary,
     Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeUtf8, PrimitiveType, Time32,
-    Time64, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
+    Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
 use crate::ScalarError;
@@ -47,7 +47,7 @@ macro_rules! fixed_width_scalar_type {
                     });
                 }
                 let align = align_of::<<$name as PrimitiveType>::Native>();
-                if bytes.as_ptr() as usize % align != 0 {
+                if !(bytes.as_ptr() as usize).is_multiple_of(align) {
                     return Err(ScalarError::MisalignedBuffer { align });
                 }
                 Ok(())
@@ -58,8 +58,28 @@ macro_rules! fixed_width_scalar_type {
 
 fixed_width_scalar_type!(
     Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64, Decimal128,
-    Decimal256, Date32, Date64, Time32, Time64, Timestamp, Duration,
+    Decimal256, Date32, Date64, Time32, Time64, Duration,
 );
+
+// `Timestamp` is generic over its unit, so its fixed-width layout contract is
+// written out once rather than coming from the macro; every unit shares the
+// same 64-bit native.
+impl<U: TimeUnit> ScalarType for Timestamp<U> {
+    fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
+        let expected = size_of::<<Self as PrimitiveType>::Native>();
+        if bytes.len() != expected {
+            return Err(ScalarError::InvalidByteLength {
+                expected,
+                actual: bytes.len(),
+            });
+        }
+        let align = align_of::<<Self as PrimitiveType>::Native>();
+        if !(bytes.as_ptr() as usize).is_multiple_of(align) {
+            return Err(ScalarError::MisalignedBuffer { align });
+        }
+        Ok(())
+    }
+}
 
 impl ScalarType for Boolean {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {

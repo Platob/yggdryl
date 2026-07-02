@@ -1,13 +1,15 @@
 //! The erased data type covering every supported constructor.
 
 use core::fmt;
+use std::collections::BTreeMap;
 
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128, Decimal256,
-    Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList,
-    LargeUtf8, List, Map, Struct, Time32, Time64, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
+    metadata, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64,
+    Decimal128, Decimal256, Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
+    LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time32, Time64, TimeUnit, Timestamp,
+    UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
 /// Delegates an expression to the concrete type inside every variant.
@@ -122,8 +124,8 @@ pub enum AnyDataType {
     Time32(Time32),
     /// [`Time64`].
     Time64(Time64),
-    /// [`Timestamp`].
-    Timestamp(Timestamp),
+    /// [`Timestamp`] over an erased unit.
+    Timestamp(Timestamp<AnyTimeUnit>),
     /// [`Duration`].
     Duration(Duration),
     /// [`List`] over an erased child.
@@ -143,6 +145,10 @@ impl DataType for AnyDataType {
 
     fn to_arrow(&self) -> ArrowDataType {
         delegate!(self, inner => inner.to_arrow())
+    }
+
+    fn arrow_metadata(&self) -> BTreeMap<String, String> {
+        delegate!(self, inner => inner.arrow_metadata())
     }
 
     fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError> {
@@ -185,6 +191,31 @@ impl DataType for AnyDataType {
                 expected: "a supported data type",
                 actual: other.clone(),
             }),
+        }
+    }
+
+    fn from_arrow_parts(
+        data_type: &ArrowDataType,
+        metadata_map: &BTreeMap<String, String>,
+    ) -> Result<Self, DataTypeError> {
+        match metadata_map.get(metadata::TYPE).map(String::as_str) {
+            // The `ygg.type` marker names the anchored type to restore.
+            Some("timestamp") => {
+                Timestamp::from_arrow_parts(data_type, metadata_map).map(Self::Timestamp)
+            }
+            Some(other) => Err(DataTypeError::InvalidMetadata {
+                key: metadata::TYPE,
+                value: other.to_owned(),
+            }),
+            None => {
+                if let Some(key) = metadata_map
+                    .keys()
+                    .find(|key| key.starts_with(metadata::PREFIX))
+                {
+                    return Err(DataTypeError::UnknownMetadata { key: key.clone() });
+                }
+                Self::from_arrow(data_type)
+            }
         }
     }
 
@@ -242,6 +273,17 @@ impl fmt::Display for AnyDataType {
     }
 }
 
+// `Timestamp` is generic over its unit, so its conversion erases the unit
+// into [`AnyTimeUnit`] instead of coming from the macro.
+impl<U: TimeUnit> From<Timestamp<U>> for AnyDataType {
+    fn from(timestamp: Timestamp<U>) -> Self {
+        Self::Timestamp(Timestamp::from_parts(
+            AnyTimeUnit::from(timestamp.unit().unit_id()),
+            timestamp.timezone().map(Into::into),
+        ))
+    }
+}
+
 from_impls!(
     Boolean: Boolean,
     Int8: Int8,
@@ -265,7 +307,6 @@ from_impls!(
     Date64: Date64,
     Time32: Time32,
     Time64: Time64,
-    Timestamp: Timestamp,
     Duration: Duration,
     List: List<AnyDataType>,
     LargeList: LargeList<AnyDataType>,

@@ -93,34 +93,46 @@ pub trait Field: Clone + Debug + Display + Eq + Hash + Send + Sync + Sized + 'st
         self.copy(None, None, None, Some(BTreeMap::new()))
     }
 
-    /// The Arrow field this field maps to.
+    /// The Arrow field this field maps to. The data type's
+    /// [`arrow_metadata`](crate::DataType::arrow_metadata) is merged in — the
+    /// `ygg.*` prefix is reserved for it, so user metadata under that prefix
+    /// is overwritten.
     fn to_arrow(&self) -> ArrowField {
         crate::log_event!(trace, "Field::to_arrow name={}", self.name());
+        let mut metadata: std::collections::HashMap<String, String> = self
+            .metadata()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        metadata.extend(self.data_type().arrow_metadata());
         ArrowField::new(
             self.name().to_owned(),
             self.data_type().to_arrow(),
             self.nullable(),
         )
-        .with_metadata(
-            self.metadata()
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone()))
-                .collect(),
-        )
+        .with_metadata(metadata)
     }
 
     /// Validates and converts an Arrow field back into this type — the only
-    /// inbound conversion.
+    /// inbound conversion. The field metadata is handed to
+    /// [`from_arrow_parts`](crate::DataType::from_arrow_parts) so anchored
+    /// types restore themselves; the consumed `ygg.*` keys stay out of the
+    /// field's own metadata.
     fn from_arrow(field: &ArrowField) -> Result<Self, FieldError> {
         crate::log_event!(trace, "Field::from_arrow name={}", field.name());
+        let metadata: BTreeMap<String, String> = field
+            .metadata()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        let data_type = Self::DataType::from_arrow_parts(field.data_type(), &metadata)?;
         Ok(Self::from_parts(
             field.name().to_owned(),
-            Self::DataType::from_arrow(field.data_type())?,
+            data_type,
             field.is_nullable(),
-            field
-                .metadata()
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone()))
+            metadata
+                .into_iter()
+                .filter(|(key, _)| !key.starts_with(crate::metadata::PREFIX))
                 .collect(),
         ))
     }

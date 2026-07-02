@@ -36,4 +36,7 @@ pub use nested_type::NestedType;
 pub use primitive_type::PrimitiveType;
 pub use string::{LargeUtf8, Utf8};
 pub use structure::Struct;
-pub use temporal::{Date32, Date64, Duration, Time32, Time64, TimeUnit, Timestamp};
+pub use temporal::{
+    AnyTimeUnit, Date32, Date64, Day, Duration, Hour, Microsecond, Millisecond, Minute, Month,
+    Nanosecond, Quarter, Second, Time32, Time64, TimeUnit, TimeUnitId, Timestamp, Week, Year,
+};

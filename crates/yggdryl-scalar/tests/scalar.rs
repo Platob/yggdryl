@@ -3,8 +3,8 @@
 use arrow_buffer::Buffer;
 use yggdryl_scalar::{Scalar, ScalarError};
 use yggdryl_schema::{
-    Binary, Boolean, Decimal128, FixedSizeBinary, Float64, Int32, LargeUtf8, TimeUnit, Timestamp,
-    Utf8,
+    Binary, Boolean, Decimal128, FixedSizeBinary, Float64, Int32, LargeUtf8, Millisecond,
+    Timestamp, Utf8,
 };
 
 #[test]
@@ -15,7 +15,7 @@ fn native_scalars_roundtrip_their_value() {
         Scalar::from_native(Decimal128::from_parts(38, 2).unwrap(), 123i128).as_native(),
         Some(123),
     );
-    let timestamp = Timestamp::from_parts(TimeUnit::Millisecond, Some("UTC".into()));
+    let timestamp = Timestamp::from_parts(Millisecond, Some("UTC".into()));
     assert_eq!(
         Scalar::from_native(timestamp, 1_700_000_000_000i64).as_native(),
         Some(1_700_000_000_000),

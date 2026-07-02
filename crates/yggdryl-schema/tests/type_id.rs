@@ -6,8 +6,8 @@ use std::sync::Arc;
 use yggdryl_schema::{
     AnyDataType, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128,
     Decimal256, Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
-    LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time32, Time64, TimeUnit, Timestamp,
-    TypedField, UInt16, UInt32, UInt64, UInt8, Utf8,
+    LargeBinary, LargeList, LargeUtf8, List, Map, Millisecond, Struct, Time32, Time64, TimeUnitId,
+    Timestamp, TypedField, UInt16, UInt32, UInt64, UInt8, Utf8,
 };
 
 #[test]
@@ -50,19 +50,21 @@ fn parameterized_types_share_their_constructor_id() {
         DataTypeId::FixedSizeBinary
     );
     assert_eq!(
-        Time32::from_parts(TimeUnit::Second).unwrap().type_id(),
+        Time32::from_parts(TimeUnitId::Second).unwrap().type_id(),
         DataTypeId::Time32
     );
     assert_eq!(
-        Time64::from_parts(TimeUnit::Nanosecond).unwrap().type_id(),
+        Time64::from_parts(TimeUnitId::Nanosecond)
+            .unwrap()
+            .type_id(),
         DataTypeId::Time64
     );
     assert_eq!(
-        Timestamp::from_parts(TimeUnit::Millisecond, Some("UTC".into())).type_id(),
+        Timestamp::from_parts(Millisecond, Some("UTC".into())).type_id(),
         DataTypeId::Timestamp
     );
     assert_eq!(
-        Duration::from_parts(TimeUnit::Second).type_id(),
+        Duration::from_parts(TimeUnitId::Second).unwrap().type_id(),
         DataTypeId::Duration
     );
 

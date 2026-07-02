@@ -11,6 +11,12 @@ The Arrow-centralized schema layer of **yggdryl**: typed data types and fields.
   a type to its native Rust value, its physical anchor, or its child fields.
 - `AnyDataType` — the erased data type: one variant per constructor, so
   heterogeneous collections (struct fields, map entries) hold any type.
+- `TimeUnit` — the abstract base for type-level time units, implemented by one
+  unit struct per resolution (`Nanosecond` through `Year`) plus the erased
+  `AnyTimeUnit`; `TimeUnitId` is the value-level identifier. `Timestamp<U>`
+  exists for every unit — Arrow's four native units map directly, the coarser
+  ones anchor on `Int64` plus the `ygg.*` field metadata (see the `metadata`
+  module, the single source of truth for those keys).
 - One module per type category (`integer`, `float`, `decimal`, `string`,
   `binary`, `temporal`, `list`, plus `Struct` and `Map`), one file per type.
 - `Field` — the abstract base for schema fields (name, data type, nullability,

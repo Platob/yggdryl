@@ -2,10 +2,11 @@
 
 use core::fmt::{Debug, Display};
 use core::hash::Hash;
+use std::collections::BTreeMap;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::{DataTypeError, DataTypeId};
+use crate::{metadata, DataTypeError, DataTypeId};
 
 /// A yggdryl data type: the typed description of a value's physical layout
 /// and semantics.
@@ -43,9 +44,37 @@ pub trait DataType: Clone + Debug + Display + Eq + Hash + Send + Sync + Sized + 
     /// The Arrow data type this type maps to.
     fn to_arrow(&self) -> ArrowDataType;
 
+    /// The `ygg.*` field metadata restoring semantics Arrow's type system
+    /// cannot express (see [`metadata`]); empty when the Arrow type alone is
+    /// lossless. [`Field::to_arrow`](crate::Field::to_arrow) merges it into
+    /// the Arrow field's metadata.
+    fn arrow_metadata(&self) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+
     /// Validates and converts an Arrow data type back into this type — the
-    /// only inbound conversion.
+    /// only inbound conversion. Types that anchor on a physical type reject
+    /// the anchor here and are restored through
+    /// [`from_arrow_parts`](DataType::from_arrow_parts), which sees the
+    /// field metadata.
     fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError>;
+
+    /// Validates and converts an Arrow data type plus its field metadata.
+    /// The default rejects any unknown `ygg.*` key and delegates to
+    /// [`from_arrow`](DataType::from_arrow); anchored types override it to
+    /// consume their keys.
+    fn from_arrow_parts(
+        data_type: &ArrowDataType,
+        metadata_map: &BTreeMap<String, String>,
+    ) -> Result<Self, DataTypeError> {
+        if let Some(key) = metadata_map
+            .keys()
+            .find(|key| key.starts_with(metadata::PREFIX))
+        {
+            return Err(DataTypeError::UnknownMetadata { key: key.clone() });
+        }
+        Self::from_arrow(data_type)
+    }
 
     /// Serializes the type to its canonical byte encoding.
     fn to_bytes(&self) -> Vec<u8>;

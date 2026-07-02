@@ -51,11 +51,14 @@ pub(crate) use log_event;
 mod bytes;
 mod datatype;
 mod field;
+pub mod metadata;
 
 pub use datatype::{
-    AnyDataType, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64, Decimal128,
-    Decimal256, Duration, FixedSizeBinary, Float32, Float64, Int16, Int32, Int64, Int8,
-    LargeBinary, LargeList, LargeUtf8, List, LogicalType, Map, NestedType, PrimitiveType, Struct,
-    Time32, Time64, TimeUnit, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8,
+    AnyDataType, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, DataTypeId, Date32, Date64,
+    Day, Decimal128, Decimal256, Duration, FixedSizeBinary, Float32, Float64, Hour, Int16, Int32,
+    Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, LogicalType, Map, Microsecond,
+    Millisecond, Minute, Month, Nanosecond, NestedType, PrimitiveType, Quarter, Second, Struct,
+    Time32, Time64, TimeUnit, TimeUnitId, Timestamp, UInt16, UInt32, UInt64, UInt8, Utf8, Week,
+    Year,
 };
 pub use field::{Field, FieldError, TypedField, TypedFieldRef};

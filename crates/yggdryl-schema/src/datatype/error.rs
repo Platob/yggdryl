@@ -5,7 +5,7 @@ use std::error::Error;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::TimeUnit;
+use crate::TimeUnitId;
 
 /// Why a data type could not be constructed or converted.
 ///
@@ -44,7 +44,7 @@ pub enum DataTypeError {
         /// The rendered set of accepted units.
         expected: &'static str,
         /// The unit actually received.
-        actual: TimeUnit,
+        actual: TimeUnitId,
     },
     /// A negative fixed-size width.
     NegativeFixedSize {
@@ -63,6 +63,30 @@ pub enum DataTypeError {
         id: u8,
         /// The largest identifier currently assigned.
         max: u8,
+    },
+    /// An integer that is not an assigned time unit identifier.
+    UnknownTimeUnitId {
+        /// The rejected value.
+        id: u8,
+        /// The largest identifier currently assigned.
+        max: u8,
+    },
+    /// A `ygg.*` metadata key no type understands.
+    UnknownMetadata {
+        /// The rejected key.
+        key: String,
+    },
+    /// A `ygg.*` metadata value the key does not accept.
+    InvalidMetadata {
+        /// The key whose value was rejected.
+        key: &'static str,
+        /// The rejected value.
+        value: String,
+    },
+    /// A `ygg.*` metadata key an anchored type needs but did not receive.
+    MissingMetadata {
+        /// The missing key.
+        key: &'static str,
     },
     /// A byte payload of the wrong length for a fixed-size encoding.
     InvalidByteLength {
@@ -104,6 +128,23 @@ impl fmt::Display for DataTypeError {
             Self::UnknownTypeId { id, max } => {
                 write!(f, "unknown data type id {id}, expected 0..={max}")
             }
+            Self::UnknownTimeUnitId { id, max } => {
+                write!(f, "unknown time unit id {id}, expected 0..={max}")
+            }
+            Self::UnknownMetadata { key } => {
+                write!(
+                    f,
+                    "unknown metadata key {key} — the ygg.* prefix is reserved"
+                )
+            }
+            Self::InvalidMetadata { key, value } => {
+                write!(f, "invalid {key} metadata value \"{value}\"")
+            }
+            Self::MissingMetadata { key } => write!(
+                f,
+                "missing {key} metadata — convert through a field, which carries the \
+                 ygg.* metadata restoring this type"
+            ),
             Self::InvalidByteLength { expected, actual } => {
                 write!(f, "expected {expected} bytes, got {actual}")
             }

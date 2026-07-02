@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use serde::{de::DeserializeOwned, Serialize};
 use yggdryl_schema::{
-    AnyDataType, Boolean, Decimal128, Field, FixedSizeBinary, Int32, List, Map, Struct, Time32,
-    TimeUnit, Timestamp, TypedField, Utf8,
+    AnyDataType, Boolean, Decimal128, Field, FixedSizeBinary, Int32, List, Map, Nanosecond, Struct,
+    Time32, TimeUnitId, Timestamp, TypedField, Utf8,
 };
 
 fn assert_roundtrip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: T) {
@@ -22,11 +22,8 @@ fn schema_types_roundtrip_through_json() {
     assert_roundtrip(Int32);
     assert_roundtrip(Decimal128::from_parts(38, 10).unwrap());
     assert_roundtrip(FixedSizeBinary::from_parts(16).unwrap());
-    assert_roundtrip(Time32::from_parts(TimeUnit::Millisecond).unwrap());
-    assert_roundtrip(Timestamp::from_parts(
-        TimeUnit::Nanosecond,
-        Some("UTC".into()),
-    ));
+    assert_roundtrip(Time32::from_parts(TimeUnitId::Millisecond).unwrap());
+    assert_roundtrip(Timestamp::from_parts(Nanosecond, Some("UTC".into())));
 
     let metadata = [("k".to_string(), "v".to_string())].into_iter().collect();
     assert_roundtrip(TypedField::from_parts("id", Int32, false, metadata));
