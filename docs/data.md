@@ -4,31 +4,45 @@
     The `yggdryl-data` crate is the Apache Arrow-centralized **data-model layer**,
     built on `yggdryl-core`. It defines the physical type system — data types, fields
     and scalars — for zero-copy FFI and Arrow interop, and gains Python and Node tabs
-    when the bindings expose it. `Int64` and `Int64Scalar` are the first concrete
-    types; more land one file per type as the layer grows.
+    when the bindings expose it. The `integer` module is the first concrete family —
+    every signed and unsigned integer, each a data type, field and scalar; more
+    families land as the layer grows.
 
 The type system is three layers of traits. None carries a lifetime parameter
 (FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
 shareable across threads and FFI, and `RawDataType` is object-safe for
 `Box<dyn RawDataType>` schemas.
 
-## The first concrete type: `Int64`
+## The concrete types: the `integer` module
 
-`Int64` is a fixed-width [primitive](#categories) whose native Rust type is `i64`,
-stored little-endian in eight bytes (Arrow C Data Interface format `"l"`):
+The `integer` module holds every Apache Arrow signed and unsigned integer — `Int8` …
+`Int64`, `UInt8` … `UInt64` — one module per type, one file per concern (`data_type`,
+`field`, `scalar`). Each is a fixed-width [primitive](#categories) with a little-endian
+byte codec, a nullable field and a possibly-null scalar; they share one shape, so a
+single crate-internal macro generates each per-type file.
+
+`Int64`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C Data
+Interface format `"l"`):
 
 ```rust
-use yggdryl_data::{DataType, Int64, Int64Scalar, Primitive, RawDataType, RawScalar};
+use yggdryl_data::{
+    DataType, DataTypeId, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar,
+};
 
 fn main() {
-    // A physical type descriptor.
+    // A physical type descriptor; `ID` is the matching classifier.
     assert_eq!(Int64.name(), "int64");
     assert_eq!(Int64.arrow_format(), "l");
     assert_eq!((Int64.byte_width(), Int64.bit_width()), (Some(8), Some(64)));
+    assert_eq!(Int64::ID, DataTypeId::Int64);
 
     // DataType<i64>: the codec bridging i64 to and from Arrow bytes.
     assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
     assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+
+    // Int64Field: a named, nullable column of int64.
+    let id = Int64Field::new("id", false);
+    assert_eq!((id.name(), id.is_nullable()), ("id", false));
 
     // Int64Scalar: a single i64 value, or null.
     let scalar = Int64Scalar::new(42);
@@ -36,6 +50,9 @@ fn main() {
     assert!(Int64Scalar::null().is_null());
 }
 ```
+
+The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
+`Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
 
 ## The trait layers
 

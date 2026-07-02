@@ -4,8 +4,10 @@ The Apache Arrow-centralized **data-model layer** for yggdryl, built on
 `yggdryl-core`. It defines the physical type system — data types, fields and scalars —
 designed for zero-copy FFI and Arrow interop.
 
-The type system is three layers of traits, plus concrete types (one file per type
-under `src/datatype/`). `Int64` and `Int64Scalar` are the first concrete case.
+The type system is three layers of traits (one file per trait at the crate root),
+plus concrete types grouped into per-family modules. The [`integer`](src/integer)
+module is the first: every signed and unsigned integer, one module per type, one file
+per concern (`data_type`, `field`, `scalar`).
 
 ## Untyped base
 
@@ -44,18 +46,31 @@ How a type is shaped (each refines `RawDataType`).
 parameters). `DataTypeId::ALL` enumerates every id; each has a `name`, its parameterless
 Arrow `arrow_format` (or `None`), and `is_primitive` / `is_nested` predicates.
 
-## First concrete case
+## The integer module
+
+Every signed and unsigned integer, from `Int8` / `UInt8` to `Int64` / `UInt64`. Each
+type is a fixed-width `Primitive` with a little-endian byte codec, a nullable field and
+a possibly-null scalar; the three share one shape, so a crate-internal macro generates
+each per-type file.
 
 ```rust
-use yggdryl_data::{DataType, Int64, Int64Scalar, Primitive, RawDataType, RawScalar};
+use yggdryl_data::{DataType, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar};
 
 // Int64 is a fixed-width primitive whose native type is i64.
 assert_eq!((Int64.name(), Int64.arrow_format(), Int64.byte_width()), ("int64", "l".to_string(), Some(8)));
+assert_eq!(Int64::ID, yggdryl_data::DataTypeId::Int64);
 assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
 assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+
+// Int64Field is a named, nullable column of int64.
+let id = Int64Field::new("id", false);
+assert_eq!((id.name(), id.is_nullable()), ("id", false));
 
 // Int64Scalar is a single i64 value, or null.
 let scalar = Int64Scalar::new(42);
 assert_eq!(scalar.value(), Some(&42));
 assert!(Int64Scalar::null().is_null());
 ```
+
+The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
+`Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
