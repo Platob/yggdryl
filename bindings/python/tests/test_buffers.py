@@ -41,30 +41,34 @@ def test_out_of_bounds_read_raises_value_error():
         buf.pread_byte_array(0, core.Whence.Start, 3)
 
 
-def test_capacity_and_resize():
+def test_byte_buffer_capacity_and_resize():
     buf = core.ByteBuffer.from_bytes(b"\x01\x02\x03")
     assert buf.byte_capacity() >= 3
     assert buf.resize_byte_capacity(64) >= 64
+    assert buf.resize_bit_capacity(1024) >= 1024
     assert buf.byte_size() == 3  # capacity never changes the size
-    assert buf.bit_capacity() >= 64 * 8
 
     buf.resize_bytes(5)
     assert buf.to_bytes() == b"\x01\x02\x03\x00\x00"
     buf.resize_bytes(1)
     assert buf.to_bytes() == b"\x01"
 
-    bits = core.BitBuffer()
-    bits.resize_bits(3)  # exact bit resize
-    assert bits.bit_size() == 3
-    assert bits.byte_size() == 1
+    # ByteBuffer bit resizes round up to whole bytes.
+    buf.resize_bits(9)
+    assert buf.byte_size() == 2
+    assert buf.bit_size() == 16
 
 
-def test_stream_copy_between_buffers():
-    source = core.ByteBuffer.from_bytes(b"\x01\x02\x03\x04")
-    sink = core.ByteBuffer()
-    source.pread_io(1, core.Whence.Start, 3, sink, 0, core.Whence.Start)
-    assert sink.to_bytes() == b"\x02\x03\x04"
+def test_bit_buffer_capacity_and_exact_bit_resize():
+    buf = core.BitBuffer.from_bytes(b"\xff\xff")
+    assert buf.byte_capacity() >= 2
+    assert buf.bit_capacity() >= 16
+    assert buf.resize_byte_capacity(32) >= 32
 
-    appended = core.ByteBuffer.from_bytes(b"\x09")
-    appended.pwrite_io(0, core.Whence.End, source, 0, core.Whence.Start, 2)
-    assert appended.to_bytes() == b"\x09\x01\x02"
+    buf.resize_bytes(1)  # sets bit_size to 8
+    assert buf.bit_size() == 8
+
+    buf.resize_bits(3)  # exact — and truncation zeroes padding
+    assert buf.bit_size() == 3
+    assert buf.byte_size() == 1
+    assert buf.to_bytes() == bytes([0b1110_0000])

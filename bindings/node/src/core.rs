@@ -1,4 +1,10 @@
 //! The `yggdryl.core` namespace — thin wrappers over the `yggdryl-core` crate.
+//!
+//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. The
+//! core `pread_io` / `pwrite_io` streams are intentionally not surfaced here: they
+//! borrow two resources at once, which napi cannot borrow-check across the FFI
+//! boundary, and a JS caller composes the same effect from `preadByteArray` +
+//! `pwriteByteArray`.
 
 use napi::bindgen_prelude::{Buffer, Error, Result};
 use napi_derive::napi;
@@ -75,7 +81,7 @@ impl ByteBuffer {
         self.inner.byte_size() as u32
     }
 
-    /// The buffer's size, in bits.
+    /// The buffer's size, in bits (eight times the byte size).
     #[napi]
     pub fn bit_size(&self) -> u32 {
         self.inner.bit_size() as u32
@@ -163,7 +169,7 @@ impl ByteBuffer {
             .map_err(io_error)
     }
 
-    /// Write bytes.
+    /// Write bytes (an empty array is a no-op).
     #[napi]
     pub fn pwrite_byte_array(
         &mut self,
@@ -200,7 +206,7 @@ impl ByteBuffer {
             .map_err(io_error)
     }
 
-    /// Write bits (MSB-first).
+    /// Write bits (MSB-first; an empty array is a no-op).
     #[napi]
     pub fn pwrite_bit_array(
         &mut self,
@@ -210,52 +216,6 @@ impl ByteBuffer {
     ) -> Result<()> {
         self.inner
             .pwrite_bit_array(position as usize, whence.into(), &values)
-            .map_err(io_error)
-    }
-
-    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
-    #[napi]
-    pub fn pread_io(
-        &self,
-        position: u32,
-        whence: Whence,
-        size: u32,
-        sink: &mut ByteBuffer,
-        sink_position: u32,
-        sink_whence: Whence,
-    ) -> Result<()> {
-        self.inner
-            .pread_io(
-                position as usize,
-                whence.into(),
-                size as usize,
-                &mut sink.inner,
-                sink_position as usize,
-                sink_whence.into(),
-            )
-            .map_err(io_error)
-    }
-
-    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
-    #[napi]
-    pub fn pwrite_io(
-        &mut self,
-        position: u32,
-        whence: Whence,
-        source: &ByteBuffer,
-        source_position: u32,
-        source_whence: Whence,
-        size: u32,
-    ) -> Result<()> {
-        self.inner
-            .pwrite_io(
-                position as usize,
-                whence.into(),
-                &source.inner,
-                source_position as usize,
-                source_whence.into(),
-                size as usize,
-            )
             .map_err(io_error)
     }
 }
@@ -286,7 +246,7 @@ impl BitBuffer {
         }
     }
 
-    /// The buffer's backing bytes.
+    /// The buffer's backing bytes (trailing padding bits are always zero).
     #[napi]
     pub fn to_bytes(&self) -> Buffer {
         Buffer::from(self.inner.as_bytes().to_vec())
@@ -386,7 +346,7 @@ impl BitBuffer {
             .map_err(io_error)
     }
 
-    /// Write bytes.
+    /// Write bytes (an empty array is a no-op).
     #[napi]
     pub fn pwrite_byte_array(
         &mut self,
@@ -423,7 +383,7 @@ impl BitBuffer {
             .map_err(io_error)
     }
 
-    /// Write bits (MSB-first).
+    /// Write bits (MSB-first; an empty array is a no-op).
     #[napi]
     pub fn pwrite_bit_array(
         &mut self,
@@ -433,52 +393,6 @@ impl BitBuffer {
     ) -> Result<()> {
         self.inner
             .pwrite_bit_array(position as usize, whence.into(), &values)
-            .map_err(io_error)
-    }
-
-    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
-    #[napi]
-    pub fn pread_io(
-        &self,
-        position: u32,
-        whence: Whence,
-        size: u32,
-        sink: &mut BitBuffer,
-        sink_position: u32,
-        sink_whence: Whence,
-    ) -> Result<()> {
-        self.inner
-            .pread_io(
-                position as usize,
-                whence.into(),
-                size as usize,
-                &mut sink.inner,
-                sink_position as usize,
-                sink_whence.into(),
-            )
-            .map_err(io_error)
-    }
-
-    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
-    #[napi]
-    pub fn pwrite_io(
-        &mut self,
-        position: u32,
-        whence: Whence,
-        source: &BitBuffer,
-        source_position: u32,
-        source_whence: Whence,
-        size: u32,
-    ) -> Result<()> {
-        self.inner
-            .pwrite_io(
-                position as usize,
-                whence.into(),
-                &source.inner,
-                source_position as usize,
-                source_whence.into(),
-                size as usize,
-            )
             .map_err(io_error)
     }
 }

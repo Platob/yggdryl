@@ -79,8 +79,10 @@ between resources in chunks with `pread_io` / `pwrite_io` — a large transfer n
 materializes in full.
 
 `ByteBuffer` (byte-granular) and `BitBuffer` (exact bit length) are the concrete
-in-memory resources; both are exposed in the Python and Node bindings. Benchmarks
-live in `benches/buffers.rs` (`cargo bench`).
+in-memory resources; both are exposed in the Python and Node bindings (the
+two-resource `pread_io` / `pwrite_io` streams stay Rust-only — bindings compose the
+same effect from the byte-array methods). Benchmarks live in `benches/buffers.rs`
+(`cargo bench`).
 
 ```rust
 use yggdryl_core::{IOBase, RawIOBase, Whence};

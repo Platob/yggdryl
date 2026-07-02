@@ -159,7 +159,8 @@ pub trait RawIOBase: Seekable {
         size: usize,
     ) -> Result<Vec<u8>, IOError>;
 
-    /// Write `values` starting at `position` (in bytes) relative to `whence`.
+    /// Write `values` starting at `position` (in bytes) relative to `whence`. An
+    /// empty `values` is a no-op and never grows the resource.
     fn pwrite_byte_array(
         &mut self,
         position: usize,
@@ -204,7 +205,8 @@ pub trait RawIOBase: Seekable {
         size: usize,
     ) -> Result<Vec<bool>, IOError>;
 
-    /// Write `values` starting at `position` (in bits) relative to `whence`.
+    /// Write `values` starting at `position` (in bits) relative to `whence`. An
+    /// empty `values` is a no-op and never grows the resource.
     fn pwrite_bit_array(
         &mut self,
         position: usize,
@@ -218,7 +220,9 @@ pub trait RawIOBase: Seekable {
     ///
     /// The sink's start is resolved once through its own cursor
     /// ([`seek`](Seekable::seek), then restored), so `sink_whence` stays correct
-    /// even while the sink grows during the copy.
+    /// even while the sink grows during the copy. This assumes the sink's `seek`
+    /// accepts any target without clamping or failing (true for [`ByteBuffer`] and
+    /// [`BitBuffer`]); an implementor with a bounded `seek` must override this.
     fn pread_io(
         &self,
         position: usize,
@@ -248,7 +252,9 @@ pub trait RawIOBase: Seekable {
     ///
     /// `self`'s start is resolved once through its own cursor
     /// ([`seek`](Seekable::seek), then restored), so `whence` stays correct even
-    /// while `self` grows during the copy.
+    /// while `self` grows during the copy. This assumes `self`'s `seek` accepts any
+    /// target without clamping or failing (true for [`ByteBuffer`] and
+    /// [`BitBuffer`]); an implementor with a bounded `seek` must override this.
     fn pwrite_io(
         &mut self,
         position: usize,

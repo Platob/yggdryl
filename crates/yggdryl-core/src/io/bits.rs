@@ -65,6 +65,15 @@ pub(super) fn write_bits(data: &mut [u8], start: usize, values: &[bool]) {
     }
 }
 
+/// `base + position`, guarded against overflow; an [`IOError::OutOfBounds`] on wrap.
+/// Used to resolve a `Whence`-relative offset without silently wrapping.
+pub(super) fn offset(base: usize, position: usize) -> Result<usize, IOError> {
+    base.checked_add(position).ok_or(IOError::OutOfBounds {
+        offset: base.saturating_add(position),
+        len: base,
+    })
+}
+
 /// `start + size`, guarded against overflow and required to be `<= limit`; otherwise
 /// an [`IOError::OutOfBounds`].
 pub(super) fn checked_end(start: usize, size: usize, limit: usize) -> Result<usize, IOError> {

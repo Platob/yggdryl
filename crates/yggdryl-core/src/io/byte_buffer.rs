@@ -58,20 +58,22 @@ impl ByteBuffer {
         self.data
     }
 
-    fn byte_offset(&self, position: usize, whence: Whence) -> usize {
-        match whence {
-            Whence::Current => self.cursor + position,
-            Whence::End => self.data.len() + position,
-            _ => position,
-        }
+    fn byte_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
+        let base = match whence {
+            Whence::Current => self.cursor,
+            Whence::End => self.data.len(),
+            _ => 0,
+        };
+        bits::offset(base, position)
     }
 
-    fn bit_offset(&self, position: usize, whence: Whence) -> usize {
-        match whence {
-            Whence::Current => self.cursor * 8 + position,
-            Whence::End => self.data.len() * 8 + position,
-            _ => position,
-        }
+    fn bit_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
+        let base = match whence {
+            Whence::Current => self.cursor.saturating_mul(8),
+            Whence::End => self.data.len().saturating_mul(8),
+            _ => 0,
+        };
+        bits::offset(base, position)
     }
 }
 
@@ -81,7 +83,7 @@ impl Seekable for ByteBuffer {
     }
 
     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
-        self.cursor = self.byte_offset(position, whence);
+        self.cursor = self.byte_offset(position, whence)?;
         crate::log_event!(debug, "ByteBuffer::seek -> {}", self.cursor);
         Ok(self.cursor)
     }
@@ -122,7 +124,7 @@ impl RawIOBase for ByteBuffer {
         whence: Whence,
         size: usize,
     ) -> Result<Vec<u8>, IOError> {
-        let start = self.byte_offset(position, whence);
+        let start = self.byte_offset(position, whence)?;
         let end = bits::checked_end(start, size, self.data.len())?;
         crate::log_event!(
             trace,
@@ -137,13 +139,11 @@ impl RawIOBase for ByteBuffer {
         whence: Whence,
         values: &[u8],
     ) -> Result<(), IOError> {
-        let start = self.byte_offset(position, whence);
-        let end = start
-            .checked_add(values.len())
-            .ok_or(IOError::OutOfBounds {
-                offset: start,
-                len: self.data.len(),
-            })?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        let start = self.byte_offset(position, whence)?;
+        let end = bits::offset(start, values.len())?;
         if end > self.data.len() {
             self.data.resize(end, 0);
         }
@@ -162,7 +162,7 @@ impl RawIOBase for ByteBuffer {
         whence: Whence,
         size: usize,
     ) -> Result<Vec<bool>, IOError> {
-        let start = self.bit_offset(position, whence);
+        let start = self.bit_offset(position, whence)?;
         bits::checked_end(start, size, self.data.len() * 8)?;
         Ok(bits::read_bits(&self.data, start, size))
     }
@@ -173,13 +173,11 @@ impl RawIOBase for ByteBuffer {
         whence: Whence,
         values: &[bool],
     ) -> Result<(), IOError> {
-        let start = self.bit_offset(position, whence);
-        let end = start
-            .checked_add(values.len())
-            .ok_or(IOError::OutOfBounds {
-                offset: start,
-                len: self.data.len() * 8,
-            })?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        let start = self.bit_offset(position, whence)?;
+        let end = bits::offset(start, values.len())?;
         let needed = end.div_ceil(8);
         if needed > self.data.len() {
             self.data.resize(needed, 0);

@@ -37,11 +37,13 @@ type they are looking at from the shape of the code.
    round-trips too).
 6. **IO goes through the core IO traits.** Anything that reads or writes a
    sequence of bytes or bits implements the positioned-IO surface in
-   `yggdryl-core` (`Seekable` + `RawIOBase`; typed element access via
-   `IOBase<T>`), and generic serialization/deserialization code is written
-   against those traits — never against a concrete buffer type or an ad-hoc
-   `Vec<u8>` parameter. Transfers between two resources use the chunked
-   `pread_io` / `pwrite_io` streams rather than materializing whole copies.
+   `yggdryl-core` (`Seekable` + `RawIOBase`; typed element writes via
+   `IOBase<T>`), and generic transfer/streaming code is written against those
+   traits — never against a concrete buffer type or an ad-hoc `Vec<u8>`
+   parameter. The one sanctioned byte-slice surface is rule 5's per-type
+   `serialize_bytes` / `deserialize_bytes` codec. Transfers between two resources
+   use the chunked `pread_io` / `pwrite_io` streams rather than materializing
+   whole copies.
 
 ## Workspace layout
 

@@ -168,6 +168,48 @@ fn stream_copy_larger_than_one_chunk() {
 }
 
 #[test]
+fn bit_buffer_truncation_zeroes_padding_and_does_not_resurrect_bits() {
+    // Regression: truncating to a non-byte-aligned size must zero the dropped bits.
+    let mut buf = BitBuffer::from_bytes(vec![0xFF]); // 8 set bits
+    buf.resize_bits(3).unwrap();
+    assert_eq!(buf.as_bytes(), &[0b1110_0000]); // padding zeroed
+    buf.resize_bits(8).unwrap(); // grow back — the resurrected bits must be zero
+    assert_eq!(
+        buf.pread_bit_array(0, Whence::Start, 8).unwrap(),
+        vec![true, true, true, false, false, false, false, false]
+    );
+    // Two logically-equal 3-bit buffers compare equal (backing bytes match).
+    let mut other = BitBuffer::new();
+    other
+        .pwrite_bit_array(0, Whence::Start, &[true, true, true])
+        .unwrap();
+    let mut trunc = BitBuffer::from_bytes(vec![0xFF]);
+    trunc.resize_bits(3).unwrap();
+    assert_eq!(trunc, other);
+}
+
+#[test]
+fn empty_write_is_a_no_op_even_past_the_end() {
+    let mut byte = ByteBuffer::new();
+    byte.pwrite_byte_array(100, Whence::Start, &[]).unwrap();
+    assert_eq!(byte.byte_size(), 0);
+    byte.pwrite_bit_array(100, Whence::Start, &[]).unwrap();
+    assert_eq!(byte.byte_size(), 0);
+
+    let mut bit = BitBuffer::new();
+    bit.pwrite_bit_array(100, Whence::Start, &[]).unwrap();
+    assert_eq!(bit.bit_size(), 0);
+}
+
+#[test]
+fn offset_overflow_errors_instead_of_wrapping() {
+    let mut buf = ByteBuffer::from_bytes(vec![1, 2, 3]);
+    buf.seek(usize::MAX, Whence::Start).unwrap(); // seek is unbounded
+    let error = buf.pread_byte_one(1, Whence::Current).unwrap_err();
+    assert!(matches!(error, IOError::OutOfBounds { .. }));
+}
+
+#[test]
 fn stream_append_via_end_stays_anchored_while_growing() {
     let source = ByteBuffer::from_bytes((0..200_000u32).map(|i| (i % 251) as u8).collect());
     let mut sink = ByteBuffer::from_bytes(vec![9, 9]);

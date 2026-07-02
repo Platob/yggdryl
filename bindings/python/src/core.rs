@@ -1,4 +1,9 @@
 //! The `yggdryl.core` submodule — thin wrappers over the `yggdryl-core` crate.
+//!
+//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. The
+//! core `pread_io` / `pwrite_io` streams are intentionally not surfaced here (they
+//! borrow two resources at once); a Python caller composes the same effect from
+//! `pread_byte_array` + `pwrite_byte_array`.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -61,6 +66,7 @@ pub struct ByteBuffer {
 
 #[pymethods]
 impl ByteBuffer {
+    /// An empty buffer.
     #[new]
     fn new() -> Self {
         Self {
@@ -68,6 +74,7 @@ impl ByteBuffer {
         }
     }
 
+    /// A buffer over `data`.
     #[staticmethod]
     fn from_bytes(data: Vec<u8>) -> Self {
         Self {
@@ -75,54 +82,67 @@ impl ByteBuffer {
         }
     }
 
+    /// The buffer's bytes.
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_bytes())
     }
 
+    /// The buffer's size, in bytes.
     fn byte_size(&self) -> usize {
         self.inner.byte_size()
     }
 
+    /// The buffer's size, in bits (eight times the byte size).
     fn bit_size(&self) -> usize {
         self.inner.bit_size()
     }
 
+    /// The number of bytes the buffer can hold without reallocating.
     fn byte_capacity(&self) -> usize {
         self.inner.byte_capacity()
     }
 
+    /// The number of bits the buffer can hold without reallocating.
     fn bit_capacity(&self) -> usize {
         self.inner.bit_capacity()
     }
 
+    /// Request room for `capacity` bytes, returning the resulting capacity.
     fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
         Ok(self.inner.resize_byte_capacity(capacity)?)
     }
 
+    /// Request room for `capacity` bits, returning the resulting bit capacity.
     fn resize_bit_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
         Ok(self.inner.resize_bit_capacity(capacity)?)
     }
 
+    /// Set the buffer's size to `size` bytes, truncating or zero-filling.
     fn resize_bytes(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bytes(size)?)
     }
 
+    /// Set the buffer's size to `size` bits, rounded up to whole bytes.
     fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bits(size)?)
     }
 
+    /// The current cursor position, in bytes.
     fn tell(&self) -> usize {
         self.inner.tell()
     }
 
+    /// Move the cursor, returning the new position.
     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IoError> {
         Ok(self.inner.seek(position, whence.into())?)
     }
 
+    /// Read one byte.
     fn pread_byte_one(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
         Ok(self.inner.pread_byte_one(position, whence.into())?)
     }
 
+    /// Write one byte.
     fn pwrite_byte_one(
         &mut self,
         position: usize,
@@ -132,6 +152,7 @@ impl ByteBuffer {
         Ok(self.inner.pwrite_byte_one(position, whence.into(), value)?)
     }
 
+    /// Read `size` bytes.
     fn pread_byte_array<'py>(
         &self,
         py: Python<'py>,
@@ -143,6 +164,7 @@ impl ByteBuffer {
         Ok(PyBytes::new_bound(py, &bytes))
     }
 
+    /// Write bytes (an empty `bytes` is a no-op).
     fn pwrite_byte_array(
         &mut self,
         position: usize,
@@ -154,10 +176,12 @@ impl ByteBuffer {
             .pwrite_byte_array(position, whence.into(), &values)?)
     }
 
+    /// Read one bit (MSB-first).
     fn pread_bit_one(&self, position: usize, whence: Whence) -> Result<bool, IoError> {
         Ok(self.inner.pread_bit_one(position, whence.into())?)
     }
 
+    /// Write one bit (MSB-first).
     fn pwrite_bit_one(
         &mut self,
         position: usize,
@@ -167,6 +191,7 @@ impl ByteBuffer {
         Ok(self.inner.pwrite_bit_one(position, whence.into(), value)?)
     }
 
+    /// Read `size` bits (MSB-first).
     fn pread_bit_array(
         &self,
         position: usize,
@@ -176,6 +201,7 @@ impl ByteBuffer {
         Ok(self.inner.pread_bit_array(position, whence.into(), size)?)
     }
 
+    /// Write bits (MSB-first; an empty list is a no-op).
     fn pwrite_bit_array(
         &mut self,
         position: usize,
@@ -185,48 +211,6 @@ impl ByteBuffer {
         Ok(self
             .inner
             .pwrite_bit_array(position, whence.into(), &values)?)
-    }
-
-    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
-    #[allow(clippy::too_many_arguments)]
-    fn pread_io(
-        &self,
-        position: usize,
-        whence: Whence,
-        size: usize,
-        sink: &mut ByteBuffer,
-        sink_position: usize,
-        sink_whence: Whence,
-    ) -> Result<(), IoError> {
-        Ok(self.inner.pread_io(
-            position,
-            whence.into(),
-            size,
-            &mut sink.inner,
-            sink_position,
-            sink_whence.into(),
-        )?)
-    }
-
-    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
-    #[allow(clippy::too_many_arguments)]
-    fn pwrite_io(
-        &mut self,
-        position: usize,
-        whence: Whence,
-        source: &ByteBuffer,
-        source_position: usize,
-        source_whence: Whence,
-        size: usize,
-    ) -> Result<(), IoError> {
-        Ok(self.inner.pwrite_io(
-            position,
-            whence.into(),
-            &source.inner,
-            source_position,
-            source_whence.into(),
-            size,
-        )?)
     }
 }
 
@@ -240,6 +224,7 @@ pub struct BitBuffer {
 
 #[pymethods]
 impl BitBuffer {
+    /// An empty buffer.
     #[new]
     fn new() -> Self {
         Self {
@@ -247,6 +232,7 @@ impl BitBuffer {
         }
     }
 
+    /// A buffer over `data` (a whole number of bytes).
     #[staticmethod]
     fn from_bytes(data: Vec<u8>) -> Self {
         Self {
@@ -254,54 +240,67 @@ impl BitBuffer {
         }
     }
 
+    /// The buffer's backing bytes (trailing padding bits are always zero).
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_bytes())
     }
 
+    /// The buffer's size, in bytes (rounded up).
     fn byte_size(&self) -> usize {
         self.inner.byte_size()
     }
 
+    /// The buffer's exact size, in bits.
     fn bit_size(&self) -> usize {
         self.inner.bit_size()
     }
 
+    /// The number of bytes the buffer can hold without reallocating.
     fn byte_capacity(&self) -> usize {
         self.inner.byte_capacity()
     }
 
+    /// The number of bits the buffer can hold without reallocating.
     fn bit_capacity(&self) -> usize {
         self.inner.bit_capacity()
     }
 
+    /// Request room for `capacity` bytes, returning the resulting capacity.
     fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
         Ok(self.inner.resize_byte_capacity(capacity)?)
     }
 
+    /// Request room for `capacity` bits, returning the resulting bit capacity.
     fn resize_bit_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
         Ok(self.inner.resize_bit_capacity(capacity)?)
     }
 
+    /// Set the buffer's size to `size` bytes, truncating or zero-filling.
     fn resize_bytes(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bytes(size)?)
     }
 
+    /// Set the buffer's size to an exact `size` bits.
     fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bits(size)?)
     }
 
+    /// The current cursor position, in bytes.
     fn tell(&self) -> usize {
         self.inner.tell()
     }
 
+    /// Move the cursor, returning the new position.
     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IoError> {
         Ok(self.inner.seek(position, whence.into())?)
     }
 
+    /// Read one byte.
     fn pread_byte_one(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
         Ok(self.inner.pread_byte_one(position, whence.into())?)
     }
 
+    /// Write one byte.
     fn pwrite_byte_one(
         &mut self,
         position: usize,
@@ -311,6 +310,7 @@ impl BitBuffer {
         Ok(self.inner.pwrite_byte_one(position, whence.into(), value)?)
     }
 
+    /// Read `size` bytes.
     fn pread_byte_array<'py>(
         &self,
         py: Python<'py>,
@@ -322,6 +322,7 @@ impl BitBuffer {
         Ok(PyBytes::new_bound(py, &bytes))
     }
 
+    /// Write bytes (an empty `bytes` is a no-op).
     fn pwrite_byte_array(
         &mut self,
         position: usize,
@@ -333,10 +334,12 @@ impl BitBuffer {
             .pwrite_byte_array(position, whence.into(), &values)?)
     }
 
+    /// Read one bit (MSB-first).
     fn pread_bit_one(&self, position: usize, whence: Whence) -> Result<bool, IoError> {
         Ok(self.inner.pread_bit_one(position, whence.into())?)
     }
 
+    /// Write one bit (MSB-first).
     fn pwrite_bit_one(
         &mut self,
         position: usize,
@@ -346,6 +349,7 @@ impl BitBuffer {
         Ok(self.inner.pwrite_bit_one(position, whence.into(), value)?)
     }
 
+    /// Read `size` bits (MSB-first).
     fn pread_bit_array(
         &self,
         position: usize,
@@ -355,6 +359,7 @@ impl BitBuffer {
         Ok(self.inner.pread_bit_array(position, whence.into(), size)?)
     }
 
+    /// Write bits (MSB-first; an empty list is a no-op).
     fn pwrite_bit_array(
         &mut self,
         position: usize,
@@ -364,48 +369,6 @@ impl BitBuffer {
         Ok(self
             .inner
             .pwrite_bit_array(position, whence.into(), &values)?)
-    }
-
-    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
-    #[allow(clippy::too_many_arguments)]
-    fn pread_io(
-        &self,
-        position: usize,
-        whence: Whence,
-        size: usize,
-        sink: &mut BitBuffer,
-        sink_position: usize,
-        sink_whence: Whence,
-    ) -> Result<(), IoError> {
-        Ok(self.inner.pread_io(
-            position,
-            whence.into(),
-            size,
-            &mut sink.inner,
-            sink_position,
-            sink_whence.into(),
-        )?)
-    }
-
-    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
-    #[allow(clippy::too_many_arguments)]
-    fn pwrite_io(
-        &mut self,
-        position: usize,
-        whence: Whence,
-        source: &BitBuffer,
-        source_position: usize,
-        source_whence: Whence,
-        size: usize,
-    ) -> Result<(), IoError> {
-        Ok(self.inner.pwrite_io(
-            position,
-            whence.into(),
-            &source.inner,
-            source_position,
-            source_whence.into(),
-            size,
-        )?)
     }
 }
 

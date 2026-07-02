@@ -10,7 +10,8 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// [`bit_size`](RawIOBase::bit_size) need not be a multiple of eight and its
 /// [`byte_size`](RawIOBase::byte_size) rounds up to the enclosing byte — the same
 /// holds for [`resize_bits`](RawIOBase::resize_bits), which is exact here. Bits are
-/// MSB-first; writes past the end grow the buffer with zeroes.
+/// MSB-first; writes past the end grow the buffer with zeroes, and the unused
+/// padding bits of the final byte are always zero.
 ///
 /// ```
 /// use yggdryl_core::{BitBuffer, RawIOBase, Whence};
@@ -27,7 +28,8 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BitBuffer {
-    // Invariant: `data.len() == bit_len.div_ceil(8)`.
+    // Invariant: `data.len() == bit_len.div_ceil(8)`, and the padding bits above
+    // `bit_len` in the final byte are always zero.
     data: Vec<u8>,
     bit_len: usize,
     cursor: usize,
@@ -53,7 +55,8 @@ impl BitBuffer {
         }
     }
 
-    /// The buffer's backing bytes (the final byte may hold trailing padding bits).
+    /// The buffer's backing bytes. The unused padding bits of the final byte (above
+    /// [`bit_size`](RawIOBase::bit_size)) are always zero.
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
@@ -63,20 +66,22 @@ impl BitBuffer {
         self.data
     }
 
-    fn byte_offset(&self, position: usize, whence: Whence) -> usize {
-        match whence {
-            Whence::Current => self.cursor + position,
-            Whence::End => self.data.len() + position,
-            _ => position,
-        }
+    fn byte_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
+        let base = match whence {
+            Whence::Current => self.cursor,
+            Whence::End => self.data.len(),
+            _ => 0,
+        };
+        bits::offset(base, position)
     }
 
-    fn bit_offset(&self, position: usize, whence: Whence) -> usize {
-        match whence {
-            Whence::Current => self.cursor * 8 + position,
-            Whence::End => self.bit_len + position,
-            _ => position,
-        }
+    fn bit_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
+        let base = match whence {
+            Whence::Current => self.cursor.saturating_mul(8),
+            Whence::End => self.bit_len,
+            _ => 0,
+        };
+        bits::offset(base, position)
     }
 }
 
@@ -86,7 +91,7 @@ impl Seekable for BitBuffer {
     }
 
     fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
-        self.cursor = self.byte_offset(position, whence);
+        self.cursor = self.byte_offset(position, whence)?;
         crate::log_event!(debug, "BitBuffer::seek -> {}", self.cursor);
         Ok(self.cursor)
     }
@@ -127,7 +132,16 @@ impl RawIOBase for BitBuffer {
     }
 
     fn resize_bits(&mut self, size: usize) -> Result<(), IOError> {
+        let shrinking = size < self.bit_len;
         self.data.resize(size.div_ceil(8), 0);
+        // When shrinking to a non-byte-aligned size, zero the now-unused low bits of
+        // the final byte so the padding-is-zero invariant holds (grows already
+        // zero-fill).
+        if shrinking && !size.is_multiple_of(8) {
+            if let Some(last) = self.data.last_mut() {
+                *last &= 0xFFu8 << (8 - size % 8);
+            }
+        }
         self.bit_len = size;
         crate::log_event!(debug, "BitBuffer::resize_bits -> {size}");
         Ok(())
@@ -139,7 +153,7 @@ impl RawIOBase for BitBuffer {
         whence: Whence,
         size: usize,
     ) -> Result<Vec<u8>, IOError> {
-        let start = self.byte_offset(position, whence);
+        let start = self.byte_offset(position, whence)?;
         let end = bits::checked_end(start, size, self.data.len())?;
         Ok(self.data[start..end].to_vec())
     }
@@ -150,13 +164,11 @@ impl RawIOBase for BitBuffer {
         whence: Whence,
         values: &[u8],
     ) -> Result<(), IOError> {
-        let start = self.byte_offset(position, whence);
-        let end = start
-            .checked_add(values.len())
-            .ok_or(IOError::OutOfBounds {
-                offset: start,
-                len: self.data.len(),
-            })?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        let start = self.byte_offset(position, whence)?;
+        let end = bits::offset(start, values.len())?;
         if end > self.data.len() {
             self.data.resize(end, 0);
         }
@@ -171,7 +183,7 @@ impl RawIOBase for BitBuffer {
         whence: Whence,
         size: usize,
     ) -> Result<Vec<bool>, IOError> {
-        let start = self.bit_offset(position, whence);
+        let start = self.bit_offset(position, whence)?;
         bits::checked_end(start, size, self.bit_len)?;
         Ok(bits::read_bits(&self.data, start, size))
     }
@@ -182,13 +194,11 @@ impl RawIOBase for BitBuffer {
         whence: Whence,
         values: &[bool],
     ) -> Result<(), IOError> {
-        let start = self.bit_offset(position, whence);
-        let end = start
-            .checked_add(values.len())
-            .ok_or(IOError::OutOfBounds {
-                offset: start,
-                len: self.bit_len,
-            })?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        let start = self.bit_offset(position, whence)?;
+        let end = bits::offset(start, values.len())?;
         let needed = end.div_ceil(8);
         if needed > self.data.len() {
             self.data.resize(needed, 0);
