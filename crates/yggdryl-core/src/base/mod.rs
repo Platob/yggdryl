@@ -3,7 +3,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::charset::Charset;
+use crate::charset::{Charset, Utf8};
 
 mod error;
 pub use error::BaseError;
@@ -18,13 +18,13 @@ pub use error::BaseError;
 ///
 /// - [`to_json`](Base::to_json) / [`from_json`](Base::from_json) — a JSON string.
 /// - [`to_bson`](Base::to_bson) / [`from_bson`](Base::from_bson) — JSON bytes,
-///   optionally indented, encoded with a [`Charset`].
+///   optionally indented, encoded with any [`Charset`].
 /// - [`to_bytes`](Base::to_bytes) / [`from_bytes`](Base::from_bytes) — the
 ///   canonical byte form: compact UTF-8 JSON.
 ///
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use yggdryl_core::{Base, Charset};
+/// use yggdryl_core::{Base, Utf8};
 ///
 /// #[derive(Debug, PartialEq, Serialize, Deserialize)]
 /// struct Point {
@@ -39,8 +39,8 @@ pub use error::BaseError;
 /// assert_eq!(Point::from_json(&p.to_json()?)?, p);
 ///
 /// // JSON bytes, pretty-printed with a two-space indent, encoded as UTF-8.
-/// let bytes = p.to_bson(Some(2), Charset::Utf8)?;
-/// assert_eq!(Point::from_bson(&bytes, Charset::Utf8)?, p);
+/// let bytes = p.to_bson(Some(2), Utf8)?;
+/// assert_eq!(Point::from_bson(&bytes, Utf8)?, p);
 ///
 /// // The canonical byte form is compact UTF-8 JSON.
 /// assert_eq!(p.to_bytes()?, br#"{"x":1,"y":2}"#.to_vec());
@@ -62,32 +62,32 @@ pub trait Base: Serialize + DeserializeOwned {
 
     /// Serialize to JSON bytes: pretty-printed with `indent` spaces when `indent`
     /// is `Some`, compact when `None`, then encoded with `charset`.
-    fn to_bson(&self, indent: Option<usize>, charset: Charset) -> Result<Vec<u8>, BaseError> {
-        crate::log_event!(debug, "Base::to_bson indent={indent:?} charset={charset:?}");
+    fn to_bson<C: Charset>(&self, indent: Option<usize>, charset: C) -> Result<Vec<u8>, BaseError> {
+        crate::log_event!(trace, "Base::to_bson indent={indent:?}");
         let json = match indent {
             Some(width) => to_pretty_json(self, width)?,
             None => self.to_json()?,
         };
-        Ok(charset.encode(&json)?)
+        Ok(charset.encode_bytes(&json)?)
     }
 
     /// Deserialize from JSON bytes decoded with `charset`.
-    fn from_bson(bytes: &[u8], charset: Charset) -> Result<Self, BaseError> {
-        crate::log_event!(debug, "Base::from_bson charset={charset:?}");
-        let json = charset.decode(bytes)?;
+    fn from_bson<C: Charset>(bytes: &[u8], charset: C) -> Result<Self, BaseError> {
+        crate::log_event!(trace, "Base::from_bson");
+        let json = charset.decode_bytes(bytes)?;
         Self::from_json(&json)
     }
 
     /// Serialize to the canonical byte form: compact UTF-8 JSON.
     fn to_bytes(&self) -> Result<Vec<u8>, BaseError> {
         crate::log_event!(trace, "Base::to_bytes");
-        self.to_bson(None, Charset::Utf8)
+        self.to_bson(None, Utf8)
     }
 
     /// Deserialize from the canonical byte form: compact UTF-8 JSON.
     fn from_bytes(bytes: &[u8]) -> Result<Self, BaseError> {
         crate::log_event!(trace, "Base::from_bytes");
-        Self::from_bson(bytes, Charset::Utf8)
+        Self::from_bson(bytes, Utf8)
     }
 }
 

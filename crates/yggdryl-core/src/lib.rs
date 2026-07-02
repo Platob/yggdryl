@@ -3,13 +3,13 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! It exposes the [`Charset`] string/bytes codec and — behind the off-by-default
-//! `json` feature — the `Base` trait: the content-based serialization every value
-//! type implements (JSON string, JSON bytes, and a canonical byte form). The
-//! [`version`] and [`hello`] entry points remain as the minimal cross-language
-//! round-trip example. Add further foundational types here as the design lands —
-//! one module per concern, each re-exported at the crate root — following the
-//! rules in `CLAUDE.md`.
+//! It exposes the [`Charset`] trait (with the [`Utf8`] and [`Latin1`] encodings)
+//! and — behind the off-by-default `json` feature — the `Base` trait: the
+//! content-based serialization every value type implements (JSON string, JSON
+//! bytes, and a canonical byte form). The [`version`] and [`hello`] entry points
+//! remain as the minimal cross-language round-trip example. Add further
+//! foundational types here as the design lands — one module per concern, each
+//! re-exported at the crate root — following the rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
@@ -24,7 +24,7 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod charset;
-pub use charset::{Charset, CharsetError};
+pub use charset::{Charset, CharsetError, Latin1, Utf8};
 
 #[cfg(feature = "json")]
 mod base;

@@ -1,16 +1,13 @@
 //! The [`CharsetError`] type.
 
-use super::Charset;
-
-/// An error from [`Charset::encode`](super::Charset::encode) or
-/// [`Charset::decode`](super::Charset::decode).
+/// An error from a [`Charset`](super::Charset) conversion.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum CharsetError {
     /// A character cannot be represented in the target charset.
     Unrepresentable {
-        /// The charset that rejected the character.
-        charset: Charset,
+        /// Name of the charset that rejected the character.
+        charset: &'static str,
         /// Index of the offending character in the input string.
         index: usize,
         /// The character that has no encoding in `charset`.
@@ -18,9 +15,9 @@ pub enum CharsetError {
     },
     /// The bytes are not a valid encoding in the source charset.
     InvalidBytes {
-        /// The charset the bytes were decoded with.
-        charset: Charset,
-        /// What made the bytes invalid, and where.
+        /// Name of the charset the bytes were decoded with.
+        charset: &'static str,
+        /// What made the bytes invalid.
         reason: String,
     },
 }
@@ -30,11 +27,11 @@ impl std::fmt::Display for CharsetError {
         match self {
             CharsetError::Unrepresentable { charset, index, ch } => write!(
                 f,
-                "character {ch:?} (U+{:04X}) at index {index} cannot be encoded as {charset:?}",
+                "character {ch:?} (U+{:04X}) at index {index} cannot be encoded as {charset}",
                 *ch as u32
             ),
             CharsetError::InvalidBytes { charset, reason } => {
-                write!(f, "invalid {charset:?} bytes: {reason}")
+                write!(f, "invalid {charset} bytes: {reason}")
             }
         }
     }
