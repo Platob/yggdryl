@@ -16,6 +16,10 @@ use super::{Charset, CharsetError};
 pub struct Utf8;
 
 impl Charset for Utf8 {
+    fn name(&self) -> &'static str {
+        "UTF-8"
+    }
+
     fn encode_bytes(&self, text: &str) -> Result<Vec<u8>, CharsetError> {
         crate::log_event!(trace, "Utf8::encode_bytes len={}", text.len());
         Ok(text.as_bytes().to_vec())
@@ -24,7 +28,7 @@ impl Charset for Utf8 {
     fn decode_bytes(&self, bytes: &[u8]) -> Result<String, CharsetError> {
         crate::log_event!(trace, "Utf8::decode_bytes len={}", bytes.len());
         String::from_utf8(bytes.to_vec()).map_err(|e| CharsetError::InvalidBytes {
-            charset: "UTF-8",
+            charset: self.name(),
             reason: e.to_string(),
         })
     }

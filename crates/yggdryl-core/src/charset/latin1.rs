@@ -18,6 +18,10 @@ use super::{Charset, CharsetError};
 pub struct Latin1;
 
 impl Charset for Latin1 {
+    fn name(&self) -> &'static str {
+        "ISO-8859-1"
+    }
+
     fn encode_bytes(&self, text: &str) -> Result<Vec<u8>, CharsetError> {
         crate::log_event!(trace, "Latin1::encode_bytes len={}", text.len());
         let mut out = Vec::with_capacity(text.len());
@@ -25,7 +29,7 @@ impl Charset for Latin1 {
             let code = ch as u32;
             if code > 0xFF {
                 return Err(CharsetError::Unrepresentable {
-                    charset: "ISO-8859-1",
+                    charset: self.name(),
                     index,
                     ch,
                 });

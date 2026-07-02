@@ -18,11 +18,15 @@ pub use utf8::Utf8;
 /// ```
 /// use yggdryl_core::{Charset, Utf8};
 ///
+/// assert_eq!(Utf8.name(), "UTF-8");
 /// assert_eq!(Utf8.encode_bytes("hi")?, b"hi".to_vec());
 /// assert_eq!(Utf8.decode_bytes(b"hi")?, "hi");
 /// # Ok::<(), yggdryl_core::CharsetError>(())
 /// ```
 pub trait Charset {
+    /// This charset's canonical name, used in diagnostics such as [`CharsetError`].
+    fn name(&self) -> &'static str;
+
     /// Encode `text` to bytes in this charset.
     ///
     /// Returns [`CharsetError::Unrepresentable`] when a character has no encoding

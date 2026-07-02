@@ -3,6 +3,12 @@
 use yggdryl_core::{Charset, CharsetError, Latin1, Utf8};
 
 #[test]
+fn names_are_stable() {
+    assert_eq!(Utf8.name(), "UTF-8");
+    assert_eq!(Latin1.name(), "ISO-8859-1");
+}
+
+#[test]
 fn utf8_round_trips() {
     let text = "héllo 🌳";
     let bytes = Utf8.encode_bytes(text).unwrap();
