@@ -105,6 +105,23 @@ fn overflow_from_a_huge_window_end_errors() {
     assert!(matches!(error, IOError::OutOfBounds { .. }));
 }
 
+#[test]
+fn a_window_starting_past_the_inner_cannot_escape_below_its_start() {
+    // Regression: the End base was min(inner, end), which could fall below start and
+    // let an End-relative write mutate inner data before the window.
+    let mut slice = RawIOSlice::new(ByteBuffer::from_bytes(vec![1, 2, 3]), 5, 8);
+    assert_eq!(slice.byte_size(), 0);
+    // An End write appends at the window start (5), zero-filling the gap [3, 5).
+    slice.pwrite_byte_array(0, Whence::End, &[9, 9]).unwrap();
+    assert_eq!(slice.byte_size(), 2);
+    // The original bytes are untouched, the gap is zeroed, and the write lands in-window.
+    assert_eq!(slice.get_ref().as_bytes(), &[1, 2, 3, 0, 0, 9, 9]);
+    assert_eq!(
+        slice.pread_byte_array(0, Whence::Start, 2).unwrap(),
+        vec![9, 9]
+    );
+}
+
 // ---- typed IOSlice ----
 
 #[test]

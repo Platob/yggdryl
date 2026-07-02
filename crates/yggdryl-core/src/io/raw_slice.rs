@@ -81,10 +81,13 @@ impl<I> RawIOSlice<I> {
 }
 
 impl<I: RawIOBase> RawIOSlice<I> {
-    /// The absolute byte offset one past the window's backed data:
-    /// `min(inner size, end)`.
+    /// The absolute byte offset one past the window's backed data, clamped to the
+    /// window: `min(inner size, end)` but never below `start`. Clamping up to `start`
+    /// keeps the [`Whence::End`] base inside `[start, end]` even when the window
+    /// begins past the inner's current data, so an `End`-relative access can never
+    /// escape below `start`.
     fn backed_end(&self) -> usize {
-        self.inner.byte_size().min(self.end)
+        self.inner.byte_size().min(self.end).max(self.start)
     }
 
     /// Resolve a byte `position`/`whence` to an absolute offset in the inner,
