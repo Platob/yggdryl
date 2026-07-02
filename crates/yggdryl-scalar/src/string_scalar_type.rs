@@ -1,6 +1,6 @@
 //! The marker subtrait for UTF-8 string scalar types.
 
-use yggdryl_schema::{LargeUtf8, Utf8};
+use yggdryl_schema::{LargeUtf8Type, Utf8Type};
 
 use crate::ScalarType;
 
@@ -11,11 +11,11 @@ use crate::ScalarType;
 ///
 /// ```
 /// use yggdryl_scalar::Scalar;
-/// use yggdryl_schema::LargeUtf8;
+/// use yggdryl_schema::LargeUtf8Type;
 ///
-/// assert_eq!(Scalar::from_string(LargeUtf8, "ygg").as_str(), Some("ygg"));
+/// assert_eq!(Scalar::from_string(LargeUtf8Type, "ygg").as_str(), Some("ygg"));
 /// ```
 pub trait StringScalarType: ScalarType {}
 
-impl StringScalarType for Utf8 {}
-impl StringScalarType for LargeUtf8 {}
+impl StringScalarType for Utf8Type {}
+impl StringScalarType for LargeUtf8Type {}

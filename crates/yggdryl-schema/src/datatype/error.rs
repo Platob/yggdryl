@@ -5,14 +5,14 @@ use std::error::Error;
 
 use arrow_schema::DataType as ArrowDataType;
 
-use crate::TimeUnitId;
+use crate::{DataTypeId, TimeUnitId};
 
 /// Why a data type could not be constructed or converted.
 ///
 /// ```
-/// use yggdryl_schema::Decimal128;
+/// use yggdryl_schema::{Decimal128Type, DecimalType};
 ///
-/// let error = Decimal128::from_parts(0, 0).unwrap_err();
+/// let error = Decimal128Type::from_parts(0, 0).unwrap_err();
 /// assert_eq!(error.to_string(), "precision 0 out of range, expected 1..=38");
 /// ```
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +56,13 @@ pub enum DataTypeError {
     InvalidMapEntries {
         /// What failed, and how to fix it.
         message: String,
+    },
+    /// An encoded payload tagged with another type's identifier.
+    TypeIdMismatch {
+        /// The identifier of the type doing the decoding.
+        expected: DataTypeId,
+        /// The identifier found in the payload.
+        actual: DataTypeId,
     },
     /// An integer that is not an assigned data type identifier.
     UnknownTypeId {
@@ -125,6 +132,11 @@ impl fmt::Display for DataTypeError {
                 write!(f, "negative size {size}, expected 0 or more")
             }
             Self::InvalidMapEntries { message } => f.write_str(message),
+            Self::TypeIdMismatch { expected, actual } => write!(
+                f,
+                "payload is tagged {actual}, expected {expected} — decode it with the \
+                 matching type or AnyDataType"
+            ),
             Self::UnknownTypeId { id, max } => {
                 write!(f, "unknown data type id {id}, expected 0..={max}")
             }

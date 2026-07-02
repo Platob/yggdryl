@@ -5,5 +5,5 @@ mod large_list;
 #[allow(clippy::module_inception)]
 mod list;
 
-pub use large_list::LargeList;
-pub use list::List;
+pub use large_list::LargeListType;
+pub use list::ListType;

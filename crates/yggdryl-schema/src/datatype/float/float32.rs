@@ -4,13 +4,13 @@ use crate::datatype::macros::primitive_data_type;
 
 primitive_data_type!(
     /// The IEEE 754 single-precision floating-point type, mapping to Arrow
-    /// `Float32`.
+    /// `Float32Type`.
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, Float32, PrimitiveType};
+    /// use yggdryl_schema::{DataType, Float32Type, PrimitiveType};
     ///
-    /// assert_eq!(Float32::BIT_WIDTH, 32);
-    /// assert_eq!(Float32::from_arrow(&Float32.to_arrow()), Ok(Float32));
+    /// assert_eq!(Float32Type::BIT_WIDTH, 32);
+    /// assert_eq!(Float32Type::from_arrow(&Float32Type.to_arrow()), Ok(Float32Type));
     /// ```
-    Float32, f32, 32, Float32, "float32"
+    Float32Type, f32, 32, Float32, "float32"
 );

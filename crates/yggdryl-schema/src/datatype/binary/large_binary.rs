@@ -4,12 +4,12 @@ use crate::datatype::macros::unit_data_type;
 
 unit_data_type!(
     /// Variable-size opaque bytes with 64-bit offsets, mapping to Arrow
-    /// `LargeBinary`.
+    /// `LargeBinaryType`.
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, LargeBinary};
+    /// use yggdryl_schema::{DataType, LargeBinaryType};
     ///
-    /// assert_eq!(LargeBinary::from_arrow(&LargeBinary.to_arrow()), Ok(LargeBinary));
+    /// assert_eq!(LargeBinaryType::from_arrow(&LargeBinaryType.to_arrow()), Ok(LargeBinaryType));
     /// ```
-    LargeBinary, LargeBinary, "large_binary"
+    LargeBinaryType, LargeBinary, "large_binary"
 );

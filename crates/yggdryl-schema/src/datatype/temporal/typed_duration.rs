@@ -6,14 +6,14 @@ use std::collections::BTreeMap;
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    metadata, DataType, DataTypeError, DataTypeId, Duration, Int64, LogicalType, PrimitiveType,
-    TimeUnit, TimeUnitId,
+    metadata, DataType, DataTypeError, DataTypeId, Duration, Int64Type, LogicalType, PrimitiveType,
+    TemporalType, TimeUnit, TimeUnitId,
 };
 
 /// The concrete [`Duration`] implementation generic over its unit — the one
 /// implementation that gives every [`TimeUnit`] its corresponding duration
-/// (`TypedDuration<Nanosecond>` through `TypedDuration<Year>`), anchored on
-/// [`Int64`].
+/// (`DurationType<Nanosecond>` through `DurationType<Year>`), anchored on
+/// [`Int64Type`].
 ///
 /// Arrow's four native units map to `Duration(unit)` directly. The coarser
 /// units have no Arrow counterpart, so they anchor on Arrow `Int64` plus the
@@ -22,34 +22,36 @@ use crate::{
 /// carries the metadata.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, Duration, Second, TypedDuration, Week};
+/// use yggdryl_schema::{DataType, Duration, Second, DurationType, Week};
 ///
-/// let seconds = TypedDuration::from_parts(Second);
-/// assert_eq!(TypedDuration::from_arrow(&seconds.to_arrow()), Ok(seconds));
+/// let seconds = DurationType::from_parts(Second);
+/// assert_eq!(DurationType::from_arrow(&seconds.to_arrow()), Ok(seconds));
 ///
-/// let weeks = TypedDuration::from_parts(Week);
+/// let weeks = DurationType::from_parts(Week);
 /// assert_eq!(weeks.to_arrow(), arrow_schema::DataType::Int64); // anchored
 /// assert_eq!(weeks.to_string(), "duration(w)");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct TypedDuration<U: TimeUnit> {
+pub struct DurationType<U: TimeUnit> {
     unit: U,
 }
 
-impl<U: TimeUnit> Duration for TypedDuration<U> {
+impl<U: TimeUnit> TemporalType for DurationType<U> {
     type Unit = U;
-
-    fn from_parts(unit: U) -> Self {
-        Self { unit }
-    }
 
     fn unit(&self) -> U {
         self.unit.clone()
     }
 }
 
-impl<U: TimeUnit> DataType for TypedDuration<U> {
+impl<U: TimeUnit> Duration for DurationType<U> {
+    fn from_parts(unit: U) -> Self {
+        Self { unit }
+    }
+}
+
+impl<U: TimeUnit> DataType for DurationType<U> {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Duration
     }
@@ -80,7 +82,7 @@ impl<U: TimeUnit> DataType for TypedDuration<U> {
             ArrowDataType::Duration(unit) => Ok(Self::from_parts(U::from_unit_id(
                 TimeUnitId::from_arrow(*unit),
             )?)),
-            // A bare Int64 is never a duration on its own; the unit lives in
+            // A bare Int64Type is never a duration on its own; the unit lives in
             // the field metadata.
             ArrowDataType::Int64 => Err(DataTypeError::MissingMetadata {
                 key: metadata::TIME_UNIT,
@@ -135,30 +137,33 @@ impl<U: TimeUnit> DataType for TypedDuration<U> {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.unit.unit_id().to_bytes()
+        let mut out = vec![DataTypeId::Duration.to_u8()];
+        out.extend(self.unit.unit_id().to_bytes());
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
+        let payload = DataTypeId::Duration.strip_tag(bytes)?;
         Ok(Self::from_parts(U::from_unit_id(TimeUnitId::from_bytes(
-            bytes,
+            payload,
         )?)?))
     }
 }
 
-impl<U: TimeUnit> PrimitiveType for TypedDuration<U> {
+impl<U: TimeUnit> PrimitiveType for DurationType<U> {
     type Native = i64;
     const BIT_WIDTH: usize = 64;
 }
 
-impl<U: TimeUnit> LogicalType for TypedDuration<U> {
-    type Physical = Int64;
+impl<U: TimeUnit> LogicalType for DurationType<U> {
+    type Physical = Int64Type;
 
-    fn physical(&self) -> Int64 {
-        Int64
+    fn physical(&self) -> Int64Type {
+        Int64Type
     }
 }
 
-impl<U: TimeUnit> fmt::Display for TypedDuration<U> {
+impl<U: TimeUnit> fmt::Display for DurationType<U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "duration({})", self.unit)
     }

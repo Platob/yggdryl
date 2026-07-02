@@ -6,10 +6,10 @@ primitive_data_type!(
     /// The 8-bit unsigned integer type, mapping to Arrow `UInt8`.
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, PrimitiveType, UInt8};
+    /// use yggdryl_schema::{DataType, PrimitiveType, UInt8Type};
     ///
-    /// assert_eq!(UInt8::BIT_WIDTH, 8);
-    /// assert_eq!(UInt8::from_arrow(&UInt8.to_arrow()), Ok(UInt8));
+    /// assert_eq!(UInt8Type::BIT_WIDTH, 8);
+    /// assert_eq!(UInt8Type::from_arrow(&UInt8Type.to_arrow()), Ok(UInt8Type));
     /// ```
-    UInt8, u8, 8, UInt8, "uint8"
+    UInt8Type, u8, 8, UInt8, "uint8"
 );

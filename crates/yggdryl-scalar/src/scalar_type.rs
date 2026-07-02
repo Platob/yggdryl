@@ -4,10 +4,10 @@ use core::mem::{align_of, size_of};
 use core::str;
 
 use yggdryl_schema::{
-    Binary, Boolean, DataType, Date32, Date64, Decimal128, Decimal256, FixedSizeBinary, Float32,
-    Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeUtf8, PrimitiveType, Time32, Time32Unit,
-    Time64, Time64Unit, TimeUnit, TypedDuration, TypedTimestamp, UInt16, UInt32, UInt64, UInt8,
-    Utf8,
+    BinaryType, BooleanType, DataType, Date32Type, Date64Type, Decimal128Type, Decimal256Type,
+    DurationType, FixedSizeBinaryType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type,
+    Int8Type, LargeBinaryType, LargeUtf8Type, PrimitiveType, Time32Type, Time32Unit, Time64Type,
+    Time64Unit, TimeUnit, TimestampType, UInt16Type, UInt32Type, UInt64Type, UInt8Type, Utf8Type,
 };
 
 use crate::ScalarError;
@@ -24,10 +24,10 @@ use crate::ScalarError;
 ///
 /// ```
 /// use yggdryl_scalar::ScalarType;
-/// use yggdryl_schema::Int32;
+/// use yggdryl_schema::Int32Type;
 ///
-/// assert!(Int32.validate_scalar_bytes(&7i32.to_le_bytes()).is_ok());
-/// assert!(Int32.validate_scalar_bytes(&[0u8; 3]).is_err());
+/// assert!(Int32Type.validate_scalar_bytes(&7i32.to_le_bytes()).is_ok());
+/// assert!(Int32Type.validate_scalar_bytes(&[0u8; 3]).is_err());
 /// ```
 pub trait ScalarType: DataType {
     /// Validates one element's value bytes against this type's layout.
@@ -62,15 +62,27 @@ macro_rules! fixed_width_scalar_type {
 }
 
 fixed_width_scalar_type!(
-    Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64, Decimal128,
-    Decimal256, Date32, Date64,
+    Int8Type,
+    Int16Type,
+    Int32Type,
+    Int64Type,
+    UInt8Type,
+    UInt16Type,
+    UInt32Type,
+    UInt64Type,
+    Float32Type,
+    Float64Type,
+    Decimal128Type,
+    Decimal256Type,
+    Date32Type,
+    Date64Type,
 );
-fixed_width_scalar_type!(@impl [U: TimeUnit] TypedTimestamp<U>);
-fixed_width_scalar_type!(@impl [U: TimeUnit] TypedDuration<U>);
-fixed_width_scalar_type!(@impl [U: Time32Unit] Time32<U>);
-fixed_width_scalar_type!(@impl [U: Time64Unit] Time64<U>);
+fixed_width_scalar_type!(@impl [U: TimeUnit] TimestampType<U>);
+fixed_width_scalar_type!(@impl [U: TimeUnit] DurationType<U>);
+fixed_width_scalar_type!(@impl [U: Time32Unit] Time32Type<U>);
+fixed_width_scalar_type!(@impl [U: Time64Unit] Time64Type<U>);
 
-impl ScalarType for Boolean {
+impl ScalarType for BooleanType {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
         match bytes {
             [0 | 1] => Ok(()),
@@ -83,7 +95,7 @@ impl ScalarType for Boolean {
     }
 }
 
-impl ScalarType for Utf8 {
+impl ScalarType for Utf8Type {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
         str::from_utf8(bytes)
             .map(|_| ())
@@ -91,7 +103,7 @@ impl ScalarType for Utf8 {
     }
 }
 
-impl ScalarType for LargeUtf8 {
+impl ScalarType for LargeUtf8Type {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
         str::from_utf8(bytes)
             .map(|_| ())
@@ -99,19 +111,19 @@ impl ScalarType for LargeUtf8 {
     }
 }
 
-impl ScalarType for Binary {
+impl ScalarType for BinaryType {
     fn validate_scalar_bytes(&self, _bytes: &[u8]) -> Result<(), ScalarError> {
         Ok(())
     }
 }
 
-impl ScalarType for LargeBinary {
+impl ScalarType for LargeBinaryType {
     fn validate_scalar_bytes(&self, _bytes: &[u8]) -> Result<(), ScalarError> {
         Ok(())
     }
 }
 
-impl ScalarType for FixedSizeBinary {
+impl ScalarType for FixedSizeBinaryType {
     fn validate_scalar_bytes(&self, bytes: &[u8]) -> Result<(), ScalarError> {
         let expected = usize::try_from(self.size()).expect("validated non-negative");
         if bytes.len() == expected {

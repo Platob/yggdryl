@@ -3,12 +3,18 @@
 The Arrow-centralized schema layer of **yggdryl**: typed data types and fields.
 
 - `DataType` — the base trait every concrete type implements: Arrow interop
-  (`to_arrow` / `from_arrow`), byte round-trips (`to_bytes` / `from_bytes`) and
-  the stable constructor identifier (`type_id`).
+  (`to_arrow` / `from_arrow`), byte round-trips (`to_bytes` / `from_bytes`,
+  every encoding self-describing behind its `DataTypeId` tag) and the stable
+  constructor identifier (`type_id`).
+- One family per type across the workspace: `Int64Type` here, `Int64Field`
+  beside it, `Int64Scalar` in `yggdryl-scalar`, `Int64Array` in
+  `yggdryl-array` — each its own implementation over the generic engine.
 - `DataTypeId` — the append-only integer id of each type constructor, shared by
   every parameterization (`DataTypeId::List` for any `List<T>`).
 - `PrimitiveType` / `LogicalType` / `NestedType` — the category subtraits tying
-  a type to its native Rust value, its physical anchor, or its child fields.
+  a type to its native Rust value, its physical anchor, or its child fields;
+  `NumericType` (with `IntegerType` / `FloatType` / `DecimalType`) and
+  `TemporalType` mutualize the numeric and unit-carrying behaviour below them.
 - `AnyDataType` — the erased data type: one variant per constructor, so
   heterogeneous collections (struct fields, map entries) hold any type.
 - `TimeUnit` — the abstract base for type-level time units, implemented by one

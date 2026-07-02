@@ -22,12 +22,12 @@ use crate::{metadata, DataTypeError, DataTypeId};
 /// [`AnyDataType`](crate::AnyDataType) instead.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeError, Int8};
+/// use yggdryl_schema::{DataType, DataTypeError, Int8Type};
 ///
-/// let arrow = Int8.to_arrow();
-/// assert_eq!(Int8::from_arrow(&arrow), Ok(Int8));
+/// let arrow = Int8Type.to_arrow();
+/// assert_eq!(Int8Type::from_arrow(&arrow), Ok(Int8Type));
 /// assert!(matches!(
-///     Int8::from_arrow(&arrow_schema::DataType::Utf8),
+///     Int8Type::from_arrow(&arrow_schema::DataType::Utf8),
 ///     Err(DataTypeError::ArrowTypeMismatch { .. })
 /// ));
 /// ```

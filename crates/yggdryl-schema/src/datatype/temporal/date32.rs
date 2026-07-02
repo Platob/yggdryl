@@ -1,33 +1,35 @@
 //! The 32-bit date data type.
 
 use crate::datatype::macros::primitive_data_type;
-use crate::{Date, Day, Int32, LogicalType};
+use crate::{Date, Day, Int32Type, LogicalType, TemporalType};
 
 primitive_data_type!(
     /// A date as days since the UNIX epoch, mapping to Arrow `Date32` and
-    /// anchored on [`Int32`].
+    /// anchored on [`Int32Type`].
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, Date32, Int32, LogicalType};
+    /// use yggdryl_schema::{DataType, Date32Type, Int32Type, LogicalType};
     ///
-    /// assert_eq!(Date32.physical(), Int32);
-    /// assert_eq!(Date32::from_arrow(&Date32.to_arrow()), Ok(Date32));
+    /// assert_eq!(Date32Type.physical(), Int32Type);
+    /// assert_eq!(Date32Type::from_arrow(&Date32Type.to_arrow()), Ok(Date32Type));
     /// ```
-    Date32, i32, 32, Date32, "date32"
+    Date32Type, i32, 32, Date32, "date32"
 );
 
-impl LogicalType for Date32 {
-    type Physical = Int32;
+impl LogicalType for Date32Type {
+    type Physical = Int32Type;
 
-    fn physical(&self) -> Int32 {
-        Int32
+    fn physical(&self) -> Int32Type {
+        Int32Type
     }
 }
 
-impl Date for Date32 {
+impl TemporalType for Date32Type {
     type Unit = Day;
 
     fn unit(&self) -> Day {
         Day
     }
 }
+
+impl Date for Date32Type {}

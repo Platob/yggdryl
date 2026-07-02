@@ -6,10 +6,10 @@ primitive_data_type!(
     /// The 64-bit signed integer type, mapping to Arrow `Int64`.
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, Int64, PrimitiveType};
+    /// use yggdryl_schema::{DataType, Int64Type, PrimitiveType};
     ///
-    /// assert_eq!(Int64::BIT_WIDTH, 64);
-    /// assert_eq!(Int64::from_arrow(&Int64.to_arrow()), Ok(Int64));
+    /// assert_eq!(Int64Type::BIT_WIDTH, 64);
+    /// assert_eq!(Int64Type::from_arrow(&Int64Type.to_arrow()), Ok(Int64Type));
     /// ```
-    Int64, i64, 64, Int64, "int64"
+    Int64Type, i64, 64, Int64, "int64"
 );

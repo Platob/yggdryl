@@ -8,19 +8,19 @@ use crate::DataTypeError;
 /// variant.
 const MAX_TYPE_ID: u8 = DataTypeId::Map as u8;
 
-/// The integer identifier of a [`DataType`](crate::DataType) constructor,
+/// The integer identifier of a [`DataTypeType`](crate::DataTypeType) constructor,
 /// shared by every parameterization of that constructor (every
-/// [`Decimal128`](crate::Decimal128) is `DataTypeId::Decimal128`, every
-/// [`List`](crate::List) is `DataTypeId::List`).
+/// [`Decimal128Type`](crate::Decimal128Type) is `DataTypeId::Decimal128`, every
+/// [`ListType`](crate::ListType) is `DataTypeId::List`).
 ///
 /// Discriminants are explicit and append-only: new identifiers are only ever
 /// added after the last one, and a published value is never repurposed, so
 /// the ids are stable across versions and safe to persist.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, DataTypeId, Int8};
+/// use yggdryl_schema::{DataType, DataTypeId, Int8Type};
 ///
-/// assert_eq!(Int8.type_id(), DataTypeId::Int8);
+/// assert_eq!(Int8Type.type_id(), DataTypeId::Int8);
 /// assert_eq!(DataTypeId::from_u8(DataTypeId::Int8.to_u8()), Ok(DataTypeId::Int8));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -28,61 +28,61 @@ const MAX_TYPE_ID: u8 = DataTypeId::Map as u8;
 #[non_exhaustive]
 #[repr(u8)]
 pub enum DataTypeId {
-    /// [`Boolean`](crate::Boolean).
+    /// [`BooleanType`](crate::BooleanType).
     Boolean = 0,
-    /// [`Int8`](crate::Int8).
+    /// [`Int8Type`](crate::Int8Type).
     Int8 = 1,
-    /// [`Int16`](crate::Int16).
+    /// [`Int16Type`](crate::Int16Type).
     Int16 = 2,
-    /// [`Int32`](crate::Int32).
+    /// [`Int32Type`](crate::Int32Type).
     Int32 = 3,
-    /// [`Int64`](crate::Int64).
+    /// [`Int64Type`](crate::Int64Type).
     Int64 = 4,
-    /// [`UInt8`](crate::UInt8).
+    /// [`UInt8Type`](crate::UInt8Type).
     UInt8 = 5,
-    /// [`UInt16`](crate::UInt16).
+    /// [`UInt16Type`](crate::UInt16Type).
     UInt16 = 6,
-    /// [`UInt32`](crate::UInt32).
+    /// [`UInt32Type`](crate::UInt32Type).
     UInt32 = 7,
-    /// [`UInt64`](crate::UInt64).
+    /// [`UInt64Type`](crate::UInt64Type).
     UInt64 = 8,
-    /// [`Float32`](crate::Float32).
+    /// [`Float32Type`](crate::Float32Type).
     Float32 = 9,
-    /// [`Float64`](crate::Float64).
+    /// [`Float64Type`](crate::Float64Type).
     Float64 = 10,
-    /// [`Decimal128`](crate::Decimal128).
+    /// [`Decimal128Type`](crate::Decimal128Type).
     Decimal128 = 11,
-    /// [`Decimal256`](crate::Decimal256).
+    /// [`Decimal256Type`](crate::Decimal256Type).
     Decimal256 = 12,
-    /// [`Utf8`](crate::Utf8).
+    /// [`Utf8Type`](crate::Utf8Type).
     Utf8 = 13,
-    /// [`LargeUtf8`](crate::LargeUtf8).
+    /// [`LargeUtf8Type`](crate::LargeUtf8Type).
     LargeUtf8 = 14,
-    /// [`Binary`](crate::Binary).
+    /// [`BinaryType`](crate::BinaryType).
     Binary = 15,
-    /// [`LargeBinary`](crate::LargeBinary).
+    /// [`LargeBinaryType`](crate::LargeBinaryType).
     LargeBinary = 16,
-    /// [`FixedSizeBinary`](crate::FixedSizeBinary).
+    /// [`FixedSizeBinaryType`](crate::FixedSizeBinaryType).
     FixedSizeBinary = 17,
-    /// [`Date32`](crate::Date32).
+    /// [`Date32Type`](crate::Date32Type).
     Date32 = 18,
-    /// [`Date64`](crate::Date64).
+    /// [`Date64Type`](crate::Date64Type).
     Date64 = 19,
-    /// [`Time32`](crate::Time32).
+    /// [`Time32Type`](crate::Time32Type).
     Time32 = 20,
-    /// [`Time64`](crate::Time64).
+    /// [`Time64Type`](crate::Time64Type).
     Time64 = 21,
-    /// [`Timestamp`](crate::Timestamp).
+    /// [`TimestampType`](crate::TimestampType).
     Timestamp = 22,
-    /// [`Duration`](crate::Duration).
+    /// [`DurationType`](crate::DurationType).
     Duration = 23,
-    /// [`List`](crate::List).
+    /// [`ListType`](crate::ListType).
     List = 24,
-    /// [`LargeList`](crate::LargeList).
+    /// [`LargeListType`](crate::LargeListType).
     LargeList = 25,
-    /// [`Struct`](crate::Struct).
+    /// [`StructType`](crate::StructType).
     Struct = 26,
-    /// [`Map`](crate::Map).
+    /// [`MapType`](crate::MapType).
     Map = 27,
 }
 
@@ -139,6 +139,26 @@ impl DataTypeId {
                 max: MAX_TYPE_ID,
             }),
         }
+    }
+
+    /// Strips this identifier's leading tag off an encoded payload,
+    /// rejecting payloads tagged with another type's identifier — the shared
+    /// front half of every `DataType::from_bytes`.
+    pub(crate) fn strip_tag(self, bytes: &[u8]) -> Result<&[u8], DataTypeError> {
+        let [tag, payload @ ..] = bytes else {
+            return Err(DataTypeError::InvalidByteLength {
+                expected: 1,
+                actual: 0,
+            });
+        };
+        let actual = Self::from_u8(*tag)?;
+        if actual != self {
+            return Err(DataTypeError::TypeIdMismatch {
+                expected: self,
+                actual,
+            });
+        }
+        Ok(payload)
     }
 
     /// Serializes the identifier as its one-byte value.

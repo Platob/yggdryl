@@ -4,21 +4,22 @@ use core::fmt;
 
 use arrow_schema::{DataType as ArrowDataType, DECIMAL128_MAX_PRECISION};
 
-use crate::{DataType, DataTypeError, DataTypeId, PrimitiveType};
+use crate::datatype::decimal::decimal_type::validate;
+use crate::{DataType, DataTypeError, DataTypeId, DecimalType, PrimitiveType};
 
 /// A fixed-point decimal backed by a 128-bit integer, mapping to Arrow
-/// `Decimal128(precision, scale)`.
+/// `Decimal128Type(precision, scale)`.
 ///
 /// `precision` (1..=38) is the total number of significant digits and `scale`
 /// the number of digits after the decimal point (negative scales shift the
 /// point left); the scale's magnitude never exceeds the precision.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, Decimal128};
+/// use yggdryl_schema::{DataType, Decimal128Type, DecimalType};
 ///
-/// let decimal = Decimal128::from_parts(38, 10).unwrap();
+/// let decimal = Decimal128Type::from_parts(38, 10).unwrap();
 /// assert_eq!(decimal.to_arrow(), arrow_schema::DataType::Decimal128(38, 10));
-/// assert_eq!(Decimal128::from_arrow(&decimal.to_arrow()), Ok(decimal));
+/// assert_eq!(Decimal128Type::from_arrow(&decimal.to_arrow()), Ok(decimal));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
@@ -26,64 +27,29 @@ use crate::{DataType, DataTypeError, DataTypeId, PrimitiveType};
     derive(serde::Serialize, serde::Deserialize),
     serde(try_from = "RawDecimal128")
 )]
-pub struct Decimal128 {
+pub struct Decimal128Type {
     precision: u8,
     scale: i8,
 }
 
-impl Decimal128 {
-    /// Builds the type from a precision and scale, validating both.
-    ///
-    /// ```
-    /// use yggdryl_schema::Decimal128;
-    ///
-    /// assert!(Decimal128::from_parts(0, 0).is_err()); // expected 1..=38
-    /// assert!(Decimal128::from_parts(10, 11).is_err()); // |scale| > precision
-    /// ```
-    pub fn from_parts(precision: u8, scale: i8) -> Result<Self, DataTypeError> {
-        if precision == 0 || precision > DECIMAL128_MAX_PRECISION {
-            return Err(DataTypeError::PrecisionOutOfRange {
-                precision,
-                max: DECIMAL128_MAX_PRECISION,
-            });
-        }
-        if scale.unsigned_abs() > precision {
-            return Err(DataTypeError::ScaleOutOfRange { scale, precision });
-        }
+impl DecimalType for Decimal128Type {
+    const MAX_PRECISION: u8 = DECIMAL128_MAX_PRECISION;
+
+    fn from_parts(precision: u8, scale: i8) -> Result<Self, DataTypeError> {
+        validate(precision, scale, Self::MAX_PRECISION)?;
         Ok(Self { precision, scale })
     }
 
-    /// The total number of significant digits.
-    pub fn precision(&self) -> u8 {
+    fn precision(&self) -> u8 {
         self.precision
     }
 
-    /// The number of digits after the decimal point.
-    pub fn scale(&self) -> i8 {
+    fn scale(&self) -> i8 {
         self.scale
-    }
-
-    /// Returns a copy with any of the parts overridden; omitted parts come
-    /// from `self`.
-    pub fn copy(&self, precision: Option<u8>, scale: Option<i8>) -> Result<Self, DataTypeError> {
-        Self::from_parts(
-            precision.unwrap_or(self.precision),
-            scale.unwrap_or(self.scale),
-        )
-    }
-
-    /// Returns a copy with the precision replaced.
-    pub fn with_precision(&self, precision: u8) -> Result<Self, DataTypeError> {
-        self.copy(Some(precision), None)
-    }
-
-    /// Returns a copy with the scale replaced.
-    pub fn with_scale(&self, scale: i8) -> Result<Self, DataTypeError> {
-        self.copy(None, Some(scale))
     }
 }
 
-impl DataType for Decimal128 {
+impl DataType for Decimal128Type {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Decimal128
     }
@@ -103,26 +69,30 @@ impl DataType for Decimal128 {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        vec![self.precision, self.scale.cast_unsigned()]
+        vec![
+            DataTypeId::Decimal128.to_u8(),
+            self.precision,
+            self.scale.cast_unsigned(),
+        ]
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        match bytes {
+        match DataTypeId::Decimal128.strip_tag(bytes)? {
             [precision, scale] => Self::from_parts(*precision, scale.cast_signed()),
-            _ => Err(DataTypeError::InvalidByteLength {
+            payload => Err(DataTypeError::InvalidByteLength {
                 expected: 2,
-                actual: bytes.len(),
+                actual: payload.len(),
             }),
         }
     }
 }
 
-impl PrimitiveType for Decimal128 {
+impl PrimitiveType for Decimal128Type {
     type Native = i128;
     const BIT_WIDTH: usize = 128;
 }
 
-impl fmt::Display for Decimal128 {
+impl fmt::Display for Decimal128Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "decimal128({}, {})", self.precision, self.scale)
     }
@@ -138,7 +108,7 @@ struct RawDecimal128 {
 }
 
 #[cfg(feature = "serde")]
-impl TryFrom<RawDecimal128> for Decimal128 {
+impl TryFrom<RawDecimal128> for Decimal128Type {
     type Error = DataTypeError;
 
     fn try_from(raw: RawDecimal128) -> Result<Self, Self::Error> {

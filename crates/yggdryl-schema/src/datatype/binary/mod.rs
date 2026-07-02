@@ -6,6 +6,6 @@ mod binary;
 mod fixed_size_binary;
 mod large_binary;
 
-pub use binary::Binary;
-pub use fixed_size_binary::FixedSizeBinary;
-pub use large_binary::LargeBinary;
+pub use binary::BinaryType;
+pub use fixed_size_binary::FixedSizeBinaryType;
+pub use large_binary::LargeBinaryType;

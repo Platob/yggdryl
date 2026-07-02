@@ -12,15 +12,15 @@ pub type TypedFieldRef<T> = Arc<TypedField<T>>;
 
 /// The concrete [`Field`] implementation generic over its data type — the one
 /// implementation that gives every [`DataType`] its corresponding field
-/// (`TypedField<Int32>`, `TypedField<Utf8>`, …).
+/// (`TypedField<Int32Type>`, `TypedField<Utf8Type>`, …).
 ///
 /// Metadata is a `BTreeMap` (not a `HashMap`) so iteration order — and with
 /// it `Hash` and the byte encoding — is deterministic.
 ///
 /// ```
-/// use yggdryl_schema::{Field, Int32, TypedField};
+/// use yggdryl_schema::{Field, Int32Type, TypedField};
 ///
-/// let field = TypedField::from_parts("id", Int32, false, Default::default());
+/// let field = TypedField::from_parts("id", Int32Type, false, Default::default());
 /// let arrow = field.to_arrow();
 /// assert_eq!(TypedField::from_arrow(&arrow), Ok(field));
 /// ```

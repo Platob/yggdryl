@@ -15,9 +15,9 @@ use yggdryl_schema::DataType;
 ///
 /// ```
 /// use yggdryl_array::{Array, PrimitiveArray};
-/// use yggdryl_schema::Int64;
+/// use yggdryl_schema::Int64Type;
 ///
-/// let column = PrimitiveArray::from_options(Int64, vec![Some(1), None]);
+/// let column = PrimitiveArray::from_options(Int64Type, vec![Some(1), None]);
 /// assert_eq!(column.len(), 2);
 /// assert_eq!(column.null_count(), 1);
 /// assert_eq!(column.is_null(1), Some(true));

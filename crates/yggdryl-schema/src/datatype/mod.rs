@@ -15,29 +15,35 @@ mod logical_type;
 mod macros;
 mod map;
 mod nested_type;
+mod numeric_type;
 mod primitive_type;
 mod string;
 mod structure;
 mod temporal;
 
 pub use any_data_type::AnyDataType;
-pub use binary::{Binary, FixedSizeBinary, LargeBinary};
-pub use boolean::Boolean;
+pub use binary::{BinaryType, FixedSizeBinaryType, LargeBinaryType};
+pub use boolean::BooleanType;
 pub use data_type::DataType;
 pub use data_type_id::DataTypeId;
-pub use decimal::{Decimal128, Decimal256};
+pub use decimal::{Decimal128Type, Decimal256Type, DecimalType};
 pub use error::DataTypeError;
-pub use float::{Float32, Float64};
-pub use integer::{Int16, Int32, Int64, Int8, UInt16, UInt32, UInt64, UInt8};
-pub use list::{LargeList, List};
+pub use float::{Float32Type, Float64Type, FloatType};
+pub use integer::{
+    Int16Type, Int32Type, Int64Type, Int8Type, IntegerType, UInt16Type, UInt32Type, UInt64Type,
+    UInt8Type,
+};
+pub use list::{LargeListType, ListType};
 pub use logical_type::LogicalType;
-pub use map::Map;
+pub use map::MapType;
 pub use nested_type::NestedType;
+pub use numeric_type::NumericType;
 pub use primitive_type::PrimitiveType;
-pub use string::{LargeUtf8, Utf8};
-pub use structure::Struct;
+pub use string::{LargeUtf8Type, Utf8Type};
+pub use structure::StructType;
 pub use temporal::{
-    AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Date, Date32, Date64, Day, Duration, Hour,
-    Microsecond, Millisecond, Minute, Month, Nanosecond, Quarter, Second, Time, Time32, Time32Unit,
-    Time64, Time64Unit, TimeUnit, TimeUnitId, Timestamp, TypedDuration, TypedTimestamp, Week, Year,
+    AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Date, Date32Type, Date64Type, Day, Duration,
+    DurationType, Hour, Microsecond, Millisecond, Minute, Month, Nanosecond, Quarter, Second,
+    TemporalType, Time, Time32Type, Time32Unit, Time64Type, Time64Unit, TimeUnit, TimeUnitId,
+    Timestamp, TimestampType, Week, Year,
 };

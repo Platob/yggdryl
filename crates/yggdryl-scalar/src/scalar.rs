@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core::str;
 
 use arrow_buffer::{ArrowNativeType, Buffer, MutableBuffer};
-use yggdryl_schema::{Boolean, PrimitiveType};
+use yggdryl_schema::{BooleanType, PrimitiveType};
 
 use crate::{BinaryScalarType, ScalarError, ScalarType, StringScalarType};
 
@@ -19,14 +19,14 @@ use crate::{BinaryScalarType, ScalarError, ScalarType, StringScalarType};
 ///
 /// ```
 /// use yggdryl_scalar::Scalar;
-/// use yggdryl_schema::{Int64, Utf8};
+/// use yggdryl_schema::{Int64Type, Utf8Type};
 ///
-/// let count = Scalar::from_native(Int64, 42i64);
+/// let count = Scalar::from_native(Int64Type, 42i64);
 /// assert_eq!(count.as_native(), Some(42));
 ///
-/// let name = Scalar::from_string(Utf8, "ygg");
+/// let name = Scalar::from_string(Utf8Type, "ygg");
 /// assert_eq!(name.as_str(), Some("ygg"));
-/// assert_eq!(Scalar::null(Utf8).as_str(), None);
+/// assert_eq!(Scalar::null(Utf8Type).as_str(), None);
 /// ```
 ///
 /// [`Buffer`]: arrow_buffer::Buffer
@@ -157,14 +157,54 @@ where
             .as_ref()
             .map(|buffer| buffer.typed_data::<T::Native>()[0])
     }
+
+    /// The value as an `i64` — the native itself for [`Int64Type`]-natives,
+    /// a checked conversion otherwise: widening always succeeds, and a value
+    /// that does not fit returns `None` rather than truncating.
+    ///
+    /// [`Int64Type`]: yggdryl_schema::Int64Type
+    pub fn as_i64(&self) -> Option<i64>
+    where
+        T::Native: TryInto<i64>,
+    {
+        self.as_native()?.try_into().ok()
+    }
+
+    /// The value as a `u64`, checked the same way as
+    /// [`as_i64`](Scalar::as_i64) (a negative value returns `None`).
+    pub fn as_u64(&self) -> Option<u64>
+    where
+        T::Native: TryInto<u64>,
+    {
+        self.as_native()?.try_into().ok()
+    }
+
+    /// The value as an `i128`, checked the same way as
+    /// [`as_i64`](Scalar::as_i64) — every integer native up to
+    /// [`Decimal128Type`](yggdryl_schema::Decimal128Type) widens losslessly.
+    pub fn as_i128(&self) -> Option<i128>
+    where
+        T::Native: TryInto<i128>,
+    {
+        self.as_native()?.try_into().ok()
+    }
+
+    /// The value as an `f64`; offered only where the native widens without
+    /// losing precision, so the read never lies.
+    pub fn as_f64(&self) -> Option<f64>
+    where
+        T::Native: Into<f64>,
+    {
+        Some(self.as_native()?.into())
+    }
 }
 
-impl Scalar<Boolean> {
+impl Scalar<BooleanType> {
     /// Builds the scalar from a boolean; a detached element is one byte, the
     /// bit-packing of the Arrow spec applies to arrays.
     pub fn from_bool(value: bool) -> Self {
         Self {
-            data_type: Boolean,
+            data_type: BooleanType,
             buffer: Some(Buffer::from_slice_ref([u8::from(value)])),
         }
     }
@@ -194,7 +234,7 @@ impl<T: StringScalarType> Scalar<T> {
 
 impl<T: BinaryScalarType> Scalar<T> {
     /// Builds the scalar from a byte value over a fresh buffer, validated
-    /// against the type's layout (`FixedSizeBinary` checks the width).
+    /// against the type's layout (`FixedSizeBinaryType` checks the width).
     pub fn from_binary(data_type: T, value: impl AsRef<[u8]>) -> Result<Self, ScalarError> {
         Self::from_parts(data_type, Some(Buffer::from(value.as_ref())))
     }

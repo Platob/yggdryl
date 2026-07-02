@@ -1,33 +1,35 @@
 //! The 64-bit date data type.
 
 use crate::datatype::macros::primitive_data_type;
-use crate::{Date, Int64, LogicalType, Millisecond};
+use crate::{Date, Int64Type, LogicalType, Millisecond, TemporalType};
 
 primitive_data_type!(
     /// A date as milliseconds since the UNIX epoch, mapping to Arrow `Date64`
-    /// and anchored on [`Int64`].
+    /// and anchored on [`Int64Type`].
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, Date64, Int64, LogicalType};
+    /// use yggdryl_schema::{DataType, Date64Type, Int64Type, LogicalType};
     ///
-    /// assert_eq!(Date64.physical(), Int64);
-    /// assert_eq!(Date64::from_arrow(&Date64.to_arrow()), Ok(Date64));
+    /// assert_eq!(Date64Type.physical(), Int64Type);
+    /// assert_eq!(Date64Type::from_arrow(&Date64Type.to_arrow()), Ok(Date64Type));
     /// ```
-    Date64, i64, 64, Date64, "date64"
+    Date64Type, i64, 64, Date64, "date64"
 );
 
-impl LogicalType for Date64 {
-    type Physical = Int64;
+impl LogicalType for Date64Type {
+    type Physical = Int64Type;
 
-    fn physical(&self) -> Int64 {
-        Int64
+    fn physical(&self) -> Int64Type {
+        Int64Type
     }
 }
 
-impl Date for Date64 {
+impl TemporalType for Date64Type {
     type Unit = Millisecond;
 
     fn unit(&self) -> Millisecond {
         Millisecond
     }
 }
+
+impl Date for Date64Type {}

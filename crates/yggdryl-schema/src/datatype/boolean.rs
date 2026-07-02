@@ -7,10 +7,10 @@ primitive_data_type!(
     /// so the storage width is a single bit.
     ///
     /// ```
-    /// use yggdryl_schema::{Boolean, DataType, PrimitiveType};
+    /// use yggdryl_schema::{BooleanType, DataType, PrimitiveType};
     ///
-    /// assert_eq!(Boolean::BIT_WIDTH, 1);
-    /// assert_eq!(Boolean::from_arrow(&Boolean.to_arrow()), Ok(Boolean));
+    /// assert_eq!(BooleanType::BIT_WIDTH, 1);
+    /// assert_eq!(BooleanType::from_arrow(&BooleanType.to_arrow()), Ok(BooleanType));
     /// ```
-    Boolean, bool, 1, Boolean, "boolean"
+    BooleanType, bool, 1, Boolean, "boolean"
 );

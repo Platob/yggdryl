@@ -6,26 +6,26 @@ use std::sync::Arc;
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    AnyDataType, DataType, DataTypeError, DataTypeId, Field, NestedType, Struct, TypedField,
+    AnyDataType, DataType, DataTypeError, DataTypeId, Field, NestedType, StructType, TypedField,
     TypedFieldRef,
 };
 
 /// Key–value pairs stored as a list of entry structs, mapping to Arrow
-/// `Map(entries, sorted)`. The entries field is a [`Struct`] of exactly two
+/// `MapType(entries, sorted)`. The entries field is a [`StructType`] of exactly two
 /// children — a non-nullable key field and a value field — preserved as-is so
 /// the Arrow round-trip is lossless whatever the fields are named.
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl_schema::{DataType, Field, Int32, Map, Struct, TypedField, Utf8};
+/// use yggdryl_schema::{DataType, Field, Int32Type, MapType, StructType, TypedField, Utf8Type};
 ///
-/// let entries = Struct::from_parts(vec![
-///     Arc::new(TypedField::from_parts("key", Utf8.into(), false, Default::default())),
-///     Arc::new(TypedField::from_parts("value", Int32.into(), true, Default::default())),
+/// let entries = StructType::from_parts(vec![
+///     Arc::new(TypedField::from_parts("key", Utf8Type.into(), false, Default::default())),
+///     Arc::new(TypedField::from_parts("value", Int32Type.into(), true, Default::default())),
 /// ]);
 /// let entries = Arc::new(TypedField::from_parts("entries", entries, false, Default::default()));
-/// let map = Map::from_parts(entries, false).unwrap();
-/// assert_eq!(Map::from_arrow(&map.to_arrow()), Ok(map.clone()));
+/// let map = MapType::from_parts(entries, false).unwrap();
+/// assert_eq!(MapType::from_arrow(&map.to_arrow()), Ok(map.clone()));
 /// assert_eq!(map.to_string(), "map<key: utf8, value: int32?>");
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -34,29 +34,32 @@ use crate::{
     derive(serde::Serialize, serde::Deserialize),
     serde(try_from = "RawMap")
 )]
-pub struct Map {
-    entries: TypedFieldRef<Struct>,
+pub struct MapType {
+    entries: TypedFieldRef<StructType>,
     sorted: bool,
 }
 
-impl Map {
+impl MapType {
     /// Builds the map type from its entries field and key-ordering flag,
     /// validating that the entries struct has exactly two children and a
     /// non-nullable key.
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use yggdryl_schema::{Field, Map, Struct, TypedField};
+    /// use yggdryl_schema::{Field, MapType, StructType, TypedField};
     ///
     /// let empty = Arc::new(TypedField::from_parts(
     ///     "entries",
-    ///     Struct::from_parts(vec![]),
+    ///     StructType::from_parts(vec![]),
     ///     false,
     ///     Default::default(),
     /// ));
-    /// assert!(Map::from_parts(empty, false).is_err()); // expected key and value
+    /// assert!(MapType::from_parts(empty, false).is_err()); // expected key and value
     /// ```
-    pub fn from_parts(entries: TypedFieldRef<Struct>, sorted: bool) -> Result<Self, DataTypeError> {
+    pub fn from_parts(
+        entries: TypedFieldRef<StructType>,
+        sorted: bool,
+    ) -> Result<Self, DataTypeError> {
         let fields = entries.data_type().fields();
         if fields.len() != 2 {
             return Err(DataTypeError::InvalidMapEntries {
@@ -78,8 +81,8 @@ impl Map {
         Ok(Self { entries, sorted })
     }
 
-    /// The entries field: a [`Struct`] of the key and value fields.
-    pub fn entries(&self) -> &TypedFieldRef<Struct> {
+    /// The entries field: a [`StructType`] of the key and value fields.
+    pub fn entries(&self) -> &TypedFieldRef<StructType> {
         &self.entries
     }
 
@@ -102,7 +105,7 @@ impl Map {
     /// from `self`.
     pub fn copy(
         &self,
-        entries: Option<TypedFieldRef<Struct>>,
+        entries: Option<TypedFieldRef<StructType>>,
         sorted: Option<bool>,
     ) -> Result<Self, DataTypeError> {
         Self::from_parts(
@@ -112,7 +115,7 @@ impl Map {
     }
 
     /// Returns a copy with the entries field replaced.
-    pub fn with_entries(&self, entries: TypedFieldRef<Struct>) -> Result<Self, DataTypeError> {
+    pub fn with_entries(&self, entries: TypedFieldRef<StructType>) -> Result<Self, DataTypeError> {
         self.copy(Some(entries), None)
     }
 
@@ -122,7 +125,7 @@ impl Map {
     }
 }
 
-impl DataType for Map {
+impl DataType for MapType {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Map
     }
@@ -144,16 +147,17 @@ impl DataType for Map {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        let mut out = vec![u8::from(self.sorted)];
+        let mut out = vec![DataTypeId::Map.to_u8(), u8::from(self.sorted)];
         out.extend(self.entries.to_bytes());
         out
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        let [sorted, entries @ ..] = bytes else {
+        let payload = DataTypeId::Map.strip_tag(bytes)?;
+        let [sorted, entries @ ..] = payload else {
             return Err(DataTypeError::InvalidByteLength {
                 expected: 1,
-                actual: bytes.len(),
+                actual: payload.len(),
             });
         };
         let sorted = match sorted {
@@ -169,13 +173,13 @@ impl DataType for Map {
     }
 }
 
-impl NestedType for Map {
+impl NestedType for MapType {
     fn num_children(&self) -> usize {
         1
     }
 }
 
-impl fmt::Display for Map {
+impl fmt::Display for MapType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "map<{}, {}", self.key(), self.value())?;
         if self.sorted {
@@ -190,12 +194,12 @@ impl fmt::Display for Map {
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 struct RawMap {
-    entries: TypedFieldRef<Struct>,
+    entries: TypedFieldRef<StructType>,
     sorted: bool,
 }
 
 #[cfg(feature = "serde")]
-impl TryFrom<RawMap> for Map {
+impl TryFrom<RawMap> for MapType {
     type Error = DataTypeError;
 
     fn try_from(raw: RawMap) -> Result<Self, Self::Error> {

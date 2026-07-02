@@ -8,23 +8,23 @@ use arrow_schema::DataType as ArrowDataType;
 use crate::{DataType, DataTypeError, DataTypeId, Field, NestedType, TypedField, TypedFieldRef};
 
 /// A variable-size list of `T` values with 64-bit offsets, mapping to Arrow
-/// `LargeList` over the child field.
+/// `LargeListType` over the child field.
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl_schema::{DataType, Field, LargeList, TypedField, Utf8};
+/// use yggdryl_schema::{DataType, Field, LargeListType, TypedField, Utf8Type};
 ///
-/// let item = Arc::new(TypedField::from_parts("item", Utf8, true, Default::default()));
-/// let list = LargeList::from_parts(item);
-/// assert_eq!(LargeList::from_arrow(&list.to_arrow()), Ok(list.clone()));
+/// let item = Arc::new(TypedField::from_parts("item", Utf8Type, true, Default::default()));
+/// let list = LargeListType::from_parts(item);
+/// assert_eq!(LargeListType::from_arrow(&list.to_arrow()), Ok(list.clone()));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct LargeList<T: DataType> {
+pub struct LargeListType<T: DataType> {
     child: TypedFieldRef<T>,
 }
 
-impl<T: DataType> LargeList<T> {
+impl<T: DataType> LargeListType<T> {
     /// Builds the list type from its child field.
     pub fn from_parts(child: TypedFieldRef<T>) -> Self {
         Self { child }
@@ -47,7 +47,7 @@ impl<T: DataType> LargeList<T> {
     }
 }
 
-impl<T: DataType> DataType for LargeList<T> {
+impl<T: DataType> DataType for LargeListType<T> {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::LargeList
     }
@@ -69,21 +69,24 @@ impl<T: DataType> DataType for LargeList<T> {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.child.to_bytes()
+        let mut out = vec![DataTypeId::LargeList.to_u8()];
+        out.extend(self.child.to_bytes());
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        Ok(Self::from_parts(Arc::new(TypedField::from_bytes(bytes)?)))
+        let payload = DataTypeId::LargeList.strip_tag(bytes)?;
+        Ok(Self::from_parts(Arc::new(TypedField::from_bytes(payload)?)))
     }
 }
 
-impl<T: DataType> NestedType for LargeList<T> {
+impl<T: DataType> NestedType for LargeListType<T> {
     fn num_children(&self) -> usize {
         1
     }
 }
 
-impl<T: DataType> fmt::Display for LargeList<T> {
+impl<T: DataType> fmt::Display for LargeListType<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "large_list<{}>", self.child)
     }

@@ -20,9 +20,9 @@ use crate::{DataType, FieldError};
 /// methods.
 ///
 /// ```
-/// use yggdryl_schema::{Field, Int32, TypedField};
+/// use yggdryl_schema::{Field, Int32Type, TypedField};
 ///
-/// let field = TypedField::from_parts("id", Int32, false, Default::default());
+/// let field = TypedField::from_parts("id", Int32Type, false, Default::default());
 /// assert_eq!(field.name(), "id");
 /// assert_eq!(TypedField::from_arrow(&field.to_arrow()), Ok(field));
 /// ```

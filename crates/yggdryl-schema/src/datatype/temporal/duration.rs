@@ -1,28 +1,22 @@
 //! The abstract base every duration implementation satisfies.
 
-use crate::{DataType, TimeUnit};
+use crate::TemporalType;
 
 /// An elapsed time as a count of a unit: the abstract base implemented for
-/// every [`TimeUnit`] by the generic [`TypedDuration`](crate::TypedDuration).
+/// every [`TimeUnit`] by the generic [`DurationType`](crate::DurationType).
 ///
 /// Implementors supply [`from_parts`](Duration::from_parts) and the
 /// accessor; the functional updates come provided.
 ///
 /// ```
-/// use yggdryl_schema::{Duration, Second, TypedDuration, Week};
+/// use yggdryl_schema::{Duration, DurationType, Second, TemporalType, Week};
 ///
-/// assert_eq!(TypedDuration::from_parts(Second).unit(), Second);
-/// assert_eq!(TypedDuration::from_parts(Week).with_unit(Week).unit(), Week);
+/// assert_eq!(DurationType::from_parts(Second).unit(), Second);
+/// assert_eq!(DurationType::from_parts(Week).with_unit(Week).unit(), Week);
 /// ```
-pub trait Duration: DataType {
-    /// The resolution of the count.
-    type Unit: TimeUnit;
-
+pub trait Duration: TemporalType {
     /// Builds the duration type from its resolution.
     fn from_parts(unit: Self::Unit) -> Self;
-
-    /// The resolution of the count.
-    fn unit(&self) -> Self::Unit;
 
     /// Returns a copy with any of the parts overridden; omitted parts come
     /// from `self`.

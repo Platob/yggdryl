@@ -2,31 +2,25 @@
 
 use std::sync::Arc;
 
-use crate::{DataType, TimeUnit};
+use crate::TemporalType;
 
 /// An instant as an offset since the UNIX epoch at a unit resolution, with
 /// an optional timezone: the abstract base implemented for every
-/// [`TimeUnit`] by the generic [`TypedTimestamp`](crate::TypedTimestamp).
+/// [`TimeUnit`] by the generic [`TimestampType`](crate::TimestampType).
 ///
 /// Implementors supply [`from_parts`](Timestamp::from_parts) and the two
 /// accessors; the functional updates come provided.
 ///
 /// ```
-/// use yggdryl_schema::{Minute, Timestamp, TypedTimestamp};
+/// use yggdryl_schema::{Minute, TemporalType, Timestamp, TimestampType};
 ///
-/// let logged = TypedTimestamp::from_parts(Minute, Some("UTC".into()));
+/// let logged = TimestampType::from_parts(Minute, Some("UTC".into()));
 /// assert_eq!(logged.unit(), Minute);
 /// assert_eq!(logged.without_timezone().timezone(), None);
 /// ```
-pub trait Timestamp: DataType {
-    /// The resolution of the offset.
-    type Unit: TimeUnit;
-
+pub trait Timestamp: TemporalType {
     /// Builds the timestamp type from its resolution and optional timezone.
     fn from_parts(unit: Self::Unit, timezone: Option<Arc<str>>) -> Self;
-
-    /// The resolution of the offset.
-    fn unit(&self) -> Self::Unit;
 
     /// The timezone the instant is rendered in, if any.
     fn timezone(&self) -> Option<&str>;

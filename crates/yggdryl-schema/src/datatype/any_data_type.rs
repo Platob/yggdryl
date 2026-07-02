@@ -6,11 +6,12 @@ use std::collections::BTreeMap;
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    metadata, AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError,
-    DataTypeId, Date32, Date64, Decimal128, Decimal256, Duration, FixedSizeBinary, Float32,
-    Float64, Int16, Int32, Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, Map, Struct, Time,
-    Time32, Time32Unit, Time64, Time64Unit, TimeUnit, Timestamp, TypedDuration, TypedTimestamp,
-    UInt16, UInt32, UInt64, UInt8, Utf8,
+    metadata, AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, BinaryType, BooleanType, DataType,
+    DataTypeError, DataTypeId, Date32Type, Date64Type, Decimal128Type, Decimal256Type, Duration,
+    DurationType, FixedSizeBinaryType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type,
+    Int8Type, LargeBinaryType, LargeListType, LargeUtf8Type, ListType, MapType, StructType,
+    TemporalType, Time, Time32Type, Time32Unit, Time64Type, Time64Unit, TimeUnit, Timestamp,
+    TimestampType, UInt16Type, UInt32Type, UInt64Type, UInt8Type, Utf8Type,
 };
 
 /// Delegates an expression to the concrete type inside every variant.
@@ -62,7 +63,7 @@ macro_rules! from_impls {
 
 /// The erased [`DataType`]: one variant per supported constructor, each
 /// wrapping the concrete type, so heterogeneous collections — a
-/// [`Struct`]'s fields, a schema, a binding-held type — can hold any data
+/// [`StructType`]'s fields, a schema, a binding-held type — can hold any data
 /// type behind a single `Sized` value.
 ///
 /// `AnyDataType` implements [`DataType`] itself by delegating to the wrapped
@@ -71,9 +72,9 @@ macro_rules! from_impls {
 /// [`DataTypeId`] tag.
 ///
 /// ```
-/// use yggdryl_schema::{AnyDataType, DataType, DataTypeId, Int32};
+/// use yggdryl_schema::{AnyDataType, DataType, DataTypeId, Int32Type};
 ///
-/// let any = AnyDataType::from(Int32);
+/// let any = AnyDataType::from(Int32Type);
 /// assert_eq!(any.type_id(), DataTypeId::Int32);
 /// assert_eq!(AnyDataType::from_arrow(&any.to_arrow()), Ok(any));
 /// ```
@@ -81,62 +82,62 @@ macro_rules! from_impls {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum AnyDataType {
-    /// [`Boolean`].
-    Boolean(Boolean),
-    /// [`Int8`].
-    Int8(Int8),
-    /// [`Int16`].
-    Int16(Int16),
-    /// [`Int32`].
-    Int32(Int32),
-    /// [`Int64`].
-    Int64(Int64),
-    /// [`UInt8`].
-    UInt8(UInt8),
-    /// [`UInt16`].
-    UInt16(UInt16),
-    /// [`UInt32`].
-    UInt32(UInt32),
-    /// [`UInt64`].
-    UInt64(UInt64),
-    /// [`Float32`].
-    Float32(Float32),
-    /// [`Float64`].
-    Float64(Float64),
-    /// [`Decimal128`].
-    Decimal128(Decimal128),
-    /// [`Decimal256`].
-    Decimal256(Decimal256),
-    /// [`Utf8`].
-    Utf8(Utf8),
-    /// [`LargeUtf8`].
-    LargeUtf8(LargeUtf8),
-    /// [`Binary`].
-    Binary(Binary),
-    /// [`LargeBinary`].
-    LargeBinary(LargeBinary),
-    /// [`FixedSizeBinary`].
-    FixedSizeBinary(FixedSizeBinary),
-    /// [`Date32`].
-    Date32(Date32),
-    /// [`Date64`].
-    Date64(Date64),
-    /// [`Time32`] over an erased unit.
-    Time32(Time32<AnyTime32Unit>),
-    /// [`Time64`] over an erased unit.
-    Time64(Time64<AnyTime64Unit>),
-    /// [`TypedTimestamp`] over an erased unit.
-    Timestamp(TypedTimestamp<AnyTimeUnit>),
-    /// [`TypedDuration`] over an erased unit.
-    Duration(TypedDuration<AnyTimeUnit>),
-    /// [`List`] over an erased child.
-    List(List<AnyDataType>),
-    /// [`LargeList`] over an erased child.
-    LargeList(LargeList<AnyDataType>),
-    /// [`Struct`].
-    Struct(Struct),
-    /// [`Map`].
-    Map(Map),
+    /// [`BooleanType`].
+    Boolean(BooleanType),
+    /// [`Int8Type`].
+    Int8(Int8Type),
+    /// [`Int16Type`].
+    Int16(Int16Type),
+    /// [`Int32Type`].
+    Int32(Int32Type),
+    /// [`Int64Type`].
+    Int64(Int64Type),
+    /// [`UInt8Type`].
+    UInt8(UInt8Type),
+    /// [`UInt16Type`].
+    UInt16(UInt16Type),
+    /// [`UInt32Type`].
+    UInt32(UInt32Type),
+    /// [`UInt64Type`].
+    UInt64(UInt64Type),
+    /// [`Float32Type`].
+    Float32(Float32Type),
+    /// [`Float64Type`].
+    Float64(Float64Type),
+    /// [`Decimal128Type`].
+    Decimal128(Decimal128Type),
+    /// [`Decimal256Type`].
+    Decimal256(Decimal256Type),
+    /// [`Utf8Type`].
+    Utf8(Utf8Type),
+    /// [`LargeUtf8Type`].
+    LargeUtf8(LargeUtf8Type),
+    /// [`BinaryType`].
+    Binary(BinaryType),
+    /// [`LargeBinaryType`].
+    LargeBinary(LargeBinaryType),
+    /// [`FixedSizeBinaryType`].
+    FixedSizeBinary(FixedSizeBinaryType),
+    /// [`Date32Type`].
+    Date32(Date32Type),
+    /// [`Date64Type`].
+    Date64(Date64Type),
+    /// [`Time32Type`] over an erased unit.
+    Time32(Time32Type<AnyTime32Unit>),
+    /// [`Time64Type`] over an erased unit.
+    Time64(Time64Type<AnyTime64Unit>),
+    /// [`TimestampType`] over an erased unit.
+    Timestamp(TimestampType<AnyTimeUnit>),
+    /// [`DurationType`] over an erased unit.
+    Duration(DurationType<AnyTimeUnit>),
+    /// [`ListType`] over an erased child.
+    List(ListType<AnyDataType>),
+    /// [`LargeListType`] over an erased child.
+    LargeList(LargeListType<AnyDataType>),
+    /// [`StructType`].
+    Struct(StructType),
+    /// [`MapType`].
+    Map(MapType),
 }
 
 impl DataType for AnyDataType {
@@ -154,42 +155,46 @@ impl DataType for AnyDataType {
 
     fn from_arrow(data_type: &ArrowDataType) -> Result<Self, DataTypeError> {
         match data_type {
-            ArrowDataType::Boolean => Boolean::from_arrow(data_type).map(Self::Boolean),
-            ArrowDataType::Int8 => Int8::from_arrow(data_type).map(Self::Int8),
-            ArrowDataType::Int16 => Int16::from_arrow(data_type).map(Self::Int16),
-            ArrowDataType::Int32 => Int32::from_arrow(data_type).map(Self::Int32),
-            ArrowDataType::Int64 => Int64::from_arrow(data_type).map(Self::Int64),
-            ArrowDataType::UInt8 => UInt8::from_arrow(data_type).map(Self::UInt8),
-            ArrowDataType::UInt16 => UInt16::from_arrow(data_type).map(Self::UInt16),
-            ArrowDataType::UInt32 => UInt32::from_arrow(data_type).map(Self::UInt32),
-            ArrowDataType::UInt64 => UInt64::from_arrow(data_type).map(Self::UInt64),
-            ArrowDataType::Float32 => Float32::from_arrow(data_type).map(Self::Float32),
-            ArrowDataType::Float64 => Float64::from_arrow(data_type).map(Self::Float64),
+            ArrowDataType::Boolean => BooleanType::from_arrow(data_type).map(Self::Boolean),
+            ArrowDataType::Int8 => Int8Type::from_arrow(data_type).map(Self::Int8),
+            ArrowDataType::Int16 => Int16Type::from_arrow(data_type).map(Self::Int16),
+            ArrowDataType::Int32 => Int32Type::from_arrow(data_type).map(Self::Int32),
+            ArrowDataType::Int64 => Int64Type::from_arrow(data_type).map(Self::Int64),
+            ArrowDataType::UInt8 => UInt8Type::from_arrow(data_type).map(Self::UInt8),
+            ArrowDataType::UInt16 => UInt16Type::from_arrow(data_type).map(Self::UInt16),
+            ArrowDataType::UInt32 => UInt32Type::from_arrow(data_type).map(Self::UInt32),
+            ArrowDataType::UInt64 => UInt64Type::from_arrow(data_type).map(Self::UInt64),
+            ArrowDataType::Float32 => Float32Type::from_arrow(data_type).map(Self::Float32),
+            ArrowDataType::Float64 => Float64Type::from_arrow(data_type).map(Self::Float64),
             ArrowDataType::Decimal128(..) => {
-                Decimal128::from_arrow(data_type).map(Self::Decimal128)
+                Decimal128Type::from_arrow(data_type).map(Self::Decimal128)
             }
             ArrowDataType::Decimal256(..) => {
-                Decimal256::from_arrow(data_type).map(Self::Decimal256)
+                Decimal256Type::from_arrow(data_type).map(Self::Decimal256)
             }
-            ArrowDataType::Utf8 => Utf8::from_arrow(data_type).map(Self::Utf8),
-            ArrowDataType::LargeUtf8 => LargeUtf8::from_arrow(data_type).map(Self::LargeUtf8),
-            ArrowDataType::Binary => Binary::from_arrow(data_type).map(Self::Binary),
-            ArrowDataType::LargeBinary => LargeBinary::from_arrow(data_type).map(Self::LargeBinary),
+            ArrowDataType::Utf8 => Utf8Type::from_arrow(data_type).map(Self::Utf8),
+            ArrowDataType::LargeUtf8 => LargeUtf8Type::from_arrow(data_type).map(Self::LargeUtf8),
+            ArrowDataType::Binary => BinaryType::from_arrow(data_type).map(Self::Binary),
+            ArrowDataType::LargeBinary => {
+                LargeBinaryType::from_arrow(data_type).map(Self::LargeBinary)
+            }
             ArrowDataType::FixedSizeBinary(_) => {
-                FixedSizeBinary::from_arrow(data_type).map(Self::FixedSizeBinary)
+                FixedSizeBinaryType::from_arrow(data_type).map(Self::FixedSizeBinary)
             }
-            ArrowDataType::Date32 => Date32::from_arrow(data_type).map(Self::Date32),
-            ArrowDataType::Date64 => Date64::from_arrow(data_type).map(Self::Date64),
-            ArrowDataType::Time32(_) => Time32::from_arrow(data_type).map(Self::Time32),
-            ArrowDataType::Time64(_) => Time64::from_arrow(data_type).map(Self::Time64),
+            ArrowDataType::Date32 => Date32Type::from_arrow(data_type).map(Self::Date32),
+            ArrowDataType::Date64 => Date64Type::from_arrow(data_type).map(Self::Date64),
+            ArrowDataType::Time32(_) => Time32Type::from_arrow(data_type).map(Self::Time32),
+            ArrowDataType::Time64(_) => Time64Type::from_arrow(data_type).map(Self::Time64),
             ArrowDataType::Timestamp(..) => {
-                TypedTimestamp::from_arrow(data_type).map(Self::Timestamp)
+                TimestampType::from_arrow(data_type).map(Self::Timestamp)
             }
-            ArrowDataType::Duration(_) => TypedDuration::from_arrow(data_type).map(Self::Duration),
-            ArrowDataType::List(_) => List::from_arrow(data_type).map(Self::List),
-            ArrowDataType::LargeList(_) => LargeList::from_arrow(data_type).map(Self::LargeList),
-            ArrowDataType::Struct(_) => Struct::from_arrow(data_type).map(Self::Struct),
-            ArrowDataType::Map(..) => Map::from_arrow(data_type).map(Self::Map),
+            ArrowDataType::Duration(_) => DurationType::from_arrow(data_type).map(Self::Duration),
+            ArrowDataType::List(_) => ListType::from_arrow(data_type).map(Self::List),
+            ArrowDataType::LargeList(_) => {
+                LargeListType::from_arrow(data_type).map(Self::LargeList)
+            }
+            ArrowDataType::Struct(_) => StructType::from_arrow(data_type).map(Self::Struct),
+            ArrowDataType::Map(..) => MapType::from_arrow(data_type).map(Self::Map),
             other => Err(DataTypeError::ArrowTypeMismatch {
                 expected: "a supported data type",
                 actual: other.clone(),
@@ -204,10 +209,10 @@ impl DataType for AnyDataType {
         match metadata_map.get(metadata::TYPE).map(String::as_str) {
             // The `ygg.type` marker names the anchored type to restore.
             Some("timestamp") => {
-                TypedTimestamp::from_arrow_parts(data_type, metadata_map).map(Self::Timestamp)
+                TimestampType::from_arrow_parts(data_type, metadata_map).map(Self::Timestamp)
             }
             Some("duration") => {
-                TypedDuration::from_arrow_parts(data_type, metadata_map).map(Self::Duration)
+                DurationType::from_arrow_parts(data_type, metadata_map).map(Self::Duration)
             }
             Some(other) => Err(DataTypeError::InvalidMetadata {
                 key: metadata::TYPE,
@@ -226,49 +231,51 @@ impl DataType for AnyDataType {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        let mut out = vec![self.type_id().to_u8()];
-        out.extend(delegate!(self, inner => inner.to_bytes()));
-        out
+        // Every concrete encoding already leads with its DataTypeId tag, so
+        // the erased encoding is exactly the concrete one.
+        delegate!(self, inner => inner.to_bytes())
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        let [tag, payload @ ..] = bytes else {
+        // Peek the tag to pick the constructor; the concrete decoder
+        // re-validates it.
+        let [tag, ..] = bytes else {
             return Err(DataTypeError::InvalidByteLength {
                 expected: 1,
                 actual: bytes.len(),
             });
         };
         match DataTypeId::from_u8(*tag)? {
-            DataTypeId::Boolean => Boolean::from_bytes(payload).map(Self::Boolean),
-            DataTypeId::Int8 => Int8::from_bytes(payload).map(Self::Int8),
-            DataTypeId::Int16 => Int16::from_bytes(payload).map(Self::Int16),
-            DataTypeId::Int32 => Int32::from_bytes(payload).map(Self::Int32),
-            DataTypeId::Int64 => Int64::from_bytes(payload).map(Self::Int64),
-            DataTypeId::UInt8 => UInt8::from_bytes(payload).map(Self::UInt8),
-            DataTypeId::UInt16 => UInt16::from_bytes(payload).map(Self::UInt16),
-            DataTypeId::UInt32 => UInt32::from_bytes(payload).map(Self::UInt32),
-            DataTypeId::UInt64 => UInt64::from_bytes(payload).map(Self::UInt64),
-            DataTypeId::Float32 => Float32::from_bytes(payload).map(Self::Float32),
-            DataTypeId::Float64 => Float64::from_bytes(payload).map(Self::Float64),
-            DataTypeId::Decimal128 => Decimal128::from_bytes(payload).map(Self::Decimal128),
-            DataTypeId::Decimal256 => Decimal256::from_bytes(payload).map(Self::Decimal256),
-            DataTypeId::Utf8 => Utf8::from_bytes(payload).map(Self::Utf8),
-            DataTypeId::LargeUtf8 => LargeUtf8::from_bytes(payload).map(Self::LargeUtf8),
-            DataTypeId::Binary => Binary::from_bytes(payload).map(Self::Binary),
-            DataTypeId::LargeBinary => LargeBinary::from_bytes(payload).map(Self::LargeBinary),
+            DataTypeId::Boolean => BooleanType::from_bytes(bytes).map(Self::Boolean),
+            DataTypeId::Int8 => Int8Type::from_bytes(bytes).map(Self::Int8),
+            DataTypeId::Int16 => Int16Type::from_bytes(bytes).map(Self::Int16),
+            DataTypeId::Int32 => Int32Type::from_bytes(bytes).map(Self::Int32),
+            DataTypeId::Int64 => Int64Type::from_bytes(bytes).map(Self::Int64),
+            DataTypeId::UInt8 => UInt8Type::from_bytes(bytes).map(Self::UInt8),
+            DataTypeId::UInt16 => UInt16Type::from_bytes(bytes).map(Self::UInt16),
+            DataTypeId::UInt32 => UInt32Type::from_bytes(bytes).map(Self::UInt32),
+            DataTypeId::UInt64 => UInt64Type::from_bytes(bytes).map(Self::UInt64),
+            DataTypeId::Float32 => Float32Type::from_bytes(bytes).map(Self::Float32),
+            DataTypeId::Float64 => Float64Type::from_bytes(bytes).map(Self::Float64),
+            DataTypeId::Decimal128 => Decimal128Type::from_bytes(bytes).map(Self::Decimal128),
+            DataTypeId::Decimal256 => Decimal256Type::from_bytes(bytes).map(Self::Decimal256),
+            DataTypeId::Utf8 => Utf8Type::from_bytes(bytes).map(Self::Utf8),
+            DataTypeId::LargeUtf8 => LargeUtf8Type::from_bytes(bytes).map(Self::LargeUtf8),
+            DataTypeId::Binary => BinaryType::from_bytes(bytes).map(Self::Binary),
+            DataTypeId::LargeBinary => LargeBinaryType::from_bytes(bytes).map(Self::LargeBinary),
             DataTypeId::FixedSizeBinary => {
-                FixedSizeBinary::from_bytes(payload).map(Self::FixedSizeBinary)
+                FixedSizeBinaryType::from_bytes(bytes).map(Self::FixedSizeBinary)
             }
-            DataTypeId::Date32 => Date32::from_bytes(payload).map(Self::Date32),
-            DataTypeId::Date64 => Date64::from_bytes(payload).map(Self::Date64),
-            DataTypeId::Time32 => Time32::from_bytes(payload).map(Self::Time32),
-            DataTypeId::Time64 => Time64::from_bytes(payload).map(Self::Time64),
-            DataTypeId::Timestamp => TypedTimestamp::from_bytes(payload).map(Self::Timestamp),
-            DataTypeId::Duration => TypedDuration::from_bytes(payload).map(Self::Duration),
-            DataTypeId::List => List::from_bytes(payload).map(Self::List),
-            DataTypeId::LargeList => LargeList::from_bytes(payload).map(Self::LargeList),
-            DataTypeId::Struct => Struct::from_bytes(payload).map(Self::Struct),
-            DataTypeId::Map => Map::from_bytes(payload).map(Self::Map),
+            DataTypeId::Date32 => Date32Type::from_bytes(bytes).map(Self::Date32),
+            DataTypeId::Date64 => Date64Type::from_bytes(bytes).map(Self::Date64),
+            DataTypeId::Time32 => Time32Type::from_bytes(bytes).map(Self::Time32),
+            DataTypeId::Time64 => Time64Type::from_bytes(bytes).map(Self::Time64),
+            DataTypeId::Timestamp => TimestampType::from_bytes(bytes).map(Self::Timestamp),
+            DataTypeId::Duration => DurationType::from_bytes(bytes).map(Self::Duration),
+            DataTypeId::List => ListType::from_bytes(bytes).map(Self::List),
+            DataTypeId::LargeList => LargeListType::from_bytes(bytes).map(Self::LargeList),
+            DataTypeId::Struct => StructType::from_bytes(bytes).map(Self::Struct),
+            DataTypeId::Map => MapType::from_bytes(bytes).map(Self::Map),
         }
     }
 }
@@ -281,26 +288,26 @@ impl fmt::Display for AnyDataType {
 
 // The temporal types are generic over their unit, so their conversions erase
 // the unit into the matching `Any*Unit` instead of coming from the macro.
-impl<U: TimeUnit> From<TypedTimestamp<U>> for AnyDataType {
-    fn from(timestamp: TypedTimestamp<U>) -> Self {
-        Self::Timestamp(TypedTimestamp::from_parts(
+impl<U: TimeUnit> From<TimestampType<U>> for AnyDataType {
+    fn from(timestamp: TimestampType<U>) -> Self {
+        Self::Timestamp(TimestampType::from_parts(
             AnyTimeUnit::from(timestamp.unit().unit_id()),
             timestamp.timezone().map(Into::into),
         ))
     }
 }
 
-impl<U: TimeUnit> From<TypedDuration<U>> for AnyDataType {
-    fn from(duration: TypedDuration<U>) -> Self {
-        Self::Duration(TypedDuration::from_parts(AnyTimeUnit::from(
+impl<U: TimeUnit> From<DurationType<U>> for AnyDataType {
+    fn from(duration: DurationType<U>) -> Self {
+        Self::Duration(DurationType::from_parts(AnyTimeUnit::from(
             duration.unit().unit_id(),
         )))
     }
 }
 
-impl<U: Time32Unit> From<Time32<U>> for AnyDataType {
-    fn from(time: Time32<U>) -> Self {
-        Self::Time32(Time32::from_parts(
+impl<U: Time32Unit> From<Time32Type<U>> for AnyDataType {
+    fn from(time: Time32Type<U>) -> Self {
+        Self::Time32(Time32Type::from_parts(
             // Every `Time32Unit` id is a 32-bit time unit, so the erased
             // construction never fails.
             AnyTime32Unit::from_unit_id(time.unit().unit_id())
@@ -309,9 +316,9 @@ impl<U: Time32Unit> From<Time32<U>> for AnyDataType {
     }
 }
 
-impl<U: Time64Unit> From<Time64<U>> for AnyDataType {
-    fn from(time: Time64<U>) -> Self {
-        Self::Time64(Time64::from_parts(
+impl<U: Time64Unit> From<Time64Type<U>> for AnyDataType {
+    fn from(time: Time64Type<U>) -> Self {
+        Self::Time64(Time64Type::from_parts(
             // Every `Time64Unit` id is a 64-bit time unit, so the erased
             // construction never fails.
             AnyTime64Unit::from_unit_id(time.unit().unit_id())
@@ -321,28 +328,28 @@ impl<U: Time64Unit> From<Time64<U>> for AnyDataType {
 }
 
 from_impls!(
-    Boolean: Boolean,
-    Int8: Int8,
-    Int16: Int16,
-    Int32: Int32,
-    Int64: Int64,
-    UInt8: UInt8,
-    UInt16: UInt16,
-    UInt32: UInt32,
-    UInt64: UInt64,
-    Float32: Float32,
-    Float64: Float64,
-    Decimal128: Decimal128,
-    Decimal256: Decimal256,
-    Utf8: Utf8,
-    LargeUtf8: LargeUtf8,
-    Binary: Binary,
-    LargeBinary: LargeBinary,
-    FixedSizeBinary: FixedSizeBinary,
-    Date32: Date32,
-    Date64: Date64,
-    List: List<AnyDataType>,
-    LargeList: LargeList<AnyDataType>,
-    Struct: Struct,
-    Map: Map,
+    Boolean: BooleanType,
+    Int8: Int8Type,
+    Int16: Int16Type,
+    Int32: Int32Type,
+    Int64: Int64Type,
+    UInt8: UInt8Type,
+    UInt16: UInt16Type,
+    UInt32: UInt32Type,
+    UInt64: UInt64Type,
+    Float32: Float32Type,
+    Float64: Float64Type,
+    Decimal128: Decimal128Type,
+    Decimal256: Decimal256Type,
+    Utf8: Utf8Type,
+    LargeUtf8: LargeUtf8Type,
+    Binary: BinaryType,
+    LargeBinary: LargeBinaryType,
+    FixedSizeBinary: FixedSizeBinaryType,
+    Date32: Date32Type,
+    Date64: Date64Type,
+    List: ListType<AnyDataType>,
+    LargeList: LargeListType<AnyDataType>,
+    Struct: StructType,
+    Map: MapType,
 );

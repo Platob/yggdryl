@@ -3,5 +3,5 @@
 mod large_utf8;
 mod utf8;
 
-pub use large_utf8::LargeUtf8;
-pub use utf8::Utf8;
+pub use large_utf8::LargeUtf8Type;
+pub use utf8::Utf8Type;

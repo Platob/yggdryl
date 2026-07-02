@@ -9,11 +9,11 @@ use crate::DataTypeError;
 /// Why a field could not be converted.
 ///
 /// ```
-/// use yggdryl_schema::{Field, FieldError, Int8, TypedField};
+/// use yggdryl_schema::{Field, FieldError, Int8Type, TypedField};
 ///
 /// let arrow = arrow_schema::Field::new("id", arrow_schema::DataType::Utf8, false);
 /// assert!(matches!(
-///     TypedField::<Int8>::from_arrow(&arrow),
+///     TypedField::<Int8Type>::from_arrow(&arrow),
 ///     Err(FieldError::DataType(_))
 /// ));
 /// ```
@@ -62,7 +62,7 @@ impl From<BytesError> for FieldError {
 }
 
 // Nested data types embed fields, so a field failure surfaces as a data-type
-// failure one level up (e.g. `List::from_bytes` decoding its child).
+// failure one level up (e.g. `ListType::from_bytes` decoding its child).
 impl From<FieldError> for DataTypeError {
     fn from(error: FieldError) -> Self {
         match error {

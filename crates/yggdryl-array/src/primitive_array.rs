@@ -22,9 +22,9 @@ use crate::{Array, ArrayError};
 ///
 /// ```
 /// use yggdryl_array::{Array, PrimitiveArray};
-/// use yggdryl_schema::Int32;
+/// use yggdryl_schema::Int32Type;
 ///
-/// let column = PrimitiveArray::from_options(Int32, vec![Some(1), None, Some(3)]);
+/// let column = PrimitiveArray::from_options(Int32Type, vec![Some(1), None, Some(3)]);
 /// assert_eq!(column.value(2), Some(3));
 ///
 /// let tail = column.slice(1, 2).unwrap(); // zero-copy
@@ -142,8 +142,9 @@ impl<T: PrimitiveType<Native: ArrowNativeType>> PrimitiveArray<T> {
     }
 
     /// The element at `index` as a [`Scalar`] — a zero-copy slice of the
-    /// values buffer; `None` when out of bounds.
-    pub fn scalar(&self, index: usize) -> Option<Scalar<T>>
+    /// values buffer (nulls come back as null scalars); `None` when out of
+    /// bounds.
+    pub fn scalar_at(&self, index: usize) -> Option<Scalar<T>>
     where
         T: ScalarType,
     {

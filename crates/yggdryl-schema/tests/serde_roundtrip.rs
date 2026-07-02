@@ -7,8 +7,9 @@ use std::sync::Arc;
 
 use serde::{de::DeserializeOwned, Serialize};
 use yggdryl_schema::{
-    AnyDataType, AnyTime32Unit, Boolean, Decimal128, Field, FixedSizeBinary, Int32, List, Map,
-    Millisecond, Nanosecond, Struct, Time, Time32, Timestamp, TypedField, TypedTimestamp, Utf8,
+    AnyDataType, AnyTime32Unit, BooleanType, Decimal128Type, DecimalType, Field,
+    FixedSizeBinaryType, Int32Type, ListType, MapType, Millisecond, Nanosecond, StructType, Time,
+    Time32Type, Timestamp, TimestampType, TypedField, Utf8Type,
 };
 
 fn assert_roundtrip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: T) {
@@ -18,34 +19,34 @@ fn assert_roundtrip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debu
 
 #[test]
 fn schema_types_roundtrip_through_json() {
-    assert_roundtrip(Boolean);
-    assert_roundtrip(Int32);
-    assert_roundtrip(Decimal128::from_parts(38, 10).unwrap());
-    assert_roundtrip(FixedSizeBinary::from_parts(16).unwrap());
-    assert_roundtrip(Time32::from_parts(Millisecond));
-    assert_roundtrip(TypedTimestamp::from_parts(Nanosecond, Some("UTC".into())));
+    assert_roundtrip(BooleanType);
+    assert_roundtrip(Int32Type);
+    assert_roundtrip(Decimal128Type::from_parts(38, 10).unwrap());
+    assert_roundtrip(FixedSizeBinaryType::from_parts(16).unwrap());
+    assert_roundtrip(Time32Type::from_parts(Millisecond));
+    assert_roundtrip(TimestampType::from_parts(Nanosecond, Some("UTC".into())));
 
     let metadata = [("k".to_string(), "v".to_string())].into_iter().collect();
-    assert_roundtrip(TypedField::from_parts("id", Int32, false, metadata));
+    assert_roundtrip(TypedField::from_parts("id", Int32Type, false, metadata));
 
     let item = Arc::new(TypedField::from_parts(
         "item",
-        Int32,
+        Int32Type,
         true,
         Default::default(),
     ));
-    assert_roundtrip(List::from_parts(item));
+    assert_roundtrip(ListType::from_parts(item));
 
-    let person = Struct::from_parts(vec![
+    let person = StructType::from_parts(vec![
         Arc::new(TypedField::from_parts(
             "key",
-            Utf8.into(),
+            Utf8Type.into(),
             false,
             Default::default(),
         )),
         Arc::new(TypedField::from_parts(
             "value",
-            Int32.into(),
+            Int32Type.into(),
             true,
             Default::default(),
         )),
@@ -57,32 +58,32 @@ fn schema_types_roundtrip_through_json() {
         false,
         Default::default(),
     ));
-    let map = Map::from_parts(entries, false).unwrap();
+    let map = MapType::from_parts(entries, false).unwrap();
     assert_roundtrip(map.clone());
     assert_roundtrip(AnyDataType::from(map));
 }
 
 #[test]
 fn deserialization_revalidates_invariants() {
-    assert!(serde_json::from_str::<Decimal128>(r#"{"precision":39,"scale":0}"#).is_err());
-    assert!(serde_json::from_str::<Decimal128>(r#"{"precision":10,"scale":11}"#).is_err());
-    assert!(serde_json::from_str::<FixedSizeBinary>(r#"{"size":-1}"#).is_err());
-    assert!(
-        serde_json::from_str::<Time32<AnyTime32Unit>>(r#"{"unit":{"unit_id":"Nanosecond"}}"#)
-            .is_err()
-    );
+    assert!(serde_json::from_str::<Decimal128Type>(r#"{"precision":39,"scale":0}"#).is_err());
+    assert!(serde_json::from_str::<Decimal128Type>(r#"{"precision":10,"scale":11}"#).is_err());
+    assert!(serde_json::from_str::<FixedSizeBinaryType>(r#"{"size":-1}"#).is_err());
+    assert!(serde_json::from_str::<Time32Type<AnyTime32Unit>>(
+        r#"{"unit":{"unit_id":"Nanosecond"}}"#
+    )
+    .is_err());
 
     // A map with a nullable key is re-validated on the way in.
-    let person = Struct::from_parts(vec![
+    let person = StructType::from_parts(vec![
         Arc::new(TypedField::from_parts(
             "key",
-            Utf8.into(),
+            Utf8Type.into(),
             true,
             Default::default(),
         )),
         Arc::new(TypedField::from_parts(
             "value",
-            Int32.into(),
+            Int32Type.into(),
             true,
             Default::default(),
         )),
@@ -94,5 +95,5 @@ fn deserialization_revalidates_invariants() {
         Default::default(),
     ));
     let json = serde_json::json!({ "entries": &*entries, "sorted": false });
-    assert!(serde_json::from_value::<Map>(json).is_err());
+    assert!(serde_json::from_value::<MapType>(json).is_err());
 }

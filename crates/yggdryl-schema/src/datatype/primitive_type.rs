@@ -7,14 +7,14 @@ use crate::DataType;
 /// A fixed-width data type whose values are single Rust primitives.
 ///
 /// Compute kernels are written once against `Native`; the bit width is the
-/// storage width of one value ([`Boolean`](crate::Boolean) is bit-packed, so
+/// storage width of one value ([`BooleanType`](crate::BooleanType) is bit-packed, so
 /// its width is 1).
 ///
 /// ```
-/// use yggdryl_schema::{Int32, PrimitiveType};
+/// use yggdryl_schema::{Int32Type, PrimitiveType};
 ///
-/// assert_eq!(Int32::BIT_WIDTH, 32);
-/// let native: <Int32 as PrimitiveType>::Native = 7i32;
+/// assert_eq!(Int32Type::BIT_WIDTH, 32);
+/// let native: <Int32Type as PrimitiveType>::Native = 7i32;
 /// # let _ = native;
 /// ```
 pub trait PrimitiveType: DataType {

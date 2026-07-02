@@ -10,9 +10,9 @@ use yggdryl_schema::DataTypeError;
 ///
 /// ```
 /// use yggdryl_array::{ArrayError, PrimitiveArray};
-/// use yggdryl_schema::Int32;
+/// use yggdryl_schema::Int32Type;
 ///
-/// let column = PrimitiveArray::from_native(Int32, vec![1, 2, 3]);
+/// let column = PrimitiveArray::from_native(Int32Type, vec![1, 2, 3]);
 /// assert_eq!(
 ///     column.slice(2, 2).unwrap_err(),
 ///     ArrayError::SliceOutOfBounds { offset: 2, length: 2, len: 3 }

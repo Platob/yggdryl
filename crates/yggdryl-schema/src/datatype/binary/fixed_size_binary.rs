@@ -7,14 +7,14 @@ use arrow_schema::DataType as ArrowDataType;
 use crate::{DataType, DataTypeError, DataTypeId};
 
 /// Opaque bytes of a fixed size per value, mapping to Arrow
-/// `FixedSizeBinary(size)`.
+/// `FixedSizeBinaryType(size)`.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, FixedSizeBinary};
+/// use yggdryl_schema::{DataType, FixedSizeBinaryType};
 ///
-/// let uuid = FixedSizeBinary::from_parts(16).unwrap();
+/// let uuid = FixedSizeBinaryType::from_parts(16).unwrap();
 /// assert_eq!(uuid.to_arrow(), arrow_schema::DataType::FixedSizeBinary(16));
-/// assert_eq!(FixedSizeBinary::from_arrow(&uuid.to_arrow()), Ok(uuid));
+/// assert_eq!(FixedSizeBinaryType::from_arrow(&uuid.to_arrow()), Ok(uuid));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(
@@ -22,17 +22,17 @@ use crate::{DataType, DataTypeError, DataTypeId};
     derive(serde::Serialize, serde::Deserialize),
     serde(try_from = "RawFixedSizeBinary")
 )]
-pub struct FixedSizeBinary {
+pub struct FixedSizeBinaryType {
     size: i32,
 }
 
-impl FixedSizeBinary {
+impl FixedSizeBinaryType {
     /// Builds the type from its per-value byte size, rejecting negative sizes.
     ///
     /// ```
-    /// use yggdryl_schema::FixedSizeBinary;
+    /// use yggdryl_schema::FixedSizeBinaryType;
     ///
-    /// assert!(FixedSizeBinary::from_parts(-1).is_err()); // expected 0 or more
+    /// assert!(FixedSizeBinaryType::from_parts(-1).is_err()); // expected 0 or more
     /// ```
     pub fn from_parts(size: i32) -> Result<Self, DataTypeError> {
         if size < 0 {
@@ -58,7 +58,7 @@ impl FixedSizeBinary {
     }
 }
 
-impl DataType for FixedSizeBinary {
+impl DataType for FixedSizeBinaryType {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::FixedSizeBinary
     }
@@ -78,21 +78,24 @@ impl DataType for FixedSizeBinary {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.size.to_le_bytes().to_vec()
+        let mut out = vec![DataTypeId::FixedSizeBinary.to_u8()];
+        out.extend_from_slice(&self.size.to_le_bytes());
+        out
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        let size: [u8; 4] = bytes
+        let payload = DataTypeId::FixedSizeBinary.strip_tag(bytes)?;
+        let size: [u8; 4] = payload
             .try_into()
             .map_err(|_| DataTypeError::InvalidByteLength {
                 expected: 4,
-                actual: bytes.len(),
+                actual: payload.len(),
             })?;
         Self::from_parts(i32::from_le_bytes(size))
     }
 }
 
-impl fmt::Display for FixedSizeBinary {
+impl fmt::Display for FixedSizeBinaryType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "fixed_size_binary({})", self.size)
     }
@@ -107,7 +110,7 @@ struct RawFixedSizeBinary {
 }
 
 #[cfg(feature = "serde")]
-impl TryFrom<RawFixedSizeBinary> for FixedSizeBinary {
+impl TryFrom<RawFixedSizeBinary> for FixedSizeBinaryType {
     type Error = DataTypeError;
 
     fn try_from(raw: RawFixedSizeBinary) -> Result<Self, Self::Error> {

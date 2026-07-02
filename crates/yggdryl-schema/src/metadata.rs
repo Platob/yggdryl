@@ -9,7 +9,7 @@
 pub const PREFIX: &str = "ygg.";
 
 /// The yggdryl type an anchored physical type restores to (e.g.
-/// `"timestamp"` on an `Int64` anchoring an extended-unit
+/// `"timestamp"` on an `Int64Type` anchoring an extended-unit
 /// [`Timestamp`](crate::Timestamp)).
 pub const TYPE: &str = "ygg.type";
 

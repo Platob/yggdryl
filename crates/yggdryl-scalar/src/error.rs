@@ -10,9 +10,9 @@ use yggdryl_schema::DataTypeError;
 /// ```
 /// use arrow_buffer::Buffer;
 /// use yggdryl_scalar::{Scalar, ScalarError};
-/// use yggdryl_schema::Int32;
+/// use yggdryl_schema::Int32Type;
 ///
-/// let short = Scalar::from_parts(Int32, Some(Buffer::from(vec![0u8; 3])));
+/// let short = Scalar::from_parts(Int32Type, Some(Buffer::from(vec![0u8; 3])));
 /// assert_eq!(
 ///     short.unwrap_err(),
 ///     ScalarError::InvalidByteLength { expected: 4, actual: 3 }

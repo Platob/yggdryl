@@ -5,6 +5,7 @@ mod date;
 mod date32;
 mod date64;
 mod duration;
+mod temporal_type;
 mod time;
 mod time32;
 mod time64;
@@ -16,17 +17,18 @@ mod typed_timestamp;
 mod unit;
 
 pub use date::Date;
-pub use date32::Date32;
-pub use date64::Date64;
+pub use date32::Date32Type;
+pub use date64::Date64Type;
 pub use duration::Duration;
+pub use temporal_type::TemporalType;
 pub use time::Time;
-pub use time32::Time32;
-pub use time64::Time64;
+pub use time32::Time32Type;
+pub use time64::Time64Type;
 pub use time_unit::TimeUnit;
 pub use time_unit_id::TimeUnitId;
 pub use timestamp::Timestamp;
-pub use typed_duration::TypedDuration;
-pub use typed_timestamp::TypedTimestamp;
+pub use typed_duration::DurationType;
+pub use typed_timestamp::TimestampType;
 pub use unit::{
     AnyTime32Unit, AnyTime64Unit, AnyTimeUnit, Day, Hour, Microsecond, Millisecond, Minute, Month,
     Nanosecond, Quarter, Second, Time32Unit, Time64Unit, Week, Year,

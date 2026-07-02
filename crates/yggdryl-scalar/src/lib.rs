@@ -12,11 +12,11 @@
 //!
 //! ```
 //! use yggdryl_scalar::Scalar;
-//! use yggdryl_schema::Int32;
+//! use yggdryl_schema::Int32Type;
 //!
-//! let seven = Scalar::from_native(Int32, 7);
+//! let seven = Scalar::from_native(Int32Type, 7);
 //! assert_eq!(seven.as_native(), Some(7));
-//! assert!(Scalar::null(Int32).is_null());
+//! assert!(Scalar::null(Int32Type).is_null());
 //! ```
 //!
 //! [`Buffer`]: arrow_buffer::Buffer
@@ -36,10 +36,17 @@ mod binary_scalar_type;
 mod error;
 mod scalar;
 mod scalar_type;
+mod scalars;
 mod string_scalar_type;
 
 pub use binary_scalar_type::BinaryScalarType;
 pub use error::ScalarError;
 pub use scalar::Scalar;
 pub use scalar_type::ScalarType;
+pub use scalars::{
+    BinaryScalar, BooleanScalar, Date32Scalar, Date64Scalar, Decimal128Scalar, Decimal256Scalar,
+    DurationScalar, FixedSizeBinaryScalar, Float32Scalar, Float64Scalar, Int16Scalar, Int32Scalar,
+    Int64Scalar, Int8Scalar, LargeBinaryScalar, LargeUtf8Scalar, Time32Scalar, Time64Scalar,
+    TimestampScalar, UInt16Scalar, UInt32Scalar, UInt64Scalar, UInt8Scalar, Utf8Scalar,
+};
 pub use string_scalar_type::StringScalarType;

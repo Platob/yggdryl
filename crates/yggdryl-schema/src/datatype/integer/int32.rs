@@ -6,10 +6,10 @@ primitive_data_type!(
     /// The 32-bit signed integer type, mapping to Arrow `Int32`.
     ///
     /// ```
-    /// use yggdryl_schema::{DataType, Int32, PrimitiveType};
+    /// use yggdryl_schema::{DataType, Int32Type, PrimitiveType};
     ///
-    /// assert_eq!(Int32::BIT_WIDTH, 32);
-    /// assert_eq!(Int32::from_arrow(&Int32.to_arrow()), Ok(Int32));
+    /// assert_eq!(Int32Type::BIT_WIDTH, 32);
+    /// assert_eq!(Int32Type::from_arrow(&Int32Type.to_arrow()), Ok(Int32Type));
     /// ```
-    Int32, i32, 32, Int32, "int32"
+    Int32Type, i32, 32, Int32, "int32"
 );

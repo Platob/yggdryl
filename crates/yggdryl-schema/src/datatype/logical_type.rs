@@ -4,14 +4,14 @@ use crate::{DataType, PrimitiveType};
 
 /// A data type carrying semantics over a physical anchor type: the values are
 /// stored as the anchor's native representation and reinterpreted
-/// ([`Date32`](crate::Date32) is days since the epoch stored as
-/// [`Int32`](crate::Int32), [`Timestamp`](crate::Timestamp) is an offset
-/// stored as [`Int64`](crate::Int64), …).
+/// ([`Date32Type`](crate::Date32Type) is days since the epoch stored as
+/// [`Int32Type`](crate::Int32Type), [`Timestamp`](crate::Timestamp) is an offset
+/// stored as [`Int64Type`](crate::Int64Type), …).
 ///
 /// ```
-/// use yggdryl_schema::{Date32, Int32, LogicalType};
+/// use yggdryl_schema::{Date32Type, Int32Type, LogicalType};
 ///
-/// assert_eq!(Date32.physical(), Int32);
+/// assert_eq!(Date32Type.physical(), Int32Type);
 /// ```
 pub trait LogicalType: DataType {
     /// The primitive type this logical type anchors on.

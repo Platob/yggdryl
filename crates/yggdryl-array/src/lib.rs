@@ -13,9 +13,9 @@
 //!
 //! ```
 //! use yggdryl_array::{Array, PrimitiveArray};
-//! use yggdryl_schema::Int32;
+//! use yggdryl_schema::Int32Type;
 //!
-//! let column = PrimitiveArray::from_options(Int32, vec![Some(1), None, Some(3)]);
+//! let column = PrimitiveArray::from_options(Int32Type, vec![Some(1), None, Some(3)]);
 //! assert_eq!(column.len(), 3);
 //! assert_eq!(column.null_count(), 1);
 //! assert_eq!(column.value(0), Some(1));
@@ -34,9 +34,15 @@ macro_rules! log_event {
 pub(crate) use log_event;
 
 mod array;
+mod arrays;
 mod error;
 mod primitive_array;
 
 pub use array::Array;
+pub use arrays::{
+    Date32Array, Date64Array, Decimal128Array, Decimal256Array, DurationArray, Float32Array,
+    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, Time32Array, Time64Array,
+    TimestampArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+};
 pub use error::ArrayError;
 pub use primitive_array::PrimitiveArray;

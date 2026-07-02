@@ -3,12 +3,12 @@
 use crate::{AnyTime64Unit, Microsecond, Nanosecond, TimeUnit};
 
 /// A [`TimeUnit`] a 64-bit time of day can hold — microsecond or nanosecond,
-/// per the Arrow columnar spec — unlocking [`Time64<U>`](crate::Time64).
+/// per the Arrow columnar spec — unlocking [`Time64Type<U>`](crate::Time64Type).
 ///
 /// ```
-/// use yggdryl_schema::{Nanosecond, Time, Time64};
+/// use yggdryl_schema::{Nanosecond, Time, Time64Type};
 ///
-/// let time = Time64::from_parts(Nanosecond);
+/// let time = Time64Type::from_parts(Nanosecond);
 /// assert_eq!(time.to_string(), "time64(ns)");
 /// ```
 pub trait Time64Unit: TimeUnit {}

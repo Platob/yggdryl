@@ -4,10 +4,11 @@
 use std::sync::Arc;
 
 use yggdryl_schema::{
-    AnyDataType, AnyTime32Unit, AnyTimeUnit, Boolean, DataType, DataTypeError, Decimal128,
-    Decimal256, Duration, Field, FieldError, FixedSizeBinary, Float64, Int32, List, Map,
-    Millisecond, Nanosecond, Second, Struct, Time, Time32, Time64, TimeUnit, TimeUnitId, Timestamp,
-    TypedDuration, TypedField, TypedTimestamp, Utf8,
+    AnyDataType, AnyTime32Unit, AnyTimeUnit, BooleanType, DataType, DataTypeError, DataTypeId,
+    Decimal128Type, Decimal256Type, DecimalType, Duration, DurationType, Field, FieldError,
+    FixedSizeBinaryType, Float64Type, Int32Type, ListType, MapType, Millisecond, Nanosecond,
+    Second, StructType, Time, Time32Type, Time64Type, TimeUnit, TimeUnitId, Timestamp,
+    TimestampType, TypedField, Utf8Type,
 };
 
 fn assert_roundtrip<T: DataType>(value: T) {
@@ -15,13 +16,23 @@ fn assert_roundtrip<T: DataType>(value: T) {
 }
 
 #[test]
-fn unit_types_roundtrip_as_empty_payloads() {
-    assert_eq!(Boolean.to_bytes(), Vec::<u8>::new());
-    assert_roundtrip(Boolean);
-    assert_roundtrip(Int32);
-    assert_roundtrip(Utf8);
+fn unit_types_roundtrip_as_their_id_tag() {
+    // The encoding of a parameter-free type is exactly its DataTypeId tag.
+    assert_eq!(BooleanType.to_bytes(), vec![DataTypeId::Boolean.to_u8()]);
+    assert_roundtrip(BooleanType);
+    assert_roundtrip(Int32Type);
+    assert_roundtrip(Utf8Type);
+    // A payload tagged with another type's id is rejected, as is trailing
+    // data after the tag.
     assert_eq!(
-        Int32::from_bytes(&[0]),
+        Int32Type::from_bytes(&BooleanType.to_bytes()),
+        Err(DataTypeError::TypeIdMismatch {
+            expected: DataTypeId::Int32,
+            actual: DataTypeId::Boolean
+        })
+    );
+    assert_eq!(
+        Int32Type::from_bytes(&[DataTypeId::Int32.to_u8(), 7]),
         Err(DataTypeError::InvalidByteLength {
             expected: 0,
             actual: 1
@@ -31,12 +42,12 @@ fn unit_types_roundtrip_as_empty_payloads() {
 
 #[test]
 fn parameterized_types_roundtrip() {
-    assert_roundtrip(Decimal128::from_parts(38, -10).unwrap());
-    assert_roundtrip(Decimal256::from_parts(76, 76).unwrap());
-    assert_roundtrip(FixedSizeBinary::from_parts(16).unwrap());
-    assert_roundtrip(Time32::from_parts(Second));
-    assert_roundtrip(Time64::from_parts(Nanosecond));
-    assert_roundtrip(Time32::from_parts(
+    assert_roundtrip(Decimal128Type::from_parts(38, -10).unwrap());
+    assert_roundtrip(Decimal256Type::from_parts(76, 76).unwrap());
+    assert_roundtrip(FixedSizeBinaryType::from_parts(16).unwrap());
+    assert_roundtrip(Time32Type::from_parts(Second));
+    assert_roundtrip(Time64Type::from_parts(Nanosecond));
+    assert_roundtrip(Time32Type::from_parts(
         AnyTime32Unit::from_unit_id(TimeUnitId::Millisecond).unwrap(),
     ));
     // Every unit — including the ones Arrow lacks — round-trips through the
@@ -45,32 +56,33 @@ fn parameterized_types_roundtrip() {
         let unit = TimeUnitId::from_u8(id).unwrap();
         assert_eq!(TimeUnitId::from_bytes(&unit.to_bytes()), Ok(unit));
         let unit = AnyTimeUnit::from(unit);
-        assert_roundtrip(TypedDuration::from_parts(unit));
-        assert_roundtrip(TypedTimestamp::from_parts(unit, None));
-        assert_roundtrip(TypedTimestamp::from_parts(
-            unit,
-            Some("Europe/Paris".into()),
-        ));
+        assert_roundtrip(DurationType::from_parts(unit));
+        assert_roundtrip(TimestampType::from_parts(unit, None));
+        assert_roundtrip(TimestampType::from_parts(unit, Some("Europe/Paris".into())));
     }
     // A typed unit round-trips its own tag and rejects another unit's; an
     // empty-string timezone stays distinct from no timezone.
-    assert_roundtrip(TypedTimestamp::from_parts(Millisecond, None));
+    assert_roundtrip(TimestampType::from_parts(Millisecond, None));
     assert!(matches!(
-        TypedTimestamp::<Millisecond>::from_bytes(&[TimeUnitId::Year.to_u8(), 0]),
+        TimestampType::<Millisecond>::from_bytes(&[
+            DataTypeId::Timestamp.to_u8(),
+            TimeUnitId::Year.to_u8(),
+            0,
+        ]),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
-    assert_roundtrip(TypedTimestamp::from_parts(Millisecond, Some("".into())));
+    assert_roundtrip(TimestampType::from_parts(Millisecond, Some("".into())));
 }
 
 #[test]
 fn decoding_validates_payloads() {
     assert!(matches!(
-        Decimal128::from_bytes(&[1]),
+        Decimal128Type::from_bytes(&[DataTypeId::Decimal128.to_u8(), 1]),
         Err(DataTypeError::InvalidByteLength { expected: 2, .. })
     ));
     // The decoded parts are re-validated, not trusted.
     assert!(matches!(
-        Decimal128::from_bytes(&[39, 0]),
+        Decimal128Type::from_bytes(&[DataTypeId::Decimal128.to_u8(), 39, 0]),
         Err(DataTypeError::PrecisionOutOfRange { .. })
     ));
     assert!(matches!(
@@ -78,31 +90,40 @@ fn decoding_validates_payloads() {
         Err(DataTypeError::UnknownTimeUnitId { id: 99, .. })
     ));
     assert!(matches!(
-        Time32::<Second>::from_bytes(&TimeUnitId::Nanosecond.to_bytes()),
+        Time32Type::<Second>::from_bytes(&[
+            DataTypeId::Time32.to_u8(),
+            TimeUnitId::Nanosecond.to_u8(),
+        ]),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
     assert!(matches!(
-        Time32::<AnyTime32Unit>::from_bytes(&TimeUnitId::Nanosecond.to_bytes()),
+        Time32Type::<AnyTime32Unit>::from_bytes(&[
+            DataTypeId::Time32.to_u8(),
+            TimeUnitId::Nanosecond.to_u8(),
+        ]),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
+    let ts = DataTypeId::Timestamp.to_u8();
     assert!(matches!(
-        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0]),
+        TimestampType::<AnyTimeUnit>::from_bytes(&[ts, 0]),
         Err(DataTypeError::InvalidByteLength { expected: 2, .. })
     ));
     assert!(matches!(
-        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 2]),
+        TimestampType::<AnyTimeUnit>::from_bytes(&[ts, 0, 2]),
         Err(DataTypeError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 1, 0xFF]),
+        TimestampType::<AnyTimeUnit>::from_bytes(&[ts, 0, 1, 0xFF]),
         Err(DataTypeError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        TypedTimestamp::<AnyTimeUnit>::from_bytes(&[0, 0, b'x']),
+        TimestampType::<AnyTimeUnit>::from_bytes(&[ts, 0, 0, b'x']),
         Err(DataTypeError::InvalidBytes { .. })
     ));
+    let mut negative = vec![DataTypeId::FixedSizeBinary.to_u8()];
+    negative.extend_from_slice(&i32::MIN.to_le_bytes());
     assert!(matches!(
-        FixedSizeBinary::from_bytes(&i32::MIN.to_le_bytes()),
+        FixedSizeBinaryType::from_bytes(&negative),
         Err(DataTypeError::NegativeFixedSize { .. })
     ));
 }
@@ -115,10 +136,10 @@ fn fields_roundtrip_with_every_part() {
     ]
     .into_iter()
     .collect();
-    let field = TypedField::from_parts("reading", Float64, true, metadata);
+    let field = TypedField::from_parts("reading", Float64Type, true, metadata);
     assert_eq!(TypedField::from_bytes(&field.to_bytes()), Ok(field));
 
-    let empty_name = TypedField::from_parts("", Int32, false, Default::default());
+    let empty_name = TypedField::from_parts("", Int32Type, false, Default::default());
     assert_eq!(
         TypedField::from_bytes(&empty_name.to_bytes()),
         Ok(empty_name)
@@ -127,27 +148,27 @@ fn fields_roundtrip_with_every_part() {
 
 #[test]
 fn field_decoding_validates_payloads() {
-    let field = TypedField::from_parts("id", Int32, false, Default::default());
+    let field = TypedField::from_parts("id", Int32Type, false, Default::default());
     let encoded = field.to_bytes();
 
     assert!(matches!(
-        TypedField::<Int32>::from_bytes(&[]),
+        TypedField::<Int32Type>::from_bytes(&[]),
         Err(FieldError::InvalidBytes { .. })
     ));
     assert!(matches!(
-        TypedField::<Int32>::from_bytes(&encoded[..encoded.len() - 1]),
+        TypedField::<Int32Type>::from_bytes(&encoded[..encoded.len() - 1]),
         Err(FieldError::InvalidBytes { .. })
     ));
     let mut trailing = encoded.clone();
     trailing.push(0);
     assert!(matches!(
-        TypedField::<Int32>::from_bytes(&trailing),
+        TypedField::<Int32Type>::from_bytes(&trailing),
         Err(FieldError::InvalidBytes { .. })
     ));
     let mut bad_flag = encoded;
     bad_flag[0] = 2;
     assert!(matches!(
-        TypedField::<Int32>::from_bytes(&bad_flag),
+        TypedField::<Int32Type>::from_bytes(&bad_flag),
         Err(FieldError::InvalidBytes { .. })
     ));
 }
@@ -156,37 +177,37 @@ fn field_decoding_validates_payloads() {
 fn nested_lists_roundtrip_through_bytes() {
     let item = Arc::new(TypedField::from_parts(
         "item",
-        Int32,
+        Int32Type,
         true,
         Default::default(),
     ));
-    let outer = List::from_parts(Arc::new(TypedField::from_parts(
+    let outer = ListType::from_parts(Arc::new(TypedField::from_parts(
         "rows",
-        List::from_parts(item),
+        ListType::from_parts(item),
         false,
         Default::default(),
     )));
-    assert_eq!(List::from_bytes(&outer.to_bytes()), Ok(outer));
+    assert_eq!(ListType::from_bytes(&outer.to_bytes()), Ok(outer));
 }
 
 #[test]
 fn structs_maps_and_erased_types_roundtrip_through_bytes() {
-    let person = Struct::from_parts(vec![
+    let person = StructType::from_parts(vec![
         Arc::new(TypedField::from_parts(
             "id",
-            Int32.into(),
+            Int32Type.into(),
             false,
             Default::default(),
         )),
         Arc::new(TypedField::from_parts(
             "name",
-            Utf8.into(),
+            Utf8Type.into(),
             true,
             Default::default(),
         )),
     ]);
     assert_roundtrip(person.clone());
-    assert_roundtrip(Struct::from_parts(vec![]));
+    assert_roundtrip(StructType::from_parts(vec![]));
 
     let entries = Arc::new(TypedField::from_parts(
         "entries",
@@ -194,13 +215,13 @@ fn structs_maps_and_erased_types_roundtrip_through_bytes() {
         false,
         Default::default(),
     ));
-    let map = Map::from_parts(entries, true).unwrap();
+    let map = MapType::from_parts(entries, true).unwrap();
     assert_roundtrip(map.clone());
-    // The sorted flag is validated on decode.
+    // The sorted flag (right after the id tag) is validated on decode.
     let mut corrupted = map.to_bytes();
-    corrupted[0] = 9;
+    corrupted[1] = 9;
     assert!(matches!(
-        Map::from_bytes(&corrupted),
+        MapType::from_bytes(&corrupted),
         Err(DataTypeError::InvalidBytes { .. })
     ));
 
@@ -208,7 +229,7 @@ fn structs_maps_and_erased_types_roundtrip_through_bytes() {
     let any = AnyDataType::from(map);
     assert_eq!(any.to_bytes()[0], any.type_id().to_u8());
     assert_roundtrip(any);
-    assert_roundtrip(AnyDataType::from(TypedTimestamp::from_parts(
+    assert_roundtrip(AnyDataType::from(TimestampType::from_parts(
         Millisecond,
         Some("UTC".into()),
     )));

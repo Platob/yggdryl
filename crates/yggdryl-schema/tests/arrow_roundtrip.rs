@@ -6,11 +6,13 @@ use std::sync::Arc;
 
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl_schema::{
-    metadata, AnyDataType, AnyTimeUnit, Binary, Boolean, DataType, DataTypeError, Date32, Date64,
-    Decimal128, Decimal256, Duration, Field, FixedSizeBinary, Float32, Float64, Int16, Int32,
-    Int64, Int8, LargeBinary, LargeList, LargeUtf8, List, Map, Microsecond, Millisecond, Minute,
-    Nanosecond, Second, Struct, Time, Time32, Time64, TimeUnitId, Timestamp, TypedDuration,
-    TypedField, TypedTimestamp, UInt16, UInt32, UInt64, UInt8, Utf8, Year,
+    metadata, AnyDataType, AnyTimeUnit, BinaryType, BooleanType, DataType, DataTypeError,
+    Date32Type, Date64Type, Decimal128Type, Decimal256Type, DecimalType, Duration, DurationType,
+    Field, FixedSizeBinaryType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type,
+    Int8Type, LargeBinaryType, LargeListType, LargeUtf8Type, ListType, MapType, Microsecond,
+    Millisecond, Minute, Nanosecond, Second, StructType, Time, Time32Type, Time64Type, TimeUnitId,
+    Timestamp, TimestampType, TypedField, UInt16Type, UInt32Type, UInt64Type, UInt8Type, Utf8Type,
+    Year,
 };
 
 const TIME_UNITS: [TimeUnitId; 4] = [
@@ -27,44 +29,44 @@ fn assert_roundtrip<T: DataType>(value: T, arrow: ArrowDataType) {
 
 #[test]
 fn unit_types_roundtrip() {
-    assert_roundtrip(Boolean, ArrowDataType::Boolean);
-    assert_roundtrip(Int8, ArrowDataType::Int8);
-    assert_roundtrip(Int16, ArrowDataType::Int16);
-    assert_roundtrip(Int32, ArrowDataType::Int32);
-    assert_roundtrip(Int64, ArrowDataType::Int64);
-    assert_roundtrip(UInt8, ArrowDataType::UInt8);
-    assert_roundtrip(UInt16, ArrowDataType::UInt16);
-    assert_roundtrip(UInt32, ArrowDataType::UInt32);
-    assert_roundtrip(UInt64, ArrowDataType::UInt64);
-    assert_roundtrip(Float32, ArrowDataType::Float32);
-    assert_roundtrip(Float64, ArrowDataType::Float64);
-    assert_roundtrip(Utf8, ArrowDataType::Utf8);
-    assert_roundtrip(LargeUtf8, ArrowDataType::LargeUtf8);
-    assert_roundtrip(Binary, ArrowDataType::Binary);
-    assert_roundtrip(LargeBinary, ArrowDataType::LargeBinary);
-    assert_roundtrip(Date32, ArrowDataType::Date32);
-    assert_roundtrip(Date64, ArrowDataType::Date64);
+    assert_roundtrip(BooleanType, ArrowDataType::Boolean);
+    assert_roundtrip(Int8Type, ArrowDataType::Int8);
+    assert_roundtrip(Int16Type, ArrowDataType::Int16);
+    assert_roundtrip(Int32Type, ArrowDataType::Int32);
+    assert_roundtrip(Int64Type, ArrowDataType::Int64);
+    assert_roundtrip(UInt8Type, ArrowDataType::UInt8);
+    assert_roundtrip(UInt16Type, ArrowDataType::UInt16);
+    assert_roundtrip(UInt32Type, ArrowDataType::UInt32);
+    assert_roundtrip(UInt64Type, ArrowDataType::UInt64);
+    assert_roundtrip(Float32Type, ArrowDataType::Float32);
+    assert_roundtrip(Float64Type, ArrowDataType::Float64);
+    assert_roundtrip(Utf8Type, ArrowDataType::Utf8);
+    assert_roundtrip(LargeUtf8Type, ArrowDataType::LargeUtf8);
+    assert_roundtrip(BinaryType, ArrowDataType::Binary);
+    assert_roundtrip(LargeBinaryType, ArrowDataType::LargeBinary);
+    assert_roundtrip(Date32Type, ArrowDataType::Date32);
+    assert_roundtrip(Date64Type, ArrowDataType::Date64);
 }
 
 #[test]
 fn mismatched_arrow_type_is_rejected() {
     assert!(matches!(
-        Int8::from_arrow(&ArrowDataType::Utf8),
+        Int8Type::from_arrow(&ArrowDataType::Utf8),
         Err(DataTypeError::ArrowTypeMismatch {
             expected: "int8",
             ..
         })
     ));
     assert!(matches!(
-        Decimal128::from_arrow(&ArrowDataType::Decimal256(10, 2)),
+        Decimal128Type::from_arrow(&ArrowDataType::Decimal256(10, 2)),
         Err(DataTypeError::ArrowTypeMismatch { .. })
     ));
     assert!(matches!(
-        TypedTimestamp::<Nanosecond>::from_arrow(&ArrowDataType::Date32),
+        TimestampType::<Nanosecond>::from_arrow(&ArrowDataType::Date32),
         Err(DataTypeError::ArrowTypeMismatch { .. })
     ));
     assert!(matches!(
-        List::<Int32>::from_arrow(&ArrowDataType::Int32),
+        ListType::<Int32Type>::from_arrow(&ArrowDataType::Int32),
         Err(DataTypeError::ArrowTypeMismatch { .. })
     ));
 }
@@ -74,7 +76,7 @@ fn decimal128_roundtrips_exhaustively() {
     for precision in 1..=38u8 {
         let magnitude = precision as i8;
         for scale in -magnitude..=magnitude {
-            let decimal = Decimal128::from_parts(precision, scale).unwrap();
+            let decimal = Decimal128Type::from_parts(precision, scale).unwrap();
             assert_roundtrip(decimal, ArrowDataType::Decimal128(precision, scale));
         }
     }
@@ -85,7 +87,7 @@ fn decimal256_roundtrips_exhaustively() {
     for precision in 1..=76u8 {
         let magnitude = precision as i8;
         for scale in -magnitude..=magnitude {
-            let decimal = Decimal256::from_parts(precision, scale).unwrap();
+            let decimal = Decimal256Type::from_parts(precision, scale).unwrap();
             assert_roundtrip(decimal, ArrowDataType::Decimal256(precision, scale));
         }
     }
@@ -94,68 +96,68 @@ fn decimal256_roundtrips_exhaustively() {
 #[test]
 fn decimal_validation_rejects_invalid_parts() {
     assert_eq!(
-        Decimal128::from_parts(0, 0),
+        Decimal128Type::from_parts(0, 0),
         Err(DataTypeError::PrecisionOutOfRange {
             precision: 0,
             max: 38
         })
     );
     assert_eq!(
-        Decimal128::from_parts(39, 0),
+        Decimal128Type::from_parts(39, 0),
         Err(DataTypeError::PrecisionOutOfRange {
             precision: 39,
             max: 38
         })
     );
     assert_eq!(
-        Decimal128::from_parts(10, 11),
+        Decimal128Type::from_parts(10, 11),
         Err(DataTypeError::ScaleOutOfRange {
             scale: 11,
             precision: 10
         })
     );
     assert_eq!(
-        Decimal128::from_parts(10, -11),
+        Decimal128Type::from_parts(10, -11),
         Err(DataTypeError::ScaleOutOfRange {
             scale: -11,
             precision: 10
         })
     );
     assert_eq!(
-        Decimal256::from_parts(77, 0),
+        Decimal256Type::from_parts(77, 0),
         Err(DataTypeError::PrecisionOutOfRange {
             precision: 77,
             max: 76
         })
     );
     // Validation also applies on the way in from Arrow.
-    assert!(Decimal128::from_arrow(&ArrowDataType::Decimal128(39, 0)).is_err());
+    assert!(Decimal128Type::from_arrow(&ArrowDataType::Decimal128(39, 0)).is_err());
 }
 
 #[test]
 fn fixed_size_binary_roundtrips() {
     for size in [0, 1, 16, i32::MAX] {
-        let binary = FixedSizeBinary::from_parts(size).unwrap();
+        let binary = FixedSizeBinaryType::from_parts(size).unwrap();
         assert_roundtrip(binary, ArrowDataType::FixedSizeBinary(size));
     }
     assert_eq!(
-        FixedSizeBinary::from_parts(-1),
+        FixedSizeBinaryType::from_parts(-1),
         Err(DataTypeError::NegativeFixedSize { size: -1 })
     );
-    assert!(FixedSizeBinary::from_arrow(&ArrowDataType::FixedSizeBinary(-1)).is_err());
+    assert!(FixedSizeBinaryType::from_arrow(&ArrowDataType::FixedSizeBinary(-1)).is_err());
 }
 
 #[test]
 fn timestamps_roundtrip_over_units_and_timezones() {
     // A concrete unit type round-trips natively and rejects other units.
     for timezone in [None, Some("UTC"), Some("+02:00")] {
-        let timestamp = TypedTimestamp::from_parts(Nanosecond, timezone.map(Into::into));
+        let timestamp = TimestampType::from_parts(Nanosecond, timezone.map(Into::into));
         let arrow =
             ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, timezone.map(Into::into));
         assert_roundtrip(timestamp, arrow);
     }
     assert!(matches!(
-        TypedTimestamp::<Nanosecond>::from_arrow(&ArrowDataType::Timestamp(
+        TimestampType::<Nanosecond>::from_arrow(&ArrowDataType::Timestamp(
             arrow_schema::TimeUnit::Second,
             None
         )),
@@ -164,7 +166,7 @@ fn timestamps_roundtrip_over_units_and_timezones() {
 
     // The erased unit covers every native unit.
     for unit in TIME_UNITS {
-        let timestamp = TypedTimestamp::from_parts(AnyTimeUnit::from(unit), Some("UTC".into()));
+        let timestamp = TimestampType::from_parts(AnyTimeUnit::from(unit), Some("UTC".into()));
         let arrow = ArrowDataType::Timestamp(unit.to_arrow().unwrap(), Some("UTC".into()));
         assert_roundtrip(timestamp, arrow);
     }
@@ -172,11 +174,11 @@ fn timestamps_roundtrip_over_units_and_timezones() {
 
 #[test]
 fn extended_unit_timestamps_roundtrip_through_fields() {
-    // Arrow lacks these units, so the type anchors on Int64 plus ygg.*
+    // Arrow lacks these units, so the type anchors on Int64Type plus ygg.*
     // metadata carried by the field.
     let minutes = TypedField::from_parts(
         "logged_at",
-        TypedTimestamp::from_parts(Minute, Some("UTC".into())),
+        TimestampType::from_parts(Minute, Some("UTC".into())),
         true,
         Default::default(),
     );
@@ -194,7 +196,7 @@ fn extended_unit_timestamps_roundtrip_through_fields() {
         .collect();
     let years = TypedField::from_parts(
         "vintage",
-        AnyDataType::from(TypedTimestamp::from_parts(Year, None)),
+        AnyDataType::from(TimestampType::from_parts(Year, None)),
         false,
         user_metadata,
     );
@@ -205,9 +207,9 @@ fn extended_unit_timestamps_roundtrip_through_fields() {
     assert_eq!(decoded, years);
     assert_eq!(decoded.metadata().get("origin").unwrap(), "cron");
 
-    // Without its metadata, a bare Int64 is never a timestamp.
+    // Without its metadata, a bare Int64Type is never a timestamp.
     assert!(matches!(
-        TypedTimestamp::<Minute>::from_arrow(&ArrowDataType::Int64),
+        TimestampType::<Minute>::from_arrow(&ArrowDataType::Int64),
         Err(DataTypeError::MissingMetadata { .. })
     ));
 }
@@ -220,7 +222,7 @@ fn unknown_ygg_metadata_is_rejected() {
             .collect(),
     );
     assert!(matches!(
-        TypedField::<Int32>::from_arrow(&plain),
+        TypedField::<Int32Type>::from_arrow(&plain),
         Err(yggdryl_schema::FieldError::DataType(
             DataTypeError::UnknownMetadata { .. }
         ))
@@ -257,26 +259,28 @@ fn unknown_ygg_metadata_is_rejected() {
 #[test]
 fn times_roundtrip_and_validate_units() {
     assert_roundtrip(
-        Time32::from_parts(Second),
+        Time32Type::from_parts(Second),
         ArrowDataType::Time32(arrow_schema::TimeUnit::Second),
     );
     assert_roundtrip(
-        Time32::from_parts(Millisecond),
+        Time32Type::from_parts(Millisecond),
         ArrowDataType::Time32(arrow_schema::TimeUnit::Millisecond),
     );
     assert_roundtrip(
-        Time64::from_parts(Microsecond),
+        Time64Type::from_parts(Microsecond),
         ArrowDataType::Time64(arrow_schema::TimeUnit::Microsecond),
     );
     assert_roundtrip(
-        Time64::from_parts(Nanosecond),
+        Time64Type::from_parts(Nanosecond),
         ArrowDataType::Time64(arrow_schema::TimeUnit::Nanosecond),
     );
     // A concrete unit rejects another unit's Arrow type, and even the erased
     // units reject what their width cannot hold (arrow-rs can represent a
-    // nanosecond Time32; the spec — and this crate — cannot).
+    // nanosecond Time32Type; the spec — and this crate — cannot).
     assert!(matches!(
-        Time32::<Second>::from_arrow(&ArrowDataType::Time32(arrow_schema::TimeUnit::Millisecond)),
+        Time32Type::<Second>::from_arrow(&ArrowDataType::Time32(
+            arrow_schema::TimeUnit::Millisecond
+        )),
         Err(DataTypeError::TimeUnitMismatch { .. })
     ));
     assert_eq!(
@@ -293,14 +297,14 @@ fn times_roundtrip_and_validate_units() {
 #[test]
 fn durations_roundtrip_over_units() {
     for unit in TIME_UNITS {
-        let duration = TypedDuration::from_parts(AnyTimeUnit::from(unit));
+        let duration = DurationType::from_parts(AnyTimeUnit::from(unit));
         assert_roundtrip(duration, ArrowDataType::Duration(unit.to_arrow().unwrap()));
     }
     // Arrow durations stop at the sub-second units; the coarser ones anchor
-    // on Int64 plus ygg.* metadata, restored through a field.
+    // on Int64Type plus ygg.* metadata, restored through a field.
     let weeks = TypedField::from_parts(
         "sprint",
-        TypedDuration::from_parts(yggdryl_schema::Week),
+        DurationType::from_parts(yggdryl_schema::Week),
         false,
         Default::default(),
     );
@@ -310,7 +314,7 @@ fn durations_roundtrip_over_units() {
     assert_eq!(arrow.metadata().get(metadata::TIME_UNIT).unwrap(), "w");
     assert_eq!(TypedField::from_arrow(&arrow), Ok(weeks));
     assert!(matches!(
-        TypedDuration::<yggdryl_schema::Week>::from_arrow(&ArrowDataType::Int64),
+        DurationType::<yggdryl_schema::Week>::from_arrow(&ArrowDataType::Int64),
         Err(DataTypeError::MissingMetadata { .. })
     ));
 }
@@ -319,31 +323,31 @@ fn durations_roundtrip_over_units() {
 fn lists_roundtrip_including_nesting() {
     let item = Arc::new(TypedField::from_parts(
         "item",
-        Int32,
+        Int32Type,
         true,
         Default::default(),
     ));
     assert_roundtrip(
-        List::from_parts(item.clone()),
+        ListType::from_parts(item.clone()),
         ArrowDataType::List(Arc::new(item.to_arrow())),
     );
     assert_roundtrip(
-        LargeList::from_parts(item.clone()),
+        LargeListType::from_parts(item.clone()),
         ArrowDataType::LargeList(Arc::new(item.to_arrow())),
     );
 
-    let inner = List::from_parts(item);
-    let outer = List::from_parts(Arc::new(TypedField::from_parts(
+    let inner = ListType::from_parts(item);
+    let outer = ListType::from_parts(Arc::new(TypedField::from_parts(
         "rows",
         inner,
         false,
         Default::default(),
     )));
-    assert_eq!(List::from_arrow(&outer.to_arrow()), Ok(outer));
+    assert_eq!(ListType::from_arrow(&outer.to_arrow()), Ok(outer));
 
     // A list whose child is the wrong type is rejected.
     let utf8_child = Arc::new(arrow_schema::Field::new("item", ArrowDataType::Utf8, true));
-    assert!(List::<Int32>::from_arrow(&ArrowDataType::List(utf8_child)).is_err());
+    assert!(ListType::<Int32Type>::from_arrow(&ArrowDataType::List(utf8_child)).is_err());
 }
 
 #[test]
@@ -351,7 +355,7 @@ fn fields_roundtrip_with_metadata() {
     let metadata = [("origin".to_string(), "sensor-7".to_string())]
         .into_iter()
         .collect();
-    let field = TypedField::from_parts("reading", Float64, true, metadata);
+    let field = TypedField::from_parts("reading", Float64Type, true, metadata);
     let arrow = field.to_arrow();
     assert_eq!(arrow.name(), "reading");
     assert!(arrow.is_nullable());
@@ -359,17 +363,17 @@ fn fields_roundtrip_with_metadata() {
     assert_eq!(TypedField::from_arrow(&arrow), Ok(field));
 }
 
-fn person() -> Struct {
-    Struct::from_parts(vec![
+fn person() -> StructType {
+    StructType::from_parts(vec![
         Arc::new(TypedField::from_parts(
             "id",
-            Int32.into(),
+            Int32Type.into(),
             false,
             Default::default(),
         )),
         Arc::new(TypedField::from_parts(
             "name",
-            Utf8.into(),
+            Utf8Type.into(),
             true,
             Default::default(),
         )),
@@ -379,21 +383,24 @@ fn person() -> Struct {
 #[test]
 fn structs_roundtrip_including_empty_and_nested() {
     let person = person();
-    assert_eq!(Struct::from_arrow(&person.to_arrow()), Ok(person.clone()));
     assert_eq!(
-        Struct::from_arrow(&Struct::from_parts(vec![]).to_arrow()),
-        Ok(Struct::from_parts(vec![]))
+        StructType::from_arrow(&person.to_arrow()),
+        Ok(person.clone())
+    );
+    assert_eq!(
+        StructType::from_arrow(&StructType::from_parts(vec![]).to_arrow()),
+        Ok(StructType::from_parts(vec![]))
     );
 
     // A struct of a struct round-trips too.
-    let nested = Struct::from_parts(vec![Arc::new(TypedField::from_parts(
+    let nested = StructType::from_parts(vec![Arc::new(TypedField::from_parts(
         "person",
         person.into(),
         true,
         Default::default(),
     ))]);
-    assert_eq!(Struct::from_arrow(&nested.to_arrow()), Ok(nested));
-    assert!(Struct::from_arrow(&ArrowDataType::Int32).is_err());
+    assert_eq!(StructType::from_arrow(&nested.to_arrow()), Ok(nested));
+    assert!(StructType::from_arrow(&ArrowDataType::Int32).is_err());
 }
 
 #[test]
@@ -405,21 +412,21 @@ fn maps_roundtrip_and_validate_entries() {
         Default::default(),
     ));
     for sorted in [false, true] {
-        let map = Map::from_parts(entries.clone(), sorted).unwrap();
-        assert_eq!(Map::from_arrow(&map.to_arrow()), Ok(map));
+        let map = MapType::from_parts(entries.clone(), sorted).unwrap();
+        assert_eq!(MapType::from_arrow(&map.to_arrow()), Ok(map));
     }
 
     // A nullable key or a wrong field count is rejected, from Arrow too.
-    let nullable_key = Struct::from_parts(vec![
+    let nullable_key = StructType::from_parts(vec![
         Arc::new(TypedField::from_parts(
             "key",
-            Utf8.into(),
+            Utf8Type.into(),
             true,
             Default::default(),
         )),
         Arc::new(TypedField::from_parts(
             "value",
-            Int32.into(),
+            Int32Type.into(),
             true,
             Default::default(),
         )),
@@ -431,12 +438,12 @@ fn maps_roundtrip_and_validate_entries() {
         Default::default(),
     ));
     assert!(matches!(
-        Map::from_parts(nullable_key, false),
+        MapType::from_parts(nullable_key, false),
         Err(DataTypeError::InvalidMapEntries { .. })
     ));
-    let one_field = Struct::from_parts(vec![Arc::new(TypedField::from_parts(
+    let one_field = StructType::from_parts(vec![Arc::new(TypedField::from_parts(
         "key",
-        Utf8.into(),
+        Utf8Type.into(),
         false,
         Default::default(),
     ))]);
@@ -446,14 +453,14 @@ fn maps_roundtrip_and_validate_entries() {
         false,
         Default::default(),
     ));
-    assert!(Map::from_parts(one_field, false).is_err());
+    assert!(MapType::from_parts(one_field, false).is_err());
 }
 
 #[test]
 fn any_data_type_roundtrips_every_constructor() {
     let item = Arc::new(TypedField::from_parts(
         "item",
-        AnyDataType::from(Int32),
+        AnyDataType::from(Int32Type),
         true,
         Default::default(),
     ));
@@ -464,19 +471,19 @@ fn any_data_type_roundtrips_every_constructor() {
         Default::default(),
     ));
     let values: Vec<AnyDataType> = vec![
-        Boolean.into(),
-        Int8.into(),
-        UInt64.into(),
-        Float64.into(),
-        Decimal128::from_parts(38, 2).unwrap().into(),
-        Utf8.into(),
-        FixedSizeBinary::from_parts(16).unwrap().into(),
-        Date32.into(),
-        TypedTimestamp::from_parts(Nanosecond, Some("UTC".into())).into(),
-        List::from_parts(item.clone()).into(),
-        LargeList::from_parts(item).into(),
+        BooleanType.into(),
+        Int8Type.into(),
+        UInt64Type.into(),
+        Float64Type.into(),
+        Decimal128Type::from_parts(38, 2).unwrap().into(),
+        Utf8Type.into(),
+        FixedSizeBinaryType::from_parts(16).unwrap().into(),
+        Date32Type.into(),
+        TimestampType::from_parts(Nanosecond, Some("UTC".into())).into(),
+        ListType::from_parts(item.clone()).into(),
+        LargeListType::from_parts(item).into(),
         person().into(),
-        Map::from_parts(entries, true).unwrap().into(),
+        MapType::from_parts(entries, true).unwrap().into(),
     ];
     for value in values {
         assert_eq!(AnyDataType::from_arrow(&value.to_arrow()), Ok(value));

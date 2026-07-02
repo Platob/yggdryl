@@ -5,9 +5,9 @@
 /// [`DataType`](crate::DataType) implementation mapping to the given
 /// `arrow_schema::DataType` variant, and its render-only `Display`.
 ///
-/// The byte encoding of a unit type is empty — the concrete Rust type already
-/// identifies it — so `to_bytes` writes no payload and `from_bytes` accepts
-/// only an empty slice.
+/// The byte encoding of a unit type is its [`DataTypeId`](crate::DataTypeId)
+/// tag alone — the constructor has no parameters — and `from_bytes` accepts
+/// nothing after it.
 macro_rules! unit_data_type {
     (
         $(#[$doc:meta])*
@@ -20,7 +20,7 @@ macro_rules! unit_data_type {
 
         impl $crate::DataType for $name {
             fn type_id(&self) -> $crate::DataTypeId {
-                $crate::DataTypeId::$name
+                $crate::DataTypeId::$arrow
             }
 
             fn to_arrow(&self) -> ::arrow_schema::DataType {
@@ -40,16 +40,17 @@ macro_rules! unit_data_type {
             }
 
             fn to_bytes(&self) -> Vec<u8> {
-                Vec::new()
+                vec![$crate::DataTypeId::$arrow.to_u8()]
             }
 
             fn from_bytes(bytes: &[u8]) -> Result<Self, $crate::DataTypeError> {
-                if bytes.is_empty() {
+                let payload = $crate::DataTypeId::$arrow.strip_tag(bytes)?;
+                if payload.is_empty() {
                     Ok(Self)
                 } else {
                     Err($crate::DataTypeError::InvalidByteLength {
                         expected: 0,
-                        actual: bytes.len(),
+                        actual: payload.len(),
                     })
                 }
             }

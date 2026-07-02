@@ -15,22 +15,22 @@ use crate::{
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl_schema::{DataType, Field, Int32, Struct, TypedField, Utf8};
+/// use yggdryl_schema::{DataType, Field, Int32Type, StructType, TypedField, Utf8Type};
 ///
-/// let person = Struct::from_parts(vec![
-///     Arc::new(TypedField::from_parts("id", Int32.into(), false, Default::default())),
-///     Arc::new(TypedField::from_parts("name", Utf8.into(), true, Default::default())),
+/// let person = StructType::from_parts(vec![
+///     Arc::new(TypedField::from_parts("id", Int32Type.into(), false, Default::default())),
+///     Arc::new(TypedField::from_parts("name", Utf8Type.into(), true, Default::default())),
 /// ]);
-/// assert_eq!(Struct::from_arrow(&person.to_arrow()), Ok(person.clone()));
+/// assert_eq!(StructType::from_arrow(&person.to_arrow()), Ok(person.clone()));
 /// assert_eq!(person.to_string(), "struct<id: int32, name: utf8?>");
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Struct {
+pub struct StructType {
     fields: Vec<TypedFieldRef<AnyDataType>>,
 }
 
-impl Struct {
+impl StructType {
     /// Builds the struct type from its child fields; any list — including an
     /// empty one — is valid.
     pub fn from_parts(fields: Vec<TypedFieldRef<AnyDataType>>) -> Self {
@@ -59,7 +59,7 @@ impl Struct {
     }
 }
 
-impl DataType for Struct {
+impl DataType for StructType {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Struct
     }
@@ -84,7 +84,7 @@ impl DataType for Struct {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::new();
+        let mut out = vec![DataTypeId::Struct.to_u8()];
         put_len(&mut out, self.fields.len());
         for field in &self.fields {
             let bytes = field.to_bytes();
@@ -95,7 +95,7 @@ impl DataType for Struct {
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        let mut reader = Reader::new(bytes);
+        let mut reader = Reader::new(DataTypeId::Struct.strip_tag(bytes)?);
         let count = reader.take_len()?;
         let mut fields = Vec::new();
         for _ in 0..count {
@@ -108,13 +108,13 @@ impl DataType for Struct {
     }
 }
 
-impl NestedType for Struct {
+impl NestedType for StructType {
     fn num_children(&self) -> usize {
         self.fields.len()
     }
 }
 
-impl fmt::Display for Struct {
+impl fmt::Display for StructType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("struct<")?;
         for (index, field) in self.fields.iter().enumerate() {

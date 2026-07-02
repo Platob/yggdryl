@@ -8,14 +8,14 @@ use std::sync::Arc;
 use arrow_schema::DataType as ArrowDataType;
 
 use crate::{
-    metadata, DataType, DataTypeError, DataTypeId, Int64, LogicalType, PrimitiveType, TimeUnit,
-    TimeUnitId, Timestamp,
+    metadata, DataType, DataTypeError, DataTypeId, Int64Type, LogicalType, PrimitiveType,
+    TemporalType, TimeUnit, TimeUnitId, Timestamp,
 };
 
 /// The concrete [`Timestamp`] implementation generic over its unit — the one
 /// implementation that gives every [`TimeUnit`] its corresponding timestamp
-/// (`TypedTimestamp<Nanosecond>` through `TypedTimestamp<Year>`), anchored on
-/// [`Int64`].
+/// (`TimestampType<Nanosecond>` through `TimestampType<Year>`), anchored on
+/// [`Int64Type`].
 ///
 /// Arrow's four native units map to `Timestamp(unit, timezone)` directly.
 /// The coarser units (minute through year) have no Arrow counterpart, so
@@ -25,31 +25,33 @@ use crate::{
 /// metadata.
 ///
 /// ```
-/// use yggdryl_schema::{DataType, Millisecond, Minute, Timestamp, TypedTimestamp};
+/// use yggdryl_schema::{DataType, Millisecond, Minute, Timestamp, TimestampType};
 ///
-/// let millis = TypedTimestamp::from_parts(Millisecond, Some("UTC".into()));
-/// assert_eq!(TypedTimestamp::from_arrow(&millis.to_arrow()), Ok(millis));
+/// let millis = TimestampType::from_parts(Millisecond, Some("UTC".into()));
+/// assert_eq!(TimestampType::from_arrow(&millis.to_arrow()), Ok(millis));
 ///
-/// let minutes = TypedTimestamp::from_parts(Minute, None);
+/// let minutes = TimestampType::from_parts(Minute, None);
 /// assert_eq!(minutes.to_arrow(), arrow_schema::DataType::Int64); // anchored
 /// assert_eq!(minutes.to_string(), "timestamp(min)");
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct TypedTimestamp<U: TimeUnit> {
+pub struct TimestampType<U: TimeUnit> {
     unit: U,
     timezone: Option<Arc<str>>,
 }
 
-impl<U: TimeUnit> Timestamp for TypedTimestamp<U> {
+impl<U: TimeUnit> TemporalType for TimestampType<U> {
     type Unit = U;
-
-    fn from_parts(unit: U, timezone: Option<Arc<str>>) -> Self {
-        Self { unit, timezone }
-    }
 
     fn unit(&self) -> U {
         self.unit.clone()
+    }
+}
+
+impl<U: TimeUnit> Timestamp for TimestampType<U> {
+    fn from_parts(unit: U, timezone: Option<Arc<str>>) -> Self {
+        Self { unit, timezone }
     }
 
     fn timezone(&self) -> Option<&str> {
@@ -66,7 +68,7 @@ impl<U: TimeUnit> Timestamp for TypedTimestamp<U> {
     }
 }
 
-impl<U: TimeUnit> DataType for TypedTimestamp<U> {
+impl<U: TimeUnit> DataType for TimestampType<U> {
     fn type_id(&self) -> DataTypeId {
         DataTypeId::Timestamp
     }
@@ -101,7 +103,7 @@ impl<U: TimeUnit> DataType for TypedTimestamp<U> {
                 U::from_unit_id(TimeUnitId::from_arrow(*unit))?,
                 timezone.clone(),
             )),
-            // A bare Int64 is never a timestamp on its own; the unit lives in
+            // A bare Int64Type is never a timestamp on its own; the unit lives in
             // the field metadata.
             ArrowDataType::Int64 => Err(DataTypeError::MissingMetadata {
                 key: metadata::TIME_UNIT,
@@ -162,9 +164,10 @@ impl<U: TimeUnit> DataType for TypedTimestamp<U> {
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        // `unit tag | timezone flag | timezone UTF-8` — the flag disambiguates
-        // a missing timezone from an empty string.
-        let mut out = self.unit.unit_id().to_bytes();
+        // `type id | unit tag | timezone flag | timezone UTF-8` — the flag
+        // disambiguates a missing timezone from an empty string.
+        let mut out = vec![DataTypeId::Timestamp.to_u8()];
+        out.extend(self.unit.unit_id().to_bytes());
         match &self.timezone {
             Some(timezone) => {
                 out.push(1);
@@ -176,10 +179,11 @@ impl<U: TimeUnit> DataType for TypedTimestamp<U> {
     }
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, DataTypeError> {
-        let [unit, has_timezone, timezone @ ..] = bytes else {
+        let payload = DataTypeId::Timestamp.strip_tag(bytes)?;
+        let [unit, has_timezone, timezone @ ..] = payload else {
             return Err(DataTypeError::InvalidByteLength {
                 expected: 2,
-                actual: bytes.len(),
+                actual: payload.len(),
             });
         };
         let unit = U::from_unit_id(TimeUnitId::from_bytes(&[*unit])?)?;
@@ -210,20 +214,20 @@ impl<U: TimeUnit> DataType for TypedTimestamp<U> {
     }
 }
 
-impl<U: TimeUnit> PrimitiveType for TypedTimestamp<U> {
+impl<U: TimeUnit> PrimitiveType for TimestampType<U> {
     type Native = i64;
     const BIT_WIDTH: usize = 64;
 }
 
-impl<U: TimeUnit> LogicalType for TypedTimestamp<U> {
-    type Physical = Int64;
+impl<U: TimeUnit> LogicalType for TimestampType<U> {
+    type Physical = Int64Type;
 
-    fn physical(&self) -> Int64 {
-        Int64
+    fn physical(&self) -> Int64Type {
+        Int64Type
     }
 }
 
-impl<U: TimeUnit> fmt::Display for TypedTimestamp<U> {
+impl<U: TimeUnit> fmt::Display for TimestampType<U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.timezone {
             Some(timezone) => write!(f, "timestamp({}, {timezone})", self.unit),
