@@ -337,10 +337,11 @@ not be a multiple of eight. Truncation zeroes the dropped padding bits:
 ## Streaming between resources
 
 !!! info "Rust core only"
-    `pread_raw_io` / `pwrite_raw_io` copy **bytes** between any two `RawIOBase`
+    Both stream pairs stay in the Rust core: `pread_raw_io` / `pwrite_raw_io` (by
+    **bytes**) and `pread_typed_io` / `pwrite_typed_io` (by **items**) copy between two
     resources in 64 KiB chunks, so a large transfer never materializes in full. They
-    borrow two resources at once and stay in the Rust core; a Python or Node caller
-    composes the same effect from `pread_byte_array` + `pwrite_byte_array`.
+    borrow two resources at once; a Python or Node caller composes the same effect from
+    `pread_byte_array` + `pwrite_byte_array`.
 
 ```rust
 use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
