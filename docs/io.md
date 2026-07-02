@@ -117,76 +117,123 @@ Bits are addressed MSB-first. `ByteBuffer` exposes the same bytes as bits:
 
 ## Cursors
 
-!!! info "Rust core only"
-    A `ByteBuffer` / `BitBuffer` is pure random access: it keeps no cursor, so
-    `Whence.Current` reads as `Whence.Start`. Wrap one in a **`RawIOCursor`** for a
-    position that advances on every read and write, turning random access into a
-    sequential stream. The cursor is a Rust-core convenience over the same positioned
-    surface; a Python or Node caller tracks an offset itself and passes `Whence.Start`.
+A `ByteBuffer` / `BitBuffer` is pure random access: it keeps no cursor, so
+`Whence.Current` reads as `Whence.Start`. Wrap one with `.cursor()` for a position
+that advances on every read and write, turning random access into a sequential stream.
+`Whence.Current` is measured from the cursor, `seek` moves it without touching the
+data, and `tell` reports it in bytes.
 
-`RawIOCursor` owns the wrapped resource (reachable again via `get_ref` / `get_mut` /
-`into_inner`). `Whence::Current` is measured from the cursor, `seek` moves it without
-touching the data, and `tell` reports it in bytes; each access then advances it:
+In Rust the cursor owns the buffer (recover it with `get_ref` / `into_inner`); in
+Python and Node — which have no move semantics — `cursor()` operates on a **copy** of
+the buffer's bytes, and `to_bytes()` reads the result back:
 
-```rust
-use yggdryl_core::{ByteBuffer, RawIOBase, RawIOCursor, Seekable, Whence};
+=== "Python"
 
-fn main() {
-    let mut cursor = RawIOCursor::new(ByteBuffer::from_bytes(vec![10, 20, 30, 40]));
-    // Each read starts where the last one stopped.
-    assert_eq!(cursor.pread_byte_array(0, Whence::Current, 2).unwrap(), vec![10, 20]);
-    assert_eq!(cursor.tell(), 2);
-    assert_eq!(cursor.pread_byte_array(0, Whence::Current, 2).unwrap(), vec![30, 40]);
-    assert_eq!(cursor.tell(), 4);
+    ```python
+    buf = core.ByteBuffer.from_bytes(bytes([10, 20, 30, 40]))
+    cursor = buf.cursor()
+    assert cursor.pread_byte_array(0, core.Whence.Current, 2) == bytes([10, 20])
+    assert cursor.tell() == 2
+    assert cursor.pread_byte_array(0, core.Whence.Current, 2) == bytes([30, 40])
 
-    // seek moves the cursor without touching the data.
-    cursor.seek(0, Whence::Start).unwrap();
-    cursor.pwrite_byte_array(0, Whence::Current, &[1, 2]).unwrap();
-    assert_eq!(cursor.get_ref().as_bytes(), &[1, 2, 30, 40]);
-}
-```
+    cursor.seek(0, core.Whence.Start)
+    cursor.pwrite_byte_array(0, core.Whence.Current, bytes([1, 2]))
+    assert cursor.to_bytes() == bytes([1, 2, 30, 40])
+    ```
 
-`IOCursor<I>` is the same adapter for a typed [`IOBase<T>`](#iobaset) resource: its
-typed `pwrite_one` / `pwrite_array` stream `T` values out one after another, each
-advancing the cursor through the byte layer.
+=== "Node"
 
-Any `RawIOBase` builds one with `.cursor()` (and any `IOBase<T>` the typed one with
-`IOBase::<T>::cursor(resource)`), consuming the resource — recover it later with
-`into_inner`.
+    ```js
+    const buf = ByteBuffer.fromBytes(Buffer.from([10, 20, 30, 40]))
+    const cursor = buf.cursor()
+    console.assert(Buffer.compare(cursor.preadByteArray(0, Whence.Current, 2), Buffer.from([10, 20])) === 0)
+    console.assert(cursor.tell() === 2)
+
+    cursor.seek(0, Whence.Start)
+    cursor.pwriteByteArray(0, Whence.Current, Buffer.from([1, 2]))
+    console.assert(Buffer.compare(cursor.toBytes(), Buffer.from([1, 2, 30, 40])) === 0)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{ByteBuffer, RawIOBase, Seekable, Whence};
+
+    fn main() {
+        let mut cursor = ByteBuffer::from_bytes(vec![10, 20, 30, 40]).cursor();
+        assert_eq!(cursor.pread_byte_array(0, Whence::Current, 2).unwrap(), vec![10, 20]);
+        assert_eq!(cursor.tell(), 2);
+        assert_eq!(cursor.pread_byte_array(0, Whence::Current, 2).unwrap(), vec![30, 40]);
+
+        cursor.seek(0, Whence::Start).unwrap();
+        cursor.pwrite_byte_array(0, Whence::Current, &[1, 2]).unwrap();
+        assert_eq!(cursor.get_ref().as_bytes(), &[1, 2, 30, 40]);
+    }
+    ```
+
+!!! note "Typed cursor (Rust core only)"
+    `IOCursor<I>` is the same adapter over a typed [`IOBase<T>`](#iobaset) resource:
+    its typed `pwrite_one` / `pwrite_array` stream `T` values out one after another.
+    Build it with `IOBase::<T>::cursor(resource)`. It stays Rust-only until a binding
+    exposes an `IOBase<T>` resource.
 
 ## Slices
 
-!!! info "Rust core only"
-    A **`RawIOSlice`** bounds a resource to a byte window `[start, end)`: code handed
-    the slice sees a smaller resource and cannot read or write outside it. Like the
-    cursor it is a Rust-core convenience; a Python or Node caller passes explicit
-    offsets instead.
+A slice bounds a resource to a byte window `[start, end)`: code handed the slice sees a
+smaller resource and cannot read or write outside it. Build one with
+`.slice(start, end)`. Positions are relative to the window, `byte_size` reports the
+backed length within it, and writes may grow the inner up to `end` but never past it.
+As with the cursor, Python and Node operate on a copy of the buffer's bytes:
 
-`RawIOSlice` owns the wrapped resource and offsets every access by `start`, bounded by
-`end`. `byte_size` reports the backed length within the window, writes may grow the
-inner up to `end` (never past it), and `resize_bytes` moves the `end` bound:
+=== "Python"
 
-```rust
-use yggdryl_core::{ByteBuffer, RawIOBase, RawIOSlice, Whence};
+    ```python
+    buf = core.ByteBuffer.from_bytes(bytes([10, 20, 30, 40, 50]))
+    sliced = buf.slice(1, 4)  # bytes [1, 4)
+    assert sliced.byte_size() == 3
+    assert (sliced.start(), sliced.end()) == (1, 4)
+    assert sliced.pread_byte_array(0, core.Whence.Start, 3) == bytes([20, 30, 40])
 
-fn main() {
-    let mut slice = RawIOSlice::new(ByteBuffer::from_bytes(vec![10, 20, 30, 40, 50]), 1, 4);
-    // The window is bytes [1, 4): positions are relative to it.
-    assert_eq!(slice.byte_size(), 3);
-    assert_eq!(slice.pread_byte_array(0, Whence::Start, 3).unwrap(), vec![20, 30, 40]);
-    assert!(slice.pread_byte_one(3, Whence::Start).is_err()); // outside the window
+    sliced.pwrite_byte_one(0, core.Whence.Start, 99)
+    assert sliced.to_bytes() == bytes([10, 99, 30, 40, 50])
+    ```
 
-    // Writes stay within the window and reach the underlying buffer.
-    slice.pwrite_byte_one(0, Whence::Start, 99).unwrap();
-    assert_eq!(slice.get_ref().as_bytes(), &[10, 99, 30, 40, 50]);
-}
-```
+=== "Node"
 
-`IOSlice<I>` is the typed counterpart over an [`IOBase<T>`](#iobaset) resource: `size`
-and `resize` count whole `T` items in the window (via the inner's `element_width`; a
-`resize` whose width can't be inferred returns `IOError::IndeterminateElementWidth`).
-Build them with `resource.slice(start, end)` (or `IOBase::<T>::slice(resource, start,
-end)` for the typed one).
+    ```js
+    const buf = ByteBuffer.fromBytes(Buffer.from([10, 20, 30, 40, 50]))
+    const slice = buf.slice(1, 4) // bytes [1, 4)
+    console.assert(slice.byteSize() === 3)
+    console.assert(slice.start() === 1 && slice.end() === 4)
+    console.assert(Buffer.compare(slice.preadByteArray(0, Whence.Start, 3), Buffer.from([20, 30, 40])) === 0)
+
+    slice.pwriteByteOne(0, Whence.Start, 99)
+    console.assert(Buffer.compare(slice.toBytes(), Buffer.from([10, 99, 30, 40, 50])) === 0)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
+
+    fn main() {
+        let mut slice = ByteBuffer::from_bytes(vec![10, 20, 30, 40, 50]).slice(1, 4);
+        assert_eq!(slice.byte_size(), 3);
+        assert_eq!((slice.start(), slice.end()), (1, 4));
+        assert_eq!(slice.pread_byte_array(0, Whence::Start, 3).unwrap(), vec![20, 30, 40]);
+        assert!(slice.pread_byte_one(3, Whence::Start).is_err()); // outside the window
+
+        slice.pwrite_byte_one(0, Whence::Start, 99).unwrap();
+        assert_eq!(slice.get_ref().as_bytes(), &[10, 99, 30, 40, 50]);
+    }
+    ```
+
+!!! note "Typed slice (Rust core only)"
+    `IOSlice<I>` is the typed counterpart over an [`IOBase<T>`](#iobaset) resource:
+    `size` and `resize` count whole `T` items in the window (via the inner's
+    `element_width`; a `resize` whose width can't be inferred returns
+    `IOError::IndeterminateElementWidth`). Build it with `IOBase::<T>::slice(resource,
+    start, end)`. Like the typed cursor it stays Rust-only for now.
 
 ## Sizes, capacities and resizing
 

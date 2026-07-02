@@ -31,11 +31,13 @@ type they are looking at from the shape of the code.
    tests, and every task ends with a **coherence check** confirming the three
    surfaces match method-for-method and behave identically (the binding test suites
    are the executable proof). A core item may stay **Rust-only** only when it cannot
-   cross the FFI boundary cleanly — a generic/owning/borrowing adapter
-   (`RawIOCursor` / `IOCursor` / `RawIOSlice` / `IOSlice`) or a two-resource stream
-   (`pread_io` / `pwrite_io`) — and then the omission is stated in **both** binding
-   module docs and on the docs site, so "not replicated" is always a documented,
-   deliberate choice rather than drift.
+   cross the FFI boundary cleanly: the two-resource `pread_io` / `pwrite_io` streams
+   (they borrow two resources at once) and the typed `IOCursor` / `IOSlice` adapters
+   (no binding resource implements `IOBase` yet). The raw `RawIOCursor` / `RawIOSlice`
+   adapters, though generic in the core, **are** replicated — as concrete per-buffer
+   wrappers (`ByteBufferCursor`, `ByteBufferSlice`, and the `BitBuffer` variants). Any
+   such omission is stated in **both** binding module docs and on the docs site, so
+   "not replicated" is always a documented, deliberate choice rather than drift.
 5. **Serializable to and from bytes whenever possible.** Every value type
    round-trips through bytes via `serialize_bytes()` / `deserialize_bytes(bytes)`;
    the only exceptions are live/stream resources (IO handles, HTTP bodies,

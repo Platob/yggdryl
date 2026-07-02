@@ -72,3 +72,55 @@ def test_bit_buffer_capacity_and_exact_bit_resize():
     assert buf.bit_size() == 3
     assert buf.byte_size() == 1
     assert buf.to_bytes() == bytes([0b1110_0000])
+
+
+def test_byte_buffer_cursor_advances_over_a_copy():
+    buf = core.ByteBuffer.from_bytes(bytes([10, 20, 30, 40]))
+    cursor = buf.cursor()
+    assert cursor.pread_byte_array(0, core.Whence.Current, 2) == bytes([10, 20])
+    assert cursor.tell() == 2
+    assert cursor.pread_byte_array(0, core.Whence.Current, 2) == bytes([30, 40])
+    assert cursor.tell() == 4
+    # The cursor holds a copy: writing through it leaves the original buffer intact.
+    cursor.seek(0, core.Whence.Start)
+    cursor.pwrite_byte_one(0, core.Whence.Current, 99)
+    assert cursor.to_bytes() == bytes([99, 20, 30, 40])
+    assert buf.to_bytes() == bytes([10, 20, 30, 40])
+
+
+def test_byte_buffer_cursor_from_bytes():
+    cursor = core.ByteBufferCursor.from_bytes(bytes([1, 2, 3]))
+    assert cursor.byte_size() == 3
+    assert cursor.seek(1, core.Whence.Start) == 1
+    assert cursor.pread_byte_one(0, core.Whence.Current) == 2
+
+
+def test_byte_buffer_slice_bounds_a_window():
+    buf = core.ByteBuffer.from_bytes(bytes([10, 20, 30, 40, 50]))
+    sliced = buf.slice(1, 4)
+    assert sliced.byte_size() == 3
+    assert sliced.start() == 1
+    assert sliced.end() == 4
+    assert sliced.pread_byte_array(0, core.Whence.Start, 3) == bytes([20, 30, 40])
+    # Access outside the window raises.
+    with pytest.raises(ValueError):
+        sliced.pread_byte_array(0, core.Whence.Start, 4)
+    # Writes stay in-window and reach the slice's copy of the buffer.
+    sliced.pwrite_byte_one(0, core.Whence.Start, 99)
+    assert sliced.to_bytes() == bytes([10, 99, 30, 40, 50])
+
+
+def test_byte_buffer_slice_from_bytes():
+    sliced = core.ByteBufferSlice.from_bytes(bytes([1, 2, 3, 4]), 1, 3)
+    assert sliced.byte_size() == 2
+    assert sliced.pread_byte_array(0, core.Whence.Start, 2) == bytes([2, 3])
+
+
+def test_bit_buffer_exposes_cursor_and_slice():
+    cursor = core.BitBuffer.from_bytes(bytes([0xFF])).cursor()
+    assert cursor.bit_size() == 8
+    assert cursor.pread_bit_one(0, core.Whence.Current) is True
+
+    sliced = core.BitBuffer.from_bytes(bytes([1, 2, 3])).slice(1, 2)
+    assert sliced.byte_size() == 1
+    assert sliced.pread_byte_one(0, core.Whence.Start) == 2  # window byte 1 of the inner

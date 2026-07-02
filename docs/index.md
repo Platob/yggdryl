@@ -81,6 +81,8 @@ identically. Each Rust crate is exposed under its own namespace — currently ju
 </div>
 
 !!! note "Bindings vs. core"
-    `ByteBuffer`, `BitBuffer` and `Whence` are exposed in **all three** languages.
-    `Charset` and `Base` are currently available in the **Rust core only** — they gain
-    Python/Node tabs when the bindings expose them.
+    `ByteBuffer`, `BitBuffer`, `Whence` and the cursor/slice adapters
+    (`ByteBufferCursor`, `ByteBufferSlice`, and the `BitBuffer` variants) are exposed
+    in **all three** languages. `Charset`, `Base`, the typed `IOCursor` / `IOSlice`,
+    and the `pread_io` / `pwrite_io` streams are currently **Rust core only** — they
+    gain Python/Node tabs when the bindings expose them.

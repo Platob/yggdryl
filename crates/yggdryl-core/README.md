@@ -82,12 +82,11 @@ between resources in chunks with `pread_io` / `pwrite_io` — a large transfer n
 materializes in full.
 
 `ByteBuffer` (byte-granular) and `BitBuffer` (exact bit length) are the concrete
-in-memory resources; both are exposed in the Python and Node bindings. Some Rust-core
-conveniences stay Rust-only: the two-resource `pread_io` / `pwrite_io` streams
-(bindings compose the same effect from the byte-array methods) and the generic owning
-adapters — the `Seekable` `RawIOCursor` / `IOCursor` cursors and the `RawIOSlice` /
-`IOSlice` byte-window views — over the same positioned surface. Benchmarks live in
-`benches/buffers.rs`
+in-memory resources; both are exposed in the Python and Node bindings, along with the
+cursor and slice adapters as concrete per-buffer wrappers (`ByteBufferCursor`,
+`ByteBufferSlice`, and the `BitBuffer` variants). Only the two-resource `pread_io` /
+`pwrite_io` streams stay Rust-only (bindings compose the same effect from the
+byte-array methods). Benchmarks live in `benches/buffers.rs`
 (`cargo bench`).
 
 ```rust
