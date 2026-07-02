@@ -93,6 +93,9 @@ impl IOBase<u32> for Store {
     fn size(&self) -> usize {
         self.byte_size() / 4
     }
+    fn element_width(&self) -> usize {
+        4 // fixed width, so a slice can size items even over an empty store
+    }
     fn resize(&mut self, size: usize) -> Result<(), IOError> {
         self.resize_bytes(size * 4)
     }

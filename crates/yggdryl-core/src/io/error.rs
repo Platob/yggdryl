@@ -18,6 +18,11 @@ pub enum IOError {
         /// How many were actually available.
         available: usize,
     },
+    /// A typed view (such as [`IOSlice`](super::IOSlice)) could not convert an item
+    /// count to bytes because the element width is unknown — the underlying resource
+    /// holds no items to infer it from and does not override
+    /// [`element_width`](super::IOBase::element_width).
+    IndeterminateElementWidth,
 }
 
 impl std::fmt::Display for IOError {
@@ -32,6 +37,10 @@ impl std::fmt::Display for IOError {
             } => write!(
                 f,
                 "expected {requested} element(s) but only {available} were available"
+            ),
+            IOError::IndeterminateElementWidth => write!(
+                f,
+                "cannot infer the element width from an empty resource; override `IOBase::element_width`"
             ),
         }
     }

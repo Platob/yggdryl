@@ -108,6 +108,17 @@ pub trait IOBase<T>: RawIOBase {
     /// The number of `T` items in the resource.
     fn size(&self) -> usize;
 
+    /// The fixed byte width of a single `T` in this resource.
+    ///
+    /// The default infers it as [`byte_size`](RawIOBase::byte_size) divided by
+    /// [`size`](IOBase::size) — exact for fixed-width items — and is `0` for an empty
+    /// resource. Implementors whose items have a constant width should override it
+    /// with that constant, so a derived view such as [`IOSlice`](super::IOSlice) can
+    /// convert item counts to bytes even when the resource is empty.
+    fn element_width(&self) -> usize {
+        self.byte_size().checked_div(self.size()).unwrap_or(0)
+    }
+
     /// The number of `T` items the resource can hold without reallocating.
     /// Defaults to [`size`](IOBase::size) for resources that do not over-allocate.
     fn capacity(&self) -> usize {

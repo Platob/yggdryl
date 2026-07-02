@@ -10,10 +10,11 @@ use super::{IOBase, IOError, RawIOBase, RawIOSlice, Whence};
 /// It layers the [`IOBase`] surface over a [`RawIOSlice`], forwarding the raw
 /// surface to it, so the windowing logic lives in one place. The wrapped resource is
 /// reached with [`get_ref`](IOSlice::get_ref), [`get_mut`](IOSlice::get_mut) or
-/// [`into_inner`](IOSlice::into_inner). [`size`](IOBase::size) counts the whole `T`
-/// items in the window, inferring the item width from the inner as
-/// `byte_size / size`; over an empty inner the width is unknown and `size` reports
-/// `0` (prefer a [`RawIOSlice`] there).
+/// [`into_inner`](IOSlice::into_inner). [`size`](IOBase::size) and
+/// [`resize`](IOBase::resize) count whole `T` items in the window, using the inner's
+/// [`element_width`](IOBase::element_width); when the inner cannot supply a width (an
+/// empty resource that does not override `element_width`), `size` reports `0` and a
+/// `resize` to a non-zero count returns [`IOError::IndeterminateElementWidth`].
 ///
 /// ```
 /// use yggdryl_core::{IOBase, IOError, IOSlice, RawIOBase, Whence};
@@ -216,7 +217,7 @@ where
     }
 
     fn size(&self) -> usize {
-        let width = element_width::<T>(self.raw.get_ref());
+        let width = IOBase::<T>::element_width(self.raw.get_ref());
         if width == 0 {
             0
         } else {
@@ -225,17 +226,16 @@ where
     }
 
     fn resize(&mut self, size: usize) -> Result<(), IOError> {
-        let width = element_width::<T>(self.raw.get_ref());
+        let width = IOBase::<T>::element_width(self.raw.get_ref());
+        if width == 0 {
+            // No width to convert `size` items to bytes: resizing to zero collapses
+            // the window, but any other count is unrepresentable.
+            return if size == 0 {
+                self.raw.resize_bytes(0)
+            } else {
+                Err(IOError::IndeterminateElementWidth)
+            };
+        }
         self.raw.resize_bytes(size.saturating_mul(width))
-    }
-}
-
-/// The fixed byte width of a `T` in `inner`, inferred as `byte_size / size` — the
-/// inverse of how [`IOBase::size`] counts items. Returns `0` when the inner holds no
-/// items (the width is then unknown).
-fn element_width<T>(inner: &(impl IOBase<T> + ?Sized)) -> usize {
-    match inner.size() {
-        0 => 0,
-        items => inner.byte_size() / items,
     }
 }

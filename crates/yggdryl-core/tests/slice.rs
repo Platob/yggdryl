@@ -153,6 +153,68 @@ fn typed_slice_resize_counts_items() {
     assert_eq!(slice.byte_size(), 8);
 }
 
+#[test]
+fn typed_slice_over_an_empty_resource_sizes_via_element_width() {
+    // Store overrides element_width, so a window over an empty store can still be
+    // grown by item count (regression: this used to silently no-op).
+    let mut slice = IOSlice::new(Store::default(), 0, 0);
+    assert_eq!(slice.size(), 0);
+    IOBase::<u32>::resize(&mut slice, 3).unwrap();
+    assert_eq!(slice.size(), 3);
+    assert_eq!(slice.byte_size(), 12);
+}
+
+/// A typed resource that does not override `element_width`, so the default
+/// (`byte_size / size`) applies — `0` when empty.
+#[derive(Default)]
+struct DefaultWidth {
+    inner: ByteBuffer,
+}
+
+impl RawIOBase for DefaultWidth {
+    fn byte_size(&self) -> usize {
+        self.inner.byte_size()
+    }
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IOError> {
+        self.inner.resize_bytes(size)
+    }
+    fn pread_byte_array(&self, p: usize, w: Whence, s: usize) -> Result<Vec<u8>, IOError> {
+        self.inner.pread_byte_array(p, w, s)
+    }
+    fn pwrite_byte_array(&mut self, p: usize, w: Whence, v: &[u8]) -> Result<(), IOError> {
+        self.inner.pwrite_byte_array(p, w, v)
+    }
+    fn pread_bit_array(&self, p: usize, w: Whence, s: usize) -> Result<Vec<bool>, IOError> {
+        self.inner.pread_bit_array(p, w, s)
+    }
+    fn pwrite_bit_array(&mut self, p: usize, w: Whence, v: &[bool]) -> Result<(), IOError> {
+        self.inner.pwrite_bit_array(p, w, v)
+    }
+}
+
+impl IOBase<u8> for DefaultWidth {
+    fn value_to_bytes(&self, value: &u8) -> Vec<u8> {
+        vec![*value]
+    }
+    fn size(&self) -> usize {
+        self.byte_size()
+    }
+    fn resize(&mut self, size: usize) -> Result<(), IOError> {
+        self.resize_bytes(size)
+    }
+}
+
+#[test]
+fn typed_slice_resize_errors_when_the_width_is_indeterminate() {
+    // An empty resource with the default element_width cannot convert items to bytes.
+    let mut slice = IOSlice::new(DefaultWidth::default(), 0, 0);
+    assert_eq!(IOBase::<u8>::size(&slice), 0);
+    let error = IOBase::<u8>::resize(&mut slice, 4).unwrap_err();
+    assert!(matches!(error, IOError::IndeterminateElementWidth));
+    // A resize to zero still collapses cleanly.
+    IOBase::<u8>::resize(&mut slice, 0).unwrap();
+}
+
 // ---- cursor / slice factory methods ----
 
 #[test]

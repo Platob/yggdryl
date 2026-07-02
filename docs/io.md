@@ -183,8 +183,10 @@ fn main() {
 ```
 
 `IOSlice<I>` is the typed counterpart over an [`IOBase<T>`](#iobaset) resource: `size`
-counts the whole `T` items in the window. Build them with `resource.slice(start, end)`
-(or `IOBase::<T>::slice(resource, start, end)` for the typed one).
+and `resize` count whole `T` items in the window (via the inner's `element_width`; a
+`resize` whose width can't be inferred returns `IOError::IndeterminateElementWidth`).
+Build them with `resource.slice(start, end)` (or `IOBase::<T>::slice(resource, start,
+end)` for the typed one).
 
 ## Sizes, capacities and resizing
 
@@ -327,7 +329,10 @@ defaults. It keeps no cursor, so `Whence::Current` reads as `Whence::Start`.
 `IOBase<T>: RawIOBase` layers typed values on top. Given a type that already
 implements `RawIOBase`, provide `value_to_bytes` (how a `T` becomes bytes), `size`
 and `resize` (counted in items); the typed writes `pwrite_one` / `pwrite_array` then
-come free, serializing through it into the raw byte methods.
+come free, serializing through it into the raw byte methods. A fixed-width
+implementor should also override `element_width` (the default infers it as
+`byte_size / size`) so a derived [`IOSlice`](#slices) can convert item counts to bytes
+even over an empty resource.
 
 ```rust
 use yggdryl_core::{IOBase, IOError, RawIOBase};

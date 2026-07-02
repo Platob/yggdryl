@@ -11,9 +11,9 @@ use super::{IOError, RawIOBase, Whence};
 /// The wrapped resource is reached again with [`get_ref`](RawIOSlice::get_ref),
 /// [`get_mut`](RawIOSlice::get_mut) or [`into_inner`](RawIOSlice::into_inner).
 /// Positions are window-relative: [`Whence::Start`] is the window's first byte,
-/// [`Whence::End`] its last backed byte, and — the slice keeps no cursor —
-/// [`Whence::Current`] is measured from the start. `start` and `end` are byte
-/// offsets, so bit access is offset by `start * 8`.
+/// [`Whence::End`] its append point (one past the last backed byte), and — the slice
+/// keeps no cursor — [`Whence::Current`] is measured from the start. `start` and
+/// `end` are byte offsets, so bit access is offset by `start * 8`.
 ///
 /// [`byte_size`](RawIOBase::byte_size) reports the backed length within the window
 /// (`min(inner size, end) - start`), so reads within it always succeed; writes may
