@@ -2,14 +2,16 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-schema",
     "bindings/python",
     "bindings/node",
 ]
-# `cargo build` / `cargo test` with no args only touches the pure-Rust core.
+# `cargo build` / `cargo test` with no args only touches the pure-Rust crates.
 # The Python and Node bindings are built through their own toolchains
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-schema",
 ]
 
 [workspace.package]
@@ -19,11 +21,17 @@ license = "Apache-2.0"
 authors = ["yggdryl contributors"]
 repository = "https://github.com/Platob/yggdryl"
 homepage = "https://github.com/Platob/yggdryl"
-description = "yggdryl — a Rust-core URI/URL library with Python and Node extensions"
-keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
+description = "yggdryl — an Arrow-centralized dataframe toolkit with a Rust core and Python and Node extensions"
+keywords = ["arrow", "dataframe", "schema", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
+yggdryl-schema = { path = "crates/yggdryl-schema", version = "0.1.1", default-features = false }
+# Arrow subset crates only — never the `arrow` umbrella. `arrow-schema` is the
+# interop vocabulary every `to_arrow` / `from_arrow` targets; `arrow-buffer`
+# supplies `i256`, the native value type behind `Decimal256`.
+arrow-schema = { version = "59", default-features = false }
+arrow-buffer = { version = "59", default-features = false }
 
 [profile.release]
 lto = true

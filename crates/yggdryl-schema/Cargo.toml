@@ -1,0 +1,33 @@
+[package]
+name = "yggdryl-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-centralized schema layer for yggdryl: typed data types and fields"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_schema"
+path = "src/lib.rs"
+
+[dependencies]
+arrow-schema = { workspace = true }
+arrow-buffer = { workspace = true }
+# Both off by default, mirroring yggdryl-core:
+#   log    structured logging via the `log` facade (the `log_event!` macro);
+#   serde  content-based `Serialize` / `Deserialize` for the schema types
+#          (`rc` because `Timestamp` timezones and `Field` handles are `Arc`s).
+log = { version = "0.4", optional = true }
+serde = { version = "1", features = ["derive", "rc"], optional = true }
+
+[dev-dependencies]
+# Round-trip the `serde` derives through a concrete format in the tests.
+serde_json = { version = "1" }
+
+[features]
+log = ["dep:log"]
+serde = ["dep:serde"]
