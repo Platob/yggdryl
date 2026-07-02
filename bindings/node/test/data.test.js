@@ -87,12 +87,16 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(answer.scalar().value(), wire(42))
     assert.equal(answer.asI64(), 42n)
 
-    const union = answer.dataType()
-    assert.equal(union.name(), 'union')
-    assert.equal(union.arrowFormat(), '+us:0,1')
-    assert.equal(union.childCount(), 2)
-    assert.equal(union.mode(), 'sparse')
-    assert.equal(union.byteWidth(), null)
+    // The data type is the logical optional over union storage.
+    const optType = answer.dataType()
+    assert.equal(optType.name(), 'optional')
+    assert.equal(optType.arrowFormat(), '+us:0,1')
+    assert.equal(optType.byteWidth(), null)
+    assert.equal(optType.valueType().name(), name)
+    const storage = optType.storage()
+    assert.equal(storage.name(), 'union')
+    assert.equal(storage.childCount(), 2)
+    assert.equal(storage.mode(), 'sparse')
 
     const missing = optional.null()
     assert.equal(missing.isNull(), true)
@@ -100,8 +104,8 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(missing.scalar(), null)
     assert.equal(missing.asI64(), null)
 
-    // The union reached through the data type is the same shape.
-    assert.equal(new ty().optional().arrowFormat(), union.arrowFormat())
+    // The optional reached through the value type is the same shape.
+    assert.equal(new ty().optional().arrowFormat(), optType.arrowFormat())
   })
 }
 
@@ -121,8 +125,16 @@ test('float access is exact or null', () => {
   assert.equal(new data.Int8Scalar(-1).asU64(), null)
 })
 
+test('optional field', () => {
+  const score = new data.OptionalInt64Field('score')
+  assert.equal(score.name(), 'score')
+  assert.equal(score.isNullable(), true)
+  assert.equal(score.dataType().name(), 'optional')
+  assert.equal(score.dataType().valueType().name(), 'int64')
+})
+
 test('union field', () => {
-  const union = new data.Int64().optional()
+  const union = new data.Int64().optional().storage()
   const field = new data.UnionField('value', union)
   assert.equal(field.name(), 'value')
   assert.equal(field.isNullable(), true)

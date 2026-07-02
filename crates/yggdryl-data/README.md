@@ -51,7 +51,7 @@ How a type is shaped (each refines `RawDataType`).
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
 - **`Logical`** — a type layered over a physical `Storage` type (e.g. a timestamp over
-  `int64`).
+  `int64`; `Optional<D>` over its null-or-value union is the first concrete one).
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`).
 
 ## Type ids
@@ -99,24 +99,32 @@ assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar)
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 `Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
 
-## The null and union modules
+## The null, union and optional modules
 
 `Null` is the storage-free type whose every value is null (`NullField`,
 `NullScalar`). `Union` is Apache Arrow's union — a value is exactly one of several
 child types, discriminated by a type id — carrying its `UnionFields` and
-`UnionMode` losslessly, so `to_arrow` / `from_arrow` round-trip any union.
-`Union::optional(&T)` names the sparse two-variant union between null and a value
-type, and `OptionalScalar<D, S>` is the scalar of that shape: an inner scalar `S`
-or the null variant, with `value` and every `as_*` accessor redirected to the inner
-scalar, and the Arrow form a one-element `UnionArray` whose type id selects the
-variant (`from_arrow` redirects the value child back through `S::from_arrow`).
+`UnionMode` losslessly, so `to_arrow` / `from_arrow` round-trip any union
+(`UnionField` is its field; `Union::optional(&T)` names the sparse two-variant
+union between null and a value type).
+
+`Optional<D>` is the first concrete `Logical` type: a value of the value type `D`,
+or null, physically stored as `Union::optional(&D)` (`storage()` returns the
+union). Its Arrow surface delegates to the storage; its `DataType<T>` byte codec
+delegates to the value type. `OptionalField<D>` is its field, and
+`OptionalScalar<D, S>` its scalar: an inner scalar `S` or the null variant, with
+`value` and every `as_*` accessor redirected to the inner scalar, and the Arrow
+form a one-element `UnionArray` whose type id selects the variant (`from_arrow`
+redirects the value child back through `S::from_arrow`).
 
 ```rust
-use yggdryl_data::{Int64, Int64Scalar, OptionalScalar, RawDataType, RawScalar, Union};
+use yggdryl_data::{Int64, Int64Scalar, Logical, Optional, OptionalScalar, RawDataType, RawScalar};
 
 let answer = OptionalScalar::new(Int64Scalar::new(42));
 assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
-assert_eq!(answer.data_type().arrow_format(), "+us:0,1"); // sparse union of null and int64
+assert_eq!(answer.data_type(), &Optional::new(Int64)); // logical optional...
+assert_eq!(answer.data_type().storage().name(), "union"); // ...over union storage
+assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 
 let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
 assert!(missing.is_null());

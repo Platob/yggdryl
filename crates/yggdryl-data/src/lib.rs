@@ -15,10 +15,10 @@
 //!   shape.
 //!
 //! Concrete types live in per-family modules — the [`integer`] module holds every
-//! signed and unsigned integer, the [`null`] module the storage-free null type, and
-//! the [`union`] module the union type with the null-or-value
-//! [`OptionalScalar`] (each type its own data type, field and scalar). Add more
-//! following the rules in `CLAUDE.md`.
+//! signed and unsigned integer, the [`null`] module the storage-free null type, the
+//! [`union`] module the union type, and the [`optional`] module the logical
+//! null-or-value [`Optional`] type over union storage (each type its own data type,
+//! field and scalar). Add more following the rules in `CLAUDE.md`.
 //!
 //! Every layer converts to and from its Apache Arrow equivalent (`to_arrow` /
 //! `from_arrow`): a data type mirrors an [`arrow_schema::DataType`], a field an
@@ -77,10 +77,12 @@ pub use primitive::Primitive;
 
 pub mod integer;
 pub mod null;
+pub mod optional;
 pub mod union;
 
 pub use null::{Null, NullField, NullScalar};
-pub use union::{OptionalScalar, Union, UnionField};
+pub use optional::{Optional, OptionalField, OptionalScalar};
+pub use union::{Union, UnionField};
 
 pub use integer::{
     Int16, Int16Field, Int16Scalar, Int32, Int32Field, Int32Scalar, Int64, Int64Field, Int64Scalar,

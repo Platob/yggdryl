@@ -1,7 +1,8 @@
 //! The `yggdryl.data` namespace — thin wrappers over the `yggdryl-data` crate.
 //!
-//! Every integer type is exposed as its data type, field, scalar and
-//! null-or-value optional scalar (e.g. `Int64`, `Int64Field`, `Int64Scalar`,
+//! Every integer type is exposed as its data type, field, scalar, logical
+//! optional data type and field, and null-or-value optional scalar (e.g.
+//! `Int64`, `Int64Field`, `Int64Scalar`, `OptionalInt64`, `OptionalInt64Field`,
 //! `OptionalInt64Scalar`), alongside the `Null` family and the `Union` data type.
 //! Values adapt to JS idioms: the 8–32 bit types use `number`, the 64-bit types
 //! use `BigInt`, and scalars expose the `as*` accessors with the core contract —
@@ -15,13 +16,14 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` / `arrow-array` values that
 //! cannot cross the FFI boundary; C Data Interface interop is future work),
 //! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
-//! arrow-schema value — `Union` is reached through a data type's `optional()`),
+//! arrow-schema value — `Union` is reached through an optional data type's
+//! `storage()`),
 //! and the `DataTypeId` classifier (a method-bearing enum the bindings cannot
 //! model uniformly).
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
-use yggdryl_data::{DataType, Nested, RawDataType, RawField, RawScalar};
+use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar};
 
 fn data_error(error: yggdryl_data::DataError) -> Error {
     Error::from_reason(error.to_string())
@@ -323,7 +325,7 @@ macro_rules! as_accessors_node {
 /// [`int_wire_number_node!`] (8–32 bit, JS `number`) or written per 64-bit type
 /// with `BigInt`.
 macro_rules! int_data_node {
-    ($ty:ident, $field:ident, $scalar:ident, $optional:ident, $native:ty, $name:literal) => {
+    ($ty:ident, $field:ident, $scalar:ident, $opt_ty:ident, $opt_field:ident, $optional:ident, $native:ty, $name:literal) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type.")]
         #[napi(namespace = "data")]
         #[derive(Default)]
@@ -364,12 +366,101 @@ macro_rules! int_data_node {
                 self.inner.bit_width().map(|width| width as u32)
             }
 
-            /// The sparse two-variant union between null and this type.
+            /// The logical optional of this type (stored as the null-or-value
+            /// union).
             #[napi]
-            pub fn optional(&self) -> Union {
+            pub fn optional(&self) -> $opt_ty {
+                $opt_ty::default()
+            }
+        }
+
+        #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
+        #[napi(namespace = "data")]
+        #[derive(Default)]
+        pub struct $opt_ty {
+            inner: yggdryl_data::Optional<yggdryl_data::$ty>,
+        }
+
+        #[napi(namespace = "data")]
+        impl $opt_ty {
+            #[doc = concat!("The optional `", $name, "` data type.")]
+            #[napi(constructor)]
+            #[allow(clippy::new_without_default)]
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            /// The type's lowercase name, `"optional"`.
+            #[napi]
+            pub fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string of the union storage.
+            #[napi]
+            pub fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// An optional has no fixed byte width (union storage).
+            #[napi]
+            pub fn byte_width(&self) -> Option<u32> {
+                self.inner.byte_width().map(|width| width as u32)
+            }
+
+            /// An optional has no fixed bit width (union storage).
+            #[napi]
+            pub fn bit_width(&self) -> Option<u32> {
+                self.inner.bit_width().map(|width| width as u32)
+            }
+
+            /// The value type this optional wraps.
+            #[napi]
+            pub fn value_type(&self) -> $ty {
+                $ty::default()
+            }
+
+            /// The physical storage: the sparse null-or-value union.
+            #[napi]
+            pub fn storage(&self) -> Union {
                 Union {
-                    inner: yggdryl_data::Union::optional(&self.inner),
+                    inner: self.inner.storage().clone(),
                 }
+            }
+        }
+
+        #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
+        #[napi(namespace = "data")]
+        pub struct $opt_field {
+            inner: yggdryl_data::OptionalField<yggdryl_data::$ty>,
+        }
+
+        #[napi(namespace = "data")]
+        impl $opt_field {
+            #[doc = concat!("An optional-`", $name, "` field named `name` (nullable by default).")]
+            #[napi(constructor)]
+            pub fn new(name: String, nullable: Option<bool>) -> Self {
+                Self {
+                    inner: yggdryl_data::OptionalField::new(name, nullable.unwrap_or(true)),
+                }
+            }
+
+            /// The field's name.
+            #[napi]
+            pub fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The field's data type.
+            #[napi]
+            pub fn data_type(&self) -> $opt_ty {
+                $opt_ty::default()
+            }
+
+            /// Whether values in this field may be null.
+            #[napi]
+            pub fn is_nullable(&self) -> bool {
+                self.inner.is_nullable()
             }
         }
 
@@ -467,13 +558,10 @@ macro_rules! int_data_node {
                 self.inner.scalar().map(|scalar| $scalar { inner: *scalar })
             }
 
-            /// The scalar's data type: the sparse union between null and the value
-            /// type.
+            /// The scalar's data type: the logical optional of the value type.
             #[napi]
-            pub fn data_type(&self) -> Union {
-                Union {
-                    inner: self.inner.data_type().clone(),
-                }
+            pub fn data_type(&self) -> $opt_ty {
+                $opt_ty::default()
             }
         }
 
@@ -550,11 +638,22 @@ fn wire_to_native<T: TryFrom<i64>>(value: i64, name: &str) -> Result<T> {
         .map_err(|_| Error::from_reason(format!("expected {value} to be in the {name} range")))
 }
 
-int_data_node!(Int8, Int8Field, Int8Scalar, OptionalInt8Scalar, i8, "int8");
+int_data_node!(
+    Int8,
+    Int8Field,
+    Int8Scalar,
+    OptionalInt8,
+    OptionalInt8Field,
+    OptionalInt8Scalar,
+    i8,
+    "int8"
+);
 int_data_node!(
     Int16,
     Int16Field,
     Int16Scalar,
+    OptionalInt16,
+    OptionalInt16Field,
     OptionalInt16Scalar,
     i16,
     "int16"
@@ -563,6 +662,8 @@ int_data_node!(
     Int32,
     Int32Field,
     Int32Scalar,
+    OptionalInt32,
+    OptionalInt32Field,
     OptionalInt32Scalar,
     i32,
     "int32"
@@ -571,6 +672,8 @@ int_data_node!(
     Int64,
     Int64Field,
     Int64Scalar,
+    OptionalInt64,
+    OptionalInt64Field,
     OptionalInt64Scalar,
     i64,
     "int64"
@@ -579,6 +682,8 @@ int_data_node!(
     UInt8,
     UInt8Field,
     UInt8Scalar,
+    OptionalUInt8,
+    OptionalUInt8Field,
     OptionalUInt8Scalar,
     u8,
     "uint8"
@@ -587,6 +692,8 @@ int_data_node!(
     UInt16,
     UInt16Field,
     UInt16Scalar,
+    OptionalUInt16,
+    OptionalUInt16Field,
     OptionalUInt16Scalar,
     u16,
     "uint16"
@@ -595,6 +702,8 @@ int_data_node!(
     UInt32,
     UInt32Field,
     UInt32Scalar,
+    OptionalUInt32,
+    OptionalUInt32Field,
     OptionalUInt32Scalar,
     u32,
     "uint32"
@@ -603,6 +712,8 @@ int_data_node!(
     UInt64,
     UInt64Field,
     UInt64Scalar,
+    OptionalUInt64,
+    OptionalUInt64Field,
     OptionalUInt64Scalar,
     u64,
     "uint64"

@@ -1,7 +1,8 @@
 //! The `yggdryl.data` submodule — thin wrappers over the `yggdryl-data` crate.
 //!
-//! Every integer type is exposed as its data type, field, scalar and
-//! null-or-value optional scalar (e.g. `Int64`, `Int64Field`, `Int64Scalar`,
+//! Every integer type is exposed as its data type, field, scalar, logical
+//! optional data type and field, and null-or-value optional scalar (e.g.
+//! `Int64`, `Int64Field`, `Int64Scalar`, `OptionalInt64`, `OptionalInt64Field`,
 //! `OptionalInt64Scalar`), alongside the `Null` family and the `Union` data type.
 //! Scalars expose the `as_*` accessors with the core contract: exact conversion or
 //! `None` (strings cross the FFI boundary as new Python `str` objects, so the
@@ -14,14 +15,15 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` / `arrow-array` values that
 //! cannot cross the FFI boundary; C Data Interface interop is future work),
 //! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
-//! arrow-schema value — `Union` is reached through a data type's `optional()`),
+//! arrow-schema value — `Union` is reached through an optional data type's
+//! `storage()`),
 //! and the `DataTypeId` classifier (a method-bearing enum the bindings cannot
 //! model uniformly).
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_data::{DataType, Nested, RawDataType, RawField, RawScalar};
+use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar};
 
 /// Wraps an [`yggdryl_data::DataError`] so pyo3 raises it as a Python `ValueError`.
 struct DataErr(yggdryl_data::DataError);
@@ -213,12 +215,13 @@ impl NullScalar {
     }
 }
 
-/// Generates the four wrappers of one integer type: the data type `$ty` (with the
-/// byte codec and the `optional()` union), the field `$field`, the scalar `$scalar`
-/// and the null-or-value `$optional` scalar — each a thin delegation to the
-/// `yggdryl-data` types, with the `as_*` accessors on both scalars.
+/// Generates the six wrappers of one integer type: the data type `$ty` (with the
+/// byte codec and `optional()`), the field `$field`, the scalar `$scalar`, the
+/// logical optional data type `$opt_ty` (over union storage), its field
+/// `$opt_field` and the null-or-value `$optional` scalar — each a thin delegation
+/// to the `yggdryl-data` types, with the `as_*` accessors on both scalars.
 macro_rules! int_data_py {
-    ($ty:ident, $field:ident, $scalar:ident, $optional:ident, $native:ty, $name:literal) => {
+    ($ty:ident, $field:ident, $scalar:ident, $opt_ty:ident, $opt_field:ident, $optional:ident, $native:ty, $name:literal) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type.")]
         #[pyclass]
         #[derive(Default)]
@@ -265,11 +268,103 @@ macro_rules! int_data_py {
                 Ok(self.inner.native_from_bytes(bytes)?)
             }
 
-            /// The sparse two-variant union between null and this type.
-            fn optional(&self) -> Union {
+            /// The logical optional of this type (stored as the null-or-value
+            /// union).
+            fn optional(&self) -> $opt_ty {
+                $opt_ty::default()
+            }
+        }
+
+        #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
+        #[pyclass]
+        #[derive(Default)]
+        pub struct $opt_ty {
+            inner: yggdryl_data::Optional<yggdryl_data::$ty>,
+        }
+
+        #[pymethods]
+        impl $opt_ty {
+            #[doc = concat!("The optional `", $name, "` data type.")]
+            #[new]
+            fn new() -> Self {
+                Self::default()
+            }
+
+            /// The type's lowercase name, `"optional"`.
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string of the union storage.
+            fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// An optional has no fixed byte width (union storage).
+            fn byte_width(&self) -> Option<usize> {
+                self.inner.byte_width()
+            }
+
+            /// An optional has no fixed bit width (union storage).
+            fn bit_width(&self) -> Option<usize> {
+                self.inner.bit_width()
+            }
+
+            /// The value type this optional wraps.
+            fn value_type(&self) -> $ty {
+                $ty::default()
+            }
+
+            /// The physical storage: the sparse null-or-value union.
+            fn storage(&self) -> Union {
                 Union {
-                    inner: yggdryl_data::Union::optional(&self.inner),
+                    inner: self.inner.storage().clone(),
                 }
+            }
+
+            /// Serialize a native value into its little-endian Arrow bytes — the
+            /// value type's codec.
+            fn native_to_bytes<'py>(&self, py: Python<'py>, value: $native) -> Bound<'py, PyBytes> {
+                PyBytes::new_bound(py, &self.inner.native_to_bytes(&value))
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value — the exact
+            /// inverse of `native_to_bytes`; the wrong length raises `ValueError`.
+            fn native_from_bytes(&self, bytes: &[u8]) -> Result<$native, DataErr> {
+                Ok(self.inner.native_from_bytes(bytes)?)
+            }
+        }
+
+        #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
+        #[pyclass]
+        pub struct $opt_field {
+            inner: yggdryl_data::OptionalField<yggdryl_data::$ty>,
+        }
+
+        #[pymethods]
+        impl $opt_field {
+            #[doc = concat!("An optional-`", $name, "` field named `name`.")]
+            #[new]
+            #[pyo3(signature = (name, nullable = true))]
+            fn new(name: String, nullable: bool) -> Self {
+                Self {
+                    inner: yggdryl_data::OptionalField::new(name, nullable),
+                }
+            }
+
+            /// The field's name.
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The field's data type.
+            fn data_type(&self) -> $opt_ty {
+                $opt_ty::default()
+            }
+
+            /// Whether values in this field may be null.
+            fn is_nullable(&self) -> bool {
+                self.inner.is_nullable()
             }
         }
 
@@ -434,12 +529,9 @@ macro_rules! int_data_py {
                 self.inner.scalar().map(|scalar| $scalar { inner: *scalar })
             }
 
-            /// The scalar's data type: the sparse union between null and the value
-            /// type.
-            fn data_type(&self) -> Union {
-                Union {
-                    inner: self.inner.data_type().clone(),
-                }
+            /// The scalar's data type: the logical optional of the value type.
+            fn data_type(&self) -> $opt_ty {
+                $opt_ty::default()
             }
 
             /// The value as an `int` in the i8 range, when exactly representable.
@@ -494,11 +586,22 @@ macro_rules! int_data_py {
     };
 }
 
-int_data_py!(Int8, Int8Field, Int8Scalar, OptionalInt8Scalar, i8, "int8");
+int_data_py!(
+    Int8,
+    Int8Field,
+    Int8Scalar,
+    OptionalInt8,
+    OptionalInt8Field,
+    OptionalInt8Scalar,
+    i8,
+    "int8"
+);
 int_data_py!(
     Int16,
     Int16Field,
     Int16Scalar,
+    OptionalInt16,
+    OptionalInt16Field,
     OptionalInt16Scalar,
     i16,
     "int16"
@@ -507,6 +610,8 @@ int_data_py!(
     Int32,
     Int32Field,
     Int32Scalar,
+    OptionalInt32,
+    OptionalInt32Field,
     OptionalInt32Scalar,
     i32,
     "int32"
@@ -515,6 +620,8 @@ int_data_py!(
     Int64,
     Int64Field,
     Int64Scalar,
+    OptionalInt64,
+    OptionalInt64Field,
     OptionalInt64Scalar,
     i64,
     "int64"
@@ -523,6 +630,8 @@ int_data_py!(
     UInt8,
     UInt8Field,
     UInt8Scalar,
+    OptionalUInt8,
+    OptionalUInt8Field,
     OptionalUInt8Scalar,
     u8,
     "uint8"
@@ -531,6 +640,8 @@ int_data_py!(
     UInt16,
     UInt16Field,
     UInt16Scalar,
+    OptionalUInt16,
+    OptionalUInt16Field,
     OptionalUInt16Scalar,
     u16,
     "uint16"
@@ -539,6 +650,8 @@ int_data_py!(
     UInt32,
     UInt32Field,
     UInt32Scalar,
+    OptionalUInt32,
+    OptionalUInt32Field,
     OptionalUInt32Scalar,
     u32,
     "uint32"
@@ -547,6 +660,8 @@ int_data_py!(
     UInt64,
     UInt64Field,
     UInt64Scalar,
+    OptionalUInt64,
+    OptionalUInt64Field,
     OptionalUInt64Scalar,
     u64,
     "uint64"
@@ -562,34 +677,50 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Int8>()?;
     module.add_class::<Int8Field>()?;
     module.add_class::<Int8Scalar>()?;
+    module.add_class::<OptionalInt8>()?;
+    module.add_class::<OptionalInt8Field>()?;
     module.add_class::<OptionalInt8Scalar>()?;
     module.add_class::<Int16>()?;
     module.add_class::<Int16Field>()?;
     module.add_class::<Int16Scalar>()?;
+    module.add_class::<OptionalInt16>()?;
+    module.add_class::<OptionalInt16Field>()?;
     module.add_class::<OptionalInt16Scalar>()?;
     module.add_class::<Int32>()?;
     module.add_class::<Int32Field>()?;
     module.add_class::<Int32Scalar>()?;
+    module.add_class::<OptionalInt32>()?;
+    module.add_class::<OptionalInt32Field>()?;
     module.add_class::<OptionalInt32Scalar>()?;
     module.add_class::<Int64>()?;
     module.add_class::<Int64Field>()?;
     module.add_class::<Int64Scalar>()?;
+    module.add_class::<OptionalInt64>()?;
+    module.add_class::<OptionalInt64Field>()?;
     module.add_class::<OptionalInt64Scalar>()?;
     module.add_class::<UInt8>()?;
     module.add_class::<UInt8Field>()?;
     module.add_class::<UInt8Scalar>()?;
+    module.add_class::<OptionalUInt8>()?;
+    module.add_class::<OptionalUInt8Field>()?;
     module.add_class::<OptionalUInt8Scalar>()?;
     module.add_class::<UInt16>()?;
     module.add_class::<UInt16Field>()?;
     module.add_class::<UInt16Scalar>()?;
+    module.add_class::<OptionalUInt16>()?;
+    module.add_class::<OptionalUInt16Field>()?;
     module.add_class::<OptionalUInt16Scalar>()?;
     module.add_class::<UInt32>()?;
     module.add_class::<UInt32Field>()?;
     module.add_class::<UInt32Scalar>()?;
+    module.add_class::<OptionalUInt32>()?;
+    module.add_class::<OptionalUInt32Field>()?;
     module.add_class::<OptionalUInt32Scalar>()?;
     module.add_class::<UInt64>()?;
     module.add_class::<UInt64Field>()?;
     module.add_class::<UInt64Scalar>()?;
+    module.add_class::<OptionalUInt64>()?;
+    module.add_class::<OptionalUInt64Field>()?;
     module.add_class::<OptionalUInt64Scalar>()?;
     Ok(())
 }

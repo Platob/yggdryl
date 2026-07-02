@@ -14,8 +14,8 @@ adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit ty
 **Rust-only**, stated here and in both binding module docs: the [Arrow
 interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange `arrow-schema` /
 `arrow-array` values that cannot cross the FFI boundary), construction of a `Union`
-from arbitrary child fields (reached in the bindings through a data type's
-`optional()`), and the [`DataTypeId`](#type-ids) classifier.
+from arbitrary child fields (reached in the bindings through an optional data type's
+`storage()`), and the [`DataTypeId`](#type-ids) classifier.
 
 The type system is three layers of traits. None carries a lifetime parameter
 (FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
@@ -161,7 +161,7 @@ fn main() {
 }
 ```
 
-## The null and union types
+## The null, union and optional types
 
 The `null` module holds `Null` — the storage-free type whose every value is null —
 with its `NullField` and `NullScalar`. The `union` module holds `Union`, Apache
@@ -169,24 +169,32 @@ Arrow's union type: a value is exactly one of several child types, discriminated
 a type id. `Union` carries its `UnionFields` and `UnionMode` exactly as Arrow models
 them, so `to_arrow` / `from_arrow` round-trip *any* union losslessly.
 
-`Union::optional(&T)` names the sparse two-variant union between null and a value
-type, and `OptionalScalar<D, S>` is the scalar of that shape — an inner scalar `S`
-of data type `D`, or the null variant. Access redirects to the inner scalar (`value`
-and every `as_*` accessor answer through `S`), and so does the Arrow form: a
-one-element `UnionArray` whose type id selects the variant, `from_arrow` handing the
-value child back to `S`'s own `from_arrow`. The bindings expose the optional scalars
-as concrete per-type classes built from the native value, and reach `Union` through
-a data type's `optional()` (arbitrary child fields stay Rust-only).
+The `optional` module builds on both: `Optional<D>` is the first concrete
+[Logical](#categories) type — a value of the value type `D`, or null, physically
+stored as `Union::optional(&D)` (the sparse two-variant union between null and the
+value type; `storage()` returns it). Its Arrow surface delegates to the storage,
+while its typed byte codec delegates to the value type. `OptionalField<D>` is its
+field, and `OptionalScalar<D, S>` its scalar — an inner scalar `S`, or the null
+variant. Access redirects to the inner scalar (`value` and every `as_*` accessor
+answer through `S`), and so does the Arrow form: a one-element `UnionArray` whose
+type id selects the variant, `from_arrow` handing the value child back to `S`'s own
+`from_arrow`. The bindings expose the optional family as concrete per-type classes
+(`OptionalInt64`, `OptionalInt64Field`, `OptionalInt64Scalar`, …), the scalars built
+straight from the native value, and reach `Union` through an optional data type's
+`storage()` (arbitrary child fields stay Rust-only).
 
 === "Python"
 
     ```python
     from yggdryl import data
 
-    union = data.Int64().optional()
-    assert (union.name(), union.child_count()) == ("union", 2)
-    assert union.arrow_format() == "+us:0,1"  # sparse, type ids 0 and 1
-    assert union.mode() == "sparse"
+    optional = data.Int64().optional()
+    assert (optional.name(), optional.value_type().name()) == ("optional", "int64")
+    assert optional.arrow_format() == "+us:0,1"  # sparse, type ids 0 and 1
+    assert (optional.storage().name(), optional.storage().mode()) == ("union", "sparse")
+
+    score = data.OptionalInt64Field("score")
+    assert score.data_type().name() == "optional"
 
     answer = data.OptionalInt64Scalar(42)
     assert answer.as_i64() == 42  # redirected to the inner scalar
@@ -203,10 +211,13 @@ a data type's `optional()` (arbitrary child fields stay Rust-only).
     ```js
     const { data } = require('yggdryl')
 
-    const union = new data.Int64().optional()
-    assert.deepEqual([union.name(), union.childCount()], ['union', 2])
-    assert.equal(union.arrowFormat(), '+us:0,1') // sparse, type ids 0 and 1
-    assert.equal(union.mode(), 'sparse')
+    const optional = new data.Int64().optional()
+    assert.deepEqual([optional.name(), optional.valueType().name()], ['optional', 'int64'])
+    assert.equal(optional.arrowFormat(), '+us:0,1') // sparse, type ids 0 and 1
+    assert.deepEqual([optional.storage().name(), optional.storage().mode()], ['union', 'sparse'])
+
+    const score = new data.OptionalInt64Field('score')
+    assert.equal(score.dataType().name(), 'optional')
 
     const answer = new data.OptionalInt64Scalar(42n)
     assert.equal(answer.asI64(), 42n) // redirected to the inner scalar
@@ -221,12 +232,19 @@ a data type's `optional()` (arbitrary child fields stay Rust-only).
 === "Rust"
 
     ```rust
-    use yggdryl_data::{Int64, Int64Scalar, Nested, OptionalScalar, RawDataType, RawScalar, Union};
+    use yggdryl_data::{
+        Int64, Int64Scalar, Logical, Optional, OptionalField, OptionalScalar, RawDataType,
+        RawField, RawScalar,
+    };
 
     fn main() {
-        let union = Union::optional(&Int64);
-        assert_eq!((union.name(), union.child_count()), ("union", 2));
-        assert_eq!(union.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
+        let optional = Optional::new(Int64);
+        assert_eq!((optional.name(), optional.value_type().name()), ("optional", "int64"));
+        assert_eq!(optional.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
+        assert_eq!(optional.storage().name(), "union");
+
+        let score = OptionalField::<Int64>::new("score", true);
+        assert_eq!(score.data_type().name(), "optional");
 
         let answer = OptionalScalar::new(Int64Scalar::new(42));
         assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
@@ -241,7 +259,8 @@ a data type's `optional()` (arbitrary child fields stay Rust-only).
 
 In Rust, the Arrow form round-trips too: `missing.to_arrow()` is a one-element union
 array whose type id selects the null variant, and `OptionalScalar::from_arrow` is
-its exact inverse.
+its exact inverse; the typed byte codec of `Optional<Int64>` reads and writes plain
+`i64` bytes (the value type's codec).
 
 ## The trait layers
 
@@ -301,7 +320,9 @@ How a type is shaped (each refines `RawDataType`):
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
 - **`Logical`** — a type layered over a physical `Storage` type, e.g. a timestamp over
-  `int64`; `storage()` returns the backing `RawDataType`.
+  `int64`; `storage()` returns the backing `RawDataType`. The
+  [`Optional` type](#the-null-union-and-optional-types) — a value or null, stored as
+  the null-or-value union — is the first concrete one.
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`);
   `child_count()` reports how many.
 

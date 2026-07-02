@@ -1,59 +1,31 @@
-//! The [`OptionalScalar`] scalar: a [`Union`](super::Union) between null and a
-//! value type.
+//! The [`OptionalScalar`] scalar of the [`Optional`](super::Optional) data type.
 
-use std::marker::PhantomData;
-use std::sync::OnceLock;
+use super::Optional;
+use crate::{DataError, Logical, RawDataType, RawScalar, Scalar, Union};
 
-use super::Union;
-use crate::{DataError, RawDataType, RawScalar, Scalar};
-
-/// Whether `data_type` is exactly the layout [`Union::optional`] produces for a
-/// value type of arrow type `value_type` named `value_name` — checked structurally,
-/// without building the expected [`Union`] (the hot path of `from_arrow`).
-fn is_optional_layout(
-    data_type: &arrow_schema::DataType,
-    value_type: &arrow_schema::DataType,
-    value_name: &str,
-) -> bool {
-    let arrow_schema::DataType::Union(fields, arrow_schema::UnionMode::Sparse) = data_type else {
-        return false;
-    };
-    let mut children = fields.iter();
-    let (Some((null_id, null_field)), Some((value_id, value_field)), None) =
-        (children.next(), children.next(), children.next())
-    else {
-        return false;
-    };
-    null_id == Union::NULL_TYPE_ID
-        && value_id == Union::VALUE_TYPE_ID
-        && null_field.name() == "null"
-        && null_field.is_nullable()
-        && null_field.data_type() == &arrow_schema::DataType::Null
-        && null_field.metadata().is_empty()
-        && value_field.name() == value_name
-        && !value_field.is_nullable()
-        && value_field.data_type() == value_type
-        && value_field.metadata().is_empty()
-}
-
-/// A single value of the two-variant [`Union`] between [`Null`](crate::Null) and a
-/// value type — an inner scalar `S` of data type `D`, or the null variant.
+/// A single value of the [`Optional`] of the value type `D` — an inner scalar `S`,
+/// or the null variant.
 ///
 /// Where a plain scalar (e.g. [`Int64Scalar`](crate::Int64Scalar)) models nullness
 /// as a missing value of its own type, an `OptionalScalar` models it as a *union
-/// variant*: its data type is [`Union::optional`]`(&D)` and its Arrow form is a
-/// one-element `UnionArray` whose type id selects the null or the value child.
-/// Access redirects to the inner scalar: [`value`](RawScalar::value) and every
-/// `as_*` accessor answer through `S`.
+/// variant*: its data type is the logical [`Optional<D>`](Optional), whose storage
+/// is the sparse null-or-value [`Union`], and its Arrow form is a one-element
+/// `UnionArray` whose type id selects the null or the value child. Access redirects
+/// to the inner scalar: [`value`](RawScalar::value) and every `as_*` accessor
+/// answer through `S`. A null inner scalar *normalizes to the null variant* — the
+/// two representations of null are one state, so equality,
+/// [`scalar`](OptionalScalar::scalar) (which answers `None` for it) and the Arrow
+/// round trip all agree.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Int64Scalar, OptionalScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{Int64, Int64Scalar, Logical, OptionalScalar, RawDataType, RawScalar};
 ///
 /// let answer = OptionalScalar::new(Int64Scalar::new(42));
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
 /// assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
-/// assert_eq!(answer.data_type().name(), "union");
+/// assert_eq!(answer.data_type().name(), "optional");
+/// assert_eq!(answer.data_type().storage().name(), "union");
 /// assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 ///
 /// let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
@@ -68,12 +40,8 @@ fn is_optional_layout(
 /// ```
 #[derive(Debug)]
 pub struct OptionalScalar<D, S> {
-    // Fully determined by `D` (always `Union::optional(&D::default())`), so it is
-    // built lazily on first access — construction stays allocation-free — and
-    // plays no part in equality.
-    data_type: OnceLock<Union>,
+    data_type: Optional<D>,
     value: Option<S>,
-    value_type: PhantomData<D>,
 }
 
 impl<D: RawDataType + Default, S: RawScalar<D>> OptionalScalar<D, S> {
@@ -83,18 +51,16 @@ impl<D: RawDataType + Default, S: RawScalar<D>> OptionalScalar<D, S> {
     /// `None`) and the Arrow round trip all agree.
     pub fn new(scalar: S) -> Self {
         Self {
-            data_type: OnceLock::new(),
+            data_type: Optional::default(),
             value: (!scalar.is_null()).then_some(scalar),
-            value_type: PhantomData,
         }
     }
 
     /// The null variant.
     pub fn null() -> Self {
         Self {
-            data_type: OnceLock::new(),
+            data_type: Optional::default(),
             value: None,
-            value_type: PhantomData,
         }
     }
 
@@ -110,12 +76,11 @@ impl<D: RawDataType + Default, S: RawScalar<D>> Default for OptionalScalar<D, S>
     }
 }
 
-impl<D, S: Clone> Clone for OptionalScalar<D, S> {
+impl<D: Clone, S: Clone> Clone for OptionalScalar<D, S> {
     fn clone(&self) -> Self {
         Self {
             data_type: self.data_type.clone(),
             value: self.value.clone(),
-            value_type: PhantomData,
         }
     }
 }
@@ -147,12 +112,11 @@ impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for OptionalScal
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Union> for OptionalScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Optional<D>> for OptionalScalar<D, S> {
     type Value = S::Value;
 
-    fn data_type(&self) -> &Union {
-        self.data_type
-            .get_or_init(|| Union::optional(&D::default()))
+    fn data_type(&self) -> &Optional<D> {
+        &self.data_type
     }
 
     fn is_null(&self) -> bool {
@@ -164,8 +128,8 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Union> for OptionalSca
     }
 
     fn to_arrow(&self) -> arrow_array::ArrayRef {
-        let data_type = self.data_type();
-        let (_, value_field) = data_type
+        let storage = self.data_type.storage();
+        let (_, value_field) = storage
             .fields()
             .iter()
             .find(|(id, _)| *id == Union::VALUE_TYPE_ID)
@@ -186,7 +150,7 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Union> for OptionalSca
             value_child,
         ];
         let array = arrow_array::UnionArray::try_new(
-            data_type.fields().clone(),
+            storage.fields().clone(),
             vec![type_id].into(),
             None, // sparse
             children,
@@ -200,29 +164,21 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Union> for OptionalSca
         if length != 1 {
             return Err(DataError::InvalidScalarLength { got: length });
         }
-        let value_type = D::default();
-        if !is_optional_layout(
-            arrow_array::Array::data_type(array),
-            &value_type.to_arrow(),
-            value_type.name(),
-        ) {
-            return Err(DataError::IncompatibleArrowType {
-                // Built only on the error path — the check itself is allocation-free.
-                expected: Union::optional(&value_type).to_arrow().to_string(),
-                got: arrow_array::Array::data_type(array).to_string(),
-            });
-        }
+        // The data type validates the layout and redirects the value child's type
+        // to `D`; then the value child itself redirects to `S`.
+        let data_type = Optional::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::UnionArray>()
             .expect("a value with a union data type is a union array");
-        if array.type_id(0) == Union::NULL_TYPE_ID {
-            return Ok(Self::null());
-        }
-        // The value variant redirects to the inner scalar's own from_arrow, on the
-        // one-element slice of the selected child.
-        let value = array.value(0);
-        Ok(Self::new(S::from_arrow(value.as_ref())?))
+        let value = if array.type_id(0) == Union::NULL_TYPE_ID {
+            None
+        } else {
+            let value = array.value(0);
+            let scalar = S::from_arrow(value.as_ref())?;
+            (!scalar.is_null()).then_some(scalar)
+        };
+        Ok(Self { data_type, value })
     }
 
     fn as_i8(&self) -> Option<i8> {
@@ -266,5 +222,5 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<Union> for OptionalSca
 impl<D: RawDataType + Default, S: RawScalar<D>> Scalar<<S as RawScalar<D>>::Value>
     for OptionalScalar<D, S>
 {
-    type Type = Union;
+    type Type = Optional<D>;
 }

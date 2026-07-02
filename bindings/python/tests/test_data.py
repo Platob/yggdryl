@@ -104,12 +104,16 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
     assert answer.scalar().value() == 42
     assert answer.as_i64() == 42
 
-    union = answer.data_type()
-    assert union.name() == "union"
-    assert union.arrow_format() == "+us:0,1"
-    assert union.child_count() == 2
-    assert union.mode() == "sparse"
-    assert union.byte_width() is None
+    # The data type is the logical optional over union storage.
+    opt_type = answer.data_type()
+    assert opt_type.name() == "optional"
+    assert opt_type.arrow_format() == "+us:0,1"
+    assert opt_type.byte_width() is None
+    assert opt_type.value_type().name() == name
+    storage = opt_type.storage()
+    assert storage.name() == "union"
+    assert storage.child_count() == 2
+    assert storage.mode() == "sparse"
 
     missing = optional.null()
     assert missing.is_null() is True
@@ -117,8 +121,11 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
     assert missing.scalar() is None
     assert missing.as_i64() is None
 
-    # The union reached through the data type is the same shape.
-    assert data_type().optional().arrow_format() == union.arrow_format()
+    # The optional reached through the value type is the same shape, and its
+    # codec is the value type's.
+    reached = data_type().optional()
+    assert reached.arrow_format() == opt_type.arrow_format()
+    assert reached.native_from_bytes(reached.native_to_bytes(42)) == 42
 
 
 def test_float_access_is_exact_or_none():
@@ -130,8 +137,16 @@ def test_float_access_is_exact_or_none():
     assert data.Int8Scalar(-1).as_u64() is None
 
 
+def test_optional_field():
+    score = data.OptionalInt64Field("score")
+    assert score.name() == "score"
+    assert score.is_nullable() is True
+    assert score.data_type().name() == "optional"
+    assert score.data_type().value_type().name() == "int64"
+
+
 def test_union_field():
-    union = data.Int64().optional()
+    union = data.Int64().optional().storage()
     field = data.UnionField("value", union)
     assert field.name() == "value"
     assert field.is_nullable() is True
