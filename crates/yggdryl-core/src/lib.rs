@@ -3,22 +3,33 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! The project has been reset to a minimal scaffold: the crate exposes only
-//! [`version`] and the [`hello`] print example, so the Rust core and its Python and
-//! Node bindings build and round-trip end to end. Reintroduce the foundational types
-//! here as the design lands — one module per concern, each re-exported at the crate
-//! root — following the rules in `CLAUDE.md`.
+//! It exposes the [`Charset`] string/bytes codec and — behind the off-by-default
+//! `json` feature — the `Base` trait: the content-based serialization every value
+//! type implements (JSON string, JSON bytes, and a canonical byte form). The
+//! [`version`] and [`hello`] entry points remain as the minimal cross-language
+//! round-trip example. Add further foundational types here as the design lands —
+//! one module per concern, each re-exported at the crate root — following the
+//! rules in `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
-/// cost). Once submodules return, re-export it with `pub(crate) use log_event;` so
-/// they can reach it via `crate::log_event!`.
+/// cost). Submodules reach it via `crate::log_event!` thanks to the re-export
+/// below.
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
-        log::$level!($($arg)+);
+        ::log::$level!($($arg)+);
     }};
 }
+pub(crate) use log_event;
+
+mod charset;
+pub use charset::{Charset, CharsetError};
+
+#[cfg(feature = "json")]
+mod base;
+#[cfg(feature = "json")]
+pub use base::{Base, BaseError};
 
 /// The crate version, as declared in `Cargo.toml`.
 ///
