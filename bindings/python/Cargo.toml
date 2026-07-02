@@ -18,6 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 # The dependency-light Rust core; all logic lives here.
 yggdryl-core = { workspace = true }
+yggdryl-data = { workspace = true }
 
 [dependencies.pyo3]
 version = "0.22"

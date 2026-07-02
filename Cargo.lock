@@ -1128,6 +1128,7 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "yggdryl-core",
+ "yggdryl-data",
 ]
 
 [[package]]
@@ -1136,6 +1137,7 @@ version = "0.1.1"
 dependencies = [
  "pyo3",
  "yggdryl-core",
+ "yggdryl-data",
 ]
 
 [[package]]

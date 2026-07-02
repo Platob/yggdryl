@@ -19,6 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 # The dependency-light Rust core; all logic lives here.
 yggdryl-core = { workspace = true }
+yggdryl-data = { workspace = true }
 napi = { version = "2", default-features = false, features = ["napi8"] }
 napi-derive = "2"
 
