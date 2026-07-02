@@ -1,10 +1,12 @@
-//! Positioned byte- and bit-I/O: the [`IOBase`] trait and its [`Whence`] reference
-//! point.
+//! Positioned byte- and bit-I/O: the low-level [`RawIOBase`] trait, the typed
+//! [`IOBase`] layer on top of it, and the [`Whence`] reference point.
 
 mod error;
+mod typed;
 mod whence;
 
 pub use error::IOError;
+pub use typed::IOBase;
 pub use whence::Whence;
 
 /// Positioned reads and writes over a resource, one or many `u8` bytes or `bool`
@@ -21,7 +23,7 @@ pub use whence::Whence;
 /// methods come for free from their default implementations.
 ///
 /// ```
-/// use yggdryl_core::{IOBase, IOError, Whence};
+/// use yggdryl_core::{IOError, RawIOBase, Whence};
 ///
 /// // A byte buffer; this example addresses from the start, and bits are MSB-first.
 /// #[derive(Default)]
@@ -29,7 +31,7 @@ pub use whence::Whence;
 ///     data: Vec<u8>,
 /// }
 ///
-/// impl IOBase for Mem {
+/// impl RawIOBase for Mem {
 ///     fn pread_byte_array(&self, position: usize, _whence: Whence, size: usize) -> Result<Vec<u8>, IOError> {
 ///         let end = position + size;
 ///         if end > self.data.len() {
@@ -86,7 +88,7 @@ pub use whence::Whence;
 /// assert_eq!(mem.pread_byte_one(0, Whence::Start)?, 0b1110_0000);
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
-pub trait IOBase {
+pub trait RawIOBase {
     /// Read one byte at `position` (in bytes) relative to `whence`.
     fn pread_byte_one(&self, position: usize, whence: Whence) -> Result<u8, IOError> {
         crate::log_event!(

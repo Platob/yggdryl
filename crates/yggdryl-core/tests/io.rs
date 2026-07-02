@@ -1,6 +1,6 @@
-//! Tests for the `IOBase` positioned byte- and bit-I/O trait.
+//! Tests for the `RawIOBase` (bytes/bits) and typed `IOBase` positioned-I/O traits.
 
-use yggdryl_core::{IOBase, IOError, Whence};
+use yggdryl_core::{IOBase, IOError, RawIOBase, Whence};
 
 /// A byte buffer; bits are addressed MSB-first within each byte.
 #[derive(Default)]
@@ -24,7 +24,7 @@ impl Mem {
     }
 }
 
-impl IOBase for Mem {
+impl RawIOBase for Mem {
     fn pread_byte_array(
         &self,
         position: usize,
@@ -151,4 +151,23 @@ fn out_of_bounds_byte_read_errors() {
     let mem = Mem::default();
     let error = mem.pread_byte_one(0, Whence::Start).unwrap_err();
     assert!(matches!(error, IOError::OutOfBounds { .. }));
+}
+
+// The typed layer: a `u32` is serialized little-endian, then written as raw bytes.
+impl IOBase<u32> for Mem {
+    fn value_to_bytes(&self, value: &u32) -> Vec<u8> {
+        value.to_le_bytes().to_vec()
+    }
+}
+
+#[test]
+fn typed_writes_go_through_value_to_bytes() {
+    let mut mem = Mem::default();
+    mem.pwrite_one(0, Whence::Start, &0x0403_0201).unwrap();
+    mem.pwrite_array(4, Whence::Start, &[0x0807_0605, 0x0c0b_0a09])
+        .unwrap();
+    assert_eq!(
+        mem.pread_byte_array(0, Whence::Start, 12).unwrap(),
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    );
 }

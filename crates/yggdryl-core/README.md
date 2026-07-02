@@ -53,17 +53,29 @@ Enable it with `features = ["json"]`.
 
 ## Positioned I/O
 
-`IOBase` reads and writes bytes (`u8`) or bits (`bool`), one or many at a time, at a
-`position` measured from a `Whence` (`Start`, `Current`, or `End`) — counted in bytes
-for the `*_byte_*` methods and in bits (MSB-first) for the `*_bit_*` methods.
+`RawIOBase` reads and writes bytes (`u8`) or bits (`bool`), one or many at a time, at
+a `position` measured from a `Whence` (`Start`, `Current`, or `End`) — counted in
+bytes for the `*_byte_*` methods and in bits (MSB-first) for the `*_bit_*` methods.
 Implement the four array primitives and the `*_one` methods come free from their
 defaults:
 
 ```rust
-use yggdryl_core::{IOBase, Whence};
+use yggdryl_core::{RawIOBase, Whence};
 
-fn first_byte<S: IOBase>(store: &mut S) -> Result<u8, yggdryl_core::IOError> {
+fn first_byte<S: RawIOBase>(store: &mut S) -> Result<u8, yggdryl_core::IOError> {
     store.pwrite_byte_array(0, Whence::Start, &[1, 2, 3])?;
     store.pread_byte_one(0, Whence::Start)
+}
+```
+
+`IOBase<T>: RawIOBase` layers typed values on top: implement `value_to_bytes` (how a
+`T` becomes bytes) and the typed writes `pwrite_one` / `pwrite_array` come free,
+serializing through it into the raw byte methods.
+
+```rust
+use yggdryl_core::{IOBase, RawIOBase, Whence};
+
+fn store_u32<S: IOBase<u32>>(store: &mut S, value: u32) -> Result<(), yggdryl_core::IOError> {
+    store.pwrite_one(0, Whence::Start, &value)
 }
 ```
