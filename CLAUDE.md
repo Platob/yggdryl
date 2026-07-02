@@ -1,136 +1,152 @@
 # yggdryl — contributor & agent instructions
 
-> **Project status: reset.** The implementation was removed; the project is being
-> rebuilt around an **Arrow-centralized** design. What remains is the buildable
-> skeleton — the Cargo workspace, `yggdryl-core`, the two binding manifests, CI,
-> and a minimal `version()` / `hello()` example that round-trips all three
-> languages — plus these rules. Reintroduce architecture docs as you build.
+> **Project status: rebuilding.** The old implementation was removed; the project is
+> being rebuilt around an **Apache Arrow-centralized** data model, one workspace
+> crate per layer, targeting dataframe-style workloads. This file holds only the
+> **cross-cutting rules**; each crate documents its own design in its module doc
+> comments and README, so this file stays small as the workspace grows.
 
-## Core principles
+Before adding anything, read the nearest existing example and mirror its structure,
+naming, error handling, and doc style. A reader should not be able to tell which
+type they are looking at from the shape of the code.
 
-1. **Uniformity first.** Before adding anything, read the nearest existing example
-   and mirror its structure, naming, error handling, and doc style. A reader should
-   not be able to tell which type they are looking at from the shape of the code.
-2. **The three languages move together.** The Rust core is the source of truth, but
-   any behaviour added or changed in one language is immediately replicated in the
-   other two, adapting only to each language's idioms (Python dunders / keyword
-   defaults, JS camelCase / `Option<T>` defaults). A change is never half-applied.
-3. **Everything is serializable and hashable.** Every value type round-trips through
-   JSON (off-by-default `serde` feature; `to_json` / `from_json` where a crate has a
-   `json` feature) and bytes (`to_bytes` / `from_bytes`), and implements `Hash` +
-   `Eq`. In the bindings: `__hash__` + `__reduce__` (pickle) in Python, `toJSON()` +
-   static `fromJSON()` in Node. Only live/stream resources (IO handles, HTTP bodies,
-   sessions) are exempt. A field that cannot be part of a value's identity (e.g. a
-   cyclic `parent` pointer) is excluded from `Hash`/`Eq`/serde — with a comment
-   saying why — rather than dropping hashability.
-4. **One file per type, in every language.** Each concern is its own module; never
-   grow one big file. `lib.rs` is glue only: `mod` declarations, `pub use`
-   re-exports, and shared helpers (error conversion, the `log_event!` macro; in
-   bindings also hashing/encoding free functions). Binding wrappers keep their
-   `inner` field `pub(crate)` so sibling modules can convert.
+## Hard rules (apply to every crate, every language)
+
+1. **One file per public type.** Each concern is its own module
+   (`src/datatype/int_width.rs` holds one type), re-exported from its `mod.rs`;
+   `lib.rs` is glue only (`mod` declarations, `pub use` re-exports, shared helpers
+   such as error conversion and the `log_event!` macro). Never grow one big file.
+2. **Typed construction only.** Validation happens in typed constructors; invalid
+   states are unrepresentable after construction. There is no lenient mode and no
+   `safe` flag. **No string-parsing constructors** — `from_str` / `parse*` are
+   legacy and must not be (re)added. `Display` impls are render-only diagnostics
+   with no parsing counterpart and no round-trip contract.
+3. **FFI-clean public surface.** No lifetime parameters on any public type — the
+   bindings must be able to hold every one of them. Temporary borrows appear only
+   on `&self` accessor methods and never escape. All logic lives in the Rust core;
+   bindings stay thin.
+4. **Append-only public API.** Once merged, the public surface only grows: mark
+   public enums `#[non_exhaustive]`, never repurpose or remove a published item.
+5. **At-most-one-copy.** Buffers are refcounted; slicing/viewing never copies. A
+   value extracted from a larger container is a zero-copy slice holding a refcount
+   on the parent buffer; a standalone value is the same type over a fresh buffer —
+   same type, two provenances. Never copy speculatively; for any hot path ask
+   "does this allocate when nothing changed?" and add a cheap up-front check if so.
+6. **Numeric semantics never lie.** Widening reads are fine (an i8 readable via
+   `as_i64()`); silent truncation is not — return `None` or a typed error.
+   Cross-type comparisons return `None`, never panic.
+7. **Everything is serializable and hashable** except live/stream resources (IO
+   handles, HTTP bodies, sessions). Value types round-trip through bytes
+   (`to_bytes` / `from_bytes`) and JSON (off-by-default `serde` feature;
+   `to_json` / `from_json` where a `json` feature exists) and implement `Hash` +
+   `Eq`. Bindings mirror this: Python `__hash__` + `__reduce__` (pickle), Node
+   `toJSON()` + static `fromJSON()`. A field that cannot be part of identity
+   (e.g. a cyclic `parent` pointer) is excluded from `Hash`/`Eq`/serde with a
+   comment saying why, rather than dropping hashability.
+8. **The three languages move together.** The Rust core is the source of truth;
+   behaviour added or changed anywhere is immediately replicated in the other two,
+   adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
+   `Option<T>` defaults). A change is never half-applied.
 
 ## Workspace layout
 
-- `crates/yggdryl-core` — the dependency-light foundations everything else builds
-  on (currently only `version()` / `hello()`). Reintroduce the foundational types
-  here: the zero-copy `Buffer`, the byte-IO abstraction, the `Charset` encodings,
-  the global `JsonParams` + the `Jsonable` JSON/BSON trait, and the shared error
-  types. **No Arrow vocabulary in core.**
-- Grow the Arrow type system back as **one crate per layer** (schema data types →
-  scalar values → fields), each added to the workspace members and depending only
-  on the layers below it. Dependency arrows point one way: a lower layer never
-  imports an upper one; the byte-IO layer returns `core::Buffer` views, never a
-  higher-layer value.
+One crate per layer; dependencies point strictly downward (a lower layer never
+imports an upper one — needing the reverse means the abstraction belongs lower).
+
+- `crates/yggdryl-core` — dependency-light foundations (streaming byte-IO, shared
+  error types). **No Arrow vocabulary in core.** Byte sources implement the single
+  IO abstraction and hand back zero-copy views; byte consumers take an IO/reader,
+  never a pre-collected `Vec`.
+- `crates/yggdryl-data` — the Arrow data-model layer (`DataType`, `Field`,
+  `Scalar`, the object-safe `Datum` trait), built on `arrow-buffer` buffers.
+  Compute kernels are written once against `Datum`; future Array/Series types
+  implement the same trait.
+- Higher layers (logical types, nested types, kernels) and service crates
+  (e.g. HTTP) are added as further workspace members, each depending only on the
+  layers below it.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**: they translate types/errors and delegate — each method is one or two
-  lines calling `self.inner` — and contain no logic. Each Rust crate is exposed as
-  a submodule of the top-level package (`yggdryl-core` → `yggdryl.core`; Python via
-  `sys.modules`, Node via `#[napi(namespace = "…")]`), and the binding source
-  mirrors the crate tree (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs`
-  wiring only). Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+  lines calling `self.inner`, `pub(crate)` so sibling modules can convert — and
+  contain no logic. Each Rust crate is a submodule of the top-level package
+  (`yggdryl-core` → `yggdryl.core`; Python via `sys.modules`, Node via
+  `#[napi(namespace = "…")]`), and the binding source mirrors the crate tree
+  (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs` wiring only). Use
+  `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+
+## Dependencies
+
+Minimal and pinned in the workspace `Cargo.toml`. For Arrow, use only the subset
+crates actually needed (`arrow-schema`, `arrow-buffer`, `arrow-array`) — never the
+full `arrow` umbrella or `arrow-flight`. Any new dependency carries a code comment
+justifying it. Never pull a heavy SDK into a crate that should not depend on it.
+
+## Arrow interop
+
+- Every yggdryl type that maps to Arrow exposes `to_arrow()` / `from_arrow(...)`,
+  and the mapping is **total and reversible** for the supported subset — losslessly
+  round-trippable, and **property-tested** as such. Where Arrow lacks a physical
+  type, anchor on a compatible physical type plus metadata that restores the
+  semantics, and document the rationale in the doc comment.
+- `from_arrow` is the **only inbound conversion** and validates fully; unknown
+  `ygg.*` metadata values are rejected with a typed error.
+- All `ygg.*` metadata keys are namespaced constants defined in **one module**
+  (the single source of truth) — no string literals scattered through the code.
 
 ## Naming conventions (identical across languages; JS uses camelCase)
 
 | Concept | Name |
 | --- | --- |
 | Construct from explicit parts | `from_parts(...)` |
+| Typed conversions | `from_<type>(...)` / `to_<repr>()` (e.g. `from_i8`, `from_le_bytes`, `to_arrow`) |
 | Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
 | JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
+| Checked read accessor | `as_<type>()` on `&self`, `Option`-returning |
 | Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
 | Single-field functional update | `with_<field>(value)` returns a new value |
 | Clear an optional field | `without_<field>()` |
 
-- Parsing entry points are `from_*`, never `parse*`; parsing always validates and
-  errors/raises on malformed input — no lenient mode, no `safe` flag.
+- `from_*` names take **typed** inputs and validate (length-check byte inputs
+  against the type's width); the word "parse" never appears in the public API.
 - `with_*` / `without_*` / `copy` are **non-mutating** and return a new value.
   `copy` is the one primitive that rebuilds the value with selected fields
-  overridden; every `with_*` / `without_*` is a one-line delegation to it, e.g.
-  `fn with_name(&self, name: String) -> Self { self.copy(Some(name), None, None, None) }`.
-  Design trait signatures so implementors can satisfy them in one line; expand to
+  overridden; every `with_*` / `without_*` is a one-line delegation to it. Design
+  trait signatures so implementors can satisfy them in one line; expand to
   multi-line bodies only when the logic genuinely needs it.
-- URL-safe `percent_encode` / `percent_decode` are the only encoding helpers;
-  modifiers that build query strings percent-encode their inputs.
+- Shared handles are `Arc` type aliases named `<Type>Ref` (e.g.
+  `pub type FieldRef = Arc<Field>`); the Arc clone IS the cheap sharing mechanism —
+  no view/borrowed variants.
 
 ## Errors and docs
 
-- One error `enum` per type (e.g. `UriError`) implementing `Display` +
-  `std::error::Error`, with `From` conversions between layers; core errors map to
-  `ValueError` (Python) / thrown `Error` (Node).
+- One error `enum` per type implementing `Display` + `std::error::Error`, with
+  `From` conversions between layers; core errors map to `ValueError` (Python) /
+  thrown `Error` (Node).
 - **Error messages are actionable**: name the fix — the missing feature (``enable
   the `gzip` cargo feature``), the expected input (`expected 0, 1 or 2`), the
   offending value (`unknown mode "rw+"`).
 - Every public item has a `///` doc comment; types carry a runnable doctest. Match
   the existing terse style.
 
-## Performance: zero-copy with checks
-
-Prefer **borrowing over copying** — return `&str` / `Cow` and allocate only when
-the data must actually change, guarded by a cheap up-front check:
-
-- Decode paths check for the trigger byte (e.g. `%`) first and return the input
-  untouched when absent; encode paths scan for the first byte needing escaping and
-  return `Cow::Borrowed` when there is none, else allocate once and copy the valid
-  prefix verbatim.
-- Single-key lookups scan for the one key instead of building the whole map, and
-  compare raw bytes without allocating unless an escape forces a decode.
-- For any hot path ask "does this allocate when nothing changed?" — if so, add the
-  check and borrow. Never copy speculatively; never re-scan what one pass decides.
-- **Prefer view types by default** (`BinaryViewType` / `Large*` sibling) over
-  offset-backed `BinaryType` / `LargeBinaryType` — view values share bytes through
-  the zero-copy `Buffer`, so clone/slice/cast never deep-copy. Pick a non-view
-  variant only when an external format, offset width, or size cap demands it.
-- **One IO abstraction for all byte access.** Every byte source (memory, file,
-  cloud object, HTTP body) implements the single IO trait, overriding the
-  zero-copy hook when memory-resident. Byte consumers (JSON, compression, codecs,
-  HTTP bodies) take an IO/reader, never a pre-collected `Vec` — including the
-  bindings, which accept our IO instances rather than serialized `bytes`, so large
-  data streams through Rust and is never materialised in the host language.
-
 ## Logging
 
 An optional, **off-by-default** `log` cargo feature, used only through the
 crate-local `log_event!(level, …)` macro (compiles to nothing when off). Never call
-`log::` directly; keep the `log` dependency `optional`. Levels:
-
-- `trace` — per-call detail; `debug` — a routine action being performed;
-- `info` — an important action completed, especially a change to global/shared
-  state; `warn` — an input skipped or a fallback defaulted.
-
-A code path that skips, defaults, or mutates shared state must log it; the feature
+`log::` directly; keep the `log` dependency `optional`. Levels: `trace` per-call
+detail; `debug` a routine action; `info` an important action completed (especially
+global/shared-state changes); `warn` an input skipped or a fallback defaulted. A
+code path that skips, defaults, or mutates shared state must log it; the feature
 must compile and pass `clippy -D warnings` both on and off.
 
 ## Documentation
 
 User-facing docs are a **MkDocs Material** site in `docs/` (config: `mkdocs.yml`,
-published to GitHub Pages; removed in the reset — recreate as code lands). The docs
-tree mirrors the code tree: one page per module, added to `nav` when the module is
-added. Docs follow the replication rule — a change is not done until the matching
-page is updated in the same commit.
-
-Every code example is a synced language-tab block, in this order with these exact
-labels: `=== "Python"` then `=== "Node"` then `=== "Rust"` (4-space-indented fenced
-block under each). Never write sequential per-language sections. Keep examples
-accurate to the current API and copy-runnable.
+published to GitHub Pages; recreate as code lands). The docs tree mirrors the code
+tree: one page per module, added to `nav` when the module is added. Docs follow the
+replication rule — a change is not done until the matching page is updated in the
+same commit. Every code example is a synced language-tab block, in this order with
+these exact labels: `=== "Python"` then `=== "Node"` then `=== "Rust"`
+(4-space-indented fenced block under each); never sequential per-language sections.
+Keep examples accurate to the current API and copy-runnable.
 
 ## Required checks before committing
 
