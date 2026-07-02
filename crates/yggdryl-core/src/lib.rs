@@ -4,14 +4,15 @@
 //! and binding builds.
 //!
 //! It exposes the [`Charset`] trait (with the [`Utf8`] and [`Latin1`] encodings),
-//! the positioned-I/O traits [`Seekable`] (a cursor), [`RawIOBase`] (raw bytes/bits,
-//! built on it) and [`IOBase`] (a typed layer) with their [`Whence`] reference point
-//! and the concrete [`ByteBuffer`] / [`BitBuffer`] resources, and — behind the
-//! off-by-default `json` feature — the `Base` trait for content JSON plus an
-//! implementor-defined byte form. The [`version`] and [`hello`] entry points remain
-//! as the minimal cross-language round-trip example. Add further foundational types
-//! here as the design lands — one module per concern, each re-exported at the crate
-//! root — following the rules in `CLAUDE.md`.
+//! the positioned-I/O traits [`RawIOBase`] (raw bytes/bits) and [`IOBase`] (a typed
+//! layer) with their [`Whence`] reference point, the concrete [`ByteBuffer`] /
+//! [`BitBuffer`] resources, the [`Seekable`] [`RawIOCursor`] / [`IOCursor`] adapters
+//! that add a moving cursor on top, and — behind the off-by-default `json` feature —
+//! the `Base` trait for content JSON plus an implementor-defined byte form. The
+//! [`version`] and [`hello`] entry points remain as the minimal cross-language
+//! round-trip example. Add further foundational types here as the design lands — one
+//! module per concern, each re-exported at the crate root — following the rules in
+//! `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
@@ -29,7 +30,9 @@ mod charset;
 pub use charset::{Charset, CharsetError, Latin1, Utf8};
 
 mod io;
-pub use io::{BitBuffer, ByteBuffer, IOBase, IOError, RawIOBase, Seekable, Whence};
+pub use io::{
+    BitBuffer, ByteBuffer, IOBase, IOCursor, IOError, RawIOBase, RawIOCursor, Seekable, Whence,
+};
 
 #[cfg(feature = "json")]
 mod base;

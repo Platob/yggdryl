@@ -6,8 +6,11 @@ use super::{IOError, Whence};
 ///
 /// [`tell`](Seekable::tell) reports the current position (in bytes from the start);
 /// [`seek`](Seekable::seek) moves it relative to a [`Whence`] and returns the new
-/// position. Positioned [`RawIOBase`](super::RawIOBase) reads and writes address
-/// [`Whence::Current`] relative to this cursor without moving it.
+/// position. It is implemented by the [`RawIOCursor`](super::RawIOCursor) and
+/// [`IOCursor`](super::IOCursor) adapters, which measure [`Whence::Current`] from
+/// this cursor and advance it on every read and write. A bare
+/// [`RawIOBase`](super::RawIOBase) resource keeps no cursor of its own; wrap it in
+/// one of those adapters for positioned streaming.
 ///
 /// ```
 /// use yggdryl_core::{IOError, Seekable, Whence};

@@ -1,17 +1,18 @@
 //! The [`BitBuffer`] in-memory resource.
 
 use super::bits;
-use super::{IOError, RawIOBase, Seekable, Whence};
+use super::{IOError, RawIOBase, Whence};
 
-/// A growable, bit-granular in-memory buffer implementing [`Seekable`] and
-/// [`RawIOBase`].
+/// A growable, bit-granular in-memory buffer implementing [`RawIOBase`].
 ///
 /// Unlike [`ByteBuffer`](super::ByteBuffer), it tracks an exact bit length, so its
 /// [`bit_size`](RawIOBase::bit_size) need not be a multiple of eight and its
 /// [`byte_size`](RawIOBase::byte_size) rounds up to the enclosing byte — the same
 /// holds for [`resize_bits`](RawIOBase::resize_bits), which is exact here. Bits are
 /// MSB-first; writes past the end grow the buffer with zeroes, and the unused
-/// padding bits of the final byte are always zero.
+/// padding bits of the final byte are always zero. Like `ByteBuffer` it keeps no
+/// cursor, so [`Whence::Current`] is measured from the start — wrap it in a
+/// [`RawIOCursor`](super::RawIOCursor) for a position that advances on each access.
 ///
 /// ```
 /// use yggdryl_core::{BitBuffer, RawIOBase, Whence};
@@ -32,27 +33,21 @@ pub struct BitBuffer {
     // `bit_len` in the final byte are always zero.
     data: Vec<u8>,
     bit_len: usize,
-    cursor: usize,
 }
 
 impl BitBuffer {
-    /// An empty buffer with its cursor at the start.
+    /// An empty buffer.
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
             bit_len: 0,
-            cursor: 0,
         }
     }
 
-    /// A buffer over `data` (a whole number of bytes), with its cursor at the start.
+    /// A buffer over `data` (a whole number of bytes).
     pub fn from_bytes(data: Vec<u8>) -> Self {
         let bit_len = data.len() * 8;
-        Self {
-            data,
-            bit_len,
-            cursor: 0,
-        }
+        Self { data, bit_len }
     }
 
     /// The buffer's backing bytes. The unused padding bits of the final byte (above
@@ -68,8 +63,14 @@ impl BitBuffer {
 
     fn byte_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
         let base = match whence {
-            Whence::Current => self.cursor,
             Whence::End => self.data.len(),
+            Whence::Current => {
+                crate::log_event!(
+                    warn,
+                    "BitBuffer has no cursor; Whence::Current measured from 0 — wrap it in a RawIOCursor"
+                );
+                0
+            }
             _ => 0,
         };
         bits::offset(base, position)
@@ -77,23 +78,17 @@ impl BitBuffer {
 
     fn bit_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
         let base = match whence {
-            Whence::Current => self.cursor.saturating_mul(8),
             Whence::End => self.bit_len,
+            Whence::Current => {
+                crate::log_event!(
+                    warn,
+                    "BitBuffer has no cursor; Whence::Current measured from 0 — wrap it in a RawIOCursor"
+                );
+                0
+            }
             _ => 0,
         };
         bits::offset(base, position)
-    }
-}
-
-impl Seekable for BitBuffer {
-    fn tell(&self) -> usize {
-        self.cursor
-    }
-
-    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
-        self.cursor = self.byte_offset(position, whence)?;
-        crate::log_event!(debug, "BitBuffer::seek -> {}", self.cursor);
-        Ok(self.cursor)
     }
 }
 

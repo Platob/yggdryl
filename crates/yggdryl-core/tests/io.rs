@@ -1,45 +1,26 @@
 //! Tests for the `RawIOBase` (bytes/bits) and typed `IOBase` positioned-I/O traits.
 
-use yggdryl_core::{IOBase, IOError, RawIOBase, Seekable, Whence};
+use yggdryl_core::{IOBase, IOError, RawIOBase, Whence};
 
-/// A byte buffer with a cursor; bits are addressed MSB-first within each byte.
+/// A cursorless byte store; bits are addressed MSB-first within each byte.
 #[derive(Default)]
 struct Mem {
     data: Vec<u8>,
-    cursor: usize,
 }
 
 impl Mem {
     fn byte_offset(&self, position: usize, whence: Whence) -> usize {
         match whence {
-            Whence::Current => self.cursor + position,
             Whence::End => self.data.len() + position,
-            _ => position, // Start
+            _ => position, // Start, and cursorless Current, from 0
         }
     }
 
     fn bit_offset(&self, position: usize, whence: Whence) -> usize {
         match whence {
-            Whence::Current => self.cursor * 8 + position,
             Whence::End => self.data.len() * 8 + position,
             _ => position,
         }
-    }
-}
-
-impl Seekable for Mem {
-    fn tell(&self) -> usize {
-        self.cursor
-    }
-
-    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
-        let base = match whence {
-            Whence::Current => self.cursor,
-            Whence::End => self.data.len(),
-            _ => 0,
-        };
-        self.cursor = base + position;
-        Ok(self.cursor)
     }
 }
 
@@ -206,28 +187,6 @@ fn sizes_report_bytes_bits_and_items() {
 }
 
 #[test]
-fn seek_and_tell_track_the_cursor() {
-    let mut mem = Mem::default();
-    mem.pwrite_byte_array(0, Whence::Start, &[10, 20, 30, 40])
-        .unwrap();
-    assert_eq!(mem.tell(), 0);
-    assert_eq!(mem.seek(2, Whence::Start).unwrap(), 2);
-    assert_eq!(mem.tell(), 2);
-    assert_eq!(mem.seek(1, Whence::Current).unwrap(), 3);
-    assert_eq!(mem.seek(0, Whence::End).unwrap(), 4);
-}
-
-#[test]
-fn current_relative_read_uses_the_cursor() {
-    let mut mem = Mem::default();
-    mem.pwrite_byte_array(0, Whence::Start, &[10, 20, 30, 40])
-        .unwrap();
-    mem.seek(1, Whence::Start).unwrap();
-    // Current + 1 == absolute byte 2 == 30.
-    assert_eq!(mem.pread_byte_one(1, Whence::Current).unwrap(), 30);
-}
-
-#[test]
 fn typed_writes_go_through_value_to_bytes() {
     let mut mem = Mem::default();
     mem.pwrite_one(0, Whence::Start, &0x0403_0201).unwrap();
@@ -283,7 +242,7 @@ fn stream_copy_between_ios() {
         .unwrap();
     assert_eq!(sink.data, vec![3, 4, 5, 6]);
 
-    // And append from `source` into `sink` via End, resolved through the cursor.
+    // And append from `source` into `sink` via End, resolved once against its size.
     sink.pwrite_io(0, Whence::End, &source, 0, Whence::Start, 2)
         .unwrap();
     assert_eq!(sink.data, vec![3, 4, 5, 6, 1, 2]);

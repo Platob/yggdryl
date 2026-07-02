@@ -1,18 +1,23 @@
-//! Positioned byte- and bit-I/O: the [`Seekable`] cursor, the low-level
-//! [`RawIOBase`] trait built on it, the typed [`IOBase`] layer, the [`Whence`]
-//! reference point, and the concrete [`ByteBuffer`] / [`BitBuffer`] resources.
+//! Positioned byte- and bit-I/O: the low-level [`RawIOBase`] trait, the typed
+//! [`IOBase`] layer, the [`Whence`] reference point, the concrete
+//! [`ByteBuffer`] / [`BitBuffer`] resources, and the [`Seekable`]
+//! [`RawIOCursor`] / [`IOCursor`] adapters that add a moving cursor on top.
 
 mod bit_buffer;
 mod bits;
 mod byte_buffer;
+mod cursor;
 mod error;
+mod raw_cursor;
 mod seekable;
 mod typed;
 mod whence;
 
 pub use bit_buffer::BitBuffer;
 pub use byte_buffer::ByteBuffer;
+pub use cursor::IOCursor;
 pub use error::IOError;
+pub use raw_cursor::RawIOCursor;
 pub use seekable::Seekable;
 pub use typed::IOBase;
 pub use whence::Whence;
@@ -24,9 +29,11 @@ const STREAM_CHUNK: usize = 64 * 1024;
 /// Positioned reads and writes over a resource, one or many `u8` bytes or `bool`
 /// bits at a time.
 ///
-/// A resource is [`Seekable`], so [`Whence::Current`] is measured from its cursor
-/// ([`tell`](Seekable::tell)); positioned access does not move the cursor, whereas
-/// [`seek`](Seekable::seek) does.
+/// A bare resource keeps no cursor of its own: [`Whence::Start`] is absolute and
+/// [`Whence::End`] is measured from the size, while [`Whence::Current`] — having no
+/// cursor to anchor to — is measured from the start. Wrap a resource in a
+/// [`RawIOCursor`] (or, for typed values, an [`IOCursor`]) for a [`Seekable`]
+/// position that advances on each read and write.
 ///
 /// Every access names a `position` and the [`Whence`] it is measured from —
 /// counted in **bytes** for the `*_byte_*` methods and in **bits** (MSB-first, so
@@ -43,7 +50,7 @@ const STREAM_CHUNK: usize = 64 * 1024;
 /// implementations.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, RawIOBase, Seekable, Whence};
+/// use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
 ///
 /// let mut buf = ByteBuffer::new();
 /// buf.pwrite_byte_array(0, Whence::Start, &[0b1010_0000, 7])?;
@@ -56,17 +63,13 @@ const STREAM_CHUNK: usize = 64 * 1024;
 /// assert_eq!((buf.byte_size(), buf.bit_size()), (4, 32));
 /// assert!(buf.resize_byte_capacity(64)? >= 64);
 ///
-/// // The cursor: seek moves it, positioned access does not.
-/// buf.seek(1, Whence::Start)?;
-/// assert_eq!(buf.pread_byte_one(0, Whence::Current)?, 7);
-///
 /// // Stream into another resource, chunked — no whole-copy materialization.
 /// let mut sink = ByteBuffer::new();
 /// buf.pread_io(0, Whence::Start, 4, &mut sink, 0, Whence::Start)?;
 /// assert_eq!(sink.as_bytes(), buf.as_bytes());
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
-pub trait RawIOBase: Seekable {
+pub trait RawIOBase {
     /// The resource's total size, in bytes.
     fn byte_size(&self) -> usize;
 
@@ -218,11 +221,9 @@ pub trait RawIOBase: Seekable {
     /// `sink` (at `sink_position` relative to `sink_whence`), copying in chunks so
     /// a large transfer never materializes in full.
     ///
-    /// The sink's start is resolved once through its own cursor
-    /// ([`seek`](Seekable::seek), then restored), so `sink_whence` stays correct
-    /// even while the sink grows during the copy. This assumes the sink's `seek`
-    /// accepts any target without clamping or failing (true for [`ByteBuffer`] and
-    /// [`BitBuffer`]); an implementor with a bounded `seek` must override this.
+    /// The sink's start is resolved once against its current
+    /// [`byte_size`](RawIOBase::byte_size), so `sink_whence` — notably
+    /// [`Whence::End`] — stays anchored even while the sink grows during the copy.
     fn pread_io(
         &self,
         position: usize,
@@ -233,9 +234,7 @@ pub trait RawIOBase: Seekable {
         sink_whence: Whence,
     ) -> Result<(), IOError> {
         crate::log_event!(debug, "RawIOBase::pread_io size={size}");
-        let saved = sink.tell();
-        let sink_start = sink.seek(sink_position, sink_whence)?;
-        sink.seek(saved, Whence::Start)?;
+        let sink_start = resolve_byte_start(sink.byte_size(), sink_position, sink_whence)?;
         let mut copied = 0;
         while copied < size {
             let chunk = STREAM_CHUNK.min(size - copied);
@@ -250,11 +249,9 @@ pub trait RawIOBase: Seekable {
     /// `source_whence`) into `self` (at `position` relative to `whence`), copying
     /// in chunks so a large transfer never materializes in full.
     ///
-    /// `self`'s start is resolved once through its own cursor
-    /// ([`seek`](Seekable::seek), then restored), so `whence` stays correct even
-    /// while `self` grows during the copy. This assumes `self`'s `seek` accepts any
-    /// target without clamping or failing (true for [`ByteBuffer`] and
-    /// [`BitBuffer`]); an implementor with a bounded `seek` must override this.
+    /// `self`'s start is resolved once against its current
+    /// [`byte_size`](RawIOBase::byte_size), so `whence` — notably [`Whence::End`] —
+    /// stays anchored even while `self` grows during the copy.
     fn pwrite_io(
         &mut self,
         position: usize,
@@ -265,9 +262,7 @@ pub trait RawIOBase: Seekable {
         size: usize,
     ) -> Result<(), IOError> {
         crate::log_event!(debug, "RawIOBase::pwrite_io size={size}");
-        let saved = self.tell();
-        let start = self.seek(position, whence)?;
-        self.seek(saved, Whence::Start)?;
+        let start = resolve_byte_start(self.byte_size(), position, whence)?;
         let mut copied = 0;
         while copied < size {
             let chunk = STREAM_CHUNK.min(size - copied);
@@ -277,4 +272,16 @@ pub trait RawIOBase: Seekable {
         }
         Ok(())
     }
+}
+
+/// Resolve a `(position, whence)` pair to an absolute byte offset against a
+/// cursorless resource of `size` bytes: [`Whence::End`] is measured from the end
+/// (`size`), while [`Whence::Start`] and (having no cursor) [`Whence::Current`] are
+/// measured from the start. Guards the addition against overflow.
+fn resolve_byte_start(size: usize, position: usize, whence: Whence) -> Result<usize, IOError> {
+    let base = match whence {
+        Whence::End => size,
+        _ => 0,
+    };
+    bits::offset(base, position)
 }

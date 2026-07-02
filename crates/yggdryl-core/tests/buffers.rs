@@ -1,6 +1,6 @@
 //! Tests for the concrete `ByteBuffer` and `BitBuffer` resources.
 
-use yggdryl_core::{BitBuffer, ByteBuffer, IOError, RawIOBase, Seekable, Whence};
+use yggdryl_core::{BitBuffer, ByteBuffer, IOError, RawIOBase, Whence};
 
 #[test]
 fn byte_buffer_round_trips_and_appends() {
@@ -26,12 +26,14 @@ fn byte_buffer_bit_access_is_msb_first() {
 }
 
 #[test]
-fn byte_buffer_seek_and_current_relative_read() {
-    let mut buf = ByteBuffer::from_bytes(vec![10, 20, 30, 40]);
-    assert_eq!(buf.seek(2, Whence::Start).unwrap(), 2);
-    assert_eq!(buf.tell(), 2);
-    // Current + 1 == absolute byte 3 == 40.
-    assert_eq!(buf.pread_byte_one(1, Whence::Current).unwrap(), 40);
+fn byte_buffer_current_is_measured_from_the_start_without_a_cursor() {
+    let buf = ByteBuffer::from_bytes(vec![10, 20, 30, 40]);
+    // A bare buffer has no cursor, so Current == Start.
+    assert_eq!(buf.pread_byte_one(1, Whence::Current).unwrap(), 20);
+    assert_eq!(
+        buf.pread_byte_one(1, Whence::Start).unwrap(),
+        buf.pread_byte_one(1, Whence::Current).unwrap()
+    );
 }
 
 #[test]
@@ -203,9 +205,9 @@ fn empty_write_is_a_no_op_even_past_the_end() {
 
 #[test]
 fn offset_overflow_errors_instead_of_wrapping() {
-    let mut buf = ByteBuffer::from_bytes(vec![1, 2, 3]);
-    buf.seek(usize::MAX, Whence::Start).unwrap(); // seek is unbounded
-    let error = buf.pread_byte_one(1, Whence::Current).unwrap_err();
+    let buf = ByteBuffer::from_bytes(vec![1, 2, 3]);
+    // End base (3) + usize::MAX would wrap; it is guarded as OutOfBounds instead.
+    let error = buf.pread_byte_one(usize::MAX, Whence::End).unwrap_err();
     assert!(matches!(error, IOError::OutOfBounds { .. }));
 }
 

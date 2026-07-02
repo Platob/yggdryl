@@ -20,11 +20,11 @@ def test_byte_buffer_bit_access_is_msb_first():
     assert buf.pread_bit_one(1, core.Whence.Start) is False
 
 
-def test_byte_buffer_seek_tracks_the_cursor():
+def test_byte_buffer_current_is_measured_from_the_start_without_a_cursor():
     buf = core.ByteBuffer.from_bytes(bytes([10, 20, 30, 40]))
-    assert buf.seek(2, core.Whence.Start) == 2
-    assert buf.tell() == 2
-    assert buf.pread_byte_one(1, core.Whence.Current) == 40
+    # A bare buffer keeps no cursor, so Current == Start.
+    assert buf.pread_byte_one(1, core.Whence.Current) == 20
+    assert buf.pread_byte_one(1, core.Whence.Start) == 20
 
 
 def test_bit_buffer_tracks_an_exact_bit_length():

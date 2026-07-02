@@ -1,15 +1,17 @@
 //! The `yggdryl.core` submodule — thin wrappers over the `yggdryl-core` crate.
 //!
-//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. The
-//! core `pread_io` / `pwrite_io` streams are intentionally not surfaced here (they
-//! borrow two resources at once); a Python caller composes the same effect from
-//! `pread_byte_array` + `pwrite_byte_array`.
+//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. Two
+//! core conveniences are intentionally not surfaced here: the `pread_io` /
+//! `pwrite_io` streams (they borrow two resources at once; a Python caller composes
+//! the same effect from `pread_byte_array` + `pwrite_byte_array`) and the
+//! `RawIOCursor` / `IOCursor` cursor adapters (a Rust-core convenience over the same
+//! positioned surface).
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pyo3::wrap_pyfunction;
-use yggdryl_core::{RawIOBase, Seekable};
+use yggdryl_core::RawIOBase;
 
 /// The `yggdryl-core` version string.
 #[pyfunction]
@@ -125,16 +127,6 @@ impl ByteBuffer {
     /// Set the buffer's size to `size` bits, rounded up to whole bytes.
     fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bits(size)?)
-    }
-
-    /// The current cursor position, in bytes.
-    fn tell(&self) -> usize {
-        self.inner.tell()
-    }
-
-    /// Move the cursor, returning the new position.
-    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IoError> {
-        Ok(self.inner.seek(position, whence.into())?)
     }
 
     /// Read one byte.
@@ -283,16 +275,6 @@ impl BitBuffer {
     /// Set the buffer's size to an exact `size` bits.
     fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
         Ok(self.inner.resize_bits(size)?)
-    }
-
-    /// The current cursor position, in bytes.
-    fn tell(&self) -> usize {
-        self.inner.tell()
-    }
-
-    /// Move the cursor, returning the new position.
-    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IoError> {
-        Ok(self.inner.seek(position, whence.into())?)
     }
 
     /// Read one byte.

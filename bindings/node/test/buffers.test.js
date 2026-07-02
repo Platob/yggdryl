@@ -21,11 +21,11 @@ test('ByteBuffer bit access is MSB-first', () => {
   assert.equal(buf.preadBitOne(1, Whence.Start), false)
 })
 
-test('ByteBuffer seek tracks the cursor', () => {
+test('ByteBuffer Current is measured from the start without a cursor', () => {
   const buf = ByteBuffer.fromBytes(Buffer.from([10, 20, 30, 40]))
-  assert.equal(buf.seek(2, Whence.Start), 2)
-  assert.equal(buf.tell(), 2)
-  assert.equal(buf.preadByteOne(1, Whence.Current), 40)
+  // A bare buffer keeps no cursor, so Current === Start.
+  assert.equal(buf.preadByteOne(1, Whence.Current), 20)
+  assert.equal(buf.preadByteOne(1, Whence.Start), 20)
 })
 
 test('out-of-bounds read throws', () => {

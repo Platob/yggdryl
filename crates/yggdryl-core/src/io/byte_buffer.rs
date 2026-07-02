@@ -1,51 +1,46 @@
 //! The [`ByteBuffer`] in-memory resource.
 
 use super::bits;
-use super::{IOError, RawIOBase, Seekable, Whence};
+use super::{IOError, RawIOBase, Whence};
 
-/// A growable, byte-granular in-memory buffer implementing [`Seekable`] and
-/// [`RawIOBase`].
+/// A growable, byte-granular in-memory buffer implementing [`RawIOBase`].
 ///
-/// Positions resolve from [`Whence::Start`] (absolute), [`Whence::Current`] (the
-/// cursor) or [`Whence::End`] (the length); writes past the end grow the buffer with
-/// zeroes. Its [`bit_size`](RawIOBase::bit_size) is always eight times its
+/// Positions resolve from [`Whence::Start`] (absolute) or [`Whence::End`] (the
+/// length); writes past the end grow the buffer with zeroes. The buffer keeps no
+/// cursor, so [`Whence::Current`] is measured from the start — wrap it in a
+/// [`RawIOCursor`](super::RawIOCursor) for a position that advances on each access.
+/// Its [`bit_size`](RawIOBase::bit_size) is always eight times its
 /// [`byte_size`](RawIOBase::byte_size), and capacity tracks the underlying
 /// allocation.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, RawIOBase, Seekable, Whence};
+/// use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
 ///
 /// let mut buf = ByteBuffer::new();
 /// buf.pwrite_byte_array(0, Whence::Start, &[1, 2, 3])?;
 /// assert_eq!(buf.byte_size(), 3);
 /// assert_eq!(buf.pread_byte_one(1, Whence::Start)?, 2);
+/// buf.pwrite_byte_array(0, Whence::End, &[4])?; // append at the end
 ///
 /// buf.resize_bytes(5)?; // zero-fill up to five bytes
-/// assert_eq!(buf.as_bytes(), &[1, 2, 3, 0, 0]);
+/// assert_eq!(buf.as_bytes(), &[1, 2, 3, 4, 0]);
 /// assert!(buf.resize_byte_capacity(64)? >= 64);
-///
-/// buf.seek(1, Whence::Start)?;
-/// assert_eq!(buf.pread_byte_one(0, Whence::Current)?, 2); // relative to the cursor
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ByteBuffer {
     data: Vec<u8>,
-    cursor: usize,
 }
 
 impl ByteBuffer {
-    /// An empty buffer with its cursor at the start.
+    /// An empty buffer.
     pub fn new() -> Self {
-        Self {
-            data: Vec::new(),
-            cursor: 0,
-        }
+        Self { data: Vec::new() }
     }
 
-    /// A buffer over `data`, with its cursor at the start.
+    /// A buffer over `data`.
     pub fn from_bytes(data: Vec<u8>) -> Self {
-        Self { data, cursor: 0 }
+        Self { data }
     }
 
     /// The buffer's bytes.
@@ -60,8 +55,14 @@ impl ByteBuffer {
 
     fn byte_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
         let base = match whence {
-            Whence::Current => self.cursor,
             Whence::End => self.data.len(),
+            Whence::Current => {
+                crate::log_event!(
+                    warn,
+                    "ByteBuffer has no cursor; Whence::Current measured from 0 — wrap it in a RawIOCursor"
+                );
+                0
+            }
             _ => 0,
         };
         bits::offset(base, position)
@@ -69,23 +70,17 @@ impl ByteBuffer {
 
     fn bit_offset(&self, position: usize, whence: Whence) -> Result<usize, IOError> {
         let base = match whence {
-            Whence::Current => self.cursor.saturating_mul(8),
             Whence::End => self.data.len().saturating_mul(8),
+            Whence::Current => {
+                crate::log_event!(
+                    warn,
+                    "ByteBuffer has no cursor; Whence::Current measured from 0 — wrap it in a RawIOCursor"
+                );
+                0
+            }
             _ => 0,
         };
         bits::offset(base, position)
-    }
-}
-
-impl Seekable for ByteBuffer {
-    fn tell(&self) -> usize {
-        self.cursor
-    }
-
-    fn seek(&mut self, position: usize, whence: Whence) -> Result<usize, IOError> {
-        self.cursor = self.byte_offset(position, whence)?;
-        crate::log_event!(debug, "ByteBuffer::seek -> {}", self.cursor);
-        Ok(self.cursor)
     }
 }
 
