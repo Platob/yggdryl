@@ -13,11 +13,12 @@ use super::RawDataType;
 /// ```
 /// use yggdryl_data::{Int64, Primitive, RawDataType};
 ///
-/// // Generic over any primitive.
-/// fn fixed_byte_width<P: Primitive>(primitive: &P) -> usize {
-///     primitive.byte_width().expect("a primitive is fixed-width")
+/// // Every primitive has a fixed *bit* width — bytes for most, a single bit for a
+/// // boolean (whose `byte_width` is `None`), so bit width is the shared invariant.
+/// fn fixed_bit_width<P: Primitive>(primitive: &P) -> usize {
+///     primitive.bit_width().expect("a primitive has a fixed bit width")
 /// }
 ///
-/// assert_eq!(fixed_byte_width(&Int64), 8);
+/// assert_eq!(fixed_bit_width(&Int64), 64);
 /// ```
 pub trait Primitive: RawDataType {}

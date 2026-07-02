@@ -1,13 +1,16 @@
 //! The typed [`Scalar`] trait: a [`RawScalar`](super::RawScalar) holding a native `T`.
 
-use super::{DataType, RawScalar};
+use super::{RawDataType, RawScalar};
 
 /// A [`RawScalar`](super::RawScalar) whose value is the native Rust type `T` — a
-/// single, possibly-null value of a typed [`DataType<T>`].
+/// single, possibly-null value — where `T` may be unsized (e.g. `str`).
 ///
-/// It pins the inherited [`RawScalar::Value`](super::RawScalar::Value) to `T` and
-/// names the concrete data type as the associated [`Type`](Scalar::Type), so
-/// `value` (inherited from [`RawScalar`](super::RawScalar)) yields `Option<&T>`.
+/// It pins the inherited [`RawScalar::Value`](super::RawScalar::Value) to `T`, so
+/// `value` yields `Option<&T>`, and names the concrete data type as the associated
+/// [`Type`](Scalar::Type). `Type` is only bound to [`RawDataType`] — deliberately not
+/// [`DataType<T>`](super::DataType), whose owned-value byte codec would force `T:
+/// Sized` — so a string scalar can expose the borrowed `Option<&str>` while its data
+/// type still codecs owned `String`s through [`DataType<String>`](super::DataType).
 ///
 /// ```
 /// use yggdryl_data::{Int64Scalar, RawScalar, Scalar};
@@ -22,7 +25,7 @@ use super::{DataType, RawScalar};
 /// assert!(!take(&answer));
 /// assert!(take(&Int64Scalar::null()));
 /// ```
-pub trait Scalar<T>: RawScalar<Self::Type, Value = T> {
+pub trait Scalar<T: ?Sized>: RawScalar<Self::Type, Value = T> {
     /// The concrete data type of this scalar.
-    type Type: DataType<T>;
+    type Type: RawDataType;
 }

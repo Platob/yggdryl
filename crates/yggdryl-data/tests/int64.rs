@@ -95,8 +95,12 @@ fn is_null_scalar<S: Scalar<i64>>(scalar: &S) -> bool {
     scalar.is_null()
 }
 
-fn primitive_width<P: Primitive>(primitive: &P) -> usize {
-    primitive.byte_width().expect("a primitive is fixed-width")
+fn primitive_bit_width<P: Primitive>(primitive: &P) -> usize {
+    // Bit width is the invariant shared by every primitive (a boolean is one bit and
+    // has no byte width).
+    primitive
+        .bit_width()
+        .expect("a primitive has a fixed bit width")
 }
 
 #[test]
@@ -104,7 +108,7 @@ fn generic_bounds_compose() {
     assert_eq!(first_byte(&Int64, 5), 5);
     assert!(is_null_scalar(&Int64Scalar::null()));
     assert!(!is_null_scalar(&Int64Scalar::new(1)));
-    assert_eq!(primitive_width(&Int64), 8);
+    assert_eq!(primitive_bit_width(&Int64), 64);
 }
 
 fn assert_send_sync<T: Send + Sync>() {}
@@ -126,4 +130,61 @@ fn raw_data_type_is_object_safe() {
     assert_eq!(types[0].arrow_format(), "l");
     assert_eq!(types[0].byte_width(), Some(8));
     assert_eq!(types[0].bit_width(), Some(64));
+}
+
+// A minimal string type and scalar, proving an *unsized* value reaches the typed
+// `Scalar<str>` layer — the borrowed `Option<&str>` the `?Sized` value enables.
+#[derive(Debug)]
+struct Utf8;
+
+impl RawDataType for Utf8 {
+    fn name(&self) -> &str {
+        "utf8"
+    }
+    fn arrow_format(&self) -> String {
+        "u".to_string()
+    }
+    fn byte_width(&self) -> Option<usize> {
+        None // variable-width
+    }
+}
+
+#[derive(Debug)]
+struct Utf8Scalar {
+    data_type: Utf8,
+    value: Option<String>,
+}
+
+impl RawScalar<Utf8> for Utf8Scalar {
+    type Value = str;
+    fn data_type(&self) -> &Utf8 {
+        &self.data_type
+    }
+    fn is_null(&self) -> bool {
+        self.value.is_none()
+    }
+    fn value(&self) -> Option<&str> {
+        self.value.as_deref()
+    }
+}
+
+impl Scalar<str> for Utf8Scalar {
+    type Type = Utf8;
+}
+
+#[test]
+fn a_string_scalar_exposes_borrowed_str() {
+    fn value_of<S: Scalar<str>>(scalar: &S) -> Option<&str> {
+        scalar.value()
+    }
+    let hello = Utf8Scalar {
+        data_type: Utf8,
+        value: Some("hi".to_string()),
+    };
+    assert_eq!(value_of(&hello), Some("hi")); // Option<&str>, not Option<&String>
+    assert!(value_of(&Utf8Scalar {
+        data_type: Utf8,
+        value: None
+    })
+    .is_none());
 }
