@@ -61,12 +61,21 @@ use super::{DataError, RawDataType};
 ///             value: (!array.is_null(0)).then(|| array.value(0)),
 ///         })
 ///     }
+///     // The native type answers directly; wider targets convert.
+///     fn as_i32(&self) -> Option<i32> {
+///         self.value
+///     }
+///     fn as_i64(&self) -> Option<i64> {
+///         self.value.map(i64::from)
+///     }
 /// }
 ///
 /// let answer = Int32Scalar { data_type: Int32, value: Some(42) };
 /// assert_eq!(answer.data_type().name(), "int32");
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
+/// assert_eq!(answer.as_i64(), Some(42)); // converted access
+/// assert_eq!(answer.as_str(), None); // an int32 is not a string (default)
 ///
 /// // Arrow interop: a one-element array, round-tripped.
 /// let arrow = answer.to_arrow();
@@ -105,4 +114,84 @@ pub trait RawScalar<D: RawDataType>: std::fmt::Debug + Send + Sync {
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError>
     where
         Self: Sized;
+
+    /// The value as an `i8`, when non-null and exactly representable.
+    ///
+    /// The `as_*` accessors share one contract: `None` when the scalar is null, when
+    /// its value has no conversion to the target type, or when the conversion would
+    /// change the value (a narrowing or sign change out of range, a float that would
+    /// round); the value otherwise. A scalar whose native type *is* the target
+    /// answers directly, without conversion; `str` access borrows without copying.
+    /// Every accessor defaults to `None`, so a concrete scalar overrides only the
+    /// targets its value converts to.
+    fn as_i8(&self) -> Option<i8> {
+        None
+    }
+
+    /// The value as an `i16`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_i16(&self) -> Option<i16> {
+        None
+    }
+
+    /// The value as an `i32`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_i32(&self) -> Option<i32> {
+        None
+    }
+
+    /// The value as an `i64`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_i64(&self) -> Option<i64> {
+        None
+    }
+
+    /// The value as a `u8`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_u8(&self) -> Option<u8> {
+        None
+    }
+
+    /// The value as a `u16`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_u16(&self) -> Option<u16> {
+        None
+    }
+
+    /// The value as a `u32`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_u32(&self) -> Option<u32> {
+        None
+    }
+
+    /// The value as a `u64`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_u64(&self) -> Option<u64> {
+        None
+    }
+
+    /// The value as an `f32`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_f32(&self) -> Option<f32> {
+        None
+    }
+
+    /// The value as an `f64`, when non-null and exactly representable.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_f64(&self) -> Option<f64> {
+        None
+    }
+
+    /// The value as a `bool`, when non-null and the value is a boolean.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_bool(&self) -> Option<bool> {
+        None
+    }
+
+    /// The value as a borrowed `&str`, when non-null and the value is a string —
+    /// borrowed directly, never copied or converted.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_str(&self) -> Option<&str> {
+        None
+    }
 }

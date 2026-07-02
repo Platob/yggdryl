@@ -93,3 +93,31 @@ pub trait RawField<D: RawDataType>: std::fmt::Debug + Send + Sync {
     where
         Self: Sized;
 }
+
+/// The shared `from_arrow` metadata policy every concrete field applies before
+/// rebuilding: refuse an extension-typed field (`ARROW:extension:name` is a
+/// different logical type) with [`DataError::IncompatibleArrowType`] naming
+/// `expected`, and log dropped non-extension metadata as a `warn`.
+pub(crate) fn validate_field_metadata(
+    field: &arrow_schema::Field,
+    expected: &str,
+) -> Result<(), DataError> {
+    if let Some(extension) = field.metadata().get("ARROW:extension:name") {
+        return Err(DataError::IncompatibleArrowType {
+            expected: expected.to_string(),
+            got: format!(
+                "the extension type \"{extension}\" (stored as {})",
+                field.data_type()
+            ),
+        });
+    }
+    if !field.metadata().is_empty() {
+        crate::log_event!(
+            warn,
+            "from_arrow: dropping {} metadata entr(y/ies) from field \"{}\"",
+            field.metadata().len(),
+            field.name()
+        );
+    }
+    Ok(())
+}

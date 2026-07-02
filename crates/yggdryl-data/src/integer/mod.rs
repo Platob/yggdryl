@@ -107,28 +107,7 @@ macro_rules! int_field {
                 field: &$crate::arrow_schema::Field,
             ) -> Result<Self, $crate::DataError> {
                 <$ty as $crate::RawDataType>::from_arrow(field.data_type())?;
-                // An extension type is a *different* logical type carried in field
-                // metadata — accepting it would silently reinterpret its values.
-                if let Some(extension) = field.metadata().get("ARROW:extension:name") {
-                    return Err($crate::DataError::IncompatibleArrowType {
-                        expected: stringify!($ty).to_string(),
-                        got: format!(
-                            "the extension type \"{extension}\" (stored as {})",
-                            field.data_type()
-                        ),
-                    });
-                }
-                // The model carries name, data type and nullability only; other
-                // metadata is out of scope and dropped (see the trait docs).
-                if !field.metadata().is_empty() {
-                    $crate::log_event!(
-                        warn,
-                        "{}::from_arrow: dropping {} metadata entr(y/ies) from field \"{}\"",
-                        stringify!($field),
-                        field.metadata().len(),
-                        field.name()
-                    );
-                }
+                $crate::raw_field::validate_field_metadata(field, stringify!($ty))?;
                 Ok(Self::new(field.name(), field.is_nullable()))
             }
         }
@@ -172,6 +151,10 @@ macro_rules! int_scalar {
             }
         }
 
+        // `try_into` is an identity conversion for the scalar's own width (e.g.
+        // `as_i64` on an int64), which clippy would flag; the macro generates all
+        // ten numeric targets uniformly, so allow it once here.
+        #[allow(clippy::useless_conversion)]
         impl $crate::RawScalar<$ty> for $scalar {
             type Value = $native;
             fn data_type(&self) -> &$ty {
@@ -225,6 +208,44 @@ macro_rules! int_scalar {
                     Self::null()
                 } else {
                     Self::new(array.value(0))
+                })
+            }
+            fn as_i8(&self) -> Option<i8> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_i16(&self) -> Option<i16> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_i32(&self) -> Option<i32> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_i64(&self) -> Option<i64> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_u8(&self) -> Option<u8> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_u16(&self) -> Option<u16> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_u32(&self) -> Option<u32> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_u64(&self) -> Option<u64> {
+                self.value.and_then(|value| value.try_into().ok())
+            }
+            fn as_f32(&self) -> Option<f32> {
+                // Exactly representable only: an int-to-float cast rounds to an
+                // integral float, so a lossless conversion round-trips through i128.
+                self.value.and_then(|value| {
+                    let float = value as f32;
+                    (float as i128 == value as i128).then_some(float)
+                })
+            }
+            fn as_f64(&self) -> Option<f64> {
+                self.value.and_then(|value| {
+                    let float = value as f64;
+                    (float as i128 == value as i128).then_some(float)
                 })
             }
         }

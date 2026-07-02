@@ -1,0 +1,57 @@
+//! The [`Null`] data type.
+
+use crate::{DataError, RawDataType};
+
+/// The Apache Arrow `null` data type: every value is null.
+///
+/// It is storage-free — no byte width, no codec — and is neither a
+/// [`Primitive`](crate::Primitive) nor a [`Nested`](crate::Nested) type. Its main
+/// structural role is as the null variant of a [`Union`](crate::Union) (see
+/// [`OptionalScalar`](crate::OptionalScalar)).
+///
+/// ```
+/// use yggdryl_data::{arrow_schema, DataTypeId, Null, RawDataType};
+///
+/// assert_eq!(Null.name(), "null");
+/// assert_eq!(Null.arrow_format(), "n");
+/// assert_eq!((Null.byte_width(), Null.bit_width()), (None, None));
+/// assert_eq!(Null::ID, DataTypeId::Null);
+///
+/// assert_eq!(Null.to_arrow(), arrow_schema::DataType::Null);
+/// assert!(Null::from_arrow(&arrow_schema::DataType::Int64).is_err());
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Null;
+
+impl Null {
+    /// This type's [`DataTypeId`](crate::DataTypeId).
+    pub const ID: crate::DataTypeId = crate::DataTypeId::Null;
+}
+
+impl RawDataType for Null {
+    fn name(&self) -> &str {
+        "null"
+    }
+
+    fn arrow_format(&self) -> String {
+        "n".to_string()
+    }
+
+    fn byte_width(&self) -> Option<usize> {
+        None
+    }
+
+    fn to_arrow(&self) -> arrow_schema::DataType {
+        arrow_schema::DataType::Null
+    }
+
+    fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
+        match data_type {
+            arrow_schema::DataType::Null => Ok(Self),
+            other => Err(DataError::IncompatibleArrowType {
+                expected: "Null".to_string(),
+                got: other.to_string(),
+            }),
+        }
+    }
+}

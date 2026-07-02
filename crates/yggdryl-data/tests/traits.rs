@@ -73,6 +73,10 @@ impl RawScalar<Utf8> for Utf8Scalar {
             value: (!array.is_null(0)).then(|| array.value(0).to_string()),
         })
     }
+    fn as_str(&self) -> Option<&str> {
+        // The native type: borrowed directly, never copied.
+        self.value.as_deref()
+    }
 }
 
 impl Scalar<str> for Utf8Scalar {
@@ -94,6 +98,20 @@ fn a_string_scalar_exposes_borrowed_str() {
         value: None
     })
     .is_none());
+}
+
+#[test]
+fn string_access_borrows_without_copying() {
+    let hello = Utf8Scalar {
+        data_type: Utf8,
+        value: Some("hi".to_string()),
+    };
+    // `as_str` hands back a borrow of the held String — same address, no copy.
+    let borrowed = hello.as_str().unwrap();
+    assert_eq!(borrowed, "hi");
+    assert_eq!(borrowed.as_ptr(), hello.value.as_ref().unwrap().as_ptr());
+    // A string is not a number (the trait defaults).
+    assert_eq!(hello.as_i64(), None);
 }
 
 #[test]

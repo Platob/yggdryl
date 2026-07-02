@@ -29,7 +29,12 @@ versions).
   when the `log` cargo feature is on.
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value (`data_type`,
   `is_null`, `value` of an associated `Value: ?Sized`); mirrors Arrow's own scalar
-  representation, a one-element `arrow_array::ArrayRef`.
+  representation, a one-element `arrow_array::ArrayRef`. The `as_*` accessors
+  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`) read the value as a
+  chosen Rust type: direct for the scalar's own type (`as_str` borrows, never
+  copies), exact conversion otherwise, `None` when null or not exactly
+  representable — every accessor defaults to `None`, so a scalar overrides only the
+  targets its value converts to.
 
 ## Typed
 
@@ -93,3 +98,30 @@ assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar)
 
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 `Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
+
+## The null and union modules
+
+`Null` is the storage-free type whose every value is null (`NullField`,
+`NullScalar`). `Union` is Apache Arrow's union — a value is exactly one of several
+child types, discriminated by a type id — carrying its `UnionFields` and
+`UnionMode` losslessly, so `to_arrow` / `from_arrow` round-trip any union.
+`Union::optional(&T)` names the sparse two-variant union between null and a value
+type, and `OptionalScalar<D, S>` is the scalar of that shape: an inner scalar `S`
+or the null variant, with `value` and every `as_*` accessor redirected to the inner
+scalar, and the Arrow form a one-element `UnionArray` whose type id selects the
+variant (`from_arrow` redirects the value child back through `S::from_arrow`).
+
+```rust
+use yggdryl_data::{Int64, Int64Scalar, OptionalScalar, RawDataType, RawScalar, Union};
+
+let answer = OptionalScalar::new(Int64Scalar::new(42));
+assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
+assert_eq!(answer.data_type().arrow_format(), "+us:0,1"); // sparse union of null and int64
+
+let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
+assert!(missing.is_null());
+assert_eq!(
+    OptionalScalar::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+    missing
+);
+```

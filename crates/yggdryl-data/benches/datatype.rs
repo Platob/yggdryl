@@ -3,9 +3,11 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_data::{
-    arrow_schema, Int64, Int64Field, Int64Scalar, Int8, Int8Scalar, RawDataType, RawField,
-    RawScalar,
+    arrow_schema, Int64, Int64Field, Int64Scalar, Int8, Int8Scalar, OptionalScalar, RawDataType,
+    RawField, RawScalar, Union,
 };
+
+type OptionalInt64 = OptionalScalar<Int64, Int64Scalar>;
 
 const N: usize = 4096;
 
@@ -181,5 +183,103 @@ fn schema(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, codec, descriptor, arrow_interop, scalar, schema);
+fn accessor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("accessor");
+    group.throughput(Throughput::Elements(N as u64));
+
+    let scalar = Int64Scalar::new(42);
+    group.bench_function("int64_as_i64_direct", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(black_box(&scalar).as_i64());
+            }
+        })
+    });
+    group.bench_function("int64_as_i8_converted", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(black_box(&scalar).as_i8());
+            }
+        })
+    });
+    group.bench_function("int64_as_f64_converted", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(black_box(&scalar).as_f64());
+            }
+        })
+    });
+
+    let optional = OptionalInt64::new(Int64Scalar::new(42));
+    group.bench_function("optional_as_i64_redirected", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(black_box(&optional).as_i64());
+            }
+        })
+    });
+
+    group.finish();
+}
+
+fn optional(c: &mut Criterion) {
+    let mut group = c.benchmark_group("optional");
+    group.throughput(Throughput::Elements(N as u64));
+
+    group.bench_function("union_optional_data_type", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(Union::optional(&Int64));
+            }
+        })
+    });
+
+    group.bench_function("optional_new", |b| {
+        b.iter(|| {
+            for value in 0..N as i64 {
+                black_box(OptionalInt64::new(Int64Scalar::new(black_box(value))));
+            }
+        })
+    });
+
+    group.bench_function("optional_to_arrow_value", |b| {
+        let scalar = OptionalInt64::new(Int64Scalar::new(42));
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(scalar.to_arrow());
+            }
+        })
+    });
+
+    group.bench_function("optional_to_arrow_null", |b| {
+        let scalar = OptionalInt64::null();
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(scalar.to_arrow());
+            }
+        })
+    });
+
+    let arrow = OptionalInt64::new(Int64Scalar::new(42)).to_arrow();
+    group.bench_function("optional_from_arrow", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(OptionalInt64::from_arrow(black_box(arrow.as_ref())).unwrap());
+            }
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    codec,
+    descriptor,
+    arrow_interop,
+    scalar,
+    schema,
+    accessor,
+    optional
+);
 criterion_main!(benches);

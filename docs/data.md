@@ -4,9 +4,10 @@
     The `yggdryl-data` crate is the Apache Arrow-centralized **data-model layer**,
     built on `yggdryl-core`. It defines the physical type system — data types, fields
     and scalars — for zero-copy FFI and Arrow interop, and gains Python and Node tabs
-    when the bindings expose it. The `integer` module is the first concrete family —
-    every signed and unsigned integer, each a data type, field and scalar; more
-    families land as the layer grows.
+    when the bindings expose it. The concrete families so far: the `integer` module
+    (every signed and unsigned integer), the `null` module (the storage-free null
+    type) and the `union` module (the union type, with the null-or-value
+    `OptionalScalar`); more land as the layer grows.
 
 The type system is three layers of traits. None carries a lifetime parameter
 (FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
@@ -92,6 +93,42 @@ fn main() {
 }
 ```
 
+## The null and union types
+
+The `null` module holds `Null` — the storage-free type whose every value is null —
+with its `NullField` and `NullScalar`. The `union` module holds `Union`, Apache
+Arrow's union type: a value is exactly one of several child types, discriminated by
+a type id. `Union` carries its `UnionFields` and `UnionMode` exactly as Arrow models
+them, so `to_arrow` / `from_arrow` round-trip *any* union losslessly.
+
+`Union::optional(&T)` names the sparse two-variant union between null and a value
+type, and `OptionalScalar<D, S>` is the scalar of that shape — an inner scalar `S`
+of data type `D`, or the null variant. Access redirects to the inner scalar (`value`
+and every `as_*` accessor answer through `S`), and so does the Arrow form: a
+one-element `UnionArray` whose type id selects the variant, `from_arrow` handing the
+value child back to `S`'s own `from_arrow`.
+
+```rust
+use yggdryl_data::{Int64, Int64Scalar, Nested, OptionalScalar, RawDataType, RawScalar, Union};
+
+fn main() {
+    let union = Union::optional(&Int64);
+    assert_eq!((union.name(), union.child_count()), ("union", 2));
+    assert_eq!(union.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
+
+    let answer = OptionalScalar::new(Int64Scalar::new(42));
+    assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
+    assert!(!answer.is_null());
+
+    let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
+    let arrow = missing.to_arrow(); // a one-element union array, null variant
+    assert_eq!(
+        OptionalScalar::from_arrow(arrow.as_ref()).unwrap(),
+        missing
+    );
+}
+```
+
 ## The trait layers
 
 ### Untyped base
@@ -106,7 +143,13 @@ fn main() {
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value: `data_type`,
   `is_null`, `value` of an associated `Value: ?Sized`; `to_arrow` / `from_arrow`
   mirror a one-element `arrow_array` array. The typed and category traits inherit the
-  whole Arrow surface — it is defined once, on the base.
+  whole Arrow surface — it is defined once, on the base. The `as_*` accessors
+  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`) read the value as a
+  chosen Rust type under one contract: direct for the scalar's own type (`as_str`
+  borrows, never copies), exact conversion otherwise, and `None` when the scalar is
+  null or the value is not exactly representable (a narrowing out of range or a
+  float that would round). Every accessor defaults to `None`, so a concrete scalar
+  overrides only the targets its value converts to.
 
 ### Typed
 
