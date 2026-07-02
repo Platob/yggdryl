@@ -2,11 +2,16 @@
 //! [`RawIOBase`] trait built on it, the typed [`IOBase`] layer, and the [`Whence`]
 //! reference point.
 
+mod bit_buffer;
+mod bits;
+mod byte_buffer;
 mod error;
 mod seekable;
 mod typed;
 mod whence;
 
+pub use bit_buffer::BitBuffer;
+pub use byte_buffer::ByteBuffer;
 pub use error::IOError;
 pub use seekable::Seekable;
 pub use typed::IOBase;
