@@ -24,9 +24,18 @@ type they are looking at from the shape of the code.
 3. **Append-only public API.** Once merged, the public surface only grows: mark
    public enums `#[non_exhaustive]`, never repurpose or remove a published item.
 4. **The three languages move together.** The Rust core is the source of truth;
-   behaviour added or changed anywhere is immediately replicated in the other two,
-   adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
-   `Option<T>` defaults). A change is never half-applied.
+   behaviour added or changed anywhere is immediately replicated in the **Python and
+   Node** bindings, adapting only to idioms (Python dunders / keyword defaults, JS
+   camelCase / `Option<T>` defaults). A change is never half-applied: the same commit
+   that adds or changes a binding-visible surface updates **both** bindings and their
+   tests, and every task ends with a **coherence check** confirming the three
+   surfaces match method-for-method and behave identically (the binding test suites
+   are the executable proof). A core item may stay **Rust-only** only when it cannot
+   cross the FFI boundary cleanly — a generic/owning/borrowing adapter
+   (`RawIOCursor` / `IOCursor` / `RawIOSlice` / `IOSlice`) or a two-resource stream
+   (`pread_io` / `pwrite_io`) — and then the omission is stated in **both** binding
+   module docs and on the docs site, so "not replicated" is always a documented,
+   deliberate choice rather than drift.
 5. **Serializable to and from bytes whenever possible.** Every value type
    round-trips through bytes via `serialize_bytes()` / `deserialize_bytes(bytes)`;
    the only exceptions are live/stream resources (IO handles, HTTP bodies,
