@@ -57,12 +57,19 @@ The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 ## Arrow interop
 
 Every layer converts to and from its Apache Arrow equivalent with a `to_arrow` /
-`from_arrow` pair (`from_arrow` is the exact inverse, refusing a mismatched Arrow
-value with `DataError`): a data type mirrors an `arrow_schema::DataType`, a field an
-`arrow_schema::Field`, and a scalar Arrow's own scalar representation — a one-element
-`arrow_array` array, null when the scalar is null. The `arrow-schema` and
-`arrow-array` subset crates are re-exported from the crate root so downstream code
-uses the exact versions the crate was built against.
+`from_arrow` pair (`from_arrow` is the exact inverse of what `to_arrow` produces,
+refusing a mismatched Arrow value with `DataError`): a data type mirrors an
+`arrow_schema::DataType`, a field an `arrow_schema::Field`, and a scalar Arrow's own
+scalar representation — a one-element `arrow_array` array, null when the scalar is
+null. The `arrow-schema` and `arrow-array` subset crates are re-exported from the
+crate root so downstream code uses the exact versions the crate was built against.
+
+Field metadata is handled in two tiers: an extension-typed Arrow field (one carrying
+an `ARROW:extension:name` metadata entry) is a *different* logical type and is
+refused with `DataError::IncompatibleArrowType`, while any other metadata is not part
+of the model — a field is exactly a name, a data type and a nullability flag — and is
+deliberately dropped on the way in (logged as a `warn` when the `log` cargo feature
+is on; `to_arrow` correspondingly always produces a metadata-free field).
 
 ```rust
 use yggdryl_data::{arrow_array::Array, arrow_schema, Int64, Int64Field, Int64Scalar};

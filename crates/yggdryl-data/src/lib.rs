@@ -22,7 +22,21 @@
 //! `from_arrow`): a data type mirrors an [`arrow_schema::DataType`], a field an
 //! [`arrow_schema::Field`], and a scalar a one-element [`arrow_array`] array. The
 //! `arrow-schema` and `arrow-array` subset crates are re-exported so downstream code
-//! uses the exact versions this crate was built against.
+//! uses the exact versions this crate was built against. Skipped inputs (such as
+//! dropped Arrow field metadata) are logged behind the off-by-default `log` cargo
+//! feature, mirroring `yggdryl-core`.
+
+/// Emits a `log` event when the `log` feature is enabled, and expands to nothing
+/// otherwise (so the crate stays logging-free by default and pays no runtime
+/// cost). Submodules reach it via `crate::log_event!` thanks to the re-export
+/// below.
+macro_rules! log_event {
+    ($level:ident, $($arg:tt)+) => {{
+        #[cfg(feature = "log")]
+        ::log::$level!($($arg)+);
+    }};
+}
+pub(crate) use log_event;
 
 /// The Apache Arrow array layer (`arrow-array`), re-exported so downstream code and
 /// the scalar `to_arrow` / `from_arrow` surface share one version.

@@ -20,6 +20,12 @@ path = "src/lib.rs"
 # builds a one-element `arrow_array` array (Arrow's own scalar representation).
 arrow-schema = { workspace = true }
 arrow-array = { workspace = true }
+# Optional structured logging via the `log` facade (the `log_event!` macro),
+# mirroring yggdryl-core; off by default.
+log = { version = "0.4", optional = true }
+
+[features]
+log = ["dep:log"]
 
 [dev-dependencies]
 # Benchmark harness for the codec / Arrow-interop benches (stable Rust has no

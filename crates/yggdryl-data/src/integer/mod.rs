@@ -107,6 +107,28 @@ macro_rules! int_field {
                 field: &$crate::arrow_schema::Field,
             ) -> Result<Self, $crate::DataError> {
                 <$ty as $crate::RawDataType>::from_arrow(field.data_type())?;
+                // An extension type is a *different* logical type carried in field
+                // metadata — accepting it would silently reinterpret its values.
+                if let Some(extension) = field.metadata().get("ARROW:extension:name") {
+                    return Err($crate::DataError::IncompatibleArrowType {
+                        expected: stringify!($ty).to_string(),
+                        got: format!(
+                            "the extension type \"{extension}\" (stored as {})",
+                            field.data_type()
+                        ),
+                    });
+                }
+                // The model carries name, data type and nullability only; other
+                // metadata is out of scope and dropped (see the trait docs).
+                if !field.metadata().is_empty() {
+                    $crate::log_event!(
+                        warn,
+                        "{}::from_arrow: dropping {} metadata entr(y/ies) from field \"{}\"",
+                        stringify!($field),
+                        field.metadata().len(),
+                        field.name()
+                    );
+                }
                 Ok(Self::new(field.name(), field.is_nullable()))
             }
         }

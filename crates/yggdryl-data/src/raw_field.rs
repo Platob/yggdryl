@@ -35,6 +35,13 @@ use super::{DataError, RawDataType};
 ///         self.nullable
 ///     }
 ///     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
+///         // An extension type is a different logical type riding on metadata.
+///         if let Some(extension) = field.metadata().get("ARROW:extension:name") {
+///             return Err(DataError::IncompatibleArrowType {
+///                 expected: "Int32".to_string(),
+///                 got: format!("the extension type \"{extension}\""),
+///             });
+///         }
 ///         Ok(Column {
 ///             name: field.name().to_string(),
 ///             data_type: Int32::from_arrow(field.data_type())?,
@@ -65,13 +72,23 @@ pub trait RawField<D: RawDataType>: std::fmt::Debug + Send + Sync {
 
     /// The [`arrow_schema::Field`] this field mirrors: same name, data type and
     /// nullability. Defaults to building it from those three accessors.
+    ///
+    /// The model carries exactly those three properties — a field never holds Arrow
+    /// metadata, so the produced `Field` has none.
     fn to_arrow(&self) -> arrow_schema::Field {
         arrow_schema::Field::new(self.name(), self.data_type().to_arrow(), self.is_nullable())
     }
 
     /// Build this field from the [`arrow_schema::Field`] it mirrors — the exact
-    /// inverse of [`to_arrow`](RawField::to_arrow). A field of a different Arrow
-    /// data type errors with [`DataError::IncompatibleArrowType`].
+    /// inverse of [`to_arrow`](RawField::to_arrow) on the metadata-free fields that
+    /// method produces. A field of a different Arrow data type errors with
+    /// [`DataError::IncompatibleArrowType`].
+    ///
+    /// Arrow metadata is handled in two tiers: a field carrying an
+    /// `ARROW:extension:name` entry is a *different* logical type and is refused
+    /// with [`DataError::IncompatibleArrowType`]; any other metadata is not modeled
+    /// (see [`to_arrow`](RawField::to_arrow)) and is deliberately dropped — logged
+    /// as a `warn` when the `log` cargo feature is on.
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError>
     where
         Self: Sized;

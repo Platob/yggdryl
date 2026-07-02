@@ -99,6 +99,32 @@ macro_rules! integer_tests {
             }
 
             #[test]
+            fn arrow_field_metadata_policy() {
+                use std::collections::HashMap;
+
+                // An extension type is a different logical type: refused.
+                let extension = $field::new("id", true).to_arrow().with_metadata(
+                    HashMap::from([(
+                        "ARROW:extension:name".to_string(),
+                        "arrow.uuid".to_string(),
+                    )]),
+                );
+                assert!(matches!(
+                    $field::from_arrow(&extension),
+                    Err(DataError::IncompatibleArrowType { .. })
+                ));
+
+                // Other metadata is not modeled: accepted, and dropped on the way in
+                // (the model carries name, data type and nullability only).
+                let annotated = $field::new("id", true).to_arrow().with_metadata(
+                    HashMap::from([("PARQUET:field_id".to_string(), "7".to_string())]),
+                );
+                let field = $field::from_arrow(&annotated).unwrap();
+                assert_eq!(field, $field::new("id", true));
+                assert!(field.to_arrow().metadata().is_empty());
+            }
+
+            #[test]
             fn scalar_holds_a_value_or_null() {
                 let answer = $scalar::new(42);
                 assert!(!answer.is_null());

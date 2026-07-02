@@ -31,6 +31,13 @@ use super::{DataType, RawField};
 ///         self.nullable
 ///     }
 ///     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
+///         // An extension type is a different logical type riding on metadata.
+///         if let Some(extension) = field.metadata().get("ARROW:extension:name") {
+///             return Err(DataError::IncompatibleArrowType {
+///                 expected: "Int64".to_string(),
+///                 got: format!("the extension type \"{extension}\""),
+///             });
+///         }
 ///         Ok(Column {
 ///             name: field.name().to_string(),
 ///             data_type: Int64::from_arrow(field.data_type())?,

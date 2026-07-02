@@ -1117,6 +1117,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "criterion",
+ "log",
 ]
 
 [[package]]

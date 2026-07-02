@@ -23,7 +23,10 @@ versions).
   `Box<dyn RawDataType>` (`from_arrow`, returning `Self`, is `Self: Sized`).
 - **`RawField<D: RawDataType>`** — a named, nullable column (`name`, `data_type`,
   `is_nullable`); mirrors an `arrow_schema::Field` (`to_arrow` is defaulted from the
-  three accessors).
+  three accessors). The model carries exactly those three properties: `from_arrow`
+  refuses an extension-typed field (`ARROW:extension:name` metadata is a different
+  logical type) and deliberately drops any other Arrow metadata, logging a `warn`
+  when the `log` cargo feature is on.
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value (`data_type`,
   `is_null`, `value` of an associated `Value: ?Sized`); mirrors Arrow's own scalar
   representation, a one-element `arrow_array::ArrayRef`.

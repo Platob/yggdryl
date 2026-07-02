@@ -169,7 +169,13 @@ fn schema(c: &mut Criterion) {
         .map(|i| Int64Field::new(format!("f{i}"), i % 2 == 0).to_arrow())
         .collect();
     group.bench_function("arrow_schema_from_fields", |b| {
-        b.iter(|| black_box(arrow_schema::Schema::new(black_box(fields.clone()))))
+        // `Schema::new` consumes the fields, so clone them *outside* the timing via
+        // `iter_batched` — timing the clone would misattribute ~20-30% of the loop.
+        b.iter_batched(
+            || fields.clone(),
+            |fields| black_box(arrow_schema::Schema::new(fields)),
+            criterion::BatchSize::LargeInput,
+        )
     });
 
     group.finish();
