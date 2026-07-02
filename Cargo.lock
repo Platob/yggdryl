@@ -790,6 +790,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "yggdryl-data"
+version = "0.1.1"
+
+[[package]]
 name = "yggdryl-node"
 version = "0.1.1"
 dependencies = [

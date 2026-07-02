@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-data",
     "bindings/python",
     "bindings/node",
 ]
@@ -10,6 +11,7 @@ members = [
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-data",
 ]
 
 [workspace.package]
@@ -24,6 +26,7 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
+yggdryl-data = { path = "crates/yggdryl-data", version = "0.1.0", default-features = false }
 
 [profile.release]
 lto = true

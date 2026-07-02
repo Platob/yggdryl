@@ -1,0 +1,20 @@
+[package]
+name = "yggdryl-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-centralized data-model layer for yggdryl (data types, fields, scalars)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_data"
+path = "src/lib.rs"
+
+# No dependencies yet: the scaffold is abstract trait definitions. The Arrow subset
+# crates (arrow-schema / arrow-buffer / arrow-array) and yggdryl-core arrive with the
+# first concrete type that needs them.
+[dependencies]

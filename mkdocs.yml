@@ -44,3 +44,4 @@ nav:
   - Positioned I/O: io.md
   - Charset: charset.md
   - Serialization: base.md
+  - Data model: data.md
