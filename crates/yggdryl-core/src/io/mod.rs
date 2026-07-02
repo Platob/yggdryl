@@ -32,6 +32,10 @@ pub use whence::Whence;
 /// }
 ///
 /// impl RawIOBase for Mem {
+///     fn byte_size(&self) -> usize {
+///         self.data.len()
+///     }
+///
 ///     fn pread_byte_array(&self, position: usize, _whence: Whence, size: usize) -> Result<Vec<u8>, IOError> {
 ///         let end = position + size;
 ///         if end > self.data.len() {
@@ -86,9 +90,21 @@ pub use whence::Whence;
 /// assert!(!mem.pread_bit_one(1, Whence::Start)?);
 /// mem.pwrite_bit_one(1, Whence::Start, true)?; // flip bit 1 on
 /// assert_eq!(mem.pread_byte_one(0, Whence::Start)?, 0b1110_0000);
+/// assert_eq!(mem.byte_size(), 1);
+/// assert_eq!(mem.bit_size(), 8);
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 pub trait RawIOBase {
+    /// The resource's total size, in bytes.
+    fn byte_size(&self) -> usize;
+
+    /// The resource's total size, in bits. Defaults to eight times
+    /// [`byte_size`](RawIOBase::byte_size).
+    fn bit_size(&self) -> usize {
+        crate::log_event!(trace, "RawIOBase::bit_size");
+        self.byte_size() * 8
+    }
+
     /// Read one byte at `position` (in bytes) relative to `whence`.
     fn pread_byte_one(&self, position: usize, whence: Whence) -> Result<u8, IOError> {
         crate::log_event!(

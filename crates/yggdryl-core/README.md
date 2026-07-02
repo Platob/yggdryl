@@ -70,7 +70,8 @@ fn first_byte<S: RawIOBase>(store: &mut S) -> Result<u8, yggdryl_core::IOError> 
 
 `IOBase<T>: RawIOBase` layers typed values on top: implement `value_to_bytes` (how a
 `T` becomes bytes) and the typed writes `pwrite_one` / `pwrite_array` come free,
-serializing through it into the raw byte methods.
+serializing through it into the raw byte methods. Both traits report sizes —
+`RawIOBase::byte_size` / `bit_size`, and `IOBase::size` (the number of `T` items).
 
 ```rust
 use yggdryl_core::{IOBase, RawIOBase, Whence};

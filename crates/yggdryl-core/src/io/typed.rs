@@ -19,6 +19,10 @@ use super::{IOError, RawIOBase, Whence};
 /// }
 ///
 /// impl RawIOBase for Mem {
+///     fn byte_size(&self) -> usize {
+///         self.data.len()
+///     }
+///
 ///     fn pread_byte_array(&self, position: usize, _whence: Whence, size: usize) -> Result<Vec<u8>, IOError> {
 ///         self.data.get(position..position + size).map(<[u8]>::to_vec).ok_or_else(|| {
 ///             IOError::OutOfBounds { offset: position + size, len: self.data.len() }
@@ -65,6 +69,10 @@ use super::{IOError, RawIOBase, Whence};
 ///     fn value_to_bytes(&self, value: &u32) -> Vec<u8> {
 ///         value.to_le_bytes().to_vec()
 ///     }
+///
+///     fn size(&self) -> usize {
+///         self.byte_size() / 4 // four bytes per u32
+///     }
 /// }
 ///
 /// let mut mem = Mem::default();
@@ -74,11 +82,15 @@ use super::{IOError, RawIOBase, Whence};
 ///     mem.pread_byte_array(0, Whence::Start, 12)?,
 ///     vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
 /// );
+/// assert_eq!(mem.size(), 3); // three u32 items
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 pub trait IOBase<T>: RawIOBase {
     /// Convert `value` to the bytes that represent it in this resource.
     fn value_to_bytes(&self, value: &T) -> Vec<u8>;
+
+    /// The number of `T` items in the resource.
+    fn size(&self) -> usize;
 
     /// Write one `T` at `position` relative to `whence`, as its bytes.
     fn pwrite_one(&mut self, position: usize, whence: Whence, value: &T) -> Result<(), IOError> {

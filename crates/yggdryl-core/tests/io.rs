@@ -25,6 +25,10 @@ impl Mem {
 }
 
 impl RawIOBase for Mem {
+    fn byte_size(&self) -> usize {
+        self.data.len()
+    }
+
     fn pread_byte_array(
         &self,
         position: usize,
@@ -158,6 +162,19 @@ impl IOBase<u32> for Mem {
     fn value_to_bytes(&self, value: &u32) -> Vec<u8> {
         value.to_le_bytes().to_vec()
     }
+
+    fn size(&self) -> usize {
+        self.byte_size() / 4
+    }
+}
+
+#[test]
+fn sizes_report_bytes_bits_and_items() {
+    let mut mem = Mem::default();
+    mem.pwrite_byte_array(0, Whence::Start, &[0; 8]).unwrap();
+    assert_eq!(mem.byte_size(), 8);
+    assert_eq!(mem.bit_size(), 64); // default: byte_size * 8
+    assert_eq!(mem.size(), 2); // 8 bytes / 4 bytes per u32
 }
 
 #[test]
