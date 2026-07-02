@@ -73,20 +73,23 @@ fn first_byte<S: RawIOBase>(store: &mut S) -> Result<u8, yggdryl_core::IOError> 
 ```
 
 `IOBase<T>: RawIOBase` layers typed values on top: implement `value_to_bytes` (how a
-`T` becomes bytes), `size` and `resize` (in items), and the typed writes
-`pwrite_one` / `pwrite_array` come free, serializing through it into the raw byte
-methods. Both traits report sizes and capacities (`byte_size` / `bit_size`,
+`T` becomes bytes), `size`, `element_width` and `resize` (in items), and the typed
+writes `pwrite_one` / `pwrite_array` come free, serializing through it into the raw
+byte methods. Both traits report sizes and capacities (`byte_size` / `bit_size`,
 `byte_capacity` / `bit_capacity`, `IOBase::size` / `capacity`), support resizing
 (`resize_bytes` / `resize_bits` / `IOBase::resize`, plus capacity hints), and stream
-between resources in chunks with `pread_io` / `pwrite_io` — a large transfer never
-materializes in full.
+between resources in chunks — `pread_raw_io` / `pwrite_raw_io` by bytes and
+`pread_typed_io` / `pwrite_typed_io` by items — so a large transfer never materializes
+in full.
 
 `ByteBuffer` (byte-granular) and `BitBuffer` (exact bit length) are the concrete
 in-memory resources; both are exposed in the Python and Node bindings, along with the
 cursor and slice adapters as concrete per-buffer wrappers (`ByteBufferCursor`,
-`ByteBufferSlice`, and the `BitBuffer` variants). Only the two-resource `pread_io` /
-`pwrite_io` streams stay Rust-only (bindings compose the same effect from the
-byte-array methods). Benchmarks live in `benches/buffers.rs`
+`ByteBufferSlice`, and the `BitBuffer` variants). Two things stay Rust-only: the
+two-resource streams (`pread_raw_io` / `pwrite_raw_io` and the typed `pread_typed_io`
+/ `pwrite_typed_io`; bindings compose the same effect from the byte-array methods) and
+the typed `IOCursor` / `IOSlice` adapters (no exposed resource implements `IOBase`).
+Benchmarks live in `benches/buffers.rs`
 (`cargo bench`).
 
 ```rust

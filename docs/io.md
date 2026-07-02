@@ -337,10 +337,10 @@ not be a multiple of eight. Truncation zeroes the dropped padding bits:
 ## Streaming between resources
 
 !!! info "Rust core only"
-    `pread_io` / `pwrite_io` copy between any two `RawIOBase` resources in 64 KiB
-    chunks, so a large transfer never materializes in full. They borrow two resources
-    at once and stay in the Rust core; a Python or Node caller composes the same
-    effect from `pread_byte_array` + `pwrite_byte_array`.
+    `pread_raw_io` / `pwrite_raw_io` copy **bytes** between any two `RawIOBase`
+    resources in 64 KiB chunks, so a large transfer never materializes in full. They
+    borrow two resources at once and stay in the Rust core; a Python or Node caller
+    composes the same effect from `pread_byte_array` + `pwrite_byte_array`.
 
 ```rust
 use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
@@ -349,13 +349,20 @@ fn main() {
     let source = ByteBuffer::from_bytes(vec![1, 2, 3, 4, 5, 6, 7, 8]);
     let mut sink = ByteBuffer::new();
     // Copy four bytes from source@2 into sink@0, chunked.
-    source.pread_io(2, Whence::Start, 4, &mut sink, 0, Whence::Start).unwrap();
+    source.pread_raw_io(2, Whence::Start, 4, &mut sink, 0, Whence::Start).unwrap();
     assert_eq!(sink.as_bytes(), &[3, 4, 5, 6]);
 }
 ```
 
 The mutable side's start is resolved once against its current size, so `Whence::End`
 stays anchored even while the sink grows during the copy.
+
+`IOBase<T>` adds `pread_typed_io` / `pwrite_typed_io`, the same streams counted in
+**items** rather than bytes: item offsets are scaled by the resource's `element_width`
+and the element-aligned bytes are copied through `pread_raw_io` — no item is
+serialized or deserialized, so it stays an optimized bulk copy (both sides must share
+the element width and byte layout). A non-zero transfer over a resource whose width is
+indeterminate returns `IOError::IndeterminateElementWidth`.
 
 ## The traits
 
@@ -368,7 +375,7 @@ than a concrete buffer.
 The positioned byte/bit surface. Implementors provide the four array primitives
 (`pread_byte_array`, `pwrite_byte_array`, `pread_bit_array`, `pwrite_bit_array`) plus
 `byte_size` and `resize_bytes`; the `*_one` accessors, `bit_size`, the capacities, the
-capacity/`resize_bits` hints, and the `pread_io` / `pwrite_io` streams come free from
+capacity/`resize_bits` hints, and the `pread_raw_io` / `pwrite_raw_io` streams come free from
 defaults. It keeps no cursor, so `Whence::Current` reads as `Whence::Start`.
 
 ### `IOBase<T>`

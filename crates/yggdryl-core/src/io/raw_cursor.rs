@@ -20,7 +20,7 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// [`seek`](Seekable::seek) lands on a byte boundary. Because a read must advance
 /// the cursor through a `&self` method, the position lives behind a [`Cell`].
 ///
-/// The inherited [`pread_io`](RawIOBase::pread_io) / [`pwrite_io`](RawIOBase::pwrite_io)
+/// The inherited [`pread_raw_io`](RawIOBase::pread_raw_io) / [`pwrite_raw_io`](RawIOBase::pwrite_raw_io)
 /// streams address each chunk absolutely, so when a cursor is a stream endpoint use
 /// [`Whence::Start`] or [`Whence::End`]; [`Whence::Current`] is resolved per chunk
 /// and is not meaningful there.

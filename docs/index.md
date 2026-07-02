@@ -84,5 +84,6 @@ identically. Each Rust crate is exposed under its own namespace — currently ju
     `ByteBuffer`, `BitBuffer`, `Whence` and the cursor/slice adapters
     (`ByteBufferCursor`, `ByteBufferSlice`, and the `BitBuffer` variants) are exposed
     in **all three** languages. `Charset`, `Base`, the typed `IOCursor` / `IOSlice`,
-    and the `pread_io` / `pwrite_io` streams are currently **Rust core only** — they
-    gain Python/Node tabs when the bindings expose them.
+    and the two-resource streams (`pread_raw_io` / `pwrite_raw_io` and the typed
+    `pread_typed_io` / `pwrite_typed_io`) are currently **Rust core only** — they gain
+    Python/Node tabs when the bindings expose them.

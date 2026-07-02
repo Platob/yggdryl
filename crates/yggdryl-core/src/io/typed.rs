@@ -82,6 +82,10 @@ use super::{IOCursor, IOError, IOSlice, RawIOBase, Whence};
 ///         self.byte_size() / 4 // four bytes per u32
 ///     }
 ///
+///     fn element_width(&self) -> usize {
+///         4 // fixed width, so typed views and streams work even when empty
+///     }
+///
 ///     fn resize(&mut self, size: usize) -> Result<(), IOError> {
 ///         self.resize_bytes(size * 4)
 ///     }
@@ -99,6 +103,13 @@ use super::{IOCursor, IOError, IOSlice, RawIOBase, Whence};
 ///
 /// mem.resize(4)?; // one more zeroed item
 /// assert_eq!((mem.size(), mem.byte_size()), (4, 16));
+///
+/// // Optimized typed streaming: copy two items into another resource, element-aligned
+/// // and without deserializing them.
+/// let mut sink = Mem::default();
+/// mem.pread_typed_io(0, Whence::Start, 2, &mut sink, 0, Whence::Start)?;
+/// assert_eq!(sink.byte_size(), 8); // two u32 items == eight bytes
+/// assert_eq!(sink.pread_byte_array(0, Whence::Start, 8)?, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 pub trait IOBase<T>: RawIOBase {
@@ -169,6 +180,74 @@ pub trait IOBase<T>: RawIOBase {
             .flat_map(|value| self.value_to_bytes(value))
             .collect();
         self.pwrite_byte_array(position, whence, &bytes)
+    }
+
+    /// Stream `size` items from `self` (at item `position` relative to `whence`) into
+    /// `sink` (at item `sink_position` relative to `sink_whence`).
+    ///
+    /// This is the typed counterpart of
+    /// [`pread_raw_io`](RawIOBase::pread_raw_io): item offsets are scaled to bytes by
+    /// this resource's [`element_width`](IOBase::element_width) and the element-aligned
+    /// bytes are copied in chunks, so a large transfer never materializes in full and
+    /// no item is serialized or deserialized. `sink` must therefore share this
+    /// resource's element width and byte layout. A non-zero `size` over a resource
+    /// whose width is indeterminate returns
+    /// [`IOError::IndeterminateElementWidth`].
+    fn pread_typed_io(
+        &self,
+        position: usize,
+        whence: Whence,
+        size: usize,
+        sink: &mut dyn RawIOBase,
+        sink_position: usize,
+        sink_whence: Whence,
+    ) -> Result<(), IOError> {
+        crate::log_event!(debug, "IOBase::pread_typed_io size={size}");
+        let width = self.element_width();
+        if size != 0 && width == 0 {
+            return Err(IOError::IndeterminateElementWidth);
+        }
+        self.pread_raw_io(
+            position.saturating_mul(width),
+            whence,
+            size.saturating_mul(width),
+            sink,
+            sink_position.saturating_mul(width),
+            sink_whence,
+        )
+    }
+
+    /// Stream `size` items from `source` (at item `source_position` relative to
+    /// `source_whence`) into `self` (at item `position` relative to `whence`).
+    ///
+    /// The typed counterpart of [`pwrite_raw_io`](RawIOBase::pwrite_raw_io): item
+    /// offsets are scaled to bytes by this resource's
+    /// [`element_width`](IOBase::element_width) and the element-aligned bytes are
+    /// copied in chunks. `source` must share this resource's element width and byte
+    /// layout; a non-zero `size` over a resource whose width is indeterminate returns
+    /// [`IOError::IndeterminateElementWidth`].
+    fn pwrite_typed_io(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &dyn RawIOBase,
+        source_position: usize,
+        source_whence: Whence,
+        size: usize,
+    ) -> Result<(), IOError> {
+        crate::log_event!(debug, "IOBase::pwrite_typed_io size={size}");
+        let width = self.element_width();
+        if size != 0 && width == 0 {
+            return Err(IOError::IndeterminateElementWidth);
+        }
+        self.pwrite_raw_io(
+            position.saturating_mul(width),
+            whence,
+            source,
+            source_position.saturating_mul(width),
+            source_whence,
+            size.saturating_mul(width),
+        )
     }
 
     /// Consume this resource into an [`IOCursor`], a moving typed cursor over it

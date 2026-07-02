@@ -31,9 +31,10 @@ type they are looking at from the shape of the code.
    tests, and every task ends with a **coherence check** confirming the three
    surfaces match method-for-method and behave identically (the binding test suites
    are the executable proof). A core item may stay **Rust-only** only when it cannot
-   cross the FFI boundary cleanly: the two-resource `pread_io` / `pwrite_io` streams
-   (they borrow two resources at once) and the typed `IOCursor` / `IOSlice` adapters
-   (no binding resource implements `IOBase` yet). The raw `RawIOCursor` / `RawIOSlice`
+   cross the FFI boundary cleanly: the two-resource streams (`pread_raw_io` /
+   `pwrite_raw_io` and the typed `pread_typed_io` / `pwrite_typed_io`, which borrow
+   two resources at once) and the typed `IOCursor` / `IOSlice` adapters (no binding
+   resource implements `IOBase` yet). The raw `RawIOCursor` / `RawIOSlice`
    adapters, though generic in the core, **are** replicated — as concrete per-buffer
    wrappers (`ByteBufferCursor`, `ByteBufferSlice`, and the `BitBuffer` variants). Any
    such omission is stated in **both** binding module docs and on the docs site, so
@@ -53,8 +54,9 @@ type they are looking at from the shape of the code.
    traits — never against a concrete buffer type or an ad-hoc `Vec<u8>`
    parameter. The one sanctioned byte-slice surface is rule 5's per-type
    `serialize_bytes` / `deserialize_bytes` codec. Transfers between two resources
-   use the chunked `pread_io` / `pwrite_io` streams rather than materializing
-   whole copies.
+   use the chunked streams — `pread_raw_io` / `pwrite_raw_io` by bytes, or
+   `pread_typed_io` / `pwrite_typed_io` by items — rather than materializing whole
+   copies.
 
 ## Workspace layout
 

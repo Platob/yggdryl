@@ -27,7 +27,7 @@ pub use slice::IOSlice;
 pub use typed::IOBase;
 pub use whence::Whence;
 
-/// Bytes copied per chunk by the default `pread_io` / `pwrite_io` streams, so a
+/// Bytes copied per chunk by the default `pread_raw_io` / `pwrite_raw_io` streams, so a
 /// large transfer never materializes in full.
 const STREAM_CHUNK: usize = 64 * 1024;
 
@@ -50,8 +50,8 @@ const STREAM_CHUNK: usize = 64 * 1024;
 /// [`pwrite_bit_array`](RawIOBase::pwrite_bit_array)) plus
 /// [`byte_size`](RawIOBase::byte_size) and
 /// [`resize_bytes`](RawIOBase::resize_bytes); everything else — the `*_one`
-/// accessors, bit sizes, capacities, and the [`pread_io`](RawIOBase::pread_io) /
-/// [`pwrite_io`](RawIOBase::pwrite_io) streams — comes for free from default
+/// accessors, bit sizes, capacities, and the [`pread_raw_io`](RawIOBase::pread_raw_io) /
+/// [`pwrite_raw_io`](RawIOBase::pwrite_raw_io) streams — comes for free from default
 /// implementations.
 ///
 /// ```
@@ -70,7 +70,7 @@ const STREAM_CHUNK: usize = 64 * 1024;
 ///
 /// // Stream into another resource, chunked — no whole-copy materialization.
 /// let mut sink = ByteBuffer::new();
-/// buf.pread_io(0, Whence::Start, 4, &mut sink, 0, Whence::Start)?;
+/// buf.pread_raw_io(0, Whence::Start, 4, &mut sink, 0, Whence::Start)?;
 /// assert_eq!(sink.as_bytes(), buf.as_bytes());
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
@@ -247,7 +247,7 @@ pub trait RawIOBase {
     /// The sink's start is resolved once against its current
     /// [`byte_size`](RawIOBase::byte_size), so `sink_whence` — notably
     /// [`Whence::End`] — stays anchored even while the sink grows during the copy.
-    fn pread_io(
+    fn pread_raw_io(
         &self,
         position: usize,
         whence: Whence,
@@ -256,7 +256,7 @@ pub trait RawIOBase {
         sink_position: usize,
         sink_whence: Whence,
     ) -> Result<(), IOError> {
-        crate::log_event!(debug, "RawIOBase::pread_io size={size}");
+        crate::log_event!(debug, "RawIOBase::pread_raw_io size={size}");
         let sink_start = resolve_byte_start(sink.byte_size(), sink_position, sink_whence)?;
         let mut copied = 0;
         while copied < size {
@@ -275,7 +275,7 @@ pub trait RawIOBase {
     /// `self`'s start is resolved once against its current
     /// [`byte_size`](RawIOBase::byte_size), so `whence` — notably [`Whence::End`] —
     /// stays anchored even while `self` grows during the copy.
-    fn pwrite_io(
+    fn pwrite_raw_io(
         &mut self,
         position: usize,
         whence: Whence,
@@ -284,7 +284,7 @@ pub trait RawIOBase {
         source_whence: Whence,
         size: usize,
     ) -> Result<(), IOError> {
-        crate::log_event!(debug, "RawIOBase::pwrite_io size={size}");
+        crate::log_event!(debug, "RawIOBase::pwrite_raw_io size={size}");
         let start = resolve_byte_start(self.byte_size(), position, whence)?;
         let mut copied = 0;
         while copied < size {

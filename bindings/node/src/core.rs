@@ -3,10 +3,12 @@
 //! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface, and
 //! `ByteBufferCursor` / `BitBufferCursor` (a moving cursor) and `ByteBufferSlice` /
 //! `BitBufferSlice` (a bounded byte window) wrap the core `RawIOCursor` / `RawIOSlice`
-//! adapters over a copy of a buffer's bytes. Only the `pread_io` / `pwrite_io`
-//! streams stay Rust-only: they borrow two resources at once, which napi cannot
-//! borrow-check across the FFI boundary — a JS caller composes the same effect from
-//! `preadByteArray` + `pwriteByteArray`.
+//! adapters over a copy of a buffer's bytes. Two things stay Rust-only: the
+//! two-resource streams (`pread_raw_io` / `pwrite_raw_io` and the typed
+//! `pread_typed_io` / `pwrite_typed_io`), which borrow two resources at once — napi
+//! cannot borrow-check that across the FFI boundary, so a JS caller composes the same
+//! effect from `preadByteArray` + `pwriteByteArray` — and the typed `IOCursor` /
+//! `IOSlice` adapters (no exposed resource implements `IOBase`).
 
 use napi::bindgen_prelude::{Buffer, Error, Result};
 use napi_derive::napi;

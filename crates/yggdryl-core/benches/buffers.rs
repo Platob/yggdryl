@@ -75,20 +75,20 @@ fn stream(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(STREAM_N as u64));
 
     let source = ByteBuffer::from_bytes(vec![0x5Au8; STREAM_N]);
-    group.bench_function("pread_io_byte_to_byte", |b| {
+    group.bench_function("pread_raw_io_byte_to_byte", |b| {
         b.iter(|| {
             let mut sink = ByteBuffer::new();
             source
-                .pread_io(0, Whence::Start, STREAM_N, &mut sink, 0, Whence::Start)
+                .pread_raw_io(0, Whence::Start, STREAM_N, &mut sink, 0, Whence::Start)
                 .unwrap();
             sink
         })
     });
 
-    group.bench_function("pwrite_io_byte_from_byte", |b| {
+    group.bench_function("pwrite_raw_io_byte_from_byte", |b| {
         b.iter(|| {
             let mut sink = ByteBuffer::new();
-            sink.pwrite_io(0, Whence::Start, &source, 0, Whence::Start, STREAM_N)
+            sink.pwrite_raw_io(0, Whence::Start, &source, 0, Whence::Start, STREAM_N)
                 .unwrap();
             sink
         })

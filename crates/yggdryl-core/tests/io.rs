@@ -172,6 +172,10 @@ impl IOBase<u32> for Mem {
         self.byte_size() / 4
     }
 
+    fn element_width(&self) -> usize {
+        4
+    }
+
     fn resize(&mut self, size: usize) -> Result<(), IOError> {
         self.resize_bytes(size * 4)
     }
@@ -238,12 +242,49 @@ fn stream_copy_between_ios() {
     // Read a slice of `source` into `sink`.
     let mut sink = Mem::default();
     source
-        .pread_io(2, Whence::Start, 4, &mut sink, 0, Whence::Start)
+        .pread_raw_io(2, Whence::Start, 4, &mut sink, 0, Whence::Start)
         .unwrap();
     assert_eq!(sink.data, vec![3, 4, 5, 6]);
 
     // And append from `source` into `sink` via End, resolved once against its size.
-    sink.pwrite_io(0, Whence::End, &source, 0, Whence::Start, 2)
+    sink.pwrite_raw_io(0, Whence::End, &source, 0, Whence::Start, 2)
         .unwrap();
     assert_eq!(sink.data, vec![3, 4, 5, 6, 1, 2]);
+}
+
+#[test]
+fn typed_stream_copies_items_element_aligned() {
+    let mut source = Mem::default();
+    source
+        .pwrite_array(
+            0,
+            Whence::Start,
+            &[0x0403_0201u32, 0x0807_0605, 0x0c0b_0a09],
+        )
+        .unwrap(); // three u32s, 12 bytes
+
+    // Read two items (item positions/counts) into a fresh sink.
+    let mut sink = Mem::default();
+    source
+        .pread_typed_io(1, Whence::Start, 2, &mut sink, 0, Whence::Start)
+        .unwrap();
+    assert_eq!(sink.data, vec![5, 6, 7, 8, 9, 10, 11, 12]); // items 1 and 2
+
+    // Append one item into the typed sink via End (item units).
+    sink.pwrite_typed_io(0, Whence::End, &source, 0, Whence::Start, 1)
+        .unwrap();
+    assert_eq!(sink.data, vec![5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4]);
+    assert_eq!(sink.size(), 3);
+}
+
+#[test]
+fn typed_stream_into_empty_sink_needs_a_width() {
+    // A cursorless Mem overrides element_width, so a fresh sink still knows its width.
+    let mut source = Mem::default();
+    source.pwrite_one(0, Whence::Start, &7u32).unwrap();
+    let mut sink = Mem::default();
+    sink.pwrite_typed_io(0, Whence::Start, &source, 0, Whence::Start, 1)
+        .unwrap();
+    assert_eq!(sink.size(), 1);
+    assert_eq!(sink.data, vec![7, 0, 0, 0]);
 }

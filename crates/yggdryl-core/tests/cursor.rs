@@ -121,7 +121,7 @@ fn a_cursor_can_be_a_stream_sink() {
     let mut sink = RawIOCursor::new(ByteBuffer::new());
     // Streaming writes at absolute Start; it still lands the bytes correctly.
     source
-        .pread_io(1, Whence::Start, 4, &mut sink, 0, Whence::Start)
+        .pread_raw_io(1, Whence::Start, 4, &mut sink, 0, Whence::Start)
         .unwrap();
     assert_eq!(sink.get_ref().as_bytes(), &[2, 3, 4, 5]);
 }

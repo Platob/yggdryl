@@ -3,9 +3,12 @@
 //! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface, and
 //! `ByteBufferCursor` / `BitBufferCursor` (a moving cursor) and `ByteBufferSlice` /
 //! `BitBufferSlice` (a bounded byte window) wrap the core `RawIOCursor` / `RawIOSlice`
-//! adapters over a copy of a buffer's bytes. Only the `pread_io` / `pwrite_io`
-//! streams stay Rust-only (they borrow two resources at once); a Python caller
-//! composes the same effect from `pread_byte_array` + `pwrite_byte_array`.
+//! adapters over a copy of a buffer's bytes. Two things stay Rust-only: the
+//! two-resource streams (`pread_raw_io` / `pwrite_raw_io` and the typed
+//! `pread_typed_io` / `pwrite_typed_io`), which borrow two resources at once — a
+//! Python caller composes the same effect from `pread_byte_array` +
+//! `pwrite_byte_array` — and the typed `IOCursor` / `IOSlice` adapters (no exposed
+//! resource implements `IOBase`).
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

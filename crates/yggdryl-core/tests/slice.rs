@@ -215,6 +215,18 @@ fn typed_slice_resize_errors_when_the_width_is_indeterminate() {
     IOBase::<u8>::resize(&mut slice, 0).unwrap();
 }
 
+#[test]
+fn typed_stream_errors_when_the_width_is_indeterminate() {
+    // Streaming items into an empty resource with the default element_width can't
+    // convert the item count to bytes.
+    let source = ByteBuffer::from_bytes(vec![1, 2, 3]);
+    let mut sink = DefaultWidth::default();
+    let error = sink
+        .pwrite_typed_io(0, Whence::Start, &source, 0, Whence::Start, 1)
+        .unwrap_err();
+    assert!(matches!(error, IOError::IndeterminateElementWidth));
+}
+
 // ---- cursor / slice factory methods ----
 
 #[test]

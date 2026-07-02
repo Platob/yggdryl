@@ -147,12 +147,12 @@ fn stream_copy_across_buffer_types() {
     let source = ByteBuffer::from_bytes(vec![1, 2, 3, 4]);
     let mut sink = BitBuffer::new();
     source
-        .pread_io(1, Whence::Start, 3, &mut sink, 0, Whence::Start)
+        .pread_raw_io(1, Whence::Start, 3, &mut sink, 0, Whence::Start)
         .unwrap();
     assert_eq!(sink.as_bytes(), &[2, 3, 4]);
 
     let mut back = ByteBuffer::new();
-    back.pwrite_io(0, Whence::Start, &sink, 0, Whence::Start, 3)
+    back.pwrite_raw_io(0, Whence::Start, &sink, 0, Whence::Start, 3)
         .unwrap();
     assert_eq!(back.as_bytes(), &[2, 3, 4]);
 }
@@ -164,7 +164,7 @@ fn stream_copy_larger_than_one_chunk() {
     let source = ByteBuffer::from_bytes(payload.clone());
     let mut sink = ByteBuffer::new();
     source
-        .pread_io(0, Whence::Start, payload.len(), &mut sink, 0, Whence::Start)
+        .pread_raw_io(0, Whence::Start, payload.len(), &mut sink, 0, Whence::Start)
         .unwrap();
     assert_eq!(sink.as_bytes(), payload.as_slice());
 }
@@ -217,7 +217,7 @@ fn stream_append_via_end_stays_anchored_while_growing() {
     let mut sink = ByteBuffer::from_bytes(vec![9, 9]);
     // End is resolved once (to 2) before the chunked copy starts growing the sink.
     source
-        .pread_io(0, Whence::Start, 200_000, &mut sink, 0, Whence::End)
+        .pread_raw_io(0, Whence::Start, 200_000, &mut sink, 0, Whence::End)
         .unwrap();
     assert_eq!(sink.byte_size(), 200_002);
     assert_eq!(&sink.as_bytes()[..2], &[9, 9]);
