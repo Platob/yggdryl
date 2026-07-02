@@ -143,10 +143,14 @@ fn optional_scalar_holds_a_value_or_the_null_variant() {
     assert_eq!(OptionalInt64::from(Some(Int64Scalar::new(42))), answer);
     assert_eq!(OptionalInt64::from(None::<Int64Scalar>), missing);
 
-    // A null *inner* scalar is still null: the two representations agree.
+    // A null *inner* scalar normalizes to the null variant: null is one state, so
+    // observationally identical scalars are also *equal*.
     let inner_null = OptionalInt64::new(Int64Scalar::null());
     assert!(inner_null.is_null());
     assert_eq!(inner_null.value(), None);
+    assert_eq!(inner_null.scalar(), None); // normalized away
+    assert_eq!(inner_null, OptionalInt64::null());
+    assert_eq!(OptionalInt64::from(Some(Int64Scalar::null())), missing);
 }
 
 #[test]
@@ -188,7 +192,8 @@ fn optional_scalar_arrow_round_trips_both_variants() {
     assert_eq!(union_array.type_id(0), Union::NULL_TYPE_ID);
     assert_eq!(OptionalInt64::from_arrow(arrow.as_ref()).unwrap(), missing);
 
-    // A null inner scalar normalizes to the null variant on the way out.
+    // A null inner scalar normalized at construction: the round trip is the exact
+    // inverse — full equality, not just agreement on nullness.
     let inner_null = OptionalInt64::new(Int64Scalar::null());
     let arrow = inner_null.to_arrow();
     let union_array = arrow
@@ -196,7 +201,10 @@ fn optional_scalar_arrow_round_trips_both_variants() {
         .downcast_ref::<arrow_array::UnionArray>()
         .unwrap();
     assert_eq!(union_array.type_id(0), Union::NULL_TYPE_ID);
-    assert!(OptionalInt64::from_arrow(arrow.as_ref()).unwrap().is_null());
+    assert_eq!(
+        OptionalInt64::from_arrow(arrow.as_ref()).unwrap(),
+        inner_null
+    );
 }
 
 #[test]

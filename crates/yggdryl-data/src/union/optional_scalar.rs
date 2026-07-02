@@ -77,12 +77,14 @@ pub struct OptionalScalar<D, S> {
 }
 
 impl<D: RawDataType + Default, S: RawScalar<D>> OptionalScalar<D, S> {
-    /// A scalar holding the value variant `scalar`. A null inner scalar still
-    /// [`is_null`](RawScalar::is_null) — the two representations agree.
+    /// A scalar holding the value variant `scalar`. A null inner scalar
+    /// *normalizes to the null variant* — the two representations of null are one
+    /// state, so equality, [`scalar`](OptionalScalar::scalar) (which then answers
+    /// `None`) and the Arrow round trip all agree.
     pub fn new(scalar: S) -> Self {
         Self {
             data_type: OnceLock::new(),
-            value: Some(scalar),
+            value: (!scalar.is_null()).then_some(scalar),
             value_type: PhantomData,
         }
     }
