@@ -1,30 +1,37 @@
-//! Tests for the `IOBase` positioned-I/O trait.
+//! Tests for the `IOBase` positioned byte- and bit-I/O trait.
 
 use yggdryl_core::{IOBase, IOError, Whence};
 
-/// A tiny in-memory byte store implementing only the two array primitives.
+/// A byte buffer; bits are addressed MSB-first within each byte.
 #[derive(Default)]
 struct Mem {
     data: Vec<u8>,
 }
 
 impl Mem {
-    fn offset(&self, position: usize, whence: Whence) -> usize {
+    fn byte_offset(&self, position: usize, whence: Whence) -> usize {
         match whence {
             Whence::End => self.data.len() + position,
+            _ => position, // Start (and, for this toy, Current) address from the front
+        }
+    }
+
+    fn bit_offset(&self, position: usize, whence: Whence) -> usize {
+        match whence {
+            Whence::End => self.data.len() * 8 + position,
             _ => position,
         }
     }
 }
 
-impl IOBase<u8> for Mem {
-    fn pread_array(
+impl IOBase for Mem {
+    fn pread_byte_array(
         &self,
         position: usize,
         whence: Whence,
         size: usize,
     ) -> Result<Vec<u8>, IOError> {
-        let start = self.offset(position, whence);
+        let start = self.byte_offset(position, whence);
         let end = start + size;
         if end > self.data.len() {
             return Err(IOError::OutOfBounds {
@@ -35,13 +42,13 @@ impl IOBase<u8> for Mem {
         Ok(self.data[start..end].to_vec())
     }
 
-    fn pwrite_array(
+    fn pwrite_byte_array(
         &mut self,
         position: usize,
         whence: Whence,
         values: &[u8],
     ) -> Result<(), IOError> {
-        let start = self.offset(position, whence);
+        let start = self.byte_offset(position, whence);
         let end = start + values.len();
         if end > self.data.len() {
             self.data.resize(end, 0);
@@ -49,34 +56,99 @@ impl IOBase<u8> for Mem {
         self.data[start..end].copy_from_slice(values);
         Ok(())
     }
+
+    fn pread_bit_array(
+        &self,
+        position: usize,
+        whence: Whence,
+        size: usize,
+    ) -> Result<Vec<bool>, IOError> {
+        let start = self.bit_offset(position, whence);
+        let total = self.data.len() * 8;
+        if start + size > total {
+            return Err(IOError::OutOfBounds {
+                offset: start + size,
+                len: total,
+            });
+        }
+        Ok((0..size)
+            .map(|i| {
+                let idx = start + i;
+                (self.data[idx / 8] >> (7 - idx % 8)) & 1 == 1
+            })
+            .collect())
+    }
+
+    fn pwrite_bit_array(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        values: &[bool],
+    ) -> Result<(), IOError> {
+        let start = self.bit_offset(position, whence);
+        let needed = (start + values.len()).div_ceil(8);
+        if needed > self.data.len() {
+            self.data.resize(needed, 0);
+        }
+        for (i, &bit) in values.iter().enumerate() {
+            let idx = start + i;
+            let mask = 1u8 << (7 - idx % 8);
+            if bit {
+                self.data[idx / 8] |= mask;
+            } else {
+                self.data[idx / 8] &= !mask;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[test]
-fn array_round_trip_and_append() {
+fn byte_array_round_trip_and_append() {
     let mut mem = Mem::default();
-    mem.pwrite_array(0, Whence::Start, &[1, 2, 3]).unwrap();
-    mem.pwrite_array(0, Whence::End, &[4, 5]).unwrap(); // append at the end
+    mem.pwrite_byte_array(0, Whence::Start, &[1, 2, 3]).unwrap();
+    mem.pwrite_byte_array(0, Whence::End, &[4, 5]).unwrap(); // append at the end
     assert_eq!(
-        mem.pread_array(0, Whence::Start, 5).unwrap(),
+        mem.pread_byte_array(0, Whence::Start, 5).unwrap(),
         vec![1, 2, 3, 4, 5]
     );
 }
 
 #[test]
-fn single_element_defaults_delegate_to_arrays() {
+fn byte_one_defaults_delegate_to_arrays() {
     let mut mem = Mem::default();
-    mem.pwrite_array(0, Whence::Start, &[0; 4]).unwrap();
-    mem.pwrite_one(1, Whence::Start, 9).unwrap();
-    assert_eq!(mem.pread_one(1, Whence::Start).unwrap(), 9);
-    assert_eq!(
-        mem.pread_array(0, Whence::Start, 4).unwrap(),
-        vec![0, 9, 0, 0]
-    );
+    mem.pwrite_byte_array(0, Whence::Start, &[0; 3]).unwrap();
+    mem.pwrite_byte_one(1, Whence::Start, 9).unwrap();
+    assert_eq!(mem.pread_byte_one(1, Whence::Start).unwrap(), 9);
 }
 
 #[test]
-fn out_of_bounds_read_errors() {
+fn bit_array_round_trips_msb_first() {
+    let mut mem = Mem::default();
+    mem.pwrite_bit_array(0, Whence::Start, &[true, false, true, true])
+        .unwrap();
+    assert_eq!(
+        mem.pread_bit_array(0, Whence::Start, 4).unwrap(),
+        vec![true, false, true, true]
+    );
+    // MSB-first: bits 0,2,3 set => 0b1011_0000.
+    assert_eq!(mem.pread_byte_one(0, Whence::Start).unwrap(), 0b1011_0000);
+}
+
+#[test]
+fn bit_one_defaults_are_msb_first() {
+    let mut mem = Mem::default();
+    mem.pwrite_byte_array(0, Whence::Start, &[0b1000_0000])
+        .unwrap();
+    assert!(mem.pread_bit_one(0, Whence::Start).unwrap());
+    assert!(!mem.pread_bit_one(1, Whence::Start).unwrap());
+    mem.pwrite_bit_one(3, Whence::Start, true).unwrap();
+    assert_eq!(mem.pread_byte_one(0, Whence::Start).unwrap(), 0b1001_0000);
+}
+
+#[test]
+fn out_of_bounds_byte_read_errors() {
     let mem = Mem::default();
-    let error = mem.pread_one(0, Whence::Start).unwrap_err();
+    let error = mem.pread_byte_one(0, Whence::Start).unwrap_err();
     assert!(matches!(error, IOError::OutOfBounds { .. }));
 }
