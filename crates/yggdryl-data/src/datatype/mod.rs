@@ -10,6 +10,7 @@
 //!
 //! Concrete types land one file per type: [`Int64`] and [`Int64Scalar`] are the first.
 
+mod data_type_id;
 mod error;
 mod raw_data_type;
 mod raw_field;
@@ -26,6 +27,7 @@ mod primitive;
 mod int64;
 mod int64_scalar;
 
+pub use data_type_id::DataTypeId;
 pub use error::DataError;
 pub use raw_data_type::RawDataType;
 pub use raw_field::RawField;

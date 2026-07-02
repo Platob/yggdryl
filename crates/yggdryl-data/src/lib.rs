@@ -19,6 +19,6 @@
 
 mod datatype;
 pub use datatype::{
-    DataError, DataType, Field, Int64, Int64Scalar, Logical, Nested, Primitive, RawDataType,
-    RawField, RawScalar, Scalar,
+    DataError, DataType, DataTypeId, Field, Int64, Int64Scalar, Logical, Nested, Primitive,
+    RawDataType, RawField, RawScalar, Scalar,
 };

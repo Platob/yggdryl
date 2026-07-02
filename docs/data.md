@@ -88,3 +88,24 @@ How a type is shaped (each refines `RawDataType`):
   `int64`; `storage()` returns the backing `RawDataType`.
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`);
   `child_count()` reports how many.
+
+## Type ids
+
+`DataTypeId` is a `Copy` tag with one variant per Arrow type — independent of any
+parameters — used to switch on or group types cheaply. `DataTypeId::ALL` lists every
+id; each carries its `name`, its Arrow C Data Interface `arrow_format` (static for
+parameterless types, `None` for parameterized/logical ones), and the `is_primitive` /
+`is_nested` classification.
+
+```rust
+use yggdryl_data::DataTypeId;
+
+fn main() {
+    assert_eq!(DataTypeId::Int64.name(), "int64");
+    assert_eq!(DataTypeId::Int64.arrow_format(), Some("l"));
+    assert!(DataTypeId::Int64.is_primitive());
+    assert!(DataTypeId::Struct.is_nested());
+    assert_eq!(DataTypeId::Decimal128.arrow_format(), None); // parameterized
+    assert!(DataTypeId::ALL.contains(&DataTypeId::Utf8));
+}
+```

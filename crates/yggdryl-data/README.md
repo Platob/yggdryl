@@ -38,6 +38,12 @@ How a type is shaped (each refines `RawDataType`).
   `int64`).
 - **`Nested`** — a type composed of child fields (`struct`, `list`, `map`).
 
+## Type ids
+
+`DataTypeId` is a `Copy` classifier with one variant per Arrow type (independent of
+parameters). `DataTypeId::ALL` enumerates every id; each has a `name`, its parameterless
+Arrow `arrow_format` (or `None`), and `is_primitive` / `is_nested` predicates.
+
 ## First concrete case
 
 ```rust
