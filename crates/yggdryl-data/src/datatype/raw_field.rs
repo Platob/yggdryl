@@ -8,11 +8,14 @@ use super::RawDataType;
 /// It pairs a [`name`](RawField::name) with a [`data_type`](RawField::data_type) of
 /// type `D` and a [`is_nullable`](RawField::is_nullable) flag, so a schema is a
 /// sequence of fields. It is parameterised by the data type `D` (rather than boxing
-/// it) so the concrete type is preserved for zero-cost, monomorphised access.
+/// it) so the concrete type is preserved for zero-cost, monomorphised access, and
+/// carries `Debug + Send + Sync` so a schema is printable and shareable across
+/// threads and FFI.
 ///
 /// ```
 /// use yggdryl_data::{RawDataType, RawField};
 ///
+/// #[derive(Debug)]
 /// struct Int32;
 /// impl RawDataType for Int32 {
 ///     fn name(&self) -> &str { "int32" }
@@ -20,6 +23,7 @@ use super::RawDataType;
 ///     fn byte_width(&self) -> Option<usize> { Some(4) }
 /// }
 ///
+/// #[derive(Debug)]
 /// struct Column {
 ///     name: String,
 ///     data_type: Int32,
@@ -43,7 +47,7 @@ use super::RawDataType;
 /// assert_eq!(id.data_type().name(), "int32");
 /// assert!(!id.is_nullable());
 /// ```
-pub trait RawField<D: RawDataType> {
+pub trait RawField<D: RawDataType>: std::fmt::Debug + Send + Sync {
     /// The field's name.
     fn name(&self) -> &str;
 

@@ -4,11 +4,21 @@
 //! `yggdryl-core`. It defines the physical type system — data types, fields and
 //! scalars — with zero-copy FFI and Arrow interop in mind.
 //!
-//! This is the scaffold: the abstract base traits [`RawDataType`], [`RawField`] and
-//! [`RawScalar`] that concrete types (`Int32`, `Utf8`, `Boolean`, …), their scalars
-//! and their Arrow bridges implement as the layer grows. Add each new type in its own
-//! module file under `datatype/`, re-exported at the crate root — following the rules
-//! in `CLAUDE.md`.
+//! The type system comes in three layers of traits, each re-exported at the crate
+//! root:
+//!
+//! - The **untyped base** [`RawDataType`], [`RawField`] and [`RawScalar`] — the
+//!   FFI-facing descriptors.
+//! - The **typed** [`DataType`], [`Field`] and [`Scalar`], parameterised by a native
+//!   Rust type `T` (the [`DataType`] codec bridges a `T` to and from Arrow bytes).
+//! - The **categories** [`Primitive`], [`Logical`] and [`Nested`] describing a type's
+//!   shape.
+//!
+//! Concrete types land one file per type under `datatype/`; [`Int64`] and
+//! [`Int64Scalar`] are the first. Add more following the rules in `CLAUDE.md`.
 
 mod datatype;
-pub use datatype::{RawDataType, RawField, RawScalar};
+pub use datatype::{
+    DataError, DataType, Field, Int64, Int64Scalar, Logical, Nested, Primitive, RawDataType,
+    RawField, RawScalar, Scalar,
+};

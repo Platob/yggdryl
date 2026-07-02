@@ -11,12 +11,18 @@
 /// [`RawField`](super::RawField) and [`RawScalar`](super::RawScalar) build on it.
 ///
 /// Following the FFI rules, it carries no lifetime parameters; the one borrow —
-/// [`name`](RawDataType::name) — is a `&self` accessor that never escapes.
+/// [`name`](RawDataType::name) — is a `&self` accessor that never escapes. It is
+/// `Debug` (schema printing and diagnostics), `Send + Sync` (types are shared
+/// metadata handed across threads and over FFI), and object-safe, so a heterogeneous
+/// schema can hold `Box<dyn RawDataType>`. Type *equality* is intentionally not a
+/// supertrait — comparing [`arrow_format`](RawDataType::arrow_format) keeps the trait
+/// object-safe — so a `PartialEq` bound is avoided.
 ///
 /// ```
 /// use yggdryl_data::RawDataType;
 ///
 /// // A minimal fixed-width primitive.
+/// #[derive(Debug)]
 /// struct Int32;
 ///
 /// impl RawDataType for Int32 {
@@ -36,7 +42,7 @@
 /// assert_eq!(Int32.byte_width(), Some(4));
 /// assert_eq!(Int32.bit_width(), Some(32)); // default: eight times the byte width
 /// ```
-pub trait RawDataType {
+pub trait RawDataType: std::fmt::Debug + Send + Sync {
     /// A stable, lowercase name identifying this type, e.g. `"int32"`, `"utf8"`,
     /// `"boolean"`.
     fn name(&self) -> &str;

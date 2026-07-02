@@ -1,91 +1,90 @@
 # Data model
 
-!!! note "Rust core only — scaffold"
+!!! note "Rust core only"
     The `yggdryl-data` crate is the Apache Arrow-centralized **data-model layer**,
-    built on `yggdryl-core`. It currently holds only the abstract base traits; concrete
-    types (`Int32`, `Utf8`, `Boolean`, …), their scalars, and the Arrow C Data
-    Interface bridges land here as the layer grows. It gains Python and Node tabs when
-    the bindings expose it.
+    built on `yggdryl-core`. It defines the physical type system — data types, fields
+    and scalars — for zero-copy FFI and Arrow interop, and gains Python and Node tabs
+    when the bindings expose it. `Int64` and `Int64Scalar` are the first concrete
+    types; more land one file per type as the layer grows.
 
-Three base traits describe the physical type system, designed for zero-copy FFI and
-Arrow interop. None carries a lifetime parameter (FFI-clean); parameterising by the
-data type `D` keeps concrete types monomorphised for zero-cost access.
+The type system is three layers of traits. None carries a lifetime parameter
+(FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
+shareable across threads and FFI, and `RawDataType` is object-safe for
+`Box<dyn RawDataType>` schemas.
 
-## `RawDataType`
+## The first concrete type: `Int64`
 
-A physical type descriptor: its `name`, its Arrow C Data Interface `arrow_format`
-string, and the fixed `byte_width` / `bit_width` of one value (or `None` for a
-variable-width type such as `utf8`, or a sub-byte type such as `boolean`).
+`Int64` is a fixed-width [primitive](#categories) whose native Rust type is `i64`,
+stored little-endian in eight bytes (Arrow C Data Interface format `"l"`):
 
 ```rust
-use yggdryl_data::RawDataType;
-
-struct Int32;
-
-impl RawDataType for Int32 {
-    fn name(&self) -> &str {
-        "int32"
-    }
-    fn arrow_format(&self) -> String {
-        "i".to_string() // Arrow C Data Interface format for int32
-    }
-    fn byte_width(&self) -> Option<usize> {
-        Some(4)
-    }
-}
+use yggdryl_data::{DataType, Int64, Int64Scalar, Primitive, RawDataType, RawScalar};
 
 fn main() {
-    assert_eq!(Int32.arrow_format(), "i");
-    assert_eq!(Int32.byte_width(), Some(4));
-    assert_eq!(Int32.bit_width(), Some(32)); // default: eight times the byte width
+    // A physical type descriptor.
+    assert_eq!(Int64.name(), "int64");
+    assert_eq!(Int64.arrow_format(), "l");
+    assert_eq!((Int64.byte_width(), Int64.bit_width()), (Some(8), Some(64)));
+
+    // DataType<i64>: the codec bridging i64 to and from Arrow bytes.
+    assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
+    assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+
+    // Int64Scalar: a single i64 value, or null.
+    let scalar = Int64Scalar::new(42);
+    assert_eq!(scalar.value(), Some(&42));
+    assert!(Int64Scalar::null().is_null());
 }
 ```
 
-## `RawField<D: RawDataType>`
+## The trait layers
 
-A named, nullable column of a data type `D` — `name`, `data_type`, `is_nullable` —
-mirroring an Arrow `Field`. A schema is a sequence of fields.
+### Untyped base
 
-## `RawScalar<D: RawDataType>`
+- **`RawDataType`** — a physical type descriptor: `name`, the Arrow C Data Interface
+  `arrow_format` string, and fixed `byte_width` / `bit_width` (`None` for variable or
+  nested types).
+- **`RawField<D: RawDataType>`** — a named, nullable column: `name`, `data_type`,
+  `is_nullable`.
+- **`RawScalar<D: RawDataType>`** — a single, possibly-null value: `data_type`,
+  `is_null`, `value` of an associated `Value: ?Sized`.
 
-A single, possibly-null value of a data type `D` — `data_type`, `is_null`, and the
-native `value` (of an associated `Value` type) when non-null — mirroring an Arrow
-`Scalar`.
+### Typed
+
+The same, tied to a native Rust type `T`:
+
+- **`DataType<T>: RawDataType`** — adds the byte codec `native_to_bytes` /
+  `native_from_bytes` (a length mismatch on decode returns
+  `DataError::InvalidByteLength`).
+- **`Field<T>: RawField<Self::Type>`** — a field whose data type is a `DataType<T>`.
+- **`Scalar<T>: RawScalar<Self::Type, Value = T>`** — a scalar whose value is `T`.
 
 ```rust
-use yggdryl_data::{RawDataType, RawScalar};
+use yggdryl_data::{DataType, Int64, Primitive, RawDataType, RawScalar, Scalar};
 
-struct Int32;
-impl RawDataType for Int32 {
-    fn name(&self) -> &str { "int32" }
-    fn arrow_format(&self) -> String { "i".to_string() }
-    fn byte_width(&self) -> Option<usize> { Some(4) }
+// Generic code composes across the layers.
+fn first_byte<D: DataType<i64>>(data_type: &D, value: i64) -> u8 {
+    data_type.native_to_bytes(&value)[0]
 }
-
-struct Int32Scalar {
-    data_type: Int32,
-    value: Option<i32>,
+fn is_null<S: Scalar<i64>>(scalar: &S) -> bool {
+    scalar.is_null()
 }
-
-impl RawScalar<Int32> for Int32Scalar {
-    type Value = i32;
-    fn data_type(&self) -> &Int32 {
-        &self.data_type
-    }
-    fn is_null(&self) -> bool {
-        self.value.is_none()
-    }
-    fn value(&self) -> Option<&i32> {
-        self.value.as_ref()
-    }
+fn width<P: Primitive>(primitive: &P) -> Option<usize> {
+    primitive.byte_width()
 }
 
 fn main() {
-    let answer = Int32Scalar { data_type: Int32, value: Some(42) };
-    assert_eq!(answer.data_type().name(), "int32");
-    assert_eq!(answer.value(), Some(&42));
-
-    let missing = Int32Scalar { data_type: Int32, value: None };
-    assert!(missing.is_null());
+    assert_eq!(first_byte(&Int64, 5), 5);
+    assert_eq!(width(&Int64), Some(8));
 }
 ```
+
+### Categories
+
+How a type is shaped (each refines `RawDataType`):
+
+- **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
+- **`Logical`** — a type layered over a physical `Storage` type, e.g. a timestamp over
+  `int64`; `storage()` returns the backing `RawDataType`.
+- **`Nested`** — a type composed of child fields (`struct`, `list`, `map`);
+  `child_count()` reports how many.

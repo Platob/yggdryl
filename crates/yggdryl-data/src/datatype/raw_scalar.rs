@@ -10,11 +10,15 @@ use super::RawDataType;
 /// [`value`](RawScalar::value) (of the associated [`Value`](RawScalar::Value) type)
 /// when non-null. Parameterising by `D` keeps the concrete type available for
 /// zero-cost access; the associated `Value` names the in-memory representation a
-/// concrete scalar holds.
+/// concrete scalar holds. It shares [`RawDataType`]'s `Debug + Send + Sync` bounds so
+/// scalar values are printable and shareable across threads and FFI. The associated
+/// [`Value`](RawScalar::Value) is `?Sized`, so a string scalar can expose
+/// `Value = str`.
 ///
 /// ```
 /// use yggdryl_data::{RawDataType, RawScalar};
 ///
+/// #[derive(Debug)]
 /// struct Int32;
 /// impl RawDataType for Int32 {
 ///     fn name(&self) -> &str { "int32" }
@@ -22,6 +26,7 @@ use super::RawDataType;
 ///     fn byte_width(&self) -> Option<usize> { Some(4) }
 /// }
 ///
+/// #[derive(Debug)]
 /// struct Int32Scalar {
 ///     data_type: Int32,
 ///     value: Option<i32>,
@@ -49,9 +54,10 @@ use super::RawDataType;
 /// assert!(missing.is_null());
 /// assert_eq!(missing.value(), None);
 /// ```
-pub trait RawScalar<D: RawDataType> {
-    /// The native Rust representation this scalar holds when non-null.
-    type Value;
+pub trait RawScalar<D: RawDataType>: std::fmt::Debug + Send + Sync {
+    /// The native Rust representation this scalar holds when non-null. May be
+    /// unsized (e.g. `str`).
+    type Value: ?Sized;
 
     /// The scalar's data type.
     fn data_type(&self) -> &D;
