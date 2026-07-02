@@ -9,4 +9,4 @@ mod core;
 
 // Re-export so plain `cargo` / `clippy` does not flag the napi items as unused;
 // napi exports them under their namespaces regardless.
-pub use core::{hello, version};
+pub use core::{hello, version, BitBuffer, ByteBuffer, Whence};
