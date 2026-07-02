@@ -25,7 +25,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar, RawUnion};
+use yggdryl_data::{DataType, RawDataType, RawField, RawLogical, RawNested, RawScalar, RawUnion};
 
 /// Wraps an [`yggdryl_data::DataError`] so pyo3 raises it as a Python `ValueError`.
 struct DataErr(yggdryl_data::DataError);

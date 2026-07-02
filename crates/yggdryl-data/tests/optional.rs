@@ -3,8 +3,8 @@
 
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
-    arrow_array, arrow_schema, DataError, DataType, Field, Int64, Int64Scalar, Logical,
-    OptionalField, OptionalScalar, OptionalType, RawDataType, RawField, RawOptional, RawScalar,
+    arrow_array, arrow_schema, DataError, DataType, Field, Int64, Int64Scalar, OptionalField,
+    OptionalScalar, OptionalType, RawDataType, RawField, RawLogical, RawOptional, RawScalar,
     RawUnion, Scalar, UInt8, UInt8Scalar, UnionType,
 };
 
@@ -217,6 +217,20 @@ fn optional_scalar_from_arrow_rejects_other_shapes() {
         OptionalInt64::from_arrow(&two),
         Err(DataError::InvalidScalarLength { got: 2 })
     ));
+}
+
+#[test]
+fn optional_is_the_generic_logical_holder() {
+    // The typed pair: RawLogical gives storage access, Logical<T> pins it.
+    fn raw_storage_name<S: yggdryl_data::RawDataType, L: RawLogical<S>>(logical: &L) -> String {
+        logical.storage().name().to_string()
+    }
+    fn typed_storage_name<T, L: yggdryl_data::Logical<T>>(logical: &L) -> String {
+        logical.storage().name().to_string()
+    }
+    let optional = OptionalType::new(Int64);
+    assert_eq!(raw_storage_name(&optional), "union");
+    assert_eq!(typed_storage_name(&optional), "union");
 }
 
 #[test]

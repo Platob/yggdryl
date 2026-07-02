@@ -1,13 +1,13 @@
 //! The [`RawUnion`] base trait: the untyped surface of a union data type.
 
-use crate::Nested;
+use crate::RawNested;
 use arrow_schema::{UnionFields, UnionMode};
 
 /// The untyped surface every union data type carries: its `(type id, child field)`
 /// pairs and its mode — a value is exactly one of the child types, discriminated by
 /// a type id.
 ///
-/// It refines [`Nested`] (the children are fields). The dynamic
+/// It refines [`RawNested`] (the children are fields). The dynamic
 /// [`UnionType`](crate::UnionType) implements it over arbitrary children; a
 /// statically-shaped union also implements the typed [`Union`](crate::Union).
 ///
@@ -18,7 +18,7 @@ use arrow_schema::{UnionFields, UnionMode};
 /// assert_eq!(union.fields().len(), 2);
 /// assert_eq!(union.mode(), yggdryl_data::arrow_schema::UnionMode::Sparse);
 /// ```
-pub trait RawUnion: Nested {
+pub trait RawUnion: RawNested {
     /// The union's `(type id, child field)` pairs.
     fn fields(&self) -> &UnionFields;
 

@@ -60,6 +60,8 @@ mod scalar;
 mod logical;
 mod nested;
 mod primitive;
+mod raw_logical;
+mod raw_nested;
 
 pub use data_type_id::DataTypeId;
 pub use error::DataError;
@@ -74,6 +76,8 @@ pub use scalar::Scalar;
 pub use logical::Logical;
 pub use nested::Nested;
 pub use primitive::Primitive;
+pub use raw_logical::RawLogical;
+pub use raw_nested::RawNested;
 
 pub mod integer;
 pub mod list;

@@ -1,6 +1,6 @@
 //! The [`StructType`] data type.
 
-use crate::{DataError, Nested, RawDataType};
+use crate::{DataError, RawDataType, RawNested};
 use arrow_schema::Fields;
 
 /// The Apache Arrow `struct` data type: an ordered set of named child fields.
@@ -12,7 +12,7 @@ use arrow_schema::Fields;
 /// struct also implements the typed [`Struct`](crate::Struct)).
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, Nested, RawDataType, RawStruct, StructType};
+/// use yggdryl_data::{arrow_schema, RawDataType, RawNested, RawStruct, StructType};
 ///
 /// let point = StructType::new(arrow_schema::Fields::from(vec![
 ///     arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
@@ -75,7 +75,7 @@ impl RawDataType for StructType {
     }
 }
 
-impl Nested for StructType {
+impl RawNested for StructType {
     fn child_count(&self) -> usize {
         self.fields.len()
     }

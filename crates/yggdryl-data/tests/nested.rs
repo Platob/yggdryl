@@ -4,9 +4,9 @@
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
     arrow_array, arrow_schema, DataError, DataType, Field, Int64, Int64Scalar, List, ListField,
-    ListScalar, ListType, Map, MapField, MapScalar, MapType, Nested, OptionalScalar, OptionalType,
-    RawDataType, RawField, RawList, RawMap, RawScalar, RawStruct, StructField, StructScalar,
-    StructType, UInt8, UInt8Scalar,
+    ListScalar, ListType, Map, MapField, MapScalar, MapType, OptionalScalar, OptionalType,
+    RawDataType, RawField, RawList, RawMap, RawNested, RawScalar, RawStruct, StructField,
+    StructScalar, StructType, UInt8, UInt8Scalar,
 };
 
 type Int64List = ListScalar<Int64, Int64Scalar>;
@@ -257,6 +257,27 @@ fn defaults_flow_through_the_typed_layer() {
     assert_eq!(list_default(&ListType::new(Int64)), Vec::<i64>::new());
     assert_eq!(
         map_default(&MapType::new(UInt8, Int64)),
+        Vec::<(u8, i64)>::new()
+    );
+}
+
+#[test]
+fn list_and_map_are_the_generic_nested_holders() {
+    // The typed pair: RawNested counts children, Nested<T> adds the native codec.
+    fn raw_children<N: RawNested>(nested: &N) -> usize {
+        nested.child_count()
+    }
+    fn typed_default<T, N: yggdryl_data::Nested<T>>(nested: &N) -> T {
+        nested.default_value()
+    }
+    assert_eq!(raw_children(&ListType::new(Int64)), 1);
+    assert_eq!(raw_children(&point_type()), 2);
+    assert_eq!(
+        typed_default::<Vec<i64>, _>(&ListType::new(Int64)),
+        Vec::<i64>::new()
+    );
+    assert_eq!(
+        typed_default::<Vec<(u8, i64)>, _>(&MapType::new(UInt8, Int64)),
         Vec::<(u8, i64)>::new()
     );
 }

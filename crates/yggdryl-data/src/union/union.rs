@@ -16,7 +16,7 @@ use crate::DataType;
 ///
 /// ```
 /// use yggdryl_data::{
-///     arrow_schema, DataError, DataType, Int64, Int64Scalar, Nested, RawDataType, RawUnion,
+///     arrow_schema, DataError, DataType, Int64, Int64Scalar, RawDataType, RawNested, RawUnion,
 ///     Union, UnionType,
 /// };
 ///
@@ -57,7 +57,7 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl Nested for NumberOrTag {
+/// impl RawNested for NumberOrTag {
 ///     fn child_count(&self) -> usize { 2 }
 /// }
 ///

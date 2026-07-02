@@ -1,7 +1,7 @@
 //! The `optional` type: [`OptionalType`], its field [`OptionalField`] and scalar
 //! [`OptionalScalar`].
 //!
-//! [`OptionalType`] is the first concrete [`Logical`](crate::Logical) type: a value of
+//! [`OptionalType`] is the first concrete logical type: a value of
 //! the value type, or null, physically stored as the sparse two-variant
 //! [`UnionType`](crate::UnionType) between [`Null`](crate::Null) and the value type
 //! ([`UnionType::optional`](crate::UnionType::optional)). All three carry both trait
@@ -10,8 +10,8 @@
 //!
 //! ```
 //! use yggdryl_data::{
-//!     DataType, Int64, Int64Scalar, Logical, OptionalType, OptionalField, OptionalScalar,
-//!     RawDataType, RawField, RawScalar,
+//!     DataType, Int64, Int64Scalar, OptionalField, OptionalScalar, OptionalType,
+//!     RawDataType, RawField, RawLogical, RawScalar,
 //! };
 //!
 //! // The data type: logically optional, physically the null-or-int64 union.

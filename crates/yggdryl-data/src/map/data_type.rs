@@ -1,6 +1,6 @@
 //! The [`MapType`] data type.
 
-use crate::{DataError, DataType, Nested, RawDataType};
+use crate::{DataError, DataType, RawDataType, RawNested};
 
 /// The Apache Arrow `map` data type: a variable-length sequence of key–value
 /// entries, keyed by `K` with values of `V` (unsorted keys).
@@ -127,7 +127,7 @@ impl<K: RawDataType, V: RawDataType> RawDataType for MapType<K, V> {
     }
 }
 
-impl<K: RawDataType, V: RawDataType> Nested for MapType<K, V> {
+impl<K: RawDataType, V: RawDataType> RawNested for MapType<K, V> {
     fn child_count(&self) -> usize {
         1
     }
@@ -192,6 +192,15 @@ where
     fn default_scalar(&self) -> Self::Scalar {
         super::MapScalar::new(Vec::new())
     }
+}
+
+impl<TK, TV, K, V> crate::Nested<Vec<(TK, TV)>> for MapType<K, V>
+where
+    K: DataType<TK> + Default,
+    V: DataType<TV> + Default,
+    K::Scalar: crate::RawScalar<K>,
+    V::Scalar: crate::RawScalar<V>,
+{
 }
 
 impl<TK, TV, K, V> super::Map<TK, TV> for MapType<K, V>

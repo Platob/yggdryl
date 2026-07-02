@@ -53,9 +53,11 @@ The same, tied to a native Rust type `T`.
 How a type is shaped (each refines `RawDataType`).
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
-- **`Logical`** — a type layered over a physical `Storage` type (e.g. a timestamp over
-  `int64`; `OptionalType<D>` over its null-or-value union is the first concrete one).
-- **`Nested`** — a type composed of child fields (`struct`, `list`, `map`).
+- **`RawLogical<S>` / `Logical<T>`** — a type layered over a physical storage type
+  (e.g. a timestamp over `int64`); `OptionalType<D>` is the generic holder.
+- **`RawNested` / `Nested<T>`** — a type composed of child fields (`struct`,
+  `list`, `map`, `union`); `ListType<D>` and `MapType<K, V>` are the generic
+  typed holders, the dynamic `StructType` / `UnionType` raw-only.
 
 ## Type ids
 

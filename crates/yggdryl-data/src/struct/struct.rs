@@ -15,7 +15,7 @@ use crate::DataType;
 ///
 /// ```
 /// use yggdryl_data::{
-///     arrow_schema, DataError, DataType, Int64, Nested, RawDataType, RawStruct, Struct,
+///     arrow_schema, DataError, DataType, Int64, RawDataType, RawNested, RawStruct, Struct,
 ///     StructScalar, StructType,
 /// };
 ///
@@ -49,7 +49,7 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl Nested for Point {
+/// impl RawNested for Point {
 ///     fn child_count(&self) -> usize { 2 }
 /// }
 ///

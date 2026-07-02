@@ -1,58 +1,28 @@
-//! The [`Nested`] category trait: a type composed of child fields.
+//! The typed [`Nested`] trait: a [`RawNested`](crate::RawNested) whose values have
+//! a native representation.
 
-use super::RawDataType;
+use super::{DataType, RawNested};
 
-/// A nested type composed of one or more child fields — e.g. `struct`, `list`, `map`.
+/// A [`RawNested`](crate::RawNested) whose values have the native Rust
+/// representation `T` — the typed layer over a child-bearing type.
 ///
-/// [`child_count`](Nested::child_count) reports how many children the type has. Typed
-/// child accessors — which must span children of differing data types — land with the
-/// concrete nested types as the layer grows.
+/// It carries the [`DataType<T>`] surface itself, so a nested type reads and
+/// writes native values (a sequence, a row) while its children stay Arrow fields.
+/// The generic [`ListType<D>`](crate::ListType) and
+/// [`MapType<K, V>`](crate::MapType) are the crate's generic holders: a
+/// `Nested<Vec<T>>` and a `Nested<Vec<(TK, TV)>>` for any child types with codecs
+/// (the dynamic [`StructType`](crate::StructType) and
+/// [`UnionType`](crate::UnionType), whose children are only known at runtime, stay
+/// raw-only).
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataError, Nested, RawDataType};
+/// use yggdryl_data::{DataType, Int64, ListType, MapType, Nested, RawNested, UInt8};
 ///
-/// // A struct of two int32 children, `a` and `b`.
-/// #[derive(Debug)]
-/// struct Pair;
-///
-/// impl Pair {
-///     fn children() -> arrow_schema::Fields {
-///         arrow_schema::Fields::from(vec![
-///             arrow_schema::Field::new("a", arrow_schema::DataType::Int32, false),
-///             arrow_schema::Field::new("b", arrow_schema::DataType::Int32, false),
-///         ])
-///     }
+/// fn children_of<T, N: Nested<T>>(nested: &N) -> usize {
+///     nested.child_count()
 /// }
 ///
-/// impl RawDataType for Pair {
-///     fn name(&self) -> &str { "struct" }
-///     fn arrow_format(&self) -> String { "+s".to_string() }
-///     fn byte_width(&self) -> Option<usize> { None } // nested types have no fixed width
-///     fn to_arrow(&self) -> arrow_schema::DataType {
-///         arrow_schema::DataType::Struct(Pair::children())
-///     }
-///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
-///         match data_type {
-///             arrow_schema::DataType::Struct(fields) if *fields == Pair::children() => Ok(Pair),
-///             other => Err(DataError::IncompatibleArrowType {
-///                 expected: "Struct(a: Int32, b: Int32)".to_string(),
-///                 got: other.to_string(),
-///             }),
-///         }
-///     }
-/// }
-///
-/// impl Nested for Pair {
-///     fn child_count(&self) -> usize {
-///         2
-///     }
-/// }
-///
-/// assert_eq!(Pair.child_count(), 2);
-/// assert_eq!(Pair.byte_width(), None);
-/// assert!(Pair::from_arrow(&Pair.to_arrow()).is_ok());
+/// assert_eq!(children_of::<Vec<i64>, _>(&ListType::new(Int64)), 1);
+/// assert_eq!(children_of::<Vec<(u8, i64)>, _>(&MapType::new(UInt8, Int64)), 1);
 /// ```
-pub trait Nested: RawDataType {
-    /// The number of child fields this type contains.
-    fn child_count(&self) -> usize;
-}
+pub trait Nested<T>: RawNested + DataType<T> {}

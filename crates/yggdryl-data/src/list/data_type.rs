@@ -1,6 +1,6 @@
 //! The [`ListType`] data type.
 
-use crate::{DataError, DataType, Nested, RawDataType};
+use crate::{DataError, DataType, RawDataType, RawNested};
 
 /// The Apache Arrow `list` data type: a variable-length sequence of one value type
 /// `D` (32-bit offsets).
@@ -93,7 +93,7 @@ impl<D: RawDataType> RawDataType for ListType<D> {
     }
 }
 
-impl<D: RawDataType> Nested for ListType<D> {
+impl<D: RawDataType> RawNested for ListType<D> {
     fn child_count(&self) -> usize {
         1
     }
@@ -140,6 +140,11 @@ where
     fn default_scalar(&self) -> Self::Scalar {
         super::ListScalar::new(Vec::new())
     }
+}
+
+impl<T, D: DataType<T> + Default> crate::Nested<Vec<T>> for ListType<D> where
+    D::Scalar: crate::RawScalar<D>
+{
 }
 
 impl<T, D: DataType<T> + Default> super::List<T> for ListType<D>

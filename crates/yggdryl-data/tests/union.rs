@@ -3,8 +3,8 @@
 
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
-    arrow_array, arrow_schema, DataError, DataTypeId, Int64, Nested, Null, NullField, NullScalar,
-    RawDataType, RawField, RawScalar, RawUnion, UnionField, UnionType,
+    arrow_array, arrow_schema, DataError, DataTypeId, Int64, Null, NullField, NullScalar,
+    RawDataType, RawField, RawNested, RawScalar, RawUnion, UnionField, UnionType,
 };
 
 #[test]

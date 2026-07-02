@@ -1,6 +1,6 @@
 //! The [`UnionType`] data type.
 
-use crate::{DataError, Nested, RawDataType};
+use crate::{DataError, RawDataType, RawNested};
 use arrow_schema::{UnionFields, UnionMode};
 
 /// The Apache Arrow `union` data type: a value is exactly one of several child
@@ -9,7 +9,7 @@ use arrow_schema::{UnionFields, UnionMode};
 /// It carries its [`UnionFields`] — the `(type id, child field)` pairs — and its
 /// [`UnionMode`] (`Sparse` or `Dense`), exactly as Arrow models them, so
 /// [`to_arrow`](RawDataType::to_arrow) / [`from_arrow`](RawDataType::from_arrow)
-/// round-trip losslessly. It is a [`Nested`] type: its children are fields and it
+/// round-trip losslessly. It is a [`RawNested`] type: its children are fields and it
 /// has no fixed width of its own.
 ///
 /// [`UnionType::optional`] builds the two-variant union between [`Null`](crate::Null)
@@ -17,7 +17,7 @@ use arrow_schema::{UnionFields, UnionMode};
 /// on.
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, Int64, Nested, RawDataType, UnionType};
+/// use yggdryl_data::{arrow_schema, Int64, RawDataType, RawNested, UnionType};
 ///
 /// // A union of null and int64 (the "optional int64" shape).
 /// let union = UnionType::optional(&Int64);
@@ -127,7 +127,7 @@ impl RawDataType for UnionType {
     }
 }
 
-impl Nested for UnionType {
+impl RawNested for UnionType {
     fn child_count(&self) -> usize {
         self.fields.len()
     }

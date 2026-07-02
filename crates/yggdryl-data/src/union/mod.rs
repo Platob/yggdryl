@@ -8,7 +8,7 @@
 //! module).
 //!
 //! ```
-//! use yggdryl_data::{Int64, Nested, RawDataType, RawField, UnionType, UnionField};
+//! use yggdryl_data::{Int64, RawDataType, RawField, RawNested, UnionField, UnionType};
 //!
 //! let union = UnionType::optional(&Int64);
 //! assert_eq!((union.name(), union.child_count()), ("union", 2));

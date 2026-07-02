@@ -367,12 +367,16 @@ fn main() {
 How a type is shaped (each refines `RawDataType`):
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
-- **`Logical`** — a type layered over a physical `Storage` type, e.g. a timestamp over
-  `int64`; `storage()` returns the backing `RawDataType`. The
-  [`Optional` type](#the-null-union-and-optional-types) — a value or null, stored as
-  the null-or-value union — is the first concrete one.
-- **`Nested`** — a type composed of child fields (`struct`, `list`, `map`);
-  `child_count()` reports how many.
+- **`RawLogical<S>` / `Logical<T>`** — a type layered over a physical storage type
+  `S`, e.g. a timestamp over `int64`: the raw side's `storage()` returns it, the
+  typed side pins it as the associated `Storage` and adds the native codec. The
+  generic holder is `OptionalType<D>` — a value or null over the null-or-value
+  union.
+- **`RawNested` / `Nested<T>`** — a type composed of child fields (`struct`,
+  `list`, `map`, `union`): the raw side's `child_count()` reports how many, the
+  typed side adds the native codec (a sequence, a row). The generic holders are
+  `ListType<D>` (`Nested<Vec<T>>`) and `MapType<K, V>` (`Nested<Vec<(TK, TV)>>`);
+  the dynamic `StructType` and `UnionType` stay raw-only.
 
 Each composite family also carries its own raw/typed trait pair, mirroring the
 base layers: `RawOptional` / `Optional`, `RawUnion` / `Union` (a typed union's

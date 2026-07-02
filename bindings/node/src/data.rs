@@ -25,7 +25,7 @@
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
-use yggdryl_data::{DataType, Logical, Nested, RawDataType, RawField, RawScalar, RawUnion};
+use yggdryl_data::{DataType, RawDataType, RawField, RawLogical, RawNested, RawScalar, RawUnion};
 
 fn data_error(error: yggdryl_data::DataError) -> Error {
     Error::from_reason(error.to_string())

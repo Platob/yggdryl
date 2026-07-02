@@ -1,58 +1,31 @@
-//! The [`Logical`] category trait: a type layered over a physical storage type.
+//! The typed [`Logical`] trait: a [`RawLogical`](crate::RawLogical) whose values
+//! have a native representation.
 
-use super::RawDataType;
+use super::{DataType, RawDataType, RawLogical};
 
-/// A logical type layered over a physical storage type — e.g. a timestamp stored as
-/// an `int64`, or a date stored as an `int32`.
+/// A [`RawLogical`](crate::RawLogical) whose values have the native Rust
+/// representation `T` — the typed layer over a storage-backed logical type.
 ///
-/// [`storage`](Logical::storage) returns the physical [`RawDataType`] the values are
-/// actually laid out as; the logical type reinterprets those bytes. The physical type
-/// is the associated [`Storage`](Logical::Storage), so it is preserved concretely.
+/// The concrete storage type is the associated [`Storage`](Logical::Storage), so a
+/// logical type has exactly one; `storage` is inherited from
+/// [`RawLogical`](crate::RawLogical) and returns it. It also carries the
+/// [`DataType<T>`] surface itself, so a logical type reads and writes native
+/// values while *storing* them as its physical storage. The generic
+/// [`OptionalType<D>`](crate::OptionalType) is the crate's generic holder: a
+/// `Logical<T>` over [`UnionType`](crate::UnionType) storage for any value type
+/// `D: DataType<T>`.
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataError, Int64, Logical, RawDataType};
+/// use yggdryl_data::{Int64, Logical, OptionalType, RawDataType, RawLogical};
 ///
-/// // A timestamp in microseconds, physically an int64.
-/// #[derive(Debug)]
-/// struct TimestampMicros {
-///     storage: Int64,
+/// fn storage_name<T, L: Logical<T>>(logical: &L) -> String {
+///     logical.storage().name().to_string()
 /// }
 ///
-/// impl RawDataType for TimestampMicros {
-///     fn name(&self) -> &str { "timestamp[us]" }
-///     fn arrow_format(&self) -> String { "tsu:".to_string() }
-///     fn byte_width(&self) -> Option<usize> { Some(8) }
-///     fn to_arrow(&self) -> arrow_schema::DataType {
-///         arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, None)
-///     }
-///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
-///         match data_type {
-///             arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, None) => {
-///                 Ok(TimestampMicros { storage: Int64 })
-///             }
-///             other => Err(DataError::IncompatibleArrowType {
-///                 expected: "Timestamp(Microsecond, None)".to_string(),
-///                 got: other.to_string(),
-///             }),
-///         }
-///     }
-/// }
-///
-/// impl Logical for TimestampMicros {
-///     type Storage = Int64;
-///     fn storage(&self) -> &Int64 {
-///         &self.storage
-///     }
-/// }
-///
-/// let ts = TimestampMicros { storage: Int64 };
-/// assert_eq!(ts.name(), "timestamp[us]");
-/// assert_eq!(ts.storage().name(), "int64"); // reinterprets int64 bytes
+/// let optional = OptionalType::new(Int64);
+/// assert_eq!(storage_name(&optional), "union");
 /// ```
-pub trait Logical: RawDataType {
+pub trait Logical<T>: RawLogical<Self::Storage> + DataType<T> {
     /// The physical storage type backing this logical type.
     type Storage: RawDataType;
-
-    /// The physical type this logical type's values are stored as.
-    fn storage(&self) -> &Self::Storage;
 }

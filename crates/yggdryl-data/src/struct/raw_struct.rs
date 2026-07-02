@@ -1,12 +1,12 @@
 //! The [`RawStruct`] base trait: the untyped surface of a struct data type.
 
-use crate::Nested;
+use crate::RawNested;
 use arrow_schema::Fields;
 
 /// The untyped surface every struct data type carries: its ordered, named child
 /// fields.
 ///
-/// It refines [`Nested`] (the children are the fields). The dynamic
+/// It refines [`RawNested`] (the children are the fields). The dynamic
 /// [`StructType`](crate::StructType) implements it over arbitrary fields; a
 /// statically-shaped struct also implements the typed [`Struct`](crate::Struct).
 ///
@@ -19,7 +19,7 @@ use arrow_schema::Fields;
 /// assert_eq!(point.fields().len(), 1);
 /// assert_eq!(point.fields()[0].name(), "x");
 /// ```
-pub trait RawStruct: Nested {
+pub trait RawStruct: RawNested {
     /// The struct's ordered, named child fields.
     fn fields(&self) -> &Fields;
 }

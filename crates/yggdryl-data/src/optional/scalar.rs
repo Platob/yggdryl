@@ -1,7 +1,7 @@
 //! The [`OptionalScalar`] scalar of the [`OptionalType`](super::OptionalType) data type.
 
 use super::OptionalType;
-use crate::{DataError, Logical, RawDataType, RawScalar, RawUnion, Scalar, UnionType};
+use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, UnionType};
 
 /// A single value of the [`OptionalType`] of the value type `D` — an inner scalar `S`,
 /// or the null variant.
@@ -18,7 +18,7 @@ use crate::{DataError, Logical, RawDataType, RawScalar, RawUnion, Scalar, UnionT
 /// round trip all agree.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Int64Scalar, Logical, OptionalScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{Int64, Int64Scalar, OptionalScalar, RawDataType, RawLogical, RawScalar};
 ///
 /// let answer = OptionalScalar::new(Int64Scalar::new(42));
 /// assert!(!answer.is_null());

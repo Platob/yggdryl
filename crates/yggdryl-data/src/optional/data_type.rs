@@ -2,13 +2,14 @@
 
 use std::sync::OnceLock;
 
-use crate::{DataError, DataType, Logical, RawDataType, UnionType};
+use crate::{DataError, DataType, RawDataType, RawLogical, UnionType};
 
 /// The logical `optional` data type: a value of the value type `D`, or null —
 /// physically stored as the sparse two-variant [`UnionType`] between
 /// [`Null`](crate::Null) and `D` ([`UnionType::optional`]).
 ///
-/// It is the first concrete [`Logical`] type: [`storage`](Logical::storage) returns
+/// It is the first concrete logical type ([`RawLogical`] and, with a codec,
+/// [`Logical`](crate::Logical)): [`storage`](RawLogical::storage) returns
 /// the backing [`UnionType`], and the Arrow surface delegates to it (`arrow_format` /
 /// `to_arrow` describe the union — Arrow has no separate "optional" type, so this
 /// type has no [`DataTypeId`](crate::DataTypeId)). The typed layer delegates the
@@ -19,7 +20,7 @@ use crate::{DataError, DataType, Logical, RawDataType, UnionType};
 /// first use and plays no part in equality.
 ///
 /// ```
-/// use yggdryl_data::{DataType, Int64, Logical, OptionalType, RawDataType, RawOptional};
+/// use yggdryl_data::{DataType, Int64, OptionalType, RawDataType, RawLogical, RawOptional};
 ///
 /// let optional = OptionalType::new(Int64);
 /// assert_eq!(optional.name(), "optional");
@@ -57,6 +58,13 @@ impl<D: RawDataType> super::RawOptional<D> for OptionalType<D> {
     fn value_type(&self) -> &D {
         &self.value_type
     }
+}
+
+impl<T, D: DataType<T> + Default> crate::Logical<T> for OptionalType<D>
+where
+    D::Scalar: crate::RawScalar<D>,
+{
+    type Storage = UnionType;
 }
 
 impl<T, D: DataType<T> + Default> super::Optional<T> for OptionalType<D>
@@ -169,9 +177,7 @@ where
     }
 }
 
-impl<D: RawDataType> Logical for OptionalType<D> {
-    type Storage = UnionType;
-
+impl<D: RawDataType> RawLogical<UnionType> for OptionalType<D> {
     fn storage(&self) -> &UnionType {
         self.storage
             .get_or_init(|| UnionType::optional(&self.value_type))
