@@ -1,11 +1,13 @@
 //! The `yggdryl.core` namespace — thin wrappers over the `yggdryl-core` crate.
 //!
-//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. Two
+//! `ByteBuffer` / `BitBuffer` expose the positioned byte- and bit-IO surface. Some
 //! core conveniences are intentionally not surfaced here: the `pread_io` /
 //! `pwrite_io` streams (they borrow two resources at once, which napi cannot
 //! borrow-check across the FFI boundary — a JS caller composes the same effect from
-//! `preadByteArray` + `pwriteByteArray`), and the `RawIOCursor` / `IOCursor` cursor
-//! adapters (a Rust-core convenience over the same positioned surface).
+//! `preadByteArray` + `pwriteByteArray`), and the generic owning adapters
+//! `RawIOCursor` / `IOCursor` (a moving cursor) and `RawIOSlice` / `IOSlice` (a
+//! bounded byte window), which are Rust-core conveniences over the same positioned
+//! surface.
 
 use napi::bindgen_prelude::{Buffer, Error, Result};
 use napi_derive::napi;

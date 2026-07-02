@@ -67,7 +67,8 @@ identically. Each Rust crate is exposed under its own namespace — currently ju
 
     `ByteBuffer` / `BitBuffer` and the `RawIOBase` / `IOBase<T>` traits — byte- and
     bit-level positioned reads and writes, in all three languages — plus the
-    `RawIOCursor` / `IOCursor` adapters that add a moving cursor.
+    `RawIOCursor` / `IOCursor` (moving cursor) and `RawIOSlice` / `IOSlice` (byte
+    window) adapters.
 
 - :material-alphabetical: **[Charset](charset.md)**
 

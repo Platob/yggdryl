@@ -10,7 +10,8 @@ The `core` I/O layer reads and writes a resource one or many **bytes** (`u8`) or
 Both are exposed in Python, Node, and Rust. In Rust they implement the
 [`RawIOBase`](#rawiobase) trait (described at the end of this page); a buffer keeps
 no cursor of its own, so for a position that advances on each access you wrap it in a
-[`RawIOCursor`](#cursors) (or, for typed values, an `IOCursor`).
+[`RawIOCursor`](#cursors), and for a bounded byte window in a
+[`RawIOSlice`](#slices) (or, for typed values, an `IOCursor` / `IOSlice`).
 
 ## Whence
 
@@ -148,6 +149,42 @@ fn main() {
 `IOCursor<I>` is the same adapter for a typed [`IOBase<T>`](#iobaset) resource: its
 typed `pwrite_one` / `pwrite_array` stream `T` values out one after another, each
 advancing the cursor through the byte layer.
+
+Any `RawIOBase` builds one with `.cursor()` (and any `IOBase<T>` the typed one with
+`IOBase::<T>::cursor(resource)`), consuming the resource — recover it later with
+`into_inner`.
+
+## Slices
+
+!!! info "Rust core only"
+    A **`RawIOSlice`** bounds a resource to a byte window `[start, end)`: code handed
+    the slice sees a smaller resource and cannot read or write outside it. Like the
+    cursor it is a Rust-core convenience; a Python or Node caller passes explicit
+    offsets instead.
+
+`RawIOSlice` owns the wrapped resource and offsets every access by `start`, bounded by
+`end`. `byte_size` reports the backed length within the window, writes may grow the
+inner up to `end` (never past it), and `resize_bytes` moves the `end` bound:
+
+```rust
+use yggdryl_core::{ByteBuffer, RawIOBase, RawIOSlice, Whence};
+
+fn main() {
+    let mut slice = RawIOSlice::new(ByteBuffer::from_bytes(vec![10, 20, 30, 40, 50]), 1, 4);
+    // The window is bytes [1, 4): positions are relative to it.
+    assert_eq!(slice.byte_size(), 3);
+    assert_eq!(slice.pread_byte_array(0, Whence::Start, 3).unwrap(), vec![20, 30, 40]);
+    assert!(slice.pread_byte_one(3, Whence::Start).is_err()); // outside the window
+
+    // Writes stay within the window and reach the underlying buffer.
+    slice.pwrite_byte_one(0, Whence::Start, 99).unwrap();
+    assert_eq!(slice.get_ref().as_bytes(), &[10, 99, 30, 40, 50]);
+}
+```
+
+`IOSlice<I>` is the typed counterpart over an [`IOBase<T>`](#iobaset) resource: `size`
+counts the whole `T` items in the window. Build them with `resource.slice(start, end)`
+(or `IOBase::<T>::slice(resource, start, end)` for the typed one).
 
 ## Sizes, capacities and resizing
 
@@ -309,11 +346,18 @@ impl IOBase<u32> for Store {
 }
 ```
 
-### `Seekable`, `RawIOCursor` and `IOCursor<I>`
+### `Seekable`, cursors and slices
 
 `Seekable` is a cursor: `tell(&self) -> usize` and `seek(&mut self, position,
 whence) -> Result<usize, IOError>`. Bare buffers do **not** implement it — the
-[`RawIOCursor`](#cursors) and `IOCursor<I>` adapters do. Each wraps a resource, adds
-the cursor, measures `Whence::Current` from it, and advances it on every read and
-write; `RawIOCursor` also re-implements `RawIOBase` (and `IOCursor` the typed
-`IOBase<T>`) so a cursor is itself a resource that generic transfer code can target.
+[`RawIOCursor`](#cursors) / `IOCursor<I>` adapters do. Each wraps a resource, adds the
+cursor, measures `Whence::Current` from it, and advances it on every read and write.
+The [`RawIOSlice`](#slices) / `IOSlice<I>` adapters instead bound a resource to a byte
+window `[start, end)`. All four re-implement `RawIOBase` (and the typed pair
+`IOBase<T>`), so an adapter is itself a resource that generic transfer code can
+target, and they compose.
+
+`RawIOBase` and `IOBase<T>` each expose `cursor()` and `slice(start, end)` factory
+methods that consume the resource and return the matching adapter. A type that
+implements both traits carries both pairs, so name the typed one explicitly —
+`IOBase::<T>::cursor(resource)` — to disambiguate.

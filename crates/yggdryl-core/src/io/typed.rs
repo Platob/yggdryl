@@ -1,6 +1,6 @@
 //! The typed [`IOBase`] layer over [`RawIOBase`](super::RawIOBase).
 
-use super::{IOError, RawIOBase, Whence};
+use super::{IOCursor, IOError, IOSlice, RawIOBase, Whence};
 
 /// A typed view over a [`RawIOBase`] resource: writes values of type `T` by
 /// converting them to bytes.
@@ -158,5 +158,28 @@ pub trait IOBase<T>: RawIOBase {
             .flat_map(|value| self.value_to_bytes(value))
             .collect();
         self.pwrite_byte_array(position, whence, &bytes)
+    }
+
+    /// Consume this resource into an [`IOCursor`], a moving typed cursor over it
+    /// that advances on every read and write.
+    ///
+    /// A type that implements both [`RawIOBase`] and [`IOBase`] carries this and
+    /// [`RawIOBase::cursor`]; call it as `IOBase::<T>::cursor(resource)` to pick the
+    /// typed one.
+    fn cursor(self) -> IOCursor<Self>
+    where
+        Self: Sized,
+    {
+        IOCursor::new(self)
+    }
+
+    /// Consume this resource into an [`IOSlice`], a typed view bounded to the byte
+    /// window `[start, end)`. Disambiguate from [`RawIOBase::slice`] as
+    /// `IOBase::<T>::slice(resource, start, end)`.
+    fn slice(self, start: usize, end: usize) -> IOSlice<Self>
+    where
+        Self: Sized,
+    {
+        IOSlice::new(self, start, end)
     }
 }

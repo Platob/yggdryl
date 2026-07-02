@@ -1,7 +1,8 @@
 //! Positioned byte- and bit-I/O: the low-level [`RawIOBase`] trait, the typed
 //! [`IOBase`] layer, the [`Whence`] reference point, the concrete
-//! [`ByteBuffer`] / [`BitBuffer`] resources, and the [`Seekable`]
-//! [`RawIOCursor`] / [`IOCursor`] adapters that add a moving cursor on top.
+//! [`ByteBuffer`] / [`BitBuffer`] resources, the [`Seekable`] [`RawIOCursor`] /
+//! [`IOCursor`] adapters that add a moving cursor, and the [`RawIOSlice`] /
+//! [`IOSlice`] adapters that bound a resource to a byte window.
 
 mod bit_buffer;
 mod bits;
@@ -9,7 +10,9 @@ mod byte_buffer;
 mod cursor;
 mod error;
 mod raw_cursor;
+mod raw_slice;
 mod seekable;
+mod slice;
 mod typed;
 mod whence;
 
@@ -18,7 +21,9 @@ pub use byte_buffer::ByteBuffer;
 pub use cursor::IOCursor;
 pub use error::IOError;
 pub use raw_cursor::RawIOCursor;
+pub use raw_slice::RawIOSlice;
 pub use seekable::Seekable;
+pub use slice::IOSlice;
 pub use typed::IOBase;
 pub use whence::Whence;
 
@@ -216,6 +221,24 @@ pub trait RawIOBase {
         whence: Whence,
         values: &[bool],
     ) -> Result<(), IOError>;
+
+    /// Consume this resource into a [`RawIOCursor`], a moving cursor over it that
+    /// advances on every read and write.
+    fn cursor(self) -> RawIOCursor<Self>
+    where
+        Self: Sized,
+    {
+        RawIOCursor::new(self)
+    }
+
+    /// Consume this resource into a [`RawIOSlice`], a view bounded to the byte
+    /// window `[start, end)`.
+    fn slice(self, start: usize, end: usize) -> RawIOSlice<Self>
+    where
+        Self: Sized,
+    {
+        RawIOSlice::new(self, start, end)
+    }
 
     /// Stream `size` bytes from `self` (at `position` relative to `whence`) into
     /// `sink` (at `sink_position` relative to `sink_whence`), copying in chunks so

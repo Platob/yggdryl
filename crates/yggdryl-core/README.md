@@ -56,10 +56,12 @@ Enable it with `features = ["json"]`.
 `RawIOBase` reads and writes bytes (`u8`) or bits (`bool`), one or many at a time, at
 a `position` measured from a `Whence` (`Start`, `Current`, or `End`) — counted in
 bytes for the `*_byte_*` methods and in bits (MSB-first) for the `*_bit_*` methods. A
-bare resource keeps no cursor, so `Whence::Current` is measured from the start; wrap
-one in a `RawIOCursor` (or, for typed values, an `IOCursor`) for a `Seekable` position
-that advances on each read and write. Implement the four array primitives and the
-`*_one` methods come free from their defaults:
+bare resource keeps no cursor, so `Whence::Current` is measured from the start; its
+`cursor()` method wraps it in a `RawIOCursor` for a `Seekable` position that advances
+on each read and write, and `slice(start, end)` wraps it in a `RawIOSlice` bounded to
+a byte window (`IOBase` has the typed `cursor()` / `slice()` returning `IOCursor` /
+`IOSlice`). Implement the four array primitives and the `*_one` methods come free from
+their defaults:
 
 ```rust
 use yggdryl_core::{RawIOBase, Whence};
@@ -80,11 +82,12 @@ between resources in chunks with `pread_io` / `pwrite_io` — a large transfer n
 materializes in full.
 
 `ByteBuffer` (byte-granular) and `BitBuffer` (exact bit length) are the concrete
-in-memory resources; both are exposed in the Python and Node bindings. Two Rust-core
+in-memory resources; both are exposed in the Python and Node bindings. Some Rust-core
 conveniences stay Rust-only: the two-resource `pread_io` / `pwrite_io` streams
-(bindings compose the same effect from the byte-array methods) and the `Seekable`
-`RawIOCursor` / `IOCursor` cursor adapters over the same positioned surface.
-Benchmarks live in `benches/buffers.rs`
+(bindings compose the same effect from the byte-array methods) and the generic owning
+adapters — the `Seekable` `RawIOCursor` / `IOCursor` cursors and the `RawIOSlice` /
+`IOSlice` byte-window views — over the same positioned surface. Benchmarks live in
+`benches/buffers.rs`
 (`cargo bench`).
 
 ```rust

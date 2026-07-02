@@ -7,7 +7,8 @@
 //! the positioned-I/O traits [`RawIOBase`] (raw bytes/bits) and [`IOBase`] (a typed
 //! layer) with their [`Whence`] reference point, the concrete [`ByteBuffer`] /
 //! [`BitBuffer`] resources, the [`Seekable`] [`RawIOCursor`] / [`IOCursor`] adapters
-//! that add a moving cursor on top, and — behind the off-by-default `json` feature —
+//! that add a moving cursor and the [`RawIOSlice`] / [`IOSlice`] adapters that bound
+//! a resource to a byte window, and — behind the off-by-default `json` feature —
 //! the `Base` trait for content JSON plus an implementor-defined byte form. The
 //! [`version`] and [`hello`] entry points remain as the minimal cross-language
 //! round-trip example. Add further foundational types here as the design lands — one
@@ -31,7 +32,8 @@ pub use charset::{Charset, CharsetError, Latin1, Utf8};
 
 mod io;
 pub use io::{
-    BitBuffer, ByteBuffer, IOBase, IOCursor, IOError, RawIOBase, RawIOCursor, Seekable, Whence,
+    BitBuffer, ByteBuffer, IOBase, IOCursor, IOError, IOSlice, RawIOBase, RawIOCursor, RawIOSlice,
+    Seekable, Whence,
 };
 
 #[cfg(feature = "json")]
