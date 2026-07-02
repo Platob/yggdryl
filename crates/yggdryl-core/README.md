@@ -29,8 +29,23 @@ let p = Point { x: 1, y: 2 };
 let _json = p.serialize_json()?;                  // {"x":1,"y":2}
 let _pretty = p.serialize_bson(Some(2), Utf8)?;   // indented JSON bytes, UTF-8
 let _latin1 = p.serialize_bson(None, Latin1)?;    // compact JSON bytes, Latin-1
-let _bytes = p.serialize_bytes()?;         // compact UTF-8 JSON
+let _bytes = p.serialize_bytes()?;                // compact UTF-8 JSON
 # Ok::<(), yggdryl_core::BaseError>(())
 ```
 
 Enable it with `features = ["json"]`.
+
+## Positioned I/O
+
+`IOBase<T>` reads and writes `T` elements at a `position` measured from a `Whence`
+(`Start`, `Current`, or `End`). Implement the two array primitives and the
+single-element `pread_one` / `pwrite_one` come free from their defaults:
+
+```rust
+use yggdryl_core::{IOBase, Whence};
+
+fn head<S: IOBase<u8>>(store: &mut S) -> Result<u8, yggdryl_core::IOError> {
+    store.pwrite_array(0, Whence::Start, &[1, 2, 3])?;
+    store.pread_one(0, Whence::Start)
+}
+```
