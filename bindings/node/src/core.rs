@@ -81,6 +81,48 @@ impl ByteBuffer {
         self.inner.bit_size() as u32
     }
 
+    /// The number of bytes the buffer can hold without reallocating.
+    #[napi]
+    pub fn byte_capacity(&self) -> u32 {
+        self.inner.byte_capacity() as u32
+    }
+
+    /// The number of bits the buffer can hold without reallocating.
+    #[napi]
+    pub fn bit_capacity(&self) -> u32 {
+        self.inner.bit_capacity() as u32
+    }
+
+    /// Request room for `capacity` bytes, returning the resulting capacity.
+    #[napi]
+    pub fn resize_byte_capacity(&mut self, capacity: u32) -> Result<u32> {
+        self.inner
+            .resize_byte_capacity(capacity as usize)
+            .map(|capacity| capacity as u32)
+            .map_err(io_error)
+    }
+
+    /// Request room for `capacity` bits, returning the resulting bit capacity.
+    #[napi]
+    pub fn resize_bit_capacity(&mut self, capacity: u32) -> Result<u32> {
+        self.inner
+            .resize_bit_capacity(capacity as usize)
+            .map(|capacity| capacity as u32)
+            .map_err(io_error)
+    }
+
+    /// Set the buffer's size to `size` bytes, truncating or zero-filling.
+    #[napi]
+    pub fn resize_bytes(&mut self, size: u32) -> Result<()> {
+        self.inner.resize_bytes(size as usize).map_err(io_error)
+    }
+
+    /// Set the buffer's size to `size` bits, rounded up to whole bytes.
+    #[napi]
+    pub fn resize_bits(&mut self, size: u32) -> Result<()> {
+        self.inner.resize_bits(size as usize).map_err(io_error)
+    }
+
     /// The current cursor position, in bytes.
     #[napi]
     pub fn tell(&self) -> u32 {
@@ -168,6 +210,52 @@ impl ByteBuffer {
     ) -> Result<()> {
         self.inner
             .pwrite_bit_array(position as usize, whence.into(), &values)
+            .map_err(io_error)
+    }
+
+    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
+    #[napi]
+    pub fn pread_io(
+        &self,
+        position: u32,
+        whence: Whence,
+        size: u32,
+        sink: &mut ByteBuffer,
+        sink_position: u32,
+        sink_whence: Whence,
+    ) -> Result<()> {
+        self.inner
+            .pread_io(
+                position as usize,
+                whence.into(),
+                size as usize,
+                &mut sink.inner,
+                sink_position as usize,
+                sink_whence.into(),
+            )
+            .map_err(io_error)
+    }
+
+    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
+    #[napi]
+    pub fn pwrite_io(
+        &mut self,
+        position: u32,
+        whence: Whence,
+        source: &ByteBuffer,
+        source_position: u32,
+        source_whence: Whence,
+        size: u32,
+    ) -> Result<()> {
+        self.inner
+            .pwrite_io(
+                position as usize,
+                whence.into(),
+                &source.inner,
+                source_position as usize,
+                source_whence.into(),
+                size as usize,
+            )
             .map_err(io_error)
     }
 }
@@ -216,6 +304,48 @@ impl BitBuffer {
         self.inner.bit_size() as u32
     }
 
+    /// The number of bytes the buffer can hold without reallocating.
+    #[napi]
+    pub fn byte_capacity(&self) -> u32 {
+        self.inner.byte_capacity() as u32
+    }
+
+    /// The number of bits the buffer can hold without reallocating.
+    #[napi]
+    pub fn bit_capacity(&self) -> u32 {
+        self.inner.bit_capacity() as u32
+    }
+
+    /// Request room for `capacity` bytes, returning the resulting capacity.
+    #[napi]
+    pub fn resize_byte_capacity(&mut self, capacity: u32) -> Result<u32> {
+        self.inner
+            .resize_byte_capacity(capacity as usize)
+            .map(|capacity| capacity as u32)
+            .map_err(io_error)
+    }
+
+    /// Request room for `capacity` bits, returning the resulting bit capacity.
+    #[napi]
+    pub fn resize_bit_capacity(&mut self, capacity: u32) -> Result<u32> {
+        self.inner
+            .resize_bit_capacity(capacity as usize)
+            .map(|capacity| capacity as u32)
+            .map_err(io_error)
+    }
+
+    /// Set the buffer's size to `size` bytes, truncating or zero-filling.
+    #[napi]
+    pub fn resize_bytes(&mut self, size: u32) -> Result<()> {
+        self.inner.resize_bytes(size as usize).map_err(io_error)
+    }
+
+    /// Set the buffer's size to an exact `size` bits.
+    #[napi]
+    pub fn resize_bits(&mut self, size: u32) -> Result<()> {
+        self.inner.resize_bits(size as usize).map_err(io_error)
+    }
+
     /// The current cursor position, in bytes.
     #[napi]
     pub fn tell(&self) -> u32 {
@@ -303,6 +433,52 @@ impl BitBuffer {
     ) -> Result<()> {
         self.inner
             .pwrite_bit_array(position as usize, whence.into(), &values)
+            .map_err(io_error)
+    }
+
+    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
+    #[napi]
+    pub fn pread_io(
+        &self,
+        position: u32,
+        whence: Whence,
+        size: u32,
+        sink: &mut BitBuffer,
+        sink_position: u32,
+        sink_whence: Whence,
+    ) -> Result<()> {
+        self.inner
+            .pread_io(
+                position as usize,
+                whence.into(),
+                size as usize,
+                &mut sink.inner,
+                sink_position as usize,
+                sink_whence.into(),
+            )
+            .map_err(io_error)
+    }
+
+    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
+    #[napi]
+    pub fn pwrite_io(
+        &mut self,
+        position: u32,
+        whence: Whence,
+        source: &BitBuffer,
+        source_position: u32,
+        source_whence: Whence,
+        size: u32,
+    ) -> Result<()> {
+        self.inner
+            .pwrite_io(
+                position as usize,
+                whence.into(),
+                &source.inner,
+                source_position as usize,
+                source_whence.into(),
+                size as usize,
+            )
             .map_err(io_error)
     }
 }

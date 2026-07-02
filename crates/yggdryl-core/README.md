@@ -70,9 +70,17 @@ fn first_byte<S: RawIOBase>(store: &mut S) -> Result<u8, yggdryl_core::IOError> 
 ```
 
 `IOBase<T>: RawIOBase` layers typed values on top: implement `value_to_bytes` (how a
-`T` becomes bytes) and the typed writes `pwrite_one` / `pwrite_array` come free,
-serializing through it into the raw byte methods. Both traits report sizes —
-`RawIOBase::byte_size` / `bit_size`, and `IOBase::size` (the number of `T` items).
+`T` becomes bytes), `size` and `resize` (in items), and the typed writes
+`pwrite_one` / `pwrite_array` come free, serializing through it into the raw byte
+methods. Both traits report sizes and capacities (`byte_size` / `bit_size`,
+`byte_capacity` / `bit_capacity`, `IOBase::size` / `capacity`), support resizing
+(`resize_bytes` / `resize_bits` / `IOBase::resize`, plus capacity hints), and stream
+between resources in chunks with `pread_io` / `pwrite_io` — a large transfer never
+materializes in full.
+
+`ByteBuffer` (byte-granular) and `BitBuffer` (exact bit length) are the concrete
+in-memory resources; both are exposed in the Python and Node bindings. Benchmarks
+live in `benches/buffers.rs` (`cargo bench`).
 
 ```rust
 use yggdryl_core::{IOBase, RawIOBase, Whence};

@@ -6,9 +6,11 @@ use super::{IOError, RawIOBase, Whence};
 /// converting them to bytes.
 ///
 /// An implementor says how a `T` becomes bytes with
-/// [`value_to_bytes`](IOBase::value_to_bytes); the typed writes
-/// [`pwrite_one`](IOBase::pwrite_one) / [`pwrite_array`](IOBase::pwrite_array) then
-/// come for free — they serialize through it and delegate to the raw byte methods.
+/// [`value_to_bytes`](IOBase::value_to_bytes), how many items the resource holds
+/// with [`size`](IOBase::size), and how to change that count with
+/// [`resize`](IOBase::resize); the typed writes [`pwrite_one`](IOBase::pwrite_one) /
+/// [`pwrite_array`](IOBase::pwrite_array) then come for free — they serialize
+/// through it and delegate to the raw byte methods.
 ///
 /// ```
 /// use yggdryl_core::{IOBase, IOError, RawIOBase, Seekable, Whence};
@@ -37,6 +39,11 @@ use super::{IOError, RawIOBase, Whence};
 /// impl RawIOBase for Mem {
 ///     fn byte_size(&self) -> usize {
 ///         self.data.len()
+///     }
+///
+///     fn resize_bytes(&mut self, size: usize) -> Result<(), IOError> {
+///         self.data.resize(size, 0);
+///         Ok(())
 ///     }
 ///
 ///     fn pread_byte_array(&self, position: usize, _whence: Whence, size: usize) -> Result<Vec<u8>, IOError> {
@@ -80,7 +87,8 @@ use super::{IOError, RawIOBase, Whence};
 ///     }
 /// }
 ///
-/// // The typed layer: say how a u32 becomes bytes, and typed writes come for free.
+/// // The typed layer: say how a u32 becomes bytes, count and resize in items, and
+/// // typed writes come for free.
 /// impl IOBase<u32> for Mem {
 ///     fn value_to_bytes(&self, value: &u32) -> Vec<u8> {
 ///         value.to_le_bytes().to_vec()
@@ -88,6 +96,10 @@ use super::{IOError, RawIOBase, Whence};
 ///
 ///     fn size(&self) -> usize {
 ///         self.byte_size() / 4 // four bytes per u32
+///     }
+///
+///     fn resize(&mut self, size: usize) -> Result<(), IOError> {
+///         self.resize_bytes(size * 4)
 ///     }
 /// }
 ///
@@ -99,6 +111,10 @@ use super::{IOError, RawIOBase, Whence};
 ///     vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
 /// );
 /// assert_eq!(mem.size(), 3); // three u32 items
+/// assert_eq!(mem.capacity(), 3); // default: capacity mirrors size
+///
+/// mem.resize(4)?; // one more zeroed item
+/// assert_eq!((mem.size(), mem.byte_size()), (4, 16));
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 pub trait IOBase<T>: RawIOBase {
@@ -107,6 +123,28 @@ pub trait IOBase<T>: RawIOBase {
 
     /// The number of `T` items in the resource.
     fn size(&self) -> usize;
+
+    /// The number of `T` items the resource can hold without reallocating.
+    /// Defaults to [`size`](IOBase::size) for resources that do not over-allocate.
+    fn capacity(&self) -> usize {
+        self.size()
+    }
+
+    /// Request room for `capacity` items, returning the resulting capacity.
+    ///
+    /// The request is a hint: the default leaves the allocation unchanged (and logs
+    /// the skip). It never changes [`size`](IOBase::size).
+    fn resize_capacity(&mut self, capacity: usize) -> Result<usize, IOError> {
+        crate::log_event!(
+            warn,
+            "IOBase::resize_capacity({capacity}) ignored: fixed allocation"
+        );
+        let _ = capacity;
+        Ok(self.capacity())
+    }
+
+    /// Set the number of `T` items in the resource, truncating or zero-filling.
+    fn resize(&mut self, size: usize) -> Result<(), IOError>;
 
     /// Write one `T` at `position` relative to `whence`, as its bytes.
     fn pwrite_one(&mut self, position: usize, whence: Whence, value: &T) -> Result<(), IOError> {

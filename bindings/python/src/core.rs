@@ -87,6 +87,30 @@ impl ByteBuffer {
         self.inner.bit_size()
     }
 
+    fn byte_capacity(&self) -> usize {
+        self.inner.byte_capacity()
+    }
+
+    fn bit_capacity(&self) -> usize {
+        self.inner.bit_capacity()
+    }
+
+    fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
+        Ok(self.inner.resize_byte_capacity(capacity)?)
+    }
+
+    fn resize_bit_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
+        Ok(self.inner.resize_bit_capacity(capacity)?)
+    }
+
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IoError> {
+        Ok(self.inner.resize_bytes(size)?)
+    }
+
+    fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
+        Ok(self.inner.resize_bits(size)?)
+    }
+
     fn tell(&self) -> usize {
         self.inner.tell()
     }
@@ -161,6 +185,48 @@ impl ByteBuffer {
         Ok(self
             .inner
             .pwrite_bit_array(position, whence.into(), &values)?)
+    }
+
+    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
+    #[allow(clippy::too_many_arguments)]
+    fn pread_io(
+        &self,
+        position: usize,
+        whence: Whence,
+        size: usize,
+        sink: &mut ByteBuffer,
+        sink_position: usize,
+        sink_whence: Whence,
+    ) -> Result<(), IoError> {
+        Ok(self.inner.pread_io(
+            position,
+            whence.into(),
+            size,
+            &mut sink.inner,
+            sink_position,
+            sink_whence.into(),
+        )?)
+    }
+
+    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
+    #[allow(clippy::too_many_arguments)]
+    fn pwrite_io(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &ByteBuffer,
+        source_position: usize,
+        source_whence: Whence,
+        size: usize,
+    ) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_io(
+            position,
+            whence.into(),
+            &source.inner,
+            source_position,
+            source_whence.into(),
+            size,
+        )?)
     }
 }
 
@@ -200,6 +266,30 @@ impl BitBuffer {
         self.inner.bit_size()
     }
 
+    fn byte_capacity(&self) -> usize {
+        self.inner.byte_capacity()
+    }
+
+    fn bit_capacity(&self) -> usize {
+        self.inner.bit_capacity()
+    }
+
+    fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
+        Ok(self.inner.resize_byte_capacity(capacity)?)
+    }
+
+    fn resize_bit_capacity(&mut self, capacity: usize) -> Result<usize, IoError> {
+        Ok(self.inner.resize_bit_capacity(capacity)?)
+    }
+
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IoError> {
+        Ok(self.inner.resize_bytes(size)?)
+    }
+
+    fn resize_bits(&mut self, size: usize) -> Result<(), IoError> {
+        Ok(self.inner.resize_bits(size)?)
+    }
+
     fn tell(&self) -> usize {
         self.inner.tell()
     }
@@ -274,6 +364,48 @@ impl BitBuffer {
         Ok(self
             .inner
             .pwrite_bit_array(position, whence.into(), &values)?)
+    }
+
+    /// Stream `size` bytes from this buffer into `sink`, copying in chunks.
+    #[allow(clippy::too_many_arguments)]
+    fn pread_io(
+        &self,
+        position: usize,
+        whence: Whence,
+        size: usize,
+        sink: &mut BitBuffer,
+        sink_position: usize,
+        sink_whence: Whence,
+    ) -> Result<(), IoError> {
+        Ok(self.inner.pread_io(
+            position,
+            whence.into(),
+            size,
+            &mut sink.inner,
+            sink_position,
+            sink_whence.into(),
+        )?)
+    }
+
+    /// Stream `size` bytes from `source` into this buffer, copying in chunks.
+    #[allow(clippy::too_many_arguments)]
+    fn pwrite_io(
+        &mut self,
+        position: usize,
+        whence: Whence,
+        source: &BitBuffer,
+        source_position: usize,
+        source_whence: Whence,
+        size: usize,
+    ) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_io(
+            position,
+            whence.into(),
+            &source.inner,
+            source_position,
+            source_whence.into(),
+            size,
+        )?)
     }
 }
 

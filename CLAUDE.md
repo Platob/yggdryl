@@ -35,6 +35,13 @@ type they are looking at from the shape of the code.
    `serialize_bytes`. Bindings mirror the pair, adapting to idioms (Node camelCase
    `serializeBytes()` / `deserializeBytes()`; Python `__reduce__` so pickle
    round-trips too).
+6. **IO goes through the core IO traits.** Anything that reads or writes a
+   sequence of bytes or bits implements the positioned-IO surface in
+   `yggdryl-core` (`Seekable` + `RawIOBase`; typed element access via
+   `IOBase<T>`), and generic serialization/deserialization code is written
+   against those traits — never against a concrete buffer type or an ad-hoc
+   `Vec<u8>` parameter. Transfers between two resources use the chunked
+   `pread_io` / `pwrite_io` streams rather than materializing whole copies.
 
 ## Workspace layout
 

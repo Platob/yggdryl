@@ -48,6 +48,11 @@ impl RawIOBase for Mem {
         self.data.len()
     }
 
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IOError> {
+        self.data.resize(size, 0);
+        Ok(())
+    }
+
     fn pread_byte_array(
         &self,
         position: usize,
@@ -185,6 +190,10 @@ impl IOBase<u32> for Mem {
     fn size(&self) -> usize {
         self.byte_size() / 4
     }
+
+    fn resize(&mut self, size: usize) -> Result<(), IOError> {
+        self.resize_bytes(size * 4)
+    }
 }
 
 #[test]
@@ -228,4 +237,54 @@ fn typed_writes_go_through_value_to_bytes() {
         mem.pread_byte_array(0, Whence::Start, 12).unwrap(),
         vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     );
+}
+
+#[test]
+fn default_capacities_mirror_sizes() {
+    let mut mem = Mem::default();
+    mem.pwrite_byte_array(0, Whence::Start, &[0; 8]).unwrap();
+    assert_eq!(mem.byte_capacity(), 8); // default: capacity == size
+    assert_eq!(mem.bit_capacity(), 64);
+    assert_eq!(mem.capacity(), 2); // typed default: capacity == size
+                                   // The default capacity resize is a hint that leaves the allocation unchanged.
+    assert_eq!(mem.resize_byte_capacity(100).unwrap(), 8);
+    assert_eq!(IOBase::<u32>::resize_capacity(&mut mem, 100).unwrap(), 2);
+}
+
+#[test]
+fn resize_bytes_and_bits() {
+    let mut mem = Mem::default();
+    mem.resize_bytes(4).unwrap();
+    assert_eq!(mem.byte_size(), 4);
+    // The default bit resize rounds up to whole bytes.
+    mem.resize_bits(20).unwrap();
+    assert_eq!(mem.byte_size(), 3);
+}
+
+#[test]
+fn typed_resize_counts_items() {
+    let mut mem = Mem::default();
+    IOBase::<u32>::resize(&mut mem, 3).unwrap();
+    assert_eq!(mem.byte_size(), 12);
+    assert_eq!(mem.size(), 3);
+}
+
+#[test]
+fn stream_copy_between_ios() {
+    let mut source = Mem::default();
+    source
+        .pwrite_byte_array(0, Whence::Start, &[1, 2, 3, 4, 5, 6, 7, 8])
+        .unwrap();
+
+    // Read a slice of `source` into `sink`.
+    let mut sink = Mem::default();
+    source
+        .pread_io(2, Whence::Start, 4, &mut sink, 0, Whence::Start)
+        .unwrap();
+    assert_eq!(sink.data, vec![3, 4, 5, 6]);
+
+    // And append from `source` into `sink` via End, resolved through the cursor.
+    sink.pwrite_io(0, Whence::End, &source, 0, Whence::Start, 2)
+        .unwrap();
+    assert_eq!(sink.data, vec![3, 4, 5, 6, 1, 2]);
 }

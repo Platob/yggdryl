@@ -8,7 +8,8 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 ///
 /// Unlike [`ByteBuffer`](super::ByteBuffer), it tracks an exact bit length, so its
 /// [`bit_size`](RawIOBase::bit_size) need not be a multiple of eight and its
-/// [`byte_size`](RawIOBase::byte_size) rounds up to the enclosing byte. Bits are
+/// [`byte_size`](RawIOBase::byte_size) rounds up to the enclosing byte — the same
+/// holds for [`resize_bits`](RawIOBase::resize_bits), which is exact here. Bits are
 /// MSB-first; writes past the end grow the buffer with zeroes.
 ///
 /// ```
@@ -18,7 +19,10 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// buf.pwrite_bit_array(0, Whence::Start, &[true, false, true])?;
 /// assert_eq!(buf.bit_size(), 3);
 /// assert_eq!(buf.byte_size(), 1); // three bits still occupy one byte
-/// assert_eq!(buf.pread_bit_array(0, Whence::Start, 3)?, vec![true, false, true]);
+///
+/// buf.resize_bits(2)?; // truncate to an exact bit count
+/// assert_eq!(buf.bit_size(), 2);
+/// assert_eq!(buf.pread_bit_array(0, Whence::Start, 2)?, vec![true, false]);
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -97,6 +101,38 @@ impl RawIOBase for BitBuffer {
         self.bit_len
     }
 
+    fn byte_capacity(&self) -> usize {
+        self.data.capacity()
+    }
+
+    fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IOError> {
+        if capacity > self.data.capacity() {
+            self.data.reserve_exact(capacity - self.data.len());
+        } else {
+            self.data.shrink_to(capacity);
+        }
+        crate::log_event!(
+            debug,
+            "BitBuffer::resize_byte_capacity -> {}",
+            self.data.capacity()
+        );
+        Ok(self.data.capacity())
+    }
+
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IOError> {
+        self.data.resize(size, 0);
+        self.bit_len = size * 8;
+        crate::log_event!(debug, "BitBuffer::resize_bytes -> {size}");
+        Ok(())
+    }
+
+    fn resize_bits(&mut self, size: usize) -> Result<(), IOError> {
+        self.data.resize(size.div_ceil(8), 0);
+        self.bit_len = size;
+        crate::log_event!(debug, "BitBuffer::resize_bits -> {size}");
+        Ok(())
+    }
+
     fn pread_byte_array(
         &self,
         position: usize,
@@ -136,8 +172,8 @@ impl RawIOBase for BitBuffer {
         size: usize,
     ) -> Result<Vec<bool>, IOError> {
         let start = self.bit_offset(position, whence);
-        let end = bits::checked_end(start, size, self.bit_len)?;
-        Ok((start..end).map(|i| bits::get_bit(&self.data, i)).collect())
+        bits::checked_end(start, size, self.bit_len)?;
+        Ok(bits::read_bits(&self.data, start, size))
     }
 
     fn pwrite_bit_array(
@@ -157,9 +193,7 @@ impl RawIOBase for BitBuffer {
         if needed > self.data.len() {
             self.data.resize(needed, 0);
         }
-        for (i, &bit) in values.iter().enumerate() {
-            bits::set_bit(&mut self.data, start + i, bit);
-        }
+        bits::write_bits(&mut self.data, start, values);
         self.bit_len = self.bit_len.max(end);
         Ok(())
     }

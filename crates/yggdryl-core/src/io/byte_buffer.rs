@@ -9,7 +9,8 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// Positions resolve from [`Whence::Start`] (absolute), [`Whence::Current`] (the
 /// cursor) or [`Whence::End`] (the length); writes past the end grow the buffer with
 /// zeroes. Its [`bit_size`](RawIOBase::bit_size) is always eight times its
-/// [`byte_size`](RawIOBase::byte_size).
+/// [`byte_size`](RawIOBase::byte_size), and capacity tracks the underlying
+/// allocation.
 ///
 /// ```
 /// use yggdryl_core::{ByteBuffer, RawIOBase, Seekable, Whence};
@@ -18,6 +19,10 @@ use super::{IOError, RawIOBase, Seekable, Whence};
 /// buf.pwrite_byte_array(0, Whence::Start, &[1, 2, 3])?;
 /// assert_eq!(buf.byte_size(), 3);
 /// assert_eq!(buf.pread_byte_one(1, Whence::Start)?, 2);
+///
+/// buf.resize_bytes(5)?; // zero-fill up to five bytes
+/// assert_eq!(buf.as_bytes(), &[1, 2, 3, 0, 0]);
+/// assert!(buf.resize_byte_capacity(64)? >= 64);
 ///
 /// buf.seek(1, Whence::Start)?;
 /// assert_eq!(buf.pread_byte_one(0, Whence::Current)?, 2); // relative to the cursor
@@ -87,6 +92,30 @@ impl RawIOBase for ByteBuffer {
         self.data.len()
     }
 
+    fn byte_capacity(&self) -> usize {
+        self.data.capacity()
+    }
+
+    fn resize_byte_capacity(&mut self, capacity: usize) -> Result<usize, IOError> {
+        if capacity > self.data.capacity() {
+            self.data.reserve_exact(capacity - self.data.len());
+        } else {
+            self.data.shrink_to(capacity);
+        }
+        crate::log_event!(
+            debug,
+            "ByteBuffer::resize_byte_capacity -> {}",
+            self.data.capacity()
+        );
+        Ok(self.data.capacity())
+    }
+
+    fn resize_bytes(&mut self, size: usize) -> Result<(), IOError> {
+        self.data.resize(size, 0);
+        crate::log_event!(debug, "ByteBuffer::resize_bytes -> {size}");
+        Ok(())
+    }
+
     fn pread_byte_array(
         &self,
         position: usize,
@@ -134,8 +163,8 @@ impl RawIOBase for ByteBuffer {
         size: usize,
     ) -> Result<Vec<bool>, IOError> {
         let start = self.bit_offset(position, whence);
-        let end = bits::checked_end(start, size, self.data.len() * 8)?;
-        Ok((start..end).map(|i| bits::get_bit(&self.data, i)).collect())
+        bits::checked_end(start, size, self.data.len() * 8)?;
+        Ok(bits::read_bits(&self.data, start, size))
     }
 
     fn pwrite_bit_array(
@@ -155,9 +184,7 @@ impl RawIOBase for ByteBuffer {
         if needed > self.data.len() {
             self.data.resize(needed, 0);
         }
-        for (i, &bit) in values.iter().enumerate() {
-            bits::set_bit(&mut self.data, start + i, bit);
-        }
+        bits::write_bits(&mut self.data, start, values);
         Ok(())
     }
 }

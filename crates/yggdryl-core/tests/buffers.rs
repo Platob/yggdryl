@@ -84,3 +84,98 @@ fn bit_buffer_out_of_bounds_bit_read_errors() {
     let error = buf.pread_bit_array(0, Whence::Start, 9).unwrap_err();
     assert!(matches!(error, IOError::OutOfBounds { offset: 9, len: 8 }));
 }
+
+#[test]
+fn byte_buffer_capacity_tracks_the_allocation() {
+    let mut buf = ByteBuffer::from_bytes(vec![1, 2, 3]);
+    assert!(buf.byte_capacity() >= 3);
+    assert_eq!(buf.bit_capacity(), buf.byte_capacity() * 8);
+
+    let grown = buf.resize_byte_capacity(64).unwrap();
+    assert!(grown >= 64);
+    assert_eq!(buf.byte_size(), 3); // capacity never changes the size
+
+    let shrunk = buf.resize_byte_capacity(0).unwrap();
+    assert!((3..64).contains(&shrunk)); // shrinks toward the length
+    assert_eq!(buf.as_bytes(), &[1, 2, 3]);
+
+    assert!(buf.resize_bit_capacity(100).unwrap() >= 104); // 13 bytes, in bits
+}
+
+#[test]
+fn byte_buffer_resize_truncates_and_zero_fills() {
+    let mut buf = ByteBuffer::from_bytes(vec![1, 2, 3]);
+    buf.resize_bytes(5).unwrap();
+    assert_eq!(buf.as_bytes(), &[1, 2, 3, 0, 0]);
+    buf.resize_bytes(1).unwrap();
+    assert_eq!(buf.as_bytes(), &[1]);
+    // Byte-granular: bit resizes round up to whole bytes.
+    buf.resize_bits(9).unwrap();
+    assert_eq!((buf.byte_size(), buf.bit_size()), (2, 16));
+}
+
+#[test]
+fn bit_buffer_resize_bits_is_exact() {
+    let mut buf = BitBuffer::from_bytes(vec![0xFF]);
+    buf.resize_bits(3).unwrap();
+    assert_eq!((buf.bit_size(), buf.byte_size()), (3, 1));
+    buf.resize_bits(0).unwrap();
+    assert_eq!((buf.bit_size(), buf.byte_size()), (0, 0));
+    buf.resize_bytes(2).unwrap();
+    assert_eq!((buf.bit_size(), buf.byte_size()), (16, 2));
+}
+
+#[test]
+fn unaligned_bit_round_trips_survive_the_packed_fast_path() {
+    // Start at bit 3 with 13 bits: exercises head, packed body, and tail paths.
+    let pattern: Vec<bool> = (0..13).map(|i| i % 3 == 0).collect();
+    let mut buf = BitBuffer::new();
+    buf.resize_bits(16).unwrap();
+    buf.pwrite_bit_array(3, Whence::Start, &pattern).unwrap();
+    assert_eq!(buf.pread_bit_array(3, Whence::Start, 13).unwrap(), pattern);
+    // Neighbouring bits stay untouched.
+    assert_eq!(
+        buf.pread_bit_array(0, Whence::Start, 3).unwrap(),
+        vec![false; 3]
+    );
+}
+
+#[test]
+fn stream_copy_across_buffer_types() {
+    let source = ByteBuffer::from_bytes(vec![1, 2, 3, 4]);
+    let mut sink = BitBuffer::new();
+    source
+        .pread_io(1, Whence::Start, 3, &mut sink, 0, Whence::Start)
+        .unwrap();
+    assert_eq!(sink.as_bytes(), &[2, 3, 4]);
+
+    let mut back = ByteBuffer::new();
+    back.pwrite_io(0, Whence::Start, &sink, 0, Whence::Start, 3)
+        .unwrap();
+    assert_eq!(back.as_bytes(), &[2, 3, 4]);
+}
+
+#[test]
+fn stream_copy_larger_than_one_chunk() {
+    // Three 64 KiB chunks plus a remainder.
+    let payload: Vec<u8> = (0..200_000usize).map(|i| (i % 251) as u8).collect();
+    let source = ByteBuffer::from_bytes(payload.clone());
+    let mut sink = ByteBuffer::new();
+    source
+        .pread_io(0, Whence::Start, payload.len(), &mut sink, 0, Whence::Start)
+        .unwrap();
+    assert_eq!(sink.as_bytes(), payload.as_slice());
+}
+
+#[test]
+fn stream_append_via_end_stays_anchored_while_growing() {
+    let source = ByteBuffer::from_bytes((0..200_000u32).map(|i| (i % 251) as u8).collect());
+    let mut sink = ByteBuffer::from_bytes(vec![9, 9]);
+    // End is resolved once (to 2) before the chunked copy starts growing the sink.
+    source
+        .pread_io(0, Whence::Start, 200_000, &mut sink, 0, Whence::End)
+        .unwrap();
+    assert_eq!(sink.byte_size(), 200_002);
+    assert_eq!(&sink.as_bytes()[..2], &[9, 9]);
+    assert_eq!(&sink.as_bytes()[2..], source.as_bytes());
+}
