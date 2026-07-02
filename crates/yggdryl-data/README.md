@@ -12,15 +12,21 @@ per concern (`data_type`, `field`, `scalar`).
 ## Untyped base
 
 FFI-facing descriptors, all `Debug + Send + Sync` (schemas are printed and shared
-across threads / FFI); no lifetime parameters.
+across threads / FFI); no lifetime parameters. Every layer converts to and from its
+Apache Arrow equivalent via `to_arrow` / `from_arrow` (the `arrow-schema` and
+`arrow-array` subset crates are re-exported so downstream code shares the exact
+versions).
 
 - **`RawDataType`** — a physical type descriptor: `name`, the Arrow C Data Interface
-  `arrow_format` string, and fixed `byte_width` / `bit_width` (or `None`). Object-safe,
-  so a heterogeneous schema can hold `Box<dyn RawDataType>`.
+  `arrow_format` string, and fixed `byte_width` / `bit_width` (or `None`); mirrors an
+  `arrow_schema::DataType`. Object-safe, so a heterogeneous schema can hold
+  `Box<dyn RawDataType>` (`from_arrow`, returning `Self`, is `Self: Sized`).
 - **`RawField<D: RawDataType>`** — a named, nullable column (`name`, `data_type`,
-  `is_nullable`).
+  `is_nullable`); mirrors an `arrow_schema::Field` (`to_arrow` is defaulted from the
+  three accessors).
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value (`data_type`,
-  `is_null`, `value` of an associated `Value: ?Sized`).
+  `is_null`, `value` of an associated `Value: ?Sized`); mirrors Arrow's own scalar
+  representation, a one-element `arrow_array::ArrayRef`.
 
 ## Typed
 
@@ -54,7 +60,9 @@ a possibly-null scalar; the three share one shape, so a crate-internal macro gen
 each per-type file.
 
 ```rust
-use yggdryl_data::{DataType, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar};
+use yggdryl_data::{
+    arrow_schema, DataType, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar,
+};
 
 // Int64 is a fixed-width primitive whose native type is i64.
 assert_eq!((Int64.name(), Int64.arrow_format(), Int64.byte_width()), ("int64", "l".to_string(), Some(8)));
@@ -62,14 +70,22 @@ assert_eq!(Int64::ID, yggdryl_data::DataTypeId::Int64);
 assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
 assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 
-// Int64Field is a named, nullable column of int64.
+// It mirrors the arrow-schema type, both ways.
+assert_eq!(Int64.to_arrow(), arrow_schema::DataType::Int64);
+assert!(Int64::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+
+// Int64Field is a named, nullable column of int64; to_arrow / from_arrow mirror
+// an arrow_schema::Field.
 let id = Int64Field::new("id", false);
 assert_eq!((id.name(), id.is_nullable()), ("id", false));
+assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
 
-// Int64Scalar is a single i64 value, or null.
-let scalar = Int64Scalar::new(42);
+// Int64Scalar is a single i64 value, or null — built from a native value, and
+// mirrored as Arrow's own scalar representation: a one-element array.
+let scalar = Int64Scalar::from(42);
 assert_eq!(scalar.value(), Some(&42));
-assert!(Int64Scalar::null().is_null());
+assert_eq!(Int64Scalar::from(None), Int64Scalar::null());
+assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar);
 ```
 
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for

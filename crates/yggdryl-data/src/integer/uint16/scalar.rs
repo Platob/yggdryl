@@ -2,4 +2,4 @@
 
 use super::UInt16;
 
-crate::integer::int_scalar!(UInt16Scalar, UInt16, u16, "uint16");
+crate::integer::int_scalar!(UInt16Scalar, UInt16, u16, "uint16", UInt16Array);

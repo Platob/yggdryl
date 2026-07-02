@@ -14,7 +14,18 @@ readme = "README.md"
 name = "yggdryl_data"
 path = "src/lib.rs"
 
-# No dependencies yet: the scaffold is abstract trait definitions. The Arrow subset
-# crates (arrow-schema / arrow-buffer / arrow-array) and yggdryl-core arrive with the
-# first concrete type that needs them.
 [dependencies]
+# Arrow interop surface: `RawDataType::to_arrow` / `RawField::to_arrow` build
+# `arrow_schema::DataType` / `arrow_schema::Field`, and `RawScalar::to_arrow`
+# builds a one-element `arrow_array` array (Arrow's own scalar representation).
+arrow-schema = { workspace = true }
+arrow-array = { workspace = true }
+
+[dev-dependencies]
+# Benchmark harness for the codec / Arrow-interop benches (stable Rust has no
+# built-in bencher). Same version as the yggdryl-core benches.
+criterion = "0.5"
+
+[[bench]]
+name = "datatype"
+harness = false

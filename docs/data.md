@@ -44,15 +44,46 @@ fn main() {
     let id = Int64Field::new("id", false);
     assert_eq!((id.name(), id.is_nullable()), ("id", false));
 
-    // Int64Scalar: a single i64 value, or null.
-    let scalar = Int64Scalar::new(42);
+    // Int64Scalar: a single i64 value, or null — built from a native value.
+    let scalar = Int64Scalar::from(42);
     assert_eq!(scalar.value(), Some(&42));
-    assert!(Int64Scalar::null().is_null());
+    assert_eq!(Int64Scalar::from(None), Int64Scalar::null());
 }
 ```
 
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 `Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
+
+## Arrow interop
+
+Every layer converts to and from its Apache Arrow equivalent with a `to_arrow` /
+`from_arrow` pair (`from_arrow` is the exact inverse, refusing a mismatched Arrow
+value with `DataError`): a data type mirrors an `arrow_schema::DataType`, a field an
+`arrow_schema::Field`, and a scalar Arrow's own scalar representation — a one-element
+`arrow_array` array, null when the scalar is null. The `arrow-schema` and
+`arrow-array` subset crates are re-exported from the crate root so downstream code
+uses the exact versions the crate was built against.
+
+```rust
+use yggdryl_data::{arrow_array::Array, arrow_schema, Int64, Int64Field, Int64Scalar};
+use yggdryl_data::{RawDataType, RawField, RawScalar};
+
+fn main() {
+    // Data type ↔ arrow_schema::DataType.
+    assert_eq!(Int64.to_arrow(), arrow_schema::DataType::Int64);
+    assert!(Int64::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+
+    // Field ↔ arrow_schema::Field.
+    let id = Int64Field::new("id", false);
+    assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
+
+    // Scalar ↔ a one-element arrow_array array.
+    let arrow = Int64Scalar::new(42).to_arrow();
+    assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
+    assert_eq!(Int64Scalar::from_arrow(arrow.as_ref()).unwrap(), Int64Scalar::new(42));
+    assert!(Int64Scalar::null().to_arrow().is_null(0));
+}
+```
 
 ## The trait layers
 
@@ -60,11 +91,15 @@ The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 
 - **`RawDataType`** — a physical type descriptor: `name`, the Arrow C Data Interface
   `arrow_format` string, and fixed `byte_width` / `bit_width` (`None` for variable or
-  nested types).
+  nested types); `to_arrow` / `from_arrow` mirror an `arrow_schema::DataType`
+  (`from_arrow`, returning `Self`, is `Self: Sized` so the trait stays object-safe).
 - **`RawField<D: RawDataType>`** — a named, nullable column: `name`, `data_type`,
-  `is_nullable`.
+  `is_nullable`; `to_arrow` (defaulted from those three accessors) / `from_arrow`
+  mirror an `arrow_schema::Field`.
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value: `data_type`,
-  `is_null`, `value` of an associated `Value: ?Sized`.
+  `is_null`, `value` of an associated `Value: ?Sized`; `to_arrow` / `from_arrow`
+  mirror a one-element `arrow_array` array. The typed and category traits inherit the
+  whole Arrow surface — it is defined once, on the base.
 
 ### Typed
 

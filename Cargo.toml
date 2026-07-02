@@ -27,6 +27,11 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
 yggdryl-data = { path = "crates/yggdryl-data", version = "0.1.0", default-features = false }
+# Apache Arrow subset crates only (never the `arrow` umbrella): the data layer's
+# `to_arrow` / `from_arrow` interop targets `arrow-schema` types (DataType, Field)
+# and `arrow-array` arrays (a scalar is a one-element array).
+arrow-schema = { version = "59.0.0", default-features = false }
+arrow-array = { version = "59.0.0", default-features = false }
 
 [profile.release]
 lto = true

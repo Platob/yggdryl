@@ -2,4 +2,4 @@
 
 use super::Int64;
 
-crate::integer::int_scalar!(Int64Scalar, Int64, i64, "int64");
+crate::integer::int_scalar!(Int64Scalar, Int64, i64, "int64", Int64Array);

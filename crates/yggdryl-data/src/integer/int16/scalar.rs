@@ -2,4 +2,4 @@
 
 use super::Int16;
 
-crate::integer::int_scalar!(Int16Scalar, Int16, i16, "int16");
+crate::integer::int_scalar!(Int16Scalar, Int16, i16, "int16", Int16Array);

@@ -11,7 +11,7 @@ use super::{DataType, RawField};
 /// keeps the surface aligned with [`Scalar`](super::Scalar) and [`DataType`].
 ///
 /// ```
-/// use yggdryl_data::{Field, Int64, RawDataType, RawField};
+/// use yggdryl_data::{arrow_schema, DataError, Field, Int64, RawDataType, RawField};
 ///
 /// #[derive(Debug)]
 /// struct Column {
@@ -29,6 +29,13 @@ use super::{DataType, RawField};
 ///     }
 ///     fn is_nullable(&self) -> bool {
 ///         self.nullable
+///     }
+///     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
+///         Ok(Column {
+///             name: field.name().to_string(),
+///             data_type: Int64::from_arrow(field.data_type())?,
+///             nullable: field.is_nullable(),
+///         })
 ///     }
 /// }
 ///

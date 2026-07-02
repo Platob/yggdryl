@@ -10,7 +10,7 @@ use super::RawDataType;
 /// is the associated [`Storage`](Logical::Storage), so it is preserved concretely.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Logical, RawDataType};
+/// use yggdryl_data::{arrow_schema, DataError, Int64, Logical, RawDataType};
 ///
 /// // A timestamp in microseconds, physically an int64.
 /// #[derive(Debug)]
@@ -22,6 +22,20 @@ use super::RawDataType;
 ///     fn name(&self) -> &str { "timestamp[us]" }
 ///     fn arrow_format(&self) -> String { "tsu:".to_string() }
 ///     fn byte_width(&self) -> Option<usize> { Some(8) }
+///     fn to_arrow(&self) -> arrow_schema::DataType {
+///         arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, None)
+///     }
+///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
+///         match data_type {
+///             arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, None) => {
+///                 Ok(TimestampMicros { storage: Int64 })
+///             }
+///             other => Err(DataError::IncompatibleArrowType {
+///                 expected: "Timestamp(Microsecond, None)".to_string(),
+///                 got: other.to_string(),
+///             }),
+///         }
+///     }
 /// }
 ///
 /// impl Logical for TimestampMicros {

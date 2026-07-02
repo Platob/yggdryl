@@ -10,7 +10,8 @@
 /// Generates a fixed-width integer data type `$ty` (native Rust `$native`), with
 /// `$name` its lowercase name, `$format` its Arrow C Data Interface format string and
 /// `$width` its byte width. The `$ty` identifier doubles as the matching
-/// [`DataTypeId`](crate::DataTypeId) variant, exposed as `$ty::ID`.
+/// [`DataTypeId`](crate::DataTypeId) variant (exposed as `$ty::ID`) and the matching
+/// [`arrow_schema::DataType`] variant (`to_arrow` / `from_arrow`).
 macro_rules! int_data_type {
     ($ty:ident, $native:ty, $name:literal, $format:literal, $width:literal) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type: a fixed-width integer primitive (native `", stringify!($native), "`).")]
@@ -31,6 +32,20 @@ macro_rules! int_data_type {
             }
             fn byte_width(&self) -> Option<usize> {
                 Some($width)
+            }
+            fn to_arrow(&self) -> $crate::arrow_schema::DataType {
+                $crate::arrow_schema::DataType::$ty
+            }
+            fn from_arrow(
+                data_type: &$crate::arrow_schema::DataType,
+            ) -> Result<Self, $crate::DataError> {
+                match data_type {
+                    $crate::arrow_schema::DataType::$ty => Ok(Self),
+                    other => Err($crate::DataError::IncompatibleArrowType {
+                        expected: stringify!($ty).to_string(),
+                        got: other.to_string(),
+                    }),
+                }
             }
         }
 
@@ -88,6 +103,12 @@ macro_rules! int_field {
             fn is_nullable(&self) -> bool {
                 self.nullable
             }
+            fn from_arrow(
+                field: &$crate::arrow_schema::Field,
+            ) -> Result<Self, $crate::DataError> {
+                <$ty as $crate::RawDataType>::from_arrow(field.data_type())?;
+                Ok(Self::new(field.name(), field.is_nullable()))
+            }
         }
 
         impl $crate::Field<$native> for $field {
@@ -98,9 +119,12 @@ macro_rules! int_field {
 pub(crate) use int_field;
 
 /// Generates a single, possibly-null scalar `$scalar` for the integer data type `$ty`
-/// (native `$native`), with `$name` used in its documentation.
+/// (native `$native`), with `$name` used in its documentation and `$array` the
+/// matching [`arrow_array`] primitive array (`to_arrow` / `from_arrow`). The scalar
+/// also converts from its native value: `From<$native>` and `From<Option<$native>>`
+/// (where `None` is the null scalar).
 macro_rules! int_scalar {
-    ($scalar:ident, $ty:ty, $native:ty, $name:literal) => {
+    ($scalar:ident, $ty:ty, $native:ty, $name:literal, $array:ident) => {
         #[doc = concat!("A single, possibly-null `", $name, "` value (native `", stringify!($native), "`).")]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
         pub struct $scalar {
@@ -137,10 +161,71 @@ macro_rules! int_scalar {
             fn value(&self) -> Option<&$native> {
                 self.value.as_ref()
             }
+            fn to_arrow(&self) -> $crate::arrow_array::ArrayRef {
+                match self.value {
+                    // One element, no null buffer — cheaper than building through
+                    // `Vec<Option<_>>`.
+                    Some(value) => {
+                        ::std::sync::Arc::new($crate::arrow_array::$array::from_iter_values(
+                            [value],
+                        ))
+                    }
+                    // Arrow arrays are immutable, so every null scalar shares one
+                    // cached one-null array; a clone is a reference-count bump
+                    // instead of two buffer allocations.
+                    None => {
+                        static NULL: ::std::sync::OnceLock<$crate::arrow_array::ArrayRef> =
+                            ::std::sync::OnceLock::new();
+                        NULL.get_or_init(|| {
+                            ::std::sync::Arc::new($crate::arrow_array::$array::new_null(1))
+                        })
+                        .clone()
+                    }
+                }
+            }
+            fn from_arrow(
+                array: &dyn $crate::arrow_array::Array,
+            ) -> Result<Self, $crate::DataError> {
+                // Fully-qualified `Array` calls: the trait is not in scope at the
+                // macro's expansion site.
+                let length = $crate::arrow_array::Array::len(array);
+                if length != 1 {
+                    return Err($crate::DataError::InvalidScalarLength { got: length });
+                }
+                let array = array
+                    .as_any()
+                    .downcast_ref::<$crate::arrow_array::$array>()
+                    .ok_or_else(|| $crate::DataError::IncompatibleArrowType {
+                        expected: stringify!($ty).to_string(),
+                        got: $crate::arrow_array::Array::data_type(array).to_string(),
+                    })?;
+                Ok(if $crate::arrow_array::Array::is_null(array, 0) {
+                    Self::null()
+                } else {
+                    Self::new(array.value(0))
+                })
+            }
         }
 
         impl $crate::Scalar<$native> for $scalar {
             type Type = $ty;
+        }
+
+        impl ::core::convert::From<$native> for $scalar {
+            #[doc = concat!("A `", $name, "` scalar holding `value`.")]
+            fn from(value: $native) -> Self {
+                Self::new(value)
+            }
+        }
+
+        impl ::core::convert::From<::core::option::Option<$native>> for $scalar {
+            #[doc = concat!("A `", $name, "` scalar holding `value`, or the null scalar for `None`.")]
+            fn from(value: ::core::option::Option<$native>) -> Self {
+                match value {
+                    ::core::option::Option::Some(value) => Self::new(value),
+                    ::core::option::Option::None => Self::null(),
+                }
+            }
         }
     };
 }

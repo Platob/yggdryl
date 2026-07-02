@@ -38,3 +38,7 @@ json = ["serde", "dep:serde_json"]
 [[bench]]
 name = "buffers"
 harness = false
+
+[[bench]]
+name = "adapters"
+harness = false

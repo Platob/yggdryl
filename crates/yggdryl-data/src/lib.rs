@@ -17,6 +17,19 @@
 //! Concrete types live in per-family modules — the [`integer`] module holds every
 //! signed and unsigned integer (each its own data type, field and scalar). Add more
 //! following the rules in `CLAUDE.md`.
+//!
+//! Every layer converts to and from its Apache Arrow equivalent (`to_arrow` /
+//! `from_arrow`): a data type mirrors an [`arrow_schema::DataType`], a field an
+//! [`arrow_schema::Field`], and a scalar a one-element [`arrow_array`] array. The
+//! `arrow-schema` and `arrow-array` subset crates are re-exported so downstream code
+//! uses the exact versions this crate was built against.
+
+/// The Apache Arrow array layer (`arrow-array`), re-exported so downstream code and
+/// the scalar `to_arrow` / `from_arrow` surface share one version.
+pub use arrow_array;
+/// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
+/// and the data type / field `to_arrow` / `from_arrow` surface share one version.
+pub use arrow_schema;
 
 mod data_type_id;
 mod error;

@@ -2,4 +2,4 @@
 
 use super::UInt8;
 
-crate::integer::int_scalar!(UInt8Scalar, UInt8, u8, "uint8");
+crate::integer::int_scalar!(UInt8Scalar, UInt8, u8, "uint8", UInt8Array);

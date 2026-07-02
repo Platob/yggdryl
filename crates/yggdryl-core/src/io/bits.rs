@@ -31,9 +31,18 @@ pub(super) fn read_bits(data: &[u8], start: usize, size: usize) -> Vec<bool> {
     }
     while i + 8 <= end {
         let byte = data[i / 8];
-        for bit in 0..8 {
-            out.push((byte >> (7 - bit)) & 1 == 1);
-        }
+        // Eight independent mask tests and one extend: no per-bit capacity check
+        // and no serial shift chain, so the unpack pipelines.
+        out.extend_from_slice(&[
+            byte & 0x80 != 0,
+            byte & 0x40 != 0,
+            byte & 0x20 != 0,
+            byte & 0x10 != 0,
+            byte & 0x08 != 0,
+            byte & 0x04 != 0,
+            byte & 0x02 != 0,
+            byte & 0x01 != 0,
+        ]);
         i += 8;
     }
     while i < end {
