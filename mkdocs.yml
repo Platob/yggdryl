@@ -1,0 +1,47 @@
+site_name: yggdryl
+site_description: A Rust-core library with Python and Node.js extensions.
+site_url: https://platob.github.io/yggdryl/
+repo_url: https://github.com/Platob/yggdryl
+repo_name: Platob/yggdryl
+copyright: Apache-2.0
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: green
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: green
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Positioned I/O: io.md
+  - Charset: charset.md
+  - Serialization: base.md
+  - Data model: data.md

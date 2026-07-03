@@ -15,16 +15,30 @@ name = "yggdryl_core"
 path = "src/lib.rs"
 
 [dependencies]
-# Both off by default so the crate stays dependency-free:
-#   log    structured logging via the `log` facade (the `log_event!` macro);
-#   serde  content-based `Serialize` / `Deserialize` for the value types.
+# All optional so the crate stays dependency-free by default:
+#   log         structured logging via the `log` facade (the `log_event!` macro);
+#   serde       `Serialize` / `Deserialize` bounds for the `Base` trait;
+#   serde_json  JSON (de)serialization behind `Base` (the `json` feature).
 log = { version = "0.4", optional = true }
 serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
-# Round-trip the hand-rolled `serde` impls through a concrete format in the tests.
-serde_json = { version = "1" }
+# Example value types in tests and doctests derive `Serialize` / `Deserialize`.
+serde = { version = "1", features = ["derive"] }
+# Benchmark harness for the buffer benches (stable Rust has no built-in bencher).
+criterion = "0.5"
 
 [features]
 log = ["dep:log"]
 serde = ["dep:serde"]
+# JSON serialization for the `Base` trait; pulls in `serde` and `serde_json`.
+json = ["serde", "dep:serde_json"]
+
+[[bench]]
+name = "buffers"
+harness = false
+
+[[bench]]
+name = "adapters"
+harness = false

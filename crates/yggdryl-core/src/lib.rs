@@ -3,22 +3,43 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! The project has been reset to a minimal scaffold: the crate exposes only
-//! [`version`] and the [`hello`] print example, so the Rust core and its Python and
-//! Node bindings build and round-trip end to end. Reintroduce the foundational types
-//! here as the design lands — one module per concern, each re-exported at the crate
-//! root — following the rules in `CLAUDE.md`.
+//! It exposes the [`Charset`] trait (with the [`Utf8`] and [`Latin1`] encodings),
+//! the positioned-I/O traits [`RawIOBase`] (raw bytes/bits) and [`IOBase`] (a typed
+//! layer) with their [`Whence`] reference point, the concrete [`ByteBuffer`] /
+//! [`BitBuffer`] resources, the [`Seekable`] [`RawIOCursor`] / [`IOCursor`] adapters
+//! that add a moving cursor and the [`RawIOSlice`] / [`IOSlice`] adapters that bound
+//! a resource to a byte window, and — behind the off-by-default `json` feature —
+//! the `Base` trait for content JSON plus an implementor-defined byte form. The
+//! [`version`] and [`hello`] entry points remain as the minimal cross-language
+//! round-trip example. Add further foundational types here as the design lands — one
+//! module per concern, each re-exported at the crate root — following the rules in
+//! `CLAUDE.md`.
 
 /// Emits a `log` event when the `log` feature is enabled, and expands to nothing
 /// otherwise (so the crate stays dependency-free by default and pays no runtime
-/// cost). Once submodules return, re-export it with `pub(crate) use log_event;` so
-/// they can reach it via `crate::log_event!`.
+/// cost). Submodules reach it via `crate::log_event!` thanks to the re-export
+/// below.
 macro_rules! log_event {
     ($level:ident, $($arg:tt)+) => {{
         #[cfg(feature = "log")]
-        log::$level!($($arg)+);
+        ::log::$level!($($arg)+);
     }};
 }
+pub(crate) use log_event;
+
+mod charset;
+pub use charset::{Charset, CharsetError, Latin1, Utf8};
+
+mod io;
+pub use io::{
+    BitBuffer, ByteBuffer, ByteBufferSlice, IOBase, IOCursor, IOError, IOSlice, RawIOBase,
+    RawIOCursor, RawIOSlice, Seekable, Whence,
+};
+
+#[cfg(feature = "json")]
+mod base;
+#[cfg(feature = "json")]
+pub use base::{Base, BaseError};
 
 /// The crate version, as declared in `Cargo.toml`.
 ///

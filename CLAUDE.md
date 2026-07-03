@@ -3,8 +3,9 @@
 > **Project status: rebuilding.** The old implementation was removed; the project is
 > being rebuilt around an **Apache Arrow-centralized** data model, one workspace
 > crate per layer, targeting dataframe-style workloads. This file holds only the
-> **cross-cutting rules**; each crate documents its own design in its module doc
-> comments and README, so this file stays small as the workspace grows.
+> **cross-cutting rules**; each crate documents its own design (type shapes, naming,
+> API surface) in its module doc comments and README, so this file stays small as
+> the workspace grows.
 
 Before adding anything, read the nearest existing example and mirror its structure,
 naming, error handling, and doc style. A reader should not be able to tell which
@@ -16,37 +17,46 @@ type they are looking at from the shape of the code.
    (`src/datatype/int_width.rs` holds one type), re-exported from its `mod.rs`;
    `lib.rs` is glue only (`mod` declarations, `pub use` re-exports, shared helpers
    such as error conversion and the `log_event!` macro). Never grow one big file.
-2. **Typed construction only.** Validation happens in typed constructors; invalid
-   states are unrepresentable after construction. There is no lenient mode and no
-   `safe` flag. **No string-parsing constructors** — `from_str` / `parse*` are
-   legacy and must not be (re)added. `Display` impls are render-only diagnostics
-   with no parsing counterpart and no round-trip contract.
-3. **FFI-clean public surface.** No lifetime parameters on any public type — the
+2. **FFI-clean public surface.** No lifetime parameters on any public type — the
    bindings must be able to hold every one of them. Temporary borrows appear only
    on `&self` accessor methods and never escape. All logic lives in the Rust core;
    bindings stay thin.
-4. **Append-only public API.** Once merged, the public surface only grows: mark
+3. **Append-only public API.** Once merged, the public surface only grows: mark
    public enums `#[non_exhaustive]`, never repurpose or remove a published item.
-5. **At-most-one-copy.** Buffers are refcounted; slicing/viewing never copies. A
-   value extracted from a larger container is a zero-copy slice holding a refcount
-   on the parent buffer; a standalone value is the same type over a fresh buffer —
-   same type, two provenances. Never copy speculatively; for any hot path ask
-   "does this allocate when nothing changed?" and add a cheap up-front check if so.
-6. **Numeric semantics never lie.** Widening reads are fine (an i8 readable via
-   `as_i64()`); silent truncation is not — return `None` or a typed error.
-   Cross-type comparisons return `None`, never panic.
-7. **Everything is serializable and hashable** except live/stream resources (IO
-   handles, HTTP bodies, sessions). Value types round-trip through bytes
-   (`to_bytes` / `from_bytes`) and JSON (off-by-default `serde` feature;
-   `to_json` / `from_json` where a `json` feature exists) and implement `Hash` +
-   `Eq`. Bindings mirror this: Python `__hash__` + `__reduce__` (pickle), Node
-   `toJSON()` + static `fromJSON()`. A field that cannot be part of identity
-   (e.g. a cyclic `parent` pointer) is excluded from `Hash`/`Eq`/serde with a
-   comment saying why, rather than dropping hashability.
-8. **The three languages move together.** The Rust core is the source of truth;
-   behaviour added or changed anywhere is immediately replicated in the other two,
-   adapting only to idioms (Python dunders / keyword defaults, JS camelCase /
-   `Option<T>` defaults). A change is never half-applied.
+4. **The three languages move together.** The Rust core is the source of truth;
+   behaviour added or changed anywhere is immediately replicated in the **Python and
+   Node** bindings, adapting only to idioms (Python dunders / keyword defaults, JS
+   camelCase / `Option<T>` defaults). A change is never half-applied: the same commit
+   that adds or changes a binding-visible surface updates **both** bindings and their
+   tests, and every task ends with a **coherence check** confirming the three
+   surfaces match method-for-method and behave identically (the binding test suites
+   are the executable proof). A core item may stay **Rust-only** only when it cannot
+   cross the FFI boundary cleanly: the two-resource streams (`pread_raw_io` /
+   `pwrite_raw_io` and the typed `pread_typed_io` / `pwrite_typed_io`, which borrow
+   two resources at once) and the typed `IOCursor` / `IOSlice` adapters (no binding
+   resource implements `IOBase` yet). The raw `RawIOCursor` / `RawIOSlice`
+   adapters, though generic in the core, **are** replicated — as concrete per-buffer
+   wrappers (`ByteBufferCursor`, `ByteBufferSlice`, and the `BitBuffer` variants). Any
+   such omission is stated in **both** binding module docs and on the docs site, so
+   "not replicated" is always a documented, deliberate choice rather than drift.
+5. **Serializable to and from bytes whenever possible.** Every value type
+   round-trips through bytes via `serialize_bytes()` / `deserialize_bytes(bytes)`;
+   the only exceptions are live/stream resources (IO handles, HTTP bodies,
+   sessions), which carry no serializable value. `deserialize_bytes` validates
+   fully (length-check against the type's width) and is the exact inverse of
+   `serialize_bytes`. Bindings mirror the pair, adapting to idioms (Node camelCase
+   `serializeBytes()` / `deserializeBytes()`; Python `__reduce__` so pickle
+   round-trips too).
+6. **IO goes through the core IO traits.** Anything that reads or writes a
+   sequence of bytes or bits implements the positioned-IO surface in
+   `yggdryl-core` (`Seekable` + `RawIOBase`; typed element writes via
+   `IOBase<T>`), and generic transfer/streaming code is written against those
+   traits — never against a concrete buffer type or an ad-hoc `Vec<u8>`
+   parameter. The one sanctioned byte-slice surface is rule 5's per-type
+   `serialize_bytes` / `deserialize_bytes` codec. Transfers between two resources
+   use the chunked streams — `pread_raw_io` / `pwrite_raw_io` by bytes, or
+   `pread_typed_io` / `pwrite_typed_io` by items — rather than materializing whole
+   copies.
 
 ## Workspace layout
 
@@ -54,13 +64,9 @@ One crate per layer; dependencies point strictly downward (a lower layer never
 imports an upper one — needing the reverse means the abstraction belongs lower).
 
 - `crates/yggdryl-core` — dependency-light foundations (streaming byte-IO, shared
-  error types). **No Arrow vocabulary in core.** Byte sources implement the single
-  IO abstraction and hand back zero-copy views; byte consumers take an IO/reader,
-  never a pre-collected `Vec`.
-- `crates/yggdryl-data` — the Arrow data-model layer (`DataType`, `Field`,
-  `Scalar`, the object-safe `Datum` trait), built on `arrow-buffer` buffers.
-  Compute kernels are written once against `Datum`; future Array/Series types
-  implement the same trait.
+  error types). **No Arrow vocabulary in core.**
+- `crates/yggdryl-data` — the Arrow data-model layer, built on `arrow-buffer`
+  buffers.
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.
@@ -79,42 +85,6 @@ Minimal and pinned in the workspace `Cargo.toml`. For Arrow, use only the subset
 crates actually needed (`arrow-schema`, `arrow-buffer`, `arrow-array`) — never the
 full `arrow` umbrella or `arrow-flight`. Any new dependency carries a code comment
 justifying it. Never pull a heavy SDK into a crate that should not depend on it.
-
-## Arrow interop
-
-- Every yggdryl type that maps to Arrow exposes `to_arrow()` / `from_arrow(...)`,
-  and the mapping is **total and reversible** for the supported subset — losslessly
-  round-trippable, and **property-tested** as such. Where Arrow lacks a physical
-  type, anchor on a compatible physical type plus metadata that restores the
-  semantics, and document the rationale in the doc comment.
-- `from_arrow` is the **only inbound conversion** and validates fully; unknown
-  `ygg.*` metadata values are rejected with a typed error.
-- All `ygg.*` metadata keys are namespaced constants defined in **one module**
-  (the single source of truth) — no string literals scattered through the code.
-
-## Naming conventions (identical across languages; JS uses camelCase)
-
-| Concept | Name |
-| --- | --- |
-| Construct from explicit parts | `from_parts(...)` |
-| Typed conversions | `from_<type>(...)` / `to_<repr>()` (e.g. `from_i8`, `from_le_bytes`, `to_arrow`) |
-| Serialize to / from bytes | `to_bytes()` / `from_bytes(bytes)` |
-| JSON (where a `json` feature exists) | `to_json()` / `from_json(value)` |
-| Checked read accessor | `as_<type>()` on `&self`, `Option`-returning |
-| Independent / overriding copy | `copy(...)` — every field optional, omitted fields come from `self` |
-| Single-field functional update | `with_<field>(value)` returns a new value |
-| Clear an optional field | `without_<field>()` |
-
-- `from_*` names take **typed** inputs and validate (length-check byte inputs
-  against the type's width); the word "parse" never appears in the public API.
-- `with_*` / `without_*` / `copy` are **non-mutating** and return a new value.
-  `copy` is the one primitive that rebuilds the value with selected fields
-  overridden; every `with_*` / `without_*` is a one-line delegation to it. Design
-  trait signatures so implementors can satisfy them in one line; expand to
-  multi-line bodies only when the logic genuinely needs it.
-- Shared handles are `Arc` type aliases named `<Type>Ref` (e.g.
-  `pub type FieldRef = Arc<Field>`); the Arc clone IS the cheap sharing mechanism —
-  no view/borrowed variants.
 
 ## Errors and docs
 
@@ -161,12 +131,12 @@ mkdocs build --strict   # when docs/ or mkdocs.yml changed (pip install mkdocs-m
 
 All must pass. Then do a final **coherence pass** — required, not optional polish:
 
-1. No redundancy — fold duplicated logic into one place; a new `from_*` delegates
-   to an existing one; don't add an API that restates another.
+1. No redundancy — fold duplicated logic into one place; don't add an API that
+   restates another.
 2. Cross-language parity — same surface and semantics in the core and both
    bindings.
 3. One concern per file, in the right crate/module, mirroring its neighbours.
-4. Readability — names match the conventions table; every public item documented.
+4. Readability — every public item documented, matching its neighbours.
 5. Docs in sync — the matching page reflects the change, with synced language tabs.
 
 Fix any failure before committing.
