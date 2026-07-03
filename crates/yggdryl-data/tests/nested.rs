@@ -3,13 +3,13 @@
 
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
-    arrow_array, arrow_schema, DataError, DataType, Field, Int64, Int64Scalar, List, ListField,
-    ListScalar, ListType, Map, MapField, MapScalar, MapType, OptionalScalar, OptionalType,
-    RawDataType, RawField, RawList, RawMap, RawNested, RawScalar, RawStruct, StructField,
-    StructScalar, StructType, UInt8, UInt8Scalar,
+    arrow_array, arrow_buffer, arrow_schema, DataError, DataType, Field, Int64, Int64Array,
+    Int64Scalar, List, ListField, ListScalar, ListType, Map, MapField, MapScalar, MapType,
+    OptionalScalar, OptionalType, RawDataType, RawField, RawList, RawMap, RawNested, RawScalar,
+    RawStruct, StructField, StructScalar, StructType, UInt8, UInt8Scalar,
 };
 
-type Int64List = ListScalar<Int64, Int64Scalar>;
+type Int64ListScalar = ListScalar<Int64, Int64Scalar>;
 type RankMap = MapScalar<UInt8, Int64, UInt8Scalar, Int64Scalar>;
 
 fn point_type() -> StructType {
@@ -82,32 +82,133 @@ fn list_field_carries_both_layers() {
 #[test]
 fn list_scalar_round_trips_all_shapes() {
     // Elements, the empty list and null are three distinct states.
-    let numbers = Int64List::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    let numbers = Int64ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     let arrow = numbers.to_arrow();
     assert_eq!(arrow.len(), 1);
-    assert_eq!(Int64List::from_arrow(arrow.as_ref()).unwrap(), numbers);
+    assert_eq!(
+        Int64ListScalar::from_arrow(arrow.as_ref()).unwrap(),
+        numbers
+    );
 
-    let empty = Int64List::new(Vec::new());
+    let empty = Int64ListScalar::new(Vec::new());
     assert!(!empty.is_null());
     assert_eq!(
-        Int64List::from_arrow(empty.to_arrow().as_ref()).unwrap(),
+        Int64ListScalar::from_arrow(empty.to_arrow().as_ref()).unwrap(),
         empty
     );
-    assert_eq!(Int64List::default(), empty);
+    assert_eq!(Int64ListScalar::default(), empty);
 
-    let missing = Int64List::null();
+    let missing = Int64ListScalar::null();
     assert!(missing.is_null());
     assert_eq!(
-        Int64List::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+        Int64ListScalar::from_arrow(missing.to_arrow().as_ref()).unwrap(),
         missing
     );
 
     // Construction from native shapes.
-    assert_eq!(Int64List::from(None::<Vec<Int64Scalar>>), missing);
+    assert_eq!(Int64ListScalar::from(None::<Vec<Int64Scalar>>), missing);
 
     // A non-list array is refused.
     assert!(matches!(
-        Int64List::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
+        Int64ListScalar::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
+        Err(DataError::IncompatibleArrowType { .. })
+    ));
+}
+
+#[test]
+fn int64_array_reads_borrowed_buffers() {
+    let numbers = Int64Array::from(vec![1, 2, 3]);
+    assert!(!numbers.is_null());
+    assert_eq!(numbers.len(), 3);
+    assert_eq!(numbers.values(), Some(&[1, 2, 3][..]));
+    assert_eq!(numbers.value(), Some(&[1, 2, 3][..]));
+    assert_eq!(numbers.get_value_at(0), Some(1));
+    assert_eq!(numbers.get_value_at(3), None); // out of bounds
+    assert_eq!(numbers.get_scalar_at(2), Some(Int64Scalar::new(3)));
+    assert_eq!(numbers.get_scalar_at(3), None);
+    assert!(numbers.nulls().is_none());
+
+    // The reassembled Arrow array borrows the same buffer — zero copy.
+    let arrow = numbers.array().unwrap();
+    assert_eq!(arrow.values().as_ptr(), numbers.values().unwrap().as_ptr());
+
+    // Per-element nulls are read null-aware; the raw buffer keeps the slots.
+    let sparse = Int64Array::from(vec![Some(1), None]);
+    assert_eq!(sparse.get_value_at(0), Some(1));
+    assert_eq!(sparse.get_value_at(1), None);
+    assert_eq!(sparse.get_scalar_at(1), Some(Int64Scalar::null()));
+    assert_eq!(sparse.values().map(<[i64]>::len), Some(2));
+    assert_eq!(
+        sparse.nulls().map(arrow_buffer::NullBuffer::null_count),
+        Some(1)
+    );
+
+    // Equality is logical: an all-valid null buffer equals no null buffer.
+    let buffered = Int64Array::new(
+        arrow_buffer::ScalarBuffer::from(vec![1, 2, 3]),
+        Some(arrow_buffer::NullBuffer::new_valid(3)),
+    )
+    .unwrap();
+    assert_eq!(buffered, numbers);
+
+    // A null buffer of the wrong length is refused with an actionable error.
+    assert!(matches!(
+        Int64Array::new(
+            arrow_buffer::ScalarBuffer::from(vec![1, 2, 3]),
+            Some(arrow_buffer::NullBuffer::new_valid(2)),
+        ),
+        Err(DataError::IncompatibleArrowType { .. })
+    ));
+}
+
+#[test]
+fn int64_array_round_trips_through_arrow_zero_copy() {
+    let numbers = Int64Array::from(vec![Some(1), None, Some(3)]);
+    let arrow = numbers.to_arrow();
+    assert_eq!(arrow.len(), 1);
+    assert_eq!(Int64Array::from_arrow(arrow.as_ref()).unwrap(), numbers);
+
+    // The list's child elements are the same buffer, shared, not copied.
+    let list = arrow
+        .as_any()
+        .downcast_ref::<arrow_array::ListArray>()
+        .unwrap();
+    let child = list
+        .values()
+        .as_any()
+        .downcast_ref::<arrow_array::Int64Array>()
+        .unwrap();
+    assert_eq!(child.values().as_ptr(), numbers.values().unwrap().as_ptr());
+
+    // The generic and the buffer-backed list scalar agree on the Arrow shape.
+    let generic = Int64ListScalar::new(vec![
+        Int64Scalar::new(1),
+        Int64Scalar::null(),
+        Int64Scalar::new(3),
+    ]);
+    assert_eq!(generic.to_arrow().as_ref(), arrow.as_ref());
+
+    // Empty and null are distinct states, both round-tripped.
+    let empty = Int64Array::default();
+    assert!(!empty.is_null());
+    assert!(empty.is_empty());
+    assert_eq!(
+        Int64Array::from_arrow(empty.to_arrow().as_ref()).unwrap(),
+        empty
+    );
+
+    let missing = Int64Array::null();
+    assert!(missing.is_null());
+    assert_eq!((missing.values(), missing.array()), (None, None));
+    assert_eq!(missing.get_value_at(0), None);
+    assert_eq!(
+        Int64Array::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+        missing
+    );
+
+    // A non-list array is refused.
+    assert!(matches!(
+        Int64Array::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
@@ -255,7 +356,7 @@ fn defaults_flow_through_the_typed_layer() {
     assert_eq!(ListType::new(Int64).default_value(), Vec::<i64>::new());
     assert_eq!(
         ListType::new(Int64).default_scalar(),
-        Int64List::new(Vec::new())
+        Int64ListScalar::new(Vec::new())
     );
     assert_eq!(
         MapType::new(UInt8, Int64).default_value(),
@@ -305,7 +406,8 @@ fn list_and_map_are_the_generic_nested_holders() {
 fn nested_types_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<ListType<Int64>>();
-    assert_send_sync::<Int64List>();
+    assert_send_sync::<Int64ListScalar>();
+    assert_send_sync::<Int64Array>();
     assert_send_sync::<MapType<UInt8, Int64>>();
     assert_send_sync::<RankMap>();
     assert_send_sync::<StructType>();

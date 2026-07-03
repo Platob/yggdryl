@@ -5,7 +5,9 @@
 //! is the concrete data type (a [`Nested`](crate::Nested) type whose single child
 //! is the nullable `"item"` field), [`RawList`] its untyped surface, [`List`] the
 //! typed layer whenever the value type has a codec, and [`ListScalar`] a single,
-//! possibly-null sequence of inner scalars.
+//! possibly-null sequence — *our array*, backed by one zero-copy Arrow child
+//! array with per-element scalar accessors ([`Int64Array`] is the concrete list
+//! of `int64`, borrowing the raw Arrow buffers for native `i64` access).
 //!
 //! ```
 //! use yggdryl_data::{DataType, Int64, Int64Scalar, ListScalar, ListType, RawDataType, RawScalar};
@@ -15,7 +17,8 @@
 //! assert_eq!(list.default_value(), Vec::<i64>::new());
 //!
 //! let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);
-//! assert_eq!(numbers.value().map(<[Int64Scalar]>::len), Some(2));
+//! assert_eq!(numbers.len(), 2);
+//! assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
 //! assert_eq!(
 //!     ListScalar::from_arrow(numbers.to_arrow().as_ref()).unwrap(),
 //!     numbers
@@ -24,6 +27,7 @@
 
 mod data_type;
 mod field;
+mod int64_array;
 #[allow(clippy::module_inception)]
 mod list;
 mod raw_list;
@@ -31,6 +35,7 @@ mod scalar;
 
 pub use data_type::ListType;
 pub use field::ListField;
+pub use int64_array::Int64Array;
 pub use list::List;
 pub use raw_list::RawList;
 pub use scalar::ListScalar;

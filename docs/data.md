@@ -11,15 +11,16 @@ modules; more land as the layer grows.
 The bindings expose the layer as `yggdryl.data` (Python) and `yggdryl.data` (Node),
 adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
 `BigInt`, and the null-or-value scalars are concrete per-type classes
-(`OptionalInt64Scalar`, …) built straight from the native value. Three things stay
+(`OptionalInt64Scalar`, …) built straight from the native value. Four things stay
 **Rust-only**, stated here and in both binding module docs: the [Arrow
 interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange `arrow-schema` /
 `arrow-array` values that cannot cross the FFI boundary), construction of a `UnionType`
 from arbitrary child fields (reached in the bindings through an optional data type's
-`storage()`), the [`DataTypeId`](#type-ids) classifier, and the generic
-[nested families](#nested-types-list-map-and-struct) (`ListType` / `MapType` /
-`StructType` with their scalars) and per-family trait pairs, which have no
-concrete FFI shape yet.
+`storage()`), the [`DataTypeId`](#type-ids) classifier, and the
+[nested families](#nested-types-list-map-and-struct) (the generic `ListType` /
+`MapType` / `StructType` with their scalars, the per-family trait pairs, and the
+buffer-backed `Int64Array`, whose zero-copy Arrow buffers await C Data Interface
+interop), which have no concrete FFI shape yet.
 
 The type system is three layers of traits. None carries a lifetime parameter
 (FFI-clean); the untyped base is `Debug + Send + Sync` so schemas are printable and
@@ -270,24 +271,36 @@ its exact inverse; the typed byte codec of `OptionalType<Int64>` reads and write
 
 !!! note "Rust only"
     The nested families are generic over their child types (or carry dynamic Arrow
-    fields), which has no concrete FFI shape yet — they are not exposed to Python or
-    Node.
+    fields), and the buffer-backed `Int64Array` shares raw Arrow buffers that await
+    C Data Interface interop — none has a concrete FFI shape yet, so they are not
+    exposed to Python or Node.
 
 The `list`, `map` and `struct` modules follow the family pattern. `ListType<D>` is
 the variable-length sequence of one value type (single nullable `"item"` child);
 `MapType<K, V>` the sequence of key–value entries (single `"entries"` struct child);
 `StructType` the dynamic ordered set of named fields, carried losslessly like
-`UnionType`. Their scalars hold sequences of inner scalars (`ListScalar<D, S>`,
-`MapScalar<K, V, SK, SV>`) or one row of one-element Arrow columns
-(`StructScalar`), each round-tripping through a one-element Arrow array whose
-children redirect to the inner scalars' own `to_arrow` / `from_arrow`. The typed
-byte codecs concatenate the child codecs and split them back by fixed width (a
-variable-width child errors with `DataError::IndeterminateElementWidth` — decode
-those from Arrow).
+`UnionType`.
+
+The list scalar is *our array*: `ListScalar<D, S>` is backed by one zero-copy Arrow
+child array — construction assembles the elements once, `to_arrow` / `from_arrow`
+are reference-count bumps, and the scalar accessors read elements back out
+(`get_scalar_at(index)` redirects one element through the inner scalar's own
+`from_arrow`; `len` / `is_empty` describe the sequence). `Int64Array` is the
+concrete list of `int64`, borrowing the raw Arrow buffers themselves
+(`ScalarBuffer<i64>` elements plus an optional `NullBuffer`): `values()` borrows
+the whole element buffer as `&[i64]` without copying, `get_value_at(index)` reads
+one element null-aware, and `get_scalar_at(index)` hands back an `Int64Scalar`.
+`MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
+one-element Arrow columns, each round-tripping through a one-element Arrow array
+whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`. The
+typed byte codecs concatenate the child codecs and split them back by fixed width
+(a variable-width child errors with `DataError::IndeterminateElementWidth` —
+decode those from Arrow).
 
 ```rust
 use yggdryl_data::{
-    DataType, Int64, Int64Scalar, ListScalar, ListType, MapType, RawDataType, RawScalar, UInt8,
+    DataType, Int64, Int64Array, Int64Scalar, ListScalar, ListType, MapType, RawDataType,
+    RawScalar, UInt8,
 };
 
 fn main() {
@@ -297,8 +310,15 @@ fn main() {
     assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
 
     let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
-    let arrow = numbers.to_arrow(); // a one-element ListArray
+    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
     assert_eq!(ListScalar::from_arrow(arrow.as_ref()).unwrap(), numbers);
+
+    // The buffer-backed list of int64: native, zero-copy access.
+    let fast = Int64Array::from(vec![1, 2, 3]);
+    assert_eq!(fast.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
+    assert_eq!(fast.get_value_at(1), Some(2));
+    assert_eq!(Int64Array::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
 
     let map = MapType::new(UInt8, Int64);
     assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));

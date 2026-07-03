@@ -22,7 +22,8 @@ use crate::DataType;
 ///
 /// let list = ListType::new(Int64);
 /// assert_eq!(default_of(&list), Vec::<i64>::new());
-/// assert_eq!(list.default_scalar().value(), Some(&[][..]));
+/// assert!(!list.default_scalar().is_null()); // the empty list, not null
+/// assert!(list.default_scalar().is_empty());
 /// ```
 pub trait List<T>: RawList<Self::ValueType> + DataType<Vec<T>> {
     /// The concrete value type of this list.

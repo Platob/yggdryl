@@ -19,9 +19,10 @@
 //! arrow-schema value — `Union` is reached through an optional data type's
 //! `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot
-//! model uniformly), and the generic nested families (`ListType` / `MapType` /
-//! `StructType` with their scalars) and per-family trait pairs, which have no
-//! concrete FFI shape yet.
+//! model uniformly), and the nested families — the generic `ListType` / `MapType` /
+//! `StructType` with their scalars, the per-family trait pairs, and the
+//! buffer-backed `Int64Array` (whose zero-copy Arrow buffers await C Data
+//! Interface interop) — which have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;

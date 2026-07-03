@@ -44,6 +44,10 @@ pub(crate) use log_event;
 /// The Apache Arrow array layer (`arrow-array`), re-exported so downstream code and
 /// the scalar `to_arrow` / `from_arrow` surface share one version.
 pub use arrow_array;
+/// The Apache Arrow buffer layer (`arrow-buffer`), re-exported so downstream code
+/// can build the zero-copy buffers the array scalars (such as
+/// [`Int64Array`]) borrow.
+pub use arrow_buffer;
 /// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
 /// and the data type / field `to_arrow` / `from_arrow` surface share one version.
 pub use arrow_schema;
@@ -88,7 +92,7 @@ pub mod optional;
 pub mod r#struct;
 pub mod union;
 
-pub use list::{List, ListField, ListScalar, ListType, RawList};
+pub use list::{Int64Array, List, ListField, ListScalar, ListType, RawList};
 pub use map::{Map, MapField, MapScalar, MapType, RawMap};
 pub use null::{Null, NullField, NullScalar};
 pub use optional::{Optional, OptionalField, OptionalScalar, OptionalType, RawOptional};

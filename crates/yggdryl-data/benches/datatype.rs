@@ -3,11 +3,12 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_data::{
-    arrow_schema, Int64, Int64Field, Int64Scalar, Int8, Int8Scalar, OptionalScalar, RawDataType,
-    RawField, RawScalar, UnionType,
+    arrow_schema, Int64, Int64Array, Int64Field, Int64Scalar, Int8, Int8Scalar, ListScalar,
+    OptionalScalar, RawDataType, RawField, RawScalar, UnionType,
 };
 
 type OptionalInt64 = OptionalScalar<Int64, Int64Scalar>;
+type Int64ListScalar = ListScalar<Int64, Int64Scalar>;
 
 const N: usize = 4096;
 
@@ -272,6 +273,54 @@ fn optional(c: &mut Criterion) {
     group.finish();
 }
 
+fn array(c: &mut Criterion) {
+    let mut group = c.benchmark_group("array");
+    group.throughput(Throughput::Elements(N as u64));
+
+    group.bench_function("int64_array_from_vec", |b| {
+        b.iter_batched(
+            || (0..N as i64).collect::<Vec<_>>(),
+            |values| black_box(Int64Array::from(values)),
+            criterion::BatchSize::LargeInput,
+        )
+    });
+
+    let numbers = Int64Array::from((0..N as i64).collect::<Vec<_>>());
+    group.bench_function("int64_array_values_borrow", |b| {
+        b.iter(|| black_box(black_box(&numbers).values()))
+    });
+
+    group.bench_function("int64_array_get_value_at", |b| {
+        b.iter(|| {
+            for index in 0..N {
+                black_box(numbers.get_value_at(black_box(index)));
+            }
+        })
+    });
+
+    group.bench_function("int64_array_to_arrow", |b| {
+        b.iter(|| black_box(numbers.to_arrow()))
+    });
+
+    let arrow = numbers.to_arrow();
+    group.bench_function("int64_array_from_arrow", |b| {
+        b.iter(|| black_box(Int64Array::from_arrow(black_box(arrow.as_ref())).unwrap()))
+    });
+
+    // The generic scalar accessor, for comparison: one inner Arrow round trip per
+    // element against the buffer-backed direct read above.
+    let generic = Int64ListScalar::from_arrow(arrow.as_ref()).unwrap();
+    group.bench_function("list_scalar_get_scalar_at", |b| {
+        b.iter(|| {
+            for index in 0..N {
+                black_box(generic.get_scalar_at(black_box(index)));
+            }
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     codec,
@@ -280,6 +329,7 @@ criterion_group!(
     scalar,
     schema,
     accessor,
-    optional
+    optional,
+    array
 );
 criterion_main!(benches);
