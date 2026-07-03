@@ -1,0 +1,32 @@
+[package]
+name = "yggdryl-dtype"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-centralized data-type layer for yggdryl (physical and logical data types)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_dtype"
+path = "src/lib.rs"
+
+[dependencies]
+# The foundation layer: `DataError::Io` wraps the core `IOError`, so decoding
+# through a positioned-IO resource surfaces one error stack.
+yggdryl-core = { workspace = true }
+# Arrow interop surface: `DataType::to_arrow` / `from_arrow` mirror an
+# `arrow_schema::DataType`, and the nested types carry `arrow_schema::Fields`.
+arrow-schema = { workspace = true }
+
+[dev-dependencies]
+# Benchmark harness for the codec / Arrow-interop benches (stable Rust has no
+# built-in bencher). Same version as the yggdryl-core benches.
+criterion = "0.5"
+
+[[bench]]
+name = "dtype"
+harness = false

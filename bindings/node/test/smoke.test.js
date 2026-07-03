@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const yggdryl = require('../index.js')
+const yggdryl = require('..')
 
 test('core.version', () => {
   assert.equal(typeof yggdryl.core.version(), 'string')

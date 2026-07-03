@@ -2,7 +2,9 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
-    "crates/yggdryl-data",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-field",
+    "crates/yggdryl-scalar",
     "bindings/python",
     "bindings/node",
 ]
@@ -11,7 +13,9 @@ members = [
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
-    "crates/yggdryl-data",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-field",
+    "crates/yggdryl-scalar",
 ]
 
 [workspace.package]
@@ -26,7 +30,9 @@ keywords = ["uri", "url", "parser", "ffi", "yggdryl"]
 
 [workspace.dependencies]
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0", default-features = false }
-yggdryl-data = { path = "crates/yggdryl-data", version = "0.1.0", default-features = false }
+yggdryl-dtype = { path = "crates/yggdryl-dtype", version = "0.1.0", default-features = false }
+yggdryl-field = { path = "crates/yggdryl-field", version = "0.1.0", default-features = false }
+yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0", default-features = false }
 # Apache Arrow subset crates only (never the `arrow` umbrella): the data layer's
 # `to_arrow` / `from_arrow` interop targets `arrow-schema` types (DataType, Field)
 # and `arrow-array` arrays (a scalar is a one-element array).

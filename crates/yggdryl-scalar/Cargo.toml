@@ -1,0 +1,40 @@
+[package]
+name = "yggdryl-scalar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Arrow-centralized scalar layer for yggdryl (single, possibly-null values of a data type)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_scalar"
+path = "src/lib.rs"
+
+[dependencies]
+# The data-type layer: every scalar carries its `yggdryl-dtype` data type.
+yggdryl-dtype = { workspace = true }
+# The foundation layer: `BinaryScalar` holds its bytes as a core `ByteBuffer`, so the
+# scalar accessors plug straight into the positioned-IO traits (`RawIOBase` and
+# the cursor / slice adapters).
+yggdryl-core = { workspace = true }
+# Arrow interop surface: `Scalar::to_arrow` builds a one-element `arrow_array`
+# array (Arrow's own scalar representation); `arrow-schema` types the children.
+arrow-schema = { workspace = true }
+arrow-array = { workspace = true }
+# The nested scalars build their Arrow children: `arrow-buffer` for the list/map
+# offset buffers, `arrow-select` for concatenating per-element child arrays.
+arrow-buffer = { workspace = true }
+arrow-select = { workspace = true }
+
+[dev-dependencies]
+# Benchmark harness for the scalar / Arrow-interop benches (stable Rust has no
+# built-in bencher). Same version as the yggdryl-core benches.
+criterion = "0.5"
+
+[[bench]]
+name = "scalar"
+harness = false
