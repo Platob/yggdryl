@@ -6,16 +6,17 @@ use crate::{DataError, RawScalar, Scalar};
 /// The `null` scalar: always null, holding no value.
 ///
 /// Its [`Value`](RawScalar::Value) is `()` — there is nothing to access — so
-/// [`value`](RawScalar::value) is always `None` and every `as_*` accessor answers
-/// `None` (the trait defaults).
+/// [`value`](RawScalar::value) is always `None` and every `as_*` accessor errors
+/// with [`DataError::NullValue`](crate::DataError::NullValue): the scalar is
+/// always null, and the shared accessor contract puts nullness first.
 ///
 /// ```
-/// use yggdryl_data::{NullScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{DataError, NullScalar, RawDataType, RawScalar};
 ///
 /// let nothing = NullScalar::new();
 /// assert!(nothing.is_null());
 /// assert_eq!(nothing.value(), None);
-/// assert!(nothing.as_i64().is_err()); // no value, no conversions
+/// assert!(matches!(nothing.as_i64(), Err(DataError::NullValue)));
 /// assert_eq!(nothing.data_type().name(), "null");
 ///
 /// // Arrow's form is a one-element NullArray.
@@ -69,6 +70,48 @@ impl RawScalar<Null> for NullScalar {
             });
         }
         Ok(Self::new())
+    }
+
+    // Always null, so per the shared contract nullness answers first: every
+    // accessor errors with `NullValue`, not the `UnsupportedConversion` default.
+    fn as_i8(&self) -> Result<i8, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_i16(&self) -> Result<i16, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_i32(&self) -> Result<i32, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_i64(&self) -> Result<i64, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_u8(&self) -> Result<u8, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_u16(&self) -> Result<u16, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_u32(&self) -> Result<u32, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_u64(&self) -> Result<u64, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_f32(&self) -> Result<f32, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_f64(&self) -> Result<f64, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_bool(&self) -> Result<bool, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_str(&self) -> Result<&str, DataError> {
+        Err(DataError::NullValue)
+    }
+    fn as_bytes(&self) -> Result<&[u8], DataError> {
+        Err(DataError::NullValue)
     }
 }
 

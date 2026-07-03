@@ -12,7 +12,9 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// is the sparse null-or-value [`UnionType`], and its Arrow form is a one-element
 /// `UnionArray` whose type id selects the null or the value child. Access redirects
 /// to the inner scalar: [`value`](RawScalar::value) and every `as_*` accessor
-/// answer through `S`. A null inner scalar *normalizes to the null variant* — the
+/// answer through `S` — so a conversion error names the *value type* actually
+/// holding the value (``int64 scalars have no str conversion``), while the null
+/// variant errors with [`DataError::NullValue`]. A null inner scalar *normalizes to the null variant* — the
 /// two representations of null are one state, so equality,
 /// [`scalar`](OptionalScalar::scalar) (which answers `None` for it) and the Arrow
 /// round trip all agree.

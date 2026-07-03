@@ -115,8 +115,10 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(missing.scalar(), null)
     assert.throws(() => missing.asI64(), /is null/)
 
-    // The optional reached through the value type is the same shape.
+    // The optional reached through the value type is the same shape, and its
+    // codec is the value type's.
     assert.equal(new ty().optional().arrowFormat(), optType.arrowFormat())
+    assert.equal(optType.nativeFromBytes(optType.nativeToBytes(wire(42))), wire(42))
   })
 }
 

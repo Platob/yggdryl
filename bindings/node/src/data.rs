@@ -653,6 +653,24 @@ macro_rules! int_wire_number_node {
             pub fn default_value(&self) -> i64 {
                 i64::from(DataType::default_value(&self.inner))
             }
+
+            /// Serialize a native value into its little-endian Arrow bytes — the
+            /// value type's codec.
+            #[napi]
+            pub fn native_to_bytes(&self, value: i64) -> Result<Buffer> {
+                let value = wire_to_native::<$native>(value, $name)?;
+                Ok(Buffer::from(self.inner.native_to_bytes(&value)))
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value — the exact
+            /// inverse of `nativeToBytes`; the wrong length throws.
+            #[napi]
+            pub fn native_from_bytes(&self, bytes: Buffer) -> Result<i64> {
+                self.inner
+                    .native_from_bytes(&bytes)
+                    .map(i64::from)
+                    .map_err(data_error)
+            }
         }
 
         #[napi(namespace = "data")]
@@ -1215,6 +1233,25 @@ impl OptionalInt64 {
     pub fn default_value(&self) -> BigInt {
         BigInt::from(DataType::<i64>::default_value(&self.inner))
     }
+
+    /// Serialize a native value into its little-endian Arrow bytes — the value
+    /// type's codec.
+    #[napi]
+    pub fn native_to_bytes(&self, value: BigInt) -> Result<Buffer> {
+        Ok(Buffer::from(DataType::<i64>::native_to_bytes(
+            &self.inner,
+            &bigint_to_i64(value)?,
+        )))
+    }
+
+    /// Deserialize little-endian Arrow bytes into a native value — the exact
+    /// inverse of `nativeToBytes`; the wrong length throws.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<BigInt> {
+        DataType::<i64>::native_from_bytes(&self.inner, &bytes)
+            .map(BigInt::from)
+            .map_err(data_error)
+    }
 }
 
 #[napi(namespace = "data")]
@@ -1285,6 +1322,25 @@ impl UInt64 {
 
 #[napi(namespace = "data")]
 impl OptionalUInt64 {
+    /// Serialize a native value into its little-endian Arrow bytes — the value
+    /// type's codec.
+    #[napi]
+    pub fn native_to_bytes(&self, value: BigInt) -> Result<Buffer> {
+        Ok(Buffer::from(DataType::<u64>::native_to_bytes(
+            &self.inner,
+            &bigint_to_u64(value)?,
+        )))
+    }
+
+    /// Deserialize little-endian Arrow bytes into a native value — the exact
+    /// inverse of `nativeToBytes`; the wrong length throws.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<BigInt> {
+        DataType::<u64>::native_from_bytes(&self.inner, &bytes)
+            .map(BigInt::from)
+            .map_err(data_error)
+    }
+
     /// The default native value of the value type, `0n`.
     #[napi]
     pub fn default_value(&self) -> BigInt {

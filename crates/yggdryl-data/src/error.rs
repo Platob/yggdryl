@@ -102,7 +102,7 @@ impl std::fmt::Display for DataError {
                 )
             }
             DataError::UnsupportedConversion { data_type, target } => {
-                write!(f, "a {data_type} scalar has no {target} conversion")
+                write!(f, "{data_type} scalars have no {target} conversion")
             }
         }
     }

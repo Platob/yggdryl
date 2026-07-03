@@ -185,7 +185,10 @@ impl RawScalar<Binary> for BinaryScalar {
     fn as_str(&self) -> Result<&str, DataError> {
         let value = self.value.as_ref().ok_or(DataError::NullValue)?;
         std::str::from_utf8(value.as_bytes()).map_err(|_| DataError::InexactConversion {
-            value: format!("{} byte(s) of non-UTF-8 data", value.as_bytes().len()),
+            value: format!(
+                "{} byte(s) of non-UTF-8 data (as_bytes() reads them)",
+                value.as_bytes().len()
+            ),
             target: "str",
         })
     }
