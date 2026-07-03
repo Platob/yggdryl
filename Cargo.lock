@@ -1125,16 +1125,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "yggdryl-data"
+name = "yggdryl-dtype"
 version = "0.1.1"
 dependencies = [
- "arrow-array",
- "arrow-buffer",
  "arrow-schema",
- "arrow-select",
+ "criterion",
+ "yggdryl-core",
+]
+
+[[package]]
+name = "yggdryl-field"
+version = "0.1.1"
+dependencies = [
+ "arrow-schema",
  "criterion",
  "log",
- "yggdryl-core",
+ "yggdryl-dtype",
 ]
 
 [[package]]
@@ -1145,7 +1151,9 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "yggdryl-core",
- "yggdryl-data",
+ "yggdryl-dtype",
+ "yggdryl-field",
+ "yggdryl-scalar",
 ]
 
 [[package]]
@@ -1154,7 +1162,22 @@ version = "0.1.1"
 dependencies = [
  "pyo3",
  "yggdryl-core",
- "yggdryl-data",
+ "yggdryl-dtype",
+ "yggdryl-field",
+ "yggdryl-scalar",
+]
+
+[[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "arrow-select",
+ "criterion",
+ "yggdryl-core",
+ "yggdryl-dtype",
 ]
 
 [[package]]

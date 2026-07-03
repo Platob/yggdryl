@@ -7,8 +7,12 @@
 
 A **Rust-core** library with **Python** and **Node.js** extensions. All logic lives
 in the Rust crates; the bindings are thin wrappers, so the three languages behave
-identically. Each Rust crate is exposed under its own namespace — currently just
-`core` (the foundations), mirroring `yggdryl-core`.
+identically. Each Rust crate is exposed under its own namespace — `core` (the
+foundations, mirroring `yggdryl-core`) and the three Arrow data-model layers
+`dtype`, `field` and `scalar` (mirroring `yggdryl-dtype`, `yggdryl-field` and
+`yggdryl-scalar`), whose concrete types share one bare name across the layers
+(`dtype.Int64` describes the type, `field.Int64` names a column of it,
+`scalar.Int64` holds one value of it).
 
 ## Install
 
@@ -77,6 +81,22 @@ identically. Each Rust crate is exposed under its own namespace — currently ju
 - :material-code-json: **[Serialization](base.md)**
 
     The `Base` trait — content JSON and an implementor-defined byte form.
+
+- :material-shape-outline: **[Data types](dtype.md)**
+
+    The `RawDataType` / `DataType<T>` descriptors with the native byte codecs —
+    every integer, `binary`, `null`, `union`, the logical `optional`, and the
+    nested `list` / `map` / `struct`.
+
+- :material-table-column: **[Fields](field.md)**
+
+    The `RawField` / `Field<T>` layer — a name paired with a data type and a
+    nullability flag, mirroring an Arrow `Field`.
+
+- :material-numeric: **[Scalars](scalar.md)**
+
+    The `RawScalar` / `Scalar<T>` layer — single, possibly-null values with
+    exact-or-error `as_*` accessors, mirroring one-element Arrow arrays.
 
 </div>
 

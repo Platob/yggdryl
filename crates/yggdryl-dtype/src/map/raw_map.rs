@@ -1,0 +1,28 @@
+//! The [`RawMap`] base trait: the untyped surface of a map data type.
+
+use crate::{RawDataType, RawNested};
+
+/// The untyped surface every map data type carries: a variable-length sequence of
+/// key–value entries, exposing the key and value types.
+///
+/// It refines [`RawNested`] (the single child is the entries struct) and is
+/// parameterised by the key and value data types so the concrete types are
+/// preserved for zero-cost access, mirroring `yggdryl-field`'s `RawField` and
+/// `yggdryl-scalar`'s `RawScalar`. Key and value types with codecs also get the
+/// typed [`TypedMap`](crate::TypedMap) layer.
+///
+/// ```
+/// use yggdryl_dtype::{Int64, Map, RawDataType, RawMap, RawNested, UInt8};
+///
+/// let map = Map::new(UInt8, Int64);
+/// assert_eq!(map.key_type().name(), "uint8");
+/// assert_eq!(map.value_type().name(), "int64");
+/// assert_eq!(map.child_count(), 1);
+/// ```
+pub trait RawMap<K: RawDataType, V: RawDataType>: RawNested {
+    /// The type of the entries' keys.
+    fn key_type(&self) -> &K;
+
+    /// The type of the entries' values.
+    fn value_type(&self) -> &V;
+}

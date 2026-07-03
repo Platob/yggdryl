@@ -65,8 +65,10 @@ imports an upper one — needing the reverse means the abstraction belongs lower
 
 - `crates/yggdryl-core` — dependency-light foundations (streaming byte-IO, shared
   error types). **No Arrow vocabulary in core.**
-- `crates/yggdryl-data` — the Arrow data-model layer, built on `arrow-buffer`
-  buffers.
+- `crates/yggdryl-dtype`, `crates/yggdryl-field`, `crates/yggdryl-scalar` — the
+  Arrow data-model layers (data types, then fields, then scalars), one concern per
+  crate so the concrete types share one bare name across the layers
+  (`yggdryl_dtype::Int64` / `yggdryl_field::Int64` / `yggdryl_scalar::Int64`).
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.
@@ -74,10 +76,14 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   wrappers**: they translate types/errors and delegate — each method is one or two
   lines calling `self.inner`, `pub(crate)` so sibling modules can convert — and
   contain no logic. Each Rust crate is a submodule of the top-level package
-  (`yggdryl-core` → `yggdryl.core`; Python via `sys.modules`, Node via
-  `#[napi(namespace = "…")]`), and the binding source mirrors the crate tree
-  (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs` wiring only). Use
-  `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
+  (`yggdryl-core` → `yggdryl.core`): Python via `sys.modules`; Node via
+  `#[napi(namespace = "…")]` where class names are unique, and via the
+  hand-written `yggdryl.js` / `yggdryl.d.ts` namespace map over uniquely-prefixed
+  native classes (`DtypeInt64` → `yggdryl.dtype.Int64`) where they are not — napi
+  registers class constructors by JS class name in one addon-global registry, so
+  same-named classes across namespaces would collide. The binding source mirrors
+  the crate tree (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs` wiring
+  only). Use `#[pyo3(signature = ...)]` / napi `Option<T>` for defaults.
 
 ## Dependencies
 

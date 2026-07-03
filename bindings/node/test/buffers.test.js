@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const yggdryl = require('../index.js')
+const yggdryl = require('..')
 const { ByteBuffer, BitBuffer, Whence, ByteBufferCursor, ByteBufferSlice } = yggdryl.core
 
 test('ByteBuffer round-trips bytes', () => {

@@ -44,4 +44,6 @@ nav:
   - Positioned I/O: io.md
   - Charset: charset.md
   - Serialization: base.md
-  - Data model: data.md
+  - Data types: dtype.md
+  - Fields: field.md
+  - Scalars: scalar.md

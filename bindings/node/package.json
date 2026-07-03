@@ -1,9 +1,9 @@
 {
   "name": "yggdryl",
   "version": "0.1.1",
-  "description": "yggdryl \u2014 a Rust-core URI/URL library, exposed to Node.js",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "description": "yggdryl — a Rust-core URI/URL library, exposed to Node.js",
+  "main": "yggdryl.js",
+  "types": "yggdryl.d.ts",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -35,12 +35,14 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "test": "node --test",
-    "bench": "node bench/data.bench.js"
+    "bench": "node bench/dtype.bench.js && node bench/field.bench.js && node bench/scalar.bench.js"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
   },
   "files": [
+    "yggdryl.js",
+    "yggdryl.d.ts",
     "index.js",
     "index.d.ts",
     "*.node"
