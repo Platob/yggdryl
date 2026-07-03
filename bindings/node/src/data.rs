@@ -6,11 +6,13 @@
 //! `OptionalInt64Scalar`), alongside the `Null` family and the `Union` data type.
 //! Values adapt to JS idioms: the 8–32 bit types use `number`, the 64-bit types
 //! use `BigInt`, and scalars expose the `as*` accessors with the core contract —
-//! exact conversion or `null` (strings cross the FFI boundary as new JS strings,
-//! so the Rust-side "borrow, never copy" guarantee applies up to that boundary
-//! copy). Optional scalars adapt construction to idioms: they are built straight
-//! from the native value (`new OptionalInt64Scalar(42n)`), the inner scalar being
-//! an implementation detail reachable through `scalar()`.
+//! the value when the target represents it exactly, or a thrown error naming the
+//! fix (strings and `Buffer`s cross the FFI boundary as new JS objects, so the
+//! Rust-side "borrow, never copy" guarantee applies up to that boundary copy).
+//! The `Binary` family holds its bytes as a core positioned-IO `ByteBuffer` —
+//! `toIo()` hands one back. Optional scalars adapt construction to idioms: they
+//! are built straight from the native value (`new OptionalInt64Scalar(42n)`), the
+//! inner scalar being an implementation detail reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` / `arrow-array` values that
@@ -250,72 +252,94 @@ impl NullScalar {
     }
 }
 
-/// Generates the `as*` accessor block for a scalar wrapper class: exact conversion
-/// or `null`, with the 64-bit targets as `BigInt` (a separate `#[napi]` impl block —
-/// napi merges the blocks into one JS class).
+/// Generates the `as*` accessor block for a scalar wrapper class: the value when
+/// exactly representable, or a thrown error naming the fix, with the 64-bit
+/// targets as `BigInt` (a separate `#[napi]` impl block — napi merges the blocks
+/// into one JS class).
 macro_rules! as_accessors_node {
     ($class:ident) => {
         #[napi(namespace = "data")]
         impl $class {
-            /// The value as a number in the i8 range, when exactly representable.
+            /// The value as a number in the i8 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_i8(&self) -> Option<i32> {
-                self.inner.as_i8().map(i32::from)
+            pub fn as_i8(&self) -> Result<i32> {
+                self.inner.as_i8().map(i32::from).map_err(data_error)
             }
-            /// The value as a number in the i16 range, when exactly representable.
+            /// The value as a number in the i16 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_i16(&self) -> Option<i32> {
-                self.inner.as_i16().map(i32::from)
+            pub fn as_i16(&self) -> Result<i32> {
+                self.inner.as_i16().map(i32::from).map_err(data_error)
             }
-            /// The value as a number in the i32 range, when exactly representable.
+            /// The value as a number in the i32 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_i32(&self) -> Option<i32> {
-                self.inner.as_i32()
+            pub fn as_i32(&self) -> Result<i32> {
+                self.inner.as_i32().map_err(data_error)
             }
-            /// The value as a `BigInt` in the i64 range, when exactly representable.
+            /// The value as a `BigInt` in the i64 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_i64(&self) -> Option<BigInt> {
-                self.inner.as_i64().map(BigInt::from)
+            pub fn as_i64(&self) -> Result<BigInt> {
+                self.inner.as_i64().map(BigInt::from).map_err(data_error)
             }
-            /// The value as a number in the u8 range, when exactly representable.
+            /// The value as a number in the u8 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_u8(&self) -> Option<u32> {
-                self.inner.as_u8().map(u32::from)
+            pub fn as_u8(&self) -> Result<u32> {
+                self.inner.as_u8().map(u32::from).map_err(data_error)
             }
-            /// The value as a number in the u16 range, when exactly representable.
+            /// The value as a number in the u16 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_u16(&self) -> Option<u32> {
-                self.inner.as_u16().map(u32::from)
+            pub fn as_u16(&self) -> Result<u32> {
+                self.inner.as_u16().map(u32::from).map_err(data_error)
             }
-            /// The value as a number in the u32 range, when exactly representable.
+            /// The value as a number in the u32 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_u32(&self) -> Option<u32> {
-                self.inner.as_u32()
+            pub fn as_u32(&self) -> Result<u32> {
+                self.inner.as_u32().map_err(data_error)
             }
-            /// The value as a `BigInt` in the u64 range, when exactly representable.
+            /// The value as a `BigInt` in the u64 range; throws when null or not
+            /// exactly representable.
             #[napi]
-            pub fn as_u64(&self) -> Option<BigInt> {
-                self.inner.as_u64().map(BigInt::from)
+            pub fn as_u64(&self) -> Result<BigInt> {
+                self.inner.as_u64().map(BigInt::from).map_err(data_error)
             }
-            /// The value as a number, when exactly representable in f32.
+            /// The value as a number; throws when null or not exactly
+            /// representable in f32.
             #[napi]
-            pub fn as_f32(&self) -> Option<f32> {
-                self.inner.as_f32()
+            pub fn as_f32(&self) -> Result<f32> {
+                self.inner.as_f32().map_err(data_error)
             }
-            /// The value as a number, when exactly representable in f64.
+            /// The value as a number; throws when null or not exactly
+            /// representable in f64.
             #[napi]
-            pub fn as_f64(&self) -> Option<f64> {
-                self.inner.as_f64()
+            pub fn as_f64(&self) -> Result<f64> {
+                self.inner.as_f64().map_err(data_error)
             }
-            /// The value as a boolean, when the value is a boolean.
+            /// The value as a boolean; throws when null or the value is not a
+            /// boolean.
             #[napi]
-            pub fn as_bool(&self) -> Option<bool> {
-                self.inner.as_bool()
+            pub fn as_bool(&self) -> Result<bool> {
+                self.inner.as_bool().map_err(data_error)
             }
-            /// The value as a string, when the value is a string.
+            /// The value as a string; throws when null or the value has no
+            /// string form.
             #[napi]
-            pub fn as_str(&self) -> Option<String> {
-                self.inner.as_str().map(str::to_string)
+            pub fn as_str(&self) -> Result<String> {
+                self.inner.as_str().map(str::to_string).map_err(data_error)
+            }
+            /// The value as a `Buffer`; throws when null or the value has no
+            /// byte-sequence form.
+            #[napi]
+            pub fn as_bytes(&self) -> Result<Buffer> {
+                self.inner
+                    .as_bytes()
+                    .map(|bytes| Buffer::from(bytes.to_vec()))
+                    .map_err(data_error)
             }
         }
     };
@@ -674,6 +698,352 @@ fn wire_to_native<T: TryFrom<i64>>(value: i64, name: &str) -> Result<T> {
     T::try_from(value)
         .map_err(|_| Error::from_reason(format!("expected {value} to be in the {name} range")))
 }
+
+/// The Apache Arrow `binary` data type: a variable-length byte sequence.
+#[napi(namespace = "data")]
+#[derive(Default)]
+pub struct Binary {
+    inner: yggdryl_data::Binary,
+}
+
+#[napi(namespace = "data")]
+impl Binary {
+    /// The `binary` data type.
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"binary"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"z"`.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A binary value has no fixed byte width.
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// A binary value has no fixed bit width.
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// Serialize a native value into its Arrow bytes — the identity for binary.
+    #[napi]
+    pub fn native_to_bytes(&self, value: Buffer) -> Buffer {
+        Buffer::from(self.inner.native_to_bytes(&value.to_vec()))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the identity for binary
+    /// (any length is valid).
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<Buffer> {
+        self.inner
+            .native_from_bytes(&bytes)
+            .map(Buffer::from)
+            .map_err(data_error)
+    }
+
+    /// The type's default native value, an empty `Buffer`.
+    #[napi]
+    pub fn default_value(&self) -> Buffer {
+        Buffer::from(DataType::default_value(&self.inner))
+    }
+
+    /// The default scalar: a scalar holding empty bytes.
+    #[napi]
+    pub fn default_scalar(&self) -> BinaryScalar {
+        BinaryScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The logical optional of this type (stored as the null-or-value union).
+    #[napi]
+    pub fn optional(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+}
+
+/// The logical optional of `binary`: a value, or null — stored as the
+/// null-or-`binary` union.
+#[napi(namespace = "data")]
+#[derive(Default)]
+pub struct OptionalBinary {
+    inner: yggdryl_data::OptionalType<yggdryl_data::Binary>,
+}
+
+#[napi(namespace = "data")]
+impl OptionalBinary {
+    /// The optional `binary` data type.
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"optional"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string of the union storage.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// An optional has no fixed byte width (union storage).
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// An optional has no fixed bit width (union storage).
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// The value type this optional wraps.
+    #[napi]
+    pub fn value_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// The physical storage: the sparse null-or-value union.
+    #[napi]
+    pub fn storage(&self) -> Union {
+        Union {
+            inner: self.inner.storage().clone(),
+        }
+    }
+
+    /// The default native value: the value type's default, an empty `Buffer`.
+    #[napi]
+    pub fn default_value(&self) -> Buffer {
+        Buffer::from(DataType::default_value(&self.inner))
+    }
+
+    /// The default scalar: the null variant (the scalar models nullness).
+    #[napi]
+    pub fn default_scalar(&self) -> OptionalBinaryScalar {
+        OptionalBinaryScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// Serialize a native value into its Arrow bytes — the value type's codec.
+    #[napi]
+    pub fn native_to_bytes(&self, value: Buffer) -> Buffer {
+        Buffer::from(self.inner.native_to_bytes(&value.to_vec()))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the exact inverse of
+    /// `nativeToBytes`.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<Buffer> {
+        self.inner
+            .native_from_bytes(&bytes)
+            .map(Buffer::from)
+            .map_err(data_error)
+    }
+}
+
+/// A nullable optional-`binary` field: a name paired with the logical optional
+/// data type.
+#[napi(namespace = "data")]
+pub struct OptionalBinaryField {
+    inner: yggdryl_data::OptionalField<yggdryl_data::Binary>,
+}
+
+#[napi(namespace = "data")]
+impl OptionalBinaryField {
+    /// An optional-`binary` field named `name` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_data::OptionalField::new(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable `binary` field: a name paired with the data type.
+#[napi(namespace = "data")]
+pub struct BinaryField {
+    inner: yggdryl_data::BinaryField,
+}
+
+#[napi(namespace = "data")]
+impl BinaryField {
+    /// A `binary` field named `name` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_data::BinaryField::new(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A single, possibly-null `binary` value, holding its bytes as a core
+/// positioned-IO `ByteBuffer` (`toIo()` hands one back).
+#[napi(namespace = "data")]
+pub struct BinaryScalar {
+    inner: yggdryl_data::BinaryScalar,
+}
+
+#[napi(namespace = "data")]
+impl BinaryScalar {
+    /// A `binary` scalar holding `value`.
+    #[napi(constructor)]
+    pub fn new(value: Buffer) -> Self {
+        Self {
+            inner: yggdryl_data::BinaryScalar::new(value.to_vec()),
+        }
+    }
+
+    /// A null `binary` scalar.
+    #[napi(factory)]
+    pub fn null() -> Self {
+        Self {
+            inner: yggdryl_data::BinaryScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value.
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The scalar's value as a `Buffer`, or `null` when null.
+    #[napi]
+    pub fn value(&self) -> Option<Buffer> {
+        self.inner.value().map(|bytes| Buffer::from(bytes.to_vec()))
+    }
+
+    /// The scalar's data type.
+    #[napi]
+    pub fn data_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for positioned
+    /// reads and the cursor / slice adapters, or `null` when null (the bytes
+    /// cross the FFI boundary as one copy).
+    #[napi]
+    pub fn to_io(&self) -> Option<crate::core::ByteBuffer> {
+        self.inner
+            .io()
+            .map(|io| crate::core::ByteBuffer::from_inner(io.clone()))
+    }
+}
+
+as_accessors_node!(BinaryScalar);
+
+/// A single value of the union between null and `binary`: a value variant, or
+/// the null variant.
+#[napi(namespace = "data")]
+pub struct OptionalBinaryScalar {
+    inner: yggdryl_data::OptionalScalar<yggdryl_data::Binary, yggdryl_data::BinaryScalar>,
+}
+
+#[napi(namespace = "data")]
+impl OptionalBinaryScalar {
+    /// A scalar holding the `binary` value variant `value`.
+    #[napi(constructor)]
+    pub fn new(value: Buffer) -> Self {
+        Self {
+            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::BinaryScalar::new(
+                value.to_vec(),
+            )),
+        }
+    }
+
+    /// The null variant.
+    #[napi(factory)]
+    pub fn null() -> Self {
+        Self {
+            inner: yggdryl_data::OptionalScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds the null variant.
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The value as a `Buffer`, or `null` for the null variant.
+    #[napi]
+    pub fn value(&self) -> Option<Buffer> {
+        self.inner.value().map(|bytes| Buffer::from(bytes.to_vec()))
+    }
+
+    /// The inner scalar, when this holds the value variant.
+    #[napi]
+    pub fn scalar(&self) -> Option<BinaryScalar> {
+        self.inner.scalar().map(|scalar| BinaryScalar {
+            inner: scalar.clone(),
+        })
+    }
+
+    /// The scalar's data type: the logical optional of the value type.
+    #[napi]
+    pub fn data_type(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+}
+
+as_accessors_node!(OptionalBinaryScalar);
 
 int_data_node!(
     Int8,

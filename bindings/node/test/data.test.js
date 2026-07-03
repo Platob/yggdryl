@@ -4,7 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('../index.js')
-const { data } = yggdryl
+const { core, data } = yggdryl
 
 // The 8-32 bit types carry values as `number`; the 64-bit types as `BigInt`.
 const INTEGERS = [
@@ -83,11 +83,12 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(answer.asU64(), 42n)
     assert.equal(answer.asF32(), 42)
     assert.equal(answer.asF64(), 42)
-    // An integer is never a bool or a str.
-    assert.equal(answer.asBool(), null)
-    assert.equal(answer.asStr(), null)
-    // Null answers null everywhere.
-    assert.equal(scalar.null().asI64(), null)
+    // An integer is never a bool, a str or bytes: an actionable error.
+    assert.throws(() => answer.asBool(), /no bool conversion/)
+    assert.throws(() => answer.asStr(), /no str conversion/)
+    assert.throws(() => answer.asBytes(), /no bytes conversion/)
+    // A null scalar holds no value: every accessor throws.
+    assert.throws(() => scalar.null().asI64(), /is null/)
   })
 
   test(`${name} optional scalar redirects to the inner scalar`, () => {
@@ -112,7 +113,7 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
     assert.equal(missing.isNull(), true)
     assert.equal(missing.value(), null)
     assert.equal(missing.scalar(), null)
-    assert.equal(missing.asI64(), null)
+    assert.throws(() => missing.asI64(), /is null/)
 
     // The optional reached through the value type is the same shape.
     assert.equal(new ty().optional().arrowFormat(), optType.arrowFormat())
@@ -126,13 +127,88 @@ test('out-of-range constructions throw actionable errors', () => {
   assert.throws(() => new data.Int64Scalar(2n ** 63n), /int64/)
 })
 
-test('float access is exact or null', () => {
+test('float access is exact or throws', () => {
   // 2n**53n is the last contiguous integer in f64; +1n rounds.
   assert.equal(new data.Int64Scalar(2n ** 53n).asF64(), 2 ** 53)
-  assert.equal(new data.Int64Scalar(2n ** 53n + 1n).asF64(), null)
-  assert.equal(new data.UInt64Scalar(2n ** 64n - 1n).asF64(), null)
-  // Sign changes never pass.
-  assert.equal(new data.Int8Scalar(-1).asU64(), null)
+  assert.throws(() => new data.Int64Scalar(2n ** 53n + 1n).asF64(), /not exactly representable/)
+  assert.throws(() => new data.UInt64Scalar(2n ** 64n - 1n).asF64(), /not exactly representable/)
+  // Sign changes never pass, and the error names the offending value.
+  assert.throws(() => new data.Int8Scalar(-1).asU64(), /-1 is not exactly representable/)
+})
+
+test('binary type describes itself and codecs', () => {
+  const binary = new data.Binary()
+  assert.equal(binary.name(), 'binary')
+  assert.equal(binary.arrowFormat(), 'z')
+  assert.equal(binary.byteWidth(), null)
+  assert.equal(binary.bitWidth(), null)
+  // The codec is the identity: any bytes are a valid binary value.
+  assert.deepEqual(binary.nativeToBytes(Buffer.from([1, 2])), Buffer.from([1, 2]))
+  assert.deepEqual(binary.nativeFromBytes(Buffer.from([1, 2])), Buffer.from([1, 2]))
+  assert.deepEqual(binary.nativeFromBytes(Buffer.alloc(0)), Buffer.alloc(0))
+  assert.deepEqual(binary.defaultValue(), Buffer.alloc(0))
+  assert.deepEqual(binary.defaultScalar().value(), Buffer.alloc(0))
+})
+
+test('binary field', () => {
+  const payload = new data.BinaryField('payload')
+  assert.equal(payload.name(), 'payload')
+  assert.equal(payload.isNullable(), true)
+  assert.equal(payload.dataType().name(), 'binary')
+  assert.equal(new data.BinaryField('id', false).isNullable(), false)
+})
+
+test('binary scalar reads bytes and io', () => {
+  const blob = new data.BinaryScalar(Buffer.from([1, 2, 3]))
+  assert.equal(blob.isNull(), false)
+  assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
+  assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
+  // UTF-8 bytes convert to a string; anything else throws naming the shape.
+  assert.equal(new data.BinaryScalar(Buffer.from('hi')).asStr(), 'hi')
+  assert.throws(() => new data.BinaryScalar(Buffer.from([0xff])).asStr(), /non-UTF-8/)
+  assert.throws(() => blob.asI64(), /no i64 conversion/)
+
+  // The value doubles as a core positioned-IO ByteBuffer.
+  const io = blob.toIo()
+  assert.equal(io.byteSize(), 3)
+  assert.deepEqual(io.toBytes(), Buffer.from([1, 2, 3]))
+  assert.equal(io.preadByteOne(1, core.Whence.Start), 2)
+
+  // The empty value and null are distinct states.
+  assert.equal(new data.BinaryScalar(Buffer.alloc(0)).isNull(), false)
+  const missing = data.BinaryScalar.null()
+  assert.equal(missing.isNull(), true)
+  assert.equal(missing.value(), null)
+  assert.equal(missing.toIo(), null)
+  assert.throws(() => missing.asBytes(), /is null/)
+})
+
+test('optional binary redirects to the inner scalar', () => {
+  const some = new data.OptionalBinaryScalar(Buffer.from('hi'))
+  assert.equal(some.isNull(), false)
+  assert.deepEqual(some.value(), Buffer.from('hi'))
+  assert.deepEqual(some.scalar().value(), Buffer.from('hi'))
+  assert.deepEqual(some.asBytes(), Buffer.from('hi'))
+  assert.equal(some.asStr(), 'hi')
+
+  const optType = some.dataType()
+  assert.equal(optType.name(), 'optional')
+  assert.equal(optType.valueType().name(), 'binary')
+  assert.equal(optType.storage().name(), 'union')
+  assert.deepEqual(optType.defaultValue(), Buffer.alloc(0))
+  assert.deepEqual(
+    optType.nativeFromBytes(optType.nativeToBytes(Buffer.from('xy'))),
+    Buffer.from('xy'),
+  )
+
+  const missing = data.OptionalBinaryScalar.null()
+  assert.equal(missing.isNull(), true)
+  assert.equal(missing.scalar(), null)
+  assert.throws(() => missing.asBytes(), /is null/)
+
+  // The optional reached through the value type is the same shape.
+  assert.equal(new data.Binary().optional().arrowFormat(), optType.arrowFormat())
+  assert.equal(new data.OptionalBinaryField('payload').dataType().name(), 'optional')
 })
 
 test('optional field', () => {

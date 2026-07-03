@@ -3,10 +3,13 @@
 //! Every integer type is exposed as its data type, field, scalar, logical
 //! optional data type and field, and null-or-value optional scalar (e.g.
 //! `Int64`, `Int64Field`, `Int64Scalar`, `OptionalInt64`, `OptionalInt64Field`,
-//! `OptionalInt64Scalar`), alongside the `Null` family and the `Union` data type.
-//! Scalars expose the `as_*` accessors with the core contract: exact conversion or
-//! `None` (strings cross the FFI boundary as new Python `str` objects, so the
-//! Rust-side "borrow, never copy" guarantee applies up to that boundary copy).
+//! `OptionalInt64Scalar`), alongside the `Binary` family (whose scalar holds its
+//! bytes as a core positioned-IO `ByteBuffer` — `to_io()` hands one back), the
+//! `Null` family and the `Union` data type. Scalars expose the `as_*` accessors
+//! with the core contract: the value when the target represents it exactly, or a
+//! raised `ValueError` naming the fix (strings and bytes cross the FFI boundary
+//! as new Python objects, so the Rust-side "borrow, never copy" guarantee applies
+//! up to that boundary copy).
 //! Optional scalars adapt construction to idioms: they are built straight from the
 //! native value (`OptionalInt64Scalar(42)`), the inner scalar being an
 //! implementation detail reachable through `scalar()`.
@@ -215,6 +218,455 @@ impl NullScalar {
     /// The scalar's data type.
     fn data_type(&self) -> Null {
         Null::default()
+    }
+}
+
+/// The Apache Arrow `binary` data type: a variable-length byte sequence.
+#[pyclass]
+#[derive(Default)]
+pub struct Binary {
+    inner: yggdryl_data::Binary,
+}
+
+#[pymethods]
+impl Binary {
+    /// The `binary` data type.
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"binary"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"z"`.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A binary value has no fixed byte width.
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// A binary value has no fixed bit width.
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// Serialize a native value into its Arrow bytes — the identity for binary.
+    fn native_to_bytes<'py>(&self, py: Python<'py>, value: Vec<u8>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the identity for binary
+    /// (any length is valid).
+    fn native_from_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        bytes: &[u8],
+    ) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(
+            py,
+            &self.inner.native_from_bytes(bytes)?,
+        ))
+    }
+
+    /// The type's default native value, `b""`.
+    fn default_value<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.default_value())
+    }
+
+    /// The default scalar: a scalar holding `b""`.
+    fn default_scalar(&self) -> BinaryScalar {
+        BinaryScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The logical optional of this type (stored as the null-or-value union).
+    fn optional(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+}
+
+/// The logical optional of `binary`: a value, or null — stored as the
+/// null-or-`binary` union.
+#[pyclass]
+#[derive(Default)]
+pub struct OptionalBinary {
+    inner: yggdryl_data::OptionalType<yggdryl_data::Binary>,
+}
+
+#[pymethods]
+impl OptionalBinary {
+    /// The optional `binary` data type.
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"optional"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string of the union storage.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// An optional has no fixed byte width (union storage).
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// An optional has no fixed bit width (union storage).
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// The value type this optional wraps.
+    fn value_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// The physical storage: the sparse null-or-value union.
+    fn storage(&self) -> Union {
+        Union {
+            inner: self.inner.storage().clone(),
+        }
+    }
+
+    /// The default native value: the value type's default, `b""`.
+    fn default_value<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.default_value())
+    }
+
+    /// The default scalar: the null variant (the scalar models nullness).
+    fn default_scalar(&self) -> OptionalBinaryScalar {
+        OptionalBinaryScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// Serialize a native value into its Arrow bytes — the value type's codec.
+    fn native_to_bytes<'py>(&self, py: Python<'py>, value: Vec<u8>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the exact inverse of
+    /// `native_to_bytes`.
+    fn native_from_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        bytes: &[u8],
+    ) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(
+            py,
+            &self.inner.native_from_bytes(bytes)?,
+        ))
+    }
+}
+
+/// A nullable optional-`binary` field: a name paired with the logical optional
+/// data type.
+#[pyclass]
+pub struct OptionalBinaryField {
+    inner: yggdryl_data::OptionalField<yggdryl_data::Binary>,
+}
+
+#[pymethods]
+impl OptionalBinaryField {
+    /// An optional-`binary` field named `name`.
+    #[new]
+    #[pyo3(signature = (name, nullable = true))]
+    fn new(name: String, nullable: bool) -> Self {
+        Self {
+            inner: yggdryl_data::OptionalField::new(name, nullable),
+        }
+    }
+
+    /// The field's name.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    fn data_type(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+
+    /// Whether values in this field may be null.
+    fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable `binary` field: a name paired with the data type.
+#[pyclass]
+pub struct BinaryField {
+    inner: yggdryl_data::BinaryField,
+}
+
+#[pymethods]
+impl BinaryField {
+    /// A `binary` field named `name`.
+    #[new]
+    #[pyo3(signature = (name, nullable = true))]
+    fn new(name: String, nullable: bool) -> Self {
+        Self {
+            inner: yggdryl_data::BinaryField::new(name, nullable),
+        }
+    }
+
+    /// The field's name.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    fn data_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// Whether values in this field may be null.
+    fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A single, possibly-null `binary` value, holding its bytes as a core
+/// positioned-IO `ByteBuffer` (`to_io()` hands one back).
+#[pyclass]
+pub struct BinaryScalar {
+    inner: yggdryl_data::BinaryScalar,
+}
+
+#[pymethods]
+impl BinaryScalar {
+    /// A `binary` scalar holding `value`.
+    #[new]
+    fn new(value: Vec<u8>) -> Self {
+        Self {
+            inner: yggdryl_data::BinaryScalar::new(value),
+        }
+    }
+
+    /// A null `binary` scalar.
+    #[staticmethod]
+    fn null() -> Self {
+        Self {
+            inner: yggdryl_data::BinaryScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value.
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The scalar's value as `bytes`, or `None` when null.
+    fn value<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .value()
+            .map(|bytes| PyBytes::new_bound(py, bytes))
+    }
+
+    /// The scalar's data type.
+    fn data_type(&self) -> Binary {
+        Binary::default()
+    }
+
+    /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for
+    /// positioned reads and the cursor / slice adapters, or `None` when null
+    /// (the bytes cross the FFI boundary as one copy).
+    fn to_io(&self) -> Option<crate::core::ByteBuffer> {
+        self.inner
+            .io()
+            .map(|io| crate::core::ByteBuffer::from_inner(io.clone()))
+    }
+
+    /// The value as an `int` in the i8 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_i8(&self) -> Result<i8, DataErr> {
+        Ok(self.inner.as_i8()?)
+    }
+    /// The value as an `int` in the i16 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_i16(&self) -> Result<i16, DataErr> {
+        Ok(self.inner.as_i16()?)
+    }
+    /// The value as an `int` in the i32 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_i32(&self) -> Result<i32, DataErr> {
+        Ok(self.inner.as_i32()?)
+    }
+    /// The value as an `int` in the i64 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_i64(&self) -> Result<i64, DataErr> {
+        Ok(self.inner.as_i64()?)
+    }
+    /// The value as an `int` in the u8 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_u8(&self) -> Result<u8, DataErr> {
+        Ok(self.inner.as_u8()?)
+    }
+    /// The value as an `int` in the u16 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_u16(&self) -> Result<u16, DataErr> {
+        Ok(self.inner.as_u16()?)
+    }
+    /// The value as an `int` in the u32 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_u32(&self) -> Result<u32, DataErr> {
+        Ok(self.inner.as_u32()?)
+    }
+    /// The value as an `int` in the u64 range; raises `ValueError` when
+    /// null or not exactly representable.
+    fn as_u64(&self) -> Result<u64, DataErr> {
+        Ok(self.inner.as_u64()?)
+    }
+    /// The value as a `float`; raises `ValueError` when null or not
+    /// exactly representable in f32.
+    fn as_f32(&self) -> Result<f32, DataErr> {
+        Ok(self.inner.as_f32()?)
+    }
+    /// The value as a `float`; raises `ValueError` when null or not
+    /// exactly representable in f64.
+    fn as_f64(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f64()?)
+    }
+    /// The value as a `bool`; raises `ValueError` when null or the value
+    /// is not a boolean.
+    fn as_bool(&self) -> Result<bool, DataErr> {
+        Ok(self.inner.as_bool()?)
+    }
+    /// The value as a `str`; raises `ValueError` when null or the bytes are
+    /// not valid UTF-8.
+    fn as_str(&self) -> Result<String, DataErr> {
+        Ok(self.inner.as_str().map(str::to_string)?)
+    }
+    /// The value as `bytes` — the native type; raises `ValueError` when null.
+    fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+    }
+}
+
+/// A single value of the union between null and `binary`: a value variant, or
+/// the null variant.
+#[pyclass]
+pub struct OptionalBinaryScalar {
+    inner: yggdryl_data::OptionalScalar<yggdryl_data::Binary, yggdryl_data::BinaryScalar>,
+}
+
+#[pymethods]
+impl OptionalBinaryScalar {
+    /// A scalar holding the `binary` value variant `value`.
+    #[new]
+    fn new(value: Vec<u8>) -> Self {
+        Self {
+            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::BinaryScalar::new(value)),
+        }
+    }
+
+    /// The null variant.
+    #[staticmethod]
+    fn null() -> Self {
+        Self {
+            inner: yggdryl_data::OptionalScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds the null variant.
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The value as `bytes`, or `None` for the null variant.
+    fn value<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .value()
+            .map(|bytes| PyBytes::new_bound(py, bytes))
+    }
+
+    /// The inner scalar, when this holds the value variant.
+    fn scalar(&self) -> Option<BinaryScalar> {
+        self.inner.scalar().map(|scalar| BinaryScalar {
+            inner: scalar.clone(),
+        })
+    }
+
+    /// The scalar's data type: the logical optional of the value type.
+    fn data_type(&self) -> OptionalBinary {
+        OptionalBinary::default()
+    }
+
+    /// The value as an `int` in the i8 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_i8(&self) -> Result<i8, DataErr> {
+        Ok(self.inner.as_i8()?)
+    }
+    /// The value as an `int` in the i16 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_i16(&self) -> Result<i16, DataErr> {
+        Ok(self.inner.as_i16()?)
+    }
+    /// The value as an `int` in the i32 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_i32(&self) -> Result<i32, DataErr> {
+        Ok(self.inner.as_i32()?)
+    }
+    /// The value as an `int` in the i64 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_i64(&self) -> Result<i64, DataErr> {
+        Ok(self.inner.as_i64()?)
+    }
+    /// The value as an `int` in the u8 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_u8(&self) -> Result<u8, DataErr> {
+        Ok(self.inner.as_u8()?)
+    }
+    /// The value as an `int` in the u16 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_u16(&self) -> Result<u16, DataErr> {
+        Ok(self.inner.as_u16()?)
+    }
+    /// The value as an `int` in the u32 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_u32(&self) -> Result<u32, DataErr> {
+        Ok(self.inner.as_u32()?)
+    }
+    /// The value as an `int` in the u64 range; raises `ValueError` (a binary
+    /// value has no numeric form).
+    fn as_u64(&self) -> Result<u64, DataErr> {
+        Ok(self.inner.as_u64()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a binary value has no
+    /// numeric form).
+    fn as_f32(&self) -> Result<f32, DataErr> {
+        Ok(self.inner.as_f32()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a binary value has no
+    /// numeric form).
+    fn as_f64(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f64()?)
+    }
+    /// The value as a `bool`; raises `ValueError` (a binary value is not a
+    /// boolean).
+    fn as_bool(&self) -> Result<bool, DataErr> {
+        Ok(self.inner.as_bool()?)
+    }
+    /// The value as a `str`; raises `ValueError` when null or the bytes are
+    /// not valid UTF-8.
+    fn as_str(&self) -> Result<String, DataErr> {
+        Ok(self.inner.as_str().map(str::to_string)?)
+    }
+    /// The value as `bytes` — the native type; raises `ValueError` when null.
+    fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
     }
 }
 
@@ -467,53 +919,70 @@ macro_rules! int_data_py {
                 $ty::default()
             }
 
-            /// The value as an `int` in the i8 range, when exactly representable.
-            fn as_i8(&self) -> Option<i8> {
-                self.inner.as_i8()
+            /// The value as an `int` in the i8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i8(&self) -> Result<i8, DataErr> {
+                Ok(self.inner.as_i8()?)
             }
-            /// The value as an `int` in the i16 range, when exactly representable.
-            fn as_i16(&self) -> Option<i16> {
-                self.inner.as_i16()
+            /// The value as an `int` in the i16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i16(&self) -> Result<i16, DataErr> {
+                Ok(self.inner.as_i16()?)
             }
-            /// The value as an `int` in the i32 range, when exactly representable.
-            fn as_i32(&self) -> Option<i32> {
-                self.inner.as_i32()
+            /// The value as an `int` in the i32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i32(&self) -> Result<i32, DataErr> {
+                Ok(self.inner.as_i32()?)
             }
-            /// The value as an `int` in the i64 range, when exactly representable.
-            fn as_i64(&self) -> Option<i64> {
-                self.inner.as_i64()
+            /// The value as an `int` in the i64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i64(&self) -> Result<i64, DataErr> {
+                Ok(self.inner.as_i64()?)
             }
-            /// The value as an `int` in the u8 range, when exactly representable.
-            fn as_u8(&self) -> Option<u8> {
-                self.inner.as_u8()
+            /// The value as an `int` in the u8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u8(&self) -> Result<u8, DataErr> {
+                Ok(self.inner.as_u8()?)
             }
-            /// The value as an `int` in the u16 range, when exactly representable.
-            fn as_u16(&self) -> Option<u16> {
-                self.inner.as_u16()
+            /// The value as an `int` in the u16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u16(&self) -> Result<u16, DataErr> {
+                Ok(self.inner.as_u16()?)
             }
-            /// The value as an `int` in the u32 range, when exactly representable.
-            fn as_u32(&self) -> Option<u32> {
-                self.inner.as_u32()
+            /// The value as an `int` in the u32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u32(&self) -> Result<u32, DataErr> {
+                Ok(self.inner.as_u32()?)
             }
-            /// The value as an `int` in the u64 range, when exactly representable.
-            fn as_u64(&self) -> Option<u64> {
-                self.inner.as_u64()
+            /// The value as an `int` in the u64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u64(&self) -> Result<u64, DataErr> {
+                Ok(self.inner.as_u64()?)
             }
-            /// The value as a `float`, when exactly representable in f32.
-            fn as_f32(&self) -> Option<f32> {
-                self.inner.as_f32()
+            /// The value as a `float`; raises `ValueError` when null or not
+            /// exactly representable in f32.
+            fn as_f32(&self) -> Result<f32, DataErr> {
+                Ok(self.inner.as_f32()?)
             }
-            /// The value as a `float`, when exactly representable in f64.
-            fn as_f64(&self) -> Option<f64> {
-                self.inner.as_f64()
+            /// The value as a `float`; raises `ValueError` when null or not
+            /// exactly representable in f64.
+            fn as_f64(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f64()?)
             }
-            /// The value as a `bool`, when the value is a boolean.
-            fn as_bool(&self) -> Option<bool> {
-                self.inner.as_bool()
+            /// The value as a `bool`; raises `ValueError` when null or the value
+            /// is not a boolean.
+            fn as_bool(&self) -> Result<bool, DataErr> {
+                Ok(self.inner.as_bool()?)
             }
-            /// The value as a `str`, when the value is a string.
-            fn as_str(&self) -> Option<String> {
-                self.inner.as_str().map(str::to_string)
+            /// The value as a `str`; raises `ValueError` when null or the value
+            /// has no string form.
+            fn as_str(&self) -> Result<String, DataErr> {
+                Ok(self.inner.as_str().map(str::to_string)?)
+            }
+            /// The value as `bytes`; raises `ValueError` when null or the value
+            /// has no byte-sequence form.
+            fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+                Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
             }
         }
 
@@ -561,53 +1030,70 @@ macro_rules! int_data_py {
                 $opt_ty::default()
             }
 
-            /// The value as an `int` in the i8 range, when exactly representable.
-            fn as_i8(&self) -> Option<i8> {
-                self.inner.as_i8()
+            /// The value as an `int` in the i8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i8(&self) -> Result<i8, DataErr> {
+                Ok(self.inner.as_i8()?)
             }
-            /// The value as an `int` in the i16 range, when exactly representable.
-            fn as_i16(&self) -> Option<i16> {
-                self.inner.as_i16()
+            /// The value as an `int` in the i16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i16(&self) -> Result<i16, DataErr> {
+                Ok(self.inner.as_i16()?)
             }
-            /// The value as an `int` in the i32 range, when exactly representable.
-            fn as_i32(&self) -> Option<i32> {
-                self.inner.as_i32()
+            /// The value as an `int` in the i32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i32(&self) -> Result<i32, DataErr> {
+                Ok(self.inner.as_i32()?)
             }
-            /// The value as an `int` in the i64 range, when exactly representable.
-            fn as_i64(&self) -> Option<i64> {
-                self.inner.as_i64()
+            /// The value as an `int` in the i64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i64(&self) -> Result<i64, DataErr> {
+                Ok(self.inner.as_i64()?)
             }
-            /// The value as an `int` in the u8 range, when exactly representable.
-            fn as_u8(&self) -> Option<u8> {
-                self.inner.as_u8()
+            /// The value as an `int` in the u8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u8(&self) -> Result<u8, DataErr> {
+                Ok(self.inner.as_u8()?)
             }
-            /// The value as an `int` in the u16 range, when exactly representable.
-            fn as_u16(&self) -> Option<u16> {
-                self.inner.as_u16()
+            /// The value as an `int` in the u16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u16(&self) -> Result<u16, DataErr> {
+                Ok(self.inner.as_u16()?)
             }
-            /// The value as an `int` in the u32 range, when exactly representable.
-            fn as_u32(&self) -> Option<u32> {
-                self.inner.as_u32()
+            /// The value as an `int` in the u32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u32(&self) -> Result<u32, DataErr> {
+                Ok(self.inner.as_u32()?)
             }
-            /// The value as an `int` in the u64 range, when exactly representable.
-            fn as_u64(&self) -> Option<u64> {
-                self.inner.as_u64()
+            /// The value as an `int` in the u64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u64(&self) -> Result<u64, DataErr> {
+                Ok(self.inner.as_u64()?)
             }
-            /// The value as a `float`, when exactly representable in f32.
-            fn as_f32(&self) -> Option<f32> {
-                self.inner.as_f32()
+            /// The value as a `float`; raises `ValueError` when null or not
+            /// exactly representable in f32.
+            fn as_f32(&self) -> Result<f32, DataErr> {
+                Ok(self.inner.as_f32()?)
             }
-            /// The value as a `float`, when exactly representable in f64.
-            fn as_f64(&self) -> Option<f64> {
-                self.inner.as_f64()
+            /// The value as a `float`; raises `ValueError` when null or not
+            /// exactly representable in f64.
+            fn as_f64(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f64()?)
             }
-            /// The value as a `bool`, when the value is a boolean.
-            fn as_bool(&self) -> Option<bool> {
-                self.inner.as_bool()
+            /// The value as a `bool`; raises `ValueError` when null or the value
+            /// is not a boolean.
+            fn as_bool(&self) -> Result<bool, DataErr> {
+                Ok(self.inner.as_bool()?)
             }
-            /// The value as a `str`, when the value is a string.
-            fn as_str(&self) -> Option<String> {
-                self.inner.as_str().map(str::to_string)
+            /// The value as a `str`; raises `ValueError` when null or the value
+            /// has no string form.
+            fn as_str(&self) -> Result<String, DataErr> {
+                Ok(self.inner.as_str().map(str::to_string)?)
+            }
+            /// The value as `bytes`; raises `ValueError` when null or the value
+            /// has no byte-sequence form.
+            fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+                Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
             }
         }
     };
@@ -701,6 +1187,12 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Null>()?;
     module.add_class::<NullField>()?;
     module.add_class::<NullScalar>()?;
+    module.add_class::<Binary>()?;
+    module.add_class::<BinaryField>()?;
+    module.add_class::<BinaryScalar>()?;
+    module.add_class::<OptionalBinary>()?;
+    module.add_class::<OptionalBinaryField>()?;
+    module.add_class::<OptionalBinaryScalar>()?;
     module.add_class::<Int8>()?;
     module.add_class::<Int8Field>()?;
     module.add_class::<Int8Scalar>()?;

@@ -217,43 +217,103 @@ macro_rules! int_scalar {
                     Self::new(array.value(0))
                 })
             }
-            fn as_i8(&self) -> Option<i8> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_i8(&self) -> Result<i8, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "i8",
+                    })
             }
-            fn as_i16(&self) -> Option<i16> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_i16(&self) -> Result<i16, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "i16",
+                    })
             }
-            fn as_i32(&self) -> Option<i32> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_i32(&self) -> Result<i32, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "i32",
+                    })
             }
-            fn as_i64(&self) -> Option<i64> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_i64(&self) -> Result<i64, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "i64",
+                    })
             }
-            fn as_u8(&self) -> Option<u8> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_u8(&self) -> Result<u8, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "u8",
+                    })
             }
-            fn as_u16(&self) -> Option<u16> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_u16(&self) -> Result<u16, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "u16",
+                    })
             }
-            fn as_u32(&self) -> Option<u32> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_u32(&self) -> Result<u32, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "u32",
+                    })
             }
-            fn as_u64(&self) -> Option<u64> {
-                self.value.and_then(|value| value.try_into().ok())
+            fn as_u64(&self) -> Result<u64, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                value
+                    .try_into()
+                    .map_err(|_| $crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "u64",
+                    })
             }
-            fn as_f32(&self) -> Option<f32> {
+            fn as_f32(&self) -> Result<f32, $crate::DataError> {
                 // Exactly representable only: an int-to-float cast rounds to an
                 // integral float, so a lossless conversion round-trips through i128.
-                self.value.and_then(|value| {
-                    let float = value as f32;
-                    (float as i128 == value as i128).then_some(float)
-                })
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                let float = value as f32;
+                if float as i128 == value as i128 {
+                    Ok(float)
+                } else {
+                    Err($crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "f32",
+                    })
+                }
             }
-            fn as_f64(&self) -> Option<f64> {
-                self.value.and_then(|value| {
-                    let float = value as f64;
-                    (float as i128 == value as i128).then_some(float)
-                })
+            fn as_f64(&self) -> Result<f64, $crate::DataError> {
+                let value = self.value.ok_or($crate::DataError::NullValue)?;
+                let float = value as f64;
+                if float as i128 == value as i128 {
+                    Ok(float)
+                } else {
+                    Err($crate::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "f64",
+                    })
+                }
             }
         }
 

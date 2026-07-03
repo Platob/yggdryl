@@ -62,11 +62,11 @@ use super::{DataError, RawDataType};
 ///         })
 ///     }
 ///     // The native type answers directly; wider targets convert.
-///     fn as_i32(&self) -> Option<i32> {
-///         self.value
+///     fn as_i32(&self) -> Result<i32, DataError> {
+///         self.value.ok_or(DataError::NullValue)
 ///     }
-///     fn as_i64(&self) -> Option<i64> {
-///         self.value.map(i64::from)
+///     fn as_i64(&self) -> Result<i64, DataError> {
+///         self.value.map(i64::from).ok_or(DataError::NullValue)
 ///     }
 /// }
 ///
@@ -74,8 +74,9 @@ use super::{DataError, RawDataType};
 /// assert_eq!(answer.data_type().name(), "int32");
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
-/// assert_eq!(answer.as_i64(), Some(42)); // converted access
-/// assert_eq!(answer.as_str(), None); // an int32 is not a string (default)
+/// assert_eq!(answer.as_i64().unwrap(), 42); // converted access
+/// // An int32 has no str conversion (the default): an actionable error.
+/// assert!(matches!(answer.as_str(), Err(DataError::UnsupportedConversion { .. })));
 ///
 /// // Arrow interop: a one-element array, round-tripped.
 /// let arrow = answer.to_arrow();
@@ -115,84 +116,134 @@ pub trait RawScalar<D: RawDataType>: std::fmt::Debug + Send + Sync {
     where
         Self: Sized;
 
-    /// The value as an `i8`, when non-null and exactly representable.
+    /// The value as an `i8`, when exactly representable.
     ///
-    /// The `as_*` accessors share one contract: `None` when the scalar is null, when
-    /// its value has no conversion to the target type, or when the conversion would
-    /// change the value (a narrowing or sign change out of range, a float that would
-    /// round); the value otherwise. A scalar whose native type *is* the target
-    /// answers directly, without conversion; `str` access borrows without copying.
-    /// Every accessor defaults to `None`, so a concrete scalar overrides only the
-    /// targets its value converts to.
-    fn as_i8(&self) -> Option<i8> {
-        None
+    /// The `as_*` accessors share one contract: the value whenever the target type
+    /// represents it exactly, and an actionable [`DataError`] otherwise —
+    /// [`NullValue`](DataError::NullValue) for a null scalar,
+    /// [`InexactConversion`](DataError::InexactConversion) when converting would
+    /// change the value (a narrowing or sign change out of range, a float that
+    /// would round, non-UTF-8 bytes read as `str`), and
+    /// [`UnsupportedConversion`](DataError::UnsupportedConversion) when the
+    /// scalar's type has no conversion to the target at all — the default for
+    /// every accessor, so a concrete scalar overrides only the targets its value
+    /// converts to. A scalar whose native type *is* the target answers directly,
+    /// without conversion; `str` and byte access borrow without copying.
+    fn as_i8(&self) -> Result<i8, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "i8",
+        })
     }
 
-    /// The value as an `i16`, when non-null and exactly representable.
+    /// The value as an `i16`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_i16(&self) -> Option<i16> {
-        None
+    fn as_i16(&self) -> Result<i16, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "i16",
+        })
     }
 
-    /// The value as an `i32`, when non-null and exactly representable.
+    /// The value as an `i32`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_i32(&self) -> Option<i32> {
-        None
+    fn as_i32(&self) -> Result<i32, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "i32",
+        })
     }
 
-    /// The value as an `i64`, when non-null and exactly representable.
+    /// The value as an `i64`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_i64(&self) -> Option<i64> {
-        None
+    fn as_i64(&self) -> Result<i64, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "i64",
+        })
     }
 
-    /// The value as a `u8`, when non-null and exactly representable.
+    /// The value as a `u8`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_u8(&self) -> Option<u8> {
-        None
+    fn as_u8(&self) -> Result<u8, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "u8",
+        })
     }
 
-    /// The value as a `u16`, when non-null and exactly representable.
+    /// The value as a `u16`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_u16(&self) -> Option<u16> {
-        None
+    fn as_u16(&self) -> Result<u16, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "u16",
+        })
     }
 
-    /// The value as a `u32`, when non-null and exactly representable.
+    /// The value as a `u32`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_u32(&self) -> Option<u32> {
-        None
+    fn as_u32(&self) -> Result<u32, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "u32",
+        })
     }
 
-    /// The value as a `u64`, when non-null and exactly representable.
+    /// The value as a `u64`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_u64(&self) -> Option<u64> {
-        None
+    fn as_u64(&self) -> Result<u64, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "u64",
+        })
     }
 
-    /// The value as an `f32`, when non-null and exactly representable.
+    /// The value as an `f32`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_f32(&self) -> Option<f32> {
-        None
+    fn as_f32(&self) -> Result<f32, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "f32",
+        })
     }
 
-    /// The value as an `f64`, when non-null and exactly representable.
+    /// The value as an `f64`, when exactly representable.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_f64(&self) -> Option<f64> {
-        None
+    fn as_f64(&self) -> Result<f64, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "f64",
+        })
     }
 
-    /// The value as a `bool`, when non-null and the value is a boolean.
+    /// The value as a `bool`, when the value is a boolean.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_bool(&self) -> Option<bool> {
-        None
+    fn as_bool(&self) -> Result<bool, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "bool",
+        })
     }
 
-    /// The value as a borrowed `&str`, when non-null and the value is a string —
-    /// borrowed directly, never copied or converted.
+    /// The value as a borrowed `&str`, when the value is a string (or bytes that
+    /// are valid UTF-8) — borrowed directly, never copied.
     /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_str(&self) -> Option<&str> {
-        None
+    fn as_str(&self) -> Result<&str, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "str",
+        })
+    }
+
+    /// The value as borrowed bytes, when the value is a byte sequence — borrowed
+    /// directly, never copied.
+    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_bytes(&self) -> Result<&[u8], DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "bytes",
+        })
     }
 }
 

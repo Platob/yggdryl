@@ -8,8 +8,9 @@ crate tree:
 - `yggdryl.core` — the foundations (`yggdryl-core`): byte/bit buffers, cursors,
   slices.
 - `yggdryl.data` — the Arrow data-model layer (`yggdryl-data`): every integer data
-  type with its field, scalar and null-or-value optional scalar, plus the null and
-  union types.
+  type with its field, scalar and null-or-value optional scalar, the binary type
+  (bytes in and out, `to_io()` handing back a `yggdryl.core` `ByteBuffer`), plus
+  the null and union types.
 
 ```python
 import yggdryl
@@ -18,7 +19,7 @@ from yggdryl import data
 print(yggdryl.core.version())
 
 scalar = data.Int64Scalar(42)
-assert scalar.as_i8() == 42          # exact conversion, or None
+assert scalar.as_i8() == 42          # exact conversion, or ValueError
 assert data.OptionalInt64Scalar.null().is_null()
 assert data.Int64().optional().arrow_format() == "+us:0,1"
 ```

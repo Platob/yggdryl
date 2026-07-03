@@ -90,6 +90,13 @@ fn list_scalar_round_trips_all_shapes() {
         numbers
     );
 
+    // The scalar accessors read elements back out, as scalars or native values.
+    assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
+    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    assert_eq!(numbers.get_value_at(0), Some(1));
+    assert_eq!(numbers.get_value_at(1), None); // a null element holds no value
+    assert_eq!(numbers.get_value_at(2), None); // out of bounds
+
     let empty = Int64ListScalar::new(Vec::new());
     assert!(!empty.is_null());
     assert_eq!(

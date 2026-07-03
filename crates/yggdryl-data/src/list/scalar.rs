@@ -16,8 +16,9 @@ use arrow_array::ArrayRef;
 /// [`Value`](RawScalar::Value) is the backing `dyn Array`, and the *scalar
 /// accessors* read elements back out: [`get_scalar_at`](ListScalar::get_scalar_at)
 /// redirects one element through the inner scalar's own `from_arrow`,
-/// [`len`](ListScalar::len) / [`is_empty`](ListScalar::is_empty) describe the
-/// sequence. (For `int64` there is the concrete, buffer-backed
+/// [`get_value_at`](ListScalar::get_value_at) hands back an element's owned
+/// native value, and [`len`](ListScalar::len) / [`is_empty`](ListScalar::is_empty)
+/// describe the sequence. (For `int64` there is the concrete, buffer-backed
 /// [`Int64Array`](crate::Int64Array).)
 ///
 /// ```
@@ -29,6 +30,8 @@ use arrow_array::ArrayRef;
 /// assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
 /// assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
 /// assert_eq!(numbers.get_scalar_at(2), None); // out of bounds
+/// assert_eq!(numbers.get_value_at(0), Some(1)); // the owned native value
+/// assert_eq!(numbers.get_value_at(1), None); // a null element holds no value
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
@@ -97,6 +100,21 @@ impl<D: RawDataType + Default, S: RawScalar<D>> ListScalar<D, S> {
         }
         let element = arrow_array::Array::slice(values.as_ref(), index, 1);
         S::from_arrow(element.as_ref()).ok()
+    }
+
+    /// The element at `index` as its owned native Rust value, or `None` when the
+    /// list is null, the element is null, or `index` is out of bounds.
+    ///
+    /// The inner scalar names the native type through [`Scalar<T>`](crate::Scalar),
+    /// so an `int64` list yields `i64` and a `binary` list `Vec<u8>` (unsized
+    /// values come back as their owned form via [`ToOwned`]).
+    pub fn get_value_at<T>(&self, index: usize) -> Option<T::Owned>
+    where
+        T: ToOwned + ?Sized,
+        S: Scalar<T, Type = D>,
+    {
+        let scalar = self.get_scalar_at(index)?;
+        scalar.value().map(ToOwned::to_owned)
     }
 }
 

@@ -15,7 +15,7 @@ use crate::{DataError, RawScalar, Scalar};
 /// let nothing = NullScalar::new();
 /// assert!(nothing.is_null());
 /// assert_eq!(nothing.value(), None);
-/// assert_eq!(nothing.as_i64(), None);
+/// assert!(nothing.as_i64().is_err()); // no value, no conversions
 /// assert_eq!(nothing.data_type().name(), "null");
 ///
 /// // Arrow's form is a one-element NullArray.

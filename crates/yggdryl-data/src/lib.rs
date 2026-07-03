@@ -15,11 +15,13 @@
 //!   shape.
 //!
 //! Concrete types live in per-family modules — the [`integer`] module holds every
-//! signed and unsigned integer, the [`null`] module the storage-free null type, the
-//! [`union`] module the union type, the [`optional`] module the logical
-//! null-or-value [`OptionalType`] over union storage, and the [`list`], [`map`] and
-//! [`struct`](r#struct) modules the nested types (each type its own data type,
-//! field and scalar). Add more following the rules in `CLAUDE.md`.
+//! signed and unsigned integer, the [`binary`] module the variable-length byte
+//! sequence (its scalar doubling as a `yggdryl-core` positioned-IO resource), the
+//! [`null`] module the storage-free null type, the [`union`] module the union
+//! type, the [`optional`] module the logical null-or-value [`OptionalType`] over
+//! union storage, and the [`list`], [`map`] and [`struct`](r#struct) modules the
+//! nested types (each type its own data type, field and scalar). Add more
+//! following the rules in `CLAUDE.md`.
 //!
 //! Every layer converts to and from its Apache Arrow equivalent (`to_arrow` /
 //! `from_arrow`): a data type mirrors an [`arrow_schema::DataType`], a field an
@@ -51,6 +53,11 @@ pub use arrow_buffer;
 /// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
 /// and the data type / field `to_arrow` / `from_arrow` surface share one version.
 pub use arrow_schema;
+/// The yggdryl foundation layer (`yggdryl-core`), re-exported so downstream code
+/// reaches the positioned-IO surface the [`BinaryScalar`] value plugs into
+/// (`RawIOBase`, `ByteBuffer`, the cursor / slice adapters) at the exact version
+/// this crate was built against.
+pub use yggdryl_core;
 
 mod data_type_id;
 mod error;
@@ -84,6 +91,7 @@ pub use primitive::Primitive;
 pub use raw_logical::RawLogical;
 pub use raw_nested::RawNested;
 
+pub mod binary;
 pub mod integer;
 pub mod list;
 pub mod map;
@@ -92,6 +100,7 @@ pub mod optional;
 pub mod r#struct;
 pub mod union;
 
+pub use binary::{Binary, BinaryField, BinaryScalar};
 pub use list::{Int64Array, List, ListField, ListScalar, ListType, RawList};
 pub use map::{Map, MapField, MapScalar, MapType, RawMap};
 pub use null::{Null, NullField, NullScalar};

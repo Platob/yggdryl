@@ -25,7 +25,7 @@
 //!
 //! // A scalar: a value variant, or the null variant.
 //! let answer = OptionalScalar::new(Int64Scalar::new(42));
-//! assert_eq!(answer.as_i64(), Some(42));
+//! assert_eq!(answer.as_i64().unwrap(), 42);
 //! assert!(OptionalScalar::<Int64, Int64Scalar>::null().is_null());
 //! ```
 

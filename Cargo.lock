@@ -1134,6 +1134,7 @@ dependencies = [
  "arrow-select",
  "criterion",
  "log",
+ "yggdryl-core",
 ]
 
 [[package]]

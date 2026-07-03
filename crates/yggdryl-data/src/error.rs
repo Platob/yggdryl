@@ -38,6 +38,25 @@ pub enum DataError {
         /// The number of flags the null buffer actually held.
         got: usize,
     },
+    /// An `as_*` accessor was called on a null scalar, which holds no value.
+    NullValue,
+    /// The scalar's value does not convert *exactly* to the `as_*` target type —
+    /// a narrowing or sign change out of range, a float that would round, or
+    /// bytes that are not valid UTF-8.
+    InexactConversion {
+        /// The offending value (or a short description of it).
+        value: String,
+        /// The requested target type, e.g. `"i8"`.
+        target: &'static str,
+    },
+    /// The scalar's data type has no conversion to the `as_*` target type at all
+    /// (e.g. an integer read as `str`).
+    UnsupportedConversion {
+        /// The scalar's data type name, e.g. `"int64"`.
+        data_type: String,
+        /// The requested target type, e.g. `"str"`.
+        target: &'static str,
+    },
 }
 
 impl std::fmt::Display for DataError {
@@ -68,6 +87,22 @@ impl std::fmt::Display for DataError {
                     "expected a null buffer of length {expected} but got {got}; pass one \
                      validity flag per element"
                 )
+            }
+            DataError::NullValue => {
+                write!(
+                    f,
+                    "the scalar is null and holds no value; check is_null() first"
+                )
+            }
+            DataError::InexactConversion { value, target } => {
+                write!(
+                    f,
+                    "{value} is not exactly representable as {target}; read a target that \
+                     holds the value"
+                )
+            }
+            DataError::UnsupportedConversion { data_type, target } => {
+                write!(f, "a {data_type} scalar has no {target} conversion")
             }
         }
     }

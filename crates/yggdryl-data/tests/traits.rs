@@ -73,9 +73,9 @@ impl RawScalar<Utf8> for Utf8Scalar {
             value: (!array.is_null(0)).then(|| array.value(0).to_string()),
         })
     }
-    fn as_str(&self) -> Option<&str> {
+    fn as_str(&self) -> Result<&str, DataError> {
         // The native type: borrowed directly, never copied.
-        self.value.as_deref()
+        self.value.as_deref().ok_or(DataError::NullValue)
     }
 }
 
@@ -110,8 +110,11 @@ fn string_access_borrows_without_copying() {
     let borrowed = hello.as_str().unwrap();
     assert_eq!(borrowed, "hi");
     assert_eq!(borrowed.as_ptr(), hello.value.as_ref().unwrap().as_ptr());
-    // A string is not a number (the trait defaults).
-    assert_eq!(hello.as_i64(), None);
+    // A string is not a number (the trait defaults): an actionable error.
+    assert!(matches!(
+        hello.as_i64(),
+        Err(DataError::UnsupportedConversion { data_type, target: "i64" }) if data_type == "utf8"
+    ));
 }
 
 #[test]

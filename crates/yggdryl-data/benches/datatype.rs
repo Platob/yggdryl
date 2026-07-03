@@ -192,21 +192,21 @@ fn accessor(c: &mut Criterion) {
     group.bench_function("int64_as_i64_direct", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(black_box(&scalar).as_i64());
+                let _ = black_box(black_box(&scalar).as_i64());
             }
         })
     });
     group.bench_function("int64_as_i8_converted", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(black_box(&scalar).as_i8());
+                let _ = black_box(black_box(&scalar).as_i8());
             }
         })
     });
     group.bench_function("int64_as_f64_converted", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(black_box(&scalar).as_f64());
+                let _ = black_box(black_box(&scalar).as_f64());
             }
         })
     });
@@ -215,7 +215,7 @@ fn accessor(c: &mut Criterion) {
     group.bench_function("optional_as_i64_redirected", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(black_box(&optional).as_i64());
+                let _ = black_box(black_box(&optional).as_i64());
             }
         })
     });

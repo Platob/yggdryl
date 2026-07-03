@@ -169,6 +169,14 @@ pub struct ByteBuffer {
     inner: yggdryl_core::ByteBuffer,
 }
 
+impl ByteBuffer {
+    // Wraps an existing core buffer — crate-internal, so sibling modules (the
+    // data layer's `BinaryScalar::to_io`) can convert.
+    pub(crate) fn from_inner(inner: yggdryl_core::ByteBuffer) -> Self {
+        Self { inner }
+    }
+}
+
 #[pymethods]
 impl ByteBuffer {
     /// An empty buffer.

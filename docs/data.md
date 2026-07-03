@@ -3,15 +3,20 @@
 The `yggdryl-data` crate is the Apache Arrow-centralized **data-model layer**, built
 on `yggdryl-core`. It defines the physical type system — data types, fields and
 scalars — for zero-copy FFI and Arrow interop. The concrete families so far: the
-`integer` module (every signed and unsigned integer), the `null` module (the
-storage-free null type), the `union` module, the `optional` module (the logical
-null-or-value type over union storage) and the nested `list`, `map` and `struct`
-modules; more land as the layer grows.
+`integer` module (every signed and unsigned integer), the
+[`binary` module](#the-binary-module) (the variable-size byte type, its scalar a
+core positioned-IO resource), the `null` module (the storage-free null type), the
+`union` module, the `optional` module (the logical null-or-value type over union
+storage) and the nested `list`, `map` and `struct` modules; more land as the
+layer grows.
 
 The bindings expose the layer as `yggdryl.data` (Python) and `yggdryl.data` (Node),
 adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
-`BigInt`, and the null-or-value scalars are concrete per-type classes
-(`OptionalInt64Scalar`, …) built straight from the native value. Four things stay
+`BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
+scalars are concrete per-type classes (`OptionalInt64Scalar`,
+`OptionalBinaryScalar`, …) built straight from the native value, and the `as_*`
+accessors surface the core `DataError` as a raised `ValueError` (Python) / thrown
+`Error` (Node). Four things stay
 **Rust-only**, stated here and in both binding module docs: the [Arrow
 interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange `arrow-schema` /
 `arrow-array` values that cannot cross the FFI boundary), construction of a `UnionType`
@@ -38,7 +43,8 @@ single crate-internal macro generates each per-type file.
 `Int64`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C Data
 Interface format `"l"`). Scalars are built from their native value and read through
 the `as_*` accessors: direct for the scalar's own type, exact conversion otherwise,
-and null when the scalar is null or the value is not exactly representable:
+and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
+`Error` — when the scalar is null or the value is not exactly representable:
 
 === "Python"
 
@@ -58,11 +64,14 @@ and null when the scalar is null or the value is not exactly representable:
     id_field = data.Int64Field("id", False)
     assert (id_field.name(), id_field.is_nullable()) == ("id", False)
 
-    # A single i64 value, or null, with exact-or-None accessors.
+    # A single i64 value, or null, with exact-or-raise accessors.
     scalar = data.Int64Scalar(42)
     assert scalar.value() == 42
     assert scalar.as_i8() == 42          # converted access
-    assert scalar.as_str() is None       # an int64 is not a string
+    try:
+        scalar.as_str()                  # an int64 is not a string
+    except ValueError as error:
+        assert "no str conversion" in str(error)
     assert data.Int64Scalar.null().is_null()
     ```
 
@@ -84,11 +93,11 @@ and null when the scalar is null or the value is not exactly representable:
     const idField = new data.Int64Field('id', false)
     assert.deepEqual([idField.name(), idField.isNullable()], ['id', false])
 
-    // A single i64 value, or null, with exact-or-null accessors.
+    // A single i64 value, or null, with exact-or-throw accessors.
     const scalar = new data.Int64Scalar(42n)
     assert.equal(scalar.value(), 42n)
     assert.equal(scalar.asI8(), 42)      // converted access
-    assert.equal(scalar.asStr(), null)   // an int64 is not a string
+    assert.throws(() => scalar.asStr(), /no str conversion/) // not a string
     assert.equal(data.Int64Scalar.null().isNull(), true)
     ```
 
@@ -110,11 +119,11 @@ and null when the scalar is null or the value is not exactly representable:
         let id = Int64Field::new("id", false);
         assert_eq!((id.name(), id.is_nullable()), ("id", false));
 
-        // A single i64 value, or null, with exact-or-None accessors.
+        // A single i64 value, or null, with exact-or-error accessors.
         let scalar = Int64Scalar::from(42);
         assert_eq!(scalar.value(), Some(&42));
-        assert_eq!(scalar.as_i8(), Some(42)); // converted access
-        assert_eq!(scalar.as_str(), None); // an int64 is not a string
+        assert_eq!(scalar.as_i8().unwrap(), 42); // converted access
+        assert!(scalar.as_str().is_err()); // an int64 is not a string
         assert!(Int64Scalar::null().is_null());
     }
     ```
@@ -122,6 +131,102 @@ and null when the scalar is null or the value is not exactly representable:
 The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
 `Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on. In Rust, `Int64::ID`
 names the matching [`DataTypeId`](#type-ids) classifier.
+
+## The `binary` module
+
+The `binary` module holds the variable-size byte type: `Binary` (Arrow C Data
+Interface format `"z"`, no fixed width), `BinaryField` and `BinaryScalar`. The
+typed codec is the identity — any byte sequence is a valid `binary` value — and
+the scalar holds its bytes as a `yggdryl-core` positioned-IO `ByteBuffer`, so a
+value plugs straight into the core IO layer: in Rust, `io()` borrows the resource
+for `RawIOBase` reads and `into_io()` moves it out to wrap in the `RawIOCursor` /
+`RawIOSlice` adapters; the bindings hand back a `yggdryl.core` `ByteBuffer`
+through `to_io()` (one copy at the FFI boundary, like strings). `as_bytes`
+answers the native type directly and `as_str` converts when the bytes are valid
+UTF-8.
+
+=== "Python"
+
+    ```python
+    from yggdryl import core, data
+
+    binary = data.Binary()
+    assert (binary.name(), binary.arrow_format()) == ("binary", "z")
+    assert binary.byte_width() is None  # variable width
+    assert binary.native_from_bytes(binary.native_to_bytes(b"\x01\x02")) == b"\x01\x02"
+
+    blob = data.BinaryScalar(b"\x01\x02\x03")
+    assert blob.value() == b"\x01\x02\x03"
+    assert blob.as_bytes() == b"\x01\x02\x03"
+    assert data.BinaryScalar(b"hi").as_str() == "hi"  # valid UTF-8 only
+
+    # The value doubles as a core positioned-IO ByteBuffer.
+    io = blob.to_io()
+    assert io.pread_byte_one(1, core.Whence.Start) == 2
+
+    assert data.BinaryScalar.null().is_null()
+    assert data.OptionalBinaryScalar(b"hi").as_bytes() == b"hi"
+    ```
+
+=== "Node"
+
+    ```js
+    const { core, data } = require('yggdryl')
+
+    const binary = new data.Binary()
+    assert.deepEqual([binary.name(), binary.arrowFormat()], ['binary', 'z'])
+    assert.equal(binary.byteWidth(), null) // variable width
+    assert.deepEqual(
+      binary.nativeFromBytes(binary.nativeToBytes(Buffer.from([1, 2]))),
+      Buffer.from([1, 2]),
+    )
+
+    const blob = new data.BinaryScalar(Buffer.from([1, 2, 3]))
+    assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
+    assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
+    assert.equal(new data.BinaryScalar(Buffer.from('hi')).asStr(), 'hi') // valid UTF-8 only
+
+    // The value doubles as a core positioned-IO ByteBuffer.
+    const io = blob.toIo()
+    assert.equal(io.preadByteOne(1, core.Whence.Start), 2)
+
+    assert.equal(data.BinaryScalar.null().isNull(), true)
+    assert.deepEqual(new data.OptionalBinaryScalar(Buffer.from('hi')).asBytes(), Buffer.from('hi'))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_data::yggdryl_core::{RawIOBase, RawIOCursor, Whence};
+    use yggdryl_data::{Binary, BinaryScalar, DataType, RawDataType, RawScalar};
+
+    fn main() {
+        assert_eq!((Binary.name(), Binary.arrow_format().as_str()), ("binary", "z"));
+        assert_eq!(Binary.byte_width(), None); // variable width
+        let bytes = Binary.native_to_bytes(&vec![1, 2]);
+        assert_eq!(Binary.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
+
+        let blob = BinaryScalar::new(vec![1, 2, 3]);
+        assert_eq!(blob.value(), Some(&[1, 2, 3][..]));
+        assert_eq!(blob.as_bytes().unwrap(), &[1, 2, 3][..]); // borrowed, never copied
+        assert_eq!(BinaryScalar::new(b"hi".to_vec()).as_str().unwrap(), "hi");
+
+        // The value doubles as a core positioned-IO resource.
+        let io = blob.io().unwrap();
+        assert_eq!(io.pread_byte_one(1, Whence::Start).unwrap(), 2);
+        let cursor = RawIOCursor::new(blob.clone().into_io().unwrap());
+        assert_eq!(cursor.pread_byte_array(0, Whence::Start, 2).unwrap(), vec![1, 2]);
+
+        assert!(BinaryScalar::null().is_null());
+    }
+    ```
+
+In Rust the Arrow round trip is exact — `to_arrow` builds a one-element
+`BinaryArray`, `from_arrow` is its inverse — and `Binary::ID` is
+`DataTypeId::Binary`. Binary is *not* a `Primitive` in this model's fixed-width
+sense: it is Arrow's variable-size binary layout, childless but without a fixed
+width. `yggdryl-core` is re-exported as `yggdryl_data::yggdryl_core`, so the IO
+surface is reachable at the exact version the crate was built against.
 
 ## Arrow interop
 
@@ -252,7 +357,7 @@ straight from the native value, and reach `UnionType` through an optional data t
         assert_eq!(score.data_type().name(), "optional");
 
         let answer = OptionalScalar::new(Int64Scalar::new(42));
-        assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
+        assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
         assert_eq!(answer.scalar(), Some(&Int64Scalar::new(42)));
         assert!(!answer.is_null());
 
@@ -285,7 +390,9 @@ The list scalar is *our array*: `ListScalar<D, S>` is backed by one zero-copy Ar
 child array — construction assembles the elements once, `to_arrow` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
-`from_arrow`; `len` / `is_empty` describe the sequence). `Int64Array` is the
+`from_arrow`, `get_value_at(index)` hands back an element's owned native value —
+`i64` for an `int64` list, `Vec<u8>` for a `binary` list; `len` / `is_empty`
+describe the sequence). `Int64Array` is the
 concrete list of `int64`, borrowing the raw Arrow buffers themselves
 (`ScalarBuffer<i64>` elements plus an optional `NullBuffer`): `values()` borrows
 the whole element buffer as `&[i64]` without copying, `get_value_at(index)` reads
@@ -311,6 +418,7 @@ fn main() {
 
     let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    assert_eq!(numbers.get_value_at(0), Some(1)); // the owned native value
     let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
     assert_eq!(ListScalar::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
@@ -340,12 +448,16 @@ fn main() {
   `is_null`, `value` of an associated `Value: ?Sized`; `to_arrow` / `from_arrow`
   mirror a one-element `arrow_array` array. The typed and category traits inherit the
   whole Arrow surface — it is defined once, on the base. The `as_*` accessors
-  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`) read the value as a
-  chosen Rust type under one contract: direct for the scalar's own type (`as_str`
-  borrows, never copies), exact conversion otherwise, and `None` when the scalar is
-  null or the value is not exactly representable (a narrowing out of range or a
-  float that would round). Every accessor defaults to `None`, so a concrete scalar
-  overrides only the targets its value converts to.
+  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`, `as_bytes`) read
+  the value as a chosen Rust type under one contract: the value whenever the target
+  represents it exactly — direct for the scalar's own type (`as_str` / `as_bytes`
+  borrow, never copy), exact conversion otherwise — and an actionable `DataError`
+  when not: `NullValue` for a null scalar, `InexactConversion` when converting
+  would change the value (a narrowing out of range, a float that would round,
+  non-UTF-8 bytes read as `str`), `UnsupportedConversion` when the type has no
+  conversion to the target at all. Every accessor defaults to that error, so a
+  concrete scalar overrides only the targets its value converts to; the bindings
+  raise `ValueError` (Python) / throw (Node).
 
 ### Typed
 

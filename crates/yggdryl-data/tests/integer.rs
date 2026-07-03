@@ -141,34 +141,48 @@ macro_rules! integer_tests {
             fn accessors_convert_exactly() {
                 let answer = $scalar::new(42);
                 // The scalar's own width answers directly.
-                assert_eq!(answer.$as_native(), Some(42));
+                assert_eq!(answer.$as_native().unwrap(), 42);
                 // A small value converts to every numeric target.
-                assert_eq!(answer.as_i8(), Some(42i8));
-                assert_eq!(answer.as_i16(), Some(42i16));
-                assert_eq!(answer.as_i32(), Some(42i32));
-                assert_eq!(answer.as_i64(), Some(42i64));
-                assert_eq!(answer.as_u8(), Some(42u8));
-                assert_eq!(answer.as_u16(), Some(42u16));
-                assert_eq!(answer.as_u32(), Some(42u32));
-                assert_eq!(answer.as_u64(), Some(42u64));
-                assert_eq!(answer.as_f32(), Some(42.0f32));
-                assert_eq!(answer.as_f64(), Some(42.0f64));
-                // An integer is never a bool or a str (the trait defaults).
-                assert_eq!(answer.as_bool(), None);
-                assert_eq!(answer.as_str(), None);
+                assert_eq!(answer.as_i8().unwrap(), 42i8);
+                assert_eq!(answer.as_i16().unwrap(), 42i16);
+                assert_eq!(answer.as_i32().unwrap(), 42i32);
+                assert_eq!(answer.as_i64().unwrap(), 42i64);
+                assert_eq!(answer.as_u8().unwrap(), 42u8);
+                assert_eq!(answer.as_u16().unwrap(), 42u16);
+                assert_eq!(answer.as_u32().unwrap(), 42u32);
+                assert_eq!(answer.as_u64().unwrap(), 42u64);
+                assert_eq!(answer.as_f32().unwrap(), 42.0f32);
+                assert_eq!(answer.as_f64().unwrap(), 42.0f64);
+                // An integer is never a bool, a str or bytes (the trait defaults).
+                assert!(matches!(
+                    answer.as_bool(),
+                    Err(DataError::UnsupportedConversion { .. })
+                ));
+                assert!(matches!(
+                    answer.as_str(),
+                    Err(DataError::UnsupportedConversion { .. })
+                ));
+                assert!(matches!(
+                    answer.as_bytes(),
+                    Err(DataError::UnsupportedConversion { .. })
+                ));
 
-                // Null answers None everywhere.
-                assert_eq!($scalar::null().$as_native(), None);
-                assert_eq!($scalar::null().as_i64(), None);
+                // A null scalar holds no value: every accessor errors.
+                assert!(matches!(
+                    $scalar::null().$as_native(),
+                    Err(DataError::NullValue)
+                ));
+                assert!(matches!($scalar::null().as_i64(), Err(DataError::NullValue)));
 
-                // The extremes convert exactly where `try_from` says they fit.
+                // The extremes convert exactly where `try_from` says they fit;
+                // anything else is an inexact-conversion error.
                 let max = $scalar::new(<$native>::MAX);
-                assert_eq!(max.$as_native(), Some(<$native>::MAX));
-                assert_eq!(max.as_i8(), i8::try_from(<$native>::MAX).ok());
-                assert_eq!(max.as_u64(), u64::try_from(<$native>::MAX).ok());
+                assert_eq!(max.$as_native().unwrap(), <$native>::MAX);
+                assert_eq!(max.as_i8().ok(), i8::try_from(<$native>::MAX).ok());
+                assert_eq!(max.as_u64().ok(), u64::try_from(<$native>::MAX).ok());
                 let min = $scalar::new(<$native>::MIN);
-                assert_eq!(min.as_i64(), i64::try_from(<$native>::MIN).ok());
-                assert_eq!(min.as_u8(), u8::try_from(<$native>::MIN).ok());
+                assert_eq!(min.as_i64().ok(), i64::try_from(<$native>::MIN).ok());
+                assert_eq!(min.as_u8().ok(), u8::try_from(<$native>::MIN).ok());
             }
 
             #[test]
@@ -374,28 +388,42 @@ fn fields_assemble_into_an_arrow_schema() {
     assert!(schema.field(1).is_nullable());
 }
 
-// Float access is exact-or-None: the boundary cases that a lossy `as` cast would
+// Float access is exact-or-error: the boundary cases that a lossy `as` cast would
 // silently round.
 #[test]
-fn float_access_is_exact_or_none() {
+fn float_access_is_exact_or_error() {
     // 2^53 is the last contiguous integer in f64; 2^53 + 1 rounds.
     assert_eq!(
-        Int64Scalar::new(1 << 53).as_f64(),
-        Some(9_007_199_254_740_992.0)
+        Int64Scalar::new(1 << 53).as_f64().unwrap(),
+        9_007_199_254_740_992.0
     );
-    assert_eq!(Int64Scalar::new((1 << 53) + 1).as_f64(), None);
+    let inexact =
+        |result: Result<f64, DataError>| matches!(result, Err(DataError::InexactConversion { .. }));
+    assert!(inexact(Int64Scalar::new((1 << 53) + 1).as_f64()));
     // i64::MIN is a power of two: exactly representable. MAX is not.
     assert_eq!(
-        Int64Scalar::new(i64::MIN).as_f64(),
-        Some(-9.223372036854776e18)
+        Int64Scalar::new(i64::MIN).as_f64().unwrap(),
+        -9.223372036854776e18
     );
-    assert_eq!(Int64Scalar::new(i64::MAX).as_f64(), None);
-    assert_eq!(UInt64Scalar::new(u64::MAX).as_f64(), None);
+    assert!(inexact(Int64Scalar::new(i64::MAX).as_f64()));
+    assert!(inexact(UInt64Scalar::new(u64::MAX).as_f64()));
     // f32's contiguous range ends at 2^24.
-    assert_eq!(Int32Scalar::new(1 << 24).as_f32(), Some(16_777_216.0));
-    assert_eq!(Int32Scalar::new((1 << 24) + 1).as_f32(), None);
-    assert_eq!(Int32Scalar::new(i32::MAX).as_f32(), None);
-    // Sign changes never pass.
-    assert_eq!(Int8Scalar::new(-1).as_u64(), None);
-    assert_eq!(UInt8Scalar::new(200).as_i8(), None);
+    assert_eq!(Int32Scalar::new(1 << 24).as_f32().unwrap(), 16_777_216.0);
+    assert!(matches!(
+        Int32Scalar::new((1 << 24) + 1).as_f32(),
+        Err(DataError::InexactConversion { .. })
+    ));
+    assert!(matches!(
+        Int32Scalar::new(i32::MAX).as_f32(),
+        Err(DataError::InexactConversion { .. })
+    ));
+    // Sign changes never pass, and the error names the offending value.
+    assert!(matches!(
+        Int8Scalar::new(-1).as_u64(),
+        Err(DataError::InexactConversion { value, target: "u64" }) if value == "-1"
+    ));
+    assert!(matches!(
+        UInt8Scalar::new(200).as_i8(),
+        Err(DataError::InexactConversion { value, target: "i8" }) if value == "200"
+    ));
 }

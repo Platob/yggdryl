@@ -130,18 +130,26 @@ fn optional_scalar_holds_a_value_or_the_null_variant() {
 #[test]
 fn optional_scalar_redirects_access_to_the_inner_scalar() {
     let answer = OptionalInt64::new(Int64Scalar::new(42));
-    assert_eq!(answer.as_i64(), Some(42));
-    assert_eq!(answer.as_i8(), Some(42));
-    assert_eq!(answer.as_f64(), Some(42.0));
-    assert_eq!(answer.as_str(), None);
-    assert_eq!(OptionalInt64::null().as_i64(), None);
+    assert_eq!(answer.as_i64().unwrap(), 42);
+    assert_eq!(answer.as_i8().unwrap(), 42);
+    assert_eq!(answer.as_f64().unwrap(), 42.0);
+    // The inner scalar's own contract shows through: an int64 has no str
+    // conversion, and the null variant holds no value at all.
+    assert!(matches!(
+        answer.as_str(),
+        Err(DataError::UnsupportedConversion { .. })
+    ));
+    assert!(matches!(
+        OptionalInt64::null().as_i64(),
+        Err(DataError::NullValue)
+    ));
 
     // Any inner scalar type works the same way, through the typed layer too.
     fn is_null_scalar<S: Scalar<u8>>(scalar: &S) -> bool {
         scalar.is_null()
     }
     let flag = OptionalScalar::new(UInt8Scalar::new(7));
-    assert_eq!(flag.as_u8(), Some(7));
+    assert_eq!(flag.as_u8().unwrap(), 7);
     assert!(!is_null_scalar(&flag));
     assert_eq!(flag.data_type(), &OptionalType::new(UInt8));
 }

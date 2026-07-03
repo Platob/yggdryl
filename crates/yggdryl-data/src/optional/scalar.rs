@@ -23,14 +23,14 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// let answer = OptionalScalar::new(Int64Scalar::new(42));
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
-/// assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
+/// assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
 /// assert_eq!(answer.data_type().name(), "optional");
 /// assert_eq!(answer.data_type().storage().name(), "union");
 /// assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 ///
 /// let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
 /// assert!(missing.is_null());
-/// assert_eq!(missing.as_i64(), None);
+/// assert!(missing.as_i64().is_err()); // a null holds no value
 ///
 /// // The Arrow form is a one-element union array, and from_arrow redirects the
 /// // value child back through the inner scalar's own from_arrow.
@@ -183,41 +183,44 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<OptionalType<D>>
         Ok(Self { data_type, value })
     }
 
-    fn as_i8(&self) -> Option<i8> {
-        self.value.as_ref().and_then(|scalar| scalar.as_i8())
+    fn as_i8(&self) -> Result<i8, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_i8()
     }
-    fn as_i16(&self) -> Option<i16> {
-        self.value.as_ref().and_then(|scalar| scalar.as_i16())
+    fn as_i16(&self) -> Result<i16, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_i16()
     }
-    fn as_i32(&self) -> Option<i32> {
-        self.value.as_ref().and_then(|scalar| scalar.as_i32())
+    fn as_i32(&self) -> Result<i32, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_i32()
     }
-    fn as_i64(&self) -> Option<i64> {
-        self.value.as_ref().and_then(|scalar| scalar.as_i64())
+    fn as_i64(&self) -> Result<i64, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_i64()
     }
-    fn as_u8(&self) -> Option<u8> {
-        self.value.as_ref().and_then(|scalar| scalar.as_u8())
+    fn as_u8(&self) -> Result<u8, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_u8()
     }
-    fn as_u16(&self) -> Option<u16> {
-        self.value.as_ref().and_then(|scalar| scalar.as_u16())
+    fn as_u16(&self) -> Result<u16, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_u16()
     }
-    fn as_u32(&self) -> Option<u32> {
-        self.value.as_ref().and_then(|scalar| scalar.as_u32())
+    fn as_u32(&self) -> Result<u32, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_u32()
     }
-    fn as_u64(&self) -> Option<u64> {
-        self.value.as_ref().and_then(|scalar| scalar.as_u64())
+    fn as_u64(&self) -> Result<u64, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_u64()
     }
-    fn as_f32(&self) -> Option<f32> {
-        self.value.as_ref().and_then(|scalar| scalar.as_f32())
+    fn as_f32(&self) -> Result<f32, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_f32()
     }
-    fn as_f64(&self) -> Option<f64> {
-        self.value.as_ref().and_then(|scalar| scalar.as_f64())
+    fn as_f64(&self) -> Result<f64, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_f64()
     }
-    fn as_bool(&self) -> Option<bool> {
-        self.value.as_ref().and_then(|scalar| scalar.as_bool())
+    fn as_bool(&self) -> Result<bool, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_bool()
     }
-    fn as_str(&self) -> Option<&str> {
-        self.value.as_ref().and_then(|scalar| scalar.as_str())
+    fn as_str(&self) -> Result<&str, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_str()
+    }
+    fn as_bytes(&self) -> Result<&[u8], DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_bytes()
     }
 }
 

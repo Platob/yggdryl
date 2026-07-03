@@ -5,9 +5,12 @@ The Apache Arrow-centralized **data-model layer** for yggdryl, built on
 designed for zero-copy FFI and Arrow interop.
 
 The type system is three layers of traits (one file per trait at the crate root),
-plus concrete types grouped into per-family modules. The [`integer`](src/integer)
-module is the first: every signed and unsigned integer, one module per type, one file
-per concern (`data_type`, `field`, `scalar`).
+plus concrete types grouped into per-family modules (one file per concern:
+`data_type`, `field`, `scalar`). The [`integer`](src/integer) module holds every
+signed and unsigned integer; the [`binary`](src/binary) module the variable-size
+byte type, its scalar holding the bytes as a `yggdryl-core` positioned-IO
+`ByteBuffer` (`io()` / `into_io()` plug into `RawIOBase` and the cursor / slice
+adapters).
 
 ## Untyped base
 
@@ -30,10 +33,11 @@ versions).
 - **`RawScalar<D: RawDataType>`** — a single, possibly-null value (`data_type`,
   `is_null`, `value` of an associated `Value: ?Sized`); mirrors Arrow's own scalar
   representation, a one-element `arrow_array::ArrayRef`. The `as_*` accessors
-  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`) read the value as a
-  chosen Rust type: direct for the scalar's own type (`as_str` borrows, never
-  copies), exact conversion otherwise, `None` when null or not exactly
-  representable — every accessor defaults to `None`, so a scalar overrides only the
+  (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`, `as_bytes`) read
+  the value as a chosen Rust type: direct for the scalar's own type (`as_str` /
+  `as_bytes` borrow, never copy), exact conversion otherwise, and an actionable
+  `DataError` when null (`NullValue`), inexact (`InexactConversion`) or simply not
+  convertible (`UnsupportedConversion`, the default) — a scalar overrides only the
   targets its value converts to.
 
 ## Typed
@@ -132,7 +136,7 @@ Each composite family carries its own raw/typed trait pair (`RawOptional` /
 use yggdryl_data::{Int64, Int64Scalar, Logical, OptionalScalar, OptionalType, RawDataType, RawScalar};
 
 let answer = OptionalScalar::new(Int64Scalar::new(42));
-assert_eq!(answer.as_i64(), Some(42)); // redirected to the inner scalar
+assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
 assert_eq!(answer.data_type(), &OptionalType::new(Int64)); // logical optional...
 assert_eq!(answer.data_type().storage().name(), "union"); // ...over union storage
 assert_eq!(answer.data_type().arrow_format(), "+us:0,1");

@@ -2,7 +2,7 @@
 
 import pytest
 
-from yggdryl import data
+from yggdryl import core, data
 
 # (data type, field, scalar, optional scalar, name, format, byte width, min, max)
 INTEGERS = [
@@ -98,13 +98,22 @@ def test_accessors_convert_exactly(case):
         assert getattr(answer, accessor)() == 42
     assert answer.as_f32() == 42.0
     assert answer.as_f64() == 42.0
-    # An integer is never a bool or a str.
-    assert answer.as_bool() is None
-    assert answer.as_str() is None
-    # Null answers None everywhere.
-    assert scalar.null().as_i64() is None
+    # An integer is never a bool, a str or bytes: an actionable ValueError.
+    with pytest.raises(ValueError, match="no bool conversion"):
+        answer.as_bool()
+    with pytest.raises(ValueError, match="no str conversion"):
+        answer.as_str()
+    with pytest.raises(ValueError, match="no bytes conversion"):
+        answer.as_bytes()
+    # A null scalar holds no value: every accessor raises.
+    with pytest.raises(ValueError, match="is null"):
+        scalar.null().as_i64()
     # The extreme converts only where it is exactly representable.
-    assert scalar(high).as_i8() == (high if high <= 2 ** 7 - 1 else None)
+    if high <= 2 ** 7 - 1:
+        assert scalar(high).as_i8() == high
+    else:
+        with pytest.raises(ValueError, match="not exactly representable"):
+            scalar(high).as_i8()
 
 
 @pytest.mark.parametrize("case", INTEGERS, ids=IDS)
@@ -131,7 +140,8 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
     assert missing.is_null() is True
     assert missing.value() is None
     assert missing.scalar() is None
-    assert missing.as_i64() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_i64()
 
     # The optional reached through the value type is the same shape, and its
     # codec is the value type's.
@@ -140,13 +150,92 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
     assert reached.native_from_bytes(reached.native_to_bytes(42)) == 42
 
 
-def test_float_access_is_exact_or_none():
+def test_float_access_is_exact_or_raises():
     # 2**53 is the last contiguous integer in f64; 2**53 + 1 rounds.
     assert data.Int64Scalar(2 ** 53).as_f64() == float(2 ** 53)
-    assert data.Int64Scalar(2 ** 53 + 1).as_f64() is None
-    assert data.UInt64Scalar(2 ** 64 - 1).as_f64() is None
-    # Sign changes never pass.
-    assert data.Int8Scalar(-1).as_u64() is None
+    with pytest.raises(ValueError, match="not exactly representable"):
+        data.Int64Scalar(2 ** 53 + 1).as_f64()
+    with pytest.raises(ValueError, match="not exactly representable"):
+        data.UInt64Scalar(2 ** 64 - 1).as_f64()
+    # Sign changes never pass, and the error names the offending value.
+    with pytest.raises(ValueError, match="-1 is not exactly representable"):
+        data.Int8Scalar(-1).as_u64()
+
+
+def test_binary_type_describes_itself_and_codecs():
+    binary = data.Binary()
+    assert binary.name() == "binary"
+    assert binary.arrow_format() == "z"
+    assert binary.byte_width() is None
+    assert binary.bit_width() is None
+    # The codec is the identity: any bytes are a valid binary value.
+    assert binary.native_to_bytes(b"\x01\x02") == b"\x01\x02"
+    assert binary.native_from_bytes(b"\x01\x02") == b"\x01\x02"
+    assert binary.native_from_bytes(b"") == b""
+    assert binary.default_value() == b""
+    assert binary.default_scalar().value() == b""
+
+
+def test_binary_field():
+    payload = data.BinaryField("payload")
+    assert payload.name() == "payload"
+    assert payload.is_nullable() is True
+    assert payload.data_type().name() == "binary"
+    assert data.BinaryField("id", False).is_nullable() is False
+
+
+def test_binary_scalar_reads_bytes_and_io():
+    blob = data.BinaryScalar(b"\x01\x02\x03")
+    assert blob.is_null() is False
+    assert blob.value() == b"\x01\x02\x03"
+    assert blob.as_bytes() == b"\x01\x02\x03"
+    # UTF-8 bytes convert to str; anything else raises naming the shape.
+    assert data.BinaryScalar(b"hi").as_str() == "hi"
+    with pytest.raises(ValueError, match="non-UTF-8"):
+        data.BinaryScalar(b"\xff").as_str()
+    with pytest.raises(ValueError, match="no i64 conversion"):
+        blob.as_i64()
+
+    # The value doubles as a core positioned-IO ByteBuffer.
+    io = blob.to_io()
+    assert io.byte_size() == 3
+    assert io.to_bytes() == b"\x01\x02\x03"
+    assert io.pread_byte_one(1, core.Whence.Start) == 2
+
+    # The empty value and null are distinct states.
+    assert data.BinaryScalar(b"").is_null() is False
+    missing = data.BinaryScalar.null()
+    assert missing.is_null() is True
+    assert missing.value() is None
+    assert missing.to_io() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_bytes()
+
+
+def test_optional_binary_redirects_to_the_inner_scalar():
+    some = data.OptionalBinaryScalar(b"hi")
+    assert some.is_null() is False
+    assert some.value() == b"hi"
+    assert some.scalar().value() == b"hi"
+    assert some.as_bytes() == b"hi"
+    assert some.as_str() == "hi"
+
+    opt_type = some.data_type()
+    assert opt_type.name() == "optional"
+    assert opt_type.value_type().name() == "binary"
+    assert opt_type.storage().name() == "union"
+    assert opt_type.default_value() == b""
+    assert opt_type.native_from_bytes(opt_type.native_to_bytes(b"xy")) == b"xy"
+
+    missing = data.OptionalBinaryScalar.null()
+    assert missing.is_null() is True
+    assert missing.scalar() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_bytes()
+
+    # The optional reached through the value type is the same shape.
+    assert data.Binary().optional().arrow_format() == opt_type.arrow_format()
+    assert data.OptionalBinaryField("payload").data_type().name() == "optional"
 
 
 def test_optional_field():

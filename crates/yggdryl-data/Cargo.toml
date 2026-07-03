@@ -15,6 +15,10 @@ name = "yggdryl_data"
 path = "src/lib.rs"
 
 [dependencies]
+# The foundation layer: `BinaryScalar` holds its bytes as a core `ByteBuffer`, so
+# the scalar accessors plug straight into the positioned-IO traits (`RawIOBase`
+# and the cursor / slice adapters).
+yggdryl-core = { workspace = true }
 # Arrow interop surface: `RawDataType::to_arrow` / `RawField::to_arrow` build
 # `arrow_schema::DataType` / `arrow_schema::Field`, and `RawScalar::to_arrow`
 # builds a one-element `arrow_array` array (Arrow's own scalar representation).
