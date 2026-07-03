@@ -1,16 +1,16 @@
-//! The [`BinaryField`] field of the [`Binary`](super::Binary) data type.
+//! The [`BinaryField`] field of the [`BinaryType`](super::BinaryType) data type.
 
-use super::Binary;
+use super::BinaryType;
 use crate::{DataError, Field, RawField};
 
-/// A nullable `binary` field: a name paired with the [`Binary`] data type.
+/// A nullable `binary` field: a name paired with the [`BinaryType`] data type.
 ///
 /// ```
 /// use yggdryl_data::{BinaryField, RawField};
 ///
 /// let payload = BinaryField::new("payload", true);
 /// assert_eq!(payload.name(), "payload");
-/// assert_eq!(payload.data_type(), &yggdryl_data::Binary);
+/// assert_eq!(payload.data_type(), &yggdryl_data::BinaryType);
 /// assert!(payload.is_nullable());
 ///
 /// // from_arrow is the exact inverse of to_arrow.
@@ -19,7 +19,7 @@ use crate::{DataError, Field, RawField};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryField {
     name: String,
-    data_type: Binary,
+    data_type: BinaryType,
     nullable: bool,
 }
 
@@ -28,18 +28,18 @@ impl BinaryField {
     pub fn new(name: impl Into<String>, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type: Binary,
+            data_type: BinaryType,
             nullable,
         }
     }
 }
 
-impl RawField<Binary> for BinaryField {
+impl RawField<BinaryType> for BinaryField {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn data_type(&self) -> &Binary {
+    fn data_type(&self) -> &BinaryType {
         &self.data_type
     }
 
@@ -48,12 +48,12 @@ impl RawField<Binary> for BinaryField {
     }
 
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
-        <Binary as crate::RawDataType>::from_arrow(field.data_type())?;
+        <BinaryType as crate::RawDataType>::from_arrow(field.data_type())?;
         crate::raw_field::validate_field_metadata(field, "Binary")?;
         Ok(Self::new(field.name(), field.is_nullable()))
     }
 }
 
 impl Field<Vec<u8>> for BinaryField {
-    type Type = Binary;
+    type Type = BinaryType;
 }

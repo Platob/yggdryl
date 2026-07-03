@@ -10,9 +10,9 @@ use crate::{DataError, DataType, Field, RawDataType, RawField};
 /// the typed [`Field<Vec<(TK, TV)>>`] whenever both types have codecs.
 ///
 /// ```
-/// use yggdryl_data::{Int64, MapField, RawDataType, RawField, RawMap, UInt8};
+/// use yggdryl_data::{Int64Type, MapField, RawDataType, RawField, RawMap, UInt8Type};
 ///
-/// let ranks = MapField::<UInt8, Int64>::new("ranks", true);
+/// let ranks = MapField::<UInt8Type, Int64Type>::new("ranks", true);
 /// assert_eq!(ranks.name(), "ranks");
 /// assert_eq!(ranks.data_type().name(), "map");
 /// assert_eq!(ranks.data_type().key_type().name(), "uint8");

@@ -11,7 +11,7 @@ use super::RawDataType;
 /// generic code require "some fixed-width primitive" as a bound.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Primitive, RawDataType};
+/// use yggdryl_data::{Int64Type, Primitive, RawDataType};
 ///
 /// // Every primitive has a fixed *bit* width — bytes for most, a single bit for a
 /// // boolean (whose `byte_width` is `None`), so bit width is the shared invariant.
@@ -19,6 +19,6 @@ use super::RawDataType;
 ///     primitive.bit_width().expect("a primitive has a fixed bit width")
 /// }
 ///
-/// assert_eq!(fixed_bit_width(&Int64), 64);
+/// assert_eq!(fixed_bit_width(&Int64Type), 64);
 /// ```
 pub trait Primitive: RawDataType {}

@@ -3,12 +3,12 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_data::{
-    arrow_schema, Int64, Int64Array, Int64Field, Int64Scalar, Int8, Int8Scalar, ListScalar,
-    OptionalScalar, RawDataType, RawField, RawScalar, UnionType,
+    arrow_schema, Int64, Int64Field, Int64Serie, Int64Type, Int8, Int8Type, Optional, RawDataType,
+    RawField, RawScalar, Serie, UnionType,
 };
 
-type OptionalInt64 = OptionalScalar<Int64, Int64Scalar>;
-type Int64ListScalar = ListScalar<Int64, Int64Scalar>;
+type OptionalInt64 = Optional<Int64Type, Int64>;
+type Int64SerieGeneric = Serie<Int64Type, Int64>;
 
 const N: usize = 4096;
 
@@ -19,17 +19,18 @@ fn codec(c: &mut Criterion) {
     group.bench_function("int64_native_to_bytes", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(yggdryl_data::DataType::native_to_bytes(&Int64, &value));
+                black_box(yggdryl_data::DataType::native_to_bytes(&Int64Type, &value));
             }
         })
     });
 
-    let bytes = yggdryl_data::DataType::native_to_bytes(&Int64, &0x0123_4567_89AB_CDEFi64);
+    let bytes = yggdryl_data::DataType::native_to_bytes(&Int64Type, &0x0123_4567_89AB_CDEFi64);
     group.bench_function("int64_native_from_bytes", |b| {
         b.iter(|| {
             for _ in 0..N {
                 black_box(
-                    yggdryl_data::DataType::native_from_bytes(&Int64, black_box(&bytes)).unwrap(),
+                    yggdryl_data::DataType::native_from_bytes(&Int64Type, black_box(&bytes))
+                        .unwrap(),
                 );
             }
         })
@@ -46,14 +47,14 @@ fn descriptor(c: &mut Criterion) {
     group.bench_function("int64_name", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.name());
+                black_box(Int64Type.name());
             }
         })
     });
     group.bench_function("int64_arrow_format", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.arrow_format());
+                black_box(Int64Type.arrow_format());
             }
         })
     });
@@ -68,16 +69,16 @@ fn arrow_interop(c: &mut Criterion) {
     group.bench_function("data_type_to_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.to_arrow());
+                black_box(Int64Type.to_arrow());
             }
         })
     });
 
-    let arrow_type = Int64.to_arrow();
+    let arrow_type = Int64Type.to_arrow();
     group.bench_function("data_type_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64::from_arrow(black_box(&arrow_type)).unwrap());
+                black_box(Int64Type::from_arrow(black_box(&arrow_type)).unwrap());
             }
         })
     });
@@ -110,7 +111,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_new", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(Int64Scalar::new(black_box(value)));
+                black_box(Int64::new(black_box(value)));
             }
         })
     });
@@ -118,7 +119,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(Int64Scalar::new(value).to_arrow());
+                black_box(Int64::new(value).to_arrow());
             }
         })
     });
@@ -126,16 +127,16 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_null", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64Scalar::null().to_arrow());
+                black_box(Int64::null().to_arrow());
             }
         })
     });
 
-    let arrow = Int64Scalar::new(42).to_arrow();
+    let arrow = Int64::new(42).to_arrow();
     group.bench_function("int64_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64Scalar::from_arrow(black_box(arrow.as_ref())).unwrap());
+                black_box(Int64::from_arrow(black_box(arrow.as_ref())).unwrap());
             }
         })
     });
@@ -144,7 +145,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int8_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N {
-                black_box(Int8Scalar::new(value as i8).to_arrow());
+                black_box(Int8::new(value as i8).to_arrow());
             }
         })
     });
@@ -157,7 +158,7 @@ fn schema(c: &mut Criterion) {
     group.throughput(Throughput::Elements(N as u64));
 
     // Heterogeneous descriptors through the vtable, as a schema printer would.
-    let types: Vec<Box<dyn RawDataType>> = vec![Box::new(Int8), Box::new(Int64)];
+    let types: Vec<Box<dyn RawDataType>> = vec![Box::new(Int8Type), Box::new(Int64Type)];
     group.bench_function("dyn_to_arrow", |b| {
         b.iter(|| {
             for _ in 0..N / 2 {
@@ -188,7 +189,7 @@ fn accessor(c: &mut Criterion) {
     let mut group = c.benchmark_group("accessor");
     group.throughput(Throughput::Elements(N as u64));
 
-    let scalar = Int64Scalar::new(42);
+    let scalar = Int64::new(42);
     group.bench_function("int64_as_i64_direct", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -211,7 +212,7 @@ fn accessor(c: &mut Criterion) {
         })
     });
 
-    let optional = OptionalInt64::new(Int64Scalar::new(42));
+    let optional = OptionalInt64::new(Int64::new(42));
     group.bench_function("optional_as_i64_redirected", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -230,7 +231,7 @@ fn optional(c: &mut Criterion) {
     group.bench_function("union_optional_data_type", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(UnionType::optional(&Int64));
+                black_box(UnionType::optional(&Int64Type));
             }
         })
     });
@@ -238,13 +239,13 @@ fn optional(c: &mut Criterion) {
     group.bench_function("optional_new", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(OptionalInt64::new(Int64Scalar::new(black_box(value))));
+                black_box(OptionalInt64::new(Int64::new(black_box(value))));
             }
         })
     });
 
     group.bench_function("optional_to_arrow_value", |b| {
-        let scalar = OptionalInt64::new(Int64Scalar::new(42));
+        let scalar = OptionalInt64::new(Int64::new(42));
         b.iter(|| {
             for _ in 0..N {
                 black_box(scalar.to_arrow());
@@ -261,7 +262,7 @@ fn optional(c: &mut Criterion) {
         })
     });
 
-    let arrow = OptionalInt64::new(Int64Scalar::new(42)).to_arrow();
+    let arrow = OptionalInt64::new(Int64::new(42)).to_arrow();
     group.bench_function("optional_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -280,12 +281,12 @@ fn array(c: &mut Criterion) {
     group.bench_function("int64_array_from_vec", |b| {
         b.iter_batched(
             || (0..N as i64).collect::<Vec<_>>(),
-            |values| black_box(Int64Array::from(values)),
+            |values| black_box(Int64Serie::from(values)),
             criterion::BatchSize::LargeInput,
         )
     });
 
-    let numbers = Int64Array::from((0..N as i64).collect::<Vec<_>>());
+    let numbers = Int64Serie::from((0..N as i64).collect::<Vec<_>>());
     group.bench_function("int64_array_values_borrow", |b| {
         b.iter(|| black_box(black_box(&numbers).values()))
     });
@@ -304,12 +305,12 @@ fn array(c: &mut Criterion) {
 
     let arrow = numbers.to_arrow();
     group.bench_function("int64_array_from_arrow", |b| {
-        b.iter(|| black_box(Int64Array::from_arrow(black_box(arrow.as_ref())).unwrap()))
+        b.iter(|| black_box(Int64Serie::from_arrow(black_box(arrow.as_ref())).unwrap()))
     });
 
     // The generic scalar accessor, for comparison: one inner Arrow round trip per
     // element against the buffer-backed direct read above.
-    let generic = Int64ListScalar::from_arrow(arrow.as_ref()).unwrap();
+    let generic = Int64SerieGeneric::from_arrow(arrow.as_ref()).unwrap();
     group.bench_function("list_scalar_get_scalar_at", |b| {
         b.iter(|| {
             for index in 0..N {

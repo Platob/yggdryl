@@ -18,10 +18,10 @@ from yggdryl import data
 
 print(yggdryl.core.version())
 
-scalar = data.Int64Scalar(42)
+scalar = data.Int64(42)
 assert scalar.as_i8() == 42          # exact conversion, or ValueError
-assert data.OptionalInt64Scalar.null().is_null()
-assert data.Int64().optional().arrow_format() == "+us:0,1"
+assert data.OptionalInt64.null().is_null()
+assert data.Int64Type().optional().arrow_format() == "+us:0,1"
 ```
 
 > **Project reset.** A thin scaffold over the Arrow-centralized Rust core. See

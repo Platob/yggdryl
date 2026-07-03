@@ -16,10 +16,10 @@ const yggdryl = require('yggdryl')
 
 console.log(yggdryl.core.version())
 
-const scalar = new yggdryl.data.Int64Scalar(42n)
+const scalar = new yggdryl.data.Int64(42n)
 console.assert(scalar.asI8() === 42) // exact conversion, or a thrown Error
-console.assert(yggdryl.data.OptionalInt64Scalar.null().isNull())
-console.assert(new yggdryl.data.Int64().optional().arrowFormat() === '+us:0,1')
+console.assert(yggdryl.data.OptionalInt64.null().isNull())
+console.assert(new yggdryl.data.Int64Type().optional().arrowFormat() === '+us:0,1')
 ```
 
 > **Project reset.** A thin scaffold over the Arrow-centralized Rust core. See

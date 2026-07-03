@@ -8,7 +8,7 @@ use arrow_schema::Fields;
 ///
 /// It refines [`RawNested`] (the children are the fields). The dynamic
 /// [`StructType`](crate::StructType) implements it over arbitrary fields; a
-/// statically-shaped struct also implements the typed [`Struct`](crate::Struct).
+/// statically-shaped struct also implements the typed [`TypedStruct`](crate::TypedStruct).
 ///
 /// ```
 /// use yggdryl_data::{arrow_schema, RawStruct, StructType};

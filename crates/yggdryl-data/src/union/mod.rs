@@ -2,15 +2,15 @@
 //!
 //! A union value is exactly one of several child types, discriminated by a type id.
 //! [`UnionType`] carries the Arrow `(type id, child field)` pairs and mode losslessly;
-//! [`UnionType::optional`] names the two-variant union between [`Null`](crate::Null)
+//! [`UnionType::optional`] names the two-variant union between [`NullType`](crate::NullType)
 //! and a value type — the storage of the logical
 //! [`OptionalType`](crate::OptionalType) type (see the [`optional`](crate::optional)
 //! module).
 //!
 //! ```
-//! use yggdryl_data::{Int64, RawDataType, RawField, RawNested, UnionField, UnionType};
+//! use yggdryl_data::{Int64Type, RawDataType, RawField, RawNested, UnionField, UnionType};
 //!
-//! let union = UnionType::optional(&Int64);
+//! let union = UnionType::optional(&Int64Type);
 //! assert_eq!((union.name(), union.child_count()), ("union", 2));
 //! assert_eq!(union.arrow_format(), "+us:0,1");
 //!
@@ -24,10 +24,9 @@
 mod data_type;
 mod field;
 mod raw_union;
-#[allow(clippy::module_inception)]
-mod union;
+mod typed_union;
 
 pub use data_type::UnionType;
 pub use field::UnionField;
 pub use raw_union::RawUnion;
-pub use union::Union;
+pub use typed_union::TypedUnion;

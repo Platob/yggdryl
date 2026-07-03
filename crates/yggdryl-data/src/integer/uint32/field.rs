@@ -1,5 +1,5 @@
-//! The [`UInt32Field`] field of the [`UInt32`](super::UInt32) data type.
+//! The [`UInt32Field`] field of the [`UInt32Type`](super::UInt32Type) data type.
 
-use super::UInt32;
+use super::UInt32Type;
 
-crate::integer::int_field!(UInt32Field, UInt32, u32, "uint32");
+crate::integer::int_field!(UInt32Field, UInt32Type, u32, "uint32", UInt32);

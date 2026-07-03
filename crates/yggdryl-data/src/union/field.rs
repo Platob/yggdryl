@@ -10,9 +10,9 @@ use crate::{DataError, RawField};
 /// than defaulting it.
 ///
 /// ```
-/// use yggdryl_data::{Int64, RawDataType, RawField, UnionType, UnionField};
+/// use yggdryl_data::{Int64Type, RawDataType, RawField, UnionType, UnionField};
 ///
-/// let value = UnionField::new("value", UnionType::optional(&Int64), false);
+/// let value = UnionField::new("value", UnionType::optional(&Int64Type), false);
 /// assert_eq!(value.name(), "value");
 /// assert_eq!(value.data_type().name(), "union");
 /// assert!(!value.is_nullable());

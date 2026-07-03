@@ -1,5 +1,5 @@
-//! The [`UInt8Scalar`] scalar of the [`UInt8`](super::UInt8) data type.
+//! The [`UInt8`] scalar of the [`UInt8Type`](super::UInt8Type) data type.
 
-use super::UInt8;
+use super::UInt8Type;
 
-crate::integer::int_scalar!(UInt8Scalar, UInt8, u8, "uint8", UInt8Array);
+crate::integer::int_scalar!(UInt8, UInt8Type, u8, "uint8", UInt8Array, UInt8);

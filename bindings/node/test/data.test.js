@@ -8,14 +8,14 @@ const { core, data } = yggdryl
 
 // The 8-32 bit types carry values as `number`; the 64-bit types as `BigInt`.
 const INTEGERS = [
-  { ty: data.Int8, field: data.Int8Field, scalar: data.Int8Scalar, optional: data.OptionalInt8Scalar, name: 'int8', format: 'c', width: 1, low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
-  { ty: data.Int16, field: data.Int16Field, scalar: data.Int16Scalar, optional: data.OptionalInt16Scalar, name: 'int16', format: 's', width: 2, low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
-  { ty: data.Int32, field: data.Int32Field, scalar: data.Int32Scalar, optional: data.OptionalInt32Scalar, name: 'int32', format: 'i', width: 4, low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
-  { ty: data.Int64, field: data.Int64Field, scalar: data.Int64Scalar, optional: data.OptionalInt64Scalar, name: 'int64', format: 'l', width: 8, low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
-  { ty: data.UInt8, field: data.UInt8Field, scalar: data.UInt8Scalar, optional: data.OptionalUInt8Scalar, name: 'uint8', format: 'C', width: 1, low: 0, high: 2 ** 8 - 1, wire: (v) => v },
-  { ty: data.UInt16, field: data.UInt16Field, scalar: data.UInt16Scalar, optional: data.OptionalUInt16Scalar, name: 'uint16', format: 'S', width: 2, low: 0, high: 2 ** 16 - 1, wire: (v) => v },
-  { ty: data.UInt32, field: data.UInt32Field, scalar: data.UInt32Scalar, optional: data.OptionalUInt32Scalar, name: 'uint32', format: 'I', width: 4, low: 0, high: 2 ** 32 - 1, wire: (v) => v },
-  { ty: data.UInt64, field: data.UInt64Field, scalar: data.UInt64Scalar, optional: data.OptionalUInt64Scalar, name: 'uint64', format: 'L', width: 8, low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
+  { ty: data.Int8Type, field: data.Int8Field, scalar: data.Int8, optional: data.OptionalInt8, name: 'int8', format: 'c', width: 1, low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
+  { ty: data.Int16Type, field: data.Int16Field, scalar: data.Int16, optional: data.OptionalInt16, name: 'int16', format: 's', width: 2, low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
+  { ty: data.Int32Type, field: data.Int32Field, scalar: data.Int32, optional: data.OptionalInt32, name: 'int32', format: 'i', width: 4, low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
+  { ty: data.Int64Type, field: data.Int64Field, scalar: data.Int64, optional: data.OptionalInt64, name: 'int64', format: 'l', width: 8, low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
+  { ty: data.UInt8Type, field: data.UInt8Field, scalar: data.UInt8, optional: data.OptionalUInt8, name: 'uint8', format: 'C', width: 1, low: 0, high: 2 ** 8 - 1, wire: (v) => v },
+  { ty: data.UInt16Type, field: data.UInt16Field, scalar: data.UInt16, optional: data.OptionalUInt16, name: 'uint16', format: 'S', width: 2, low: 0, high: 2 ** 16 - 1, wire: (v) => v },
+  { ty: data.UInt32Type, field: data.UInt32Field, scalar: data.UInt32, optional: data.OptionalUInt32, name: 'uint32', format: 'I', width: 4, low: 0, high: 2 ** 32 - 1, wire: (v) => v },
+  { ty: data.UInt64Type, field: data.UInt64Field, scalar: data.UInt64, optional: data.OptionalUInt64, name: 'uint64', format: 'L', width: 8, low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
 ]
 
 for (const { ty, field, scalar, optional, name, format, width, low, high, wire } of INTEGERS) {
@@ -123,23 +123,23 @@ for (const { ty, field, scalar, optional, name, format, width, low, high, wire }
 }
 
 test('out-of-range constructions throw actionable errors', () => {
-  assert.throws(() => new data.Int8Scalar(1000), /int8/)
-  assert.throws(() => new data.UInt8Scalar(-1), /uint8/)
-  assert.throws(() => new data.UInt64Scalar(-1n), /uint64/)
-  assert.throws(() => new data.Int64Scalar(2n ** 63n), /int64/)
+  assert.throws(() => new data.Int8(1000), /int8/)
+  assert.throws(() => new data.UInt8(-1), /uint8/)
+  assert.throws(() => new data.UInt64(-1n), /uint64/)
+  assert.throws(() => new data.Int64(2n ** 63n), /int64/)
 })
 
 test('float access is exact or throws', () => {
   // 2n**53n is the last contiguous integer in f64; +1n rounds.
-  assert.equal(new data.Int64Scalar(2n ** 53n).asF64(), 2 ** 53)
-  assert.throws(() => new data.Int64Scalar(2n ** 53n + 1n).asF64(), /not exactly representable/)
-  assert.throws(() => new data.UInt64Scalar(2n ** 64n - 1n).asF64(), /not exactly representable/)
+  assert.equal(new data.Int64(2n ** 53n).asF64(), 2 ** 53)
+  assert.throws(() => new data.Int64(2n ** 53n + 1n).asF64(), /not exactly representable/)
+  assert.throws(() => new data.UInt64(2n ** 64n - 1n).asF64(), /not exactly representable/)
   // Sign changes never pass, and the error names the offending value.
-  assert.throws(() => new data.Int8Scalar(-1).asU64(), /-1 is not exactly representable/)
+  assert.throws(() => new data.Int8(-1).asU64(), /-1 is not exactly representable/)
 })
 
 test('binary type describes itself and codecs', () => {
-  const binary = new data.Binary()
+  const binary = new data.BinaryType()
   assert.equal(binary.name(), 'binary')
   assert.equal(binary.arrowFormat(), 'z')
   assert.equal(binary.byteWidth(), null)
@@ -161,13 +161,13 @@ test('binary field', () => {
 })
 
 test('binary scalar reads bytes and io', () => {
-  const blob = new data.BinaryScalar(Buffer.from([1, 2, 3]))
+  const blob = new data.Binary(Buffer.from([1, 2, 3]))
   assert.equal(blob.isNull(), false)
   assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
   assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
   // UTF-8 bytes convert to a string; anything else throws naming the shape.
-  assert.equal(new data.BinaryScalar(Buffer.from('hi')).asStr(), 'hi')
-  assert.throws(() => new data.BinaryScalar(Buffer.from([0xff])).asStr(), /non-UTF-8/)
+  assert.equal(new data.Binary(Buffer.from('hi')).asStr(), 'hi')
+  assert.throws(() => new data.Binary(Buffer.from([0xff])).asStr(), /non-UTF-8/)
   assert.throws(() => blob.asI64(), /no i64 conversion/)
 
   // The value doubles as a core positioned-IO ByteBuffer.
@@ -177,8 +177,8 @@ test('binary scalar reads bytes and io', () => {
   assert.equal(io.preadByteOne(1, core.Whence.Start), 2)
 
   // The empty value and null are distinct states.
-  assert.equal(new data.BinaryScalar(Buffer.alloc(0)).isNull(), false)
-  const missing = data.BinaryScalar.null()
+  assert.equal(new data.Binary(Buffer.alloc(0)).isNull(), false)
+  const missing = data.Binary.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.value(), null)
   assert.equal(missing.toIo(), null)
@@ -186,7 +186,7 @@ test('binary scalar reads bytes and io', () => {
 })
 
 test('optional binary redirects to the inner scalar', () => {
-  const some = new data.OptionalBinaryScalar(Buffer.from('hi'))
+  const some = new data.OptionalBinary(Buffer.from('hi'))
   assert.equal(some.isNull(), false)
   assert.deepEqual(some.value(), Buffer.from('hi'))
   assert.deepEqual(some.scalar().value(), Buffer.from('hi'))
@@ -203,13 +203,13 @@ test('optional binary redirects to the inner scalar', () => {
     Buffer.from('xy'),
   )
 
-  const missing = data.OptionalBinaryScalar.null()
+  const missing = data.OptionalBinary.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.scalar(), null)
   assert.throws(() => missing.asBytes(), /is null/)
 
   // The optional reached through the value type is the same shape.
-  assert.equal(new data.Binary().optional().arrowFormat(), optType.arrowFormat())
+  assert.equal(new data.BinaryType().optional().arrowFormat(), optType.arrowFormat())
   assert.equal(new data.OptionalBinaryField('payload').dataType().name(), 'optional')
 })
 
@@ -222,7 +222,7 @@ test('optional field', () => {
 })
 
 test('union field', () => {
-  const union = new data.Int64().optional().storage()
+  const union = new data.Int64Type().optional().storage()
   const field = new data.UnionField('value', union)
   assert.equal(field.name(), 'value')
   assert.equal(field.isNullable(), true)
@@ -230,7 +230,7 @@ test('union field', () => {
 })
 
 test('null family', () => {
-  const nullType = new data.Null()
+  const nullType = new data.NullType()
   assert.equal(nullType.name(), 'null')
   assert.equal(nullType.arrowFormat(), 'n')
   assert.equal(nullType.byteWidth(), null)
@@ -239,7 +239,7 @@ test('null family', () => {
   const gap = new data.NullField('gap')
   assert.deepEqual([gap.name(), gap.dataType().name(), gap.isNullable()], ['gap', 'null', true])
 
-  const nothing = new data.NullScalar()
+  const nothing = new data.Null()
   assert.equal(nothing.isNull(), true)
   assert.equal(nothing.dataType().name(), 'null')
 })

@@ -1,4 +1,4 @@
-//! The [`ListScalar`] scalar of the [`ListType`](super::ListType) data type.
+//! The [`Serie`] scalar of the [`ListType`](super::ListType) data type.
 
 use std::marker::PhantomData;
 
@@ -14,21 +14,21 @@ use arrow_array::ArrayRef;
 /// [`from_arrow`](RawScalar::from_arrow) are reference-count bumps, never element
 /// copies; building from inner scalars pays the assembly once, at construction.
 /// [`Value`](RawScalar::Value) is the backing `dyn Array`, and the *scalar
-/// accessors* read elements back out: [`get_scalar_at`](ListScalar::get_scalar_at)
+/// accessors* read elements back out: [`get_scalar_at`](Serie::get_scalar_at)
 /// redirects one element through the inner scalar's own `from_arrow`,
-/// [`get_value_at`](ListScalar::get_value_at) hands back an element's owned
-/// native value, and [`len`](ListScalar::len) / [`is_empty`](ListScalar::is_empty)
+/// [`get_value_at`](Serie::get_value_at) hands back an element's owned
+/// native value, and [`len`](Serie::len) / [`is_empty`](Serie::is_empty)
 /// describe the sequence. (For `int64` there is the concrete, buffer-backed
-/// [`Int64Array`](crate::Int64Array).)
+/// [`Int64Serie`](crate::Int64Serie).)
 ///
 /// ```
-/// use yggdryl_data::{Int64, Int64Scalar, ListScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{Int64Type, Int64, Serie, RawDataType, RawScalar};
 ///
-/// let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+/// let numbers = Serie::new(vec![Int64::new(1), Int64::null()]);
 /// assert!(!numbers.is_null());
 /// assert_eq!(numbers.len(), 2);
-/// assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
-/// assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+/// assert_eq!(numbers.get_scalar_at(0), Some(Int64::new(1)));
+/// assert_eq!(numbers.get_scalar_at(1), Some(Int64::null()));
 /// assert_eq!(numbers.get_scalar_at(2), None); // out of bounds
 /// assert_eq!(numbers.get_value_at(0), Some(1)); // the owned native value
 /// assert_eq!(numbers.get_value_at(1), None); // a null element holds no value
@@ -37,19 +37,19 @@ use arrow_array::ArrayRef;
 /// // The Arrow round trip shares the buffers — no element is copied.
 /// let arrow = numbers.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(ListScalar::from_arrow(arrow.as_ref()).unwrap(), numbers);
+/// assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 ///
-/// let missing: ListScalar<Int64, Int64Scalar> = ListScalar::null();
+/// let missing: Serie<Int64Type, Int64> = Serie::null();
 /// assert!(missing.is_null());
 /// ```
 #[derive(Debug)]
-pub struct ListScalar<D, S> {
+pub struct Serie<D, S> {
     data_type: ListType<D>,
     values: Option<ArrayRef>,
     element: PhantomData<S>,
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> ListScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> Serie<D, S> {
     /// A scalar holding the sequence `values`, assembled once into one Arrow child
     /// array (an empty sequence is the empty list, not null).
     pub fn new(values: Vec<S>) -> Self {
@@ -118,14 +118,14 @@ impl<D: RawDataType + Default, S: RawScalar<D>> ListScalar<D, S> {
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Default for ListScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> Default for Serie<D, S> {
     /// The default list scalar: the empty list.
     fn default() -> Self {
         Self::new(Vec::new())
     }
 }
 
-impl<D: Clone, S> Clone for ListScalar<D, S> {
+impl<D: Clone, S> Clone for Serie<D, S> {
     // Cloning bumps the child array's reference count — no element is copied.
     fn clone(&self) -> Self {
         Self {
@@ -136,7 +136,7 @@ impl<D: Clone, S> Clone for ListScalar<D, S> {
     }
 }
 
-impl<D, S> PartialEq for ListScalar<D, S> {
+impl<D, S> PartialEq for Serie<D, S> {
     // The backing arrays compare by value through `dyn Array` equality, so two
     // lists are equal when their elements (and nulls) are.
     fn eq(&self, other: &Self) -> bool {
@@ -148,16 +148,16 @@ impl<D, S> PartialEq for ListScalar<D, S> {
     }
 }
 
-impl<D, S> Eq for ListScalar<D, S> {}
+impl<D, S> Eq for Serie<D, S> {}
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<Vec<S>> for ListScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> From<Vec<S>> for Serie<D, S> {
     /// A scalar holding the sequence `values`.
     fn from(values: Vec<S>) -> Self {
         Self::new(values)
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<Vec<S>>> for ListScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<Vec<S>>> for Serie<D, S> {
     /// A scalar holding the sequence, or the null scalar for `None`.
     fn from(values: Option<Vec<S>>) -> Self {
         match values {
@@ -167,7 +167,7 @@ impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<Vec<S>>> for ListSca
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<ListType<D>> for ListScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<ListType<D>> for Serie<D, S> {
     type Value = dyn arrow_array::Array;
 
     fn data_type(&self) -> &ListType<D> {
@@ -223,8 +223,6 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<ListType<D>> for ListS
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Scalar<dyn arrow_array::Array>
-    for ListScalar<D, S>
-{
+impl<D: RawDataType + Default, S: RawScalar<D>> Scalar<dyn arrow_array::Array> for Serie<D, S> {
     type Type = ListType<D>;
 }

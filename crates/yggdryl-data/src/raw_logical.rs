@@ -14,12 +14,12 @@ use super::RawDataType;
 /// representation implements the typed [`Logical`](crate::Logical).
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataError, Int64, RawDataType, RawLogical};
+/// use yggdryl_data::{arrow_schema, DataError, Int64Type, RawDataType, RawLogical};
 ///
 /// // A timestamp in microseconds, physically an int64.
 /// #[derive(Debug)]
 /// struct TimestampMicros {
-///     storage: Int64,
+///     storage: Int64Type,
 /// }
 ///
 /// impl RawDataType for TimestampMicros {
@@ -32,7 +32,7 @@ use super::RawDataType;
 ///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
 ///         match data_type {
 ///             arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, None) => {
-///                 Ok(TimestampMicros { storage: Int64 })
+///                 Ok(TimestampMicros { storage: Int64Type })
 ///             }
 ///             other => Err(DataError::IncompatibleArrowType {
 ///                 expected: "Timestamp(Microsecond, None)".to_string(),
@@ -42,13 +42,13 @@ use super::RawDataType;
 ///     }
 /// }
 ///
-/// impl RawLogical<Int64> for TimestampMicros {
-///     fn storage(&self) -> &Int64 {
+/// impl RawLogical<Int64Type> for TimestampMicros {
+///     fn storage(&self) -> &Int64Type {
 ///         &self.storage
 ///     }
 /// }
 ///
-/// let ts = TimestampMicros { storage: Int64 };
+/// let ts = TimestampMicros { storage: Int64Type };
 /// assert_eq!(ts.name(), "timestamp[us]");
 /// assert_eq!(ts.storage().name(), "int64"); // reinterprets int64 bytes
 /// ```

@@ -1,5 +1,5 @@
-//! The [`UInt16Scalar`] scalar of the [`UInt16`](super::UInt16) data type.
+//! The [`UInt16`] scalar of the [`UInt16Type`](super::UInt16Type) data type.
 
-use super::UInt16;
+use super::UInt16Type;
 
-crate::integer::int_scalar!(UInt16Scalar, UInt16, u16, "uint16", UInt16Array);
+crate::integer::int_scalar!(UInt16, UInt16Type, u16, "uint16", UInt16Array, UInt16);

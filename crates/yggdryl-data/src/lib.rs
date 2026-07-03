@@ -48,13 +48,13 @@ pub(crate) use log_event;
 pub use arrow_array;
 /// The Apache Arrow buffer layer (`arrow-buffer`), re-exported so downstream code
 /// can build the zero-copy buffers the array scalars (such as
-/// [`Int64Array`]) borrow.
+/// [`Int64Serie`]) borrow.
 pub use arrow_buffer;
 /// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
 /// and the data type / field `to_arrow` / `from_arrow` surface share one version.
 pub use arrow_schema;
 /// The yggdryl foundation layer (`yggdryl-core`), re-exported so downstream code
-/// reaches the positioned-IO surface the [`BinaryScalar`] value plugs into
+/// reaches the positioned-IO surface the [`Binary`] value plugs into
 /// (`RawIOBase`, `ByteBuffer`, the cursor / slice adapters) at the exact version
 /// this crate was built against.
 pub use yggdryl_core;
@@ -100,16 +100,16 @@ pub mod optional;
 pub mod r#struct;
 pub mod union;
 
-pub use binary::{Binary, BinaryField, BinaryScalar};
-pub use list::{Int64Array, List, ListField, ListScalar, ListType, RawList};
-pub use map::{Map, MapField, MapScalar, MapType, RawMap};
-pub use null::{Null, NullField, NullScalar};
-pub use optional::{Optional, OptionalField, OptionalScalar, OptionalType, RawOptional};
-pub use r#struct::{RawStruct, Struct, StructField, StructScalar, StructType};
-pub use union::{RawUnion, Union, UnionField, UnionType};
+pub use binary::{Binary, BinaryField, BinaryType};
+pub use list::{Int64Serie, ListField, ListType, RawList, Serie, TypedList};
+pub use map::{Map, MapField, MapType, RawMap, TypedMap};
+pub use null::{Null, NullField, NullType};
+pub use optional::{Optional, OptionalField, OptionalType, RawOptional, TypedOptional};
+pub use r#struct::{RawStruct, Struct, StructField, StructType, TypedStruct};
+pub use union::{RawUnion, TypedUnion, UnionField, UnionType};
 
 pub use integer::{
-    Int16, Int16Field, Int16Scalar, Int32, Int32Field, Int32Scalar, Int64, Int64Field, Int64Scalar,
-    Int8, Int8Field, Int8Scalar, UInt16, UInt16Field, UInt16Scalar, UInt32, UInt32Field,
-    UInt32Scalar, UInt64, UInt64Field, UInt64Scalar, UInt8, UInt8Field, UInt8Scalar,
+    Int16, Int16Field, Int16Type, Int32, Int32Field, Int32Type, Int64, Int64Field, Int64Type, Int8,
+    Int8Field, Int8Type, UInt16, UInt16Field, UInt16Type, UInt32, UInt32Field, UInt32Type, UInt64,
+    UInt64Field, UInt64Type, UInt8, UInt8Field, UInt8Type,
 };

@@ -16,13 +16,13 @@ use super::{DataType, RawNested};
 /// raw-only).
 ///
 /// ```
-/// use yggdryl_data::{DataType, Int64, ListType, MapType, Nested, RawNested, UInt8};
+/// use yggdryl_data::{DataType, Int64Type, ListType, MapType, Nested, RawNested, UInt8Type};
 ///
 /// fn children_of<T, N: Nested<T>>(nested: &N) -> usize {
 ///     nested.child_count()
 /// }
 ///
-/// assert_eq!(children_of::<Vec<i64>, _>(&ListType::new(Int64)), 1);
-/// assert_eq!(children_of::<Vec<(u8, i64)>, _>(&MapType::new(UInt8, Int64)), 1);
+/// assert_eq!(children_of::<Vec<i64>, _>(&ListType::new(Int64Type)), 1);
+/// assert_eq!(children_of::<Vec<(u8, i64)>, _>(&MapType::new(UInt8Type, Int64Type)), 1);
 /// ```
 pub trait Nested<T>: RawNested + DataType<T> {}

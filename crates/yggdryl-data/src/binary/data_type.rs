@@ -1,4 +1,4 @@
-//! The [`Binary`] data type.
+//! The [`BinaryType`] data type.
 
 use crate::{DataError, DataType, RawDataType};
 
@@ -10,37 +10,37 @@ use crate::{DataError, DataType, RawDataType};
 /// `None`), so it is not a `Primitive` in this model's fixed-width sense. The
 /// typed byte codec is the identity: every byte slice is a valid `binary` value,
 /// so `native_from_bytes` never errors. Its scalar
-/// ([`BinaryScalar`](crate::BinaryScalar)) holds the bytes as a core
+/// ([`Binary`](crate::Binary)) holds the bytes as a core
 /// [`ByteBuffer`](yggdryl_core::ByteBuffer), plugging the value straight into the
 /// positioned-IO layer.
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, Binary, DataType, DataTypeId, RawDataType};
+/// use yggdryl_data::{arrow_schema, BinaryType, DataType, DataTypeId, RawDataType};
 ///
-/// assert_eq!(Binary.name(), "binary");
-/// assert_eq!(Binary.arrow_format(), "z");
-/// assert_eq!((Binary.byte_width(), Binary.bit_width()), (None, None));
-/// assert_eq!(Binary::ID, DataTypeId::Binary);
+/// assert_eq!(BinaryType.name(), "binary");
+/// assert_eq!(BinaryType.arrow_format(), "z");
+/// assert_eq!((BinaryType.byte_width(), BinaryType.bit_width()), (None, None));
+/// assert_eq!(BinaryType::ID, DataTypeId::Binary);
 ///
 /// // The byte codec is the identity: any bytes are a valid binary value.
-/// let bytes = Binary.native_to_bytes(&vec![1, 2, 3]);
-/// assert_eq!(Binary.native_from_bytes(&bytes).unwrap(), vec![1, 2, 3]);
-/// assert_eq!(Binary.default_value(), Vec::<u8>::new());
+/// let bytes = BinaryType.native_to_bytes(&vec![1, 2, 3]);
+/// assert_eq!(BinaryType.native_from_bytes(&bytes).unwrap(), vec![1, 2, 3]);
+/// assert_eq!(BinaryType.default_value(), Vec::<u8>::new());
 ///
 /// // from_arrow is the exact inverse of to_arrow.
-/// assert_eq!(Binary.to_arrow(), arrow_schema::DataType::Binary);
-/// assert_eq!(Binary::from_arrow(&Binary.to_arrow()).unwrap(), Binary);
-/// assert!(Binary::from_arrow(&arrow_schema::DataType::Int64).is_err());
+/// assert_eq!(BinaryType.to_arrow(), arrow_schema::DataType::Binary);
+/// assert_eq!(BinaryType::from_arrow(&BinaryType.to_arrow()).unwrap(), BinaryType);
+/// assert!(BinaryType::from_arrow(&arrow_schema::DataType::Int64).is_err());
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct Binary;
+pub struct BinaryType;
 
-impl Binary {
+impl BinaryType {
     /// This type's [`DataTypeId`](crate::DataTypeId).
     pub const ID: crate::DataTypeId = crate::DataTypeId::Binary;
 }
 
-impl RawDataType for Binary {
+impl RawDataType for BinaryType {
     fn name(&self) -> &str {
         "binary"
     }
@@ -68,8 +68,8 @@ impl RawDataType for Binary {
     }
 }
 
-impl DataType<Vec<u8>> for Binary {
-    type Scalar = super::BinaryScalar;
+impl DataType<Vec<u8>> for BinaryType {
+    type Scalar = super::Binary;
 
     fn native_to_bytes(&self, value: &Vec<u8>) -> Vec<u8> {
         value.clone()
@@ -85,6 +85,6 @@ impl DataType<Vec<u8>> for Binary {
 
     /// The default binary scalar: the empty byte sequence.
     fn default_scalar(&self) -> Self::Scalar {
-        super::BinaryScalar::new(Vec::new())
+        super::Binary::new(Vec::new())
     }
 }

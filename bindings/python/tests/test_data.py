@@ -6,21 +6,21 @@ from yggdryl import core, data
 
 # (data type, field, scalar, optional scalar, name, format, byte width, min, max)
 INTEGERS = [
-    (data.Int8, data.Int8Field, data.Int8Scalar, data.OptionalInt8Scalar,
+    (data.Int8Type, data.Int8Field, data.Int8, data.OptionalInt8,
      "int8", "c", 1, -(2 ** 7), 2 ** 7 - 1),
-    (data.Int16, data.Int16Field, data.Int16Scalar, data.OptionalInt16Scalar,
+    (data.Int16Type, data.Int16Field, data.Int16, data.OptionalInt16,
      "int16", "s", 2, -(2 ** 15), 2 ** 15 - 1),
-    (data.Int32, data.Int32Field, data.Int32Scalar, data.OptionalInt32Scalar,
+    (data.Int32Type, data.Int32Field, data.Int32, data.OptionalInt32,
      "int32", "i", 4, -(2 ** 31), 2 ** 31 - 1),
-    (data.Int64, data.Int64Field, data.Int64Scalar, data.OptionalInt64Scalar,
+    (data.Int64Type, data.Int64Field, data.Int64, data.OptionalInt64,
      "int64", "l", 8, -(2 ** 63), 2 ** 63 - 1),
-    (data.UInt8, data.UInt8Field, data.UInt8Scalar, data.OptionalUInt8Scalar,
+    (data.UInt8Type, data.UInt8Field, data.UInt8, data.OptionalUInt8,
      "uint8", "C", 1, 0, 2 ** 8 - 1),
-    (data.UInt16, data.UInt16Field, data.UInt16Scalar, data.OptionalUInt16Scalar,
+    (data.UInt16Type, data.UInt16Field, data.UInt16, data.OptionalUInt16,
      "uint16", "S", 2, 0, 2 ** 16 - 1),
-    (data.UInt32, data.UInt32Field, data.UInt32Scalar, data.OptionalUInt32Scalar,
+    (data.UInt32Type, data.UInt32Field, data.UInt32, data.OptionalUInt32,
      "uint32", "I", 4, 0, 2 ** 32 - 1),
-    (data.UInt64, data.UInt64Field, data.UInt64Scalar, data.OptionalUInt64Scalar,
+    (data.UInt64Type, data.UInt64Field, data.UInt64, data.OptionalUInt64,
      "uint64", "L", 8, 0, 2 ** 64 - 1),
 ]
 
@@ -152,18 +152,18 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
 
 def test_float_access_is_exact_or_raises():
     # 2**53 is the last contiguous integer in f64; 2**53 + 1 rounds.
-    assert data.Int64Scalar(2 ** 53).as_f64() == float(2 ** 53)
+    assert data.Int64(2 ** 53).as_f64() == float(2 ** 53)
     with pytest.raises(ValueError, match="not exactly representable"):
-        data.Int64Scalar(2 ** 53 + 1).as_f64()
+        data.Int64(2 ** 53 + 1).as_f64()
     with pytest.raises(ValueError, match="not exactly representable"):
-        data.UInt64Scalar(2 ** 64 - 1).as_f64()
+        data.UInt64(2 ** 64 - 1).as_f64()
     # Sign changes never pass, and the error names the offending value.
     with pytest.raises(ValueError, match="-1 is not exactly representable"):
-        data.Int8Scalar(-1).as_u64()
+        data.Int8(-1).as_u64()
 
 
 def test_binary_type_describes_itself_and_codecs():
-    binary = data.Binary()
+    binary = data.BinaryType()
     assert binary.name() == "binary"
     assert binary.arrow_format() == "z"
     assert binary.byte_width() is None
@@ -185,14 +185,14 @@ def test_binary_field():
 
 
 def test_binary_scalar_reads_bytes_and_io():
-    blob = data.BinaryScalar(b"\x01\x02\x03")
+    blob = data.Binary(b"\x01\x02\x03")
     assert blob.is_null() is False
     assert blob.value() == b"\x01\x02\x03"
     assert blob.as_bytes() == b"\x01\x02\x03"
     # UTF-8 bytes convert to str; anything else raises naming the shape.
-    assert data.BinaryScalar(b"hi").as_str() == "hi"
+    assert data.Binary(b"hi").as_str() == "hi"
     with pytest.raises(ValueError, match="non-UTF-8"):
-        data.BinaryScalar(b"\xff").as_str()
+        data.Binary(b"\xff").as_str()
     with pytest.raises(ValueError, match="no i64 conversion"):
         blob.as_i64()
 
@@ -203,8 +203,8 @@ def test_binary_scalar_reads_bytes_and_io():
     assert io.pread_byte_one(1, core.Whence.Start) == 2
 
     # The empty value and null are distinct states.
-    assert data.BinaryScalar(b"").is_null() is False
-    missing = data.BinaryScalar.null()
+    assert data.Binary(b"").is_null() is False
+    missing = data.Binary.null()
     assert missing.is_null() is True
     assert missing.value() is None
     assert missing.to_io() is None
@@ -213,7 +213,7 @@ def test_binary_scalar_reads_bytes_and_io():
 
 
 def test_optional_binary_redirects_to_the_inner_scalar():
-    some = data.OptionalBinaryScalar(b"hi")
+    some = data.OptionalBinary(b"hi")
     assert some.is_null() is False
     assert some.value() == b"hi"
     assert some.scalar().value() == b"hi"
@@ -227,14 +227,14 @@ def test_optional_binary_redirects_to_the_inner_scalar():
     assert opt_type.default_value() == b""
     assert opt_type.native_from_bytes(opt_type.native_to_bytes(b"xy")) == b"xy"
 
-    missing = data.OptionalBinaryScalar.null()
+    missing = data.OptionalBinary.null()
     assert missing.is_null() is True
     assert missing.scalar() is None
     with pytest.raises(ValueError, match="is null"):
         missing.as_bytes()
 
     # The optional reached through the value type is the same shape.
-    assert data.Binary().optional().arrow_format() == opt_type.arrow_format()
+    assert data.BinaryType().optional().arrow_format() == opt_type.arrow_format()
     assert data.OptionalBinaryField("payload").data_type().name() == "optional"
 
 
@@ -247,7 +247,7 @@ def test_optional_field():
 
 
 def test_union_field():
-    union = data.Int64().optional().storage()
+    union = data.Int64Type().optional().storage()
     field = data.UnionField("value", union)
     assert field.name() == "value"
     assert field.is_nullable() is True
@@ -255,7 +255,7 @@ def test_union_field():
 
 
 def test_null_family():
-    null = data.Null()
+    null = data.NullType()
     assert null.name() == "null"
     assert null.arrow_format() == "n"
     assert null.byte_width() is None
@@ -264,6 +264,6 @@ def test_null_family():
     gap = data.NullField("gap")
     assert (gap.name(), gap.data_type().name(), gap.is_nullable()) == ("gap", "null", True)
 
-    nothing = data.NullScalar()
+    nothing = data.Null()
     assert nothing.is_null() is True
     assert nothing.data_type().name() == "null"

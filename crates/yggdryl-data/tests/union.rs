@@ -3,47 +3,50 @@
 
 use yggdryl_data::arrow_array::Array;
 use yggdryl_data::{
-    arrow_array, arrow_schema, DataError, DataTypeId, Int64, Null, NullField, NullScalar,
+    arrow_array, arrow_schema, DataError, DataTypeId, Int64Type, Null, NullField, NullType,
     RawDataType, RawField, RawNested, RawScalar, RawUnion, UnionField, UnionType,
 };
 
 #[test]
 fn null_describes_itself_and_round_trips() {
-    assert_eq!(Null.name(), "null");
-    assert_eq!(Null.arrow_format(), "n");
-    assert_eq!((Null.byte_width(), Null.bit_width()), (None, None));
-    assert_eq!(Null::ID, DataTypeId::Null);
-    assert_eq!(Null::ID.name(), Null.name());
-    assert_eq!(Null::ID.arrow_format(), Some("n"));
+    assert_eq!(NullType.name(), "null");
+    assert_eq!(NullType.arrow_format(), "n");
+    assert_eq!((NullType.byte_width(), NullType.bit_width()), (None, None));
+    assert_eq!(NullType::ID, DataTypeId::Null);
+    assert_eq!(NullType::ID.name(), NullType.name());
+    assert_eq!(NullType::ID.arrow_format(), Some("n"));
 
-    assert_eq!(Null.to_arrow(), arrow_schema::DataType::Null);
-    assert_eq!(Null::from_arrow(&Null.to_arrow()).unwrap(), Null);
-    assert!(Null::from_arrow(&arrow_schema::DataType::Int64).is_err());
+    assert_eq!(NullType.to_arrow(), arrow_schema::DataType::Null);
+    assert_eq!(
+        NullType::from_arrow(&NullType.to_arrow()).unwrap(),
+        NullType
+    );
+    assert!(NullType::from_arrow(&arrow_schema::DataType::Int64).is_err());
 
     let gap = NullField::new("gap", true);
     assert_eq!(NullField::from_arrow(&gap.to_arrow()).unwrap(), gap);
 
-    let nothing = NullScalar::new();
+    let nothing = Null::new();
     assert!(nothing.is_null());
     assert_eq!(nothing.value(), None);
     let arrow = nothing.to_arrow();
     assert_eq!(arrow.len(), 1);
     assert_eq!(arrow.data_type(), &arrow_schema::DataType::Null);
-    assert_eq!(NullScalar::from_arrow(arrow.as_ref()).unwrap(), nothing);
+    assert_eq!(Null::from_arrow(arrow.as_ref()).unwrap(), nothing);
     // Wrong length and wrong type are refused.
     assert!(matches!(
-        NullScalar::from_arrow(&arrow_array::NullArray::new(2)),
+        Null::from_arrow(&arrow_array::NullArray::new(2)),
         Err(DataError::InvalidScalarLength { got: 2 })
     ));
     assert!(matches!(
-        NullScalar::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
+        Null::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
 
 #[test]
 fn union_describes_itself() {
-    let union = UnionType::optional(&Int64);
+    let union = UnionType::optional(&Int64Type);
     assert_eq!(union.name(), "union");
     assert_eq!(union.arrow_format(), "+us:0,1");
     assert_eq!(union.byte_width(), None);
@@ -95,7 +98,7 @@ fn union_arrow_round_trips_losslessly() {
 
 #[test]
 fn union_field_round_trips_and_applies_the_metadata_policy() {
-    let field = UnionField::new("value", UnionType::optional(&Int64), true);
+    let field = UnionField::new("value", UnionType::optional(&Int64Type), true);
     let arrow = field.to_arrow();
     assert_eq!(arrow.name(), "value");
     assert!(arrow.is_nullable());
@@ -126,12 +129,14 @@ fn union_is_object_safe_and_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<UnionType>();
     assert_send_sync::<UnionField>();
+    assert_send_sync::<NullType>();
     assert_send_sync::<Null>();
-    assert_send_sync::<NullScalar>();
 
     // A heterogeneous schema mixes primitives and unions through the vtable.
-    let types: Vec<Box<dyn RawDataType>> =
-        vec![Box::new(Int64), Box::new(UnionType::optional(&Int64))];
+    let types: Vec<Box<dyn RawDataType>> = vec![
+        Box::new(Int64Type),
+        Box::new(UnionType::optional(&Int64Type)),
+    ];
     assert_eq!(types[1].name(), "union");
     assert_eq!(types[1].arrow_format(), "+us:0,1");
     assert!(matches!(

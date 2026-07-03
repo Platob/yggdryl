@@ -6,7 +6,7 @@ use super::{DataError, RawDataType};
 /// codec that bridges a `T` to and from its Arrow physical bytes, the type's
 /// [`Scalar`](DataType::Scalar), and its defaults.
 ///
-/// This is where the physical type meets a concrete Rust type: `Int64` implements
+/// This is where the physical type meets a concrete Rust type: `Int64Type` implements
 /// `DataType<i64>`, `Utf8` would implement `DataType<String>`, and so on. The codec is
 /// the per-type byte surface (Rust value ↔ Arrow bytes); streaming and transfers stay
 /// on the core IO traits. [`default_value`](DataType::default_value) is the type's
@@ -18,9 +18,9 @@ use super::{DataError, RawDataType};
 /// matching the scalar's own `Default`).
 ///
 /// ```
-/// use yggdryl_data::{DataType, Int64, RawScalar};
+/// use yggdryl_data::{DataType, Int64Type, RawScalar};
 ///
-/// let int64 = Int64;
+/// let int64 = Int64Type;
 /// let bytes = int64.native_to_bytes(&42);
 /// assert_eq!(bytes, vec![42, 0, 0, 0, 0, 0, 0, 0]); // little-endian i64
 /// assert_eq!(int64.native_from_bytes(&bytes).unwrap(), 42);
@@ -34,7 +34,7 @@ use super::{DataError, RawDataType};
 /// ```
 pub trait DataType<T>: RawDataType {
     /// The scalar type this data type's defaults produce — conventionally a
-    /// [`RawScalar`] *of* this data type; a typed [`Union`](crate::Union)'s is its
+    /// [`RawScalar`] *of* this data type; a typed [`TypedUnion`](crate::TypedUnion)'s is its
     /// first data type's scalar (the union defaults to its first variant).
     type Scalar;
 

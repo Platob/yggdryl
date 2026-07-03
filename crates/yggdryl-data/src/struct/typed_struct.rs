@@ -1,4 +1,4 @@
-//! The typed [`Struct`] trait: a statically-shaped [`RawStruct`](super::RawStruct)
+//! The typed [`TypedStruct`] trait: a statically-shaped [`RawStruct`](super::RawStruct)
 //! with a native row type.
 
 use super::RawStruct;
@@ -15,14 +15,14 @@ use crate::DataType;
 ///
 /// ```
 /// use yggdryl_data::{
-///     arrow_schema, DataError, DataType, Int64, RawDataType, RawNested, RawStruct, Struct,
-///     StructScalar, StructType,
+///     arrow_schema, DataError, DataType, Int64Type, RawDataType, RawNested, RawStruct, TypedStruct,
+///     Struct, StructType,
 /// };
 ///
 /// // A static point struct: two non-null int64 children, row type (i64, i64).
 /// #[derive(Debug, Default)]
 /// struct Point {
-///     coordinate: Int64,
+///     coordinate: Int64Type,
 /// }
 ///
 /// impl Point {
@@ -65,7 +65,7 @@ use crate::DataType;
 ///
 /// // The typed layer: the row is (x, y), the codec concatenates the children.
 /// impl DataType<(i64, i64)> for Point {
-///     type Scalar = StructScalar;
+///     type Scalar = Struct;
 ///     fn native_to_bytes(&self, (x, y): &(i64, i64)) -> Vec<u8> {
 ///         let mut bytes = self.coordinate.native_to_bytes(x);
 ///         bytes.extend(self.coordinate.native_to_bytes(y));
@@ -83,15 +83,15 @@ use crate::DataType;
 ///     fn default_value(&self) -> (i64, i64) {
 ///         (self.coordinate.default_value(), self.coordinate.default_value())
 ///     }
-///     fn default_scalar(&self) -> StructScalar {
-///         StructScalar::null(Self::shape()) // rows default like the dynamic scalar
+///     fn default_scalar(&self) -> Struct {
+///         Struct::null(Self::shape()) // rows default like the dynamic scalar
 ///     }
 /// }
 ///
-/// impl Struct<(i64, i64)> for Point {}
+/// impl TypedStruct<(i64, i64)> for Point {}
 ///
 /// let point = Point::default();
 /// assert_eq!(point.default_value(), (0, 0));
 /// assert_eq!(point.native_from_bytes(&point.native_to_bytes(&(1, 2))).unwrap(), (1, 2));
 /// ```
-pub trait Struct<T>: RawStruct + DataType<T> {}
+pub trait TypedStruct<T>: RawStruct + DataType<T> {}

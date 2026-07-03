@@ -2,28 +2,28 @@
 //!
 //! Every integer type is exposed as its data type, field, scalar, logical
 //! optional data type and field, and null-or-value optional scalar (e.g.
-//! `Int64`, `Int64Field`, `Int64Scalar`, `OptionalInt64`, `OptionalInt64Field`,
-//! `OptionalInt64Scalar`), alongside the `Binary` family (whose scalar holds its
+//! `Int64Type`, `Int64Field`, `Int64`, `OptionalInt64Type`, `OptionalInt64Field`,
+//! `OptionalInt64`), alongside the `BinaryType` family (whose scalar holds its
 //! bytes as a core positioned-IO `ByteBuffer` — `to_io()` hands one back), the
-//! `Null` family and the `Union` data type. Scalars expose the `as_*` accessors
+//! `NullType` family and the `UnionType` data type. Scalars expose the `as_*` accessors
 //! with the core contract: the value when the target represents it exactly, or a
 //! raised `ValueError` naming the fix (strings and bytes cross the FFI boundary
 //! as new Python objects, so the Rust-side "borrow, never copy" guarantee applies
 //! up to that boundary copy).
-//! Optional scalars adapt construction to idioms: they are built straight from the
-//! native value (`OptionalInt64Scalar(42)`), the inner scalar being an
+//! TypedOptional scalars adapt construction to idioms: they are built straight from the
+//! native value (`OptionalInt64(42)`), the inner scalar being an
 //! implementation detail reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` / `arrow-array` values that
 //! cannot cross the FFI boundary; C Data Interface interop is future work),
-//! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
-//! arrow-schema value — `Union` is reached through an optional data type's
+//! construction of a `UnionType` from arbitrary child fields (its `UnionFields` is an
+//! arrow-schema value — `UnionType` is reached through an optional data type's
 //! `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot
 //! model uniformly), and the nested families — the generic `ListType` / `MapType` /
 //! `StructType` with their scalars, the per-family trait pairs, and the
-//! buffer-backed `Int64Array` (whose zero-copy Arrow buffers await C Data
+//! buffer-backed `Int64Serie` (whose zero-copy Arrow buffers await C Data
 //! Interface interop) — which have no concrete FFI shape yet.
 
 use pyo3::exceptions::PyValueError;
@@ -51,12 +51,12 @@ impl From<DataErr> for PyErr {
 /// (arbitrary child fields stay Rust-only).
 #[pyclass]
 #[derive(Clone)]
-pub struct Union {
+pub struct UnionType {
     inner: yggdryl_data::UnionType,
 }
 
 #[pymethods]
-impl Union {
+impl UnionType {
     /// The type's lowercase name, `"union"`.
     fn name(&self) -> String {
         self.inner.name().to_string()
@@ -91,7 +91,7 @@ impl Union {
     }
 }
 
-/// A nullable `union` field: a name paired with a [`Union`] data type.
+/// A nullable `union` field: a name paired with a [`UnionType`] data type.
 #[pyclass]
 pub struct UnionField {
     inner: yggdryl_data::UnionField,
@@ -102,7 +102,7 @@ impl UnionField {
     /// A field named `name` of the union type `data_type`.
     #[new]
     #[pyo3(signature = (name, data_type, nullable = true))]
-    fn new(name: String, data_type: &Union, nullable: bool) -> Self {
+    fn new(name: String, data_type: &UnionType, nullable: bool) -> Self {
         Self {
             inner: yggdryl_data::UnionField::new(name, data_type.inner.clone(), nullable),
         }
@@ -114,8 +114,8 @@ impl UnionField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> Union {
-        Union {
+    fn data_type(&self) -> UnionType {
+        UnionType {
             inner: self.inner.data_type().clone(),
         }
     }
@@ -129,12 +129,12 @@ impl UnionField {
 /// The Apache Arrow `null` data type: every value is null, with no storage.
 #[pyclass]
 #[derive(Default)]
-pub struct Null {
-    inner: yggdryl_data::Null,
+pub struct NullType {
+    inner: yggdryl_data::NullType,
 }
 
 #[pymethods]
-impl Null {
+impl NullType {
     /// The null data type.
     #[new]
     fn new() -> Self {
@@ -185,8 +185,8 @@ impl NullField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> Null {
-        Null::default()
+    fn data_type(&self) -> NullType {
+        NullType::default()
     }
 
     /// Whether values in this field may be null.
@@ -198,12 +198,12 @@ impl NullField {
 /// The `null` scalar: always null, holding no value.
 #[pyclass]
 #[derive(Default)]
-pub struct NullScalar {
-    inner: yggdryl_data::NullScalar,
+pub struct Null {
+    inner: yggdryl_data::Null,
 }
 
 #[pymethods]
-impl NullScalar {
+impl Null {
     /// The null scalar.
     #[new]
     fn new() -> Self {
@@ -216,20 +216,20 @@ impl NullScalar {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> Null {
-        Null::default()
+    fn data_type(&self) -> NullType {
+        NullType::default()
     }
 }
 
 /// The Apache Arrow `binary` data type: a variable-length byte sequence.
 #[pyclass]
 #[derive(Default)]
-pub struct Binary {
-    inner: yggdryl_data::Binary,
+pub struct BinaryType {
+    inner: yggdryl_data::BinaryType,
 }
 
 #[pymethods]
-impl Binary {
+impl BinaryType {
     /// The `binary` data type.
     #[new]
     fn new() -> Self {
@@ -280,15 +280,15 @@ impl Binary {
     }
 
     /// The default scalar: a scalar holding `b""`.
-    fn default_scalar(&self) -> BinaryScalar {
-        BinaryScalar {
+    fn default_scalar(&self) -> Binary {
+        Binary {
             inner: self.inner.default_scalar(),
         }
     }
 
     /// The logical optional of this type (stored as the null-or-value union).
-    fn optional(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    fn optional(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 }
 
@@ -296,12 +296,12 @@ impl Binary {
 /// null-or-`binary` union.
 #[pyclass]
 #[derive(Default)]
-pub struct OptionalBinary {
-    inner: yggdryl_data::OptionalType<yggdryl_data::Binary>,
+pub struct OptionalBinaryType {
+    inner: yggdryl_data::OptionalType<yggdryl_data::BinaryType>,
 }
 
 #[pymethods]
-impl OptionalBinary {
+impl OptionalBinaryType {
     /// The optional `binary` data type.
     #[new]
     fn new() -> Self {
@@ -329,13 +329,13 @@ impl OptionalBinary {
     }
 
     /// The value type this optional wraps.
-    fn value_type(&self) -> Binary {
-        Binary::default()
+    fn value_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// The physical storage: the sparse null-or-value union.
-    fn storage(&self) -> Union {
-        Union {
+    fn storage(&self) -> UnionType {
+        UnionType {
             inner: self.inner.storage().clone(),
         }
     }
@@ -346,8 +346,8 @@ impl OptionalBinary {
     }
 
     /// The default scalar: the null variant (the scalar models nullness).
-    fn default_scalar(&self) -> OptionalBinaryScalar {
-        OptionalBinaryScalar {
+    fn default_scalar(&self) -> OptionalBinary {
+        OptionalBinary {
             inner: self.inner.default_scalar(),
         }
     }
@@ -375,7 +375,7 @@ impl OptionalBinary {
 /// data type.
 #[pyclass]
 pub struct OptionalBinaryField {
-    inner: yggdryl_data::OptionalField<yggdryl_data::Binary>,
+    inner: yggdryl_data::OptionalField<yggdryl_data::BinaryType>,
 }
 
 #[pymethods]
@@ -395,8 +395,8 @@ impl OptionalBinaryField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    fn data_type(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -428,8 +428,8 @@ impl BinaryField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> Binary {
-        Binary::default()
+    fn data_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -441,17 +441,17 @@ impl BinaryField {
 /// A single, possibly-null `binary` value, holding its bytes as a core
 /// positioned-IO `ByteBuffer` (`to_io()` hands one back).
 #[pyclass]
-pub struct BinaryScalar {
-    inner: yggdryl_data::BinaryScalar,
+pub struct Binary {
+    inner: yggdryl_data::Binary,
 }
 
 #[pymethods]
-impl BinaryScalar {
+impl Binary {
     /// A `binary` scalar holding `value`.
     #[new]
     fn new(value: Vec<u8>) -> Self {
         Self {
-            inner: yggdryl_data::BinaryScalar::new(value),
+            inner: yggdryl_data::Binary::new(value),
         }
     }
 
@@ -459,7 +459,7 @@ impl BinaryScalar {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_data::BinaryScalar::null(),
+            inner: yggdryl_data::Binary::null(),
         }
     }
 
@@ -476,8 +476,8 @@ impl BinaryScalar {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> Binary {
-        Binary::default()
+    fn data_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for
@@ -558,17 +558,17 @@ impl BinaryScalar {
 /// A single value of the union between null and `binary`: a value variant, or
 /// the null variant.
 #[pyclass]
-pub struct OptionalBinaryScalar {
-    inner: yggdryl_data::OptionalScalar<yggdryl_data::Binary, yggdryl_data::BinaryScalar>,
+pub struct OptionalBinary {
+    inner: yggdryl_data::Optional<yggdryl_data::BinaryType, yggdryl_data::Binary>,
 }
 
 #[pymethods]
-impl OptionalBinaryScalar {
+impl OptionalBinary {
     /// A scalar holding the `binary` value variant `value`.
     #[new]
     fn new(value: Vec<u8>) -> Self {
         Self {
-            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::BinaryScalar::new(value)),
+            inner: yggdryl_data::Optional::new(yggdryl_data::Binary::new(value)),
         }
     }
 
@@ -576,7 +576,7 @@ impl OptionalBinaryScalar {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_data::OptionalScalar::null(),
+            inner: yggdryl_data::Optional::null(),
         }
     }
 
@@ -593,15 +593,15 @@ impl OptionalBinaryScalar {
     }
 
     /// The inner scalar, when this holds the value variant.
-    fn scalar(&self) -> Option<BinaryScalar> {
-        self.inner.scalar().map(|scalar| BinaryScalar {
+    fn scalar(&self) -> Option<Binary> {
+        self.inner.scalar().map(|scalar| Binary {
             inner: scalar.clone(),
         })
     }
 
     /// The scalar's data type: the logical optional of the value type.
-    fn data_type(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    fn data_type(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 
     /// The value as an `int` in the i8 range; raises `ValueError` (a binary
@@ -783,8 +783,8 @@ macro_rules! int_data_py {
             }
 
             /// The physical storage: the sparse null-or-value union.
-            fn storage(&self) -> Union {
-                Union {
+            fn storage(&self) -> UnionType {
+                UnionType {
                     inner: self.inner.storage().clone(),
                 }
             }
@@ -989,7 +989,7 @@ macro_rules! int_data_py {
         #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
         #[pyclass]
         pub struct $optional {
-            inner: yggdryl_data::OptionalScalar<yggdryl_data::$ty, yggdryl_data::$scalar>,
+            inner: yggdryl_data::Optional<yggdryl_data::$ty, yggdryl_data::$scalar>,
         }
 
         #[pymethods]
@@ -998,7 +998,7 @@ macro_rules! int_data_py {
             #[new]
             fn new(value: $native) -> Self {
                 Self {
-                    inner: yggdryl_data::OptionalScalar::new(yggdryl_data::$scalar::new(value)),
+                    inner: yggdryl_data::Optional::new(yggdryl_data::$scalar::new(value)),
                 }
             }
 
@@ -1006,7 +1006,7 @@ macro_rules! int_data_py {
             #[staticmethod]
             fn null() -> Self {
                 Self {
-                    inner: yggdryl_data::OptionalScalar::null(),
+                    inner: yggdryl_data::Optional::null(),
                 }
             }
 
@@ -1100,146 +1100,146 @@ macro_rules! int_data_py {
 }
 
 int_data_py!(
-    Int8,
+    Int8Type,
     Int8Field,
-    Int8Scalar,
-    OptionalInt8,
+    Int8,
+    OptionalInt8Type,
     OptionalInt8Field,
-    OptionalInt8Scalar,
+    OptionalInt8,
     i8,
     "int8"
 );
 int_data_py!(
-    Int16,
+    Int16Type,
     Int16Field,
-    Int16Scalar,
-    OptionalInt16,
+    Int16,
+    OptionalInt16Type,
     OptionalInt16Field,
-    OptionalInt16Scalar,
+    OptionalInt16,
     i16,
     "int16"
 );
 int_data_py!(
-    Int32,
+    Int32Type,
     Int32Field,
-    Int32Scalar,
-    OptionalInt32,
+    Int32,
+    OptionalInt32Type,
     OptionalInt32Field,
-    OptionalInt32Scalar,
+    OptionalInt32,
     i32,
     "int32"
 );
 int_data_py!(
-    Int64,
+    Int64Type,
     Int64Field,
-    Int64Scalar,
-    OptionalInt64,
+    Int64,
+    OptionalInt64Type,
     OptionalInt64Field,
-    OptionalInt64Scalar,
+    OptionalInt64,
     i64,
     "int64"
 );
 int_data_py!(
-    UInt8,
+    UInt8Type,
     UInt8Field,
-    UInt8Scalar,
-    OptionalUInt8,
+    UInt8,
+    OptionalUInt8Type,
     OptionalUInt8Field,
-    OptionalUInt8Scalar,
+    OptionalUInt8,
     u8,
     "uint8"
 );
 int_data_py!(
-    UInt16,
+    UInt16Type,
     UInt16Field,
-    UInt16Scalar,
-    OptionalUInt16,
+    UInt16,
+    OptionalUInt16Type,
     OptionalUInt16Field,
-    OptionalUInt16Scalar,
+    OptionalUInt16,
     u16,
     "uint16"
 );
 int_data_py!(
-    UInt32,
+    UInt32Type,
     UInt32Field,
-    UInt32Scalar,
-    OptionalUInt32,
+    UInt32,
+    OptionalUInt32Type,
     OptionalUInt32Field,
-    OptionalUInt32Scalar,
+    OptionalUInt32,
     u32,
     "uint32"
 );
 int_data_py!(
-    UInt64,
+    UInt64Type,
     UInt64Field,
-    UInt64Scalar,
-    OptionalUInt64,
+    UInt64,
+    OptionalUInt64Type,
     OptionalUInt64Field,
-    OptionalUInt64Scalar,
+    OptionalUInt64,
     u64,
     "uint64"
 );
 
 /// Populates the `data` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Union>()?;
+    module.add_class::<UnionType>()?;
     module.add_class::<UnionField>()?;
-    module.add_class::<Null>()?;
+    module.add_class::<NullType>()?;
     module.add_class::<NullField>()?;
-    module.add_class::<NullScalar>()?;
-    module.add_class::<Binary>()?;
+    module.add_class::<Null>()?;
+    module.add_class::<BinaryType>()?;
     module.add_class::<BinaryField>()?;
-    module.add_class::<BinaryScalar>()?;
-    module.add_class::<OptionalBinary>()?;
+    module.add_class::<Binary>()?;
+    module.add_class::<OptionalBinaryType>()?;
     module.add_class::<OptionalBinaryField>()?;
-    module.add_class::<OptionalBinaryScalar>()?;
-    module.add_class::<Int8>()?;
+    module.add_class::<OptionalBinary>()?;
+    module.add_class::<Int8Type>()?;
     module.add_class::<Int8Field>()?;
-    module.add_class::<Int8Scalar>()?;
-    module.add_class::<OptionalInt8>()?;
+    module.add_class::<Int8>()?;
+    module.add_class::<OptionalInt8Type>()?;
     module.add_class::<OptionalInt8Field>()?;
-    module.add_class::<OptionalInt8Scalar>()?;
-    module.add_class::<Int16>()?;
+    module.add_class::<OptionalInt8>()?;
+    module.add_class::<Int16Type>()?;
     module.add_class::<Int16Field>()?;
-    module.add_class::<Int16Scalar>()?;
-    module.add_class::<OptionalInt16>()?;
+    module.add_class::<Int16>()?;
+    module.add_class::<OptionalInt16Type>()?;
     module.add_class::<OptionalInt16Field>()?;
-    module.add_class::<OptionalInt16Scalar>()?;
-    module.add_class::<Int32>()?;
+    module.add_class::<OptionalInt16>()?;
+    module.add_class::<Int32Type>()?;
     module.add_class::<Int32Field>()?;
-    module.add_class::<Int32Scalar>()?;
-    module.add_class::<OptionalInt32>()?;
+    module.add_class::<Int32>()?;
+    module.add_class::<OptionalInt32Type>()?;
     module.add_class::<OptionalInt32Field>()?;
-    module.add_class::<OptionalInt32Scalar>()?;
-    module.add_class::<Int64>()?;
+    module.add_class::<OptionalInt32>()?;
+    module.add_class::<Int64Type>()?;
     module.add_class::<Int64Field>()?;
-    module.add_class::<Int64Scalar>()?;
-    module.add_class::<OptionalInt64>()?;
+    module.add_class::<Int64>()?;
+    module.add_class::<OptionalInt64Type>()?;
     module.add_class::<OptionalInt64Field>()?;
-    module.add_class::<OptionalInt64Scalar>()?;
-    module.add_class::<UInt8>()?;
+    module.add_class::<OptionalInt64>()?;
+    module.add_class::<UInt8Type>()?;
     module.add_class::<UInt8Field>()?;
-    module.add_class::<UInt8Scalar>()?;
-    module.add_class::<OptionalUInt8>()?;
+    module.add_class::<UInt8>()?;
+    module.add_class::<OptionalUInt8Type>()?;
     module.add_class::<OptionalUInt8Field>()?;
-    module.add_class::<OptionalUInt8Scalar>()?;
-    module.add_class::<UInt16>()?;
+    module.add_class::<OptionalUInt8>()?;
+    module.add_class::<UInt16Type>()?;
     module.add_class::<UInt16Field>()?;
-    module.add_class::<UInt16Scalar>()?;
-    module.add_class::<OptionalUInt16>()?;
+    module.add_class::<UInt16>()?;
+    module.add_class::<OptionalUInt16Type>()?;
     module.add_class::<OptionalUInt16Field>()?;
-    module.add_class::<OptionalUInt16Scalar>()?;
-    module.add_class::<UInt32>()?;
+    module.add_class::<OptionalUInt16>()?;
+    module.add_class::<UInt32Type>()?;
     module.add_class::<UInt32Field>()?;
-    module.add_class::<UInt32Scalar>()?;
-    module.add_class::<OptionalUInt32>()?;
+    module.add_class::<UInt32>()?;
+    module.add_class::<OptionalUInt32Type>()?;
     module.add_class::<OptionalUInt32Field>()?;
-    module.add_class::<OptionalUInt32Scalar>()?;
-    module.add_class::<UInt64>()?;
+    module.add_class::<OptionalUInt32>()?;
+    module.add_class::<UInt64Type>()?;
     module.add_class::<UInt64Field>()?;
-    module.add_class::<UInt64Scalar>()?;
-    module.add_class::<OptionalUInt64>()?;
+    module.add_class::<UInt64>()?;
+    module.add_class::<OptionalUInt64Type>()?;
     module.add_class::<OptionalUInt64Field>()?;
-    module.add_class::<OptionalUInt64Scalar>()?;
+    module.add_class::<OptionalUInt64>()?;
     Ok(())
 }

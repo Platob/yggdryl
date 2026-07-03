@@ -71,25 +71,25 @@ Arrow `arrow_format` (or `None`), and `is_primitive` / `is_nested` predicates.
 
 ## The integer module
 
-Every signed and unsigned integer, from `Int8` / `UInt8` to `Int64` / `UInt64`. Each
+Every signed and unsigned integer, from `Int8Type` / `UInt8Type` to `Int64Type` / `UInt64Type`. Each
 type is a fixed-width `Primitive` with a little-endian byte codec, a nullable field and
 a possibly-null scalar; the three share one shape, so a crate-internal macro generates
 each per-type file.
 
 ```rust
 use yggdryl_data::{
-    arrow_schema, DataType, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar,
+    arrow_schema, DataType, Int64Type, Int64Field, Int64, RawDataType, RawField, RawScalar,
 };
 
-// Int64 is a fixed-width primitive whose native type is i64.
-assert_eq!((Int64.name(), Int64.arrow_format(), Int64.byte_width()), ("int64", "l".to_string(), Some(8)));
-assert_eq!(Int64::ID, yggdryl_data::DataTypeId::Int64);
-assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
-assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+// Int64Type is a fixed-width primitive whose native type is i64.
+assert_eq!((Int64Type.name(), Int64Type.arrow_format(), Int64Type.byte_width()), ("int64", "l".to_string(), Some(8)));
+assert_eq!(Int64Type::ID, yggdryl_data::DataTypeId::Int64);
+assert_eq!(Int64Type.native_to_bytes(&-1), vec![0xFF; 8]);
+assert_eq!(Int64Type.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 
 // It mirrors the arrow-schema type, both ways.
-assert_eq!(Int64.to_arrow(), arrow_schema::DataType::Int64);
-assert!(Int64::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+assert_eq!(Int64Type.to_arrow(), arrow_schema::DataType::Int64);
+assert!(Int64Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 
 // Int64Field is a named, nullable column of int64; to_arrow / from_arrow mirror
 // an arrow_schema::Field.
@@ -97,21 +97,21 @@ let id = Int64Field::new("id", false);
 assert_eq!((id.name(), id.is_nullable()), ("id", false));
 assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
 
-// Int64Scalar is a single i64 value, or null — built from a native value, and
+// Int64 is a single i64 value, or null — built from a native value, and
 // mirrored as Arrow's own scalar representation: a one-element array.
-let scalar = Int64Scalar::from(42);
+let scalar = Int64::from(42);
 assert_eq!(scalar.value(), Some(&42));
-assert_eq!(Int64Scalar::from(None), Int64Scalar::null());
-assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar);
+assert_eq!(Int64::from(None), Int64::null());
+assert_eq!(Int64::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar);
 ```
 
-The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
-`Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on.
+The other widths follow the same surface — swap `Int64Type` / `i64` / `"l"` for
+`Int8Type` / `i8` / `"c"`, `UInt32Type` / `u32` / `"I"`, and so on.
 
 ## The composite modules: null, union, optional, list, map, struct
 
-`Null` is the storage-free type whose every value is null (`NullField`,
-`NullScalar`). `UnionType` is Apache Arrow's union — a value is exactly one of several
+`NullType` is the storage-free type whose every value is null (`NullField`,
+`Null`). `UnionType` is Apache Arrow's union — a value is exactly one of several
 child types, discriminated by a type id — carrying its `UnionFields` and
 `UnionMode` losslessly, so `to_arrow` / `from_arrow` round-trip any union
 (`UnionField` is its field; `UnionType::optional(&T)` names the sparse two-variant
@@ -121,30 +121,30 @@ union between null and a value type).
 or null, physically stored as `UnionType::optional(&D)` (`storage()` returns the
 union). Its Arrow surface delegates to the storage; its `DataType<T>` byte codec
 delegates to the value type. `OptionalField<D>` is its field, and
-`OptionalScalar<D, S>` its scalar: an inner scalar `S` or the null variant, with
+`Optional<D, S>` its scalar: an inner scalar `S` or the null variant, with
 `value` and every `as_*` accessor redirected to the inner scalar, and the Arrow
 form a one-element `UnionArray` whose type id selects the variant (`from_arrow`
 redirects the value child back through `S::from_arrow`).
 
 Each composite family carries its own raw/typed trait pair (`RawOptional` /
-`Optional`, `RawUnion` / `Union`, `RawList` / `List`, `RawMap` / `Map`,
-`RawStruct` / `Struct`); the generic `ListType<D>` and `MapType<K, V>` (with
-`ListScalar` / `MapScalar` over inner scalars) and the dynamic `StructType` /
-`StructScalar` follow the same shape as the optional family.
+`TypedOptional`, `RawUnion` / `UnionType`, `RawList` / `TypedList`, `RawMap` / `TypedMap`,
+`RawStruct` / `TypedStruct`); the generic `ListType<D>` and `MapType<K, V>` (with
+`Serie` / `Map` over inner scalars) and the dynamic `StructType` /
+`Struct` follow the same shape as the optional family.
 
 ```rust
-use yggdryl_data::{Int64, Int64Scalar, Logical, OptionalScalar, OptionalType, RawDataType, RawScalar};
+use yggdryl_data::{Int64Type, Int64, Logical, Optional, OptionalType, RawDataType, RawScalar};
 
-let answer = OptionalScalar::new(Int64Scalar::new(42));
+let answer = Optional::new(Int64::new(42));
 assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
-assert_eq!(answer.data_type(), &OptionalType::new(Int64)); // logical optional...
+assert_eq!(answer.data_type(), &OptionalType::new(Int64Type)); // logical optional...
 assert_eq!(answer.data_type().storage().name(), "union"); // ...over union storage
 assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 
-let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
+let missing: Optional<Int64Type, Int64> = Optional::null();
 assert!(missing.is_null());
 assert_eq!(
-    OptionalScalar::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+    Optional::from_arrow(missing.to_arrow().as_ref()).unwrap(),
     missing
 );
 ```

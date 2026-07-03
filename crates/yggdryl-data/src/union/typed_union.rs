@@ -1,4 +1,4 @@
-//! The typed [`Union`] trait: a statically-shaped [`RawUnion`](super::RawUnion)
+//! The typed [`TypedUnion`] trait: a statically-shaped [`RawUnion`](super::RawUnion)
 //! with a first data type.
 
 use super::RawUnion;
@@ -16,14 +16,14 @@ use crate::DataType;
 ///
 /// ```
 /// use yggdryl_data::{
-///     arrow_schema, DataError, DataType, Int64, Int64Scalar, RawDataType, RawNested, RawUnion,
-///     Union, UnionType,
+///     arrow_schema, DataError, DataType, Int64Type, Int64, RawDataType, RawNested, RawUnion,
+///     TypedUnion, UnionType,
 /// };
 ///
 /// // A static two-variant union: an int64 (first), or a uint8 tag.
 /// #[derive(Debug, Default)]
 /// struct NumberOrTag {
-///     first: Int64,
+///     first: Int64Type,
 /// }
 ///
 /// impl NumberOrTag {
@@ -72,25 +72,25 @@ use crate::DataType;
 ///
 /// // The typed layer: codec and defaults come from the FIRST data type.
 /// impl DataType<i64> for NumberOrTag {
-///     type Scalar = Int64Scalar;
+///     type Scalar = Int64;
 ///     fn native_to_bytes(&self, value: &i64) -> Vec<u8> { self.first.native_to_bytes(value) }
 ///     fn native_from_bytes(&self, bytes: &[u8]) -> Result<i64, DataError> {
 ///         self.first.native_from_bytes(bytes)
 ///     }
 ///     fn default_value(&self) -> i64 { self.first.default_value() }
-///     fn default_scalar(&self) -> Int64Scalar { self.first.default_scalar() }
+///     fn default_scalar(&self) -> Int64 { self.first.default_scalar() }
 /// }
 ///
-/// impl Union<i64> for NumberOrTag {
-///     type First = Int64;
-///     fn first_type(&self) -> &Int64 { &self.first }
+/// impl TypedUnion<i64> for NumberOrTag {
+///     type First = Int64Type;
+///     fn first_type(&self) -> &Int64Type { &self.first }
 /// }
 ///
 /// let union = NumberOrTag::default();
 /// assert_eq!(union.first_type().name(), "int64");
 /// assert_eq!(union.default_value(), 0); // the first data type's default
 /// ```
-pub trait Union<T>: RawUnion + DataType<T> {
+pub trait TypedUnion<T>: RawUnion + DataType<T> {
     /// The union's first data type, whose native type is `T`.
     type First: DataType<T>;
 

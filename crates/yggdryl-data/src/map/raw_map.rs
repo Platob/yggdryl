@@ -9,12 +9,12 @@ use crate::{RawDataType, RawNested};
 /// parameterised by the key and value data types so the concrete types are
 /// preserved for zero-cost access, mirroring [`RawField`](crate::RawField) and
 /// [`RawScalar`](crate::RawScalar). Key and value types with codecs also get the
-/// typed [`Map`](crate::Map) layer.
+/// typed [`TypedMap`](crate::TypedMap) layer.
 ///
 /// ```
-/// use yggdryl_data::{Int64, MapType, RawDataType, RawMap, RawNested, UInt8};
+/// use yggdryl_data::{Int64Type, MapType, RawDataType, RawMap, RawNested, UInt8Type};
 ///
-/// let map = MapType::new(UInt8, Int64);
+/// let map = MapType::new(UInt8Type, Int64Type);
 /// assert_eq!(map.key_type().name(), "uint8");
 /// assert_eq!(map.value_type().name(), "int64");
 /// assert_eq!(map.child_count(), 1);

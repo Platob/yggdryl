@@ -1,56 +1,56 @@
-//! The [`Int64Array`] scalar: a list of `int64` borrowing raw Arrow buffers.
+//! The [`Int64Serie`] scalar: a list of `int64` borrowing raw Arrow buffers.
 
 use super::ListType;
-use crate::{DataError, Int64, Int64Scalar, RawDataType, RawScalar, Scalar};
+use crate::{DataError, Int64, Int64Type, RawDataType, RawScalar, Scalar};
 use arrow_buffer::{NullBuffer, ScalarBuffer};
 
 /// A single, possibly-null list of `int64` — *our array*, borrowing the raw Arrow
 /// buffers ([`ScalarBuffer<i64>`] elements plus an optional [`NullBuffer`])
 /// zero-copy, optimized for native `i64` access.
 ///
-/// Where the generic [`ListScalar`](crate::ListScalar) holds an opaque Arrow array
-/// handle and goes through the element scalars' Arrow round trip, `Int64Array`
-/// holds the underlying buffers themselves: [`values`](Int64Array::values) borrows
+/// Where the generic [`Serie`](crate::Serie) holds an opaque Arrow array
+/// handle and goes through the element scalars' Arrow round trip, `Int64Serie`
+/// holds the underlying buffers themselves: [`values`](Int64Serie::values) borrows
 /// the whole element buffer as `&[i64]` without copying,
-/// [`get_value_at`](Int64Array::get_value_at) reads one element null-aware, and
-/// the *scalar accessor* [`get_scalar_at`](Int64Array::get_scalar_at) hands back
-/// an [`Int64Scalar`] (the inner null scalar for a null slot). The optimized
+/// [`get_value_at`](Int64Serie::get_value_at) reads one element null-aware, and
+/// the *scalar accessor* [`get_scalar_at`](Int64Serie::get_scalar_at) hands back
+/// an [`Int64`] (the inner null scalar for a null slot). The optimized
 /// [`to_arrow`](RawScalar::to_arrow) / [`from_arrow`](RawScalar::from_arrow)
 /// reassemble and take apart the Arrow form around the same shared buffers —
 /// reference-count bumps, never element copies — so the type moves across the
 /// Arrow FFI boundary without copying elements.
 ///
 /// ```
-/// use yggdryl_data::{Int64Array, Int64Scalar, RawDataType, RawScalar};
+/// use yggdryl_data::{Int64Serie, Int64, RawDataType, RawScalar};
 ///
-/// let numbers = Int64Array::from(vec![1, 2, 3]);
+/// let numbers = Int64Serie::from(vec![1, 2, 3]);
 /// assert_eq!(numbers.len(), 3);
 /// assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // zero-copy buffer borrow
 /// assert_eq!(numbers.get_value_at(1), Some(2));
-/// assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::new(2)));
+/// assert_eq!(numbers.get_scalar_at(1), Some(Int64::new(2)));
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // Nulls are per element, read null-aware.
-/// let sparse = Int64Array::from(vec![Some(1), None]);
+/// let sparse = Int64Serie::from(vec![Some(1), None]);
 /// assert_eq!(sparse.get_value_at(1), None);
-/// assert_eq!(sparse.get_scalar_at(1), Some(Int64Scalar::null()));
+/// assert_eq!(sparse.get_scalar_at(1), Some(Int64::null()));
 /// assert_eq!(sparse.values().map(<[i64]>::len), Some(2)); // raw slots, nulls included
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
 /// let arrow = numbers.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(Int64Array::from_arrow(arrow.as_ref()).unwrap(), numbers);
+/// assert_eq!(Int64Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 ///
-/// assert!(Int64Array::null().is_null());
+/// assert!(Int64Serie::null().is_null());
 /// ```
 #[derive(Debug, Clone)]
-pub struct Int64Array {
-    data_type: ListType<Int64>,
+pub struct Int64Serie {
+    data_type: ListType<Int64Type>,
     values: Option<ScalarBuffer<i64>>,
     nulls: Option<NullBuffer>,
 }
 
-impl Int64Array {
+impl Int64Serie {
     /// An array borrowing the element buffer `values` and the per-element `nulls`
     /// zero-copy. A null buffer whose length differs from the element buffer's
     /// errors with [`DataError::MismatchedNullBufferLength`].
@@ -69,7 +69,7 @@ impl Int64Array {
     /// The null list scalar.
     pub fn null() -> Self {
         Self {
-            data_type: ListType::new(Int64),
+            data_type: ListType::new(Int64Type),
             values: None,
             nulls: None,
         }
@@ -81,7 +81,7 @@ impl Int64Array {
     // every construction path.
     fn from_parts(values: ScalarBuffer<i64>, nulls: Option<NullBuffer>) -> Self {
         Self {
-            data_type: ListType::new(Int64),
+            data_type: ListType::new(Int64Type),
             values: Some(values),
             nulls: nulls.filter(|nulls| nulls.null_count() > 0),
         }
@@ -100,8 +100,8 @@ impl Int64Array {
 
     /// The whole element buffer as a native slice, borrowed without copying —
     /// including the (arbitrary) slots under null elements; pair with
-    /// [`get_value_at`](Int64Array::get_value_at) or
-    /// [`get_scalar_at`](Int64Array::get_scalar_at) for null-aware reads.
+    /// [`get_value_at`](Int64Serie::get_value_at) or
+    /// [`get_scalar_at`](Int64Serie::get_scalar_at) for null-aware reads.
     pub fn values(&self) -> Option<&[i64]> {
         self.values.as_deref()
     }
@@ -136,7 +136,7 @@ impl Int64Array {
 
     /// The element at `index` as a scalar (a null element is the null scalar), or
     /// `None` when the list is null or `index` is out of bounds.
-    pub fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
+    pub fn get_scalar_at(&self, index: usize) -> Option<Int64> {
         let values = self.values.as_ref()?;
         if index >= values.len() {
             return None;
@@ -147,22 +147,22 @@ impl Int64Array {
                 .as_ref()
                 .is_none_or(|nulls| nulls.is_valid(index))
             {
-                Int64Scalar::new(values[index])
+                Int64::new(values[index])
             } else {
-                Int64Scalar::null()
+                Int64::null()
             },
         )
     }
 }
 
-impl Default for Int64Array {
+impl Default for Int64Serie {
     /// The default list scalar: the empty list.
     fn default() -> Self {
         Self::from_parts(ScalarBuffer::from(Vec::new()), None)
     }
 }
 
-impl PartialEq for Int64Array {
+impl PartialEq for Int64Serie {
     // Compared logically, like Arrow arrays: element values and per-element
     // nullness — an all-valid null buffer equals no null buffer at all.
     fn eq(&self, other: &Self) -> bool {
@@ -174,16 +174,16 @@ impl PartialEq for Int64Array {
     }
 }
 
-impl Eq for Int64Array {}
+impl Eq for Int64Serie {}
 
-impl From<ScalarBuffer<i64>> for Int64Array {
+impl From<ScalarBuffer<i64>> for Int64Serie {
     /// An all-valid array borrowing the element buffer zero-copy.
     fn from(values: ScalarBuffer<i64>) -> Self {
         Self::from_parts(values, None)
     }
 }
 
-impl From<arrow_array::Int64Array> for Int64Array {
+impl From<arrow_array::Int64Array> for Int64Serie {
     /// An array taking over the Arrow array's buffers, shared zero-copy.
     fn from(values: arrow_array::Int64Array) -> Self {
         let (_, values, nulls) = values.into_parts();
@@ -191,26 +191,26 @@ impl From<arrow_array::Int64Array> for Int64Array {
     }
 }
 
-impl From<Vec<i64>> for Int64Array {
+impl From<Vec<i64>> for Int64Serie {
     /// An array over the native values, moved into the element buffer.
     fn from(values: Vec<i64>) -> Self {
         Self::from_parts(ScalarBuffer::from(values), None)
     }
 }
 
-impl From<Vec<Option<i64>>> for Int64Array {
+impl From<Vec<Option<i64>>> for Int64Serie {
     /// An array over the native values with per-element nulls.
     fn from(values: Vec<Option<i64>>) -> Self {
         Self::from(arrow_array::Int64Array::from(values))
     }
 }
 
-impl RawScalar<ListType<Int64>> for Int64Array {
-    /// The raw element buffer — like [`values`](Int64Array::values), it includes
+impl RawScalar<ListType<Int64Type>> for Int64Serie {
+    /// The raw element buffer — like [`values`](Int64Serie::values), it includes
     /// the slots under null elements.
     type Value = [i64];
 
-    fn data_type(&self) -> &ListType<Int64> {
+    fn data_type(&self) -> &ListType<Int64Type> {
         &self.data_type
     }
 
@@ -246,7 +246,7 @@ impl RawScalar<ListType<Int64>> for Int64Array {
         }
         // Validates the list-of-int64 layout, then takes the buffers apart and
         // shares them.
-        ListType::<Int64>::from_arrow(arrow_array::Array::data_type(array))?;
+        ListType::<Int64Type>::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::ListArray>()
@@ -266,6 +266,6 @@ impl RawScalar<ListType<Int64>> for Int64Array {
     }
 }
 
-impl Scalar<[i64]> for Int64Array {
-    type Type = ListType<Int64>;
+impl Scalar<[i64]> for Int64Serie {
+    type Type = ListType<Int64Type>;
 }

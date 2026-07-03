@@ -1,4 +1,4 @@
-//! The [`StructScalar`] scalar of the [`StructType`](super::StructType) data type.
+//! The [`Struct`] scalar of the [`StructType`](super::StructType) data type.
 
 use super::StructType;
 use crate::{DataError, RawScalar, Scalar};
@@ -13,14 +13,14 @@ use arrow_array::ArrayRef;
 /// against the declared fields with actionable errors.
 ///
 /// ```
-/// use yggdryl_data::{arrow_array, arrow_schema, RawDataType, RawScalar, StructScalar, StructType};
+/// use yggdryl_data::{arrow_array, arrow_schema, RawDataType, RawScalar, Struct, StructType};
 ///
 /// let point = StructType::new(arrow_schema::Fields::from(vec![
 ///     arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
 ///     arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
 /// ]));
 ///
-/// let row = StructScalar::new(
+/// let row = Struct::new(
 ///     point.clone(),
 ///     vec![
 ///         std::sync::Arc::new(arrow_array::Int64Array::from_iter_values([1])),
@@ -34,17 +34,17 @@ use arrow_array::ArrayRef;
 /// // The Arrow round trip preserves the row.
 /// let arrow = row.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(StructScalar::from_arrow(arrow.as_ref()).unwrap(), row);
+/// assert_eq!(Struct::from_arrow(arrow.as_ref()).unwrap(), row);
 ///
-/// assert!(StructScalar::null(point).is_null());
+/// assert!(Struct::null(point).is_null());
 /// ```
 #[derive(Debug, Clone)]
-pub struct StructScalar {
+pub struct Struct {
     data_type: StructType,
     columns: Option<Vec<ArrayRef>>,
 }
 
-impl StructScalar {
+impl Struct {
     /// A scalar holding one row of `data_type`: one one-element column per child
     /// field, in field order. A column count, length or type mismatch errors with
     /// an actionable [`DataError`].
@@ -89,7 +89,7 @@ impl StructScalar {
     }
 }
 
-impl PartialEq for StructScalar {
+impl PartialEq for Struct {
     // Column `ArrayRef`s compare by value through the `Array` `PartialEq` on their
     // data, so two rows are equal when their types and values are.
     fn eq(&self, other: &Self) -> bool {
@@ -108,7 +108,7 @@ impl PartialEq for StructScalar {
     }
 }
 
-impl RawScalar<StructType> for StructScalar {
+impl RawScalar<StructType> for Struct {
     type Value = [ArrayRef];
 
     fn data_type(&self) -> &StructType {
@@ -159,6 +159,6 @@ impl RawScalar<StructType> for StructScalar {
     }
 }
 
-impl Scalar<[ArrayRef]> for StructScalar {
+impl Scalar<[ArrayRef]> for Struct {
     type Type = StructType;
 }

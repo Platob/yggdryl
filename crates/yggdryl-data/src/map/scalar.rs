@@ -1,4 +1,4 @@
-//! The [`MapScalar`] scalar of the [`MapType`](super::MapType) data type.
+//! The [`Map`] scalar of the [`MapType`](super::MapType) data type.
 
 use super::MapType;
 use crate::raw_scalar::{concat_scalar_arrays, scalars_from_elements};
@@ -14,9 +14,9 @@ use crate::{DataError, RawDataType, RawScalar, Scalar};
 /// key and value back through the inner scalars' `from_arrow`.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Int64Scalar, MapScalar, RawDataType, RawScalar, UInt8, UInt8Scalar};
+/// use yggdryl_data::{Int64Type, Int64, Map, RawDataType, RawScalar, UInt8Type, UInt8};
 ///
-/// let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap();
+/// let ranks = Map::new(vec![(UInt8::new(7), Int64::new(42))]).unwrap();
 /// assert!(!ranks.is_null());
 /// assert_eq!(ranks.value().map(<[_]>::len), Some(1));
 /// assert_eq!(ranks.data_type().name(), "map");
@@ -24,18 +24,18 @@ use crate::{DataError, RawDataType, RawScalar, Scalar};
 /// // The Arrow round trip preserves the entries.
 /// let arrow = ranks.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(MapScalar::from_arrow(arrow.as_ref()).unwrap(), ranks);
+/// assert_eq!(Map::from_arrow(arrow.as_ref()).unwrap(), ranks);
 ///
-/// let missing: MapScalar<UInt8, Int64, UInt8Scalar, Int64Scalar> = MapScalar::null();
+/// let missing: Map<UInt8Type, Int64Type, UInt8, Int64> = Map::null();
 /// assert!(missing.is_null());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MapScalar<K, V, SK, SV> {
+pub struct Map<K, V, SK, SV> {
     data_type: MapType<K, V>,
     entries: Option<Vec<(SK, SV)>>,
 }
 
-impl<K, V, SK, SV> MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> Map<K, V, SK, SV>
 where
     K: RawDataType + Default,
     V: RawDataType + Default,
@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<K, V, SK, SV> Default for MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> Default for Map<K, V, SK, SV>
 where
     K: RawDataType + Default,
     V: RawDataType + Default,
@@ -82,7 +82,7 @@ where
     }
 }
 
-impl<K, V, SK, SV> RawScalar<MapType<K, V>> for MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> RawScalar<MapType<K, V>> for Map<K, V, SK, SV>
 where
     K: RawDataType + Default,
     V: RawDataType + Default,
@@ -158,7 +158,7 @@ where
     }
 }
 
-impl<K, V, SK, SV> Scalar<[(SK, SV)]> for MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> Scalar<[(SK, SV)]> for Map<K, V, SK, SV>
 where
     K: RawDataType + Default,
     V: RawDataType + Default,

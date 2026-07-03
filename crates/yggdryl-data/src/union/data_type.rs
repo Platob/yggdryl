@@ -12,15 +12,15 @@ use arrow_schema::{UnionFields, UnionMode};
 /// round-trip losslessly. It is a [`RawNested`] type: its children are fields and it
 /// has no fixed width of its own.
 ///
-/// [`UnionType::optional`] builds the two-variant union between [`Null`](crate::Null)
-/// and a value type — the shape [`OptionalScalar`](crate::OptionalScalar) is built
+/// [`UnionType::optional`] builds the two-variant union between [`NullType`](crate::NullType)
+/// and a value type — the shape [`Optional`](crate::Optional) is built
 /// on.
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, Int64, RawDataType, RawNested, UnionType};
+/// use yggdryl_data::{arrow_schema, Int64Type, RawDataType, RawNested, UnionType};
 ///
 /// // A union of null and int64 (the "optional int64" shape).
-/// let union = UnionType::optional(&Int64);
+/// let union = UnionType::optional(&Int64Type);
 /// assert_eq!(union.name(), "union");
 /// assert_eq!(union.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
 /// assert_eq!(union.byte_width(), None);
@@ -53,7 +53,7 @@ impl UnionType {
     }
 
     /// The sparse two-variant union between null and `value_type`: type id
-    /// [`NULL_TYPE_ID`](UnionType::NULL_TYPE_ID) is a [`Null`](crate::Null) child named
+    /// [`NULL_TYPE_ID`](UnionType::NULL_TYPE_ID) is a [`NullType`](crate::NullType) child named
     /// `"null"`, and [`VALUE_TYPE_ID`](UnionType::VALUE_TYPE_ID) is a `value_type`
     /// child named after the type.
     pub fn optional(value_type: &dyn RawDataType) -> Self {

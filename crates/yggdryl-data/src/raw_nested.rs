@@ -38,7 +38,7 @@ use super::RawDataType;
 ///         match data_type {
 ///             arrow_schema::DataType::Struct(fields) if *fields == Pair::children() => Ok(Pair),
 ///             other => Err(DataError::IncompatibleArrowType {
-///                 expected: "Struct(a: Int32, b: Int32)".to_string(),
+///                 expected: "TypedStruct(a: Int32Type, b: Int32Type)".to_string(),
 ///                 got: other.to_string(),
 ///             }),
 ///         }

@@ -11,7 +11,7 @@ use super::DataError;
 /// ([`byte_width`](RawDataType::byte_width) / [`bit_width`](RawDataType::bit_width)) —
 /// and converts to and from the Apache Arrow type it mirrors
 /// ([`to_arrow`](RawDataType::to_arrow) / [`from_arrow`](RawDataType::from_arrow)).
-/// Concrete types (`Int32`, `Utf8`, `Boolean`, …) implement it, and the parameterised
+/// Concrete types (`Int32Type`, `Utf8`, `Boolean`, …) implement it, and the parameterised
 /// [`RawField`](super::RawField) and [`RawScalar`](super::RawScalar) build on it.
 ///
 /// Following the FFI rules, it carries no lifetime parameters; the one borrow —
@@ -29,9 +29,9 @@ use super::DataError;
 ///
 /// // A minimal fixed-width primitive.
 /// #[derive(Debug)]
-/// struct Int32;
+/// struct Int32Type;
 ///
-/// impl RawDataType for Int32 {
+/// impl RawDataType for Int32Type {
 ///     fn name(&self) -> &str {
 ///         "int32"
 ///     }
@@ -46,24 +46,24 @@ use super::DataError;
 ///     }
 ///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
 ///         match data_type {
-///             arrow_schema::DataType::Int32 => Ok(Int32),
+///             arrow_schema::DataType::Int32 => Ok(Int32Type),
 ///             other => Err(DataError::IncompatibleArrowType {
-///                 expected: "Int32".to_string(),
+///                 expected: "Int32Type".to_string(),
 ///                 got: other.to_string(),
 ///             }),
 ///         }
 ///     }
 /// }
 ///
-/// assert_eq!(Int32.name(), "int32");
-/// assert_eq!(Int32.arrow_format(), "i");
-/// assert_eq!(Int32.byte_width(), Some(4));
-/// assert_eq!(Int32.bit_width(), Some(32)); // default: eight times the byte width
+/// assert_eq!(Int32Type.name(), "int32");
+/// assert_eq!(Int32Type.arrow_format(), "i");
+/// assert_eq!(Int32Type.byte_width(), Some(4));
+/// assert_eq!(Int32Type.bit_width(), Some(32)); // default: eight times the byte width
 ///
 /// // Arrow interop round-trips through the arrow-schema type.
-/// assert_eq!(Int32.to_arrow(), arrow_schema::DataType::Int32);
-/// assert!(Int32::from_arrow(&Int32.to_arrow()).is_ok());
-/// assert!(Int32::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+/// assert_eq!(Int32Type.to_arrow(), arrow_schema::DataType::Int32);
+/// assert!(Int32Type::from_arrow(&Int32Type.to_arrow()).is_ok());
+/// assert!(Int32Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 /// ```
 pub trait RawDataType: std::fmt::Debug + Send + Sync {
     /// A stable, lowercase name identifying this type, e.g. `"int32"`, `"utf8"`,

@@ -12,9 +12,9 @@ use crate::{DataError, DataType, RawDataType, RawNested};
 /// [`DataError::IndeterminateElementWidth`] — decode such lists from Arrow).
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataType, Int64, ListType, RawDataType, RawList};
+/// use yggdryl_data::{arrow_schema, DataType, Int64Type, ListType, RawDataType, RawList};
 ///
-/// let list = ListType::new(Int64);
+/// let list = ListType::new(Int64Type);
 /// assert_eq!(list.name(), "list");
 /// assert_eq!(list.arrow_format(), "+l");
 /// assert_eq!(list.byte_width(), None);
@@ -104,7 +104,7 @@ where
     D: Default,
     D::Scalar: crate::RawScalar<D>,
 {
-    type Scalar = super::ListScalar<D, D::Scalar>;
+    type Scalar = super::Serie<D, D::Scalar>;
 
     fn native_to_bytes(&self, values: &Vec<T>) -> Vec<u8> {
         values
@@ -140,7 +140,7 @@ where
 
     /// The default list scalar: the empty list.
     fn default_scalar(&self) -> Self::Scalar {
-        super::ListScalar::new(Vec::new())
+        super::Serie::new(Vec::new())
     }
 }
 
@@ -149,7 +149,7 @@ impl<T, D: DataType<T> + Default> crate::Nested<Vec<T>> for ListType<D> where
 {
 }
 
-impl<T, D: DataType<T> + Default> super::List<T> for ListType<D>
+impl<T, D: DataType<T> + Default> super::TypedList<T> for ListType<D>
 where
     D::Scalar: crate::RawScalar<D>,
 {

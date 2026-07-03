@@ -2,28 +2,28 @@
 //!
 //! Every integer type is exposed as its data type, field, scalar, logical
 //! optional data type and field, and null-or-value optional scalar (e.g.
-//! `Int64`, `Int64Field`, `Int64Scalar`, `OptionalInt64`, `OptionalInt64Field`,
-//! `OptionalInt64Scalar`), alongside the `Null` family and the `Union` data type.
+//! `Int64Type`, `Int64Field`, `Int64`, `OptionalInt64Type`, `OptionalInt64Field`,
+//! `OptionalInt64`), alongside the `NullType` family and the `UnionType` data type.
 //! Values adapt to JS idioms: the 8–32 bit types use `number`, the 64-bit types
 //! use `BigInt`, and scalars expose the `as*` accessors with the core contract —
 //! the value when the target represents it exactly, or a thrown error naming the
 //! fix (strings and `Buffer`s cross the FFI boundary as new JS objects, so the
 //! Rust-side "borrow, never copy" guarantee applies up to that boundary copy).
-//! The `Binary` family holds its bytes as a core positioned-IO `ByteBuffer` —
-//! `toIo()` hands one back. Optional scalars adapt construction to idioms: they
-//! are built straight from the native value (`new OptionalInt64Scalar(42n)`), the
+//! The `BinaryType` family holds its bytes as a core positioned-IO `ByteBuffer` —
+//! `toIo()` hands one back. TypedOptional scalars adapt construction to idioms: they
+//! are built straight from the native value (`new OptionalInt64(42n)`), the
 //! inner scalar being an implementation detail reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` / `arrow-array` values that
 //! cannot cross the FFI boundary; C Data Interface interop is future work),
-//! construction of a `Union` from arbitrary child fields (its `UnionFields` is an
-//! arrow-schema value — `Union` is reached through an optional data type's
+//! construction of a `UnionType` from arbitrary child fields (its `UnionFields` is an
+//! arrow-schema value — `UnionType` is reached through an optional data type's
 //! `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot
 //! model uniformly), and the nested families — the generic `ListType` / `MapType` /
 //! `StructType` with their scalars, the per-family trait pairs, and the
-//! buffer-backed `Int64Array` (whose zero-copy Arrow buffers await C Data
+//! buffer-backed `Int64Serie` (whose zero-copy Arrow buffers await C Data
 //! Interface interop) — which have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
@@ -60,12 +60,12 @@ fn bigint_to_u64(value: BigInt) -> Result<u64> {
 /// types, discriminated by a type id. Reached through a data type's `optional()`
 /// (arbitrary child fields stay Rust-only).
 #[napi(namespace = "data")]
-pub struct Union {
+pub struct UnionType {
     inner: yggdryl_data::UnionType,
 }
 
 #[napi(namespace = "data")]
-impl Union {
+impl UnionType {
     /// The type's lowercase name, `"union"`.
     #[napi]
     pub fn name(&self) -> String {
@@ -106,7 +106,7 @@ impl Union {
     }
 }
 
-/// A nullable `union` field: a name paired with a `Union` data type.
+/// A nullable `union` field: a name paired with a `UnionType` data type.
 #[napi(namespace = "data")]
 pub struct UnionField {
     inner: yggdryl_data::UnionField,
@@ -116,7 +116,7 @@ pub struct UnionField {
 impl UnionField {
     /// A field named `name` of the union type `dataType` (nullable by default).
     #[napi(constructor)]
-    pub fn new(name: String, data_type: &Union, nullable: Option<bool>) -> Self {
+    pub fn new(name: String, data_type: &UnionType, nullable: Option<bool>) -> Self {
         Self {
             inner: yggdryl_data::UnionField::new(
                 name,
@@ -134,8 +134,8 @@ impl UnionField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> Union {
-        Union {
+    pub fn data_type(&self) -> UnionType {
+        UnionType {
             inner: self.inner.data_type().clone(),
         }
     }
@@ -150,12 +150,12 @@ impl UnionField {
 /// The Apache Arrow `null` data type: every value is null, with no storage.
 #[napi(namespace = "data")]
 #[derive(Default)]
-pub struct Null {
-    inner: yggdryl_data::Null,
+pub struct NullType {
+    inner: yggdryl_data::NullType,
 }
 
 #[napi(namespace = "data")]
-impl Null {
+impl NullType {
     /// The null data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -212,8 +212,8 @@ impl NullField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> Null {
-        Null::default()
+    pub fn data_type(&self) -> NullType {
+        NullType::default()
     }
 
     /// Whether values in this field may be null.
@@ -226,12 +226,12 @@ impl NullField {
 /// The `null` scalar: always null, holding no value.
 #[napi(namespace = "data")]
 #[derive(Default)]
-pub struct NullScalar {
-    inner: yggdryl_data::NullScalar,
+pub struct Null {
+    inner: yggdryl_data::Null,
 }
 
 #[napi(namespace = "data")]
-impl NullScalar {
+impl Null {
     /// The null scalar.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -247,8 +247,8 @@ impl NullScalar {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> Null {
-        Null::default()
+    pub fn data_type(&self) -> NullType {
+        NullType::default()
     }
 }
 
@@ -465,8 +465,8 @@ macro_rules! int_data_node {
 
             /// The physical storage: the sparse null-or-value union.
             #[napi]
-            pub fn storage(&self) -> Union {
-                Union {
+            pub fn storage(&self) -> UnionType {
+                UnionType {
                     inner: self.inner.storage().clone(),
                 }
             }
@@ -576,7 +576,7 @@ macro_rules! int_data_node {
         #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
         #[napi(namespace = "data")]
         pub struct $optional {
-            inner: yggdryl_data::OptionalScalar<yggdryl_data::$ty, yggdryl_data::$scalar>,
+            inner: yggdryl_data::Optional<yggdryl_data::$ty, yggdryl_data::$scalar>,
         }
 
         #[napi(namespace = "data")]
@@ -585,7 +585,7 @@ macro_rules! int_data_node {
             #[napi(factory)]
             pub fn null() -> Self {
                 Self {
-                    inner: yggdryl_data::OptionalScalar::null(),
+                    inner: yggdryl_data::Optional::null(),
                 }
             }
 
@@ -696,7 +696,7 @@ macro_rules! int_wire_number_node {
             #[napi(constructor)]
             pub fn new(value: i64) -> Result<Self> {
                 Ok(Self {
-                    inner: yggdryl_data::OptionalScalar::new(yggdryl_data::$scalar::new(
+                    inner: yggdryl_data::Optional::new(yggdryl_data::$scalar::new(
                         wire_to_native::<$native>(value, $name)?,
                     )),
                 })
@@ -720,12 +720,12 @@ fn wire_to_native<T: TryFrom<i64>>(value: i64, name: &str) -> Result<T> {
 /// The Apache Arrow `binary` data type: a variable-length byte sequence.
 #[napi(namespace = "data")]
 #[derive(Default)]
-pub struct Binary {
-    inner: yggdryl_data::Binary,
+pub struct BinaryType {
+    inner: yggdryl_data::BinaryType,
 }
 
 #[napi(namespace = "data")]
-impl Binary {
+impl BinaryType {
     /// The `binary` data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -781,16 +781,16 @@ impl Binary {
 
     /// The default scalar: a scalar holding empty bytes.
     #[napi]
-    pub fn default_scalar(&self) -> BinaryScalar {
-        BinaryScalar {
+    pub fn default_scalar(&self) -> Binary {
+        Binary {
             inner: self.inner.default_scalar(),
         }
     }
 
     /// The logical optional of this type (stored as the null-or-value union).
     #[napi]
-    pub fn optional(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    pub fn optional(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 }
 
@@ -798,12 +798,12 @@ impl Binary {
 /// null-or-`binary` union.
 #[napi(namespace = "data")]
 #[derive(Default)]
-pub struct OptionalBinary {
-    inner: yggdryl_data::OptionalType<yggdryl_data::Binary>,
+pub struct OptionalBinaryType {
+    inner: yggdryl_data::OptionalType<yggdryl_data::BinaryType>,
 }
 
 #[napi(namespace = "data")]
-impl OptionalBinary {
+impl OptionalBinaryType {
     /// The optional `binary` data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -837,14 +837,14 @@ impl OptionalBinary {
 
     /// The value type this optional wraps.
     #[napi]
-    pub fn value_type(&self) -> Binary {
-        Binary::default()
+    pub fn value_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// The physical storage: the sparse null-or-value union.
     #[napi]
-    pub fn storage(&self) -> Union {
-        Union {
+    pub fn storage(&self) -> UnionType {
+        UnionType {
             inner: self.inner.storage().clone(),
         }
     }
@@ -857,8 +857,8 @@ impl OptionalBinary {
 
     /// The default scalar: the null variant (the scalar models nullness).
     #[napi]
-    pub fn default_scalar(&self) -> OptionalBinaryScalar {
-        OptionalBinaryScalar {
+    pub fn default_scalar(&self) -> OptionalBinary {
+        OptionalBinary {
             inner: self.inner.default_scalar(),
         }
     }
@@ -884,7 +884,7 @@ impl OptionalBinary {
 /// data type.
 #[napi(namespace = "data")]
 pub struct OptionalBinaryField {
-    inner: yggdryl_data::OptionalField<yggdryl_data::Binary>,
+    inner: yggdryl_data::OptionalField<yggdryl_data::BinaryType>,
 }
 
 #[napi(namespace = "data")]
@@ -905,8 +905,8 @@ impl OptionalBinaryField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    pub fn data_type(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -940,8 +940,8 @@ impl BinaryField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> Binary {
-        Binary::default()
+    pub fn data_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -954,17 +954,17 @@ impl BinaryField {
 /// A single, possibly-null `binary` value, holding its bytes as a core
 /// positioned-IO `ByteBuffer` (`toIo()` hands one back).
 #[napi(namespace = "data")]
-pub struct BinaryScalar {
-    inner: yggdryl_data::BinaryScalar,
+pub struct Binary {
+    inner: yggdryl_data::Binary,
 }
 
 #[napi(namespace = "data")]
-impl BinaryScalar {
+impl Binary {
     /// A `binary` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: Buffer) -> Self {
         Self {
-            inner: yggdryl_data::BinaryScalar::new(value.to_vec()),
+            inner: yggdryl_data::Binary::new(value.to_vec()),
         }
     }
 
@@ -972,7 +972,7 @@ impl BinaryScalar {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_data::BinaryScalar::null(),
+            inner: yggdryl_data::Binary::null(),
         }
     }
 
@@ -990,8 +990,8 @@ impl BinaryScalar {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> Binary {
-        Binary::default()
+    pub fn data_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for positioned
@@ -1005,24 +1005,22 @@ impl BinaryScalar {
     }
 }
 
-as_accessors_node!(BinaryScalar);
+as_accessors_node!(Binary);
 
 /// A single value of the union between null and `binary`: a value variant, or
 /// the null variant.
 #[napi(namespace = "data")]
-pub struct OptionalBinaryScalar {
-    inner: yggdryl_data::OptionalScalar<yggdryl_data::Binary, yggdryl_data::BinaryScalar>,
+pub struct OptionalBinary {
+    inner: yggdryl_data::Optional<yggdryl_data::BinaryType, yggdryl_data::Binary>,
 }
 
 #[napi(namespace = "data")]
-impl OptionalBinaryScalar {
+impl OptionalBinary {
     /// A scalar holding the `binary` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: Buffer) -> Self {
         Self {
-            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::BinaryScalar::new(
-                value.to_vec(),
-            )),
+            inner: yggdryl_data::Optional::new(yggdryl_data::Binary::new(value.to_vec())),
         }
     }
 
@@ -1030,7 +1028,7 @@ impl OptionalBinaryScalar {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_data::OptionalScalar::null(),
+            inner: yggdryl_data::Optional::null(),
         }
     }
 
@@ -1048,147 +1046,140 @@ impl OptionalBinaryScalar {
 
     /// The inner scalar, when this holds the value variant.
     #[napi]
-    pub fn scalar(&self) -> Option<BinaryScalar> {
-        self.inner.scalar().map(|scalar| BinaryScalar {
+    pub fn scalar(&self) -> Option<Binary> {
+        self.inner.scalar().map(|scalar| Binary {
             inner: scalar.clone(),
         })
     }
 
     /// The scalar's data type: the logical optional of the value type.
     #[napi]
-    pub fn data_type(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    pub fn data_type(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 }
 
-as_accessors_node!(OptionalBinaryScalar);
+as_accessors_node!(OptionalBinary);
 
 int_data_node!(
-    Int8,
+    Int8Type,
     Int8Field,
-    Int8Scalar,
-    OptionalInt8,
+    Int8,
+    OptionalInt8Type,
     OptionalInt8Field,
-    OptionalInt8Scalar,
+    OptionalInt8,
     i8,
     "int8"
 );
 int_data_node!(
-    Int16,
+    Int16Type,
     Int16Field,
-    Int16Scalar,
-    OptionalInt16,
+    Int16,
+    OptionalInt16Type,
     OptionalInt16Field,
-    OptionalInt16Scalar,
+    OptionalInt16,
     i16,
     "int16"
 );
 int_data_node!(
-    Int32,
+    Int32Type,
     Int32Field,
-    Int32Scalar,
-    OptionalInt32,
+    Int32,
+    OptionalInt32Type,
     OptionalInt32Field,
-    OptionalInt32Scalar,
+    OptionalInt32,
     i32,
     "int32"
 );
 int_data_node!(
-    Int64,
+    Int64Type,
     Int64Field,
-    Int64Scalar,
-    OptionalInt64,
+    Int64,
+    OptionalInt64Type,
     OptionalInt64Field,
-    OptionalInt64Scalar,
+    OptionalInt64,
     i64,
     "int64"
 );
 int_data_node!(
-    UInt8,
+    UInt8Type,
     UInt8Field,
-    UInt8Scalar,
-    OptionalUInt8,
+    UInt8,
+    OptionalUInt8Type,
     OptionalUInt8Field,
-    OptionalUInt8Scalar,
+    OptionalUInt8,
     u8,
     "uint8"
 );
 int_data_node!(
-    UInt16,
+    UInt16Type,
     UInt16Field,
-    UInt16Scalar,
-    OptionalUInt16,
+    UInt16,
+    OptionalUInt16Type,
     OptionalUInt16Field,
-    OptionalUInt16Scalar,
+    OptionalUInt16,
     u16,
     "uint16"
 );
 int_data_node!(
-    UInt32,
+    UInt32Type,
     UInt32Field,
-    UInt32Scalar,
-    OptionalUInt32,
+    UInt32,
+    OptionalUInt32Type,
     OptionalUInt32Field,
-    OptionalUInt32Scalar,
+    OptionalUInt32,
     u32,
     "uint32"
 );
 int_data_node!(
-    UInt64,
+    UInt64Type,
     UInt64Field,
-    UInt64Scalar,
-    OptionalUInt64,
+    UInt64,
+    OptionalUInt64Type,
     OptionalUInt64Field,
-    OptionalUInt64Scalar,
+    OptionalUInt64,
     u64,
     "uint64"
 );
 
+int_wire_number_node!(Int8Type, Int8, OptionalInt8Type, OptionalInt8, i8, "int8");
 int_wire_number_node!(
-    Int8,
-    Int8Scalar,
-    OptionalInt8,
-    OptionalInt8Scalar,
-    i8,
-    "int8"
-);
-int_wire_number_node!(
+    Int16Type,
     Int16,
-    Int16Scalar,
+    OptionalInt16Type,
     OptionalInt16,
-    OptionalInt16Scalar,
     i16,
     "int16"
 );
 int_wire_number_node!(
+    Int32Type,
     Int32,
-    Int32Scalar,
+    OptionalInt32Type,
     OptionalInt32,
-    OptionalInt32Scalar,
     i32,
     "int32"
 );
 int_wire_number_node!(
+    UInt8Type,
     UInt8,
-    UInt8Scalar,
+    OptionalUInt8Type,
     OptionalUInt8,
-    OptionalUInt8Scalar,
     u8,
     "uint8"
 );
 int_wire_number_node!(
+    UInt16Type,
     UInt16,
-    UInt16Scalar,
+    OptionalUInt16Type,
     OptionalUInt16,
-    OptionalUInt16Scalar,
     u16,
     "uint16"
 );
 int_wire_number_node!(
+    UInt32Type,
     UInt32,
-    UInt32Scalar,
+    OptionalUInt32Type,
     OptionalUInt32,
-    OptionalUInt32Scalar,
     u32,
     "uint32"
 );
@@ -1197,7 +1188,7 @@ int_wire_number_node!(
 // the full range), so their width-dependent surface is written out per type.
 
 #[napi(namespace = "data")]
-impl Int64 {
+impl Int64Type {
     /// Serialize a native value into its little-endian Arrow bytes.
     #[napi]
     pub fn native_to_bytes(&self, value: BigInt) -> Result<Buffer> {
@@ -1218,7 +1209,7 @@ impl Int64 {
 }
 
 #[napi(namespace = "data")]
-impl Int64 {
+impl Int64Type {
     /// The type's default native value, `0n`.
     #[napi]
     pub fn default_value(&self) -> BigInt {
@@ -1227,7 +1218,7 @@ impl Int64 {
 }
 
 #[napi(namespace = "data")]
-impl OptionalInt64 {
+impl OptionalInt64Type {
     /// The default native value of the value type, `0n`.
     #[napi]
     pub fn default_value(&self) -> BigInt {
@@ -1255,12 +1246,12 @@ impl OptionalInt64 {
 }
 
 #[napi(namespace = "data")]
-impl Int64Scalar {
+impl Int64 {
     /// An `int64` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_data::Int64Scalar::new(bigint_to_i64(value)?),
+            inner: yggdryl_data::Int64::new(bigint_to_i64(value)?),
         })
     }
 
@@ -1272,14 +1263,12 @@ impl Int64Scalar {
 }
 
 #[napi(namespace = "data")]
-impl OptionalInt64Scalar {
+impl OptionalInt64 {
     /// A scalar holding the `int64` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::Int64Scalar::new(
-                bigint_to_i64(value)?,
-            )),
+            inner: yggdryl_data::Optional::new(yggdryl_data::Int64::new(bigint_to_i64(value)?)),
         })
     }
 
@@ -1291,7 +1280,7 @@ impl OptionalInt64Scalar {
 }
 
 #[napi(namespace = "data")]
-impl UInt64 {
+impl UInt64Type {
     /// Serialize a native value into its little-endian Arrow bytes.
     #[napi]
     pub fn native_to_bytes(&self, value: BigInt) -> Result<Buffer> {
@@ -1312,7 +1301,7 @@ impl UInt64 {
 }
 
 #[napi(namespace = "data")]
-impl UInt64 {
+impl UInt64Type {
     /// The type's default native value, `0n`.
     #[napi]
     pub fn default_value(&self) -> BigInt {
@@ -1321,7 +1310,7 @@ impl UInt64 {
 }
 
 #[napi(namespace = "data")]
-impl OptionalUInt64 {
+impl OptionalUInt64Type {
     /// Serialize a native value into its little-endian Arrow bytes — the value
     /// type's codec.
     #[napi]
@@ -1349,12 +1338,12 @@ impl OptionalUInt64 {
 }
 
 #[napi(namespace = "data")]
-impl UInt64Scalar {
+impl UInt64 {
     /// A `uint64` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_data::UInt64Scalar::new(bigint_to_u64(value)?),
+            inner: yggdryl_data::UInt64::new(bigint_to_u64(value)?),
         })
     }
 
@@ -1366,14 +1355,12 @@ impl UInt64Scalar {
 }
 
 #[napi(namespace = "data")]
-impl OptionalUInt64Scalar {
+impl OptionalUInt64 {
     /// A scalar holding the `uint64` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_data::OptionalScalar::new(yggdryl_data::UInt64Scalar::new(
-                bigint_to_u64(value)?,
-            )),
+            inner: yggdryl_data::Optional::new(yggdryl_data::UInt64::new(bigint_to_u64(value)?)),
         })
     }
 

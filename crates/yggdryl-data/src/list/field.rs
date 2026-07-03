@@ -10,9 +10,9 @@ use crate::{DataError, DataType, Field, RawDataType, RawField};
 /// the typed [`Field<Vec<T>>`] whenever the value type has a [`DataType<T>`] codec.
 ///
 /// ```
-/// use yggdryl_data::{Int64, ListField, RawDataType, RawField, RawList};
+/// use yggdryl_data::{Int64Type, ListField, RawDataType, RawField, RawList};
 ///
-/// let scores = ListField::<Int64>::new("scores", true);
+/// let scores = ListField::<Int64Type>::new("scores", true);
 /// assert_eq!(scores.name(), "scores");
 /// assert_eq!(scores.data_type().name(), "list");
 /// assert_eq!(scores.data_type().value_type().name(), "int64");

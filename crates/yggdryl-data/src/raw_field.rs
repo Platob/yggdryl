@@ -15,20 +15,20 @@ use super::{DataError, RawDataType};
 /// FFI.
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataError, Int32, RawDataType, RawField};
+/// use yggdryl_data::{arrow_schema, DataError, Int32Type, RawDataType, RawField};
 ///
 /// #[derive(Debug)]
 /// struct Column {
 ///     name: String,
-///     data_type: Int32,
+///     data_type: Int32Type,
 ///     nullable: bool,
 /// }
 ///
-/// impl RawField<Int32> for Column {
+/// impl RawField<Int32Type> for Column {
 ///     fn name(&self) -> &str {
 ///         &self.name
 ///     }
-///     fn data_type(&self) -> &Int32 {
+///     fn data_type(&self) -> &Int32Type {
 ///         &self.data_type
 ///     }
 ///     fn is_nullable(&self) -> bool {
@@ -38,19 +38,19 @@ use super::{DataError, RawDataType};
 ///         // An extension type is a different logical type riding on metadata.
 ///         if let Some(extension) = field.metadata().get("ARROW:extension:name") {
 ///             return Err(DataError::IncompatibleArrowType {
-///                 expected: "Int32".to_string(),
+///                 expected: "Int32Type".to_string(),
 ///                 got: format!("the extension type \"{extension}\""),
 ///             });
 ///         }
 ///         Ok(Column {
 ///             name: field.name().to_string(),
-///             data_type: Int32::from_arrow(field.data_type())?,
+///             data_type: Int32Type::from_arrow(field.data_type())?,
 ///             nullable: field.is_nullable(),
 ///         })
 ///     }
 /// }
 ///
-/// let id = Column { name: "id".to_string(), data_type: Int32, nullable: false };
+/// let id = Column { name: "id".to_string(), data_type: Int32Type, nullable: false };
 /// assert_eq!(id.name(), "id");
 /// assert_eq!(id.data_type().name(), "int32");
 /// assert!(!id.is_nullable());

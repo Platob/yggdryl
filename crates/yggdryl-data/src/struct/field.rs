@@ -55,7 +55,7 @@ impl RawField<StructType> for StructField {
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
         use crate::RawDataType;
         let data_type = StructType::from_arrow(field.data_type())?;
-        crate::raw_field::validate_field_metadata(field, "Struct")?;
+        crate::raw_field::validate_field_metadata(field, "TypedStruct")?;
         Ok(Self::new(field.name(), data_type, field.is_nullable()))
     }
 }

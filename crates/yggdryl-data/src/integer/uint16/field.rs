@@ -1,5 +1,5 @@
-//! The [`UInt16Field`] field of the [`UInt16`](super::UInt16) data type.
+//! The [`UInt16Field`] field of the [`UInt16Type`](super::UInt16Type) data type.
 
-use super::UInt16;
+use super::UInt16Type;
 
-crate::integer::int_field!(UInt16Field, UInt16, u16, "uint16");
+crate::integer::int_field!(UInt16Field, UInt16Type, u16, "uint16", UInt16);

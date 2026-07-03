@@ -12,9 +12,9 @@ use crate::{DataError, DataType, RawDataType, RawNested};
 /// [`DataError::IndeterminateElementWidth`] — decode such maps from Arrow).
 ///
 /// ```
-/// use yggdryl_data::{arrow_schema, DataType, Int64, MapType, RawDataType, RawMap, UInt8};
+/// use yggdryl_data::{arrow_schema, DataType, Int64Type, MapType, RawDataType, RawMap, UInt8Type};
 ///
-/// let map = MapType::new(UInt8, Int64);
+/// let map = MapType::new(UInt8Type, Int64Type);
 /// assert_eq!(map.name(), "map");
 /// assert_eq!(map.arrow_format(), "+m");
 /// assert_eq!(map.byte_width(), None);
@@ -140,7 +140,7 @@ where
     K::Scalar: crate::RawScalar<K>,
     V::Scalar: crate::RawScalar<V>,
 {
-    type Scalar = super::MapScalar<K, V, K::Scalar, V::Scalar>;
+    type Scalar = super::Map<K, V, K::Scalar, V::Scalar>;
 
     fn native_to_bytes(&self, entries: &Vec<(TK, TV)>) -> Vec<u8> {
         entries
@@ -193,7 +193,7 @@ where
 
     /// The default map scalar: the empty map.
     fn default_scalar(&self) -> Self::Scalar {
-        super::MapScalar::default()
+        super::Map::default()
     }
 }
 
@@ -206,7 +206,7 @@ where
 {
 }
 
-impl<TK, TV, K, V> super::Map<TK, TV> for MapType<K, V>
+impl<TK, TV, K, V> super::TypedMap<TK, TV> for MapType<K, V>
 where
     K: DataType<TK> + Default,
     V: DataType<TV> + Default,

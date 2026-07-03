@@ -6,7 +6,7 @@ use crate::{DataError, DataType, RawDataType, RawLogical, UnionType};
 
 /// The logical `optional` data type: a value of the value type `D`, or null —
 /// physically stored as the sparse two-variant [`UnionType`] between
-/// [`Null`](crate::Null) and `D` ([`UnionType::optional`]).
+/// [`NullType`](crate::NullType) and `D` ([`UnionType::optional`]).
 ///
 /// It is the first concrete logical type ([`RawLogical`] and, with a codec,
 /// [`Logical`](crate::Logical)): [`storage`](RawLogical::storage) returns
@@ -14,15 +14,15 @@ use crate::{DataError, DataType, RawDataType, RawLogical, UnionType};
 /// `to_arrow` describe the union — Arrow has no separate "optional" type, so this
 /// type has no [`DataTypeId`](crate::DataTypeId)). The typed layer delegates the
 /// other way: the [`DataType<T>`] byte codec is the *value type's* codec, so an
-/// `OptionalType<Int64>` reads and writes plain `i64` bytes.
+/// `OptionalType<Int64Type>` reads and writes plain `i64` bytes.
 ///
 /// The storage union is a pure function of the value type, so it is built lazily on
 /// first use and plays no part in equality.
 ///
 /// ```
-/// use yggdryl_data::{DataType, Int64, OptionalType, RawDataType, RawLogical, RawOptional};
+/// use yggdryl_data::{DataType, Int64Type, OptionalType, RawDataType, RawLogical, RawOptional};
 ///
-/// let optional = OptionalType::new(Int64);
+/// let optional = OptionalType::new(Int64Type);
 /// assert_eq!(optional.name(), "optional");
 /// assert_eq!(optional.value_type().name(), "int64");
 ///
@@ -32,11 +32,11 @@ use crate::{DataError, DataType, RawDataType, RawLogical, UnionType};
 /// assert_eq!(optional.byte_width(), None);
 ///
 /// // ...while the typed codec is the value type's.
-/// assert_eq!(optional.native_to_bytes(&42), Int64.native_to_bytes(&42));
+/// assert_eq!(optional.native_to_bytes(&42), Int64Type.native_to_bytes(&42));
 /// assert_eq!(optional.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 ///
 /// // from_arrow is the exact inverse of to_arrow.
-/// assert_eq!(OptionalType::<Int64>::from_arrow(&optional.to_arrow()).unwrap(), optional);
+/// assert_eq!(OptionalType::<Int64Type>::from_arrow(&optional.to_arrow()).unwrap(), optional);
 /// ```
 #[derive(Debug)]
 pub struct OptionalType<D> {
@@ -67,7 +67,7 @@ where
     type Storage = UnionType;
 }
 
-impl<T, D: DataType<T> + Default> super::Optional<T> for OptionalType<D>
+impl<T, D: DataType<T> + Default> super::TypedOptional<T> for OptionalType<D>
 where
     D::Scalar: crate::RawScalar<D>,
 {
@@ -156,7 +156,7 @@ impl<T, D: DataType<T> + Default> DataType<T> for OptionalType<D>
 where
     D::Scalar: crate::RawScalar<D>,
 {
-    type Scalar = super::OptionalScalar<D, D::Scalar>;
+    type Scalar = super::Optional<D, D::Scalar>;
 
     fn native_to_bytes(&self, value: &T) -> Vec<u8> {
         self.value_type.native_to_bytes(value)
@@ -177,9 +177,9 @@ where
     }
 
     // The optional's scalar models nullness itself, so its default is the null
-    // variant — matching `OptionalScalar::default` and `Option::default`.
+    // variant — matching `Optional::default` and `Option::default`.
     fn default_scalar(&self) -> Self::Scalar {
-        super::OptionalScalar::null()
+        super::Optional::null()
     }
 }
 

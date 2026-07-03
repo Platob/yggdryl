@@ -19,18 +19,18 @@ use super::{DataError, RawDataType};
 /// string scalar can expose `Value = str`.
 ///
 /// ```
-/// use yggdryl_data::{arrow_array, DataError, Int32, RawDataType, RawScalar};
+/// use yggdryl_data::{arrow_array, DataError, Int32Type, RawDataType, RawScalar};
 /// use arrow_array::Array; // len / is_null on the arrow side
 ///
 /// #[derive(Debug)]
-/// struct Int32Scalar {
-///     data_type: Int32,
+/// struct Int32 {
+///     data_type: Int32Type,
 ///     value: Option<i32>,
 /// }
 ///
-/// impl RawScalar<Int32> for Int32Scalar {
+/// impl RawScalar<Int32Type> for Int32 {
 ///     type Value = i32;
-///     fn data_type(&self) -> &Int32 {
+///     fn data_type(&self) -> &Int32Type {
 ///         &self.data_type
 ///     }
 ///     fn is_null(&self) -> bool {
@@ -53,11 +53,11 @@ use super::{DataError, RawDataType};
 ///             .as_any()
 ///             .downcast_ref::<arrow_array::Int32Array>()
 ///             .ok_or_else(|| DataError::IncompatibleArrowType {
-///                 expected: "Int32".to_string(),
+///                 expected: "Int32Type".to_string(),
 ///                 got: array.data_type().to_string(),
 ///             })?;
-///         Ok(Int32Scalar {
-///             data_type: Int32,
+///         Ok(Int32 {
+///             data_type: Int32Type,
 ///             value: (!array.is_null(0)).then(|| array.value(0)),
 ///         })
 ///     }
@@ -70,7 +70,7 @@ use super::{DataError, RawDataType};
 ///     }
 /// }
 ///
-/// let answer = Int32Scalar { data_type: Int32, value: Some(42) };
+/// let answer = Int32 { data_type: Int32Type, value: Some(42) };
 /// assert_eq!(answer.data_type().name(), "int32");
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
@@ -81,9 +81,9 @@ use super::{DataError, RawDataType};
 /// // Arrow interop: a one-element array, round-tripped.
 /// let arrow = answer.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(Int32Scalar::from_arrow(arrow.as_ref()).unwrap().value(), Some(&42));
+/// assert_eq!(Int32::from_arrow(arrow.as_ref()).unwrap().value(), Some(&42));
 ///
-/// let missing = Int32Scalar { data_type: Int32, value: None };
+/// let missing = Int32 { data_type: Int32Type, value: None };
 /// assert!(missing.is_null());
 /// assert!(missing.to_arrow().is_null(0));
 /// ```

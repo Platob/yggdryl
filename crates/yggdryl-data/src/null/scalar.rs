@@ -1,6 +1,6 @@
-//! The [`NullScalar`] scalar of the [`Null`](super::Null) data type.
+//! The [`Null`] scalar of the [`NullType`](super::NullType) data type.
 
-use super::Null;
+use super::NullType;
 use crate::{DataError, RawScalar, Scalar};
 
 /// The `null` scalar: always null, holding no value.
@@ -11,9 +11,9 @@ use crate::{DataError, RawScalar, Scalar};
 /// always null, and the shared accessor contract puts nullness first.
 ///
 /// ```
-/// use yggdryl_data::{DataError, NullScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{DataError, Null, RawDataType, RawScalar};
 ///
-/// let nothing = NullScalar::new();
+/// let nothing = Null::new();
 /// assert!(nothing.is_null());
 /// assert_eq!(nothing.value(), None);
 /// assert!(matches!(nothing.as_i64(), Err(DataError::NullValue)));
@@ -22,24 +22,26 @@ use crate::{DataError, RawScalar, Scalar};
 /// // Arrow's form is a one-element NullArray.
 /// let arrow = nothing.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(NullScalar::from_arrow(arrow.as_ref()).unwrap(), nothing);
+/// assert_eq!(Null::from_arrow(arrow.as_ref()).unwrap(), nothing);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct NullScalar {
-    data_type: Null,
+pub struct Null {
+    data_type: NullType,
 }
 
-impl NullScalar {
+impl Null {
     /// The null scalar.
     pub fn new() -> Self {
-        Self { data_type: Null }
+        Self {
+            data_type: NullType,
+        }
     }
 }
 
-impl RawScalar<Null> for NullScalar {
+impl RawScalar<NullType> for Null {
     type Value = ();
 
-    fn data_type(&self) -> &Null {
+    fn data_type(&self) -> &NullType {
         &self.data_type
     }
 
@@ -115,6 +117,6 @@ impl RawScalar<Null> for NullScalar {
     }
 }
 
-impl Scalar<()> for NullScalar {
-    type Type = Null;
+impl Scalar<()> for Null {
+    type Type = NullType;
 }

@@ -16,13 +16,13 @@ use super::{DataType, RawDataType, RawLogical};
 /// `D: DataType<T>`.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Logical, OptionalType, RawDataType, RawLogical};
+/// use yggdryl_data::{Int64Type, Logical, OptionalType, RawDataType, RawLogical};
 ///
 /// fn storage_name<T, L: Logical<T>>(logical: &L) -> String {
 ///     logical.storage().name().to_string()
 /// }
 ///
-/// let optional = OptionalType::new(Int64);
+/// let optional = OptionalType::new(Int64Type);
 /// assert_eq!(storage_name(&optional), "union");
 /// ```
 pub trait Logical<T>: RawLogical<Self::Storage> + DataType<T> {

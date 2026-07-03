@@ -1,5 +1,5 @@
-//! The [`Int64Field`] field of the [`Int64`](super::Int64) data type.
+//! The [`Int64Field`] field of the [`Int64Type`](super::Int64Type) data type.
 
-use super::Int64;
+use super::Int64Type;
 
-crate::integer::int_field!(Int64Field, Int64, i64, "int64");
+crate::integer::int_field!(Int64Field, Int64Type, i64, "int64", Int64);

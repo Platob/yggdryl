@@ -1,4 +1,4 @@
-//! The [`OptionalScalar`] scalar of the [`OptionalType`](super::OptionalType) data type.
+//! The [`Optional`] scalar of the [`OptionalType`](super::OptionalType) data type.
 
 use super::OptionalType;
 use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, UnionType};
@@ -6,8 +6,8 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// A single value of the [`OptionalType`] of the value type `D` — an inner scalar `S`,
 /// or the null variant.
 ///
-/// Where a plain scalar (e.g. [`Int64Scalar`](crate::Int64Scalar)) models nullness
-/// as a missing value of its own type, an `OptionalScalar` models it as a *union
+/// Where a plain scalar (e.g. [`Int64`](crate::Int64)) models nullness
+/// as a missing value of its own type, an `Optional` models it as a *union
 /// variant*: its data type is the logical [`OptionalType<D>`](OptionalType), whose storage
 /// is the sparse null-or-value [`UnionType`], and its Arrow form is a one-element
 /// `UnionArray` whose type id selects the null or the value child. Access redirects
@@ -16,13 +16,13 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// holding the value (``int64 scalars have no str conversion``), while the null
 /// variant errors with [`DataError::NullValue`]. A null inner scalar *normalizes to the null variant* — the
 /// two representations of null are one state, so equality,
-/// [`scalar`](OptionalScalar::scalar) (which answers `None` for it) and the Arrow
+/// [`scalar`](Optional::scalar) (which answers `None` for it) and the Arrow
 /// round trip all agree.
 ///
 /// ```
-/// use yggdryl_data::{Int64, Int64Scalar, OptionalScalar, RawDataType, RawLogical, RawScalar};
+/// use yggdryl_data::{Int64Type, Int64, Optional, RawDataType, RawLogical, RawScalar};
 ///
-/// let answer = OptionalScalar::new(Int64Scalar::new(42));
+/// let answer = Optional::new(Int64::new(42));
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
 /// assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
@@ -30,7 +30,7 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// assert_eq!(answer.data_type().storage().name(), "union");
 /// assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 ///
-/// let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
+/// let missing: Optional<Int64Type, Int64> = Optional::null();
 /// assert!(missing.is_null());
 /// assert!(missing.as_i64().is_err()); // a null holds no value
 ///
@@ -38,18 +38,18 @@ use crate::{DataError, RawDataType, RawLogical, RawScalar, RawUnion, Scalar, Uni
 /// // value child back through the inner scalar's own from_arrow.
 /// let arrow = answer.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(OptionalScalar::from_arrow(arrow.as_ref()).unwrap(), answer);
+/// assert_eq!(Optional::from_arrow(arrow.as_ref()).unwrap(), answer);
 /// ```
 #[derive(Debug)]
-pub struct OptionalScalar<D, S> {
+pub struct Optional<D, S> {
     data_type: OptionalType<D>,
     value: Option<S>,
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> OptionalScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> Optional<D, S> {
     /// A scalar holding the value variant `scalar`. A null inner scalar
     /// *normalizes to the null variant* — the two representations of null are one
-    /// state, so equality, [`scalar`](OptionalScalar::scalar) (which then answers
+    /// state, so equality, [`scalar`](Optional::scalar) (which then answers
     /// `None`) and the Arrow round trip all agree.
     pub fn new(scalar: S) -> Self {
         Self {
@@ -72,13 +72,13 @@ impl<D: RawDataType + Default, S: RawScalar<D>> OptionalScalar<D, S> {
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Default for OptionalScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> Default for Optional<D, S> {
     fn default() -> Self {
         Self::null()
     }
 }
 
-impl<D: Clone, S: Clone> Clone for OptionalScalar<D, S> {
+impl<D: Clone, S: Clone> Clone for Optional<D, S> {
     fn clone(&self) -> Self {
         Self {
             data_type: self.data_type.clone(),
@@ -87,7 +87,7 @@ impl<D: Clone, S: Clone> Clone for OptionalScalar<D, S> {
     }
 }
 
-impl<D, S: PartialEq> PartialEq for OptionalScalar<D, S> {
+impl<D, S: PartialEq> PartialEq for Optional<D, S> {
     // The data type is a function of `D`, identical for every instance, so
     // equality is the value alone.
     fn eq(&self, other: &Self) -> bool {
@@ -95,16 +95,16 @@ impl<D, S: PartialEq> PartialEq for OptionalScalar<D, S> {
     }
 }
 
-impl<D, S: Eq> Eq for OptionalScalar<D, S> {}
+impl<D, S: Eq> Eq for Optional<D, S> {}
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<S> for OptionalScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> From<S> for Optional<D, S> {
     /// A scalar holding the value variant `scalar`.
     fn from(scalar: S) -> Self {
         Self::new(scalar)
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for OptionalScalar<D, S> {
+impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for Optional<D, S> {
     /// A scalar holding the value variant, or the null variant for `None`.
     fn from(scalar: Option<S>) -> Self {
         match scalar {
@@ -114,9 +114,7 @@ impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for OptionalScal
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<OptionalType<D>>
-    for OptionalScalar<D, S>
-{
+impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<OptionalType<D>> for Optional<D, S> {
     type Value = S::Value;
 
     fn data_type(&self) -> &OptionalType<D> {
@@ -227,7 +225,7 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<OptionalType<D>>
 }
 
 impl<D: RawDataType + Default, S: RawScalar<D>> Scalar<<S as RawScalar<D>>::Value>
-    for OptionalScalar<D, S>
+    for Optional<D, S>
 {
     type Type = OptionalType<D>;
 }

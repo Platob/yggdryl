@@ -1,5 +1,5 @@
-//! The [`Int16Scalar`] scalar of the [`Int16`](super::Int16) data type.
+//! The [`Int16`] scalar of the [`Int16Type`](super::Int16Type) data type.
 
-use super::Int16;
+use super::Int16Type;
 
-crate::integer::int_scalar!(Int16Scalar, Int16, i16, "int16", Int16Array);
+crate::integer::int_scalar!(Int16, Int16Type, i16, "int16", Int16Array, Int16);

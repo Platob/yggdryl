@@ -1,5 +1,5 @@
-//! The [`Int64Scalar`] scalar of the [`Int64`](super::Int64) data type.
+//! The [`Int64`] scalar of the [`Int64Type`](super::Int64Type) data type.
 
-use super::Int64;
+use super::Int64Type;
 
-crate::integer::int_scalar!(Int64Scalar, Int64, i64, "int64", Int64Array);
+crate::integer::int_scalar!(Int64, Int64Type, i64, "int64", Int64Array, Int64);

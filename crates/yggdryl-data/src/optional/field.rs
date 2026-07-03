@@ -10,9 +10,9 @@ use crate::{DataError, DataType, Field, RawDataType, RawField};
 /// typed [`Field<T>`] whenever the value type has a [`DataType<T>`] codec.
 ///
 /// ```
-/// use yggdryl_data::{Int64, OptionalField, RawDataType, RawField, RawOptional};
+/// use yggdryl_data::{Int64Type, OptionalField, RawDataType, RawField, RawOptional};
 ///
-/// let score = OptionalField::<Int64>::new("score", true);
+/// let score = OptionalField::<Int64Type>::new("score", true);
 /// assert_eq!(score.name(), "score");
 /// assert_eq!(score.data_type().name(), "optional");
 /// assert_eq!(score.data_type().value_type().name(), "int64");

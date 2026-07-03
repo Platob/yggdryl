@@ -9,7 +9,7 @@ use arrow_schema::Fields;
 /// [`to_arrow`](RawDataType::to_arrow) / [`from_arrow`](RawDataType::from_arrow)
 /// round-trip losslessly — like the dynamic [`UnionType`](crate::UnionType), whose
 /// children are only known at runtime, it stays raw-only (a statically-shaped
-/// struct also implements the typed [`Struct`](crate::Struct)).
+/// struct also implements the typed [`TypedStruct`](crate::TypedStruct)).
 ///
 /// ```
 /// use yggdryl_data::{arrow_schema, RawDataType, RawNested, RawStruct, StructType};
@@ -68,7 +68,7 @@ impl RawDataType for StructType {
         match data_type {
             arrow_schema::DataType::Struct(fields) => Ok(Self::new(fields.clone())),
             other => Err(DataError::IncompatibleArrowType {
-                expected: "Struct".to_string(),
+                expected: "TypedStruct".to_string(),
                 got: other.to_string(),
             }),
         }

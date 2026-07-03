@@ -23,21 +23,21 @@ def bench(label, function):
 
 
 def main():
-    int64 = data.Int64()
-    scalar = data.Int64Scalar(42)
-    optional = data.OptionalInt64Scalar(42)
+    int64 = data.Int64Type()
+    scalar = data.Int64(42)
+    optional = data.OptionalInt64(42)
     encoded = int64.native_to_bytes(42)
 
-    bench("Int64Scalar(42)", lambda: data.Int64Scalar(42))
-    bench("Int64Scalar.null()", data.Int64Scalar.null)
+    bench("Int64(42)", lambda: data.Int64(42))
+    bench("Int64.null()", data.Int64.null)
     bench("scalar.value()", scalar.value)
     bench("scalar.as_i64() direct", scalar.as_i64)
     bench("scalar.as_i8() converted", scalar.as_i8)
     bench("scalar.as_f64() checked", scalar.as_f64)
-    bench("OptionalInt64Scalar(42)", lambda: data.OptionalInt64Scalar(42))
+    bench("OptionalInt64(42)", lambda: data.OptionalInt64(42))
     bench("optional.as_i64() redirected", optional.as_i64)
     bench("optional.data_type()", optional.data_type)
-    bench("Int64().optional()", int64.optional)
+    bench("Int64Type().optional()", int64.optional)
     bench("native_to_bytes(42)", lambda: int64.native_to_bytes(42))
     bench("native_from_bytes(8B)", lambda: int64.native_from_bytes(encoded))
     bench("Int64Field('id', False)", lambda: data.Int64Field("id", False))

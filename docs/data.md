@@ -13,8 +13,8 @@ layer grows.
 The bindings expose the layer as `yggdryl.data` (Python) and `yggdryl.data` (Node),
 adapting to idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
 `BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
-scalars are concrete per-type classes (`OptionalInt64Scalar`,
-`OptionalBinaryScalar`, …) built straight from the native value, and the `as_*`
+scalars are concrete per-type classes (`OptionalInt64`,
+`OptionalBinary`, …) built straight from the native value, and the `as_*`
 accessors surface the core `DataError` as a raised `ValueError` (Python) / thrown
 `Error` (Node). Four things stay
 **Rust-only**, stated here and in both binding module docs: the [Arrow
@@ -24,7 +24,7 @@ from arbitrary child fields (reached in the bindings through an optional data ty
 `storage()`), the [`DataTypeId`](#type-ids) classifier, and the
 [nested families](#nested-types-list-map-and-struct) (the generic `ListType` /
 `MapType` / `StructType` with their scalars, the per-family trait pairs, and the
-buffer-backed `Int64Array`, whose zero-copy Arrow buffers await C Data Interface
+buffer-backed `Int64Serie`, whose zero-copy Arrow buffers await C Data Interface
 interop), which have no concrete FFI shape yet.
 
 The type system is three layers of traits. None carries a lifetime parameter
@@ -34,13 +34,13 @@ shareable across threads and FFI, and `RawDataType` is object-safe for
 
 ## The concrete types: the `integer` module
 
-The `integer` module holds every Apache Arrow signed and unsigned integer — `Int8` …
-`Int64`, `UInt8` … `UInt64` — one module per type, one file per concern (`data_type`,
+The `integer` module holds every Apache Arrow signed and unsigned integer — `Int8Type` …
+`Int64Type`, `UInt8Type` … `UInt64Type` — one module per type, one file per concern (`data_type`,
 `field`, `scalar`). Each is a fixed-width [primitive](#categories) with a little-endian
 byte codec, a nullable field and a possibly-null scalar; they share one shape, so a
 single crate-internal macro generates each per-type file.
 
-`Int64`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C Data
+`Int64Type`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C Data
 Interface format `"l"`). Scalars are built from their native value and read through
 the `as_*` accessors: direct for the scalar's own type, exact conversion otherwise,
 and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
@@ -51,7 +51,7 @@ and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
     ```python
     from yggdryl import data
 
-    int64 = data.Int64()
+    int64 = data.Int64Type()
     assert int64.name() == "int64"
     assert int64.arrow_format() == "l"
     assert (int64.byte_width(), int64.bit_width()) == (8, 64)
@@ -65,14 +65,14 @@ and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
     assert (id_field.name(), id_field.is_nullable()) == ("id", False)
 
     # A single i64 value, or null, with exact-or-raise accessors.
-    scalar = data.Int64Scalar(42)
+    scalar = data.Int64(42)
     assert scalar.value() == 42
     assert scalar.as_i8() == 42          # converted access
     try:
         scalar.as_str()                  # an int64 is not a string
     except ValueError as error:
         assert "no str conversion" in str(error)
-    assert data.Int64Scalar.null().is_null()
+    assert data.Int64.null().is_null()
     ```
 
 === "Node"
@@ -80,7 +80,7 @@ and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
     ```js
     const { data } = require('yggdryl')
 
-    const int64 = new data.Int64()
+    const int64 = new data.Int64Type()
     assert.equal(int64.name(), 'int64')
     assert.equal(int64.arrowFormat(), 'l')
     assert.deepEqual([int64.byteWidth(), int64.bitWidth()], [8, 64])
@@ -94,48 +94,48 @@ and an actionable error — Rust `DataError`, Python `ValueError`, a thrown JS
     assert.deepEqual([idField.name(), idField.isNullable()], ['id', false])
 
     // A single i64 value, or null, with exact-or-throw accessors.
-    const scalar = new data.Int64Scalar(42n)
+    const scalar = new data.Int64(42n)
     assert.equal(scalar.value(), 42n)
     assert.equal(scalar.asI8(), 42)      // converted access
     assert.throws(() => scalar.asStr(), /no str conversion/) // not a string
-    assert.equal(data.Int64Scalar.null().isNull(), true)
+    assert.equal(data.Int64.null().isNull(), true)
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_data::{DataType, Int64, Int64Field, Int64Scalar, RawDataType, RawField, RawScalar};
+    use yggdryl_data::{DataType, Int64Type, Int64Field, Int64, RawDataType, RawField, RawScalar};
 
     fn main() {
-        assert_eq!(Int64.name(), "int64");
-        assert_eq!(Int64.arrow_format(), "l");
-        assert_eq!((Int64.byte_width(), Int64.bit_width()), (Some(8), Some(64)));
+        assert_eq!(Int64Type.name(), "int64");
+        assert_eq!(Int64Type.arrow_format(), "l");
+        assert_eq!((Int64Type.byte_width(), Int64Type.bit_width()), (Some(8), Some(64)));
 
         // The codec bridging a native value to and from Arrow bytes.
-        assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
-        assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+        assert_eq!(Int64Type.native_to_bytes(&-1), vec![0xFF; 8]);
+        assert_eq!(Int64Type.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 
         // A named, nullable column of int64.
         let id = Int64Field::new("id", false);
         assert_eq!((id.name(), id.is_nullable()), ("id", false));
 
         // A single i64 value, or null, with exact-or-error accessors.
-        let scalar = Int64Scalar::from(42);
+        let scalar = Int64::from(42);
         assert_eq!(scalar.value(), Some(&42));
         assert_eq!(scalar.as_i8().unwrap(), 42); // converted access
         assert!(scalar.as_str().is_err()); // an int64 is not a string
-        assert!(Int64Scalar::null().is_null());
+        assert!(Int64::null().is_null());
     }
     ```
 
-The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
-`Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on. In Rust, `Int64::ID`
+The other widths follow the same surface — swap `Int64Type` / `i64` / `"l"` for
+`Int8Type` / `i8` / `"c"`, `UInt32Type` / `u32` / `"I"`, and so on. In Rust, `Int64Type::ID`
 names the matching [`DataTypeId`](#type-ids) classifier.
 
 ## The `binary` module
 
-The `binary` module holds the variable-size byte type: `Binary` (Arrow C Data
-Interface format `"z"`, no fixed width), `BinaryField` and `BinaryScalar`. The
+The `binary` module holds the variable-size byte type: `BinaryType` (Arrow C Data
+Interface format `"z"`, no fixed width), `BinaryField` and `Binary`. The
 typed codec is the identity — any byte sequence is a valid `binary` value — and
 the scalar holds its bytes as a `yggdryl-core` positioned-IO `ByteBuffer`, so a
 value plugs straight into the core IO layer: in Rust, `io()` borrows the resource
@@ -150,22 +150,22 @@ UTF-8.
     ```python
     from yggdryl import core, data
 
-    binary = data.Binary()
+    binary = data.BinaryType()
     assert (binary.name(), binary.arrow_format()) == ("binary", "z")
     assert binary.byte_width() is None  # variable width
     assert binary.native_from_bytes(binary.native_to_bytes(b"\x01\x02")) == b"\x01\x02"
 
-    blob = data.BinaryScalar(b"\x01\x02\x03")
+    blob = data.Binary(b"\x01\x02\x03")
     assert blob.value() == b"\x01\x02\x03"
     assert blob.as_bytes() == b"\x01\x02\x03"
-    assert data.BinaryScalar(b"hi").as_str() == "hi"  # valid UTF-8 only
+    assert data.Binary(b"hi").as_str() == "hi"  # valid UTF-8 only
 
     # The value doubles as a core positioned-IO ByteBuffer.
     io = blob.to_io()
     assert io.pread_byte_one(1, core.Whence.Start) == 2
 
-    assert data.BinaryScalar.null().is_null()
-    assert data.OptionalBinaryScalar(b"hi").as_bytes() == b"hi"
+    assert data.Binary.null().is_null()
+    assert data.OptionalBinary(b"hi").as_bytes() == b"hi"
     ```
 
 === "Node"
@@ -173,7 +173,7 @@ UTF-8.
     ```js
     const { core, data } = require('yggdryl')
 
-    const binary = new data.Binary()
+    const binary = new data.BinaryType()
     assert.deepEqual([binary.name(), binary.arrowFormat()], ['binary', 'z'])
     assert.equal(binary.byteWidth(), null) // variable width
     assert.deepEqual(
@@ -181,35 +181,35 @@ UTF-8.
       Buffer.from([1, 2]),
     )
 
-    const blob = new data.BinaryScalar(Buffer.from([1, 2, 3]))
+    const blob = new data.Binary(Buffer.from([1, 2, 3]))
     assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
     assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
-    assert.equal(new data.BinaryScalar(Buffer.from('hi')).asStr(), 'hi') // valid UTF-8 only
+    assert.equal(new data.Binary(Buffer.from('hi')).asStr(), 'hi') // valid UTF-8 only
 
     // The value doubles as a core positioned-IO ByteBuffer.
     const io = blob.toIo()
     assert.equal(io.preadByteOne(1, core.Whence.Start), 2)
 
-    assert.equal(data.BinaryScalar.null().isNull(), true)
-    assert.deepEqual(new data.OptionalBinaryScalar(Buffer.from('hi')).asBytes(), Buffer.from('hi'))
+    assert.equal(data.Binary.null().isNull(), true)
+    assert.deepEqual(new data.OptionalBinary(Buffer.from('hi')).asBytes(), Buffer.from('hi'))
     ```
 
 === "Rust"
 
     ```rust
     use yggdryl_data::yggdryl_core::{RawIOBase, RawIOCursor, Whence};
-    use yggdryl_data::{Binary, BinaryScalar, DataType, RawDataType, RawScalar};
+    use yggdryl_data::{BinaryType, Binary, DataType, RawDataType, RawScalar};
 
     fn main() {
-        assert_eq!((Binary.name(), Binary.arrow_format().as_str()), ("binary", "z"));
-        assert_eq!(Binary.byte_width(), None); // variable width
-        let bytes = Binary.native_to_bytes(&vec![1, 2]);
-        assert_eq!(Binary.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
+        assert_eq!((BinaryType.name(), BinaryType.arrow_format().as_str()), ("binary", "z"));
+        assert_eq!(BinaryType.byte_width(), None); // variable width
+        let bytes = BinaryType.native_to_bytes(&vec![1, 2]);
+        assert_eq!(BinaryType.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
 
-        let blob = BinaryScalar::new(vec![1, 2, 3]);
+        let blob = Binary::new(vec![1, 2, 3]);
         assert_eq!(blob.value(), Some(&[1, 2, 3][..]));
         assert_eq!(blob.as_bytes().unwrap(), &[1, 2, 3][..]); // borrowed, never copied
-        assert_eq!(BinaryScalar::new(b"hi".to_vec()).as_str().unwrap(), "hi");
+        assert_eq!(Binary::new(b"hi".to_vec()).as_str().unwrap(), "hi");
 
         // The value doubles as a core positioned-IO resource.
         let io = blob.io().unwrap();
@@ -217,13 +217,13 @@ UTF-8.
         let cursor = RawIOCursor::new(blob.clone().into_io().unwrap());
         assert_eq!(cursor.pread_byte_array(0, Whence::Start, 2).unwrap(), vec![1, 2]);
 
-        assert!(BinaryScalar::null().is_null());
+        assert!(Binary::null().is_null());
     }
     ```
 
 In Rust the Arrow round trip is exact — `to_arrow` builds a one-element
-`BinaryArray`, `from_arrow` is its inverse — and `Binary::ID` is
-`DataTypeId::Binary`. Binary is *not* a `Primitive` in this model's fixed-width
+`BinaryArray`, `from_arrow` is its inverse — and `BinaryType::ID` is
+`DataTypeId::Binary`. BinaryType is *not* a `Primitive` in this model's fixed-width
 sense: it is Arrow's variable-size binary layout, childless but without a fixed
 width. `yggdryl-core` is re-exported as `yggdryl_data::yggdryl_core`, so the IO
 surface is reachable at the exact version the crate was built against.
@@ -251,45 +251,45 @@ deliberately dropped on the way in (logged as a `warn` when the `log` cargo feat
 is on; `to_arrow` correspondingly always produces a metadata-free field).
 
 ```rust
-use yggdryl_data::{arrow_array::Array, arrow_schema, Int64, Int64Field, Int64Scalar};
+use yggdryl_data::{arrow_array::Array, arrow_schema, Int64Type, Int64Field, Int64};
 use yggdryl_data::{RawDataType, RawField, RawScalar};
 
 fn main() {
     // Data type ↔ arrow_schema::DataType.
-    assert_eq!(Int64.to_arrow(), arrow_schema::DataType::Int64);
-    assert!(Int64::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+    assert_eq!(Int64Type.to_arrow(), arrow_schema::DataType::Int64);
+    assert!(Int64Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 
     // Field ↔ arrow_schema::Field.
     let id = Int64Field::new("id", false);
     assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
 
     // Scalar ↔ a one-element arrow_array array.
-    let arrow = Int64Scalar::new(42).to_arrow();
+    let arrow = Int64::new(42).to_arrow();
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
-    assert_eq!(Int64Scalar::from_arrow(arrow.as_ref()).unwrap(), Int64Scalar::new(42));
-    assert!(Int64Scalar::null().to_arrow().is_null(0));
+    assert_eq!(Int64::from_arrow(arrow.as_ref()).unwrap(), Int64::new(42));
+    assert!(Int64::null().to_arrow().is_null(0));
 }
 ```
 
 ## The null, union and optional types
 
-The `null` module holds `Null` — the storage-free type whose every value is null —
-with its `NullField` and `NullScalar`. The `union` module holds `UnionType`, Apache
+The `null` module holds `NullType` — the storage-free type whose every value is null —
+with its `NullField` and `Null`. The `union` module holds `UnionType`, Apache
 Arrow's union type: a value is exactly one of several child types, discriminated by
 a type id. `UnionType` carries its `UnionFields` and `UnionMode` exactly as Arrow models
 them, so `to_arrow` / `from_arrow` round-trip *any* union losslessly.
 
 The `optional` module builds on both: `OptionalType<D>` is the first concrete
 [Logical](#categories) type — a value of the value type `D`, or null, physically
-stored as `Union::optional(&D)` (the sparse two-variant union between null and the
+stored as `UnionType::optional(&D)` (the sparse two-variant union between null and the
 value type; `storage()` returns it). Its Arrow surface delegates to the storage,
 while its typed byte codec delegates to the value type. `OptionalField<D>` is its
-field, and `OptionalScalar<D, S>` its scalar — an inner scalar `S`, or the null
+field, and `Optional<D, S>` its scalar — an inner scalar `S`, or the null
 variant. Access redirects to the inner scalar (`value` and every `as_*` accessor
 answer through `S`), and so does the Arrow form: a one-element `UnionArray` whose
 type id selects the variant, `from_arrow` handing the value child back to `S`'s own
 `from_arrow`. The bindings expose the optional family as concrete per-type classes
-(`OptionalInt64`, `OptionalInt64Field`, `OptionalInt64Scalar`, …), the scalars built
+(`OptionalInt64Type`, `OptionalInt64Field`, `OptionalInt64`, …), the scalars built
 straight from the native value, and reach `UnionType` through an optional data type's
 `storage()` (arbitrary child fields stay Rust-only).
 
@@ -298,7 +298,7 @@ straight from the native value, and reach `UnionType` through an optional data t
     ```python
     from yggdryl import data
 
-    optional = data.Int64().optional()
+    optional = data.Int64Type().optional()
     assert (optional.name(), optional.value_type().name()) == ("optional", "int64")
     assert optional.arrow_format() == "+us:0,1"  # sparse, type ids 0 and 1
     assert (optional.storage().name(), optional.storage().mode()) == ("union", "sparse")
@@ -306,12 +306,12 @@ straight from the native value, and reach `UnionType` through an optional data t
     score = data.OptionalInt64Field("score")
     assert score.data_type().name() == "optional"
 
-    answer = data.OptionalInt64Scalar(42)
+    answer = data.OptionalInt64(42)
     assert answer.as_i64() == 42  # redirected to the inner scalar
     assert answer.scalar().value() == 42
     assert not answer.is_null()
 
-    missing = data.OptionalInt64Scalar.null()
+    missing = data.OptionalInt64.null()
     assert missing.is_null()
     assert missing.value() is None
     ```
@@ -321,7 +321,7 @@ straight from the native value, and reach `UnionType` through an optional data t
     ```js
     const { data } = require('yggdryl')
 
-    const optional = new data.Int64().optional()
+    const optional = new data.Int64Type().optional()
     assert.deepEqual([optional.name(), optional.valueType().name()], ['optional', 'int64'])
     assert.equal(optional.arrowFormat(), '+us:0,1') // sparse, type ids 0 and 1
     assert.deepEqual([optional.storage().name(), optional.storage().mode()], ['union', 'sparse'])
@@ -329,12 +329,12 @@ straight from the native value, and reach `UnionType` through an optional data t
     const score = new data.OptionalInt64Field('score')
     assert.equal(score.dataType().name(), 'optional')
 
-    const answer = new data.OptionalInt64Scalar(42n)
+    const answer = new data.OptionalInt64(42n)
     assert.equal(answer.asI64(), 42n) // redirected to the inner scalar
     assert.equal(answer.scalar().value(), 42n)
     assert.equal(answer.isNull(), false)
 
-    const missing = data.OptionalInt64Scalar.null()
+    const missing = data.OptionalInt64.null()
     assert.equal(missing.isNull(), true)
     assert.equal(missing.value(), null)
     ```
@@ -343,40 +343,40 @@ straight from the native value, and reach `UnionType` through an optional data t
 
     ```rust
     use yggdryl_data::{
-        Int64, Int64Scalar, Logical, Optional, OptionalField, OptionalScalar, RawDataType,
+        Int64Type, Int64, Logical, TypedOptional, OptionalField, Optional, RawDataType,
         RawField, RawScalar,
     };
 
     fn main() {
-        let optional = Optional::new(Int64);
+        let optional = TypedOptional::new(Int64Type);
         assert_eq!((optional.name(), optional.value_type().name()), ("optional", "int64"));
         assert_eq!(optional.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
         assert_eq!(optional.storage().name(), "union");
 
-        let score = OptionalField::<Int64>::new("score", true);
+        let score = OptionalField::<Int64Type>::new("score", true);
         assert_eq!(score.data_type().name(), "optional");
 
-        let answer = OptionalScalar::new(Int64Scalar::new(42));
+        let answer = Optional::new(Int64::new(42));
         assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
-        assert_eq!(answer.scalar(), Some(&Int64Scalar::new(42)));
+        assert_eq!(answer.scalar(), Some(&Int64::new(42)));
         assert!(!answer.is_null());
 
-        let missing: OptionalScalar<Int64, Int64Scalar> = OptionalScalar::null();
+        let missing: Optional<Int64Type, Int64> = Optional::null();
         assert!(missing.is_null());
         assert_eq!(missing.value(), None);
     }
     ```
 
 In Rust, the Arrow form round-trips too: `missing.to_arrow()` is a one-element union
-array whose type id selects the null variant, and `OptionalScalar::from_arrow` is
-its exact inverse; the typed byte codec of `OptionalType<Int64>` reads and writes plain
+array whose type id selects the null variant, and `Optional::from_arrow` is
+its exact inverse; the typed byte codec of `OptionalType<Int64Type>` reads and writes plain
 `i64` bytes (the value type's codec).
 
 ## Nested types: list, map and struct
 
 !!! note "Rust only"
     The nested families are generic over their child types (or carry dynamic Arrow
-    fields), and the buffer-backed `Int64Array` shares raw Arrow buffers that await
+    fields), and the buffer-backed `Int64Serie` shares raw Arrow buffers that await
     C Data Interface interop — none has a concrete FFI shape yet, so they are not
     exposed to Python or Node.
 
@@ -386,18 +386,18 @@ the variable-length sequence of one value type (single nullable `"item"` child);
 `StructType` the dynamic ordered set of named fields, carried losslessly like
 `UnionType`.
 
-The list scalar is *our array*: `ListScalar<D, S>` is backed by one zero-copy Arrow
+The list scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
 child array — construction assembles the elements once, `to_arrow` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
 `from_arrow`, `get_value_at(index)` hands back an element's owned native value —
 `i64` for an `int64` list, `Vec<u8>` for a `binary` list; `len` / `is_empty`
-describe the sequence). `Int64Array` is the
+describe the sequence). `Int64Serie` is the
 concrete list of `int64`, borrowing the raw Arrow buffers themselves
 (`ScalarBuffer<i64>` elements plus an optional `NullBuffer`): `values()` borrows
 the whole element buffer as `&[i64]` without copying, `get_value_at(index)` reads
-one element null-aware, and `get_scalar_at(index)` hands back an `Int64Scalar`.
-`MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
+one element null-aware, and `get_scalar_at(index)` hands back an `Int64`.
+`Map<K, V, SK, SV>` holds the entry sequence and `Struct` one row of
 one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`. The
 typed byte codecs concatenate the child codecs and split them back by fixed width
@@ -406,29 +406,29 @@ decode those from Arrow).
 
 ```rust
 use yggdryl_data::{
-    DataType, Int64, Int64Array, Int64Scalar, ListScalar, ListType, MapType, RawDataType,
-    RawScalar, UInt8,
+    DataType, Int64Type, Int64Serie, Int64, Serie, ListType, MapType, RawDataType,
+    RawScalar, UInt8Type,
 };
 
 fn main() {
-    let list = ListType::new(Int64);
+    let list = ListType::new(Int64Type);
     assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
     assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
     assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
 
-    let numbers = ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
-    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    let numbers = Serie::new(vec![Int64::new(1), Int64::null()]);
+    assert_eq!(numbers.get_scalar_at(1), Some(Int64::null()));
     assert_eq!(numbers.get_value_at(0), Some(1)); // the owned native value
     let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
-    assert_eq!(ListScalar::from_arrow(arrow.as_ref()).unwrap(), numbers);
+    assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // The buffer-backed list of int64: native, zero-copy access.
-    let fast = Int64Array::from(vec![1, 2, 3]);
+    let fast = Int64Serie::from(vec![1, 2, 3]);
     assert_eq!(fast.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
     assert_eq!(fast.get_value_at(1), Some(2));
-    assert_eq!(Int64Array::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
+    assert_eq!(Int64Serie::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
 
-    let map = MapType::new(UInt8, Int64);
+    let map = MapType::new(UInt8Type, Int64Type);
     assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
 }
 ```
@@ -475,7 +475,7 @@ The same, tied to a native Rust type `T`:
 - **`Scalar<T>: RawScalar<Self::Type, Value = T>`** — a scalar whose value is `T`.
 
 ```rust
-use yggdryl_data::{DataType, Int64, Primitive, RawDataType, RawScalar, Scalar};
+use yggdryl_data::{DataType, Int64Type, Primitive, RawDataType, RawScalar, Scalar};
 
 // Generic code composes across the layers.
 fn first_byte<D: DataType<i64>>(data_type: &D, value: i64) -> u8 {
@@ -489,8 +489,8 @@ fn width<P: Primitive>(primitive: &P) -> Option<usize> {
 }
 
 fn main() {
-    assert_eq!(first_byte(&Int64, 5), 5);
-    assert_eq!(width(&Int64), Some(8));
+    assert_eq!(first_byte(&Int64Type, 5), 5);
+    assert_eq!(width(&Int64Type), Some(8));
 }
 ```
 
@@ -511,9 +511,9 @@ How a type is shaped (each refines `RawDataType`):
   the dynamic `StructType` and `UnionType` stay raw-only.
 
 Each composite family also carries its own raw/typed trait pair, mirroring the
-base layers: `RawOptional` / `Optional`, `RawUnion` / `Union` (a typed union's
-defaults are its *first* data type's), `RawList` / `List`, `RawMap` / `Map` and
-`RawStruct` / `Struct` — the concrete `OptionalType<D>`, `UnionType`,
+base layers: `RawOptional` / `TypedOptional`, `RawUnion` / `UnionType` (a typed union's
+defaults are its *first* data type's), `RawList` / `TypedList`, `RawMap` / `TypedMap` and
+`RawStruct` / `TypedStruct` — the concrete `OptionalType<D>`, `UnionType`,
 `ListType<D>`, `MapType<K, V>` and `StructType` implement the raw side, and the
 typed side wherever the child types have codecs (the dynamic `UnionType` and
 `StructType`, whose children are only known at runtime, stay raw-only).

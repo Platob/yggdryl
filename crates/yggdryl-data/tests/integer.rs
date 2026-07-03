@@ -3,10 +3,9 @@
 
 use yggdryl_data::{
     arrow_array, arrow_schema, DataError, DataType, DataTypeId, Field, Int16, Int16Field,
-    Int16Scalar, Int32, Int32Field, Int32Scalar, Int64, Int64Field, Int64Scalar, Int8, Int8Field,
-    Int8Scalar, Primitive, RawDataType, RawField, RawScalar, Scalar, UInt16, UInt16Field,
-    UInt16Scalar, UInt32, UInt32Field, UInt32Scalar, UInt64, UInt64Field, UInt64Scalar, UInt8,
-    UInt8Field, UInt8Scalar,
+    Int16Type, Int32, Int32Field, Int32Type, Int64, Int64Field, Int64Type, Int8, Int8Field,
+    Int8Type, Primitive, RawDataType, RawField, RawScalar, Scalar, UInt16, UInt16Field, UInt16Type,
+    UInt32, UInt32Field, UInt32Type, UInt64, UInt64Field, UInt64Type, UInt8, UInt8Field, UInt8Type,
 };
 
 // Every integer type shares the same shape, so one macro drives one test module per
@@ -14,7 +13,7 @@ use yggdryl_data::{
 // pairs a name with the type, and its scalar holds a value or null — all cross-checked
 // against the type's `DataTypeId` and round-tripped through its Arrow equivalents.
 macro_rules! integer_tests {
-    ($mod:ident, $ty:ident, $field:ident, $scalar:ident, $native:ty, $as_native:ident, $array:ident, $name:literal, $format:literal, $width:literal) => {
+    ($mod:ident, $ty:ident, $field:ident, $scalar:ident, $native:ty, $as_native:ident, $array:ident, $name:literal, $format:literal, $width:literal, $id:ident) => {
         mod $mod {
             use super::*;
 
@@ -24,7 +23,7 @@ macro_rules! integer_tests {
                 assert_eq!($ty.arrow_format(), $format);
                 assert_eq!($ty.byte_width(), Some($width));
                 assert_eq!($ty.bit_width(), Some($width * 8));
-                assert_eq!($ty::ID, DataTypeId::$ty);
+                assert_eq!($ty::ID, DataTypeId::$id);
             }
 
             #[test]
@@ -62,7 +61,7 @@ macro_rules! integer_tests {
             fn arrow_data_type_round_trips() {
                 // `$ty` doubles as the arrow-schema variant name.
                 let arrow = $ty.to_arrow();
-                assert_eq!(arrow, arrow_schema::DataType::$ty);
+                assert_eq!(arrow, arrow_schema::DataType::$id);
                 assert_eq!($ty::from_arrow(&arrow).unwrap(), $ty);
 
                 let error = $ty::from_arrow(&arrow_schema::DataType::Utf8).unwrap_err();
@@ -85,7 +84,7 @@ macro_rules! integer_tests {
                 let field = $field::new("id", true);
                 let arrow = field.to_arrow();
                 assert_eq!(arrow.name(), "id");
-                assert_eq!(arrow.data_type(), &arrow_schema::DataType::$ty);
+                assert_eq!(arrow.data_type(), &arrow_schema::DataType::$id);
                 assert!(arrow.is_nullable());
                 assert_eq!($field::from_arrow(&arrow).unwrap(), field);
 
@@ -214,10 +213,10 @@ macro_rules! integer_tests {
                 let arrow = answer.to_arrow();
                 assert_eq!(arrow.len(), 1);
                 assert_eq!(arrow.null_count(), 0);
-                assert_eq!(arrow.data_type(), &arrow_schema::DataType::$ty);
+                assert_eq!(arrow.data_type(), &arrow_schema::DataType::$id);
                 assert_eq!($scalar::from_arrow(arrow.as_ref()).unwrap(), answer);
 
-                // Null: a one-element array holding a null.
+                // NullType: a one-element array holding a null.
                 let missing = $scalar::null();
                 let arrow = missing.to_arrow();
                 assert_eq!((arrow.len(), arrow.null_count()), (1, 1));
@@ -271,106 +270,71 @@ macro_rules! integer_tests {
                 assert_eq!(types[0].name(), $name);
                 assert_eq!(types[0].arrow_format(), $format);
                 // `to_arrow` stays on the vtable (only `from_arrow` is `Self: Sized`).
-                assert_eq!(types[0].to_arrow(), arrow_schema::DataType::$ty);
+                assert_eq!(types[0].to_arrow(), arrow_schema::DataType::$id);
             }
         }
     };
 }
 
-integer_tests!(int8, Int8, Int8Field, Int8Scalar, i8, as_i8, Int8Array, "int8", "c", 1);
+integer_tests!(int8, Int8Type, Int8Field, Int8, i8, as_i8, Int8Array, "int8", "c", 1, Int8);
 integer_tests!(
-    int16,
-    Int16,
-    Int16Field,
-    Int16Scalar,
-    i16,
-    as_i16,
-    Int16Array,
-    "int16",
-    "s",
-    2
+    int16, Int16Type, Int16Field, Int16, i16, as_i16, Int16Array, "int16", "s", 2, Int16
 );
 integer_tests!(
-    int32,
-    Int32,
-    Int32Field,
-    Int32Scalar,
-    i32,
-    as_i32,
-    Int32Array,
-    "int32",
-    "i",
-    4
+    int32, Int32Type, Int32Field, Int32, i32, as_i32, Int32Array, "int32", "i", 4, Int32
 );
 integer_tests!(
-    int64,
-    Int64,
-    Int64Field,
-    Int64Scalar,
-    i64,
-    as_i64,
-    Int64Array,
-    "int64",
-    "l",
-    8
+    int64, Int64Type, Int64Field, Int64, i64, as_i64, Int64Array, "int64", "l", 8, Int64
 );
-integer_tests!(
-    uint8,
-    UInt8,
-    UInt8Field,
-    UInt8Scalar,
-    u8,
-    as_u8,
-    UInt8Array,
-    "uint8",
-    "C",
-    1
-);
+integer_tests!(uint8, UInt8Type, UInt8Field, UInt8, u8, as_u8, UInt8Array, "uint8", "C", 1, UInt8);
 integer_tests!(
     uint16,
-    UInt16,
+    UInt16Type,
     UInt16Field,
-    UInt16Scalar,
+    UInt16,
     u16,
     as_u16,
     UInt16Array,
     "uint16",
     "S",
-    2
+    2,
+    UInt16
 );
 integer_tests!(
     uint32,
-    UInt32,
+    UInt32Type,
     UInt32Field,
-    UInt32Scalar,
+    UInt32,
     u32,
     as_u32,
     UInt32Array,
     "uint32",
     "I",
-    4
+    4,
+    UInt32
 );
 integer_tests!(
     uint64,
-    UInt64,
+    UInt64Type,
     UInt64Field,
-    UInt64Scalar,
+    UInt64,
     u64,
     as_u64,
     UInt64Array,
     "uint64",
     "L",
-    8
+    8,
+    UInt64
 );
 
 // A heterogeneous schema holds boxed data types of *different* widths together.
 #[test]
 fn a_heterogeneous_schema_mixes_widths() {
     let schema: Vec<Box<dyn RawDataType>> = vec![
-        Box::new(Int8),
-        Box::new(UInt16),
-        Box::new(Int32),
-        Box::new(UInt64),
+        Box::new(Int8Type),
+        Box::new(UInt16Type),
+        Box::new(Int32Type),
+        Box::new(UInt64Type),
     ];
     let widths: Vec<_> = schema.iter().map(|d| d.byte_width()).collect();
     assert_eq!(widths, vec![Some(1), Some(2), Some(4), Some(8)]);
@@ -394,36 +358,36 @@ fn fields_assemble_into_an_arrow_schema() {
 fn float_access_is_exact_or_error() {
     // 2^53 is the last contiguous integer in f64; 2^53 + 1 rounds.
     assert_eq!(
-        Int64Scalar::new(1 << 53).as_f64().unwrap(),
+        Int64::new(1 << 53).as_f64().unwrap(),
         9_007_199_254_740_992.0
     );
     let inexact =
         |result: Result<f64, DataError>| matches!(result, Err(DataError::InexactConversion { .. }));
-    assert!(inexact(Int64Scalar::new((1 << 53) + 1).as_f64()));
+    assert!(inexact(Int64::new((1 << 53) + 1).as_f64()));
     // i64::MIN is a power of two: exactly representable. MAX is not.
     assert_eq!(
-        Int64Scalar::new(i64::MIN).as_f64().unwrap(),
+        Int64::new(i64::MIN).as_f64().unwrap(),
         -9.223372036854776e18
     );
-    assert!(inexact(Int64Scalar::new(i64::MAX).as_f64()));
-    assert!(inexact(UInt64Scalar::new(u64::MAX).as_f64()));
+    assert!(inexact(Int64::new(i64::MAX).as_f64()));
+    assert!(inexact(UInt64::new(u64::MAX).as_f64()));
     // f32's contiguous range ends at 2^24.
-    assert_eq!(Int32Scalar::new(1 << 24).as_f32().unwrap(), 16_777_216.0);
+    assert_eq!(Int32::new(1 << 24).as_f32().unwrap(), 16_777_216.0);
     assert!(matches!(
-        Int32Scalar::new((1 << 24) + 1).as_f32(),
+        Int32::new((1 << 24) + 1).as_f32(),
         Err(DataError::InexactConversion { .. })
     ));
     assert!(matches!(
-        Int32Scalar::new(i32::MAX).as_f32(),
+        Int32::new(i32::MAX).as_f32(),
         Err(DataError::InexactConversion { .. })
     ));
     // Sign changes never pass, and the error names the offending value.
     assert!(matches!(
-        Int8Scalar::new(-1).as_u64(),
+        Int8::new(-1).as_u64(),
         Err(DataError::InexactConversion { value, target: "u64" }) if value == "-1"
     ));
     assert!(matches!(
-        UInt8Scalar::new(200).as_i8(),
+        UInt8::new(200).as_i8(),
         Err(DataError::InexactConversion { value, target: "i8" }) if value == "200"
     ));
 }

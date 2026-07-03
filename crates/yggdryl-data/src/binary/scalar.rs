@@ -1,6 +1,6 @@
-//! The [`BinaryScalar`] scalar of the [`Binary`](super::Binary) data type.
+//! The [`Binary`] scalar of the [`BinaryType`](super::BinaryType) data type.
 
-use super::Binary;
+use super::BinaryType;
 use crate::{DataError, RawScalar, Scalar};
 use yggdryl_core::ByteBuffer;
 
@@ -9,9 +9,9 @@ use yggdryl_core::ByteBuffer;
 ///
 /// The *scalar accessors* leverage the core IO layer: [`value`](RawScalar::value)
 /// / [`as_bytes`](RawScalar::as_bytes) borrow the bytes directly (never copying),
-/// [`io`](BinaryScalar::io) borrows the [`ByteBuffer`] for positioned
+/// [`io`](Binary::io) borrows the [`ByteBuffer`] for positioned
 /// [`RawIOBase`](yggdryl_core::RawIOBase) reads, and
-/// [`into_io`](BinaryScalar::into_io) moves it out to wrap in the core
+/// [`into_io`](Binary::into_io) moves it out to wrap in the core
 /// [`RawIOCursor`](yggdryl_core::RawIOCursor) / [`RawIOSlice`](yggdryl_core::RawIOSlice)
 /// adapters for streaming or windowed reads. [`as_str`](RawScalar::as_str) borrows
 /// the bytes as `str` when they are valid UTF-8. Crossing the Arrow boundary
@@ -20,9 +20,9 @@ use yggdryl_core::ByteBuffer;
 ///
 /// ```
 /// use yggdryl_core::{RawIOBase, RawIOCursor, Whence};
-/// use yggdryl_data::{BinaryScalar, RawDataType, RawScalar};
+/// use yggdryl_data::{Binary, RawDataType, RawScalar};
 ///
-/// let blob = BinaryScalar::new(vec![1, 2, 3]);
+/// let blob = Binary::new(vec![1, 2, 3]);
 /// assert!(!blob.is_null());
 /// assert_eq!(blob.value(), Some(&[1, 2, 3][..]));
 /// assert_eq!(blob.as_bytes().unwrap(), &[1, 2, 3][..]); // borrowed, never copied
@@ -38,29 +38,29 @@ use yggdryl_core::ByteBuffer;
 /// assert_eq!(cursor.pread_byte_array(0, Whence::Start, 2)?, vec![1, 2]);
 ///
 /// // UTF-8 bytes read back as a borrowed str; anything else is an actionable error.
-/// assert_eq!(BinaryScalar::new(b"hi".to_vec()).as_str().unwrap(), "hi");
-/// assert!(BinaryScalar::new(vec![0xFF]).as_str().is_err()); // not valid UTF-8
+/// assert_eq!(Binary::new(b"hi".to_vec()).as_str().unwrap(), "hi");
+/// assert!(Binary::new(vec![0xFF]).as_str().is_err()); // not valid UTF-8
 ///
 /// // The Arrow round trip is exact.
 /// let arrow = blob.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(BinaryScalar::from_arrow(arrow.as_ref()).unwrap(), blob);
+/// assert_eq!(Binary::from_arrow(arrow.as_ref()).unwrap(), blob);
 ///
-/// assert!(BinaryScalar::null().is_null());
+/// assert!(Binary::null().is_null());
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct BinaryScalar {
-    data_type: Binary,
+pub struct Binary {
+    data_type: BinaryType,
     value: Option<ByteBuffer>,
 }
 
-impl BinaryScalar {
+impl Binary {
     /// A `binary` scalar holding `value` (empty bytes are the empty value, not
     /// null).
     pub fn new(value: Vec<u8>) -> Self {
         Self {
-            data_type: Binary,
+            data_type: BinaryType,
             value: Some(ByteBuffer::from_bytes(value)),
         }
     }
@@ -68,7 +68,7 @@ impl BinaryScalar {
     /// A null `binary` scalar.
     pub fn null() -> Self {
         Self {
-            data_type: Binary,
+            data_type: BinaryType,
             value: None,
         }
     }
@@ -89,21 +89,21 @@ impl BinaryScalar {
     }
 }
 
-impl From<Vec<u8>> for BinaryScalar {
+impl From<Vec<u8>> for Binary {
     /// A `binary` scalar holding `value`.
     fn from(value: Vec<u8>) -> Self {
         Self::new(value)
     }
 }
 
-impl From<&[u8]> for BinaryScalar {
+impl From<&[u8]> for Binary {
     /// A `binary` scalar holding a copy of `value`.
     fn from(value: &[u8]) -> Self {
         Self::new(value.to_vec())
     }
 }
 
-impl From<Option<Vec<u8>>> for BinaryScalar {
+impl From<Option<Vec<u8>>> for Binary {
     /// A `binary` scalar holding `value`, or the null scalar for `None`.
     fn from(value: Option<Vec<u8>>) -> Self {
         match value {
@@ -113,21 +113,21 @@ impl From<Option<Vec<u8>>> for BinaryScalar {
     }
 }
 
-impl From<ByteBuffer> for BinaryScalar {
+impl From<ByteBuffer> for Binary {
     /// A `binary` scalar taking over an existing core IO resource, moved — the
-    /// inverse of [`into_io`](BinaryScalar::into_io).
+    /// inverse of [`into_io`](Binary::into_io).
     fn from(value: ByteBuffer) -> Self {
         Self {
-            data_type: Binary,
+            data_type: BinaryType,
             value: Some(value),
         }
     }
 }
 
-impl RawScalar<Binary> for BinaryScalar {
+impl RawScalar<BinaryType> for Binary {
     type Value = [u8];
 
-    fn data_type(&self) -> &Binary {
+    fn data_type(&self) -> &BinaryType {
         &self.data_type
     }
 
@@ -194,6 +194,6 @@ impl RawScalar<Binary> for BinaryScalar {
     }
 }
 
-impl Scalar<[u8]> for BinaryScalar {
-    type Type = Binary;
+impl Scalar<[u8]> for Binary {
+    type Type = BinaryType;
 }

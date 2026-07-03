@@ -13,14 +13,14 @@
 /// matching [`DataTypeId`](crate::DataTypeId) variant (exposed as `$ty::ID`) and the
 /// matching [`arrow_schema::DataType`] variant (`to_arrow` / `from_arrow`).
 macro_rules! int_data_type {
-    ($ty:ident, $native:ty, $scalar:ident, $name:literal, $format:literal, $width:literal) => {
+    ($ty:ident, $native:ty, $scalar:ident, $name:literal, $format:literal, $width:literal, $id:ident) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type: a fixed-width integer primitive (native `", stringify!($native), "`).")]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
         pub struct $ty;
 
         impl $ty {
             /// This type's [`DataTypeId`](crate::DataTypeId).
-            pub const ID: $crate::DataTypeId = $crate::DataTypeId::$ty;
+            pub const ID: $crate::DataTypeId = $crate::DataTypeId::$id;
         }
 
         impl $crate::RawDataType for $ty {
@@ -34,15 +34,15 @@ macro_rules! int_data_type {
                 Some($width)
             }
             fn to_arrow(&self) -> $crate::arrow_schema::DataType {
-                $crate::arrow_schema::DataType::$ty
+                $crate::arrow_schema::DataType::$id
             }
             fn from_arrow(
                 data_type: &$crate::arrow_schema::DataType,
             ) -> Result<Self, $crate::DataError> {
                 match data_type {
-                    $crate::arrow_schema::DataType::$ty => Ok(Self),
+                    $crate::arrow_schema::DataType::$id => Ok(Self),
                     other => Err($crate::DataError::IncompatibleArrowType {
-                        expected: stringify!($ty).to_string(),
+                        expected: stringify!($id).to_string(),
                         got: other.to_string(),
                     }),
                 }
@@ -80,7 +80,7 @@ pub(crate) use int_data_type;
 /// Generates a nullable field `$field` for the integer data type `$ty` (native
 /// `$native`), with `$name` used in its documentation.
 macro_rules! int_field {
-    ($field:ident, $ty:ty, $native:ty, $name:literal) => {
+    ($field:ident, $ty:ty, $native:ty, $name:literal, $id:ident) => {
         #[doc = concat!("A nullable `", $name, "` field: a name paired with the ", stringify!($ty), " data type.")]
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         pub struct $field {
@@ -114,7 +114,7 @@ macro_rules! int_field {
                 field: &$crate::arrow_schema::Field,
             ) -> Result<Self, $crate::DataError> {
                 <$ty as $crate::RawDataType>::from_arrow(field.data_type())?;
-                $crate::raw_field::validate_field_metadata(field, stringify!($ty))?;
+                $crate::raw_field::validate_field_metadata(field, stringify!($id))?;
                 Ok(Self::new(field.name(), field.is_nullable()))
             }
         }
@@ -132,7 +132,7 @@ pub(crate) use int_field;
 /// also converts from its native value: `From<$native>` and `From<Option<$native>>`
 /// (where `None` is the null scalar).
 macro_rules! int_scalar {
-    ($scalar:ident, $ty:ty, $native:ty, $name:literal, $array:ident) => {
+    ($scalar:ident, $ty:ty, $native:ty, $name:literal, $array:ident, $id:ident) => {
         #[doc = concat!("A single, possibly-null `", $name, "` value (native `", stringify!($native), "`).")]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
         pub struct $scalar {
@@ -208,7 +208,7 @@ macro_rules! int_scalar {
                     .as_any()
                     .downcast_ref::<$crate::arrow_array::$array>()
                     .ok_or_else(|| $crate::DataError::IncompatibleArrowType {
-                        expected: stringify!($ty).to_string(),
+                        expected: stringify!($id).to_string(),
                         got: $crate::arrow_array::Array::data_type(array).to_string(),
                     })?;
                 Ok(if $crate::arrow_array::Array::is_null(array, 0) {
@@ -350,11 +350,11 @@ mod uint32;
 mod uint64;
 mod uint8;
 
-pub use int16::{Int16, Int16Field, Int16Scalar};
-pub use int32::{Int32, Int32Field, Int32Scalar};
-pub use int64::{Int64, Int64Field, Int64Scalar};
-pub use int8::{Int8, Int8Field, Int8Scalar};
-pub use uint16::{UInt16, UInt16Field, UInt16Scalar};
-pub use uint32::{UInt32, UInt32Field, UInt32Scalar};
-pub use uint64::{UInt64, UInt64Field, UInt64Scalar};
-pub use uint8::{UInt8, UInt8Field, UInt8Scalar};
+pub use int16::{Int16, Int16Field, Int16Type};
+pub use int32::{Int32, Int32Field, Int32Type};
+pub use int64::{Int64, Int64Field, Int64Type};
+pub use int8::{Int8, Int8Field, Int8Type};
+pub use uint16::{UInt16, UInt16Field, UInt16Type};
+pub use uint32::{UInt32, UInt32Field, UInt32Type};
+pub use uint64::{UInt64, UInt64Field, UInt64Type};
+pub use uint8::{UInt8, UInt8Field, UInt8Type};

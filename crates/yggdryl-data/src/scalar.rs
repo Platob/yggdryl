@@ -13,9 +13,9 @@ use super::{RawDataType, RawScalar};
 /// type still codecs owned `String`s through [`DataType<String>`](super::DataType).
 ///
 /// ```
-/// use yggdryl_data::{Int64Scalar, RawScalar, Scalar};
+/// use yggdryl_data::{Int64, RawScalar, Scalar};
 ///
-/// let answer = Int64Scalar::new(42);
+/// let answer = Int64::new(42);
 /// assert_eq!(answer.value(), Some(&42));
 ///
 /// // `Scalar<i64>` lets generic code accept any int64 scalar.
@@ -23,7 +23,7 @@ use super::{RawDataType, RawScalar};
 ///     scalar.is_null()
 /// }
 /// assert!(!take(&answer));
-/// assert!(take(&Int64Scalar::null()));
+/// assert!(take(&Int64::null()));
 /// ```
 pub trait Scalar<T: ?Sized>: RawScalar<Self::Type, Value = T> {
     /// The concrete data type of this scalar.

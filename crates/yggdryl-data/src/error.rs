@@ -14,7 +14,7 @@ pub enum DataError {
     },
     /// The Arrow value handed to `from_arrow` was of a different Arrow type.
     IncompatibleArrowType {
-        /// The Arrow type the conversion requires, e.g. `"Int64"`.
+        /// The Arrow type the conversion requires, e.g. `"Int64Type"`.
         expected: String,
         /// The Arrow type actually provided.
         got: String,

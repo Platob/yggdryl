@@ -9,12 +9,12 @@ use arrow_schema::{UnionFields, UnionMode};
 ///
 /// It refines [`RawNested`] (the children are fields). The dynamic
 /// [`UnionType`](crate::UnionType) implements it over arbitrary children; a
-/// statically-shaped union also implements the typed [`Union`](crate::Union).
+/// statically-shaped union also implements the typed [`TypedUnion`](crate::TypedUnion).
 ///
 /// ```
-/// use yggdryl_data::{Int64, RawUnion, UnionType};
+/// use yggdryl_data::{Int64Type, RawUnion, UnionType};
 ///
-/// let union = UnionType::optional(&Int64);
+/// let union = UnionType::optional(&Int64Type);
 /// assert_eq!(union.fields().len(), 2);
 /// assert_eq!(union.mode(), yggdryl_data::arrow_schema::UnionMode::Sparse);
 /// ```

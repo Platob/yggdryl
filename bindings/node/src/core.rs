@@ -223,7 +223,7 @@ pub struct ByteBuffer {
 
 impl ByteBuffer {
     // Wraps an existing core buffer — crate-internal, so sibling modules (the
-    // data layer's `BinaryScalar::toIo`) can convert.
+    // data layer's `Binary::toIo`) can convert.
     pub(crate) fn from_inner(inner: yggdryl_core::ByteBuffer) -> Self {
         Self { inner }
     }
