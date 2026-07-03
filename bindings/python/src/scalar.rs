@@ -3,8 +3,9 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `to_io()` hands one back) and `NullScalar` — the same suffixed
-//! names as the Rust crate, the submodule carrying the concern. Scalars expose the
+//! `ByteBuffer` — `to_io()` hands one back), `NullScalar` and the list scalar
+//! `Int64Serie` (the buffer-backed `list` of `int64`) — the same suffixed names
+//! as the Rust crate, the submodule carrying the concern. Scalars expose the
 //! `as_*` accessors with the core contract: the value when the target represents
 //! it exactly, or a raised `ValueError` naming the fix (strings and bytes cross
 //! the FFI boundary as new Python objects, so the Rust-side "borrow, never copy"
@@ -17,10 +18,12 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
-//! through a data type's `scalar()` / `default_scalar()`), and the nested scalars
-//! — the generic `Serie` / `MapScalar` / `StructScalar` and the buffer-backed
-//! `Int64Serie` (whose zero-copy Arrow buffers await C Data Interface interop) —
-//! which have no concrete FFI shape yet.
+//! through a data type's `scalar()` / `default_scalar()`), and — for the list
+//! scalar `Int64Serie` — its per-element-null construction, `array` / `nulls`
+//! Arrow-buffer surface and `from_io` / `pwrite_io` two-resource bridge (which
+//! borrow a second IO resource at once), so a serie built from Python is a dense
+//! (all-valid) list. The still-generic nested scalars — the generic `Serie` /
+//! `MapScalar` / `StructScalar` — have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -611,6 +614,73 @@ int_scalar_py!(
     "uint64"
 );
 
+/// A single, possibly-null `list` of `int64` — *our array*, the buffer-backed
+/// list scalar. Built dense (all-valid) from Python; the whole list may still be
+/// null (`Int64Serie.null()`).
+#[pyclass]
+pub struct Int64Serie {
+    pub(crate) inner: yggdryl_scalar::Int64Serie,
+}
+
+#[pymethods]
+impl Int64Serie {
+    /// A serie holding the native list `values` (all-valid).
+    #[new]
+    fn new(values: Vec<i64>) -> Self {
+        Self {
+            inner: yggdryl_scalar::Int64Serie::from(values),
+        }
+    }
+
+    /// The null list scalar.
+    #[staticmethod]
+    fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::Int64Serie::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value (distinct from the empty list).
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The number of elements, `0` when null or empty (`is_null` distinguishes
+    /// the two).
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Whether the sequence holds no elements (also `True` when null).
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// The whole element buffer as a `list[int]`, or `None` when null.
+    fn values(&self) -> Option<Vec<i64>> {
+        self.inner.values().map(<[i64]>::to_vec)
+    }
+
+    /// The element at `index` read as its native `int`; raises `ValueError` when
+    /// null or out of bounds.
+    fn get_at(&self, index: usize) -> Result<i64, DataErr> {
+        Ok(self.inner.get_at::<i64>(index)?)
+    }
+
+    /// The element at `index` as an `Int64Scalar`, or `None` when the list is
+    /// null or `index` is out of bounds.
+    fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
+        self.inner
+            .get_scalar_at(index)
+            .map(|inner| Int64Scalar { inner })
+    }
+
+    /// The scalar's data type.
+    fn data_type(&self) -> crate::dtype::Int64ListType {
+        crate::dtype::Int64ListType::default()
+    }
+}
+
 /// Populates the `scalar` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullScalar>()?;
@@ -632,5 +702,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Scalar>()?;
     module.add_class::<UInt64Scalar>()?;
     module.add_class::<OptionalUInt64Scalar>()?;
+    module.add_class::<Int64Serie>()?;
     Ok(())
 }

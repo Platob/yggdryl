@@ -162,3 +162,29 @@ def test_null_scalar():
     nothing = scalar.NullScalar()
     assert nothing.is_null() is True
     assert nothing.data_type().name() == "null"
+
+
+def test_int64_serie_holds_a_list():
+    numbers = scalar.Int64Serie([1, 2, 3])
+    assert numbers.is_null() is False
+    assert numbers.is_empty() is False
+    assert numbers.len() == 3
+    assert numbers.values() == [1, 2, 3]
+    assert numbers.get_at(1) == 2
+    assert numbers.get_scalar_at(2).value() == 3
+    assert numbers.get_scalar_at(3) is None  # out of bounds
+    assert numbers.data_type().name() == "list"
+    with pytest.raises(ValueError):
+        numbers.get_at(3)  # out of bounds
+
+    # The empty list and null are distinct states.
+    empty = scalar.Int64Serie([])
+    assert empty.is_null() is False
+    assert empty.is_empty() is True
+    assert empty.values() == []
+
+    missing = scalar.Int64Serie.null()
+    assert missing.is_null() is True
+    assert missing.values() is None
+    with pytest.raises(ValueError):
+        missing.get_at(0)

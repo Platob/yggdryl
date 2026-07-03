@@ -2,7 +2,8 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField` and `UnionField` — the same globally-unique
+//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete list field
+//! `Int64ListField` (a column of `Int64ListType`) — the same globally-unique
 //! names as the Rust crate, the namespace carrying the concern (the `…Field`
 //! suffix keeps every class distinct in napi's addon-global registry). A field
 //! pairs a name with its `yggdryl.dtype` data type and a nullability flag (`true`
@@ -10,9 +11,9 @@
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
-//! the FFI boundary; C Data Interface interop is future work) and the generic
-//! nested fields (`ListField` / `MapField` / `StructField`), which have no
-//! concrete FFI shape yet.
+//! the FFI boundary; C Data Interface interop is future work) and the
+//! still-generic nested fields (`ListField` over a value type other than `int64`,
+//! `MapField` / `StructField`), which have no concrete FFI shape yet.
 
 use napi_derive::napi;
 use yggdryl_field::Field;
@@ -298,3 +299,39 @@ int_field_node!(
     OptionalUInt64Type,
     "uint64"
 );
+
+/// A nullable `list`-of-`int64` field: a name paired with the `Int64ListType`
+/// data type.
+#[napi(namespace = "field")]
+pub struct Int64ListField {
+    pub(crate) inner: yggdryl_field::ListField<yggdryl_dtype::Int64Type>,
+}
+
+#[napi(namespace = "field")]
+impl Int64ListField {
+    /// A `list`-of-`int64` field named `name` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_field::ListField::new(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::Int64ListType {
+        crate::dtype::Int64ListType::default()
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}

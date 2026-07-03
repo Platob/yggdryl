@@ -13,17 +13,21 @@ The bindings expose the layer as `yggdryl.scalar` (Python and Node), adapting to
 idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
 `BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
 scalars are concrete per-type classes (`OptionalInt64Scalar`,
-`OptionalBinaryScalar`, …) built straight from the native value, and the `as_*`
-accessors surface the core `DataError` as a raised `ValueError` (Python) / thrown
-`Error` (Node). Three things stay **Rust-only**, stated here and in both binding
-module docs: the [Arrow interop](#arrow-interop) surface (`to_arrow` /
-`from_arrow` exchange `arrow-array` values that cannot cross the FFI boundary),
-the `FromScalar` / `ScalarFactory` traits (generic Rust bounds; the bindings reach
-defaults through a data type's `default_scalar()`), and the
+`OptionalBinaryScalar`, …) built straight from the native value, the
+buffer-backed list scalar `Int64Serie` crosses (its `int64` elements as a Python
+`list[int]` / an array of JS `BigInt`), and the `as_*` accessors surface the core
+`DataError` as a raised `ValueError` (Python) / thrown `Error` (Node). Three
+things stay **Rust-only**, stated here and in both binding module docs: the
+[Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
+`arrow-array` values that cannot cross the FFI boundary), the `FromScalar` /
+`ScalarFactory` traits (generic Rust bounds; the bindings reach defaults through a
+data type's `default_scalar()`), and — for `Int64Serie` — its
+per-element-null construction, `array` / `nulls` Arrow-buffer surface and
+`from_io` / `pwrite_io` two-resource bridge (which await C Data Interface interop
+or borrow a second IO resource at once), so a serie built from a binding is a
+dense (all-valid) list. The still-generic
 [nested scalars](#nested-scalars-serie-map-and-struct) — the generic `Serie` /
-`MapScalar` / `StructScalar` and the buffer-backed `Int64Serie`, whose zero-copy
-Arrow buffers await C Data Interface interop — which have no concrete FFI shape
-yet.
+`MapScalar` / `StructScalar` — have no concrete FFI shape yet.
 
 ## Scalars hold a value or null
 
@@ -269,12 +273,6 @@ fn main() {
 
 ## Nested scalars: serie, map and struct
 
-!!! note "Rust only"
-    The nested scalars are generic over their child types (or carry dynamic Arrow
-    fields), and the buffer-backed `Int64Serie` shares raw Arrow buffers that await
-    C Data Interface interop — none has a concrete FFI shape yet, so they are not
-    exposed to Python or Node.
-
 The list scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
 child array — construction assembles the elements once, `to_arrow` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
@@ -295,21 +293,87 @@ back an `Int64Scalar`, and `from_io` / `pwrite_io` bridge the elements to any
 one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`.
 
+`Int64Serie` is the one nested scalar exposed to the bindings — built dense
+(all-valid) from a native list, the whole list still nullable through `null()`:
+
+=== "Python"
+
+    ```python
+    from yggdryl import scalar
+
+    numbers = scalar.Int64Serie([1, 2, 3])
+    assert (numbers.is_null(), numbers.is_empty(), numbers.len()) == (False, False, 3)
+    assert numbers.values() == [1, 2, 3]
+    assert numbers.get_at(1) == 2                    # the native value
+    assert numbers.get_scalar_at(2).value() == 3     # ... or the element scalar
+    assert numbers.get_scalar_at(3) is None          # out of bounds
+    assert numbers.data_type().name() == "list"
+
+    # The empty list and null are distinct states.
+    assert scalar.Int64Serie([]).is_empty() is True
+    assert scalar.Int64Serie.null().is_null() is True
+    ```
+
+=== "Node"
+
+    ```js
+    const { scalar } = require('yggdryl')
+
+    const numbers = new scalar.Int64Serie([1n, 2n, 3n])
+    assert.deepEqual([numbers.isNull(), numbers.isEmpty(), numbers.len()], [false, false, 3])
+    assert.deepEqual(numbers.values(), [1n, 2n, 3n])
+    assert.equal(numbers.getAt(1), 2n)                 // the native value
+    assert.equal(numbers.getScalarAt(2).value(), 3n)   // ... or the element scalar
+    assert.equal(numbers.getScalarAt(3), null)         // out of bounds
+    assert.equal(numbers.dataType().name(), 'list')
+
+    // The empty list and null are distinct states.
+    assert.equal(new scalar.Int64Serie([]).isEmpty(), true)
+    assert.equal(scalar.Int64Serie.null().isNull(), true)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar};
+
+    fn main() {
+        let numbers = Int64Serie::from(vec![1, 2, 3]);
+        assert_eq!((numbers.is_null(), numbers.is_empty(), numbers.len()), (false, false, 3));
+        assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
+        assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2);   // the native value
+        assert_eq!(numbers.get_scalar_at(2), Some(Int64Scalar::new(3))); // the element scalar
+        assert_eq!(numbers.data_type().name(), "list");
+
+        // The empty list and null are distinct states.
+        assert!(Int64Serie::default().is_empty());
+        assert!(Int64Serie::null().is_null());
+    }
+    ```
+
+The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only:
+
+!!! note "Rust only"
+    The generic `Serie` / `MapScalar` / `StructScalar` are generic over their
+    child types (or carry dynamic Arrow fields), and `Int64Serie`'s `to_arrow` /
+    `from_arrow`, `array` / `nulls` and `from_io` / `pwrite_io` share raw Arrow
+    buffers or borrow a second IO resource at once — none crosses the FFI boundary
+    yet, so from a binding an `Int64Serie` is a dense (all-valid) list.
+
 ```rust
 use yggdryl_scalar::yggdryl_dtype as dtype;
 use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar, Serie};
 
 fn main() {
+    // The generic Serie carries per-element nulls and round-trips through Arrow.
     let numbers = Serie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
     let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
     assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
-    // The buffer-backed list of int64: native, zero-copy access.
+    // Int64Serie shares the same buffers across the Arrow boundary, zero-copy.
     let fast = Int64Serie::from(vec![1, 2, 3]);
-    assert_eq!(fast.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
-    assert_eq!(fast.get_at::<i64>(1).unwrap(), 2);
     assert_eq!(Int64Serie::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
 
     // The type parameters name the dtype-layer types.

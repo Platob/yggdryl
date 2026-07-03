@@ -90,3 +90,14 @@ def test_data_type_field_factory_matches_the_field_class():
         direct.data_type().name(),
         direct.is_nullable(),
     )
+
+
+def test_int64_list_field():
+    scores = field.Int64ListField("scores")
+    assert scores.name() == "scores"
+    assert scores.is_nullable() is True
+    assert scores.data_type().name() == "list"
+    assert scores.data_type().value_type().name() == "int64"
+    assert field.Int64ListField("scores", False).is_nullable() is False
+    # The data type's factory builds the same field.
+    assert dtype.Int64ListType().field("scores").data_type().name() == "list"

@@ -3,9 +3,10 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `toIo()` hands one back) and `NullScalar` — the same
-//! globally-unique names as the Rust crate, the namespace carrying the concern
-//! (the `…Scalar` suffix keeps every class distinct in napi's addon-global
+//! `ByteBuffer` — `toIo()` hands one back), `NullScalar` and the list scalar
+//! `Int64Serie` (the buffer-backed `list` of `int64`, its elements `BigInt`) —
+//! the same globally-unique names as the Rust crate, the namespace carrying the
+//! concern (the `…Scalar` suffix keeps every class distinct in napi's addon-global
 //! registry). Values adapt to JS idioms: the 8–32 bit types use `number`, the
 //! 64-bit types use `BigInt`, and scalars expose the `as*` accessors with the core
 //! contract — the value when the target represents it exactly, or a thrown error
@@ -19,10 +20,12 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
-//! through a data type's `field()` / `scalar()` / `defaultScalar()`), and the
-//! nested scalars — the generic `Serie` / `MapScalar` / `StructScalar` and the
-//! buffer-backed `Int64Serie` (whose zero-copy Arrow buffers await C Data
-//! Interface interop) — which have no concrete FFI shape yet.
+//! through a data type's `field()` / `scalar()` / `defaultScalar()`), and — for
+//! the list scalar `Int64Serie` — its per-element-null construction, `array` /
+//! `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo` two-resource bridge
+//! (which borrow a second IO resource at once), so a serie built from Node is a
+//! dense (all-valid) list. The still-generic nested scalars — the generic `Serie`
+//! / `MapScalar` / `StructScalar` — have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
@@ -550,5 +553,88 @@ impl OptionalUInt64Scalar {
     #[napi]
     pub fn value(&self) -> Option<BigInt> {
         self.inner.value().copied().map(BigInt::from)
+    }
+}
+
+/// A single, possibly-null `list` of `int64` — *our array*, the buffer-backed
+/// list scalar. Built dense (all-valid) from Node; the whole list may still be
+/// null (`Int64Serie.null()`).
+#[napi(namespace = "scalar")]
+pub struct Int64Serie {
+    pub(crate) inner: yggdryl_scalar::Int64Serie,
+}
+
+#[napi(namespace = "scalar")]
+impl Int64Serie {
+    /// A serie holding the native list `values` (all-valid).
+    #[napi(constructor)]
+    pub fn new(values: Vec<BigInt>) -> Result<Self> {
+        let values = values
+            .into_iter()
+            .map(bigint_to_i64)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
+            inner: yggdryl_scalar::Int64Serie::from(values),
+        })
+    }
+
+    /// The null list scalar.
+    #[napi(factory)]
+    pub fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::Int64Serie::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value (distinct from the empty list).
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The number of elements, `0` when null or empty (`isNull` distinguishes the
+    /// two).
+    #[napi]
+    pub fn len(&self) -> u32 {
+        self.inner.len() as u32
+    }
+
+    /// Whether the sequence holds no elements (also `true` when null).
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// The whole element buffer as an array of `BigInt`, or `null` when null.
+    #[napi]
+    pub fn values(&self) -> Option<Vec<BigInt>> {
+        self.inner
+            .values()
+            .map(|values| values.iter().copied().map(BigInt::from).collect())
+    }
+
+    /// The element at `index` read as its native `BigInt`; throws when null or
+    /// out of bounds.
+    #[napi]
+    pub fn get_at(&self, index: u32) -> Result<BigInt> {
+        self.inner
+            .get_at::<i64>(index as usize)
+            .map(BigInt::from)
+            .map_err(data_error)
+    }
+
+    /// The element at `index` as an `Int64Scalar`, or `null` when the list is
+    /// null or `index` is out of bounds.
+    #[napi]
+    pub fn get_scalar_at(&self, index: u32) -> Option<Int64Scalar> {
+        self.inner
+            .get_scalar_at(index as usize)
+            .map(|inner| Int64Scalar { inner })
+    }
+
+    /// The scalar's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::Int64ListType {
+        crate::dtype::Int64ListType::default()
     }
 }

@@ -161,3 +161,36 @@ def test_union_type_reached_through_optional():
     assert union.byte_width() is None
     assert union.child_count() == 2
     assert union.mode() == "sparse"
+
+
+def test_int64_list_type():
+    lst = dtype.Int64ListType()
+    assert lst.name() == "list"
+    assert lst.arrow_format() == "+l"
+    assert lst.byte_width() is None
+    assert lst.bit_width() is None
+    assert lst.child_count() == 1
+    assert lst.value_type().name() == "int64"
+
+    # The codec concatenates the value type's per-element bytes.
+    encoded = lst.native_to_bytes([1, 2, 3])
+    assert len(encoded) == 24
+    assert lst.native_from_bytes(encoded) == [1, 2, 3]
+    assert lst.native_from_bytes(b"") == []
+    with pytest.raises(ValueError):
+        lst.native_from_bytes(b"\x00" * 9)  # not a whole number of elements
+
+    # Defaults and factories.
+    assert lst.default_value() == []
+    assert lst.default_scalar().is_null() is False
+    assert lst.default_scalar().len() == 0
+
+    column = lst.field("scores")
+    assert column.name() == "scores"
+    assert column.data_type().name() == "list"
+    assert column.is_nullable() is True
+    assert lst.field("scores", False).is_nullable() is False
+
+    numbers = lst.scalar([1, 2, 3])
+    assert numbers.values() == [1, 2, 3]
+    assert numbers.data_type().value_type().name() == "int64"

@@ -22,9 +22,10 @@ Four things stay **Rust-only**, stated here and in both binding module docs: the
 `arrow-schema` values that cannot cross the FFI boundary), construction of a
 `UnionType` from arbitrary child fields (reached in the bindings through an
 optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
-the [nested types](#nested-types-list-map-and-struct) (the generic `ListType` /
-`MapType` / `StructType` and the per-family trait pairs), which have no concrete
-FFI shape yet.
+the still-generic [nested types](#nested-types-list-map-and-struct) (`MapType`,
+`StructType` and `ListType` over any value type but `int64`), which have no
+concrete FFI shape yet — the one exception, the concrete `Int64ListType` (the
+`list` of `int64`), is exposed to both bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and
@@ -238,11 +239,6 @@ expose the optional family as concrete per-type classes (`OptionalInt64Type`,
 
 ## Nested types: list, map and struct
 
-!!! note "Rust only"
-    The nested types are generic over their child types (or carry dynamic Arrow
-    fields) — none has a concrete FFI shape yet, so they are not exposed to
-    Python or Node.
-
 The `list`, `map` and `struct` modules follow the family pattern. `ListType<D>` is
 the variable-length sequence of one value type (single nullable `"item"` child);
 `MapType<K, V>` the sequence of key–value entries (single `"entries"` struct
@@ -251,19 +247,71 @@ like `UnionType`. The typed byte codecs concatenate the child codecs and split
 them back by fixed width (a variable-width child errors with
 `DataError::IndeterminateElementWidth` — decode those from Arrow).
 
-```rust
-use yggdryl_dtype::{DataType, Int64Type, ListType, MapType, TypedDataType, UInt8Type};
+The `list` of `int64` is the one nested type with a concrete FFI shape: `int64` is
+the value type with a buffer-backed list scalar (`Int64Serie`), so `Int64ListType`
+is exposed to both bindings with the full descriptor, codec and factory surface —
+its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
 
-fn main() {
-    let list = ListType::new(Int64Type);
-    assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
-    assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
-    assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
+=== "Python"
 
-    let map = MapType::new(UInt8Type, Int64Type);
-    assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
-}
-```
+    ```python
+    from yggdryl import dtype
+
+    numbers = dtype.Int64ListType()
+    assert (numbers.name(), numbers.arrow_format()) == ("list", "+l")
+    assert numbers.byte_width() is None and numbers.child_count() == 1
+    assert numbers.value_type().name() == "int64"
+
+    # The codec concatenates the value type's per-element bytes.
+    assert numbers.native_from_bytes(numbers.native_to_bytes([1, 2, 3])) == [1, 2, 3]
+    assert numbers.default_value() == []  # sequences default to empty
+
+    # The factory hub builds the list's field and scalar.
+    assert numbers.field("scores").data_type().name() == "list"
+    assert numbers.scalar([1, 2, 3]).values() == [1, 2, 3]
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    const numbers = new dtype.Int64ListType()
+    assert.deepEqual([numbers.name(), numbers.arrowFormat()], ['list', '+l'])
+    assert.equal(numbers.byteWidth(), null)
+    assert.equal(numbers.childCount(), 1)
+    assert.equal(numbers.valueType().name(), 'int64')
+
+    // The codec concatenates the value type's per-element bytes (BigInt elements).
+    assert.deepEqual(numbers.nativeFromBytes(numbers.nativeToBytes([1n, 2n, 3n])), [1n, 2n, 3n])
+    assert.deepEqual(numbers.defaultValue(), []) // sequences default to empty
+
+    // The factory hub builds the list's field and scalar.
+    assert.equal(numbers.field('scores').dataType().name(), 'list')
+    assert.deepEqual(numbers.scalar([1n, 2n, 3n]).values(), [1n, 2n, 3n])
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_dtype::{DataType, Int64Type, ListType, MapType, TypedDataType, UInt8Type};
+
+    fn main() {
+        let list = ListType::new(Int64Type);
+        assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
+        assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
+        assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
+
+        // A list over any other value type, and map / struct, stay Rust-only.
+        let map = MapType::new(UInt8Type, Int64Type);
+        assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
+    }
+    ```
+
+!!! note "Rust only"
+    `MapType`, `StructType` and `ListType` over any value type but `int64` are
+    still generic over their child types (or carry dynamic Arrow fields), so they
+    have no concrete FFI shape yet and are not exposed to Python or Node.
 
 ## The trait layers
 

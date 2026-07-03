@@ -11,11 +11,12 @@ Apache Arrow `Field` — so a schema is a sequence of fields.
 
 The bindings expose the layer as `yggdryl.field` (Python and Node), adapting to
 idioms: `nullable` defaults to `True` / `true` as a keyword / optional argument.
-Two things stay **Rust-only**, stated here and in both binding module docs: the
-[Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
-`arrow-schema` values that cannot cross the FFI boundary), and the generic nested
-fields (`ListField` / `MapField` / `StructField`), which have no concrete FFI
-shape yet.
+The concrete list field `Int64ListField` (a column of `Int64ListType`) crosses
+too. Two things stay **Rust-only**, stated here and in both binding module docs:
+the [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
+`arrow-schema` values that cannot cross the FFI boundary), and the still-generic
+nested fields (`ListField` over a value type other than `int64`, `MapField` /
+`StructField`), which have no concrete FFI shape yet.
 
 ## Fields pair a name with a data type
 
@@ -39,6 +40,10 @@ parameterised `StructField` and `UnionField` take theirs at construction.
 
     payload = field.BinaryField("payload")
     assert payload.data_type().name() == "binary"
+
+    scores = field.Int64ListField("scores")
+    assert scores.data_type().name() == "list"
+    assert scores.data_type().value_type().name() == "int64"
     ```
 
 === "Node"
@@ -57,13 +62,17 @@ parameterised `StructField` and `UnionField` take theirs at construction.
 
     const payload = new field.BinaryField('payload')
     assert.equal(payload.dataType().name(), 'binary')
+
+    const scores = new field.Int64ListField('scores')
+    assert.equal(scores.dataType().name(), 'list')
+    assert.equal(scores.dataType().valueType().name(), 'int64')
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Optional};
-    use yggdryl_field::{BinaryField, Field, Int64Field, OptionalField};
+    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, List, Optional};
+    use yggdryl_field::{BinaryField, Field, Int64Field, ListField, OptionalField};
 
     fn main() {
         let id = Int64Field::new("id", false);
@@ -76,6 +85,10 @@ parameterised `StructField` and `UnionField` take theirs at construction.
 
         let payload = BinaryField::new("payload", true);
         assert_eq!(payload.data_type().name(), "binary");
+
+        let scores = ListField::<Int64Type>::new("scores", true);
+        assert_eq!(scores.data_type().name(), "list");
+        assert_eq!(scores.data_type().value_type().name(), "int64");
     }
     ```
 

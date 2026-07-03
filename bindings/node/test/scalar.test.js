@@ -151,3 +151,27 @@ test('null scalar', () => {
   assert.equal(nothing.isNull(), true)
   assert.equal(nothing.dataType().name(), 'null')
 })
+
+test('int64 serie holds a list', () => {
+  const numbers = new scalar.Int64Serie([1n, 2n, 3n])
+  assert.equal(numbers.isNull(), false)
+  assert.equal(numbers.isEmpty(), false)
+  assert.equal(numbers.len(), 3)
+  assert.deepEqual(numbers.values(), [1n, 2n, 3n])
+  assert.equal(numbers.getAt(1), 2n)
+  assert.equal(numbers.getScalarAt(2).value(), 3n)
+  assert.equal(numbers.getScalarAt(3), null) // out of bounds
+  assert.equal(numbers.dataType().name(), 'list')
+  assert.throws(() => numbers.getAt(3)) // out of bounds
+
+  // The empty list and null are distinct states.
+  const empty = new scalar.Int64Serie([])
+  assert.equal(empty.isNull(), false)
+  assert.equal(empty.isEmpty(), true)
+  assert.deepEqual(empty.values(), [])
+
+  const missing = scalar.Int64Serie.null()
+  assert.equal(missing.isNull(), true)
+  assert.equal(missing.values(), null)
+  assert.throws(() => missing.getAt(0))
+})

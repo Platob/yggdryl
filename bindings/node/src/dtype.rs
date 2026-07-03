@@ -2,16 +2,19 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (`yggdryl.dtype.Int64Type`, `yggdryl.dtype.OptionalInt64Type`, …),
-//! alongside `BinaryType` / `OptionalBinaryType`, `NullType` and `UnionType` — the
-//! same globally-unique names as the Rust crate, the namespace carrying the
-//! concern (napi registers class constructors by JS class name in one addon-global
-//! registry, and the `…Type` / `…Field` / `…Scalar` suffixes keep the three
-//! concerns' classes distinct). Values adapt to JS idioms: the 8–32 bit types
-//! carry their codec values as `number`, the 64-bit types as `BigInt`. Data types
-//! expose the descriptor surface (`name`, `arrowFormat`, widths), the native byte
-//! codec, and — where they are typed factories (the integers, `BinaryType` and the
-//! optionals) — their field / scalar / default builders (`field` hands back a
-//! `yggdryl.field` class, `scalar` and `defaultScalar` a `yggdryl.scalar` class).
+//! alongside `BinaryType` / `OptionalBinaryType`, `NullType`, `UnionType` and the
+//! concrete list type `Int64ListType` (the `list` of `int64` — the one value type
+//! with a concrete list scalar) — the same globally-unique names as the Rust
+//! crate, the namespace carrying the concern (napi registers class constructors by
+//! JS class name in one addon-global registry, and the `…Type` / `…Field` /
+//! `…Scalar` suffixes keep the three concerns' classes distinct). Values adapt to
+//! JS idioms: the 8–32 bit types carry their codec values as `number`, the 64-bit
+//! types (and the `int64` list's elements) as `BigInt`. Data types expose the
+//! descriptor surface (`name`, `arrowFormat`, widths), the native byte codec,
+//! and — where they are typed factories (the integers, `BinaryType`, `Int64ListType`
+//! and the optionals) — their field / scalar / default builders (`field` hands
+//! back a `yggdryl.field` class, `scalar` and `defaultScalar` a `yggdryl.scalar`
+//! class).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
@@ -19,8 +22,9 @@
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
 //! value — `UnionType` is reached through an optional data type's `storage()`), the
 //! `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the generic nested types (`ListType` / `MapType` / `StructType`
-//! and the per-family trait pairs), which have no concrete FFI shape yet.
+//! uniformly), and the still-generic nested types (`ListType` over a value type
+//! other than `int64`, `MapType` / `StructType`, and the per-family trait pairs),
+//! which have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Result};
 use napi_derive::napi;
@@ -819,5 +823,119 @@ impl OptionalUInt64Type {
     #[napi]
     pub fn default_value(&self) -> BigInt {
         BigInt::from(TypedDataType::<u64>::default_value(&self.inner))
+    }
+}
+
+/// The Apache Arrow `list` of `int64`: a variable-length sequence of `int64`
+/// (single nullable `"item"` child). The one concrete list type — `int64` is the
+/// value type with a buffer-backed list scalar (`yggdryl.scalar.Int64Serie`);
+/// its elements cross as `BigInt`.
+#[napi(namespace = "dtype")]
+#[derive(Default)]
+pub struct Int64ListType {
+    pub(crate) inner: yggdryl_dtype::ListType<yggdryl_dtype::Int64Type>,
+}
+
+#[napi(namespace = "dtype")]
+impl Int64ListType {
+    /// The `list` of `int64` data type.
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"list"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"+l"`.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A list has no fixed byte width.
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// A list has no fixed bit width.
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// The number of child fields, `1` (the `"item"` field).
+    #[napi]
+    pub fn child_count(&self) -> u32 {
+        self.inner.child_count() as u32
+    }
+
+    /// The value type this list sequences, `int64`.
+    #[napi]
+    pub fn value_type(&self) -> Int64Type {
+        Int64Type::default()
+    }
+
+    /// Serialize a native list into its Arrow bytes — the value type's codec,
+    /// concatenated per element.
+    #[napi]
+    pub fn native_to_bytes(&self, values: Vec<BigInt>) -> Result<Buffer> {
+        let values = values
+            .into_iter()
+            .map(bigint_to_i64)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Buffer::from(self.inner.native_to_bytes(&values)))
+    }
+
+    /// Deserialize Arrow bytes into a native list — the exact inverse of
+    /// `nativeToBytes`; a length that is not a whole number of elements throws.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<Vec<BigInt>> {
+        self.inner
+            .native_from_bytes(&bytes)
+            .map(|values| values.into_iter().map(BigInt::from).collect())
+            .map_err(data_error)
+    }
+
+    /// The type's default native value, the empty list.
+    #[napi]
+    pub fn default_value(&self) -> Vec<BigInt> {
+        TypedDataType::<Vec<i64>>::default_value(&self.inner)
+            .into_iter()
+            .map(BigInt::from)
+            .collect()
+    }
+
+    /// The default scalar: a `yggdryl.scalar.Int64Serie` holding the empty list.
+    #[napi]
+    pub fn default_scalar(&self) -> crate::scalar::Int64Serie {
+        crate::scalar::Int64Serie {
+            inner: yggdryl_scalar::Int64Serie::default(),
+        }
+    }
+
+    /// The field of this type named `name` (nullable by default).
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::Int64ListField {
+        crate::field::Int64ListField {
+            inner: self.inner.field(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// A `yggdryl.scalar.Int64Serie` holding the native list `values`.
+    #[napi]
+    pub fn scalar(&self, values: Vec<BigInt>) -> Result<crate::scalar::Int64Serie> {
+        let values = values
+            .into_iter()
+            .map(bigint_to_i64)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(crate::scalar::Int64Serie {
+            inner: yggdryl_scalar::Int64Serie::from(values),
+        })
     }
 }

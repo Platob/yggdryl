@@ -151,3 +151,35 @@ test('union type reached through optional', () => {
   assert.equal(union.childCount(), 2)
   assert.equal(union.mode(), 'sparse')
 })
+
+test('int64 list type', () => {
+  const list = new dtype.Int64ListType()
+  assert.equal(list.name(), 'list')
+  assert.equal(list.arrowFormat(), '+l')
+  assert.equal(list.byteWidth(), null)
+  assert.equal(list.bitWidth(), null)
+  assert.equal(list.childCount(), 1)
+  assert.equal(list.valueType().name(), 'int64')
+
+  // The codec concatenates the value type's per-element bytes (BigInt elements).
+  const encoded = list.nativeToBytes([1n, 2n, 3n])
+  assert.equal(encoded.length, 24)
+  assert.deepEqual(list.nativeFromBytes(encoded), [1n, 2n, 3n])
+  assert.deepEqual(list.nativeFromBytes(Buffer.alloc(0)), [])
+  assert.throws(() => list.nativeFromBytes(Buffer.alloc(9))) // not a whole element count
+
+  // Defaults and factories.
+  assert.deepEqual(list.defaultValue(), [])
+  assert.equal(list.defaultScalar().isNull(), false)
+  assert.equal(list.defaultScalar().len(), 0)
+
+  const column = list.field('scores')
+  assert.equal(column.name(), 'scores')
+  assert.equal(column.dataType().name(), 'list')
+  assert.equal(column.isNullable(), true)
+  assert.equal(list.field('scores', false).isNullable(), false)
+
+  const numbers = list.scalar([1n, 2n, 3n])
+  assert.deepEqual(numbers.values(), [1n, 2n, 3n])
+  assert.equal(numbers.dataType().valueType().name(), 'int64')
+})

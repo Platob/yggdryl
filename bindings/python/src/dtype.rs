@@ -2,12 +2,14 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (e.g. `Int64Type`, `OptionalInt64Type`), alongside `BinaryType` /
-//! `OptionalBinaryType`, `NullType` and `UnionType` — the same suffixed names as
-//! the Rust crate, the submodule carrying the concern. Data types expose the
-//! descriptor surface (`name`, `arrow_format`, widths), the native byte codec,
-//! and — as the model's factory hub — their defaults (`default_scalar`) and their
-//! `field` / `scalar` builders (`field` hands back a `yggdryl.field` class,
-//! `scalar` and `default_scalar` a `yggdryl.scalar` class).
+//! `OptionalBinaryType`, `NullType`, `UnionType` and the concrete list type
+//! `Int64ListType` (the `list` of `int64` — the one value type with a concrete
+//! list scalar) — the same suffixed names as the Rust crate, the submodule
+//! carrying the concern. Data types expose the descriptor surface (`name`,
+//! `arrow_format`, widths), the native byte codec, and — as the model's factory
+//! hub — their defaults (`default_scalar`) and their `field` / `scalar` builders
+//! (`field` hands back a `yggdryl.field` class, `scalar` and `default_scalar` a
+//! `yggdryl.scalar` class).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
@@ -15,8 +17,9 @@
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
 //! value — `UnionType` is reached through an optional data type's `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the generic nested types (`ListType` / `MapType` / `StructType`
-//! and the per-family trait pairs), which have no concrete FFI shape yet.
+//! uniformly), and the still-generic nested types (`ListType` over a value type
+//! other than `int64`, `MapType` / `StructType`, and the per-family trait pairs),
+//! which have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -551,6 +554,95 @@ int_dtype_py!(
     "uint64"
 );
 
+/// The Apache Arrow `list` of `int64`: a variable-length sequence of `int64`
+/// (single nullable `"item"` child). The one concrete list type — `int64` is the
+/// value type with a buffer-backed list scalar (`yggdryl.scalar.Int64Serie`).
+#[pyclass]
+#[derive(Default)]
+pub struct Int64ListType {
+    pub(crate) inner: yggdryl_dtype::ListType<yggdryl_dtype::Int64Type>,
+}
+
+#[pymethods]
+impl Int64ListType {
+    /// The `list` of `int64` data type.
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"list"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"+l"`.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A list has no fixed byte width.
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// A list has no fixed bit width.
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// The number of child fields, `1` (the `"item"` field).
+    fn child_count(&self) -> usize {
+        self.inner.child_count()
+    }
+
+    /// The value type this list sequences, `int64`.
+    fn value_type(&self) -> Int64Type {
+        Int64Type::default()
+    }
+
+    /// Serialize a native list into its Arrow bytes — the value type's codec,
+    /// concatenated per element.
+    fn native_to_bytes<'py>(&self, py: Python<'py>, values: Vec<i64>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.native_to_bytes(&values))
+    }
+
+    /// Deserialize Arrow bytes into a native list — the exact inverse of
+    /// `native_to_bytes`; a length that is not a whole number of elements raises
+    /// `ValueError`.
+    fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<i64>, DataErr> {
+        Ok(self.inner.native_from_bytes(bytes)?)
+    }
+
+    /// The type's default native value, the empty list.
+    fn default_value(&self) -> Vec<i64> {
+        self.inner.default_value()
+    }
+
+    /// The default scalar: a `yggdryl.scalar.Int64Serie` holding the empty list.
+    fn default_scalar(&self) -> crate::scalar::Int64Serie {
+        crate::scalar::Int64Serie {
+            inner: yggdryl_scalar::Int64Serie::default(),
+        }
+    }
+
+    /// The field of this type named `name` (nullable by default) — a
+    /// `yggdryl.field.Int64ListField`.
+    #[pyo3(signature = (name, nullable = true))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::Int64ListField {
+        crate::field::Int64ListField {
+            inner: self.inner.field(name, nullable),
+        }
+    }
+
+    /// A `yggdryl.scalar.Int64Serie` holding the native list `values`.
+    fn scalar(&self, values: Vec<i64>) -> crate::scalar::Int64Serie {
+        crate::scalar::Int64Serie {
+            inner: yggdryl_scalar::Int64Serie::from(values),
+        }
+    }
+}
+
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UnionType>()?;
@@ -573,5 +665,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Type>()?;
     module.add_class::<UInt64Type>()?;
     module.add_class::<OptionalUInt64Type>()?;
+    module.add_class::<Int64ListType>()?;
     Ok(())
 }
