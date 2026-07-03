@@ -2,8 +2,8 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete list field
-//! `Int64ListField` (a column of `Int64ListType`) — the same globally-unique
+//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete serie field
+//! `Int64SerieField` (a column of `Int64SerieType`) — the same globally-unique
 //! names as the Rust crate, the namespace carrying the concern (the `…Field`
 //! suffix keeps every class distinct in napi's addon-global registry). A field
 //! pairs a name with its `yggdryl.dtype` data type and a nullability flag (`true`
@@ -12,7 +12,7 @@
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the
-//! still-generic nested fields (`ListField` over a value type other than `int64`,
+//! still-generic nested fields (`SerieField` over a value type other than `int64`,
 //! `MapField` / `StructField`), which have no concrete FFI shape yet.
 
 use napi_derive::napi;
@@ -300,20 +300,20 @@ int_field_node!(
     "uint64"
 );
 
-/// A nullable `list`-of-`int64` field: a name paired with the `Int64ListType`
+/// A nullable `list`-of-`int64` field: a name paired with the `Int64SerieType`
 /// data type.
 #[napi(namespace = "field")]
-pub struct Int64ListField {
-    pub(crate) inner: yggdryl_field::ListField<yggdryl_dtype::Int64Type>,
+pub struct Int64SerieField {
+    pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::Int64Type>,
 }
 
 #[napi(namespace = "field")]
-impl Int64ListField {
+impl Int64SerieField {
     /// A `list`-of-`int64` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::ListField::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::SerieField::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -325,8 +325,8 @@ impl Int64ListField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::Int64ListType {
-        crate::dtype::Int64ListType::default()
+    pub fn data_type(&self) -> crate::dtype::Int64SerieType {
+        crate::dtype::Int64SerieType::default()
     }
 
     /// Whether values in this field may be null.

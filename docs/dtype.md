@@ -10,7 +10,7 @@ physical and logical data types for zero-copy FFI and Arrow interop. The concret
 families so far: the `integer` module (every signed and unsigned integer), the
 `binary` module (the variable-size byte type), the `null` module (the storage-free
 null type), the `union` module, the `optional` module (the logical null-or-value
-type over union storage) and the nested `list`, `map` and `struct` modules; more
+type over union storage) and the nested `serie`, `map` and `struct` modules; more
 land as the layer grows.
 
 The bindings expose the layer as `yggdryl.dtype` (Python and Node), adapting to
@@ -22,9 +22,9 @@ Four things stay **Rust-only**, stated here and in both binding module docs: the
 `arrow-schema` values that cannot cross the FFI boundary), construction of a
 `UnionType` from arbitrary child fields (reached in the bindings through an
 optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
-the still-generic [nested types](#nested-types-list-map-and-struct) (`MapType`,
-`StructType` and `ListType` over any value type but `int64`), which have no
-concrete FFI shape yet — the one exception, the concrete `Int64ListType` (the
+the still-generic [nested types](#nested-types-serie-map-and-struct) (`MapType`,
+`StructType` and `SerieType` over any value type but `int64`), which have no
+concrete FFI shape yet — the one exception, the concrete `Int64SerieType` (the
 `list` of `int64`), is exposed to both bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
@@ -237,9 +237,9 @@ expose the optional family as concrete per-type classes (`OptionalInt64Type`,
     }
     ```
 
-## Nested types: list, map and struct
+## Nested types: serie, map and struct
 
-The `list`, `map` and `struct` modules follow the family pattern. `ListType<D>` is
+The `serie`, `map` and `struct` modules follow the family pattern. `SerieType<D>` is
 the variable-length sequence of one value type (single nullable `"item"` child);
 `MapType<K, V>` the sequence of key–value entries (single `"entries"` struct
 child); `StructType` the dynamic ordered set of named fields, carried losslessly
@@ -248,7 +248,7 @@ them back by fixed width (a variable-width child errors with
 `DataError::IndeterminateElementWidth` — decode those from Arrow).
 
 The `list` of `int64` is the one nested type with a concrete FFI shape: `int64` is
-the value type with a buffer-backed list scalar (`Int64Serie`), so `Int64ListType`
+the value type with a buffer-backed serie scalar (`Int64Serie`), so `Int64SerieType`
 is exposed to both bindings with the full descriptor, codec and factory surface —
 its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
 
@@ -257,7 +257,7 @@ its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
     ```python
     from yggdryl import dtype
 
-    numbers = dtype.Int64ListType()
+    numbers = dtype.Int64SerieType()
     assert (numbers.name(), numbers.arrow_format()) == ("list", "+l")
     assert numbers.byte_width() is None and numbers.child_count() == 1
     assert numbers.value_type().name() == "int64"
@@ -276,7 +276,7 @@ its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
     ```js
     const { dtype } = require('yggdryl')
 
-    const numbers = new dtype.Int64ListType()
+    const numbers = new dtype.Int64SerieType()
     assert.deepEqual([numbers.name(), numbers.arrowFormat()], ['list', '+l'])
     assert.equal(numbers.byteWidth(), null)
     assert.equal(numbers.childCount(), 1)
@@ -294,22 +294,22 @@ its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{DataType, Int64Type, ListType, MapType, TypedDataType, UInt8Type};
+    use yggdryl_dtype::{DataType, Int64Type, SerieType, MapType, TypedDataType, UInt8Type};
 
     fn main() {
-        let list = ListType::new(Int64Type);
-        assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
-        assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
-        assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
+        let serie = SerieType::new(Int64Type);
+        assert_eq!((serie.name(), serie.arrow_format().as_str()), ("list", "+l"));
+        assert_eq!(serie.native_from_bytes(&serie.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
+        assert_eq!(serie.default_value(), Vec::<i64>::new()); // sequences default to empty
 
-        // A list over any other value type, and map / struct, stay Rust-only.
+        // A serie over any other value type, and map / struct, stay Rust-only.
         let map = MapType::new(UInt8Type, Int64Type);
         assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
     }
     ```
 
 !!! note "Rust only"
-    `MapType`, `StructType` and `ListType` over any value type but `int64` are
+    `MapType`, `StructType` and `SerieType` over any value type but `int64` are
     still generic over their child types (or carry dynamic Arrow fields), so they
     have no concrete FFI shape yet and are not exposed to Python or Node.
 
@@ -345,15 +345,15 @@ How a type is shaped (each refines `DataType`):
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
   `list`, `map`, `union`): the base side's `child_count()` reports how many, the
   typed side adds the native codec (a sequence, a row). The generic holders are
-  `ListType<D>` (`TypedNested<Vec<T>>`) and `MapType<K, V>`
+  `SerieType<D>` (`TypedNested<Vec<T>>`) and `MapType<K, V>`
   (`TypedNested<Vec<(TK, TV)>>`); the dynamic `StructType` and `UnionType` stay
   base-only.
 
 Each composite family also carries its own base/typed trait pair, mirroring the
 base layers: `Optional` / `TypedOptional`, `Union` / `TypedUnion` (a typed
-union's defaults are its *first* data type's), `List` / `TypedList`, `Map`
+union's defaults are its *first* data type's), `Serie` / `TypedSerie`, `Map`
 / `TypedMap` and `Struct` / `TypedStruct` — the concrete `OptionalType<D>`,
-`UnionType`, `ListType<D>`, `MapType<K, V>` and `StructType` implement the base
+`UnionType`, `SerieType<D>`, `MapType<K, V>` and `StructType` implement the base
 side, and the typed side wherever the child types have codecs (the dynamic
 `UnionType` and `StructType`, whose children are only known at runtime, stay
 base-only).

@@ -15,7 +15,7 @@ type): [`integer`](src/integer) holds every signed and unsigned integer,
 [`binary`](src/binary.rs) the byte value (doubling as a `yggdryl-core`
 positioned-IO resource), [`null`](src/null.rs) the always-null scalar,
 [`optional`](src/optional.rs) the null-or-value variant, and
-[`list`](src/list), [`map`](src/map.rs) and [`struct`](src/struct.rs) the nested
+[`serie`](src/serie), [`map`](src/map.rs) and [`struct`](src/struct.rs) the nested
 values (the union, dynamic at runtime, has no scalar).
 
 ## Untyped base
@@ -68,10 +68,10 @@ let missing: OptionalScalar<dtype::Int64Type, Int64Scalar> = OptionalScalar::nul
 assert!(missing.is_null());
 ```
 
-The list scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
+The serie scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
 child array — `to_arrow` / `from_arrow` are reference-count bumps — with the
 scalar accessors `get_scalar_at(index)` / `get_at::<T>(index)` and `len` /
-`is_empty`. `Int64Serie` is the concrete list of `int64`, borrowing the raw Arrow
+`is_empty`. `Int64Serie` is the concrete serie of `int64`, borrowing the raw Arrow
 buffers themselves (`values()` borrows `&[i64]` without copying; `from_io` /
 `pwrite_io` bridge to any `yggdryl-core` positioned-IO resource). `MapScalar<K, V,
 SK, SV>` holds a key–value entry sequence and `StructScalar` one row of

@@ -3,15 +3,15 @@
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (`yggdryl.dtype.Int64Type`, `yggdryl.dtype.OptionalInt64Type`, …),
 //! alongside `BinaryType` / `OptionalBinaryType`, `NullType`, `UnionType` and the
-//! concrete list type `Int64ListType` (the `list` of `int64` — the one value type
-//! with a concrete list scalar) — the same globally-unique names as the Rust
+//! concrete serie type `Int64SerieType` (the `list` of `int64` — the one value type
+//! with a concrete serie scalar) — the same globally-unique names as the Rust
 //! crate, the namespace carrying the concern (napi registers class constructors by
 //! JS class name in one addon-global registry, and the `…Type` / `…Field` /
 //! `…Scalar` suffixes keep the three concerns' classes distinct). Values adapt to
 //! JS idioms: the 8–32 bit types carry their codec values as `number`, the 64-bit
 //! types (and the `int64` list's elements) as `BigInt`. Data types expose the
 //! descriptor surface (`name`, `arrowFormat`, widths), the native byte codec,
-//! and — where they are typed factories (the integers, `BinaryType`, `Int64ListType`
+//! and — where they are typed factories (the integers, `BinaryType`, `Int64SerieType`
 //! and the optionals) — their field / scalar / default builders (`field` hands
 //! back a `yggdryl.field` class, `scalar` and `defaultScalar` a `yggdryl.scalar`
 //! class).
@@ -22,7 +22,7 @@
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
 //! value — `UnionType` is reached through an optional data type's `storage()`), the
 //! `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the still-generic nested types (`ListType` over a value type
+//! uniformly), and the still-generic nested types (`SerieType` over a value type
 //! other than `int64`, `MapType` / `StructType`, and the per-family trait pairs),
 //! which have no concrete FFI shape yet.
 
@@ -827,17 +827,17 @@ impl OptionalUInt64Type {
 }
 
 /// The Apache Arrow `list` of `int64`: a variable-length sequence of `int64`
-/// (single nullable `"item"` child). The one concrete list type — `int64` is the
-/// value type with a buffer-backed list scalar (`yggdryl.scalar.Int64Serie`);
+/// (single nullable `"item"` child). The one concrete serie type — `int64` is the
+/// value type with a buffer-backed serie scalar (`yggdryl.scalar.Int64Serie`);
 /// its elements cross as `BigInt`.
 #[napi(namespace = "dtype")]
 #[derive(Default)]
-pub struct Int64ListType {
-    pub(crate) inner: yggdryl_dtype::ListType<yggdryl_dtype::Int64Type>,
+pub struct Int64SerieType {
+    pub(crate) inner: yggdryl_dtype::SerieType<yggdryl_dtype::Int64Type>,
 }
 
 #[napi(namespace = "dtype")]
-impl Int64ListType {
+impl Int64SerieType {
     /// The `list` of `int64` data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -857,13 +857,13 @@ impl Int64ListType {
         self.inner.arrow_format()
     }
 
-    /// A list has no fixed byte width.
+    /// A serie has no fixed byte width.
     #[napi]
     pub fn byte_width(&self) -> Option<u32> {
         self.inner.byte_width().map(|width| width as u32)
     }
 
-    /// A list has no fixed bit width.
+    /// A serie has no fixed bit width.
     #[napi]
     pub fn bit_width(&self) -> Option<u32> {
         self.inner.bit_width().map(|width| width as u32)
@@ -875,13 +875,13 @@ impl Int64ListType {
         self.inner.child_count() as u32
     }
 
-    /// The value type this list sequences, `int64`.
+    /// The value type this serie sequences, `int64`.
     #[napi]
     pub fn value_type(&self) -> Int64Type {
         Int64Type::default()
     }
 
-    /// Serialize a native list into its Arrow bytes — the value type's codec,
+    /// Serialize a native serie into its Arrow bytes — the value type's codec,
     /// concatenated per element.
     #[napi]
     pub fn native_to_bytes(&self, values: Vec<BigInt>) -> Result<Buffer> {
@@ -892,7 +892,7 @@ impl Int64ListType {
         Ok(Buffer::from(self.inner.native_to_bytes(&values)))
     }
 
-    /// Deserialize Arrow bytes into a native list — the exact inverse of
+    /// Deserialize Arrow bytes into a native serie — the exact inverse of
     /// `nativeToBytes`; a length that is not a whole number of elements throws.
     #[napi]
     pub fn native_from_bytes(&self, bytes: Buffer) -> Result<Vec<BigInt>> {
@@ -902,7 +902,7 @@ impl Int64ListType {
             .map_err(data_error)
     }
 
-    /// The type's default native value, the empty list.
+    /// The type's default native value, the empty serie.
     #[napi]
     pub fn default_value(&self) -> Vec<BigInt> {
         TypedDataType::<Vec<i64>>::default_value(&self.inner)
@@ -911,7 +911,7 @@ impl Int64ListType {
             .collect()
     }
 
-    /// The default scalar: a `yggdryl.scalar.Int64Serie` holding the empty list.
+    /// The default scalar: a `yggdryl.scalar.Int64Serie` holding the empty serie.
     #[napi]
     pub fn default_scalar(&self) -> crate::scalar::Int64Serie {
         crate::scalar::Int64Serie {
@@ -921,13 +921,13 @@ impl Int64ListType {
 
     /// The field of this type named `name` (nullable by default).
     #[napi]
-    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::Int64ListField {
-        crate::field::Int64ListField {
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::Int64SerieField {
+        crate::field::Int64SerieField {
             inner: self.inner.field(name, nullable.unwrap_or(true)),
         }
     }
 
-    /// A `yggdryl.scalar.Int64Serie` holding the native list `values`.
+    /// A `yggdryl.scalar.Int64Serie` holding the native serie `values`.
     #[napi]
     pub fn scalar(&self, values: Vec<BigInt>) -> Result<crate::scalar::Int64Serie> {
         let values = values

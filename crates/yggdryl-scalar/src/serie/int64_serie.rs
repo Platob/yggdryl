@@ -1,10 +1,10 @@
-//! The [`Int64Serie`] scalar: a list of `int64` borrowing raw Arrow buffers.
+//! The [`Int64Serie`] scalar: a serie of `int64` borrowing raw Arrow buffers.
 
 use crate::{Int64Scalar, Scalar, TypedScalar};
 use arrow_buffer::{NullBuffer, ScalarBuffer};
-use yggdryl_dtype::{DataError, DataType, Int64Type, ListType};
+use yggdryl_dtype::{DataError, DataType, Int64Type, SerieType};
 
-/// A single, possibly-null list of `int64` — *our array*, borrowing the raw Arrow
+/// A single, possibly-null serie of `int64` — *our array*, borrowing the raw Arrow
 /// buffers ([`ScalarBuffer<i64>`] elements plus an optional [`NullBuffer`])
 /// zero-copy, optimized for native `i64` access.
 ///
@@ -49,7 +49,7 @@ use yggdryl_dtype::{DataError, DataType, Int64Type, ListType};
 /// ```
 #[derive(Debug, Clone)]
 pub struct Int64Serie {
-    data_type: ListType<Int64Type>,
+    data_type: SerieType<Int64Type>,
     values: Option<ScalarBuffer<i64>>,
     nulls: Option<NullBuffer>,
 }
@@ -70,10 +70,10 @@ impl Int64Serie {
         Ok(Self::from_parts(values, nulls))
     }
 
-    /// The null list scalar.
+    /// The null serie scalar.
     pub fn null() -> Self {
         Self {
-            data_type: ListType::new(Int64Type),
+            data_type: SerieType::new(Int64Type),
             values: None,
             nulls: None,
         }
@@ -85,7 +85,7 @@ impl Int64Serie {
     // every construction path.
     fn from_parts(values: ScalarBuffer<i64>, nulls: Option<NullBuffer>) -> Self {
         Self {
-            data_type: ListType::new(Int64Type),
+            data_type: SerieType::new(Int64Type),
             values: Some(values),
             nulls: nulls.filter(|nulls| nulls.null_count() > 0),
         }
@@ -112,14 +112,14 @@ impl Int64Serie {
 
     /// The per-element null buffer, when any element is null — `None` both for an
     /// all-valid array (an all-valid buffer is dropped at construction, so the
-    /// stored form is canonical) and for the null list.
+    /// stored form is canonical) and for the null serie.
     pub fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
     }
 
     /// The elements as an Arrow [`arrow_array::Int64Array`], reassembled around the
     /// same shared buffers (a reference-count bump, not a copy), or `None` when the
-    /// list is null.
+    /// serie is null.
     pub fn array(&self) -> Option<arrow_array::Int64Array> {
         self.values
             .as_ref()
@@ -192,7 +192,7 @@ impl Int64Serie {
     }
 
     /// The element at `index` as a scalar (a null element is the null scalar), or
-    /// `None` when the list is null or `index` is out of bounds.
+    /// `None` when the serie is null or `index` is out of bounds.
     pub fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
         let values = self.values.as_ref()?;
         if index >= values.len() {
@@ -213,7 +213,7 @@ impl Int64Serie {
 }
 
 impl Default for Int64Serie {
-    /// The default list scalar: the empty list.
+    /// The default serie scalar: the empty serie.
     fn default() -> Self {
         Self::from_parts(ScalarBuffer::from(Vec::new()), None)
     }
@@ -263,12 +263,12 @@ impl From<Vec<Option<i64>>> for Int64Serie {
 }
 
 impl Scalar for Int64Serie {
-    type DataType = ListType<Int64Type>;
+    type DataType = SerieType<Int64Type>;
     /// The raw element buffer — like [`values`](Int64Serie::values), it includes
     /// the slots under null elements.
     type Value = [i64];
 
-    fn data_type(&self) -> &ListType<Int64Type> {
+    fn data_type(&self) -> &SerieType<Int64Type> {
         &self.data_type
     }
 
@@ -284,7 +284,7 @@ impl Scalar for Int64Serie {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        // The buffers are reassembled into the one-element list — reference-count
+        // The buffers are reassembled into the one-element serie — reference-count
         // bumps, not copies.
         let elements = arrow_array::Int64Array::new(values.clone(), self.nulls.clone());
         let array = arrow_array::ListArray::try_new(
@@ -293,7 +293,7 @@ impl Scalar for Int64Serie {
             std::sync::Arc::new(elements),
             None,
         )
-        .expect("a one-element list of int64 elements is valid");
+        .expect("a one-element serie of int64 elements is valid");
         std::sync::Arc::new(array)
     }
 
@@ -302,13 +302,13 @@ impl Scalar for Int64Serie {
         if length != 1 {
             return Err(DataError::InvalidScalarLength { got: length });
         }
-        // Validates the list-of-int64 layout, then takes the buffers apart and
+        // Validates the serie-of-int64 layout, then takes the buffers apart and
         // shares them.
-        ListType::<Int64Type>::from_arrow(arrow_array::Array::data_type(array))?;
+        SerieType::<Int64Type>::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::ListArray>()
-            .expect("a value with a list data type is a list array");
+            .expect("a value with a serie data type is a serie array");
         if arrow_array::Array::is_null(array, 0) {
             return Ok(Self::null());
         }
@@ -316,7 +316,7 @@ impl Scalar for Int64Serie {
         let elements = elements
             .as_any()
             .downcast_ref::<arrow_array::Int64Array>()
-            .expect("a validated list of int64 has int64 elements");
+            .expect("a validated serie of int64 has int64 elements");
         Ok(Self::from_parts(
             elements.values().clone(),
             arrow_array::Array::nulls(elements).cloned(),
@@ -324,4 +324,4 @@ impl Scalar for Int64Serie {
     }
 }
 
-impl TypedScalar<ListType<Int64Type>, [i64]> for Int64Serie {}
+impl TypedScalar<SerieType<Int64Type>, [i64]> for Int64Serie {}

@@ -177,7 +177,7 @@ def test_int64_serie_holds_a_list():
     with pytest.raises(ValueError):
         numbers.get_at(3)  # out of bounds
 
-    # The empty list and null are distinct states.
+    # The empty serie and null are distinct states.
     empty = scalar.Int64Serie([])
     assert empty.is_null() is False
     assert empty.is_empty() is True

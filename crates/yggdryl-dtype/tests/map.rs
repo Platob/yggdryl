@@ -2,7 +2,7 @@
 //! key and a value type.
 
 use yggdryl_dtype::{
-    arrow_schema, DataError, DataType, Int64Type, ListType, Map, MapType, Nested, TypedDataType,
+    arrow_schema, DataError, DataType, Int64Type, Map, MapType, Nested, SerieType, TypedDataType,
     TypedMap, TypedNested, UInt8Type,
 };
 
@@ -18,7 +18,7 @@ fn map_describes_itself_and_round_trips() {
     assert!(matches!(map.to_arrow(), arrow_schema::DataType::Map(..)));
     assert_eq!(MapType::from_arrow(&map.to_arrow()).unwrap(), map);
     assert!(matches!(
-        MapType::<UInt8Type, Int64Type>::from_arrow(&ListType::new(Int64Type).to_arrow()),
+        MapType::<UInt8Type, Int64Type>::from_arrow(&SerieType::new(Int64Type).to_arrow()),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
@@ -33,7 +33,7 @@ fn map_codec_concatenates_entries() {
         vec![(7, 42), (8, 43)]
     );
 
-    let nested = MapType::new(UInt8Type, ListType::new(Int64Type));
+    let nested = MapType::new(UInt8Type, SerieType::new(Int64Type));
     assert!(matches!(
         nested.native_from_bytes(&[0; 9]),
         Err(DataError::IndeterminateElementWidth { .. })

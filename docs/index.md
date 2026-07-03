@@ -86,7 +86,7 @@ it, `scalar.Int64Scalar` holds one value of it).
 
     The `DataType` / `TypedDataType<T>` descriptors with the native byte codecs —
     every integer, `binary`, `null`, `union`, the logical `optional`, and the
-    nested `list` / `map` / `struct`.
+    nested `serie` / `map` / `struct`.
 
 - :material-table-column: **[Fields](field.md)**
 

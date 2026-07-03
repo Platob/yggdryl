@@ -1,4 +1,4 @@
-//! The [`ListType`] data type.
+//! The [`SerieType`] data type.
 
 use crate::{DataError, DataType, Nested, TypedDataType};
 
@@ -12,33 +12,33 @@ use crate::{DataError, DataType, Nested, TypedDataType};
 /// [`DataError::IndeterminateElementWidth`] — decode such lists from Arrow).
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, List, ListType, TypedDataType};
+/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, Serie, SerieType, TypedDataType};
 ///
-/// let list = ListType::new(Int64Type);
-/// assert_eq!(list.name(), "list");
-/// assert_eq!(list.arrow_format(), "+l");
-/// assert_eq!(list.byte_width(), None);
-/// assert_eq!(list.value_type().name(), "int64");
+/// let serie = SerieType::new(Int64Type);
+/// assert_eq!(serie.name(), "list");
+/// assert_eq!(serie.arrow_format(), "+l");
+/// assert_eq!(serie.byte_width(), None);
+/// assert_eq!(serie.value_type().name(), "int64");
 ///
 /// // The byte codec is per-element concatenation of the value type's codec.
-/// let bytes = list.native_to_bytes(&vec![1, 2]);
+/// let bytes = serie.native_to_bytes(&vec![1, 2]);
 /// assert_eq!(bytes.len(), 16);
-/// assert_eq!(list.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
+/// assert_eq!(serie.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
 ///
-/// // The type knows its default: the empty list.
-/// assert_eq!(list.default_value(), Vec::<i64>::new());
+/// // The type knows its default: the empty serie.
+/// assert_eq!(serie.default_value(), Vec::<i64>::new());
 ///
 /// // from_arrow is the exact inverse of to_arrow.
-/// assert!(matches!(list.to_arrow(), arrow_schema::DataType::List(..)));
-/// assert_eq!(ListType::from_arrow(&list.to_arrow()).unwrap(), list);
+/// assert!(matches!(serie.to_arrow(), arrow_schema::DataType::List(..)));
+/// assert_eq!(SerieType::from_arrow(&serie.to_arrow()).unwrap(), serie);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct ListType<D> {
+pub struct SerieType<D> {
     value_type: D,
 }
 
-impl<D: DataType> ListType<D> {
-    /// The list of `value_type`.
+impl<D: DataType> SerieType<D> {
+    /// The serie of `value_type`.
     pub fn new(value_type: D) -> Self {
         Self { value_type }
     }
@@ -55,7 +55,7 @@ impl<D: DataType> ListType<D> {
     }
 }
 
-impl<D: DataType> super::List for ListType<D> {
+impl<D: DataType> super::Serie for SerieType<D> {
     type ValueType = D;
 
     fn value_type(&self) -> &D {
@@ -63,7 +63,7 @@ impl<D: DataType> super::List for ListType<D> {
     }
 }
 
-impl<D: DataType> DataType for ListType<D> {
+impl<D: DataType> DataType for SerieType<D> {
     fn name(&self) -> &str {
         "list"
     }
@@ -82,7 +82,7 @@ impl<D: DataType> DataType for ListType<D> {
 
     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
         let incompatible = || DataError::IncompatibleArrowType {
-            expected: "a list of a nullable \"item\" child".to_string(),
+            expected: "a serie of a nullable \"item\" child".to_string(),
             got: data_type.to_string(),
         };
         let arrow_schema::DataType::List(item) = data_type else {
@@ -96,13 +96,13 @@ impl<D: DataType> DataType for ListType<D> {
     }
 }
 
-impl<D: DataType> Nested for ListType<D> {
+impl<D: DataType> Nested for SerieType<D> {
     fn child_count(&self) -> usize {
         1
     }
 }
 
-impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for ListType<D> {
+impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for SerieType<D> {
     fn native_to_bytes(&self, values: &Vec<T>) -> Vec<u8> {
         values
             .iter()
@@ -136,6 +136,6 @@ impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for ListType<D> {
     }
 }
 
-impl<T, D: TypedDataType<T>> crate::TypedNested<Vec<T>> for ListType<D> {}
+impl<T, D: TypedDataType<T>> crate::TypedNested<Vec<T>> for SerieType<D> {}
 
-impl<T, D: TypedDataType<T>> super::TypedList<T> for ListType<D> {}
+impl<T, D: TypedDataType<T>> super::TypedSerie<T> for SerieType<D> {}

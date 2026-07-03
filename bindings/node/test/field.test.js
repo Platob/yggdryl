@@ -76,13 +76,13 @@ test('union field', () => {
   assert.equal(value.dataType().arrowFormat(), '+us:0,1')
 })
 
-test('int64 list field', () => {
-  const scores = new field.Int64ListField('scores')
+test('int64 serie field', () => {
+  const scores = new field.Int64SerieField('scores')
   assert.equal(scores.name(), 'scores')
   assert.equal(scores.isNullable(), true)
   assert.equal(scores.dataType().name(), 'list')
   assert.equal(scores.dataType().valueType().name(), 'int64')
-  assert.equal(new field.Int64ListField('scores', false).isNullable(), false)
+  assert.equal(new field.Int64SerieField('scores', false).isNullable(), false)
   // The data type's factory builds the same field.
-  assert.equal(new dtype.Int64ListType().field('scores').dataType().name(), 'list')
+  assert.equal(new dtype.Int64SerieType().field('scores').dataType().name(), 'list')
 })

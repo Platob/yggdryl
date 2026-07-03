@@ -13,7 +13,7 @@ crate root), and concrete types grouped into per-family modules (one file per
 type). The [`integer`](src/integer) module holds every signed and unsigned
 integer; [`binary`](src/binary.rs) the variable-size byte type; [`null`](src/null.rs)
 the storage-free null type; [`union`](src/union), [`optional`](src/optional),
-[`list`](src/list), [`map`](src/map) and [`struct`](src/struct) the composite
+[`serie`](src/serie), [`map`](src/map) and [`struct`](src/struct) the composite
 families, each carrying its own base/typed trait pair.
 
 ## Untyped base
@@ -45,13 +45,13 @@ How a type is shaped (each refines `DataType`).
 - **`Logical` / `TypedLogical<T>`** — a type layered over a physical storage
   type (e.g. a timestamp over `int64`); `OptionalType<D>` is the generic holder.
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
-  `list`, `map`, `union`); `ListType<D>` and `MapType<K, V>` are the generic typed
+  `list`, `map`, `union`); `SerieType<D>` and `MapType<K, V>` are the generic typed
   holders, the dynamic `StructType` / `UnionType` base-only.
 
 Each composite family also carries its own base/typed trait pair (`Optional` /
-`TypedOptional`, `Union` / `TypedUnion`, `List` / `TypedList`, `Map` /
+`TypedOptional`, `Union` / `TypedUnion`, `Serie` / `TypedSerie`, `Map` /
 `TypedMap`, `Struct` / `TypedStruct`); the concrete `OptionalType<D>`, `UnionType`,
-`ListType<D>`, `MapType<K, V>` and `StructType` implement the base side, and the
+`SerieType<D>`, `MapType<K, V>` and `StructType` implement the base side, and the
 typed side wherever the child types have codecs (the dynamic `UnionType` and
 `StructType`, whose children are only known at runtime, stay base-only).
 
@@ -84,7 +84,7 @@ assert!(Int64Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 The other widths follow the same surface — swap `Int64Type` / `i64` / `"l"` for
 `Int8Type` / `i8` / `"c"`, `UInt32Type` / `u32` / `"I"`, and so on.
 
-## The composite modules: null, union, optional, list, map, struct
+## The composite modules: null, union, optional, serie, map, struct
 
 `NullType` is the storage-free type whose every value is null. `UnionType` is Apache
 Arrow's union — a value is exactly one of several child types, discriminated by a
@@ -106,7 +106,7 @@ assert_eq!(optional.arrow_format(), "+us:0,1");
 assert_eq!(optional.native_from_bytes(&42i64.to_le_bytes()).unwrap(), 42); // the value type's codec
 ```
 
-`ListType<D>` and `MapType<K, V>` are the generic nested holders — their typed byte
+`SerieType<D>` and `MapType<K, V>` are the generic nested holders — their typed byte
 codecs concatenate the child codecs and split them back by fixed width (a
 variable-width child errors with `DataError::IndeterminateElementWidth` — decode
 those from Arrow) — and the dynamic `StructType` carries its Arrow `Fields`

@@ -3,7 +3,7 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `to_io()` hands one back), `NullScalar` and the list scalar
+//! `ByteBuffer` — `to_io()` hands one back), `NullScalar` and the serie scalar
 //! `Int64Serie` (the buffer-backed `list` of `int64`) — the same suffixed names
 //! as the Rust crate, the submodule carrying the concern. Scalars expose the
 //! `as_*` accessors with the core contract: the value when the target represents
@@ -18,11 +18,11 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
-//! through a data type's `scalar()` / `default_scalar()`), and — for the list
+//! through a data type's `scalar()` / `default_scalar()`), and — for the serie
 //! scalar `Int64Serie` — its per-element-null construction, `array` / `nulls`
 //! Arrow-buffer surface and `from_io` / `pwrite_io` two-resource bridge (which
 //! borrow a second IO resource at once), so a serie built from Python is a dense
-//! (all-valid) list. The still-generic nested scalars — the generic `Serie` /
+//! (all-valid) serie. The still-generic nested scalars — the generic `Serie` /
 //! `MapScalar` / `StructScalar` — have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
@@ -615,7 +615,7 @@ int_scalar_py!(
 );
 
 /// A single, possibly-null `list` of `int64` — *our array*, the buffer-backed
-/// list scalar. Built dense (all-valid) from Python; the whole list may still be
+/// serie scalar. Built dense (all-valid) from Python; the whole serie may still be
 /// null (`Int64Serie.null()`).
 #[pyclass]
 pub struct Int64Serie {
@@ -624,7 +624,7 @@ pub struct Int64Serie {
 
 #[pymethods]
 impl Int64Serie {
-    /// A serie holding the native list `values` (all-valid).
+    /// A serie holding the native serie `values` (all-valid).
     #[new]
     fn new(values: Vec<i64>) -> Self {
         Self {
@@ -632,7 +632,7 @@ impl Int64Serie {
         }
     }
 
-    /// The null list scalar.
+    /// The null serie scalar.
     #[staticmethod]
     fn null() -> Self {
         Self {
@@ -640,7 +640,7 @@ impl Int64Serie {
         }
     }
 
-    /// Whether this scalar holds a null value (distinct from the empty list).
+    /// Whether this scalar holds a null value (distinct from the empty serie).
     fn is_null(&self) -> bool {
         self.inner.is_null()
     }
@@ -667,7 +667,7 @@ impl Int64Serie {
         Ok(self.inner.get_at::<i64>(index)?)
     }
 
-    /// The element at `index` as an `Int64Scalar`, or `None` when the list is
+    /// The element at `index` as an `Int64Scalar`, or `None` when the serie is
     /// null or `index` is out of bounds.
     fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
         self.inner
@@ -676,8 +676,8 @@ impl Int64Serie {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> crate::dtype::Int64ListType {
-        crate::dtype::Int64ListType::default()
+    fn data_type(&self) -> crate::dtype::Int64SerieType {
+        crate::dtype::Int64SerieType::default()
     }
 }
 

@@ -6,7 +6,7 @@ use yggdryl_scalar::{
     BinaryScalar, Int64Scalar, MapScalar, OptionalScalar, Scalar, ScalarFactory, Serie, UInt8Scalar,
 };
 
-type Int64ListScalar = Serie<dtype::Int64Type, Int64Scalar>;
+type Int64GenericSerie = Serie<dtype::Int64Type, Int64Scalar>;
 type RankMap = MapScalar<dtype::UInt8Type, dtype::Int64Type, UInt8Scalar, Int64Scalar>;
 
 #[test]
@@ -46,8 +46,8 @@ fn defaults_flow_through_the_typed_layer() {
 
     // Sequences default to empty, not null.
     assert_eq!(
-        dtype::ListType::new(dtype::Int64Type).default_scalar(),
-        Int64ListScalar::new(Vec::new())
+        dtype::SerieType::new(dtype::Int64Type).default_scalar(),
+        Int64GenericSerie::new(Vec::new())
     );
     assert_eq!(
         dtype::MapType::new(dtype::UInt8Type, dtype::Int64Type).default_scalar(),
@@ -72,6 +72,6 @@ fn factories_reach_generic_code() {
     }
     assert_eq!(value_of(&dtype::Int64Type, 7), Int64Scalar::new(7));
     assert_eq!(default_of(&dtype::Int64Type), Int64Scalar::new(0));
-    assert!(!default_of(&dtype::ListType::new(dtype::Int64Type)).is_null());
+    assert!(!default_of(&dtype::SerieType::new(dtype::Int64Type)).is_null());
     assert!(default_of(&dtype::OptionalType::new(dtype::Int64Type)).is_null());
 }

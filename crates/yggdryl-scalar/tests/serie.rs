@@ -1,20 +1,20 @@
-//! Integration tests for the `list` scalars — the generic [`Serie`] and the
+//! Integration tests for the `serie` scalars — the generic [`Serie`] and the
 //! buffer-backed [`Int64Serie`].
 
 use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
 use yggdryl_scalar::{arrow_array, arrow_buffer, Int64Scalar, Int64Serie, Scalar, Serie};
 
-type Int64ListScalar = Serie<dtype::Int64Type, Int64Scalar>;
+type Int64GenericSerie = Serie<dtype::Int64Type, Int64Scalar>;
 
 #[test]
 fn list_scalar_round_trips_all_shapes() {
-    // Elements, the empty list and null are three distinct states.
-    let numbers = Int64ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    // Elements, the empty serie and null are three distinct states.
+    let numbers = Int64GenericSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     let arrow = numbers.to_arrow();
     assert_eq!(arrow.len(), 1);
     assert_eq!(
-        Int64ListScalar::from_arrow(arrow.as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(arrow.as_ref()).unwrap(),
         numbers
     );
 
@@ -32,27 +32,27 @@ fn list_scalar_round_trips_all_shapes() {
         Err(DataError::OutOfBounds { index: 2, len: 2 })
     ));
 
-    let empty = Int64ListScalar::new(Vec::new());
+    let empty = Int64GenericSerie::new(Vec::new());
     assert!(!empty.is_null());
     assert_eq!(
-        Int64ListScalar::from_arrow(empty.to_arrow().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(empty.to_arrow().as_ref()).unwrap(),
         empty
     );
-    assert_eq!(Int64ListScalar::default(), empty);
+    assert_eq!(Int64GenericSerie::default(), empty);
 
-    let missing = Int64ListScalar::null();
+    let missing = Int64GenericSerie::null();
     assert!(missing.is_null());
     assert_eq!(
-        Int64ListScalar::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(missing.to_arrow().as_ref()).unwrap(),
         missing
     );
 
     // Construction from native shapes.
-    assert_eq!(Int64ListScalar::from(None::<Vec<Int64Scalar>>), missing);
+    assert_eq!(Int64GenericSerie::from(None::<Vec<Int64Scalar>>), missing);
 
-    // A non-list array is refused.
+    // A non-serie array is refused.
     assert!(matches!(
-        Int64ListScalar::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
+        Int64GenericSerie::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
@@ -150,19 +150,19 @@ fn int64_serie_round_trips_through_arrow_zero_copy() {
     assert_eq!(Int64Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // The list's child elements are the same buffer, shared, not copied.
-    let list = arrow
+    let serie = arrow
         .as_any()
         .downcast_ref::<arrow_array::ListArray>()
         .unwrap();
-    let child = list
+    let child = serie
         .values()
         .as_any()
         .downcast_ref::<arrow_array::Int64Array>()
         .unwrap();
     assert_eq!(child.values().as_ptr(), numbers.values().unwrap().as_ptr());
 
-    // The generic and the buffer-backed list scalar agree on the Arrow shape.
-    let generic = Int64ListScalar::new(vec![
+    // The generic and the buffer-backed serie scalar agree on the Arrow shape.
+    let generic = Int64GenericSerie::new(vec![
         Int64Scalar::new(1),
         Int64Scalar::null(),
         Int64Scalar::new(3),
@@ -190,7 +190,7 @@ fn int64_serie_round_trips_through_arrow_zero_copy() {
         missing
     );
 
-    // A non-list array is refused.
+    // A non-serie array is refused.
     assert!(matches!(
         Int64Serie::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
         Err(DataError::IncompatibleArrowType { .. })
@@ -200,6 +200,6 @@ fn int64_serie_round_trips_through_arrow_zero_copy() {
 #[test]
 fn list_scalars_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Int64ListScalar>();
+    assert_send_sync::<Int64GenericSerie>();
     assert_send_sync::<Int64Serie>();
 }

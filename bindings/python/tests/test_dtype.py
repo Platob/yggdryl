@@ -163,8 +163,8 @@ def test_union_type_reached_through_optional():
     assert union.mode() == "sparse"
 
 
-def test_int64_list_type():
-    lst = dtype.Int64ListType()
+def test_int64_serie_type():
+    lst = dtype.Int64SerieType()
     assert lst.name() == "list"
     assert lst.arrow_format() == "+l"
     assert lst.byte_width() is None

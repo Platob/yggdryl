@@ -6,7 +6,7 @@ use super::DataType;
 /// child fields — e.g. `struct`, `list`, `map`, `union`.
 ///
 /// [`child_count`](Nested::child_count) reports how many children the type has;
-/// the per-family traits ([`List`](crate::List), [`Map`](crate::Map),
+/// the per-family traits ([`Serie`](crate::Serie), [`Map`](crate::Map),
 /// [`Struct`](crate::Struct), [`Union`](crate::Union)) expose the children
 /// themselves. A nested type whose values also have a native representation
 /// implements the typed [`TypedNested`](crate::TypedNested).

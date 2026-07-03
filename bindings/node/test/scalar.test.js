@@ -164,7 +164,7 @@ test('int64 serie holds a list', () => {
   assert.equal(numbers.dataType().name(), 'list')
   assert.throws(() => numbers.getAt(3)) // out of bounds
 
-  // The empty list and null are distinct states.
+  // The empty serie and null are distinct states.
   const empty = new scalar.Int64Serie([])
   assert.equal(empty.isNull(), false)
   assert.equal(empty.isEmpty(), true)

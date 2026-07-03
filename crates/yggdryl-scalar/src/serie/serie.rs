@@ -1,10 +1,13 @@
-//! The [`Serie`] scalar of the [`ListType`](yggdryl_dtype::ListType) data type.
+//! The [`Serie`] scalar of the [`SerieType`](yggdryl_dtype::SerieType) data type.
 
 use std::marker::PhantomData;
 
 use crate::{Scalar, ScalarFactory, TypedScalar};
 use arrow_array::ArrayRef;
-use yggdryl_dtype::{DataError, DataType, List, ListType};
+// The `Serie` base trait is imported anonymously (its `value_type()` accessor is
+// all we need) so it does not clash with this module's own `Serie` scalar type.
+use yggdryl_dtype::Serie as _;
+use yggdryl_dtype::{DataError, DataType, SerieType};
 
 /// A single, possibly-null `list` value: *our array* — a sequence of elements of
 /// the value type `D`, backed by one zero-copy Arrow child array.
@@ -44,27 +47,27 @@ use yggdryl_dtype::{DataError, DataType, List, ListType};
 /// ```
 #[derive(Debug)]
 pub struct Serie<D, S> {
-    data_type: ListType<D>,
+    data_type: SerieType<D>,
     values: Option<ArrayRef>,
     element: PhantomData<S>,
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
     /// A scalar holding the sequence `values`, assembled once into one Arrow child
-    /// array (an empty sequence is the empty list, not null).
+    /// array (an empty sequence is the empty serie, not null).
     pub fn new(values: Vec<S>) -> Self {
         // The element type is only needed to type an *empty* child, so it is built
-        // lazily — a non-empty list never constructs `D::default()`.
+        // lazily — a non-empty serie never constructs `D::default()`.
         Self::from_elements(crate::scalar::concat_scalar_arrays(
             values.iter().map(Scalar::to_arrow).collect(),
             || D::default().to_arrow(),
         ))
     }
 
-    /// The null list scalar.
+    /// The null serie scalar.
     pub fn null() -> Self {
         Self {
-            data_type: ListType::default(),
+            data_type: SerieType::default(),
             values: None,
             element: PhantomData,
         }
@@ -73,7 +76,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
     /// A scalar over an already-built Arrow `elements` array, shared zero-copy.
     pub(crate) fn from_elements(elements: ArrayRef) -> Self {
         Self {
-            data_type: ListType::default(),
+            data_type: SerieType::default(),
             values: Some(elements),
             element: PhantomData,
         }
@@ -93,7 +96,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
     }
 
     /// The element at `index` as an inner scalar (a null element is the inner null
-    /// scalar), or `None` when the list is null or `index` is out of bounds.
+    /// scalar), or `None` when the serie is null or `index` is out of bounds.
     pub fn get_scalar_at(&self, index: usize) -> Option<S> {
         let values = self.values.as_ref()?;
         if index >= arrow_array::Array::len(values.as_ref()) {
@@ -125,7 +128,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>> Default for Serie<D, S> {
-    /// The default list scalar: the empty list.
+    /// The default serie scalar: the empty serie.
     fn default() -> Self {
         Self::new(Vec::new())
     }
@@ -174,10 +177,10 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> From<Option<Vec<S>>> for Se
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
-    type DataType = ListType<D>;
+    type DataType = SerieType<D>;
     type Value = dyn arrow_array::Array;
 
-    fn data_type(&self) -> &ListType<D> {
+    fn data_type(&self) -> &SerieType<D> {
         &self.data_type
     }
 
@@ -193,7 +196,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        // The child array is shared into the one-element list — a reference-count
+        // The child array is shared into the one-element serie — a reference-count
         // bump, not a copy.
         let array = arrow_array::ListArray::try_new(
             self.data_type.item_field(),
@@ -201,7 +204,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
             values.clone(),
             None,
         )
-        .expect("a one-element list of the value type's child is valid");
+        .expect("a one-element serie of the value type's child is valid");
         std::sync::Arc::new(array)
     }
 
@@ -212,11 +215,11 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
         }
         // The data type validates the layout and redirects the item child to `D`;
         // the elements themselves are shared zero-copy.
-        let data_type = ListType::from_arrow(arrow_array::Array::data_type(array))?;
+        let data_type = SerieType::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::ListArray>()
-            .expect("a value with a list data type is a list array");
+            .expect("a value with a serie data type is a serie array");
         let values = if arrow_array::Array::is_null(array, 0) {
             None
         } else {
@@ -231,18 +234,18 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>>
-    TypedScalar<ListType<D>, dyn arrow_array::Array> for Serie<D, S>
+    TypedScalar<SerieType<D>, dyn arrow_array::Array> for Serie<D, S>
 {
 }
 
-impl<T, D> ScalarFactory<Vec<T>> for ListType<D>
+impl<T, D> ScalarFactory<Vec<T>> for SerieType<D>
 where
     D: ScalarFactory<T> + Default,
     D::Scalar: Scalar<DataType = D>,
 {
     type Scalar = Serie<D, D::Scalar>;
 
-    /// A list scalar holding the native `values`, each converted through the value
+    /// A serie scalar holding the native `values`, each converted through the value
     /// type's own scalar factory.
     fn scalar(&self, values: Vec<T>) -> Self::Scalar {
         Serie::new(
@@ -253,12 +256,12 @@ where
         )
     }
 
-    /// The null list scalar.
+    /// The null serie scalar.
     fn null_scalar(&self) -> Self::Scalar {
         Serie::null()
     }
 
-    /// The default list scalar: the empty list.
+    /// The default serie scalar: the empty serie.
     fn default_scalar(&self) -> Self::Scalar {
         Serie::new(Vec::new())
     }

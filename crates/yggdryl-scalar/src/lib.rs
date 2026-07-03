@@ -25,7 +25,7 @@
 //! [`integer`] module holds every signed and unsigned integer, the [`binary`]
 //! module the byte sequence (doubling as a `yggdryl-core` positioned-IO
 //! resource), the [`null`] module the always-null scalar, the [`optional`] module
-//! the null-or-value variant, and the [`list`], [`map`] and [`struct`](r#struct)
+//! the null-or-value variant, and the [`serie`], [`map`] and [`struct`](r#struct)
 //! modules the nested values (the union, dynamic at runtime, has no scalar). Add
 //! more following the rules in `CLAUDE.md`.
 //!
@@ -67,18 +67,18 @@ pub use typed_scalar::TypedScalar;
 
 pub mod binary;
 pub mod integer;
-pub mod list;
 pub mod map;
 pub mod null;
 pub mod optional;
+pub mod serie;
 pub mod r#struct;
 
 pub use binary::BinaryScalar;
-pub use list::{Int64Serie, Serie};
 pub use map::MapScalar;
 pub use null::NullScalar;
 pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
+pub use serie::{Int64Serie, Serie};
 
 pub use integer::{
     Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,

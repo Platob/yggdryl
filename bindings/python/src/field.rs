@@ -2,8 +2,8 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete list field
-//! `Int64ListField` (a column of `Int64ListType`) — the same suffixed names as
+//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete serie field
+//! `Int64SerieField` (a column of `Int64SerieType`) — the same suffixed names as
 //! the Rust crate, the submodule carrying the concern. A field pairs a name with
 //! its `yggdryl.dtype` data type and a nullability flag (`True` by default, as a
 //! keyword default); a data type also builds its field directly through its
@@ -12,7 +12,7 @@
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the
-//! still-generic nested fields (`ListField` over a value type other than `int64`,
+//! still-generic nested fields (`SerieField` over a value type other than `int64`,
 //! `MapField` / `StructField`), which have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
@@ -284,21 +284,21 @@ int_field_py!(
     "uint64"
 );
 
-/// A nullable `list`-of-`int64` field: a name paired with the `Int64ListType`
+/// A nullable `list`-of-`int64` field: a name paired with the `Int64SerieType`
 /// data type.
 #[pyclass]
-pub struct Int64ListField {
-    pub(crate) inner: yggdryl_field::ListField<yggdryl_dtype::Int64Type>,
+pub struct Int64SerieField {
+    pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::Int64Type>,
 }
 
 #[pymethods]
-impl Int64ListField {
+impl Int64SerieField {
     /// A `list`-of-`int64` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::ListField::new(name, nullable),
+            inner: yggdryl_field::SerieField::new(name, nullable),
         }
     }
 
@@ -308,8 +308,8 @@ impl Int64ListField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::Int64ListType {
-        crate::dtype::Int64ListType::default()
+    fn data_type(&self) -> crate::dtype::Int64SerieType {
+        crate::dtype::Int64SerieType::default()
     }
 
     /// Whether values in this field may be null.
@@ -340,6 +340,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Field>()?;
     module.add_class::<UInt64Field>()?;
     module.add_class::<OptionalUInt64Field>()?;
-    module.add_class::<Int64ListField>()?;
+    module.add_class::<Int64SerieField>()?;
     Ok(())
 }

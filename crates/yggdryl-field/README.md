@@ -13,7 +13,7 @@ The layer is two traits plus a factory (one file per item at the crate root), pl
 concrete fields grouped into per-family modules mirroring `yggdryl-dtype` (one file
 per type): [`integer`](src/integer) holds every signed and unsigned integer field,
 and [`binary`](src/binary.rs), [`null`](src/null.rs), [`union`](src/union.rs),
-[`optional`](src/optional.rs), [`list`](src/list.rs), [`map`](src/map.rs) and
+[`optional`](src/optional.rs), [`serie`](src/serie.rs), [`map`](src/map.rs) and
 [`struct`](src/struct.rs) the rest.
 
 ## Untyped base
@@ -45,7 +45,7 @@ and [`binary`](src/binary.rs), [`null`](src/null.rs), [`union`](src/union.rs),
 Every field pairs a name with its `yggdryl-dtype` data type under the same naming
 convention. The fixed-shape families default their data type
 (`Int64Field::new("id", false)`); the parameterised `StructField` and `UnionField`
-take theirs (`StructField::new("point", shape, false)`); the generic `ListField<D>`,
+take theirs (`StructField::new("point", shape, false)`); the generic `SerieField<D>`,
 `MapField<K, V>` and `OptionalField<D>` carry both trait layers, the typed side
 whenever the child types have codecs.
 

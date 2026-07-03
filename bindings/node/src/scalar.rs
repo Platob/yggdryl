@@ -3,7 +3,7 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `toIo()` hands one back), `NullScalar` and the list scalar
+//! `ByteBuffer` — `toIo()` hands one back), `NullScalar` and the serie scalar
 //! `Int64Serie` (the buffer-backed `list` of `int64`, its elements `BigInt`) —
 //! the same globally-unique names as the Rust crate, the namespace carrying the
 //! concern (the `…Scalar` suffix keeps every class distinct in napi's addon-global
@@ -21,10 +21,10 @@
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `field()` / `scalar()` / `defaultScalar()`), and — for
-//! the list scalar `Int64Serie` — its per-element-null construction, `array` /
+//! the serie scalar `Int64Serie` — its per-element-null construction, `array` /
 //! `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo` two-resource bridge
 //! (which borrow a second IO resource at once), so a serie built from Node is a
-//! dense (all-valid) list. The still-generic nested scalars — the generic `Serie`
+//! dense (all-valid) serie. The still-generic nested scalars — the generic `Serie`
 //! / `MapScalar` / `StructScalar` — have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
@@ -557,7 +557,7 @@ impl OptionalUInt64Scalar {
 }
 
 /// A single, possibly-null `list` of `int64` — *our array*, the buffer-backed
-/// list scalar. Built dense (all-valid) from Node; the whole list may still be
+/// serie scalar. Built dense (all-valid) from Node; the whole serie may still be
 /// null (`Int64Serie.null()`).
 #[napi(namespace = "scalar")]
 pub struct Int64Serie {
@@ -566,7 +566,7 @@ pub struct Int64Serie {
 
 #[napi(namespace = "scalar")]
 impl Int64Serie {
-    /// A serie holding the native list `values` (all-valid).
+    /// A serie holding the native serie `values` (all-valid).
     #[napi(constructor)]
     pub fn new(values: Vec<BigInt>) -> Result<Self> {
         let values = values
@@ -578,7 +578,7 @@ impl Int64Serie {
         })
     }
 
-    /// The null list scalar.
+    /// The null serie scalar.
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
@@ -586,7 +586,7 @@ impl Int64Serie {
         }
     }
 
-    /// Whether this scalar holds a null value (distinct from the empty list).
+    /// Whether this scalar holds a null value (distinct from the empty serie).
     #[napi]
     pub fn is_null(&self) -> bool {
         self.inner.is_null()
@@ -623,7 +623,7 @@ impl Int64Serie {
             .map_err(data_error)
     }
 
-    /// The element at `index` as an `Int64Scalar`, or `null` when the list is
+    /// The element at `index` as an `Int64Scalar`, or `null` when the serie is
     /// null or `index` is out of bounds.
     #[napi]
     pub fn get_scalar_at(&self, index: u32) -> Option<Int64Scalar> {
@@ -634,7 +634,7 @@ impl Int64Serie {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::Int64ListType {
-        crate::dtype::Int64ListType::default()
+    pub fn data_type(&self) -> crate::dtype::Int64SerieType {
+        crate::dtype::Int64SerieType::default()
     }
 }

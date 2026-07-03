@@ -24,7 +24,7 @@
 //! signed and unsigned integer, the [`binary`] module the variable-length byte
 //! sequence, the [`null`] module the storage-free null type, the [`union`] module
 //! the union type, the [`optional`] module the logical null-or-value [`OptionalType`]
-//! over union storage, and the [`list`], [`map`] and [`struct`](r#struct) modules
+//! over union storage, and the [`serie`], [`map`] and [`struct`](r#struct) modules
 //! the nested types. Add more following the rules in `CLAUDE.md`.
 //!
 //! Every type converts to and from the [`arrow_schema::DataType`] it mirrors
@@ -65,19 +65,19 @@ pub use typed_nested::TypedNested;
 
 pub mod binary;
 pub mod integer;
-pub mod list;
 pub mod map;
 pub mod null;
 pub mod optional;
+pub mod serie;
 pub mod r#struct;
 pub mod union;
 
 pub use binary::BinaryType;
-pub use list::{List, ListType, TypedList};
 pub use map::{Map, MapType, TypedMap};
 pub use null::NullType;
 pub use optional::{Optional, OptionalType, TypedOptional};
 pub use r#struct::{Struct, StructType, TypedStruct};
+pub use serie::{Serie, SerieType, TypedSerie};
 pub use union::{TypedUnion, Union, UnionType};
 
 pub use integer::{

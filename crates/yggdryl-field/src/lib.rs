@@ -18,7 +18,7 @@
 //!
 //! Concrete fields live in per-family modules mirroring `yggdryl-dtype` — the
 //! [`integer`] module holds every signed and unsigned integer field, and the
-//! [`binary`], [`null`], [`union`], [`optional`], [`list`], [`map`] and
+//! [`binary`], [`null`], [`union`], [`optional`], [`serie`], [`map`] and
 //! [`struct`](r#struct) modules the rest. Add more following the rules in
 //! `CLAUDE.md`.
 //!
@@ -59,19 +59,19 @@ pub use typed_field::TypedField;
 
 pub mod binary;
 pub mod integer;
-pub mod list;
 pub mod map;
 pub mod null;
 pub mod optional;
+pub mod serie;
 pub mod r#struct;
 pub mod union;
 
 pub use binary::BinaryField;
-pub use list::ListField;
 pub use map::MapField;
 pub use null::NullField;
 pub use optional::OptionalField;
 pub use r#struct::StructField;
+pub use serie::SerieField;
 pub use union::UnionField;
 
 pub use integer::{
