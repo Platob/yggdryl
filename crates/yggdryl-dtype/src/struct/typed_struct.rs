@@ -1,40 +1,40 @@
-//! The typed [`TypedStruct`] trait: a statically-shaped [`RawStruct`](super::RawStruct)
+//! The typed [`TypedStruct`] trait: a statically-shaped [`Struct`](super::Struct)
 //! with a native row type.
 
-use super::RawStruct;
-use crate::DataType;
+use super::Struct;
+use crate::TypedDataType;
 
 /// A statically-shaped struct whose rows have the native type `T` — the typed
-/// layer over [`RawStruct`].
+/// layer over [`Struct`].
 ///
-/// The dynamic [`Struct`](crate::Struct), whose children are only known at
-/// runtime, stays raw-only; a struct with a fixed shape carries its row as a plain
-/// Rust value (typically a tuple) and implements [`DataType<T>`] over it — the
+/// The dynamic [`StructType`](crate::StructType), whose children are only known at
+/// runtime, stays untyped; a struct with a fixed shape carries its row as a plain
+/// Rust value (typically a tuple) and implements [`TypedDataType<T>`] over it — the
 /// codec concatenates the child codecs, and the default row is the children's
 /// defaults.
 ///
 /// ```
 /// use yggdryl_dtype::{
-///     arrow_schema, DataError, DataType, Int64, RawDataType, RawNested, RawStruct, Struct,
+///     arrow_schema, DataError, DataType, Int64Type, Nested, Struct, StructType, TypedDataType,
 ///     TypedStruct,
 /// };
 ///
 /// // A static point struct: two non-null int64 children, row type (i64, i64).
 /// #[derive(Debug, Default)]
-/// struct Point {
-///     coordinate: Int64,
+/// struct PointType {
+///     coordinate: Int64Type,
 /// }
 ///
-/// impl Point {
-///     fn shape() -> Struct {
-///         Struct::new(arrow_schema::Fields::from(vec![
+/// impl PointType {
+///     fn shape() -> StructType {
+///         StructType::new(arrow_schema::Fields::from(vec![
 ///             arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
 ///             arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
 ///         ]))
 ///     }
 /// }
 ///
-/// impl RawDataType for Point {
+/// impl DataType for PointType {
 ///     fn name(&self) -> &str { "struct" }
 ///     fn arrow_format(&self) -> String { "+s".to_string() }
 ///     fn byte_width(&self) -> Option<usize> { Some(16) } // two fixed-width children
@@ -49,14 +49,14 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl RawNested for Point {
+/// impl Nested for PointType {
 ///     fn child_count(&self) -> usize { 2 }
 /// }
 ///
-/// impl RawStruct for Point {
+/// impl Struct for PointType {
 ///     fn fields(&self) -> &arrow_schema::Fields {
 ///         static FIELDS: std::sync::OnceLock<arrow_schema::Fields> = std::sync::OnceLock::new();
-///         FIELDS.get_or_init(|| match Point::shape().to_arrow() {
+///         FIELDS.get_or_init(|| match PointType::shape().to_arrow() {
 ///             arrow_schema::DataType::Struct(fields) => fields,
 ///             _ => unreachable!(),
 ///         })
@@ -64,7 +64,7 @@ use crate::DataType;
 /// }
 ///
 /// // The typed layer: the row is (x, y), the codec concatenates the children.
-/// impl DataType<(i64, i64)> for Point {
+/// impl TypedDataType<(i64, i64)> for PointType {
 ///     fn native_to_bytes(&self, (x, y): &(i64, i64)) -> Vec<u8> {
 ///         let mut bytes = self.coordinate.native_to_bytes(x);
 ///         bytes.extend(self.coordinate.native_to_bytes(y));
@@ -84,10 +84,10 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl TypedStruct<(i64, i64)> for Point {}
+/// impl TypedStruct<(i64, i64)> for PointType {}
 ///
-/// let point = Point::default();
+/// let point = PointType::default();
 /// assert_eq!(point.default_value(), (0, 0));
 /// assert_eq!(point.native_from_bytes(&point.native_to_bytes(&(1, 2))).unwrap(), (1, 2));
 /// ```
-pub trait TypedStruct<T>: RawStruct + DataType<T> {}
+pub trait TypedStruct<T>: Struct + TypedDataType<T> {}

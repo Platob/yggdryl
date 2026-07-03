@@ -1,30 +1,31 @@
-//! The [`Optional`] scalar of the [`optional`](yggdryl_dtype::Optional) data type.
+//! The [`OptionalScalar`] scalar of the [`OptionalType`](yggdryl_dtype::OptionalType)
+//! data type.
 
-use crate::{DefaultScalar, RawScalar, Scalar};
-use yggdryl_dtype::{DataError, RawDataType, RawLogical, RawUnion, Union};
+use crate::{Scalar, ScalarFactory, TypedScalar};
+use yggdryl_dtype::{DataError, DataType, Logical, Optional, OptionalType, Union, UnionType};
 
-/// A single value of the [`optional`](yggdryl_dtype::Optional) of the value type
-/// `D` — an inner scalar `S`, or the null variant.
+/// A single value of the [`OptionalType`](yggdryl_dtype::OptionalType) of the value
+/// type `D` — an inner scalar `S`, or the null variant.
 ///
-/// Where a plain scalar (e.g. [`Int64`](crate::Int64)) models nullness
-/// as a missing value of its own type, an `Optional` models it as a *union
+/// Where a plain scalar (e.g. [`Int64Scalar`](crate::Int64Scalar)) models nullness as
+/// a missing value of its own type, an `OptionalScalar` models it as a *union
 /// variant*: its data type is the logical
-/// [`Optional<D>`](yggdryl_dtype::Optional), whose storage is the sparse
-/// null-or-value [`Union`], and its Arrow form is a one-element `UnionArray`
-/// whose type id selects the null or the value child. Access redirects to the
-/// inner scalar: [`value`](RawScalar::value) and every `as_*` accessor answer
-/// through `S` — so a conversion error names the *value type* actually holding
-/// the value (``int64 scalars have no str conversion``), while the null variant
-/// errors with [`DataError::NullValue`]. A null inner scalar *normalizes to the
-/// null variant* — the two representations of null are one state, so equality,
-/// [`scalar`](Optional::scalar) (which answers `None` for it) and the Arrow
+/// [`OptionalType<D>`](yggdryl_dtype::OptionalType), whose storage is the sparse
+/// null-or-value [`UnionType`], and its Arrow form is a one-element `UnionArray`
+/// whose type id selects the null or the value child. Access redirects to the inner
+/// scalar: [`value`](Scalar::value) and every `as_*` accessor answer through `S` — so
+/// a conversion error names the *value type* actually holding the value (``int64
+/// scalars have no str conversion``), while the null variant errors with
+/// [`DataError::NullValue`]. A null inner scalar *normalizes to the null variant* —
+/// the two representations of null are one state, so equality,
+/// [`scalar`](OptionalScalar::scalar) (which answers `None` for it) and the Arrow
 /// round trip all agree.
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::{Int64 as Int64Type, RawDataType, RawLogical};
-/// use yggdryl_scalar::{Int64, Optional, RawScalar};
+/// use yggdryl_scalar::yggdryl_dtype::{DataType, Int64Type, Logical};
+/// use yggdryl_scalar::{Int64Scalar, OptionalScalar, Scalar};
 ///
-/// let answer = Optional::new(Int64::new(42));
+/// let answer = OptionalScalar::new(Int64Scalar::new(42));
 /// assert!(!answer.is_null());
 /// assert_eq!(answer.value(), Some(&42));
 /// assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
@@ -32,7 +33,7 @@ use yggdryl_dtype::{DataError, RawDataType, RawLogical, RawUnion, Union};
 /// assert_eq!(answer.data_type().storage().name(), "union");
 /// assert_eq!(answer.data_type().arrow_format(), "+us:0,1");
 ///
-/// let missing: Optional<Int64Type, Int64> = Optional::null();
+/// let missing: OptionalScalar<Int64Type, Int64Scalar> = OptionalScalar::null();
 /// assert!(missing.is_null());
 /// assert!(missing.as_i64().is_err()); // a null holds no value
 ///
@@ -40,22 +41,22 @@ use yggdryl_dtype::{DataError, RawDataType, RawLogical, RawUnion, Union};
 /// // value child back through the inner scalar's own from_arrow.
 /// let arrow = answer.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(Optional::from_arrow(arrow.as_ref()).unwrap(), answer);
+/// assert_eq!(OptionalScalar::from_arrow(arrow.as_ref()).unwrap(), answer);
 /// ```
 #[derive(Debug)]
-pub struct Optional<D, S> {
-    data_type: yggdryl_dtype::Optional<D>,
+pub struct OptionalScalar<D, S> {
+    data_type: OptionalType<D>,
     value: Option<S>,
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Optional<D, S> {
+impl<D: DataType + Default, S: Scalar<D>> OptionalScalar<D, S> {
     /// A scalar holding the value variant `scalar`. A null inner scalar
     /// *normalizes to the null variant* — the two representations of null are one
-    /// state, so equality, [`scalar`](Optional::scalar) (which then answers
+    /// state, so equality, [`scalar`](OptionalScalar::scalar) (which then answers
     /// `None`) and the Arrow round trip all agree.
     pub fn new(scalar: S) -> Self {
         Self {
-            data_type: yggdryl_dtype::Optional::default(),
+            data_type: OptionalType::default(),
             value: (!scalar.is_null()).then_some(scalar),
         }
     }
@@ -63,7 +64,7 @@ impl<D: RawDataType + Default, S: RawScalar<D>> Optional<D, S> {
     /// The null variant.
     pub fn null() -> Self {
         Self {
-            data_type: yggdryl_dtype::Optional::default(),
+            data_type: OptionalType::default(),
             value: None,
         }
     }
@@ -74,13 +75,13 @@ impl<D: RawDataType + Default, S: RawScalar<D>> Optional<D, S> {
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Default for Optional<D, S> {
+impl<D: DataType + Default, S: Scalar<D>> Default for OptionalScalar<D, S> {
     fn default() -> Self {
         Self::null()
     }
 }
 
-impl<D: Clone, S: Clone> Clone for Optional<D, S> {
+impl<D: Clone, S: Clone> Clone for OptionalScalar<D, S> {
     fn clone(&self) -> Self {
         Self {
             data_type: self.data_type.clone(),
@@ -89,7 +90,7 @@ impl<D: Clone, S: Clone> Clone for Optional<D, S> {
     }
 }
 
-impl<D, S: PartialEq> PartialEq for Optional<D, S> {
+impl<D, S: PartialEq> PartialEq for OptionalScalar<D, S> {
     // The data type is a function of `D`, identical for every instance, so
     // equality is the value alone.
     fn eq(&self, other: &Self) -> bool {
@@ -97,16 +98,16 @@ impl<D, S: PartialEq> PartialEq for Optional<D, S> {
     }
 }
 
-impl<D, S: Eq> Eq for Optional<D, S> {}
+impl<D, S: Eq> Eq for OptionalScalar<D, S> {}
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<S> for Optional<D, S> {
+impl<D: DataType + Default, S: Scalar<D>> From<S> for OptionalScalar<D, S> {
     /// A scalar holding the value variant `scalar`.
     fn from(scalar: S) -> Self {
         Self::new(scalar)
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for Optional<D, S> {
+impl<D: DataType + Default, S: Scalar<D>> From<Option<S>> for OptionalScalar<D, S> {
     /// A scalar holding the value variant, or the null variant for `None`.
     fn from(scalar: Option<S>) -> Self {
         match scalar {
@@ -116,12 +117,10 @@ impl<D: RawDataType + Default, S: RawScalar<D>> From<Option<S>> for Optional<D, 
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<yggdryl_dtype::Optional<D>>
-    for Optional<D, S>
-{
+impl<D: DataType + Default, S: Scalar<D>> Scalar<OptionalType<D>> for OptionalScalar<D, S> {
     type Value = S::Value;
 
-    fn data_type(&self) -> &yggdryl_dtype::Optional<D> {
+    fn data_type(&self) -> &OptionalType<D> {
         &self.data_type
     }
 
@@ -138,12 +137,12 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<yggdryl_dtype::Optiona
         let (_, value_field) = storage
             .fields()
             .iter()
-            .find(|(id, _)| *id == Union::VALUE_TYPE_ID)
+            .find(|(id, _)| *id == UnionType::VALUE_TYPE_ID)
             .expect("an optional union has a value variant");
         let type_id = if self.is_null() {
-            Union::NULL_TYPE_ID
+            UnionType::NULL_TYPE_ID
         } else {
-            Union::VALUE_TYPE_ID
+            UnionType::VALUE_TYPE_ID
         };
         // Sparse layout: both children are one element long; the unselected child
         // holds a null.
@@ -172,12 +171,12 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<yggdryl_dtype::Optiona
         }
         // The data type validates the layout and redirects the value child's type
         // to `D`; then the value child itself redirects to `S`.
-        let data_type = yggdryl_dtype::Optional::from_arrow(arrow_array::Array::data_type(array))?;
+        let data_type = OptionalType::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::UnionArray>()
             .expect("a value with a union data type is a union array");
-        let value = if array.type_id(0) == Union::NULL_TYPE_ID {
+        let value = if array.type_id(0) == UnionType::NULL_TYPE_ID {
             None
         } else {
             let value = array.value(0);
@@ -234,22 +233,31 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<yggdryl_dtype::Optiona
     }
 }
 
-impl<D: RawDataType + Default, S: RawScalar<D>> Scalar<<S as RawScalar<D>>::Value>
-    for Optional<D, S>
+impl<D: DataType + Default, S: Scalar<D>> TypedScalar<OptionalType<D>, S::Value>
+    for OptionalScalar<D, S>
 {
-    type Type = yggdryl_dtype::Optional<D>;
 }
 
-impl<T, D> DefaultScalar<T> for yggdryl_dtype::Optional<D>
+impl<T, D> ScalarFactory<T> for OptionalType<D>
 where
-    D: DefaultScalar<T> + Default,
-    D::Scalar: RawScalar<D>,
+    D: ScalarFactory<T> + Default,
+    D::Scalar: Scalar<D>,
 {
-    type Scalar = Optional<D, D::Scalar>;
+    type Scalar = OptionalScalar<D, D::Scalar>;
 
-    // The optional's scalar models nullness itself, so its default is the null
-    // variant — matching `Optional::default` and `Option::default`.
+    /// An optional scalar holding the value variant built from the native `value`.
+    fn scalar(&self, value: T) -> Self::Scalar {
+        OptionalScalar::new(self.value_type().scalar(value))
+    }
+
+    /// The null variant.
+    fn null_scalar(&self) -> Self::Scalar {
+        OptionalScalar::null()
+    }
+
+    /// The default scalar: the null variant (the scalar models nullness, matching
+    /// `Option::default`).
     fn default_scalar(&self) -> Self::Scalar {
-        Optional::null()
+        OptionalScalar::null()
     }
 }

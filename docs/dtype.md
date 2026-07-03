@@ -3,15 +3,15 @@
 The `yggdryl-dtype` crate is the Apache Arrow-centralized **data-type layer**,
 built on `yggdryl-core` — the first of the three data layers (`yggdryl-dtype`,
 [`yggdryl-field`](field.md), [`yggdryl-scalar`](scalar.md)), each concern its own
-crate, so the concrete types share one bare name across the layers
-(`yggdryl_dtype::Int64` describes the type, `yggdryl_field::Int64` names a column
-of it, `yggdryl_scalar::Int64` holds one value of it). It defines the physical
-and logical data types for zero-copy FFI and Arrow interop. The concrete families
-so far: the `integer` module (every signed and unsigned integer), the `binary`
-module (the variable-size byte type), the `null` module (the storage-free null
-type), the `union` module, the `optional` module (the logical null-or-value type
-over union storage) and the nested `list`, `map` and `struct` modules; more land
-as the layer grows.
+crate, so the concrete types share one naming convention across the layers
+(`yggdryl_dtype::Int64Type` describes the type, `yggdryl_field::Int64Field` names a
+column of it, `yggdryl_scalar::Int64Scalar` holds one value of it). It defines the
+physical and logical data types for zero-copy FFI and Arrow interop. The concrete
+families so far: the `integer` module (every signed and unsigned integer), the
+`binary` module (the variable-size byte type), the `null` module (the storage-free
+null type), the `union` module, the `optional` module (the logical null-or-value
+type over union storage) and the nested `list`, `map` and `struct` modules; more
+land as the layer grows.
 
 The bindings expose the layer as `yggdryl.dtype` (Python and Node), adapting to
 idioms: Node carries 8–32 bit codec values as `number` and the 64-bit types as
@@ -20,31 +20,32 @@ the core `DataError` as a raised `ValueError` (Python) / thrown `Error` (Node).
 Four things stay **Rust-only**, stated here and in both binding module docs: the
 [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
 `arrow-schema` values that cannot cross the FFI boundary), construction of a
-`Union` from arbitrary child fields (reached in the bindings through an optional
-data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and the
-[nested types](#nested-types-list-map-and-struct) (the generic `List` / `Map` /
-`Struct` and the per-family trait pairs), which have no concrete FFI shape yet.
+`UnionType` from arbitrary child fields (reached in the bindings through an
+optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
+the [nested types](#nested-types-list-map-and-struct) (the generic `ListType` /
+`MapType` / `StructType` and the per-family trait pairs), which have no concrete
+FFI shape yet.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and
-FFI, and `RawDataType` is object-safe for `Box<dyn RawDataType>` schemas.
+FFI, and `DataType` is object-safe for `Box<dyn DataType>` schemas.
 
 ## The concrete types: the `integer` module
 
 The `integer` module holds every Apache Arrow signed and unsigned integer —
-`Int8` … `Int64`, `UInt8` … `UInt64` — one file per type. Each is a fixed-width
-[primitive](#categories) with a little-endian byte codec; the eight share one
-shape, so a single crate-internal macro generates each per-type file.
+`Int8Type` … `Int64Type`, `UInt8Type` … `UInt64Type` — one file per type. Each is
+a fixed-width [primitive](#categories) with a little-endian byte codec; the eight
+share one shape, so a single crate-internal macro generates each per-type file.
 
-`Int64`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C Data
-Interface format `"l"`):
+`Int64Type`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C
+Data Interface format `"l"`):
 
 === "Python"
 
     ```python
     from yggdryl import dtype
 
-    int64 = dtype.Int64()
+    int64 = dtype.Int64Type()
     assert int64.name() == "int64"
     assert int64.arrow_format() == "l"
     assert (int64.byte_width(), int64.bit_width()) == (8, 64)
@@ -63,7 +64,7 @@ Interface format `"l"`):
     ```js
     const { dtype } = require('yggdryl')
 
-    const int64 = new dtype.Int64()
+    const int64 = new dtype.Int64Type()
     assert.equal(int64.name(), 'int64')
     assert.equal(int64.arrowFormat(), 'l')
     assert.deepEqual([int64.byteWidth(), int64.bitWidth()], [8, 64])
@@ -80,31 +81,31 @@ Interface format `"l"`):
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{DataType, Int64, RawDataType};
+    use yggdryl_dtype::{DataType, Int64Type, TypedDataType};
 
     fn main() {
-        assert_eq!(Int64.name(), "int64");
-        assert_eq!(Int64.arrow_format(), "l");
-        assert_eq!((Int64.byte_width(), Int64.bit_width()), (Some(8), Some(64)));
+        assert_eq!(Int64Type.name(), "int64");
+        assert_eq!(Int64Type.arrow_format(), "l");
+        assert_eq!((Int64Type.byte_width(), Int64Type.bit_width()), (Some(8), Some(64)));
 
         // The codec bridging a native value to and from Arrow bytes.
-        assert_eq!(Int64.native_to_bytes(&-1), vec![0xFF; 8]);
-        assert_eq!(Int64.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
+        assert_eq!(Int64Type.native_to_bytes(&-1), vec![0xFF; 8]);
+        assert_eq!(Int64Type.native_from_bytes(&[0xFF; 8]).unwrap(), -1);
 
         // The type knows its default value (the default *scalar* lives on
-        // yggdryl-scalar's DefaultScalar trait).
-        assert_eq!(Int64.default_value(), 0);
+        // yggdryl-scalar's ScalarFactory trait).
+        assert_eq!(Int64Type.default_value(), 0);
     }
     ```
 
-The other widths follow the same surface — swap `Int64` / `i64` / `"l"` for
-`Int8` / `i8` / `"c"`, `UInt32` / `u32` / `"I"`, and so on. In Rust, `Int64::ID`
-names the matching [`DataTypeId`](#type-ids) classifier.
+The other widths follow the same surface — swap `Int64Type` / `i64` / `"l"` for
+`Int8Type` / `i8` / `"c"`, `UInt32Type` / `u32` / `"I"`, and so on. In Rust,
+`Int64Type::ID` names the matching [`DataTypeId`](#type-ids) classifier.
 
 ## The `binary` type
 
-`Binary` is the variable-size byte type (Arrow C Data Interface format `"z"`, no
-fixed width). The typed codec is the identity — any byte sequence is a valid
+`BinaryType` is the variable-size byte type (Arrow C Data Interface format `"z"`,
+no fixed width). The typed codec is the identity — any byte sequence is a valid
 `binary` value.
 
 === "Python"
@@ -112,7 +113,7 @@ fixed width). The typed codec is the identity — any byte sequence is a valid
     ```python
     from yggdryl import dtype
 
-    binary = dtype.Binary()
+    binary = dtype.BinaryType()
     assert (binary.name(), binary.arrow_format()) == ("binary", "z")
     assert binary.byte_width() is None  # variable width
     assert binary.native_from_bytes(binary.native_to_bytes(b"\x01\x02")) == b"\x01\x02"
@@ -124,7 +125,7 @@ fixed width). The typed codec is the identity — any byte sequence is a valid
     ```js
     const { dtype } = require('yggdryl')
 
-    const binary = new dtype.Binary()
+    const binary = new dtype.BinaryType()
     assert.deepEqual([binary.name(), binary.arrowFormat()], ['binary', 'z'])
     assert.equal(binary.byteWidth(), null) // variable width
     assert.deepEqual(
@@ -137,20 +138,20 @@ fixed width). The typed codec is the identity — any byte sequence is a valid
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{Binary, DataType, RawDataType};
+    use yggdryl_dtype::{BinaryType, DataType, TypedDataType};
 
     fn main() {
-        assert_eq!((Binary.name(), Binary.arrow_format().as_str()), ("binary", "z"));
-        assert_eq!(Binary.byte_width(), None); // variable width
-        let bytes = Binary.native_to_bytes(&vec![1, 2]);
-        assert_eq!(Binary.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
-        assert_eq!(Binary.default_value(), Vec::<u8>::new());
+        assert_eq!((BinaryType.name(), BinaryType.arrow_format().as_str()), ("binary", "z"));
+        assert_eq!(BinaryType.byte_width(), None); // variable width
+        let bytes = BinaryType.native_to_bytes(&vec![1, 2]);
+        assert_eq!(BinaryType.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
+        assert_eq!(BinaryType.default_value(), Vec::<u8>::new());
     }
     ```
 
-In Rust, `Binary::ID` is `DataTypeId::Binary`. `Binary` is *not* a `Primitive` in
-this model's fixed-width sense: it is Arrow's variable-size binary layout,
-childless but without a fixed width.
+In Rust, `BinaryType::ID` is `DataTypeId::Binary`. `BinaryType` is *not* a
+`Primitive` in this model's fixed-width sense: it is Arrow's variable-size binary
+layout, childless but without a fixed width.
 
 ## Arrow interop
 
@@ -166,28 +167,29 @@ with a `to_arrow` / `from_arrow` pair (`from_arrow` is the exact inverse of what
 uses the exact version the crate was built against.
 
 ```rust
-use yggdryl_dtype::{arrow_schema, Int64, RawDataType};
+use yggdryl_dtype::{arrow_schema, DataType, Int64Type};
 
 fn main() {
-    assert_eq!(Int64.to_arrow(), arrow_schema::DataType::Int64);
-    assert!(Int64::from_arrow(&arrow_schema::DataType::Utf8).is_err());
+    assert_eq!(Int64Type.to_arrow(), arrow_schema::DataType::Int64);
+    assert!(Int64Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 }
 ```
 
 ## The null, union and optional types
 
-`Null` is the storage-free type whose every value is null. `Union` is Apache
-Arrow's union type: a value is exactly one of several child types, discriminated
-by a type id. `Union` carries its `UnionFields` and `UnionMode` exactly as Arrow
-models them, so `to_arrow` / `from_arrow` round-trip *any* union losslessly.
+`NullType` is the storage-free type whose every value is null. `UnionType` is
+Apache Arrow's union type: a value is exactly one of several child types,
+discriminated by a type id. `UnionType` carries its `UnionFields` and `UnionMode`
+exactly as Arrow models them, so `to_arrow` / `from_arrow` round-trip *any* union
+losslessly.
 
-The `optional` module builds on both: `Optional<D>` is the first concrete
+The `optional` module builds on both: `OptionalType<D>` is the first concrete
 [Logical](#categories) type — a value of the value type `D`, or null, physically
-stored as `Union::optional(&D)` (the sparse two-variant union between null and
+stored as `UnionType::optional(&D)` (the sparse two-variant union between null and
 the value type; `storage()` returns it). Its Arrow surface delegates to the
 storage, while its typed byte codec delegates to the value type. The bindings
-expose the optional family as concrete per-type classes (`OptionalInt64`,
-`OptionalBinary`, …) and reach `Union` through an optional data type's
+expose the optional family as concrete per-type classes (`OptionalInt64Type`,
+`OptionalBinaryType`, …) and reach `UnionType` through an optional data type's
 `storage()` (arbitrary child fields stay Rust-only).
 
 === "Python"
@@ -195,7 +197,7 @@ expose the optional family as concrete per-type classes (`OptionalInt64`,
     ```python
     from yggdryl import dtype
 
-    optional = dtype.Int64().optional()
+    optional = dtype.Int64Type().optional()
     assert (optional.name(), optional.value_type().name()) == ("optional", "int64")
     assert optional.arrow_format() == "+us:0,1"  # sparse, type ids 0 and 1
     assert (optional.storage().name(), optional.storage().mode()) == ("union", "sparse")
@@ -209,7 +211,7 @@ expose the optional family as concrete per-type classes (`OptionalInt64`,
     ```js
     const { dtype } = require('yggdryl')
 
-    const optional = new dtype.Int64().optional()
+    const optional = new dtype.Int64Type().optional()
     assert.deepEqual([optional.name(), optional.valueType().name()], ['optional', 'int64'])
     assert.equal(optional.arrowFormat(), '+us:0,1') // sparse, type ids 0 and 1
     assert.deepEqual([optional.storage().name(), optional.storage().mode()], ['union', 'sparse'])
@@ -221,10 +223,10 @@ expose the optional family as concrete per-type classes (`OptionalInt64`,
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{DataType, Int64, Optional, RawDataType, RawLogical, RawOptional};
+    use yggdryl_dtype::{DataType, Int64Type, Logical, Optional, OptionalType, TypedDataType};
 
     fn main() {
-        let optional = Optional::new(Int64);
+        let optional = OptionalType::new(Int64Type);
         assert_eq!((optional.name(), optional.value_type().name()), ("optional", "int64"));
         assert_eq!(optional.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
         assert_eq!(optional.storage().name(), "union");
@@ -241,24 +243,24 @@ expose the optional family as concrete per-type classes (`OptionalInt64`,
     fields) — none has a concrete FFI shape yet, so they are not exposed to
     Python or Node.
 
-The `list`, `map` and `struct` modules follow the family pattern. `List<D>` is
+The `list`, `map` and `struct` modules follow the family pattern. `ListType<D>` is
 the variable-length sequence of one value type (single nullable `"item"` child);
-`Map<K, V>` the sequence of key–value entries (single `"entries"` struct child);
-`Struct` the dynamic ordered set of named fields, carried losslessly like
-`Union`. The typed byte codecs concatenate the child codecs and split them back
-by fixed width (a variable-width child errors with
+`MapType<K, V>` the sequence of key–value entries (single `"entries"` struct
+child); `StructType` the dynamic ordered set of named fields, carried losslessly
+like `UnionType`. The typed byte codecs concatenate the child codecs and split
+them back by fixed width (a variable-width child errors with
 `DataError::IndeterminateElementWidth` — decode those from Arrow).
 
 ```rust
-use yggdryl_dtype::{DataType, Int64, List, Map, RawDataType, UInt8};
+use yggdryl_dtype::{DataType, Int64Type, ListType, MapType, TypedDataType, UInt8Type};
 
 fn main() {
-    let list = List::new(Int64);
+    let list = ListType::new(Int64Type);
     assert_eq!((list.name(), list.arrow_format().as_str()), ("list", "+l"));
     assert_eq!(list.native_from_bytes(&list.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
     assert_eq!(list.default_value(), Vec::<i64>::new()); // sequences default to empty
 
-    let map = Map::new(UInt8, Int64);
+    let map = MapType::new(UInt8Type, Int64Type);
     assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
 }
 ```
@@ -267,43 +269,45 @@ fn main() {
 
 ### Untyped base
 
-- **`RawDataType`** — a physical type descriptor: `name`, the Arrow C Data Interface
+- **`DataType`** — a physical type descriptor: `name`, the Arrow C Data Interface
   `arrow_format` string, and fixed `byte_width` / `bit_width` (`None` for variable or
   nested types); `to_arrow` / `from_arrow` mirror an `arrow_schema::DataType`
   (`from_arrow`, returning `Self`, is `Self: Sized` so the trait stays object-safe).
 
 ### Typed
 
-- **`DataType<T>: RawDataType`** — adds the byte codec `native_to_bytes` /
+- **`TypedDataType<T>: DataType`** — adds the byte codec `native_to_bytes` /
   `native_from_bytes` (a length mismatch on decode returns
   `DataError::InvalidByteLength`) and `default_value` (the type's default native
   value — `0` for the integers, an empty sequence for lists and maps, the *first*
   data type's default for a union). The default *scalar* of a type lives
-  upstream, on [`yggdryl-scalar`](scalar.md)'s `DefaultScalar` trait — the scalar
+  upstream, on [`yggdryl-scalar`](scalar.md)'s `ScalarFactory` trait — the scalar
   layer builds on this one, never the other way around.
 
 ### Categories
 
-How a type is shaped (each refines `RawDataType`):
+How a type is shaped (each refines `DataType`):
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
-- **`RawLogical<S>` / `Logical<T>`** — a type layered over a physical storage type
-  `S`, e.g. a timestamp over `int64`: the raw side's `storage()` returns it, the
-  typed side pins it as the associated `Storage` and adds the native codec. The
-  generic holder is `Optional<D>` — a value or null over the null-or-value union.
-- **`RawNested` / `Nested<T>`** — a type composed of child fields (`struct`,
-  `list`, `map`, `union`): the raw side's `child_count()` reports how many, the
+- **`Logical<S>` / `TypedLogical<S, T>`** — a type layered over a physical storage
+  type `S`, e.g. a timestamp over `int64`: the base side's `storage()` returns it,
+  the typed side pins it as the associated `Storage` and adds the native codec. The
+  generic holder is `OptionalType<D>` — a value or null over the null-or-value union.
+- **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
+  `list`, `map`, `union`): the base side's `child_count()` reports how many, the
   typed side adds the native codec (a sequence, a row). The generic holders are
-  `List<D>` (`Nested<Vec<T>>`) and `Map<K, V>` (`Nested<Vec<(TK, TV)>>`); the
-  dynamic `Struct` and `Union` stay raw-only.
+  `ListType<D>` (`TypedNested<Vec<T>>`) and `MapType<K, V>`
+  (`TypedNested<Vec<(TK, TV)>>`); the dynamic `StructType` and `UnionType` stay
+  base-only.
 
-Each composite family also carries its own raw/typed trait pair, mirroring the
-base layers: `RawOptional` / `TypedOptional`, `RawUnion` / `TypedUnion` (a typed
-union's defaults are its *first* data type's), `RawList` / `TypedList`, `RawMap`
-/ `TypedMap` and `RawStruct` / `TypedStruct` — the concrete `Optional<D>`,
-`Union`, `List<D>`, `Map<K, V>` and `Struct` implement the raw side, and the
-typed side wherever the child types have codecs (the dynamic `Union` and
-`Struct`, whose children are only known at runtime, stay raw-only).
+Each composite family also carries its own base/typed trait pair, mirroring the
+base layers: `Optional` / `TypedOptional`, `Union` / `TypedUnion` (a typed
+union's defaults are its *first* data type's), `List` / `TypedList`, `Map`
+/ `TypedMap` and `Struct` / `TypedStruct` — the concrete `OptionalType<D>`,
+`UnionType`, `ListType<D>`, `MapType<K, V>` and `StructType` implement the base
+side, and the typed side wherever the child types have codecs (the dynamic
+`UnionType` and `StructType`, whose children are only known at runtime, stay
+base-only).
 
 ## Type ids
 

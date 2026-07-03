@@ -2,7 +2,7 @@
 //! surface and the Arrow interop (`to_arrow` / `from_arrow`).
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use yggdryl_dtype::{DataType, Int64, Int8, RawDataType, Union};
+use yggdryl_dtype::{DataType, Int64Type, Int8Type, TypedDataType, UnionType};
 
 const N: usize = 4096;
 
@@ -13,16 +13,16 @@ fn codec(c: &mut Criterion) {
     group.bench_function("int64_native_to_bytes", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(DataType::native_to_bytes(&Int64, &value));
+                black_box(TypedDataType::native_to_bytes(&Int64Type, &value));
             }
         })
     });
 
-    let bytes = DataType::native_to_bytes(&Int64, &0x0123_4567_89AB_CDEFi64);
+    let bytes = TypedDataType::native_to_bytes(&Int64Type, &0x0123_4567_89AB_CDEFi64);
     group.bench_function("int64_native_from_bytes", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(DataType::native_from_bytes(&Int64, black_box(&bytes)).unwrap());
+                black_box(TypedDataType::native_from_bytes(&Int64Type, black_box(&bytes)).unwrap());
             }
         })
     });
@@ -38,14 +38,14 @@ fn descriptor(c: &mut Criterion) {
     group.bench_function("int64_name", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.name());
+                black_box(Int64Type.name());
             }
         })
     });
     group.bench_function("int64_arrow_format", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.arrow_format());
+                black_box(Int64Type.arrow_format());
             }
         })
     });
@@ -60,16 +60,16 @@ fn arrow_interop(c: &mut Criterion) {
     group.bench_function("data_type_to_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64.to_arrow());
+                black_box(Int64Type.to_arrow());
             }
         })
     });
 
-    let arrow_type = Int64.to_arrow();
+    let arrow_type = Int64Type.to_arrow();
     group.bench_function("data_type_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64::from_arrow(black_box(&arrow_type)).unwrap());
+                black_box(Int64Type::from_arrow(black_box(&arrow_type)).unwrap());
             }
         })
     });
@@ -82,7 +82,7 @@ fn schema(c: &mut Criterion) {
     group.throughput(Throughput::Elements(N as u64));
 
     // Heterogeneous descriptors through the vtable, as a schema printer would.
-    let types: Vec<Box<dyn RawDataType>> = vec![Box::new(Int8), Box::new(Int64)];
+    let types: Vec<Box<dyn DataType>> = vec![Box::new(Int8Type), Box::new(Int64Type)];
     group.bench_function("dyn_to_arrow", |b| {
         b.iter(|| {
             for _ in 0..N / 2 {
@@ -103,7 +103,7 @@ fn optional(c: &mut Criterion) {
     group.bench_function("union_optional_data_type", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Union::optional(&Int64));
+                black_box(UnionType::optional(&Int64Type));
             }
         })
     });

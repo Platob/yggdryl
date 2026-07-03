@@ -1,35 +1,36 @@
 //! The `yggdryl.scalar` submodule — thin wrappers over the `yggdryl-scalar` crate.
 //!
 //! Every integer type is exposed as its scalar and its null-or-value optional
-//! scalar (e.g. `Int64`, `OptionalInt64`), alongside `Binary` / `OptionalBinary`
-//! (whose value is held as a core positioned-IO `ByteBuffer` — `to_io()` hands
-//! one back) and `Null` — the same bare names as the Rust crate, the submodule
-//! carrying the concern. Scalars expose the `as_*` accessors with the core
-//! contract: the value when the target represents it exactly, or a raised
-//! `ValueError` naming the fix (strings and bytes cross the FFI boundary as new
-//! Python objects, so the Rust-side "borrow, never copy" guarantee applies up to
-//! that boundary copy). Optional scalars adapt construction to idioms: they are
-//! built straight from the native value (`OptionalInt64(42)`), the inner scalar
-//! being an implementation detail reachable through `scalar()`.
+//! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
+//! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
+//! `ByteBuffer` — `to_io()` hands one back) and `NullScalar` — the same suffixed
+//! names as the Rust crate, the submodule carrying the concern. Scalars expose the
+//! `as_*` accessors with the core contract: the value when the target represents
+//! it exactly, or a raised `ValueError` naming the fix (strings and bytes cross
+//! the FFI boundary as new Python objects, so the Rust-side "borrow, never copy"
+//! guarantee applies up to that boundary copy). Optional scalars adapt
+//! construction to idioms: they are built straight from the native value
+//! (`OptionalInt64Scalar(42)`), the inner scalar being an implementation detail
+//! reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
-//! `DefaultScalar` traits (generic Rust bounds; the bindings reach defaults
-//! through a data type's `default_scalar()`), and the nested scalars — the
-//! generic `Serie` / `Map` / `Struct` and the buffer-backed `Int64Serie` (whose
-//! zero-copy Arrow buffers await C Data Interface interop) — which have no
-//! concrete FFI shape yet.
+//! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
+//! through a data type's `scalar()` / `default_scalar()`), and the nested scalars
+//! — the generic `Serie` / `MapScalar` / `StructScalar` and the buffer-backed
+//! `Int64Serie` (whose zero-copy Arrow buffers await C Data Interface interop) —
+//! which have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_scalar::RawScalar;
+use yggdryl_scalar::Scalar;
 
 use crate::DataErr;
 
 /// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
 /// `"latin1"` — shared by every scalar class.
-fn as_str_with<D: yggdryl_dtype::RawDataType, S: RawScalar<D>>(
+fn as_str_with<D: yggdryl_dtype::DataType, S: Scalar<D>>(
     scalar: &S,
     charset: Option<&str>,
 ) -> Result<String, DataErr> {
@@ -48,12 +49,12 @@ fn as_str_with<D: yggdryl_dtype::RawDataType, S: RawScalar<D>>(
 /// The `null` scalar: always null, holding no value.
 #[pyclass]
 #[derive(Default)]
-pub struct Null {
-    pub(crate) inner: yggdryl_scalar::Null,
+pub struct NullScalar {
+    pub(crate) inner: yggdryl_scalar::NullScalar,
 }
 
 #[pymethods]
-impl Null {
+impl NullScalar {
     /// The null scalar.
     #[new]
     fn new() -> Self {
@@ -66,25 +67,25 @@ impl Null {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> crate::dtype::Null {
-        crate::dtype::Null::default()
+    fn data_type(&self) -> crate::dtype::NullType {
+        crate::dtype::NullType::default()
     }
 }
 
 /// A single, possibly-null `binary` value, holding its bytes as a core
 /// positioned-IO `ByteBuffer` (`to_io()` hands one back).
 #[pyclass]
-pub struct Binary {
-    pub(crate) inner: yggdryl_scalar::Binary,
+pub struct BinaryScalar {
+    pub(crate) inner: yggdryl_scalar::BinaryScalar,
 }
 
 #[pymethods]
-impl Binary {
+impl BinaryScalar {
     /// A `binary` scalar holding `value`.
     #[new]
     fn new(value: Vec<u8>) -> Self {
         Self {
-            inner: yggdryl_scalar::Binary::new(value),
+            inner: yggdryl_scalar::BinaryScalar::new(value),
         }
     }
 
@@ -92,7 +93,7 @@ impl Binary {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::Binary::null(),
+            inner: yggdryl_scalar::BinaryScalar::null(),
         }
     }
 
@@ -109,8 +110,8 @@ impl Binary {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> crate::dtype::Binary {
-        crate::dtype::Binary::default()
+    fn data_type(&self) -> crate::dtype::BinaryType {
+        crate::dtype::BinaryType::default()
     }
 
     /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for
@@ -203,17 +204,18 @@ impl Binary {
 /// A single value of the union between null and `binary`: a value variant, or
 /// the null variant.
 #[pyclass]
-pub struct OptionalBinary {
-    pub(crate) inner: yggdryl_scalar::Optional<yggdryl_dtype::Binary, yggdryl_scalar::Binary>,
+pub struct OptionalBinaryScalar {
+    pub(crate) inner:
+        yggdryl_scalar::OptionalScalar<yggdryl_dtype::BinaryType, yggdryl_scalar::BinaryScalar>,
 }
 
 #[pymethods]
-impl OptionalBinary {
+impl OptionalBinaryScalar {
     /// A scalar holding the `binary` value variant `value`.
     #[new]
     fn new(value: Vec<u8>) -> Self {
         Self {
-            inner: yggdryl_scalar::Optional::new(yggdryl_scalar::Binary::new(value)),
+            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::BinaryScalar::new(value)),
         }
     }
 
@@ -221,7 +223,7 @@ impl OptionalBinary {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::Optional::null(),
+            inner: yggdryl_scalar::OptionalScalar::null(),
         }
     }
 
@@ -238,15 +240,15 @@ impl OptionalBinary {
     }
 
     /// The inner scalar, when this holds the value variant.
-    fn scalar(&self) -> Option<Binary> {
-        self.inner.scalar().map(|scalar| Binary {
+    fn scalar(&self) -> Option<BinaryScalar> {
+        self.inner.scalar().map(|scalar| BinaryScalar {
             inner: scalar.clone(),
         })
     }
 
     /// The scalar's data type: the logical optional of the value type.
-    fn data_type(&self) -> crate::dtype::OptionalBinary {
-        crate::dtype::OptionalBinary::default()
+    fn data_type(&self) -> crate::dtype::OptionalBinaryType {
+        crate::dtype::OptionalBinaryType::default()
     }
 
     /// The value as an `int` in the i8 range; raises `ValueError` (a binary
@@ -319,9 +321,10 @@ impl OptionalBinary {
 
 /// Generates the two scalar wrappers of one integer type: the scalar `$ty` and
 /// the null-or-value `$opt_ty` — each a thin delegation to the `yggdryl-scalar`
-/// types, with the `as_*` accessors on both.
+/// types, with the `as_*` accessors on both. `$dtype` / `$opt_dtype` name the
+/// `yggdryl.dtype` classes the scalars report.
 macro_rules! int_scalar_py {
-    ($ty:ident, $opt_ty:ident, $native:ty, $name:literal) => {
+    ($ty:ident, $opt_ty:ident, $dtype:ident, $opt_dtype:ident, $native:ty, $name:literal) => {
         #[doc = concat!("A single, possibly-null `", $name, "` value.")]
         #[pyclass]
         pub struct $ty {
@@ -357,8 +360,8 @@ macro_rules! int_scalar_py {
             }
 
             /// The scalar's data type.
-            fn data_type(&self) -> crate::dtype::$ty {
-                crate::dtype::$ty::default()
+            fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
             }
 
             /// The value as an `int` in the i8 range; raises `ValueError` when
@@ -433,7 +436,8 @@ macro_rules! int_scalar_py {
         #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
         #[pyclass]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_scalar::Optional<yggdryl_dtype::$ty, yggdryl_scalar::$ty>,
+            pub(crate) inner:
+                yggdryl_scalar::OptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
         }
 
         #[pymethods]
@@ -442,7 +446,7 @@ macro_rules! int_scalar_py {
             #[new]
             fn new(value: $native) -> Self {
                 Self {
-                    inner: yggdryl_scalar::Optional::new(yggdryl_scalar::$ty::new(value)),
+                    inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::$ty::new(value)),
                 }
             }
 
@@ -450,7 +454,7 @@ macro_rules! int_scalar_py {
             #[staticmethod]
             fn null() -> Self {
                 Self {
-                    inner: yggdryl_scalar::Optional::null(),
+                    inner: yggdryl_scalar::OptionalScalar::null(),
                 }
             }
 
@@ -470,8 +474,8 @@ macro_rules! int_scalar_py {
             }
 
             /// The scalar's data type: the logical optional of the value type.
-            fn data_type(&self) -> crate::dtype::$opt_ty {
-                crate::dtype::$opt_ty::default()
+            fn data_type(&self) -> crate::dtype::$opt_dtype {
+                crate::dtype::$opt_dtype::default()
             }
 
             /// The value as an `int` in the i8 range; raises `ValueError` when
@@ -545,35 +549,91 @@ macro_rules! int_scalar_py {
     };
 }
 
-int_scalar_py!(Int8, OptionalInt8, i8, "int8");
-int_scalar_py!(Int16, OptionalInt16, i16, "int16");
-int_scalar_py!(Int32, OptionalInt32, i32, "int32");
-int_scalar_py!(Int64, OptionalInt64, i64, "int64");
-int_scalar_py!(UInt8, OptionalUInt8, u8, "uint8");
-int_scalar_py!(UInt16, OptionalUInt16, u16, "uint16");
-int_scalar_py!(UInt32, OptionalUInt32, u32, "uint32");
-int_scalar_py!(UInt64, OptionalUInt64, u64, "uint64");
+int_scalar_py!(
+    Int8Scalar,
+    OptionalInt8Scalar,
+    Int8Type,
+    OptionalInt8Type,
+    i8,
+    "int8"
+);
+int_scalar_py!(
+    Int16Scalar,
+    OptionalInt16Scalar,
+    Int16Type,
+    OptionalInt16Type,
+    i16,
+    "int16"
+);
+int_scalar_py!(
+    Int32Scalar,
+    OptionalInt32Scalar,
+    Int32Type,
+    OptionalInt32Type,
+    i32,
+    "int32"
+);
+int_scalar_py!(
+    Int64Scalar,
+    OptionalInt64Scalar,
+    Int64Type,
+    OptionalInt64Type,
+    i64,
+    "int64"
+);
+int_scalar_py!(
+    UInt8Scalar,
+    OptionalUInt8Scalar,
+    UInt8Type,
+    OptionalUInt8Type,
+    u8,
+    "uint8"
+);
+int_scalar_py!(
+    UInt16Scalar,
+    OptionalUInt16Scalar,
+    UInt16Type,
+    OptionalUInt16Type,
+    u16,
+    "uint16"
+);
+int_scalar_py!(
+    UInt32Scalar,
+    OptionalUInt32Scalar,
+    UInt32Type,
+    OptionalUInt32Type,
+    u32,
+    "uint32"
+);
+int_scalar_py!(
+    UInt64Scalar,
+    OptionalUInt64Scalar,
+    UInt64Type,
+    OptionalUInt64Type,
+    u64,
+    "uint64"
+);
 
 /// Populates the `scalar` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Null>()?;
-    module.add_class::<Binary>()?;
-    module.add_class::<OptionalBinary>()?;
-    module.add_class::<Int8>()?;
-    module.add_class::<OptionalInt8>()?;
-    module.add_class::<Int16>()?;
-    module.add_class::<OptionalInt16>()?;
-    module.add_class::<Int32>()?;
-    module.add_class::<OptionalInt32>()?;
-    module.add_class::<Int64>()?;
-    module.add_class::<OptionalInt64>()?;
-    module.add_class::<UInt8>()?;
-    module.add_class::<OptionalUInt8>()?;
-    module.add_class::<UInt16>()?;
-    module.add_class::<OptionalUInt16>()?;
-    module.add_class::<UInt32>()?;
-    module.add_class::<OptionalUInt32>()?;
-    module.add_class::<UInt64>()?;
-    module.add_class::<OptionalUInt64>()?;
+    module.add_class::<NullScalar>()?;
+    module.add_class::<BinaryScalar>()?;
+    module.add_class::<OptionalBinaryScalar>()?;
+    module.add_class::<Int8Scalar>()?;
+    module.add_class::<OptionalInt8Scalar>()?;
+    module.add_class::<Int16Scalar>()?;
+    module.add_class::<OptionalInt16Scalar>()?;
+    module.add_class::<Int32Scalar>()?;
+    module.add_class::<OptionalInt32Scalar>()?;
+    module.add_class::<Int64Scalar>()?;
+    module.add_class::<OptionalInt64Scalar>()?;
+    module.add_class::<UInt8Scalar>()?;
+    module.add_class::<OptionalUInt8Scalar>()?;
+    module.add_class::<UInt16Scalar>()?;
+    module.add_class::<OptionalUInt16Scalar>()?;
+    module.add_class::<UInt32Scalar>()?;
+    module.add_class::<OptionalUInt32Scalar>()?;
+    module.add_class::<UInt64Scalar>()?;
+    module.add_class::<OptionalUInt64Scalar>()?;
     Ok(())
 }

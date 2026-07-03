@@ -8,14 +8,14 @@ const { dtype } = yggdryl
 
 // The 8-32 bit types carry codec values as `number`; the 64-bit types as `BigInt`.
 const INTEGERS = [
-  { ty: dtype.Int8, name: 'int8', format: 'c', width: 1, low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
-  { ty: dtype.Int16, name: 'int16', format: 's', width: 2, low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
-  { ty: dtype.Int32, name: 'int32', format: 'i', width: 4, low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
-  { ty: dtype.Int64, name: 'int64', format: 'l', width: 8, low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
-  { ty: dtype.UInt8, name: 'uint8', format: 'C', width: 1, low: 0, high: 2 ** 8 - 1, wire: (v) => v },
-  { ty: dtype.UInt16, name: 'uint16', format: 'S', width: 2, low: 0, high: 2 ** 16 - 1, wire: (v) => v },
-  { ty: dtype.UInt32, name: 'uint32', format: 'I', width: 4, low: 0, high: 2 ** 32 - 1, wire: (v) => v },
-  { ty: dtype.UInt64, name: 'uint64', format: 'L', width: 8, low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
+  { ty: dtype.Int8Type, name: 'int8', format: 'c', width: 1, low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
+  { ty: dtype.Int16Type, name: 'int16', format: 's', width: 2, low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
+  { ty: dtype.Int32Type, name: 'int32', format: 'i', width: 4, low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
+  { ty: dtype.Int64Type, name: 'int64', format: 'l', width: 8, low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
+  { ty: dtype.UInt8Type, name: 'uint8', format: 'C', width: 1, low: 0, high: 2 ** 8 - 1, wire: (v) => v },
+  { ty: dtype.UInt16Type, name: 'uint16', format: 'S', width: 2, low: 0, high: 2 ** 16 - 1, wire: (v) => v },
+  { ty: dtype.UInt32Type, name: 'uint32', format: 'I', width: 4, low: 0, high: 2 ** 32 - 1, wire: (v) => v },
+  { ty: dtype.UInt64Type, name: 'uint64', format: 'L', width: 8, low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
 ]
 
 for (const { ty, name, format, width, low, high, wire } of INTEGERS) {
@@ -35,6 +35,34 @@ for (const { ty, name, format, width, low, high, wire } of INTEGERS) {
     const optional = instance.optional()
     assert.equal(optional.defaultValue(), wire(0))
     assert.equal(optional.defaultScalar().isNull(), true) // the null variant
+  })
+
+  test(`${name} data type is a factory for its field and scalar`, () => {
+    const instance = new ty()
+
+    // The data type builds its field: a name paired with the type.
+    const column = instance.field('id', false)
+    assert.equal(column.name(), 'id')
+    assert.equal(column.dataType().name(), name)
+    assert.equal(column.isNullable(), false)
+    assert.equal(instance.field('maybe').isNullable(), true) // nullable by default
+
+    // ... and its scalar, holding the native value.
+    const answer = instance.scalar(wire(42))
+    assert.equal(answer.isNull(), false)
+    assert.equal(answer.value(), wire(42))
+    assert.equal(answer.dataType().name(), name)
+
+    // The optional data type is a factory too.
+    const optional = instance.optional()
+    const score = optional.field('score')
+    assert.equal(score.name(), 'score')
+    assert.equal(score.dataType().name(), 'optional')
+    assert.equal(score.dataType().valueType().name(), name)
+    const some = optional.scalar(wire(42))
+    assert.equal(some.isNull(), false)
+    assert.equal(some.value(), wire(42))
+    assert.equal(some.dataType().valueType().name(), name)
   })
 
   test(`${name} codec round-trips`, () => {
@@ -67,7 +95,7 @@ for (const { ty, name, format, width, low, high, wire } of INTEGERS) {
 }
 
 test('binary type describes itself and codecs', () => {
-  const binary = new dtype.Binary()
+  const binary = new dtype.BinaryType()
   assert.equal(binary.name(), 'binary')
   assert.equal(binary.arrowFormat(), 'z')
   assert.equal(binary.byteWidth(), null)
@@ -80,8 +108,18 @@ test('binary type describes itself and codecs', () => {
   assert.deepEqual(binary.defaultScalar().value(), Buffer.alloc(0))
 })
 
+test('binary type is a factory for its field and scalar', () => {
+  const binary = new dtype.BinaryType()
+  const payload = binary.field('payload', false)
+  assert.equal(payload.name(), 'payload')
+  assert.equal(payload.dataType().name(), 'binary')
+  assert.equal(payload.isNullable(), false)
+  assert.equal(binary.field('maybe').isNullable(), true)
+  assert.deepEqual(binary.scalar(Buffer.from('xy')).value(), Buffer.from('xy'))
+})
+
 test('optional binary type', () => {
-  const optional = new dtype.Binary().optional()
+  const optional = new dtype.BinaryType().optional()
   assert.equal(optional.name(), 'optional')
   assert.equal(optional.valueType().name(), 'binary')
   assert.equal(optional.storage().name(), 'union')
@@ -91,11 +129,14 @@ test('optional binary type', () => {
     optional.nativeFromBytes(optional.nativeToBytes(Buffer.from('xy'))),
     Buffer.from('xy'),
   )
-  assert.equal(new dtype.OptionalBinary().arrowFormat(), optional.arrowFormat())
+  assert.equal(new dtype.OptionalBinaryType().arrowFormat(), optional.arrowFormat())
+  // The optional binary type is a factory too.
+  assert.equal(optional.field('payload').dataType().name(), 'optional')
+  assert.deepEqual(optional.scalar(Buffer.from('xy')).value(), Buffer.from('xy'))
 })
 
 test('null type', () => {
-  const nullType = new dtype.Null()
+  const nullType = new dtype.NullType()
   assert.equal(nullType.name(), 'null')
   assert.equal(nullType.arrowFormat(), 'n')
   assert.equal(nullType.byteWidth(), null)
@@ -103,7 +144,7 @@ test('null type', () => {
 })
 
 test('union type reached through optional', () => {
-  const union = new dtype.Int64().optional().storage()
+  const union = new dtype.Int64Type().optional().storage()
   assert.equal(union.name(), 'union')
   assert.equal(union.arrowFormat(), '+us:0,1')
   assert.equal(union.byteWidth(), null)

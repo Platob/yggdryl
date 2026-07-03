@@ -2,42 +2,42 @@
 
 The `yggdryl-field` crate is the Apache Arrow-centralized **field layer**, built
 on [`yggdryl-dtype`](dtype.md) — the second of the three data layers, each
-concern its own crate, so the concrete types share one bare name across the
-layers (`yggdryl_field::Int64` names a column of the `yggdryl_dtype::Int64`
-type, whose single value is a [`yggdryl_scalar::Int64`](scalar.md)). A field
-pairs a **name** with a **data type** and a **nullability flag** — exactly the
-three properties of an Apache Arrow `Field` — so a schema is a sequence of
-fields.
+concern its own crate, so the concrete types share one naming convention across
+the layers (`yggdryl_field::Int64Field` names a column of the
+`yggdryl_dtype::Int64Type` type, whose single value is a
+[`yggdryl_scalar::Int64Scalar`](scalar.md)). A field pairs a **name** with a
+**data type** and a **nullability flag** — exactly the three properties of an
+Apache Arrow `Field` — so a schema is a sequence of fields.
 
 The bindings expose the layer as `yggdryl.field` (Python and Node), adapting to
 idioms: `nullable` defaults to `True` / `true` as a keyword / optional argument.
 Two things stay **Rust-only**, stated here and in both binding module docs: the
 [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
 `arrow-schema` values that cannot cross the FFI boundary), and the generic nested
-fields (`List<D>` / `Map<K, V>` / `Struct`), which have no concrete FFI shape
-yet.
+fields (`ListField` / `MapField` / `StructField`), which have no concrete FFI
+shape yet.
 
 ## Fields pair a name with a data type
 
 The fixed-shape families default their data type; the optional fields wrap it
-(`OptionalInt64` is a field of the logical `optional` of `int64`); the
-parameterised `Struct` and `Union` take theirs at construction.
+(`OptionalInt64Field` is a field of the logical `optional` of `int64`); the
+parameterised `StructField` and `UnionField` take theirs at construction.
 
 === "Python"
 
     ```python
     from yggdryl import field
 
-    id_field = field.Int64("id", False)
+    id_field = field.Int64Field("id", False)
     assert (id_field.name(), id_field.is_nullable()) == ("id", False)
     assert id_field.data_type().name() == "int64"
-    assert field.Int64("maybe").is_nullable() is True  # nullable by default
+    assert field.Int64Field("maybe").is_nullable() is True  # nullable by default
 
-    score = field.OptionalInt64("score")
+    score = field.OptionalInt64Field("score")
     assert score.data_type().name() == "optional"
     assert score.data_type().value_type().name() == "int64"
 
-    payload = field.Binary("payload")
+    payload = field.BinaryField("payload")
     assert payload.data_type().name() == "binary"
     ```
 
@@ -46,38 +46,81 @@ parameterised `Struct` and `Union` take theirs at construction.
     ```js
     const { field } = require('yggdryl')
 
-    const idField = new field.Int64('id', false)
+    const idField = new field.Int64Field('id', false)
     assert.deepEqual([idField.name(), idField.isNullable()], ['id', false])
     assert.equal(idField.dataType().name(), 'int64')
-    assert.equal(new field.Int64('maybe').isNullable(), true) // nullable by default
+    assert.equal(new field.Int64Field('maybe').isNullable(), true) // nullable by default
 
-    const score = new field.OptionalInt64('score')
+    const score = new field.OptionalInt64Field('score')
     assert.equal(score.dataType().name(), 'optional')
     assert.equal(score.dataType().valueType().name(), 'int64')
 
-    const payload = new field.Binary('payload')
+    const payload = new field.BinaryField('payload')
     assert.equal(payload.dataType().name(), 'binary')
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_field::yggdryl_dtype::{Int64 as Int64Type, RawDataType, RawOptional};
-    use yggdryl_field::{Binary, Int64, Optional, RawField};
+    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Optional};
+    use yggdryl_field::{BinaryField, Field, Int64Field, OptionalField};
 
     fn main() {
-        let id = Int64::new("id", false);
+        let id = Int64Field::new("id", false);
         assert_eq!((id.name(), id.is_nullable()), ("id", false));
         assert_eq!(id.data_type().name(), "int64");
 
-        let score = Optional::<Int64Type>::new("score", true);
+        let score = OptionalField::<Int64Type>::new("score", true);
         assert_eq!(score.data_type().name(), "optional");
         assert_eq!(score.data_type().value_type().name(), "int64");
 
-        let payload = Binary::new("payload", true);
+        let payload = BinaryField::new("payload", true);
         assert_eq!(payload.data_type().name(), "binary");
     }
     ```
+
+## The data type builds its field
+
+A typed data type *is* the field factory: `data_type.field(name, nullable)` builds
+the matching field, so a schema can be assembled straight from the types
+(`FieldFactory` in Rust, a method on every `yggdryl.dtype` type in the bindings).
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype
+
+    id_field = dtype.Int64Type().field("id", False)
+    assert (id_field.name(), id_field.is_nullable()) == ("id", False)
+    assert id_field.data_type().name() == "int64"
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    const idField = new dtype.Int64Type().field('id', false)
+    assert.deepEqual([idField.name(), idField.isNullable()], ['id', false])
+    assert.equal(idField.dataType().name(), 'int64')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type};
+    use yggdryl_field::{Field, FieldFactory};
+
+    fn main() {
+        let id = Int64Type.field("id", false);
+        assert_eq!((id.name(), id.is_nullable()), ("id", false));
+        assert_eq!(id.data_type().name(), "int64");
+    }
+    ```
+
+In the bindings the `nullable` argument is optional and defaults to nullable —
+`data_type.field(name)` builds a nullable field, matching the `Field`
+constructor's own default — while Rust passes the flag explicitly.
 
 The `union` field takes its parameterised data type (reached in the bindings
 through an optional data type's `storage()`):
@@ -87,8 +130,8 @@ through an optional data type's `storage()`):
     ```python
     from yggdryl import dtype, field
 
-    union = dtype.Int64().optional().storage()
-    value = field.Union("value", union)
+    union = dtype.Int64Type().optional().storage()
+    value = field.UnionField("value", union)
     assert value.data_type().arrow_format() == "+us:0,1"
     ```
 
@@ -97,19 +140,19 @@ through an optional data type's `storage()`):
     ```js
     const { dtype, field } = require('yggdryl')
 
-    const union = new dtype.Int64().optional().storage()
-    const value = new field.Union('value', union)
+    const union = new dtype.Int64Type().optional().storage()
+    const value = new field.UnionField('value', union)
     assert.equal(value.dataType().arrowFormat(), '+us:0,1')
     ```
 
 === "Rust"
 
     ```rust
-    use yggdryl_field::yggdryl_dtype::{self as dtype, Int64, RawDataType};
-    use yggdryl_field::{RawField, Union};
+    use yggdryl_field::yggdryl_dtype::{self as dtype, DataType, Int64Type};
+    use yggdryl_field::{Field, UnionField};
 
     fn main() {
-        let value = Union::new("value", dtype::Union::optional(&Int64), true);
+        let value = UnionField::new("value", dtype::UnionType::optional(&Int64Type), true);
         assert_eq!(value.data_type().arrow_format(), "+us:0,1");
     }
     ```
@@ -132,17 +175,17 @@ when the `log` cargo feature is on; `to_arrow` correspondingly always produces a
 metadata-free field).
 
 ```rust
-use yggdryl_field::{arrow_schema, Int64, RawField, UInt8};
+use yggdryl_field::{arrow_schema, Field, Int64Field, UInt8Field};
 
 fn main() {
     // Field ↔ arrow_schema::Field.
-    let id = Int64::new("id", false);
-    assert_eq!(Int64::from_arrow(&id.to_arrow()).unwrap(), id);
+    let id = Int64Field::new("id", false);
+    assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
 
     // A heterogeneous set of fields converts straight into an Arrow schema.
     let schema = arrow_schema::Schema::new(vec![
         id.to_arrow(),
-        UInt8::new("flags", true).to_arrow(),
+        UInt8Field::new("flags", true).to_arrow(),
     ]);
     assert_eq!(schema.field(0).data_type(), &arrow_schema::DataType::Int64);
 }
@@ -150,11 +193,16 @@ fn main() {
 
 ## The trait layers
 
-- **`RawField<D: RawDataType>`** — the untyped base: a named, nullable column
+- **`Field<D: DataType>`** — the untyped base: a named, nullable column
   (`name`, `data_type`, `is_nullable`); `to_arrow` / `from_arrow` mirror an
   `arrow_schema::Field`. Parameterised by the data type `D` so the concrete type
   is preserved for zero-cost access; `Debug + Send + Sync`, no lifetime
   parameters.
-- **`Field<T>: RawField<Self::Type>`** — the typed layer: a field whose data type
-  is a `yggdryl_dtype::DataType<T>`, so the field's values have native Rust
-  representation `T`.
+- **`TypedField<DT: TypedDataType<T>, T>: Field<DT>`** — the typed layer: a field
+  whose data type is a `yggdryl_dtype::TypedDataType<T>`, so the field's values
+  have native Rust representation `T`.
+- **`FieldFactory<T>: TypedDataType<T>`** — the factory: a typed data type builds
+  its field (`Int64Type.field("id", false)` → `Int64Field`). The dynamic
+  `StructType` and `UnionType`, which are not typed data types, have no factory —
+  their fields are constructed directly from a data type instance.
+```

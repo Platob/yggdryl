@@ -1,37 +1,38 @@
 //! The `yggdryl.scalar` namespace — thin wrappers over the `yggdryl-scalar` crate.
 //!
 //! Every integer type is exposed as its scalar and its null-or-value optional
-//! scalar (e.g. `Int64`, `OptionalInt64`), alongside `Binary` / `OptionalBinary`
-//! (whose value is held as a core positioned-IO `ByteBuffer` — `toIo()` hands one
-//! back) and `Null` — the same bare names as the Rust crate, the namespace
-//! carrying the concern. Values adapt to JS idioms: the 8–32 bit types use
-//! `number`, the 64-bit types use `BigInt`, and scalars expose the `as*`
-//! accessors with the core contract — the value when the target represents it
-//! exactly, or a thrown error naming the fix (strings and `Buffer`s cross the FFI
-//! boundary as new JS objects, so the Rust-side "borrow, never copy" guarantee
-//! applies up to that boundary copy). Optional scalars adapt construction to
-//! idioms: they are built straight from the native value (`new
-//! OptionalInt64(42n)`), the inner scalar being an implementation detail
-//! reachable through `scalar()`.
+//! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
+//! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
+//! `ByteBuffer` — `toIo()` hands one back) and `NullScalar` — the same
+//! globally-unique names as the Rust crate, the namespace carrying the concern
+//! (the `…Scalar` suffix keeps every class distinct in napi's addon-global
+//! registry). Values adapt to JS idioms: the 8–32 bit types use `number`, the
+//! 64-bit types use `BigInt`, and scalars expose the `as*` accessors with the core
+//! contract — the value when the target represents it exactly, or a thrown error
+//! naming the fix (strings and `Buffer`s cross the FFI boundary as new JS objects,
+//! so the Rust-side "borrow, never copy" guarantee applies up to that boundary
+//! copy). Optional scalars adapt construction to idioms: they are built straight
+//! from the native value (`new OptionalInt64Scalar(42n)`), the inner scalar being
+//! an implementation detail reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
-//! `DefaultScalar` traits (generic Rust bounds; the bindings reach defaults
-//! through a data type's `defaultScalar()`), and the nested scalars — the generic
-//! `Serie` / `Map` / `Struct` and the buffer-backed `Int64Serie` (whose zero-copy
-//! Arrow buffers await C Data Interface interop) — which have no concrete FFI
-//! shape yet.
+//! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
+//! through a data type's `field()` / `scalar()` / `defaultScalar()`), and the
+//! nested scalars — the generic `Serie` / `MapScalar` / `StructScalar` and the
+//! buffer-backed `Int64Serie` (whose zero-copy Arrow buffers await C Data
+//! Interface interop) — which have no concrete FFI shape yet.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
-use yggdryl_scalar::RawScalar;
+use yggdryl_scalar::Scalar;
 
 use crate::{bigint_to_i64, bigint_to_u64, data_error, wire_to_native};
 
 /// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
 /// `"latin1"` — shared by every scalar class.
-fn as_str_with<D: yggdryl_dtype::RawDataType, S: RawScalar<D>>(
+fn as_str_with<D: yggdryl_dtype::DataType, S: Scalar<D>>(
     scalar: &S,
     charset: Option<&str>,
 ) -> Result<String> {
@@ -50,14 +51,14 @@ fn as_str_with<D: yggdryl_dtype::RawDataType, S: RawScalar<D>>(
 }
 
 /// The `null` scalar: always null, holding no value.
-#[napi]
+#[napi(namespace = "scalar")]
 #[derive(Default)]
-pub struct ScalarNull {
-    pub(crate) inner: yggdryl_scalar::Null,
+pub struct NullScalar {
+    pub(crate) inner: yggdryl_scalar::NullScalar,
 }
 
-#[napi]
-impl ScalarNull {
+#[napi(namespace = "scalar")]
+impl NullScalar {
     /// The null scalar.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -73,8 +74,8 @@ impl ScalarNull {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeNull {
-        crate::dtype::DtypeNull::default()
+    pub fn data_type(&self) -> crate::dtype::NullType {
+        crate::dtype::NullType::default()
     }
 }
 
@@ -84,7 +85,7 @@ impl ScalarNull {
 /// into one JS class).
 macro_rules! as_accessors_node {
     ($class:ident) => {
-        #[napi]
+        #[napi(namespace = "scalar")]
         impl $class {
             /// The value as a number in the i8 range; throws when null or not
             /// exactly representable.
@@ -173,18 +174,18 @@ macro_rules! as_accessors_node {
 
 /// A single, possibly-null `binary` value, holding its bytes as a core
 /// positioned-IO `ByteBuffer` (`toIo()` hands one back).
-#[napi]
-pub struct ScalarBinary {
-    pub(crate) inner: yggdryl_scalar::Binary,
+#[napi(namespace = "scalar")]
+pub struct BinaryScalar {
+    pub(crate) inner: yggdryl_scalar::BinaryScalar,
 }
 
-#[napi]
-impl ScalarBinary {
+#[napi(namespace = "scalar")]
+impl BinaryScalar {
     /// A `binary` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: Buffer) -> Self {
         Self {
-            inner: yggdryl_scalar::Binary::new(value.to_vec()),
+            inner: yggdryl_scalar::BinaryScalar::new(value.to_vec()),
         }
     }
 
@@ -192,7 +193,7 @@ impl ScalarBinary {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::Binary::null(),
+            inner: yggdryl_scalar::BinaryScalar::null(),
         }
     }
 
@@ -210,8 +211,8 @@ impl ScalarBinary {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeBinary {
-        crate::dtype::DtypeBinary::default()
+    pub fn data_type(&self) -> crate::dtype::BinaryType {
+        crate::dtype::BinaryType::default()
     }
 
     /// The value as a core IO `ByteBuffer` (`yggdryl.core`), ready for positioned
@@ -236,22 +237,25 @@ impl ScalarBinary {
     }
 }
 
-as_accessors_node!(ScalarBinary);
+as_accessors_node!(BinaryScalar);
 
 /// A single value of the union between null and `binary`: a value variant, or
 /// the null variant.
-#[napi]
-pub struct ScalarOptionalBinary {
-    pub(crate) inner: yggdryl_scalar::Optional<yggdryl_dtype::Binary, yggdryl_scalar::Binary>,
+#[napi(namespace = "scalar")]
+pub struct OptionalBinaryScalar {
+    pub(crate) inner:
+        yggdryl_scalar::OptionalScalar<yggdryl_dtype::BinaryType, yggdryl_scalar::BinaryScalar>,
 }
 
-#[napi]
-impl ScalarOptionalBinary {
+#[napi(namespace = "scalar")]
+impl OptionalBinaryScalar {
     /// A scalar holding the `binary` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: Buffer) -> Self {
         Self {
-            inner: yggdryl_scalar::Optional::new(yggdryl_scalar::Binary::new(value.to_vec())),
+            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::BinaryScalar::new(
+                value.to_vec(),
+            )),
         }
     }
 
@@ -259,7 +263,7 @@ impl ScalarOptionalBinary {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::Optional::null(),
+            inner: yggdryl_scalar::OptionalScalar::null(),
         }
     }
 
@@ -277,20 +281,20 @@ impl ScalarOptionalBinary {
 
     /// The inner scalar, when this holds the value variant.
     #[napi]
-    pub fn scalar(&self) -> Option<ScalarBinary> {
-        self.inner.scalar().map(|scalar| ScalarBinary {
+    pub fn scalar(&self) -> Option<BinaryScalar> {
+        self.inner.scalar().map(|scalar| BinaryScalar {
             inner: scalar.clone(),
         })
     }
 
     /// The scalar's data type: the logical optional of the value type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeOptionalBinary {
-        crate::dtype::DtypeOptionalBinary::default()
+    pub fn data_type(&self) -> crate::dtype::OptionalBinaryType {
+        crate::dtype::OptionalBinaryType::default()
     }
 }
 
-as_accessors_node!(ScalarOptionalBinary);
+as_accessors_node!(OptionalBinaryScalar);
 
 /// Generates the width-independent surface of one integer type's scalars: the
 /// null factory, nullness, `dataType` and `scalar` of `$ty` and `$opt_ty`. The
@@ -298,20 +302,20 @@ as_accessors_node!(ScalarOptionalBinary);
 /// [`int_wire_number_scalar!`] (8–32 bit, JS `number`) or written per 64-bit type
 /// with `BigInt`; the `as*` accessors come from [`as_accessors_node!`].
 macro_rules! int_scalar_node {
-    ($ty:ident, $opt_ty:ident, $inner:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
+    ($ty:ident, $opt_ty:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
         #[doc = concat!("A single, possibly-null `", $name, "` value.")]
-        #[napi]
+        #[napi(namespace = "scalar")]
         pub struct $ty {
-            pub(crate) inner: yggdryl_scalar::$inner,
+            pub(crate) inner: yggdryl_scalar::$ty,
         }
 
-        #[napi]
+        #[napi(namespace = "scalar")]
         impl $ty {
             #[doc = concat!("A null `", $name, "` scalar.")]
             #[napi(factory)]
             pub fn null() -> Self {
                 Self {
-                    inner: yggdryl_scalar::$inner::null(),
+                    inner: yggdryl_scalar::$ty::null(),
                 }
             }
 
@@ -331,18 +335,19 @@ macro_rules! int_scalar_node {
         as_accessors_node!($ty);
 
         #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
-        #[napi]
+        #[napi(namespace = "scalar")]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_scalar::Optional<yggdryl_dtype::$inner, yggdryl_scalar::$inner>,
+            pub(crate) inner:
+                yggdryl_scalar::OptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
         }
 
-        #[napi]
+        #[napi(namespace = "scalar")]
         impl $opt_ty {
             /// The null variant.
             #[napi(factory)]
             pub fn null() -> Self {
                 Self {
-                    inner: yggdryl_scalar::Optional::null(),
+                    inner: yggdryl_scalar::OptionalScalar::null(),
                 }
             }
 
@@ -373,14 +378,14 @@ macro_rules! int_scalar_node {
 /// scalar (and its optional) over JS `number`, range-checked with an actionable
 /// error.
 macro_rules! int_wire_number_scalar {
-    ($ty:ident, $opt_ty:ident, $inner:ident, $native:ty, $name:literal) => {
-        #[napi]
+    ($ty:ident, $opt_ty:ident, $native:ty, $name:literal) => {
+        #[napi(namespace = "scalar")]
         impl $ty {
             #[doc = concat!("A `", $name, "` scalar holding `value`.")]
             #[napi(constructor)]
             pub fn new(value: i64) -> Result<Self> {
                 Ok(Self {
-                    inner: yggdryl_scalar::$inner::new(wire_to_native::<$native>(value, $name)?),
+                    inner: yggdryl_scalar::$ty::new(wire_to_native::<$native>(value, $name)?),
                 })
             }
 
@@ -391,13 +396,13 @@ macro_rules! int_wire_number_scalar {
             }
         }
 
-        #[napi]
+        #[napi(namespace = "scalar")]
         impl $opt_ty {
             #[doc = concat!("A scalar holding the `", $name, "` value variant `value`.")]
             #[napi(constructor)]
             pub fn new(value: i64) -> Result<Self> {
                 Ok(Self {
-                    inner: yggdryl_scalar::Optional::new(yggdryl_scalar::$inner::new(
+                    inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::$ty::new(
                         wire_to_native::<$native>(value, $name)?,
                     )),
                 })
@@ -413,87 +418,79 @@ macro_rules! int_wire_number_scalar {
 }
 
 int_scalar_node!(
-    ScalarInt8,
-    ScalarOptionalInt8,
-    Int8,
-    DtypeInt8,
-    DtypeOptionalInt8,
+    Int8Scalar,
+    OptionalInt8Scalar,
+    Int8Type,
+    OptionalInt8Type,
     "int8"
 );
 int_scalar_node!(
-    ScalarInt16,
-    ScalarOptionalInt16,
-    Int16,
-    DtypeInt16,
-    DtypeOptionalInt16,
+    Int16Scalar,
+    OptionalInt16Scalar,
+    Int16Type,
+    OptionalInt16Type,
     "int16"
 );
 int_scalar_node!(
-    ScalarInt32,
-    ScalarOptionalInt32,
-    Int32,
-    DtypeInt32,
-    DtypeOptionalInt32,
+    Int32Scalar,
+    OptionalInt32Scalar,
+    Int32Type,
+    OptionalInt32Type,
     "int32"
 );
 int_scalar_node!(
-    ScalarInt64,
-    ScalarOptionalInt64,
-    Int64,
-    DtypeInt64,
-    DtypeOptionalInt64,
+    Int64Scalar,
+    OptionalInt64Scalar,
+    Int64Type,
+    OptionalInt64Type,
     "int64"
 );
 int_scalar_node!(
-    ScalarUInt8,
-    ScalarOptionalUInt8,
-    UInt8,
-    DtypeUInt8,
-    DtypeOptionalUInt8,
+    UInt8Scalar,
+    OptionalUInt8Scalar,
+    UInt8Type,
+    OptionalUInt8Type,
     "uint8"
 );
 int_scalar_node!(
-    ScalarUInt16,
-    ScalarOptionalUInt16,
-    UInt16,
-    DtypeUInt16,
-    DtypeOptionalUInt16,
+    UInt16Scalar,
+    OptionalUInt16Scalar,
+    UInt16Type,
+    OptionalUInt16Type,
     "uint16"
 );
 int_scalar_node!(
-    ScalarUInt32,
-    ScalarOptionalUInt32,
-    UInt32,
-    DtypeUInt32,
-    DtypeOptionalUInt32,
+    UInt32Scalar,
+    OptionalUInt32Scalar,
+    UInt32Type,
+    OptionalUInt32Type,
     "uint32"
 );
 int_scalar_node!(
-    ScalarUInt64,
-    ScalarOptionalUInt64,
-    UInt64,
-    DtypeUInt64,
-    DtypeOptionalUInt64,
+    UInt64Scalar,
+    OptionalUInt64Scalar,
+    UInt64Type,
+    OptionalUInt64Type,
     "uint64"
 );
 
-int_wire_number_scalar!(ScalarInt8, ScalarOptionalInt8, Int8, i8, "int8");
-int_wire_number_scalar!(ScalarInt16, ScalarOptionalInt16, Int16, i16, "int16");
-int_wire_number_scalar!(ScalarInt32, ScalarOptionalInt32, Int32, i32, "int32");
-int_wire_number_scalar!(ScalarUInt8, ScalarOptionalUInt8, UInt8, u8, "uint8");
-int_wire_number_scalar!(ScalarUInt16, ScalarOptionalUInt16, UInt16, u16, "uint16");
-int_wire_number_scalar!(ScalarUInt32, ScalarOptionalUInt32, UInt32, u32, "uint32");
+int_wire_number_scalar!(Int8Scalar, OptionalInt8Scalar, i8, "int8");
+int_wire_number_scalar!(Int16Scalar, OptionalInt16Scalar, i16, "int16");
+int_wire_number_scalar!(Int32Scalar, OptionalInt32Scalar, i32, "int32");
+int_wire_number_scalar!(UInt8Scalar, OptionalUInt8Scalar, u8, "uint8");
+int_wire_number_scalar!(UInt16Scalar, OptionalUInt16Scalar, u16, "uint16");
+int_wire_number_scalar!(UInt32Scalar, OptionalUInt32Scalar, u32, "uint32");
 
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
 // the full range), so their width-dependent surface is written out per type.
 
-#[napi]
-impl ScalarInt64 {
+#[napi(namespace = "scalar")]
+impl Int64Scalar {
     /// An `int64` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::Int64::new(bigint_to_i64(value)?),
+            inner: yggdryl_scalar::Int64Scalar::new(bigint_to_i64(value)?),
         })
     }
 
@@ -504,13 +501,15 @@ impl ScalarInt64 {
     }
 }
 
-#[napi]
-impl ScalarOptionalInt64 {
+#[napi(namespace = "scalar")]
+impl OptionalInt64Scalar {
     /// A scalar holding the `int64` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::Optional::new(yggdryl_scalar::Int64::new(bigint_to_i64(value)?)),
+            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::Int64Scalar::new(
+                bigint_to_i64(value)?,
+            )),
         })
     }
 
@@ -521,13 +520,13 @@ impl ScalarOptionalInt64 {
     }
 }
 
-#[napi]
-impl ScalarUInt64 {
+#[napi(namespace = "scalar")]
+impl UInt64Scalar {
     /// A `uint64` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::UInt64::new(bigint_to_u64(value)?),
+            inner: yggdryl_scalar::UInt64Scalar::new(bigint_to_u64(value)?),
         })
     }
 
@@ -538,15 +537,15 @@ impl ScalarUInt64 {
     }
 }
 
-#[napi]
-impl ScalarOptionalUInt64 {
+#[napi(namespace = "scalar")]
+impl OptionalUInt64Scalar {
     /// A scalar holding the `uint64` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::Optional::new(yggdryl_scalar::UInt64::new(bigint_to_u64(
-                value,
-            )?)),
+            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::UInt64Scalar::new(
+                bigint_to_u64(value)?,
+            )),
         })
     }
 

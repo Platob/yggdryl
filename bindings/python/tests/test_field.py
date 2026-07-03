@@ -6,14 +6,14 @@ from yggdryl import dtype, field
 
 # (field, name)
 INTEGERS = [
-    (field.Int8, "int8"),
-    (field.Int16, "int16"),
-    (field.Int32, "int32"),
-    (field.Int64, "int64"),
-    (field.UInt8, "uint8"),
-    (field.UInt16, "uint16"),
-    (field.UInt32, "uint32"),
-    (field.UInt64, "uint64"),
+    (field.Int8Field, "int8"),
+    (field.Int16Field, "int16"),
+    (field.Int32Field, "int32"),
+    (field.Int64Field, "int64"),
+    (field.UInt8Field, "uint8"),
+    (field.UInt16Field, "uint16"),
+    (field.UInt32Field, "uint32"),
+    (field.UInt64Field, "uint64"),
 ]
 
 IDS = [case[1] for case in INTEGERS]
@@ -31,14 +31,14 @@ def test_field_pairs_a_name_with_the_type(case):
 
 # (optional field, value type name)
 OPTIONALS = [
-    (field.OptionalInt8, "int8"),
-    (field.OptionalInt16, "int16"),
-    (field.OptionalInt32, "int32"),
-    (field.OptionalInt64, "int64"),
-    (field.OptionalUInt8, "uint8"),
-    (field.OptionalUInt16, "uint16"),
-    (field.OptionalUInt32, "uint32"),
-    (field.OptionalUInt64, "uint64"),
+    (field.OptionalInt8Field, "int8"),
+    (field.OptionalInt16Field, "int16"),
+    (field.OptionalInt32Field, "int32"),
+    (field.OptionalInt64Field, "int64"),
+    (field.OptionalUInt8Field, "uint8"),
+    (field.OptionalUInt16Field, "uint16"),
+    (field.OptionalUInt32Field, "uint32"),
+    (field.OptionalUInt64Field, "uint64"),
 ]
 
 
@@ -53,28 +53,40 @@ def test_optional_field(case):
 
 
 def test_binary_field():
-    payload = field.Binary("payload")
+    payload = field.BinaryField("payload")
     assert payload.name() == "payload"
     assert payload.is_nullable() is True
     assert payload.data_type().name() == "binary"
-    assert field.Binary("id", False).is_nullable() is False
+    assert field.BinaryField("id", False).is_nullable() is False
 
 
 def test_optional_binary_field():
-    payload = field.OptionalBinary("payload")
+    payload = field.OptionalBinaryField("payload")
     assert payload.name() == "payload"
     assert payload.data_type().name() == "optional"
     assert payload.data_type().value_type().name() == "binary"
 
 
 def test_null_field():
-    gap = field.Null("gap")
+    gap = field.NullField("gap")
     assert (gap.name(), gap.data_type().name(), gap.is_nullable()) == ("gap", "null", True)
 
 
 def test_union_field():
-    union = dtype.Int64().optional().storage()
-    value = field.Union("value", union)
+    union = dtype.Int64Type().optional().storage()
+    value = field.UnionField("value", union)
     assert value.name() == "value"
     assert value.is_nullable() is True
     assert value.data_type().arrow_format() == "+us:0,1"
+
+
+def test_data_type_field_factory_matches_the_field_class():
+    # The data type's field() factory builds the same field as the class,
+    # including the shared nullable-by-default.
+    built = dtype.Int64Type().field("id")
+    direct = field.Int64Field("id")
+    assert (built.name(), built.data_type().name(), built.is_nullable()) == (
+        direct.name(),
+        direct.data_type().name(),
+        direct.is_nullable(),
+    )

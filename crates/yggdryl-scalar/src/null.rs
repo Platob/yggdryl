@@ -1,20 +1,22 @@
-//! The [`Null`] scalar.
+//! The [`NullScalar`] scalar.
 
-use crate::{RawScalar, Scalar};
-use yggdryl_dtype::DataError;
+use crate::{Scalar, TypedScalar};
+use yggdryl_dtype::{DataError, NullType};
 
 /// The `null` scalar: always null, holding no value.
 ///
-/// Its [`Value`](RawScalar::Value) is `()` — there is nothing to access — so
-/// [`value`](RawScalar::value) is always `None` and every `as_*` accessor errors
-/// with [`DataError::NullValue`]: the scalar is always null, and the shared
-/// accessor contract puts nullness first.
+/// Its [`Value`](Scalar::Value) is `()` — there is nothing to access — so
+/// [`value`](Scalar::value) is always `None` and every `as_*` accessor errors with
+/// [`DataError::NullValue`]: the scalar is always null, and the shared accessor
+/// contract puts nullness first. [`NullType`](yggdryl_dtype::NullType) has no native
+/// value, so there is no [`ScalarFactory`](crate::ScalarFactory); a `NullScalar` is
+/// constructed directly.
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::{DataError, RawDataType};
-/// use yggdryl_scalar::{Null, RawScalar};
+/// use yggdryl_scalar::yggdryl_dtype::{DataError, DataType};
+/// use yggdryl_scalar::{NullScalar, Scalar};
 ///
-/// let nothing = Null::new();
+/// let nothing = NullScalar::new();
 /// assert!(nothing.is_null());
 /// assert_eq!(nothing.value(), None);
 /// assert!(matches!(nothing.as_i64(), Err(DataError::NullValue)));
@@ -23,26 +25,26 @@ use yggdryl_dtype::DataError;
 /// // Arrow's form is a one-element NullArray.
 /// let arrow = nothing.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(Null::from_arrow(arrow.as_ref()).unwrap(), nothing);
+/// assert_eq!(NullScalar::from_arrow(arrow.as_ref()).unwrap(), nothing);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct Null {
-    data_type: yggdryl_dtype::Null,
+pub struct NullScalar {
+    data_type: NullType,
 }
 
-impl Null {
+impl NullScalar {
     /// The null scalar.
     pub fn new() -> Self {
         Self {
-            data_type: yggdryl_dtype::Null,
+            data_type: NullType,
         }
     }
 }
 
-impl RawScalar<yggdryl_dtype::Null> for Null {
+impl Scalar<NullType> for NullScalar {
     type Value = ();
 
-    fn data_type(&self) -> &yggdryl_dtype::Null {
+    fn data_type(&self) -> &NullType {
         &self.data_type
     }
 
@@ -68,7 +70,7 @@ impl RawScalar<yggdryl_dtype::Null> for Null {
             .is_none()
         {
             return Err(DataError::IncompatibleArrowType {
-                expected: "Null".to_string(),
+                expected: "NullType".to_string(),
                 got: array.data_type().to_string(),
             });
         }
@@ -122,6 +124,4 @@ impl RawScalar<yggdryl_dtype::Null> for Null {
     }
 }
 
-impl Scalar<()> for Null {
-    type Type = yggdryl_dtype::Null;
-}
+impl TypedScalar<NullType, ()> for NullScalar {}

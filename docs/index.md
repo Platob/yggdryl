@@ -10,9 +10,9 @@ in the Rust crates; the bindings are thin wrappers, so the three languages behav
 identically. Each Rust crate is exposed under its own namespace — `core` (the
 foundations, mirroring `yggdryl-core`) and the three Arrow data-model layers
 `dtype`, `field` and `scalar` (mirroring `yggdryl-dtype`, `yggdryl-field` and
-`yggdryl-scalar`), whose concrete types share one bare name across the layers
-(`dtype.Int64` describes the type, `field.Int64` names a column of it,
-`scalar.Int64` holds one value of it).
+`yggdryl-scalar`), whose concrete types share one naming convention across the
+layers (`dtype.Int64Type` describes the type, `field.Int64Field` names a column of
+it, `scalar.Int64Scalar` holds one value of it).
 
 ## Install
 
@@ -84,18 +84,18 @@ foundations, mirroring `yggdryl-core`) and the three Arrow data-model layers
 
 - :material-shape-outline: **[Data types](dtype.md)**
 
-    The `RawDataType` / `DataType<T>` descriptors with the native byte codecs —
+    The `DataType` / `TypedDataType<T>` descriptors with the native byte codecs —
     every integer, `binary`, `null`, `union`, the logical `optional`, and the
     nested `list` / `map` / `struct`.
 
 - :material-table-column: **[Fields](field.md)**
 
-    The `RawField` / `Field<T>` layer — a name paired with a data type and a
+    The `Field` / `TypedField<DT, T>` layer — a name paired with a data type and a
     nullability flag, mirroring an Arrow `Field`.
 
 - :material-numeric: **[Scalars](scalar.md)**
 
-    The `RawScalar` / `Scalar<T>` layer — single, possibly-null values with
+    The `Scalar` / `TypedScalar<DT, T>` layer — single, possibly-null values with
     exact-or-error `as_*` accessors, mirroring one-element Arrow arrays.
 
 </div>

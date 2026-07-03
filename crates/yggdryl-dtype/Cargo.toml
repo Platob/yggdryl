@@ -18,7 +18,7 @@ path = "src/lib.rs"
 # The foundation layer: `DataError::Io` wraps the core `IOError`, so decoding
 # through a positioned-IO resource surfaces one error stack.
 yggdryl-core = { workspace = true }
-# Arrow interop surface: `RawDataType::to_arrow` / `from_arrow` mirror an
+# Arrow interop surface: `DataType::to_arrow` / `from_arrow` mirror an
 # `arrow_schema::DataType`, and the nested types carry `arrow_schema::Fields`.
 arrow-schema = { workspace = true }
 

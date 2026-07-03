@@ -24,9 +24,9 @@ def bench(label, function):
 
 
 def main():
-    column = field.Int64("id", False)
+    column = field.Int64Field("id", False)
 
-    bench("Int64('id', False)", lambda: field.Int64("id", False))
+    bench("Int64Field('id', False)", lambda: field.Int64Field("id", False))
     bench("field.name()", column.name)
     bench("field.data_type()", column.data_type)
     bench("field.is_nullable()", column.is_nullable)

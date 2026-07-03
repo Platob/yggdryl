@@ -1,55 +1,100 @@
-//! The typed [`DataType`] trait: a [`RawDataType`] with a native Rust representation.
+//! The [`DataType`] base trait: a physical, FFI-facing data type descriptor.
 
-use super::{DataError, RawDataType};
+use super::DataError;
 
-/// A [`RawDataType`] whose values have a native Rust representation `T`, with the
-/// codec that bridges a `T` to and from its Arrow physical bytes and the type's
-/// default value.
+/// The base trait every data type implements: a *physical* type descriptor built for
+/// Apache Arrow interop and zero-copy FFI.
 ///
-/// This is where the physical type meets a concrete Rust type: [`Int64`](crate::Int64)
-/// implements `DataType<i64>`, `Utf8` would implement `DataType<String>`, and so on.
-/// The codec is the per-type byte surface (Rust value ↔ Arrow bytes); streaming and
-/// transfers stay on the core IO traits.
-/// [`default_value`](DataType::default_value) is the type's default native value
-/// (`0` for the integers, an empty sequence for lists and maps; a union's is its
-/// *first* data type's default). The default *scalar* of a type lives upstream, on
-/// `yggdryl-scalar`'s `DefaultScalar` trait — the scalar layer builds on this one,
-/// never the other way around.
+/// It answers three questions about a type — what it is called ([`name`](DataType::name)),
+/// how Arrow describes it over the C Data Interface
+/// ([`arrow_format`](DataType::arrow_format)), and how wide one value is
+/// ([`byte_width`](DataType::byte_width) / [`bit_width`](DataType::bit_width)) —
+/// and converts to and from the Apache Arrow type it mirrors
+/// ([`to_arrow`](DataType::to_arrow) / [`from_arrow`](DataType::from_arrow), the
+/// Arrow *factory*). Concrete types ([`Int32Type`](crate::Int32Type), `Utf8Type`,
+/// `BooleanType`, …) implement it, and the parameterised `Field` (in
+/// `yggdryl-field`) and `Scalar` (in `yggdryl-scalar`) build on it.
+///
+/// Following the FFI rules, it carries no lifetime parameters; the one borrow —
+/// [`name`](DataType::name) — is a `&self` accessor that never escapes. It is
+/// `Debug` (schema printing and diagnostics), `Send + Sync` (types are shared
+/// metadata handed across threads and over FFI), and object-safe, so a heterogeneous
+/// schema can hold `Box<dyn DataType>` ([`from_arrow`](DataType::from_arrow),
+/// which returns `Self`, is `Self: Sized` and stays off the vtable). Type *equality*
+/// is intentionally not a supertrait — comparing
+/// [`arrow_format`](DataType::arrow_format) keeps the trait object-safe — so a
+/// `PartialEq` bound is avoided.
 ///
 /// ```
-/// use yggdryl_dtype::{DataType, Int64};
+/// use yggdryl_dtype::{arrow_schema, DataError, DataType};
 ///
-/// let int64 = Int64;
-/// let bytes = int64.native_to_bytes(&42);
-/// assert_eq!(bytes, vec![42, 0, 0, 0, 0, 0, 0, 0]); // little-endian i64
-/// assert_eq!(int64.native_from_bytes(&bytes).unwrap(), 42);
+/// // A minimal fixed-width primitive.
+/// #[derive(Debug)]
+/// struct Int32Type;
 ///
-/// // The wrong number of bytes is an error, not a wrap.
-/// assert!(int64.native_from_bytes(&[1, 2, 3]).is_err());
+/// impl DataType for Int32Type {
+///     fn name(&self) -> &str {
+///         "int32"
+///     }
+///     fn arrow_format(&self) -> String {
+///         "i".to_string() // Arrow C Data Interface format for int32
+///     }
+///     fn byte_width(&self) -> Option<usize> {
+///         Some(4)
+///     }
+///     fn to_arrow(&self) -> arrow_schema::DataType {
+///         arrow_schema::DataType::Int32
+///     }
+///     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
+///         match data_type {
+///             arrow_schema::DataType::Int32 => Ok(Int32Type),
+///             other => Err(DataError::IncompatibleArrowType {
+///                 expected: "Int32Type".to_string(),
+///                 got: other.to_string(),
+///             }),
+///         }
+///     }
+/// }
 ///
-/// // The type knows its default value.
-/// assert_eq!(int64.default_value(), 0);
+/// assert_eq!(Int32Type.name(), "int32");
+/// assert_eq!(Int32Type.arrow_format(), "i");
+/// assert_eq!(Int32Type.byte_width(), Some(4));
+/// assert_eq!(Int32Type.bit_width(), Some(32)); // default: eight times the byte width
+///
+/// // Arrow interop round-trips through the arrow-schema type.
+/// assert_eq!(Int32Type.to_arrow(), arrow_schema::DataType::Int32);
+/// assert!(Int32Type::from_arrow(&Int32Type.to_arrow()).is_ok());
+/// assert!(Int32Type::from_arrow(&arrow_schema::DataType::Utf8).is_err());
 /// ```
-pub trait DataType<T>: RawDataType {
-    /// Serialize a native `T` value into this type's Arrow physical bytes.
-    fn native_to_bytes(&self, value: &T) -> Vec<u8>;
+pub trait DataType: std::fmt::Debug + Send + Sync {
+    /// A stable, lowercase name identifying this type, e.g. `"int32"`, `"utf8"`,
+    /// `"boolean"`.
+    fn name(&self) -> &str;
 
-    /// Deserialize this type's Arrow physical bytes into a native `T`. The exact
-    /// inverse of [`native_to_bytes`](DataType::native_to_bytes); a length mismatch
-    /// returns [`DataError::InvalidByteLength`].
-    fn native_from_bytes(&self, bytes: &[u8]) -> Result<T, DataError>;
+    /// The Apache Arrow C Data Interface format string for this type — the compact,
+    /// zero-copy descriptor exported over FFI (e.g. `"i"` for int32, `"g"` for
+    /// float64, `"u"` for utf8).
+    fn arrow_format(&self) -> String;
 
-    /// The fixed size of one *encoded* native value, in bytes, or `None` when the
-    /// codec is variable-width. Defaults to the physical
-    /// [`byte_width`](crate::RawDataType::byte_width); a logical type whose codec
-    /// delegates (the optional writes plain value bytes while its storage is a
-    /// union) overrides it to the delegate's codec width. Sequence codecs split
-    /// their elements by this width.
-    fn codec_byte_width(&self) -> Option<usize> {
-        crate::RawDataType::byte_width(self)
+    /// The fixed size of one value, in bytes, or `None` for a variable-width type
+    /// (e.g. utf8) or a sub-byte type (e.g. boolean, which reports a
+    /// [`bit_width`](DataType::bit_width) instead).
+    fn byte_width(&self) -> Option<usize>;
+
+    /// The fixed size of one value, in bits, or `None` when the type has no fixed
+    /// width. Defaults to eight times [`byte_width`](DataType::byte_width); a
+    /// sub-byte type overrides it directly.
+    fn bit_width(&self) -> Option<usize> {
+        self.byte_width().map(|width| width * 8)
     }
 
-    /// The type's default native value — `0` for the integers, an empty sequence
-    /// for lists and maps, the first data type's default for a union.
-    fn default_value(&self) -> T;
+    /// The [`arrow_schema::DataType`] this type mirrors.
+    fn to_arrow(&self) -> arrow_schema::DataType;
+
+    /// Build this type from the [`arrow_schema::DataType`] it mirrors — the exact
+    /// inverse of [`to_arrow`](DataType::to_arrow), and the Arrow *factory*. A
+    /// different Arrow type errors with [`DataError::IncompatibleArrowType`].
+    fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError>
+    where
+        Self: Sized;
 }

@@ -1,33 +1,33 @@
-//! The typed [`TypedUnion`] trait: a statically-shaped [`RawUnion`](super::RawUnion)
-//! with a first data type.
+//! The typed [`TypedUnion`] trait: a statically-shaped [`Union`](super::Union) with
+//! a first data type.
 
-use super::RawUnion;
-use crate::DataType;
+use super::Union;
+use crate::TypedDataType;
 
 /// A statically-shaped union whose *first* variant has the native type `T` — the
-/// typed layer over [`RawUnion`].
+/// typed layer over [`Union`].
 ///
 /// The first data type anchors the union's typed surface: per convention, a typed
-/// union's [`default_value`](DataType::default_value) is *the first data type's
+/// union's [`default_value`](TypedDataType::default_value) is *the first data type's
 /// default*, and its byte codec is the first data type's codec. The dynamic
-/// [`Union`](crate::Union), whose children are only known at runtime, stays
-/// raw-only.
+/// [`UnionType`](crate::UnionType), whose children are only known at runtime, stays
+/// untyped.
 ///
 /// ```
 /// use yggdryl_dtype::{
-///     arrow_schema, DataError, DataType, Int64, RawDataType, RawNested, RawUnion, TypedUnion,
-///     Union,
+///     arrow_schema, DataError, DataType, Int64Type, Nested, TypedDataType, TypedUnion, Union,
+///     UnionType,
 /// };
 ///
 /// // A static two-variant union: an int64 (first), or a uint8 tag.
 /// #[derive(Debug, Default)]
-/// struct NumberOrTag {
-///     first: Int64,
+/// struct NumberOrTagType {
+///     first: Int64Type,
 /// }
 ///
-/// impl NumberOrTag {
-///     fn storage() -> Union {
-///         Union::new(
+/// impl NumberOrTagType {
+///     fn storage() -> UnionType {
+///         UnionType::new(
 ///             arrow_schema::UnionFields::try_new(
 ///                 [0, 1],
 ///                 [
@@ -41,7 +41,7 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl RawDataType for NumberOrTag {
+/// impl DataType for NumberOrTagType {
 ///     fn name(&self) -> &str { "union" }
 ///     fn arrow_format(&self) -> String { Self::storage().arrow_format() }
 ///     fn byte_width(&self) -> Option<usize> { None }
@@ -56,11 +56,11 @@ use crate::DataType;
 ///     }
 /// }
 ///
-/// impl RawNested for NumberOrTag {
+/// impl Nested for NumberOrTagType {
 ///     fn child_count(&self) -> usize { 2 }
 /// }
 ///
-/// impl RawUnion for NumberOrTag {
+/// impl Union for NumberOrTagType {
 ///     fn fields(&self) -> &arrow_schema::UnionFields {
 ///         static FIELDS: std::sync::OnceLock<arrow_schema::UnionFields> =
 ///             std::sync::OnceLock::new();
@@ -70,7 +70,7 @@ use crate::DataType;
 /// }
 ///
 /// // The typed layer: codec and defaults come from the FIRST data type.
-/// impl DataType<i64> for NumberOrTag {
+/// impl TypedDataType<i64> for NumberOrTagType {
 ///     fn native_to_bytes(&self, value: &i64) -> Vec<u8> { self.first.native_to_bytes(value) }
 ///     fn native_from_bytes(&self, bytes: &[u8]) -> Result<i64, DataError> {
 ///         self.first.native_from_bytes(bytes)
@@ -78,18 +78,18 @@ use crate::DataType;
 ///     fn default_value(&self) -> i64 { self.first.default_value() }
 /// }
 ///
-/// impl TypedUnion<i64> for NumberOrTag {
-///     type First = Int64;
-///     fn first_type(&self) -> &Int64 { &self.first }
+/// impl TypedUnion<i64> for NumberOrTagType {
+///     type First = Int64Type;
+///     fn first_type(&self) -> &Int64Type { &self.first }
 /// }
 ///
-/// let union = NumberOrTag::default();
+/// let union = NumberOrTagType::default();
 /// assert_eq!(union.first_type().name(), "int64");
 /// assert_eq!(union.default_value(), 0); // the first data type's default
 /// ```
-pub trait TypedUnion<T>: RawUnion + DataType<T> {
+pub trait TypedUnion<T>: Union + TypedDataType<T> {
     /// The union's first data type, whose native type is `T`.
-    type First: DataType<T>;
+    type First: TypedDataType<T>;
 
     /// The first variant's data type — the union's defaults are its defaults.
     fn first_type(&self) -> &Self::First;

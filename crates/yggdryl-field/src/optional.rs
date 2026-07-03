@@ -1,50 +1,51 @@
-//! The [`Optional`] field.
+//! The [`OptionalField`] field.
 
-use crate::{Field, RawField};
-use yggdryl_dtype::{DataError, DataType, RawDataType};
+use crate::{Field, FieldFactory, TypedField};
+use yggdryl_dtype::{DataError, DataType, OptionalType, TypedDataType};
 
 /// A nullable `optional` field: a name paired with the logical
-/// [`optional`](yggdryl_dtype::Optional) of the value type `D`.
+/// [`OptionalType`](yggdryl_dtype::OptionalType) of the value type `D`.
 ///
-/// It carries both trait layers: the raw [`RawField<Optional<D>>`](RawField)
-/// surface, and the typed [`Field<T>`] whenever the value type has a
-/// [`DataType<T>`] codec.
+/// It carries both trait layers: the raw [`Field<OptionalType<D>>`](Field) surface,
+/// and the typed [`TypedField<OptionalType<D>, T>`] whenever the value type has a
+/// [`TypedDataType<T>`] codec.
 ///
 /// ```
-/// use yggdryl_field::yggdryl_dtype::{Int64, RawDataType, RawOptional};
-/// use yggdryl_field::{Optional, RawField};
+/// use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Optional, OptionalType};
+/// use yggdryl_field::{Field, FieldFactory, OptionalField};
 ///
-/// let score = Optional::<Int64>::new("score", true);
+/// let score = OptionalField::<Int64Type>::new("score", true);
 /// assert_eq!(score.name(), "score");
 /// assert_eq!(score.data_type().name(), "optional");
 /// assert_eq!(score.data_type().value_type().name(), "int64");
 /// assert!(score.is_nullable());
-/// assert_eq!(Optional::from_arrow(&score.to_arrow()).unwrap(), score);
+/// assert_eq!(OptionalField::from_arrow(&score.to_arrow()).unwrap(), score);
+/// assert_eq!(OptionalType::new(Int64Type).field("score", true), score);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Optional<D> {
+pub struct OptionalField<D> {
     name: String,
-    data_type: yggdryl_dtype::Optional<D>,
+    data_type: OptionalType<D>,
     nullable: bool,
 }
 
-impl<D: RawDataType + Default> Optional<D> {
+impl<D: DataType + Default> OptionalField<D> {
     /// An `optional` field named `name`.
     pub fn new(name: impl Into<String>, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type: yggdryl_dtype::Optional::default(),
+            data_type: OptionalType::default(),
             nullable,
         }
     }
 }
 
-impl<D: RawDataType> RawField<yggdryl_dtype::Optional<D>> for Optional<D> {
+impl<D: DataType> Field<OptionalType<D>> for OptionalField<D> {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn data_type(&self) -> &yggdryl_dtype::Optional<D> {
+    fn data_type(&self) -> &OptionalType<D> {
         &self.data_type
     }
 
@@ -53,8 +54,8 @@ impl<D: RawDataType> RawField<yggdryl_dtype::Optional<D>> for Optional<D> {
     }
 
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
-        let data_type = yggdryl_dtype::Optional::from_arrow(field.data_type())?;
-        crate::raw_field::validate_field_metadata(field, "Optional")?;
+        let data_type = OptionalType::from_arrow(field.data_type())?;
+        crate::field::validate_field_metadata(field, "OptionalType")?;
         Ok(Self {
             name: field.name().to_string(),
             data_type,
@@ -63,6 +64,11 @@ impl<D: RawDataType> RawField<yggdryl_dtype::Optional<D>> for Optional<D> {
     }
 }
 
-impl<T, D: DataType<T>> Field<T> for Optional<D> {
-    type Type = yggdryl_dtype::Optional<D>;
+impl<T, D: TypedDataType<T>> TypedField<OptionalType<D>, T> for OptionalField<D> {}
+
+impl<T, D: TypedDataType<T> + Default> FieldFactory<T> for OptionalType<D> {
+    type Field = OptionalField<D>;
+    fn field(&self, name: impl Into<String>, nullable: bool) -> OptionalField<D> {
+        OptionalField::new(name, nullable)
+    }
 }

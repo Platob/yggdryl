@@ -2,7 +2,8 @@
 //! `from_arrow`) and schema assembly.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use yggdryl_field::{arrow_schema, Int64, RawField, UInt8};
+use yggdryl_field::yggdryl_dtype::Int64Type;
+use yggdryl_field::{arrow_schema, Field, FieldFactory, Int64Field, UInt8Field};
 
 const N: usize = 4096;
 
@@ -10,7 +11,7 @@ fn arrow_interop(c: &mut Criterion) {
     let mut group = c.benchmark_group("arrow_interop");
     group.throughput(Throughput::Elements(N as u64));
 
-    let field = Int64::new("id", true);
+    let field = Int64Field::new("id", true);
     group.bench_function("field_to_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -23,7 +24,7 @@ fn arrow_interop(c: &mut Criterion) {
     group.bench_function("field_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64::from_arrow(black_box(&arrow_field)).unwrap());
+                black_box(Int64Field::from_arrow(black_box(&arrow_field)).unwrap());
             }
         })
     });
@@ -38,13 +39,22 @@ fn schema(c: &mut Criterion) {
     group.bench_function("field_new", |b| {
         b.iter(|| {
             for index in 0..N {
-                black_box(UInt8::new(black_box("flags"), index % 2 == 0));
+                black_box(UInt8Field::new(black_box("flags"), index % 2 == 0));
+            }
+        })
+    });
+
+    // The factory path: the data type builds its field.
+    group.bench_function("field_via_factory", |b| {
+        b.iter(|| {
+            for index in 0..N {
+                black_box(Int64Type.field(black_box("id"), index % 2 == 0));
             }
         })
     });
 
     let fields: Vec<arrow_schema::Field> = (0..N)
-        .map(|i| Int64::new(format!("f{i}"), i % 2 == 0).to_arrow())
+        .map(|i| Int64Field::new(format!("f{i}"), i % 2 == 0).to_arrow())
         .collect();
     group.bench_function("arrow_schema_from_fields", |b| {
         // `Schema::new` consumes the fields, so clone them *outside* the timing via

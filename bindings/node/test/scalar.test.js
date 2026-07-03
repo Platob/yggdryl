@@ -8,14 +8,14 @@ const { core, scalar } = yggdryl
 
 // The 8-32 bit types carry values as `number`; the 64-bit types as `BigInt`.
 const INTEGERS = [
-  { scalarClass: scalar.Int8, optional: scalar.OptionalInt8, name: 'int8', low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
-  { scalarClass: scalar.Int16, optional: scalar.OptionalInt16, name: 'int16', low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
-  { scalarClass: scalar.Int32, optional: scalar.OptionalInt32, name: 'int32', low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
-  { scalarClass: scalar.Int64, optional: scalar.OptionalInt64, name: 'int64', low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
-  { scalarClass: scalar.UInt8, optional: scalar.OptionalUInt8, name: 'uint8', low: 0, high: 2 ** 8 - 1, wire: (v) => v },
-  { scalarClass: scalar.UInt16, optional: scalar.OptionalUInt16, name: 'uint16', low: 0, high: 2 ** 16 - 1, wire: (v) => v },
-  { scalarClass: scalar.UInt32, optional: scalar.OptionalUInt32, name: 'uint32', low: 0, high: 2 ** 32 - 1, wire: (v) => v },
-  { scalarClass: scalar.UInt64, optional: scalar.OptionalUInt64, name: 'uint64', low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
+  { scalarClass: scalar.Int8Scalar, optional: scalar.OptionalInt8Scalar, name: 'int8', low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
+  { scalarClass: scalar.Int16Scalar, optional: scalar.OptionalInt16Scalar, name: 'int16', low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
+  { scalarClass: scalar.Int32Scalar, optional: scalar.OptionalInt32Scalar, name: 'int32', low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
+  { scalarClass: scalar.Int64Scalar, optional: scalar.OptionalInt64Scalar, name: 'int64', low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
+  { scalarClass: scalar.UInt8Scalar, optional: scalar.OptionalUInt8Scalar, name: 'uint8', low: 0, high: 2 ** 8 - 1, wire: (v) => v },
+  { scalarClass: scalar.UInt16Scalar, optional: scalar.OptionalUInt16Scalar, name: 'uint16', low: 0, high: 2 ** 16 - 1, wire: (v) => v },
+  { scalarClass: scalar.UInt32Scalar, optional: scalar.OptionalUInt32Scalar, name: 'uint32', low: 0, high: 2 ** 32 - 1, wire: (v) => v },
+  { scalarClass: scalar.UInt64Scalar, optional: scalar.OptionalUInt64Scalar, name: 'uint64', low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
 ]
 
 for (const { scalarClass, optional, name, low, high, wire } of INTEGERS) {
@@ -76,34 +76,34 @@ for (const { scalarClass, optional, name, low, high, wire } of INTEGERS) {
 }
 
 test('out-of-range constructions throw actionable errors', () => {
-  assert.throws(() => new scalar.Int8(1000), /int8/)
-  assert.throws(() => new scalar.UInt8(-1), /uint8/)
-  assert.throws(() => new scalar.UInt64(-1n), /uint64/)
-  assert.throws(() => new scalar.Int64(2n ** 63n), /int64/)
+  assert.throws(() => new scalar.Int8Scalar(1000), /int8/)
+  assert.throws(() => new scalar.UInt8Scalar(-1), /uint8/)
+  assert.throws(() => new scalar.UInt64Scalar(-1n), /uint64/)
+  assert.throws(() => new scalar.Int64Scalar(2n ** 63n), /int64/)
 })
 
 test('float access is exact or throws', () => {
   // 2n**53n is the last contiguous integer in f64; +1n rounds.
-  assert.equal(new scalar.Int64(2n ** 53n).asF64(), 2 ** 53)
-  assert.throws(() => new scalar.Int64(2n ** 53n + 1n).asF64(), /not exactly representable/)
-  assert.throws(() => new scalar.UInt64(2n ** 64n - 1n).asF64(), /not exactly representable/)
+  assert.equal(new scalar.Int64Scalar(2n ** 53n).asF64(), 2 ** 53)
+  assert.throws(() => new scalar.Int64Scalar(2n ** 53n + 1n).asF64(), /not exactly representable/)
+  assert.throws(() => new scalar.UInt64Scalar(2n ** 64n - 1n).asF64(), /not exactly representable/)
   // Sign changes never pass, and the error names the offending value.
-  assert.throws(() => new scalar.Int8(-1).asU64(), /-1 is not exactly representable/)
+  assert.throws(() => new scalar.Int8Scalar(-1).asU64(), /-1 is not exactly representable/)
 })
 
 test('binary scalar reads bytes and io', () => {
-  const blob = new scalar.Binary(Buffer.from([1, 2, 3]))
+  const blob = new scalar.BinaryScalar(Buffer.from([1, 2, 3]))
   assert.equal(blob.isNull(), false)
   assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
   assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
   assert.equal(blob.dataType().name(), 'binary')
   // UTF-8 bytes convert to a string; anything else throws naming the shape —
   // and an explicit core charset decodes instead.
-  assert.equal(new scalar.Binary(Buffer.from('hi')).asStr(), 'hi')
-  assert.equal(new scalar.Binary(Buffer.from('hi')).asStr('utf8'), 'hi')
-  assert.equal(new scalar.Binary(Buffer.from([0xe9])).asStr('latin1'), 'é')
-  assert.throws(() => new scalar.Binary(Buffer.from([0xff])).asStr(), /non-UTF-8/)
-  assert.throws(() => new scalar.Binary(Buffer.from('hi')).asStr('ascii'), /unknown charset/)
+  assert.equal(new scalar.BinaryScalar(Buffer.from('hi')).asStr(), 'hi')
+  assert.equal(new scalar.BinaryScalar(Buffer.from('hi')).asStr('utf8'), 'hi')
+  assert.equal(new scalar.BinaryScalar(Buffer.from([0xe9])).asStr('latin1'), 'é')
+  assert.throws(() => new scalar.BinaryScalar(Buffer.from([0xff])).asStr(), /non-UTF-8/)
+  assert.throws(() => new scalar.BinaryScalar(Buffer.from('hi')).asStr('ascii'), /unknown charset/)
   assert.throws(() => blob.asI64(), /no i64 conversion/)
 
   // The value doubles as a core positioned-IO ByteBuffer.
@@ -119,8 +119,8 @@ test('binary scalar reads bytes and io', () => {
   assert.equal(window.preadI8(2, core.Whence.Start), 3)
 
   // The empty value and null are distinct states.
-  assert.equal(new scalar.Binary(Buffer.alloc(0)).isNull(), false)
-  const missing = scalar.Binary.null()
+  assert.equal(new scalar.BinaryScalar(Buffer.alloc(0)).isNull(), false)
+  const missing = scalar.BinaryScalar.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.value(), null)
   assert.equal(missing.toIo(), null)
@@ -128,7 +128,7 @@ test('binary scalar reads bytes and io', () => {
 })
 
 test('optional binary redirects to the inner scalar', () => {
-  const some = new scalar.OptionalBinary(Buffer.from('hi'))
+  const some = new scalar.OptionalBinaryScalar(Buffer.from('hi'))
   assert.equal(some.isNull(), false)
   assert.deepEqual(some.value(), Buffer.from('hi'))
   assert.deepEqual(some.scalar().value(), Buffer.from('hi'))
@@ -140,14 +140,14 @@ test('optional binary redirects to the inner scalar', () => {
   assert.equal(optType.valueType().name(), 'binary')
   assert.equal(optType.storage().name(), 'union')
 
-  const missing = scalar.OptionalBinary.null()
+  const missing = scalar.OptionalBinaryScalar.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.scalar(), null)
   assert.throws(() => missing.asBytes(), /is null/)
 })
 
 test('null scalar', () => {
-  const nothing = new scalar.Null()
+  const nothing = new scalar.NullScalar()
   assert.equal(nothing.isNull(), true)
   assert.equal(nothing.dataType().name(), 'null')
 })

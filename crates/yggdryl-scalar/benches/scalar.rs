@@ -3,10 +3,12 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_scalar::yggdryl_dtype as dtype;
-use yggdryl_scalar::{Int64, Int64Serie, Int8, Optional, RawScalar, Serie};
+use yggdryl_scalar::{
+    Int64Scalar, Int64Serie, Int8Scalar, OptionalScalar, Scalar, ScalarFactory, Serie,
+};
 
-type OptionalInt64 = Optional<dtype::Int64, Int64>;
-type Int64SerieGeneric = Serie<dtype::Int64, Int64>;
+type OptionalInt64 = OptionalScalar<dtype::Int64Type, Int64Scalar>;
+type Int64SerieGeneric = Serie<dtype::Int64Type, Int64Scalar>;
 
 const N: usize = 4096;
 
@@ -17,7 +19,17 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_new", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(Int64::new(black_box(value)));
+                black_box(Int64Scalar::new(black_box(value)));
+            }
+        })
+    });
+
+    // The same construction through the ScalarFactory surface: the data type builds
+    // its scalar.
+    group.bench_function("int64_via_factory", |b| {
+        b.iter(|| {
+            for value in 0..N as i64 {
+                black_box(dtype::Int64Type.scalar(black_box(value)));
             }
         })
     });
@@ -25,7 +37,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(Int64::new(value).to_arrow());
+                black_box(Int64Scalar::new(value).to_arrow());
             }
         })
     });
@@ -33,16 +45,16 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_null", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64::null().to_arrow());
+                black_box(Int64Scalar::null().to_arrow());
             }
         })
     });
 
-    let arrow = Int64::new(42).to_arrow();
+    let arrow = Int64Scalar::new(42).to_arrow();
     group.bench_function("int64_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64::from_arrow(black_box(arrow.as_ref())).unwrap());
+                black_box(Int64Scalar::from_arrow(black_box(arrow.as_ref())).unwrap());
             }
         })
     });
@@ -51,7 +63,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int8_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N {
-                black_box(Int8::new(value as i8).to_arrow());
+                black_box(Int8Scalar::new(value as i8).to_arrow());
             }
         })
     });
@@ -63,7 +75,7 @@ fn accessor(c: &mut Criterion) {
     let mut group = c.benchmark_group("accessor");
     group.throughput(Throughput::Elements(N as u64));
 
-    let scalar = Int64::new(42);
+    let scalar = Int64Scalar::new(42);
     group.bench_function("int64_as_i64_direct", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -86,7 +98,7 @@ fn accessor(c: &mut Criterion) {
         })
     });
 
-    let optional = OptionalInt64::new(Int64::new(42));
+    let optional = OptionalInt64::new(Int64Scalar::new(42));
     group.bench_function("optional_as_i64_redirected", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -105,13 +117,13 @@ fn optional(c: &mut Criterion) {
     group.bench_function("optional_new", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(OptionalInt64::new(Int64::new(black_box(value))));
+                black_box(OptionalInt64::new(Int64Scalar::new(black_box(value))));
             }
         })
     });
 
     group.bench_function("optional_to_arrow_value", |b| {
-        let scalar = OptionalInt64::new(Int64::new(42));
+        let scalar = OptionalInt64::new(Int64Scalar::new(42));
         b.iter(|| {
             for _ in 0..N {
                 black_box(scalar.to_arrow());
@@ -128,7 +140,7 @@ fn optional(c: &mut Criterion) {
         })
     });
 
-    let arrow = OptionalInt64::new(Int64::new(42)).to_arrow();
+    let arrow = OptionalInt64::new(Int64Scalar::new(42)).to_arrow();
     group.bench_function("optional_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {

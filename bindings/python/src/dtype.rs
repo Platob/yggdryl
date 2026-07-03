@@ -1,25 +1,28 @@
 //! The `yggdryl.dtype` submodule — thin wrappers over the `yggdryl-dtype` crate.
 //!
 //! Every integer type is exposed as its data type and its logical optional data
-//! type (e.g. `Int64`, `OptionalInt64`), alongside `Binary` / `OptionalBinary`,
-//! `Null` and `Union` — the same bare names as the Rust crate, the submodule
-//! carrying the concern. Data types expose the descriptor surface (`name`,
-//! `arrow_format`, widths), the native byte codec, and their defaults
-//! (`default_scalar` hands back a `yggdryl.scalar` class).
+//! type (e.g. `Int64Type`, `OptionalInt64Type`), alongside `BinaryType` /
+//! `OptionalBinaryType`, `NullType` and `UnionType` — the same suffixed names as
+//! the Rust crate, the submodule carrying the concern. Data types expose the
+//! descriptor surface (`name`, `arrow_format`, widths), the native byte codec,
+//! and — as the model's factory hub — their defaults (`default_scalar`) and their
+//! `field` / `scalar` builders (`field` hands back a `yggdryl.field` class,
+//! `scalar` and `default_scalar` a `yggdryl.scalar` class).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work), construction of a
-//! `Union` from arbitrary child fields (its `UnionFields` is an arrow-schema
-//! value — `Union` is reached through an optional data type's `storage()`), the
-//! `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the generic nested types (`List` / `Map` / `Struct` and the
-//! per-family trait pairs), which have no concrete FFI shape yet.
+//! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
+//! value — `UnionType` is reached through an optional data type's `storage()`),
+//! the `DataTypeId` classifier (a method-bearing enum the bindings cannot model
+//! uniformly), and the generic nested types (`ListType` / `MapType` / `StructType`
+//! and the per-family trait pairs), which have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use yggdryl_dtype::{DataType, RawDataType, RawLogical, RawNested, RawUnion};
-use yggdryl_scalar::DefaultScalar;
+use yggdryl_dtype::{DataType, Logical, Nested, TypedDataType, Union};
+use yggdryl_field::FieldFactory;
+use yggdryl_scalar::ScalarFactory;
 
 use crate::DataErr;
 
@@ -28,12 +31,12 @@ use crate::DataErr;
 /// (arbitrary child fields stay Rust-only).
 #[pyclass]
 #[derive(Clone)]
-pub struct Union {
-    pub(crate) inner: yggdryl_dtype::Union,
+pub struct UnionType {
+    pub(crate) inner: yggdryl_dtype::UnionType,
 }
 
 #[pymethods]
-impl Union {
+impl UnionType {
     /// The type's lowercase name, `"union"`.
     fn name(&self) -> String {
         self.inner.name().to_string()
@@ -71,12 +74,12 @@ impl Union {
 /// The Apache Arrow `null` data type: every value is null, with no storage.
 #[pyclass]
 #[derive(Default)]
-pub struct Null {
-    pub(crate) inner: yggdryl_dtype::Null,
+pub struct NullType {
+    pub(crate) inner: yggdryl_dtype::NullType,
 }
 
 #[pymethods]
-impl Null {
+impl NullType {
     /// The null data type.
     #[new]
     fn new() -> Self {
@@ -107,12 +110,12 @@ impl Null {
 /// The Apache Arrow `binary` data type: a variable-length byte sequence.
 #[pyclass]
 #[derive(Default)]
-pub struct Binary {
-    pub(crate) inner: yggdryl_dtype::Binary,
+pub struct BinaryType {
+    pub(crate) inner: yggdryl_dtype::BinaryType,
 }
 
 #[pymethods]
-impl Binary {
+impl BinaryType {
     /// The `binary` data type.
     #[new]
     fn new() -> Self {
@@ -162,16 +165,32 @@ impl Binary {
         PyBytes::new_bound(py, &self.inner.default_value())
     }
 
-    /// The default scalar: a `yggdryl.scalar.Binary` holding `b""`.
-    fn default_scalar(&self) -> crate::scalar::Binary {
-        crate::scalar::Binary {
+    /// The default scalar: a `yggdryl.scalar.BinaryScalar` holding `b""`.
+    fn default_scalar(&self) -> crate::scalar::BinaryScalar {
+        crate::scalar::BinaryScalar {
             inner: self.inner.default_scalar(),
         }
     }
 
+    /// The `binary` field named `name` (nullable by default) — a `yggdryl.field`
+    /// class.
+    #[pyo3(signature = (name, nullable = true))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::BinaryField {
+        crate::field::BinaryField {
+            inner: self.inner.field(name, nullable),
+        }
+    }
+
+    /// A `binary` scalar holding `value` — a `yggdryl.scalar` class.
+    fn scalar(&self, value: Vec<u8>) -> crate::scalar::BinaryScalar {
+        crate::scalar::BinaryScalar {
+            inner: self.inner.scalar(value),
+        }
+    }
+
     /// The logical optional of this type (stored as the null-or-value union).
-    fn optional(&self) -> OptionalBinary {
-        OptionalBinary::default()
+    fn optional(&self) -> OptionalBinaryType {
+        OptionalBinaryType::default()
     }
 }
 
@@ -179,12 +198,12 @@ impl Binary {
 /// null-or-`binary` union.
 #[pyclass]
 #[derive(Default)]
-pub struct OptionalBinary {
-    pub(crate) inner: yggdryl_dtype::Optional<yggdryl_dtype::Binary>,
+pub struct OptionalBinaryType {
+    pub(crate) inner: yggdryl_dtype::OptionalType<yggdryl_dtype::BinaryType>,
 }
 
 #[pymethods]
-impl OptionalBinary {
+impl OptionalBinaryType {
     /// The optional `binary` data type.
     #[new]
     fn new() -> Self {
@@ -212,13 +231,13 @@ impl OptionalBinary {
     }
 
     /// The value type this optional wraps.
-    fn value_type(&self) -> Binary {
-        Binary::default()
+    fn value_type(&self) -> BinaryType {
+        BinaryType::default()
     }
 
     /// The physical storage: the sparse null-or-value union.
-    fn storage(&self) -> Union {
-        Union {
+    fn storage(&self) -> UnionType {
+        UnionType {
             inner: self.inner.storage().clone(),
         }
     }
@@ -229,9 +248,26 @@ impl OptionalBinary {
     }
 
     /// The default scalar: the null variant (the scalar models nullness).
-    fn default_scalar(&self) -> crate::scalar::OptionalBinary {
-        crate::scalar::OptionalBinary {
+    fn default_scalar(&self) -> crate::scalar::OptionalBinaryScalar {
+        crate::scalar::OptionalBinaryScalar {
             inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The optional-`binary` field named `name` (nullable by default) — a
+    /// `yggdryl.field` class.
+    #[pyo3(signature = (name, nullable = true))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::OptionalBinaryField {
+        crate::field::OptionalBinaryField {
+            inner: self.inner.field(name, nullable),
+        }
+    }
+
+    /// An optional-`binary` scalar holding the value variant `value` — a
+    /// `yggdryl.scalar` class.
+    fn scalar(&self, value: Vec<u8>) -> crate::scalar::OptionalBinaryScalar {
+        crate::scalar::OptionalBinaryScalar {
+            inner: self.inner.scalar(value),
         }
     }
 
@@ -255,11 +291,13 @@ impl OptionalBinary {
 }
 
 /// Generates the two data-type wrappers of one integer type: the data type `$ty`
-/// (with the byte codec, defaults and `optional()`) and the logical optional data
-/// type `$opt_ty` (over union storage) — each a thin delegation to the
-/// `yggdryl-dtype` types.
+/// (with the byte codec, defaults, `field` / `scalar` factories and `optional()`)
+/// and the logical optional data type `$opt_ty` (over union storage) — each a thin
+/// delegation to the `yggdryl-dtype` types. `$field` / `$opt_field` name the
+/// `yggdryl.field` classes the factories return, `$scalar` / `$opt_scalar` the
+/// `yggdryl.scalar` classes.
 macro_rules! int_dtype_py {
-    ($ty:ident, $opt_ty:ident, $native:ty, $name:literal) => {
+    ($ty:ident, $opt_ty:ident, $field:ident, $opt_field:ident, $scalar:ident, $opt_scalar:ident, $native:ty, $name:literal) => {
         #[doc = concat!("The Apache Arrow `", $name, "` data type.")]
         #[pyclass]
         #[derive(Default)]
@@ -312,9 +350,25 @@ macro_rules! int_dtype_py {
             }
 
             /// The default scalar: a `yggdryl.scalar` class holding `0`.
-            fn default_scalar(&self) -> crate::scalar::$ty {
-                crate::scalar::$ty {
+            fn default_scalar(&self) -> crate::scalar::$scalar {
+                crate::scalar::$scalar {
                     inner: self.inner.default_scalar(),
+                }
+            }
+
+            /// The field of this type named `name` (nullable by default) — a
+            /// `yggdryl.field` class.
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$field {
+                crate::field::$field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            /// A scalar of this type holding `value` — a `yggdryl.scalar` class.
+            fn scalar(&self, value: $native) -> crate::scalar::$scalar {
+                crate::scalar::$scalar {
+                    inner: self.inner.scalar(value),
                 }
             }
 
@@ -329,7 +383,7 @@ macro_rules! int_dtype_py {
         #[pyclass]
         #[derive(Default)]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_dtype::Optional<yggdryl_dtype::$ty>,
+            pub(crate) inner: yggdryl_dtype::OptionalType<yggdryl_dtype::$ty>,
         }
 
         #[pymethods]
@@ -366,8 +420,8 @@ macro_rules! int_dtype_py {
             }
 
             /// The physical storage: the sparse null-or-value union.
-            fn storage(&self) -> Union {
-                Union {
+            fn storage(&self) -> UnionType {
+                UnionType {
                     inner: self.inner.storage().clone(),
                 }
             }
@@ -378,9 +432,26 @@ macro_rules! int_dtype_py {
             }
 
             /// The default scalar: the null variant (the scalar models nullness).
-            fn default_scalar(&self) -> crate::scalar::$opt_ty {
-                crate::scalar::$opt_ty {
+            fn default_scalar(&self) -> crate::scalar::$opt_scalar {
+                crate::scalar::$opt_scalar {
                     inner: self.inner.default_scalar(),
+                }
+            }
+
+            /// The optional field of this type named `name` (nullable by default) — a
+            /// `yggdryl.field` class.
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$opt_field {
+                crate::field::$opt_field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            /// An optional scalar holding the value variant `value` — a
+            /// `yggdryl.scalar` class.
+            fn scalar(&self, value: $native) -> crate::scalar::$opt_scalar {
+                crate::scalar::$opt_scalar {
+                    inner: self.inner.scalar(value),
                 }
             }
 
@@ -399,36 +470,108 @@ macro_rules! int_dtype_py {
     };
 }
 
-int_dtype_py!(Int8, OptionalInt8, i8, "int8");
-int_dtype_py!(Int16, OptionalInt16, i16, "int16");
-int_dtype_py!(Int32, OptionalInt32, i32, "int32");
-int_dtype_py!(Int64, OptionalInt64, i64, "int64");
-int_dtype_py!(UInt8, OptionalUInt8, u8, "uint8");
-int_dtype_py!(UInt16, OptionalUInt16, u16, "uint16");
-int_dtype_py!(UInt32, OptionalUInt32, u32, "uint32");
-int_dtype_py!(UInt64, OptionalUInt64, u64, "uint64");
+int_dtype_py!(
+    Int8Type,
+    OptionalInt8Type,
+    Int8Field,
+    OptionalInt8Field,
+    Int8Scalar,
+    OptionalInt8Scalar,
+    i8,
+    "int8"
+);
+int_dtype_py!(
+    Int16Type,
+    OptionalInt16Type,
+    Int16Field,
+    OptionalInt16Field,
+    Int16Scalar,
+    OptionalInt16Scalar,
+    i16,
+    "int16"
+);
+int_dtype_py!(
+    Int32Type,
+    OptionalInt32Type,
+    Int32Field,
+    OptionalInt32Field,
+    Int32Scalar,
+    OptionalInt32Scalar,
+    i32,
+    "int32"
+);
+int_dtype_py!(
+    Int64Type,
+    OptionalInt64Type,
+    Int64Field,
+    OptionalInt64Field,
+    Int64Scalar,
+    OptionalInt64Scalar,
+    i64,
+    "int64"
+);
+int_dtype_py!(
+    UInt8Type,
+    OptionalUInt8Type,
+    UInt8Field,
+    OptionalUInt8Field,
+    UInt8Scalar,
+    OptionalUInt8Scalar,
+    u8,
+    "uint8"
+);
+int_dtype_py!(
+    UInt16Type,
+    OptionalUInt16Type,
+    UInt16Field,
+    OptionalUInt16Field,
+    UInt16Scalar,
+    OptionalUInt16Scalar,
+    u16,
+    "uint16"
+);
+int_dtype_py!(
+    UInt32Type,
+    OptionalUInt32Type,
+    UInt32Field,
+    OptionalUInt32Field,
+    UInt32Scalar,
+    OptionalUInt32Scalar,
+    u32,
+    "uint32"
+);
+int_dtype_py!(
+    UInt64Type,
+    OptionalUInt64Type,
+    UInt64Field,
+    OptionalUInt64Field,
+    UInt64Scalar,
+    OptionalUInt64Scalar,
+    u64,
+    "uint64"
+);
 
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Union>()?;
-    module.add_class::<Null>()?;
-    module.add_class::<Binary>()?;
-    module.add_class::<OptionalBinary>()?;
-    module.add_class::<Int8>()?;
-    module.add_class::<OptionalInt8>()?;
-    module.add_class::<Int16>()?;
-    module.add_class::<OptionalInt16>()?;
-    module.add_class::<Int32>()?;
-    module.add_class::<OptionalInt32>()?;
-    module.add_class::<Int64>()?;
-    module.add_class::<OptionalInt64>()?;
-    module.add_class::<UInt8>()?;
-    module.add_class::<OptionalUInt8>()?;
-    module.add_class::<UInt16>()?;
-    module.add_class::<OptionalUInt16>()?;
-    module.add_class::<UInt32>()?;
-    module.add_class::<OptionalUInt32>()?;
-    module.add_class::<UInt64>()?;
-    module.add_class::<OptionalUInt64>()?;
+    module.add_class::<UnionType>()?;
+    module.add_class::<NullType>()?;
+    module.add_class::<BinaryType>()?;
+    module.add_class::<OptionalBinaryType>()?;
+    module.add_class::<Int8Type>()?;
+    module.add_class::<OptionalInt8Type>()?;
+    module.add_class::<Int16Type>()?;
+    module.add_class::<OptionalInt16Type>()?;
+    module.add_class::<Int32Type>()?;
+    module.add_class::<OptionalInt32Type>()?;
+    module.add_class::<Int64Type>()?;
+    module.add_class::<OptionalInt64Type>()?;
+    module.add_class::<UInt8Type>()?;
+    module.add_class::<OptionalUInt8Type>()?;
+    module.add_class::<UInt16Type>()?;
+    module.add_class::<OptionalUInt16Type>()?;
+    module.add_class::<UInt32Type>()?;
+    module.add_class::<OptionalUInt32Type>()?;
+    module.add_class::<UInt64Type>()?;
+    module.add_class::<OptionalUInt64Type>()?;
     Ok(())
 }

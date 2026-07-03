@@ -1,20 +1,20 @@
-//! The [`List`] data type.
+//! The [`ListType`] data type.
 
-use crate::{DataError, DataType, RawDataType, RawNested};
+use crate::{DataError, DataType, Nested, TypedDataType};
 
 /// The Apache Arrow `list` data type: a variable-length sequence of one value type
 /// `D` (32-bit offsets).
 ///
 /// Its single child is the nullable `"item"` field of the value type. The typed
-/// [`DataType<Vec<T>>`] byte codec concatenates the value type's per-element bytes;
-/// splitting them back requires the value type's fixed
-/// [`byte_width`](RawDataType::byte_width) (a variable-width element errors with
+/// [`TypedDataType<Vec<T>>`] byte codec concatenates the value type's per-element
+/// bytes; splitting them back requires the value type's fixed
+/// [`byte_width`](DataType::byte_width) (a variable-width element errors with
 /// [`DataError::IndeterminateElementWidth`] — decode such lists from Arrow).
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataType, Int64, List, RawDataType, RawList};
+/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, List, ListType, TypedDataType};
 ///
-/// let list = List::new(Int64);
+/// let list = ListType::new(Int64Type);
 /// assert_eq!(list.name(), "list");
 /// assert_eq!(list.arrow_format(), "+l");
 /// assert_eq!(list.byte_width(), None);
@@ -30,22 +30,22 @@ use crate::{DataError, DataType, RawDataType, RawNested};
 ///
 /// // from_arrow is the exact inverse of to_arrow.
 /// assert!(matches!(list.to_arrow(), arrow_schema::DataType::List(..)));
-/// assert_eq!(List::from_arrow(&list.to_arrow()).unwrap(), list);
+/// assert_eq!(ListType::from_arrow(&list.to_arrow()).unwrap(), list);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct List<D> {
+pub struct ListType<D> {
     value_type: D,
 }
 
-impl<D: RawDataType> List<D> {
+impl<D: DataType> ListType<D> {
     /// The list of `value_type`.
     pub fn new(value_type: D) -> Self {
         Self { value_type }
     }
 
     /// The list's single Arrow child: the nullable `"item"` field of the value
-    /// type — the exact child [`to_arrow`](RawDataType::to_arrow) wraps (the
-    /// scalar layer assembles its one-element `ListArray` around it).
+    /// type — the exact child [`to_arrow`](DataType::to_arrow) wraps (the scalar
+    /// layer assembles its one-element `ListArray` around it).
     pub fn item_field(&self) -> arrow_schema::FieldRef {
         std::sync::Arc::new(arrow_schema::Field::new(
             "item",
@@ -55,13 +55,13 @@ impl<D: RawDataType> List<D> {
     }
 }
 
-impl<D: RawDataType> super::RawList<D> for List<D> {
+impl<D: DataType> super::List<D> for ListType<D> {
     fn value_type(&self) -> &D {
         &self.value_type
     }
 }
 
-impl<D: RawDataType> RawDataType for List<D> {
+impl<D: DataType> DataType for ListType<D> {
     fn name(&self) -> &str {
         "list"
     }
@@ -94,13 +94,13 @@ impl<D: RawDataType> RawDataType for List<D> {
     }
 }
 
-impl<D: RawDataType> RawNested for List<D> {
+impl<D: DataType> Nested for ListType<D> {
     fn child_count(&self) -> usize {
         1
     }
 }
 
-impl<T, D: DataType<T>> DataType<Vec<T>> for List<D> {
+impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for ListType<D> {
     fn native_to_bytes(&self, values: &Vec<T>) -> Vec<u8> {
         values
             .iter()
@@ -134,8 +134,8 @@ impl<T, D: DataType<T>> DataType<Vec<T>> for List<D> {
     }
 }
 
-impl<T, D: DataType<T>> crate::Nested<Vec<T>> for List<D> {}
+impl<T, D: TypedDataType<T>> crate::TypedNested<Vec<T>> for ListType<D> {}
 
-impl<T, D: DataType<T>> super::TypedList<T> for List<D> {
+impl<T, D: TypedDataType<T>> super::TypedList<T> for ListType<D> {
     type ValueType = D;
 }

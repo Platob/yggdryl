@@ -2,9 +2,13 @@
 //!
 //! Each Rust crate is exposed under its own JS namespace — `yggdryl.core` (the
 //! foundations), `yggdryl.dtype` (the data types), `yggdryl.field` (the fields)
-//! and `yggdryl.scalar` (the scalars) — mirroring the crate tree. The wrappers are
-//! thin: all logic lives in the Rust crates, so the Node and Python bindings
-//! behave identically.
+//! and `yggdryl.scalar` (the scalars) — mirroring the crate tree, each class
+//! placed in its namespace by napi's `#[napi(namespace = "…")]` attribute. The
+//! classes carry globally-unique names (the `…Type` / `…Field` / `…Scalar`
+//! suffixes keep the three concerns distinct in napi's addon-global registry), so
+//! the generated `index.js` / `index.d.ts` namespace map is the package entry
+//! directly. The wrappers are thin: all logic lives in the Rust crates, so the
+//! Node and Python bindings behave identically.
 
 use napi::bindgen_prelude::{BigInt, Error, Result};
 

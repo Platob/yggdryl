@@ -17,11 +17,11 @@ path = "src/lib.rs"
 [dependencies]
 # The data-type layer: every scalar carries its `yggdryl-dtype` data type.
 yggdryl-dtype = { workspace = true }
-# The foundation layer: `Binary` holds its bytes as a core `ByteBuffer`, so the
+# The foundation layer: `BinaryScalar` holds its bytes as a core `ByteBuffer`, so the
 # scalar accessors plug straight into the positioned-IO traits (`RawIOBase` and
 # the cursor / slice adapters).
 yggdryl-core = { workspace = true }
-# Arrow interop surface: `RawScalar::to_arrow` builds a one-element `arrow_array`
+# Arrow interop surface: `Scalar::to_arrow` builds a one-element `arrow_array`
 # array (Arrow's own scalar representation); `arrow-schema` types the children.
 arrow-schema = { workspace = true }
 arrow-array = { workspace = true }

@@ -1,34 +1,34 @@
-//! The [`Null`] data type.
+//! The [`NullType`] data type.
 
-use crate::{DataError, RawDataType};
+use crate::{DataError, DataType};
 
 /// The Apache Arrow `null` data type: every value is null.
 ///
 /// It is storage-free — no byte width, no codec — and is neither a
 /// [`Primitive`](crate::Primitive) nor a [`Nested`](crate::Nested) type. Its main
-/// structural role is as the null variant of a [`Union`](crate::Union) (see
-/// [`Optional`](crate::Optional)).
+/// structural role is as the null variant of a [`UnionType`](crate::UnionType) (see
+/// [`OptionalType`](crate::OptionalType)).
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataTypeId, Null, RawDataType};
+/// use yggdryl_dtype::{arrow_schema, DataType, DataTypeId, NullType};
 ///
-/// assert_eq!(Null.name(), "null");
-/// assert_eq!(Null.arrow_format(), "n");
-/// assert_eq!((Null.byte_width(), Null.bit_width()), (None, None));
-/// assert_eq!(Null::ID, DataTypeId::Null);
+/// assert_eq!(NullType.name(), "null");
+/// assert_eq!(NullType.arrow_format(), "n");
+/// assert_eq!((NullType.byte_width(), NullType.bit_width()), (None, None));
+/// assert_eq!(NullType::ID, DataTypeId::Null);
 ///
-/// assert_eq!(Null.to_arrow(), arrow_schema::DataType::Null);
-/// assert!(Null::from_arrow(&arrow_schema::DataType::Int64).is_err());
+/// assert_eq!(NullType.to_arrow(), arrow_schema::DataType::Null);
+/// assert!(NullType::from_arrow(&arrow_schema::DataType::Int64).is_err());
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct Null;
+pub struct NullType;
 
-impl Null {
+impl NullType {
     /// This type's [`DataTypeId`](crate::DataTypeId).
     pub const ID: crate::DataTypeId = crate::DataTypeId::Null;
 }
 
-impl RawDataType for Null {
+impl DataType for NullType {
     fn name(&self) -> &str {
         "null"
     }
@@ -49,7 +49,7 @@ impl RawDataType for Null {
         match data_type {
             arrow_schema::DataType::Null => Ok(Self),
             other => Err(DataError::IncompatibleArrowType {
-                expected: "Null".to_string(),
+                expected: "NullType".to_string(),
                 got: other.to_string(),
             }),
         }

@@ -6,14 +6,14 @@ from yggdryl import dtype
 
 # (data type, name, format, byte width, min, max)
 INTEGERS = [
-    (dtype.Int8, "int8", "c", 1, -(2 ** 7), 2 ** 7 - 1),
-    (dtype.Int16, "int16", "s", 2, -(2 ** 15), 2 ** 15 - 1),
-    (dtype.Int32, "int32", "i", 4, -(2 ** 31), 2 ** 31 - 1),
-    (dtype.Int64, "int64", "l", 8, -(2 ** 63), 2 ** 63 - 1),
-    (dtype.UInt8, "uint8", "C", 1, 0, 2 ** 8 - 1),
-    (dtype.UInt16, "uint16", "S", 2, 0, 2 ** 16 - 1),
-    (dtype.UInt32, "uint32", "I", 4, 0, 2 ** 32 - 1),
-    (dtype.UInt64, "uint64", "L", 8, 0, 2 ** 64 - 1),
+    (dtype.Int8Type, "int8", "c", 1, -(2 ** 7), 2 ** 7 - 1),
+    (dtype.Int16Type, "int16", "s", 2, -(2 ** 15), 2 ** 15 - 1),
+    (dtype.Int32Type, "int32", "i", 4, -(2 ** 31), 2 ** 31 - 1),
+    (dtype.Int64Type, "int64", "l", 8, -(2 ** 63), 2 ** 63 - 1),
+    (dtype.UInt8Type, "uint8", "C", 1, 0, 2 ** 8 - 1),
+    (dtype.UInt16Type, "uint16", "S", 2, 0, 2 ** 16 - 1),
+    (dtype.UInt32Type, "uint32", "I", 4, 0, 2 ** 32 - 1),
+    (dtype.UInt64Type, "uint64", "L", 8, 0, 2 ** 64 - 1),
 ]
 
 IDS = [case[1] for case in INTEGERS]
@@ -39,6 +39,38 @@ def test_defaults(case):
     optional = instance.optional()
     assert optional.default_value() == 0
     assert optional.default_scalar().is_null() is True  # the null variant
+
+
+@pytest.mark.parametrize("case", INTEGERS, ids=IDS)
+def test_factories_build_field_and_scalar(case):
+    data_type, name, _, _, _, _ = case
+    instance = data_type()
+
+    # The data type builds its field (nullable by default).
+    column = instance.field("id")
+    assert column.name() == "id"
+    assert column.data_type().name() == name
+    assert column.is_nullable() is True
+    assert instance.field("strict", False).is_nullable() is False
+
+    # ... and its scalar from a native value.
+    answer = instance.scalar(42)
+    assert answer.is_null() is False
+    assert answer.value() == 42
+    assert answer.data_type().name() == name
+
+    # The optional builds the optional field and scalar.
+    optional = instance.optional()
+    opt_column = optional.field("score", True)
+    assert opt_column.name() == "score"
+    assert opt_column.is_nullable() is True
+    assert opt_column.data_type().name() == "optional"
+    assert opt_column.data_type().value_type().name() == name
+
+    opt_scalar = optional.scalar(7)
+    assert opt_scalar.is_null() is False
+    assert opt_scalar.value() == 7
+    assert opt_scalar.data_type().value_type().name() == name
 
 
 @pytest.mark.parametrize("case", INTEGERS, ids=IDS)
@@ -74,7 +106,7 @@ def test_optional_is_a_logical_type_over_union_storage(case):
 
 
 def test_binary_type_describes_itself_and_codecs():
-    binary = dtype.Binary()
+    binary = dtype.BinaryType()
     assert binary.name() == "binary"
     assert binary.arrow_format() == "z"
     assert binary.byte_width() is None
@@ -87,19 +119,35 @@ def test_binary_type_describes_itself_and_codecs():
     assert binary.default_scalar().value() == b""
 
 
+def test_binary_factories_build_field_and_scalar():
+    binary = dtype.BinaryType()
+    column = binary.field("payload")
+    assert column.name() == "payload"
+    assert column.data_type().name() == "binary"
+    assert column.is_nullable() is True
+    assert binary.field("payload", False).is_nullable() is False
+    assert binary.scalar(b"hi").value() == b"hi"
+
+    optional = binary.optional()
+    opt_column = optional.field("payload", True)
+    assert opt_column.data_type().name() == "optional"
+    assert opt_column.data_type().value_type().name() == "binary"
+    assert optional.scalar(b"hi").value() == b"hi"
+
+
 def test_optional_binary_type():
-    optional = dtype.Binary().optional()
+    optional = dtype.BinaryType().optional()
     assert optional.name() == "optional"
     assert optional.value_type().name() == "binary"
     assert optional.storage().name() == "union"
     assert optional.default_value() == b""
     assert optional.default_scalar().is_null() is True
     assert optional.native_from_bytes(optional.native_to_bytes(b"xy")) == b"xy"
-    assert dtype.OptionalBinary().arrow_format() == optional.arrow_format()
+    assert dtype.OptionalBinaryType().arrow_format() == optional.arrow_format()
 
 
 def test_null_type():
-    null = dtype.Null()
+    null = dtype.NullType()
     assert null.name() == "null"
     assert null.arrow_format() == "n"
     assert null.byte_width() is None
@@ -107,7 +155,7 @@ def test_null_type():
 
 
 def test_union_type_reached_through_optional():
-    union = dtype.Int64().optional().storage()
+    union = dtype.Int64Type().optional().storage()
     assert union.name() == "union"
     assert union.arrow_format() == "+us:0,1"
     assert union.byte_width() is None

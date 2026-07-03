@@ -4,7 +4,7 @@
 /// any parameters (precision, time unit, time zone, child fields, …).
 ///
 /// It *classifies* a type without describing it: the concrete
-/// [`RawDataType`](super::RawDataType) carries the parameters and the exact Arrow C
+/// [`DataType`](super::DataType) carries the parameters and the exact Arrow C
 /// Data Interface format string, while a `DataTypeId` is the cheap `Copy` tag used to
 /// switch on or group types. [`ALL`](DataTypeId::ALL) lists every id.
 ///
@@ -201,7 +201,7 @@ impl DataTypeId {
     /// The Arrow C Data Interface format string for the parameterless types, or `None`
     /// for a type whose format depends on parameters or a logical unit (decimals,
     /// temporals, fixed-size and union/dictionary types) — there the concrete
-    /// [`RawDataType`](super::RawDataType) builds the exact string.
+    /// [`DataType`](super::DataType) builds the exact string.
     pub fn arrow_format(&self) -> Option<&'static str> {
         let format = match self {
             Self::Null => "n",

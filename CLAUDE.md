@@ -67,8 +67,8 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   error types). **No Arrow vocabulary in core.**
 - `crates/yggdryl-dtype`, `crates/yggdryl-field`, `crates/yggdryl-scalar` — the
   Arrow data-model layers (data types, then fields, then scalars), one concern per
-  crate so the concrete types share one bare name across the layers
-  (`yggdryl_dtype::Int64` / `yggdryl_field::Int64` / `yggdryl_scalar::Int64`).
+  crate so the concrete types share one naming convention across the layers
+  (`yggdryl_dtype::Int64Type` / `yggdryl_field::Int64Field` / `yggdryl_scalar::Int64Scalar`).
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.
@@ -79,7 +79,7 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   (`yggdryl-core` → `yggdryl.core`): Python via `sys.modules`; Node via
   `#[napi(namespace = "…")]` where class names are unique, and via the
   hand-written `yggdryl.js` / `yggdryl.d.ts` namespace map over uniquely-prefixed
-  native classes (`DtypeInt64` → `yggdryl.dtype.Int64`) where they are not — napi
+  native classes (`DtypeInt64Type` → `yggdryl.dtype.Int64Type`) where they are not — napi
   registers class constructors by JS class name in one addon-global registry, so
   same-named classes across namespaces would collide. The binding source mirrors
   the crate tree (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs` wiring

@@ -1,20 +1,21 @@
-//! The [`Map`] data type.
+//! The [`MapType`] data type.
 
-use crate::{DataError, DataType, RawDataType, RawNested};
+use crate::{DataError, DataType, Nested, TypedDataType};
 
 /// The Apache Arrow `map` data type: a variable-length sequence of key–value
 /// entries, keyed by `K` with values of `V` (unsorted keys).
 ///
 /// Its single child is the non-nullable `"entries"` struct of the non-nullable
-/// `"key"` and nullable `"value"` fields. The typed [`DataType<Vec<(TK, TV)>>`]
-/// byte codec concatenates each entry's key bytes then value bytes; splitting them
-/// back requires both fixed widths (a variable-width side errors with
-/// [`DataError::IndeterminateElementWidth`] — decode such maps from Arrow).
+/// `"key"` and nullable `"value"` fields. The typed
+/// [`TypedDataType<Vec<(TK, TV)>>`] byte codec concatenates each entry's key bytes
+/// then value bytes; splitting them back requires both fixed widths (a
+/// variable-width side errors with [`DataError::IndeterminateElementWidth`] — decode
+/// such maps from Arrow).
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataType, Int64, Map, RawDataType, RawMap, UInt8};
+/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, Map, MapType, TypedDataType, UInt8Type};
 ///
-/// let map = Map::new(UInt8, Int64);
+/// let map = MapType::new(UInt8Type, Int64Type);
 /// assert_eq!(map.name(), "map");
 /// assert_eq!(map.arrow_format(), "+m");
 /// assert_eq!(map.byte_width(), None);
@@ -30,15 +31,15 @@ use crate::{DataError, DataType, RawDataType, RawNested};
 ///
 /// // from_arrow is the exact inverse of to_arrow.
 /// assert!(matches!(map.to_arrow(), arrow_schema::DataType::Map(..)));
-/// assert_eq!(Map::from_arrow(&map.to_arrow()).unwrap(), map);
+/// assert_eq!(MapType::from_arrow(&map.to_arrow()).unwrap(), map);
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct Map<K, V> {
+pub struct MapType<K, V> {
     key_type: K,
     value_type: V,
 }
 
-impl<K: RawDataType, V: RawDataType> Map<K, V> {
+impl<K: DataType, V: DataType> MapType<K, V> {
     /// The map from `key_type` to `value_type`.
     pub fn new(key_type: K, value_type: V) -> Self {
         Self {
@@ -57,7 +58,7 @@ impl<K: RawDataType, V: RawDataType> Map<K, V> {
     }
 
     /// The map's single Arrow child: the non-nullable `"entries"` struct field —
-    /// the exact child [`to_arrow`](RawDataType::to_arrow) wraps.
+    /// the exact child [`to_arrow`](DataType::to_arrow) wraps.
     pub fn entries_field(&self) -> arrow_schema::FieldRef {
         std::sync::Arc::new(arrow_schema::Field::new(
             "entries",
@@ -67,7 +68,7 @@ impl<K: RawDataType, V: RawDataType> Map<K, V> {
     }
 }
 
-impl<K: RawDataType, V: RawDataType> super::RawMap<K, V> for Map<K, V> {
+impl<K: DataType, V: DataType> super::Map<K, V> for MapType<K, V> {
     fn key_type(&self) -> &K {
         &self.key_type
     }
@@ -77,7 +78,7 @@ impl<K: RawDataType, V: RawDataType> super::RawMap<K, V> for Map<K, V> {
     }
 }
 
-impl<K: RawDataType, V: RawDataType> RawDataType for Map<K, V> {
+impl<K: DataType, V: DataType> DataType for MapType<K, V> {
     fn name(&self) -> &str {
         "map"
     }
@@ -129,13 +130,15 @@ impl<K: RawDataType, V: RawDataType> RawDataType for Map<K, V> {
     }
 }
 
-impl<K: RawDataType, V: RawDataType> RawNested for Map<K, V> {
+impl<K: DataType, V: DataType> Nested for MapType<K, V> {
     fn child_count(&self) -> usize {
         1
     }
 }
 
-impl<TK, TV, K: DataType<TK>, V: DataType<TV>> DataType<Vec<(TK, TV)>> for Map<K, V> {
+impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> TypedDataType<Vec<(TK, TV)>>
+    for MapType<K, V>
+{
     fn native_to_bytes(&self, entries: &Vec<(TK, TV)>) -> Vec<u8> {
         entries
             .iter()
@@ -186,9 +189,12 @@ impl<TK, TV, K: DataType<TK>, V: DataType<TV>> DataType<Vec<(TK, TV)>> for Map<K
     }
 }
 
-impl<TK, TV, K: DataType<TK>, V: DataType<TV>> crate::Nested<Vec<(TK, TV)>> for Map<K, V> {}
+impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> crate::TypedNested<Vec<(TK, TV)>>
+    for MapType<K, V>
+{
+}
 
-impl<TK, TV, K: DataType<TK>, V: DataType<TV>> super::TypedMap<TK, TV> for Map<K, V> {
+impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> super::TypedMap<TK, TV> for MapType<K, V> {
     type KeyType = K;
     type ValueType = V;
 }

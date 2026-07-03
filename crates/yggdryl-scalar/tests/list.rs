@@ -3,14 +3,14 @@
 
 use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
-use yggdryl_scalar::{arrow_array, arrow_buffer, Int64, Int64Serie, RawScalar, Serie};
+use yggdryl_scalar::{arrow_array, arrow_buffer, Int64Scalar, Int64Serie, Scalar, Serie};
 
-type Int64ListScalar = Serie<dtype::Int64, Int64>;
+type Int64ListScalar = Serie<dtype::Int64Type, Int64Scalar>;
 
 #[test]
 fn list_scalar_round_trips_all_shapes() {
     // Elements, the empty list and null are three distinct states.
-    let numbers = Int64ListScalar::new(vec![Int64::new(1), Int64::null()]);
+    let numbers = Int64ListScalar::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     let arrow = numbers.to_arrow();
     assert_eq!(arrow.len(), 1);
     assert_eq!(
@@ -19,8 +19,8 @@ fn list_scalar_round_trips_all_shapes() {
     );
 
     // The scalar accessors read elements back out, as scalars or native values.
-    assert_eq!(numbers.get_scalar_at(0), Some(Int64::new(1)));
-    assert_eq!(numbers.get_scalar_at(1), Some(Int64::null()));
+    assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
+    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1);
     assert_eq!(numbers.get_at::<i32>(0).unwrap(), 1); // converted, exact-or-error
     assert!(matches!(
@@ -48,7 +48,7 @@ fn list_scalar_round_trips_all_shapes() {
     );
 
     // Construction from native shapes.
-    assert_eq!(Int64ListScalar::from(None::<Vec<Int64>>), missing);
+    assert_eq!(Int64ListScalar::from(None::<Vec<Int64Scalar>>), missing);
 
     // A non-list array is refused.
     assert!(matches!(
@@ -69,7 +69,7 @@ fn int64_serie_reads_borrowed_buffers() {
         numbers.get_at::<i64>(3),
         Err(DataError::OutOfBounds { index: 3, len: 3 })
     ));
-    assert_eq!(numbers.get_scalar_at(2), Some(Int64::new(3)));
+    assert_eq!(numbers.get_scalar_at(2), Some(Int64Scalar::new(3)));
     assert_eq!(numbers.get_scalar_at(3), None);
     assert!(numbers.nulls().is_none());
 
@@ -81,7 +81,7 @@ fn int64_serie_reads_borrowed_buffers() {
     let sparse = Int64Serie::from(vec![Some(1), None]);
     assert_eq!(sparse.get_at::<i64>(0).unwrap(), 1);
     assert!(matches!(sparse.get_at::<i64>(1), Err(DataError::NullValue)));
-    assert_eq!(sparse.get_scalar_at(1), Some(Int64::null()));
+    assert_eq!(sparse.get_scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(sparse.values().map(<[i64]>::len), Some(2));
     assert_eq!(
         sparse.nulls().map(arrow_buffer::NullBuffer::null_count),
@@ -162,7 +162,11 @@ fn int64_serie_round_trips_through_arrow_zero_copy() {
     assert_eq!(child.values().as_ptr(), numbers.values().unwrap().as_ptr());
 
     // The generic and the buffer-backed list scalar agree on the Arrow shape.
-    let generic = Int64ListScalar::new(vec![Int64::new(1), Int64::null(), Int64::new(3)]);
+    let generic = Int64ListScalar::new(vec![
+        Int64Scalar::new(1),
+        Int64Scalar::null(),
+        Int64Scalar::new(3),
+    ]);
     assert_eq!(generic.to_arrow().as_ref(), arrow.as_ref());
 
     // Empty and null are distinct states, both round-tripped.

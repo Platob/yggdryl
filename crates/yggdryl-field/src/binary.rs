@@ -1,46 +1,48 @@
-//! The [`Binary`] field.
+//! The [`BinaryField`] field.
 
-use crate::{Field, RawField};
-use yggdryl_dtype::{DataError, RawDataType};
+use crate::{Field, FieldFactory, TypedField};
+use yggdryl_dtype::{BinaryType, DataError, DataType};
 
 /// A nullable `binary` field: a name paired with the
-/// [`binary`](yggdryl_dtype::Binary) data type.
+/// [`BinaryType`](yggdryl_dtype::BinaryType) data type.
 ///
 /// ```
-/// use yggdryl_field::{Binary, RawField};
+/// use yggdryl_field::{BinaryField, Field, FieldFactory};
+/// use yggdryl_field::yggdryl_dtype::BinaryType;
 ///
-/// let payload = Binary::new("payload", true);
+/// let payload = BinaryField::new("payload", true);
 /// assert_eq!(payload.name(), "payload");
-/// assert_eq!(payload.data_type(), &yggdryl_field::yggdryl_dtype::Binary);
+/// assert_eq!(payload.data_type(), &BinaryType);
 /// assert!(payload.is_nullable());
 ///
-/// // from_arrow is the exact inverse of to_arrow.
-/// assert_eq!(Binary::from_arrow(&payload.to_arrow()).unwrap(), payload);
+/// // from_arrow is the exact inverse of to_arrow; the data type is the factory.
+/// assert_eq!(BinaryField::from_arrow(&payload.to_arrow()).unwrap(), payload);
+/// assert_eq!(BinaryType.field("payload", true), payload);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Binary {
+pub struct BinaryField {
     name: String,
-    data_type: yggdryl_dtype::Binary,
+    data_type: BinaryType,
     nullable: bool,
 }
 
-impl Binary {
+impl BinaryField {
     /// A `binary` field named `name`.
     pub fn new(name: impl Into<String>, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type: yggdryl_dtype::Binary,
+            data_type: BinaryType,
             nullable,
         }
     }
 }
 
-impl RawField<yggdryl_dtype::Binary> for Binary {
+impl Field<BinaryType> for BinaryField {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn data_type(&self) -> &yggdryl_dtype::Binary {
+    fn data_type(&self) -> &BinaryType {
         &self.data_type
     }
 
@@ -49,12 +51,17 @@ impl RawField<yggdryl_dtype::Binary> for Binary {
     }
 
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
-        <yggdryl_dtype::Binary as RawDataType>::from_arrow(field.data_type())?;
-        crate::raw_field::validate_field_metadata(field, "Binary")?;
+        <BinaryType as DataType>::from_arrow(field.data_type())?;
+        crate::field::validate_field_metadata(field, "BinaryType")?;
         Ok(Self::new(field.name(), field.is_nullable()))
     }
 }
 
-impl Field<Vec<u8>> for Binary {
-    type Type = yggdryl_dtype::Binary;
+impl TypedField<BinaryType, Vec<u8>> for BinaryField {}
+
+impl FieldFactory<Vec<u8>> for BinaryType {
+    type Field = BinaryField;
+    fn field(&self, name: impl Into<String>, nullable: bool) -> BinaryField {
+        BinaryField::new(name, nullable)
+    }
 }

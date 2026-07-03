@@ -20,15 +20,15 @@ function bench(label, fn) {
   console.log(`${label.padEnd(32)} ${(elapsed / N).toFixed(1).padStart(9)} ns/op`)
 }
 
-const value = new scalar.Int64(42n)
-const optional = new scalar.OptionalInt64(42n)
+const value = new scalar.Int64Scalar(42n)
+const optional = new scalar.OptionalInt64Scalar(42n)
 
-bench('new Int64(42n)', () => new scalar.Int64(42n))
-bench('Int64.null()', () => scalar.Int64.null())
+bench('new Int64Scalar(42n)', () => new scalar.Int64Scalar(42n))
+bench('Int64Scalar.null()', () => scalar.Int64Scalar.null())
 bench('scalar.value()', () => value.value())
 bench('scalar.asI64() direct', () => value.asI64())
 bench('scalar.asI8() converted', () => value.asI8())
 bench('scalar.asF64() checked', () => value.asF64())
-bench('new OptionalInt64(42n)', () => new scalar.OptionalInt64(42n))
+bench('new OptionalInt64Scalar(42n)', () => new scalar.OptionalInt64Scalar(42n))
 bench('optional.asI64() redirected', () => optional.asI64())
 bench('optional.dataType()', () => optional.dataType())

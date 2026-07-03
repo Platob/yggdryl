@@ -1,6 +1,6 @@
-//! The [`Union`] data type.
+//! The [`UnionType`] data type.
 
-use crate::{DataError, RawDataType, RawNested};
+use crate::{DataError, DataType, Nested};
 use arrow_schema::{UnionFields, UnionMode};
 
 /// The Apache Arrow `union` data type: a value is exactly one of several child
@@ -8,18 +8,19 @@ use arrow_schema::{UnionFields, UnionMode};
 ///
 /// It carries its [`UnionFields`] — the `(type id, child field)` pairs — and its
 /// [`UnionMode`] (`Sparse` or `Dense`), exactly as Arrow models them, so
-/// [`to_arrow`](RawDataType::to_arrow) / [`from_arrow`](RawDataType::from_arrow)
-/// round-trip losslessly. It is a [`RawNested`] type: its children are fields and it
+/// [`to_arrow`](DataType::to_arrow) / [`from_arrow`](DataType::from_arrow)
+/// round-trip losslessly. It is a [`Nested`] type: its children are fields and it
 /// has no fixed width of its own.
 ///
-/// [`Union::optional`] builds the two-variant union between [`Null`](crate::Null)
-/// and a value type — the shape [`Optional`](crate::Optional) is built on.
+/// [`UnionType::optional`] builds the two-variant union between
+/// [`NullType`](crate::NullType) and a value type — the shape
+/// [`OptionalType`](crate::OptionalType) is built on.
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, Int64, RawDataType, RawNested, Union};
+/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, Nested, UnionType};
 ///
 /// // A union of null and int64 (the "optional int64" shape).
-/// let union = Union::optional(&Int64);
+/// let union = UnionType::optional(&Int64Type);
 /// assert_eq!(union.name(), "union");
 /// assert_eq!(union.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
 /// assert_eq!(union.byte_width(), None);
@@ -28,22 +29,22 @@ use arrow_schema::{UnionFields, UnionMode};
 /// // to_arrow / from_arrow are lossless.
 /// let arrow = union.to_arrow();
 /// assert!(matches!(arrow, arrow_schema::DataType::Union(..)));
-/// assert_eq!(Union::from_arrow(&arrow).unwrap(), union);
+/// assert_eq!(UnionType::from_arrow(&arrow).unwrap(), union);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Union {
+pub struct UnionType {
     fields: UnionFields,
     mode: UnionMode,
 }
 
-impl Union {
+impl UnionType {
     /// This type's [`DataTypeId`](crate::DataTypeId).
     pub const ID: crate::DataTypeId = crate::DataTypeId::Union;
 
-    /// The type id of the null variant in a [`Union::optional`] union.
+    /// The type id of the null variant in a [`UnionType::optional`] union.
     pub const NULL_TYPE_ID: i8 = 0;
 
-    /// The type id of the value variant in a [`Union::optional`] union.
+    /// The type id of the value variant in a [`UnionType::optional`] union.
     pub const VALUE_TYPE_ID: i8 = 1;
 
     /// A union of the given `(type id, child field)` pairs in `mode`.
@@ -52,10 +53,10 @@ impl Union {
     }
 
     /// The sparse two-variant union between null and `value_type`: type id
-    /// [`NULL_TYPE_ID`](Union::NULL_TYPE_ID) is a [`Null`](crate::Null) child named
-    /// `"null"`, and [`VALUE_TYPE_ID`](Union::VALUE_TYPE_ID) is a `value_type`
-    /// child named after the type.
-    pub fn optional(value_type: &dyn RawDataType) -> Self {
+    /// [`NULL_TYPE_ID`](UnionType::NULL_TYPE_ID) is a [`NullType`](crate::NullType)
+    /// child named `"null"`, and [`VALUE_TYPE_ID`](UnionType::VALUE_TYPE_ID) is a
+    /// `value_type` child named after the type.
+    pub fn optional(value_type: &dyn DataType) -> Self {
         // The null child is identical for every optional union: built once,
         // shared by reference count.
         static NULL_FIELD: std::sync::OnceLock<arrow_schema::FieldRef> = std::sync::OnceLock::new();
@@ -82,7 +83,7 @@ impl Union {
     }
 }
 
-impl super::RawUnion for Union {
+impl super::Union for UnionType {
     fn fields(&self) -> &UnionFields {
         &self.fields
     }
@@ -92,7 +93,7 @@ impl super::RawUnion for Union {
     }
 }
 
-impl RawDataType for Union {
+impl DataType for UnionType {
     fn name(&self) -> &str {
         "union"
     }
@@ -119,14 +120,14 @@ impl RawDataType for Union {
         match data_type {
             arrow_schema::DataType::Union(fields, mode) => Ok(Self::new(fields.clone(), *mode)),
             other => Err(DataError::IncompatibleArrowType {
-                expected: "Union".to_string(),
+                expected: "UnionType".to_string(),
                 got: other.to_string(),
             }),
         }
     }
 }
 
-impl RawNested for Union {
+impl Nested for UnionType {
     fn child_count(&self) -> usize {
         self.fields.len()
     }

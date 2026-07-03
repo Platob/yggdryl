@@ -17,7 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 # The data-type layer: every field pairs a name with a `yggdryl-dtype` data type.
 yggdryl-dtype = { workspace = true }
-# Arrow interop surface: `RawField::to_arrow` / `from_arrow` mirror an
+# Arrow interop surface: `Field::to_arrow` / `from_arrow` mirror an
 # `arrow_schema::Field`.
 arrow-schema = { workspace = true }
 # Optional structured logging via the `log` facade (the `log_event!` macro),

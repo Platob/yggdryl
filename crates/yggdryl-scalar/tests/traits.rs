@@ -1,17 +1,18 @@
 //! Integration tests for the trait layer itself, independent of any concrete type —
-//! most notably that an *unsized* value (`str`) reaches the typed [`Scalar`] layer.
+//! most notably that an *unsized* value (`str`) reaches the typed [`TypedScalar`]
+//! layer.
 
 use yggdryl_scalar::arrow_array::Array; // len / is_null / null_count on the arrow side
-use yggdryl_scalar::yggdryl_dtype::{DataError, RawDataType};
-use yggdryl_scalar::{arrow_array, arrow_schema, yggdryl_core, RawScalar, Scalar};
+use yggdryl_scalar::yggdryl_dtype::{DataError, DataType};
+use yggdryl_scalar::{arrow_array, arrow_schema, yggdryl_core, Scalar, TypedScalar};
 
 // A minimal string type and scalar, proving an unsized value reaches the typed
-// `Scalar<str>` layer — the borrowed `Option<&str>` the `?Sized` value enables (an
-// integer scalar, being `Sized`, cannot exercise this path).
+// `TypedScalar<Utf8, str>` layer — the borrowed `Option<&str>` the `?Sized` value
+// enables (an integer scalar, being `Sized`, cannot exercise this path).
 #[derive(Debug)]
 struct Utf8;
 
-impl RawDataType for Utf8 {
+impl DataType for Utf8 {
     fn name(&self) -> &str {
         "utf8"
     }
@@ -41,7 +42,7 @@ struct Utf8Scalar {
     value: Option<String>,
 }
 
-impl RawScalar<Utf8> for Utf8Scalar {
+impl Scalar<Utf8> for Utf8Scalar {
     type Value = str;
     fn data_type(&self) -> &Utf8 {
         &self.data_type
@@ -88,13 +89,11 @@ impl RawScalar<Utf8> for Utf8Scalar {
     }
 }
 
-impl Scalar<str> for Utf8Scalar {
-    type Type = Utf8;
-}
+impl TypedScalar<Utf8, str> for Utf8Scalar {}
 
 #[test]
 fn a_string_scalar_exposes_borrowed_str() {
-    fn value_of<S: Scalar<str>>(scalar: &S) -> Option<&str> {
+    fn value_of<S: TypedScalar<Utf8, str>>(scalar: &S) -> Option<&str> {
         scalar.value()
     }
     let hello = Utf8Scalar {

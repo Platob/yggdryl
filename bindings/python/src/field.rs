@@ -1,34 +1,37 @@
 //! The `yggdryl.field` submodule — thin wrappers over the `yggdryl-field` crate.
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
-//! `Int64`, `OptionalInt64`), alongside `Binary` / `OptionalBinary`, `Null` and
-//! `Union` — the same bare names as the Rust crate, the submodule carrying the
-//! concern. A field pairs a name with its `yggdryl.dtype` data type and a
-//! nullability flag (`True` by default, as a keyword default).
+//! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
+//! `OptionalBinaryField`, `NullField` and `UnionField` — the same suffixed names
+//! as the Rust crate, the submodule carrying the concern. A field pairs a name
+//! with its `yggdryl.dtype` data type and a nullability flag (`True` by default,
+//! as a keyword default); a data type also builds its field directly through its
+//! `field(name, nullable=True)` factory.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the generic
-//! nested fields (`List` / `Map` / `Struct`), which have no concrete FFI shape
-//! yet.
+//! nested fields (`ListField` / `MapField` / `StructField`), which have no
+//! concrete FFI shape yet.
 
 use pyo3::prelude::*;
-use yggdryl_field::RawField;
+use yggdryl_field::Field;
 
-/// A nullable `union` field: a name paired with a `yggdryl.dtype.Union` data type.
+/// A nullable `union` field: a name paired with a `yggdryl.dtype.UnionType` data
+/// type.
 #[pyclass]
-pub struct Union {
-    pub(crate) inner: yggdryl_field::Union,
+pub struct UnionField {
+    pub(crate) inner: yggdryl_field::UnionField,
 }
 
 #[pymethods]
-impl Union {
+impl UnionField {
     /// A field named `name` of the union type `data_type`.
     #[new]
     #[pyo3(signature = (name, data_type, nullable = true))]
-    fn new(name: String, data_type: &crate::dtype::Union, nullable: bool) -> Self {
+    fn new(name: String, data_type: &crate::dtype::UnionType, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::Union::new(name, data_type.inner.clone(), nullable),
+            inner: yggdryl_field::UnionField::new(name, data_type.inner.clone(), nullable),
         }
     }
 
@@ -38,8 +41,8 @@ impl Union {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::Union {
-        crate::dtype::Union {
+    fn data_type(&self) -> crate::dtype::UnionType {
+        crate::dtype::UnionType {
             inner: self.inner.data_type().clone(),
         }
     }
@@ -52,18 +55,18 @@ impl Union {
 
 /// A `null` field: a name paired with the null data type.
 #[pyclass]
-pub struct Null {
-    pub(crate) inner: yggdryl_field::Null,
+pub struct NullField {
+    pub(crate) inner: yggdryl_field::NullField,
 }
 
 #[pymethods]
-impl Null {
+impl NullField {
     /// A `null` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::Null::new(name, nullable),
+            inner: yggdryl_field::NullField::new(name, nullable),
         }
     }
 
@@ -73,8 +76,8 @@ impl Null {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::Null {
-        crate::dtype::Null::default()
+    fn data_type(&self) -> crate::dtype::NullType {
+        crate::dtype::NullType::default()
     }
 
     /// Whether values in this field may be null.
@@ -85,18 +88,18 @@ impl Null {
 
 /// A nullable `binary` field: a name paired with the data type.
 #[pyclass]
-pub struct Binary {
-    pub(crate) inner: yggdryl_field::Binary,
+pub struct BinaryField {
+    pub(crate) inner: yggdryl_field::BinaryField,
 }
 
 #[pymethods]
-impl Binary {
+impl BinaryField {
     /// A `binary` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::Binary::new(name, nullable),
+            inner: yggdryl_field::BinaryField::new(name, nullable),
         }
     }
 
@@ -106,8 +109,8 @@ impl Binary {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::Binary {
-        crate::dtype::Binary::default()
+    fn data_type(&self) -> crate::dtype::BinaryType {
+        crate::dtype::BinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -119,18 +122,18 @@ impl Binary {
 /// A nullable optional-`binary` field: a name paired with the logical optional
 /// data type.
 #[pyclass]
-pub struct OptionalBinary {
-    pub(crate) inner: yggdryl_field::Optional<yggdryl_dtype::Binary>,
+pub struct OptionalBinaryField {
+    pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::BinaryType>,
 }
 
 #[pymethods]
-impl OptionalBinary {
+impl OptionalBinaryField {
     /// An optional-`binary` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::Optional::new(name, nullable),
+            inner: yggdryl_field::OptionalField::new(name, nullable),
         }
     }
 
@@ -140,8 +143,8 @@ impl OptionalBinary {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::OptionalBinary {
-        crate::dtype::OptionalBinary::default()
+    fn data_type(&self) -> crate::dtype::OptionalBinaryType {
+        crate::dtype::OptionalBinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -154,7 +157,7 @@ impl OptionalBinary {
 /// optional field `$opt_ty` — each a thin delegation to the `yggdryl-field`
 /// types.
 macro_rules! int_field_py {
-    ($ty:ident, $opt_ty:ident, $name:literal) => {
+    ($ty:ident, $opt_ty:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
         #[doc = concat!("A nullable `", $name, "` field: a name paired with the data type.")]
         #[pyclass]
         pub struct $ty {
@@ -178,8 +181,8 @@ macro_rules! int_field_py {
             }
 
             /// The field's data type.
-            fn data_type(&self) -> crate::dtype::$ty {
-                crate::dtype::$ty::default()
+            fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
             }
 
             /// Whether values in this field may be null.
@@ -191,7 +194,7 @@ macro_rules! int_field_py {
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
         #[pyclass]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_field::Optional<yggdryl_dtype::$ty>,
+            pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::$dtype>,
         }
 
         #[pymethods]
@@ -201,7 +204,7 @@ macro_rules! int_field_py {
             #[pyo3(signature = (name, nullable = true))]
             fn new(name: String, nullable: bool) -> Self {
                 Self {
-                    inner: yggdryl_field::Optional::new(name, nullable),
+                    inner: yggdryl_field::OptionalField::new(name, nullable),
                 }
             }
 
@@ -211,8 +214,8 @@ macro_rules! int_field_py {
             }
 
             /// The field's data type.
-            fn data_type(&self) -> crate::dtype::$opt_ty {
-                crate::dtype::$opt_ty::default()
+            fn data_type(&self) -> crate::dtype::$opt_dtype {
+                crate::dtype::$opt_dtype::default()
             }
 
             /// Whether values in this field may be null.
@@ -223,36 +226,84 @@ macro_rules! int_field_py {
     };
 }
 
-int_field_py!(Int8, OptionalInt8, "int8");
-int_field_py!(Int16, OptionalInt16, "int16");
-int_field_py!(Int32, OptionalInt32, "int32");
-int_field_py!(Int64, OptionalInt64, "int64");
-int_field_py!(UInt8, OptionalUInt8, "uint8");
-int_field_py!(UInt16, OptionalUInt16, "uint16");
-int_field_py!(UInt32, OptionalUInt32, "uint32");
-int_field_py!(UInt64, OptionalUInt64, "uint64");
+int_field_py!(
+    Int8Field,
+    OptionalInt8Field,
+    Int8Type,
+    OptionalInt8Type,
+    "int8"
+);
+int_field_py!(
+    Int16Field,
+    OptionalInt16Field,
+    Int16Type,
+    OptionalInt16Type,
+    "int16"
+);
+int_field_py!(
+    Int32Field,
+    OptionalInt32Field,
+    Int32Type,
+    OptionalInt32Type,
+    "int32"
+);
+int_field_py!(
+    Int64Field,
+    OptionalInt64Field,
+    Int64Type,
+    OptionalInt64Type,
+    "int64"
+);
+int_field_py!(
+    UInt8Field,
+    OptionalUInt8Field,
+    UInt8Type,
+    OptionalUInt8Type,
+    "uint8"
+);
+int_field_py!(
+    UInt16Field,
+    OptionalUInt16Field,
+    UInt16Type,
+    OptionalUInt16Type,
+    "uint16"
+);
+int_field_py!(
+    UInt32Field,
+    OptionalUInt32Field,
+    UInt32Type,
+    OptionalUInt32Type,
+    "uint32"
+);
+int_field_py!(
+    UInt64Field,
+    OptionalUInt64Field,
+    UInt64Type,
+    OptionalUInt64Type,
+    "uint64"
+);
 
 /// Populates the `field` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<Union>()?;
-    module.add_class::<Null>()?;
-    module.add_class::<Binary>()?;
-    module.add_class::<OptionalBinary>()?;
-    module.add_class::<Int8>()?;
-    module.add_class::<OptionalInt8>()?;
-    module.add_class::<Int16>()?;
-    module.add_class::<OptionalInt16>()?;
-    module.add_class::<Int32>()?;
-    module.add_class::<OptionalInt32>()?;
-    module.add_class::<Int64>()?;
-    module.add_class::<OptionalInt64>()?;
-    module.add_class::<UInt8>()?;
-    module.add_class::<OptionalUInt8>()?;
-    module.add_class::<UInt16>()?;
-    module.add_class::<OptionalUInt16>()?;
-    module.add_class::<UInt32>()?;
-    module.add_class::<OptionalUInt32>()?;
-    module.add_class::<UInt64>()?;
-    module.add_class::<OptionalUInt64>()?;
+    module.add_class::<UnionField>()?;
+    module.add_class::<NullField>()?;
+    module.add_class::<BinaryField>()?;
+    module.add_class::<OptionalBinaryField>()?;
+    module.add_class::<Int8Field>()?;
+    module.add_class::<OptionalInt8Field>()?;
+    module.add_class::<Int16Field>()?;
+    module.add_class::<OptionalInt16Field>()?;
+    module.add_class::<Int32Field>()?;
+    module.add_class::<OptionalInt32Field>()?;
+    module.add_class::<Int64Field>()?;
+    module.add_class::<OptionalInt64Field>()?;
+    module.add_class::<UInt8Field>()?;
+    module.add_class::<OptionalUInt8Field>()?;
+    module.add_class::<UInt16Field>()?;
+    module.add_class::<OptionalUInt16Field>()?;
+    module.add_class::<UInt32Field>()?;
+    module.add_class::<OptionalUInt32Field>()?;
+    module.add_class::<UInt64Field>()?;
+    module.add_class::<OptionalUInt64Field>()?;
     Ok(())
 }

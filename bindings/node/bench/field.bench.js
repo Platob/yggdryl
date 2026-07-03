@@ -20,9 +20,9 @@ function bench(label, fn) {
   console.log(`${label.padEnd(32)} ${(elapsed / N).toFixed(1).padStart(9)} ns/op`)
 }
 
-const column = new field.Int64('id', false)
+const column = new field.Int64Field('id', false)
 
-bench("new Int64('id', false)", () => new field.Int64('id', false))
+bench("new Int64Field('id', false)", () => new field.Int64Field('id', false))
 bench('field.name()', () => column.name())
 bench('field.dataType()', () => column.dataType())
 bench('field.isNullable()', () => column.isNullable())

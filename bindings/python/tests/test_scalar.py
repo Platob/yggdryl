@@ -6,14 +6,14 @@ from yggdryl import core, scalar
 
 # (scalar, optional scalar, name, min, max)
 INTEGERS = [
-    (scalar.Int8, scalar.OptionalInt8, "int8", -(2 ** 7), 2 ** 7 - 1),
-    (scalar.Int16, scalar.OptionalInt16, "int16", -(2 ** 15), 2 ** 15 - 1),
-    (scalar.Int32, scalar.OptionalInt32, "int32", -(2 ** 31), 2 ** 31 - 1),
-    (scalar.Int64, scalar.OptionalInt64, "int64", -(2 ** 63), 2 ** 63 - 1),
-    (scalar.UInt8, scalar.OptionalUInt8, "uint8", 0, 2 ** 8 - 1),
-    (scalar.UInt16, scalar.OptionalUInt16, "uint16", 0, 2 ** 16 - 1),
-    (scalar.UInt32, scalar.OptionalUInt32, "uint32", 0, 2 ** 32 - 1),
-    (scalar.UInt64, scalar.OptionalUInt64, "uint64", 0, 2 ** 64 - 1),
+    (scalar.Int8Scalar, scalar.OptionalInt8Scalar, "int8", -(2 ** 7), 2 ** 7 - 1),
+    (scalar.Int16Scalar, scalar.OptionalInt16Scalar, "int16", -(2 ** 15), 2 ** 15 - 1),
+    (scalar.Int32Scalar, scalar.OptionalInt32Scalar, "int32", -(2 ** 31), 2 ** 31 - 1),
+    (scalar.Int64Scalar, scalar.OptionalInt64Scalar, "int64", -(2 ** 63), 2 ** 63 - 1),
+    (scalar.UInt8Scalar, scalar.OptionalUInt8Scalar, "uint8", 0, 2 ** 8 - 1),
+    (scalar.UInt16Scalar, scalar.OptionalUInt16Scalar, "uint16", 0, 2 ** 16 - 1),
+    (scalar.UInt32Scalar, scalar.OptionalUInt32Scalar, "uint32", 0, 2 ** 32 - 1),
+    (scalar.UInt64Scalar, scalar.OptionalUInt64Scalar, "uint64", 0, 2 ** 64 - 1),
 ]
 
 IDS = [case[2] for case in INTEGERS]
@@ -88,31 +88,31 @@ def test_optional_scalar_redirects_to_the_inner_scalar(case):
 
 def test_float_access_is_exact_or_raises():
     # 2**53 is the last contiguous integer in f64; 2**53 + 1 rounds.
-    assert scalar.Int64(2 ** 53).as_f64() == float(2 ** 53)
+    assert scalar.Int64Scalar(2 ** 53).as_f64() == float(2 ** 53)
     with pytest.raises(ValueError, match="not exactly representable"):
-        scalar.Int64(2 ** 53 + 1).as_f64()
+        scalar.Int64Scalar(2 ** 53 + 1).as_f64()
     with pytest.raises(ValueError, match="not exactly representable"):
-        scalar.UInt64(2 ** 64 - 1).as_f64()
+        scalar.UInt64Scalar(2 ** 64 - 1).as_f64()
     # Sign changes never pass, and the error names the offending value.
     with pytest.raises(ValueError, match="-1 is not exactly representable"):
-        scalar.Int8(-1).as_u64()
+        scalar.Int8Scalar(-1).as_u64()
 
 
 def test_binary_scalar_reads_bytes_and_io():
-    blob = scalar.Binary(b"\x01\x02\x03")
+    blob = scalar.BinaryScalar(b"\x01\x02\x03")
     assert blob.is_null() is False
     assert blob.value() == b"\x01\x02\x03"
     assert blob.as_bytes() == b"\x01\x02\x03"
     assert blob.data_type().name() == "binary"
     # UTF-8 bytes convert to str; anything else raises naming the shape — and
     # an explicit core charset decodes instead.
-    assert scalar.Binary(b"hi").as_str() == "hi"
-    assert scalar.Binary(b"hi").as_str("utf8") == "hi"
-    assert scalar.Binary(b"\xe9").as_str("latin1") == "é"
+    assert scalar.BinaryScalar(b"hi").as_str() == "hi"
+    assert scalar.BinaryScalar(b"hi").as_str("utf8") == "hi"
+    assert scalar.BinaryScalar(b"\xe9").as_str("latin1") == "é"
     with pytest.raises(ValueError, match="non-UTF-8"):
-        scalar.Binary(b"\xff").as_str()
+        scalar.BinaryScalar(b"\xff").as_str()
     with pytest.raises(ValueError, match="unknown charset"):
-        scalar.Binary(b"hi").as_str("ascii")
+        scalar.BinaryScalar(b"hi").as_str("ascii")
     with pytest.raises(ValueError, match="no i64 conversion"):
         blob.as_i64()
 
@@ -129,8 +129,8 @@ def test_binary_scalar_reads_bytes_and_io():
     assert window.pread_i8(2, core.Whence.Start) == 3
 
     # The empty value and null are distinct states.
-    assert scalar.Binary(b"").is_null() is False
-    missing = scalar.Binary.null()
+    assert scalar.BinaryScalar(b"").is_null() is False
+    missing = scalar.BinaryScalar.null()
     assert missing.is_null() is True
     assert missing.value() is None
     assert missing.to_io() is None
@@ -139,7 +139,7 @@ def test_binary_scalar_reads_bytes_and_io():
 
 
 def test_optional_binary_redirects_to_the_inner_scalar():
-    some = scalar.OptionalBinary(b"hi")
+    some = scalar.OptionalBinaryScalar(b"hi")
     assert some.is_null() is False
     assert some.value() == b"hi"
     assert some.scalar().value() == b"hi"
@@ -151,7 +151,7 @@ def test_optional_binary_redirects_to_the_inner_scalar():
     assert opt_type.value_type().name() == "binary"
     assert opt_type.storage().name() == "union"
 
-    missing = scalar.OptionalBinary.null()
+    missing = scalar.OptionalBinaryScalar.null()
     assert missing.is_null() is True
     assert missing.scalar() is None
     with pytest.raises(ValueError, match="is null"):
@@ -159,6 +159,6 @@ def test_optional_binary_redirects_to_the_inner_scalar():
 
 
 def test_null_scalar():
-    nothing = scalar.Null()
+    nothing = scalar.NullScalar()
     assert nothing.is_null() is True
     assert nothing.data_type().name() == "null"

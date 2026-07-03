@@ -1,20 +1,20 @@
-//! The [`Struct`] data type.
+//! The [`StructType`] data type.
 
-use crate::{DataError, RawDataType, RawNested};
+use crate::{DataError, DataType, Nested};
 use arrow_schema::Fields;
 
 /// The Apache Arrow `struct` data type: an ordered set of named child fields.
 ///
 /// It carries its [`Fields`] exactly as Arrow models them, so
-/// [`to_arrow`](RawDataType::to_arrow) / [`from_arrow`](RawDataType::from_arrow)
-/// round-trip losslessly — like the dynamic [`Union`](crate::Union), whose
-/// children are only known at runtime, it stays raw-only (a statically-shaped
-/// struct also implements the typed [`TypedStruct`](crate::TypedStruct)).
+/// [`to_arrow`](DataType::to_arrow) / [`from_arrow`](DataType::from_arrow)
+/// round-trip losslessly — like the dynamic [`UnionType`](crate::UnionType), whose
+/// children are only known at runtime, it stays untyped (a statically-shaped struct
+/// also implements the typed [`TypedStruct`](crate::TypedStruct)).
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, RawDataType, RawNested, RawStruct, Struct};
+/// use yggdryl_dtype::{arrow_schema, DataType, Nested, Struct, StructType};
 ///
-/// let point = Struct::new(arrow_schema::Fields::from(vec![
+/// let point = StructType::new(arrow_schema::Fields::from(vec![
 ///     arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
 ///     arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
 /// ]));
@@ -24,14 +24,14 @@ use arrow_schema::Fields;
 /// assert_eq!(point.child_count(), 2);
 ///
 /// // to_arrow / from_arrow are lossless.
-/// assert_eq!(Struct::from_arrow(&point.to_arrow()).unwrap(), point);
+/// assert_eq!(StructType::from_arrow(&point.to_arrow()).unwrap(), point);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Struct {
+pub struct StructType {
     fields: Fields,
 }
 
-impl Struct {
+impl StructType {
     /// This type's [`DataTypeId`](crate::DataTypeId).
     pub const ID: crate::DataTypeId = crate::DataTypeId::Struct;
 
@@ -41,13 +41,13 @@ impl Struct {
     }
 }
 
-impl super::RawStruct for Struct {
+impl super::Struct for StructType {
     fn fields(&self) -> &Fields {
         &self.fields
     }
 }
 
-impl RawDataType for Struct {
+impl DataType for StructType {
     fn name(&self) -> &str {
         "struct"
     }
@@ -68,14 +68,14 @@ impl RawDataType for Struct {
         match data_type {
             arrow_schema::DataType::Struct(fields) => Ok(Self::new(fields.clone())),
             other => Err(DataError::IncompatibleArrowType {
-                expected: "Struct".to_string(),
+                expected: "StructType".to_string(),
                 got: other.to_string(),
             }),
         }
     }
 }
 
-impl RawNested for Struct {
+impl Nested for StructType {
     fn child_count(&self) -> usize {
         self.fields.len()
     }

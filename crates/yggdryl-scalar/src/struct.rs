@@ -1,27 +1,29 @@
-//! The [`Struct`] scalar of the [`struct`](yggdryl_dtype::Struct) data type.
+//! The [`StructScalar`] scalar of the [`StructType`](yggdryl_dtype::StructType) data
+//! type.
 
-use crate::{RawScalar, Scalar};
+use crate::{Scalar, TypedScalar};
 use arrow_array::ArrayRef;
-use yggdryl_dtype::{DataError, RawDataType, RawStruct};
+use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 
 /// A single, possibly-null `struct` value: one row, held as one one-element Arrow
 /// column per child field.
 ///
-/// Like its data type ([`yggdryl_dtype::Struct`]), it is dynamic — the children
-/// are only known at runtime — so its [`Value`](RawScalar::Value) is the borrowed
-/// slice of column [`ArrayRef`]s (each of length one), and construction validates
-/// the columns against the declared fields with actionable errors.
+/// Like its data type ([`StructType`](yggdryl_dtype::StructType)), it is dynamic —
+/// the children are only known at runtime — so its [`Value`](Scalar::Value) is the
+/// borrowed slice of column [`ArrayRef`]s (each of length one), and construction
+/// validates the columns against the declared fields with actionable errors. Being
+/// dynamic, it has no [`ScalarFactory`](crate::ScalarFactory).
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, RawDataType};
-/// use yggdryl_scalar::{arrow_array, RawScalar, Struct};
+/// use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, DataType};
+/// use yggdryl_scalar::{arrow_array, Scalar, StructScalar};
 ///
-/// let point = dtype::Struct::new(arrow_schema::Fields::from(vec![
+/// let point = dtype::StructType::new(arrow_schema::Fields::from(vec![
 ///     arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
 ///     arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
 /// ]));
 ///
-/// let row = Struct::new(
+/// let row = StructScalar::new(
 ///     point.clone(),
 ///     vec![
 ///         std::sync::Arc::new(arrow_array::Int64Array::from_iter_values([1])),
@@ -35,25 +37,22 @@ use yggdryl_dtype::{DataError, RawDataType, RawStruct};
 /// // The Arrow round trip preserves the row.
 /// let arrow = row.to_arrow();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(Struct::from_arrow(arrow.as_ref()).unwrap(), row);
+/// assert_eq!(StructScalar::from_arrow(arrow.as_ref()).unwrap(), row);
 ///
-/// assert!(Struct::null(point).is_null());
+/// assert!(StructScalar::null(point).is_null());
 /// ```
 #[derive(Debug, Clone)]
-pub struct Struct {
-    data_type: yggdryl_dtype::Struct,
+pub struct StructScalar {
+    data_type: StructType,
     columns: Option<Vec<ArrayRef>>,
 }
 
-impl Struct {
+impl StructScalar {
     /// A scalar holding one row of `data_type`: one one-element column per child
     /// field, in field order. A column count, length or type mismatch errors with
     /// an actionable [`DataError`].
-    pub fn new(
-        data_type: yggdryl_dtype::Struct,
-        columns: Vec<ArrayRef>,
-    ) -> Result<Self, DataError> {
-        let fields = RawStruct::fields(&data_type);
+    pub fn new(data_type: StructType, columns: Vec<ArrayRef>) -> Result<Self, DataError> {
+        let fields = Struct::fields(&data_type);
         if columns.len() != fields.len() {
             return Err(DataError::IncompatibleArrowType {
                 expected: format!("{} column(s), one per child field", fields.len()),
@@ -85,7 +84,7 @@ impl Struct {
     }
 
     /// The null struct scalar of `data_type`.
-    pub fn null(data_type: yggdryl_dtype::Struct) -> Self {
+    pub fn null(data_type: StructType) -> Self {
         Self {
             data_type,
             columns: None,
@@ -93,7 +92,7 @@ impl Struct {
     }
 }
 
-impl PartialEq for Struct {
+impl PartialEq for StructScalar {
     // Column `ArrayRef`s compare by value through the `Array` `PartialEq` on their
     // data, so two rows are equal when their types and values are.
     fn eq(&self, other: &Self) -> bool {
@@ -112,10 +111,10 @@ impl PartialEq for Struct {
     }
 }
 
-impl RawScalar<yggdryl_dtype::Struct> for Struct {
+impl Scalar<StructType> for StructScalar {
     type Value = [ArrayRef];
 
-    fn data_type(&self) -> &yggdryl_dtype::Struct {
+    fn data_type(&self) -> &StructType {
         &self.data_type
     }
 
@@ -128,9 +127,9 @@ impl RawScalar<yggdryl_dtype::Struct> for Struct {
     }
 
     fn to_arrow(&self) -> ArrayRef {
-        let fields = RawStruct::fields(&self.data_type);
+        let fields = Struct::fields(&self.data_type);
         let Some(columns) = &self.columns else {
-            return arrow_array::new_null_array(&RawDataType::to_arrow(&self.data_type), 1);
+            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
         let array =
             arrow_array::StructArray::try_new_with_length(fields.clone(), columns.clone(), None, 1)
@@ -143,7 +142,7 @@ impl RawScalar<yggdryl_dtype::Struct> for Struct {
         if length != 1 {
             return Err(DataError::InvalidScalarLength { got: length });
         }
-        let data_type = RawDataType::from_arrow(arrow_array::Array::data_type(array))?;
+        let data_type = DataType::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::StructArray>()
@@ -163,6 +162,4 @@ impl RawScalar<yggdryl_dtype::Struct> for Struct {
     }
 }
 
-impl Scalar<[ArrayRef]> for Struct {
-    type Type = yggdryl_dtype::Struct;
-}
+impl TypedScalar<StructType, [ArrayRef]> for StructScalar {}

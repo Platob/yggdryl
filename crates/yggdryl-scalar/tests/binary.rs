@@ -5,11 +5,11 @@ use yggdryl_scalar::yggdryl_core::{
     ByteBuffer, ByteBufferSlice, Latin1, RawIOBase, RawIOCursor, RawIOSlice, Seekable, Whence,
 };
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
-use yggdryl_scalar::{arrow_array, Binary, Optional, RawScalar, Serie};
+use yggdryl_scalar::{arrow_array, BinaryScalar, OptionalScalar, Scalar, Serie};
 
 #[test]
 fn binary_scalar_holds_bytes_or_null() {
-    let blob = Binary::new(vec![1, 2, 3]);
+    let blob = BinaryScalar::new(vec![1, 2, 3]);
     assert!(!blob.is_null());
     assert_eq!(blob.value(), Some(&[1, 2, 3][..]));
 
@@ -19,9 +19,12 @@ fn binary_scalar_holds_bytes_or_null() {
     assert_eq!(borrowed.as_ptr(), blob.io().unwrap().as_bytes().as_ptr());
 
     // UTF-8 bytes convert to str; anything else errors naming the shape.
-    assert_eq!(Binary::new(b"hi".to_vec()).as_str(None).unwrap(), "hi");
+    assert_eq!(
+        BinaryScalar::new(b"hi".to_vec()).as_str(None).unwrap(),
+        "hi"
+    );
     assert!(matches!(
-        Binary::new(vec![0xFF]).as_str(None),
+        BinaryScalar::new(vec![0xFF]).as_str(None),
         Err(DataError::InexactConversion { target: "str", .. })
     ));
     // No numeric conversions (the trait defaults, naming the data type).
@@ -31,26 +34,29 @@ fn binary_scalar_holds_bytes_or_null() {
     ));
 
     // The empty value and null are distinct states; a null holds no value.
-    assert!(!Binary::new(Vec::new()).is_null());
-    let missing = Binary::null();
+    assert!(!BinaryScalar::new(Vec::new()).is_null());
+    let missing = BinaryScalar::null();
     assert!(missing.is_null());
     assert_eq!(missing.value(), None);
     assert!(matches!(missing.as_bytes(), Err(DataError::NullValue)));
     assert!(matches!(missing.as_str(None), Err(DataError::NullValue)));
     assert!(missing.io().is_none());
     assert!(missing.clone().into_io().is_none());
-    assert_eq!(Binary::default(), missing); // like the integers: Default is null
+    assert_eq!(BinaryScalar::default(), missing); // like the integers: Default is null
 
     // Construction from native shapes.
-    assert_eq!(Binary::from(vec![1u8, 2, 3]), blob);
-    assert_eq!(Binary::from(&[1u8, 2, 3][..]), blob);
-    assert_eq!(Binary::from(None::<Vec<u8>>), missing);
-    assert_eq!(Binary::from(ByteBuffer::from_bytes(vec![1, 2, 3])), blob);
+    assert_eq!(BinaryScalar::from(vec![1u8, 2, 3]), blob);
+    assert_eq!(BinaryScalar::from(&[1u8, 2, 3][..]), blob);
+    assert_eq!(BinaryScalar::from(None::<Vec<u8>>), missing);
+    assert_eq!(
+        BinaryScalar::from(ByteBuffer::from_bytes(vec![1, 2, 3])),
+        blob
+    );
 }
 
 #[test]
 fn binary_scalar_is_a_positioned_io_resource() {
-    let blob = Binary::new(vec![10, 20, 30, 40]);
+    let blob = BinaryScalar::new(vec![10, 20, 30, 40]);
 
     // Borrowed positioned reads through the core RawIOBase surface.
     let io = blob.io().unwrap();
@@ -71,7 +77,7 @@ fn binary_scalar_is_a_positioned_io_resource() {
     assert_eq!(cursor.tell(), 3); // reads advance the cursor
 
     // And back: the resource rebuilds the scalar — the inverse of into_io.
-    assert_eq!(Binary::from(cursor.into_inner()), blob);
+    assert_eq!(BinaryScalar::from(cursor.into_inner()), blob);
 
     // The slice adapter bounds reads to a byte window of the value.
     let window = RawIOSlice::new(blob.clone().into_io().unwrap(), 1, 3);
@@ -86,23 +92,23 @@ fn binary_scalar_is_a_positioned_io_resource() {
 fn binary_scalar_arrow_round_trips_all_shapes() {
     // Bytes, the empty value and null are three distinct states.
     for scalar in [
-        Binary::new(vec![1, 2, 3]),
-        Binary::new(Vec::new()),
-        Binary::null(),
+        BinaryScalar::new(vec![1, 2, 3]),
+        BinaryScalar::new(Vec::new()),
+        BinaryScalar::null(),
     ] {
         let arrow = scalar.to_arrow();
         assert_eq!(arrow_array::Array::len(arrow.as_ref()), 1);
-        assert_eq!(Binary::from_arrow(arrow.as_ref()).unwrap(), scalar);
+        assert_eq!(BinaryScalar::from_arrow(arrow.as_ref()).unwrap(), scalar);
     }
 
     // A non-binary array and a multi-element array are refused.
     assert!(matches!(
-        Binary::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
+        BinaryScalar::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
         Err(DataError::IncompatibleArrowType { .. })
     ));
     let two = arrow_array::BinaryArray::from_iter_values([&b"a"[..], &b"b"[..]]);
     assert!(matches!(
-        Binary::from_arrow(&two),
+        BinaryScalar::from_arrow(&two),
         Err(DataError::InvalidScalarLength { got: 2 })
     ));
 }
@@ -110,23 +116,26 @@ fn binary_scalar_arrow_round_trips_all_shapes() {
 #[test]
 fn binary_composes_with_the_optional_and_list_families() {
     // Optional over binary: union storage, access redirected to the inner scalar.
-    let some = Optional::new(Binary::new(b"hi".to_vec()));
+    let some = OptionalScalar::new(BinaryScalar::new(b"hi".to_vec()));
     assert_eq!(some.as_bytes().unwrap(), b"hi");
     assert_eq!(some.as_str(None).unwrap(), "hi");
     assert_eq!(
-        Optional::from_arrow(some.to_arrow().as_ref()).unwrap(),
+        OptionalScalar::from_arrow(some.to_arrow().as_ref()).unwrap(),
         some
     );
     assert!(matches!(
-        Optional::<dtype::Binary, Binary>::null().as_bytes(),
+        OptionalScalar::<dtype::BinaryType, BinaryScalar>::null().as_bytes(),
         Err(DataError::NullValue)
     ));
 
     // A list of binary: the scalar accessors hand back inner scalars and owned
     // native values (`Vec<u8>`, the owned form of the unsized `[u8]`).
-    let blobs = Serie::<dtype::Binary, Binary>::new(vec![Binary::new(vec![1]), Binary::null()]);
+    let blobs = Serie::<dtype::BinaryType, BinaryScalar>::new(vec![
+        BinaryScalar::new(vec![1]),
+        BinaryScalar::null(),
+    ]);
     assert_eq!(blobs.len(), 2);
-    assert_eq!(blobs.get_scalar_at(0), Some(Binary::new(vec![1])));
+    assert_eq!(blobs.get_scalar_at(0), Some(BinaryScalar::new(vec![1])));
     assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), vec![1u8]);
     assert!(matches!(
         blobs.get_at::<Vec<u8>>(1),
@@ -138,18 +147,18 @@ fn binary_composes_with_the_optional_and_list_families() {
 #[test]
 fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
     // into_io_slice moves the buffer into a full-window core slice — zero copy.
-    let blob = Binary::new(vec![10, 20, 30]);
+    let blob = BinaryScalar::new(vec![10, 20, 30]);
     let window = blob.clone().into_io_slice().unwrap();
     assert_eq!(window.byte_size(), 3);
     assert_eq!(window.pread_byte_one(1, Whence::Start).unwrap(), 20);
     assert_eq!(window.pread_i8(2, Whence::Start).unwrap(), 30);
-    assert!(Binary::null().into_io_slice().is_none());
+    assert!(BinaryScalar::null().into_io_slice().is_none());
 
     // An explicit core charset decodes as_str; the default stays borrowed UTF-8.
-    let accented = Binary::new(vec![0xE9]);
+    let accented = BinaryScalar::new(vec![0xE9]);
     assert_eq!(accented.as_str(Some(&Latin1)).unwrap(), "\u{e9}");
     assert!(accented.as_str(None).is_err()); // not valid UTF-8
-    let plain = Binary::new(b"hi".to_vec());
+    let plain = BinaryScalar::new(b"hi".to_vec());
     assert!(matches!(
         plain.as_str(None).unwrap(),
         std::borrow::Cow::Borrowed("hi")
@@ -157,7 +166,8 @@ fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
 
     // The generic native accessor: a binary serie element as bytes, String or a
     // positioned-IO window.
-    let blobs = Serie::<dtype::Binary, Binary>::new(vec![Binary::new(b"hi".to_vec())]);
+    let blobs =
+        Serie::<dtype::BinaryType, BinaryScalar>::new(vec![BinaryScalar::new(b"hi".to_vec())]);
     assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), b"hi".to_vec());
     assert_eq!(blobs.get_at::<String>(0).unwrap(), "hi");
     let window = blobs.get_at::<ByteBufferSlice>(0).unwrap();
@@ -168,5 +178,5 @@ fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
 #[test]
 fn binary_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Binary>();
+    assert_send_sync::<BinaryScalar>();
 }

@@ -24,15 +24,17 @@ def bench(label, function):
 
 
 def main():
-    int64 = dtype.Int64()
+    int64 = dtype.Int64Type()
     encoded = int64.native_to_bytes(42)
 
-    bench("Int64()", dtype.Int64)
+    bench("Int64Type()", dtype.Int64Type)
     bench("native_to_bytes(42)", lambda: int64.native_to_bytes(42))
     bench("native_from_bytes(8B)", lambda: int64.native_from_bytes(encoded))
     bench("default_value()", int64.default_value)
     bench("default_scalar()", int64.default_scalar)
-    bench("Int64().optional()", int64.optional)
+    bench("field('id')", lambda: int64.field("id"))
+    bench("scalar(42)", lambda: int64.scalar(42))
+    bench("Int64Type().optional()", int64.optional)
 
 
 if __name__ == "__main__":

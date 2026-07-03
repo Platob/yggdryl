@@ -3,15 +3,15 @@
 
 use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
-use yggdryl_scalar::{Int64, Map, RawScalar, UInt8};
+use yggdryl_scalar::{Int64Scalar, MapScalar, Scalar, UInt8Scalar};
 
-type RankMap = Map<dtype::UInt8, dtype::Int64, UInt8, Int64>;
+type RankMap = MapScalar<dtype::UInt8Type, dtype::Int64Type, UInt8Scalar, Int64Scalar>;
 
 #[test]
 fn map_scalar_round_trips() {
     let scalar = RankMap::new(vec![
-        (UInt8::new(7), Int64::new(42)),
-        (UInt8::new(8), Int64::null()),
+        (UInt8Scalar::new(7), Int64Scalar::new(42)),
+        (UInt8Scalar::new(8), Int64Scalar::null()),
     ])
     .unwrap();
     assert!(!scalar.is_null());
@@ -30,7 +30,7 @@ fn map_scalar_round_trips() {
 
     // A null key is refused: Arrow map keys are non-nullable.
     assert!(matches!(
-        RankMap::new(vec![(UInt8::null(), Int64::new(1))]),
+        RankMap::new(vec![(UInt8Scalar::null(), Int64Scalar::new(1))]),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }

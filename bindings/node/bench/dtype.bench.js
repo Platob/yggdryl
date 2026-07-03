@@ -20,12 +20,14 @@ function bench(label, fn) {
   console.log(`${label.padEnd(32)} ${(elapsed / N).toFixed(1).padStart(9)} ns/op`)
 }
 
-const int64 = new dtype.Int64()
+const int64 = new dtype.Int64Type()
 const encoded = int64.nativeToBytes(42n)
 
-bench('new Int64()', () => new dtype.Int64())
+bench('new Int64Type()', () => new dtype.Int64Type())
 bench('nativeToBytes(42n)', () => int64.nativeToBytes(42n))
 bench('nativeFromBytes(8B)', () => int64.nativeFromBytes(encoded))
 bench('defaultValue()', () => int64.defaultValue())
 bench('defaultScalar()', () => int64.defaultScalar())
-bench('new Int64().optional()', () => int64.optional())
+bench('field("id", false)', () => int64.field('id', false))
+bench('scalar(42n)', () => int64.scalar(42n))
+bench('new Int64Type().optional()', () => int64.optional())

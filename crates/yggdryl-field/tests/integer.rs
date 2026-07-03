@@ -1,16 +1,17 @@
 //! Integration tests for the concrete integer fields — every signed and unsigned
-//! integer — and the trait stack they exercise (raw, typed, Arrow interop).
+//! integer — and the trait stack they exercise (base, typed, Arrow interop).
 
-use yggdryl_field::yggdryl_dtype::{self as dtype, DataError, RawDataType};
+use yggdryl_field::yggdryl_dtype::{self as dtype, DataError, DataType, TypedDataType};
 use yggdryl_field::{
-    arrow_schema, Field, Int16, Int32, Int64, Int8, RawField, UInt16, UInt32, UInt64, UInt8,
+    arrow_schema, Field, Int16Field, Int32Field, Int64Field, Int8Field, TypedField, UInt16Field,
+    UInt32Field, UInt64Field, UInt8Field,
 };
 
 // Every integer field shares the same shape, so one macro drives one test module
 // per type: the field pairs a name with the type, round-trips through its Arrow
 // equivalent, and applies the shared metadata policy.
 macro_rules! integer_field_tests {
-    ($mod:ident, $ty:ident, $native:ty, $name:literal) => {
+    ($mod:ident, $ty:ident, $dtype:ident, $native:ty, $name:literal) => {
         mod $mod {
             use super::*;
 
@@ -30,7 +31,7 @@ macro_rules! integer_field_tests {
                 let field = $ty::new("id", true);
                 let arrow = field.to_arrow();
                 assert_eq!(arrow.name(), "id");
-                assert_eq!(arrow.data_type(), &dtype::$ty.to_arrow());
+                assert_eq!(arrow.data_type(), &dtype::$dtype.to_arrow());
                 assert!(arrow.is_nullable());
                 assert_eq!($ty::from_arrow(&arrow).unwrap(), field);
 
@@ -73,7 +74,9 @@ macro_rules! integer_field_tests {
 
             #[test]
             fn generic_bounds_compose() {
-                fn field_type_name<F: Field<$native>>(field: &F) -> String {
+                fn field_type_name<DT: TypedDataType<$native>, F: TypedField<DT, $native>>(
+                    field: &F,
+                ) -> String {
                     field.data_type().name().to_string()
                 }
                 assert_eq!(field_type_name(&$ty::new("x", false)), $name);
@@ -88,21 +91,21 @@ macro_rules! integer_field_tests {
     };
 }
 
-integer_field_tests!(int8, Int8, i8, "int8");
-integer_field_tests!(int16, Int16, i16, "int16");
-integer_field_tests!(int32, Int32, i32, "int32");
-integer_field_tests!(int64, Int64, i64, "int64");
-integer_field_tests!(uint8, UInt8, u8, "uint8");
-integer_field_tests!(uint16, UInt16, u16, "uint16");
-integer_field_tests!(uint32, UInt32, u32, "uint32");
-integer_field_tests!(uint64, UInt64, u64, "uint64");
+integer_field_tests!(int8, Int8Field, Int8Type, i8, "int8");
+integer_field_tests!(int16, Int16Field, Int16Type, i16, "int16");
+integer_field_tests!(int32, Int32Field, Int32Type, i32, "int32");
+integer_field_tests!(int64, Int64Field, Int64Type, i64, "int64");
+integer_field_tests!(uint8, UInt8Field, UInt8Type, u8, "uint8");
+integer_field_tests!(uint16, UInt16Field, UInt16Type, u16, "uint16");
+integer_field_tests!(uint32, UInt32Field, UInt32Type, u32, "uint32");
+integer_field_tests!(uint64, UInt64Field, UInt64Type, u64, "uint64");
 
 // A heterogeneous set of fields converts straight into an Arrow schema.
 #[test]
 fn fields_assemble_into_an_arrow_schema() {
     let schema = arrow_schema::Schema::new(vec![
-        Int64::new("id", false).to_arrow(),
-        UInt8::new("flags", true).to_arrow(),
+        Int64Field::new("id", false).to_arrow(),
+        UInt8Field::new("flags", true).to_arrow(),
     ]);
     assert_eq!(schema.field(0).data_type(), &arrow_schema::DataType::Int64);
     assert_eq!(schema.field(1).data_type(), &arrow_schema::DataType::UInt8);

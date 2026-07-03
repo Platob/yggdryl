@@ -1,33 +1,36 @@
 //! The `yggdryl.field` namespace — thin wrappers over the `yggdryl-field` crate.
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
-//! `Int64`, `OptionalInt64`), alongside `Binary` / `OptionalBinary`, `Null` and
-//! `Union` — the same bare names as the Rust crate, the namespace carrying the
-//! concern. A field pairs a name with its `yggdryl.dtype` data type and a
-//! nullability flag (`true` by default, as an `Option<bool>` default).
+//! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
+//! `OptionalBinaryField`, `NullField` and `UnionField` — the same globally-unique
+//! names as the Rust crate, the namespace carrying the concern (the `…Field`
+//! suffix keeps every class distinct in napi's addon-global registry). A field
+//! pairs a name with its `yggdryl.dtype` data type and a nullability flag (`true`
+//! by default, as an `Option<bool>` default).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the generic
-//! nested fields (`List` / `Map` / `Struct`), which have no concrete FFI shape
-//! yet.
+//! nested fields (`ListField` / `MapField` / `StructField`), which have no
+//! concrete FFI shape yet.
 
 use napi_derive::napi;
-use yggdryl_field::RawField;
+use yggdryl_field::Field;
 
-/// A nullable `union` field: a name paired with a `yggdryl.dtype.Union` data type.
-#[napi]
-pub struct FieldUnion {
-    pub(crate) inner: yggdryl_field::Union,
+/// A nullable `union` field: a name paired with a `yggdryl.dtype.UnionType` data
+/// type.
+#[napi(namespace = "field")]
+pub struct UnionField {
+    pub(crate) inner: yggdryl_field::UnionField,
 }
 
-#[napi]
-impl FieldUnion {
+#[napi(namespace = "field")]
+impl UnionField {
     /// A field named `name` of the union type `dataType` (nullable by default).
     #[napi(constructor)]
-    pub fn new(name: String, data_type: &crate::dtype::DtypeUnion, nullable: Option<bool>) -> Self {
+    pub fn new(name: String, data_type: &crate::dtype::UnionType, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::Union::new(
+            inner: yggdryl_field::UnionField::new(
                 name,
                 data_type.inner.clone(),
                 nullable.unwrap_or(true),
@@ -43,8 +46,8 @@ impl FieldUnion {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeUnion {
-        crate::dtype::DtypeUnion {
+    pub fn data_type(&self) -> crate::dtype::UnionType {
+        crate::dtype::UnionType {
             inner: self.inner.data_type().clone(),
         }
     }
@@ -57,18 +60,18 @@ impl FieldUnion {
 }
 
 /// A `null` field: a name paired with the null data type.
-#[napi]
-pub struct FieldNull {
-    pub(crate) inner: yggdryl_field::Null,
+#[napi(namespace = "field")]
+pub struct NullField {
+    pub(crate) inner: yggdryl_field::NullField,
 }
 
-#[napi]
-impl FieldNull {
+#[napi(namespace = "field")]
+impl NullField {
     /// A `null` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::Null::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::NullField::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -80,8 +83,8 @@ impl FieldNull {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeNull {
-        crate::dtype::DtypeNull::default()
+    pub fn data_type(&self) -> crate::dtype::NullType {
+        crate::dtype::NullType::default()
     }
 
     /// Whether values in this field may be null.
@@ -92,18 +95,18 @@ impl FieldNull {
 }
 
 /// A nullable `binary` field: a name paired with the data type.
-#[napi]
-pub struct FieldBinary {
-    pub(crate) inner: yggdryl_field::Binary,
+#[napi(namespace = "field")]
+pub struct BinaryField {
+    pub(crate) inner: yggdryl_field::BinaryField,
 }
 
-#[napi]
-impl FieldBinary {
+#[napi(namespace = "field")]
+impl BinaryField {
     /// A `binary` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::Binary::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::BinaryField::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -115,8 +118,8 @@ impl FieldBinary {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeBinary {
-        crate::dtype::DtypeBinary::default()
+    pub fn data_type(&self) -> crate::dtype::BinaryType {
+        crate::dtype::BinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -128,18 +131,18 @@ impl FieldBinary {
 
 /// A nullable optional-`binary` field: a name paired with the logical optional
 /// data type.
-#[napi]
-pub struct FieldOptionalBinary {
-    pub(crate) inner: yggdryl_field::Optional<yggdryl_dtype::Binary>,
+#[napi(namespace = "field")]
+pub struct OptionalBinaryField {
+    pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::BinaryType>,
 }
 
-#[napi]
-impl FieldOptionalBinary {
+#[napi(namespace = "field")]
+impl OptionalBinaryField {
     /// An optional-`binary` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::Optional::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::OptionalField::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -151,8 +154,8 @@ impl FieldOptionalBinary {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::DtypeOptionalBinary {
-        crate::dtype::DtypeOptionalBinary::default()
+    pub fn data_type(&self) -> crate::dtype::OptionalBinaryType {
+        crate::dtype::OptionalBinaryType::default()
     }
 
     /// Whether values in this field may be null.
@@ -166,20 +169,20 @@ impl FieldOptionalBinary {
 /// optional field `$opt_ty` — each a thin delegation to the `yggdryl-field`
 /// types.
 macro_rules! int_field_node {
-    ($ty:ident, $opt_ty:ident, $inner:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
+    ($ty:ident, $opt_ty:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
         #[doc = concat!("A nullable `", $name, "` field: a name paired with the data type.")]
-        #[napi]
+        #[napi(namespace = "field")]
         pub struct $ty {
-            pub(crate) inner: yggdryl_field::$inner,
+            pub(crate) inner: yggdryl_field::$ty,
         }
 
-        #[napi]
+        #[napi(namespace = "field")]
         impl $ty {
             #[doc = concat!("A `", $name, "` field named `name` (nullable by default).")]
             #[napi(constructor)]
             pub fn new(name: String, nullable: Option<bool>) -> Self {
                 Self {
-                    inner: yggdryl_field::$inner::new(name, nullable.unwrap_or(true)),
+                    inner: yggdryl_field::$ty::new(name, nullable.unwrap_or(true)),
                 }
             }
 
@@ -203,18 +206,18 @@ macro_rules! int_field_node {
         }
 
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
-        #[napi]
+        #[napi(namespace = "field")]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_field::Optional<yggdryl_dtype::$inner>,
+            pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::$dtype>,
         }
 
-        #[napi]
+        #[napi(namespace = "field")]
         impl $opt_ty {
             #[doc = concat!("An optional-`", $name, "` field named `name` (nullable by default).")]
             #[napi(constructor)]
             pub fn new(name: String, nullable: Option<bool>) -> Self {
                 Self {
-                    inner: yggdryl_field::Optional::new(name, nullable.unwrap_or(true)),
+                    inner: yggdryl_field::OptionalField::new(name, nullable.unwrap_or(true)),
                 }
             }
 
@@ -240,66 +243,58 @@ macro_rules! int_field_node {
 }
 
 int_field_node!(
-    FieldInt8,
-    FieldOptionalInt8,
-    Int8,
-    DtypeInt8,
-    DtypeOptionalInt8,
+    Int8Field,
+    OptionalInt8Field,
+    Int8Type,
+    OptionalInt8Type,
     "int8"
 );
 int_field_node!(
-    FieldInt16,
-    FieldOptionalInt16,
-    Int16,
-    DtypeInt16,
-    DtypeOptionalInt16,
+    Int16Field,
+    OptionalInt16Field,
+    Int16Type,
+    OptionalInt16Type,
     "int16"
 );
 int_field_node!(
-    FieldInt32,
-    FieldOptionalInt32,
-    Int32,
-    DtypeInt32,
-    DtypeOptionalInt32,
+    Int32Field,
+    OptionalInt32Field,
+    Int32Type,
+    OptionalInt32Type,
     "int32"
 );
 int_field_node!(
-    FieldInt64,
-    FieldOptionalInt64,
-    Int64,
-    DtypeInt64,
-    DtypeOptionalInt64,
+    Int64Field,
+    OptionalInt64Field,
+    Int64Type,
+    OptionalInt64Type,
     "int64"
 );
 int_field_node!(
-    FieldUInt8,
-    FieldOptionalUInt8,
-    UInt8,
-    DtypeUInt8,
-    DtypeOptionalUInt8,
+    UInt8Field,
+    OptionalUInt8Field,
+    UInt8Type,
+    OptionalUInt8Type,
     "uint8"
 );
 int_field_node!(
-    FieldUInt16,
-    FieldOptionalUInt16,
-    UInt16,
-    DtypeUInt16,
-    DtypeOptionalUInt16,
+    UInt16Field,
+    OptionalUInt16Field,
+    UInt16Type,
+    OptionalUInt16Type,
     "uint16"
 );
 int_field_node!(
-    FieldUInt32,
-    FieldOptionalUInt32,
-    UInt32,
-    DtypeUInt32,
-    DtypeOptionalUInt32,
+    UInt32Field,
+    OptionalUInt32Field,
+    UInt32Type,
+    OptionalUInt32Type,
     "uint32"
 );
 int_field_node!(
-    FieldUInt64,
-    FieldOptionalUInt64,
-    UInt64,
-    DtypeUInt64,
-    DtypeOptionalUInt64,
+    UInt64Field,
+    OptionalUInt64Field,
+    UInt64Type,
+    OptionalUInt64Type,
     "uint64"
 );

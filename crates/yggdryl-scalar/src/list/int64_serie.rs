@@ -1,45 +1,43 @@
 //! The [`Int64Serie`] scalar: a list of `int64` borrowing raw Arrow buffers.
 
-use crate::{Int64, RawScalar, Scalar};
+use crate::{Int64Scalar, Scalar, TypedScalar};
 use arrow_buffer::{NullBuffer, ScalarBuffer};
-use yggdryl_dtype::{DataError, List, RawDataType};
+use yggdryl_dtype::{DataError, DataType, Int64Type, ListType};
 
 /// A single, possibly-null list of `int64` — *our array*, borrowing the raw Arrow
 /// buffers ([`ScalarBuffer<i64>`] elements plus an optional [`NullBuffer`])
 /// zero-copy, optimized for native `i64` access.
 ///
-/// Where the generic [`Serie`](crate::Serie) holds an opaque Arrow array
-/// handle and goes through the element scalars' Arrow round trip, `Int64Serie`
-/// holds the underlying buffers themselves: [`values`](Int64Serie::values) borrows
-/// the whole element buffer as `&[i64]` without copying,
-/// [`get_at`](Int64Serie::get_at) reads one element null-aware as any native
-/// Rust target, and the *scalar accessor*
-/// [`get_scalar_at`](Int64Serie::get_scalar_at) hands back an [`Int64`] (the
+/// Where the generic [`Serie`](crate::Serie) holds an opaque Arrow array handle and
+/// goes through the element scalars' Arrow round trip, `Int64Serie` holds the
+/// underlying buffers themselves: [`values`](Int64Serie::values) borrows the whole
+/// element buffer as `&[i64]` without copying, [`get_at`](Int64Serie::get_at) reads
+/// one element null-aware as any native Rust target, and the *scalar accessor*
+/// [`get_scalar_at`](Int64Serie::get_scalar_at) hands back an [`Int64Scalar`] (the
 /// inner null scalar for a null slot). [`from_io`](Int64Serie::from_io) /
-/// [`pwrite_io`](Int64Serie::pwrite_io) bridge the elements to any
-/// `yggdryl-core` positioned-IO resource through the little-endian primitive
-/// helpers. The optimized
-/// [`to_arrow`](RawScalar::to_arrow) / [`from_arrow`](RawScalar::from_arrow)
-/// reassemble and take apart the Arrow form around the same shared buffers —
-/// reference-count bumps, never element copies — so the type moves across the
-/// Arrow FFI boundary without copying elements.
+/// [`pwrite_io`](Int64Serie::pwrite_io) bridge the elements to any `yggdryl-core`
+/// positioned-IO resource through the little-endian primitive helpers. The optimized
+/// [`to_arrow`](Scalar::to_arrow) / [`from_arrow`](Scalar::from_arrow) reassemble and
+/// take apart the Arrow form around the same shared buffers — reference-count bumps,
+/// never element copies — so the type moves across the Arrow FFI boundary without
+/// copying elements.
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::RawDataType;
-/// use yggdryl_scalar::{Int64, Int64Serie, RawScalar};
+/// use yggdryl_scalar::yggdryl_dtype::DataType;
+/// use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar};
 ///
 /// let numbers = Int64Serie::from(vec![1, 2, 3]);
 /// assert_eq!(numbers.len(), 3);
 /// assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // zero-copy buffer borrow
 /// assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2);
 /// assert_eq!(numbers.get_at::<i32>(1).unwrap(), 2); // converted, exact-or-error
-/// assert_eq!(numbers.get_scalar_at(1), Some(Int64::new(2)));
+/// assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::new(2)));
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // Nulls are per element, read null-aware.
 /// let sparse = Int64Serie::from(vec![Some(1), None]);
 /// assert!(sparse.get_at::<i64>(1).is_err()); // a null element holds no value
-/// assert_eq!(sparse.get_scalar_at(1), Some(Int64::null()));
+/// assert_eq!(sparse.get_scalar_at(1), Some(Int64Scalar::null()));
 /// assert_eq!(sparse.values().map(<[i64]>::len), Some(2)); // raw slots, nulls included
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
@@ -51,7 +49,7 @@ use yggdryl_dtype::{DataError, List, RawDataType};
 /// ```
 #[derive(Debug, Clone)]
 pub struct Int64Serie {
-    data_type: List<yggdryl_dtype::Int64>,
+    data_type: ListType<Int64Type>,
     values: Option<ScalarBuffer<i64>>,
     nulls: Option<NullBuffer>,
 }
@@ -75,7 +73,7 @@ impl Int64Serie {
     /// The null list scalar.
     pub fn null() -> Self {
         Self {
-            data_type: List::new(yggdryl_dtype::Int64),
+            data_type: ListType::new(Int64Type),
             values: None,
             nulls: None,
         }
@@ -87,13 +85,13 @@ impl Int64Serie {
     // every construction path.
     fn from_parts(values: ScalarBuffer<i64>, nulls: Option<NullBuffer>) -> Self {
         Self {
-            data_type: List::new(yggdryl_dtype::Int64),
+            data_type: ListType::new(Int64Type),
             values: Some(values),
             nulls: nulls.filter(|nulls| nulls.null_count() > 0),
         }
     }
 
-    /// The number of elements, `0` when null or empty ([`is_null`](RawScalar::is_null)
+    /// The number of elements, `0` when null or empty ([`is_null`](Scalar::is_null)
     /// distinguishes the two).
     pub fn len(&self) -> usize {
         self.values.as_ref().map_or(0, ScalarBuffer::len)
@@ -130,8 +128,8 @@ impl Int64Serie {
 
     /// The element at `index` read as the native Rust type `T` — the generic
     /// native accessor, answered straight from the borrowed buffers (no Arrow
-    /// slicing): the element becomes its [`Int64`] scalar and `T` reads through
-    /// the `as_*` contract via [`FromScalar`](crate::FromScalar).
+    /// slicing): the element becomes its [`Int64Scalar`] scalar and `T` reads
+    /// through the `as_*` contract via [`FromScalar`](crate::FromScalar).
     ///
     /// A null serie errors with [`DataError::NullValue`], an index past the end
     /// with [`DataError::OutOfBounds`], and a null or non-representable element
@@ -149,9 +147,9 @@ impl Int64Serie {
             .as_ref()
             .is_none_or(|nulls| nulls.is_valid(index))
         {
-            Int64::new(values[index])
+            Int64Scalar::new(values[index])
         } else {
-            Int64::null()
+            Int64Scalar::null()
         };
         T::from_scalar(&scalar)
     }
@@ -195,7 +193,7 @@ impl Int64Serie {
 
     /// The element at `index` as a scalar (a null element is the null scalar), or
     /// `None` when the list is null or `index` is out of bounds.
-    pub fn get_scalar_at(&self, index: usize) -> Option<Int64> {
+    pub fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
         let values = self.values.as_ref()?;
         if index >= values.len() {
             return None;
@@ -206,9 +204,9 @@ impl Int64Serie {
                 .as_ref()
                 .is_none_or(|nulls| nulls.is_valid(index))
             {
-                Int64::new(values[index])
+                Int64Scalar::new(values[index])
             } else {
-                Int64::null()
+                Int64Scalar::null()
             },
         )
     }
@@ -264,12 +262,12 @@ impl From<Vec<Option<i64>>> for Int64Serie {
     }
 }
 
-impl RawScalar<List<yggdryl_dtype::Int64>> for Int64Serie {
+impl Scalar<ListType<Int64Type>> for Int64Serie {
     /// The raw element buffer — like [`values`](Int64Serie::values), it includes
     /// the slots under null elements.
     type Value = [i64];
 
-    fn data_type(&self) -> &List<yggdryl_dtype::Int64> {
+    fn data_type(&self) -> &ListType<Int64Type> {
         &self.data_type
     }
 
@@ -283,7 +281,7 @@ impl RawScalar<List<yggdryl_dtype::Int64>> for Int64Serie {
 
     fn to_arrow(&self) -> arrow_array::ArrayRef {
         let Some(values) = &self.values else {
-            return arrow_array::new_null_array(&RawDataType::to_arrow(&self.data_type), 1);
+            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
         // The buffers are reassembled into the one-element list — reference-count
         // bumps, not copies.
@@ -305,7 +303,7 @@ impl RawScalar<List<yggdryl_dtype::Int64>> for Int64Serie {
         }
         // Validates the list-of-int64 layout, then takes the buffers apart and
         // shares them.
-        List::<yggdryl_dtype::Int64>::from_arrow(arrow_array::Array::data_type(array))?;
+        ListType::<Int64Type>::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
             .downcast_ref::<arrow_array::ListArray>()
@@ -325,6 +323,4 @@ impl RawScalar<List<yggdryl_dtype::Int64>> for Int64Serie {
     }
 }
 
-impl Scalar<[i64]> for Int64Serie {
-    type Type = List<yggdryl_dtype::Int64>;
-}
+impl TypedScalar<ListType<Int64Type>, [i64]> for Int64Serie {}

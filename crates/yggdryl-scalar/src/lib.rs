@@ -4,20 +4,22 @@
 //! `yggdryl-dtype` and `yggdryl-core`. It defines the **scalars** of the model —
 //! single, possibly-null values of a data type — the third of the three data
 //! layers (`yggdryl-dtype`, `yggdryl-field`, `yggdryl-scalar`), each concern its
-//! own crate, so the concrete types share one bare name across the layers (a
-//! `yggdryl_scalar::Int64` holds one value of the `yggdryl_dtype::Int64` type).
+//! own crate, so the concrete types share one naming convention across the layers
+//! (a `yggdryl_scalar::Int64Scalar` holds one value of the `yggdryl_dtype::Int64Type`
+//! type).
 //!
 //! The layer is four traits, each re-exported at the crate root:
 //!
-//! - The **untyped base** [`RawScalar`] — the FFI-facing value: its data type,
+//! - The **untyped base** [`Scalar`] — the FFI-facing value: its data type,
 //!   nullness, the native value, and the `as_*` accessors reading it as any
 //!   exactly-representable Rust target.
-//! - The **typed** [`Scalar`], whose value is the native Rust type `T`.
+//! - The **typed** [`TypedScalar`], generic over the data type `DT` and its value
+//!   type `T`.
 //! - [`FromScalar`] — the native Rust targets readable out of any scalar, behind
 //!   the generic accessors such as [`Serie::get_at`].
-//! - [`DefaultScalar`] — the scalar a `yggdryl_dtype::DataType<T>` defaults to
-//!   (this crate builds on the data types, never the other way around, so the
-//!   default *scalar* of a type lives here rather than on `DataType`).
+//! - [`ScalarFactory`] — a typed data type builds its scalar
+//!   ([`Int64Type.scalar(42)`](ScalarFactory::scalar) → [`Int64Scalar`], plus
+//!   [`null_scalar`](ScalarFactory::null_scalar) / [`default_scalar`](ScalarFactory::default_scalar)).
 //!
 //! Concrete scalars live in per-family modules mirroring `yggdryl-dtype` — the
 //! [`integer`] module holds every signed and unsigned integer, the [`binary`]
@@ -44,7 +46,7 @@ pub use arrow_buffer;
 /// and the data types' Arrow surface share one version.
 pub use arrow_schema;
 /// The yggdryl foundation layer (`yggdryl-core`), re-exported so downstream code
-/// reaches the positioned-IO surface the [`Binary`] value plugs into
+/// reaches the positioned-IO surface the [`BinaryScalar`] value plugs into
 /// (`RawIOBase`, `ByteBuffer`, the cursor / slice adapters) at the exact version
 /// this crate was built against.
 pub use yggdryl_core;
@@ -53,15 +55,15 @@ pub use yggdryl_core;
 /// exact version this crate was built against.
 pub use yggdryl_dtype;
 
-mod default_scalar;
 mod from_scalar;
-mod raw_scalar;
 mod scalar;
+mod scalar_factory;
+mod typed_scalar;
 
-pub use default_scalar::DefaultScalar;
 pub use from_scalar::FromScalar;
-pub use raw_scalar::RawScalar;
 pub use scalar::Scalar;
+pub use scalar_factory::ScalarFactory;
+pub use typed_scalar::TypedScalar;
 
 pub mod binary;
 pub mod integer;
@@ -71,11 +73,14 @@ pub mod null;
 pub mod optional;
 pub mod r#struct;
 
-pub use binary::Binary;
+pub use binary::BinaryScalar;
 pub use list::{Int64Serie, Serie};
-pub use map::Map;
-pub use null::Null;
-pub use optional::Optional;
-pub use r#struct::Struct;
+pub use map::MapScalar;
+pub use null::NullScalar;
+pub use optional::OptionalScalar;
+pub use r#struct::StructScalar;
 
-pub use integer::{Int16, Int32, Int64, Int8, UInt16, UInt32, UInt64, UInt8};
+pub use integer::{
+    Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,
+    UInt8Scalar,
+};

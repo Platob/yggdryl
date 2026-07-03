@@ -24,16 +24,16 @@ def bench(label, function):
 
 
 def main():
-    value = scalar.Int64(42)
-    optional = scalar.OptionalInt64(42)
+    value = scalar.Int64Scalar(42)
+    optional = scalar.OptionalInt64Scalar(42)
 
-    bench("Int64(42)", lambda: scalar.Int64(42))
-    bench("Int64.null()", scalar.Int64.null)
+    bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
+    bench("Int64Scalar.null()", scalar.Int64Scalar.null)
     bench("scalar.value()", value.value)
     bench("scalar.as_i64() direct", value.as_i64)
     bench("scalar.as_i8() converted", value.as_i8)
     bench("scalar.as_f64() checked", value.as_f64)
-    bench("OptionalInt64(42)", lambda: scalar.OptionalInt64(42))
+    bench("OptionalInt64Scalar(42)", lambda: scalar.OptionalInt64Scalar(42))
     bench("optional.as_i64() redirected", optional.as_i64)
     bench("optional.data_type()", optional.data_type)
 
