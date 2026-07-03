@@ -14,7 +14,8 @@ use yggdryl_core::ByteBuffer;
 /// [`into_io`](Binary::into_io) moves it out to wrap in the core
 /// [`RawIOCursor`](yggdryl_core::RawIOCursor) / [`RawIOSlice`](yggdryl_core::RawIOSlice)
 /// adapters for streaming or windowed reads. [`as_str`](RawScalar::as_str) borrows
-/// the bytes as `str` when they are valid UTF-8. Crossing the Arrow boundary
+/// the bytes as `str` when they are valid UTF-8, or decodes through any core
+/// [`Charset`](yggdryl_core::Charset) passed explicitly. Crossing the Arrow boundary
 /// copies the bytes once between the Arrow buffer and the core resource — a
 /// scalar holds one value, so the copy is a single sequence, never a column.
 ///
@@ -37,9 +38,12 @@ use yggdryl_core::ByteBuffer;
 /// let cursor = RawIOCursor::new(blob.clone().into_io().unwrap());
 /// assert_eq!(cursor.pread_byte_array(0, Whence::Start, 2)?, vec![1, 2]);
 ///
-/// // UTF-8 bytes read back as a borrowed str; anything else is an actionable error.
-/// assert_eq!(Binary::new(b"hi".to_vec()).as_str().unwrap(), "hi");
-/// assert!(Binary::new(vec![0xFF]).as_str().is_err()); // not valid UTF-8
+/// // UTF-8 bytes read back as a borrowed str (the None default); an explicit
+/// // core charset decodes instead, and undecodable bytes are actionable errors.
+/// assert_eq!(Binary::new(b"hi".to_vec()).as_str(None).unwrap(), "hi");
+/// assert!(Binary::new(vec![0xFF]).as_str(None).is_err()); // not valid UTF-8
+/// use yggdryl_core::Latin1;
+/// assert_eq!(Binary::new(vec![0xE9]).as_str(Some(&Latin1)).unwrap(), "\u{e9}");
 ///
 /// // The Arrow round trip is exact.
 /// let arrow = blob.to_arrow();
@@ -86,6 +90,19 @@ impl Binary {
     /// bounded byte window.
     pub fn into_io(self) -> Option<ByteBuffer> {
         self.value
+    }
+
+    /// Consume the scalar, returning the value as a full-window
+    /// [`ByteBufferSlice`](yggdryl_core::ByteBufferSlice) — the buffer moves,
+    /// zero-copy, and every positioned read after it stays window-relative. (An
+    /// element read out of a serie takes the same shape through
+    /// [`FromScalar`](crate::FromScalar), paying one element copy at the Arrow
+    /// boundary.)
+    pub fn into_io_slice(self) -> Option<yggdryl_core::ByteBufferSlice> {
+        use yggdryl_core::RawIOBase;
+        let value = self.value?;
+        let length = value.byte_size();
+        Some(value.slice(0, length))
     }
 }
 
@@ -182,15 +199,34 @@ impl RawScalar<BinaryType> for Binary {
             .ok_or(DataError::NullValue)
     }
 
-    fn as_str(&self) -> Result<&str, DataError> {
+    fn as_str(
+        &self,
+        charset: Option<&dyn yggdryl_core::Charset>,
+    ) -> Result<std::borrow::Cow<'_, str>, DataError> {
         let value = self.value.as_ref().ok_or(DataError::NullValue)?;
-        std::str::from_utf8(value.as_bytes()).map_err(|_| DataError::InexactConversion {
-            value: format!(
-                "{} byte(s) of non-UTF-8 data (as_bytes() reads them)",
-                value.as_bytes().len()
-            ),
-            target: "str",
-        })
+        match charset {
+            // The default: UTF-8, borrowed straight from the buffer.
+            None => std::str::from_utf8(value.as_bytes())
+                .map(std::borrow::Cow::Borrowed)
+                .map_err(|_| DataError::InexactConversion {
+                    value: format!(
+                        "{} byte(s) of non-UTF-8 data (as_bytes() reads them)",
+                        value.as_bytes().len()
+                    ),
+                    target: "str",
+                }),
+            // An explicit charset decodes into an owned string.
+            Some(charset) => charset
+                .decode_bytes(value.as_bytes())
+                .map(std::borrow::Cow::Owned)
+                .map_err(|error| DataError::InexactConversion {
+                    value: format!(
+                        "{} byte(s) the charset cannot decode ({error}; as_bytes() reads them)",
+                        value.as_bytes().len()
+                    ),
+                    target: "str",
+                }),
+        }
     }
 }
 

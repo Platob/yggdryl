@@ -67,6 +67,7 @@ mod raw_scalar;
 
 mod data_type;
 mod field;
+mod from_scalar;
 mod scalar;
 
 mod logical;
@@ -83,6 +84,7 @@ pub use raw_scalar::RawScalar;
 
 pub use data_type::DataType;
 pub use field::Field;
+pub use from_scalar::FromScalar;
 pub use scalar::Scalar;
 
 pub use logical::Logical;

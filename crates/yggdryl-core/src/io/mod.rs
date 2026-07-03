@@ -7,6 +7,7 @@
 mod bit_buffer;
 mod bits;
 mod byte_buffer;
+mod byte_buffer_slice;
 mod cursor;
 mod error;
 mod raw_cursor;
@@ -18,6 +19,7 @@ mod whence;
 
 pub use bit_buffer::BitBuffer;
 pub use byte_buffer::ByteBuffer;
+pub use byte_buffer_slice::ByteBufferSlice;
 pub use cursor::IOCursor;
 pub use error::IOError;
 pub use raw_cursor::RawIOCursor;
@@ -221,6 +223,170 @@ pub trait RawIOBase {
         whence: Whence,
         values: &[bool],
     ) -> Result<(), IOError>;
+
+    /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+    ///
+    /// The `pread_*` / `pwrite_*` primitive helpers share one shape: every Rust
+    /// numeric primitive reads and writes as its fixed little-endian
+    /// bytes through the byte-array primitives, so any resource gets the whole
+    /// numeric surface for free.
+    fn pread_i8(&self, position: usize, whence: Whence) -> Result<i8, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 1)?;
+        Ok(i8::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_i8(&mut self, position: usize, whence: Whence, value: i8) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_i16(&self, position: usize, whence: Whence) -> Result<i16, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 2)?;
+        Ok(i16::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_i16(&mut self, position: usize, whence: Whence, value: i16) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_i32(&self, position: usize, whence: Whence) -> Result<i32, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 4)?;
+        Ok(i32::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_i32(&mut self, position: usize, whence: Whence, value: i32) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_i64(&self, position: usize, whence: Whence) -> Result<i64, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 8)?;
+        Ok(i64::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_i64(&mut self, position: usize, whence: Whence, value: i64) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_u8(&self, position: usize, whence: Whence) -> Result<u8, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 1)?;
+        Ok(u8::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_u8(&mut self, position: usize, whence: Whence, value: u8) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_u16(&self, position: usize, whence: Whence) -> Result<u16, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 2)?;
+        Ok(u16::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_u16(&mut self, position: usize, whence: Whence, value: u16) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_u32(&self, position: usize, whence: Whence) -> Result<u32, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 4)?;
+        Ok(u32::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_u32(&mut self, position: usize, whence: Whence, value: u32) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_u64(&self, position: usize, whence: Whence) -> Result<u64, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 8)?;
+        Ok(u64::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_u64(&mut self, position: usize, whence: Whence, value: u64) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_f32(&self, position: usize, whence: Whence) -> Result<f32, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 4)?;
+        Ok(f32::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_f32(&mut self, position: usize, whence: Whence, value: f32) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
+
+    /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+    /// See [`pread_i8`](RawIOBase::pread_i8) for the shared shape.
+    fn pread_f64(&self, position: usize, whence: Whence) -> Result<f64, IOError> {
+        let bytes = self.pread_byte_array(position, whence, 8)?;
+        Ok(f64::from_le_bytes(bytes.try_into().expect(
+            "pread_byte_array returns exactly the requested number of bytes",
+        )))
+    }
+
+    /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`. See [`pread_i8`](RawIOBase::pread_i8) for the shared
+    /// shape.
+    fn pwrite_f64(&mut self, position: usize, whence: Whence, value: f64) -> Result<(), IOError> {
+        self.pwrite_byte_array(position, whence, &value.to_le_bytes())
+    }
 
     /// Consume this resource into a [`RawIOCursor`], a moving cursor over it that
     /// advances on every read and write.

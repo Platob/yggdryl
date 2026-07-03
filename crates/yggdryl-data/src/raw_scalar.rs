@@ -76,7 +76,7 @@ use super::{DataError, RawDataType};
 /// assert_eq!(answer.value(), Some(&42));
 /// assert_eq!(answer.as_i64().unwrap(), 42); // converted access
 /// // An int32 has no str conversion (the default): an actionable error.
-/// assert!(matches!(answer.as_str(), Err(DataError::UnsupportedConversion { .. })));
+/// assert!(matches!(answer.as_str(None), Err(DataError::UnsupportedConversion { .. })));
 ///
 /// // Arrow interop: a one-element array, round-tripped.
 /// let arrow = answer.to_arrow();
@@ -226,10 +226,18 @@ pub trait RawScalar<D: RawDataType>: std::fmt::Debug + Send + Sync {
         })
     }
 
-    /// The value as a borrowed `&str`, when the value is a string (or bytes that
-    /// are valid UTF-8) — borrowed directly, never copied.
-    /// See [`as_i8`](RawScalar::as_i8) for the shared contract.
-    fn as_str(&self) -> Result<&str, DataError> {
+    /// The value as a `str`, when the value is a string or decodable bytes.
+    ///
+    /// `charset` picks the `yggdryl-core` [`Charset`](yggdryl_core::Charset)
+    /// decoding the bytes; `None` defaults to UTF-8 and *borrows* without
+    /// copying (`Cow::Borrowed`), while an explicit charset decodes through
+    /// [`decode_bytes`](yggdryl_core::Charset::decode_bytes) into an owned
+    /// string. See [`as_i8`](RawScalar::as_i8) for the shared contract.
+    fn as_str(
+        &self,
+        charset: Option<&dyn yggdryl_core::Charset>,
+    ) -> Result<std::borrow::Cow<'_, str>, DataError> {
+        let _ = charset;
         Err(DataError::UnsupportedConversion {
             data_type: self.data_type().name().to_string(),
             target: "str",

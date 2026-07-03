@@ -109,7 +109,11 @@ impl RawScalar<NullType> for Null {
     fn as_bool(&self) -> Result<bool, DataError> {
         Err(DataError::NullValue)
     }
-    fn as_str(&self) -> Result<&str, DataError> {
+    fn as_str(
+        &self,
+        charset: Option<&dyn yggdryl_core::Charset>,
+    ) -> Result<std::borrow::Cow<'_, str>, DataError> {
+        let _ = charset;
         Err(DataError::NullValue)
     }
     fn as_bytes(&self) -> Result<&[u8], DataError> {

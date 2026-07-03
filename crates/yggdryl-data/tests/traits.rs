@@ -2,6 +2,7 @@
 //! most notably that an *unsized* value (`str`) reaches the typed [`Scalar`] layer.
 
 use yggdryl_data::arrow_array::Array; // len / is_null / null_count on the arrow side
+use yggdryl_data::yggdryl_core;
 use yggdryl_data::{arrow_array, arrow_schema, DataError, RawDataType, RawScalar, Scalar};
 
 // A minimal string type and scalar, proving an unsized value reaches the typed
@@ -73,9 +74,17 @@ impl RawScalar<Utf8> for Utf8Scalar {
             value: (!array.is_null(0)).then(|| array.value(0).to_string()),
         })
     }
-    fn as_str(&self) -> Result<&str, DataError> {
-        // The native type: borrowed directly, never copied.
-        self.value.as_deref().ok_or(DataError::NullValue)
+    fn as_str(
+        &self,
+        charset: Option<&dyn yggdryl_core::Charset>,
+    ) -> Result<std::borrow::Cow<'_, str>, DataError> {
+        // The native type: borrowed directly, never copied; a string is already
+        // decoded, so the charset never applies.
+        let _ = charset;
+        self.value
+            .as_deref()
+            .map(std::borrow::Cow::Borrowed)
+            .ok_or(DataError::NullValue)
     }
 }
 
@@ -107,7 +116,7 @@ fn string_access_borrows_without_copying() {
         value: Some("hi".to_string()),
     };
     // `as_str` hands back a borrow of the held String — same address, no copy.
-    let borrowed = hello.as_str().unwrap();
+    let borrowed = hello.as_str(None).unwrap();
     assert_eq!(borrowed, "hi");
     assert_eq!(borrowed.as_ptr(), hello.value.as_ref().unwrap().as_ptr());
     // A string is not a number (the trait defaults): an actionable error.

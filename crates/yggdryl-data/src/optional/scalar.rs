@@ -216,8 +216,14 @@ impl<D: RawDataType + Default, S: RawScalar<D>> RawScalar<OptionalType<D>> for O
     fn as_bool(&self) -> Result<bool, DataError> {
         self.value.as_ref().ok_or(DataError::NullValue)?.as_bool()
     }
-    fn as_str(&self) -> Result<&str, DataError> {
-        self.value.as_ref().ok_or(DataError::NullValue)?.as_str()
+    fn as_str(
+        &self,
+        charset: Option<&dyn yggdryl_core::Charset>,
+    ) -> Result<std::borrow::Cow<'_, str>, DataError> {
+        self.value
+            .as_ref()
+            .ok_or(DataError::NullValue)?
+            .as_str(charset)
     }
     fn as_bytes(&self) -> Result<&[u8], DataError> {
         self.value.as_ref().ok_or(DataError::NullValue)?.as_bytes()

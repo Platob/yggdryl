@@ -42,6 +42,8 @@ Create a buffer, write some bytes, and read them back:
 
     assert buf.byte_size() == 5
     assert buf.pread_byte_one(1, core.Whence.Start) == 2
+    buf.pwrite_i64(3, core.Whence.Start, -2)  # every numeric primitive, little-endian
+    assert buf.pread_i64(3, core.Whence.Start) == -2
     assert buf.pread_byte_array(0, core.Whence.Start, 5) == b"\x01\x02\x03\x04\x05"
     ```
 
@@ -56,6 +58,8 @@ Create a buffer, write some bytes, and read them back:
 
     console.assert(buf.byteSize() === 5)
     console.assert(buf.preadByteOne(1, Whence.Start) === 2)
+    buf.pwriteI64(3, Whence.Start, -2n) // every numeric primitive, little-endian
+    console.assert(buf.preadI64(3, Whence.Start) === -2n)
     ```
 
 === "Rust"
@@ -70,6 +74,8 @@ Create a buffer, write some bytes, and read them back:
 
         assert_eq!(buf.byte_size(), 5);
         assert_eq!(buf.pread_byte_one(1, Whence::Start).unwrap(), 2);
+        buf.pwrite_i64(3, Whence::Start, -2).unwrap(); // every numeric primitive
+        assert_eq!(buf.pread_i64(3, Whence::Start).unwrap(), -2);
         assert_eq!(buf.pread_byte_array(0, Whence::Start, 5).unwrap(), vec![1, 2, 3, 4, 5]);
     }
     ```

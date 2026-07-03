@@ -12,9 +12,13 @@ use arrow_buffer::{NullBuffer, ScalarBuffer};
 /// handle and goes through the element scalars' Arrow round trip, `Int64Serie`
 /// holds the underlying buffers themselves: [`values`](Int64Serie::values) borrows
 /// the whole element buffer as `&[i64]` without copying,
-/// [`get_value_at`](Int64Serie::get_value_at) reads one element null-aware, and
-/// the *scalar accessor* [`get_scalar_at`](Int64Serie::get_scalar_at) hands back
-/// an [`Int64`] (the inner null scalar for a null slot). The optimized
+/// [`get_at`](Int64Serie::get_at) reads one element null-aware as any native
+/// Rust target, and the *scalar accessor*
+/// [`get_scalar_at`](Int64Serie::get_scalar_at) hands back an [`Int64`] (the
+/// inner null scalar for a null slot). [`from_io`](Int64Serie::from_io) /
+/// [`pwrite_io`](Int64Serie::pwrite_io) bridge the elements to any
+/// `yggdryl-core` positioned-IO resource through the little-endian primitive
+/// helpers. The optimized
 /// [`to_arrow`](RawScalar::to_arrow) / [`from_arrow`](RawScalar::from_arrow)
 /// reassemble and take apart the Arrow form around the same shared buffers —
 /// reference-count bumps, never element copies — so the type moves across the
@@ -26,13 +30,14 @@ use arrow_buffer::{NullBuffer, ScalarBuffer};
 /// let numbers = Int64Serie::from(vec![1, 2, 3]);
 /// assert_eq!(numbers.len(), 3);
 /// assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // zero-copy buffer borrow
-/// assert_eq!(numbers.get_value_at(1), Some(2));
+/// assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2);
+/// assert_eq!(numbers.get_at::<i32>(1).unwrap(), 2); // converted, exact-or-error
 /// assert_eq!(numbers.get_scalar_at(1), Some(Int64::new(2)));
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // Nulls are per element, read null-aware.
 /// let sparse = Int64Serie::from(vec![Some(1), None]);
-/// assert_eq!(sparse.get_value_at(1), None);
+/// assert!(sparse.get_at::<i64>(1).is_err()); // a null element holds no value
 /// assert_eq!(sparse.get_scalar_at(1), Some(Int64::null()));
 /// assert_eq!(sparse.values().map(<[i64]>::len), Some(2)); // raw slots, nulls included
 ///
@@ -122,16 +127,69 @@ impl Int64Serie {
             .map(|values| arrow_array::Int64Array::new(values.clone(), self.nulls.clone()))
     }
 
-    /// The element at `index`, or `None` when the list is null, the element is
-    /// null, or `index` is out of bounds.
-    pub fn get_value_at(&self, index: usize) -> Option<i64> {
-        let values = self.values.as_ref()?;
-        (index < values.len()
-            && self
-                .nulls
-                .as_ref()
-                .is_none_or(|nulls| nulls.is_valid(index)))
-        .then(|| values[index])
+    /// The element at `index` read as the native Rust type `T` — the generic
+    /// native accessor, answered straight from the borrowed buffers (no Arrow
+    /// slicing): the element becomes its [`Int64`] scalar and `T` reads through
+    /// the `as_*` contract via [`FromScalar`](crate::FromScalar).
+    ///
+    /// A null serie errors with [`DataError::NullValue`], an index past the end
+    /// with [`DataError::OutOfBounds`], and a null or non-representable element
+    /// with the `as_*` contract's own errors.
+    pub fn get_at<T: crate::FromScalar>(&self, index: usize) -> Result<T, DataError> {
+        let values = self.values.as_ref().ok_or(DataError::NullValue)?;
+        if index >= values.len() {
+            return Err(DataError::OutOfBounds {
+                index,
+                len: values.len(),
+            });
+        }
+        let scalar = if self
+            .nulls
+            .as_ref()
+            .is_none_or(|nulls| nulls.is_valid(index))
+        {
+            Int64::new(values[index])
+        } else {
+            Int64::null()
+        };
+        T::from_scalar(&scalar)
+    }
+
+    /// A serie read out of a `yggdryl-core` positioned-IO resource: the whole
+    /// byte size split into little-endian `i64` elements via
+    /// [`pread_i64`](yggdryl_core::RawIOBase::pread_i64), all valid (the byte
+    /// layer carries no nulls). A byte size that is not a whole number of
+    /// elements errors with [`DataError::InvalidByteLength`].
+    pub fn from_io(io: &(impl yggdryl_core::RawIOBase + ?Sized)) -> Result<Self, DataError> {
+        let size = io.byte_size();
+        if !size.is_multiple_of(8) {
+            return Err(DataError::InvalidByteLength {
+                expected: size.div_ceil(8) * 8,
+                got: size,
+            });
+        }
+        let values = (0..size / 8)
+            .map(|index| io.pread_i64(index * 8, yggdryl_core::Whence::Start))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self::from(values))
+    }
+
+    /// Write every element buffer slot into a `yggdryl-core` positioned-IO
+    /// resource via [`pwrite_i64`](yggdryl_core::RawIOBase::pwrite_i64), element
+    /// `index` landing at `position + index * 8` relative to `whence` — the raw
+    /// slots under null elements included, like [`values`](Int64Serie::values).
+    /// A null serie errors with [`DataError::NullValue`].
+    pub fn pwrite_io(
+        &self,
+        io: &mut (impl yggdryl_core::RawIOBase + ?Sized),
+        position: usize,
+        whence: yggdryl_core::Whence,
+    ) -> Result<(), DataError> {
+        let values = self.values.as_ref().ok_or(DataError::NullValue)?;
+        for (index, value) in values.iter().enumerate() {
+            io.pwrite_i64(position + index * 8, whence, *value)?;
+        }
+        Ok(())
     }
 
     /// The element at `index` as a scalar (a null element is the null scalar), or

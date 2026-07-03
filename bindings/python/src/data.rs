@@ -31,18 +31,43 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use yggdryl_data::{DataType, RawDataType, RawField, RawLogical, RawNested, RawScalar, RawUnion};
 
-/// Wraps an [`yggdryl_data::DataError`] so pyo3 raises it as a Python `ValueError`.
-struct DataErr(yggdryl_data::DataError);
+/// Wraps a data-layer error (or a binding-level message, such as an unknown
+/// charset name) so pyo3 raises it as a Python `ValueError`.
+enum DataErr {
+    Data(yggdryl_data::DataError),
+    Message(String),
+}
 
 impl From<yggdryl_data::DataError> for DataErr {
     fn from(error: yggdryl_data::DataError) -> Self {
-        DataErr(error)
+        DataErr::Data(error)
     }
+}
+
+/// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
+/// `"latin1"` — shared by every scalar class.
+fn as_str_with<D: yggdryl_data::RawDataType, S: yggdryl_data::RawScalar<D>>(
+    scalar: &S,
+    charset: Option<&str>,
+) -> Result<String, DataErr> {
+    let decoded = match charset {
+        None | Some("utf8") => scalar.as_str(None),
+        Some("latin1") => scalar.as_str(Some(&yggdryl_core::Latin1)),
+        Some(other) => {
+            return Err(DataErr::Message(format!(
+                "unknown charset \"{other}\"; expected \"utf8\" or \"latin1\""
+            )))
+        }
+    };
+    Ok(decoded?.into_owned())
 }
 
 impl From<DataErr> for PyErr {
     fn from(error: DataErr) -> Self {
-        PyValueError::new_err(error.0.to_string())
+        PyValueError::new_err(match error {
+            DataErr::Data(error) => error.to_string(),
+            DataErr::Message(message) => message,
+        })
     }
 }
 
@@ -489,6 +514,16 @@ impl Binary {
             .map(|io| crate::core::ByteBuffer::from_inner(io.clone()))
     }
 
+    /// The value as a full-window core IO `ByteBufferSlice` (`yggdryl.core`) —
+    /// window-relative positioned reads — or `None` when null (one copy at the
+    /// FFI boundary).
+    fn to_io_slice(&self) -> Option<crate::core::ByteBufferSlice> {
+        self.inner
+            .clone()
+            .into_io_slice()
+            .map(crate::core::ByteBufferSlice::from_inner)
+    }
+
     /// The value as an `int` in the i8 range; raises `ValueError` when
     /// null or not exactly representable.
     fn as_i8(&self) -> Result<i8, DataErr> {
@@ -544,10 +579,12 @@ impl Binary {
     fn as_bool(&self) -> Result<bool, DataErr> {
         Ok(self.inner.as_bool()?)
     }
-    /// The value as a `str`; raises `ValueError` when null or the bytes are
-    /// not valid UTF-8.
-    fn as_str(&self) -> Result<String, DataErr> {
-        Ok(self.inner.as_str().map(str::to_string)?)
+    /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+    /// default, or `"latin1"`); raises `ValueError` when null or not
+    /// decodable.
+    #[pyo3(signature = (charset = None))]
+    fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+        as_str_with(&self.inner, charset)
     }
     /// The value as `bytes` — the native type; raises `ValueError` when null.
     fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
@@ -659,10 +696,12 @@ impl OptionalBinary {
     fn as_bool(&self) -> Result<bool, DataErr> {
         Ok(self.inner.as_bool()?)
     }
-    /// The value as a `str`; raises `ValueError` when null or the bytes are
-    /// not valid UTF-8.
-    fn as_str(&self) -> Result<String, DataErr> {
-        Ok(self.inner.as_str().map(str::to_string)?)
+    /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+    /// default, or `"latin1"`); raises `ValueError` when null or not
+    /// decodable.
+    #[pyo3(signature = (charset = None))]
+    fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+        as_str_with(&self.inner, charset)
     }
     /// The value as `bytes` — the native type; raises `ValueError` when null.
     fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
@@ -974,10 +1013,12 @@ macro_rules! int_data_py {
             fn as_bool(&self) -> Result<bool, DataErr> {
                 Ok(self.inner.as_bool()?)
             }
-            /// The value as a `str`; raises `ValueError` when null or the value
-            /// has no string form.
-            fn as_str(&self) -> Result<String, DataErr> {
-                Ok(self.inner.as_str().map(str::to_string)?)
+            /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+            /// default, or `"latin1"`); raises `ValueError` when null or not
+            /// decodable.
+            #[pyo3(signature = (charset = None))]
+            fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+                as_str_with(&self.inner, charset)
             }
             /// The value as `bytes`; raises `ValueError` when null or the value
             /// has no byte-sequence form.
@@ -1085,10 +1126,12 @@ macro_rules! int_data_py {
             fn as_bool(&self) -> Result<bool, DataErr> {
                 Ok(self.inner.as_bool()?)
             }
-            /// The value as a `str`; raises `ValueError` when null or the value
-            /// has no string form.
-            fn as_str(&self) -> Result<String, DataErr> {
-                Ok(self.inner.as_str().map(str::to_string)?)
+            /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+            /// default, or `"latin1"`); raises `ValueError` when null or not
+            /// decodable.
+            #[pyo3(signature = (charset = None))]
+            fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+                as_str_with(&self.inner, charset)
             }
             /// The value as `bytes`; raises `ValueError` when null or the value
             /// has no byte-sequence form.

@@ -121,6 +121,166 @@ macro_rules! raw_io_adapter_py {
                 Ok(self.inner.pread_byte_one(position, whence.into())?)
             }
 
+            /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+            fn pread_i8(&self, position: usize, whence: Whence) -> Result<i8, IoError> {
+                Ok(self.inner.pread_i8(position, whence.into())?)
+            }
+
+            /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_i8(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: i8,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_i8(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+            fn pread_i16(&self, position: usize, whence: Whence) -> Result<i16, IoError> {
+                Ok(self.inner.pread_i16(position, whence.into())?)
+            }
+
+            /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_i16(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: i16,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_i16(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+            fn pread_i32(&self, position: usize, whence: Whence) -> Result<i32, IoError> {
+                Ok(self.inner.pread_i32(position, whence.into())?)
+            }
+
+            /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_i32(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: i32,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_i32(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+            fn pread_i64(&self, position: usize, whence: Whence) -> Result<i64, IoError> {
+                Ok(self.inner.pread_i64(position, whence.into())?)
+            }
+
+            /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_i64(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: i64,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_i64(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+            fn pread_u8(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
+                Ok(self.inner.pread_u8(position, whence.into())?)
+            }
+
+            /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_u8(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: u8,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_u8(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+            fn pread_u16(&self, position: usize, whence: Whence) -> Result<u16, IoError> {
+                Ok(self.inner.pread_u16(position, whence.into())?)
+            }
+
+            /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_u16(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: u16,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_u16(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+            fn pread_u32(&self, position: usize, whence: Whence) -> Result<u32, IoError> {
+                Ok(self.inner.pread_u32(position, whence.into())?)
+            }
+
+            /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_u32(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: u32,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_u32(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+            fn pread_u64(&self, position: usize, whence: Whence) -> Result<u64, IoError> {
+                Ok(self.inner.pread_u64(position, whence.into())?)
+            }
+
+            /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_u64(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: u64,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_u64(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+            fn pread_f32(&self, position: usize, whence: Whence) -> Result<f32, IoError> {
+                Ok(self.inner.pread_f32(position, whence.into())?)
+            }
+
+            /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_f32(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: f32,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_f32(position, whence.into(), value)?)
+            }
+
+            /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+            fn pread_f64(&self, position: usize, whence: Whence) -> Result<f64, IoError> {
+                Ok(self.inner.pread_f64(position, whence.into())?)
+            }
+
+            /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            fn pwrite_f64(
+                &mut self,
+                position: usize,
+                whence: Whence,
+                value: f64,
+            ) -> Result<(), IoError> {
+                Ok(self.inner.pwrite_f64(position, whence.into(), value)?)
+            }
+
             /// Write one byte.
             fn pwrite_byte_one(&mut self, position: usize, whence: Whence, value: u8) -> Result<(), IoError> {
                 Ok(self.inner.pwrite_byte_one(position, whence.into(), value)?)
@@ -243,6 +403,116 @@ impl ByteBuffer {
     /// Read one byte.
     fn pread_byte_one(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
         Ok(self.inner.pread_byte_one(position, whence.into())?)
+    }
+
+    /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+    fn pread_i8(&self, position: usize, whence: Whence) -> Result<i8, IoError> {
+        Ok(self.inner.pread_i8(position, whence.into())?)
+    }
+
+    /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i8(&mut self, position: usize, whence: Whence, value: i8) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i8(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+    fn pread_i16(&self, position: usize, whence: Whence) -> Result<i16, IoError> {
+        Ok(self.inner.pread_i16(position, whence.into())?)
+    }
+
+    /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i16(&mut self, position: usize, whence: Whence, value: i16) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i16(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+    fn pread_i32(&self, position: usize, whence: Whence) -> Result<i32, IoError> {
+        Ok(self.inner.pread_i32(position, whence.into())?)
+    }
+
+    /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i32(&mut self, position: usize, whence: Whence, value: i32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+    fn pread_i64(&self, position: usize, whence: Whence) -> Result<i64, IoError> {
+        Ok(self.inner.pread_i64(position, whence.into())?)
+    }
+
+    /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i64(&mut self, position: usize, whence: Whence, value: i64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i64(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+    fn pread_u8(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
+        Ok(self.inner.pread_u8(position, whence.into())?)
+    }
+
+    /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u8(&mut self, position: usize, whence: Whence, value: u8) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u8(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+    fn pread_u16(&self, position: usize, whence: Whence) -> Result<u16, IoError> {
+        Ok(self.inner.pread_u16(position, whence.into())?)
+    }
+
+    /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u16(&mut self, position: usize, whence: Whence, value: u16) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u16(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+    fn pread_u32(&self, position: usize, whence: Whence) -> Result<u32, IoError> {
+        Ok(self.inner.pread_u32(position, whence.into())?)
+    }
+
+    /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u32(&mut self, position: usize, whence: Whence, value: u32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+    fn pread_u64(&self, position: usize, whence: Whence) -> Result<u64, IoError> {
+        Ok(self.inner.pread_u64(position, whence.into())?)
+    }
+
+    /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u64(&mut self, position: usize, whence: Whence, value: u64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u64(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+    fn pread_f32(&self, position: usize, whence: Whence) -> Result<f32, IoError> {
+        Ok(self.inner.pread_f32(position, whence.into())?)
+    }
+
+    /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_f32(&mut self, position: usize, whence: Whence, value: f32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_f32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+    fn pread_f64(&self, position: usize, whence: Whence) -> Result<f64, IoError> {
+        Ok(self.inner.pread_f64(position, whence.into())?)
+    }
+
+    /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_f64(&mut self, position: usize, whence: Whence, value: f64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_f64(position, whence.into(), value)?)
     }
 
     /// Write one byte.
@@ -407,6 +677,116 @@ impl BitBuffer {
         Ok(self.inner.pread_byte_one(position, whence.into())?)
     }
 
+    /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+    fn pread_i8(&self, position: usize, whence: Whence) -> Result<i8, IoError> {
+        Ok(self.inner.pread_i8(position, whence.into())?)
+    }
+
+    /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i8(&mut self, position: usize, whence: Whence, value: i8) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i8(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+    fn pread_i16(&self, position: usize, whence: Whence) -> Result<i16, IoError> {
+        Ok(self.inner.pread_i16(position, whence.into())?)
+    }
+
+    /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i16(&mut self, position: usize, whence: Whence, value: i16) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i16(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+    fn pread_i32(&self, position: usize, whence: Whence) -> Result<i32, IoError> {
+        Ok(self.inner.pread_i32(position, whence.into())?)
+    }
+
+    /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i32(&mut self, position: usize, whence: Whence, value: i32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+    fn pread_i64(&self, position: usize, whence: Whence) -> Result<i64, IoError> {
+        Ok(self.inner.pread_i64(position, whence.into())?)
+    }
+
+    /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_i64(&mut self, position: usize, whence: Whence, value: i64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_i64(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+    fn pread_u8(&self, position: usize, whence: Whence) -> Result<u8, IoError> {
+        Ok(self.inner.pread_u8(position, whence.into())?)
+    }
+
+    /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u8(&mut self, position: usize, whence: Whence, value: u8) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u8(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+    fn pread_u16(&self, position: usize, whence: Whence) -> Result<u16, IoError> {
+        Ok(self.inner.pread_u16(position, whence.into())?)
+    }
+
+    /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u16(&mut self, position: usize, whence: Whence, value: u16) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u16(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+    fn pread_u32(&self, position: usize, whence: Whence) -> Result<u32, IoError> {
+        Ok(self.inner.pread_u32(position, whence.into())?)
+    }
+
+    /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u32(&mut self, position: usize, whence: Whence, value: u32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+    fn pread_u64(&self, position: usize, whence: Whence) -> Result<u64, IoError> {
+        Ok(self.inner.pread_u64(position, whence.into())?)
+    }
+
+    /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_u64(&mut self, position: usize, whence: Whence, value: u64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_u64(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+    fn pread_f32(&self, position: usize, whence: Whence) -> Result<f32, IoError> {
+        Ok(self.inner.pread_f32(position, whence.into())?)
+    }
+
+    /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_f32(&mut self, position: usize, whence: Whence, value: f32) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_f32(position, whence.into(), value)?)
+    }
+
+    /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+    fn pread_f64(&self, position: usize, whence: Whence) -> Result<f64, IoError> {
+        Ok(self.inner.pread_f64(position, whence.into())?)
+    }
+
+    /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    fn pwrite_f64(&mut self, position: usize, whence: Whence, value: f64) -> Result<(), IoError> {
+        Ok(self.inner.pwrite_f64(position, whence.into(), value)?)
+    }
+
     /// Write one byte.
     fn pwrite_byte_one(
         &mut self,
@@ -551,6 +931,14 @@ raw_io_adapter_py!(BitBufferCursor, {
 #[pyclass]
 pub struct ByteBufferSlice {
     inner: RawIOSlice<yggdryl_core::ByteBuffer>,
+}
+
+impl ByteBufferSlice {
+    // Wraps an existing core slice — crate-internal, so sibling modules (the
+    // data layer's `Binary::to_io_slice`) can convert.
+    pub(crate) fn from_inner(inner: yggdryl_core::ByteBufferSlice) -> Self {
+        Self { inner }
+    }
 }
 
 raw_io_adapter_py!(ByteBufferSlice, {

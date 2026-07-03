@@ -158,7 +158,7 @@ macro_rules! integer_tests {
                     Err(DataError::UnsupportedConversion { .. })
                 ));
                 assert!(matches!(
-                    answer.as_str(),
+                    answer.as_str(None),
                     Err(DataError::UnsupportedConversion { .. })
                 ));
                 assert!(matches!(

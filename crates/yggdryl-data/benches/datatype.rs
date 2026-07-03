@@ -278,7 +278,7 @@ fn array(c: &mut Criterion) {
     let mut group = c.benchmark_group("array");
     group.throughput(Throughput::Elements(N as u64));
 
-    group.bench_function("int64_array_from_vec", |b| {
+    group.bench_function("int64_serie_from_vec", |b| {
         b.iter_batched(
             || (0..N as i64).collect::<Vec<_>>(),
             |values| black_box(Int64Serie::from(values)),
@@ -287,31 +287,31 @@ fn array(c: &mut Criterion) {
     });
 
     let numbers = Int64Serie::from((0..N as i64).collect::<Vec<_>>());
-    group.bench_function("int64_array_values_borrow", |b| {
+    group.bench_function("int64_serie_values_borrow", |b| {
         b.iter(|| black_box(black_box(&numbers).values()))
     });
 
-    group.bench_function("int64_array_get_value_at", |b| {
+    group.bench_function("int64_serie_get_at", |b| {
         b.iter(|| {
             for index in 0..N {
-                black_box(numbers.get_value_at(black_box(index)));
+                let _ = black_box(numbers.get_at::<i64>(black_box(index)));
             }
         })
     });
 
-    group.bench_function("int64_array_to_arrow", |b| {
+    group.bench_function("int64_serie_to_arrow", |b| {
         b.iter(|| black_box(numbers.to_arrow()))
     });
 
     let arrow = numbers.to_arrow();
-    group.bench_function("int64_array_from_arrow", |b| {
+    group.bench_function("int64_serie_from_arrow", |b| {
         b.iter(|| black_box(Int64Serie::from_arrow(black_box(arrow.as_ref())).unwrap()))
     });
 
     // The generic scalar accessor, for comparison: one inner Arrow round trip per
     // element against the buffer-backed direct read above.
     let generic = Int64SerieGeneric::from_arrow(arrow.as_ref()).unwrap();
-    group.bench_function("list_scalar_get_scalar_at", |b| {
+    group.bench_function("serie_get_scalar_at", |b| {
         b.iter(|| {
             for index in 0..N {
                 black_box(generic.get_scalar_at(black_box(index)));

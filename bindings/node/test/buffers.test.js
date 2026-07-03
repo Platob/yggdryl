@@ -125,3 +125,16 @@ test('BitBuffer exposes cursor and slice too', () => {
   assert.equal(slice.byteSize(), 1)
   assert.equal(slice.preadByteOne(0, Whence.Start), 2) // window byte 1 of the inner
 })
+
+test('primitive helpers round-trip little-endian', () => {
+  const buf = new ByteBuffer()
+  buf.pwriteI64(0, Whence.Start, -2n)
+  buf.pwriteU16(8, Whence.Start, 0xbeef)
+  buf.pwriteF64(10, Whence.Start, 1.5)
+  assert.equal(buf.preadI64(0, Whence.Start), -2n)
+  assert.equal(buf.preadU16(8, Whence.Start), 0xbeef)
+  assert.equal(buf.preadF64(10, Whence.Start), 1.5)
+  // Little-endian: the low byte comes first.
+  buf.pwriteU32(0, Whence.Start, 1)
+  assert.equal(buf.preadByteOne(0, Whence.Start), 1)
+})

@@ -124,3 +124,16 @@ def test_bit_buffer_exposes_cursor_and_slice():
     sliced = core.BitBuffer.from_bytes(bytes([1, 2, 3])).slice(1, 2)
     assert sliced.byte_size() == 1
     assert sliced.pread_byte_one(0, core.Whence.Start) == 2  # window byte 1 of the inner
+
+
+def test_primitive_helpers_round_trip_little_endian():
+    buf = core.ByteBuffer()
+    buf.pwrite_i64(0, core.Whence.Start, -2)
+    buf.pwrite_u16(8, core.Whence.Start, 0xBEEF)
+    buf.pwrite_f64(10, core.Whence.Start, 1.5)
+    assert buf.pread_i64(0, core.Whence.Start) == -2
+    assert buf.pread_u16(8, core.Whence.Start) == 0xBEEF
+    assert buf.pread_f64(10, core.Whence.Start) == 1.5
+    # Little-endian: the low byte comes first.
+    buf.pwrite_u32(0, core.Whence.Start, 1)
+    assert buf.pread_byte_one(0, core.Whence.Start) == 1

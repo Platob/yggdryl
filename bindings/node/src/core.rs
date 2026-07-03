@@ -10,7 +10,7 @@
 //! effect from `preadByteArray` + `pwriteByteArray` — and the typed `IOCursor` /
 //! `IOSlice` adapters (no exposed resource implements `IOBase`).
 
-use napi::bindgen_prelude::{Buffer, Error, Result};
+use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
 use yggdryl_core::{RawIOBase, RawIOCursor, RawIOSlice, Seekable};
 
@@ -42,6 +42,28 @@ impl From<Whence> for yggdryl_core::Whence {
             Whence::End => yggdryl_core::Whence::End,
         }
     }
+}
+
+/// A `BigInt` as an `i64`, or an actionable error when out of range.
+fn bigint_to_i64(value: BigInt) -> Result<i64> {
+    let (value, lossless) = value.get_i64();
+    if !lossless {
+        return Err(Error::from_reason(
+            "expected the BigInt to be in the i64 range",
+        ));
+    }
+    Ok(value)
+}
+
+/// A `BigInt` as a `u64`, or an actionable error when negative or out of range.
+fn bigint_to_u64(value: BigInt) -> Result<u64> {
+    let (sign, value, lossless) = value.get_u64();
+    if sign || !lossless {
+        return Err(Error::from_reason(
+            "expected the BigInt to be non-negative and in the u64 range",
+        ));
+    }
+    Ok(value)
 }
 
 fn io_error(error: yggdryl_core::IOError) -> Error {
@@ -121,6 +143,208 @@ macro_rules! raw_io_adapter_node {
             pub fn pread_byte_one(&self, position: u32, whence: Whence) -> Result<u8> {
                 self.inner
                     .pread_byte_one(position as usize, whence.into())
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_i8(&self, position: u32, whence: Whence) -> Result<i32> {
+                self.inner
+                    .pread_i8(position as usize, whence.into())
+                    .map(i32::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_i8(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+                let value = i8::try_from(value).map_err(|_| {
+                    Error::from_reason(format!("expected {value} to be in the i8 range"))
+                })?;
+                self.inner
+                    .pwrite_i8(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_i16(&self, position: u32, whence: Whence) -> Result<i32> {
+                self.inner
+                    .pread_i16(position as usize, whence.into())
+                    .map(i32::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_i16(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+                let value = i16::try_from(value).map_err(|_| {
+                    Error::from_reason(format!("expected {value} to be in the i16 range"))
+                })?;
+                self.inner
+                    .pwrite_i16(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_i32(&self, position: u32, whence: Whence) -> Result<i32> {
+                self.inner
+                    .pread_i32(position as usize, whence.into())
+                    .map_err(io_error)
+            }
+
+            /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_i32(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+                self.inner
+                    .pwrite_i32(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_i64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+                self.inner
+                    .pread_i64(position as usize, whence.into())
+                    .map(BigInt::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_i64(
+                &mut self,
+                position: u32,
+                whence: Whence,
+                value: BigInt,
+            ) -> Result<()> {
+                let value = bigint_to_i64(value)?;
+                self.inner
+                    .pwrite_i64(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_u8(&self, position: u32, whence: Whence) -> Result<u32> {
+                self.inner
+                    .pread_u8(position as usize, whence.into())
+                    .map(u32::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_u8(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+                let value = u8::try_from(value).map_err(|_| {
+                    Error::from_reason(format!("expected {value} to be in the u8 range"))
+                })?;
+                self.inner
+                    .pwrite_u8(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_u16(&self, position: u32, whence: Whence) -> Result<u32> {
+                self.inner
+                    .pread_u16(position as usize, whence.into())
+                    .map(u32::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_u16(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+                let value = u16::try_from(value).map_err(|_| {
+                    Error::from_reason(format!("expected {value} to be in the u16 range"))
+                })?;
+                self.inner
+                    .pwrite_u16(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_u32(&self, position: u32, whence: Whence) -> Result<u32> {
+                self.inner
+                    .pread_u32(position as usize, whence.into())
+                    .map_err(io_error)
+            }
+
+            /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_u32(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+                self.inner
+                    .pwrite_u32(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_u64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+                self.inner
+                    .pread_u64(position as usize, whence.into())
+                    .map(BigInt::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_u64(
+                &mut self,
+                position: u32,
+                whence: Whence,
+                value: BigInt,
+            ) -> Result<()> {
+                let value = bigint_to_u64(value)?;
+                self.inner
+                    .pwrite_u64(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_f32(&self, position: u32, whence: Whence) -> Result<f64> {
+                self.inner
+                    .pread_f32(position as usize, whence.into())
+                    .map(f64::from)
+                    .map_err(io_error)
+            }
+
+            /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_f32(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+                let value = value as f32;
+                self.inner
+                    .pwrite_f32(position as usize, whence.into(), value)
+                    .map_err(io_error)
+            }
+
+            /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+            #[napi]
+            pub fn pread_f64(&self, position: u32, whence: Whence) -> Result<f64> {
+                self.inner
+                    .pread_f64(position as usize, whence.into())
+                    .map_err(io_error)
+            }
+
+            /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+            /// relative to `whence`.
+            #[napi]
+            pub fn pwrite_f64(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+                self.inner
+                    .pwrite_f64(position as usize, whence.into(), value)
                     .map_err(io_error)
             }
 
@@ -315,6 +539,194 @@ impl ByteBuffer {
             .map_err(io_error)
     }
 
+    /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i8(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i8(position as usize, whence.into())
+            .map(i32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i8(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        let value = i8::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the i8 range")))?;
+        self.inner
+            .pwrite_i8(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i16(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i16(position as usize, whence.into())
+            .map(i32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i16(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        let value = i16::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the i16 range")))?;
+        self.inner
+            .pwrite_i16(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i32(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i32(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i32(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        self.inner
+            .pwrite_i32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+        self.inner
+            .pread_i64(position as usize, whence.into())
+            .map(BigInt::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i64(&mut self, position: u32, whence: Whence, value: BigInt) -> Result<()> {
+        let value = bigint_to_i64(value)?;
+        self.inner
+            .pwrite_i64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u8(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u8(position as usize, whence.into())
+            .map(u32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u8(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        let value = u8::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the u8 range")))?;
+        self.inner
+            .pwrite_u8(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u16(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u16(position as usize, whence.into())
+            .map(u32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u16(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        let value = u16::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the u16 range")))?;
+        self.inner
+            .pwrite_u16(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u32(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u32(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u32(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        self.inner
+            .pwrite_u32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+        self.inner
+            .pread_u64(position as usize, whence.into())
+            .map(BigInt::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u64(&mut self, position: u32, whence: Whence, value: BigInt) -> Result<()> {
+        let value = bigint_to_u64(value)?;
+        self.inner
+            .pwrite_u64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_f32(&self, position: u32, whence: Whence) -> Result<f64> {
+        self.inner
+            .pread_f32(position as usize, whence.into())
+            .map(f64::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_f32(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+        let value = value as f32;
+        self.inner
+            .pwrite_f32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_f64(&self, position: u32, whence: Whence) -> Result<f64> {
+        self.inner
+            .pread_f64(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_f64(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+        self.inner
+            .pwrite_f64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
     /// Write one byte.
     #[napi]
     pub fn pwrite_byte_one(&mut self, position: u32, whence: Whence, value: u8) -> Result<()> {
@@ -493,6 +905,194 @@ impl BitBuffer {
             .map_err(io_error)
     }
 
+    /// Read one little-endian `i8` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i8(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i8(position as usize, whence.into())
+            .map(i32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i8(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        let value = i8::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the i8 range")))?;
+        self.inner
+            .pwrite_i8(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i16` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i16(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i16(position as usize, whence.into())
+            .map(i32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i16(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        let value = i16::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the i16 range")))?;
+        self.inner
+            .pwrite_i16(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i32(&self, position: u32, whence: Whence) -> Result<i32> {
+        self.inner
+            .pread_i32(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `i32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i32(&mut self, position: u32, whence: Whence, value: i32) -> Result<()> {
+        self.inner
+            .pwrite_i32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `i64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_i64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+        self.inner
+            .pread_i64(position as usize, whence.into())
+            .map(BigInt::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `i64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_i64(&mut self, position: u32, whence: Whence, value: BigInt) -> Result<()> {
+        let value = bigint_to_i64(value)?;
+        self.inner
+            .pwrite_i64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u8` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u8(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u8(position as usize, whence.into())
+            .map(u32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u8` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u8(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        let value = u8::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the u8 range")))?;
+        self.inner
+            .pwrite_u8(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u16` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u16(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u16(position as usize, whence.into())
+            .map(u32::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u16` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u16(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        let value = u16::try_from(value)
+            .map_err(|_| Error::from_reason(format!("expected {value} to be in the u16 range")))?;
+        self.inner
+            .pwrite_u16(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u32(&self, position: u32, whence: Whence) -> Result<u32> {
+        self.inner
+            .pread_u32(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `u32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u32(&mut self, position: u32, whence: Whence, value: u32) -> Result<()> {
+        self.inner
+            .pwrite_u32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `u64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_u64(&self, position: u32, whence: Whence) -> Result<BigInt> {
+        self.inner
+            .pread_u64(position as usize, whence.into())
+            .map(BigInt::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `u64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_u64(&mut self, position: u32, whence: Whence, value: BigInt) -> Result<()> {
+        let value = bigint_to_u64(value)?;
+        self.inner
+            .pwrite_u64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `f32` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_f32(&self, position: u32, whence: Whence) -> Result<f64> {
+        self.inner
+            .pread_f32(position as usize, whence.into())
+            .map(f64::from)
+            .map_err(io_error)
+    }
+
+    /// Write one `f32` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_f32(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+        let value = value as f32;
+        self.inner
+            .pwrite_f32(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
+    /// Read one little-endian `f64` at `position` (in bytes) relative to `whence`.
+    #[napi]
+    pub fn pread_f64(&self, position: u32, whence: Whence) -> Result<f64> {
+        self.inner
+            .pread_f64(position as usize, whence.into())
+            .map_err(io_error)
+    }
+
+    /// Write one `f64` as its little-endian bytes at `position` (in bytes)
+    /// relative to `whence`.
+    #[napi]
+    pub fn pwrite_f64(&mut self, position: u32, whence: Whence, value: f64) -> Result<()> {
+        self.inner
+            .pwrite_f64(position as usize, whence.into(), value)
+            .map_err(io_error)
+    }
+
     /// Write one byte.
     #[napi]
     pub fn pwrite_byte_one(&mut self, position: u32, whence: Whence, value: u8) -> Result<()> {
@@ -651,6 +1251,14 @@ impl BitBufferCursor {
 #[napi(namespace = "core")]
 pub struct ByteBufferSlice {
     inner: RawIOSlice<yggdryl_core::ByteBuffer>,
+}
+
+impl ByteBufferSlice {
+    // Wraps an existing core slice — crate-internal, so sibling modules (the
+    // data layer's `Binary::toIoSlice`) can convert.
+    pub(crate) fn from_inner(inner: yggdryl_core::ByteBufferSlice) -> Self {
+        Self { inner }
+    }
 }
 
 raw_io_adapter_node!(ByteBufferSlice);

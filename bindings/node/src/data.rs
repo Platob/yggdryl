@@ -30,6 +30,26 @@ use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
 use yggdryl_data::{DataType, RawDataType, RawField, RawLogical, RawNested, RawScalar, RawUnion};
 
+/// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
+/// `"latin1"` — shared by every scalar class.
+fn as_str_with<D: yggdryl_data::RawDataType, S: yggdryl_data::RawScalar<D>>(
+    scalar: &S,
+    charset: Option<&str>,
+) -> Result<String> {
+    let decoded = match charset {
+        None | Some("utf8") => scalar.as_str(None),
+        Some("latin1") => scalar.as_str(Some(&yggdryl_core::Latin1)),
+        Some(other) => {
+            return Err(Error::from_reason(format!(
+                "unknown charset \"{other}\"; expected \"utf8\" or \"latin1\""
+            )))
+        }
+    };
+    decoded
+        .map(std::borrow::Cow::into_owned)
+        .map_err(data_error)
+}
+
 fn data_error(error: yggdryl_data::DataError) -> Error {
     Error::from_reason(error.to_string())
 }
@@ -326,11 +346,11 @@ macro_rules! as_accessors_node {
             pub fn as_bool(&self) -> Result<bool> {
                 self.inner.as_bool().map_err(data_error)
             }
-            /// The value as a string; throws when null or the value has no
-            /// string form.
+            /// The value as a string; `charset` picks the decoder (`"utf8"`,
+            /// the default, or `"latin1"`); throws when null or not decodable.
             #[napi]
-            pub fn as_str(&self) -> Result<String> {
-                self.inner.as_str().map(str::to_string).map_err(data_error)
+            pub fn as_str(&self, charset: Option<String>) -> Result<String> {
+                as_str_with(&self.inner, charset.as_deref())
             }
             /// The value as a `Buffer`; throws when null or the value has no
             /// byte-sequence form.
@@ -1002,6 +1022,17 @@ impl Binary {
         self.inner
             .io()
             .map(|io| crate::core::ByteBuffer::from_inner(io.clone()))
+    }
+
+    /// The value as a full-window core IO `ByteBufferSlice` (`yggdryl.core`) —
+    /// window-relative positioned reads — or `null` when null (one copy at the
+    /// FFI boundary).
+    #[napi]
+    pub fn to_io_slice(&self) -> Option<crate::core::ByteBufferSlice> {
+        self.inner
+            .clone()
+            .into_io_slice()
+            .map(crate::core::ByteBufferSlice::from_inner)
     }
 }
 

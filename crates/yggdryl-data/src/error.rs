@@ -57,6 +57,24 @@ pub enum DataError {
         /// The requested target type, e.g. `"str"`.
         target: &'static str,
     },
+    /// An element index was past the end of the sequence.
+    OutOfBounds {
+        /// The requested element index.
+        index: usize,
+        /// The sequence's length.
+        len: usize,
+    },
+    /// A read or write through the `yggdryl-core` positioned-IO layer failed.
+    Io {
+        /// The underlying IO error.
+        source: yggdryl_core::IOError,
+    },
+}
+
+impl From<yggdryl_core::IOError> for DataError {
+    fn from(source: yggdryl_core::IOError) -> Self {
+        DataError::Io { source }
+    }
 }
 
 impl std::fmt::Display for DataError {
@@ -103,6 +121,12 @@ impl std::fmt::Display for DataError {
             }
             DataError::UnsupportedConversion { data_type, target } => {
                 write!(f, "{data_type} scalars have no {target} conversion")
+            }
+            DataError::OutOfBounds { index, len } => {
+                write!(f, "index {index} is out of bounds for length {len}")
+            }
+            DataError::Io { source } => {
+                write!(f, "the IO resource failed: {source}")
             }
         }
     }

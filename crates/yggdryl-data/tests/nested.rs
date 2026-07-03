@@ -93,9 +93,16 @@ fn list_scalar_round_trips_all_shapes() {
     // The scalar accessors read elements back out, as scalars or native values.
     assert_eq!(numbers.get_scalar_at(0), Some(Int64::new(1)));
     assert_eq!(numbers.get_scalar_at(1), Some(Int64::null()));
-    assert_eq!(numbers.get_value_at(0), Some(1));
-    assert_eq!(numbers.get_value_at(1), None); // a null element holds no value
-    assert_eq!(numbers.get_value_at(2), None); // out of bounds
+    assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1);
+    assert_eq!(numbers.get_at::<i32>(0).unwrap(), 1); // converted, exact-or-error
+    assert!(matches!(
+        numbers.get_at::<i64>(1),
+        Err(DataError::NullValue) // a null element holds no value
+    ));
+    assert!(matches!(
+        numbers.get_at::<i64>(2),
+        Err(DataError::OutOfBounds { index: 2, len: 2 })
+    ));
 
     let empty = Int64ListScalar::new(Vec::new());
     assert!(!empty.is_null());
@@ -129,8 +136,11 @@ fn int64_array_reads_borrowed_buffers() {
     assert_eq!(numbers.len(), 3);
     assert_eq!(numbers.values(), Some(&[1, 2, 3][..]));
     assert_eq!(numbers.value(), Some(&[1, 2, 3][..]));
-    assert_eq!(numbers.get_value_at(0), Some(1));
-    assert_eq!(numbers.get_value_at(3), None); // out of bounds
+    assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1);
+    assert!(matches!(
+        numbers.get_at::<i64>(3),
+        Err(DataError::OutOfBounds { index: 3, len: 3 })
+    ));
     assert_eq!(numbers.get_scalar_at(2), Some(Int64::new(3)));
     assert_eq!(numbers.get_scalar_at(3), None);
     assert!(numbers.nulls().is_none());
@@ -141,8 +151,8 @@ fn int64_array_reads_borrowed_buffers() {
 
     // Per-element nulls are read null-aware; the raw buffer keeps the slots.
     let sparse = Int64Serie::from(vec![Some(1), None]);
-    assert_eq!(sparse.get_value_at(0), Some(1));
-    assert_eq!(sparse.get_value_at(1), None);
+    assert_eq!(sparse.get_at::<i64>(0).unwrap(), 1);
+    assert!(matches!(sparse.get_at::<i64>(1), Err(DataError::NullValue)));
     assert_eq!(sparse.get_scalar_at(1), Some(Int64::null()));
     assert_eq!(sparse.values().map(<[i64]>::len), Some(2));
     assert_eq!(
@@ -170,6 +180,37 @@ fn int64_array_reads_borrowed_buffers() {
             expected: 3,
             got: 2
         })
+    ));
+}
+
+#[test]
+fn int64_serie_bridges_to_core_io_resources() {
+    use yggdryl_data::yggdryl_core::{ByteBuffer, RawIOBase, Whence};
+
+    // pwrite_io lays the elements out little-endian through pwrite_i64 ...
+    let numbers = Int64Serie::from(vec![1, -2, 3]);
+    let mut buffer = ByteBuffer::new();
+    numbers.pwrite_io(&mut buffer, 0, Whence::Start).unwrap();
+    assert_eq!(buffer.byte_size(), 24);
+    assert_eq!(buffer.pread_i64(8, Whence::Start).unwrap(), -2);
+
+    // ... and from_io reads them back: the exact inverse for all-valid elements.
+    assert_eq!(Int64Serie::from_io(&buffer).unwrap(), numbers);
+
+    // A byte size that is not a whole number of elements is refused.
+    buffer.resize_bytes(25).unwrap();
+    assert!(matches!(
+        Int64Serie::from_io(&buffer),
+        Err(DataError::InvalidByteLength {
+            expected: 32,
+            got: 25
+        })
+    ));
+
+    // A null serie holds no elements to write.
+    assert!(matches!(
+        Int64Serie::null().pwrite_io(&mut buffer, 0, Whence::Start),
+        Err(DataError::NullValue)
     ));
 }
 
@@ -208,7 +249,10 @@ fn int64_array_round_trips_through_arrow_zero_copy() {
     let missing = Int64Serie::null();
     assert!(missing.is_null());
     assert_eq!((missing.values(), missing.array()), (None, None));
-    assert_eq!(missing.get_value_at(0), None);
+    assert!(matches!(
+        missing.get_at::<i64>(0),
+        Err(DataError::NullValue)
+    ));
     assert_eq!(
         Int64Serie::from_arrow(missing.to_arrow().as_ref()).unwrap(),
         missing

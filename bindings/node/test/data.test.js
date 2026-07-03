@@ -165,9 +165,13 @@ test('binary scalar reads bytes and io', () => {
   assert.equal(blob.isNull(), false)
   assert.deepEqual(blob.value(), Buffer.from([1, 2, 3]))
   assert.deepEqual(blob.asBytes(), Buffer.from([1, 2, 3]))
-  // UTF-8 bytes convert to a string; anything else throws naming the shape.
+  // UTF-8 bytes convert to a string; anything else throws naming the shape —
+  // and an explicit core charset decodes instead.
   assert.equal(new data.Binary(Buffer.from('hi')).asStr(), 'hi')
+  assert.equal(new data.Binary(Buffer.from('hi')).asStr('utf8'), 'hi')
+  assert.equal(new data.Binary(Buffer.from([0xe9])).asStr('latin1'), '\u00e9')
   assert.throws(() => new data.Binary(Buffer.from([0xff])).asStr(), /non-UTF-8/)
+  assert.throws(() => new data.Binary(Buffer.from('hi')).asStr('ascii'), /unknown charset/)
   assert.throws(() => blob.asI64(), /no i64 conversion/)
 
   // The value doubles as a core positioned-IO ByteBuffer.
@@ -175,6 +179,12 @@ test('binary scalar reads bytes and io', () => {
   assert.equal(io.byteSize(), 3)
   assert.deepEqual(io.toBytes(), Buffer.from([1, 2, 3]))
   assert.equal(io.preadByteOne(1, core.Whence.Start), 2)
+
+  // ... or as a full-window ByteBufferSlice for window-relative reads.
+  const window = blob.toIoSlice()
+  assert.equal(window.byteSize(), 3)
+  assert.equal(window.preadByteOne(1, core.Whence.Start), 2)
+  assert.equal(window.preadI8(2, core.Whence.Start), 3)
 
   // The empty value and null are distinct states.
   assert.equal(new data.Binary(Buffer.alloc(0)).isNull(), false)

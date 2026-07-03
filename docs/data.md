@@ -142,8 +142,11 @@ value plugs straight into the core IO layer: in Rust, `io()` borrows the resourc
 for `RawIOBase` reads and `into_io()` moves it out to wrap in the `RawIOCursor` /
 `RawIOSlice` adapters; the bindings hand back a `yggdryl.core` `ByteBuffer`
 through `to_io()` (one copy at the FFI boundary, like strings). `as_bytes`
-answers the native type directly and `as_str` converts when the bytes are valid
-UTF-8.
+answers the native type directly, `as_str` decodes — UTF-8 borrowed by default,
+or any core `Charset` passed explicitly (the bindings take an optional charset
+name, `"utf8"` or `"latin1"`) — and `into_io_slice` (bindings: `to_io_slice`)
+hands the value out as a full-window core `ByteBufferSlice` for window-relative
+positioned reads.
 
 === "Python"
 
@@ -390,13 +393,18 @@ The list scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
 child array — construction assembles the elements once, `to_arrow` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
-`from_arrow`, `get_value_at(index)` hands back an element's owned native value —
-`i64` for an `int64` list, `Vec<u8>` for a `binary` list; `len` / `is_empty`
-describe the sequence). `Int64Serie` is the
+`from_arrow`, and the generic native accessor `get_at::<T>(index)` reads an
+element as any native Rust target through the `as_*` contract — `i64` or any
+exactly-representable number for an `int64` element, `Vec<u8>`, `String` or a
+`yggdryl-core` `ByteBufferSlice` for a `binary` element (`FromScalar` names the
+readable targets); `len` / `is_empty` describe the sequence). `Int64Serie` is the
 concrete list of `int64`, borrowing the raw Arrow buffers themselves
 (`ScalarBuffer<i64>` elements plus an optional `NullBuffer`): `values()` borrows
-the whole element buffer as `&[i64]` without copying, `get_value_at(index)` reads
-one element null-aware, and `get_scalar_at(index)` hands back an `Int64`.
+the whole element buffer as `&[i64]` without copying, `get_at::<T>(index)` reads
+one element null-aware straight from the buffers, `get_scalar_at(index)` hands
+back an `Int64`, and `from_io` / `pwrite_io` bridge the elements to any
+`yggdryl-core` positioned-IO resource through the little-endian `pread_i64` /
+`pwrite_i64` primitive helpers.
 `Map<K, V, SK, SV>` holds the entry sequence and `Struct` one row of
 one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`. The
@@ -418,14 +426,14 @@ fn main() {
 
     let numbers = Serie::new(vec![Int64::new(1), Int64::null()]);
     assert_eq!(numbers.get_scalar_at(1), Some(Int64::null()));
-    assert_eq!(numbers.get_value_at(0), Some(1)); // the owned native value
+    assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
     let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
     assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // The buffer-backed list of int64: native, zero-copy access.
     let fast = Int64Serie::from(vec![1, 2, 3]);
     assert_eq!(fast.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
-    assert_eq!(fast.get_value_at(1), Some(2));
+    assert_eq!(fast.get_at::<i64>(1).unwrap(), 2);
     assert_eq!(Int64Serie::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
 
     let map = MapType::new(UInt8Type, Int64Type);

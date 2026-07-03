@@ -189,10 +189,15 @@ def test_binary_scalar_reads_bytes_and_io():
     assert blob.is_null() is False
     assert blob.value() == b"\x01\x02\x03"
     assert blob.as_bytes() == b"\x01\x02\x03"
-    # UTF-8 bytes convert to str; anything else raises naming the shape.
+    # UTF-8 bytes convert to str; anything else raises naming the shape — and
+    # an explicit core charset decodes instead.
     assert data.Binary(b"hi").as_str() == "hi"
+    assert data.Binary(b"hi").as_str("utf8") == "hi"
+    assert data.Binary(b"\xe9").as_str("latin1") == "\u00e9"
     with pytest.raises(ValueError, match="non-UTF-8"):
         data.Binary(b"\xff").as_str()
+    with pytest.raises(ValueError, match="unknown charset"):
+        data.Binary(b"hi").as_str("ascii")
     with pytest.raises(ValueError, match="no i64 conversion"):
         blob.as_i64()
 
@@ -201,6 +206,12 @@ def test_binary_scalar_reads_bytes_and_io():
     assert io.byte_size() == 3
     assert io.to_bytes() == b"\x01\x02\x03"
     assert io.pread_byte_one(1, core.Whence.Start) == 2
+
+    # ... or as a full-window ByteBufferSlice for window-relative reads.
+    window = blob.to_io_slice()
+    assert window.byte_size() == 3
+    assert window.pread_byte_one(1, core.Whence.Start) == 2
+    assert window.pread_i8(2, core.Whence.Start) == 3
 
     # The empty value and null are distinct states.
     assert data.Binary(b"").is_null() is False

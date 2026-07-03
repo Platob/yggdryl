@@ -288,3 +288,33 @@ fn typed_stream_into_empty_sink_needs_a_width() {
     assert_eq!(sink.size(), 1);
     assert_eq!(sink.data, vec![7, 0, 0, 0]);
 }
+
+#[test]
+fn primitive_helpers_read_and_write_little_endian() {
+    use yggdryl_core::{ByteBuffer, RawIOBase, Whence};
+
+    // Every numeric primitive round-trips through its little-endian bytes.
+    let mut buf = ByteBuffer::new();
+    buf.pwrite_i64(0, Whence::Start, -2).unwrap();
+    buf.pwrite_u16(8, Whence::Start, 0xBEEF).unwrap();
+    buf.pwrite_f64(10, Whence::Start, 1.5).unwrap();
+    assert_eq!(buf.pread_i64(0, Whence::Start).unwrap(), -2);
+    assert_eq!(buf.pread_u16(8, Whence::Start).unwrap(), 0xBEEF);
+    assert_eq!(buf.pread_f64(10, Whence::Start).unwrap(), 1.5);
+
+    // The bytes really are little-endian: the low byte comes first.
+    buf.pwrite_u32(0, Whence::Start, 1).unwrap();
+    assert_eq!(buf.pread_byte_one(0, Whence::Start).unwrap(), 1);
+    assert_eq!(buf.pread_u8(0, Whence::Start).unwrap(), 1);
+    assert_eq!(buf.pread_i8(0, Whence::Start).unwrap(), 1);
+    assert_eq!(buf.pread_i16(0, Whence::Start).unwrap(), 1);
+    assert_eq!(buf.pread_i32(0, Whence::Start).unwrap(), 1);
+    assert_eq!(buf.pread_u64(8, Whence::Start).unwrap(), 0xBEEF);
+    assert_eq!(
+        buf.pread_f32(0, Whence::Start).unwrap(),
+        f32::from_le_bytes([1, 0, 0, 0])
+    );
+
+    // Reads past the end fail like any positioned byte read.
+    assert!(buf.pread_i64(usize::MAX, Whence::Start).is_err());
+}

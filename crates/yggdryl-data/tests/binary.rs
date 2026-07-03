@@ -2,7 +2,7 @@
 //! scalar doubles as a `yggdryl-core` positioned-IO resource.
 
 use yggdryl_data::yggdryl_core::{
-    ByteBuffer, RawIOBase, RawIOCursor, RawIOSlice, Seekable, Whence,
+    ByteBuffer, ByteBufferSlice, RawIOBase, RawIOCursor, RawIOSlice, Seekable, Whence,
 };
 use yggdryl_data::{
     arrow_array, arrow_schema, Binary, BinaryField, BinaryType, DataError, DataType, DataTypeId,
@@ -70,9 +70,9 @@ fn binary_scalar_holds_bytes_or_null() {
     assert_eq!(borrowed.as_ptr(), blob.io().unwrap().as_bytes().as_ptr());
 
     // UTF-8 bytes convert to str; anything else errors naming the shape.
-    assert_eq!(Binary::new(b"hi".to_vec()).as_str().unwrap(), "hi");
+    assert_eq!(Binary::new(b"hi".to_vec()).as_str(None).unwrap(), "hi");
     assert!(matches!(
-        Binary::new(vec![0xFF]).as_str(),
+        Binary::new(vec![0xFF]).as_str(None),
         Err(DataError::InexactConversion { target: "str", .. })
     ));
     // No numeric conversions (the trait defaults, naming the data type).
@@ -87,7 +87,7 @@ fn binary_scalar_holds_bytes_or_null() {
     assert!(missing.is_null());
     assert_eq!(missing.value(), None);
     assert!(matches!(missing.as_bytes(), Err(DataError::NullValue)));
-    assert!(matches!(missing.as_str(), Err(DataError::NullValue)));
+    assert!(matches!(missing.as_str(None), Err(DataError::NullValue)));
     assert!(missing.io().is_none());
     assert!(missing.clone().into_io().is_none());
     assert_eq!(Binary::default(), missing); // like the integers: Default is null
@@ -165,7 +165,7 @@ fn binary_composes_with_the_optional_and_list_families() {
     assert_eq!(optional.default_value(), Vec::<u8>::new());
     let some = Optional::new(Binary::new(b"hi".to_vec()));
     assert_eq!(some.as_bytes().unwrap(), b"hi");
-    assert_eq!(some.as_str().unwrap(), "hi");
+    assert_eq!(some.as_str(None).unwrap(), "hi");
     assert_eq!(
         Optional::from_arrow(some.to_arrow().as_ref()).unwrap(),
         some
@@ -180,9 +180,43 @@ fn binary_composes_with_the_optional_and_list_families() {
     let blobs = Serie::<BinaryType, Binary>::new(vec![Binary::new(vec![1]), Binary::null()]);
     assert_eq!(blobs.len(), 2);
     assert_eq!(blobs.get_scalar_at(0), Some(Binary::new(vec![1])));
-    assert_eq!(blobs.get_value_at(0), Some(vec![1u8]));
-    assert_eq!(blobs.get_value_at(1), None); // a null element holds no value
+    assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), vec![1u8]);
+    assert!(matches!(
+        blobs.get_at::<Vec<u8>>(1),
+        Err(DataError::NullValue) // a null element holds no value
+    ));
     assert_eq!(Serie::from_arrow(blobs.to_arrow().as_ref()).unwrap(), blobs);
+}
+
+#[test]
+fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
+    // into_io_slice moves the buffer into a full-window core slice — zero copy.
+    let blob = Binary::new(vec![10, 20, 30]);
+    let window = blob.clone().into_io_slice().unwrap();
+    assert_eq!(window.byte_size(), 3);
+    assert_eq!(window.pread_byte_one(1, Whence::Start).unwrap(), 20);
+    assert_eq!(window.pread_i8(2, Whence::Start).unwrap(), 30);
+    assert!(Binary::null().into_io_slice().is_none());
+
+    // An explicit core charset decodes as_str; the default stays borrowed UTF-8.
+    use yggdryl_data::yggdryl_core::Latin1;
+    let accented = Binary::new(vec![0xE9]);
+    assert_eq!(accented.as_str(Some(&Latin1)).unwrap(), "\u{e9}");
+    assert!(accented.as_str(None).is_err()); // not valid UTF-8
+    let plain = Binary::new(b"hi".to_vec());
+    assert!(matches!(
+        plain.as_str(None).unwrap(),
+        std::borrow::Cow::Borrowed("hi")
+    ));
+
+    // The generic native accessor: a binary serie element as bytes, String or a
+    // positioned-IO window.
+    let blobs = Serie::<BinaryType, Binary>::new(vec![Binary::new(b"hi".to_vec())]);
+    assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), b"hi".to_vec());
+    assert_eq!(blobs.get_at::<String>(0).unwrap(), "hi");
+    let window = blobs.get_at::<ByteBufferSlice>(0).unwrap();
+    assert_eq!(window.byte_size(), 2);
+    assert_eq!(window.pread_byte_one(0, Whence::Start).unwrap(), b'h');
 }
 
 #[test]

@@ -139,7 +139,7 @@ fn optional_scalar_redirects_access_to_the_inner_scalar() {
     // The inner scalar's own contract shows through: an int64 has no str
     // conversion, and the null variant holds no value at all.
     assert!(matches!(
-        answer.as_str(),
+        answer.as_str(None),
         Err(DataError::UnsupportedConversion { .. })
     ));
     assert!(matches!(
