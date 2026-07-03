@@ -30,6 +30,14 @@ pub enum DataError {
         /// The name of the element data type without a fixed width.
         data_type: String,
     },
+    /// The per-element null buffer handed to an array constructor did not match the
+    /// element buffer's length.
+    MismatchedNullBufferLength {
+        /// The element buffer's length the null buffer must match.
+        expected: usize,
+        /// The number of flags the null buffer actually held.
+        got: usize,
+    },
 }
 
 impl std::fmt::Display for DataError {
@@ -52,6 +60,13 @@ impl std::fmt::Display for DataError {
                     f,
                     "the element type {data_type} has no fixed byte width; decode from Arrow \
                      instead of bytes"
+                )
+            }
+            DataError::MismatchedNullBufferLength { expected, got } => {
+                write!(
+                    f,
+                    "expected a null buffer of length {expected} but got {got}; pass one \
+                     validity flag per element"
                 )
             }
         }

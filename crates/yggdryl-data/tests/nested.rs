@@ -143,12 +143,14 @@ fn int64_array_reads_borrowed_buffers() {
         Some(1)
     );
 
-    // Equality is logical: an all-valid null buffer equals no null buffer.
+    // An all-valid null buffer is normalized away at construction, so the stored
+    // form is canonical and equality holds trivially.
     let buffered = Int64Array::new(
         arrow_buffer::ScalarBuffer::from(vec![1, 2, 3]),
         Some(arrow_buffer::NullBuffer::new_valid(3)),
     )
     .unwrap();
+    assert!(buffered.nulls().is_none());
     assert_eq!(buffered, numbers);
 
     // A null buffer of the wrong length is refused with an actionable error.
@@ -157,7 +159,10 @@ fn int64_array_reads_borrowed_buffers() {
             arrow_buffer::ScalarBuffer::from(vec![1, 2, 3]),
             Some(arrow_buffer::NullBuffer::new_valid(2)),
         ),
-        Err(DataError::IncompatibleArrowType { .. })
+        Err(DataError::MismatchedNullBufferLength {
+            expected: 3,
+            got: 2
+        })
     ));
 }
 

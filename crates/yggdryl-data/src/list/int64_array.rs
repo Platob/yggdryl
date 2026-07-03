@@ -53,13 +53,13 @@ pub struct Int64Array {
 impl Int64Array {
     /// An array borrowing the element buffer `values` and the per-element `nulls`
     /// zero-copy. A null buffer whose length differs from the element buffer's
-    /// errors with an actionable [`DataError`].
+    /// errors with [`DataError::MismatchedNullBufferLength`].
     pub fn new(values: ScalarBuffer<i64>, nulls: Option<NullBuffer>) -> Result<Self, DataError> {
         if let Some(nulls) = &nulls {
             if nulls.len() != values.len() {
-                return Err(DataError::IncompatibleArrowType {
-                    expected: format!("a null buffer of length {}", values.len()),
-                    got: format!("a null buffer of length {}", nulls.len()),
+                return Err(DataError::MismatchedNullBufferLength {
+                    expected: values.len(),
+                    got: nulls.len(),
                 });
             }
         }
@@ -76,12 +76,14 @@ impl Int64Array {
     }
 
     // The unchecked constructor; callers guarantee `nulls` matches `values` in
-    // length.
+    // length. An all-valid null buffer is dropped so the stored form is canonical
+    // and the `nulls()` contract (`None` when every element is valid) holds on
+    // every construction path.
     fn from_parts(values: ScalarBuffer<i64>, nulls: Option<NullBuffer>) -> Self {
         Self {
             data_type: ListType::new(Int64),
             values: Some(values),
-            nulls,
+            nulls: nulls.filter(|nulls| nulls.null_count() > 0),
         }
     }
 
@@ -104,8 +106,9 @@ impl Int64Array {
         self.values.as_deref()
     }
 
-    /// The per-element null buffer, when any element is declared nullable —
-    /// `None` both for an all-valid array and for the null list.
+    /// The per-element null buffer, when any element is null — `None` both for an
+    /// all-valid array (an all-valid buffer is dropped at construction, so the
+    /// stored form is canonical) and for the null list.
     pub fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
     }
