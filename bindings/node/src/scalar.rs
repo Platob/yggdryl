@@ -32,10 +32,7 @@ use crate::{bigint_to_i64, bigint_to_u64, data_error, wire_to_native};
 
 /// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
 /// `"latin1"` — shared by every scalar class.
-fn as_str_with<D: yggdryl_dtype::DataType, S: Scalar<D>>(
-    scalar: &S,
-    charset: Option<&str>,
-) -> Result<String> {
+fn as_str_with<S: Scalar>(scalar: &S, charset: Option<&str>) -> Result<String> {
     let decoded = match charset {
         None | Some("utf8") => scalar.as_str(None),
         Some("latin1") => scalar.as_str(Some(&yggdryl_core::Latin1)),

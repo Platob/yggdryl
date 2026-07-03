@@ -6,9 +6,9 @@ use yggdryl_dtype::{DataError, DataType, MapType, TypedDataType};
 /// A nullable `map` field: a name paired with the
 /// [`MapType`](yggdryl_dtype::MapType) from the key type `K` to the value type `V`.
 ///
-/// It carries both trait layers: the raw [`Field<MapType<K, V>>`](Field) surface,
-/// and the typed [`TypedField<MapType<K, V>, Vec<(TK, TV)>>`] whenever both types
-/// have codecs.
+/// It carries both trait layers: the raw [`Field`] surface (its associated
+/// [`DataType`](Field::DataType) is [`MapType<K, V>`](MapType)), and the typed
+/// [`TypedField<MapType<K, V>, Vec<(TK, TV)>>`] whenever both types have codecs.
 ///
 /// ```
 /// use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Map, MapType, UInt8Type};
@@ -40,7 +40,8 @@ impl<K: DataType + Default, V: DataType + Default> MapField<K, V> {
     }
 }
 
-impl<K: DataType, V: DataType> Field<MapType<K, V>> for MapField<K, V> {
+impl<K: DataType, V: DataType> Field for MapField<K, V> {
+    type DataType = MapType<K, V>;
     fn name(&self) -> &str {
         &self.name
     }

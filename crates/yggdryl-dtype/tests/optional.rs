@@ -75,12 +75,12 @@ fn optional_arrow_round_trips() {
 
 #[test]
 fn optional_is_the_generic_logical_holder() {
-    // The typed pair: Logical gives storage access, TypedLogical<S, T> pins it, and
+    // The typed pair: Logical gives storage access, TypedLogical<T> pins it, and
     // TypedOptional pins the value type.
-    fn raw_storage_name<S: DataType, L: Logical<S>>(logical: &L) -> String {
+    fn raw_storage_name<L: Logical>(logical: &L) -> String {
         logical.storage().name().to_string()
     }
-    fn typed_storage_name<S: DataType, T, L: TypedLogical<S, T>>(logical: &L) -> String {
+    fn typed_storage_name<T, L: TypedLogical<T>>(logical: &L) -> String {
         logical.storage().name().to_string()
     }
     fn typed_default<T, O: TypedOptional<T>>(optional: &O) -> T {

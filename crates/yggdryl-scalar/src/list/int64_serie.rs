@@ -262,7 +262,8 @@ impl From<Vec<Option<i64>>> for Int64Serie {
     }
 }
 
-impl Scalar<ListType<Int64Type>> for Int64Serie {
+impl Scalar for Int64Serie {
+    type DataType = ListType<Int64Type>;
     /// The raw element buffer — like [`values`](Int64Serie::values), it includes
     /// the slots under null elements.
     type Value = [i64];

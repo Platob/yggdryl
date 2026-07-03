@@ -193,12 +193,12 @@ fn main() {
 
 ## The trait layers
 
-- **`Field<D: DataType>`** — the untyped base: a named, nullable column
+- **`Field`** — the untyped base: a named, nullable column
   (`name`, `data_type`, `is_nullable`); `to_arrow` / `from_arrow` mirror an
-  `arrow_schema::Field`. Parameterised by the data type `D` so the concrete type
-  is preserved for zero-cost access; `Debug + Send + Sync`, no lifetime
-  parameters.
-- **`TypedField<DT: TypedDataType<T>, T>: Field<DT>`** — the typed layer: a field
+  `arrow_schema::Field`. Carries its data type as the associated `DataType` so the
+  concrete type is preserved for zero-cost access; `Debug + Send + Sync`, no
+  lifetime parameters.
+- **`TypedField<DT: TypedDataType<T>, T>: Field<DataType = DT>`** — the typed layer: a field
   whose data type is a `yggdryl_dtype::TypedDataType<T>`, so the field's values
   have native Rust representation `T`.
 - **`FieldFactory<T>: TypedDataType<T>`** — the factory: a typed data type builds

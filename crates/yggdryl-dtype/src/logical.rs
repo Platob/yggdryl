@@ -3,15 +3,16 @@
 use super::DataType;
 
 /// The untyped surface every logical type carries: a type layered over a physical
-/// storage type `S` — e.g. a timestamp stored as an `int64`, or an optional stored
+/// storage type — e.g. a timestamp stored as an `int64`, or an optional stored
 /// as a union.
 ///
 /// [`storage`](Logical::storage) returns the physical type the values are actually
-/// laid out as; the logical type reinterprets those bytes. It is parameterised by
-/// the storage type (rather than boxing it) so the concrete type is preserved for
-/// zero-cost access, mirroring `yggdryl-field`'s `Field` and `yggdryl-scalar`'s
-/// `Scalar`; a logical type whose values also have a native representation
-/// implements the typed [`TypedLogical`](crate::TypedLogical).
+/// laid out as; the logical type reinterprets those bytes. The storage is the
+/// associated [`Storage`](Logical::Storage) type (rather than a generic parameter or
+/// a box) so the concrete type is preserved for zero-cost access, mirroring
+/// `yggdryl-field`'s `Field` and `yggdryl-scalar`'s `Scalar`; a logical type whose
+/// values also have a native representation implements the typed
+/// [`TypedLogical`](crate::TypedLogical).
 ///
 /// ```
 /// use yggdryl_dtype::{arrow_schema, DataError, DataType, Int64Type, Logical};
@@ -42,7 +43,8 @@ use super::DataType;
 ///     }
 /// }
 ///
-/// impl Logical<Int64Type> for TimestampMicrosType {
+/// impl Logical for TimestampMicrosType {
+///     type Storage = Int64Type;
 ///     fn storage(&self) -> &Int64Type {
 ///         &self.storage
 ///     }
@@ -52,7 +54,10 @@ use super::DataType;
 /// assert_eq!(ts.name(), "timestamp[us]");
 /// assert_eq!(ts.storage().name(), "int64"); // reinterprets int64 bytes
 /// ```
-pub trait Logical<S: DataType>: DataType {
+pub trait Logical: DataType {
     /// The physical type this logical type's values are stored as.
-    fn storage(&self) -> &S;
+    type Storage: DataType;
+
+    /// The physical type this logical type's values are stored as.
+    fn storage(&self) -> &Self::Storage;
 }

@@ -42,7 +42,7 @@ across threads / FFI); no lifetime parameters.
 How a type is shaped (each refines `DataType`).
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
-- **`Logical<S>` / `TypedLogical<S, T>`** — a type layered over a physical storage
+- **`Logical` / `TypedLogical<T>`** — a type layered over a physical storage
   type (e.g. a timestamp over `int64`); `OptionalType<D>` is the generic holder.
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
   `list`, `map`, `union`); `ListType<D>` and `MapType<K, V>` are the generic typed

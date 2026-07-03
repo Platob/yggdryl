@@ -42,7 +42,8 @@ struct Utf8Scalar {
     value: Option<String>,
 }
 
-impl Scalar<Utf8> for Utf8Scalar {
+impl Scalar for Utf8Scalar {
+    type DataType = Utf8;
     type Value = str;
     fn data_type(&self) -> &Utf8 {
         &self.data_type

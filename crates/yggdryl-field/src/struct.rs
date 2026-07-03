@@ -42,7 +42,8 @@ impl StructField {
     }
 }
 
-impl Field<StructType> for StructField {
+impl Field for StructField {
+    type DataType = StructType;
     fn name(&self) -> &str {
         &self.name
     }

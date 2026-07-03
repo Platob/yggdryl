@@ -18,8 +18,9 @@ and [`binary`](src/binary.rs), [`null`](src/null.rs), [`union`](src/union.rs),
 
 ## Untyped base
 
-- **`Field<D: DataType>`** — a named, nullable column (`name`, `data_type`,
-  `is_nullable`); mirrors an `arrow_schema::Field` (`to_arrow` is defaulted from the
+- **`Field`** — a named, nullable column (`name`, `data_type`, `is_nullable`),
+  carrying its data type as the associated `DataType: yggdryl_dtype::DataType`;
+  mirrors an `arrow_schema::Field` (`to_arrow` is defaulted from the
   three accessors). The model carries exactly those three properties: `from_arrow`
   refuses an extension-typed field (`ARROW:extension:name` metadata is a different
   logical type) and deliberately drops any other Arrow metadata, logging a `warn`
@@ -28,9 +29,9 @@ and [`binary`](src/binary.rs), [`null`](src/null.rs), [`union`](src/union.rs),
 
 ## Typed
 
-- **`TypedField<DT: TypedDataType<T>, T>: Field<DT>`** — a field whose data type is
-  a `yggdryl_dtype::TypedDataType<T>`, so the field's values have native Rust
-  representation `T`.
+- **`TypedField<DT: TypedDataType<T>, T>: Field<DataType = DT>`** — a field whose
+  data type is a `yggdryl_dtype::TypedDataType<T>`, so the field's values have native
+  Rust representation `T`.
 
 ## Factory
 

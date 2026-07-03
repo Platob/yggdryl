@@ -111,7 +111,8 @@ impl PartialEq for StructScalar {
     }
 }
 
-impl Scalar<StructType> for StructScalar {
+impl Scalar for StructScalar {
+    type DataType = StructType;
     type Value = [ArrayRef];
 
     fn data_type(&self) -> &StructType {

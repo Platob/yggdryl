@@ -6,8 +6,9 @@ use yggdryl_dtype::{DataError, DataType, ListType, TypedDataType};
 /// A nullable `list` field: a name paired with the
 /// [`ListType`](yggdryl_dtype::ListType) of the value type `D`.
 ///
-/// It carries both trait layers: the raw [`Field<ListType<D>>`](Field) surface, and
-/// the typed [`TypedField<ListType<D>, Vec<T>>`] whenever the value type has a
+/// It carries both trait layers: the raw [`Field`] surface (its associated
+/// [`DataType`](Field::DataType) is [`ListType<D>`](ListType)), and the typed
+/// [`TypedField<ListType<D>, Vec<T>>`] whenever the value type has a
 /// [`TypedDataType<T>`] codec.
 ///
 /// ```
@@ -40,7 +41,8 @@ impl<D: DataType + Default> ListField<D> {
     }
 }
 
-impl<D: DataType> Field<ListType<D>> for ListField<D> {
+impl<D: DataType> Field for ListField<D> {
+    type DataType = ListType<D>;
     fn name(&self) -> &str {
         &self.name
     }

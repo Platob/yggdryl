@@ -68,7 +68,10 @@ impl<K: DataType, V: DataType> MapType<K, V> {
     }
 }
 
-impl<K: DataType, V: DataType> super::Map<K, V> for MapType<K, V> {
+impl<K: DataType, V: DataType> super::Map for MapType<K, V> {
+    type KeyType = K;
+    type ValueType = V;
+
     fn key_type(&self) -> &K {
         &self.key_type
     }
@@ -194,7 +197,4 @@ impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> crate::TypedNested<Vec<
 {
 }
 
-impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> super::TypedMap<TK, TV> for MapType<K, V> {
-    type KeyType = K;
-    type ValueType = V;
-}
+impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> super::TypedMap<TK, TV> for MapType<K, V> {}

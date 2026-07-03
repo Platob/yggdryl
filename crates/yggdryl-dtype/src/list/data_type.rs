@@ -55,7 +55,9 @@ impl<D: DataType> ListType<D> {
     }
 }
 
-impl<D: DataType> super::List<D> for ListType<D> {
+impl<D: DataType> super::List for ListType<D> {
+    type ValueType = D;
+
     fn value_type(&self) -> &D {
         &self.value_type
     }
@@ -136,6 +138,4 @@ impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for ListType<D> {
 
 impl<T, D: TypedDataType<T>> crate::TypedNested<Vec<T>> for ListType<D> {}
 
-impl<T, D: TypedDataType<T>> super::TypedList<T> for ListType<D> {
-    type ValueType = D;
-}
+impl<T, D: TypedDataType<T>> super::TypedList<T> for ListType<D> {}

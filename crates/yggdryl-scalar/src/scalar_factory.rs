@@ -45,7 +45,7 @@ use yggdryl_dtype::TypedDataType;
 /// ```
 pub trait ScalarFactory<T>: TypedDataType<T> + Sized {
     /// The concrete scalar type of this data type.
-    type Scalar: Scalar<Self>;
+    type Scalar: Scalar<DataType = Self>;
 
     /// Build a scalar of this data type holding the native `value`.
     fn scalar(&self, value: T) -> Self::Scalar;

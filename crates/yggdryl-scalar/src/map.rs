@@ -40,8 +40,8 @@ impl<K, V, SK, SV> MapScalar<K, V, SK, SV>
 where
     K: DataType + Default,
     V: DataType + Default,
-    SK: Scalar<K>,
-    SV: Scalar<V>,
+    SK: Scalar<DataType = K>,
+    SV: Scalar<DataType = V>,
 {
     /// A scalar holding the `entries` (an empty sequence is the empty map, not
     /// null). A null key errors: Arrow map keys are non-nullable.
@@ -71,8 +71,8 @@ impl<K, V, SK, SV> Default for MapScalar<K, V, SK, SV>
 where
     K: DataType + Default,
     V: DataType + Default,
-    SK: Scalar<K>,
-    SV: Scalar<V>,
+    SK: Scalar<DataType = K>,
+    SV: Scalar<DataType = V>,
 {
     /// The default map scalar: the empty map.
     fn default() -> Self {
@@ -83,13 +83,14 @@ where
     }
 }
 
-impl<K, V, SK, SV> Scalar<MapType<K, V>> for MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> Scalar for MapScalar<K, V, SK, SV>
 where
     K: DataType + Default,
     V: DataType + Default,
-    SK: Scalar<K>,
-    SV: Scalar<V>,
+    SK: Scalar<DataType = K>,
+    SV: Scalar<DataType = V>,
 {
+    type DataType = MapType<K, V>;
     type Value = [(SK, SV)];
 
     fn data_type(&self) -> &MapType<K, V> {
@@ -163,8 +164,8 @@ impl<K, V, SK, SV> TypedScalar<MapType<K, V>, [(SK, SV)]> for MapScalar<K, V, SK
 where
     K: DataType + Default,
     V: DataType + Default,
-    SK: Scalar<K>,
-    SV: Scalar<V>,
+    SK: Scalar<DataType = K>,
+    SV: Scalar<DataType = V>,
 {
 }
 
@@ -172,8 +173,8 @@ impl<TK, TV, K, V> ScalarFactory<Vec<(TK, TV)>> for MapType<K, V>
 where
     K: ScalarFactory<TK> + Default,
     V: ScalarFactory<TV> + Default,
-    K::Scalar: Scalar<K>,
-    V::Scalar: Scalar<V>,
+    K::Scalar: Scalar<DataType = K>,
+    V::Scalar: Scalar<DataType = V>,
 {
     type Scalar = MapScalar<K, V, K::Scalar, V::Scalar>;
 

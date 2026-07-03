@@ -142,7 +142,8 @@ impl From<ByteBuffer> for BinaryScalar {
     }
 }
 
-impl Scalar<BinaryType> for BinaryScalar {
+impl Scalar for BinaryScalar {
+    type DataType = BinaryType;
     type Value = [u8];
 
     fn data_type(&self) -> &BinaryType {

@@ -54,17 +54,17 @@ impl<D: DataType> OptionalType<D> {
     }
 }
 
-impl<D: DataType> super::Optional<D> for OptionalType<D> {
+impl<D: DataType> super::Optional for OptionalType<D> {
+    type ValueType = D;
+
     fn value_type(&self) -> &D {
         &self.value_type
     }
 }
 
-impl<T, D: TypedDataType<T>> crate::TypedLogical<UnionType, T> for OptionalType<D> {}
+impl<T, D: TypedDataType<T>> crate::TypedLogical<T> for OptionalType<D> {}
 
-impl<T, D: TypedDataType<T>> super::TypedOptional<T> for OptionalType<D> {
-    type ValueType = D;
-}
+impl<T, D: TypedDataType<T>> super::TypedOptional<T> for OptionalType<D> {}
 
 impl<D: DataType + Default> Default for OptionalType<D> {
     fn default() -> Self {
@@ -164,7 +164,9 @@ impl<T, D: TypedDataType<T>> TypedDataType<T> for OptionalType<D> {
     }
 }
 
-impl<D: DataType> Logical<UnionType> for OptionalType<D> {
+impl<D: DataType> Logical for OptionalType<D> {
+    type Storage = UnionType;
+
     fn storage(&self) -> &UnionType {
         self.storage
             .get_or_init(|| UnionType::optional(&self.value_type))

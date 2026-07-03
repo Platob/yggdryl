@@ -33,7 +33,8 @@ macro_rules! int_field {
             }
         }
 
-        impl $crate::Field<::yggdryl_dtype::$dtype> for $ty {
+        impl $crate::Field for $ty {
+            type DataType = ::yggdryl_dtype::$dtype;
             fn name(&self) -> &str {
                 &self.name
             }

@@ -49,7 +49,7 @@ pub struct Serie<D, S> {
     element: PhantomData<S>,
 }
 
-impl<D: DataType + Default, S: Scalar<D>> Serie<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
     /// A scalar holding the sequence `values`, assembled once into one Arrow child
     /// array (an empty sequence is the empty list, not null).
     pub fn new(values: Vec<S>) -> Self {
@@ -124,7 +124,7 @@ impl<D: DataType + Default, S: Scalar<D>> Serie<D, S> {
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> Default for Serie<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> Default for Serie<D, S> {
     /// The default list scalar: the empty list.
     fn default() -> Self {
         Self::new(Vec::new())
@@ -156,14 +156,14 @@ impl<D, S> PartialEq for Serie<D, S> {
 
 impl<D, S> Eq for Serie<D, S> {}
 
-impl<D: DataType + Default, S: Scalar<D>> From<Vec<S>> for Serie<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> From<Vec<S>> for Serie<D, S> {
     /// A scalar holding the sequence `values`.
     fn from(values: Vec<S>) -> Self {
         Self::new(values)
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> From<Option<Vec<S>>> for Serie<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> From<Option<Vec<S>>> for Serie<D, S> {
     /// A scalar holding the sequence, or the null scalar for `None`.
     fn from(values: Option<Vec<S>>) -> Self {
         match values {
@@ -173,7 +173,8 @@ impl<D: DataType + Default, S: Scalar<D>> From<Option<Vec<S>>> for Serie<D, S> {
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> Scalar<ListType<D>> for Serie<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
+    type DataType = ListType<D>;
     type Value = dyn arrow_array::Array;
 
     fn data_type(&self) -> &ListType<D> {
@@ -229,15 +230,15 @@ impl<D: DataType + Default, S: Scalar<D>> Scalar<ListType<D>> for Serie<D, S> {
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> TypedScalar<ListType<D>, dyn arrow_array::Array>
-    for Serie<D, S>
+impl<D: DataType + Default, S: Scalar<DataType = D>>
+    TypedScalar<ListType<D>, dyn arrow_array::Array> for Serie<D, S>
 {
 }
 
 impl<T, D> ScalarFactory<Vec<T>> for ListType<D>
 where
     D: ScalarFactory<T> + Default,
-    D::Scalar: Scalar<D>,
+    D::Scalar: Scalar<DataType = D>,
 {
     type Scalar = Serie<D, D::Scalar>;
 

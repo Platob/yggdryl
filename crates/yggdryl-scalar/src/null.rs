@@ -41,7 +41,8 @@ impl NullScalar {
     }
 }
 
-impl Scalar<NullType> for NullScalar {
+impl Scalar for NullScalar {
+    type DataType = NullType;
     type Value = ();
 
     fn data_type(&self) -> &NullType {

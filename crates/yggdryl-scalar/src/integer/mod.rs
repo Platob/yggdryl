@@ -46,7 +46,8 @@ macro_rules! int_scalar {
         // `as_i64` on an int64), which clippy would flag; the macro generates all
         // ten numeric targets uniformly, so allow it once here.
         #[allow(clippy::useless_conversion)]
-        impl $crate::Scalar<::yggdryl_dtype::$dtype> for $ty {
+        impl $crate::Scalar for $ty {
+            type DataType = ::yggdryl_dtype::$dtype;
             type Value = $native;
             fn data_type(&self) -> &::yggdryl_dtype::$dtype {
                 &self.data_type

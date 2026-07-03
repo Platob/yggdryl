@@ -3,11 +3,11 @@
 use super::Scalar;
 use yggdryl_dtype::DataType;
 
-/// A [`Scalar<DT>`](super::Scalar) whose value is the native Rust type `T` — a
+/// A [`Scalar`](super::Scalar) whose value is the native Rust type `T` — a
 /// single, possibly-null value — where `T` may be unsized (e.g. `str`).
 ///
 /// The data type `DT` and value type `T` are explicit generic parameters: `DT` pins
-/// the scalar's data type and `T` pins the inherited
+/// the base's associated [`DataType`](super::Scalar::DataType) and `T` pins the inherited
 /// [`Scalar::Value`](super::Scalar::Value), so `value` yields `Option<&T>`. `DT` is
 /// only bound to [`DataType`](yggdryl_dtype::DataType) — deliberately not
 /// [`TypedDataType<T>`](yggdryl_dtype::TypedDataType), whose owned-value byte codec
@@ -29,4 +29,4 @@ use yggdryl_dtype::DataType;
 /// assert!(!take(&answer));
 /// assert!(take(&Int64Scalar::null()));
 /// ```
-pub trait TypedScalar<DT: DataType, T: ?Sized>: Scalar<DT, Value = T> {}
+pub trait TypedScalar<DT: DataType, T: ?Sized>: Scalar<DataType = DT, Value = T> {}

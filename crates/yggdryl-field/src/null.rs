@@ -37,7 +37,8 @@ impl NullField {
     }
 }
 
-impl Field<NullType> for NullField {
+impl Field for NullField {
+    type DataType = NullType;
     fn name(&self) -> &str {
         &self.name
     }

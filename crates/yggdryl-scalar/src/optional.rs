@@ -49,7 +49,7 @@ pub struct OptionalScalar<D, S> {
     value: Option<S>,
 }
 
-impl<D: DataType + Default, S: Scalar<D>> OptionalScalar<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> OptionalScalar<D, S> {
     /// A scalar holding the value variant `scalar`. A null inner scalar
     /// *normalizes to the null variant* — the two representations of null are one
     /// state, so equality, [`scalar`](OptionalScalar::scalar) (which then answers
@@ -75,7 +75,7 @@ impl<D: DataType + Default, S: Scalar<D>> OptionalScalar<D, S> {
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> Default for OptionalScalar<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> Default for OptionalScalar<D, S> {
     fn default() -> Self {
         Self::null()
     }
@@ -100,14 +100,14 @@ impl<D, S: PartialEq> PartialEq for OptionalScalar<D, S> {
 
 impl<D, S: Eq> Eq for OptionalScalar<D, S> {}
 
-impl<D: DataType + Default, S: Scalar<D>> From<S> for OptionalScalar<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> From<S> for OptionalScalar<D, S> {
     /// A scalar holding the value variant `scalar`.
     fn from(scalar: S) -> Self {
         Self::new(scalar)
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> From<Option<S>> for OptionalScalar<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> From<Option<S>> for OptionalScalar<D, S> {
     /// A scalar holding the value variant, or the null variant for `None`.
     fn from(scalar: Option<S>) -> Self {
         match scalar {
@@ -117,7 +117,8 @@ impl<D: DataType + Default, S: Scalar<D>> From<Option<S>> for OptionalScalar<D, 
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> Scalar<OptionalType<D>> for OptionalScalar<D, S> {
+impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for OptionalScalar<D, S> {
+    type DataType = OptionalType<D>;
     type Value = S::Value;
 
     fn data_type(&self) -> &OptionalType<D> {
@@ -233,7 +234,7 @@ impl<D: DataType + Default, S: Scalar<D>> Scalar<OptionalType<D>> for OptionalSc
     }
 }
 
-impl<D: DataType + Default, S: Scalar<D>> TypedScalar<OptionalType<D>, S::Value>
+impl<D: DataType + Default, S: Scalar<DataType = D>> TypedScalar<OptionalType<D>, S::Value>
     for OptionalScalar<D, S>
 {
 }
@@ -241,7 +242,7 @@ impl<D: DataType + Default, S: Scalar<D>> TypedScalar<OptionalType<D>, S::Value>
 impl<T, D> ScalarFactory<T> for OptionalType<D>
 where
     D: ScalarFactory<T> + Default,
-    D::Scalar: Scalar<D>,
+    D::Scalar: Scalar<DataType = D>,
 {
     type Scalar = OptionalScalar<D, D::Scalar>;
 

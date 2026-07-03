@@ -6,8 +6,9 @@ use yggdryl_dtype::{DataError, DataType, OptionalType, TypedDataType};
 /// A nullable `optional` field: a name paired with the logical
 /// [`OptionalType`](yggdryl_dtype::OptionalType) of the value type `D`.
 ///
-/// It carries both trait layers: the raw [`Field<OptionalType<D>>`](Field) surface,
-/// and the typed [`TypedField<OptionalType<D>, T>`] whenever the value type has a
+/// It carries both trait layers: the raw [`Field`] surface (its associated
+/// [`DataType`](Field::DataType) is [`OptionalType<D>`](OptionalType)), and the typed
+/// [`TypedField<OptionalType<D>, T>`] whenever the value type has a
 /// [`TypedDataType<T>`] codec.
 ///
 /// ```
@@ -40,7 +41,8 @@ impl<D: DataType + Default> OptionalField<D> {
     }
 }
 
-impl<D: DataType> Field<OptionalType<D>> for OptionalField<D> {
+impl<D: DataType> Field for OptionalField<D> {
+    type DataType = OptionalType<D>;
     fn name(&self) -> &str {
         &self.name
     }

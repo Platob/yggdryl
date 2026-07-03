@@ -289,10 +289,11 @@ fn main() {
 How a type is shaped (each refines `DataType`):
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
-- **`Logical<S>` / `TypedLogical<S, T>`** — a type layered over a physical storage
-  type `S`, e.g. a timestamp over `int64`: the base side's `storage()` returns it,
-  the typed side pins it as the associated `Storage` and adds the native codec. The
-  generic holder is `OptionalType<D>` — a value or null over the null-or-value union.
+- **`Logical` / `TypedLogical<T>`** — a type layered over a physical storage
+  type, e.g. a timestamp over `int64`: the base side carries it as the associated
+  `Storage` (returned by `storage()`), the typed side pins the same `Storage` and
+  adds the native codec. The generic holder is `OptionalType<D>` — a value or null
+  over the null-or-value union.
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
   `list`, `map`, `union`): the base side's `child_count()` reports how many, the
   typed side adds the native codec (a sequence, a row). The generic holders are

@@ -4,12 +4,13 @@
 use super::Field;
 use yggdryl_dtype::TypedDataType;
 
-/// A [`Field<DT>`](super::Field) whose data type `DT` is a typed
+/// A [`Field`](super::Field) whose data type `DT` is a typed
 /// [`TypedDataType<T>`](yggdryl_dtype::TypedDataType) — the field's values have
 /// native Rust representation `T`.
 ///
 /// The data type `DT` and native type `T` are explicit generic parameters (a typed
-/// field has exactly one of each); `data_type` is inherited from
+/// field has exactly one of each), and `DT` pins the base's associated
+/// [`DataType`](super::Field::DataType); `data_type` is inherited from
 /// [`Field`](super::Field) and returns the `DT`. This keeps the surface aligned with
 /// `yggdryl-scalar`'s `TypedScalar<DT, T>` and
 /// [`TypedDataType<T>`](yggdryl_dtype::TypedDataType).
@@ -25,7 +26,8 @@ use yggdryl_dtype::TypedDataType;
 ///     nullable: bool,
 /// }
 ///
-/// impl Field<Int64Type> for Column {
+/// impl Field for Column {
+///     type DataType = Int64Type;
 ///     fn name(&self) -> &str {
 ///         &self.name
 ///     }
@@ -56,4 +58,4 @@ use yggdryl_dtype::TypedDataType;
 /// assert_eq!(id.name(), "id");
 /// assert_eq!(id.data_type().name(), "int64");
 /// ```
-pub trait TypedField<DT: TypedDataType<T>, T>: Field<DT> {}
+pub trait TypedField<DT: TypedDataType<T>, T>: Field<DataType = DT> {}

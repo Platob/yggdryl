@@ -6,18 +6,20 @@ use yggdryl_dtype::{DataError, DataType};
 /// A single value of a data type, possibly null — the base trait mirroring an Apache
 /// Arrow `Scalar`.
 ///
-/// It carries its [`data_type`](Scalar::data_type) of type `D`, reports whether it
+/// It carries its [`data_type`](Scalar::data_type), reports whether it
 /// [`is_null`](Scalar::is_null), and exposes the native Rust
 /// [`value`](Scalar::value) (of the associated [`Value`](Scalar::Value) type) when
 /// non-null. Arrow models a scalar as an array of exactly one value, so
 /// [`to_arrow`](Scalar::to_arrow) builds a one-element [`arrow_array::ArrayRef`]
 /// (null when the scalar is null) and [`from_arrow`](Scalar::from_arrow) reads one
-/// back (the Arrow factory). Parameterising by `D` keeps the concrete type available
-/// for zero-cost access; the associated `Value` names the in-memory representation a
-/// concrete scalar holds. It shares [`DataType`](yggdryl_dtype::DataType)'s
-/// `Debug + Send + Sync` bounds so scalar values are printable and shareable across
-/// threads and FFI. The associated [`Value`](Scalar::Value) is `?Sized`, so a string
-/// scalar can expose `Value = str`.
+/// back (the Arrow factory). The data type is the associated
+/// [`DataType`](Scalar::DataType) type (rather than a generic parameter or a box) so
+/// the concrete type is preserved for zero-cost access, mirroring `yggdryl-field`'s
+/// `Field` and `yggdryl-dtype`'s `Logical`; the associated `Value` names the
+/// in-memory representation a concrete scalar holds. It shares
+/// [`DataType`](yggdryl_dtype::DataType)'s `Debug + Send + Sync` bounds so scalar
+/// values are printable and shareable across threads and FFI. The associated
+/// [`Value`](Scalar::Value) is `?Sized`, so a string scalar can expose `Value = str`.
 ///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::{DataError, DataType, Int32Type};
@@ -30,7 +32,8 @@ use yggdryl_dtype::{DataError, DataType};
 ///     value: Option<i32>,
 /// }
 ///
-/// impl Scalar<Int32Type> for Int32Scalar {
+/// impl Scalar for Int32Scalar {
+///     type DataType = Int32Type;
 ///     type Value = i32;
 ///     fn data_type(&self) -> &Int32Type {
 ///         &self.data_type
@@ -89,13 +92,16 @@ use yggdryl_dtype::{DataError, DataType};
 /// assert!(missing.is_null());
 /// assert!(missing.to_arrow().is_null(0));
 /// ```
-pub trait Scalar<D: DataType>: std::fmt::Debug + Send + Sync {
+pub trait Scalar: std::fmt::Debug + Send + Sync {
+    /// The concrete data type of this scalar.
+    type DataType: yggdryl_dtype::DataType;
+
     /// The native Rust representation this scalar holds when non-null. May be
     /// unsized (e.g. `str`).
     type Value: ?Sized;
 
     /// The scalar's data type.
-    fn data_type(&self) -> &D;
+    fn data_type(&self) -> &Self::DataType;
 
     /// Whether this scalar holds a null value.
     fn is_null(&self) -> bool;
@@ -276,7 +282,7 @@ pub(crate) fn concat_scalar_arrays(
 
 /// Every element of `elements` read back through the scalar's own `from_arrow` —
 /// the shared reader behind the nested scalars' `from_arrow`.
-pub(crate) fn scalars_from_elements<D: DataType, S: Scalar<D>>(
+pub(crate) fn scalars_from_elements<S: Scalar>(
     elements: &dyn arrow_array::Array,
 ) -> Result<Vec<S>, DataError> {
     (0..arrow_array::Array::len(elements))

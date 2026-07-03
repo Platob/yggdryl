@@ -6,14 +6,14 @@ use yggdryl_dtype::{DataError, DataType};
 /// A named, nullable column of a data type — the base trait mirroring an Apache
 /// Arrow `Field`.
 ///
-/// It pairs a [`name`](Field::name) with a [`data_type`](Field::data_type) of type
-/// `D` and a [`is_nullable`](Field::is_nullable) flag, so a schema is a sequence of
-/// fields, and converts to and from the [`arrow_schema::Field`] it mirrors
+/// It pairs a [`name`](Field::name) with a [`data_type`](Field::data_type) and a
+/// [`is_nullable`](Field::is_nullable) flag, so a schema is a sequence of fields, and
+/// converts to and from the [`arrow_schema::Field`] it mirrors
 /// ([`to_arrow`](Field::to_arrow) / [`from_arrow`](Field::from_arrow), the Arrow
-/// factory). It is parameterised by the data type `D` (rather than boxing it) so the
-/// concrete type is preserved for zero-cost, monomorphised access, and carries
-/// `Debug + Send + Sync` so a schema is printable and shareable across threads and
-/// FFI.
+/// factory). It carries its data type as the associated
+/// [`DataType`](Field::DataType) (rather than boxing it) so the concrete type is
+/// preserved for zero-cost, monomorphised access, and carries `Debug + Send + Sync`
+/// so a schema is printable and shareable across threads and FFI.
 ///
 /// ```
 /// use yggdryl_field::yggdryl_dtype::{DataError, DataType, Int32Type};
@@ -26,7 +26,8 @@ use yggdryl_dtype::{DataError, DataType};
 ///     nullable: bool,
 /// }
 ///
-/// impl Field<Int32Type> for Column {
+/// impl Field for Column {
+///     type DataType = Int32Type;
 ///     fn name(&self) -> &str {
 ///         &self.name
 ///     }
@@ -62,12 +63,15 @@ use yggdryl_dtype::{DataError, DataType};
 /// assert_eq!(arrow, arrow_schema::Field::new("id", arrow_schema::DataType::Int32, false));
 /// assert_eq!(Column::from_arrow(&arrow).unwrap().name(), "id");
 /// ```
-pub trait Field<D: DataType>: std::fmt::Debug + Send + Sync {
+pub trait Field: std::fmt::Debug + Send + Sync {
+    /// The field's data type.
+    type DataType: yggdryl_dtype::DataType;
+
     /// The field's name.
     fn name(&self) -> &str;
 
     /// The field's data type.
-    fn data_type(&self) -> &D;
+    fn data_type(&self) -> &Self::DataType;
 
     /// Whether values in this field may be null.
     fn is_nullable(&self) -> bool;

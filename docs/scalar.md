@@ -319,8 +319,9 @@ fn main() {
 
 ## The trait layers
 
-- **`Scalar<D: DataType>`** — the untyped base: a single, possibly-null
-  value (`data_type`, `is_null`, `value` of an associated `Value: ?Sized`);
+- **`Scalar`** — the untyped base: a single, possibly-null value carrying its
+  data type as the associated `DataType` (`data_type`, `is_null`, `value` of an
+  associated `Value: ?Sized`);
   `to_arrow` / `from_arrow` mirror a one-element `arrow_array` array. The `as_*`
   accessors (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`,
   `as_bytes`) read the value as a chosen Rust type under one contract: the value
@@ -333,7 +334,7 @@ fn main() {
   Every accessor defaults to that error, so a concrete scalar overrides only the
   targets its value converts to; the bindings raise `ValueError` (Python) / throw
   (Node).
-- **`TypedScalar<DT: DataType, T>: Scalar<DT, Value = T>`** — the typed layer: a
+- **`TypedScalar<DT: DataType, T>: Scalar<DataType = DT, Value = T>`** — the typed layer: a
   scalar whose value is `T` (possibly unsized: a string scalar exposes
   `Option<&str>`).
 - **`FromScalar`** — the native Rust targets readable out of any scalar, behind

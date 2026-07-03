@@ -39,7 +39,8 @@ impl UnionField {
     }
 }
 
-impl Field<UnionType> for UnionField {
+impl Field for UnionField {
+    type DataType = UnionType;
     fn name(&self) -> &str {
         &self.name
     }

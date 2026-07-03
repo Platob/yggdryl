@@ -8,11 +8,12 @@ use crate::TypedDataType;
 /// [`TypedDataType`]s — the map's values have native Rust representation
 /// `Vec<(TK, TV)>`.
 ///
-/// The concrete key and value types are the associated
-/// [`KeyType`](TypedMap::KeyType) / [`ValueType`](TypedMap::ValueType), so a map has exactly
-/// one of each; the accessors are inherited from [`Map`](super::Map). It also
-/// carries the [`TypedDataType<Vec<(TK, TV)>>`] surface itself: the codec
-/// concatenates each entry's key and value bytes, and the default is the empty map.
+/// The concrete key and value types are [`Map`](super::Map)'s associated
+/// [`KeyType`](super::Map::KeyType) / [`ValueType`](super::Map::ValueType), here
+/// refined to typed [`TypedDataType`]s; the accessors are inherited from
+/// [`Map`](super::Map). It also carries the [`TypedDataType<Vec<(TK, TV)>>`] surface
+/// itself: the codec concatenates each entry's key and value bytes, and the default
+/// is the empty map.
 ///
 /// ```
 /// use yggdryl_dtype::{Int64Type, MapType, TypedDataType, TypedMap, UInt8Type};
@@ -25,11 +26,6 @@ use crate::TypedDataType;
 /// assert_eq!(default_of(&map), Vec::<(u8, i64)>::new());
 /// ```
 pub trait TypedMap<TK, TV>:
-    Map<Self::KeyType, Self::ValueType> + TypedDataType<Vec<(TK, TV)>>
+    Map<KeyType: TypedDataType<TK>, ValueType: TypedDataType<TV>> + TypedDataType<Vec<(TK, TV)>>
 {
-    /// The concrete key type of this map.
-    type KeyType: TypedDataType<TK>;
-
-    /// The concrete value type of this map.
-    type ValueType: TypedDataType<TV>;
 }

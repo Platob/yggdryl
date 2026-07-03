@@ -20,8 +20,9 @@ values (the union, dynamic at runtime, has no scalar).
 
 ## Untyped base
 
-- **`Scalar<D: DataType>`** — a single, possibly-null value (`data_type`,
-  `is_null`, `value` of an associated `Value: ?Sized`); mirrors Arrow's own scalar
+- **`Scalar`** — a single, possibly-null value, carrying its data type as the
+  associated `DataType` (`data_type`, `is_null`, `value` of an associated
+  `Value: ?Sized`); mirrors Arrow's own scalar
   representation, a one-element `arrow_array::ArrayRef`, via `to_arrow` /
   `from_arrow`. The `as_*` accessors
   (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`, `as_bytes`) read
@@ -33,7 +34,7 @@ values (the union, dynamic at runtime, has no scalar).
 
 ## Typed
 
-- **`TypedScalar<DT: DataType, T>: Scalar<DT, Value = T>`** — a scalar whose value
+- **`TypedScalar<DT: DataType, T>: Scalar<DataType = DT, Value = T>`** — a scalar whose value
   is `T` (possibly unsized: a string scalar exposes `Option<&str>`).
 - **`FromScalar`** — the native Rust targets readable out of any scalar, behind
   the generic accessors such as `Serie::get_at::<T>` (numbers, `bool`, `String`,

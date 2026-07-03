@@ -37,7 +37,8 @@ impl BinaryField {
     }
 }
 
-impl Field<BinaryType> for BinaryField {
+impl Field for BinaryField {
+    type DataType = BinaryType;
     fn name(&self) -> &str {
         &self.name
     }
