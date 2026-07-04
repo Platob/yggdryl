@@ -39,7 +39,7 @@ use yggdryl_dtype::{DataError, DataType, Logical, Optional, OptionalType, Union,
 ///
 /// // The Arrow form is a one-element union array, and from_arrow redirects the
 /// // value child back through the inner scalar's own from_arrow.
-/// let arrow = answer.to_arrow();
+/// let arrow = answer.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(OptionalScalar::from_arrow(arrow.as_ref()).unwrap(), answer);
 /// ```
@@ -133,7 +133,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for OptionalScalar<D
         self.value.as_ref().and_then(|scalar| scalar.value())
     }
 
-    fn to_arrow(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
         let storage = self.data_type.storage();
         let (_, value_field) = storage
             .fields()
@@ -148,7 +148,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for OptionalScalar<D
         // Sparse layout: both children are one element long; the unselected child
         // holds a null.
         let value_child = match &self.value {
-            Some(scalar) if !scalar.is_null() => scalar.to_arrow(),
+            Some(scalar) if !scalar.is_null() => scalar.to_arrow_scalar(),
             _ => arrow_array::new_null_array(value_field.data_type(), 1),
         };
         let children = vec![
@@ -234,8 +234,8 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for OptionalScalar<D
     }
 }
 
-impl<D: DataType + Default, S: Scalar<DataType = D>> TypedScalar<OptionalType<D>, S::Value>
-    for OptionalScalar<D, S>
+impl<D: DataType + Default, S: Scalar<DataType = D>>
+    TypedScalar<OptionalType<D>, S::Value, arrow_array::UnionArray> for OptionalScalar<D, S>
 {
 }
 

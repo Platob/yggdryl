@@ -16,14 +16,14 @@ fn map_scalar_round_trips() {
     .unwrap();
     assert!(!scalar.is_null());
     assert_eq!(scalar.value().map(<[_]>::len), Some(2));
-    let arrow = scalar.to_arrow();
+    let arrow = scalar.to_arrow_scalar();
     assert_eq!(arrow.len(), 1);
     assert_eq!(RankMap::from_arrow(arrow.as_ref()).unwrap(), scalar);
 
     let missing = RankMap::null();
     assert!(missing.is_null());
     assert_eq!(
-        RankMap::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+        RankMap::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
         missing
     );
     assert_eq!(RankMap::default(), RankMap::new(Vec::new()).unwrap());

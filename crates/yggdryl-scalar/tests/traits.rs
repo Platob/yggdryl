@@ -7,7 +7,7 @@ use yggdryl_scalar::yggdryl_dtype::{DataError, DataType};
 use yggdryl_scalar::{arrow_array, arrow_schema, yggdryl_core, Scalar, TypedScalar};
 
 // A minimal string type and scalar, proving an unsized value reaches the typed
-// `TypedScalar<Utf8, str>` layer — the borrowed `Option<&str>` the `?Sized` value
+// `TypedScalar<Utf8, str, StringArray>` layer — the borrowed `Option<&str>` the `?Sized` value
 // enables (an integer scalar, being `Sized`, cannot exercise this path).
 #[derive(Debug)]
 struct Utf8;
@@ -54,7 +54,7 @@ impl Scalar for Utf8Scalar {
     fn value(&self) -> Option<&str> {
         self.value.as_deref()
     }
-    fn to_arrow(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
         std::sync::Arc::new(match &self.value {
             Some(value) => arrow_array::StringArray::from_iter_values([value]),
             None => arrow_array::StringArray::new_null(1),
@@ -90,11 +90,11 @@ impl Scalar for Utf8Scalar {
     }
 }
 
-impl TypedScalar<Utf8, str> for Utf8Scalar {}
+impl TypedScalar<Utf8, str, arrow_array::StringArray> for Utf8Scalar {}
 
 #[test]
 fn a_string_scalar_exposes_borrowed_str() {
-    fn value_of<S: TypedScalar<Utf8, str>>(scalar: &S) -> Option<&str> {
+    fn value_of<S: TypedScalar<Utf8, str, arrow_array::StringArray>>(scalar: &S) -> Option<&str> {
         scalar.value()
     }
     let hello = Utf8Scalar {
@@ -132,7 +132,7 @@ fn a_variable_width_scalar_round_trips_through_arrow() {
         data_type: Utf8,
         value: Some("hi".to_string()),
     };
-    let arrow = hello.to_arrow();
+    let arrow = hello.to_arrow_scalar();
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
     assert_eq!(
         Utf8Scalar::from_arrow(arrow.as_ref()).unwrap().value(),
@@ -143,7 +143,7 @@ fn a_variable_width_scalar_round_trips_through_arrow() {
         data_type: Utf8,
         value: None,
     };
-    assert!(Utf8Scalar::from_arrow(missing.to_arrow().as_ref())
+    assert!(Utf8Scalar::from_arrow(missing.to_arrow_scalar().as_ref())
         .unwrap()
         .is_null());
 }

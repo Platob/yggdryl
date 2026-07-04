@@ -13,8 +13,11 @@
 //! - The **untyped base** [`Scalar`] — the FFI-facing value: its data type,
 //!   nullness, the native value, and the `as_*` accessors reading it as any
 //!   exactly-representable Rust target.
-//! - The **typed** [`TypedScalar`], generic over the data type `DT` and its value
-//!   type `T`.
+//! - The **typed** [`TypedScalar`], generic over the data type `DT`, its value
+//!   type `T`, and the concrete Apache Arrow array types it produces —
+//!   `ArrowScalar` (the [`to_arrow_scalar`](Scalar::to_arrow_scalar) form) and
+//!   `ArrowArray` (the [`to_arrow_array`](Scalar::to_arrow_array) form, defaulting
+//!   to `ArrowScalar`).
 //! - [`FromScalar`] — the native Rust targets readable out of any scalar, behind
 //!   the generic accessors such as [`Serie::get_at`].
 //! - [`ScalarFactory`] — a typed data type builds its scalar
@@ -29,14 +32,14 @@
 //! modules the nested values (the union, dynamic at runtime, has no scalar). Add
 //! more following the rules in `CLAUDE.md`.
 //!
-//! Every scalar converts to and from its Apache Arrow equivalent (`to_arrow` /
+//! Every scalar converts to and from its Apache Arrow equivalent (`to_arrow_scalar` /
 //! `from_arrow`): a one-element [`arrow_array`] array — Arrow's own scalar
 //! representation. The `arrow-array`, `arrow-buffer` and `arrow-schema` subset
 //! crates, the `yggdryl-dtype` layer and `yggdryl-core` are re-exported so
 //! downstream code uses the exact versions this crate was built against.
 
 /// The Apache Arrow array layer (`arrow-array`), re-exported so downstream code and
-/// the `to_arrow` / `from_arrow` surface share one version.
+/// the `to_arrow_scalar` / `from_arrow` surface share one version.
 pub use arrow_array;
 /// The Apache Arrow buffer layer (`arrow-buffer`), re-exported so downstream code
 /// can build the zero-copy buffers the array scalars (such as [`Int64Serie`])

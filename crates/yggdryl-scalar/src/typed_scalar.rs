@@ -15,18 +15,36 @@ use yggdryl_dtype::DataType;
 /// while its data type still codecs owned `String`s through
 /// [`TypedDataType<String>`](yggdryl_dtype::TypedDataType).
 ///
+/// It also names the concrete Apache Arrow types this scalar produces: `ArrowScalar`
+/// is the array type of [`to_arrow_scalar`](super::Scalar::to_arrow_scalar) (the
+/// one-element scalar form — `Int64Array` for an `int64` scalar, `ListArray` for a
+/// serie), and `ArrowArray` the array type of
+/// [`to_arrow_array`](super::Scalar::to_arrow_array) (the array form). `ArrowArray`
+/// **defaults to `ArrowScalar`**, since for a plain scalar the array form *is* the
+/// one-element scalar array; a serie overrides it to its element array type (so
+/// `Int64Serie` is a `TypedScalar<SerieType<Int64Type>, [i64], ListArray, Int64Array>`).
+///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::Int64Type;
+/// use yggdryl_scalar::arrow_array::Int64Array;
 /// use yggdryl_scalar::{Int64Scalar, Scalar, TypedScalar};
 ///
 /// let answer = Int64Scalar::new(42);
 /// assert_eq!(answer.value(), Some(&42));
 ///
-/// // `TypedScalar<Int64Type, i64>` lets generic code accept any int64 scalar.
-/// fn take<S: TypedScalar<Int64Type, i64>>(scalar: &S) -> bool {
+/// // `TypedScalar<Int64Type, i64, Int64Array>` lets generic code accept any int64
+/// // scalar and name its concrete Arrow array type (ArrowArray defaults to it).
+/// fn take<S: TypedScalar<Int64Type, i64, Int64Array>>(scalar: &S) -> bool {
 ///     scalar.is_null()
 /// }
 /// assert!(!take(&answer));
 /// assert!(take(&Int64Scalar::null()));
 /// ```
-pub trait TypedScalar<DT: DataType, T: ?Sized>: Scalar<DataType = DT, Value = T> {}
+pub trait TypedScalar<
+    DT: DataType,
+    T: ?Sized,
+    ArrowScalar: arrow_array::Array,
+    ArrowArray: arrow_array::Array = ArrowScalar,
+>: Scalar<DataType = DT, Value = T>
+{
+}

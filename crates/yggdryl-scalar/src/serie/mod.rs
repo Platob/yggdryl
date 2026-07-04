@@ -18,7 +18,7 @@
 //! assert_eq!(numbers.len(), 2);
 //! assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
 //! assert_eq!(
-//!     Serie::from_arrow(numbers.to_arrow().as_ref()).unwrap(),
+//!     Serie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(),
 //!     numbers
 //! );
 //! ```
@@ -44,7 +44,7 @@ macro_rules! int_serie {
         #[doc = concat!("inner null scalar for a null slot). [`from_io`](", stringify!($ty), "::from_io) /")]
         #[doc = concat!("[`pwrite_io`](", stringify!($ty), "::pwrite_io) bridge the elements to any `yggdryl-core`")]
         #[doc = "positioned-IO resource in one bulk little-endian transfer. The optimized"]
-        #[doc = "[`to_arrow`](crate::Scalar::to_arrow) / [`from_arrow`](crate::Scalar::from_arrow) reassemble and"]
+        #[doc = "[`to_arrow_scalar`](crate::Scalar::to_arrow_scalar) / [`from_arrow`](crate::Scalar::from_arrow) reassemble and"]
         #[doc = "take apart the Arrow form around the same shared buffers — reference-count"]
         #[doc = "bumps, never element copies — so the type moves across the Arrow FFI boundary"]
         #[doc = "without copying elements."]
@@ -128,13 +128,18 @@ macro_rules! int_serie {
 
             #[doc = concat!("The elements converted out as an Arrow [`arrow_array::", stringify!($array), "`](crate::arrow_array::", stringify!($array), "),")]
             /// reassembled around the same shared buffers (a reference-count bump, not
-            /// a copy), or `None` when the serie is null — the explicit conversion
-            /// name, next to [`to_arrow`](crate::Scalar::to_arrow) (the one-element
-            /// serie scalar form this array is the child of).
-            pub fn to_arrow_array(&self) -> Option<$crate::arrow_array::$array> {
-                self.values.as_ref().map(|values| {
-                    $crate::arrow_array::$array::new(values.clone(), self.nulls.clone())
-                })
+            /// a copy) — the typed, non-optional form of the base
+            /// [`Scalar::to_arrow_array`](crate::Scalar::to_arrow_array), and the
+            /// explicit conversion name next to
+            /// [`to_arrow_scalar`](crate::Scalar::to_arrow_scalar) (the one-element
+            /// serie scalar form this array is the child of). A null serie yields an
+            /// empty array (told apart from an empty serie by
+            /// [`is_null`](crate::Scalar::is_null)).
+            pub fn to_arrow_array(&self) -> $crate::arrow_array::$array {
+                self.values.as_ref().map_or_else(
+                    || $crate::arrow_array::$array::from(Vec::<$native>::new()),
+                    |values| $crate::arrow_array::$array::new(values.clone(), self.nulls.clone()),
+                )
             }
 
             /// The element at `index` read as the native Rust type `T` — the generic
@@ -253,12 +258,14 @@ macro_rules! int_serie {
         }
 
         impl PartialEq for $ty {
-            // Compared logically, like Arrow arrays: element values and per-element
-            // nullness — an all-valid null buffer equals no null buffer at all.
+            // Compared logically, like Arrow arrays: null is distinct from every
+            // present serie (empty included), and two present series compare by
+            // element values and per-element nullness — an all-valid null buffer
+            // equals no null buffer at all.
             fn eq(&self, other: &Self) -> bool {
-                match (self.to_arrow_array(), other.to_arrow_array()) {
-                    (None, None) => true,
-                    (Some(left), Some(right)) => left == right,
+                match (self.values.is_none(), other.values.is_none()) {
+                    (true, true) => true,
+                    (false, false) => self.to_arrow_array() == other.to_arrow_array(),
                     _ => false,
                 }
             }
@@ -313,7 +320,7 @@ macro_rules! int_serie {
                 self.values.as_deref()
             }
 
-            fn to_arrow(&self) -> $crate::arrow_array::ArrayRef {
+            fn to_arrow_scalar(&self) -> $crate::arrow_array::ArrayRef {
                 let Some(values) = &self.values else {
                     return $crate::arrow_array::new_null_array(
                         &::yggdryl_dtype::DataType::to_arrow(&self.data_type),
@@ -331,6 +338,13 @@ macro_rules! int_serie {
                 )
                 .expect(concat!("a one-element serie of ", $name, " elements is valid"));
                 ::std::sync::Arc::new(array)
+            }
+
+            // The base trait's array form: the element array (not the one-element
+            // list wrapper the default would give). Delegates to the inherent,
+            // typed `to_arrow_array` above — which shadows this for direct calls.
+            fn to_arrow_array(&self) -> $crate::arrow_array::ArrayRef {
+                ::std::sync::Arc::new($ty::to_arrow_array(self))
             }
 
             fn from_arrow(
@@ -364,8 +378,13 @@ macro_rules! int_serie {
             }
         }
 
-        impl $crate::TypedScalar<::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype>, [$native]>
-            for $ty
+        impl
+            $crate::TypedScalar<
+                ::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype>,
+                [$native],
+                $crate::arrow_array::ListArray,
+                $crate::arrow_array::$array,
+            > for $ty
         {
         }
     };

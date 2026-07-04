@@ -11,7 +11,7 @@ type Int64GenericSerie = Serie<dtype::Int64Type, Int64Scalar>;
 fn serie_scalar_round_trips_all_shapes() {
     // Elements, the empty serie and null are three distinct states.
     let numbers = Int64GenericSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
-    let arrow = numbers.to_arrow();
+    let arrow = numbers.to_arrow_scalar();
     assert_eq!(arrow.len(), 1);
     assert_eq!(
         Int64GenericSerie::from_arrow(arrow.as_ref()).unwrap(),
@@ -35,7 +35,7 @@ fn serie_scalar_round_trips_all_shapes() {
     let empty = Int64GenericSerie::new(Vec::new());
     assert!(!empty.is_null());
     assert_eq!(
-        Int64GenericSerie::from_arrow(empty.to_arrow().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(empty.to_arrow_scalar().as_ref()).unwrap(),
         empty
     );
     assert_eq!(Int64GenericSerie::default(), empty);
@@ -43,7 +43,7 @@ fn serie_scalar_round_trips_all_shapes() {
     let missing = Int64GenericSerie::null();
     assert!(missing.is_null());
     assert_eq!(
-        Int64GenericSerie::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
         missing
     );
 
@@ -84,7 +84,7 @@ macro_rules! int_serie_tests {
                 assert!(numbers.nulls().is_none());
 
                 // The reassembled Arrow array borrows the same buffer — zero copy.
-                let arrow = numbers.to_arrow_array().unwrap();
+                let arrow = numbers.to_arrow_array();
                 assert_eq!(arrow.values().as_ptr(), numbers.values().unwrap().as_ptr());
 
                 // Per-element nulls are read null-aware; the raw buffer keeps the slots.
@@ -176,7 +176,7 @@ macro_rules! int_serie_tests {
             #[test]
             fn round_trips_through_arrow_zero_copy() {
                 let numbers = $ty::from(vec![Some(1), None, Some(3)]);
-                let arrow = numbers.to_arrow();
+                let arrow = numbers.to_arrow_scalar();
                 assert_eq!(arrow.len(), 1);
                 assert_eq!($ty::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
@@ -194,23 +194,24 @@ macro_rules! int_serie_tests {
 
                 // The generic and the buffer-backed serie scalar agree on the Arrow shape.
                 let generic = Serie::new(vec![$scalar::new(1), $scalar::null(), $scalar::new(3)]);
-                assert_eq!(generic.to_arrow().as_ref(), arrow.as_ref());
+                assert_eq!(generic.to_arrow_scalar().as_ref(), arrow.as_ref());
 
                 // Empty and null are distinct states, both round-tripped.
                 let empty = $ty::default();
                 assert!(!empty.is_null());
                 assert!(empty.is_empty());
-                assert_eq!($ty::from_arrow(empty.to_arrow().as_ref()).unwrap(), empty);
+                assert_eq!($ty::from_arrow(empty.to_arrow_scalar().as_ref()).unwrap(), empty);
 
                 let missing = $ty::null();
                 assert!(missing.is_null());
-                assert_eq!((missing.values(), missing.to_arrow_array()), (None, None));
+                assert_eq!(missing.values(), None);
+                assert!(missing.to_arrow_array().is_empty()); // null → empty array
                 assert!(matches!(
                     missing.get_at::<$native>(0),
                     Err(DataError::NullValue)
                 ));
                 assert_eq!(
-                    $ty::from_arrow(missing.to_arrow().as_ref()).unwrap(),
+                    $ty::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
                     missing
                 );
 
@@ -222,7 +223,7 @@ macro_rules! int_serie_tests {
                 ));
                 let foreign = Serie::new(vec![yggdryl_scalar::BinaryScalar::new(vec![1])]);
                 assert!(matches!(
-                    $ty::from_arrow(foreign.to_arrow().as_ref()),
+                    $ty::from_arrow(foreign.to_arrow_scalar().as_ref()),
                     Err(DataError::IncompatibleArrowType { .. })
                 ));
             }
@@ -240,7 +241,7 @@ macro_rules! int_serie_tests {
                 extremes.pwrite_io(&mut buffer, 0, Whence::Start).unwrap();
                 assert_eq!($ty::from_io(&buffer).unwrap(), extremes);
                 assert_eq!(
-                    $ty::from_arrow(extremes.to_arrow().as_ref()).unwrap(),
+                    $ty::from_arrow(extremes.to_arrow_scalar().as_ref()).unwrap(),
                     extremes
                 );
             }

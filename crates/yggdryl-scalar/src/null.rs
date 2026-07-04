@@ -23,7 +23,7 @@ use yggdryl_dtype::{DataError, NullType};
 /// assert_eq!(nothing.data_type().name(), "null");
 ///
 /// // Arrow's form is a one-element NullArray.
-/// let arrow = nothing.to_arrow();
+/// let arrow = nothing.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(NullScalar::from_arrow(arrow.as_ref()).unwrap(), nothing);
 /// ```
@@ -57,7 +57,7 @@ impl Scalar for NullScalar {
         None
     }
 
-    fn to_arrow(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
         std::sync::Arc::new(arrow_array::NullArray::new(1))
     }
 
@@ -125,4 +125,4 @@ impl Scalar for NullScalar {
     }
 }
 
-impl TypedScalar<NullType, ()> for NullScalar {}
+impl TypedScalar<NullType, (), arrow_array::NullArray> for NullScalar {}

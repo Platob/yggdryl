@@ -21,10 +21,10 @@
 //! assert_eq!(sparse.get_scalar_at(1), Some(Int16Scalar::null()));
 //!
 //! // The elements convert out as the Arrow primitive array, shared.
-//! assert_eq!(numbers.to_arrow_array().unwrap().len(), 3);
+//! assert_eq!(numbers.to_arrow_array().len(), 3);
 //!
 //! // The Arrow round trip shares the buffers — no element is copied.
-//! let arrow = numbers.to_arrow();
+//! let arrow = numbers.to_arrow_scalar();
 //! assert_eq!(arrow.len(), 1);
 //! assert_eq!(Int16Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 //!

@@ -11,7 +11,7 @@
 /// Generates a single, possibly-null scalar `$ty` (e.g. `Int64Scalar`) over the
 /// `yggdryl-dtype` data type `$dtype` (e.g. `Int64Type`, native `$native`), with
 /// `$name` used in its documentation and `$array` the matching [`arrow_array`]
-/// primitive array (`to_arrow` / `from_arrow`). The scalar also converts from its
+/// primitive array (`to_arrow_scalar` / `from_arrow`). The scalar also converts from its
 /// native value — `From<$native>` and `From<Option<$native>>` (where `None` is the
 /// null scalar) — and the data type gains its [`ScalarFactory`](crate::ScalarFactory)
 /// impl.
@@ -58,7 +58,7 @@ macro_rules! int_scalar {
             fn value(&self) -> Option<&$native> {
                 self.value.as_ref()
             }
-            fn to_arrow(&self) -> $crate::arrow_array::ArrayRef {
+            fn to_arrow_scalar(&self) -> $crate::arrow_array::ArrayRef {
                 match self.value {
                     // One element, no null buffer — cheaper than building through
                     // `Vec<Option<_>>`.
@@ -202,7 +202,10 @@ macro_rules! int_scalar {
             }
         }
 
-        impl $crate::TypedScalar<::yggdryl_dtype::$dtype, $native> for $ty {}
+        impl $crate::TypedScalar<::yggdryl_dtype::$dtype, $native, $crate::arrow_array::$array>
+            for $ty
+        {
+        }
 
         impl $crate::ScalarFactory<$native> for ::yggdryl_dtype::$dtype {
             type Scalar = $ty;

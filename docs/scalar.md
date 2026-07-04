@@ -21,7 +21,7 @@ dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit widths and
 `BigInt` for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
 raised `ValueError` (Python) / thrown `Error` (Node). Three
 things stay **Rust-only**, stated here and in both binding module docs: the
-[Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
+[Arrow interop](#arrow-interop) surface (`to_arrow_scalar` / `from_arrow` exchange
 `arrow-array` values that cannot cross the FFI boundary), the `FromScalar` /
 `ScalarFactory` traits (generic Rust bounds; the bindings reach defaults through a
 data type's `default_scalar()`), and — for the serie scalars — their
@@ -251,12 +251,12 @@ as concrete per-type classes built straight from the native value:
 ## Arrow interop
 
 !!! note "Rust only"
-    `to_arrow` / `from_arrow` exchange `arrow-array` values, which cannot cross
+    `to_arrow_scalar` / `from_arrow` exchange `arrow-array` values, which cannot cross
     the FFI boundary — the bindings will gain this surface through the Arrow C
     Data Interface as it lands.
 
 A scalar mirrors Arrow's own scalar representation — a one-element `arrow_array`
-array, null when the scalar is null — with a `to_arrow` / `from_arrow` pair
+array, null when the scalar is null — with a `to_arrow_scalar` / `from_arrow` pair
 (`from_arrow` is the exact inverse, refusing a mismatched Arrow value with
 `DataError`). The `arrow-array` and `arrow-buffer` subset crates are re-exported
 from the crate root so downstream code uses the exact versions the crate was
@@ -267,17 +267,17 @@ use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::{Int64Scalar, Scalar};
 
 fn main() {
-    let arrow = Int64Scalar::new(42).to_arrow();
+    let arrow = Int64Scalar::new(42).to_arrow_scalar();
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
     assert_eq!(Int64Scalar::from_arrow(arrow.as_ref()).unwrap(), Int64Scalar::new(42));
-    assert!(Int64Scalar::null().to_arrow().is_null(0));
+    assert!(Int64Scalar::null().to_arrow_scalar().is_null(0));
 }
 ```
 
 ## Nested scalars: serie, map and struct
 
 The serie scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
-child array — construction assembles the elements once, `to_arrow` / `from_arrow`
+child array — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
 `from_arrow`, and the generic native accessor `get_at::<T>(index)` reads an
@@ -296,7 +296,7 @@ the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
 `pread_byte_array` / `pwrite_byte_array` transfer.
 `MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
 one-element Arrow columns, each round-tripping through a one-element Arrow array
-whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`.
+whose children redirect to the inner scalars' own `to_arrow_scalar` / `from_arrow`.
 
 The integer series are the nested scalars exposed to the bindings — built dense
 (all-valid) from a native sequence, the whole serie still nullable through
@@ -363,7 +363,7 @@ The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only
 !!! note "Rust only"
     The generic `Serie` / `MapScalar` / `StructScalar` are generic over their
     child types (or carry dynamic Arrow fields), and the concrete series'
-    `to_arrow` / `from_arrow`, `to_arrow_array` / `nulls` and `from_io` / `pwrite_io` share
+    `to_arrow_scalar` / `from_arrow`, `to_arrow_array` / `nulls` and `from_io` / `pwrite_io` share
     raw Arrow buffers or borrow a second IO resource at once — none crosses the
     FFI boundary yet, so from a binding a serie is a dense (all-valid) serie.
 
@@ -376,12 +376,12 @@ fn main() {
     let numbers = Serie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
-    let arrow = numbers.to_arrow(); // a one-element ListArray sharing the elements
+    let arrow = numbers.to_arrow_scalar(); // a one-element ListArray sharing the elements
     assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // Int64Serie shares the same buffers across the Arrow boundary, zero-copy.
     let fast = Int64Serie::from(vec![1, 2, 3]);
-    assert_eq!(Int64Serie::from_arrow(fast.to_arrow().as_ref()).unwrap(), fast);
+    assert_eq!(Int64Serie::from_arrow(fast.to_arrow_scalar().as_ref()).unwrap(), fast);
 
     // The type parameters name the dtype-layer types.
     let _: Serie<dtype::Int64Type, Int64Scalar> = Serie::default();
@@ -393,7 +393,10 @@ fn main() {
 - **`Scalar`** — the untyped base: a single, possibly-null value carrying its
   data type as the associated `DataType` (`data_type`, `is_null`, `value` of an
   associated `Value: ?Sized`);
-  `to_arrow` / `from_arrow` mirror a one-element `arrow_array` array. The `as_*`
+  `to_arrow_scalar` / `from_arrow` mirror a one-element `arrow_array` array, and
+  `to_arrow_array` hands back the value's Arrow **array** form — for a plain scalar
+  the same one-element array (a scalar *is* a length-1 array), for a serie its
+  element array instead. The `as_*`
   accessors (`as_i8` … `as_u64`, `as_f32` / `as_f64`, `as_bool`, `as_str`,
   `as_bytes`) read the value as a chosen Rust type under one contract: the value
   whenever the target represents it exactly — direct for the scalar's own type
@@ -405,9 +408,12 @@ fn main() {
   Every accessor defaults to that error, so a concrete scalar overrides only the
   targets its value converts to; the bindings raise `ValueError` (Python) / throw
   (Node).
-- **`TypedScalar<DT: DataType, T>: Scalar<DataType = DT, Value = T>`** — the typed layer: a
-  scalar whose value is `T` (possibly unsized: a string scalar exposes
-  `Option<&str>`).
+- **`TypedScalar<DT: DataType, T, ArrowScalar, ArrowArray = ArrowScalar>: Scalar<DataType = DT, Value = T>`**
+  — the typed layer: a scalar whose value is `T` (possibly unsized: a string
+  scalar exposes `Option<&str>`), naming the concrete Apache Arrow array types it
+  produces — `ArrowScalar` (the `to_arrow_scalar` form) and `ArrowArray` (the
+  `to_arrow_array` form, defaulting to `ArrowScalar`; a serie splits them, its
+  scalar form a `ListArray` and its array form the element `PrimitiveArray`).
 - **`FromScalar`** — the native Rust targets readable out of any scalar, behind
   the generic accessors such as `Serie::get_at::<T>`.
 - **`ScalarFactory<T>: TypedDataType<T>`** — the factory: a typed data type builds

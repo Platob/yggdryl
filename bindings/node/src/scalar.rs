@@ -17,7 +17,7 @@
 //! an implementation detail reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
-//! (`to_arrow` / `from_arrow` exchange `arrow-array` values that cannot cross the
+//! (`to_arrow_scalar` / `to_arrow_array` / `from_arrow` exchange `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `field()` / `scalar()` / `defaultScalar()`), and — for

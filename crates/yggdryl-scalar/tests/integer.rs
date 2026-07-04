@@ -96,7 +96,7 @@ macro_rules! integer_scalar_tests {
 
                 // A value: a one-element array with no null.
                 let answer = $ty::new(42);
-                let arrow = answer.to_arrow();
+                let arrow = answer.to_arrow_scalar();
                 assert_eq!(arrow.len(), 1);
                 assert_eq!(arrow.null_count(), 0);
                 assert_eq!(arrow.data_type(), &dtype::$dtype.to_arrow());
@@ -104,7 +104,7 @@ macro_rules! integer_scalar_tests {
 
                 // Null: a one-element array holding a null.
                 let missing = $ty::null();
-                let arrow = missing.to_arrow();
+                let arrow = missing.to_arrow_scalar();
                 assert_eq!((arrow.len(), arrow.null_count()), (1, 1));
                 assert_eq!($ty::from_arrow(arrow.as_ref()).unwrap(), missing);
 
@@ -125,7 +125,9 @@ macro_rules! integer_scalar_tests {
 
             #[test]
             fn generic_bounds_compose() {
-                fn is_null_scalar<S: TypedScalar<dtype::$dtype, $native>>(scalar: &S) -> bool {
+                fn is_null_scalar<S: TypedScalar<dtype::$dtype, $native, arrow_array::$array>>(
+                    scalar: &S,
+                ) -> bool {
                     scalar.is_null()
                 }
                 assert!(is_null_scalar(&$ty::null()));

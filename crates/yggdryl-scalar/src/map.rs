@@ -23,7 +23,7 @@ use yggdryl_dtype::{DataError, DataType, Map, MapType};
 /// assert_eq!(ranks.data_type().name(), "map");
 ///
 /// // The Arrow round trip preserves the entries.
-/// let arrow = ranks.to_arrow();
+/// let arrow = ranks.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(MapScalar::from_arrow(arrow.as_ref()).unwrap(), ranks);
 ///
@@ -105,17 +105,23 @@ where
         self.entries.as_deref()
     }
 
-    fn to_arrow(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
         let Some(entries) = &self.entries else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
         let entry_fields = self.data_type.entry_fields();
         let keys = concat_scalar_arrays(
-            entries.iter().map(|(key, _)| key.to_arrow()).collect(),
+            entries
+                .iter()
+                .map(|(key, _)| key.to_arrow_scalar())
+                .collect(),
             || entry_fields[0].data_type().clone(),
         );
         let values = concat_scalar_arrays(
-            entries.iter().map(|(_, value)| value.to_arrow()).collect(),
+            entries
+                .iter()
+                .map(|(_, value)| value.to_arrow_scalar())
+                .collect(),
             || entry_fields[1].data_type().clone(),
         );
         let entry_struct = arrow_array::StructArray::try_new_with_length(
@@ -160,7 +166,8 @@ where
     }
 }
 
-impl<K, V, SK, SV> TypedScalar<MapType<K, V>, [(SK, SV)]> for MapScalar<K, V, SK, SV>
+impl<K, V, SK, SV> TypedScalar<MapType<K, V>, [(SK, SV)], arrow_array::MapArray>
+    for MapScalar<K, V, SK, SV>
 where
     K: DataType + Default,
     V: DataType + Default,

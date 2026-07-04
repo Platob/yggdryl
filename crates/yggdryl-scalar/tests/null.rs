@@ -19,7 +19,7 @@ fn null_scalar_arrow_round_trips() {
     use arrow_array::Array;
 
     let nothing = NullScalar::new();
-    let arrow = nothing.to_arrow();
+    let arrow = nothing.to_arrow_scalar();
     assert_eq!(arrow.len(), 1);
     assert_eq!(arrow.data_type(), &arrow_schema::DataType::Null);
     assert_eq!(NullScalar::from_arrow(arrow.as_ref()).unwrap(), nothing);

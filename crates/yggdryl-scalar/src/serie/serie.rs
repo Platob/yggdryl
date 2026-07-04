@@ -13,7 +13,7 @@ use yggdryl_dtype::{DataError, DataType, SerieType};
 /// the value type `D`, backed by one zero-copy Arrow child array.
 ///
 /// The elements live in an [`ArrayRef`] (Arrow's FFI-ready, reference-counted
-/// buffers), so [`to_arrow`](Scalar::to_arrow) and [`from_arrow`](Scalar::from_arrow)
+/// buffers), so [`to_arrow_scalar`](Scalar::to_arrow_scalar) and [`from_arrow`](Scalar::from_arrow)
 /// are reference-count bumps, never element copies; building from inner scalars pays
 /// the assembly once, at construction. [`Value`](Scalar::Value) is the backing `dyn
 /// Array`, and the *scalar accessors* read elements back out:
@@ -38,7 +38,7 @@ use yggdryl_dtype::{DataError, DataType, SerieType};
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
-/// let arrow = numbers.to_arrow();
+/// let arrow = numbers.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 ///
@@ -59,7 +59,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
         // The element type is only needed to type an *empty* child, so it is built
         // lazily — a non-empty serie never constructs `D::default()`.
         Self::from_elements(crate::scalar::concat_scalar_arrays(
-            values.iter().map(Scalar::to_arrow).collect(),
+            values.iter().map(Scalar::to_arrow_scalar).collect(),
             || D::default().to_arrow(),
         ))
     }
@@ -192,7 +192,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
         self.values.as_deref()
     }
 
-    fn to_arrow(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
@@ -234,7 +234,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for Serie<D, S> {
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>>
-    TypedScalar<SerieType<D>, dyn arrow_array::Array> for Serie<D, S>
+    TypedScalar<SerieType<D>, dyn arrow_array::Array, arrow_array::ListArray> for Serie<D, S>
 {
 }
 

@@ -35,7 +35,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// assert_eq!(row.value().map(<[_]>::len), Some(2));
 ///
 /// // The Arrow round trip preserves the row.
-/// let arrow = row.to_arrow();
+/// let arrow = row.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(StructScalar::from_arrow(arrow.as_ref()).unwrap(), row);
 ///
@@ -127,7 +127,7 @@ impl Scalar for StructScalar {
         self.columns.as_deref()
     }
 
-    fn to_arrow(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> ArrayRef {
         let fields = Struct::fields(&self.data_type);
         let Some(columns) = &self.columns else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
@@ -163,4 +163,4 @@ impl Scalar for StructScalar {
     }
 }
 
-impl TypedScalar<StructType, [ArrayRef]> for StructScalar {}
+impl TypedScalar<StructType, [ArrayRef], arrow_array::StructArray> for StructScalar {}
