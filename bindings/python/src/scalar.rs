@@ -20,7 +20,7 @@
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `scalar()` / `default_scalar()`), and — for the serie
 //! scalars (`Int8Serie` … `UInt64Serie`) — their per-element-null construction,
-//! `array` / `nulls` Arrow-buffer surface and `from_io` / `pwrite_io`
+//! `to_arrow_array` / `nulls` Arrow-buffer surface and `from_io` / `pwrite_io`
 //! two-resource bridge (which borrow a second IO resource at once), so a serie
 //! built from Python is a dense (all-valid) serie. The still-generic nested
 //! scalars — the generic `Serie` / `MapScalar` / `StructScalar` — have no

@@ -126,10 +126,12 @@ macro_rules! int_serie {
                 self.nulls.as_ref()
             }
 
-            #[doc = concat!("The elements as an Arrow [`arrow_array::", stringify!($array), "`](crate::arrow_array::", stringify!($array), "), reassembled around the")]
-            /// same shared buffers (a reference-count bump, not a copy), or `None` when the
-            /// serie is null.
-            pub fn array(&self) -> Option<$crate::arrow_array::$array> {
+            #[doc = concat!("The elements converted out as an Arrow [`arrow_array::", stringify!($array), "`](crate::arrow_array::", stringify!($array), "),")]
+            /// reassembled around the same shared buffers (a reference-count bump, not
+            /// a copy), or `None` when the serie is null — the explicit conversion
+            /// name, next to [`to_arrow`](crate::Scalar::to_arrow) (the one-element
+            /// serie scalar form this array is the child of).
+            pub fn to_arrow_array(&self) -> Option<$crate::arrow_array::$array> {
                 self.values.as_ref().map(|values| {
                     $crate::arrow_array::$array::new(values.clone(), self.nulls.clone())
                 })
@@ -254,7 +256,7 @@ macro_rules! int_serie {
             // Compared logically, like Arrow arrays: element values and per-element
             // nullness — an all-valid null buffer equals no null buffer at all.
             fn eq(&self, other: &Self) -> bool {
-                match (self.array(), other.array()) {
+                match (self.to_arrow_array(), other.to_arrow_array()) {
                     (None, None) => true,
                     (Some(left), Some(right)) => left == right,
                     _ => false,

@@ -20,6 +20,9 @@
 //! assert!(sparse.get_at::<i8>(1).is_err()); // a null element holds no value
 //! assert_eq!(sparse.get_scalar_at(1), Some(Int8Scalar::null()));
 //!
+//! // The elements convert out as the Arrow primitive array, shared.
+//! assert_eq!(numbers.to_arrow_array().unwrap().len(), 3);
+//!
 //! // The Arrow round trip shares the buffers — no element is copied.
 //! let arrow = numbers.to_arrow();
 //! assert_eq!(arrow.len(), 1);

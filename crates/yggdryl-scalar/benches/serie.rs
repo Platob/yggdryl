@@ -63,6 +63,11 @@ fn arrow(c: &mut Criterion) {
         b.iter(|| black_box(numbers.to_arrow()))
     });
 
+    // The bare element-array conversion: a reference-count bump, no serie shell.
+    group.bench_function("int64_serie_to_arrow_array", |b| {
+        b.iter(|| black_box(numbers.to_arrow_array()))
+    });
+
     let arrow = numbers.to_arrow();
     group.bench_function("int64_serie_from_arrow", |b| {
         b.iter(|| black_box(Int64Serie::from_arrow(black_box(arrow.as_ref())).unwrap()))

@@ -22,7 +22,7 @@
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `field()` / `scalar()` / `defaultScalar()`), and — for
 //! the serie scalars (`Int8Serie` … `UInt64Serie`) — their per-element-null
-//! construction, `array` / `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo`
+//! construction, `to_arrow_array` / `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo`
 //! two-resource bridge (which borrow a second IO resource at once), so a serie
 //! built from Node is a dense (all-valid) serie. The still-generic nested scalars
 //! — the generic `Serie` / `MapScalar` / `StructScalar` — have no concrete FFI

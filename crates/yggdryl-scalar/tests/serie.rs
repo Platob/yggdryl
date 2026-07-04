@@ -50,6 +50,11 @@ fn serie_scalar_round_trips_all_shapes() {
     // Construction from native shapes.
     assert_eq!(Int64GenericSerie::from(None::<Vec<Int64Scalar>>), missing);
 
+    // The explicit Arrow-array conversion hands back the child, shared.
+    let elements = numbers.to_arrow_array().unwrap();
+    assert_eq!(arrow_array::Array::len(elements.as_ref()), 2);
+    assert!(missing.to_arrow_array().is_none());
+
     // A non-serie array is refused.
     assert!(matches!(
         Int64GenericSerie::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
@@ -84,7 +89,7 @@ macro_rules! int_serie_tests {
                 assert!(numbers.nulls().is_none());
 
                 // The reassembled Arrow array borrows the same buffer — zero copy.
-                let arrow = numbers.array().unwrap();
+                let arrow = numbers.to_arrow_array().unwrap();
                 assert_eq!(arrow.values().as_ptr(), numbers.values().unwrap().as_ptr());
 
                 // Per-element nulls are read null-aware; the raw buffer keeps the slots.
@@ -204,7 +209,7 @@ macro_rules! int_serie_tests {
 
                 let missing = $ty::null();
                 assert!(missing.is_null());
-                assert_eq!((missing.values(), missing.array()), (None, None));
+                assert_eq!((missing.values(), missing.to_arrow_array()), (None, None));
                 assert!(matches!(
                     missing.get_at::<$native>(0),
                     Err(DataError::NullValue)

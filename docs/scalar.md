@@ -25,7 +25,7 @@ things stay **Rust-only**, stated here and in both binding module docs: the
 `arrow-array` values that cannot cross the FFI boundary), the `FromScalar` /
 `ScalarFactory` traits (generic Rust bounds; the bindings reach defaults through a
 data type's `default_scalar()`), and — for the serie scalars — their
-per-element-null construction, `array` / `nulls` Arrow-buffer surface and
+per-element-null construction, `to_arrow_array` / `nulls` Arrow-buffer surface and
 `from_io` / `pwrite_io` two-resource bridge (which await C Data Interface interop
 or borrow a second IO resource at once), so a serie built from a binding is a
 dense (all-valid) serie. The still-generic
@@ -289,9 +289,11 @@ also has its concrete serie (`Int8Serie` … `UInt64Serie`), borrowing the raw
 Arrow buffers themselves (a `ScalarBuffer` of native elements plus an optional
 `NullBuffer`): `values()` borrows the whole element buffer as a native slice
 without copying, `get_at::<T>(index)` reads one element null-aware straight from
-the buffers, `get_scalar_at(index)` hands back the element scalar, and `from_io`
-/ `pwrite_io` bridge the elements to any `yggdryl-core` positioned-IO resource in
-one bulk little-endian `pread_byte_array` / `pwrite_byte_array` transfer.
+the buffers, `get_scalar_at(index)` hands back the element scalar,
+`to_arrow_array()` converts the elements out as the Arrow primitive array around
+the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
+`yggdryl-core` positioned-IO resource in one bulk little-endian
+`pread_byte_array` / `pwrite_byte_array` transfer.
 `MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
 one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`.
@@ -361,7 +363,7 @@ The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only
 !!! note "Rust only"
     The generic `Serie` / `MapScalar` / `StructScalar` are generic over their
     child types (or carry dynamic Arrow fields), and the concrete series'
-    `to_arrow` / `from_arrow`, `array` / `nulls` and `from_io` / `pwrite_io` share
+    `to_arrow` / `from_arrow`, `to_arrow_array` / `nulls` and `from_io` / `pwrite_io` share
     raw Arrow buffers or borrow a second IO resource at once — none crosses the
     FFI boundary yet, so from a binding a serie is a dense (all-valid) serie.
 
