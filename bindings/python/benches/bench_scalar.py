@@ -28,6 +28,8 @@ def main():
     optional = scalar.OptionalInt64Scalar(42)
     blob = scalar.BinaryScalar(b"\x01\x02\x03\x04")
     numbers = scalar.Int64Serie([1, 2, 3, 4])
+    weight = scalar.Float64Scalar(1.5)
+    weights = scalar.Float64Serie([1.5, 2.5, 3.5, 4.5])
 
     bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
     bench("Int64Scalar.null()", scalar.Int64Scalar.null)
@@ -42,6 +44,10 @@ def main():
     bench("optional.to_pyvalue()", optional.to_pyvalue)
     bench("binary.to_pyvalue()", blob.to_pyvalue)
     bench("serie.to_pyvalue()", numbers.to_pyvalue)
+    bench("Float64Scalar(1.5)", lambda: scalar.Float64Scalar(1.5))
+    bench("float.as_f64() direct", weight.as_f64)
+    bench("float.to_pyvalue()", weight.to_pyvalue)
+    bench("float serie.to_pyvalue()", weights.to_pyvalue)
 
 
 if __name__ == "__main__":

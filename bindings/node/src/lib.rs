@@ -61,3 +61,33 @@ pub(crate) fn bigint_to_u64(value: BigInt) -> Result<u64> {
         Err(Error::from_reason("expected a uint64 in 0..=2**64-1"))
     }
 }
+
+/// Bridges a native float and the JS `number` (always an `f64`): narrows a
+/// `number` to the native width (`f32` rounds to nearest; `f64` is exact) and
+/// widens the native value back to a `number`. The one place the float wire
+/// conversion lives, shared by the `scalar` and `dtype` namespaces (mirroring
+/// [`wire_to_native`] for the integer families).
+pub(crate) trait WireFloat: Copy {
+    /// The native value from a JS `number`.
+    fn from_wire(value: f64) -> Self;
+    /// The native value as a JS `number`.
+    fn to_wire(self) -> f64;
+}
+
+impl WireFloat for f32 {
+    fn from_wire(value: f64) -> Self {
+        value as f32
+    }
+    fn to_wire(self) -> f64 {
+        self as f64
+    }
+}
+
+impl WireFloat for f64 {
+    fn from_wire(value: f64) -> Self {
+        value
+    }
+    fn to_wire(self) -> f64 {
+        self
+    }
+}

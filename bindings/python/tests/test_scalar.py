@@ -18,6 +18,14 @@ INTEGERS = [
 
 IDS = [case[2] for case in INTEGERS]
 
+# (scalar, optional scalar, native float accessor, name)
+FLOATS = [
+    (scalar.Float32Scalar, scalar.OptionalFloat32Scalar, "as_f32", "float32"),
+    (scalar.Float64Scalar, scalar.OptionalFloat64Scalar, "as_f64", "float64"),
+]
+
+FLOAT_IDS = [case[3] for case in FLOATS]
+
 
 @pytest.mark.parametrize("case", INTEGERS, ids=IDS)
 def test_scalar_holds_a_value_or_null(case):
@@ -96,6 +104,62 @@ def test_float_access_is_exact_or_raises():
     # Sign changes never pass, and the error names the offending value.
     with pytest.raises(ValueError, match="-1 is not exactly representable"):
         scalar.Int8Scalar(-1).as_u64()
+
+
+@pytest.mark.parametrize("case", FLOATS, ids=FLOAT_IDS)
+def test_float_scalar_holds_a_value_or_null(case):
+    scalar_class, _, native, name = case
+    weight = scalar_class(1.5)  # halves are exact in both f32 and f64
+    assert weight.is_null() is False
+    assert weight.value() == 1.5
+    assert weight.data_type().name() == name
+    assert getattr(weight, native)() == 1.5
+    assert weight.as_f64() == 1.5
+    assert weight.to_pyvalue() == 1.5
+
+    missing = scalar_class.null()
+    assert missing.is_null() is True
+    assert missing.value() is None
+    assert missing.to_pyvalue() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_f64()
+
+
+@pytest.mark.parametrize("case", FLOATS, ids=FLOAT_IDS)
+def test_float_scalar_reads_as_int_only_when_whole(case):
+    scalar_class, _, _, _ = case
+    # A whole float converts to every integer target it fits.
+    assert scalar_class(42.0).as_i64() == 42
+    assert scalar_class(42.0).as_u8() == 42
+    # A fractional value is inexact for every integer target.
+    with pytest.raises(ValueError, match="not exactly representable"):
+        scalar_class(1.5).as_i64()
+    # A float is never a bool.
+    with pytest.raises(ValueError, match="no bool conversion"):
+        scalar_class(1.5).as_bool()
+
+
+@pytest.mark.parametrize("case", FLOATS, ids=FLOAT_IDS)
+def test_optional_float_scalar_redirects_to_the_inner_scalar(case):
+    _, optional, _, name = case
+    weight = optional(1.5)
+    assert weight.is_null() is False
+    assert weight.value() == 1.5
+    assert weight.scalar().value() == 1.5
+    assert weight.as_f64() == 1.5
+    assert weight.to_pyvalue() == 1.5
+
+    opt_type = weight.data_type()
+    assert opt_type.name() == "optional"
+    assert opt_type.value_type().name() == name
+
+    missing = optional.null()
+    assert missing.is_null() is True
+    assert missing.value() is None
+    assert missing.scalar() is None
+    assert missing.to_pyvalue() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_f64()
 
 
 def test_binary_scalar_reads_bytes_and_io():
@@ -196,6 +260,43 @@ def test_serie_holds_a_sequence(case):
         numbers.get_at(3)  # out of bounds
     with pytest.raises(OverflowError):
         numbers.get_at(-1)  # a negative index never converts
+
+    # The empty serie and null are distinct states.
+    empty = serie_class([])
+    assert empty.is_null() is False
+    assert empty.is_empty() is True
+    assert empty.to_pylist() == []
+
+    missing = serie_class.null()
+    assert missing.is_null() is True
+    assert missing.to_pylist() is None
+    with pytest.raises(ValueError):
+        missing.get_at(0)
+
+
+# (serie scalar, value type name)
+FLOAT_SERIES = [
+    (scalar.Float32Serie, "float32"),
+    (scalar.Float64Serie, "float64"),
+]
+
+
+@pytest.mark.parametrize("case", FLOAT_SERIES, ids=[case[1] for case in FLOAT_SERIES])
+def test_float_serie_holds_a_sequence(case):
+    serie_class, name = case
+    weights = serie_class([1.5, 2.5, 3.5])  # halves survive the buffer exactly
+    assert weights.is_null() is False
+    assert weights.is_empty() is False
+    assert weights.len() == 3
+    assert weights.to_pylist() == [1.5, 2.5, 3.5]
+    assert weights.to_pyvalue() == [1.5, 2.5, 3.5]
+    assert weights.get_at(1) == 2.5
+    assert weights.get_scalar_at(2).value() == 3.5
+    assert weights.get_scalar_at(3) is None  # out of bounds
+    assert weights.data_type().name() == "list"
+    assert weights.data_type().value_type().name() == name
+    with pytest.raises(OverflowError):
+        weights.get_at(-1)  # a negative index never converts
 
     # The empty serie and null are distinct states.
     empty = serie_class([])

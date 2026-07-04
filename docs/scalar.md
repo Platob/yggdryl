@@ -10,16 +10,18 @@ value** of a data type, with `as_*` accessors reading it as any
 exactly-representable Rust target.
 
 The bindings expose the layer as `yggdryl.scalar` (Python and Node), adapting to
-idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
-`BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
-scalars are concrete per-type classes (`OptionalInt64Scalar`,
-`OptionalBinaryScalar`, …) built straight from the native value, the
-buffer-backed serie scalars (`Int8Serie` … `UInt64Serie`) cross (elements copy
-out through `to_pylist()` in Python / `toArray()` in Node — the pyarrow / Arrow
-JS conversion names, kept for every future native-container accessor such as a
-dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit widths and
-`BigInt` for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
-raised `ValueError` (Python) / thrown `Error` (Node). Three
+idioms: Node carries 8–32 bit integers as `number` and the 64-bit integers as
+`BigInt`, the floats `Float32Scalar` / `Float64Scalar` as `number`, byte values
+cross as Python `bytes` / JS `Buffer`, the null-or-value scalars are concrete
+per-type classes (`OptionalInt64Scalar`, `OptionalFloat64Scalar`,
+`OptionalBinaryScalar`, …) built straight from the native value, the buffer-backed
+serie scalars (`Int8Serie` … `UInt64Serie`, `Float32Serie` / `Float64Serie`) cross
+(elements copy out through `to_pylist()` in Python / `toArray()` in Node — the
+pyarrow / Arrow JS conversion names, kept for every future native-container accessor
+such as a dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit integer
+widths, `BigInt` for the 64-bit ones, and `float` / `number` for the floats), and
+the `as_*` accessors surface the core `DataError` as a raised `ValueError` (Python)
+/ thrown `Error` (Node). Three
 things stay **Rust-only**, stated here and in both binding module docs: the
 [Arrow interop](#arrow-interop) surface (`to_arrow_scalar` / `from_arrow`, and the
 `cast_dtype` / `cast_dtype_unchecked` casts which return a re-typed `arrow-array`
@@ -361,15 +363,16 @@ that the typed generics `erase()` back to.
 
 ### AnySerie, AnyScalar and NestedSerie
 
-`AnySerie` is the type-erased column behind every nested scalar: the integer
-element types are held **decomposed** as the concrete buffer-backed series
-(`Int8Serie` … `UInt64Serie`); any other element type keeps its Arrow array
-zero-copy in the `Arrow` fallback (more decomposed variants land as concrete
-series do). `from_arrow` decomposes, `to_arrow` reconstitutes, `slice` windows,
-and `get_scalar(index)` reads one element out as an `AnyScalar` — all sharing
-buffers. `AnyScalar` is the atomic counterpart one value down (an `int` decomposed
-to its concrete scalar, anything else a one-element Arrow value), the crate's own
-holder behind a `RecordScalar`'s fields.
+`AnySerie` is the type-erased column behind every nested scalar: the fixed-width
+numeric element types are held **decomposed** as the concrete buffer-backed series
+(the integers `Int8Serie` … `UInt64Serie` and the floats `Float32Serie` /
+`Float64Serie`); any other element type keeps its Arrow array zero-copy in the
+`Arrow` fallback (more decomposed variants land as concrete series do). `from_arrow`
+decomposes, `to_arrow` reconstitutes, `slice` windows, and `get_scalar(index)` reads
+one element out as an `AnyScalar` — all sharing buffers. `AnyScalar` is the atomic
+counterpart one value down (a number decomposed to its concrete scalar, anything
+else a one-element Arrow value), the crate's own holder behind a `RecordScalar`'s
+fields.
 
 Every nested scalar implements the `NestedSerie` trait for easy child access:
 `child_serie_count()`, `child_serie_at(index)`, `child_serie_by(name)` and

@@ -4,16 +4,17 @@
 //! `factory.field(name, value)` infer the data type from a native Python value and
 //! build the matching `yggdryl.scalar` / `yggdryl.dtype` / `yggdryl.field` object,
 //! so a value crosses without naming its type. The inference mirrors the model's
-//! available types: `int` → `int64`, `bytes` / `bytearray` → `binary`, `None` →
-//! `null`, a homogeneous `list` of ints → an `int64` serie, and a `dict` of named
+//! available types: `int` → `int64`, `float` → `float64`, `bytes` / `bytearray` →
+//! `binary`, `None` → `null`, a homogeneous `list` of ints → an `int64` serie (a
+//! list carrying any fractional value → a `float64` serie), and a `dict` of named
 //! values → a `struct` (`factory.scalar` builds the `RecordScalar` row,
 //! `factory.dtype` the `StructType`, `factory.field` the `StructField`). Every
 //! object of the model is an inference input too: `factory.scalar` hands a scalar
 //! object back as a new handle of the same class and a data type object its
 //! default scalar; `factory.dtype` maps a scalar, data type or field object to
 //! its data type; `factory.field` pairs `name` with a scalar or data type
-//! object's field. A value the model has no type for (a `float`, `str`, `bool`,
-//! or a list of anything but ints) raises a `ValueError` — build it through the
+//! object's field. A value the model has no type for (a `str`, `bool`, or a list
+//! mixing numbers and non-numbers) raises a `ValueError` — build it through the
 //! explicit per-type factories.
 
 // pyo3's `#[pyfunction]` expansion re-wraps the already-`PyErr` result into `PyErr`;
@@ -21,7 +22,7 @@
 #![allow(clippy::useless_conversion)]
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyInt, PyList};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList};
 use yggdryl_dtype::{arrow_schema, DataType};
 use yggdryl_field::{Field, FieldFactory};
 use yggdryl_scalar::{Scalar, ScalarFactory};
@@ -33,8 +34,11 @@ use crate::DataErr;
 pub(crate) enum Inferred {
     Null,
     Int64(i64),
+    Float64(f64),
     Binary(Vec<u8>),
     Serie(Vec<i64>),
+    /// A homogeneous list carrying any fractional value → a `float64` serie.
+    FloatSerie(Vec<f64>),
     /// A dict row: each field name paired with its own inference, in dict order.
     Record(Vec<(String, Inferred)>),
 }
@@ -46,9 +50,13 @@ impl Inferred {
         match self {
             Inferred::Null => yggdryl_dtype::NullType.to_arrow(),
             Inferred::Int64(_) => yggdryl_dtype::Int64Type.to_arrow(),
+            Inferred::Float64(_) => yggdryl_dtype::Float64Type.to_arrow(),
             Inferred::Binary(_) => yggdryl_dtype::BinaryType.to_arrow(),
             Inferred::Serie(_) => {
                 yggdryl_dtype::TypedSerieType::<yggdryl_dtype::Int64Type>::default().to_arrow()
+            }
+            Inferred::FloatSerie(_) => {
+                yggdryl_dtype::TypedSerieType::<yggdryl_dtype::Float64Type>::default().to_arrow()
             }
             Inferred::Record(entries) => struct_type_of(entries).to_arrow(),
         }
@@ -66,11 +74,17 @@ impl Inferred {
             Inferred::Int64(integer) => {
                 yggdryl_scalar::AnyScalar::from(yggdryl_scalar::Int64Scalar::new(*integer))
             }
+            Inferred::Float64(float) => {
+                yggdryl_scalar::AnyScalar::from(yggdryl_scalar::Float64Scalar::new(*float))
+            }
             Inferred::Binary(bytes) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::BinaryScalar::new(bytes.clone()).to_arrow_scalar(),
             ),
             Inferred::Serie(values) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::Int64Serie::from(values.clone()).to_arrow_scalar(),
+            ),
+            Inferred::FloatSerie(values) => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::Float64Serie::from(values.clone()).to_arrow_scalar(),
             ),
             Inferred::Record(entries) => {
                 yggdryl_scalar::AnyScalar::from_arrow(record_of(entries)?.to_arrow_scalar())
@@ -144,6 +158,8 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
         UInt16Type,
         UInt32Type,
         UInt64Type,
+        Float32Type,
+        Float64Type,
         Int8SerieType,
         Int16SerieType,
         Int32SerieType,
@@ -152,6 +168,8 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
         UInt16SerieType,
         UInt32SerieType,
         UInt64SerieType,
+        Float32SerieType,
+        Float64SerieType,
     );
     Ok(infer(value)?.arrow_dtype())
 }
@@ -186,18 +204,27 @@ fn infer(value: &Bound<'_, PyAny>) -> PyResult<Inferred> {
         })?;
         return Ok(Inferred::Int64(integer));
     }
+    // A Python `float` → `float64` (checked after `int`, so a whole `int` stays
+    // an int64).
+    if value.is_instance_of::<PyFloat>() {
+        return Ok(Inferred::Float64(value.extract::<f64>()?));
+    }
     if value.is_instance_of::<PyBytes>() || value.is_instance_of::<PyByteArray>() {
         return Ok(Inferred::Binary(value.extract()?));
     }
     if value.is_instance_of::<PyList>() {
-        // A homogeneous list of ints → an int64 serie (the model's only bindable
-        // serie); an empty list defaults to it too.
-        let values = value.extract::<Vec<i64>>().map_err(|_| {
+        // A homogeneous list of ints → an int64 serie; a list carrying any
+        // fractional value → a float64 serie; an empty list defaults to the int64
+        // serie.
+        if let Ok(values) = value.extract::<Vec<i64>>() {
+            return Ok(Inferred::Serie(values));
+        }
+        let values = value.extract::<Vec<f64>>().map_err(|_| {
             PyErr::from(DataErr::Message(
-                "cannot infer a serie: expected a list of int64 values".to_string(),
+                "cannot infer a serie: expected a list of int64 or float64 values".to_string(),
             ))
         })?;
-        return Ok(Inferred::Serie(values));
+        return Ok(Inferred::FloatSerie(values));
     }
     if let Ok(row) = value.downcast::<PyDict>() {
         // A dict of named values → a struct row, each child inferred recursively.
@@ -239,6 +266,8 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Scalar,
         UInt32Scalar,
         UInt64Scalar,
+        Float32Scalar,
+        Float64Scalar,
         Int8Serie,
         Int16Serie,
         Int32Serie,
@@ -247,6 +276,8 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Serie,
         UInt32Serie,
         UInt64Serie,
+        Float32Serie,
+        Float64Serie,
     );
     // A model data type object: its default scalar (the null type's is the null
     // scalar, a serie type's the empty serie).
@@ -271,6 +302,8 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Type, UInt16Scalar),
         (UInt32Type, UInt32Scalar),
         (UInt64Type, UInt64Scalar),
+        (Float32Type, Float32Scalar),
+        (Float64Type, Float64Scalar),
     );
     macro_rules! default_serie_of {
         ($(($dtype:ident, $serie:ident)),+ $(,)?) => {
@@ -289,6 +322,8 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16SerieType, UInt16Serie),
         (UInt32SerieType, UInt32Serie),
         (UInt64SerieType, UInt64Serie),
+        (Float32SerieType, Float32Serie),
+        (Float64SerieType, Float64Serie),
     );
     Ok(match infer(value)? {
         Inferred::Null => Py::new(py, crate::scalar::NullScalar::default())?.into_any(),
@@ -296,6 +331,13 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             py,
             crate::scalar::Int64Scalar {
                 inner: yggdryl_scalar::Int64Scalar::new(integer),
+            },
+        )?
+        .into_any(),
+        Inferred::Float64(float) => Py::new(
+            py,
+            crate::scalar::Float64Scalar {
+                inner: yggdryl_scalar::Float64Scalar::new(float),
             },
         )?
         .into_any(),
@@ -310,6 +352,13 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             py,
             crate::scalar::Int64Serie {
                 inner: yggdryl_scalar::Int64Serie::from(values),
+            },
+        )?
+        .into_any(),
+        Inferred::FloatSerie(values) => Py::new(
+            py,
+            crate::scalar::Float64Serie {
+                inner: yggdryl_scalar::Float64Serie::from(values),
             },
         )?
         .into_any(),
@@ -347,6 +396,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Type,
         UInt32Type,
         UInt64Type,
+        Float32Type,
+        Float64Type,
         Int8SerieType,
         Int16SerieType,
         Int32SerieType,
@@ -355,6 +406,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16SerieType,
         UInt32SerieType,
         UInt64SerieType,
+        Float32SerieType,
+        Float64SerieType,
     );
     if let Ok(handle) = value.downcast::<crate::dtype::StructType>() {
         return Ok(Py::new(py, handle.borrow().clone())?.into_any());
@@ -379,6 +432,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Scalar, UInt16Type),
         (UInt32Scalar, UInt32Type),
         (UInt64Scalar, UInt64Type),
+        (Float32Scalar, Float32Type),
+        (Float64Scalar, Float64Type),
         (Int8Serie, Int8SerieType),
         (Int16Serie, Int16SerieType),
         (Int32Serie, Int32SerieType),
@@ -387,6 +442,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Serie, UInt16SerieType),
         (UInt32Serie, UInt32SerieType),
         (UInt64Serie, UInt64SerieType),
+        (Float32Serie, Float32SerieType),
+        (Float64Serie, Float64SerieType),
     );
     if let Ok(handle) = value.downcast::<crate::scalar::RecordScalar>() {
         let inner = handle.borrow().inner.data_type().clone();
@@ -404,6 +461,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Field, UInt16Type),
         (UInt32Field, UInt32Type),
         (UInt64Field, UInt64Type),
+        (Float32Field, Float32Type),
+        (Float64Field, Float64Type),
         (Int8SerieField, Int8SerieType),
         (Int16SerieField, Int16SerieType),
         (Int32SerieField, Int32SerieType),
@@ -412,6 +471,8 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16SerieField, UInt16SerieType),
         (UInt32SerieField, UInt32SerieType),
         (UInt64SerieField, UInt64SerieType),
+        (Float32SerieField, Float32SerieType),
+        (Float64SerieField, Float64SerieType),
     );
     if let Ok(handle) = value.downcast::<crate::field::StructField>() {
         let inner = handle.borrow().inner.data_type().clone();
@@ -420,8 +481,12 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     Ok(match infer(value)? {
         Inferred::Null => Py::new(py, crate::dtype::NullType::default())?.into_any(),
         Inferred::Int64(_) => Py::new(py, crate::dtype::Int64Type::default())?.into_any(),
+        Inferred::Float64(_) => Py::new(py, crate::dtype::Float64Type::default())?.into_any(),
         Inferred::Binary(_) => Py::new(py, crate::dtype::BinaryType::default())?.into_any(),
         Inferred::Serie(_) => Py::new(py, crate::dtype::Int64SerieType::default())?.into_any(),
+        Inferred::FloatSerie(_) => {
+            Py::new(py, crate::dtype::Float64SerieType::default())?.into_any()
+        }
         Inferred::Record(entries) => Py::new(
             py,
             crate::dtype::StructType {
@@ -475,6 +540,8 @@ fn field(
         (UInt16Type, UInt16Field),
         (UInt32Type, UInt32Field),
         (UInt64Type, UInt64Field),
+        (Float32Type, Float32Field),
+        (Float64Type, Float64Field),
         (Int8SerieType, Int8SerieField),
         (Int16SerieType, Int16SerieField),
         (Int32SerieType, Int32SerieField),
@@ -483,6 +550,8 @@ fn field(
         (UInt16SerieType, UInt16SerieField),
         (UInt32SerieType, UInt32SerieField),
         (UInt64SerieType, UInt64SerieField),
+        (Float32SerieType, Float32SerieField),
+        (Float64SerieType, Float64SerieField),
     );
     // A model scalar object: the field of its data type.
     if value.downcast::<crate::scalar::NullScalar>().is_ok() {
@@ -520,6 +589,8 @@ fn field(
         (UInt16Scalar, UInt16Field),
         (UInt32Scalar, UInt32Field),
         (UInt64Scalar, UInt64Field),
+        (Float32Scalar, Float32Field),
+        (Float64Scalar, Float64Field),
         (Int8Serie, Int8SerieField),
         (Int16Serie, Int16SerieField),
         (Int32Serie, Int32SerieField),
@@ -528,6 +599,8 @@ fn field(
         (UInt16Serie, UInt16SerieField),
         (UInt32Serie, UInt32SerieField),
         (UInt64Serie, UInt64SerieField),
+        (Float32Serie, Float32SerieField),
+        (Float64Serie, Float64SerieField),
     );
     Ok(match infer(value)? {
         Inferred::Null => Py::new(
@@ -544,6 +617,13 @@ fn field(
             },
         )?
         .into_any(),
+        Inferred::Float64(_) => Py::new(
+            py,
+            crate::field::Float64Field {
+                inner: yggdryl_field::Float64Field::new(name, nullable),
+            },
+        )?
+        .into_any(),
         Inferred::Binary(_) => Py::new(
             py,
             crate::field::BinaryField {
@@ -554,6 +634,13 @@ fn field(
         Inferred::Serie(_) => Py::new(
             py,
             crate::field::Int64SerieField {
+                inner: yggdryl_field::TypedSerieField::new(name, nullable),
+            },
+        )?
+        .into_any(),
+        Inferred::FloatSerie(_) => Py::new(
+            py,
+            crate::field::Float64SerieField {
                 inner: yggdryl_field::TypedSerieField::new(name, nullable),
             },
         )?

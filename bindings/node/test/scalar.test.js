@@ -229,3 +229,98 @@ test('a serie element out of the value range is refused', () => {
   assert.throws(() => new scalar.Int64Serie([2n ** 63n]))
   assert.throws(() => new scalar.UInt64Serie([-1n]))
 })
+
+// The floats carry their value and serie elements as JS `number` (an f64 on the
+// wire; float32 rounds to nearest). 1.5, 2.5, 3.5 are exact in both widths.
+const FLOATS = [
+  { scalarClass: scalar.Float32Scalar, optional: scalar.OptionalFloat32Scalar, serieClass: scalar.Float32Serie, name: 'float32' },
+  { scalarClass: scalar.Float64Scalar, optional: scalar.OptionalFloat64Scalar, serieClass: scalar.Float64Serie, name: 'float64' },
+]
+
+for (const { scalarClass, optional, serieClass, name } of FLOATS) {
+  test(`${name} scalar holds a value or null`, () => {
+    const answer = new scalarClass(1.5)
+    assert.equal(answer.isNull(), false)
+    assert.equal(answer.value(), 1.5)
+    assert.equal(answer.dataType().name(), name)
+
+    const missing = scalarClass.null()
+    assert.equal(missing.isNull(), true)
+    assert.equal(missing.value(), null)
+  })
+
+  test(`${name} accessors read floats and whole numbers`, () => {
+    // A whole-number float reads as every numeric target and widens exactly.
+    const whole = new scalarClass(3)
+    assert.equal(whole.asF32(), 3)
+    assert.equal(whole.asF64(), 3)
+    assert.equal(whole.asI64(), 3n)
+    assert.equal(whole.asI32(), 3)
+    assert.equal(whole.asU8(), 3)
+
+    // A fractional float widens exactly but is not an integer: an actionable error.
+    const frac = new scalarClass(1.5)
+    assert.equal(frac.asF64(), 1.5)
+    assert.throws(() => frac.asI64(), /not exactly representable/)
+    // Never a bool, a str or bytes.
+    assert.throws(() => frac.asBool(), /no bool conversion/)
+    assert.throws(() => frac.asStr(), /no str conversion/)
+    assert.throws(() => frac.asBytes(), /no bytes conversion/)
+    // A null scalar holds no value: every accessor throws.
+    assert.throws(() => scalarClass.null().asF64(), /is null/)
+  })
+
+  test(`${name} optional scalar redirects to the inner scalar`, () => {
+    const answer = new optional(1.5)
+    assert.equal(answer.isNull(), false)
+    assert.equal(answer.value(), 1.5)
+    assert.equal(answer.scalar().value(), 1.5)
+    assert.equal(answer.asF64(), 1.5)
+
+    const optType = answer.dataType()
+    assert.equal(optType.name(), 'optional')
+    assert.equal(optType.valueType().name(), name)
+
+    const missing = optional.null()
+    assert.equal(missing.isNull(), true)
+    assert.equal(missing.value(), null)
+    assert.equal(missing.scalar(), null)
+    assert.throws(() => missing.asF64(), /is null/)
+  })
+
+  test(`${name} serie holds a sequence`, () => {
+    const numbers = new serieClass([1.5, 2.5, 3.5])
+    assert.equal(numbers.isNull(), false)
+    assert.equal(numbers.isEmpty(), false)
+    assert.equal(numbers.len(), 3)
+    assert.deepEqual(numbers.toArray(), [1.5, 2.5, 3.5])
+    assert.equal(numbers.getAt(0), 1.5)
+    assert.equal(numbers.getAt(2), 3.5)
+    assert.equal(numbers.getScalarAt(2).value(), 3.5)
+    assert.equal(numbers.getScalarAt(3), null) // out of bounds
+    assert.equal(numbers.dataType().name(), 'list')
+    assert.equal(numbers.dataType().valueType().name(), name)
+    assert.throws(() => numbers.getAt(3)) // out of bounds
+    assert.throws(() => numbers.getAt(-1), /non-negative index/) // negative, not wrapped
+
+    // The empty serie and null are distinct states.
+    const empty = new serieClass([])
+    assert.equal(empty.isNull(), false)
+    assert.equal(empty.isEmpty(), true)
+    assert.deepEqual(empty.toArray(), [])
+
+    const missing = serieClass.null()
+    assert.equal(missing.isNull(), true)
+    assert.equal(missing.toArray(), null)
+    assert.throws(() => missing.getAt(0))
+  })
+
+  test(`${name} toJsValue is the general native accessor`, () => {
+    assert.equal(new scalarClass(1.5).toJsValue(), 1.5)
+    assert.equal(scalarClass.null().toJsValue(), null)
+    assert.equal(new optional(1.5).toJsValue(), 1.5)
+    assert.equal(optional.null().toJsValue(), null)
+    assert.deepEqual(new serieClass([1.5, 2.5]).toJsValue(), [1.5, 2.5])
+    assert.equal(serieClass.null().toJsValue(), null)
+  })
+}

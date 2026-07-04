@@ -10,8 +10,9 @@
 //! names as the Rust crate, the namespace carrying the concern (napi registers class constructors by
 //! JS class name in one addon-global registry, and the `…Type` / `…Field` /
 //! `…Scalar` suffixes keep the three concerns' classes distinct). Values adapt to
-//! JS idioms: the 8–32 bit types (and their series' elements) carry their codec
-//! values as `number`, the 64-bit ones as `BigInt`. Data types expose the
+//! JS idioms: the 8–32 bit integers and the floats (and their series' elements)
+//! carry their codec values as `number`, the 64-bit integers as `BigInt`. Data
+//! types expose the
 //! descriptor surface (`name`, `arrowFormat`, widths), the native byte codec,
 //! and — where they are typed factories (the integers, `BinaryType`, the serie
 //! types and the optionals) — their field / scalar / default builders (`field`
@@ -37,7 +38,7 @@ use yggdryl_dtype::{DataType, Logical, Nested, Struct, TypedDataType, Union};
 use yggdryl_field::FieldFactory;
 use yggdryl_scalar::ScalarFactory;
 
-use crate::{bigint_to_i64, bigint_to_u64, data_error, wire_to_native};
+use crate::{bigint_to_i64, bigint_to_u64, data_error, wire_to_native, WireFloat};
 
 /// The Apache Arrow `union` data type: a value is exactly one of several child
 /// types, discriminated by a type id. Reached through a data type's `optional()`
@@ -91,9 +92,10 @@ impl UnionType {
 
 /// The Apache Arrow `struct` data type: an ordered set of named child fields,
 /// inferred from a plain JS object of example values — each member through the
-/// factory's inference (an integer `number` / `bigint` → `int64`, a `Buffer` →
-/// `binary`, `null` → `null`, an array of integers → the `int64` serie).
-/// Construction from raw Arrow fields stays Rust-only.
+/// factory's inference (a whole `number` / `bigint` → `int64`, a fractional
+/// `number` → `float64`, a `Buffer` → `binary`, `null` → `null`, a numeric array →
+/// the `int64` or `float64` serie). Construction from raw Arrow fields stays
+/// Rust-only.
 #[napi(namespace = "dtype")]
 pub struct StructType {
     pub(crate) inner: yggdryl_dtype::StructType,
@@ -613,6 +615,85 @@ macro_rules! int_wire_number_dtype {
     };
 }
 
+/// Generates the wire-dependent codec of a float type over JS `number` (the sole JS
+/// numeric wire, an `f64` narrowed to the native width through [`WireFloat`]):
+/// `nativeToBytes` / `nativeFromBytes`, `defaultValue` and `scalar()` on the data
+/// type and its optional. The float analog of [`int_wire_number_dtype!`] — a
+/// `number` always narrows, so nothing range-checks.
+macro_rules! float_wire_number_dtype {
+    ($ty:ident, $opt_ty:ident, $scalar:ident, $opt_scalar:ident, $native:ty, $name:literal) => {
+        #[napi(namespace = "dtype")]
+        impl $ty {
+            /// Serialize a native value into its little-endian Arrow bytes.
+            #[napi]
+            pub fn native_to_bytes(&self, value: f64) -> Buffer {
+                Buffer::from(self.inner.native_to_bytes(&<$native>::from_wire(value)))
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value — the exact
+            /// inverse of `nativeToBytes`; the wrong length throws.
+            #[napi]
+            pub fn native_from_bytes(&self, bytes: Buffer) -> Result<f64> {
+                self.inner
+                    .native_from_bytes(&bytes)
+                    .map(<$native>::to_wire)
+                    .map_err(data_error)
+            }
+        }
+
+        #[napi(namespace = "dtype")]
+        impl $ty {
+            /// The type's default native value, `0`.
+            #[napi]
+            pub fn default_value(&self) -> f64 {
+                <$native>::to_wire(TypedDataType::default_value(&self.inner))
+            }
+
+            /// A `yggdryl.scalar` class holding `value`.
+            #[napi]
+            pub fn scalar(&self, value: f64) -> crate::scalar::$scalar {
+                crate::scalar::$scalar {
+                    inner: self.inner.scalar(<$native>::from_wire(value)),
+                }
+            }
+        }
+
+        #[napi(namespace = "dtype")]
+        impl $opt_ty {
+            /// The default native value of the value type, `0`.
+            #[napi]
+            pub fn default_value(&self) -> f64 {
+                <$native>::to_wire(TypedDataType::default_value(&self.inner))
+            }
+
+            /// A `yggdryl.scalar` class holding the value variant `value`.
+            #[napi]
+            pub fn scalar(&self, value: f64) -> crate::scalar::$opt_scalar {
+                crate::scalar::$opt_scalar {
+                    inner: self.inner.scalar(<$native>::from_wire(value)),
+                }
+            }
+
+            /// Serialize a native value into its little-endian Arrow bytes — the
+            /// value type's codec.
+            #[napi]
+            pub fn native_to_bytes(&self, value: f64) -> Buffer {
+                Buffer::from(self.inner.native_to_bytes(&<$native>::from_wire(value)))
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value — the exact
+            /// inverse of `nativeToBytes`; the wrong length throws.
+            #[napi]
+            pub fn native_from_bytes(&self, bytes: Buffer) -> Result<f64> {
+                self.inner
+                    .native_from_bytes(&bytes)
+                    .map(<$native>::to_wire)
+                    .map_err(data_error)
+            }
+        }
+    };
+}
+
 int_dtype_node!(
     Int8Type,
     OptionalInt8Type,
@@ -741,6 +822,46 @@ int_wire_number_dtype!(
     OptionalUInt32Scalar,
     u32,
     "uint32"
+);
+
+// The floats reuse the width-independent data-type surface, then carry their codec
+// value as a JS `number` (both narrow to `f64` on the wire — see `WireFloat`).
+int_dtype_node!(
+    Float32Type,
+    OptionalFloat32Type,
+    Float32Field,
+    OptionalFloat32Field,
+    Float32Scalar,
+    OptionalFloat32Scalar,
+    Float32Type,
+    "float32"
+);
+int_dtype_node!(
+    Float64Type,
+    OptionalFloat64Type,
+    Float64Field,
+    OptionalFloat64Field,
+    Float64Scalar,
+    OptionalFloat64Scalar,
+    Float64Type,
+    "float64"
+);
+
+float_wire_number_dtype!(
+    Float32Type,
+    OptionalFloat32Type,
+    Float32Scalar,
+    OptionalFloat32Scalar,
+    f32,
+    "float32"
+);
+float_wire_number_dtype!(
+    Float64Type,
+    OptionalFloat64Type,
+    Float64Scalar,
+    OptionalFloat64Scalar,
+    f64,
+    "float64"
 );
 
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
@@ -1028,6 +1149,59 @@ macro_rules! int_serie_wire_number_dtype {
     };
 }
 
+/// Generates the wire-dependent codec of a float serie type over JS `number`
+/// elements (each an `f64` narrowed to the element width through [`WireFloat`]):
+/// `nativeToBytes` / `nativeFromBytes`, `defaultValue` and `scalar()`. The float
+/// analog of [`int_serie_wire_number_dtype!`] with no per-element range check.
+macro_rules! float_serie_wire_number_dtype {
+    ($ty:ident, $serie:ident, $native:ty, $name:literal) => {
+        #[napi(namespace = "dtype")]
+        impl $ty {
+            /// Serialize a native serie into its Arrow bytes — the value type's codec,
+            /// concatenated per element.
+            #[napi]
+            pub fn native_to_bytes(&self, values: Vec<f64>) -> Buffer {
+                let values = values
+                    .into_iter()
+                    .map(<$native>::from_wire)
+                    .collect::<Vec<_>>();
+                Buffer::from(self.inner.native_to_bytes(&values))
+            }
+
+            /// Deserialize Arrow bytes into a native serie — the exact inverse of
+            /// `nativeToBytes`; a length that is not a whole number of elements throws.
+            #[napi]
+            pub fn native_from_bytes(&self, bytes: Buffer) -> Result<Vec<f64>> {
+                self.inner
+                    .native_from_bytes(&bytes)
+                    .map(|values| values.into_iter().map(<$native>::to_wire).collect())
+                    .map_err(data_error)
+            }
+
+            /// The type's default native value, the empty serie.
+            #[napi]
+            pub fn default_value(&self) -> Vec<f64> {
+                TypedDataType::<Vec<$native>>::default_value(&self.inner)
+                    .into_iter()
+                    .map(<$native>::to_wire)
+                    .collect()
+            }
+
+            /// A `yggdryl.scalar` serie holding the native serie `values`.
+            #[napi]
+            pub fn scalar(&self, values: Vec<f64>) -> crate::scalar::$serie {
+                let values = values
+                    .into_iter()
+                    .map(<$native>::from_wire)
+                    .collect::<Vec<_>>();
+                crate::scalar::$serie {
+                    inner: yggdryl_scalar::$serie::from(values),
+                }
+            }
+        }
+    };
+}
+
 int_serie_dtype_node!(Int8SerieType, Int8Type, Int8SerieField, Int8Serie, "int8");
 int_serie_dtype_node!(
     Int16SerieType,
@@ -1085,6 +1259,26 @@ int_serie_wire_number_dtype!(Int32SerieType, Int32Serie, i32, "int32");
 int_serie_wire_number_dtype!(UInt8SerieType, UInt8Serie, u8, "uint8");
 int_serie_wire_number_dtype!(UInt16SerieType, UInt16Serie, u16, "uint16");
 int_serie_wire_number_dtype!(UInt32SerieType, UInt32Serie, u32, "uint32");
+
+// The float series reuse the width-independent serie-type surface, then carry their
+// codec elements as JS `number` (both narrow to `f64` on the wire — see `WireFloat`).
+int_serie_dtype_node!(
+    Float32SerieType,
+    Float32Type,
+    Float32SerieField,
+    Float32Serie,
+    "float32"
+);
+int_serie_dtype_node!(
+    Float64SerieType,
+    Float64Type,
+    Float64SerieField,
+    Float64Serie,
+    "float64"
+);
+
+float_serie_wire_number_dtype!(Float32SerieType, Float32Serie, f32, "float32");
+float_serie_wire_number_dtype!(Float64SerieType, Float64Serie, f64, "float64");
 
 // The 64-bit series carry their elements as JS `BigInt` (a `number` cannot
 // represent the full range), so their width-dependent surface is written out per

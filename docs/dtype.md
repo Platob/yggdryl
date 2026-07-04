@@ -8,10 +8,10 @@ crate, so the concrete types share one naming convention across the layers
 column of it, `yggdryl_scalar::Int64Scalar` holds one value of it). It defines the
 physical and logical data types for zero-copy FFI and Arrow interop. The concrete
 families so far: the `integer` module (every signed and unsigned integer), the
-`binary` module (the variable-size byte type), the `null` module (the storage-free
-null type), the `union` module, the `optional` module (the logical null-or-value
-type over union storage) and the nested `serie`, `map` and `struct` modules; more
-land as the layer grows.
+`float` module (`float32` / `float64`), the `binary` module (the variable-size byte
+type), the `null` module (the storage-free null type), the `union` module, the
+`optional` module (the logical null-or-value type over union storage) and the nested
+`serie`, `map` and `struct` modules; more land as the layer grows.
 
 The bindings expose the layer as `yggdryl.dtype` (Python and Node), adapting to
 idioms: Node carries 8–32 bit codec values as `number` and the 64-bit types as
@@ -25,21 +25,24 @@ optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
 the dynamic base [nested types](#nested-types-serie-map-and-struct) and their typed
 generics (`SerieType` / `TypedSerieType`, `MapType` / `TypedMapType`) over a
 non-integer value type, which have no concrete FFI shape yet — the exceptions, the
-concrete integer serie types (`Int8SerieType` … `UInt64SerieType`, the `list` of
-each integer) and `StructType` (built in the bindings from a `dict` / plain object
-of field name → example value, each field's type inferred), are exposed to both
-bindings.
+concrete numeric serie types (`Int8SerieType` … `UInt64SerieType` and
+`Float32SerieType` / `Float64SerieType`, the `list` of each) and `StructType` (built
+in the bindings from a `dict` / plain object of field name → example value, each
+field's type inferred), are exposed to both bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and
 FFI, and `DataType` is object-safe for `Box<dyn DataType>` schemas.
 
-## The concrete types: the `integer` module
+## The concrete types: the `integer` and `float` modules
 
 The `integer` module holds every Apache Arrow signed and unsigned integer —
 `Int8Type` … `Int64Type`, `UInt8Type` … `UInt64Type` — one file per type. Each is
 a fixed-width [primitive](#categories) with a little-endian byte codec; the eight
-share one shape, so a single crate-internal macro generates each per-type file.
+share one shape, so a single crate-internal macro generates each per-type file. The
+`float` module holds `Float32Type` (native `f32`, format `"f"`) and `Float64Type`
+(native `f64`, format `"g"`) — the same fixed-width primitive shape, so they reuse
+the integer family's macro.
 
 `Int64Type`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C
 Data Interface format `"l"`):

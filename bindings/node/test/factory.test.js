@@ -38,6 +38,53 @@ test('factory.dtype infers the type from the value', () => {
   assert.equal(factory.dtype([1, 2, 3]).name(), 'list')
 })
 
+test('factory infers float64 from a fractional number', () => {
+  // A fractional number is a float64; a whole number (and 2.0) stays int64, since
+  // JS has only the f64 `number`.
+  const half = factory.scalar(1.5)
+  assert.equal(half.dataType().name(), 'float64')
+  assert.equal(half.asF64(), 1.5)
+  assert.equal(factory.dtype(1.5).name(), 'float64')
+  assert.equal(factory.field('w', 1.5).dataType().name(), 'float64')
+  assert.equal(factory.scalar(2).dataType().name(), 'int64')
+  assert.equal(factory.scalar(2.0).dataType().name(), 'int64')
+
+  // A numeric array with any fractional value is a float64 serie; an all-whole
+  // array stays an int64 serie.
+  const floats = factory.scalar([1.5, 2, 3])
+  assert.equal(floats.dataType().name(), 'list')
+  assert.equal(floats.dataType().valueType().name(), 'float64')
+  assert.deepEqual(floats.toArray(), [1.5, 2, 3])
+  assert.equal(factory.dtype([1.5, 2]).valueType().name(), 'float64')
+  assert.equal(factory.field('xs', [0.5]).dataType().valueType().name(), 'float64')
+  assert.equal(factory.scalar([1, 2, 3]).dataType().valueType().name(), 'int64')
+})
+
+test('factory accepts its own float handles', () => {
+  // A float scalar / serie handle re-wraps as the same class over the same value...
+  assert.ok(factory.scalar(new scalar.Float32Scalar(1.5)) instanceof scalar.Float32Scalar)
+  assert.equal(factory.scalar(new scalar.Float64Scalar(1.5)).value(), 1.5)
+  assert.deepEqual(factory.scalar(new scalar.Float64Serie([1.5, 2.5])).toArray(), [1.5, 2.5])
+
+  // ...and classifies as its data type for dtype() / field().
+  assert.equal(factory.dtype(new scalar.Float32Scalar(1.5)).name(), 'float32')
+  assert.equal(factory.dtype(new scalar.Float64Serie([1.5])).name(), 'list')
+  assert.equal(factory.field('w', new scalar.Float64Scalar(1.5)).dataType().name(), 'float64')
+})
+
+test('factory accepts its own float data types', () => {
+  // A float data type handle is the identity for dtype()...
+  assert.equal(factory.dtype(new dtype.Float32Type()).name(), 'float32')
+  assert.equal(factory.dtype(new dtype.Float64Type()).name(), 'float64')
+  assert.equal(factory.dtype(new dtype.Float32SerieType()).name(), 'list')
+  assert.equal(factory.dtype(new dtype.Float64SerieType()).valueType().name(), 'float64')
+
+  // ...and builds its default scalar for scalar().
+  assert.equal(factory.scalar(new dtype.Float64Type()).value(), 0)
+  assert.deepEqual(factory.scalar(new dtype.Float32SerieType()).toArray(), [])
+  assert.equal(factory.field('w', new dtype.Float32Type()).dataType().name(), 'float32')
+})
+
 test('factory.field infers the type and keeps the name', () => {
   const idField = factory.field('id', 42)
   assert.equal(idField.name(), 'id')
@@ -105,9 +152,9 @@ test('factory accepts its own data types', () => {
 })
 
 test('unsupported values throw', () => {
-  // A fractional number, a string, a boolean, a non-int array, and an object
-  // with a member of no matching model type.
-  for (const value of [1.5, 'text', true, ['x'], { bad: 'text' }]) {
+  // A string, a boolean, a non-numeric array, and an object with a member of no
+  // matching model type. (A fractional number is now a valid float64.)
+  for (const value of ['text', true, ['x'], { bad: 'text' }]) {
     assert.throws(() => factory.scalar(value))
     assert.throws(() => factory.dtype(value))
   }

@@ -28,6 +28,16 @@ def test_scalar_infers_the_type_from_the_value():
     # An empty list defaults to the int64 serie.
     assert factory.scalar([]).data_type().name() == "list"
 
+    # float -> float64; a list carrying a fractional value -> a float64 serie.
+    weight = factory.scalar(1.5)
+    assert weight.data_type().name() == "float64"
+    assert weight.as_f64() == 1.5
+    weights = factory.scalar([1.5, 2.5])
+    assert weights.data_type().value_type().name() == "float64"
+    assert weights.to_pylist() == [1.5, 2.5]
+    # An all-whole list stays an int64 serie.
+    assert factory.scalar([1, 2]).data_type().value_type().name() == "int64"
+
 
 def test_dict_infers_a_record_a_struct_and_a_struct_field():
     # A dict of named values -> a struct: scalar builds the RecordScalar row...
@@ -81,9 +91,11 @@ def test_a_dtype_object_yields_its_default_scalar():
 
 def test_dtype_infers_the_type_from_the_value():
     assert factory.dtype(42).name() == "int64"
+    assert factory.dtype(1.5).name() == "float64"
     assert factory.dtype(b"x").name() == "binary"
     assert factory.dtype(None).name() == "null"
     assert factory.dtype([1, 2, 3]).name() == "list"
+    assert factory.dtype([1.5, 2.5]).value_type().name() == "float64"
 
     # A model dtype object yields a same-type new instance...
     original = dtype.Int32Type()
@@ -121,6 +133,10 @@ def test_field_infers_the_type_and_keeps_the_name():
     scores = factory.field("scores", [1, 2, 3])
     assert scores.data_type().name() == "list"
 
+    weight = factory.field("w", 1.5)
+    assert weight.name() == "w"
+    assert weight.data_type().name() == "float64"
+
     missing = factory.field("maybe", None)
     assert missing.data_type().name() == "null"
 
@@ -139,10 +155,25 @@ def test_field_infers_the_type_and_keeps_the_name():
     assert type(factory.field("row", scalar.RecordScalar({"x": 1}))) is field.StructField
 
 
-@pytest.mark.parametrize("value", [1.5, "text", True, {"a": 1.5}, [1, "x"]])
+def test_float_handles_round_trip():
+    # The float scalar / dtype / field handles are accepted like the integer ones.
+    assert type(factory.scalar(scalar.Float64Scalar(1.5))) is scalar.Float64Scalar
+    assert factory.scalar(scalar.Float32Serie([1.5])).to_pylist() == [1.5]
+    assert factory.scalar(dtype.Float64Type()).value() == 0.0
+    assert factory.scalar(dtype.Float32SerieType()).to_pylist() == []
+    assert factory.dtype(scalar.Float32Scalar(1.5)).name() == "float32"
+    assert factory.dtype(dtype.Float64Type()).name() == "float64"
+    assert factory.dtype(field.Float64Field("w")).name() == "float64"
+    assert factory.dtype(field.Float32SerieField("ws")).value_type().name() == "float32"
+    assert type(factory.field("w", dtype.Float64Type())) is field.Float64Field
+    assert type(factory.field("w", scalar.Float32Scalar(1.5))) is field.Float32Field
+    assert type(factory.field("ws", dtype.Float64SerieType())) is field.Float64SerieField
+
+
+@pytest.mark.parametrize("value", ["text", True, [1, "x"]])
 def test_unsupported_values_raise(value):
-    # A float, str, bool, a dict with an uninferable value, or a non-int list
-    # has no matching model type.
+    # A str, bool, or a list mixing numbers and non-numbers has no matching model
+    # type (a float and a dict of inferable values are supported).
     with pytest.raises(ValueError):
         factory.scalar(value)
     with pytest.raises(ValueError):

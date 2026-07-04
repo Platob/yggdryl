@@ -625,6 +625,26 @@ int_dtype_py!(
     u64,
     "uint64"
 );
+int_dtype_py!(
+    Float32Type,
+    OptionalFloat32Type,
+    Float32Field,
+    OptionalFloat32Field,
+    Float32Scalar,
+    OptionalFloat32Scalar,
+    f32,
+    "float32"
+);
+int_dtype_py!(
+    Float64Type,
+    OptionalFloat64Type,
+    Float64Field,
+    OptionalFloat64Field,
+    Float64Scalar,
+    OptionalFloat64Scalar,
+    f64,
+    "float64"
+);
 
 /// Generates the concrete serie data type of one integer value type: `$ty`, the
 /// Apache Arrow `list` of `$name` (single nullable `"item"` child) — a thin
@@ -790,6 +810,22 @@ int_serie_dtype_py!(
     u64,
     "uint64"
 );
+int_serie_dtype_py!(
+    Float32SerieType,
+    Float32Type,
+    Float32SerieField,
+    Float32Serie,
+    f32,
+    "float32"
+);
+int_serie_dtype_py!(
+    Float64SerieType,
+    Float64Type,
+    Float64SerieField,
+    Float64Serie,
+    f64,
+    "float64"
+);
 
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -814,6 +850,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Type>()?;
     module.add_class::<UInt64Type>()?;
     module.add_class::<OptionalUInt64Type>()?;
+    module.add_class::<Float32Type>()?;
+    module.add_class::<OptionalFloat32Type>()?;
+    module.add_class::<Float64Type>()?;
+    module.add_class::<OptionalFloat64Type>()?;
     module.add_class::<Int8SerieType>()?;
     module.add_class::<Int16SerieType>()?;
     module.add_class::<Int32SerieType>()?;
@@ -822,5 +862,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16SerieType>()?;
     module.add_class::<UInt32SerieType>()?;
     module.add_class::<UInt64SerieType>()?;
+    module.add_class::<Float32SerieType>()?;
+    module.add_class::<Float64SerieType>()?;
     Ok(())
 }

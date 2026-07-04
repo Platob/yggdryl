@@ -1,7 +1,7 @@
 //! The `yggdryl.field` namespace — thin wrappers over the `yggdryl-field` crate.
 //!
-//! Every integer type is exposed as its field and its optional field (e.g.
-//! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
+//! Every integer and float type is exposed as its field and its optional field
+//! (e.g. `Int64Field`, `OptionalInt64Field`, `Float64Field`), alongside `BinaryField` /
 //! `OptionalBinaryField`, `NullField`, `UnionField`, `StructField` (like
 //! `UnionField`, built over its parameterised `yggdryl.dtype` data type) and its
 //! concrete serie field
@@ -346,6 +346,22 @@ int_field_node!(
     "uint64"
 );
 
+// The floats reuse the same field shape (a name paired with a fixed-width data type).
+int_field_node!(
+    Float32Field,
+    OptionalFloat32Field,
+    Float32Type,
+    OptionalFloat32Type,
+    "float32"
+);
+int_field_node!(
+    Float64Field,
+    OptionalFloat64Field,
+    Float64Type,
+    OptionalFloat64Type,
+    "float64"
+);
+
 /// Generates the concrete serie field of one integer value type: `$ty`, a column
 /// of the `yggdryl.dtype` class `$dtype` — a thin delegation to
 /// `yggdryl_field::TypedSerieField<$value_ty>`.
@@ -397,3 +413,5 @@ int_serie_field_node!(UInt8SerieField, UInt8SerieType, UInt8Type, "uint8");
 int_serie_field_node!(UInt16SerieField, UInt16SerieType, UInt16Type, "uint16");
 int_serie_field_node!(UInt32SerieField, UInt32SerieType, UInt32Type, "uint32");
 int_serie_field_node!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");
+int_serie_field_node!(Float32SerieField, Float32SerieType, Float32Type, "float32");
+int_serie_field_node!(Float64SerieField, Float64SerieType, Float64Type, "float64");

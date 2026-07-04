@@ -666,6 +666,22 @@ int_scalar_py!(
     u64,
     "uint64"
 );
+int_scalar_py!(
+    Float32Scalar,
+    OptionalFloat32Scalar,
+    Float32Type,
+    OptionalFloat32Type,
+    f32,
+    "float32"
+);
+int_scalar_py!(
+    Float64Scalar,
+    OptionalFloat64Scalar,
+    Float64Type,
+    OptionalFloat64Type,
+    f64,
+    "float64"
+);
 
 /// Generates the concrete serie scalar of one integer value type: `$ty`, the
 /// buffer-backed `list` of `$name` — a thin delegation to `yggdryl_scalar::$ty`.
@@ -759,13 +775,27 @@ int_serie_scalar_py!(UInt8Serie, UInt8Scalar, UInt8SerieType, u8, "uint8");
 int_serie_scalar_py!(UInt16Serie, UInt16Scalar, UInt16SerieType, u16, "uint16");
 int_serie_scalar_py!(UInt32Serie, UInt32Scalar, UInt32SerieType, u32, "uint32");
 int_serie_scalar_py!(UInt64Serie, UInt64Scalar, UInt64SerieType, u64, "uint64");
+int_serie_scalar_py!(
+    Float32Serie,
+    Float32Scalar,
+    Float32SerieType,
+    f32,
+    "float32"
+);
+int_serie_scalar_py!(
+    Float64Serie,
+    Float64Scalar,
+    Float64SerieType,
+    f64,
+    "float64"
+);
 
 /// Raises a `ValueError` naming a record child type the bindings cannot convert
 /// to a native Python value yet.
 fn child_unrepresentable(data_type: &yggdryl_scalar::arrow_schema::DataType) -> PyErr {
     DataErr::Message(format!(
         "no native Python form for a {data_type} record child yet; supported children are the \
-         integer types, binary, null, the integer series and nested structs"
+         integer and float types, binary, null, the integer and float series and nested structs"
     ))
     .into()
 }
@@ -788,7 +818,7 @@ fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult
             }
         };
     }
-    elements!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+    elements!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
 }
 
 /// The native Python value of a record's field scalar — `get`, `to_pydict` and
@@ -835,7 +865,7 @@ fn scalar_to_pyvalue(py: Python<'_>, scalar: &yggdryl_scalar::AnyScalar) -> PyRe
             }
         };
     }
-    atom!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+    atom!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
 }
 
 /// The auto-generated singleton dataclasses behind `RecordScalar.to_pyvalue`,
@@ -987,6 +1017,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Scalar>()?;
     module.add_class::<UInt64Scalar>()?;
     module.add_class::<OptionalUInt64Scalar>()?;
+    module.add_class::<Float32Scalar>()?;
+    module.add_class::<OptionalFloat32Scalar>()?;
+    module.add_class::<Float64Scalar>()?;
+    module.add_class::<OptionalFloat64Scalar>()?;
     module.add_class::<Int8Serie>()?;
     module.add_class::<Int16Serie>()?;
     module.add_class::<Int32Serie>()?;
@@ -995,6 +1029,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16Serie>()?;
     module.add_class::<UInt32Serie>()?;
     module.add_class::<UInt64Serie>()?;
+    module.add_class::<Float32Serie>()?;
+    module.add_class::<Float64Serie>()?;
     module.add_class::<RecordScalar>()?;
     Ok(())
 }

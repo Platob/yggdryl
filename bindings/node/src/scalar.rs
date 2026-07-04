@@ -7,8 +7,9 @@
 //! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same
 //! globally-unique names as the Rust crate, the namespace carrying the
 //! concern (the `…Scalar` suffix keeps every class distinct in napi's addon-global
-//! registry). Values adapt to JS idioms: the 8–32 bit types use `number`, the
-//! 64-bit types use `BigInt`, and scalars expose the `as*` accessors with the core
+//! registry). Values adapt to JS idioms: the 8–32 bit integers and the floats
+//! (`float32` / `float64`) use `number`, the 64-bit integers use `BigInt`, and
+//! scalars expose the `as*` accessors with the core
 //! contract — the value when the target represents it exactly, or a thrown error
 //! naming the fix (strings and `Buffer`s cross the FFI boundary as new JS objects,
 //! so the Rust-side "borrow, never copy" guarantee applies up to that boundary
@@ -46,7 +47,7 @@ use napi_derive::napi;
 use yggdryl_scalar::arrow_array::{self, Array};
 use yggdryl_scalar::{arrow_schema, AnyScalar, AnySerie, Scalar};
 
-use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native};
+use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native, WireFloat};
 
 /// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
 /// `"latin1"` — shared by every scalar class.
@@ -469,6 +470,65 @@ macro_rules! int_wire_number_scalar {
     };
 }
 
+/// Generates the wire-dependent constructor and `value` of a float scalar (and its
+/// optional) over JS `number` — the sole JS numeric wire (an `f64`), which narrows
+/// to `f32` (rounding) and widens back exactly through [`WireFloat`]. A float
+/// construction never fails (a `number` always narrows), so it is the float analog
+/// of [`int_wire_number_scalar!`] without the range check.
+macro_rules! float_wire_number_scalar {
+    ($ty:ident, $opt_ty:ident, $native:ty, $name:literal) => {
+        #[napi(namespace = "scalar")]
+        impl $ty {
+            #[doc = concat!("A `", $name, "` scalar holding `value`.")]
+            #[napi(constructor)]
+            pub fn new(value: f64) -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::new(<$native>::from_wire(value)),
+                }
+            }
+
+            /// The scalar's value as a number, or `null` when null.
+            #[napi]
+            pub fn value(&self) -> Option<f64> {
+                self.inner.value().copied().map(<$native>::to_wire)
+            }
+
+            /// The scalar's native JS value: the number, or `null` when null —
+            /// the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<f64> {
+                self.value()
+            }
+        }
+
+        #[napi(namespace = "scalar")]
+        impl $opt_ty {
+            #[doc = concat!("A scalar holding the `", $name, "` value variant `value`.")]
+            #[napi(constructor)]
+            pub fn new(value: f64) -> Self {
+                Self {
+                    inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::$ty::new(
+                        <$native>::from_wire(value),
+                    )),
+                }
+            }
+
+            /// The value as a number, or `null` for the null variant.
+            #[napi]
+            pub fn value(&self) -> Option<f64> {
+                self.inner.value().copied().map(<$native>::to_wire)
+            }
+
+            /// The scalar's native JS value: the number, or `null` for the null
+            /// variant — the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<f64> {
+                self.value()
+            }
+        }
+    };
+}
+
 int_scalar_node!(
     Int8Scalar,
     OptionalInt8Scalar,
@@ -532,6 +592,26 @@ int_wire_number_scalar!(Int32Scalar, OptionalInt32Scalar, i32, "int32");
 int_wire_number_scalar!(UInt8Scalar, OptionalUInt8Scalar, u8, "uint8");
 int_wire_number_scalar!(UInt16Scalar, OptionalUInt16Scalar, u16, "uint16");
 int_wire_number_scalar!(UInt32Scalar, OptionalUInt32Scalar, u32, "uint32");
+
+// The floats reuse the width-independent scalar surface, then carry their value as
+// a JS `number` (both narrow to `f64` on the wire — see `WireFloat`).
+int_scalar_node!(
+    Float32Scalar,
+    OptionalFloat32Scalar,
+    Float32Type,
+    OptionalFloat32Type,
+    "float32"
+);
+int_scalar_node!(
+    Float64Scalar,
+    OptionalFloat64Scalar,
+    Float64Type,
+    OptionalFloat64Type,
+    "float64"
+);
+
+float_wire_number_scalar!(Float32Scalar, OptionalFloat32Scalar, f32, "float32");
+float_wire_number_scalar!(Float64Scalar, OptionalFloat64Scalar, f64, "float64");
 
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
 // the full range), so their width-dependent surface is written out per type.
@@ -750,6 +830,56 @@ macro_rules! int_serie_wire_number_scalar {
     };
 }
 
+/// Generates the wire-dependent constructor, `toArray` and `getAt` of a float serie
+/// over JS `number` elements (each an `f64` narrowed to the element width through
+/// [`WireFloat`]) — the float analog of [`int_serie_wire_number_scalar!`] with no
+/// per-element range check.
+macro_rules! float_serie_wire_number_scalar {
+    ($ty:ident, $native:ty, $name:literal) => {
+        #[napi(namespace = "scalar")]
+        impl $ty {
+            /// A serie holding the native serie `values` (all-valid).
+            #[napi(constructor)]
+            pub fn new(values: Vec<f64>) -> Self {
+                let values = values
+                    .into_iter()
+                    .map(<$native>::from_wire)
+                    .collect::<Vec<_>>();
+                Self {
+                    inner: yggdryl_scalar::$ty::from(values),
+                }
+            }
+
+            /// The whole element buffer copied out as a JS array of numbers, or
+            /// `null` when null — the JS-idiomatic name for a native-container
+            /// copy-out (the zero-copy borrow stays Rust-only).
+            #[napi]
+            pub fn to_array(&self) -> Option<Vec<f64>> {
+                self.inner
+                    .values()
+                    .map(|values| values.iter().copied().map(<$native>::to_wire).collect())
+            }
+
+            /// The element at `index` read as its native number; throws when null,
+            /// the index is negative, or the index is past the end.
+            #[napi]
+            pub fn get_at(&self, index: i64) -> Result<f64> {
+                self.inner
+                    .get_at::<$native>(index_to_usize(index)?)
+                    .map(<$native>::to_wire)
+                    .map_err(data_error)
+            }
+
+            /// The scalar's native JS value: the `toArray()` array of numbers, or
+            /// `null` when null — the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<Vec<f64>> {
+                self.to_array()
+            }
+        }
+    };
+}
+
 int_serie_scalar_node!(Int8Serie, Int8Scalar, Int8SerieType, "int8");
 int_serie_scalar_node!(Int16Serie, Int16Scalar, Int16SerieType, "int16");
 int_serie_scalar_node!(Int32Serie, Int32Scalar, Int32SerieType, "int32");
@@ -765,6 +895,14 @@ int_serie_wire_number_scalar!(Int32Serie, i32, "int32");
 int_serie_wire_number_scalar!(UInt8Serie, u8, "uint8");
 int_serie_wire_number_scalar!(UInt16Serie, u16, "uint16");
 int_serie_wire_number_scalar!(UInt32Serie, u32, "uint32");
+
+// The float series reuse the width-independent serie surface, then carry their
+// elements as JS `number` (both narrow to `f64` on the wire — see `WireFloat`).
+int_serie_scalar_node!(Float32Serie, Float32Scalar, Float32SerieType, "float32");
+int_serie_scalar_node!(Float64Serie, Float64Scalar, Float64SerieType, "float64");
+
+float_serie_wire_number_scalar!(Float32Serie, f32, "float32");
+float_serie_wire_number_scalar!(Float64Serie, f64, "float64");
 
 // The 64-bit series carry their elements as JS `BigInt` (a `number` cannot
 // represent the full range), so their width-dependent surface is written out per
@@ -926,17 +1064,31 @@ fn serie_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
             }
             .to_array(),
         ),
+        AnySerie::Float32(serie) => to_unknown(
+            env,
+            Float32Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::Float64(serie) => to_unknown(
+            env,
+            Float64Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
         other => Err(Error::from_reason(format!(
-            "no JS array for a serie of Arrow type {}; expected an integer serie",
+            "no JS array for a serie of Arrow type {}; expected an integer or float serie",
             other.data_type()
         ))),
     }
 }
 
 /// The single element of a one-element record column as its JS value — the wire
-/// types the scalar classes already use (`number` for the 8–32 bit integers,
-/// `BigInt` for the 64-bit ones, a `Buffer` for binary, the `toArray()` array for
-/// a serie, `null` for null), read through the classes' own `value()` /
+/// types the scalar classes already use (`number` for the 8–32 bit integers and the
+/// floats, `BigInt` for the 64-bit integers, a `Buffer` for binary, the `toArray()`
+/// array for a serie, `null` for null), read through the classes' own `value()` /
 /// `toArray()` so the conversion lives in one place.
 fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
     // The decomposed integer field reuses its wrapper class' `value()` conversion.
@@ -949,6 +1101,8 @@ fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
         AnyScalar::UInt16(inner) => to_unknown(env, UInt16Scalar { inner: *inner }.value()),
         AnyScalar::UInt32(inner) => to_unknown(env, UInt32Scalar { inner: *inner }.value()),
         AnyScalar::UInt64(inner) => to_unknown(env, UInt64Scalar { inner: *inner }.value()),
+        AnyScalar::Float32(inner) => to_unknown(env, Float32Scalar { inner: *inner }.value()),
+        AnyScalar::Float64(inner) => to_unknown(env, Float64Scalar { inner: *inner }.value()),
         AnyScalar::Arrow(value) => match value.data_type() {
             arrow_schema::DataType::Null => to_unknown(env, Null),
             arrow_schema::DataType::Binary => {
@@ -973,22 +1127,22 @@ fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
                 }
             }
             other => Err(Error::from_reason(format!(
-                "no JS value for a record field of Arrow type {other}; expected null, an integer, binary or an integer list"
+                "no JS value for a record field of Arrow type {other}; expected null, an integer, a float, binary or a numeric list"
             ))),
         },
         // `AnyScalar` is non-exhaustive; a future decomposed variant has no wire type yet.
         other => Err(Error::from_reason(format!(
-            "no JS value for a record field of Arrow type {}; expected null, an integer, binary or an integer list",
+            "no JS value for a record field of Arrow type {}; expected null, an integer, a float, binary or a numeric list",
             other.data_type()
         ))),
     }
 }
 
 /// A single, possibly-null `struct` row — *the record*, built from a plain JS
-/// object whose members are inferred like the factory's (an integer `number` /
-/// `bigint` → `int64`, a `Buffer` → `binary`, `null` → `null`, an array of
-/// integers → the `int64` serie), each held as a one-element child column of the
-/// shared `yggdryl.dtype.StructType`.
+/// object whose members are inferred like the factory's (a whole `number` /
+/// `bigint` → `int64`, a fractional `number` → `float64`, a `Buffer` → `binary`,
+/// `null` → `null`, a numeric array → the `int64` or `float64` serie), each held as
+/// a one-element child column of the shared `yggdryl.dtype.StructType`.
 #[napi(namespace = "scalar")]
 pub struct RecordScalar {
     pub(crate) inner: yggdryl_scalar::RecordScalar,

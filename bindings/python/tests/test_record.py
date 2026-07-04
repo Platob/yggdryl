@@ -26,6 +26,16 @@ def test_record_builds_from_a_dict_of_native_values():
     assert row.to_pydict() == {"x": 1, "blob": b"hi", "scores": [1, 2, 3], "gap": None}
 
 
+def test_record_reads_a_float_field():
+    # A Python float child infers a float64 field, read back as a Python float.
+    row = scalar.RecordScalar({"x": 1, "weight": 1.5})
+    assert row.field_names() == ["x", "weight"]
+    assert row.data_type().field_names() == ["x", "weight"]
+    assert row.get("weight") == 1.5
+    assert row.to_pydict() == {"x": 1, "weight": 1.5}
+    assert row.to_pyvalue().weight == 1.5
+
+
 def test_record_to_pyvalue_is_a_singleton_dataclass_instance():
     row = scalar.RecordScalar({"x": 1, "y": 2})
     value = row.to_pyvalue()
@@ -78,7 +88,7 @@ def test_struct_type_resolves_example_values_and_dtype_instances():
 
     # A value the inference has no type for names the fix.
     with pytest.raises(ValueError):
-        dtype.StructType({"x": 1.5})
+        dtype.StructType({"x": "text"})
     with pytest.raises(ValueError, match="str field name"):
         dtype.StructType({1: 2})
 

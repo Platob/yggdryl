@@ -72,7 +72,21 @@ test('the null record', () => {
   assert.equal(row.toJsValue(), null)
 })
 
+test('record with a float member reads the number', () => {
+  // A fractional member infers float64; a whole member stays int64.
+  const row = new scalar.RecordScalar({ id: 7, weight: 1.5 })
+  assert.deepEqual(row.fieldNames(), ['id', 'weight'])
+  assert.equal(row.dataType().childCount(), 2)
+  assert.equal(row.get('id'), 7n)
+  assert.equal(row.get('weight'), 1.5) // read back as a number, one FFI call
+  assert.deepEqual(row.toJsValue(), { id: 7n, weight: 1.5 })
+
+  // The inferred struct data type carries the float64 member.
+  const structType = new dtype.StructType({ id: 7, weight: 1.5 })
+  assert.deepEqual(structType.fieldNames(), ['id', 'weight'])
+})
+
 test('a member the model cannot infer throws', () => {
   assert.throws(() => new scalar.RecordScalar({ bad: 'text' }), /bad/)
-  assert.throws(() => new dtype.StructType({ bad: 1.5 }), /int64/)
+  assert.throws(() => new dtype.StructType({ bad: true }), /bad/)
 })

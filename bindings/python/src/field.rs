@@ -322,6 +322,20 @@ int_field_py!(
     OptionalUInt64Type,
     "uint64"
 );
+int_field_py!(
+    Float32Field,
+    OptionalFloat32Field,
+    Float32Type,
+    OptionalFloat32Type,
+    "float32"
+);
+int_field_py!(
+    Float64Field,
+    OptionalFloat64Field,
+    Float64Type,
+    OptionalFloat64Type,
+    "float64"
+);
 
 /// Generates the concrete serie field of one integer value type: `$ty`, a column
 /// of the `yggdryl.dtype` class `$dtype` — a thin delegation to
@@ -371,6 +385,8 @@ int_serie_field_py!(UInt8SerieField, UInt8SerieType, UInt8Type, "uint8");
 int_serie_field_py!(UInt16SerieField, UInt16SerieType, UInt16Type, "uint16");
 int_serie_field_py!(UInt32SerieField, UInt32SerieType, UInt32Type, "uint32");
 int_serie_field_py!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");
+int_serie_field_py!(Float32SerieField, Float32SerieType, Float32Type, "float32");
+int_serie_field_py!(Float64SerieField, Float64SerieType, Float64Type, "float64");
 
 /// Populates the `field` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -395,6 +411,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Field>()?;
     module.add_class::<UInt64Field>()?;
     module.add_class::<OptionalUInt64Field>()?;
+    module.add_class::<Float32Field>()?;
+    module.add_class::<OptionalFloat32Field>()?;
+    module.add_class::<Float64Field>()?;
+    module.add_class::<OptionalFloat64Field>()?;
     module.add_class::<Int8SerieField>()?;
     module.add_class::<Int16SerieField>()?;
     module.add_class::<Int32SerieField>()?;
@@ -403,5 +423,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16SerieField>()?;
     module.add_class::<UInt32SerieField>()?;
     module.add_class::<UInt64SerieField>()?;
+    module.add_class::<Float32SerieField>()?;
+    module.add_class::<Float64SerieField>()?;
     Ok(())
 }
