@@ -51,6 +51,9 @@
 // conversion (on the return-type span) as useless.
 #![allow(clippy::useless_conversion)]
 
+use std::hash::{Hash, Hasher};
+
+use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::sync::GILOnceCell;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
@@ -72,6 +75,26 @@ fn as_str_with<S: Scalar>(scalar: &S, charset: Option<&str>) -> Result<String, D
         }
     };
     Ok(decoded?.into_owned())
+}
+
+/// A value-based, deterministic hash — the body of every scalar/serie
+/// `__hash__`. A `DefaultHasher::new()` uses fixed keys (not the randomized
+/// `RandomState`), so equal values hash equally within and across processes.
+fn value_hash<T: Hash>(value: &T) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Value equality — the body of every scalar/serie `__richcmp__`. `Eq` / `Ne`
+/// compare by value; the ordering ops return Python `NotImplemented` (a scalar
+/// carries no order).
+fn value_richcmp<T: PartialEq>(lhs: &T, rhs: &T, op: CompareOp, py: Python<'_>) -> PyObject {
+    match op {
+        CompareOp::Eq => (lhs == rhs).into_py(py),
+        CompareOp::Ne => (lhs != rhs).into_py(py),
+        _ => py.NotImplemented(),
+    }
 }
 
 /// The `null` scalar: always null, holding no value.
@@ -102,6 +125,18 @@ impl NullScalar {
     /// The scalar's native Python value — always `None` (the general native
     /// accessor: one FFI crossing).
     fn to_pyvalue(&self) {}
+
+    /// A value-based hash — every null scalar hashes equally (they are all
+    /// equal). Enables `set` / `dict` membership.
+    fn __hash__(&self) -> u64 {
+        value_hash(&self.inner)
+    }
+
+    /// Value equality: every `NullScalar` equals every other; a different class
+    /// falls through to Python's default (the ordering ops are `NotImplemented`).
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+        value_richcmp(&self.inner, &other.inner, op, py)
+    }
 }
 
 /// A single, possibly-null `binary` value, holding its bytes as a core
@@ -241,6 +276,19 @@ impl BinaryScalar {
     /// The value as `bytes` — the native type; raises `ValueError` when null.
     fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
         Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+    }
+
+    /// A value-based hash (over the bytes, or its null state) — enables `set` /
+    /// `dict` membership. Equal values hash equally.
+    fn __hash__(&self) -> u64 {
+        value_hash(&self.inner)
+    }
+
+    /// Value equality: two `BinaryScalar`s are equal when their bytes (or null
+    /// state) match; a different class falls through to Python's default (the
+    /// ordering ops are `NotImplemented`).
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+        value_richcmp(&self.inner, &other.inner, op, py)
     }
 }
 
@@ -499,6 +547,19 @@ macro_rules! int_scalar_py {
             /// has no byte-sequence form.
             fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
                 Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+            }
+
+            /// A value-based hash (over the value, or its null state) — enables
+            /// `set` / `dict` membership. Equal values hash equally.
+            fn __hash__(&self) -> u64 {
+                value_hash(&self.inner)
+            }
+
+            #[doc = concat!("Value equality: two `", $name, "` scalars are equal when their value")]
+            /// (or null state) match; a different class falls through to Python's
+            /// default (the ordering ops are `NotImplemented`).
+            fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+                value_richcmp(&self.inner, &other.inner, op, py)
             }
         }
 
@@ -836,6 +897,19 @@ macro_rules! float16_scalar_py {
             fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
                 Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
             }
+
+            /// A value-based hash (over the f16 value, or its null state) —
+            /// enables `set` / `dict` membership. Equal values hash equally.
+            fn __hash__(&self) -> u64 {
+                value_hash(&self.inner)
+            }
+
+            #[doc = concat!("Value equality: two `", $name, "` scalars are equal when their f16 value")]
+            /// (or null state) match; a different class falls through to Python's
+            /// default (the ordering ops are `NotImplemented`).
+            fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+                value_richcmp(&self.inner, &other.inner, op, py)
+            }
         }
 
         #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
@@ -1094,16 +1168,27 @@ impl Utf8Scalar {
     fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
         Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
     }
+
+    /// A value-based hash (over the text, or its null state) — enables `set` /
+    /// `dict` membership. Equal values hash equally.
+    fn __hash__(&self) -> u64 {
+        value_hash(&self.inner)
+    }
+
+    /// Value equality: two `Utf8Scalar`s are equal when their text (or null
+    /// state) match; a different class falls through to Python's default (the
+    /// ordering ops are `NotImplemented`).
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+        value_richcmp(&self.inner, &other.inner, op, py)
+    }
 }
 
 /// A single value of the union between null and `utf8`: a value variant, or the
 /// null variant — the string counterpart of [`OptionalBinaryScalar`].
 #[pyclass]
 pub struct OptionalUtf8Scalar {
-    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
-        yggdryl_dtype::Utf8Type,
-        yggdryl_scalar::Utf8Scalar,
-    >,
+    pub(crate) inner:
+        yggdryl_scalar::TypedOptionalScalar<yggdryl_dtype::Utf8Type, yggdryl_scalar::Utf8Scalar>,
 }
 
 #[pymethods]
@@ -1112,9 +1197,7 @@ impl OptionalUtf8Scalar {
     #[new]
     fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(
-                value,
-            )),
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(value)),
         }
     }
 
@@ -1332,6 +1415,19 @@ macro_rules! int_serie_scalar_py {
             fn data_type(&self) -> crate::dtype::$dtype {
                 crate::dtype::$dtype::default()
             }
+
+            /// A value-based hash (over the elements, or its null state) —
+            /// enables `set` / `dict` membership. Equal series hash equally.
+            fn __hash__(&self) -> u64 {
+                value_hash(&self.inner)
+            }
+
+            #[doc = concat!("Value equality: two `", $name, "` series are equal when their elements")]
+            /// (or null state) match; a different class falls through to Python's
+            /// default (the ordering ops are `NotImplemented`).
+            fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+                value_richcmp(&self.inner, &other.inner, op, py)
+            }
         }
     };
 }
@@ -1476,6 +1572,19 @@ macro_rules! float16_serie_scalar_py {
             /// The scalar's data type.
             fn data_type(&self) -> crate::dtype::$dtype {
                 crate::dtype::$dtype::default()
+            }
+
+            /// A value-based hash (over the f16 elements, or its null state) —
+            /// enables `set` / `dict` membership. Equal series hash equally.
+            fn __hash__(&self) -> u64 {
+                value_hash(&self.inner)
+            }
+
+            #[doc = concat!("Value equality: two `", $name, "` series are equal when their f16 elements")]
+            /// (or null state) match; a different class falls through to Python's
+            /// default (the ordering ops are `NotImplemented`).
+            fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp, py: Python<'_>) -> PyObject {
+                value_richcmp(&self.inner, &other.inner, op, py)
             }
         }
     };

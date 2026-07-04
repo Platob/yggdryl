@@ -380,6 +380,62 @@ fn main() {
 }
 ```
 
+## Hashing
+
+Every **atomic** scalar (the integers, `float16` / `float32` / `float64`, `binary`,
+`utf8` and `null`) and every **concrete** serie (`Int8Serie` … `Float64Serie`) is
+**hashable by value** — so a scalar can key a map or de-duplicate in a set, and two
+scalars holding the same value hash equally. Floats hash by bit pattern with `-0.0`
+canonicalized to `+0.0` (it hashes equal to `+0.0`, as they compare equal); a `NaN`
+hashes fine but is unequal to itself by value, so it can be stored yet never looked
+up — the usual float-in-a-set caveat. In Rust this is `std::hash::Hash` (+ `Eq`); the
+bindings adapt to idioms: Python is directly hashable and value-comparable
+(`hash(scalar)`, `scalar in a_set`, `==`), while JS has no hash protocol, so the Node
+classes expose a Java-style `hashCode()` returning a 32-bit number. The type-erased
+holders (`AnyScalar`, `RecordScalar`, the maps and the dynamic / struct series) are
+**not** hashable — they carry no canonical hashable form.
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype, scalar
+
+    assert hash(scalar.Int64Scalar(42)) == hash(scalar.Int64Scalar(42))
+    assert scalar.Int64Scalar(42) == scalar.Int64Scalar(42)  # by value, not identity
+    assert len({scalar.Utf8Scalar("a"), scalar.Utf8Scalar("a")}) == 1  # de-duplicates
+    assert scalar.Float64Scalar(0.0) == scalar.Float64Scalar(-0.0)     # -0.0 is +0.0
+    prices = {dtype.Int64Type().scalar(1): "cheap"}  # a scalar keys a dict
+    assert prices[scalar.Int64Scalar(1)] == "cheap"
+    ```
+
+=== "Node"
+
+    ```js
+    const { scalar } = require('yggdryl')
+
+    // JS has no hash protocol; hashCode() is a 32-bit number, equal for equal values.
+    assert.equal(new scalar.Int64Scalar(42n).hashCode(), new scalar.Int64Scalar(42n).hashCode())
+    assert.equal(typeof new scalar.Int64Scalar(42n).hashCode(), 'number')
+    assert.equal(new scalar.Float64Scalar(0.0).hashCode(), new scalar.Float64Scalar(-0.0).hashCode())
+    ```
+
+=== "Rust"
+
+    ```rust
+    use std::collections::HashSet;
+    use yggdryl_scalar::{Float64Scalar, Int64Scalar, Utf8Scalar};
+
+    fn main() {
+        let mut seen = HashSet::new();
+        seen.insert(Int64Scalar::new(42));
+        assert!(seen.contains(&Int64Scalar::new(42))); // by value
+
+        assert_eq!(Float64Scalar::new(0.0), Float64Scalar::new(-0.0)); // -0.0 is +0.0
+        let strings: HashSet<_> = [Utf8Scalar::new("a".into()), Utf8Scalar::new("a".into())].into();
+        assert_eq!(strings.len(), 1); // de-duplicates
+    }
+    ```
+
 ## Nested scalars: serie, map and struct
 
 Every nested scalar holds **our own series** — [`AnySerie`](#anyserie-anyscalar-and-nestedserie)

@@ -439,3 +439,90 @@ def test_to_pyvalue_is_the_general_native_accessor():
     row = scalar.RecordScalar({"x": 1}).to_pyvalue()
     assert dataclasses.is_dataclass(row)
     assert row.x == 1
+
+
+# (scalar class, a value, a different value) for the value-comparable atomic scalars.
+HASHABLE_SCALARS = (
+    [(case[0], 42, 7) for case in INTEGERS]
+    + [(case[0], 1.5, 2.5) for case in FLOATS]  # halves are exact in every float width
+    + [
+        (scalar.BinaryScalar, b"hi", b"bye"),
+        (scalar.Utf8Scalar, "hi", "bye"),
+    ]
+)
+
+
+@pytest.mark.parametrize("scalar_class,a,b", HASHABLE_SCALARS)
+def test_scalar_is_hashable_and_value_comparable(scalar_class, a, b):
+    first, same, other = scalar_class(a), scalar_class(a), scalar_class(b)
+
+    # (a) equal values compare equal, hash equal, and collapse to one set entry.
+    assert first == same
+    assert hash(first) == hash(same)
+    assert len({first, same}) == 1
+
+    # (b) a different value is unequal and (almost surely) a separate set entry.
+    assert first != other
+    assert len({first, same, other}) == 2
+
+    # (c) a scalar works as a dict key.
+    lookup = {first: "one", other: "two"}
+    assert lookup[same] == "one"
+    assert lookup[other] == "two"
+
+    # A foreign type never compares equal and never raises.
+    assert (first == a) is False
+    assert first != scalar_class.null()
+
+    # (d) null scalars of the same class are hashable and equal to each other.
+    assert scalar_class.null() == scalar_class.null()
+    assert hash(scalar_class.null()) == hash(scalar_class.null())
+    assert len({scalar_class.null(), scalar_class.null()}) == 1
+
+
+def test_null_scalar_is_hashable_and_equal():
+    # (d) every NullScalar equals every other and shares one set/dict slot.
+    a, b = scalar.NullScalar(), scalar.NullScalar()
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+    assert {a: "null"}[b] == "null"
+
+
+def test_float_zero_and_nan_hashing_caveats():
+    # (e) 0.0 and -0.0 are equal and hash equal, collapsing in a set.
+    assert scalar.Float64Scalar(0.0) == scalar.Float64Scalar(-0.0)
+    assert hash(scalar.Float64Scalar(0.0)) == hash(scalar.Float64Scalar(-0.0))
+    assert len({scalar.Float64Scalar(0.0), scalar.Float64Scalar(-0.0)}) == 1
+    # NaN is never equal to itself (the documented caveat), yet hashing it never raises.
+    nan1, nan2 = scalar.Float64Scalar(float("nan")), scalar.Float64Scalar(float("nan"))
+    assert nan1 != nan2
+    hash(nan1)  # does not raise
+
+
+# (serie class, values, different values) for the value-comparable series.
+HASHABLE_SERIES = [(case[0], [1, 2, 3], [4, 5, 6]) for case in SERIES] + [
+    (case[0], [1.5, 2.5], [3.5, 4.5]) for case in FLOAT_SERIES
+]
+
+
+@pytest.mark.parametrize("serie_class,a,b", HASHABLE_SERIES)
+def test_serie_is_hashable_and_value_comparable(serie_class, a, b):
+    first, same, other = serie_class(a), serie_class(a), serie_class(b)
+
+    # (a) equal series compare equal, hash equal, and collapse to one set entry.
+    assert first == same
+    assert hash(first) == hash(same)
+    assert len({first, same}) == 1
+
+    # (b) a different serie is unequal and (almost surely) a separate set entry.
+    assert first != other
+    assert len({first, same, other}) == 2
+
+    # (c) a serie works as a dict key.
+    assert {first: "a", other: "b"}[same] == "a"
+
+    # (d) null series of the same class are hashable and equal to each other.
+    assert serie_class.null() == serie_class.null()
+    assert hash(serie_class.null()) == hash(serie_class.null())
+    assert len({serie_class.null(), serie_class.null()}) == 1

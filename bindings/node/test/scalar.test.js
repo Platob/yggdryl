@@ -73,6 +73,14 @@ for (const { scalarClass, optional, name, low, high, wire } of INTEGERS) {
     assert.equal(missing.scalar(), null)
     assert.throws(() => missing.asI64(), /is null/)
   })
+
+  test(`${name} scalar hashCode is a stable, value-dependent number`, () => {
+    const answer = new scalarClass(wire(42))
+    assert.equal(typeof answer.hashCode(), 'number')
+    assert.equal(answer.hashCode(), new scalarClass(wire(42)).hashCode()) // equal → same
+    assert.notEqual(answer.hashCode(), new scalarClass(wire(7)).hashCode()) // differ (a.s.)
+    assert.equal(scalarClass.null().hashCode(), scalarClass.null().hashCode()) // null is stable
+  })
 }
 
 test('out-of-range constructions throw actionable errors', () => {
@@ -150,6 +158,9 @@ test('null scalar', () => {
   const nothing = new scalar.NullScalar()
   assert.equal(nothing.isNull(), true)
   assert.equal(nothing.dataType().name(), 'null')
+  // Every null scalar has the same stable hashCode.
+  assert.equal(typeof nothing.hashCode(), 'number')
+  assert.equal(nothing.hashCode(), new scalar.NullScalar().hashCode())
 })
 
 // The 8-32 bit series carry elements as `number`; the 64-bit series as `BigInt`.
@@ -208,6 +219,14 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
 
     assert.deepEqual(new serieClass([]).scalars(), []) // empty serie → empty array
     assert.equal(serieClass.null().scalars(), null) // null serie → null
+  })
+
+  test(`${name} serie hashCode is a stable, value-dependent number`, () => {
+    const numbers = new serieClass([low, wire(2), high])
+    assert.equal(typeof numbers.hashCode(), 'number')
+    assert.equal(numbers.hashCode(), new serieClass([low, wire(2), high]).hashCode()) // equal → same
+    assert.notEqual(numbers.hashCode(), new serieClass([low, wire(3), high]).hashCode()) // differ (a.s.)
+    assert.equal(serieClass.null().hashCode(), serieClass.null().hashCode()) // null is stable
   })
 }
 
@@ -354,7 +373,37 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
     assert.deepEqual(new serieClass([1.5, 2.5]).toJsValue(), [1.5, 2.5])
     assert.equal(serieClass.null().toJsValue(), null)
   })
+
+  test(`${name} scalar and serie hashCode is a stable, value-dependent number`, () => {
+    // The scalar: equal values hash equal, a different value differs.
+    assert.equal(typeof new scalarClass(1.5).hashCode(), 'number')
+    assert.equal(new scalarClass(1.5).hashCode(), new scalarClass(1.5).hashCode())
+    assert.notEqual(new scalarClass(1.5).hashCode(), new scalarClass(2.5).hashCode())
+    assert.equal(scalarClass.null().hashCode(), scalarClass.null().hashCode())
+    // The serie mirrors the scalar.
+    assert.equal(typeof new serieClass([1.5, 2.5]).hashCode(), 'number')
+    assert.equal(new serieClass([1.5, 2.5]).hashCode(), new serieClass([1.5, 2.5]).hashCode())
+    assert.notEqual(new serieClass([1.5, 2.5]).hashCode(), new serieClass([1.5, 3.5]).hashCode())
+  })
 }
+
+test('float scalars canonicalize -0.0 to +0.0 for hashCode', () => {
+  assert.equal(new scalar.Float64Scalar(0.0).hashCode(), new scalar.Float64Scalar(-0.0).hashCode())
+})
+
+test('binary and utf8 scalars expose a stable, value-dependent hashCode', () => {
+  // Binary: equal bytes hash equal, different bytes differ.
+  const bytes = new scalar.BinaryScalar(Buffer.from([1, 2, 3]))
+  assert.equal(typeof bytes.hashCode(), 'number')
+  assert.equal(bytes.hashCode(), new scalar.BinaryScalar(Buffer.from([1, 2, 3])).hashCode())
+  assert.notEqual(bytes.hashCode(), new scalar.BinaryScalar(Buffer.from([1, 2, 4])).hashCode())
+
+  // Utf8: equal text hashes equal, different text differs.
+  const text = new scalar.Utf8Scalar('hé')
+  assert.equal(typeof text.hashCode(), 'number')
+  assert.equal(text.hashCode(), new scalar.Utf8Scalar('hé').hashCode())
+  assert.notEqual(text.hashCode(), new scalar.Utf8Scalar('ho').hashCode())
+})
 
 test('float16 narrows a number lossily on the wire', () => {
   // A JS `number` is an f64: `0.1` has no exact f16, so it narrows to the nearest

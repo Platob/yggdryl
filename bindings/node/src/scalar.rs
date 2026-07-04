@@ -50,6 +50,7 @@ use napi::bindgen_prelude::{
 };
 use napi::{Env, JsUnknown};
 use napi_derive::napi;
+use std::hash::{Hash, Hasher};
 use yggdryl_scalar::arrow_array::{self, Array};
 use yggdryl_scalar::half::f16;
 use yggdryl_scalar::{arrow_schema, AnyScalar, AnySerie, Scalar};
@@ -71,6 +72,18 @@ fn as_str_with<S: Scalar>(scalar: &S, charset: Option<&str>) -> Result<String> {
     decoded
         .map(std::borrow::Cow::into_owned)
         .map_err(data_error)
+}
+
+/// The Java-style `hashCode()` of a core value (JS has no hash protocol): hashes
+/// it with the deterministic [`DefaultHasher`] — its `::new()` uses fixed keys, so
+/// the result is stable within and across processes, not the randomized
+/// `RandomState` — and returns the low 32 bits as an `i32`. Equal values hash equal.
+///
+/// [`DefaultHasher`]: std::collections::hash_map::DefaultHasher
+fn hash_code_of<H: Hash>(value: &H) -> i32 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish() as u32 as i32
 }
 
 /// The `null` scalar: always null, holding no value.
@@ -106,6 +119,13 @@ impl NullScalar {
     #[napi]
     pub fn to_js_value(&self) -> Null {
         Null
+    }
+
+    /// The value's 32-bit hash code (the Java-style convention, JS having no hash
+    /// protocol): every null scalar returns the same stable number.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        hash_code_of(&self.inner)
     }
 }
 
@@ -278,6 +298,14 @@ impl BinaryScalar {
     pub fn to_js_value(&self) -> Option<Buffer> {
         self.value()
     }
+
+    /// The value's 32-bit hash code (the Java-style convention, JS having no hash
+    /// protocol): equal scalars return the same number, ready for building hash
+    /// structures / `Map` keys.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        hash_code_of(&self.inner)
+    }
 }
 
 as_accessors_node!(BinaryScalar);
@@ -399,6 +427,14 @@ impl Utf8Scalar {
     pub fn to_js_value(&self) -> Option<String> {
         self.value()
     }
+
+    /// The value's 32-bit hash code (the Java-style convention, JS having no hash
+    /// protocol): equal scalars return the same number, ready for building hash
+    /// structures / `Map` keys.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        hash_code_of(&self.inner)
+    }
 }
 
 as_accessors_node!(Utf8Scalar);
@@ -407,10 +443,8 @@ as_accessors_node!(Utf8Scalar);
 /// null variant.
 #[napi(namespace = "scalar")]
 pub struct OptionalUtf8Scalar {
-    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
-        yggdryl_dtype::Utf8Type,
-        yggdryl_scalar::Utf8Scalar,
-    >,
+    pub(crate) inner:
+        yggdryl_scalar::TypedOptionalScalar<yggdryl_dtype::Utf8Type, yggdryl_scalar::Utf8Scalar>,
 }
 
 #[napi(namespace = "scalar")]
@@ -419,9 +453,7 @@ impl OptionalUtf8Scalar {
     #[napi(constructor)]
     pub fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(
-                value,
-            )),
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(value)),
         }
     }
 
@@ -502,6 +534,14 @@ macro_rules! int_scalar_node {
             #[napi]
             pub fn data_type(&self) -> crate::dtype::$dtype {
                 crate::dtype::$dtype::default()
+            }
+
+            /// The value's 32-bit hash code (the Java-style convention, JS having
+            /// no hash protocol): equal scalars return the same number, ready for
+            /// building hash structures / `Map` keys.
+            #[napi]
+            pub fn hash_code(&self) -> i32 {
+                hash_code_of(&self.inner)
             }
         }
 
@@ -936,6 +976,14 @@ macro_rules! int_serie_scalar_node {
             #[napi]
             pub fn data_type(&self) -> crate::dtype::$dtype {
                 crate::dtype::$dtype::default()
+            }
+
+            /// The serie's 32-bit hash code (the Java-style convention, JS having
+            /// no hash protocol): equal series return the same number, ready for
+            /// building hash structures / `Map` keys.
+            #[napi]
+            pub fn hash_code(&self) -> i32 {
+                hash_code_of(&self.inner)
             }
         }
     };
