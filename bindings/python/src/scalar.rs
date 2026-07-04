@@ -2086,7 +2086,7 @@ impl RecordScalar {
     /// The native Python value of the field named `name`, or `None` when the
     /// record is null or no field carries the name.
     fn get(&self, py: Python<'_>, name: &str) -> PyResult<PyObject> {
-        match self.inner.scalar_by(name) {
+        match self.inner.get_any_scalar_by(name) {
             Some(scalar) => scalar_to_pyvalue(py, &scalar),
             None => Ok(py.None()),
         }
@@ -2102,7 +2102,7 @@ impl RecordScalar {
         for (index, field) in self.inner.data_type().fields().iter().enumerate() {
             let scalar = self
                 .inner
-                .scalar_at(index)
+                .get_any_scalar_at(index)
                 .expect("a present record holds every field");
             row.set_item(field.name(), scalar_to_pyvalue(py, &scalar)?)?;
         }
@@ -2125,7 +2125,7 @@ impl RecordScalar {
             .map(|index| {
                 let scalar = self
                     .inner
-                    .scalar_at(index)
+                    .get_any_scalar_at(index)
                     .expect("a present record holds every field");
                 scalar_to_pyvalue(py, &scalar)
             })

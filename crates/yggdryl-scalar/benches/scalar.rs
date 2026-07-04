@@ -257,10 +257,10 @@ fn record(c: &mut Criterion) {
         ],
     )
     .unwrap();
-    group.bench_function("record_scalar_by", |b| {
+    group.bench_function("record_get_any_scalar_by", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(row.scalar_by(black_box("y")));
+                black_box(row.get_any_scalar_by(black_box("y")));
             }
         })
     });

@@ -187,7 +187,7 @@ impl Scalar for StructScalar {
                 .iter()
                 .map(|column| {
                     column
-                        .get_scalar(0)
+                        .get_any_scalar_at(0)
                         .expect("a struct scalar's column is one element long")
                 })
                 .collect()
