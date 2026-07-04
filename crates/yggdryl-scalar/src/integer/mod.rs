@@ -102,6 +102,13 @@ macro_rules! int_scalar {
                     Self::new(array.value(0))
                 })
             }
+            // The little-endian value bytes — the source of the unchecked reinterpret
+            // cast (this width's native `to_le_bytes`).
+            fn value_le_bytes(&self) -> Result<Vec<u8>, ::yggdryl_dtype::DataError> {
+                self.value
+                    .map(|value| value.to_le_bytes().to_vec())
+                    .ok_or(::yggdryl_dtype::DataError::NullValue)
+            }
             fn as_i8(&self) -> Result<i8, ::yggdryl_dtype::DataError> {
                 let value = self.value.ok_or(::yggdryl_dtype::DataError::NullValue)?;
                 value

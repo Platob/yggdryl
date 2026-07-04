@@ -21,8 +21,10 @@ dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit widths and
 `BigInt` for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
 raised `ValueError` (Python) / thrown `Error` (Node). Three
 things stay **Rust-only**, stated here and in both binding module docs: the
-[Arrow interop](#arrow-interop) surface (`to_arrow_scalar` / `from_arrow` exchange
-`arrow-array` values that cannot cross the FFI boundary), the `FromScalar` /
+[Arrow interop](#arrow-interop) surface (`to_arrow_scalar` / `from_arrow`, and the
+`cast_dtype` / `cast_dtype_unchecked` casts which return a re-typed `arrow-array`
+value — all exchange `arrow-array` values that cannot cross the FFI boundary), the
+`FromScalar` /
 `ScalarFactory` traits (generic Rust bounds; the bindings reach defaults through a
 data type's `default_scalar()`), and — for the serie scalars — their
 per-element-null construction, `to_arrow_array` / `nulls` Arrow-buffer surface and
@@ -271,6 +273,43 @@ fn main() {
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
     assert_eq!(Int64Scalar::from_arrow(arrow.as_ref()).unwrap(), Int64Scalar::new(42));
     assert!(Int64Scalar::null().to_arrow_scalar().is_null(0));
+}
+```
+
+## Casting
+
+!!! note "Rust only"
+    `cast_dtype` / `cast_dtype_unchecked` return the value re-typed as an
+    `arrow-array` value, which cannot cross the FFI boundary — Rust-only alongside
+    the rest of the Arrow interop surface.
+
+`cast_dtype(dtype)` re-types a scalar to any target data type, returning the value as
+a one-element Arrow array of that type (rehydrate it with the target scalar's
+`from_arrow`). It is **exact-or-error**, reusing the `as_*` contract: a null casts to
+a null of the target, a numeric target reads the matching `as_*` accessor (erroring
+when the value would not fit), a `utf8` target reads `as_str` (validated), and a
+`binary` target reads `as_bytes`. The `unsafe` `cast_dtype_unchecked(dtype)`
+reinterprets the value's raw little-endian bytes instead — bridging *all* fixed-width,
+`binary` and `utf8` types (an `int64`'s eight bytes become a `binary`, or a raw
+`utf8` read with no UTF-8 validation) — so it may lose meaning and must be called in
+an `unsafe` block.
+
+```rust
+use yggdryl_scalar::yggdryl_dtype::{BinaryType, Int32Type};
+use yggdryl_scalar::{BinaryScalar, Int32Scalar, Int64Scalar, Scalar};
+
+fn main() {
+    // Exact: int64 → int32 (and a value that would not fit errors).
+    let narrowed = Int64Scalar::new(42).cast_dtype(&Int32Type).unwrap();
+    assert_eq!(Int32Scalar::from_arrow(narrowed.as_ref()).unwrap(), Int32Scalar::new(42));
+    assert!(Int64Scalar::new(1 << 40).cast_dtype(&Int32Type).is_err());
+
+    // Unchecked reinterpret: int64 → its eight little-endian bytes as binary.
+    let bytes = unsafe { Int64Scalar::new(1).cast_dtype_unchecked(&BinaryType) }.unwrap();
+    assert_eq!(
+        BinaryScalar::from_arrow(bytes.as_ref()).unwrap(),
+        BinaryScalar::new(1i64.to_le_bytes().to_vec()),
+    );
 }
 ```
 

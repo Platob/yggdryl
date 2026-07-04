@@ -14,7 +14,8 @@ idioms: `nullable` defaults to `True` / `true` as a keyword / optional argument.
 The concrete integer serie fields (`Int8SerieField` … `UInt64SerieField`, each a
 column of its serie type) cross too. Two things stay **Rust-only**, stated here
 and in both binding module docs: the [Arrow interop](#arrow-interop) surface
-(`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross the
+(`to_arrow` / `from_arrow`, and `cast_dtype` which returns a re-typed
+`arrow-schema` field — all exchange `arrow-schema` values that cannot cross the
 FFI boundary), and the dynamic-base and typed nested fields (`SerieField` /
 `TypedSerieField` over a non-integer value type, `MapField` / `TypedMapField`,
 `StructField`), which have no concrete FFI shape yet.
@@ -188,13 +189,24 @@ nullability flag — and is deliberately dropped on the way in (logged as a `war
 when the `log` cargo feature is on; `to_arrow` correspondingly always produces a
 metadata-free field).
 
+`cast_dtype(dtype)` re-types a field — a field carries no value, so casting only
+swaps its data type, keeping the name and nullability — and returns the mirroring
+`arrow_schema::Field` (rehydrate it with the target field's `from_arrow`), the
+field-layer counterpart of `Scalar::cast_dtype`.
+
 ```rust
+use yggdryl_field::yggdryl_dtype::UInt8Type;
 use yggdryl_field::{arrow_schema, Field, Int64Field, UInt8Field};
 
 fn main() {
     // Field ↔ arrow_schema::Field.
     let id = Int64Field::new("id", false);
     assert_eq!(Int64Field::from_arrow(&id.to_arrow()).unwrap(), id);
+
+    // cast_dtype re-types the field, keeping name + nullability.
+    let cast = id.cast_dtype(&UInt8Type);
+    assert_eq!((cast.name(), cast.is_nullable()), ("id", false));
+    assert_eq!(cast.data_type(), &arrow_schema::DataType::UInt8);
 
     // A heterogeneous set of fields converts straight into an Arrow schema.
     let schema = arrow_schema::Schema::new(vec![

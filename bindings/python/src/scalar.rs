@@ -15,7 +15,9 @@
 //! reachable through `scalar()`.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
-//! (`to_arrow_scalar` / `to_arrow_array` / `from_arrow` exchange `arrow-array` values that cannot cross the
+//! (`to_arrow_scalar` / `to_arrow_array` / `from_arrow`, and `cast_dtype` /
+//! `cast_dtype_unchecked` which return a re-typed `arrow-array` value — all exchange
+//! `arrow-array` values that cannot cross the
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `scalar()` / `default_scalar()`), and — for the serie

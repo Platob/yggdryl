@@ -1,6 +1,8 @@
 //! The [`Scalar`] base trait: a single, possibly-null value of a
 //! [`DataType`](yggdryl_dtype::DataType).
 
+use std::sync::Arc;
+
 use yggdryl_dtype::{DataError, DataType};
 
 /// A single value of a data type, possibly null — the base trait mirroring an Apache
@@ -23,6 +25,10 @@ use yggdryl_dtype::{DataError, DataType};
 /// [`DataType`](yggdryl_dtype::DataType)'s `Debug + Send + Sync` bounds so scalar
 /// values are printable and shareable across threads and FFI. The associated
 /// [`Value`](Scalar::Value) is `?Sized`, so a string scalar can expose `Value = str`.
+/// [`cast_dtype`](Scalar::cast_dtype) re-types the value to another data type through
+/// the exact `as_*` contract, and the `unsafe`
+/// [`cast_dtype_unchecked`](Scalar::cast_dtype_unchecked) reinterprets its bytes
+/// between the fixed-width, `binary` and `utf8` types.
 ///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::{DataError, DataType, Int32Type};
@@ -281,6 +287,202 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
             target: "bytes",
         })
     }
+
+    /// The value's raw little-endian byte encoding — the fixed-width type's own
+    /// layout (`i64` as its 8 bytes, `binary` as its bytes), the source of the
+    /// [`cast_dtype_unchecked`](Scalar::cast_dtype_unchecked) reinterpret cast.
+    ///
+    /// It defaults to the borrowed [`as_bytes`](Scalar::as_bytes) (so a byte
+    /// sequence answers directly); a fixed-width scalar overrides it with its
+    /// little-endian value bytes, and a wrapper (an optional) delegates to its
+    /// inner scalar. A null scalar errors with [`DataError::NullValue`]; a type
+    /// with no byte encoding errors with [`DataError::UnsupportedConversion`].
+    fn value_le_bytes(&self) -> Result<Vec<u8>, DataError> {
+        self.as_bytes().map(<[u8]>::to_vec)
+    }
+
+    /// Cast this scalar to `dtype`, returning the value re-typed as a one-element
+    /// [`arrow_array::ArrayRef`] of the target type (rehydrate it with the target
+    /// scalar's [`from_arrow`](Scalar::from_arrow)).
+    ///
+    /// The cast is **exact-or-error**, reusing the [`as_*`](Scalar::as_i8) contract:
+    /// a null casts to a null of the target type, a value of the target type is
+    /// returned unchanged, a numeric target reads the value through the matching
+    /// `as_*` accessor (erroring with [`InexactConversion`](DataError::InexactConversion)
+    /// when it would not represent the value exactly), a `utf8` target reads
+    /// [`as_str`](Scalar::as_str) (validated UTF-8), and a `binary` target reads
+    /// [`as_bytes`](Scalar::as_bytes). A target the source has no exact conversion to
+    /// errors with [`UnsupportedConversion`](DataError::UnsupportedConversion) or, for
+    /// a target outside the castable set (e.g. a nested type), with
+    /// [`UnsupportedCast`](DataError::UnsupportedCast). For lossy byte-level casts
+    /// between fixed-width, `binary` and `utf8` types, see
+    /// [`cast_dtype_unchecked`](Scalar::cast_dtype_unchecked).
+    ///
+    /// ```
+    /// use yggdryl_scalar::arrow_array::Array; // is_null on the arrow side
+    /// use yggdryl_scalar::yggdryl_dtype::{Int32Type, Int64Type};
+    /// use yggdryl_scalar::{Int32Scalar, Int64Scalar, Scalar};
+    ///
+    /// // int64 → int32, exact.
+    /// let cast = Int64Scalar::new(42).cast_dtype(&Int32Type).unwrap();
+    /// assert_eq!(Int32Scalar::from_arrow(cast.as_ref()).unwrap(), Int32Scalar::new(42));
+    ///
+    /// // A value that would not fit errors, exact-or-nothing.
+    /// assert!(Int64Scalar::new(1 << 40).cast_dtype(&Int32Type).is_err());
+    /// // A null casts to a null of the target type.
+    /// assert!(Int64Scalar::null().cast_dtype(&Int32Type).unwrap().is_null(0));
+    /// ```
+    fn cast_dtype(
+        &self,
+        dtype: &dyn yggdryl_dtype::DataType,
+    ) -> Result<arrow_array::ArrayRef, DataError> {
+        let target = dtype.to_arrow();
+        if self.is_null() {
+            return Ok(arrow_array::new_null_array(&target, 1));
+        }
+        if target == self.data_type().to_arrow() {
+            return Ok(self.to_arrow_scalar());
+        }
+        use arrow_schema::DataType as A;
+        let array: arrow_array::ArrayRef = match &target {
+            A::Int8 => Arc::new(arrow_array::Int8Array::from_iter_values([self.as_i8()?])),
+            A::Int16 => Arc::new(arrow_array::Int16Array::from_iter_values([self.as_i16()?])),
+            A::Int32 => Arc::new(arrow_array::Int32Array::from_iter_values([self.as_i32()?])),
+            A::Int64 => Arc::new(arrow_array::Int64Array::from_iter_values([self.as_i64()?])),
+            A::UInt8 => Arc::new(arrow_array::UInt8Array::from_iter_values([self.as_u8()?])),
+            A::UInt16 => Arc::new(arrow_array::UInt16Array::from_iter_values([self.as_u16()?])),
+            A::UInt32 => Arc::new(arrow_array::UInt32Array::from_iter_values([self.as_u32()?])),
+            A::UInt64 => Arc::new(arrow_array::UInt64Array::from_iter_values([self.as_u64()?])),
+            A::Float32 => Arc::new(arrow_array::Float32Array::from_iter_values(
+                [self.as_f32()?],
+            )),
+            A::Float64 => Arc::new(arrow_array::Float64Array::from_iter_values(
+                [self.as_f64()?],
+            )),
+            A::Boolean => Arc::new(arrow_array::BooleanArray::from(vec![self.as_bool()?])),
+            A::Utf8 => Arc::new(arrow_array::StringArray::from_iter_values([self
+                .as_str(None)?
+                .into_owned()])),
+            A::Binary => Arc::new(arrow_array::BinaryArray::from_iter_values([
+                self.as_bytes()?
+            ])),
+            other => {
+                return Err(DataError::UnsupportedCast {
+                    from: self.data_type().name().to_string(),
+                    to: other.to_string(),
+                });
+            }
+        };
+        Ok(array)
+    }
+
+    /// Cast this scalar to `dtype` by **reinterpreting its raw bytes**, returning the
+    /// value re-typed as a one-element [`arrow_array::ArrayRef`] of the target type.
+    ///
+    /// Unlike the exact [`cast_dtype`](Scalar::cast_dtype), this bridges *every*
+    /// fixed-width, `binary` and `utf8` type through
+    /// [`value_le_bytes`](Scalar::value_le_bytes): a fixed-width target reads the
+    /// source's little-endian bytes back with `from_le_bytes` (the widths must match,
+    /// else [`InvalidByteLength`](DataError::InvalidByteLength)), a `binary` target
+    /// takes the bytes as-is, and a `utf8` target reads them **without UTF-8
+    /// validation**. A null casts to a null of the target type.
+    ///
+    /// # Safety
+    ///
+    /// The reinterpret may not round-trip and does not preserve the value's meaning
+    /// (an `int32`'s bits read as an `f32`, `int64` bytes read as raw text). A `utf8`
+    /// target is built with [`String::from_utf8_unchecked`], so the caller must accept
+    /// that the resulting `str` may hold invalid UTF-8, breaking `str`'s invariant for
+    /// any downstream reader.
+    ///
+    /// ```
+    /// use yggdryl_scalar::yggdryl_dtype::{BinaryType, Int64Type};
+    /// use yggdryl_scalar::{BinaryScalar, Int64Scalar, Scalar};
+    ///
+    /// // int64 → binary: its eight little-endian bytes...
+    /// let bytes = unsafe { Int64Scalar::new(1).cast_dtype_unchecked(&BinaryType) }.unwrap();
+    /// assert_eq!(
+    ///     BinaryScalar::from_arrow(bytes.as_ref()).unwrap(),
+    ///     BinaryScalar::new(1i64.to_le_bytes().to_vec()),
+    /// );
+    ///
+    /// // ...and back, reinterpreting the bytes as an int64.
+    /// let round = unsafe {
+    ///     BinaryScalar::new(1i64.to_le_bytes().to_vec()).cast_dtype_unchecked(&Int64Type)
+    /// }
+    /// .unwrap();
+    /// assert_eq!(Int64Scalar::from_arrow(round.as_ref()).unwrap(), Int64Scalar::new(1));
+    /// ```
+    unsafe fn cast_dtype_unchecked(
+        &self,
+        dtype: &dyn yggdryl_dtype::DataType,
+    ) -> Result<arrow_array::ArrayRef, DataError> {
+        let target = dtype.to_arrow();
+        if self.is_null() {
+            return Ok(arrow_array::new_null_array(&target, 1));
+        }
+        let bytes = self.value_le_bytes()?;
+        use arrow_schema::DataType as A;
+        let array: arrow_array::ArrayRef = match &target {
+            A::Int8 => Arc::new(arrow_array::Int8Array::from_iter_values([
+                i8::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Int16 => Arc::new(arrow_array::Int16Array::from_iter_values([
+                i16::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Int32 => Arc::new(arrow_array::Int32Array::from_iter_values([
+                i32::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Int64 => Arc::new(arrow_array::Int64Array::from_iter_values([
+                i64::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::UInt8 => Arc::new(arrow_array::UInt8Array::from_iter_values([
+                u8::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::UInt16 => Arc::new(arrow_array::UInt16Array::from_iter_values([
+                u16::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::UInt32 => Arc::new(arrow_array::UInt32Array::from_iter_values([
+                u32::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::UInt64 => Arc::new(arrow_array::UInt64Array::from_iter_values([
+                u64::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Float32 => Arc::new(arrow_array::Float32Array::from_iter_values([
+                f32::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Float64 => Arc::new(arrow_array::Float64Array::from_iter_values([
+                f64::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Binary => Arc::new(arrow_array::BinaryArray::from_iter_values([
+                bytes.as_slice()
+            ])),
+            A::Utf8 => {
+                // SAFETY: the caller of this `unsafe fn` accepts that the bytes may
+                // not be valid UTF-8 — the whole point of the unchecked reinterpret.
+                let text = unsafe { String::from_utf8_unchecked(bytes) };
+                Arc::new(arrow_array::StringArray::from_iter_values([text]))
+            }
+            other => {
+                return Err(DataError::UnsupportedCast {
+                    from: self.data_type().name().to_string(),
+                    to: other.to_string(),
+                });
+            }
+        };
+        Ok(array)
+    }
+}
+
+/// The exactly-`N`-byte little-endian window of `bytes`, or a
+/// [`DataError::InvalidByteLength`] when the source is not the target's width — the
+/// width check behind the fixed-width arms of
+/// [`cast_dtype_unchecked`](Scalar::cast_dtype_unchecked).
+fn le_exact<const N: usize>(bytes: &[u8]) -> Result<[u8; N], DataError> {
+    bytes.try_into().map_err(|_| DataError::InvalidByteLength {
+        expected: N,
+        got: bytes.len(),
+    })
 }
 
 /// One child array holding every element's one-element Arrow form, in order (an

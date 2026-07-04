@@ -248,6 +248,13 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
     fn as_bytes(&self) -> Result<&[u8], DataError> {
         self.value.as_ref().ok_or(DataError::NullValue)?.as_bytes()
     }
+    fn value_le_bytes(&self) -> Result<Vec<u8>, DataError> {
+        // The reinterpret cast sees through the variant to the inner value's bytes.
+        self.value
+            .as_ref()
+            .ok_or(DataError::NullValue)?
+            .value_le_bytes()
+    }
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>>

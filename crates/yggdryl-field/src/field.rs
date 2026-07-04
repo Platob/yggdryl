@@ -98,6 +98,29 @@ pub trait Field: std::fmt::Debug + Send + Sync {
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError>
     where
         Self: Sized;
+
+    /// Re-type this field to `dtype`, returning the mirroring
+    /// [`arrow_schema::Field`] with the same [`name`](Field::name) and
+    /// [`is_nullable`](Field::is_nullable) but the new data type (rehydrate it with
+    /// the target field's [`from_arrow`](Field::from_arrow)).
+    ///
+    /// It is the field-layer counterpart of `yggdryl-scalar`'s `Scalar::cast_dtype`
+    /// — a field carries no value, so casting a field only swaps its type, keeping
+    /// the metadata-free shape [`to_arrow`](Field::to_arrow) produces.
+    ///
+    /// ```
+    /// use yggdryl_field::yggdryl_dtype::{Int64Type, UInt8Type};
+    /// use yggdryl_field::{Field, Int64Field};
+    ///
+    /// let id = Int64Field::new("id", false);
+    /// let cast = id.cast_dtype(&UInt8Type);
+    /// assert_eq!(cast.name(), "id");
+    /// assert!(!cast.is_nullable());
+    /// assert_eq!(cast.data_type(), &yggdryl_field::arrow_schema::DataType::UInt8);
+    /// ```
+    fn cast_dtype(&self, dtype: &dyn yggdryl_dtype::DataType) -> arrow_schema::Field {
+        arrow_schema::Field::new(self.name(), dtype.to_arrow(), self.is_nullable())
+    }
 }
 
 /// The shared `from_arrow` metadata policy every concrete field applies before

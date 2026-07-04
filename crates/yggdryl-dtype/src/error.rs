@@ -57,6 +57,16 @@ pub enum DataError {
         /// The requested target type, e.g. `"str"`.
         target: &'static str,
     },
+    /// A `cast_dtype` had no conversion from the scalar's data type to the requested
+    /// target data type (e.g. casting a `list` to an `int64`, or a value to a nested
+    /// target). The `unsafe` `cast_dtype_unchecked` reinterprets bytes where a safe
+    /// cast has no path.
+    UnsupportedCast {
+        /// The scalar's data type name, e.g. `"list"`.
+        from: String,
+        /// The requested target Arrow data type, e.g. `"Int64"`.
+        to: String,
+    },
     /// An element index was past the end of the sequence.
     OutOfBounds {
         /// The requested element index.
@@ -121,6 +131,13 @@ impl std::fmt::Display for DataError {
             }
             DataError::UnsupportedConversion { data_type, target } => {
                 write!(f, "{data_type} scalars have no {target} conversion")
+            }
+            DataError::UnsupportedCast { from, to } => {
+                write!(
+                    f,
+                    "cannot cast a {from} scalar to {to}; reinterpret the bytes with \
+                     cast_dtype_unchecked if the loss is intended"
+                )
             }
             DataError::OutOfBounds { index, len } => {
                 write!(f, "index {index} is out of bounds for length {len}")

@@ -10,10 +10,12 @@
 //! by default, as an `Option<bool>` default).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
-//! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
-//! the FFI boundary; C Data Interface interop is future work) and the
-//! still-generic nested fields (`SerieField` over a non-integer value type,
-//! `MapField` / `StructField`), which have no concrete FFI shape yet.
+//! (`to_arrow` / `from_arrow`, and `castDtype` which returns a re-typed
+//! `arrow-schema` field — all exchange `arrow-schema` values that cannot cross
+//! the FFI boundary; C Data Interface interop is future work) and the dynamic base
+//! and typed nested fields (`SerieField` / `TypedSerieField` over a non-integer
+//! value type, `MapField` / `TypedMapField`, `StructField`), which have no concrete
+//! FFI shape yet.
 
 use napi_derive::napi;
 use yggdryl_field::Field;
