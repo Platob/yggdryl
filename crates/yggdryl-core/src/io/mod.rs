@@ -1,6 +1,7 @@
 //! Positioned byte- and bit-I/O: the low-level [`RawIOBase`] trait, the typed
 //! [`IOBase`] layer, the [`Whence`] reference point, the concrete
-//! [`ByteBuffer`] / [`BitBuffer`] resources, the [`Seekable`] [`RawIOCursor`] /
+//! [`ByteBuffer`] / [`BitBuffer`] / [`StringBuffer`] resources (the last a
+//! UTF-8 byte buffer with a typed `char` view), the [`Seekable`] [`RawIOCursor`] /
 //! [`IOCursor`] adapters that add a moving cursor, and the [`RawIOSlice`] /
 //! [`IOSlice`] adapters that bound a resource to a byte window.
 
@@ -14,6 +15,7 @@ mod raw_cursor;
 mod raw_slice;
 mod seekable;
 mod slice;
+mod string_buffer;
 mod typed;
 mod whence;
 
@@ -26,6 +28,7 @@ pub use raw_cursor::RawIOCursor;
 pub use raw_slice::RawIOSlice;
 pub use seekable::Seekable;
 pub use slice::IOSlice;
+pub use string_buffer::StringBuffer;
 pub use typed::IOBase;
 pub use whence::Whence;
 

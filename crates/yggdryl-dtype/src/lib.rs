@@ -74,6 +74,7 @@ pub mod map;
 pub mod null;
 pub mod optional;
 pub mod serie;
+pub mod string;
 pub mod r#struct;
 pub mod union;
 
@@ -83,6 +84,7 @@ pub use null::NullType;
 pub use optional::{Optional, OptionalType, TypedOptional, TypedOptionalType};
 pub use r#struct::{Struct, StructType, TypedStruct};
 pub use serie::{Serie, SerieType, TypedSerie, TypedSerieType};
+pub use string::StringType;
 pub use union::{TypedUnion, Union, UnionType};
 
 pub use float::{Float16Type, Float32Type, Float64Type};

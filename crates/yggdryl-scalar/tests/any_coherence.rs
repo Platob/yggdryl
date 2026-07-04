@@ -11,8 +11,8 @@ use yggdryl_scalar::yggdryl_dtype::{DataError, DataType};
 use yggdryl_scalar::{
     arrow_array, AnyScalar, AnySerie, BinaryScalar, Float16Scalar, Float16Serie, Float32Scalar,
     Float32Serie, Float64Scalar, Float64Serie, Int16Scalar, Int16Serie, Int32Scalar, Int32Serie,
-    Int64Scalar, Int64Serie, Int8Scalar, Int8Serie, NullScalar, Scalar, UInt16Scalar, UInt16Serie,
-    UInt32Scalar, UInt32Serie, UInt64Scalar, UInt64Serie, UInt8Scalar, UInt8Serie,
+    Int64Scalar, Int64Serie, Int8Scalar, Int8Serie, NullScalar, Scalar, StringScalar, UInt16Scalar,
+    UInt16Serie, UInt32Scalar, UInt32Serie, UInt64Scalar, UInt64Serie, UInt8Scalar, UInt8Serie,
 };
 
 /// Assert a scalar survives the `AnyScalar` erasure losslessly: `is_null`,
@@ -58,11 +58,13 @@ fn every_scalar_type_coheres_with_any_scalar() {
     scalar_coheres(Float32Scalar::new(2.5));
     scalar_coheres(Float64Scalar::new(3.5));
     scalar_coheres(BinaryScalar::new(vec![1, 2, 3]));
+    scalar_coheres(StringScalar::new("héllo".to_string()));
 
     // The null of every family also coheres (decomposed and fallback alike).
     scalar_coheres(Int64Scalar::null());
     scalar_coheres(Float16Scalar::null());
     scalar_coheres(BinaryScalar::null());
+    scalar_coheres(StringScalar::null());
     scalar_coheres(NullScalar::default());
 }
 

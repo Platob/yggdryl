@@ -15,7 +15,7 @@ idioms: Node carries 8–32 bit integers as `number` and the 64-bit integers as
 cross as Python `bytes` / JS `Buffer`, the null-or-value scalars are concrete
 per-type classes (`OptionalInt64Scalar`, `OptionalFloat64Scalar`,
 `OptionalBinaryScalar`, …) built straight from the native value, the buffer-backed
-serie scalars (`Int8Serie` … `UInt64Serie`, `Float32Serie` / `Float64Serie`) cross
+serie scalars (`Int8Serie` … `UInt64Serie`, `Float16Serie` … `Float64Serie`) cross
 (elements copy out through `to_pylist()` in Python / `toArray()` in Node — the
 pyarrow / Arrow JS conversion names, kept for every future native-container accessor
 such as a dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit integer
@@ -142,6 +142,13 @@ UTF-8 borrowed by default, or any core `Charset` passed explicitly (the bindings
 take an optional charset name, `"utf8"` or `"latin1"`) — and `into_io_slice`
 (bindings: `to_io_slice`) hands the value out as a full-window core
 `ByteBufferSlice` for window-relative positioned reads.
+
+The `utf8` **string** scalar (`StringScalar`) is the same idea one type up: a
+`utf8` value is a **logical** type over `binary` storage, so `StringScalar` holds
+its content as a core `StringBuffer` — the same UTF-8 bytes, plus a typed `char`
+view (`IOBase<char>`) — and `io()` / `into_io()` hand it back for positioned byte
+reads and char writes. `value` / `as_str` borrow the string, `as_bytes` its UTF-8
+bytes.
 
 === "Python"
 

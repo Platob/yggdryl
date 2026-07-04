@@ -12,9 +12,10 @@ Apache Arrow `Field` — so a schema is a sequence of fields.
 The bindings expose the layer as `yggdryl.field` (Python and Node), adapting to
 idioms: `nullable` defaults to `True` / `true` as a keyword / optional argument.
 The concrete numeric fields — the integers `Int8Field` … `UInt64Field` and the
-floats `Float32Field` / `Float64Field`, their `optional` wrappers, and their serie
-fields (`Int8SerieField` … `UInt64SerieField`, `Float32SerieField` /
-`Float64SerieField`, each a column of its serie type) — cross too. Two things stay **Rust-only**, stated here
+floats `Float16Field` / `Float32Field` / `Float64Field`, their `optional` wrappers,
+and their serie fields (`Int8SerieField` … `UInt64SerieField`, `Float32SerieField` /
+`Float64SerieField`, each a column of its serie type) — cross too, alongside
+`BinaryField` and `StringField` (the `utf8` column). Two things stay **Rust-only**, stated here
 and in both binding module docs: the [Arrow interop](#arrow-interop) surface
 (`to_arrow` / `from_arrow`, and `cast_dtype` which returns a re-typed
 `arrow-schema` field — all exchange `arrow-schema` values that cannot cross the

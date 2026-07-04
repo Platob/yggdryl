@@ -23,6 +23,12 @@ pub enum IOError {
     /// holds no items to infer it from and does not override
     /// [`element_width`](super::IOBase::element_width).
     IndeterminateElementWidth,
+    /// The bytes cannot be read as UTF-8 text (a raw byte write may have broken the
+    /// encoding of a [`StringBuffer`](super::StringBuffer)).
+    InvalidUtf8 {
+        /// The byte offset where the first invalid UTF-8 sequence begins.
+        offset: usize,
+    },
 }
 
 impl std::fmt::Display for IOError {
@@ -42,6 +48,9 @@ impl std::fmt::Display for IOError {
                 f,
                 "cannot infer the element width from an empty resource; override `IOBase::element_width`"
             ),
+            IOError::InvalidUtf8 { offset } => {
+                write!(f, "the bytes at offset {offset} are not valid UTF-8")
+            }
         }
     }
 }

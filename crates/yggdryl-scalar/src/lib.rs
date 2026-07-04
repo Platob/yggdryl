@@ -25,12 +25,13 @@
 //!   [`null_scalar`](ScalarFactory::null_scalar) / [`default_scalar`](ScalarFactory::default_scalar)).
 //!
 //! Concrete scalars live in per-family modules mirroring `yggdryl-dtype` — the
-//! [`integer`] module holds every signed and unsigned integer, the [`binary`]
-//! module the byte sequence (doubling as a `yggdryl-core` positioned-IO
-//! resource), the [`null`] module the always-null scalar, the [`optional`] module
-//! the null-or-value variant, and the [`serie`], [`map`], [`struct`](r#struct) and
-//! [`record`] modules the nested values (the union, dynamic at runtime, has no
-//! scalar). The `serie` / `map` / `optional` families mirror their data types'
+//! [`integer`] and [`float`] modules hold every fixed-width number, the [`binary`]
+//! module the byte sequence and the [`string`] module the `utf8` text (both
+//! doubling as a `yggdryl-core` positioned-IO resource — a `ByteBuffer` and a
+//! `StringBuffer` respectively), the [`null`] module the always-null scalar, the
+//! [`optional`] module the null-or-value variant, and the [`serie`], [`map`],
+//! [`struct`](r#struct) and [`record`] modules the nested values (the union, dynamic
+//! at runtime, has no scalar). The `serie` / `map` / `optional` families mirror their data types'
 //! dynamic-base + typed split: the dynamic [`Serie`] / [`MapScalar`] /
 //! [`OptionalScalar`] carry a dynamic data type with the element type erased, and
 //! [`TypedSerie`] / [`TypedMapScalar`] / [`TypedOptionalScalar`] add the typed
@@ -103,6 +104,7 @@ pub mod null;
 pub mod optional;
 pub mod record;
 pub mod serie;
+pub mod string;
 pub mod r#struct;
 pub mod typed_map;
 pub mod typed_optional;
@@ -118,6 +120,7 @@ pub use serie::{
     Int8Serie, Serie, StructSerie, TypedSerie, TypedStructSerie, UInt16Serie, UInt32Serie,
     UInt64Serie, UInt8Serie,
 };
+pub use string::StringScalar;
 pub use typed_map::TypedMapScalar;
 pub use typed_optional::TypedOptionalScalar;
 
