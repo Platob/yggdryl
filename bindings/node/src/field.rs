@@ -3,7 +3,7 @@
 //! Every integer and float type (`float16` / `float32` / `float64`) is exposed as
 //! its field and its optional field
 //! (e.g. `Int64Field`, `OptionalInt64Field`, `Float64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `StringField` / `OptionalStringField` (the `utf8`
+//! `OptionalBinaryField`, `Utf8Field` / `OptionalUtf8Field` (the `utf8`
 //! string), `NullField`, `UnionField`, `StructField` (like
 //! `UnionField`, built over its parameterised `yggdryl.dtype` data type) and its
 //! concrete serie field
@@ -216,17 +216,17 @@ impl OptionalBinaryField {
 
 /// A nullable `utf8` field: a name paired with the data type.
 #[napi(namespace = "field")]
-pub struct StringField {
-    pub(crate) inner: yggdryl_field::StringField,
+pub struct Utf8Field {
+    pub(crate) inner: yggdryl_field::Utf8Field,
 }
 
 #[napi(namespace = "field")]
-impl StringField {
+impl Utf8Field {
     /// A `utf8` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::StringField::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::Utf8Field::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -238,8 +238,8 @@ impl StringField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::StringType {
-        crate::dtype::StringType::default()
+    pub fn data_type(&self) -> crate::dtype::Utf8Type {
+        crate::dtype::Utf8Type::default()
     }
 
     /// Whether values in this field may be null.
@@ -252,12 +252,12 @@ impl StringField {
 /// A nullable optional-`utf8` field: a name paired with the logical optional
 /// data type.
 #[napi(namespace = "field")]
-pub struct OptionalStringField {
-    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::StringType>,
+pub struct OptionalUtf8Field {
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::Utf8Type>,
 }
 
 #[napi(namespace = "field")]
-impl OptionalStringField {
+impl OptionalUtf8Field {
     /// An optional-`utf8` field named `name` (nullable by default).
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
@@ -274,8 +274,8 @@ impl OptionalStringField {
 
     /// The field's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::OptionalStringType {
-        crate::dtype::OptionalStringType::default()
+    pub fn data_type(&self) -> crate::dtype::OptionalUtf8Type {
+        crate::dtype::OptionalUtf8Type::default()
     }
 
     /// Whether values in this field may be null.

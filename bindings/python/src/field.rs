@@ -2,7 +2,7 @@
 //!
 //! Every integer and float type is exposed as its field and its optional field
 //! (e.g. `Int64Field`, `OptionalInt64Field`, and the `float16` family), alongside
-//! `BinaryField` / `OptionalBinaryField`, `StringField` / `OptionalStringField`
+//! `BinaryField` / `OptionalBinaryField`, `Utf8Field` / `OptionalUtf8Field`
 //! (the `utf8` field), `NullField`, `UnionField`, `StructField` (taking a
 //! `yggdryl.dtype.StructType`, like `UnionField` takes its dynamic type) and its
 //! concrete serie field (e.g. `Int64SerieField`, a column of `Int64SerieType`) —
@@ -196,18 +196,18 @@ impl OptionalBinaryField {
 
 /// A nullable `utf8` field: a name paired with the data type.
 #[pyclass]
-pub struct StringField {
-    pub(crate) inner: yggdryl_field::StringField,
+pub struct Utf8Field {
+    pub(crate) inner: yggdryl_field::Utf8Field,
 }
 
 #[pymethods]
-impl StringField {
+impl Utf8Field {
     /// A `utf8` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::StringField::new(name, nullable),
+            inner: yggdryl_field::Utf8Field::new(name, nullable),
         }
     }
 
@@ -217,8 +217,8 @@ impl StringField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::StringType {
-        crate::dtype::StringType::default()
+    fn data_type(&self) -> crate::dtype::Utf8Type {
+        crate::dtype::Utf8Type::default()
     }
 
     /// Whether values in this field may be null.
@@ -230,12 +230,12 @@ impl StringField {
 /// A nullable optional-`utf8` field: a name paired with the logical optional data
 /// type.
 #[pyclass]
-pub struct OptionalStringField {
-    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::StringType>,
+pub struct OptionalUtf8Field {
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::Utf8Type>,
 }
 
 #[pymethods]
-impl OptionalStringField {
+impl OptionalUtf8Field {
     /// An optional-`utf8` field named `name`.
     #[new]
     #[pyo3(signature = (name, nullable = true))]
@@ -251,8 +251,8 @@ impl OptionalStringField {
     }
 
     /// The field's data type.
-    fn data_type(&self) -> crate::dtype::OptionalStringType {
-        crate::dtype::OptionalStringType::default()
+    fn data_type(&self) -> crate::dtype::OptionalUtf8Type {
+        crate::dtype::OptionalUtf8Type::default()
     }
 
     /// Whether values in this field may be null.
@@ -471,8 +471,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullField>()?;
     module.add_class::<BinaryField>()?;
     module.add_class::<OptionalBinaryField>()?;
-    module.add_class::<StringField>()?;
-    module.add_class::<OptionalStringField>()?;
+    module.add_class::<Utf8Field>()?;
+    module.add_class::<OptionalUtf8Field>()?;
     module.add_class::<Int8Field>()?;
     module.add_class::<OptionalInt8Field>()?;
     module.add_class::<Int16Field>()?;

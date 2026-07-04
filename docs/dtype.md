@@ -9,7 +9,7 @@ column of it, `yggdryl_scalar::Int64Scalar` holds one value of it). It defines t
 physical and logical data types for zero-copy FFI and Arrow interop. The concrete
 families so far: the `integer` module (every signed and unsigned integer), the
 `float` module (`float16` / `float32` / `float64`), the `binary` module (the
-variable-size byte type), the `string` module (`StringType`, Arrow's `utf8`, a
+variable-size byte type), the `utf8` module (`Utf8Type`, Arrow's `utf8`, a
 logical type over `binary` storage), the `null` module (the storage-free null type),
 the `union` module, the `optional` module (the logical null-or-value type over union
 storage) and the nested `serie`, `map` and `struct` modules; more land as the layer
@@ -44,8 +44,8 @@ a fixed-width [primitive](#categories) with a little-endian byte codec; the eigh
 share one shape, so a single crate-internal macro generates each per-type file. The
 `float` module holds `Float16Type` (native `half::f16`, format `"e"`), `Float32Type`
 (native `f32`, format `"f"`) and `Float64Type` (native `f64`, format `"g"`) — the
-same fixed-width primitive shape, so they reuse the integer family's macro. `string`
-adds `StringType`: Arrow's `utf8`, a **logical** type over `binary` storage whose
+same fixed-width primitive shape, so they reuse the integer family's macro. `utf8`
+adds `Utf8Type`: Arrow's `utf8`, a **logical** type over `binary` storage whose
 codec validates UTF-8.
 
 `Int64Type`, native Rust `i64`, is stored little-endian in eight bytes (Arrow C

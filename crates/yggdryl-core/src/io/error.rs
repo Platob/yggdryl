@@ -24,7 +24,7 @@ pub enum IOError {
     /// [`element_width`](super::IOBase::element_width).
     IndeterminateElementWidth,
     /// The bytes cannot be read as UTF-8 text (a raw byte write may have broken the
-    /// encoding of a [`StringBuffer`](super::StringBuffer)).
+    /// encoding of a [`Utf8Buffer`](super::Utf8Buffer)).
     InvalidUtf8 {
         /// The byte offset where the first invalid UTF-8 sequence begins.
         offset: usize,

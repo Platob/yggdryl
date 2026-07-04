@@ -1,7 +1,7 @@
-//! Benchmarks for the `ByteBuffer`, `BitBuffer` and `StringBuffer` resources.
+//! Benchmarks for the `ByteBuffer`, `BitBuffer` and `Utf8Buffer` resources.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use yggdryl_core::{BitBuffer, ByteBuffer, IOBase, RawIOBase, StringBuffer, Whence};
+use yggdryl_core::{BitBuffer, ByteBuffer, IOBase, RawIOBase, Utf8Buffer, Whence};
 
 const N: usize = 4096;
 const STREAM_N: usize = 256 * 1024; // four 64 KiB chunks
@@ -70,26 +70,26 @@ fn bit_buffer(c: &mut Criterion) {
     group.finish();
 }
 
-// The StringBuffer: UTF-8 byte storage with a typed char view. `char_len` /
+// The Utf8Buffer: UTF-8 byte storage with a typed char view. `char_len` /
 // IOBase::size scan the content, so the multi-byte case is the interesting one.
-fn string_buffer(c: &mut Criterion) {
-    let mut group = c.benchmark_group("string_buffer");
+fn utf8_buffer(c: &mut Criterion) {
+    let mut group = c.benchmark_group("utf8_buffer");
     group.throughput(Throughput::Bytes(N as u64));
 
     // A mixed ASCII / 2-byte string of roughly N bytes.
     let content: String = "aé".repeat(N / 3);
 
     group.bench_function("from_string", |b| {
-        b.iter(|| StringBuffer::from_string(black_box(content.clone())))
+        b.iter(|| Utf8Buffer::from_string(black_box(content.clone())))
     });
 
-    let text = StringBuffer::from_string(content.clone());
+    let text = Utf8Buffer::from_string(content.clone());
     group.bench_function("as_str", |b| b.iter(|| black_box(text.as_str().unwrap())));
     group.bench_function("char_len", |b| b.iter(|| black_box(text.char_len())));
 
     group.bench_function("pwrite_char", |b| {
         b.iter(|| {
-            let mut buffer = StringBuffer::new();
+            let mut buffer = Utf8Buffer::new();
             for _ in 0..N / 2 {
                 buffer
                     .pwrite_one(buffer.byte_size(), Whence::Start, black_box(&'é'))
@@ -129,5 +129,5 @@ fn stream(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, byte_buffer, bit_buffer, string_buffer, stream);
+criterion_group!(benches, byte_buffer, bit_buffer, utf8_buffer, stream);
 criterion_main!(benches);

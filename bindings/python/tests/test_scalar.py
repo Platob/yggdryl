@@ -197,7 +197,7 @@ def test_as_f16_is_available_on_every_scalar():
 
 
 def test_string_scalar_reads_text_and_bytes():
-    greeting = scalar.StringScalar("hi")
+    greeting = scalar.Utf8Scalar("hi")
     assert greeting.is_null() is False
     assert greeting.value() == "hi"
     assert greeting.to_pyvalue() == "hi"
@@ -205,7 +205,7 @@ def test_string_scalar_reads_text_and_bytes():
     assert greeting.as_bytes() == b"hi"
     assert greeting.data_type().name() == "utf8"
     # Unicode round-trips as text, and its UTF-8 bytes are reachable.
-    accented = scalar.StringScalar("hé")
+    accented = scalar.Utf8Scalar("hé")
     assert accented.value() == "hé"
     assert accented.as_bytes() == b"h\xc3\xa9"
     # A string has no numeric form.
@@ -213,8 +213,8 @@ def test_string_scalar_reads_text_and_bytes():
         greeting.as_i64()
 
     # The empty string and null are distinct states.
-    assert scalar.StringScalar("").is_null() is False
-    missing = scalar.StringScalar.null()
+    assert scalar.Utf8Scalar("").is_null() is False
+    missing = scalar.Utf8Scalar.null()
     assert missing.is_null() is True
     assert missing.value() is None
     assert missing.to_pyvalue() is None
@@ -223,7 +223,7 @@ def test_string_scalar_reads_text_and_bytes():
 
 
 def test_optional_string_redirects_to_the_inner_scalar():
-    some = scalar.OptionalStringScalar("hi")
+    some = scalar.OptionalUtf8Scalar("hi")
     assert some.is_null() is False
     assert some.value() == "hi"
     assert some.scalar().value() == "hi"
@@ -235,7 +235,7 @@ def test_optional_string_redirects_to_the_inner_scalar():
     assert opt_type.value_type().name() == "utf8"
     assert opt_type.storage().name() == "union"
 
-    missing = scalar.OptionalStringScalar.null()
+    missing = scalar.OptionalUtf8Scalar.null()
     assert missing.is_null() is True
     assert missing.scalar() is None
     assert missing.to_pyvalue() is None

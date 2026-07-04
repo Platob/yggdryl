@@ -3,8 +3,8 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `toIo()` hands one back), `StringScalar` / `OptionalStringScalar`
-//! (the `utf8` string, crossing as a JS `string`; its core `StringBuffer` resource
+//! `ByteBuffer` — `toIo()` hands one back), `Utf8Scalar` / `OptionalUtf8Scalar`
+//! (the `utf8` string, crossing as a JS `string`; its core `Utf8Buffer` resource
 //! stays Rust-only), `NullScalar` and its serie scalar
 //! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same
 //! globally-unique names as the Rust crate, the namespace carrying the
@@ -347,20 +347,20 @@ as_accessors_node!(OptionalBinaryScalar);
 
 /// A single, possibly-null `utf8` value, crossing the FFI boundary as a JS
 /// `string`. The string counterpart of [`BinaryScalar`]: the value is held in the
-/// Rust core as a positioned-IO `StringBuffer`, but that resource stays Rust-only —
+/// Rust core as a positioned-IO `Utf8Buffer`, but that resource stays Rust-only —
 /// the string crosses as text, its UTF-8 bytes reachable through `asBytes()`.
 #[napi(namespace = "scalar")]
-pub struct StringScalar {
-    pub(crate) inner: yggdryl_scalar::StringScalar,
+pub struct Utf8Scalar {
+    pub(crate) inner: yggdryl_scalar::Utf8Scalar,
 }
 
 #[napi(namespace = "scalar")]
-impl StringScalar {
+impl Utf8Scalar {
     /// A `utf8` scalar holding `value`.
     #[napi(constructor)]
     pub fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::StringScalar::new(value),
+            inner: yggdryl_scalar::Utf8Scalar::new(value),
         }
     }
 
@@ -368,7 +368,7 @@ impl StringScalar {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::StringScalar::null(),
+            inner: yggdryl_scalar::Utf8Scalar::null(),
         }
     }
 
@@ -386,8 +386,8 @@ impl StringScalar {
 
     /// The scalar's data type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::StringType {
-        crate::dtype::StringType::default()
+    pub fn data_type(&self) -> crate::dtype::Utf8Type {
+        crate::dtype::Utf8Type::default()
     }
 
     /// The scalar's native JS value: the text as a `string`, or `null` when null —
@@ -398,25 +398,25 @@ impl StringScalar {
     }
 }
 
-as_accessors_node!(StringScalar);
+as_accessors_node!(Utf8Scalar);
 
 /// A single value of the union between null and `utf8`: a value variant, or the
 /// null variant.
 #[napi(namespace = "scalar")]
-pub struct OptionalStringScalar {
+pub struct OptionalUtf8Scalar {
     pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
-        yggdryl_dtype::StringType,
-        yggdryl_scalar::StringScalar,
+        yggdryl_dtype::Utf8Type,
+        yggdryl_scalar::Utf8Scalar,
     >,
 }
 
 #[napi(namespace = "scalar")]
-impl OptionalStringScalar {
+impl OptionalUtf8Scalar {
     /// A scalar holding the `utf8` value variant `value`.
     #[napi(constructor)]
     pub fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::StringScalar::new(
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(
                 value,
             )),
         }
@@ -444,16 +444,16 @@ impl OptionalStringScalar {
 
     /// The inner scalar, when this holds the value variant.
     #[napi]
-    pub fn scalar(&self) -> Option<StringScalar> {
-        self.inner.scalar().map(|scalar| StringScalar {
+    pub fn scalar(&self) -> Option<Utf8Scalar> {
+        self.inner.scalar().map(|scalar| Utf8Scalar {
             inner: scalar.clone(),
         })
     }
 
     /// The scalar's data type: the logical optional of the value type.
     #[napi]
-    pub fn data_type(&self) -> crate::dtype::OptionalStringType {
-        crate::dtype::OptionalStringType::default()
+    pub fn data_type(&self) -> crate::dtype::OptionalUtf8Type {
+        crate::dtype::OptionalUtf8Type::default()
     }
 
     /// The scalar's native JS value: the text as a `string`, or `null` for the null
@@ -464,7 +464,7 @@ impl OptionalStringScalar {
     }
 }
 
-as_accessors_node!(OptionalStringScalar);
+as_accessors_node!(OptionalUtf8Scalar);
 
 /// Generates the width-independent surface of one integer type's scalars: the
 /// null factory, nullness, `dataType` and `scalar` of `$ty` and `$opt_ty`. The

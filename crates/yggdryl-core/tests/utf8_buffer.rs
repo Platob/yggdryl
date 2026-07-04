@@ -1,29 +1,29 @@
-//! Integration tests for [`StringBuffer`]: the UTF-8 byte surface (`RawIOBase`),
+//! Integration tests for [`Utf8Buffer`]: the UTF-8 byte surface (`RawIOBase`),
 //! the typed `char` view (`IOBase<char>`), and the UTF-8 validation boundary.
 
-use yggdryl_core::{IOBase, IOError, RawIOBase, StringBuffer, Whence};
+use yggdryl_core::{IOBase, IOError, RawIOBase, Utf8Buffer, Whence};
 
 #[test]
 fn holds_utf8_and_counts_bytes_and_chars() {
-    let text = StringBuffer::from("hé");
+    let text = Utf8Buffer::from("hé");
     assert_eq!(text.as_str().unwrap(), "hé");
     assert_eq!(text.as_bytes(), &[b'h', 0xC3, 0xA9]); // 'h' = 1 byte, 'é' = 2
     assert_eq!(text.byte_size(), 3);
     assert_eq!(text.char_len(), 2);
     assert_eq!(IOBase::<char>::size(&text), 2);
     assert!(!text.is_empty());
-    assert!(StringBuffer::new().is_empty());
+    assert!(Utf8Buffer::new().is_empty());
 
     // Owned round trips.
     assert_eq!(
-        StringBuffer::from("abc".to_string()).into_string().unwrap(),
+        Utf8Buffer::from("abc".to_string()).into_string().unwrap(),
         "abc"
     );
 }
 
 #[test]
 fn raw_byte_and_bit_surface_delegates_to_bytes() {
-    let mut text = StringBuffer::from("hi");
+    let mut text = Utf8Buffer::from("hi");
     assert_eq!(text.pread_byte_one(0, Whence::Start).unwrap(), b'h');
     assert!(!text.pread_bit_one(0, Whence::Start).unwrap()); // MSB of 'h' (0x68) is 0
 
@@ -35,7 +35,7 @@ fn raw_byte_and_bit_surface_delegates_to_bytes() {
 
 #[test]
 fn typed_char_view_writes_utf8_and_sizes_in_chars() {
-    let mut text = StringBuffer::new();
+    let mut text = Utf8Buffer::new();
     // Writing chars appends their UTF-8 encodings at the given byte offset.
     text.pwrite_one(0, Whence::Start, &'A').unwrap();
     text.pwrite_array(text.byte_size(), Whence::Start, &['é', '中'])
@@ -53,7 +53,7 @@ fn typed_char_view_writes_utf8_and_sizes_in_chars() {
 
 #[test]
 fn char_resize_truncates_and_pads_on_char_boundaries() {
-    let mut text = StringBuffer::from("héllo"); // 5 chars, 6 bytes
+    let mut text = Utf8Buffer::from("héllo"); // 5 chars, 6 bytes
     assert_eq!(text.char_len(), 5);
 
     // Truncate to two chars: "hé" (3 bytes), not a byte cut through 'é'.
@@ -69,7 +69,7 @@ fn char_resize_truncates_and_pads_on_char_boundaries() {
 
 #[test]
 fn invalid_utf8_is_an_actionable_error() {
-    let mut text = StringBuffer::new();
+    let mut text = Utf8Buffer::new();
     // A lone continuation byte is not valid UTF-8.
     text.pwrite_byte_array(0, Whence::Start, &[b'a', 0xFF])
         .unwrap();

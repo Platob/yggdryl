@@ -143,9 +143,9 @@ take an optional charset name, `"utf8"` or `"latin1"`) — and `into_io_slice`
 (bindings: `to_io_slice`) hands the value out as a full-window core
 `ByteBufferSlice` for window-relative positioned reads.
 
-The `utf8` **string** scalar (`StringScalar`) is the same idea one type up: a
-`utf8` value is a **logical** type over `binary` storage, so `StringScalar` holds
-its content as a core `StringBuffer` — the same UTF-8 bytes, plus a typed `char`
+The `utf8` **string** scalar (`Utf8Scalar`) is the same idea one type up: a
+`utf8` value is a **logical** type over `binary` storage, so `Utf8Scalar` holds
+its content as a core `Utf8Buffer` — the same UTF-8 bytes, plus a typed `char`
 view (`IOBase<char>`) — and `io()` / `into_io()` hand it back for positioned byte
 reads and char writes. `value` / `as_str` borrow the string, `as_bytes` its UTF-8
 bytes.
@@ -216,14 +216,14 @@ The `utf8` string scalar reads the same way, one type up — the value is a stri
     ```python
     from yggdryl import scalar
 
-    greeting = scalar.StringScalar("hé")
+    greeting = scalar.Utf8Scalar("hé")
     assert greeting.value() == "hé"
     assert greeting.as_str() == "hé"
     assert greeting.as_bytes() == b"h\xc3\xa9"  # the UTF-8 bytes
     assert greeting.data_type().name() == "utf8"
 
-    assert scalar.StringScalar.null().is_null()
-    assert scalar.OptionalStringScalar("hé").as_str() == "hé"
+    assert scalar.Utf8Scalar.null().is_null()
+    assert scalar.OptionalUtf8Scalar("hé").as_str() == "hé"
     ```
 
 === "Node"
@@ -231,33 +231,33 @@ The `utf8` string scalar reads the same way, one type up — the value is a stri
     ```js
     const { scalar } = require('yggdryl')
 
-    const greeting = new scalar.StringScalar('hé')
+    const greeting = new scalar.Utf8Scalar('hé')
     assert.equal(greeting.value(), 'hé')
     assert.equal(greeting.asStr(), 'hé')
     assert.deepEqual(greeting.asBytes(), Buffer.from('hé')) // the UTF-8 bytes
     assert.equal(greeting.dataType().name(), 'utf8')
 
-    assert.equal(scalar.StringScalar.null().isNull(), true)
-    assert.equal(new scalar.OptionalStringScalar('hé').asStr(), 'hé')
+    assert.equal(scalar.Utf8Scalar.null().isNull(), true)
+    assert.equal(new scalar.OptionalUtf8Scalar('hé').asStr(), 'hé')
     ```
 
 === "Rust"
 
     ```rust
     use yggdryl_core::IOBase;
-    use yggdryl_scalar::{Scalar, StringScalar};
+    use yggdryl_scalar::{Scalar, Utf8Scalar};
 
     fn main() {
-        let greeting = StringScalar::new("hé".to_string());
+        let greeting = Utf8Scalar::new("hé".to_string());
         assert_eq!(greeting.value(), Some("hé"));
         assert_eq!(greeting.as_str(None).unwrap(), "hé");
         assert_eq!(greeting.as_bytes().unwrap(), &[b'h', 0xC3, 0xA9][..]); // UTF-8 bytes
 
-        // The value is a core StringBuffer: a typed char view over the bytes.
+        // The value is a core Utf8Buffer: a typed char view over the bytes.
         let io = greeting.io().unwrap();
         assert_eq!(IOBase::<char>::size(io), 2); // two chars, three bytes
 
-        assert!(StringScalar::null().is_null());
+        assert!(Utf8Scalar::null().is_null());
     }
     ```
 

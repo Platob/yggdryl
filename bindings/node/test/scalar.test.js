@@ -348,7 +348,7 @@ test('float16 narrows a number lossily on the wire', () => {
 })
 
 test('string scalar reads text and bytes', () => {
-  const greeting = new scalar.StringScalar('hé')
+  const greeting = new scalar.Utf8Scalar('hé')
   assert.equal(greeting.isNull(), false)
   assert.equal(greeting.value(), 'hé')
   assert.equal(greeting.asStr(), 'hé')
@@ -359,12 +359,12 @@ test('string scalar reads text and bytes', () => {
   assert.throws(() => greeting.asI64(), /no i64 conversion/)
 
   // Unicode (multi-byte, astral) round-trips through the boundary.
-  assert.equal(new scalar.StringScalar('日本語 😀').value(), '日本語 😀')
+  assert.equal(new scalar.Utf8Scalar('日本語 😀').value(), '日本語 😀')
 
   // The empty string and null are distinct states.
-  assert.equal(new scalar.StringScalar('').isNull(), false)
-  assert.equal(new scalar.StringScalar('').value(), '')
-  const missing = scalar.StringScalar.null()
+  assert.equal(new scalar.Utf8Scalar('').isNull(), false)
+  assert.equal(new scalar.Utf8Scalar('').value(), '')
+  const missing = scalar.Utf8Scalar.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.value(), null)
   assert.equal(missing.toJsValue(), null)
@@ -373,7 +373,7 @@ test('string scalar reads text and bytes', () => {
 })
 
 test('optional string redirects to the inner scalar', () => {
-  const some = new scalar.OptionalStringScalar('hi')
+  const some = new scalar.OptionalUtf8Scalar('hi')
   assert.equal(some.isNull(), false)
   assert.equal(some.value(), 'hi')
   assert.equal(some.scalar().value(), 'hi')
@@ -385,7 +385,7 @@ test('optional string redirects to the inner scalar', () => {
   assert.equal(optType.valueType().name(), 'utf8')
   assert.equal(optType.storage().name(), 'union')
 
-  const missing = scalar.OptionalStringScalar.null()
+  const missing = scalar.OptionalUtf8Scalar.null()
   assert.equal(missing.isNull(), true)
   assert.equal(missing.value(), null)
   assert.equal(missing.scalar(), null)

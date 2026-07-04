@@ -31,7 +31,7 @@ def main():
     weight = scalar.Float64Scalar(1.5)
     weights = scalar.Float64Serie([1.5, 2.5, 3.5, 4.5])
     half = scalar.Float16Scalar(1.5)
-    text = scalar.StringScalar("hello")
+    text = scalar.Utf8Scalar("hello")
 
     bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
     bench("Int64Scalar.null()", scalar.Int64Scalar.null)
@@ -53,7 +53,7 @@ def main():
     bench("Float16Scalar(1.5)", lambda: scalar.Float16Scalar(1.5))
     bench("float16.as_f16() widened", half.as_f16)
     bench("float16.to_pyvalue()", half.to_pyvalue)
-    bench("StringScalar('hello')", lambda: scalar.StringScalar("hello"))
+    bench("Utf8Scalar('hello')", lambda: scalar.Utf8Scalar("hello"))
     bench("string.to_pyvalue()", text.to_pyvalue)
 
 

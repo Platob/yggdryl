@@ -194,13 +194,13 @@ def test_float16_and_string_handles_round_trip():
     assert type(factory.field("w", scalar.Float16Scalar(1.5))) is field.Float16Field
 
     # The string scalar / dtype / field handles are accepted too.
-    assert type(factory.scalar(scalar.StringScalar("hi"))) is scalar.StringScalar
-    assert factory.scalar(dtype.StringType()).value() == ""
-    assert factory.dtype(scalar.StringScalar("hi")).name() == "utf8"
-    assert factory.dtype(dtype.StringType()).name() == "utf8"
-    assert factory.dtype(field.StringField("s")).name() == "utf8"
-    assert type(factory.field("s", dtype.StringType())) is field.StringField
-    assert type(factory.field("s", scalar.StringScalar("hi"))) is field.StringField
+    assert type(factory.scalar(scalar.Utf8Scalar("hi"))) is scalar.Utf8Scalar
+    assert factory.scalar(dtype.Utf8Type()).value() == ""
+    assert factory.dtype(scalar.Utf8Scalar("hi")).name() == "utf8"
+    assert factory.dtype(dtype.Utf8Type()).name() == "utf8"
+    assert factory.dtype(field.Utf8Field("s")).name() == "utf8"
+    assert type(factory.field("s", dtype.Utf8Type())) is field.Utf8Field
+    assert type(factory.field("s", scalar.Utf8Scalar("hi"))) is field.Utf8Field
 
 
 @pytest.mark.parametrize("value", [True, [1, "x"]])

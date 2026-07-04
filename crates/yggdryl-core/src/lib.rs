@@ -33,7 +33,7 @@ pub use charset::{Charset, CharsetError, Latin1, Utf8};
 mod io;
 pub use io::{
     BitBuffer, ByteBuffer, ByteBufferSlice, IOBase, IOCursor, IOError, IOSlice, RawIOBase,
-    RawIOCursor, RawIOSlice, Seekable, StringBuffer, Whence,
+    RawIOCursor, RawIOSlice, Seekable, Utf8Buffer, Whence,
 };
 
 #[cfg(feature = "json")]

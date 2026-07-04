@@ -15,7 +15,7 @@ The concrete numeric fields — the integers `Int8Field` … `UInt64Field` and t
 floats `Float16Field` / `Float32Field` / `Float64Field`, their `optional` wrappers,
 and their serie fields (`Int8SerieField` … `UInt64SerieField`, `Float32SerieField` /
 `Float64SerieField`, each a column of its serie type) — cross too, alongside
-`BinaryField` and `StringField` (the `utf8` column). Two things stay **Rust-only**, stated here
+`BinaryField` and `Utf8Field` (the `utf8` column). Two things stay **Rust-only**, stated here
 and in both binding module docs: the [Arrow interop](#arrow-interop) surface
 (`to_arrow` / `from_arrow`, and `cast_dtype` which returns a re-typed
 `arrow-schema` field — all exchange `arrow-schema` values that cannot cross the

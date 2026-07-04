@@ -6,7 +6,7 @@ The `core` I/O layer reads and writes a resource one or many **bytes** (`u8`) or
 - **`ByteBuffer`** — byte-granular; its bit size is always eight times its byte size.
 - **`BitBuffer`** — bit-granular; it tracks an *exact* bit length, so its bit size
   need not be a multiple of eight (its byte size rounds up).
-- **`StringBuffer`** — a `ByteBuffer` over UTF-8 bytes with a typed `char` view
+- **`Utf8Buffer`** — a `ByteBuffer` over UTF-8 bytes with a typed `char` view
   (`IOBase<char>`): writing a `char` appends its UTF-8 encoding, and its typed
   `size` counts Unicode scalar values. It backs the `utf8` string scalar the way
   `ByteBuffer` backs `binary`. (Rust-only for now; the string scalar crosses as

@@ -1,28 +1,28 @@
-//! The [`StringScalar`] scalar.
+//! The [`Utf8Scalar`] scalar.
 
 use crate::{Scalar, ScalarFactory, TypedScalar};
-use yggdryl_core::StringBuffer;
-use yggdryl_dtype::{DataError, StringType};
+use yggdryl_core::Utf8Buffer;
+use yggdryl_dtype::{DataError, Utf8Type};
 
-/// A single, possibly-null `utf8` value: a string held as a core [`StringBuffer`],
+/// A single, possibly-null `utf8` value: a string held as a core [`Utf8Buffer`],
 /// so the value doubles as a positioned-IO resource with a typed `char` view.
 ///
 /// It is the string counterpart of [`BinaryScalar`](crate::BinaryScalar): where a
 /// binary value is a [`ByteBuffer`](yggdryl_core::ByteBuffer), a string value is a
-/// [`StringBuffer`](yggdryl_core::StringBuffer) — the same UTF-8 bytes, plus the
+/// [`Utf8Buffer`](yggdryl_core::Utf8Buffer) — the same UTF-8 bytes, plus the
 /// `char`-typed [`IOBase<char>`](yggdryl_core::IOBase). [`value`](Scalar::value) /
 /// [`as_str`](Scalar::as_str) borrow the string directly (never copying),
-/// [`as_bytes`](Scalar::as_bytes) its UTF-8 bytes, and [`io`](StringScalar::io) /
-/// [`into_io`](StringScalar::into_io) hand back the [`StringBuffer`] for positioned
+/// [`as_bytes`](Scalar::as_bytes) its UTF-8 bytes, and [`io`](Utf8Scalar::io) /
+/// [`into_io`](Utf8Scalar::into_io) hand back the [`Utf8Buffer`] for positioned
 /// reads and char writes. Crossing the Arrow boundary copies the bytes once between
 /// the Arrow `utf8` buffer and the core resource.
 ///
 /// ```
 /// use yggdryl_core::{IOBase, RawIOBase, Whence};
 /// use yggdryl_scalar::yggdryl_dtype::DataType;
-/// use yggdryl_scalar::{Scalar, StringScalar};
+/// use yggdryl_scalar::{Scalar, Utf8Scalar};
 ///
-/// let greeting = StringScalar::new("hé".to_string());
+/// let greeting = Utf8Scalar::new("hé".to_string());
 /// assert!(!greeting.is_null());
 /// assert_eq!(greeting.value(), Some("hé"));
 /// assert_eq!(greeting.as_bytes().unwrap(), &[b'h', 0xC3, 0xA9][..]); // UTF-8 bytes
@@ -36,30 +36,30 @@ use yggdryl_dtype::{DataError, StringType};
 /// // The Arrow round trip is exact (Arrow's Utf8).
 /// let arrow = greeting.to_arrow_scalar();
 /// assert_eq!(arrow.len(), 1);
-/// assert_eq!(StringScalar::from_arrow(arrow.as_ref()).unwrap(), greeting);
+/// assert_eq!(Utf8Scalar::from_arrow(arrow.as_ref()).unwrap(), greeting);
 ///
-/// assert!(StringScalar::null().is_null());
+/// assert!(Utf8Scalar::null().is_null());
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StringScalar {
-    data_type: StringType,
-    value: Option<StringBuffer>,
+pub struct Utf8Scalar {
+    data_type: Utf8Type,
+    value: Option<Utf8Buffer>,
 }
 
-impl StringScalar {
+impl Utf8Scalar {
     /// A `utf8` scalar holding `value` (an empty string is the empty value, not
     /// null).
     pub fn new(value: String) -> Self {
         Self {
-            data_type: StringType,
-            value: Some(StringBuffer::from_string(value)),
+            data_type: Utf8Type,
+            value: Some(Utf8Buffer::from_string(value)),
         }
     }
 
     /// A null `utf8` scalar.
     pub fn null() -> Self {
         Self {
-            data_type: StringType,
+            data_type: Utf8Type,
             value: None,
         }
     }
@@ -68,32 +68,32 @@ impl StringScalar {
     /// [`RawIOBase`](yggdryl_core::RawIOBase) read and typed
     /// [`IOBase<char>`](yggdryl_core::IOBase) access works on the borrow — or `None`
     /// when null.
-    pub fn io(&self) -> Option<&StringBuffer> {
+    pub fn io(&self) -> Option<&Utf8Buffer> {
         self.value.as_ref()
     }
 
-    /// Consume the scalar, returning the value as the core [`StringBuffer`] (or
+    /// Consume the scalar, returning the value as the core [`Utf8Buffer`] (or
     /// `None` when null) — ready to wrap in a cursor / slice adapter.
-    pub fn into_io(self) -> Option<StringBuffer> {
+    pub fn into_io(self) -> Option<Utf8Buffer> {
         self.value
     }
 }
 
-impl From<String> for StringScalar {
+impl From<String> for Utf8Scalar {
     /// A `utf8` scalar holding `value`.
     fn from(value: String) -> Self {
         Self::new(value)
     }
 }
 
-impl From<&str> for StringScalar {
+impl From<&str> for Utf8Scalar {
     /// A `utf8` scalar holding a copy of `value`.
     fn from(value: &str) -> Self {
         Self::new(value.to_string())
     }
 }
 
-impl From<Option<String>> for StringScalar {
+impl From<Option<String>> for Utf8Scalar {
     /// A `utf8` scalar holding `value`, or the null scalar for `None`.
     fn from(value: Option<String>) -> Self {
         match value {
@@ -103,22 +103,22 @@ impl From<Option<String>> for StringScalar {
     }
 }
 
-impl From<StringBuffer> for StringScalar {
+impl From<Utf8Buffer> for Utf8Scalar {
     /// A `utf8` scalar taking over an existing core IO resource, moved — the inverse
-    /// of [`into_io`](StringScalar::into_io).
-    fn from(value: StringBuffer) -> Self {
+    /// of [`into_io`](Utf8Scalar::into_io).
+    fn from(value: Utf8Buffer) -> Self {
         Self {
-            data_type: StringType,
+            data_type: Utf8Type,
             value: Some(value),
         }
     }
 }
 
-impl Scalar for StringScalar {
-    type DataType = StringType;
+impl Scalar for Utf8Scalar {
+    type DataType = Utf8Type;
     type Value = str;
 
-    fn data_type(&self) -> &StringType {
+    fn data_type(&self) -> &Utf8Type {
         &self.data_type
     }
 
@@ -155,7 +155,7 @@ impl Scalar for StringScalar {
             .as_any()
             .downcast_ref::<arrow_array::StringArray>()
             .ok_or_else(|| DataError::IncompatibleArrowType {
-                expected: "StringType".to_string(),
+                expected: "Utf8Type".to_string(),
                 got: arrow_array::Array::data_type(array).to_string(),
             })?;
         Ok(if arrow_array::Array::is_null(array, 0) {
@@ -169,7 +169,7 @@ impl Scalar for StringScalar {
     fn as_bytes(&self) -> Result<&[u8], DataError> {
         self.value
             .as_ref()
-            .map(StringBuffer::as_bytes)
+            .map(Utf8Buffer::as_bytes)
             .ok_or(DataError::NullValue)
     }
 
@@ -199,23 +199,23 @@ impl Scalar for StringScalar {
     }
 }
 
-impl TypedScalar<StringType, str, arrow_array::StringArray> for StringScalar {}
+impl TypedScalar<Utf8Type, str, arrow_array::StringArray> for Utf8Scalar {}
 
-impl ScalarFactory<String> for StringType {
-    type Scalar = StringScalar;
+impl ScalarFactory<String> for Utf8Type {
+    type Scalar = Utf8Scalar;
 
     /// A `utf8` scalar holding `value`.
-    fn scalar(&self, value: String) -> StringScalar {
-        StringScalar::new(value)
+    fn scalar(&self, value: String) -> Utf8Scalar {
+        Utf8Scalar::new(value)
     }
 
     /// The null `utf8` scalar.
-    fn null_scalar(&self) -> StringScalar {
-        StringScalar::null()
+    fn null_scalar(&self) -> Utf8Scalar {
+        Utf8Scalar::null()
     }
 
     /// The default `utf8` scalar: the empty string.
-    fn default_scalar(&self) -> StringScalar {
-        StringScalar::new(String::new())
+    fn default_scalar(&self) -> Utf8Scalar {
+        Utf8Scalar::new(String::new())
     }
 }

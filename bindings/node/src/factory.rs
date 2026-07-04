@@ -31,15 +31,15 @@ use yggdryl_scalar::{AnyScalar, Scalar};
 use crate::data_error;
 use crate::dtype::{
     BinaryType, Float16SerieType, Float16Type, Float32SerieType, Float32Type, Float64SerieType,
-    Float64Type, Int64SerieType, Int64Type, NullType, StringType, StructType,
+    Float64Type, Int64SerieType, Int64Type, NullType, Utf8Type, StructType,
 };
 use crate::field::{
     BinaryField, Float16Field, Float16SerieField, Float32Field, Float32SerieField, Float64Field,
-    Float64SerieField, Int64Field, Int64SerieField, NullField, StringField, StructField,
+    Float64SerieField, Int64Field, Int64SerieField, NullField, Utf8Field, StructField,
 };
 use crate::scalar::{
     BinaryScalar, Float16Scalar, Float16Serie, Float32Scalar, Float32Serie, Float64Scalar,
-    Float64Serie, Int64Scalar, Int64Serie, NullScalar, RecordScalar, StringScalar,
+    Float64Serie, Int64Scalar, Int64Serie, NullScalar, RecordScalar, Utf8Scalar,
 };
 
 /// The inferred type, carrying the extracted native value.
@@ -48,7 +48,7 @@ pub(crate) enum Inferred {
     Int64(i64),
     Float64(f64),
     Binary(Vec<u8>),
-    String(String),
+    Utf8(String),
     Serie(Vec<i64>),
     SerieFloat64(Vec<f64>),
 }
@@ -92,7 +92,7 @@ pub(crate) fn infer(value: NativeValue) -> Result<Inferred> {
             }
         }
         // A `string` → `utf8`, symmetric with `Buffer` → `binary`.
-        Some(Either5::C(text)) => Inferred::String(text),
+        Some(Either5::C(text)) => Inferred::Utf8(text),
         Some(Either5::D(big)) => Inferred::Int64(crate::bigint_to_i64(big)?),
         Some(Either5::E(number)) => {
             // A whole `number` infers int64 (backward-compatible; `2.0` is whole);
@@ -119,8 +119,8 @@ fn inferred_member(name: String, inferred: Inferred) -> (arrow_schema::Field, An
         Inferred::Binary(bytes) => {
             AnyScalar::from_arrow(yggdryl_scalar::BinaryScalar::new(bytes).to_arrow_scalar())
         }
-        Inferred::String(text) => {
-            AnyScalar::from_arrow(yggdryl_scalar::StringScalar::new(text).to_arrow_scalar())
+        Inferred::Utf8(text) => {
+            AnyScalar::from_arrow(yggdryl_scalar::Utf8Scalar::new(text).to_arrow_scalar())
         }
         Inferred::Serie(values) => {
             AnyScalar::from_arrow(yggdryl_scalar::Int64Serie::from(values).to_arrow_scalar())
@@ -171,7 +171,7 @@ type DTypeValue = Either13<
     ClassInstance<NullType>,
     ClassInstance<Int64Type>,
     ClassInstance<BinaryType>,
-    ClassInstance<StringType>,
+    ClassInstance<Utf8Type>,
     ClassInstance<Int64SerieType>,
     ClassInstance<StructType>,
     ClassInstance<Float16Type>,
@@ -200,7 +200,7 @@ type Value = Option<
         ClassInstance<NullScalar>,
         ClassInstance<Int64Scalar>,
         ClassInstance<BinaryScalar>,
-        ClassInstance<StringScalar>,
+        ClassInstance<Utf8Scalar>,
         ClassInstance<Int64Serie>,
         ClassInstance<RecordScalar>,
         ClassInstance<Float16Scalar>,
@@ -221,7 +221,7 @@ enum Classified {
     NullScalar(yggdryl_scalar::NullScalar),
     Int64Scalar(yggdryl_scalar::Int64Scalar),
     BinaryScalar(yggdryl_scalar::BinaryScalar),
-    StringScalar(yggdryl_scalar::StringScalar),
+    Utf8Scalar(yggdryl_scalar::Utf8Scalar),
     Int64Serie(yggdryl_scalar::Int64Serie),
     Record(yggdryl_scalar::RecordScalar),
     Float16Scalar(yggdryl_scalar::Float16Scalar),
@@ -233,7 +233,7 @@ enum Classified {
     NullType,
     Int64Type,
     BinaryType,
-    StringType,
+    Utf8Type,
     Int64SerieType,
     StructType(yggdryl_dtype::StructType),
     Float16Type,
@@ -257,7 +257,7 @@ fn classify(value: Value) -> Result<Classified> {
         Some(Either18::F(scalar)) => Classified::NullScalar(scalar.inner),
         Some(Either18::G(scalar)) => Classified::Int64Scalar(scalar.inner),
         Some(Either18::H(scalar)) => Classified::BinaryScalar(scalar.inner.clone()),
-        Some(Either18::I(scalar)) => Classified::StringScalar(scalar.inner.clone()),
+        Some(Either18::I(scalar)) => Classified::Utf8Scalar(scalar.inner.clone()),
         Some(Either18::J(serie)) => Classified::Int64Serie(serie.inner.clone()),
         Some(Either18::K(record)) => Classified::Record(record.inner.clone()),
         Some(Either18::L(scalar)) => Classified::Float16Scalar(scalar.inner),
@@ -270,7 +270,7 @@ fn classify(value: Value) -> Result<Classified> {
             Either13::A(_) => Classified::NullType,
             Either13::B(_) => Classified::Int64Type,
             Either13::C(_) => Classified::BinaryType,
-            Either13::D(_) => Classified::StringType,
+            Either13::D(_) => Classified::Utf8Type,
             Either13::E(_) => Classified::Int64SerieType,
             Either13::F(data_type) => Classified::StructType(data_type.inner.clone()),
             Either13::G(_) => Classified::Float16Type,
@@ -314,7 +314,7 @@ pub fn scalar(
         Float64Scalar,
         Float32Serie,
         Float64Serie,
-        StringScalar,
+        Utf8Scalar,
         Float16Scalar,
         Float16Serie,
     >,
@@ -338,8 +338,8 @@ pub fn scalar(
         Classified::Value(Inferred::SerieFloat64(values)) => Either12::I(Float64Serie {
             inner: yggdryl_scalar::Float64Serie::from(values),
         }),
-        Classified::Value(Inferred::String(text)) => Either12::J(StringScalar {
-            inner: yggdryl_scalar::StringScalar::new(text),
+        Classified::Value(Inferred::Utf8(text)) => Either12::J(Utf8Scalar {
+            inner: yggdryl_scalar::Utf8Scalar::new(text),
         }),
         Classified::NullScalar(inner) => Either12::A(NullScalar { inner }),
         Classified::Int64Scalar(inner) => Either12::B(Int64Scalar { inner }),
@@ -350,7 +350,7 @@ pub fn scalar(
         Classified::Float64Scalar(inner) => Either12::G(Float64Scalar { inner }),
         Classified::Float32Serie(inner) => Either12::H(Float32Serie { inner }),
         Classified::Float64Serie(inner) => Either12::I(Float64Serie { inner }),
-        Classified::StringScalar(inner) => Either12::J(StringScalar { inner }),
+        Classified::Utf8Scalar(inner) => Either12::J(Utf8Scalar { inner }),
         Classified::Float16Scalar(inner) => Either12::K(Float16Scalar { inner }),
         Classified::Float16Serie(inner) => Either12::L(Float16Serie { inner }),
         Classified::Int64Type => Either12::B(Int64Type::default().default_scalar()),
@@ -365,7 +365,7 @@ pub fn scalar(
         Classified::Float64Type => Either12::G(Float64Type::default().default_scalar()),
         Classified::Float32SerieType => Either12::H(Float32SerieType::default().default_scalar()),
         Classified::Float64SerieType => Either12::I(Float64SerieType::default().default_scalar()),
-        Classified::StringType => Either12::J(StringType::default().default_scalar()),
+        Classified::Utf8Type => Either12::J(Utf8Type::default().default_scalar()),
         Classified::Float16Type => Either12::K(Float16Type::default().default_scalar()),
         Classified::Float16SerieType => Either12::L(Float16SerieType::default().default_scalar()),
     })
@@ -389,7 +389,7 @@ pub fn dtype(
         Float64Type,
         Float32SerieType,
         Float64SerieType,
-        StringType,
+        Utf8Type,
         Float16Type,
         Float16SerieType,
     >,
@@ -423,9 +423,9 @@ pub fn dtype(
         Classified::Float32Serie(_) | Classified::Float32SerieType => {
             Either12::H(Float32SerieType::default())
         }
-        Classified::Value(Inferred::String(_))
-        | Classified::StringScalar(_)
-        | Classified::StringType => Either12::J(StringType::default()),
+        Classified::Value(Inferred::Utf8(_))
+        | Classified::Utf8Scalar(_)
+        | Classified::Utf8Type => Either12::J(Utf8Type::default()),
         Classified::Float16Scalar(_) | Classified::Float16Type => {
             Either12::K(Float16Type::default())
         }
@@ -455,7 +455,7 @@ pub fn field(
         Float64Field,
         Float32SerieField,
         Float64SerieField,
-        StringField,
+        Utf8Field,
         Float16Field,
         Float16SerieField,
     >,
@@ -506,10 +506,10 @@ pub fn field(
                 inner: yggdryl_field::TypedSerieField::new(name, nullable),
             })
         }
-        Classified::Value(Inferred::String(_))
-        | Classified::StringScalar(_)
-        | Classified::StringType => Either12::J(StringField {
-            inner: yggdryl_field::StringField::new(name, nullable),
+        Classified::Value(Inferred::Utf8(_))
+        | Classified::Utf8Scalar(_)
+        | Classified::Utf8Type => Either12::J(Utf8Field {
+            inner: yggdryl_field::Utf8Field::new(name, nullable),
         }),
         Classified::Float16Scalar(_) | Classified::Float16Type => Either12::K(Float16Field {
             inner: yggdryl_field::Float16Field::new(name, nullable),

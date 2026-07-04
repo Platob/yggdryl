@@ -3,8 +3,8 @@
 //! Every integer and float type is exposed as its data type and its logical
 //! optional data type (e.g. `Int64Type`, `OptionalInt64Type`; the `float16`
 //! family's native `half::f16` crosses its codec/scalar values as a Python
-//! `float`), alongside `BinaryType` / `OptionalBinaryType`, `StringType` /
-//! `OptionalStringType` (the `utf8` logical type over binary storage, its value
+//! `float`), alongside `BinaryType` / `OptionalBinaryType`, `Utf8Type` /
+//! `OptionalUtf8Type` (the `utf8` logical type over binary storage, its value
 //! crossing as `str`), `NullType`, `UnionType`, `StructType` (built from a dict
 //! mapping field names to example values or dtype instances, resolved through the
 //! factory's inference) and its concrete serie type (e.g. `Int64SerieType`, the
@@ -370,16 +370,16 @@ impl OptionalBinaryType {
 
 /// The Apache Arrow `utf8` data type: a variable-length UTF-8 string. A **logical**
 /// type over `binary` storage (a string *is* bytes, reinterpreted as text), so its
-/// byte codec is UTF-8 and validates on the way back; the core `StringBuffer` stays
+/// byte codec is UTF-8 and validates on the way back; the core `Utf8Buffer` stays
 /// Rust-only, so the value crosses as Python `str`.
 #[pyclass]
 #[derive(Default)]
-pub struct StringType {
-    pub(crate) inner: yggdryl_dtype::StringType,
+pub struct Utf8Type {
+    pub(crate) inner: yggdryl_dtype::Utf8Type,
 }
 
 #[pymethods]
-impl StringType {
+impl Utf8Type {
     /// The `utf8` data type.
     #[new]
     fn new() -> Self {
@@ -422,9 +422,9 @@ impl StringType {
         self.inner.default_value()
     }
 
-    /// The default scalar: a `yggdryl.scalar.StringScalar` holding `""`.
-    fn default_scalar(&self) -> crate::scalar::StringScalar {
-        crate::scalar::StringScalar {
+    /// The default scalar: a `yggdryl.scalar.Utf8Scalar` holding `""`.
+    fn default_scalar(&self) -> crate::scalar::Utf8Scalar {
+        crate::scalar::Utf8Scalar {
             inner: self.inner.default_scalar(),
         }
     }
@@ -432,22 +432,22 @@ impl StringType {
     /// The `utf8` field named `name` (nullable by default) — a `yggdryl.field`
     /// class.
     #[pyo3(signature = (name, nullable = true))]
-    fn field(&self, name: String, nullable: bool) -> crate::field::StringField {
-        crate::field::StringField {
+    fn field(&self, name: String, nullable: bool) -> crate::field::Utf8Field {
+        crate::field::Utf8Field {
             inner: self.inner.field(name, nullable),
         }
     }
 
     /// A `utf8` scalar holding `value` — a `yggdryl.scalar` class.
-    fn scalar(&self, value: String) -> crate::scalar::StringScalar {
-        crate::scalar::StringScalar {
+    fn scalar(&self, value: String) -> crate::scalar::Utf8Scalar {
+        crate::scalar::Utf8Scalar {
             inner: self.inner.scalar(value),
         }
     }
 
     /// The logical optional of this type (stored as the null-or-value union).
-    fn optional(&self) -> OptionalStringType {
-        OptionalStringType::default()
+    fn optional(&self) -> OptionalUtf8Type {
+        OptionalUtf8Type::default()
     }
 }
 
@@ -455,12 +455,12 @@ impl StringType {
 /// union.
 #[pyclass]
 #[derive(Default)]
-pub struct OptionalStringType {
-    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::StringType>,
+pub struct OptionalUtf8Type {
+    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::Utf8Type>,
 }
 
 #[pymethods]
-impl OptionalStringType {
+impl OptionalUtf8Type {
     /// The optional `utf8` data type.
     #[new]
     fn new() -> Self {
@@ -488,8 +488,8 @@ impl OptionalStringType {
     }
 
     /// The value type this optional wraps.
-    fn value_type(&self) -> StringType {
-        StringType::default()
+    fn value_type(&self) -> Utf8Type {
+        Utf8Type::default()
     }
 
     /// The physical storage: the sparse null-or-value union.
@@ -505,8 +505,8 @@ impl OptionalStringType {
     }
 
     /// The default scalar: the null variant (the scalar models nullness).
-    fn default_scalar(&self) -> crate::scalar::OptionalStringScalar {
-        crate::scalar::OptionalStringScalar {
+    fn default_scalar(&self) -> crate::scalar::OptionalUtf8Scalar {
+        crate::scalar::OptionalUtf8Scalar {
             inner: self.inner.default_scalar(),
         }
     }
@@ -514,16 +514,16 @@ impl OptionalStringType {
     /// The optional-`utf8` field named `name` (nullable by default) — a
     /// `yggdryl.field` class.
     #[pyo3(signature = (name, nullable = true))]
-    fn field(&self, name: String, nullable: bool) -> crate::field::OptionalStringField {
-        crate::field::OptionalStringField {
+    fn field(&self, name: String, nullable: bool) -> crate::field::OptionalUtf8Field {
+        crate::field::OptionalUtf8Field {
             inner: self.inner.field(name, nullable),
         }
     }
 
     /// An optional-`utf8` scalar holding the value variant `value` — a
     /// `yggdryl.scalar` class.
-    fn scalar(&self, value: String) -> crate::scalar::OptionalStringScalar {
-        crate::scalar::OptionalStringScalar {
+    fn scalar(&self, value: String) -> crate::scalar::OptionalUtf8Scalar {
+        crate::scalar::OptionalUtf8Scalar {
             inner: self.inner.scalar(value),
         }
     }
@@ -1337,8 +1337,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullType>()?;
     module.add_class::<BinaryType>()?;
     module.add_class::<OptionalBinaryType>()?;
-    module.add_class::<StringType>()?;
-    module.add_class::<OptionalStringType>()?;
+    module.add_class::<Utf8Type>()?;
+    module.add_class::<OptionalUtf8Type>()?;
     module.add_class::<Int8Type>()?;
     module.add_class::<OptionalInt8Type>()?;
     module.add_class::<Int16Type>()?;

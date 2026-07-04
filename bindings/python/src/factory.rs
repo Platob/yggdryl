@@ -37,7 +37,7 @@ pub(crate) enum Inferred {
     Float64(f64),
     Binary(Vec<u8>),
     /// A Python `str` → `utf8`, symmetric with `bytes` → `binary`.
-    String(String),
+    Utf8(String),
     Serie(Vec<i64>),
     /// A homogeneous list carrying any fractional value → a `float64` serie.
     FloatSerie(Vec<f64>),
@@ -54,7 +54,7 @@ impl Inferred {
             Inferred::Int64(_) => yggdryl_dtype::Int64Type.to_arrow(),
             Inferred::Float64(_) => yggdryl_dtype::Float64Type.to_arrow(),
             Inferred::Binary(_) => yggdryl_dtype::BinaryType.to_arrow(),
-            Inferred::String(_) => yggdryl_dtype::StringType.to_arrow(),
+            Inferred::Utf8(_) => yggdryl_dtype::Utf8Type.to_arrow(),
             Inferred::Serie(_) => {
                 yggdryl_dtype::TypedSerieType::<yggdryl_dtype::Int64Type>::default().to_arrow()
             }
@@ -83,8 +83,8 @@ impl Inferred {
             Inferred::Binary(bytes) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::BinaryScalar::new(bytes.clone()).to_arrow_scalar(),
             ),
-            Inferred::String(text) => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::StringScalar::new(text.clone()).to_arrow_scalar(),
+            Inferred::Utf8(text) => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::Utf8Scalar::new(text.clone()).to_arrow_scalar(),
             ),
             Inferred::Serie(values) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::Int64Serie::from(values.clone()).to_arrow_scalar(),
@@ -155,7 +155,7 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
     arrow_of!(
         NullType,
         BinaryType,
-        StringType,
+        Utf8Type,
         StructType,
         Int8Type,
         Int16Type,
@@ -223,7 +223,7 @@ fn infer(value: &Bound<'_, PyAny>) -> PyResult<Inferred> {
     }
     // A Python `str` → `utf8`, symmetric with `bytes` → `binary`.
     if value.is_instance_of::<PyString>() {
-        return Ok(Inferred::String(value.extract()?));
+        return Ok(Inferred::Utf8(value.extract()?));
     }
     if value.is_instance_of::<PyList>() {
         // A homogeneous list of ints → an int64 serie; a list carrying any
@@ -270,7 +270,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     same_scalar!(
         NullScalar,
         BinaryScalar,
-        StringScalar,
+        Utf8Scalar,
         RecordScalar,
         Int8Scalar,
         Int16Scalar,
@@ -310,7 +310,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     }
     default_scalar_of!(
         (BinaryType, BinaryScalar),
-        (StringType, StringScalar),
+        (Utf8Type, Utf8Scalar),
         (Int8Type, Int8Scalar),
         (Int16Type, Int16Scalar),
         (Int32Type, Int32Scalar),
@@ -367,10 +367,10 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             },
         )?
         .into_any(),
-        Inferred::String(text) => Py::new(
+        Inferred::Utf8(text) => Py::new(
             py,
-            crate::scalar::StringScalar {
-                inner: yggdryl_scalar::StringScalar::new(text),
+            crate::scalar::Utf8Scalar {
+                inner: yggdryl_scalar::Utf8Scalar::new(text),
             },
         )?
         .into_any(),
@@ -414,7 +414,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     same_dtype!(
         NullType,
         BinaryType,
-        StringType,
+        Utf8Type,
         Int8Type,
         Int16Type,
         Int32Type,
@@ -453,7 +453,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         scalar,
         (NullScalar, NullType),
         (BinaryScalar, BinaryType),
-        (StringScalar, StringType),
+        (Utf8Scalar, Utf8Type),
         (Int8Scalar, Int8Type),
         (Int16Scalar, Int16Type),
         (Int32Scalar, Int32Type),
@@ -485,7 +485,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         field,
         (NullField, NullType),
         (BinaryField, BinaryType),
-        (StringField, StringType),
+        (Utf8Field, Utf8Type),
         (Int8Field, Int8Type),
         (Int16Field, Int16Type),
         (Int32Field, Int32Type),
@@ -518,7 +518,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         Inferred::Int64(_) => Py::new(py, crate::dtype::Int64Type::default())?.into_any(),
         Inferred::Float64(_) => Py::new(py, crate::dtype::Float64Type::default())?.into_any(),
         Inferred::Binary(_) => Py::new(py, crate::dtype::BinaryType::default())?.into_any(),
-        Inferred::String(_) => Py::new(py, crate::dtype::StringType::default())?.into_any(),
+        Inferred::Utf8(_) => Py::new(py, crate::dtype::Utf8Type::default())?.into_any(),
         Inferred::Serie(_) => Py::new(py, crate::dtype::Int64SerieType::default())?.into_any(),
         Inferred::FloatSerie(_) => {
             Py::new(py, crate::dtype::Float64SerieType::default())?.into_any()
@@ -568,7 +568,7 @@ fn field(
     }
     field_of_dtype!(
         (BinaryType, BinaryField),
-        (StringType, StringField),
+        (Utf8Type, Utf8Field),
         (Int8Type, Int8Field),
         (Int16Type, Int16Field),
         (Int32Type, Int32Field),
@@ -620,7 +620,7 @@ fn field(
     }
     field_of_scalar!(
         (BinaryScalar, BinaryField),
-        (StringScalar, StringField),
+        (Utf8Scalar, Utf8Field),
         (Int8Scalar, Int8Field),
         (Int16Scalar, Int16Field),
         (Int32Scalar, Int32Field),
@@ -673,10 +673,10 @@ fn field(
             },
         )?
         .into_any(),
-        Inferred::String(_) => Py::new(
+        Inferred::Utf8(_) => Py::new(
             py,
-            crate::field::StringField {
-                inner: yggdryl_field::StringField::new(name, nullable),
+            crate::field::Utf8Field {
+                inner: yggdryl_field::Utf8Field::new(name, nullable),
             },
         )?
         .into_any(),

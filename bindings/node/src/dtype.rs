@@ -2,8 +2,8 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (`yggdryl.dtype.Int64Type`, `yggdryl.dtype.OptionalInt64Type`, …),
-//! alongside `BinaryType` / `OptionalBinaryType`, `StringType` /
-//! `OptionalStringType` (the `utf8` string, a logical type over `binary`
+//! alongside `BinaryType` / `OptionalBinaryType`, `Utf8Type` /
+//! `OptionalUtf8Type` (the `utf8` string, a logical type over `binary`
 //! storage), `NullType`, `UnionType`,
 //! `StructType` (its child fields inferred from a plain JS object of example
 //! values, member by member through the factory's inference) and its
@@ -399,12 +399,12 @@ impl OptionalBinaryType {
 /// type over `binary` storage; its native value crosses as a JS `string`.
 #[napi(namespace = "dtype")]
 #[derive(Default)]
-pub struct StringType {
-    pub(crate) inner: yggdryl_dtype::StringType,
+pub struct Utf8Type {
+    pub(crate) inner: yggdryl_dtype::Utf8Type,
 }
 
 #[napi(namespace = "dtype")]
-impl StringType {
+impl Utf8Type {
     /// The `utf8` data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -457,32 +457,32 @@ impl StringType {
 
     /// The field of this type named `name` (nullable by default).
     #[napi]
-    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::StringField {
-        crate::field::StringField {
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::Utf8Field {
+        crate::field::Utf8Field {
             inner: self.inner.field(name, nullable.unwrap_or(true)),
         }
     }
 
-    /// A `yggdryl.scalar.StringScalar` holding `value`.
+    /// A `yggdryl.scalar.Utf8Scalar` holding `value`.
     #[napi]
-    pub fn scalar(&self, value: String) -> crate::scalar::StringScalar {
-        crate::scalar::StringScalar {
+    pub fn scalar(&self, value: String) -> crate::scalar::Utf8Scalar {
+        crate::scalar::Utf8Scalar {
             inner: self.inner.scalar(value),
         }
     }
 
-    /// The default scalar: a `yggdryl.scalar.StringScalar` holding the empty string.
+    /// The default scalar: a `yggdryl.scalar.Utf8Scalar` holding the empty string.
     #[napi]
-    pub fn default_scalar(&self) -> crate::scalar::StringScalar {
-        crate::scalar::StringScalar {
+    pub fn default_scalar(&self) -> crate::scalar::Utf8Scalar {
+        crate::scalar::Utf8Scalar {
             inner: self.inner.default_scalar(),
         }
     }
 
     /// The logical optional of this type (stored as the null-or-value union).
     #[napi]
-    pub fn optional(&self) -> OptionalStringType {
-        OptionalStringType::default()
+    pub fn optional(&self) -> OptionalUtf8Type {
+        OptionalUtf8Type::default()
     }
 }
 
@@ -490,12 +490,12 @@ impl StringType {
 /// null-or-`utf8` union.
 #[napi(namespace = "dtype")]
 #[derive(Default)]
-pub struct OptionalStringType {
-    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::StringType>,
+pub struct OptionalUtf8Type {
+    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::Utf8Type>,
 }
 
 #[napi(namespace = "dtype")]
-impl OptionalStringType {
+impl OptionalUtf8Type {
     /// The optional `utf8` data type.
     #[napi(constructor)]
     #[allow(clippy::new_without_default)]
@@ -529,8 +529,8 @@ impl OptionalStringType {
 
     /// The value type this optional wraps.
     #[napi]
-    pub fn value_type(&self) -> StringType {
-        StringType::default()
+    pub fn value_type(&self) -> Utf8Type {
+        Utf8Type::default()
     }
 
     /// The physical storage: the sparse null-or-value union.
@@ -549,24 +549,24 @@ impl OptionalStringType {
 
     /// The field of this type named `name` (nullable by default).
     #[napi]
-    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::OptionalStringField {
-        crate::field::OptionalStringField {
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::OptionalUtf8Field {
+        crate::field::OptionalUtf8Field {
             inner: self.inner.field(name, nullable.unwrap_or(true)),
         }
     }
 
-    /// A `yggdryl.scalar.OptionalStringScalar` holding the value variant `value`.
+    /// A `yggdryl.scalar.OptionalUtf8Scalar` holding the value variant `value`.
     #[napi]
-    pub fn scalar(&self, value: String) -> crate::scalar::OptionalStringScalar {
-        crate::scalar::OptionalStringScalar {
+    pub fn scalar(&self, value: String) -> crate::scalar::OptionalUtf8Scalar {
+        crate::scalar::OptionalUtf8Scalar {
             inner: self.inner.scalar(value),
         }
     }
 
     /// The default scalar: the null variant (the scalar models nullness).
     #[napi]
-    pub fn default_scalar(&self) -> crate::scalar::OptionalStringScalar {
-        crate::scalar::OptionalStringScalar {
+    pub fn default_scalar(&self) -> crate::scalar::OptionalUtf8Scalar {
+        crate::scalar::OptionalUtf8Scalar {
             inner: self.inner.default_scalar(),
         }
     }

@@ -88,7 +88,7 @@ test('factory accepts its own float data types', () => {
 test('factory infers utf8 from a string', () => {
   // A string -> utf8, symmetric with a Buffer -> binary.
   const text = factory.scalar('hello')
-  assert.ok(text instanceof scalar.StringScalar)
+  assert.ok(text instanceof scalar.Utf8Scalar)
   assert.equal(text.dataType().name(), 'utf8')
   assert.equal(text.value(), 'hello')
   assert.equal(factory.dtype('hello').name(), 'utf8')
@@ -122,16 +122,16 @@ test('factory accepts its own float16 handles', () => {
 
 test('factory accepts its own string handles', () => {
   // A string scalar handle re-wraps as the same class over the same value...
-  assert.ok(factory.scalar(new scalar.StringScalar('hi')) instanceof scalar.StringScalar)
-  assert.equal(factory.scalar(new scalar.StringScalar('hi')).value(), 'hi')
-  assert.equal(factory.dtype(new scalar.StringScalar('hi')).name(), 'utf8')
-  assert.equal(factory.field('label', new scalar.StringScalar('hi')).dataType().name(), 'utf8')
+  assert.ok(factory.scalar(new scalar.Utf8Scalar('hi')) instanceof scalar.Utf8Scalar)
+  assert.equal(factory.scalar(new scalar.Utf8Scalar('hi')).value(), 'hi')
+  assert.equal(factory.dtype(new scalar.Utf8Scalar('hi')).name(), 'utf8')
+  assert.equal(factory.field('label', new scalar.Utf8Scalar('hi')).dataType().name(), 'utf8')
 
   // ...and a string data type is the identity for dtype(), its default scalar the
   // empty string for scalar().
-  assert.equal(factory.dtype(new dtype.StringType()).name(), 'utf8')
-  assert.equal(factory.scalar(new dtype.StringType()).value(), '')
-  assert.equal(factory.field('label', new dtype.StringType()).dataType().name(), 'utf8')
+  assert.equal(factory.dtype(new dtype.Utf8Type()).name(), 'utf8')
+  assert.equal(factory.scalar(new dtype.Utf8Type()).value(), '')
+  assert.equal(factory.field('label', new dtype.Utf8Type()).dataType().name(), 'utf8')
 })
 
 test('factory.field infers the type and keeps the name', () => {

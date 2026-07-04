@@ -1,4 +1,4 @@
-//! The [`StringType`] data type.
+//! The [`Utf8Type`] data type.
 
 use crate::{BinaryType, DataError, DataType, Logical, TypedDataType, TypedLogical};
 
@@ -13,39 +13,39 @@ use crate::{BinaryType, DataError, DataType, Logical, TypedDataType, TypedLogica
 /// **validates** them (non-UTF-8 bytes are a
 /// [`DataError::Io`]-wrapped [`InvalidUtf8`](yggdryl_core::IOError::InvalidUtf8)),
 /// unlike `binary`'s identity codec. Its scalar
-/// (`yggdryl_scalar::StringScalar`) holds the value as a core
-/// [`StringBuffer`](yggdryl_core::StringBuffer), plugging the string into the
+/// (`yggdryl_scalar::Utf8Scalar`) holds the value as a core
+/// [`Utf8Buffer`](yggdryl_core::Utf8Buffer), plugging the string into the
 /// positioned-IO layer with a typed `char` view.
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataType, DataTypeId, Logical, StringType, TypedDataType};
+/// use yggdryl_dtype::{arrow_schema, DataType, DataTypeId, Logical, Utf8Type, TypedDataType};
 ///
-/// assert_eq!(StringType.name(), "utf8");
-/// assert_eq!(StringType.arrow_format(), "u");
-/// assert_eq!((StringType.byte_width(), StringType.bit_width()), (None, None));
-/// assert_eq!(StringType::ID, DataTypeId::Utf8);
-/// assert_eq!(StringType.storage().name(), "binary"); // a string is stored as binary bytes
+/// assert_eq!(Utf8Type.name(), "utf8");
+/// assert_eq!(Utf8Type.arrow_format(), "u");
+/// assert_eq!((Utf8Type.byte_width(), Utf8Type.bit_width()), (None, None));
+/// assert_eq!(Utf8Type::ID, DataTypeId::Utf8);
+/// assert_eq!(Utf8Type.storage().name(), "binary"); // a string is stored as binary bytes
 ///
 /// // The byte codec is UTF-8 and validates on the way back.
-/// let bytes = StringType.native_to_bytes(&"héllo".to_string());
-/// assert_eq!(StringType.native_from_bytes(&bytes).unwrap(), "héllo");
-/// assert!(StringType.native_from_bytes(&[0xFF]).is_err()); // not valid UTF-8
-/// assert_eq!(StringType.default_value(), String::new());
+/// let bytes = Utf8Type.native_to_bytes(&"héllo".to_string());
+/// assert_eq!(Utf8Type.native_from_bytes(&bytes).unwrap(), "héllo");
+/// assert!(Utf8Type.native_from_bytes(&[0xFF]).is_err()); // not valid UTF-8
+/// assert_eq!(Utf8Type.default_value(), String::new());
 ///
 /// // from_arrow is the exact inverse of to_arrow (Arrow's Utf8).
-/// assert_eq!(StringType.to_arrow(), arrow_schema::DataType::Utf8);
-/// assert_eq!(StringType::from_arrow(&StringType.to_arrow()).unwrap(), StringType);
-/// assert!(StringType::from_arrow(&arrow_schema::DataType::Binary).is_err());
+/// assert_eq!(Utf8Type.to_arrow(), arrow_schema::DataType::Utf8);
+/// assert_eq!(Utf8Type::from_arrow(&Utf8Type.to_arrow()).unwrap(), Utf8Type);
+/// assert!(Utf8Type::from_arrow(&arrow_schema::DataType::Binary).is_err());
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct StringType;
+pub struct Utf8Type;
 
-impl StringType {
+impl Utf8Type {
     /// This type's [`DataTypeId`](crate::DataTypeId).
     pub const ID: crate::DataTypeId = crate::DataTypeId::Utf8;
 }
 
-impl DataType for StringType {
+impl DataType for Utf8Type {
     fn name(&self) -> &str {
         "utf8"
     }
@@ -66,14 +66,14 @@ impl DataType for StringType {
         match data_type {
             arrow_schema::DataType::Utf8 => Ok(Self),
             other => Err(DataError::IncompatibleArrowType {
-                expected: "StringType".to_string(),
+                expected: "Utf8Type".to_string(),
                 got: other.to_string(),
             }),
         }
     }
 }
 
-impl Logical for StringType {
+impl Logical for Utf8Type {
     type Storage = BinaryType;
 
     fn storage(&self) -> &BinaryType {
@@ -83,7 +83,7 @@ impl Logical for StringType {
     }
 }
 
-impl TypedDataType<String> for StringType {
+impl TypedDataType<String> for Utf8Type {
     fn native_to_bytes(&self, value: &String) -> Vec<u8> {
         value.as_bytes().to_vec()
     }
@@ -102,4 +102,4 @@ impl TypedDataType<String> for StringType {
     }
 }
 
-impl TypedLogical<String> for StringType {}
+impl TypedLogical<String> for Utf8Type {}

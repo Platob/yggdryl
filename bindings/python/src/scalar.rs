@@ -4,9 +4,9 @@
 //! optional scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`; the `float16`
 //! family's native `half::f16` crosses as a Python `float`), alongside
 //! `BinaryScalar` / `OptionalBinaryScalar` (whose value is held as a core
-//! positioned-IO `ByteBuffer` — `to_io()` hands one back), `StringScalar` /
-//! `OptionalStringScalar` (a `utf8` value crossing as Python `str`, its UTF-8
-//! bytes reachable through `as_bytes` — the core `StringBuffer` stays Rust-only,
+//! positioned-IO `ByteBuffer` — `to_io()` hands one back), `Utf8Scalar` /
+//! `OptionalUtf8Scalar` (a `utf8` value crossing as Python `str`, its UTF-8
+//! bytes reachable through `as_bytes` — the core `Utf8Buffer` stays Rust-only,
 //! so there is no `to_io()`), `NullScalar`, `RecordScalar` (the `struct` row built
 //! from a dict, its children inferred like the factory's) and its serie scalar
 //! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same suffixed
@@ -974,21 +974,21 @@ float16_scalar_py!(
 );
 
 /// A single, possibly-null `utf8` value, holding its text as new Python `str`
-/// objects at the FFI boundary (the core `StringBuffer` stays Rust-only — see the
+/// objects at the FFI boundary (the core `Utf8Buffer` stays Rust-only — see the
 /// module doc). It mirrors [`BinaryScalar`], except the value crosses as `str`
 /// (its UTF-8 `bytes` reachable through `as_bytes`) instead of `bytes`.
 #[pyclass]
-pub struct StringScalar {
-    pub(crate) inner: yggdryl_scalar::StringScalar,
+pub struct Utf8Scalar {
+    pub(crate) inner: yggdryl_scalar::Utf8Scalar,
 }
 
 #[pymethods]
-impl StringScalar {
+impl Utf8Scalar {
     /// A `utf8` scalar holding `value`.
     #[new]
     fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::StringScalar::new(value),
+            inner: yggdryl_scalar::Utf8Scalar::new(value),
         }
     }
 
@@ -996,7 +996,7 @@ impl StringScalar {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::StringScalar::null(),
+            inner: yggdryl_scalar::Utf8Scalar::null(),
         }
     }
 
@@ -1017,8 +1017,8 @@ impl StringScalar {
     }
 
     /// The scalar's data type.
-    fn data_type(&self) -> crate::dtype::StringType {
-        crate::dtype::StringType::default()
+    fn data_type(&self) -> crate::dtype::Utf8Type {
+        crate::dtype::Utf8Type::default()
     }
 
     /// The value as an `int` in the i8 range; raises `ValueError` (a string
@@ -1096,20 +1096,20 @@ impl StringScalar {
 /// A single value of the union between null and `utf8`: a value variant, or the
 /// null variant — the string counterpart of [`OptionalBinaryScalar`].
 #[pyclass]
-pub struct OptionalStringScalar {
+pub struct OptionalUtf8Scalar {
     pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
-        yggdryl_dtype::StringType,
-        yggdryl_scalar::StringScalar,
+        yggdryl_dtype::Utf8Type,
+        yggdryl_scalar::Utf8Scalar,
     >,
 }
 
 #[pymethods]
-impl OptionalStringScalar {
+impl OptionalUtf8Scalar {
     /// A scalar holding the `utf8` value variant `value`.
     #[new]
     fn new(value: String) -> Self {
         Self {
-            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::StringScalar::new(
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Utf8Scalar::new(
                 value,
             )),
         }
@@ -1134,8 +1134,8 @@ impl OptionalStringScalar {
     }
 
     /// The inner scalar, when this holds the value variant.
-    fn scalar(&self) -> Option<StringScalar> {
-        self.inner.scalar().map(|scalar| StringScalar {
+    fn scalar(&self) -> Option<Utf8Scalar> {
+        self.inner.scalar().map(|scalar| Utf8Scalar {
             inner: scalar.clone(),
         })
     }
@@ -1147,8 +1147,8 @@ impl OptionalStringScalar {
     }
 
     /// The scalar's data type: the logical optional of the value type.
-    fn data_type(&self) -> crate::dtype::OptionalStringType {
-        crate::dtype::OptionalStringType::default()
+    fn data_type(&self) -> crate::dtype::OptionalUtf8Type {
+        crate::dtype::OptionalUtf8Type::default()
     }
 
     /// The value as an `int` in the i8 range; raises `ValueError` (a string
@@ -1666,8 +1666,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullScalar>()?;
     module.add_class::<BinaryScalar>()?;
     module.add_class::<OptionalBinaryScalar>()?;
-    module.add_class::<StringScalar>()?;
-    module.add_class::<OptionalStringScalar>()?;
+    module.add_class::<Utf8Scalar>()?;
+    module.add_class::<OptionalUtf8Scalar>()?;
     module.add_class::<Int8Scalar>()?;
     module.add_class::<OptionalInt8Scalar>()?;
     module.add_class::<Int16Scalar>()?;

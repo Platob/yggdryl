@@ -1,4 +1,4 @@
-//! The [`StringBuffer`] in-memory UTF-8 string resource.
+//! The [`Utf8Buffer`] in-memory UTF-8 string resource.
 
 use super::{ByteBuffer, IOBase, IOError, RawIOBase, Whence};
 
@@ -10,16 +10,16 @@ use super::{ByteBuffer, IOBase, IOError, RawIOBase, Whence};
 /// bridge zero-copy to Arrow's `utf8`. On top of that it adds a typed
 /// [`IOBase<char>`] view — writing a `char` appends its UTF-8 encoding, and
 /// [`size`](IOBase::size) counts Unicode scalar values (`char`s) rather than bytes.
-/// Because UTF-8 is variable-width, [`char_len`](StringBuffer::char_len) scans the
+/// Because UTF-8 is variable-width, [`char_len`](Utf8Buffer::char_len) scans the
 /// content and the typed streaming helpers are exact only for single-byte (ASCII)
 /// text; raw byte writes may leave the bytes non-UTF-8, so
-/// [`as_str`](StringBuffer::as_str) validates and returns
+/// [`as_str`](Utf8Buffer::as_str) validates and returns
 /// [`IOError::InvalidUtf8`] rather than assuming.
 ///
 /// ```
-/// use yggdryl_core::{IOBase, RawIOBase, StringBuffer, Whence};
+/// use yggdryl_core::{IOBase, RawIOBase, Utf8Buffer, Whence};
 ///
-/// let mut text = StringBuffer::from("hé");
+/// let mut text = Utf8Buffer::from("hé");
 /// assert_eq!(text.as_str().unwrap(), "hé");
 /// assert_eq!(text.byte_size(), 3); // 'h' = 1 byte, 'é' = 2 bytes
 /// assert_eq!(IOBase::<char>::size(&text), 2); // ...but two chars
@@ -33,11 +33,11 @@ use super::{ByteBuffer, IOBase, IOError, RawIOBase, Whence};
 /// # Ok::<(), yggdryl_core::IOError>(())
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StringBuffer {
+pub struct Utf8Buffer {
     bytes: ByteBuffer,
 }
 
-impl StringBuffer {
+impl Utf8Buffer {
     /// An empty string buffer.
     pub fn new() -> Self {
         Self {
@@ -87,21 +87,21 @@ impl StringBuffer {
     }
 }
 
-impl From<String> for StringBuffer {
+impl From<String> for Utf8Buffer {
     fn from(value: String) -> Self {
         Self::from_string(value)
     }
 }
 
-impl From<&str> for StringBuffer {
+impl From<&str> for Utf8Buffer {
     fn from(value: &str) -> Self {
         Self::from_string(value.to_string())
     }
 }
 
-// The raw surface delegates to the inner byte buffer: a StringBuffer is a byte
+// The raw surface delegates to the inner byte buffer: a Utf8Buffer is a byte
 // buffer over UTF-8 bytes, so it borrows every positioned byte / bit method.
-impl RawIOBase for StringBuffer {
+impl RawIOBase for Utf8Buffer {
     fn byte_size(&self) -> usize {
         self.bytes.byte_size()
     }
@@ -156,7 +156,7 @@ impl RawIOBase for StringBuffer {
 }
 
 // The typed char view: a `char` becomes its UTF-8 bytes, `size` counts chars.
-impl IOBase<char> for StringBuffer {
+impl IOBase<char> for Utf8Buffer {
     fn value_to_bytes(&self, value: &char) -> Vec<u8> {
         let mut buffer = [0u8; 4];
         value.encode_utf8(&mut buffer).as_bytes().to_vec()
