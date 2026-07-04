@@ -92,12 +92,27 @@ def test_data_type_field_factory_matches_the_field_class():
     )
 
 
-def test_int64_serie_field():
-    scores = field.Int64SerieField("scores")
+# (serie field, serie type, value type name)
+SERIES = [
+    (field.Int8SerieField, dtype.Int8SerieType, "int8"),
+    (field.Int16SerieField, dtype.Int16SerieType, "int16"),
+    (field.Int32SerieField, dtype.Int32SerieType, "int32"),
+    (field.Int64SerieField, dtype.Int64SerieType, "int64"),
+    (field.UInt8SerieField, dtype.UInt8SerieType, "uint8"),
+    (field.UInt16SerieField, dtype.UInt16SerieType, "uint16"),
+    (field.UInt32SerieField, dtype.UInt32SerieType, "uint32"),
+    (field.UInt64SerieField, dtype.UInt64SerieType, "uint64"),
+]
+
+
+@pytest.mark.parametrize("case", SERIES, ids=[case[2] for case in SERIES])
+def test_serie_field(case):
+    field_class, serie_type, name = case
+    scores = field_class("scores")
     assert scores.name() == "scores"
     assert scores.is_nullable() is True
     assert scores.data_type().name() == "list"
-    assert scores.data_type().value_type().name() == "int64"
-    assert field.Int64SerieField("scores", False).is_nullable() is False
+    assert scores.data_type().value_type().name() == name
+    assert field_class("scores", False).is_nullable() is False
     # The data type's factory builds the same field.
-    assert dtype.Int64SerieType().field("scores").data_type().name() == "list"
+    assert serie_type().field("scores").data_type().name() == "list"

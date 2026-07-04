@@ -1,10 +1,10 @@
 //! Integration tests for the `serie` field.
 
-use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Serie, TypedDataType};
+use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Serie, TypedDataType, UInt8Type};
 use yggdryl_field::{Field, SerieField, TypedField};
 
 #[test]
-fn list_field_carries_both_layers() {
+fn serie_field_carries_both_layers() {
     let scores = SerieField::<Int64Type>::new("scores", true);
     assert_eq!(scores.name(), "scores");
     assert_eq!(scores.data_type().name(), "list");
@@ -18,7 +18,17 @@ fn list_field_carries_both_layers() {
 }
 
 #[test]
-fn list_field_is_send_sync() {
+fn serie_field_is_generic_over_the_value_type() {
+    // The same field shape holds for any value type; the widths differ only in
+    // the value type they report.
+    let flags = SerieField::<UInt8Type>::new("flags", false);
+    assert_eq!(flags.data_type().value_type().name(), "uint8");
+    assert!(!flags.is_nullable());
+    assert_eq!(SerieField::from_arrow(&flags.to_arrow()).unwrap(), flags);
+}
+
+#[test]
+fn serie_field_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<SerieField<Int64Type>>();
 }

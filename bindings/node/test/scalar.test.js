@@ -152,26 +152,52 @@ test('null scalar', () => {
   assert.equal(nothing.dataType().name(), 'null')
 })
 
-test('int64 serie holds a list', () => {
-  const numbers = new scalar.Int64Serie([1n, 2n, 3n])
-  assert.equal(numbers.isNull(), false)
-  assert.equal(numbers.isEmpty(), false)
-  assert.equal(numbers.len(), 3)
-  assert.deepEqual(numbers.values(), [1n, 2n, 3n])
-  assert.equal(numbers.getAt(1), 2n)
-  assert.equal(numbers.getScalarAt(2).value(), 3n)
-  assert.equal(numbers.getScalarAt(3), null) // out of bounds
-  assert.equal(numbers.dataType().name(), 'list')
-  assert.throws(() => numbers.getAt(3)) // out of bounds
+// The 8-32 bit series carry elements as `number`; the 64-bit series as `BigInt`.
+const SERIES = [
+  { serieClass: scalar.Int8Serie, name: 'int8', low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
+  { serieClass: scalar.Int16Serie, name: 'int16', low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
+  { serieClass: scalar.Int32Serie, name: 'int32', low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
+  { serieClass: scalar.Int64Serie, name: 'int64', low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
+  { serieClass: scalar.UInt8Serie, name: 'uint8', low: 0, high: 2 ** 8 - 1, wire: (v) => v },
+  { serieClass: scalar.UInt16Serie, name: 'uint16', low: 0, high: 2 ** 16 - 1, wire: (v) => v },
+  { serieClass: scalar.UInt32Serie, name: 'uint32', low: 0, high: 2 ** 32 - 1, wire: (v) => v },
+  { serieClass: scalar.UInt64Serie, name: 'uint64', low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
+]
 
-  // The empty serie and null are distinct states.
-  const empty = new scalar.Int64Serie([])
-  assert.equal(empty.isNull(), false)
-  assert.equal(empty.isEmpty(), true)
-  assert.deepEqual(empty.values(), [])
+for (const { serieClass, name, low, high, wire } of SERIES) {
+  test(`${name} serie holds a sequence`, () => {
+    const numbers = new serieClass([low, wire(2), high])
+    assert.equal(numbers.isNull(), false)
+    assert.equal(numbers.isEmpty(), false)
+    assert.equal(numbers.len(), 3)
+    assert.deepEqual(numbers.values(), [low, wire(2), high]) // extremes survive the buffer
+    assert.equal(numbers.getAt(0), low)
+    assert.equal(numbers.getAt(1), wire(2))
+    assert.equal(numbers.getAt(2), high)
+    assert.equal(numbers.getScalarAt(2).value(), high)
+    assert.equal(numbers.getScalarAt(3), null) // out of bounds
+    assert.equal(numbers.dataType().name(), 'list')
+    assert.equal(numbers.dataType().valueType().name(), name)
+    assert.throws(() => numbers.getAt(3)) // out of bounds
 
-  const missing = scalar.Int64Serie.null()
-  assert.equal(missing.isNull(), true)
-  assert.equal(missing.values(), null)
-  assert.throws(() => missing.getAt(0))
+    // The empty serie and null are distinct states.
+    const empty = new serieClass([])
+    assert.equal(empty.isNull(), false)
+    assert.equal(empty.isEmpty(), true)
+    assert.deepEqual(empty.values(), [])
+
+    const missing = serieClass.null()
+    assert.equal(missing.isNull(), true)
+    assert.equal(missing.values(), null)
+    assert.throws(() => missing.getAt(0))
+  })
+}
+
+test('a serie element out of the value range is refused', () => {
+  // The 8-32 bit constructors range-check each element with an actionable error.
+  assert.throws(() => new scalar.Int8Serie([128]), /int8/)
+  assert.throws(() => new scalar.UInt8Serie([-1]), /uint8/)
+  // The 64-bit constructors refuse a BigInt outside the width.
+  assert.throws(() => new scalar.Int64Serie([2n ** 63n]))
+  assert.throws(() => new scalar.UInt64Serie([-1n]))
 })

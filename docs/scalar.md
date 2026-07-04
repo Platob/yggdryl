@@ -14,14 +14,15 @@ idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
 `BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
 scalars are concrete per-type classes (`OptionalInt64Scalar`,
 `OptionalBinaryScalar`, …) built straight from the native value, the
-buffer-backed serie scalar `Int64Serie` crosses (its `int64` elements as a Python
-`list[int]` / an array of JS `BigInt`), and the `as_*` accessors surface the core
-`DataError` as a raised `ValueError` (Python) / thrown `Error` (Node). Three
+buffer-backed serie scalars (`Int8Serie` … `UInt64Serie`) cross (elements as a
+Python `list[int]`, and in Node as `number` for the 8–32 bit widths and `BigInt`
+for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
+raised `ValueError` (Python) / thrown `Error` (Node). Three
 things stay **Rust-only**, stated here and in both binding module docs: the
 [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
 `arrow-array` values that cannot cross the FFI boundary), the `FromScalar` /
 `ScalarFactory` traits (generic Rust bounds; the bindings reach defaults through a
-data type's `default_scalar()`), and — for `Int64Serie` — its
+data type's `default_scalar()`), and — for the serie scalars — their
 per-element-null construction, `array` / `nulls` Arrow-buffer surface and
 `from_io` / `pwrite_io` two-resource bridge (which await C Data Interface interop
 or borrow a second IO resource at once), so a serie built from a binding is a
@@ -281,20 +282,22 @@ are reference-count bumps, and the scalar accessors read elements back out
 element as any native Rust target through the `as_*` contract — `i64` or any
 exactly-representable number for an `int64` element, `Vec<u8>`, `String` or a
 `yggdryl-core` `ByteBufferSlice` for a `binary` element (`FromScalar` names the
-readable targets); `len` / `is_empty` describe the sequence). `Int64Serie` is the
-concrete serie of `int64`, borrowing the raw Arrow buffers themselves
-(`ScalarBuffer<i64>` elements plus an optional `NullBuffer`): `values()` borrows
-the whole element buffer as `&[i64]` without copying, `get_at::<T>(index)` reads
-one element null-aware straight from the buffers, `get_scalar_at(index)` hands
-back an `Int64Scalar`, and `from_io` / `pwrite_io` bridge the elements to any
-`yggdryl-core` positioned-IO resource through the little-endian `pread_i64` /
-`pwrite_i64` primitive helpers.
+readable targets); `len` / `is_empty` describe the sequence). Every integer type
+also has its concrete serie (`Int8Serie` … `UInt64Serie`), borrowing the raw
+Arrow buffers themselves (a `ScalarBuffer` of native elements plus an optional
+`NullBuffer`): `values()` borrows the whole element buffer as a native slice
+without copying, `get_at::<T>(index)` reads one element null-aware straight from
+the buffers, `get_scalar_at(index)` hands back the element scalar, and `from_io`
+/ `pwrite_io` bridge the elements to any `yggdryl-core` positioned-IO resource in
+one bulk little-endian `pread_byte_array` / `pwrite_byte_array` transfer.
 `MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
 one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow` / `from_arrow`.
 
-`Int64Serie` is the one nested scalar exposed to the bindings — built dense
-(all-valid) from a native serie, the whole serie still nullable through `null()`:
+The integer series are the nested scalars exposed to the bindings — built dense
+(all-valid) from a native sequence, the whole serie still nullable through
+`null()`; `Int64Serie` shown here, the other widths identical modulo the element
+type:
 
 === "Python"
 
@@ -355,10 +358,10 @@ The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only
 
 !!! note "Rust only"
     The generic `Serie` / `MapScalar` / `StructScalar` are generic over their
-    child types (or carry dynamic Arrow fields), and `Int64Serie`'s `to_arrow` /
-    `from_arrow`, `array` / `nulls` and `from_io` / `pwrite_io` share raw Arrow
-    buffers or borrow a second IO resource at once — none crosses the FFI boundary
-    yet, so from a binding an `Int64Serie` is a dense (all-valid) serie.
+    child types (or carry dynamic Arrow fields), and the concrete series'
+    `to_arrow` / `from_arrow`, `array` / `nulls` and `from_io` / `pwrite_io` share
+    raw Arrow buffers or borrow a second IO resource at once — none crosses the
+    FFI boundary yet, so from a binding a serie is a dense (all-valid) serie.
 
 ```rust
 use yggdryl_scalar::yggdryl_dtype as dtype;

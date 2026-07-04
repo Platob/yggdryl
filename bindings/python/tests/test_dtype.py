@@ -163,34 +163,63 @@ def test_union_type_reached_through_optional():
     assert union.mode() == "sparse"
 
 
-def test_int64_serie_type():
-    lst = dtype.Int64SerieType()
-    assert lst.name() == "list"
-    assert lst.arrow_format() == "+l"
-    assert lst.byte_width() is None
-    assert lst.bit_width() is None
-    assert lst.child_count() == 1
-    assert lst.value_type().name() == "int64"
+# (serie type, value type name, element byte width, min, max)
+SERIES = [
+    (dtype.Int8SerieType, "int8", 1, -(2 ** 7), 2 ** 7 - 1),
+    (dtype.Int16SerieType, "int16", 2, -(2 ** 15), 2 ** 15 - 1),
+    (dtype.Int32SerieType, "int32", 4, -(2 ** 31), 2 ** 31 - 1),
+    (dtype.Int64SerieType, "int64", 8, -(2 ** 63), 2 ** 63 - 1),
+    (dtype.UInt8SerieType, "uint8", 1, 0, 2 ** 8 - 1),
+    (dtype.UInt16SerieType, "uint16", 2, 0, 2 ** 16 - 1),
+    (dtype.UInt32SerieType, "uint32", 4, 0, 2 ** 32 - 1),
+    (dtype.UInt64SerieType, "uint64", 8, 0, 2 ** 64 - 1),
+]
 
-    # The codec concatenates the value type's per-element bytes.
-    encoded = lst.native_to_bytes([1, 2, 3])
-    assert len(encoded) == 24
-    assert lst.native_from_bytes(encoded) == [1, 2, 3]
-    assert lst.native_from_bytes(b"") == []
-    with pytest.raises(ValueError):
-        lst.native_from_bytes(b"\x00" * 9)  # not a whole number of elements
+SERIE_IDS = [case[1] for case in SERIES]
 
-    # Defaults and factories.
-    assert lst.default_value() == []
-    assert lst.default_scalar().is_null() is False
-    assert lst.default_scalar().len() == 0
 
-    column = lst.field("scores")
+@pytest.mark.parametrize("case", SERIES, ids=SERIE_IDS)
+def test_serie_type_describes_itself(case):
+    serie_type, name, _, _, _ = case
+    serie = serie_type()
+    assert serie.name() == "list"
+    assert serie.arrow_format() == "+l"
+    assert serie.byte_width() is None
+    assert serie.bit_width() is None
+    assert serie.child_count() == 1
+    assert serie.value_type().name() == name
+
+
+@pytest.mark.parametrize("case", SERIES, ids=SERIE_IDS)
+def test_serie_codec_round_trips(case):
+    serie_type, _, width, low, high = case
+    serie = serie_type()
+
+    # The codec concatenates the value type's per-element bytes, extremes included.
+    encoded = serie.native_to_bytes([low, 0, high])
+    assert len(encoded) == 3 * width
+    assert serie.native_from_bytes(encoded) == [low, 0, high]
+    assert serie.native_from_bytes(b"") == []
+    if width > 1:  # every length is whole for the 1-byte widths
+        with pytest.raises(ValueError):
+            serie.native_from_bytes(b"\x00" * (width + 1))
+
+
+@pytest.mark.parametrize("case", SERIES, ids=SERIE_IDS)
+def test_serie_type_is_a_factory(case):
+    serie_type, name, _, low, high = case
+    serie = serie_type()
+
+    assert serie.default_value() == []
+    assert serie.default_scalar().is_null() is False
+    assert serie.default_scalar().len() == 0
+
+    column = serie.field("scores")
     assert column.name() == "scores"
     assert column.data_type().name() == "list"
     assert column.is_nullable() is True
-    assert lst.field("scores", False).is_nullable() is False
+    assert serie.field("scores", False).is_nullable() is False
 
-    numbers = lst.scalar([1, 2, 3])
-    assert numbers.values() == [1, 2, 3]
-    assert numbers.data_type().value_type().name() == "int64"
+    numbers = serie.scalar([low, 0, high])
+    assert numbers.values() == [low, 0, high]
+    assert numbers.data_type().value_type().name() == name

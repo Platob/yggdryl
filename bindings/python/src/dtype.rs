@@ -2,10 +2,10 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (e.g. `Int64Type`, `OptionalInt64Type`), alongside `BinaryType` /
-//! `OptionalBinaryType`, `NullType`, `UnionType` and the concrete serie type
-//! `Int64SerieType` (the `list` of `int64` — the one value type with a concrete
-//! serie scalar) — the same suffixed names as the Rust crate, the submodule
-//! carrying the concern. Data types expose the descriptor surface (`name`,
+//! `OptionalBinaryType`, `NullType`, `UnionType` and its concrete serie type
+//! (e.g. `Int64SerieType`, the `list` of `int64` — every integer value type has a
+//! buffer-backed serie scalar) — the same suffixed names as the Rust crate, the
+//! submodule carrying the concern. Data types expose the descriptor surface (`name`,
 //! `arrow_format`, widths), the native byte codec, and — as the model's factory
 //! hub — their defaults (`default_scalar`) and their `field` / `scalar` builders
 //! (`field` hands back a `yggdryl.field` class, `scalar` and `default_scalar` a
@@ -17,9 +17,9 @@
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
 //! value — `UnionType` is reached through an optional data type's `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the still-generic nested types (`SerieType` over a value type
-//! other than `int64`, `MapType` / `StructType`, and the per-family trait pairs),
-//! which have no concrete FFI shape yet.
+//! uniformly), and the still-generic nested types (`SerieType` over a non-integer
+//! value type, `MapType` / `StructType`, and the per-family trait pairs), which
+//! have no concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -554,94 +554,170 @@ int_dtype_py!(
     "uint64"
 );
 
-/// The Apache Arrow `list` of `int64`: a variable-length sequence of `int64`
-/// (single nullable `"item"` child). The one concrete serie type — `int64` is the
-/// value type with a buffer-backed serie scalar (`yggdryl.scalar.Int64Serie`).
-#[pyclass]
-#[derive(Default)]
-pub struct Int64SerieType {
-    pub(crate) inner: yggdryl_dtype::SerieType<yggdryl_dtype::Int64Type>,
+/// Generates the concrete serie data type of one integer value type: `$ty`, the
+/// Apache Arrow `list` of `$name` (single nullable `"item"` child) — a thin
+/// delegation to `yggdryl_dtype::SerieType<$value_ty>`. `$field` / `$serie` name
+/// the `yggdryl.field` / `yggdryl.scalar` classes the factories return.
+macro_rules! int_serie_dtype_py {
+    ($ty:ident, $value_ty:ident, $field:ident, $serie:ident, $native:ty, $name:literal) => {
+        #[doc = concat!("The Apache Arrow `list` of `", $name, "`: a variable-length sequence of `", $name, "`")]
+        #[doc = concat!("(single nullable `\"item\"` child), with a buffer-backed serie scalar (`yggdryl.scalar.", stringify!($serie), "`).")]
+        #[pyclass]
+        #[derive(Default)]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_dtype::SerieType<yggdryl_dtype::$value_ty>,
+        }
+
+        #[pymethods]
+        impl $ty {
+            #[doc = concat!("The `list` of `", $name, "` data type.")]
+            #[new]
+            fn new() -> Self {
+                Self::default()
+            }
+
+            /// The type's lowercase name, `"list"`.
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string, `"+l"`.
+            fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// A serie has no fixed byte width.
+            fn byte_width(&self) -> Option<usize> {
+                self.inner.byte_width()
+            }
+
+            /// A serie has no fixed bit width.
+            fn bit_width(&self) -> Option<usize> {
+                self.inner.bit_width()
+            }
+
+            /// The number of child fields, `1` (the `"item"` field).
+            fn child_count(&self) -> usize {
+                self.inner.child_count()
+            }
+
+            #[doc = concat!("The value type this serie sequences, `", $name, "`.")]
+            fn value_type(&self) -> $value_ty {
+                $value_ty::default()
+            }
+
+            /// Serialize a native serie into its Arrow bytes — the value type's codec,
+            /// concatenated per element.
+            fn native_to_bytes<'py>(
+                &self,
+                py: Python<'py>,
+                values: Vec<$native>,
+            ) -> Bound<'py, PyBytes> {
+                PyBytes::new_bound(py, &self.inner.native_to_bytes(&values))
+            }
+
+            /// Deserialize Arrow bytes into a native serie — the exact inverse of
+            /// `native_to_bytes`; a length that is not a whole number of elements raises
+            /// `ValueError`.
+            fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<$native>, DataErr> {
+                Ok(self.inner.native_from_bytes(bytes)?)
+            }
+
+            /// The type's default native value, the empty serie.
+            fn default_value(&self) -> Vec<$native> {
+                self.inner.default_value()
+            }
+
+            #[doc = concat!("The default scalar: a `yggdryl.scalar.", stringify!($serie), "` holding the empty serie.")]
+            fn default_scalar(&self) -> crate::scalar::$serie {
+                crate::scalar::$serie {
+                    inner: yggdryl_scalar::$serie::default(),
+                }
+            }
+
+            /// The field of this type named `name` (nullable by default) — a
+            #[doc = concat!("`yggdryl.field.", stringify!($field), "`.")]
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$field {
+                crate::field::$field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            #[doc = concat!("A `yggdryl.scalar.", stringify!($serie), "` holding the native serie `values`.")]
+            fn scalar(&self, values: Vec<$native>) -> crate::scalar::$serie {
+                crate::scalar::$serie {
+                    inner: yggdryl_scalar::$serie::from(values),
+                }
+            }
+        }
+    };
 }
 
-#[pymethods]
-impl Int64SerieType {
-    /// The `list` of `int64` data type.
-    #[new]
-    fn new() -> Self {
-        Self::default()
-    }
-
-    /// The type's lowercase name, `"list"`.
-    fn name(&self) -> String {
-        self.inner.name().to_string()
-    }
-
-    /// The Arrow C Data Interface format string, `"+l"`.
-    fn arrow_format(&self) -> String {
-        self.inner.arrow_format()
-    }
-
-    /// A serie has no fixed byte width.
-    fn byte_width(&self) -> Option<usize> {
-        self.inner.byte_width()
-    }
-
-    /// A serie has no fixed bit width.
-    fn bit_width(&self) -> Option<usize> {
-        self.inner.bit_width()
-    }
-
-    /// The number of child fields, `1` (the `"item"` field).
-    fn child_count(&self) -> usize {
-        self.inner.child_count()
-    }
-
-    /// The value type this serie sequences, `int64`.
-    fn value_type(&self) -> Int64Type {
-        Int64Type::default()
-    }
-
-    /// Serialize a native serie into its Arrow bytes — the value type's codec,
-    /// concatenated per element.
-    fn native_to_bytes<'py>(&self, py: Python<'py>, values: Vec<i64>) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.native_to_bytes(&values))
-    }
-
-    /// Deserialize Arrow bytes into a native serie — the exact inverse of
-    /// `native_to_bytes`; a length that is not a whole number of elements raises
-    /// `ValueError`.
-    fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<i64>, DataErr> {
-        Ok(self.inner.native_from_bytes(bytes)?)
-    }
-
-    /// The type's default native value, the empty serie.
-    fn default_value(&self) -> Vec<i64> {
-        self.inner.default_value()
-    }
-
-    /// The default scalar: a `yggdryl.scalar.Int64Serie` holding the empty serie.
-    fn default_scalar(&self) -> crate::scalar::Int64Serie {
-        crate::scalar::Int64Serie {
-            inner: yggdryl_scalar::Int64Serie::default(),
-        }
-    }
-
-    /// The field of this type named `name` (nullable by default) — a
-    /// `yggdryl.field.Int64SerieField`.
-    #[pyo3(signature = (name, nullable = true))]
-    fn field(&self, name: String, nullable: bool) -> crate::field::Int64SerieField {
-        crate::field::Int64SerieField {
-            inner: self.inner.field(name, nullable),
-        }
-    }
-
-    /// A `yggdryl.scalar.Int64Serie` holding the native serie `values`.
-    fn scalar(&self, values: Vec<i64>) -> crate::scalar::Int64Serie {
-        crate::scalar::Int64Serie {
-            inner: yggdryl_scalar::Int64Serie::from(values),
-        }
-    }
-}
+int_serie_dtype_py!(
+    Int8SerieType,
+    Int8Type,
+    Int8SerieField,
+    Int8Serie,
+    i8,
+    "int8"
+);
+int_serie_dtype_py!(
+    Int16SerieType,
+    Int16Type,
+    Int16SerieField,
+    Int16Serie,
+    i16,
+    "int16"
+);
+int_serie_dtype_py!(
+    Int32SerieType,
+    Int32Type,
+    Int32SerieField,
+    Int32Serie,
+    i32,
+    "int32"
+);
+int_serie_dtype_py!(
+    Int64SerieType,
+    Int64Type,
+    Int64SerieField,
+    Int64Serie,
+    i64,
+    "int64"
+);
+int_serie_dtype_py!(
+    UInt8SerieType,
+    UInt8Type,
+    UInt8SerieField,
+    UInt8Serie,
+    u8,
+    "uint8"
+);
+int_serie_dtype_py!(
+    UInt16SerieType,
+    UInt16Type,
+    UInt16SerieField,
+    UInt16Serie,
+    u16,
+    "uint16"
+);
+int_serie_dtype_py!(
+    UInt32SerieType,
+    UInt32Type,
+    UInt32SerieField,
+    UInt32Serie,
+    u32,
+    "uint32"
+);
+int_serie_dtype_py!(
+    UInt64SerieType,
+    UInt64Type,
+    UInt64SerieField,
+    UInt64Serie,
+    u64,
+    "uint64"
+);
 
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -665,6 +741,13 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Type>()?;
     module.add_class::<UInt64Type>()?;
     module.add_class::<OptionalUInt64Type>()?;
+    module.add_class::<Int8SerieType>()?;
+    module.add_class::<Int16SerieType>()?;
+    module.add_class::<Int32SerieType>()?;
     module.add_class::<Int64SerieType>()?;
+    module.add_class::<UInt8SerieType>()?;
+    module.add_class::<UInt16SerieType>()?;
+    module.add_class::<UInt32SerieType>()?;
+    module.add_class::<UInt64SerieType>()?;
     Ok(())
 }

@@ -23,9 +23,10 @@ Four things stay **Rust-only**, stated here and in both binding module docs: the
 `UnionType` from arbitrary child fields (reached in the bindings through an
 optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
 the still-generic [nested types](#nested-types-serie-map-and-struct) (`MapType`,
-`StructType` and `SerieType` over any value type but `int64`), which have no
-concrete FFI shape yet — the one exception, the concrete `Int64SerieType` (the
-`list` of `int64`), is exposed to both bindings.
+`StructType` and `SerieType` over a non-integer value type), which have no
+concrete FFI shape yet — the exceptions, the concrete integer serie types
+(`Int8SerieType` … `UInt64SerieType`, the `list` of each integer), are exposed to
+both bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and
@@ -247,10 +248,11 @@ like `UnionType`. The typed byte codecs concatenate the child codecs and split
 them back by fixed width (a variable-width child errors with
 `DataError::IndeterminateElementWidth` — decode those from Arrow).
 
-The `list` of `int64` is the one nested type with a concrete FFI shape: `int64` is
-the value type with a buffer-backed serie scalar (`Int64Serie`), so `Int64SerieType`
-is exposed to both bindings with the full descriptor, codec and factory surface —
-its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
+Every integer type's `list` has a concrete FFI shape: each has a buffer-backed
+serie scalar (`Int8Serie` … `UInt64Serie`), so the serie types (`Int8SerieType` …
+`UInt64SerieType`) are exposed to both bindings with the full descriptor, codec
+and factory surface — elements crossing as a Python `list[int]`, and in Node as
+`number` for the 8–32 bit widths and `BigInt` for the 64-bit ones:
 
 === "Python"
 
@@ -302,14 +304,17 @@ its `int64` elements crossing as a Python `list[int]` / an array of JS `BigInt`:
         assert_eq!(serie.native_from_bytes(&serie.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
         assert_eq!(serie.default_value(), Vec::<i64>::new()); // sequences default to empty
 
-        // A serie over any other value type, and map / struct, stay Rust-only.
+        // A serie over a non-integer value type, and map / struct, stay Rust-only.
         let map = MapType::new(UInt8Type, Int64Type);
         assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
     }
     ```
 
+The other widths follow the same surface — swap `Int64SerieType` / `1n` literals
+for `Int32SerieType` / plain numbers, and so on down to `Int8SerieType`.
+
 !!! note "Rust only"
-    `MapType`, `StructType` and `SerieType` over any value type but `int64` are
+    `MapType`, `StructType` and `SerieType` over a non-integer value type are
     still generic over their child types (or carry dynamic Arrow fields), so they
     have no concrete FFI shape yet and are not exposed to Python or Node.
 

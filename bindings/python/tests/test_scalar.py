@@ -164,26 +164,44 @@ def test_null_scalar():
     assert nothing.data_type().name() == "null"
 
 
-def test_int64_serie_holds_a_list():
-    numbers = scalar.Int64Serie([1, 2, 3])
+# (serie scalar, value type name, min, max)
+SERIES = [
+    (scalar.Int8Serie, "int8", -(2 ** 7), 2 ** 7 - 1),
+    (scalar.Int16Serie, "int16", -(2 ** 15), 2 ** 15 - 1),
+    (scalar.Int32Serie, "int32", -(2 ** 31), 2 ** 31 - 1),
+    (scalar.Int64Serie, "int64", -(2 ** 63), 2 ** 63 - 1),
+    (scalar.UInt8Serie, "uint8", 0, 2 ** 8 - 1),
+    (scalar.UInt16Serie, "uint16", 0, 2 ** 16 - 1),
+    (scalar.UInt32Serie, "uint32", 0, 2 ** 32 - 1),
+    (scalar.UInt64Serie, "uint64", 0, 2 ** 64 - 1),
+]
+
+
+@pytest.mark.parametrize("case", SERIES, ids=[case[1] for case in SERIES])
+def test_serie_holds_a_sequence(case):
+    serie_class, name, low, high = case
+    numbers = serie_class([low, 2, high])
     assert numbers.is_null() is False
     assert numbers.is_empty() is False
     assert numbers.len() == 3
-    assert numbers.values() == [1, 2, 3]
+    assert numbers.values() == [low, 2, high]  # extremes survive the buffer
+    assert numbers.get_at(0) == low
     assert numbers.get_at(1) == 2
-    assert numbers.get_scalar_at(2).value() == 3
+    assert numbers.get_at(2) == high
+    assert numbers.get_scalar_at(2).value() == high
     assert numbers.get_scalar_at(3) is None  # out of bounds
     assert numbers.data_type().name() == "list"
+    assert numbers.data_type().value_type().name() == name
     with pytest.raises(ValueError):
         numbers.get_at(3)  # out of bounds
 
     # The empty serie and null are distinct states.
-    empty = scalar.Int64Serie([])
+    empty = serie_class([])
     assert empty.is_null() is False
     assert empty.is_empty() is True
     assert empty.values() == []
 
-    missing = scalar.Int64Serie.null()
+    missing = serie_class.null()
     assert missing.is_null() is True
     assert missing.values() is None
     with pytest.raises(ValueError):

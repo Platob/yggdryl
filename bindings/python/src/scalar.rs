@@ -3,9 +3,9 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `to_io()` hands one back), `NullScalar` and the serie scalar
-//! `Int64Serie` (the buffer-backed `list` of `int64`) — the same suffixed names
-//! as the Rust crate, the submodule carrying the concern. Scalars expose the
+//! `ByteBuffer` — `to_io()` hands one back), `NullScalar` and its serie scalar
+//! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same suffixed
+//! names as the Rust crate, the submodule carrying the concern. Scalars expose the
 //! `as_*` accessors with the core contract: the value when the target represents
 //! it exactly, or a raised `ValueError` naming the fix (strings and bytes cross
 //! the FFI boundary as new Python objects, so the Rust-side "borrow, never copy"
@@ -19,11 +19,12 @@
 //! FFI boundary; C Data Interface interop is future work), the `FromScalar` /
 //! `ScalarFactory` traits (generic Rust bounds; the bindings reach the factories
 //! through a data type's `scalar()` / `default_scalar()`), and — for the serie
-//! scalar `Int64Serie` — its per-element-null construction, `array` / `nulls`
-//! Arrow-buffer surface and `from_io` / `pwrite_io` two-resource bridge (which
-//! borrow a second IO resource at once), so a serie built from Python is a dense
-//! (all-valid) serie. The still-generic nested scalars — the generic `Serie` /
-//! `MapScalar` / `StructScalar` — have no concrete FFI shape yet.
+//! scalars (`Int8Serie` … `UInt64Serie`) — their per-element-null construction,
+//! `array` / `nulls` Arrow-buffer surface and `from_io` / `pwrite_io`
+//! two-resource bridge (which borrow a second IO resource at once), so a serie
+//! built from Python is a dense (all-valid) serie. The still-generic nested
+//! scalars — the generic `Serie` / `MapScalar` / `StructScalar` — have no
+//! concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -614,72 +615,88 @@ int_scalar_py!(
     "uint64"
 );
 
-/// A single, possibly-null `list` of `int64` — *our array*, the buffer-backed
-/// serie scalar. Built dense (all-valid) from Python; the whole serie may still be
-/// null (`Int64Serie.null()`).
-#[pyclass]
-pub struct Int64Serie {
-    pub(crate) inner: yggdryl_scalar::Int64Serie,
+/// Generates the concrete serie scalar of one integer value type: `$ty`, the
+/// buffer-backed `list` of `$name` — a thin delegation to `yggdryl_scalar::$ty`.
+/// `$scalar` names the element scalar class, `$dtype` the `yggdryl.dtype` class.
+macro_rules! int_serie_scalar_py {
+    ($ty:ident, $scalar:ident, $dtype:ident, $native:ty, $name:literal) => {
+        #[doc = concat!("A single, possibly-null `list` of `", $name, "` — *our array*, the buffer-backed")]
+        /// serie scalar. Built dense (all-valid) from Python; the whole serie may still
+        #[doc = concat!("be null (`", stringify!($ty), ".null()`).")]
+        #[pyclass]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_scalar::$ty,
+        }
+
+        #[pymethods]
+        impl $ty {
+            /// A serie holding the native serie `values` (all-valid).
+            #[new]
+            fn new(values: Vec<$native>) -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::from(values),
+                }
+            }
+
+            /// The null serie scalar.
+            #[staticmethod]
+            fn null() -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::null(),
+                }
+            }
+
+            /// Whether this scalar holds a null value (distinct from the empty serie).
+            fn is_null(&self) -> bool {
+                self.inner.is_null()
+            }
+
+            /// The number of elements, `0` when null or empty (`is_null` distinguishes
+            /// the two).
+            fn len(&self) -> usize {
+                self.inner.len()
+            }
+
+            /// Whether the sequence holds no elements (also `True` when null).
+            fn is_empty(&self) -> bool {
+                self.inner.is_empty()
+            }
+
+            /// The whole element buffer as a `list[int]`, or `None` when null.
+            fn values(&self) -> Option<Vec<$native>> {
+                self.inner.values().map(<[$native]>::to_vec)
+            }
+
+            /// The element at `index` read as its native `int`; raises `ValueError` when
+            /// null or out of bounds.
+            fn get_at(&self, index: usize) -> Result<$native, DataErr> {
+                Ok(self.inner.get_at::<$native>(index)?)
+            }
+
+            #[doc = concat!("The element at `index` as an `", stringify!($scalar), "`, or `None` when the serie is")]
+            /// null or `index` is out of bounds.
+            fn get_scalar_at(&self, index: usize) -> Option<$scalar> {
+                self.inner
+                    .get_scalar_at(index)
+                    .map(|inner| $scalar { inner })
+            }
+
+            /// The scalar's data type.
+            fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
+            }
+        }
+    };
 }
 
-#[pymethods]
-impl Int64Serie {
-    /// A serie holding the native serie `values` (all-valid).
-    #[new]
-    fn new(values: Vec<i64>) -> Self {
-        Self {
-            inner: yggdryl_scalar::Int64Serie::from(values),
-        }
-    }
-
-    /// The null serie scalar.
-    #[staticmethod]
-    fn null() -> Self {
-        Self {
-            inner: yggdryl_scalar::Int64Serie::null(),
-        }
-    }
-
-    /// Whether this scalar holds a null value (distinct from the empty serie).
-    fn is_null(&self) -> bool {
-        self.inner.is_null()
-    }
-
-    /// The number of elements, `0` when null or empty (`is_null` distinguishes
-    /// the two).
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Whether the sequence holds no elements (also `True` when null).
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// The whole element buffer as a `list[int]`, or `None` when null.
-    fn values(&self) -> Option<Vec<i64>> {
-        self.inner.values().map(<[i64]>::to_vec)
-    }
-
-    /// The element at `index` read as its native `int`; raises `ValueError` when
-    /// null or out of bounds.
-    fn get_at(&self, index: usize) -> Result<i64, DataErr> {
-        Ok(self.inner.get_at::<i64>(index)?)
-    }
-
-    /// The element at `index` as an `Int64Scalar`, or `None` when the serie is
-    /// null or `index` is out of bounds.
-    fn get_scalar_at(&self, index: usize) -> Option<Int64Scalar> {
-        self.inner
-            .get_scalar_at(index)
-            .map(|inner| Int64Scalar { inner })
-    }
-
-    /// The scalar's data type.
-    fn data_type(&self) -> crate::dtype::Int64SerieType {
-        crate::dtype::Int64SerieType::default()
-    }
-}
+int_serie_scalar_py!(Int8Serie, Int8Scalar, Int8SerieType, i8, "int8");
+int_serie_scalar_py!(Int16Serie, Int16Scalar, Int16SerieType, i16, "int16");
+int_serie_scalar_py!(Int32Serie, Int32Scalar, Int32SerieType, i32, "int32");
+int_serie_scalar_py!(Int64Serie, Int64Scalar, Int64SerieType, i64, "int64");
+int_serie_scalar_py!(UInt8Serie, UInt8Scalar, UInt8SerieType, u8, "uint8");
+int_serie_scalar_py!(UInt16Serie, UInt16Scalar, UInt16SerieType, u16, "uint16");
+int_serie_scalar_py!(UInt32Serie, UInt32Scalar, UInt32SerieType, u32, "uint32");
+int_serie_scalar_py!(UInt64Serie, UInt64Scalar, UInt64SerieType, u64, "uint64");
 
 /// Populates the `scalar` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -702,6 +719,13 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Scalar>()?;
     module.add_class::<UInt64Scalar>()?;
     module.add_class::<OptionalUInt64Scalar>()?;
+    module.add_class::<Int8Serie>()?;
+    module.add_class::<Int16Serie>()?;
+    module.add_class::<Int32Serie>()?;
     module.add_class::<Int64Serie>()?;
+    module.add_class::<UInt8Serie>()?;
+    module.add_class::<UInt16Serie>()?;
+    module.add_class::<UInt32Serie>()?;
+    module.add_class::<UInt64Serie>()?;
     Ok(())
 }

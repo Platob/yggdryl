@@ -3,12 +3,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_scalar::yggdryl_dtype as dtype;
-use yggdryl_scalar::{
-    Int64Scalar, Int64Serie, Int8Scalar, OptionalScalar, Scalar, ScalarFactory, Serie,
-};
+use yggdryl_scalar::{Int64Scalar, Int8Scalar, OptionalScalar, Scalar, ScalarFactory};
 
 type OptionalInt64 = OptionalScalar<dtype::Int64Type, Int64Scalar>;
-type Int64SerieGeneric = Serie<dtype::Int64Type, Int64Scalar>;
 
 const N: usize = 4096;
 
@@ -152,53 +149,5 @@ fn optional(c: &mut Criterion) {
     group.finish();
 }
 
-fn array(c: &mut Criterion) {
-    let mut group = c.benchmark_group("array");
-    group.throughput(Throughput::Elements(N as u64));
-
-    group.bench_function("int64_serie_from_vec", |b| {
-        b.iter_batched(
-            || (0..N as i64).collect::<Vec<_>>(),
-            |values| black_box(Int64Serie::from(values)),
-            criterion::BatchSize::LargeInput,
-        )
-    });
-
-    let numbers = Int64Serie::from((0..N as i64).collect::<Vec<_>>());
-    group.bench_function("int64_serie_values_borrow", |b| {
-        b.iter(|| black_box(black_box(&numbers).values()))
-    });
-
-    group.bench_function("int64_serie_get_at", |b| {
-        b.iter(|| {
-            for index in 0..N {
-                let _ = black_box(numbers.get_at::<i64>(black_box(index)));
-            }
-        })
-    });
-
-    group.bench_function("int64_serie_to_arrow", |b| {
-        b.iter(|| black_box(numbers.to_arrow()))
-    });
-
-    let arrow = numbers.to_arrow();
-    group.bench_function("int64_serie_from_arrow", |b| {
-        b.iter(|| black_box(Int64Serie::from_arrow(black_box(arrow.as_ref())).unwrap()))
-    });
-
-    // The generic scalar accessor, for comparison: one inner Arrow round trip per
-    // element against the buffer-backed direct read above.
-    let generic = Int64SerieGeneric::from_arrow(arrow.as_ref()).unwrap();
-    group.bench_function("serie_get_scalar_at", |b| {
-        b.iter(|| {
-            for index in 0..N {
-                black_box(generic.get_scalar_at(black_box(index)));
-            }
-        })
-    });
-
-    group.finish();
-}
-
-criterion_group!(benches, scalar, accessor, optional, array);
+criterion_group!(benches, scalar, accessor, optional);
 criterion_main!(benches);

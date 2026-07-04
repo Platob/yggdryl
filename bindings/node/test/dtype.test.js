@@ -152,34 +152,55 @@ test('union type reached through optional', () => {
   assert.equal(union.mode(), 'sparse')
 })
 
-test('int64 serie type', () => {
-  const serie = new dtype.Int64SerieType()
-  assert.equal(serie.name(), 'list')
-  assert.equal(serie.arrowFormat(), '+l')
-  assert.equal(serie.byteWidth(), null)
-  assert.equal(serie.bitWidth(), null)
-  assert.equal(serie.childCount(), 1)
-  assert.equal(serie.valueType().name(), 'int64')
+// The 8-32 bit series carry elements as `number`; the 64-bit series as `BigInt`.
+const SERIES = [
+  { ty: dtype.Int8SerieType, name: 'int8', width: 1, low: -(2 ** 7), high: 2 ** 7 - 1, wire: (v) => v },
+  { ty: dtype.Int16SerieType, name: 'int16', width: 2, low: -(2 ** 15), high: 2 ** 15 - 1, wire: (v) => v },
+  { ty: dtype.Int32SerieType, name: 'int32', width: 4, low: -(2 ** 31), high: 2 ** 31 - 1, wire: (v) => v },
+  { ty: dtype.Int64SerieType, name: 'int64', width: 8, low: -(2n ** 63n), high: 2n ** 63n - 1n, wire: (v) => BigInt(v) },
+  { ty: dtype.UInt8SerieType, name: 'uint8', width: 1, low: 0, high: 2 ** 8 - 1, wire: (v) => v },
+  { ty: dtype.UInt16SerieType, name: 'uint16', width: 2, low: 0, high: 2 ** 16 - 1, wire: (v) => v },
+  { ty: dtype.UInt32SerieType, name: 'uint32', width: 4, low: 0, high: 2 ** 32 - 1, wire: (v) => v },
+  { ty: dtype.UInt64SerieType, name: 'uint64', width: 8, low: 0n, high: 2n ** 64n - 1n, wire: (v) => BigInt(v) },
+]
 
-  // The codec concatenates the value type's per-element bytes (BigInt elements).
-  const encoded = serie.nativeToBytes([1n, 2n, 3n])
-  assert.equal(encoded.length, 24)
-  assert.deepEqual(serie.nativeFromBytes(encoded), [1n, 2n, 3n])
-  assert.deepEqual(serie.nativeFromBytes(Buffer.alloc(0)), [])
-  assert.throws(() => serie.nativeFromBytes(Buffer.alloc(9))) // not a whole element count
+for (const { ty, name, width, low, high, wire } of SERIES) {
+  test(`${name} serie type describes itself`, () => {
+    const serie = new ty()
+    assert.equal(serie.name(), 'list')
+    assert.equal(serie.arrowFormat(), '+l')
+    assert.equal(serie.byteWidth(), null)
+    assert.equal(serie.bitWidth(), null)
+    assert.equal(serie.childCount(), 1)
+    assert.equal(serie.valueType().name(), name)
+  })
 
-  // Defaults and factories.
-  assert.deepEqual(serie.defaultValue(), [])
-  assert.equal(serie.defaultScalar().isNull(), false)
-  assert.equal(serie.defaultScalar().len(), 0)
+  test(`${name} serie codec round-trips`, () => {
+    const serie = new ty()
+    // The codec concatenates the value type's per-element bytes, extremes included.
+    const encoded = serie.nativeToBytes([low, wire(0), high])
+    assert.equal(encoded.length, 3 * width)
+    assert.deepEqual(serie.nativeFromBytes(encoded), [low, wire(0), high])
+    assert.deepEqual(serie.nativeFromBytes(Buffer.alloc(0)), [])
+    if (width > 1) { // every length is whole for the 1-byte widths
+      assert.throws(() => serie.nativeFromBytes(Buffer.alloc(width + 1)))
+    }
+  })
 
-  const column = serie.field('scores')
-  assert.equal(column.name(), 'scores')
-  assert.equal(column.dataType().name(), 'list')
-  assert.equal(column.isNullable(), true)
-  assert.equal(serie.field('scores', false).isNullable(), false)
+  test(`${name} serie type is a factory`, () => {
+    const serie = new ty()
+    assert.deepEqual(serie.defaultValue(), [])
+    assert.equal(serie.defaultScalar().isNull(), false)
+    assert.equal(serie.defaultScalar().len(), 0)
 
-  const numbers = serie.scalar([1n, 2n, 3n])
-  assert.deepEqual(numbers.values(), [1n, 2n, 3n])
-  assert.equal(numbers.dataType().valueType().name(), 'int64')
-})
+    const column = serie.field('scores')
+    assert.equal(column.name(), 'scores')
+    assert.equal(column.dataType().name(), 'list')
+    assert.equal(column.isNullable(), true)
+    assert.equal(serie.field('scores', false).isNullable(), false)
+
+    const numbers = serie.scalar([low, wire(0), high])
+    assert.deepEqual(numbers.values(), [low, wire(0), high])
+    assert.equal(numbers.dataType().valueType().name(), name)
+  })
+}

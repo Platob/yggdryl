@@ -71,9 +71,10 @@ assert!(missing.is_null());
 The serie scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
 child array — `to_arrow` / `from_arrow` are reference-count bumps — with the
 scalar accessors `get_scalar_at(index)` / `get_at::<T>(index)` and `len` /
-`is_empty`. `Int64Serie` is the concrete serie of `int64`, borrowing the raw Arrow
-buffers themselves (`values()` borrows `&[i64]` without copying; `from_io` /
-`pwrite_io` bridge to any `yggdryl-core` positioned-IO resource). `MapScalar<K, V,
+`is_empty`. Every integer type also has its concrete serie (`Int8Serie` …
+`UInt64Serie`), borrowing the raw Arrow buffers themselves (`values()` borrows
+the native element slice without copying; `from_io` / `pwrite_io` bridge to any
+`yggdryl-core` positioned-IO resource in one bulk little-endian transfer). `MapScalar<K, V,
 SK, SV>` holds a key–value entry sequence and `StructScalar` one row of
 one-element Arrow columns; the `binary` scalar holds its bytes as a core
 `ByteBuffer` (`io()` / `into_io()` plug into `RawIOBase` and the cursor / slice

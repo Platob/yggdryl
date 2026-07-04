@@ -2,9 +2,9 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField` and the concrete serie field
-//! `Int64SerieField` (a column of `Int64SerieType`) — the same globally-unique
-//! names as the Rust crate, the namespace carrying the concern (the `…Field`
+//! `OptionalBinaryField`, `NullField`, `UnionField` and its concrete serie field
+//! (e.g. `Int64SerieField`, a column of `Int64SerieType`) — the same
+//! globally-unique names as the Rust crate, the namespace carrying the concern (the `…Field`
 //! suffix keeps every class distinct in napi's addon-global registry). A field
 //! pairs a name with its `yggdryl.dtype` data type and a nullability flag (`true`
 //! by default, as an `Option<bool>` default).
@@ -12,7 +12,7 @@
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the
-//! still-generic nested fields (`SerieField` over a value type other than `int64`,
+//! still-generic nested fields (`SerieField` over a non-integer value type,
 //! `MapField` / `StructField`), which have no concrete FFI shape yet.
 
 use napi_derive::napi;
@@ -300,38 +300,53 @@ int_field_node!(
     "uint64"
 );
 
-/// A nullable `list`-of-`int64` field: a name paired with the `Int64SerieType`
-/// data type.
-#[napi(namespace = "field")]
-pub struct Int64SerieField {
-    pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::Int64Type>,
-}
-
-#[napi(namespace = "field")]
-impl Int64SerieField {
-    /// A `list`-of-`int64` field named `name` (nullable by default).
-    #[napi(constructor)]
-    pub fn new(name: String, nullable: Option<bool>) -> Self {
-        Self {
-            inner: yggdryl_field::SerieField::new(name, nullable.unwrap_or(true)),
+/// Generates the concrete serie field of one integer value type: `$ty`, a column
+/// of the `yggdryl.dtype` class `$dtype` — a thin delegation to
+/// `yggdryl_field::SerieField<$value_ty>`.
+macro_rules! int_serie_field_node {
+    ($ty:ident, $dtype:ident, $value_ty:ident, $name:literal) => {
+        #[doc = concat!("A nullable `list`-of-`", $name, "` field: a name paired with the `", stringify!($dtype), "` data type.")]
+        #[napi(namespace = "field")]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::$value_ty>,
         }
-    }
 
-    /// The field's name.
-    #[napi]
-    pub fn name(&self) -> String {
-        self.inner.name().to_string()
-    }
+        #[napi(namespace = "field")]
+        impl $ty {
+            #[doc = concat!("A `list`-of-`", $name, "` field named `name` (nullable by default).")]
+            #[napi(constructor)]
+            pub fn new(name: String, nullable: Option<bool>) -> Self {
+                Self {
+                    inner: yggdryl_field::SerieField::new(name, nullable.unwrap_or(true)),
+                }
+            }
 
-    /// The field's data type.
-    #[napi]
-    pub fn data_type(&self) -> crate::dtype::Int64SerieType {
-        crate::dtype::Int64SerieType::default()
-    }
+            /// The field's name.
+            #[napi]
+            pub fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
 
-    /// Whether values in this field may be null.
-    #[napi]
-    pub fn is_nullable(&self) -> bool {
-        self.inner.is_nullable()
-    }
+            /// The field's data type.
+            #[napi]
+            pub fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
+            }
+
+            /// Whether values in this field may be null.
+            #[napi]
+            pub fn is_nullable(&self) -> bool {
+                self.inner.is_nullable()
+            }
+        }
+    };
 }
+
+int_serie_field_node!(Int8SerieField, Int8SerieType, Int8Type, "int8");
+int_serie_field_node!(Int16SerieField, Int16SerieType, Int16Type, "int16");
+int_serie_field_node!(Int32SerieField, Int32SerieType, Int32Type, "int32");
+int_serie_field_node!(Int64SerieField, Int64SerieType, Int64Type, "int64");
+int_serie_field_node!(UInt8SerieField, UInt8SerieType, UInt8Type, "uint8");
+int_serie_field_node!(UInt16SerieField, UInt16SerieType, UInt16Type, "uint16");
+int_serie_field_node!(UInt32SerieField, UInt32SerieType, UInt32Type, "uint32");
+int_serie_field_node!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");

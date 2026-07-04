@@ -7,7 +7,7 @@ use yggdryl_dtype::{
 };
 
 #[test]
-fn list_describes_itself_and_round_trips() {
+fn serie_describes_itself_and_round_trips() {
     let serie = SerieType::new(Int64Type);
     assert_eq!(serie.name(), "list");
     assert_eq!(serie.arrow_format(), "+l");
@@ -23,7 +23,7 @@ fn list_describes_itself_and_round_trips() {
 }
 
 #[test]
-fn list_codec_concatenates_elements() {
+fn serie_codec_concatenates_elements() {
     let serie = SerieType::new(Int64Type);
     let bytes = serie.native_to_bytes(&vec![1, 2, 3]);
     assert_eq!(bytes.len(), 24);
@@ -54,7 +54,7 @@ fn list_codec_concatenates_elements() {
 }
 
 #[test]
-fn list_is_the_generic_nested_holder() {
+fn serie_is_the_generic_nested_holder() {
     // The typed pair: Nested counts children, TypedNested<T> adds the native codec,
     // and TypedSerie pins the value type.
     fn raw_children<N: Nested>(nested: &N) -> usize {
@@ -75,7 +75,7 @@ fn list_is_the_generic_nested_holder() {
 }
 
 #[test]
-fn list_is_send_sync() {
+fn serie_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<SerieType<Int64Type>>();
 }

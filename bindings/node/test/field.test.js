@@ -76,13 +76,26 @@ test('union field', () => {
   assert.equal(value.dataType().arrowFormat(), '+us:0,1')
 })
 
-test('int64 serie field', () => {
-  const scores = new field.Int64SerieField('scores')
-  assert.equal(scores.name(), 'scores')
-  assert.equal(scores.isNullable(), true)
-  assert.equal(scores.dataType().name(), 'list')
-  assert.equal(scores.dataType().valueType().name(), 'int64')
-  assert.equal(new field.Int64SerieField('scores', false).isNullable(), false)
-  // The data type's factory builds the same field.
-  assert.equal(new dtype.Int64SerieType().field('scores').dataType().name(), 'list')
-})
+const SERIES = [
+  { fieldClass: field.Int8SerieField, ty: dtype.Int8SerieType, name: 'int8' },
+  { fieldClass: field.Int16SerieField, ty: dtype.Int16SerieType, name: 'int16' },
+  { fieldClass: field.Int32SerieField, ty: dtype.Int32SerieType, name: 'int32' },
+  { fieldClass: field.Int64SerieField, ty: dtype.Int64SerieType, name: 'int64' },
+  { fieldClass: field.UInt8SerieField, ty: dtype.UInt8SerieType, name: 'uint8' },
+  { fieldClass: field.UInt16SerieField, ty: dtype.UInt16SerieType, name: 'uint16' },
+  { fieldClass: field.UInt32SerieField, ty: dtype.UInt32SerieType, name: 'uint32' },
+  { fieldClass: field.UInt64SerieField, ty: dtype.UInt64SerieType, name: 'uint64' },
+]
+
+for (const { fieldClass, ty, name } of SERIES) {
+  test(`${name} serie field`, () => {
+    const scores = new fieldClass('scores')
+    assert.equal(scores.name(), 'scores')
+    assert.equal(scores.isNullable(), true)
+    assert.equal(scores.dataType().name(), 'list')
+    assert.equal(scores.dataType().valueType().name(), name)
+    assert.equal(new fieldClass('scores', false).isNullable(), false)
+    // The data type's factory builds the same field.
+    assert.equal(new ty().field('scores').dataType().name(), 'list')
+  })
+}

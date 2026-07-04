@@ -1,0 +1,31 @@
+//! The [`Int8Serie`] scalar: a serie of `int8` borrowing raw Arrow buffers.
+//!
+//! A single, possibly-null serie of `int8` (native `i8` elements) of the
+//! [`SerieType<Int8Type>`](yggdryl_dtype::SerieType) data type, holding its
+//! elements zero-copy in Arrow buffers.
+//!
+//! ```
+//! use yggdryl_scalar::yggdryl_dtype::DataType;
+//! use yggdryl_scalar::{Int8Scalar, Int8Serie, Scalar};
+//!
+//! let numbers = Int8Serie::from(vec![1, 2, 3]);
+//! assert_eq!(numbers.len(), 3);
+//! assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // zero-copy buffer borrow
+//! assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2); // converted, exact-or-error
+//! assert_eq!(numbers.get_scalar_at(1), Some(Int8Scalar::new(2)));
+//! assert_eq!(numbers.data_type().name(), "list");
+//!
+//! // Nulls are per element, read null-aware.
+//! let sparse = Int8Serie::from(vec![Some(1), None]);
+//! assert!(sparse.get_at::<i8>(1).is_err()); // a null element holds no value
+//! assert_eq!(sparse.get_scalar_at(1), Some(Int8Scalar::null()));
+//!
+//! // The Arrow round trip shares the buffers — no element is copied.
+//! let arrow = numbers.to_arrow();
+//! assert_eq!(arrow.len(), 1);
+//! assert_eq!(Int8Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
+//!
+//! assert!(Int8Serie::null().is_null());
+//! ```
+
+crate::serie::int_serie!(Int8Serie, Int8Scalar, Int8Type, i8, "int8", Int8Array, 1);

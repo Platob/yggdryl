@@ -11,12 +11,13 @@ Apache Arrow `Field` — so a schema is a sequence of fields.
 
 The bindings expose the layer as `yggdryl.field` (Python and Node), adapting to
 idioms: `nullable` defaults to `True` / `true` as a keyword / optional argument.
-The concrete serie field `Int64SerieField` (a column of `Int64SerieType`) crosses
-too. Two things stay **Rust-only**, stated here and in both binding module docs:
-the [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
-`arrow-schema` values that cannot cross the FFI boundary), and the still-generic
-nested fields (`SerieField` over a value type other than `int64`, `MapField` /
-`StructField`), which have no concrete FFI shape yet.
+The concrete integer serie fields (`Int8SerieField` … `UInt64SerieField`, each a
+column of its serie type) cross too. Two things stay **Rust-only**, stated here
+and in both binding module docs: the [Arrow interop](#arrow-interop) surface
+(`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross the
+FFI boundary), and the still-generic nested fields (`SerieField` over a
+non-integer value type, `MapField` / `StructField`), which have no concrete FFI
+shape yet.
 
 ## Fields pair a name with a data type
 

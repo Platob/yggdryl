@@ -78,7 +78,10 @@ pub use map::MapScalar;
 pub use null::NullScalar;
 pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
-pub use serie::{Int64Serie, Serie};
+pub use serie::{
+    Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, UInt16Serie, UInt32Serie, UInt64Serie,
+    UInt8Serie,
+};
 
 pub use integer::{
     Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,
