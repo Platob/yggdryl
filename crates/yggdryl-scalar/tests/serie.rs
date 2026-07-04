@@ -84,6 +84,19 @@ macro_rules! int_serie_tests {
                 assert_eq!(numbers.get_scalar_at(3), None);
                 assert!(numbers.nulls().is_none());
 
+                // The scalar iterator walks every element in order, exact-sized.
+                assert_eq!(numbers.iter_scalars().len(), 3);
+                assert_eq!(
+                    numbers.iter_scalars().collect::<Vec<_>>(),
+                    vec![$scalar::new(1), $scalar::new(2), $scalar::new(3)]
+                );
+                let sparse_iter = $ty::from(vec![Some(1), None]);
+                assert_eq!(
+                    sparse_iter.iter_scalars().collect::<Vec<_>>(),
+                    vec![$scalar::new(1), $scalar::null()] // a null element is the null scalar
+                );
+                assert_eq!($ty::null().iter_scalars().count(), 0); // null serie is empty
+
                 // The reassembled Arrow array borrows the same buffer — zero copy.
                 let arrow = numbers.to_arrow_array();
                 assert_eq!(arrow.values().as_ptr(), numbers.values().unwrap().as_ptr());

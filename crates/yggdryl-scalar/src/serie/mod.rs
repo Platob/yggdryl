@@ -251,6 +251,23 @@ macro_rules! int_serie {
                     },
                 )
             }
+
+            /// An iterator over the elements as scalars, in order (a null element is
+            /// the inner null scalar; a null serie yields nothing). Each element is
+            /// read straight from the shared buffers, so the walk borrows nothing
+            /// (the iterator owns a reference-counted view) and is
+            /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].
+            pub fn iter_scalars(
+                &self,
+            ) -> impl ExactSizeIterator<Item = $crate::$scalar> + DoubleEndedIterator {
+                // A reference-count bump of the element / null buffers; each step then
+                // reads one element from them.
+                let this = self.clone();
+                (0..self.len()).map(move |index| {
+                    this.get_scalar_at(index)
+                        .expect("index within the serie length")
+                })
+            }
         }
 
         impl Default for $ty {

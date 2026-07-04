@@ -40,8 +40,10 @@
 //! accessor twin `RecordScalar` *is* bound), the struct-row series `StructSerie` /
 //! `TypedStructSerie`, and the type-erased `AnySerie` / `AnyScalar` holders behind
 //! them (whose fields cross as native JS values instead of as a class) — have no
-//! concrete FFI shape yet. The lazy serie iterators (`iter_scalars` /
-//! `iter_records`) are Rust-only too; iterate the materialized `toArray()` instead.
+//! concrete FFI shape yet. A concrete serie hands back its element scalars as the
+//! iterable `scalars()` array (`for (const s of serie.scalars())`); the core's
+//! *lazy* `iter_scalars` and the struct-row `iter_records` (no bound struct serie)
+//! stay Rust-only.
 
 use napi::bindgen_prelude::{
     BigInt, Buffer, Error, FromNapiValue, Null, Object, Result, ToNapiValue,
@@ -914,6 +916,20 @@ macro_rules! int_serie_scalar_node {
                     .ok()
                     .and_then(|index| self.inner.get_scalar_at(index))
                     .map(|inner| $scalar { inner })
+            }
+
+            /// The elements as an array of scalar objects, or `null` when the serie
+            /// is null — the typed counterpart of `toArray` (which copies out the
+            /// raw values). The array is iterable: `for (const s of serie.scalars())`
+            /// / `[...serie.scalars()]`.
+            #[napi]
+            pub fn scalars(&self) -> Option<Vec<$scalar>> {
+                (!self.inner.is_null()).then(|| {
+                    self.inner
+                        .iter_scalars()
+                        .map(|inner| $scalar { inner })
+                        .collect()
+                })
             }
 
             /// The scalar's data type.

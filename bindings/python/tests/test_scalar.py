@@ -393,6 +393,28 @@ def test_float_serie_holds_a_sequence(case):
         missing.get_at(0)
 
 
+@pytest.mark.parametrize(
+    "serie_class,values",
+    [(case[0], [1, 2, 3]) for case in SERIES]
+    + [(case[0], [1.5, 2.5]) for case in FLOAT_SERIES],
+)
+def test_serie_iterates_its_element_scalars(serie_class, values):
+    serie = serie_class(values)
+
+    # `for scalar in serie` yields the element scalar objects.
+    assert [element.value() for element in serie] == values
+    # list(serie) materializes the same scalars.
+    assert [element.value() for element in list(serie)] == values
+    # scalars() is the explicit list, the typed counterpart of to_pylist().
+    assert [element.value() for element in serie.scalars()] == values
+
+    # The empty serie iterates as empty; scalars() is []; a null serie is None.
+    assert list(serie_class([])) == []
+    assert serie_class([]).scalars() == []
+    assert serie_class.null().scalars() is None
+    assert list(serie_class.null()) == []  # a null serie iterates as empty
+
+
 def test_to_pyvalue_is_the_general_native_accessor():
     # One call per scalar: the whole native value, or None when null.
     assert scalar.NullScalar().to_pyvalue() is None

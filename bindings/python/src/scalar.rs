@@ -41,9 +41,10 @@
 //! scalars — the generic `Serie` / `MapScalar`, the plain `StructScalar` row
 //! value (its accessor surface is exposed as `RecordScalar`), the struct-row
 //! series `StructSerie` / `TypedStructSerie`, and the type-erased `AnySerie` /
-//! `AnyScalar` holders behind them — have no concrete FFI shape yet. The lazy serie
-//! iterators (`iter_scalars` / `iter_records`) are Rust-only too; iterate the
-//! materialized `to_pylist()` instead.
+//! `AnyScalar` holders behind them — have no concrete FFI shape yet. A concrete
+//! serie iterates its element scalars (`for scalar in serie`, or the materialized
+//! `scalars()` list); the core's *lazy* `iter_scalars` and the struct-row
+//! `iter_records` (no bound struct serie) stay Rust-only.
 
 // pyo3's `#[pymethods]` expansion re-wraps the already-`PyErr` result of the
 // `PyResult`-returning record methods into `PyErr`; clippy flags that generated
@@ -1301,6 +1302,32 @@ macro_rules! int_serie_scalar_py {
                     .map(|inner| $scalar { inner })
             }
 
+            #[doc = concat!("The elements as a `list[", stringify!($scalar), "]`, or `None` when null")]
+            /// — the typed counterpart of `to_pylist` (which copies out the raw
+            /// values). Iterating the serie (`for scalar in serie`) walks the same
+            /// scalars.
+            fn scalars(&self) -> Option<Vec<$scalar>> {
+                (!self.inner.is_null()).then(|| {
+                    self.inner
+                        .iter_scalars()
+                        .map(|inner| $scalar { inner })
+                        .collect()
+                })
+            }
+
+            /// Iterate the element scalars — `for scalar in serie` (a null serie is
+            /// empty). Each element crosses the FFI boundary as its own scalar object.
+            fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAny>> {
+                let py = slf.py();
+                let items = slf
+                    .inner
+                    .iter_scalars()
+                    .map(|inner| Py::new(py, $scalar { inner }))
+                    .collect::<PyResult<Vec<_>>>()?;
+                let list = pyo3::types::PyList::new_bound(py, items);
+                Ok(list.as_any().call_method0("__iter__")?.unbind())
+            }
+
             /// The scalar's data type.
             fn data_type(&self) -> crate::dtype::$dtype {
                 crate::dtype::$dtype::default()
@@ -1418,6 +1445,32 @@ macro_rules! float16_serie_scalar_py {
                 self.inner
                     .get_scalar_at(index)
                     .map(|inner| $scalar { inner })
+            }
+
+            #[doc = concat!("The elements as a `list[", stringify!($scalar), "]`, or `None` when null")]
+            /// — the typed counterpart of `to_pylist` (which copies out the raw
+            /// values). Iterating the serie (`for scalar in serie`) walks the same
+            /// scalars.
+            fn scalars(&self) -> Option<Vec<$scalar>> {
+                (!self.inner.is_null()).then(|| {
+                    self.inner
+                        .iter_scalars()
+                        .map(|inner| $scalar { inner })
+                        .collect()
+                })
+            }
+
+            /// Iterate the element scalars — `for scalar in serie` (a null serie is
+            /// empty). Each element crosses the FFI boundary as its own scalar object.
+            fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAny>> {
+                let py = slf.py();
+                let items = slf
+                    .inner
+                    .iter_scalars()
+                    .map(|inner| Py::new(py, $scalar { inner }))
+                    .collect::<PyResult<Vec<_>>>()?;
+                let list = pyo3::types::PyList::new_bound(py, items);
+                Ok(list.as_any().call_method0("__iter__")?.unbind())
             }
 
             /// The scalar's data type.

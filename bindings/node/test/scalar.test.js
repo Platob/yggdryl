@@ -195,7 +195,33 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     assert.equal(missing.toArray(), null)
     assert.throws(() => missing.getAt(0))
   })
+
+  test(`${name} serie hands back its element scalars`, () => {
+    const numbers = new serieClass([low, wire(2), high])
+    const scalars = numbers.scalars() // the typed counterpart of toArray()
+    assert.deepEqual(
+      scalars.map((element) => element.value()),
+      [low, wire(2), high]
+    )
+    // The array is iterable: for..of and spread walk the scalar objects.
+    assert.deepEqual([...numbers.scalars()].map((element) => element.value()), [low, wire(2), high])
+
+    assert.deepEqual(new serieClass([]).scalars(), []) // empty serie → empty array
+    assert.equal(serieClass.null().scalars(), null) // null serie → null
+  })
 }
+
+test('float series hand back their element scalars', () => {
+  for (const serieClass of [scalar.Float16Serie, scalar.Float32Serie, scalar.Float64Serie]) {
+    const weights = new serieClass([1.5, 2.5])
+    assert.deepEqual(
+      weights.scalars().map((element) => element.value()),
+      [1.5, 2.5]
+    )
+    assert.deepEqual(new serieClass([]).scalars(), [])
+    assert.equal(serieClass.null().scalars(), null)
+  }
+})
 
 test('toJsValue is the general native accessor', () => {
   // One FFI call per scalar: the class' wire type, or null when null.

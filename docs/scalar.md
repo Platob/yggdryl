@@ -421,15 +421,17 @@ Each of `serie` / `map` / `optional` also has a dynamic base (`Serie`, `MapScala
 `OptionalScalar`) with the element type erased — the base `Scalar` surface only —
 that the typed generics `erase()` back to.
 
-Rust also **iterates** a serie: `iter_scalars()` walks the elements as inner
-scalars (`TypedSerie<D, S>` yields `S`, the dynamic `Serie` yields the type-erased
-`AnyScalar`), and `iter_records()` walks a struct serie's rows as `RecordScalar`
-atoms. Each reconstitutes the element column **once** and slices per step — so the
-walk is linear where a `get_scalar_at` loop reconstitutes on every call — and the
-returned iterator borrows nothing (it owns a reference-counted view of the column),
-so it is `ExactSizeIterator` / `DoubleEndedIterator`. The iterators are **Rust-only**
-(lazy, like the two-resource IO streams): the bindings iterate the materialized
-`to_pylist()` / `toArray()`, stated here and in both binding module docs.
+A serie **iterates** its elements as scalars. In Rust `iter_scalars()` walks the
+elements as inner scalars (`TypedSerie<D, S>` and every concrete serie yield `S`,
+the dynamic `Serie` yields the type-erased `AnyScalar`) and `iter_records()` walks a
+struct serie's rows as `RecordScalar` atoms; each reconstitutes the element column
+**once** and slices per step — linear, where a `get_scalar_at` loop reconstitutes on
+every call — and borrows nothing (it owns a reference-counted view), so it is
+`ExactSizeIterator` / `DoubleEndedIterator`. The bindings expose the element scalars
+as `scalars()` (the typed counterpart of `to_pylist()` / `toArray()`, which copy out
+the raw *values*); Python is also directly iterable (`for scalar in serie`). The
+core's *lazy* `iter_scalars` and the struct-row `iter_records` (whose struct serie is
+not bound) stay Rust-only.
 
 === "Python"
 
@@ -437,8 +439,9 @@ so it is `ExactSizeIterator` / `DoubleEndedIterator`. The iterators are **Rust-o
     from yggdryl import dtype
 
     numbers = dtype.Int64SerieType().scalar([1, 2, 3])
-    # The lazy iterator is Rust-only; iterate the materialized list.
-    assert [value for value in numbers.to_pylist()] == [1, 2, 3]
+    assert [scalar.value() for scalar in numbers] == [1, 2, 3]        # for scalar in serie
+    assert [scalar.value() for scalar in numbers.scalars()] == [1, 2, 3]  # explicit list
+    assert numbers.to_pylist() == [1, 2, 3]                          # the raw values
     ```
 
 === "Node"
@@ -447,8 +450,9 @@ so it is `ExactSizeIterator` / `DoubleEndedIterator`. The iterators are **Rust-o
     const { dtype } = require('yggdryl')
 
     const numbers = new dtype.Int64SerieType().scalar([1n, 2n, 3n])
-    // The lazy iterator is Rust-only; iterate the materialized array.
-    assert.deepEqual([...numbers.toArray()], [1n, 2n, 3n])
+    // scalars() is an iterable array of scalar objects.
+    assert.deepEqual([...numbers.scalars()].map((s) => s.value()), [1n, 2n, 3n])
+    assert.deepEqual(numbers.toArray(), [1n, 2n, 3n]) // the raw values
     ```
 
 === "Rust"
