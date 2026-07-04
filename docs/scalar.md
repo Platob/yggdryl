@@ -14,9 +14,11 @@ idioms: Node carries 8–32 bit values as `number` and the 64-bit types as
 `BigInt`, byte values cross as Python `bytes` / JS `Buffer`, the null-or-value
 scalars are concrete per-type classes (`OptionalInt64Scalar`,
 `OptionalBinaryScalar`, …) built straight from the native value, the
-buffer-backed serie scalars (`Int8Serie` … `UInt64Serie`) cross (elements as a
-Python `list[int]`, and in Node as `number` for the 8–32 bit widths and `BigInt`
-for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
+buffer-backed serie scalars (`Int8Serie` … `UInt64Serie`) cross (elements copy
+out through `to_pylist()` in Python / `toArray()` in Node — the pyarrow / Arrow
+JS conversion names, kept for every future native-container accessor such as a
+dict-shaped `to_pydict()` — as `int` / `number` for the 8–32 bit widths and
+`BigInt` for the 64-bit ones), and the `as_*` accessors surface the core `DataError` as a
 raised `ValueError` (Python) / thrown `Error` (Node). Three
 things stay **Rust-only**, stated here and in both binding module docs: the
 [Arrow interop](#arrow-interop) surface (`to_arrow` / `from_arrow` exchange
@@ -306,7 +308,7 @@ type:
 
     numbers = scalar.Int64Serie([1, 2, 3])
     assert (numbers.is_null(), numbers.is_empty(), numbers.len()) == (False, False, 3)
-    assert numbers.values() == [1, 2, 3]
+    assert numbers.to_pylist() == [1, 2, 3]
     assert numbers.get_at(1) == 2                    # the native value
     assert numbers.get_scalar_at(2).value() == 3     # ... or the element scalar
     assert numbers.get_scalar_at(3) is None          # out of bounds
@@ -324,7 +326,7 @@ type:
 
     const numbers = new scalar.Int64Serie([1n, 2n, 3n])
     assert.deepEqual([numbers.isNull(), numbers.isEmpty(), numbers.len()], [false, false, 3])
-    assert.deepEqual(numbers.values(), [1n, 2n, 3n])
+    assert.deepEqual(numbers.toArray(), [1n, 2n, 3n])
     assert.equal(numbers.getAt(1), 2n)                 // the native value
     assert.equal(numbers.getScalarAt(2).value(), 3n)   // ... or the element scalar
     assert.equal(numbers.getScalarAt(3), null)         // out of bounds

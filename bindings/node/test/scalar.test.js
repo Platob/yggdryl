@@ -170,7 +170,7 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     assert.equal(numbers.isNull(), false)
     assert.equal(numbers.isEmpty(), false)
     assert.equal(numbers.len(), 3)
-    assert.deepEqual(numbers.values(), [low, wire(2), high]) // extremes survive the buffer
+    assert.deepEqual(numbers.toArray(), [low, wire(2), high]) // extremes survive the buffer
     assert.equal(numbers.getAt(0), low)
     assert.equal(numbers.getAt(1), wire(2))
     assert.equal(numbers.getAt(2), high)
@@ -188,11 +188,11 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     const empty = new serieClass([])
     assert.equal(empty.isNull(), false)
     assert.equal(empty.isEmpty(), true)
-    assert.deepEqual(empty.values(), [])
+    assert.deepEqual(empty.toArray(), [])
 
     const missing = serieClass.null()
     assert.equal(missing.isNull(), true)
-    assert.equal(missing.values(), null)
+    assert.equal(missing.toArray(), null)
     assert.throws(() => missing.getAt(0))
   })
 }

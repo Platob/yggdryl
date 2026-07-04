@@ -33,7 +33,7 @@ def main():
     bench("Int8Serie(64 ints)", lambda: scalar.Int8Serie(ELEMENTS))
     bench("Int64Serie.null()", scalar.Int64Serie.null)
     bench("serie.len()", numbers.len)
-    bench("serie.values() copy-out", numbers.values)
+    bench("serie.to_pylist() copy-out", numbers.to_pylist)
     bench("serie.get_at(32)", lambda: numbers.get_at(32))
     bench("serie.get_scalar_at(32)", lambda: numbers.get_scalar_at(32))
     bench("narrow.get_at(32)", lambda: narrow.get_at(32))

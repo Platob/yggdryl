@@ -270,7 +270,7 @@ and factory surface — elements crossing as a Python `list[int]`, and in Node a
 
     # The factory hub builds the list's field and scalar.
     assert numbers.field("scores").data_type().name() == "list"
-    assert numbers.scalar([1, 2, 3]).values() == [1, 2, 3]
+    assert numbers.scalar([1, 2, 3]).to_pylist() == [1, 2, 3]
     ```
 
 === "Node"
@@ -290,7 +290,7 @@ and factory surface — elements crossing as a Python `list[int]`, and in Node a
 
     // The factory hub builds the list's field and scalar.
     assert.equal(numbers.field('scores').dataType().name(), 'list')
-    assert.deepEqual(numbers.scalar([1n, 2n, 3n]).values(), [1n, 2n, 3n])
+    assert.deepEqual(numbers.scalar([1n, 2n, 3n]).toArray(), [1n, 2n, 3n])
     ```
 
 === "Rust"

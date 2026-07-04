@@ -200,7 +200,7 @@ for (const { ty, name, width, low, high, wire } of SERIES) {
     assert.equal(serie.field('scores', false).isNullable(), false)
 
     const numbers = serie.scalar([low, wire(0), high])
-    assert.deepEqual(numbers.values(), [low, wire(0), high])
+    assert.deepEqual(numbers.toArray(), [low, wire(0), high])
     assert.equal(numbers.dataType().valueType().name(), name)
   })
 }

@@ -662,8 +662,10 @@ macro_rules! int_serie_scalar_py {
                 self.inner.is_empty()
             }
 
-            /// The whole element buffer as a `list[int]`, or `None` when null.
-            fn values(&self) -> Option<Vec<$native>> {
+            /// The whole element buffer copied out as a Python `list[int]`, or
+            /// `None` when null — the pyarrow-style name for a native-container
+            /// copy-out (the zero-copy borrow stays Rust-only).
+            fn to_pylist(&self) -> Option<Vec<$native>> {
                 self.inner.values().map(<[$native]>::to_vec)
             }
 

@@ -221,5 +221,5 @@ def test_serie_type_is_a_factory(case):
     assert serie.field("scores", False).is_nullable() is False
 
     numbers = serie.scalar([low, 0, high])
-    assert numbers.values() == [low, 0, high]
+    assert numbers.to_pylist() == [low, 0, high]
     assert numbers.data_type().value_type().name() == name

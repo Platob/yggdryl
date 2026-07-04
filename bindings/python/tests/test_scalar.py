@@ -184,7 +184,7 @@ def test_serie_holds_a_sequence(case):
     assert numbers.is_null() is False
     assert numbers.is_empty() is False
     assert numbers.len() == 3
-    assert numbers.values() == [low, 2, high]  # extremes survive the buffer
+    assert numbers.to_pylist() == [low, 2, high]  # extremes survive the buffer
     assert numbers.get_at(0) == low
     assert numbers.get_at(1) == 2
     assert numbers.get_at(2) == high
@@ -201,10 +201,10 @@ def test_serie_holds_a_sequence(case):
     empty = serie_class([])
     assert empty.is_null() is False
     assert empty.is_empty() is True
-    assert empty.values() == []
+    assert empty.to_pylist() == []
 
     missing = serie_class.null()
     assert missing.is_null() is True
-    assert missing.values() is None
+    assert missing.to_pylist() is None
     with pytest.raises(ValueError):
         missing.get_at(0)

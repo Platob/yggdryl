@@ -641,9 +641,11 @@ macro_rules! int_serie_wire_number_scalar {
                 })
             }
 
-            /// The whole element buffer as an array of numbers, or `null` when null.
+            /// The whole element buffer copied out as a JS array of numbers, or
+            /// `null` when null — the JS-idiomatic name for a native-container
+            /// copy-out (the zero-copy borrow stays Rust-only).
             #[napi]
-            pub fn values(&self) -> Option<Vec<i64>> {
+            pub fn to_array(&self) -> Option<Vec<i64>> {
                 self.inner
                     .values()
                     .map(|values| values.iter().copied().map(i64::from).collect())
@@ -696,9 +698,11 @@ impl Int64Serie {
         })
     }
 
-    /// The whole element buffer as an array of `BigInt`, or `null` when null.
+    /// The whole element buffer copied out as a JS array of `BigInt`, or `null`
+    /// when null — the JS-idiomatic name for a native-container copy-out (the
+    /// zero-copy borrow stays Rust-only).
     #[napi]
-    pub fn values(&self) -> Option<Vec<BigInt>> {
+    pub fn to_array(&self) -> Option<Vec<BigInt>> {
         self.inner
             .values()
             .map(|values| values.iter().copied().map(BigInt::from).collect())
@@ -729,9 +733,11 @@ impl UInt64Serie {
         })
     }
 
-    /// The whole element buffer as an array of `BigInt`, or `null` when null.
+    /// The whole element buffer copied out as a JS array of `BigInt`, or `null`
+    /// when null — the JS-idiomatic name for a native-container copy-out (the
+    /// zero-copy borrow stays Rust-only).
     #[napi]
-    pub fn values(&self) -> Option<Vec<BigInt>> {
+    pub fn to_array(&self) -> Option<Vec<BigInt>> {
         self.inner
             .values()
             .map(|values| values.iter().copied().map(BigInt::from).collect())
