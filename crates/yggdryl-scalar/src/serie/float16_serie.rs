@@ -12,7 +12,7 @@
 //! let weights = Float16Serie::from(vec![f16::from_f32(1.5), f16::from_f32(2.5)]);
 //! assert_eq!(weights.len(), 2);
 //! assert_eq!(weights.get_at::<f32>(1).unwrap(), 2.5); // widens exactly
-//! assert_eq!(weights.get_scalar_at(0), Some(Float16Scalar::new(f16::from_f32(1.5))));
+//! assert_eq!(weights.scalar_at(0), Some(Float16Scalar::new(f16::from_f32(1.5))));
 //! assert_eq!(weights.data_type().name(), "list");
 //!
 //! // The Arrow round trip shares the buffers — no element is copied.

@@ -20,7 +20,7 @@ use yggdryl_dtype::{DataError, DataType, StructType, TypedSerieType};
 /// [`to_arrow_scalar`](Scalar::to_arrow_scalar) / [`from_arrow`](Scalar::from_arrow)
 /// are reference-count bumps; building from row scalars pays the assembly once, at
 /// construction. The *row accessors* read a row back:
-/// [`get_scalar_at`](TypedStructSerie::get_scalar_at) redirects one element through
+/// [`scalar_at`](TypedStructSerie::scalar_at) redirects one element through
 /// `S::from_arrow` (an `S` of [`RecordScalar`](crate::RecordScalar) for the row atom,
 /// or a [`StructScalar`](crate::StructScalar) for the column form), and the
 /// [`NestedSerie`](crate::NestedSerie) children are the struct's *field columns*
@@ -39,8 +39,8 @@ use yggdryl_dtype::{DataError, DataType, StructType, TypedSerieType};
 /// let points = TypedStructSerie::new(point.clone(), vec![row(1), row(2)]);
 /// assert_eq!(points.len(), 2);
 /// assert_eq!(points.data_type().name(), "list");
-/// assert_eq!(points.get_scalar_at(1), Some(row(2)));
-/// assert_eq!(points.get_scalar_at(2), None); // out of bounds
+/// assert_eq!(points.scalar_at(1), Some(row(2)));
+/// assert_eq!(points.scalar_at(2), None); // out of bounds
 ///
 /// // The children are the struct's field columns — "x" across both rows.
 /// assert_eq!(points.child_serie_count(), 1);
@@ -105,7 +105,7 @@ impl<S: Scalar<DataType = StructType>> TypedStructSerie<S> {
 
     /// The row at `index` as the row scalar `S`, or `None` when the serie is null or
     /// `index` is out of bounds.
-    pub fn get_scalar_at(&self, index: usize) -> Option<S> {
+    pub fn scalar_at(&self, index: usize) -> Option<S> {
         let values = self.values.as_ref()?;
         if index >= values.len() {
             return None;
@@ -118,7 +118,7 @@ impl<S: Scalar<DataType = StructType>> TypedStructSerie<S> {
     /// in order (a null row is the record's null; a null serie yields nothing) —
     /// independent of the row scalar type `S`, the rows always read back as records.
     /// The struct column is reconstituted **once**, and each step slices one row from
-    /// it — linear, unlike a [`get_scalar_at`](TypedStructSerie::get_scalar_at) loop.
+    /// it — linear, unlike a [`scalar_at`](TypedStructSerie::scalar_at) loop.
     /// The iterator owns a reference-counted view of the column, borrowing nothing,
     /// and is [`ExactSizeIterator`] / [`DoubleEndedIterator`].
     ///

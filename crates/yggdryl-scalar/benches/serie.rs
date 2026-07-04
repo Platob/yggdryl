@@ -76,16 +76,16 @@ fn arrow(c: &mut Criterion) {
     // The generic scalar accessor, for comparison: one inner Arrow round trip per
     // element against the buffer-backed direct read above.
     let generic = Int64SerieGeneric::from_arrow(arrow.as_ref()).unwrap();
-    group.bench_function("serie_get_scalar_at", |b| {
+    group.bench_function("serie_scalar_at", |b| {
         b.iter(|| {
             for index in 0..N {
-                black_box(generic.get_scalar_at(black_box(index)));
+                black_box(generic.scalar_at(black_box(index)));
             }
         })
     });
 
     // The iterator against the same generic serie: it reconstitutes the element
-    // column once and slices per step, where the `get_scalar_at` loop above
+    // column once and slices per step, where the `scalar_at` loop above
     // reconstitutes it on every call — so this measures the linear-vs-quadratic gap.
     group.bench_function("serie_iter_scalars", |b| {
         b.iter(|| {

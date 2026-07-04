@@ -135,7 +135,7 @@ fn binary_composes_with_the_optional_and_list_families() {
         BinaryScalar::null(),
     ]);
     assert_eq!(blobs.len(), 2);
-    assert_eq!(blobs.get_scalar_at(0), Some(BinaryScalar::new(vec![1])));
+    assert_eq!(blobs.scalar_at(0), Some(BinaryScalar::new(vec![1])));
     assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), vec![1u8]);
     assert!(matches!(
         blobs.get_at::<Vec<u8>>(1),

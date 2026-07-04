@@ -175,9 +175,9 @@ fn struct_serie_holds_rows_and_field_columns() {
     assert_eq!(points.data_type().name(), "list");
 
     // Rows come back as records, by position.
-    assert_eq!(points.get_scalar_at(0), Some(point(1, 2)));
-    assert_eq!(points.get_scalar_at(1), Some(point(3, 4)));
-    assert!(points.get_scalar_at(2).is_none());
+    assert_eq!(points.scalar_at(0), Some(point(1, 2)));
+    assert_eq!(points.scalar_at(1), Some(point(3, 4)));
+    assert!(points.scalar_at(2).is_none());
 
     // The children are the struct's field columns, not one "item" child.
     assert_eq!(points.child_serie_count(), 2);
@@ -224,7 +224,7 @@ fn struct_serie_row_type_is_generic_over_scalar() {
     );
     assert_eq!(columns.len(), 1);
     assert_eq!(
-        columns.get_scalar_at(0).unwrap().as_struct().unwrap(),
+        columns.scalar_at(0).unwrap().as_struct().unwrap(),
         point(1, 2)
     );
 }
@@ -234,7 +234,7 @@ fn struct_serie_null_and_empty_are_distinct() {
     let missing: TypedStructSerie<RecordScalar> = TypedStructSerie::null(point_type());
     assert!(missing.is_null());
     assert_eq!(missing.len(), 0);
-    assert!(missing.get_scalar_at(0).is_none());
+    assert!(missing.scalar_at(0).is_none());
     // Even null, the field columns are named from the item struct.
     assert_eq!(missing.child_serie_count(), 2);
     assert!(missing.child_serie_at(0).is_none());
@@ -261,9 +261,9 @@ fn struct_serie_carries_a_null_row_among_present_ones() {
     assert!(!serie.is_null());
 
     // The present rows read back; the middle row reads back as a null record.
-    assert_eq!(serie.get_scalar_at(0), Some(point(1, 2)));
-    assert!(serie.get_scalar_at(1).expect("the row exists").is_null());
-    assert_eq!(serie.get_scalar_at(2), Some(point(5, 6)));
+    assert_eq!(serie.scalar_at(0), Some(point(1, 2)));
+    assert!(serie.scalar_at(1).expect("the row exists").is_null());
+    assert_eq!(serie.scalar_at(2), Some(point(5, 6)));
 
     // The field column still spans every row (the null row included).
     assert_eq!(serie.child_serie_by("x").unwrap().len(), 3);
@@ -296,7 +296,7 @@ fn iter_records_walks_every_row_in_order() {
 
     // The iterator agrees row-for-row with the indexed accessors.
     for (index, record) in typed.iter_records().enumerate() {
-        assert_eq!(Some(&record), typed.get_scalar_at(index).as_ref());
+        assert_eq!(Some(&record), typed.scalar_at(index).as_ref());
         assert_eq!(Some(record), typed.erase().get_row(index));
     }
 

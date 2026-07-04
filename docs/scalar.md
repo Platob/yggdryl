@@ -523,7 +523,7 @@ bumps, never element copies.
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy item
 serie — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
-(`get_scalar_at(index)` redirects one element through the inner scalar's own
+(`scalar_at(index)` redirects one element through the inner scalar's own
 `from_arrow`, and the generic native accessor `get_at::<T>(index)` reads an
 element as any native Rust target through the `as_*` contract — `i64` or any
 exactly-representable number for an `int64` element, `Vec<u8>`, `String` or a
@@ -533,7 +533,7 @@ also has its concrete serie (`Int8Serie` … `UInt64Serie`), borrowing the raw
 Arrow buffers themselves (a `ScalarBuffer` of native elements plus an optional
 `NullBuffer`): `values()` borrows the whole element buffer as a native slice
 without copying, `get_at::<T>(index)` reads one element null-aware straight from
-the buffers, `get_scalar_at(index)` hands back the element scalar,
+the buffers, `scalar_at(index)` hands back the element scalar,
 `to_arrow_array()` converts the elements out as the Arrow primitive array around
 the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
 `yggdryl-core` positioned-IO resource in one bulk little-endian
@@ -554,7 +554,7 @@ A serie **iterates** its elements as scalars. In Rust `iter_scalars()` walks the
 elements as inner scalars (`TypedSerie<D, S>` and every concrete serie yield `S`,
 the dynamic `Serie` yields the type-erased `AnyScalar`) and `iter_records()` walks a
 struct serie's rows as `RecordScalar` atoms; each reconstitutes the element column
-**once** and slices per step — linear, where a `get_scalar_at` loop reconstitutes on
+**once** and slices per step — linear, where a `scalar_at` loop reconstitutes on
 every call — and borrows nothing (it owns a reference-counted view), so it is
 `ExactSizeIterator` / `DoubleEndedIterator`. The bindings expose the element scalars
 as `scalars()` (the typed counterpart of `to_pylist()` / `toArray()`, which copy out
@@ -662,8 +662,8 @@ type:
     assert (numbers.is_null(), numbers.is_empty(), numbers.len()) == (False, False, 3)
     assert numbers.to_pylist() == [1, 2, 3]
     assert numbers.get_at(1) == 2                    # the native value
-    assert numbers.get_scalar_at(2).value() == 3     # ... or the element scalar
-    assert numbers.get_scalar_at(3) is None          # out of bounds
+    assert numbers.scalar_at(2).value() == 3     # ... or the element scalar
+    assert numbers.scalar_at(3) is None          # out of bounds
     assert numbers.data_type().name() == "list"
 
     # The empty serie and null are distinct states.
@@ -680,8 +680,8 @@ type:
     assert.deepEqual([numbers.isNull(), numbers.isEmpty(), numbers.len()], [false, false, 3])
     assert.deepEqual(numbers.toArray(), [1n, 2n, 3n])
     assert.equal(numbers.getAt(1), 2n)                 // the native value
-    assert.equal(numbers.getScalarAt(2).value(), 3n)   // ... or the element scalar
-    assert.equal(numbers.getScalarAt(3), null)         // out of bounds
+    assert.equal(numbers.scalarAt(2).value(), 3n)   // ... or the element scalar
+    assert.equal(numbers.scalarAt(3), null)         // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
 
     // The empty serie and null are distinct states.
@@ -699,7 +699,7 @@ type:
         assert_eq!((numbers.is_null(), numbers.is_empty(), numbers.len()), (false, false, 3));
         assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
         assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2);   // the native value
-        assert_eq!(numbers.get_scalar_at(2), Some(Int64Scalar::new(3))); // the element scalar
+        assert_eq!(numbers.scalar_at(2), Some(Int64Scalar::new(3))); // the element scalar
         assert_eq!(numbers.data_type().name(), "list");
 
         // The empty serie and null are distinct states.
@@ -726,7 +726,7 @@ use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar, TypedSerie};
 fn main() {
     // The generic TypedSerie carries per-element nulls and round-trips through Arrow.
     let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
-    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
     let arrow = numbers.to_arrow_scalar(); // a one-element ListArray sharing the elements
     assert_eq!(TypedSerie::from_arrow(arrow.as_ref()).unwrap(), numbers);

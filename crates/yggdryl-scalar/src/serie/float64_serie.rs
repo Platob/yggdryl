@@ -12,13 +12,13 @@
 //! assert_eq!(weights.len(), 3);
 //! assert_eq!(weights.values(), Some(&[1.5, 2.5, 3.5][..])); // zero-copy buffer borrow
 //! assert_eq!(weights.get_at::<f64>(1).unwrap(), 2.5); // converted, exact-or-error
-//! assert_eq!(weights.get_scalar_at(1), Some(Float64Scalar::new(2.5)));
+//! assert_eq!(weights.scalar_at(1), Some(Float64Scalar::new(2.5)));
 //! assert_eq!(weights.data_type().name(), "list");
 //!
 //! // Nulls are per element, read null-aware.
 //! let sparse = Float64Serie::from(vec![Some(1.5), None]);
 //! assert!(sparse.get_at::<f64>(1).is_err()); // a null element holds no value
-//! assert_eq!(sparse.get_scalar_at(1), Some(Float64Scalar::null()));
+//! assert_eq!(sparse.scalar_at(1), Some(Float64Scalar::null()));
 //!
 //! // The Arrow round trip shares the buffers — no element is copied.
 //! let arrow = weights.to_arrow_scalar();

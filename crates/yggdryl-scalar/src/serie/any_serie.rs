@@ -159,11 +159,11 @@ impl AnySerie {
     /// round trip), any other column slices one element and decomposes it. This is
     /// the per-value bridge behind [`RecordScalar`](crate::RecordScalar) and the
     /// struct series' row access. The `any_` marks the type-erased return; a
-    /// concrete serie's [`get_scalar_at`](crate::TypedSerie::get_scalar_at) hands
+    /// concrete serie's [`scalar_at`](crate::TypedSerie::scalar_at) hands
     /// back the typed element scalar instead.
     pub fn any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
         for_each_decomposed!(self,
-            serie => serie.get_scalar_at(index).map(AnyScalar::from),
+            serie => serie.scalar_at(index).map(AnyScalar::from),
             values => (index < Array::len(values.as_ref()))
                 .then(|| AnyScalar::from_arrow(Array::slice(values.as_ref(), index, 1))))
     }

@@ -20,8 +20,8 @@ fn serie_scalar_round_trips_all_shapes() {
     );
 
     // The scalar accessors read elements back out, as scalars or native values.
-    assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
-    assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
+    assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
+    assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1);
     assert_eq!(numbers.get_at::<i32>(0).unwrap(), 1); // converted, exact-or-error
     assert!(matches!(
@@ -80,8 +80,8 @@ macro_rules! int_serie_tests {
                     numbers.get_at::<$native>(3),
                     Err(DataError::OutOfBounds { index: 3, len: 3 })
                 ));
-                assert_eq!(numbers.get_scalar_at(2), Some($scalar::new(3)));
-                assert_eq!(numbers.get_scalar_at(3), None);
+                assert_eq!(numbers.scalar_at(2), Some($scalar::new(3)));
+                assert_eq!(numbers.scalar_at(3), None);
                 assert!(numbers.nulls().is_none());
 
                 // The scalar iterator walks every element in order, exact-sized.
@@ -108,7 +108,7 @@ macro_rules! int_serie_tests {
                     sparse.get_at::<$native>(1),
                     Err(DataError::NullValue)
                 ));
-                assert_eq!(sparse.get_scalar_at(1), Some($scalar::null()));
+                assert_eq!(sparse.scalar_at(1), Some($scalar::null()));
                 assert_eq!(sparse.values().map(<[$native]>::len), Some(2));
                 assert_eq!(
                     sparse.nulls().map(arrow_buffer::NullBuffer::null_count),
@@ -374,7 +374,7 @@ fn iter_scalars_walks_every_element_in_order() {
 
     // The iterator agrees element-for-element with the indexed accessor.
     for (index, scalar) in numbers.iter_scalars().enumerate() {
-        assert_eq!(Some(scalar), numbers.get_scalar_at(index));
+        assert_eq!(Some(scalar), numbers.scalar_at(index));
     }
 
     // Double-ended: reversed order.

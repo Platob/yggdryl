@@ -1114,10 +1114,10 @@ macro_rules! int_serie_scalar_node {
             /// serie is null or `index` is out of bounds (a negative index
             /// included).
             #[napi]
-            pub fn get_scalar_at(&self, index: i64) -> Option<$scalar> {
+            pub fn scalar_at(&self, index: i64) -> Option<$scalar> {
                 usize::try_from(index)
                     .ok()
-                    .and_then(|index| self.inner.get_scalar_at(index))
+                    .and_then(|index| self.inner.scalar_at(index))
                     .map(|inner| $scalar { inner })
             }
 

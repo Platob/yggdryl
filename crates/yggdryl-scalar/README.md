@@ -79,7 +79,7 @@ reconstituting Arrow arrays on demand and decomposing them on the way in. The
 
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
 child array — `to_arrow_scalar` / `from_arrow` are reference-count bumps — with the
-scalar accessors `get_scalar_at(index)` / `get_at::<T>(index)` and `len` /
+scalar accessors `scalar_at(index)` / `get_at::<T>(index)` and `len` /
 `is_empty`. Every integer type also has its concrete serie (`Int8Serie` …
 `UInt64Serie`), borrowing the raw Arrow buffers themselves (`values()` borrows
 the native element slice without copying; `from_io` / `pwrite_io` bridge to any

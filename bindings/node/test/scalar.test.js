@@ -185,15 +185,15 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     assert.equal(numbers.getAt(0), low)
     assert.equal(numbers.getAt(1), wire(2))
     assert.equal(numbers.getAt(2), high)
-    assert.equal(numbers.getScalarAt(2).value(), high)
-    assert.equal(numbers.getScalarAt(3), null) // out of bounds
+    assert.equal(numbers.scalarAt(2).value(), high)
+    assert.equal(numbers.scalarAt(3), null) // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
     assert.equal(numbers.dataType().valueType().name(), name)
     assert.throws(() => numbers.getAt(3)) // out of bounds
     assert.throws(() => numbers.getAt(-1), /non-negative index/) // negative, not wrapped
     assert.throws(() => numbers.getAt(2 ** 32)) // never aliased back into range
-    assert.equal(numbers.getScalarAt(-1), null)
-    assert.equal(numbers.getScalarAt(2 ** 32), null)
+    assert.equal(numbers.scalarAt(-1), null)
+    assert.equal(numbers.scalarAt(2 ** 32), null)
 
     // The empty serie and null are distinct states.
     const empty = new serieClass([])
@@ -346,8 +346,8 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
     assert.deepEqual(numbers.toArray(), [1.5, 2.5, 3.5])
     assert.equal(numbers.getAt(0), 1.5)
     assert.equal(numbers.getAt(2), 3.5)
-    assert.equal(numbers.getScalarAt(2).value(), 3.5)
-    assert.equal(numbers.getScalarAt(3), null) // out of bounds
+    assert.equal(numbers.scalarAt(2).value(), 3.5)
+    assert.equal(numbers.scalarAt(3), null) // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
     assert.equal(numbers.dataType().valueType().name(), name)
     assert.throws(() => numbers.getAt(3)) // out of bounds

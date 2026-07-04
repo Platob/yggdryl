@@ -92,7 +92,7 @@ fn serie_factory_builds_from_a_native_sequence() {
     // scalar(values) builds the sequence through the value type's own factory.
     let numbers = serie_type.scalar(vec![1, 2, 3]);
     assert_eq!(numbers.len(), 3);
-    assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
+    assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
 
     // null_scalar is null; default_scalar is the empty serie (not null).
     assert!(serie_type.null_scalar().is_null());

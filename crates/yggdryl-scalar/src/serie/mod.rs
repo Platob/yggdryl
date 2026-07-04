@@ -19,7 +19,7 @@
 //!
 //! let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);
 //! assert_eq!(numbers.len(), 2);
-//! assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
+//! assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
 //! assert_eq!(
 //!     TypedSerie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(),
 //!     numbers
@@ -43,7 +43,7 @@ macro_rules! int_serie {
         #[doc = concat!("underlying buffers themselves: [`values`](", stringify!($ty), "::values) borrows the whole")]
         #[doc = concat!("element buffer as `&[", stringify!($native), "]` without copying, [`get_at`](", stringify!($ty), "::get_at) reads")]
         #[doc = "one element null-aware as any native Rust target, and the *scalar accessor*"]
-        #[doc = concat!("[`get_scalar_at`](", stringify!($ty), "::get_scalar_at) hands back an [`", stringify!($scalar), "`](crate::", stringify!($scalar), ") (the")]
+        #[doc = concat!("[`scalar_at`](", stringify!($ty), "::scalar_at) hands back an [`", stringify!($scalar), "`](crate::", stringify!($scalar), ") (the")]
         #[doc = concat!("inner null scalar for a null slot). [`from_io`](", stringify!($ty), "::from_io) /")]
         #[doc = concat!("[`pwrite_io`](", stringify!($ty), "::pwrite_io) bridge the elements to any `yggdryl-core`")]
         #[doc = "positioned-IO resource in one bulk little-endian transfer. The optimized"]
@@ -117,7 +117,7 @@ macro_rules! int_serie {
             /// The whole element buffer as a native slice, borrowed without copying —
             /// including the (arbitrary) slots under null elements; pair with
             #[doc = concat!("[`get_at`](", stringify!($ty), "::get_at) or")]
-            #[doc = concat!("[`get_scalar_at`](", stringify!($ty), "::get_scalar_at) for null-aware reads.")]
+            #[doc = concat!("[`scalar_at`](", stringify!($ty), "::scalar_at) for null-aware reads.")]
             pub fn values(&self) -> Option<&[$native]> {
                 self.values.as_deref()
             }
@@ -234,7 +234,7 @@ macro_rules! int_serie {
 
             /// The element at `index` as a scalar (a null element is the inner null
             /// scalar), or `None` when the serie is null or `index` is out of bounds.
-            pub fn get_scalar_at(&self, index: usize) -> Option<$crate::$scalar> {
+            pub fn scalar_at(&self, index: usize) -> Option<$crate::$scalar> {
                 let values = self.values.as_ref()?;
                 if index >= values.len() {
                     return None;
@@ -264,7 +264,7 @@ macro_rules! int_serie {
                 // reads one element from them.
                 let this = self.clone();
                 (0..self.len()).map(move |index| {
-                    this.get_scalar_at(index)
+                    this.scalar_at(index)
                         .expect("index within the serie length")
                 })
             }

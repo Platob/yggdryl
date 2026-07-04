@@ -20,7 +20,7 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 /// are reference-count bumps, never element copies; building from inner scalars pays
 /// the assembly once, at construction. [`Value`](Scalar::Value) is the backing `dyn
 /// Array`, and the *scalar accessors* read elements back out:
-/// [`get_scalar_at`](TypedSerie::get_scalar_at) redirects one element through the
+/// [`scalar_at`](TypedSerie::scalar_at) redirects one element through the
 /// inner scalar's own `from_arrow`, [`get_at`](TypedSerie::get_at) hands back an
 /// element's value as any native Rust target, and [`len`](TypedSerie::len) /
 /// [`is_empty`](TypedSerie::is_empty) describe the sequence.
@@ -35,9 +35,9 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 /// let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
 /// assert!(!numbers.is_null());
 /// assert_eq!(numbers.len(), 2);
-/// assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
-/// assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
-/// assert_eq!(numbers.get_scalar_at(2), None); // out of bounds
+/// assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
+/// assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
+/// assert_eq!(numbers.scalar_at(2), None); // out of bounds
 /// assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
 /// assert!(numbers.get_at::<i64>(1).is_err()); // a null element holds no value
 /// assert_eq!(numbers.data_type().name(), "list");
@@ -107,7 +107,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
 
     /// The element at `index` as an inner scalar (a null element is the inner null
     /// scalar), or `None` when the serie is null or `index` is out of bounds.
-    pub fn get_scalar_at(&self, index: usize) -> Option<S> {
+    pub fn scalar_at(&self, index: usize) -> Option<S> {
         let values = self.values.as_ref()?;
         if index >= values.len() {
             return None;
@@ -139,7 +139,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
     /// An iterator over the elements as inner scalars, in order (a null element is
     /// the inner null scalar; a null serie yields nothing). The element column is
     /// reconstituted **once**, and each step slices one element from it — so the
-    /// whole walk is linear, unlike a [`get_scalar_at`](TypedSerie::get_scalar_at)
+    /// whole walk is linear, unlike a [`scalar_at`](TypedSerie::scalar_at)
     /// loop, which reconstitutes the column on every call. The returned iterator
     /// owns a reference-counted view of the column, so it borrows nothing and is
     /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].

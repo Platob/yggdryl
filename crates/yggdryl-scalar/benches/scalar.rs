@@ -279,10 +279,10 @@ fn record(c: &mut Criterion) {
         })
         .collect();
     let points = yggdryl_scalar::TypedStructSerie::new(point.clone(), rows);
-    group.bench_function("struct_serie_get_scalar_at", |b| {
+    group.bench_function("struct_serie_scalar_at", |b| {
         b.iter(|| {
             for index in 0..N {
-                black_box(points.get_scalar_at(black_box(index)));
+                black_box(points.scalar_at(black_box(index)));
             }
         })
     });
@@ -314,7 +314,7 @@ fn record(c: &mut Criterion) {
         )
     });
 
-    // Iterating the rows against the indexed `get_scalar_at` loop above: the iterator
+    // Iterating the rows against the indexed `scalar_at` loop above: the iterator
     // reconstitutes the struct column once, then slices per row.
     group.bench_function("struct_serie_iter_records", |b| {
         b.iter(|| {

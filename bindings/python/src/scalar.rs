@@ -1629,9 +1629,9 @@ macro_rules! int_serie_scalar_py {
             #[doc = concat!("The element at `index` as an `", stringify!($scalar), "`, or `None` when the serie is")]
             /// null or `index` is past the end (a negative index raises
             /// `OverflowError`).
-            fn get_scalar_at(&self, index: usize) -> Option<$scalar> {
+            fn scalar_at(&self, index: usize) -> Option<$scalar> {
                 self.inner
-                    .get_scalar_at(index)
+                    .scalar_at(index)
                     .map(|inner| $scalar { inner })
             }
 
@@ -1820,9 +1820,9 @@ macro_rules! float16_serie_scalar_py {
             #[doc = concat!("The element at `index` as a `", stringify!($scalar), "`, or `None` when the serie is")]
             /// null or `index` is past the end (a negative index raises
             /// `OverflowError`).
-            fn get_scalar_at(&self, index: usize) -> Option<$scalar> {
+            fn scalar_at(&self, index: usize) -> Option<$scalar> {
                 self.inner
-                    .get_scalar_at(index)
+                    .scalar_at(index)
                     .map(|inner| $scalar { inner })
             }
 
@@ -1893,7 +1893,7 @@ fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult
         return Ok((0..serie.len())
             .map(|index| {
                 serie
-                    .get_scalar_at(index)
+                    .scalar_at(index)
                     .and_then(|scalar| scalar.value().copied())
                     .map(|value| value.to_f64())
             })
@@ -1906,7 +1906,7 @@ fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult
                 $(yggdryl_scalar::AnySerie::$variant(serie) => Ok((0..serie.len())
                     .map(|index| {
                         serie
-                            .get_scalar_at(index)
+                            .scalar_at(index)
                             .and_then(|scalar| scalar.value().copied())
                     })
                     .collect::<Vec<_>>()

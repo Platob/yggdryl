@@ -333,8 +333,8 @@ def test_serie_holds_a_sequence(case):
     assert numbers.get_at(0) == low
     assert numbers.get_at(1) == 2
     assert numbers.get_at(2) == high
-    assert numbers.get_scalar_at(2).value() == high
-    assert numbers.get_scalar_at(3) is None  # out of bounds
+    assert numbers.scalar_at(2).value() == high
+    assert numbers.scalar_at(3) is None  # out of bounds
     assert numbers.data_type().name() == "list"
     assert numbers.data_type().value_type().name() == name
     with pytest.raises(ValueError):
@@ -373,8 +373,8 @@ def test_float_serie_holds_a_sequence(case):
     assert weights.to_pylist() == [1.5, 2.5, 3.5]
     assert weights.to_pyvalue() == [1.5, 2.5, 3.5]
     assert weights.get_at(1) == 2.5
-    assert weights.get_scalar_at(2).value() == 3.5
-    assert weights.get_scalar_at(3) is None  # out of bounds
+    assert weights.scalar_at(2).value() == 3.5
+    assert weights.scalar_at(3) is None  # out of bounds
     assert weights.data_type().name() == "list"
     assert weights.data_type().value_type().name() == name
     with pytest.raises(OverflowError):
