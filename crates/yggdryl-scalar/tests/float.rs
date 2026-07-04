@@ -196,7 +196,7 @@ fn float16_reads_widen_and_narrow_exact_or_error() {
     let column = AnySerie::from(weights.clone());
     assert!(matches!(column, AnySerie::Float16(_)));
     assert_eq!(
-        column.get_any_scalar_at(0),
+        column.any_scalar_at(0),
         Some(AnyScalar::from(Float16Scalar::new(half)))
     );
     assert_eq!(
@@ -287,7 +287,7 @@ fn any_serie_decomposes_floats() {
 
     // A single element reads out as a decomposed AnyScalar.
     assert_eq!(
-        column.get_any_scalar_at(0),
+        column.any_scalar_at(0),
         Some(AnyScalar::from(Float64Scalar::new(1.5)))
     );
     assert!(matches!(

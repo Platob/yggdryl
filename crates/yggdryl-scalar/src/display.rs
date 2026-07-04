@@ -145,7 +145,7 @@ fn format_serie_cell(items: &crate::AnySerie, depth: usize) -> String {
     let shown = items.len().min(MAX_INLINE);
     let mut cells: Vec<String> = (0..shown)
         .map(|index| {
-            items.get_any_scalar_at(index).map_or_else(
+            items.any_scalar_at(index).map_or_else(
                 || "null".to_string(),
                 |scalar| format_any_at(&scalar, depth + 1),
             )
@@ -169,7 +169,7 @@ fn format_map_cell(map: &crate::MapScalar, depth: usize) -> String {
     let len = keys.len().min(values.len());
     let shown = len.min(MAX_INLINE);
     let cell = |serie: &crate::AnySerie, index: usize| {
-        serie.get_any_scalar_at(index).map_or_else(
+        serie.any_scalar_at(index).map_or_else(
             || "null".to_string(),
             |scalar| format_any_at(&scalar, depth + 1),
         )
@@ -478,7 +478,7 @@ pub(crate) fn render_table(
 
 /// One column per field of a struct array, each field's values formatted **through the
 /// crate's own scalars** (each child column decomposed to an [`AnySerie`](crate::AnySerie)
-/// and read by [`get_any_scalar_at`](crate::AnySerie::get_any_scalar_at)), capped at `max_rows` rows —
+/// and read by [`any_scalar_at`](crate::AnySerie::any_scalar_at)), capped at `max_rows` rows —
 /// the shared builder behind a struct serie's table and a record's. The struct layout
 /// (field names, types) is navigated on the struct array; the values are not.
 fn struct_columns(entries: &arrow_array::StructArray, max_rows: usize) -> Vec<Column> {
@@ -502,7 +502,7 @@ fn struct_columns(entries: &arrow_array::StructArray, max_rows: usize) -> Vec<Co
             let cells = (0..shown)
                 .map(|row| {
                     serie
-                        .get_any_scalar_at(row)
+                        .any_scalar_at(row)
                         .map_or_else(|| "null".to_string(), |scalar| format_any(&scalar))
                 })
                 .collect();
@@ -543,7 +543,7 @@ pub(crate) fn render_serie_with_total(
     let cells = (0..shown)
         .map(|index| {
             column
-                .get_any_scalar_at(index)
+                .any_scalar_at(index)
                 .map_or_else(|| "null".to_string(), |any| format_any(&any))
         })
         .collect();

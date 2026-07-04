@@ -10,7 +10,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// Where [`StructScalar`](crate::StructScalar) is the column-oriented struct scalar
 /// (one one-element serie per field), `RecordScalar` is the **row-oriented** atom —
 /// the struct value materialized field-by-field as the crate's own atomic scalars, so
-/// [`get_any_scalar_at`](RecordScalar::get_any_scalar_at) /
+/// [`any_scalar_at`](RecordScalar::any_scalar_at) /
 /// [`any_scalar_by`](RecordScalar::any_scalar_by)
 /// hand back a field's [`AnyScalar`](crate::AnyScalar) directly (integer fields
 /// decomposed to their concrete scalars, anything else a one-element Arrow value), and
@@ -99,7 +99,7 @@ impl RecordScalar {
 
     /// The field scalar at `index`, or `None` when the record is null or `index` is
     /// out of bounds.
-    pub fn get_any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
+    pub fn any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
         self.scalars.as_ref()?.get(index).cloned()
     }
 
@@ -111,7 +111,7 @@ impl RecordScalar {
             .fields()
             .iter()
             .position(|field| field.name() == name)?;
-        self.get_any_scalar_at(index)
+        self.any_scalar_at(index)
     }
 }
 
@@ -130,7 +130,7 @@ impl crate::NestedSerie for RecordScalar {
     fn child_serie_at(&self, index: usize) -> Option<AnySerie> {
         // The field scalar handed out as its one-element column (rehydrate with the
         // matching scalar's `from_arrow`) — the NestedSerie contract is column-shaped.
-        self.get_any_scalar_at(index)
+        self.any_scalar_at(index)
             .map(|scalar| AnySerie::from_arrow(scalar.to_arrow_scalar()))
     }
 

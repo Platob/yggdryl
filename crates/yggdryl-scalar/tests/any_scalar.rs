@@ -1,5 +1,5 @@
 //! Integration tests for [`AnyScalar`], the type-erased atomic scalar, and the
-//! [`AnySerie::get_any_scalar_at`] bridge that reads one out of a column.
+//! [`AnySerie::any_scalar_at`] bridge that reads one out of a column.
 
 use std::sync::Arc;
 
@@ -70,17 +70,17 @@ fn any_serie_get_scalar_reads_one_element() {
     // A decomposed column reads the element straight from its buffer.
     let column = AnySerie::from(Int64Serie::from(vec![10, 20, 30]));
     assert_eq!(
-        column.get_any_scalar_at(1),
+        column.any_scalar_at(1),
         Some(AnyScalar::from(Int64Scalar::new(20)))
     );
-    assert!(column.get_any_scalar_at(3).is_none()); // out of bounds
+    assert!(column.any_scalar_at(3).is_none()); // out of bounds
 
     // An Arrow-fallback column slices one element and decomposes it.
     let bytes = AnySerie::from_arrow(Arc::new(arrow_array::BinaryArray::from_iter_values([
         b"a".as_ref(),
         b"bc".as_ref(),
     ])));
-    let first = bytes.get_any_scalar_at(0).unwrap();
+    let first = bytes.any_scalar_at(0).unwrap();
     assert!(matches!(first, AnyScalar::Arrow(_)));
     assert_eq!(
         BinaryScalar::from_arrow(first.to_arrow_scalar().as_ref()).unwrap(),

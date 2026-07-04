@@ -85,14 +85,14 @@ impl Serie {
         &self,
     ) -> impl ExactSizeIterator<Item = crate::AnyScalar> + DoubleEndedIterator {
         let len = self.len();
-        // A reference-count bump of the decomposed column; `get_any_scalar_at` then
+        // A reference-count bump of the decomposed column; `any_scalar_at` then
         // reads each element from its buffers (no whole-array reconstitution).
         let values = self.values.clone();
         (0..len).map(move |index| {
             values
                 .as_ref()
                 .expect("a serie with elements has a column")
-                .get_any_scalar_at(index)
+                .any_scalar_at(index)
                 .expect("index within bounds")
         })
     }

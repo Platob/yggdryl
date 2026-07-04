@@ -604,7 +604,7 @@ numeric element types are held **decomposed** as the concrete buffer-backed seri
 (the integers `Int8Serie` … `UInt64Serie` and the floats `Float32Serie` /
 `Float64Serie`); any other element type keeps its Arrow array zero-copy in the
 `Arrow` fallback (more decomposed variants land as concrete series do). `from_arrow`
-decomposes, `to_arrow` reconstitutes, `slice` windows, and `get_any_scalar_at(index)` reads
+decomposes, `to_arrow` reconstitutes, `slice` windows, and `any_scalar_at(index)` reads
 one element out as an `AnyScalar` — all sharing buffers. `AnyScalar` is the atomic
 counterpart one value down (a number decomposed to its concrete scalar, anything
 else a one-element Arrow value), the crate's own holder behind a `RecordScalar`'s
@@ -630,7 +630,7 @@ has no children.
 `RecordScalar` is the **row-oriented struct atom**: an array of one `AnyScalar` per
 field, sharing one `StructType`. Where `StructScalar` is the column-oriented row
 (one one-element serie per field), `RecordScalar` materializes it field-by-field —
-`get_any_scalar_at(index)` / `any_scalar_by(name)` hand back a field's atomic scalar directly,
+`any_scalar_at(index)` / `any_scalar_by(name)` hand back a field's atomic scalar directly,
 and `StructScalar` converts to it with the base accessor `as_struct()`. In the
 bindings a record is built straight from a `dict` (Python) / plain object (Node)
 with every field inferred, and reads back out as an auto-generated **singleton

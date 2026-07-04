@@ -2102,7 +2102,7 @@ impl RecordScalar {
         for (index, field) in self.inner.data_type().fields().iter().enumerate() {
             let scalar = self
                 .inner
-                .get_any_scalar_at(index)
+                .any_scalar_at(index)
                 .expect("a present record holds every field");
             row.set_item(field.name(), scalar_to_pyvalue(py, &scalar)?)?;
         }
@@ -2125,7 +2125,7 @@ impl RecordScalar {
             .map(|index| {
                 let scalar = self
                     .inner
-                    .get_any_scalar_at(index)
+                    .any_scalar_at(index)
                     .expect("a present record holds every field");
                 scalar_to_pyvalue(py, &scalar)
             })

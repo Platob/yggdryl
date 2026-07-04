@@ -41,14 +41,14 @@ fn record_gives_generic_child_scalar_access() {
 
     // By position and by field name; each field is its own atomic scalar.
     assert_eq!(
-        row.get_any_scalar_at(0).unwrap(),
+        row.any_scalar_at(0).unwrap(),
         AnyScalar::from(Int64Scalar::new(1))
     );
     assert_eq!(
         row.any_scalar_by("y").unwrap(),
         AnyScalar::from(Int64Scalar::new(2))
     );
-    assert!(row.get_any_scalar_at(2).is_none());
+    assert!(row.any_scalar_at(2).is_none());
     assert!(row.any_scalar_by("z").is_none());
 
     // The Arrow round trip preserves the row; a null record round-trips too.
@@ -58,7 +58,7 @@ fn record_gives_generic_child_scalar_access() {
     );
     let missing = RecordScalar::null(point_type());
     assert!(missing.is_null());
-    assert!(missing.get_any_scalar_at(0).is_none());
+    assert!(missing.any_scalar_at(0).is_none());
     assert_eq!(
         RecordScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
         missing

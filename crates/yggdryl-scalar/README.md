@@ -74,7 +74,7 @@ its item serie, a map its entries serie, a struct an array of column series —
 reconstituting Arrow arrays on demand and decomposing them on the way in. The
 `NestedSerie` trait adds child access (`child_serie_at(index)` /
 `child_serie_by(name)`), `RecordScalar` is the generic struct-row accessor
-(`get_any_scalar_at` / `any_scalar_by`), and the base `Scalar` gains `as_serie` / `as_map` /
+(`any_scalar_at` / `any_scalar_by`), and the base `Scalar` gains `as_serie` / `as_map` /
 `as_struct` alongside the `as_*` contract.
 
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow

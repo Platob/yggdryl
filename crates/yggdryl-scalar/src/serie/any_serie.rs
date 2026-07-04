@@ -161,7 +161,7 @@ impl AnySerie {
     /// struct series' row access. The `any_` marks the type-erased return; a
     /// concrete serie's [`get_scalar_at`](crate::TypedSerie::get_scalar_at) hands
     /// back the typed element scalar instead.
-    pub fn get_any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
+    pub fn any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
         for_each_decomposed!(self,
             serie => serie.get_scalar_at(index).map(AnyScalar::from),
             values => (index < Array::len(values.as_ref()))
