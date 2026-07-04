@@ -1,8 +1,12 @@
 //! Integration tests for the [`FieldFactory`] surface: a typed data type builds its
 //! field, equal to the one constructed directly.
 
-use yggdryl_field::yggdryl_dtype::{BinaryType, Int64Type, OptionalType, SerieType, UInt8Type};
-use yggdryl_field::{BinaryField, FieldFactory, Int64Field, OptionalField, SerieField, UInt8Field};
+use yggdryl_field::yggdryl_dtype::{
+    BinaryType, Int64Type, TypedOptionalType, TypedSerieType, UInt8Type,
+};
+use yggdryl_field::{
+    BinaryField, FieldFactory, Int64Field, TypedOptionalField, TypedSerieField, UInt8Field,
+};
 
 #[test]
 fn typed_data_type_builds_its_field() {
@@ -20,11 +24,11 @@ fn typed_data_type_builds_its_field() {
 #[test]
 fn parameterised_data_types_build_their_field() {
     assert_eq!(
-        SerieType::new(Int64Type).field("scores", true),
-        SerieField::<Int64Type>::new("scores", true)
+        TypedSerieType::new(Int64Type).field("scores", true),
+        TypedSerieField::<Int64Type>::new("scores", true)
     );
     assert_eq!(
-        OptionalType::new(Int64Type).field("score", true),
-        OptionalField::<Int64Type>::new("score", true)
+        TypedOptionalType::new(Int64Type).field("score", true),
+        TypedOptionalField::<Int64Type>::new("score", true)
     );
 }

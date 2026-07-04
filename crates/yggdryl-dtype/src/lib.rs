@@ -73,11 +73,11 @@ pub mod r#struct;
 pub mod union;
 
 pub use binary::BinaryType;
-pub use map::{Map, MapType, TypedMap};
+pub use map::{Map, MapType, TypedMap, TypedMapType};
 pub use null::NullType;
-pub use optional::{Optional, OptionalType, TypedOptional};
+pub use optional::{Optional, OptionalType, TypedOptional, TypedOptionalType};
 pub use r#struct::{Struct, StructType, TypedStruct};
-pub use serie::{Serie, SerieType, TypedSerie};
+pub use serie::{Serie, SerieType, TypedSerie, TypedSerieType};
 pub use union::{TypedUnion, Union, UnionType};
 
 pub use integer::{

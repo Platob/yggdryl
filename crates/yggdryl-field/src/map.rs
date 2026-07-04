@@ -1,52 +1,57 @@
 //! The [`MapField`] field.
 
-use crate::{Field, FieldFactory, TypedField};
-use yggdryl_dtype::{DataError, DataType, MapType, TypedDataType};
+use crate::Field;
+use yggdryl_dtype::{DataError, DataType, MapType};
 
-/// A nullable `map` field: a name paired with the
-/// [`MapType`](yggdryl_dtype::MapType) from the key type `K` to the value type `V`.
+/// A nullable `map` field: a name paired with a dynamic
+/// [`MapType`](yggdryl_dtype::MapType).
 ///
-/// It carries both trait layers: the raw [`Field`] surface (its associated
-/// [`DataType`](Field::DataType) is [`MapType<K, V>`](MapType)), and the typed
-/// [`TypedField<MapType<K, V>, Vec<(TK, TV)>>`] whenever both types have codecs.
+/// Like [`StructField`](crate::StructField) / [`UnionField`](crate::UnionField), the
+/// data type carries its key and value types as Arrow fields, so
+/// [`new`](MapField::new) takes the [`MapType`](yggdryl_dtype::MapType) rather than
+/// defaulting it, and there is no [`FieldFactory`](crate::FieldFactory). The
+/// statically-typed [`TypedMapField<K, V>`](crate::TypedMapField) carries the key and
+/// value codecs.
 ///
 /// ```
-/// use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Map, MapType, UInt8Type};
-/// use yggdryl_field::{Field, FieldFactory, MapField};
+/// use yggdryl_field::yggdryl_dtype::{arrow_schema, DataType, MapType};
+/// use yggdryl_field::{Field, MapField};
 ///
-/// let ranks = MapField::<UInt8Type, Int64Type>::new("ranks", true);
+/// let ranks = MapField::new(
+///     "ranks",
+///     MapType::new(arrow_schema::DataType::UInt8, arrow_schema::DataType::Int64),
+///     true,
+/// );
 /// assert_eq!(ranks.name(), "ranks");
 /// assert_eq!(ranks.data_type().name(), "map");
-/// assert_eq!(ranks.data_type().key_type().name(), "uint8");
 /// assert!(ranks.is_nullable());
 /// assert_eq!(MapField::from_arrow(&ranks.to_arrow()).unwrap(), ranks);
-/// assert_eq!(MapType::new(UInt8Type, Int64Type).field("ranks", true), ranks);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MapField<K, V> {
+pub struct MapField {
     name: String,
-    data_type: MapType<K, V>,
+    data_type: MapType,
     nullable: bool,
 }
 
-impl<K: DataType + Default, V: DataType + Default> MapField<K, V> {
-    /// A `map` field named `name`.
-    pub fn new(name: impl Into<String>, nullable: bool) -> Self {
+impl MapField {
+    /// A `map` field named `name` of the map type `data_type`.
+    pub fn new(name: impl Into<String>, data_type: MapType, nullable: bool) -> Self {
         Self {
             name: name.into(),
-            data_type: MapType::default(),
+            data_type,
             nullable,
         }
     }
 }
 
-impl<K: DataType, V: DataType> Field for MapField<K, V> {
-    type DataType = MapType<K, V>;
+impl Field for MapField {
+    type DataType = MapType;
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn data_type(&self) -> &MapType<K, V> {
+    fn data_type(&self) -> &MapType {
         &self.data_type
     }
 
@@ -57,24 +62,6 @@ impl<K: DataType, V: DataType> Field for MapField<K, V> {
     fn from_arrow(field: &arrow_schema::Field) -> Result<Self, DataError> {
         let data_type = MapType::from_arrow(field.data_type())?;
         crate::field::validate_field_metadata(field, "MapType")?;
-        Ok(Self {
-            name: field.name().to_string(),
-            data_type,
-            nullable: field.is_nullable(),
-        })
-    }
-}
-
-impl<TK, TV, K: TypedDataType<TK>, V: TypedDataType<TV>> TypedField<MapType<K, V>, Vec<(TK, TV)>>
-    for MapField<K, V>
-{
-}
-
-impl<TK, TV, K: TypedDataType<TK> + Default, V: TypedDataType<TV> + Default>
-    FieldFactory<Vec<(TK, TV)>> for MapType<K, V>
-{
-    type Field = MapField<K, V>;
-    fn field(&self, name: impl Into<String>, nullable: bool) -> MapField<K, V> {
-        MapField::new(name, nullable)
+        Ok(Self::new(field.name(), data_type, field.is_nullable()))
     }
 }

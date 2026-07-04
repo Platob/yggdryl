@@ -1,7 +1,7 @@
 //! The [`UInt16Serie`] scalar: a serie of `uint16` borrowing raw Arrow buffers.
 //!
 //! A single, possibly-null serie of `uint16` (native `u16` elements) of the
-//! [`SerieType<UInt16Type>`](yggdryl_dtype::SerieType) data type, holding its
+//! [`TypedSerieType<UInt16Type>`](yggdryl_dtype::TypedSerieType) data type, holding its
 //! elements zero-copy in Arrow buffers.
 //!
 //! ```

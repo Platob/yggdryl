@@ -244,8 +244,10 @@ as_accessors_node!(BinaryScalar);
 /// the null variant.
 #[napi(namespace = "scalar")]
 pub struct OptionalBinaryScalar {
-    pub(crate) inner:
-        yggdryl_scalar::OptionalScalar<yggdryl_dtype::BinaryType, yggdryl_scalar::BinaryScalar>,
+    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
+        yggdryl_dtype::BinaryType,
+        yggdryl_scalar::BinaryScalar,
+    >,
 }
 
 #[napi(namespace = "scalar")]
@@ -254,7 +256,7 @@ impl OptionalBinaryScalar {
     #[napi(constructor)]
     pub fn new(value: Buffer) -> Self {
         Self {
-            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::BinaryScalar::new(
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::BinaryScalar::new(
                 value.to_vec(),
             )),
         }
@@ -264,7 +266,7 @@ impl OptionalBinaryScalar {
     #[napi(factory)]
     pub fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::OptionalScalar::null(),
+            inner: yggdryl_scalar::TypedOptionalScalar::null(),
         }
     }
 
@@ -339,7 +341,7 @@ macro_rules! int_scalar_node {
         #[napi(namespace = "scalar")]
         pub struct $opt_ty {
             pub(crate) inner:
-                yggdryl_scalar::OptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
+                yggdryl_scalar::TypedOptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
         }
 
         #[napi(namespace = "scalar")]
@@ -348,7 +350,7 @@ macro_rules! int_scalar_node {
             #[napi(factory)]
             pub fn null() -> Self {
                 Self {
-                    inner: yggdryl_scalar::OptionalScalar::null(),
+                    inner: yggdryl_scalar::TypedOptionalScalar::null(),
                 }
             }
 
@@ -403,7 +405,7 @@ macro_rules! int_wire_number_scalar {
             #[napi(constructor)]
             pub fn new(value: i64) -> Result<Self> {
                 Ok(Self {
-                    inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::$ty::new(
+                    inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::$ty::new(
                         wire_to_native::<$native>(value, $name)?,
                     )),
                 })
@@ -508,7 +510,7 @@ impl OptionalInt64Scalar {
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::Int64Scalar::new(
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::Int64Scalar::new(
                 bigint_to_i64(value)?,
             )),
         })
@@ -544,7 +546,7 @@ impl OptionalUInt64Scalar {
     #[napi(constructor)]
     pub fn new(value: BigInt) -> Result<Self> {
         Ok(Self {
-            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::UInt64Scalar::new(
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::UInt64Scalar::new(
                 bigint_to_u64(value)?,
             )),
         })

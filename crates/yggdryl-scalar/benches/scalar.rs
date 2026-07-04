@@ -3,9 +3,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_scalar::yggdryl_dtype as dtype;
-use yggdryl_scalar::{Int64Scalar, Int8Scalar, OptionalScalar, Scalar, ScalarFactory};
+use yggdryl_scalar::{Int64Scalar, Int8Scalar, Scalar, ScalarFactory, TypedOptionalScalar};
 
-type OptionalInt64 = OptionalScalar<dtype::Int64Type, Int64Scalar>;
+type OptionalInt64 = TypedOptionalScalar<dtype::Int64Type, Int64Scalar>;
 
 const N: usize = 4096;
 

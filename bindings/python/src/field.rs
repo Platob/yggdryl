@@ -124,7 +124,7 @@ impl BinaryField {
 /// data type.
 #[pyclass]
 pub struct OptionalBinaryField {
-    pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::BinaryType>,
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::BinaryType>,
 }
 
 #[pymethods]
@@ -134,7 +134,7 @@ impl OptionalBinaryField {
     #[pyo3(signature = (name, nullable = true))]
     fn new(name: String, nullable: bool) -> Self {
         Self {
-            inner: yggdryl_field::OptionalField::new(name, nullable),
+            inner: yggdryl_field::TypedOptionalField::new(name, nullable),
         }
     }
 
@@ -195,7 +195,7 @@ macro_rules! int_field_py {
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
         #[pyclass]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::$dtype>,
+            pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::$dtype>,
         }
 
         #[pymethods]
@@ -205,7 +205,7 @@ macro_rules! int_field_py {
             #[pyo3(signature = (name, nullable = true))]
             fn new(name: String, nullable: bool) -> Self {
                 Self {
-                    inner: yggdryl_field::OptionalField::new(name, nullable),
+                    inner: yggdryl_field::TypedOptionalField::new(name, nullable),
                 }
             }
 
@@ -286,13 +286,13 @@ int_field_py!(
 
 /// Generates the concrete serie field of one integer value type: `$ty`, a column
 /// of the `yggdryl.dtype` class `$dtype` — a thin delegation to
-/// `yggdryl_field::SerieField<$value_ty>`.
+/// `yggdryl_field::TypedSerieField<$value_ty>`.
 macro_rules! int_serie_field_py {
     ($ty:ident, $dtype:ident, $value_ty:ident, $name:literal) => {
         #[doc = concat!("A nullable `list`-of-`", $name, "` field: a name paired with the `", stringify!($dtype), "` data type.")]
         #[pyclass]
         pub struct $ty {
-            pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::$value_ty>,
+            pub(crate) inner: yggdryl_field::TypedSerieField<yggdryl_dtype::$value_ty>,
         }
 
         #[pymethods]
@@ -302,7 +302,7 @@ macro_rules! int_serie_field_py {
             #[pyo3(signature = (name, nullable = true))]
             fn new(name: String, nullable: bool) -> Self {
                 Self {
-                    inner: yggdryl_field::SerieField::new(name, nullable),
+                    inner: yggdryl_field::TypedSerieField::new(name, nullable),
                 }
             }
 

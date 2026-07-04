@@ -28,9 +28,9 @@ data type's `default_scalar()`), and — for the serie scalars — their
 per-element-null construction, `to_arrow_array` / `nulls` Arrow-buffer surface and
 `from_io` / `pwrite_io` two-resource bridge (which await C Data Interface interop
 or borrow a second IO resource at once), so a serie built from a binding is a
-dense (all-valid) serie. The still-generic
-[nested scalars](#nested-scalars-serie-map-and-struct) — the generic `Serie` /
-`MapScalar` / `StructScalar` — have no concrete FFI shape yet.
+dense (all-valid) serie. The dynamic bases and typed generics of the
+[nested scalars](#nested-scalars-serie-map-and-struct) — `Serie` / `TypedSerie`,
+`MapScalar` / `TypedMapScalar`, `StructScalar` — have no concrete FFI shape yet.
 
 ## Scalars hold a value or null
 
@@ -194,7 +194,7 @@ take an optional charset name, `"utf8"` or `"latin1"`) — and `into_io_slice`
 
 ## The optional scalar
 
-`OptionalScalar<D, S>` is the null-or-value scalar over union storage: an inner
+`TypedOptionalScalar<D, S>` is the null-or-value scalar over union storage: an inner
 scalar `S`, or the null variant. Access redirects to the inner scalar (`value` and
 every `as_*` accessor answer through `S`), and so does the Arrow form: a
 one-element `UnionArray` whose type id selects the variant. The bindings expose it
@@ -234,15 +234,15 @@ as concrete per-type classes built straight from the native value:
 
     ```rust
     use yggdryl_scalar::yggdryl_dtype::Int64Type;
-    use yggdryl_scalar::{Int64Scalar, OptionalScalar, Scalar};
+    use yggdryl_scalar::{Int64Scalar, Scalar, TypedOptionalScalar};
 
     fn main() {
-        let answer = OptionalScalar::new(Int64Scalar::new(42));
+        let answer = TypedOptionalScalar::new(Int64Scalar::new(42));
         assert_eq!(answer.as_i64().unwrap(), 42); // redirected to the inner scalar
         assert_eq!(answer.scalar(), Some(&Int64Scalar::new(42)));
         assert!(!answer.is_null());
 
-        let missing: OptionalScalar<Int64Type, Int64Scalar> = OptionalScalar::null();
+        let missing: TypedOptionalScalar<Int64Type, Int64Scalar> = TypedOptionalScalar::null();
         assert!(missing.is_null());
         assert_eq!(missing.value(), None);
     }
@@ -276,7 +276,7 @@ fn main() {
 
 ## Nested scalars: serie, map and struct
 
-The serie scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
+The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
 child array — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
@@ -294,9 +294,12 @@ the buffers, `get_scalar_at(index)` hands back the element scalar,
 the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
 `yggdryl-core` positioned-IO resource in one bulk little-endian
 `pread_byte_array` / `pwrite_byte_array` transfer.
-`MapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row of
-one-element Arrow columns, each round-tripping through a one-element Arrow array
+`TypedMapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row
+of one-element Arrow columns, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow_scalar` / `from_arrow`.
+Each of `serie` / `map` / `optional` also has a dynamic base (`Serie`, `MapScalar`,
+`OptionalScalar`) with the element type erased — the base `Scalar` surface only —
+that the typed generics `erase()` back to.
 
 The integer series are the nested scalars exposed to the bindings — built dense
 (all-valid) from a native sequence, the whole serie still nullable through
@@ -369,22 +372,22 @@ The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only
 
 ```rust
 use yggdryl_scalar::yggdryl_dtype as dtype;
-use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar, Serie};
+use yggdryl_scalar::{Int64Scalar, Int64Serie, Scalar, TypedSerie};
 
 fn main() {
-    // The generic Serie carries per-element nulls and round-trips through Arrow.
-    let numbers = Serie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    // The generic TypedSerie carries per-element nulls and round-trips through Arrow.
+    let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.get_scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
     let arrow = numbers.to_arrow_scalar(); // a one-element ListArray sharing the elements
-    assert_eq!(Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
+    assert_eq!(TypedSerie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // Int64Serie shares the same buffers across the Arrow boundary, zero-copy.
     let fast = Int64Serie::from(vec![1, 2, 3]);
     assert_eq!(Int64Serie::from_arrow(fast.to_arrow_scalar().as_ref()).unwrap(), fast);
 
     // The type parameters name the dtype-layer types.
-    let _: Serie<dtype::Int64Type, Int64Scalar> = Serie::default();
+    let _: TypedSerie<dtype::Int64Type, Int64Scalar> = TypedSerie::default();
 }
 ```
 

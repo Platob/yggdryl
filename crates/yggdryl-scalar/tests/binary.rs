@@ -5,7 +5,7 @@ use yggdryl_scalar::yggdryl_core::{
     ByteBuffer, ByteBufferSlice, Latin1, RawIOBase, RawIOCursor, RawIOSlice, Seekable, Whence,
 };
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
-use yggdryl_scalar::{arrow_array, BinaryScalar, OptionalScalar, Scalar, Serie};
+use yggdryl_scalar::{arrow_array, BinaryScalar, Scalar, TypedOptionalScalar, TypedSerie};
 
 #[test]
 fn binary_scalar_holds_bytes_or_null() {
@@ -116,21 +116,21 @@ fn binary_scalar_arrow_round_trips_all_shapes() {
 #[test]
 fn binary_composes_with_the_optional_and_list_families() {
     // Optional over binary: union storage, access redirected to the inner scalar.
-    let some = OptionalScalar::new(BinaryScalar::new(b"hi".to_vec()));
+    let some = TypedOptionalScalar::new(BinaryScalar::new(b"hi".to_vec()));
     assert_eq!(some.as_bytes().unwrap(), b"hi");
     assert_eq!(some.as_str(None).unwrap(), "hi");
     assert_eq!(
-        OptionalScalar::from_arrow(some.to_arrow_scalar().as_ref()).unwrap(),
+        TypedOptionalScalar::from_arrow(some.to_arrow_scalar().as_ref()).unwrap(),
         some
     );
     assert!(matches!(
-        OptionalScalar::<dtype::BinaryType, BinaryScalar>::null().as_bytes(),
+        TypedOptionalScalar::<dtype::BinaryType, BinaryScalar>::null().as_bytes(),
         Err(DataError::NullValue)
     ));
 
     // A list of binary: the scalar accessors hand back inner scalars and owned
     // native values (`Vec<u8>`, the owned form of the unsized `[u8]`).
-    let blobs = Serie::<dtype::BinaryType, BinaryScalar>::new(vec![
+    let blobs = TypedSerie::<dtype::BinaryType, BinaryScalar>::new(vec![
         BinaryScalar::new(vec![1]),
         BinaryScalar::null(),
     ]);
@@ -142,7 +142,7 @@ fn binary_composes_with_the_optional_and_list_families() {
         Err(DataError::NullValue) // a null element holds no value
     ));
     assert_eq!(
-        Serie::from_arrow(blobs.to_arrow_scalar().as_ref()).unwrap(),
+        TypedSerie::from_arrow(blobs.to_arrow_scalar().as_ref()).unwrap(),
         blobs
     );
 }
@@ -170,7 +170,7 @@ fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
     // The generic native accessor: a binary serie element as bytes, String or a
     // positioned-IO window.
     let blobs =
-        Serie::<dtype::BinaryType, BinaryScalar>::new(vec![BinaryScalar::new(b"hi".to_vec())]);
+        TypedSerie::<dtype::BinaryType, BinaryScalar>::new(vec![BinaryScalar::new(b"hi".to_vec())]);
     assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), b"hi".to_vec());
     assert_eq!(blobs.get_at::<String>(0).unwrap(), "hi");
     let window = blobs.get_at::<ByteBufferSlice>(0).unwrap();

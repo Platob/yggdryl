@@ -1,7 +1,7 @@
 //! The [`Int64Serie`] scalar: a serie of `int64` borrowing raw Arrow buffers.
 //!
 //! A single, possibly-null serie of `int64` (native `i64` elements) of the
-//! [`SerieType<Int64Type>`](yggdryl_dtype::SerieType) data type, holding its
+//! [`TypedSerieType<Int64Type>`](yggdryl_dtype::TypedSerieType) data type, holding its
 //! elements zero-copy in Arrow buffers.
 //!
 //! ```

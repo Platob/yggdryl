@@ -22,11 +22,11 @@ Four things stay **Rust-only**, stated here and in both binding module docs: the
 `arrow-schema` values that cannot cross the FFI boundary), construction of a
 `UnionType` from arbitrary child fields (reached in the bindings through an
 optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
-the still-generic [nested types](#nested-types-serie-map-and-struct) (`MapType`,
-`StructType` and `SerieType` over a non-integer value type), which have no
-concrete FFI shape yet — the exceptions, the concrete integer serie types
-(`Int8SerieType` … `UInt64SerieType`, the `list` of each integer), are exposed to
-both bindings.
+the dynamic base [nested types](#nested-types-serie-map-and-struct) and their typed
+generics (`SerieType` / `TypedSerieType`, `MapType` / `TypedMapType`, `StructType`)
+over a non-integer value type, which have no concrete FFI shape yet — the exceptions,
+the concrete integer serie types (`Int8SerieType` … `UInt64SerieType`, the `list` of
+each integer), are exposed to both bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and
@@ -185,11 +185,12 @@ discriminated by a type id. `UnionType` carries its `UnionFields` and `UnionMode
 exactly as Arrow models them, so `to_arrow` / `from_arrow` round-trip *any* union
 losslessly.
 
-The `optional` module builds on both: `OptionalType<D>` is the first concrete
-[Logical](#categories) type — a value of the value type `D`, or null, physically
-stored as `UnionType::optional(&D)` (the sparse two-variant union between null and
-the value type; `storage()` returns it). Its Arrow surface delegates to the
-storage, while its typed byte codec delegates to the value type. The bindings
+The `optional` module builds on both: `OptionalType` is the first concrete
+[Logical](#categories) type — a value of some value type, or null, physically
+stored as `UnionType::optional(&value_type)` (the sparse two-variant union between
+null and the value type; `storage()` returns it). Its Arrow surface delegates to the
+storage; the dynamic `OptionalType` carries its value type as the union field, while
+the typed `TypedOptionalType<D>` adds the value type's byte codec. The bindings
 expose the optional family as concrete per-type classes (`OptionalInt64Type`,
 `OptionalBinaryType`, …) and reach `UnionType` through an optional data type's
 `storage()` (arbitrary child fields stay Rust-only).
@@ -225,10 +226,10 @@ expose the optional family as concrete per-type classes (`OptionalInt64Type`,
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{DataType, Int64Type, Logical, Optional, OptionalType, TypedDataType};
+    use yggdryl_dtype::{DataType, Int64Type, Logical, TypedDataType, TypedOptional, TypedOptionalType};
 
     fn main() {
-        let optional = OptionalType::new(Int64Type);
+        let optional = TypedOptionalType::new(Int64Type);
         assert_eq!((optional.name(), optional.value_type().name()), ("optional", "int64"));
         assert_eq!(optional.arrow_format(), "+us:0,1"); // sparse, type ids 0 and 1
         assert_eq!(optional.storage().name(), "union");
@@ -240,13 +241,16 @@ expose the optional family as concrete per-type classes (`OptionalInt64Type`,
 
 ## Nested types: serie, map and struct
 
-The `serie`, `map` and `struct` modules follow the family pattern. `SerieType<D>` is
-the variable-length sequence of one value type (single nullable `"item"` child);
-`MapType<K, V>` the sequence of key–value entries (single `"entries"` struct
-child); `StructType` the dynamic ordered set of named fields, carried losslessly
-like `UnionType`. The typed byte codecs concatenate the child codecs and split
-them back by fixed width (a variable-width child errors with
-`DataError::IndeterminateElementWidth` — decode those from Arrow).
+The `serie`, `map` and `struct` modules follow the family pattern, each with a
+dynamic base and a typed generic. `SerieType` is the variable-length sequence of one
+value type (single nullable `"item"` child) and `TypedSerieType<D>` its statically
+typed form; `MapType` the sequence of key–value entries (single `"entries"` struct
+child) and `TypedMapType<K, V>` its typed form; `StructType` the dynamic ordered set
+of named fields, carried losslessly like `UnionType`. The dynamic bases carry their
+children as Arrow fields, untyped; the `Typed*` generics keep them statically and add
+the byte codec (concatenating the child codecs and splitting them back by fixed width
+— a variable-width child errors with `DataError::IndeterminateElementWidth`, decode
+those from Arrow), erasing back to the base with `.erase()`.
 
 Every integer type's `list` has a concrete FFI shape: each has a buffer-backed
 serie scalar (`Int8Serie` … `UInt64Serie`), so the serie types (`Int8SerieType` …
@@ -296,16 +300,16 @@ and factory surface — elements crossing as a Python `list[int]`, and in Node a
 === "Rust"
 
     ```rust
-    use yggdryl_dtype::{DataType, Int64Type, SerieType, MapType, TypedDataType, UInt8Type};
+    use yggdryl_dtype::{DataType, Int64Type, TypedDataType, TypedMapType, TypedSerieType, UInt8Type};
 
     fn main() {
-        let serie = SerieType::new(Int64Type);
+        let serie = TypedSerieType::new(Int64Type);
         assert_eq!((serie.name(), serie.arrow_format().as_str()), ("list", "+l"));
         assert_eq!(serie.native_from_bytes(&serie.native_to_bytes(&vec![1, 2])).unwrap(), vec![1, 2]);
         assert_eq!(serie.default_value(), Vec::<i64>::new()); // sequences default to empty
 
         // A serie over a non-integer value type, and map / struct, stay Rust-only.
-        let map = MapType::new(UInt8Type, Int64Type);
+        let map = TypedMapType::new(UInt8Type, Int64Type);
         assert_eq!((map.name(), map.arrow_format().as_str()), ("map", "+m"));
     }
     ```
@@ -314,9 +318,10 @@ The other widths follow the same surface — swap `Int64SerieType` / `1n` litera
 for `Int32SerieType` / plain numbers, and so on down to `Int8SerieType`.
 
 !!! note "Rust only"
-    `MapType`, `StructType` and `SerieType` over a non-integer value type are
-    still generic over their child types (or carry dynamic Arrow fields), so they
-    have no concrete FFI shape yet and are not exposed to Python or Node.
+    The dynamic bases (`SerieType`, `MapType`, `StructType`) and the typed generics
+    (`TypedSerieType`, `TypedMapType`) over a non-integer value type carry their
+    child types as Arrow fields or a generic parameter, so they have no concrete FFI
+    shape yet and are not exposed to Python or Node.
 
 ## The trait layers
 
@@ -345,23 +350,24 @@ How a type is shaped (each refines `DataType`):
 - **`Logical` / `TypedLogical<T>`** — a type layered over a physical storage
   type, e.g. a timestamp over `int64`: the base side carries it as the associated
   `Storage` (returned by `storage()`), the typed side pins the same `Storage` and
-  adds the native codec. The generic holder is `OptionalType<D>` — a value or null
-  over the null-or-value union.
+  adds the native codec. The dynamic base is `OptionalType` and the generic holder
+  `TypedOptionalType<D>` — a value or null over the null-or-value union.
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
   `list`, `map`, `union`): the base side's `child_count()` reports how many, the
   typed side adds the native codec (a sequence, a row). The generic holders are
-  `SerieType<D>` (`TypedNested<Vec<T>>`) and `MapType<K, V>`
-  (`TypedNested<Vec<(TK, TV)>>`); the dynamic `StructType` and `UnionType` stay
-  base-only.
+  `TypedSerieType<D>` (`TypedNested<Vec<T>>`) and `TypedMapType<K, V>`
+  (`TypedNested<Vec<(TK, TV)>>`); their dynamic bases `SerieType` / `MapType`, and
+  `StructType` / `UnionType`, stay base-only.
 
 Each composite family also carries its own base/typed trait pair, mirroring the
 base layers: `Optional` / `TypedOptional`, `Union` / `TypedUnion` (a typed
 union's defaults are its *first* data type's), `Serie` / `TypedSerie`, `Map`
-/ `TypedMap` and `Struct` / `TypedStruct` — the concrete `OptionalType<D>`,
-`UnionType`, `SerieType<D>`, `MapType<K, V>` and `StructType` implement the base
-side, and the typed side wherever the child types have codecs (the dynamic
-`UnionType` and `StructType`, whose children are only known at runtime, stay
-base-only).
+/ `TypedMap` and `Struct` / `TypedStruct`. The dynamic bases `OptionalType`,
+`SerieType`, `MapType`, `UnionType` and `StructType` carry their children as Arrow
+fields and implement the base side; the typed generics `TypedOptionalType<D>`,
+`TypedSerieType<D>` and `TypedMapType<K, V>` keep their child types statically and
+add the typed side, erasing back with `.erase()` (the heterogeneous `UnionType` and
+`StructType` are base-only).
 
 ## Type ids
 

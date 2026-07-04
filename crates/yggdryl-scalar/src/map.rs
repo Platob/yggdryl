@@ -1,99 +1,85 @@
-//! The [`MapScalar`] scalar of the [`MapType`](yggdryl_dtype::MapType) data type.
+//! The dynamic [`MapScalar`] scalar of the [`MapType`](yggdryl_dtype::MapType) data
+//! type.
 
-use crate::scalar::{concat_scalar_arrays, scalars_from_elements};
-use crate::{Scalar, ScalarFactory, TypedScalar};
-use yggdryl_dtype::{DataError, DataType, Map, MapType};
+use crate::Scalar;
+use arrow_array::ArrayRef;
+use yggdryl_dtype::{DataError, DataType, MapType};
 
-/// A single, possibly-null `map` value: a sequence of key–value entries of inner
-/// scalars `SK` / `SV` over the key and value types `K` / `V`.
+/// A single, possibly-null `map` value with its key and value types erased: a
+/// sequence of key–value entries backed by one zero-copy Arrow `"entries"` struct
+/// array, carrying a dynamic [`MapType`](yggdryl_dtype::MapType).
 ///
-/// Its [`Value`](Scalar::Value) is the borrowed slice `[(SK, SV)]`, so
-/// [`value`](Scalar::value) yields `Option<&[(SK, SV)]>`. The Arrow form is a
-/// one-element `MapArray` whose entries struct concatenates the key and value
-/// scalars' own Arrow forms; [`from_arrow`](Scalar::from_arrow) redirects every key
-/// and value back through the inner scalars' `from_arrow`.
+/// It is the untyped base of the statically-typed
+/// [`TypedMapScalar<K, V, SK, SV>`](crate::TypedMapScalar): it implements only the
+/// base [`Scalar`] surface ([`to_arrow_scalar`](Scalar::to_arrow_scalar) /
+/// [`from_arrow`](Scalar::from_arrow), all reference-count bumps) plus
+/// [`len`](MapScalar::len) / [`is_empty`](MapScalar::is_empty), since the entry
+/// scalar types are erased — the per-entry native accessors and the
+/// [`TypedScalar`](crate::TypedScalar) surface live on `TypedMapScalar<K, V, SK, SV>`,
+/// which [`erase`](crate::TypedMapScalar::erase)s back to this type.
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::{DataType, Int64Type, UInt8Type};
-/// use yggdryl_scalar::{Int64Scalar, MapScalar, Scalar, UInt8Scalar};
+/// use yggdryl_scalar::yggdryl_dtype::DataType;
+/// use yggdryl_scalar::{Int64Scalar, Scalar, TypedMapScalar, UInt8Scalar};
 ///
-/// let ranks = MapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap();
+/// // A dynamic map is reached by erasing a typed one, or from Arrow.
+/// let ranks =
+///     TypedMapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap().erase();
 /// assert!(!ranks.is_null());
-/// assert_eq!(ranks.value().map(<[_]>::len), Some(1));
+/// assert_eq!(ranks.len(), 1);
 /// assert_eq!(ranks.data_type().name(), "map");
-///
-/// // The Arrow round trip preserves the entries.
-/// let arrow = ranks.to_arrow_scalar();
-/// assert_eq!(arrow.len(), 1);
-/// assert_eq!(MapScalar::from_arrow(arrow.as_ref()).unwrap(), ranks);
-///
-/// let missing: MapScalar<UInt8Type, Int64Type, UInt8Scalar, Int64Scalar> = MapScalar::null();
-/// assert!(missing.is_null());
+/// assert_eq!(
+///     yggdryl_scalar::MapScalar::from_arrow(ranks.to_arrow_scalar().as_ref()).unwrap(),
+///     ranks
+/// );
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MapScalar<K, V, SK, SV> {
-    data_type: MapType<K, V>,
-    entries: Option<Vec<(SK, SV)>>,
+#[derive(Debug, Clone)]
+pub struct MapScalar {
+    data_type: MapType,
+    entries: Option<ArrayRef>,
 }
 
-impl<K, V, SK, SV> MapScalar<K, V, SK, SV>
-where
-    K: DataType + Default,
-    V: DataType + Default,
-    SK: Scalar<DataType = K>,
-    SV: Scalar<DataType = V>,
-{
-    /// A scalar holding the `entries` (an empty sequence is the empty map, not
-    /// null). A null key errors: Arrow map keys are non-nullable.
-    pub fn new(entries: Vec<(SK, SV)>) -> Result<Self, DataError> {
-        if entries.iter().any(|(key, _)| key.is_null()) {
-            return Err(DataError::IncompatibleArrowType {
-                expected: "non-null map keys".to_string(),
-                got: "a null key scalar".to_string(),
-            });
-        }
-        Ok(Self {
-            data_type: MapType::default(),
-            entries: Some(entries),
-        })
+impl MapScalar {
+    /// A dynamic map over an already-built Arrow `entries` struct array (shared
+    /// zero-copy) of the given dynamic `data_type`, or the null map for `None`.
+    pub(crate) fn from_parts(data_type: MapType, entries: Option<ArrayRef>) -> Self {
+        Self { data_type, entries }
     }
 
-    /// The null map scalar.
-    pub fn null() -> Self {
-        Self {
-            data_type: MapType::default(),
-            entries: None,
-        }
+    /// The number of entries, `0` when null or empty ([`is_null`](Scalar::is_null)
+    /// distinguishes the two).
+    pub fn len(&self) -> usize {
+        self.entries
+            .as_ref()
+            .map_or(0, |entries| arrow_array::Array::len(entries.as_ref()))
+    }
+
+    /// Whether the map holds no entries (also `true` when null).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
-impl<K, V, SK, SV> Default for MapScalar<K, V, SK, SV>
-where
-    K: DataType + Default,
-    V: DataType + Default,
-    SK: Scalar<DataType = K>,
-    SV: Scalar<DataType = V>,
-{
-    /// The default map scalar: the empty map.
-    fn default() -> Self {
-        Self {
-            data_type: MapType::default(),
-            entries: Some(Vec::new()),
+impl PartialEq for MapScalar {
+    // The backing entries arrays compare by value through `dyn Array` equality, so
+    // two maps are equal when their entries (and nulls) are; null is distinct from
+    // every present map.
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.entries, &other.entries) {
+            (None, None) => true,
+            (Some(left), Some(right)) => left.as_ref() == right.as_ref(),
+            _ => false,
         }
     }
 }
 
-impl<K, V, SK, SV> Scalar for MapScalar<K, V, SK, SV>
-where
-    K: DataType + Default,
-    V: DataType + Default,
-    SK: Scalar<DataType = K>,
-    SV: Scalar<DataType = V>,
-{
-    type DataType = MapType<K, V>;
-    type Value = [(SK, SV)];
+impl Eq for MapScalar {}
 
-    fn data_type(&self) -> &MapType<K, V> {
+impl Scalar for MapScalar {
+    type DataType = MapType;
+    type Value = dyn arrow_array::Array;
+
+    fn data_type(&self) -> &MapType {
         &self.data_type
     }
 
@@ -101,40 +87,25 @@ where
         self.entries.is_none()
     }
 
-    fn value(&self) -> Option<&[(SK, SV)]> {
+    fn value(&self) -> Option<&(dyn arrow_array::Array + 'static)> {
         self.entries.as_deref()
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(entries) = &self.entries else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        let entry_fields = self.data_type.entry_fields();
-        let keys = concat_scalar_arrays(
-            entries
-                .iter()
-                .map(|(key, _)| key.to_arrow_scalar())
-                .collect(),
-            || entry_fields[0].data_type().clone(),
-        );
-        let values = concat_scalar_arrays(
-            entries
-                .iter()
-                .map(|(_, value)| value.to_arrow_scalar())
-                .collect(),
-            || entry_fields[1].data_type().clone(),
-        );
-        let entry_struct = arrow_array::StructArray::try_new_with_length(
-            entry_fields,
-            vec![keys, values],
-            None,
-            entries.len(),
-        )
-        .expect("per-entry one-element arrays assemble into the entries struct");
+        // The entries struct is shared into the one-element map — a reference-count
+        // bump, not a copy.
+        let entry_struct = entries
+            .as_ref()
+            .as_any()
+            .downcast_ref::<arrow_array::StructArray>()
+            .expect("a dynamic map's entries are the entries struct array");
         let array = arrow_array::MapArray::try_new(
-            self.data_type.entries_field(),
-            arrow_buffer::OffsetBuffer::from_lengths([entries.len()]),
-            entry_struct,
+            yggdryl_dtype::Map::entries_field(&self.data_type),
+            arrow_buffer::OffsetBuffer::from_lengths([arrow_array::Array::len(entry_struct)]),
+            entry_struct.clone(),
             None,
             false,
         )
@@ -147,8 +118,7 @@ where
         if length != 1 {
             return Err(DataError::InvalidScalarLength { got: length });
         }
-        // The data type validates the layout and redirects the key and value
-        // children to `K` / `V`; then every entry redirects to the inner scalars.
+        // The data type validates the layout; the entries struct is shared zero-copy.
         let data_type = MapType::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
@@ -157,53 +127,8 @@ where
         let entries = if arrow_array::Array::is_null(array, 0) {
             None
         } else {
-            let entry_struct = array.value(0);
-            let keys: Vec<SK> = scalars_from_elements(entry_struct.column(0).as_ref())?;
-            let values: Vec<SV> = scalars_from_elements(entry_struct.column(1).as_ref())?;
-            Some(keys.into_iter().zip(values).collect())
+            Some(std::sync::Arc::new(array.value(0)) as ArrayRef)
         };
         Ok(Self { data_type, entries })
-    }
-}
-
-impl<K, V, SK, SV> TypedScalar<MapType<K, V>, [(SK, SV)], arrow_array::MapArray>
-    for MapScalar<K, V, SK, SV>
-where
-    K: DataType + Default,
-    V: DataType + Default,
-    SK: Scalar<DataType = K>,
-    SV: Scalar<DataType = V>,
-{
-}
-
-impl<TK, TV, K, V> ScalarFactory<Vec<(TK, TV)>> for MapType<K, V>
-where
-    K: ScalarFactory<TK> + Default,
-    V: ScalarFactory<TV> + Default,
-    K::Scalar: Scalar<DataType = K>,
-    V::Scalar: Scalar<DataType = V>,
-{
-    type Scalar = MapScalar<K, V, K::Scalar, V::Scalar>;
-
-    /// A map scalar holding the native `entries`, each key and value converted
-    /// through its own scalar factory (map keys are never null).
-    fn scalar(&self, entries: Vec<(TK, TV)>) -> Self::Scalar {
-        MapScalar::new(
-            entries
-                .into_iter()
-                .map(|(key, value)| (self.key_type().scalar(key), self.value_type().scalar(value)))
-                .collect(),
-        )
-        .expect("factory-built key scalars are never null")
-    }
-
-    /// The null map scalar.
-    fn null_scalar(&self) -> Self::Scalar {
-        MapScalar::null()
-    }
-
-    /// The default map scalar: the empty map.
-    fn default_scalar(&self) -> Self::Scalar {
-        MapScalar::default()
     }
 }

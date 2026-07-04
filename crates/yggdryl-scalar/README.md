@@ -50,7 +50,7 @@ values (the union, dynamic at runtime, has no scalar).
 ## The concrete scalars
 
 ```rust
-use yggdryl_scalar::{Int64Scalar, OptionalScalar, Scalar};
+use yggdryl_scalar::{Int64Scalar, Scalar, TypedOptionalScalar};
 use yggdryl_scalar::yggdryl_dtype as dtype;
 
 // A single i64 value, or null — built from a native value, and mirrored as
@@ -58,23 +58,25 @@ use yggdryl_scalar::yggdryl_dtype as dtype;
 let scalar = Int64Scalar::from(42);
 assert_eq!(scalar.value(), Some(&42));
 assert_eq!(scalar.as_i8().unwrap(), 42); // converted, exact-or-error
-assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow().as_ref()).unwrap(), scalar);
+assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow_scalar().as_ref()).unwrap(), scalar);
 
 // The optional scalar: a value variant or the null variant, over union storage,
 // with access redirected to the inner scalar.
-let answer = OptionalScalar::new(Int64Scalar::new(42));
+let answer = TypedOptionalScalar::new(Int64Scalar::new(42));
 assert_eq!(answer.as_i64().unwrap(), 42);
-let missing: OptionalScalar<dtype::Int64Type, Int64Scalar> = OptionalScalar::null();
+let missing: TypedOptionalScalar<dtype::Int64Type, Int64Scalar> = TypedOptionalScalar::null();
 assert!(missing.is_null());
 ```
 
-The serie scalar is *our array*: `Serie<D, S>` is backed by one zero-copy Arrow
-child array — `to_arrow` / `from_arrow` are reference-count bumps — with the
+The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
+child array — `to_arrow_scalar` / `from_arrow` are reference-count bumps — with the
 scalar accessors `get_scalar_at(index)` / `get_at::<T>(index)` and `len` /
 `is_empty`. Every integer type also has its concrete serie (`Int8Serie` …
 `UInt64Serie`), borrowing the raw Arrow buffers themselves (`values()` borrows
 the native element slice without copying; `from_io` / `pwrite_io` bridge to any
-`yggdryl-core` positioned-IO resource in one bulk little-endian transfer). `MapScalar<K, V,
+`yggdryl-core` positioned-IO resource in one bulk little-endian transfer). The
+dynamic `Serie` / `MapScalar` / `OptionalScalar` bases erase the element type; the
+typed generics `erase()` to them. `TypedMapScalar<K, V,
 SK, SV>` holds a key–value entry sequence and `StructScalar` one row of
 one-element Arrow columns; the `binary` scalar holds its bytes as a core
 `ByteBuffer` (`io()` / `into_io()` plug into `RawIOBase` and the cursor / slice

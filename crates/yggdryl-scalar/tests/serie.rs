@@ -1,11 +1,12 @@
-//! Integration tests for the `serie` scalars — the generic [`Serie`] and the
-//! buffer-backed integer series, every signed and unsigned width.
+//! Integration tests for the `serie` scalars — the dynamic [`Serie`], the generic
+//! [`TypedSerie`] and the buffer-backed integer series, every signed and unsigned
+//! width.
 
 use yggdryl_scalar::arrow_array::Array;
-use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError};
-use yggdryl_scalar::{arrow_array, arrow_buffer, Int64Scalar, Scalar, Serie};
+use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError, DataType};
+use yggdryl_scalar::{arrow_array, arrow_buffer, Int64Scalar, Scalar, Serie, TypedSerie};
 
-type Int64GenericSerie = Serie<dtype::Int64Type, Int64Scalar>;
+type Int64GenericSerie = TypedSerie<dtype::Int64Type, Int64Scalar>;
 
 #[test]
 fn serie_scalar_round_trips_all_shapes() {
@@ -193,7 +194,7 @@ macro_rules! int_serie_tests {
                 assert_eq!(child.values().as_ptr(), numbers.values().unwrap().as_ptr());
 
                 // The generic and the buffer-backed serie scalar agree on the Arrow shape.
-                let generic = Serie::new(vec![$scalar::new(1), $scalar::null(), $scalar::new(3)]);
+                let generic = TypedSerie::new(vec![$scalar::new(1), $scalar::null(), $scalar::new(3)]);
                 assert_eq!(generic.to_arrow_scalar().as_ref(), arrow.as_ref());
 
                 // Empty and null are distinct states, both round-tripped.
@@ -221,7 +222,7 @@ macro_rules! int_serie_tests {
                     $ty::from_arrow(&arrow_array::$array::from_iter_values([1])),
                     Err(DataError::IncompatibleArrowType { .. })
                 ));
-                let foreign = Serie::new(vec![yggdryl_scalar::BinaryScalar::new(vec![1])]);
+                let foreign = TypedSerie::new(vec![yggdryl_scalar::BinaryScalar::new(vec![1])]);
                 assert!(matches!(
                     $ty::from_arrow(foreign.to_arrow_scalar().as_ref()),
                     Err(DataError::IncompatibleArrowType { .. })
@@ -318,7 +319,29 @@ fn narrowing_reads_are_exact_or_error() {
 }
 
 #[test]
+fn dynamic_serie_erases_and_round_trips() {
+    // The dynamic serie is reached by erasing a typed one; it keeps the element
+    // array and round-trips through Arrow, element type erased.
+    let numbers = Int64GenericSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    let dynamic = numbers.erase();
+    assert!(!dynamic.is_null());
+    assert_eq!(dynamic.len(), 2);
+    assert_eq!(dynamic.data_type().name(), "list");
+    assert_eq!(
+        Serie::from_arrow(dynamic.to_arrow_scalar().as_ref()).unwrap(),
+        dynamic
+    );
+
+    // A null typed serie erases to a null dynamic serie.
+    let missing = Int64GenericSerie::null().erase();
+    assert!(missing.is_null());
+    assert!(missing.is_empty());
+    assert!(missing.to_arrow_array().is_empty()); // null → empty element array
+}
+
+#[test]
 fn serie_scalars_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Serie>();
     assert_send_sync::<Int64GenericSerie>();
 }

@@ -1,69 +1,55 @@
 //! The [`SerieType`] data type.
 
-use crate::{DataError, DataType, Nested, TypedDataType};
+use crate::{DataError, DataType, Nested};
+use arrow_schema::FieldRef;
 
 /// The Apache Arrow `list` data type: a variable-length sequence of one value type
-/// `D` (32-bit offsets).
+/// (32-bit offsets).
 ///
-/// Its single child is the nullable `"item"` field of the value type. The typed
-/// [`TypedDataType<Vec<T>>`] byte codec concatenates the value type's per-element
-/// bytes; splitting them back requires the value type's fixed
-/// [`byte_width`](DataType::byte_width) (a variable-width element errors with
-/// [`DataError::IndeterminateElementWidth`] — decode such lists from Arrow).
+/// It carries its single Arrow child — the nullable `"item"` field of the value type
+/// — exactly as Arrow models it, so [`to_arrow`](DataType::to_arrow) /
+/// [`from_arrow`](DataType::from_arrow) round-trip losslessly, like the dynamic
+/// [`StructType`](crate::StructType) / [`UnionType`](crate::UnionType). It stays
+/// *untyped* (the value's native Rust type is erased); a statically-typed serie
+/// carrying the value type's byte codec is [`TypedSerieType<D>`](crate::TypedSerieType),
+/// whose [`erase`](crate::TypedSerieType::erase) drops back to this dynamic type.
 ///
 /// ```
-/// use yggdryl_dtype::{arrow_schema, DataType, Int64Type, Serie, SerieType, TypedDataType};
+/// use yggdryl_dtype::{arrow_schema, DataType, Nested, Serie, SerieType};
 ///
-/// let serie = SerieType::new(Int64Type);
+/// let serie = SerieType::new(arrow_schema::DataType::Int64);
 /// assert_eq!(serie.name(), "list");
 /// assert_eq!(serie.arrow_format(), "+l");
 /// assert_eq!(serie.byte_width(), None);
-/// assert_eq!(serie.value_type().name(), "int64");
+/// assert_eq!(serie.child_count(), 1);
+/// assert_eq!(serie.item_field().name(), "item");
 ///
-/// // The byte codec is per-element concatenation of the value type's codec.
-/// let bytes = serie.native_to_bytes(&vec![1, 2]);
-/// assert_eq!(bytes.len(), 16);
-/// assert_eq!(serie.native_from_bytes(&bytes).unwrap(), vec![1, 2]);
-///
-/// // The type knows its default: the empty serie.
-/// assert_eq!(serie.default_value(), Vec::<i64>::new());
-///
-/// // from_arrow is the exact inverse of to_arrow.
+/// // to_arrow / from_arrow are lossless.
 /// assert!(matches!(serie.to_arrow(), arrow_schema::DataType::List(..)));
 /// assert_eq!(SerieType::from_arrow(&serie.to_arrow()).unwrap(), serie);
 /// ```
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct SerieType<D> {
-    value_type: D,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SerieType {
+    item: FieldRef,
 }
 
-impl<D: DataType> SerieType<D> {
-    /// The serie of `value_type`.
-    pub fn new(value_type: D) -> Self {
-        Self { value_type }
-    }
-
-    /// The list's single Arrow child: the nullable `"item"` field of the value
-    /// type — the exact child [`to_arrow`](DataType::to_arrow) wraps (the scalar
-    /// layer assembles its one-element `ListArray` around it).
-    pub fn item_field(&self) -> arrow_schema::FieldRef {
-        std::sync::Arc::new(arrow_schema::Field::new(
-            "item",
-            self.value_type.to_arrow(),
-            true,
-        ))
+impl SerieType {
+    /// A serie of the given `value_type`, wrapping it in the nullable `"item"` child
+    /// Arrow models a list around.
+    pub fn new(value_type: arrow_schema::DataType) -> Self {
+        Self {
+            item: std::sync::Arc::new(arrow_schema::Field::new("item", value_type, true)),
+        }
     }
 }
 
-impl<D: DataType> super::Serie for SerieType<D> {
-    type ValueType = D;
-
-    fn value_type(&self) -> &D {
-        &self.value_type
+impl super::Serie for SerieType {
+    fn item_field(&self) -> FieldRef {
+        self.item.clone()
     }
 }
 
-impl<D: DataType> DataType for SerieType<D> {
+impl DataType for SerieType {
     fn name(&self) -> &str {
         "list"
     }
@@ -77,7 +63,7 @@ impl<D: DataType> DataType for SerieType<D> {
     }
 
     fn to_arrow(&self) -> arrow_schema::DataType {
-        arrow_schema::DataType::List(self.item_field())
+        arrow_schema::DataType::List(self.item.clone())
     }
 
     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError> {
@@ -91,51 +77,12 @@ impl<D: DataType> DataType for SerieType<D> {
         if item.name() != "item" || !item.is_nullable() || !item.metadata().is_empty() {
             return Err(incompatible());
         }
-        // The item child redirects to the value type's own from_arrow.
-        Ok(Self::new(D::from_arrow(item.data_type())?))
+        Ok(Self { item: item.clone() })
     }
 }
 
-impl<D: DataType> Nested for SerieType<D> {
+impl Nested for SerieType {
     fn child_count(&self) -> usize {
         1
     }
 }
-
-impl<T, D: TypedDataType<T>> TypedDataType<Vec<T>> for SerieType<D> {
-    fn native_to_bytes(&self, values: &Vec<T>) -> Vec<u8> {
-        values
-            .iter()
-            .flat_map(|value| self.value_type.native_to_bytes(value))
-            .collect()
-    }
-
-    fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<T>, DataError> {
-        let width = self
-            .value_type
-            .codec_byte_width()
-            .filter(|width| *width > 0)
-            .ok_or_else(|| DataError::IndeterminateElementWidth {
-                data_type: self.value_type.name().to_string(),
-            })?;
-        if !bytes.len().is_multiple_of(width) {
-            return Err(DataError::InvalidByteLength {
-                // The nearest valid length: a whole number of elements, rounded up.
-                expected: bytes.len().div_ceil(width) * width,
-                got: bytes.len(),
-            });
-        }
-        bytes
-            .chunks(width)
-            .map(|chunk| self.value_type.native_from_bytes(chunk))
-            .collect()
-    }
-
-    fn default_value(&self) -> Vec<T> {
-        Vec::new()
-    }
-}
-
-impl<T, D: TypedDataType<T>> crate::TypedNested<Vec<T>> for SerieType<D> {}
-
-impl<T, D: TypedDataType<T>> super::TypedSerie<T> for SerieType<D> {}

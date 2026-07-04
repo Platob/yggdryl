@@ -1,24 +1,27 @@
-//! The `serie` scalars: the generic [`Serie`] and the buffer-backed integer
-//! series ([`Int8Serie`] … [`UInt64Serie`]).
+//! The `serie` scalars: the dynamic [`Serie`], the statically-typed [`TypedSerie`],
+//! and the buffer-backed integer series ([`Int8Serie`] … [`UInt64Serie`]).
 //!
 //! A serie value is a variable-length sequence of one value type — *our array* (the
-//! Apache Arrow `list`). [`Serie<D, S>`] is the generic scalar, backed by one
-//! zero-copy Arrow child array with per-element scalar accessors; every integer
+//! Apache Arrow `list`). [`Serie`] is the dynamic scalar (element type erased, base
+//! [`Scalar`](crate::Scalar) surface only) and [`TypedSerie<D, S>`] its
+//! statically-typed form, backed by one zero-copy Arrow child array with per-element
+//! scalar accessors and erasing back with [`erase`](TypedSerie::erase); every integer
 //! type also has its concrete serie ([`Int8Serie`], [`Int16Serie`], [`Int32Serie`],
 //! [`Int64Serie`], [`UInt8Serie`], [`UInt16Serie`], [`UInt32Serie`],
 //! [`UInt64Serie`]), borrowing the raw Arrow buffers for native element access.
-//! The matching [`SerieType`](yggdryl_dtype::SerieType) data type lives in
-//! `yggdryl-dtype`, and its [`ScalarFactory`](crate::ScalarFactory)
-//! (`SerieType::scalar` / `default_scalar`) builds a [`Serie`].
+//! The matching [`SerieType`](yggdryl_dtype::SerieType) /
+//! [`TypedSerieType`](yggdryl_dtype::TypedSerieType) data types live in
+//! `yggdryl-dtype`, and the typed one's [`ScalarFactory`](crate::ScalarFactory)
+//! (`TypedSerieType::scalar` / `default_scalar`) builds a [`TypedSerie`].
 //!
 //! ```
-//! use yggdryl_scalar::{Int64Scalar, Scalar, Serie};
+//! use yggdryl_scalar::{Int64Scalar, Scalar, TypedSerie};
 //!
-//! let numbers = Serie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);
+//! let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);
 //! assert_eq!(numbers.len(), 2);
 //! assert_eq!(numbers.get_scalar_at(0), Some(Int64Scalar::new(1)));
 //! assert_eq!(
-//!     Serie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(),
+//!     TypedSerie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(),
 //!     numbers
 //! );
 //! ```
@@ -50,7 +53,7 @@ macro_rules! int_serie {
         #[doc = "without copying elements."]
         #[derive(Debug, Clone)]
         pub struct $ty {
-            data_type: ::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype>,
+            data_type: ::yggdryl_dtype::TypedSerieType<::yggdryl_dtype::$dtype>,
             values: Option<$crate::arrow_buffer::ScalarBuffer<$native>>,
             nulls: Option<$crate::arrow_buffer::NullBuffer>,
         }
@@ -77,7 +80,7 @@ macro_rules! int_serie {
             /// The null serie scalar.
             pub fn null() -> Self {
                 Self {
-                    data_type: ::yggdryl_dtype::SerieType::new(::yggdryl_dtype::$dtype),
+                    data_type: ::yggdryl_dtype::TypedSerieType::new(::yggdryl_dtype::$dtype),
                     values: None,
                     nulls: None,
                 }
@@ -92,7 +95,7 @@ macro_rules! int_serie {
                 nulls: Option<$crate::arrow_buffer::NullBuffer>,
             ) -> Self {
                 Self {
-                    data_type: ::yggdryl_dtype::SerieType::new(::yggdryl_dtype::$dtype),
+                    data_type: ::yggdryl_dtype::TypedSerieType::new(::yggdryl_dtype::$dtype),
                     values: Some(values),
                     nulls: nulls.filter(|nulls| nulls.null_count() > 0),
                 }
@@ -303,12 +306,12 @@ macro_rules! int_serie {
         }
 
         impl $crate::Scalar for $ty {
-            type DataType = ::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype>;
+            type DataType = ::yggdryl_dtype::TypedSerieType<::yggdryl_dtype::$dtype>;
             #[doc = concat!("The raw element buffer — like [`values`](", stringify!($ty), "::values), it includes")]
             /// the slots under null elements.
             type Value = [$native];
 
-            fn data_type(&self) -> &::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype> {
+            fn data_type(&self) -> &::yggdryl_dtype::TypedSerieType<::yggdryl_dtype::$dtype> {
                 &self.data_type
             }
 
@@ -331,7 +334,7 @@ macro_rules! int_serie {
                 // reference-count bumps, not copies.
                 let elements = $crate::arrow_array::$array::new(values.clone(), self.nulls.clone());
                 let array = $crate::arrow_array::ListArray::try_new(
-                    self.data_type.item_field(),
+                    ::yggdryl_dtype::Serie::item_field(&self.data_type),
                     $crate::arrow_buffer::OffsetBuffer::from_lengths([values.len()]),
                     ::std::sync::Arc::new(elements),
                     None,
@@ -356,7 +359,7 @@ macro_rules! int_serie {
                 }
                 // Validates the serie-of-element layout, then takes the buffers apart
                 // and shares them.
-                <::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype> as ::yggdryl_dtype::DataType>::from_arrow(
+                <::yggdryl_dtype::TypedSerieType<::yggdryl_dtype::$dtype> as ::yggdryl_dtype::DataType>::from_arrow(
                     $crate::arrow_array::Array::data_type(array),
                 )?;
                 let array = array
@@ -380,7 +383,7 @@ macro_rules! int_serie {
 
         impl
             $crate::TypedScalar<
-                ::yggdryl_dtype::SerieType<::yggdryl_dtype::$dtype>,
+                ::yggdryl_dtype::TypedSerieType<::yggdryl_dtype::$dtype>,
                 [$native],
                 $crate::arrow_array::ListArray,
                 $crate::arrow_array::$array,
@@ -395,8 +398,9 @@ mod int16_serie;
 mod int32_serie;
 mod int64_serie;
 mod int8_serie;
-#[allow(clippy::module_inception)] // the generic-scalar module shares the family's bare name
+#[allow(clippy::module_inception)] // the dynamic-scalar module shares the family's bare name
 mod serie;
+mod typed_serie;
 mod uint16_serie;
 mod uint32_serie;
 mod uint64_serie;
@@ -407,6 +411,7 @@ pub use int32_serie::Int32Serie;
 pub use int64_serie::Int64Serie;
 pub use int8_serie::Int8Serie;
 pub use serie::Serie;
+pub use typed_serie::TypedSerie;
 pub use uint16_serie::UInt16Serie;
 pub use uint32_serie::UInt32Serie;
 pub use uint64_serie::UInt64Serie;

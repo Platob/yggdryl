@@ -19,7 +19,12 @@
 //! Concrete fields live in per-family modules mirroring `yggdryl-dtype` — the
 //! [`integer`] module holds every signed and unsigned integer field, and the
 //! [`binary`], [`null`], [`union`], [`optional`], [`serie`], [`map`] and
-//! [`struct`](r#struct) modules the rest. Add more following the rules in
+//! [`struct`](r#struct) modules the rest. The `serie` / `map` / `optional` families
+//! mirror their data types' dynamic-base + typed split: [`SerieField`] / [`MapField`]
+//! / [`OptionalField`] wrap the dynamic data types, and [`typed_serie`] /
+//! [`typed_map`] / [`typed_optional`] hold the statically-typed
+//! [`TypedSerieField<D>`] / [`TypedMapField<K, V>`] / [`TypedOptionalField<D>`] that
+//! carry the value codec and the [`FieldFactory`]. Add more following the rules in
 //! `CLAUDE.md`.
 //!
 //! Every field converts to and from the [`arrow_schema::Field`] it mirrors
@@ -64,6 +69,9 @@ pub mod null;
 pub mod optional;
 pub mod serie;
 pub mod r#struct;
+pub mod typed_map;
+pub mod typed_optional;
+pub mod typed_serie;
 pub mod union;
 
 pub use binary::BinaryField;
@@ -72,6 +80,9 @@ pub use null::NullField;
 pub use optional::OptionalField;
 pub use r#struct::StructField;
 pub use serie::SerieField;
+pub use typed_map::TypedMapField;
+pub use typed_optional::TypedOptionalField;
+pub use typed_serie::TypedSerieField;
 pub use union::UnionField;
 
 pub use integer::{

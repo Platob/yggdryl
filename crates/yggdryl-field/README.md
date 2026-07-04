@@ -44,10 +44,12 @@ and [`binary`](src/binary.rs), [`null`](src/null.rs), [`union`](src/union.rs),
 
 Every field pairs a name with its `yggdryl-dtype` data type under the same naming
 convention. The fixed-shape families default their data type
-(`Int64Field::new("id", false)`); the parameterised `StructField` and `UnionField`
-take theirs (`StructField::new("point", shape, false)`); the generic `SerieField<D>`,
-`MapField<K, V>` and `OptionalField<D>` carry both trait layers, the typed side
-whenever the child types have codecs.
+(`Int64Field::new("id", false)`); the dynamic `StructField`, `UnionField`,
+`SerieField`, `MapField` and `OptionalField` take theirs
+(`StructField::new("point", shape, false)`); and the statically-typed
+`TypedSerieField<D>`, `TypedMapField<K, V>` and `TypedOptionalField<D>` (the typed
+counterparts of the three dynamic bases) carry both trait layers, the typed side
+whenever the child types have codecs, plus the `FieldFactory`.
 
 ```rust
 use yggdryl_field::yggdryl_dtype::Int64Type;

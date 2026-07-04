@@ -134,7 +134,7 @@ impl BinaryField {
 /// data type.
 #[napi(namespace = "field")]
 pub struct OptionalBinaryField {
-    pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::BinaryType>,
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::BinaryType>,
 }
 
 #[napi(namespace = "field")]
@@ -143,7 +143,7 @@ impl OptionalBinaryField {
     #[napi(constructor)]
     pub fn new(name: String, nullable: Option<bool>) -> Self {
         Self {
-            inner: yggdryl_field::OptionalField::new(name, nullable.unwrap_or(true)),
+            inner: yggdryl_field::TypedOptionalField::new(name, nullable.unwrap_or(true)),
         }
     }
 
@@ -209,7 +209,7 @@ macro_rules! int_field_node {
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
         #[napi(namespace = "field")]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_field::OptionalField<yggdryl_dtype::$dtype>,
+            pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::$dtype>,
         }
 
         #[napi(namespace = "field")]
@@ -218,7 +218,7 @@ macro_rules! int_field_node {
             #[napi(constructor)]
             pub fn new(name: String, nullable: Option<bool>) -> Self {
                 Self {
-                    inner: yggdryl_field::OptionalField::new(name, nullable.unwrap_or(true)),
+                    inner: yggdryl_field::TypedOptionalField::new(name, nullable.unwrap_or(true)),
                 }
             }
 
@@ -302,14 +302,14 @@ int_field_node!(
 
 /// Generates the concrete serie field of one integer value type: `$ty`, a column
 /// of the `yggdryl.dtype` class `$dtype` — a thin delegation to
-/// `yggdryl_field::SerieField<$value_ty>`.
+/// `yggdryl_field::TypedSerieField<$value_ty>`.
 macro_rules! int_serie_field_node {
     ($ty:ident, $dtype:ident, $value_ty:ident, $name:literal) => {
         /// A nullable serie field: a name paired with the serie data type.
         #[doc = concat!("This is the `list`-of-`", $name, "` column (`", stringify!($dtype), "`).")]
         #[napi(namespace = "field")]
         pub struct $ty {
-            pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::$value_ty>,
+            pub(crate) inner: yggdryl_field::TypedSerieField<yggdryl_dtype::$value_ty>,
         }
 
         #[napi(namespace = "field")]
@@ -318,7 +318,7 @@ macro_rules! int_serie_field_node {
             #[napi(constructor)]
             pub fn new(name: String, nullable: Option<bool>) -> Self {
                 Self {
-                    inner: yggdryl_field::SerieField::new(name, nullable.unwrap_or(true)),
+                    inner: yggdryl_field::TypedSerieField::new(name, nullable.unwrap_or(true)),
                 }
             }
 

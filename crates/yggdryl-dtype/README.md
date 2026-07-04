@@ -43,17 +43,22 @@ How a type is shaped (each refines `DataType`).
 
 - **`Primitive`** — a fixed-width, childless physical type (integers, floats, boolean).
 - **`Logical` / `TypedLogical<T>`** — a type layered over a physical storage
-  type (e.g. a timestamp over `int64`); `OptionalType<D>` is the generic holder.
+  type (e.g. a timestamp over `int64`); `TypedOptionalType<D>` is the generic typed
+  holder, the dynamic `OptionalType` base-only.
 - **`Nested` / `TypedNested<T>`** — a type composed of child fields (`struct`,
-  `list`, `map`, `union`); `SerieType<D>` and `MapType<K, V>` are the generic typed
-  holders, the dynamic `StructType` / `UnionType` base-only.
+  `list`, `map`, `union`); `TypedSerieType<D>` and `TypedMapType<K, V>` are the
+  generic typed holders, the dynamic `SerieType` / `MapType` / `StructType` /
+  `UnionType` base-only.
 
-Each composite family also carries its own base/typed trait pair (`Optional` /
+Each composite family carries its own base/typed trait pair (`Optional` /
 `TypedOptional`, `Union` / `TypedUnion`, `Serie` / `TypedSerie`, `Map` /
-`TypedMap`, `Struct` / `TypedStruct`); the concrete `OptionalType<D>`, `UnionType`,
-`SerieType<D>`, `MapType<K, V>` and `StructType` implement the base side, and the
-typed side wherever the child types have codecs (the dynamic `UnionType` and
-`StructType`, whose children are only known at runtime, stay base-only).
+`TypedMap`, `Struct` / `TypedStruct`) *and* a dynamic base type plus a typed
+generic. The dynamic `OptionalType`, `SerieType`, `MapType`, `StructType` and
+`UnionType` carry their children as Arrow fields and implement the base side only;
+the typed generics `TypedOptionalType<D>`, `TypedSerieType<D>` and
+`TypedMapType<K, V>` keep their child types statically and add the typed side (the
+byte codec), erasing back to their dynamic base with `.erase()`. `UnionType` and
+`StructType`, whose children are heterogeneous, are dynamic-only.
 
 ## Type ids
 
@@ -92,22 +97,24 @@ type id — carrying its `UnionFields` and `UnionMode` losslessly, so `to_arrow`
 `from_arrow` round-trip any union (`UnionType::optional(&T)` names the sparse
 two-variant union between null and a value type).
 
-`OptionalType<D>` is the first concrete `Logical` type: a value of the value type
-`D`, or null, physically stored as `UnionType::optional(&D)` (`storage()` returns the
-union). Its Arrow surface delegates to the storage; its `TypedDataType<T>` byte codec
-delegates to the value type.
+`OptionalType` is the first concrete `Logical` type: a value of some value type, or
+null, physically stored as `UnionType::optional(&value_type)` (`storage()` returns
+the union). Its Arrow surface delegates to the storage. The dynamic `OptionalType`
+carries its value type only as the union field; `TypedOptionalType<D>` keeps `D`
+statically and adds the `TypedDataType<T>` byte codec, which delegates to the value
+type.
 
 ```rust
-use yggdryl_dtype::{DataType, Int64Type, Logical, OptionalType, TypedDataType};
+use yggdryl_dtype::{DataType, Int64Type, Logical, TypedDataType, TypedOptionalType};
 
-let optional = OptionalType::new(Int64Type);
+let optional = TypedOptionalType::new(Int64Type);
 assert_eq!((optional.name(), optional.storage().name()), ("optional", "union"));
 assert_eq!(optional.arrow_format(), "+us:0,1");
 assert_eq!(optional.native_from_bytes(&42i64.to_le_bytes()).unwrap(), 42); // the value type's codec
 ```
 
-`SerieType<D>` and `MapType<K, V>` are the generic nested holders — their typed byte
-codecs concatenate the child codecs and split them back by fixed width (a
+`TypedSerieType<D>` and `TypedMapType<K, V>` are the generic typed nested holders —
+their byte codecs concatenate the child codecs and split them back by fixed width (a
 variable-width child errors with `DataError::IndeterminateElementWidth` — decode
-those from Arrow) — and the dynamic `StructType` carries its Arrow `Fields`
-losslessly.
+those from Arrow). Their dynamic bases `SerieType` / `MapType`, like `StructType`,
+carry their Arrow child fields losslessly and stay untyped.

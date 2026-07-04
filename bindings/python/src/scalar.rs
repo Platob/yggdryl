@@ -206,8 +206,10 @@ impl BinaryScalar {
 /// the null variant.
 #[pyclass]
 pub struct OptionalBinaryScalar {
-    pub(crate) inner:
-        yggdryl_scalar::OptionalScalar<yggdryl_dtype::BinaryType, yggdryl_scalar::BinaryScalar>,
+    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
+        yggdryl_dtype::BinaryType,
+        yggdryl_scalar::BinaryScalar,
+    >,
 }
 
 #[pymethods]
@@ -216,7 +218,9 @@ impl OptionalBinaryScalar {
     #[new]
     fn new(value: Vec<u8>) -> Self {
         Self {
-            inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::BinaryScalar::new(value)),
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::BinaryScalar::new(
+                value,
+            )),
         }
     }
 
@@ -224,7 +228,7 @@ impl OptionalBinaryScalar {
     #[staticmethod]
     fn null() -> Self {
         Self {
-            inner: yggdryl_scalar::OptionalScalar::null(),
+            inner: yggdryl_scalar::TypedOptionalScalar::null(),
         }
     }
 
@@ -438,7 +442,7 @@ macro_rules! int_scalar_py {
         #[pyclass]
         pub struct $opt_ty {
             pub(crate) inner:
-                yggdryl_scalar::OptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
+                yggdryl_scalar::TypedOptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
         }
 
         #[pymethods]
@@ -447,7 +451,7 @@ macro_rules! int_scalar_py {
             #[new]
             fn new(value: $native) -> Self {
                 Self {
-                    inner: yggdryl_scalar::OptionalScalar::new(yggdryl_scalar::$ty::new(value)),
+                    inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::$ty::new(value)),
                 }
             }
 
@@ -455,7 +459,7 @@ macro_rules! int_scalar_py {
             #[staticmethod]
             fn null() -> Self {
                 Self {
-                    inner: yggdryl_scalar::OptionalScalar::null(),
+                    inner: yggdryl_scalar::TypedOptionalScalar::null(),
                 }
             }
 

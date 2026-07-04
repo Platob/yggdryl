@@ -17,9 +17,10 @@
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
 //! value — `UnionType` is reached through an optional data type's `storage()`),
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot model
-//! uniformly), and the still-generic nested types (`SerieType` over a non-integer
-//! value type, `MapType` / `StructType`, and the per-family trait pairs), which
-//! have no concrete FFI shape yet.
+//! uniformly), and the dynamic base nested types and their typed generics
+//! (`SerieType` / `TypedSerieType` over a non-integer value type, `MapType` /
+//! `TypedMapType`, `StructType`, and the per-family trait pairs), which have no
+//! concrete FFI shape yet.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -202,7 +203,7 @@ impl BinaryType {
 #[pyclass]
 #[derive(Default)]
 pub struct OptionalBinaryType {
-    pub(crate) inner: yggdryl_dtype::OptionalType<yggdryl_dtype::BinaryType>,
+    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::BinaryType>,
 }
 
 #[pymethods]
@@ -386,7 +387,7 @@ macro_rules! int_dtype_py {
         #[pyclass]
         #[derive(Default)]
         pub struct $opt_ty {
-            pub(crate) inner: yggdryl_dtype::OptionalType<yggdryl_dtype::$ty>,
+            pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::$ty>,
         }
 
         #[pymethods]
@@ -556,7 +557,7 @@ int_dtype_py!(
 
 /// Generates the concrete serie data type of one integer value type: `$ty`, the
 /// Apache Arrow `list` of `$name` (single nullable `"item"` child) — a thin
-/// delegation to `yggdryl_dtype::SerieType<$value_ty>`. `$field` / `$serie` name
+/// delegation to `yggdryl_dtype::TypedSerieType<$value_ty>`. `$field` / `$serie` name
 /// the `yggdryl.field` / `yggdryl.scalar` classes the factories return.
 macro_rules! int_serie_dtype_py {
     ($ty:ident, $value_ty:ident, $field:ident, $serie:ident, $native:ty, $name:literal) => {
@@ -565,7 +566,7 @@ macro_rules! int_serie_dtype_py {
         #[pyclass]
         #[derive(Default)]
         pub struct $ty {
-            pub(crate) inner: yggdryl_dtype::SerieType<yggdryl_dtype::$value_ty>,
+            pub(crate) inner: yggdryl_dtype::TypedSerieType<yggdryl_dtype::$value_ty>,
         }
 
         #[pymethods]

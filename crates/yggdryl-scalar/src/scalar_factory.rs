@@ -25,7 +25,7 @@ use yggdryl_dtype::TypedDataType;
 /// factory; their scalars are constructed directly.
 ///
 /// ```
-/// use yggdryl_scalar::yggdryl_dtype::{Int64Type, SerieType, OptionalType};
+/// use yggdryl_scalar::yggdryl_dtype::{Int64Type, TypedSerieType, TypedOptionalType};
 /// use yggdryl_scalar::{Int64Scalar, Scalar, ScalarFactory};
 ///
 /// // The data type is the factory: it builds scalars from values, null, or default.
@@ -34,8 +34,8 @@ use yggdryl_dtype::TypedDataType;
 /// assert_eq!(Int64Type.default_scalar(), Int64Scalar::new(0));
 ///
 /// // Sequences default to empty, not null; the optional's default is its null variant.
-/// assert!(!SerieType::new(Int64Type).default_scalar().is_null());
-/// assert!(OptionalType::new(Int64Type).default_scalar().is_null());
+/// assert!(!TypedSerieType::new(Int64Type).default_scalar().is_null());
+/// assert!(TypedOptionalType::new(Int64Type).default_scalar().is_null());
 ///
 /// // Generic code builds a scalar from any typed data type.
 /// fn one<T, D: ScalarFactory<T>>(data_type: &D, value: T) -> D::Scalar {

@@ -15,9 +15,9 @@ The concrete integer serie fields (`Int8SerieField` … `UInt64SerieField`, each
 column of its serie type) cross too. Two things stay **Rust-only**, stated here
 and in both binding module docs: the [Arrow interop](#arrow-interop) surface
 (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross the
-FFI boundary), and the still-generic nested fields (`SerieField` over a
-non-integer value type, `MapField` / `StructField`), which have no concrete FFI
-shape yet.
+FFI boundary), and the dynamic-base and typed nested fields (`SerieField` /
+`TypedSerieField` over a non-integer value type, `MapField` / `TypedMapField`,
+`StructField`), which have no concrete FFI shape yet.
 
 ## Fields pair a name with a data type
 
@@ -72,22 +72,22 @@ parameterised `StructField` and `UnionField` take theirs at construction.
 === "Rust"
 
     ```rust
-    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, Serie, Optional};
-    use yggdryl_field::{BinaryField, Field, Int64Field, SerieField, OptionalField};
+    use yggdryl_field::yggdryl_dtype::{DataType, Int64Type, TypedSerie, TypedOptional};
+    use yggdryl_field::{BinaryField, Field, Int64Field, TypedSerieField, TypedOptionalField};
 
     fn main() {
         let id = Int64Field::new("id", false);
         assert_eq!((id.name(), id.is_nullable()), ("id", false));
         assert_eq!(id.data_type().name(), "int64");
 
-        let score = OptionalField::<Int64Type>::new("score", true);
+        let score = TypedOptionalField::<Int64Type>::new("score", true);
         assert_eq!(score.data_type().name(), "optional");
         assert_eq!(score.data_type().value_type().name(), "int64");
 
         let payload = BinaryField::new("payload", true);
         assert_eq!(payload.data_type().name(), "binary");
 
-        let scores = SerieField::<Int64Type>::new("scores", true);
+        let scores = TypedSerieField::<Int64Type>::new("scores", true);
         assert_eq!(scores.data_type().name(), "list");
         assert_eq!(scores.data_type().value_type().name(), "int64");
     }

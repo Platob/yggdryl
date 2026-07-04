@@ -22,7 +22,7 @@ use yggdryl_dtype::DataType;
 /// [`to_arrow_array`](super::Scalar::to_arrow_array) (the array form). `ArrowArray`
 /// **defaults to `ArrowScalar`**, since for a plain scalar the array form *is* the
 /// one-element scalar array; a serie overrides it to its element array type (so
-/// `Int64Serie` is a `TypedScalar<SerieType<Int64Type>, [i64], ListArray, Int64Array>`).
+/// `Int64Serie` is a `TypedScalar<TypedSerieType<Int64Type>, [i64], ListArray, Int64Array>`).
 ///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::Int64Type;

@@ -1,7 +1,7 @@
 //! The [`Int8Serie`] scalar: a serie of `int8` borrowing raw Arrow buffers.
 //!
 //! A single, possibly-null serie of `int8` (native `i8` elements) of the
-//! [`SerieType<Int8Type>`](yggdryl_dtype::SerieType) data type, holding its
+//! [`TypedSerieType<Int8Type>`](yggdryl_dtype::TypedSerieType) data type, holding its
 //! elements zero-copy in Arrow buffers.
 //!
 //! ```

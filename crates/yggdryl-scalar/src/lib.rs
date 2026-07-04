@@ -19,7 +19,7 @@
 //!   `ArrowArray` (the [`to_arrow_array`](Scalar::to_arrow_array) form, defaulting
 //!   to `ArrowScalar`).
 //! - [`FromScalar`] — the native Rust targets readable out of any scalar, behind
-//!   the generic accessors such as [`Serie::get_at`].
+//!   the generic accessors such as [`TypedSerie::get_at`].
 //! - [`ScalarFactory`] — a typed data type builds its scalar
 //!   ([`Int64Type.scalar(42)`](ScalarFactory::scalar) → [`Int64Scalar`], plus
 //!   [`null_scalar`](ScalarFactory::null_scalar) / [`default_scalar`](ScalarFactory::default_scalar)).
@@ -29,8 +29,13 @@
 //! module the byte sequence (doubling as a `yggdryl-core` positioned-IO
 //! resource), the [`null`] module the always-null scalar, the [`optional`] module
 //! the null-or-value variant, and the [`serie`], [`map`] and [`struct`](r#struct)
-//! modules the nested values (the union, dynamic at runtime, has no scalar). Add
-//! more following the rules in `CLAUDE.md`.
+//! modules the nested values (the union, dynamic at runtime, has no scalar). The
+//! `serie` / `map` / `optional` families mirror their data types' dynamic-base +
+//! typed split: the dynamic [`Serie`] / [`MapScalar`] / [`OptionalScalar`] carry a
+//! dynamic data type with the element type erased, and [`TypedSerie`] /
+//! [`TypedMapScalar`] / [`TypedOptionalScalar`] add the typed element accessors and
+//! the [`ScalarFactory`], erasing back with `erase()`. Add more following the rules
+//! in `CLAUDE.md`.
 //!
 //! Every scalar converts to and from its Apache Arrow equivalent (`to_arrow_scalar` /
 //! `from_arrow`): a one-element [`arrow_array`] array — Arrow's own scalar
@@ -75,6 +80,8 @@ pub mod null;
 pub mod optional;
 pub mod serie;
 pub mod r#struct;
+pub mod typed_map;
+pub mod typed_optional;
 
 pub use binary::BinaryScalar;
 pub use map::MapScalar;
@@ -82,9 +89,11 @@ pub use null::NullScalar;
 pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
 pub use serie::{
-    Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, UInt16Serie, UInt32Serie, UInt64Serie,
-    UInt8Serie,
+    Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, TypedSerie, UInt16Serie, UInt32Serie,
+    UInt64Serie, UInt8Serie,
 };
+pub use typed_map::TypedMapScalar;
+pub use typed_optional::TypedOptionalScalar;
 
 pub use integer::{
     Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,

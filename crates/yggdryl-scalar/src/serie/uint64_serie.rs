@@ -1,7 +1,7 @@
 //! The [`UInt64Serie`] scalar: a serie of `uint64` borrowing raw Arrow buffers.
 //!
 //! A single, possibly-null serie of `uint64` (native `u64` elements) of the
-//! [`SerieType<UInt64Type>`](yggdryl_dtype::SerieType) data type, holding its
+//! [`TypedSerieType<UInt64Type>`](yggdryl_dtype::TypedSerieType) data type, holding its
 //! elements zero-copy in Arrow buffers.
 //!
 //! ```

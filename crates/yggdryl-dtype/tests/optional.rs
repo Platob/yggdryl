@@ -1,14 +1,15 @@
-//! Integration tests for the `optional` data type — the logical value-or-null type
-//! over union storage.
+//! Integration tests for the `optional` data type — the dynamic [`OptionalType`]
+//! and the statically-typed [`TypedOptionalType`], a logical value-or-null type over
+//! union storage.
 
 use yggdryl_dtype::{
     arrow_schema, DataError, DataType, Int64Type, Logical, Optional, OptionalType, TypedDataType,
-    TypedLogical, TypedOptional, UInt8Type, UnionType,
+    TypedLogical, TypedOptional, TypedOptionalType, UInt8Type, UnionType,
 };
 
 #[test]
-fn optional_is_a_logical_type_over_union_storage() {
-    let optional = OptionalType::new(Int64Type);
+fn typed_optional_is_a_logical_type_over_union_storage() {
+    let optional = TypedOptionalType::new(Int64Type);
     assert_eq!(optional.name(), "optional");
     assert_eq!(optional.value_type(), &Int64Type);
 
@@ -25,9 +26,28 @@ fn optional_is_a_logical_type_over_union_storage() {
 }
 
 #[test]
+fn dynamic_optional_is_arrow_backed_and_erases() {
+    let optional = OptionalType::new(&Int64Type);
+    assert_eq!(optional.name(), "optional");
+    assert_eq!(optional.value_field().name(), "int64");
+    assert_eq!(optional.storage(), &UnionType::optional(&Int64Type));
+
+    // erase() and from_arrow agree; the round trip is lossless.
+    assert_eq!(TypedOptionalType::new(Int64Type).erase(), optional);
+    assert_eq!(
+        OptionalType::from_arrow(&optional.to_arrow()).unwrap(),
+        optional
+    );
+    assert!(matches!(
+        OptionalType::from_arrow(&arrow_schema::DataType::Int64),
+        Err(DataError::IncompatibleArrowType { .. })
+    ));
+}
+
+#[test]
 fn optional_codec_is_the_value_types() {
     // The typed layer delegates the other way: the byte codec is the value type's.
-    let optional = OptionalType::new(Int64Type);
+    let optional = TypedOptionalType::new(Int64Type);
     for value in [0i64, 1, -1, i64::MIN, i64::MAX] {
         assert_eq!(
             optional.native_to_bytes(&value),
@@ -54,21 +74,21 @@ fn optional_codec_is_the_value_types() {
 }
 
 #[test]
-fn optional_arrow_round_trips() {
-    let optional = OptionalType::new(Int64Type);
+fn typed_optional_arrow_round_trips() {
+    let optional = TypedOptionalType::new(Int64Type);
     assert_eq!(
-        OptionalType::from_arrow(&optional.to_arrow()).unwrap(),
+        TypedOptionalType::from_arrow(&optional.to_arrow()).unwrap(),
         optional
     );
 
-    // A non-union, a union of another shape, and a mismatched value type are all
-    // refused.
+    // A non-union, and a union of a mismatched value type, are both refused by the
+    // typed decoder (the dynamic one accepts any value type).
     assert!(matches!(
-        OptionalType::<Int64Type>::from_arrow(&arrow_schema::DataType::Int64),
+        TypedOptionalType::<Int64Type>::from_arrow(&arrow_schema::DataType::Int64),
         Err(DataError::IncompatibleArrowType { .. })
     ));
     assert!(matches!(
-        OptionalType::<Int64Type>::from_arrow(&UnionType::optional(&UInt8Type).to_arrow()),
+        TypedOptionalType::<Int64Type>::from_arrow(&UnionType::optional(&UInt8Type).to_arrow()),
         Err(DataError::IncompatibleArrowType { .. })
     ));
 }
@@ -86,8 +106,9 @@ fn optional_is_the_generic_logical_holder() {
     fn typed_default<T, O: TypedOptional<T>>(optional: &O) -> T {
         optional.default_value()
     }
-    let optional = OptionalType::new(Int64Type);
+    let optional = TypedOptionalType::new(Int64Type);
     assert_eq!(raw_storage_name(&optional), "union");
+    assert_eq!(raw_storage_name(&OptionalType::new(&Int64Type)), "union");
     assert_eq!(typed_storage_name(&optional), "union");
     assert_eq!(typed_default(&optional), 0);
 }
@@ -95,5 +116,6 @@ fn optional_is_the_generic_logical_holder() {
 #[test]
 fn optional_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<OptionalType<Int64Type>>();
+    assert_send_sync::<OptionalType>();
+    assert_send_sync::<TypedOptionalType<Int64Type>>();
 }

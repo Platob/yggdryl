@@ -5,9 +5,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use yggdryl_scalar::yggdryl_core::{ByteBuffer, RawIOBase, Whence};
 use yggdryl_scalar::yggdryl_dtype as dtype;
-use yggdryl_scalar::{Int64Scalar, Int64Serie, Int8Serie, Scalar, Serie, UInt8Serie};
+use yggdryl_scalar::{Int64Scalar, Int64Serie, Int8Serie, Scalar, TypedSerie, UInt8Serie};
 
-type Int64SerieGeneric = Serie<dtype::Int64Type, Int64Scalar>;
+type Int64SerieGeneric = TypedSerie<dtype::Int64Type, Int64Scalar>;
 
 const N: usize = 4096;
 

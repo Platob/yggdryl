@@ -3,9 +3,11 @@
 
 use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError, DataType, Union, UnionType};
-use yggdryl_scalar::{arrow_array, Int64Scalar, OptionalScalar, Scalar, TypedScalar, UInt8Scalar};
+use yggdryl_scalar::{
+    arrow_array, Int64Scalar, OptionalScalar, Scalar, TypedOptionalScalar, TypedScalar, UInt8Scalar,
+};
 
-type OptionalInt64 = OptionalScalar<dtype::Int64Type, Int64Scalar>;
+type OptionalInt64 = TypedOptionalScalar<dtype::Int64Type, Int64Scalar>;
 
 #[test]
 fn optional_scalar_holds_a_value_or_the_null_variant() {
@@ -15,7 +17,7 @@ fn optional_scalar_holds_a_value_or_the_null_variant() {
     assert_eq!(answer.scalar(), Some(&Int64Scalar::new(42)));
     assert_eq!(
         answer.data_type(),
-        &dtype::OptionalType::new(dtype::Int64Type)
+        &dtype::TypedOptionalType::new(dtype::Int64Type)
     );
 
     let missing = OptionalInt64::null();
@@ -62,12 +64,12 @@ fn optional_scalar_redirects_access_to_the_inner_scalar() {
     {
         scalar.is_null()
     }
-    let flag = OptionalScalar::new(UInt8Scalar::new(7));
+    let flag = TypedOptionalScalar::new(UInt8Scalar::new(7));
     assert_eq!(flag.as_u8().unwrap(), 7);
     assert!(!is_null_scalar(&flag));
     assert_eq!(
         flag.data_type(),
-        &dtype::OptionalType::new(dtype::UInt8Type)
+        &dtype::TypedOptionalType::new(dtype::UInt8Type)
     );
 }
 
@@ -79,7 +81,7 @@ fn optional_scalar_arrow_round_trips_both_variants() {
     assert_eq!(arrow.len(), 1);
     assert_eq!(
         arrow.data_type(),
-        &DataType::to_arrow(&dtype::OptionalType::new(dtype::Int64Type))
+        &DataType::to_arrow(&dtype::TypedOptionalType::new(dtype::Int64Type))
     );
     let union_array = arrow
         .as_any()
@@ -123,7 +125,7 @@ fn optional_scalar_from_arrow_rejects_other_shapes() {
     ));
 
     // The right union layout but for a different value type.
-    let other = OptionalScalar::new(UInt8Scalar::new(7)).to_arrow_scalar();
+    let other = TypedOptionalScalar::new(UInt8Scalar::new(7)).to_arrow_scalar();
     assert!(matches!(
         OptionalInt64::from_arrow(other.as_ref()),
         Err(DataError::IncompatibleArrowType { .. })
@@ -148,7 +150,36 @@ fn optional_scalar_from_arrow_rejects_other_shapes() {
 }
 
 #[test]
+fn optional_scalar_erases_to_the_dynamic_base() {
+    // A typed optional erases to the dynamic base, dropping the static value type
+    // while keeping the value variant over the same shared value array.
+    let answer = OptionalInt64::new(Int64Scalar::new(42)).erase();
+    assert!(!answer.is_null());
+    assert_eq!(answer.data_type().name(), "optional");
+    assert_eq!(
+        answer.data_type(),
+        &dtype::OptionalType::new(&dtype::Int64Type)
+    );
+    // The dynamic base round-trips through Arrow, both variants.
+    assert_eq!(
+        OptionalScalar::from_arrow(answer.to_arrow_scalar().as_ref()).unwrap(),
+        answer
+    );
+
+    let missing = OptionalInt64::null().erase();
+    assert!(missing.is_null());
+    assert_eq!(
+        OptionalScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        missing
+    );
+
+    // The erased value and null variants are distinct.
+    assert_ne!(answer, missing);
+}
+
+#[test]
 fn optional_scalar_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<OptionalInt64>();
+    assert_send_sync::<OptionalScalar>();
 }

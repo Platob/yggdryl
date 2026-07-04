@@ -1,27 +1,31 @@
 //! The [`Serie`] base trait: the untyped surface of a serie data type.
 
-use crate::{DataType, Nested};
+use crate::Nested;
+use arrow_schema::FieldRef;
 
 /// The untyped surface every serie data type carries: a variable-length sequence of
-/// one value type, exposing that value type.
+/// one value type, exposing that value type's Arrow `"item"` child.
 ///
-/// It refines [`Nested`] (the single child is the item field) and names the value
-/// data type as the associated [`ValueType`](Serie::ValueType) so the concrete type
-/// is preserved for zero-cost access, mirroring `yggdryl-field`'s `Field` and
-/// `yggdryl-scalar`'s `Scalar`. A value type with a codec also gets the typed
-/// [`TypedSerie`](crate::TypedSerie) layer.
+/// It refines [`Nested`] (the single child is the item field). The dynamic
+/// [`SerieType`](crate::SerieType) implements it over an arbitrary value type; a
+/// statically-typed serie also implements the typed [`TypedSerie`](crate::TypedSerie)
+/// (via [`TypedSerieType<D>`](crate::TypedSerieType)), which adds the concrete
+/// value-type accessor and the byte codec. This mirrors the dynamic
+/// [`StructType`](crate::StructType) / [`Struct`](crate::Struct) split.
 ///
 /// ```
-/// use yggdryl_dtype::{DataType, Int64Type, Serie, SerieType, Nested};
+/// use yggdryl_dtype::{arrow_schema, Nested, Serie, SerieType};
 ///
-/// let serie = SerieType::new(Int64Type);
-/// assert_eq!(serie.value_type().name(), "int64");
+/// let serie = SerieType::new(arrow_schema::DataType::Int64);
+/// assert_eq!(serie.item_field().name(), "item");
 /// assert_eq!(serie.child_count(), 1);
 /// ```
 pub trait Serie: Nested {
-    /// The value type this serie sequences.
-    type ValueType: DataType;
-
-    /// The value type this serie sequences.
-    fn value_type(&self) -> &Self::ValueType;
+    /// The list's single Arrow child: the nullable `"item"` field of the value type.
+    ///
+    /// Returned by value (a reference-counted [`FieldRef`]), since a typed serie
+    /// builds it from its value type rather than storing it — unlike
+    /// [`Struct::fields`](crate::Struct::fields), which the dynamic struct stores and
+    /// returns by reference.
+    fn item_field(&self) -> FieldRef;
 }
