@@ -149,5 +149,76 @@ fn optional(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, scalar, accessor, optional);
+// The `ScalarFactory` surface across every factory family: the data type builds a
+// value scalar, the null scalar and the default scalar.
+fn factory(c: &mut Criterion) {
+    let mut group = c.benchmark_group("factory");
+    group.throughput(Throughput::Elements(N as u64));
+
+    // Integer: value, null and default.
+    group.bench_function("int64_scalar", |b| {
+        b.iter(|| {
+            for value in 0..N as i64 {
+                black_box(dtype::Int64Type.scalar(black_box(value)));
+            }
+        })
+    });
+    group.bench_function("int64_null_scalar", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(dtype::Int64Type.null_scalar());
+            }
+        })
+    });
+    group.bench_function("int64_default_scalar", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(dtype::Int64Type.default_scalar());
+            }
+        })
+    });
+
+    // Binary: build from owned bytes.
+    group.bench_function("binary_scalar", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(dtype::BinaryType.scalar(black_box(vec![1u8, 2, 3, 4])));
+            }
+        })
+    });
+
+    // Optional: wrap the value variant.
+    let optional = dtype::TypedOptionalType::new(dtype::Int64Type);
+    group.bench_function("optional_scalar", |b| {
+        b.iter(|| {
+            for value in 0..N as i64 {
+                black_box(optional.scalar(black_box(value)));
+            }
+        })
+    });
+
+    // Serie: build a sequence through the value type's own factory.
+    let serie = dtype::TypedSerieType::new(dtype::Int64Type);
+    group.bench_function("serie_scalar", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(serie.scalar(black_box(vec![1i64, 2, 3, 4])));
+            }
+        })
+    });
+
+    // Map: build entries through the key and value factories.
+    let map = dtype::TypedMapType::new(dtype::UInt8Type, dtype::Int64Type);
+    group.bench_function("map_scalar", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(map.scalar(black_box(vec![(1u8, 2i64), (3, 4)])));
+            }
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, scalar, accessor, optional, factory);
 criterion_main!(benches);

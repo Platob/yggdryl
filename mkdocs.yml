@@ -47,3 +47,4 @@ nav:
   - Data types: dtype.md
   - Fields: field.md
   - Scalars: scalar.md
+  - Factory: factory.md

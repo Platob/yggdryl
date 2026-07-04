@@ -7,13 +7,16 @@
 //! classes carry globally-unique names (the `…Type` / `…Field` / `…Scalar`
 //! suffixes keep the three concerns distinct in napi's addon-global registry), so
 //! the generated `index.js` / `index.d.ts` namespace map is the package entry
-//! directly. The wrappers are thin: all logic lives in the Rust crates, so the
-//! Node and Python bindings behave identically.
+//! directly. A convenience `factory` namespace adds the type-inference factory
+//! (`scalar` / `dtype` / `field`), building the matching object from a native value
+//! without naming its type. The wrappers are thin: all logic lives in the Rust
+//! crates, so the Node and Python bindings behave identically.
 
 use napi::bindgen_prelude::{BigInt, Error, Result};
 
 pub mod core;
 pub mod dtype;
+pub mod factory;
 pub mod field;
 pub mod scalar;
 

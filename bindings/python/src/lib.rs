@@ -3,14 +3,17 @@
 //! Each Rust crate is exposed as a submodule of the top-level `yggdryl` package —
 //! `yggdryl.core` (the foundations), `yggdryl.dtype` (the data types),
 //! `yggdryl.field` (the fields) and `yggdryl.scalar` (the scalars) — mirroring the
-//! crate tree. The wrappers are thin: all logic lives in the Rust crates, so the
-//! Python and Node bindings behave identically.
+//! crate tree. A convenience `yggdryl.factory` submodule adds the type-inference
+//! factory (`scalar` / `dtype` / `field`), building the matching object from a
+//! native value without naming its type. The wrappers are thin: all logic lives in
+//! the Rust crates, so the Python and Node bindings behave identically.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 mod core;
 mod dtype;
+mod factory;
 mod field;
 mod scalar;
 
@@ -61,5 +64,6 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     add_submodule(py, module, "dtype", dtype::register)?;
     add_submodule(py, module, "field", field::register)?;
     add_submodule(py, module, "scalar", scalar::register)?;
+    add_submodule(py, module, "factory", factory::register)?;
     Ok(())
 }
