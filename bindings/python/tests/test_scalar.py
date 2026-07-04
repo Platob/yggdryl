@@ -194,6 +194,8 @@ def test_serie_holds_a_sequence(case):
     assert numbers.data_type().value_type().name() == name
     with pytest.raises(ValueError):
         numbers.get_at(3)  # out of bounds
+    with pytest.raises(OverflowError):
+        numbers.get_at(-1)  # a negative index never converts
 
     # The empty serie and null are distinct states.
     empty = serie_class([])

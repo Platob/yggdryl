@@ -29,6 +29,14 @@ pub(crate) fn wire_to_native<T: TryFrom<i64>>(value: i64, name: &str) -> Result<
         .map_err(|_| Error::from_reason(format!("expected {value} to be in the {name} range")))
 }
 
+/// A JS `number` index as a `usize`, or an actionable error when negative —
+/// taking the index as `i64` keeps every JS integer exact, where a `u32`
+/// parameter would silently wrap values past 2^32 back into range.
+pub(crate) fn index_to_usize(index: i64) -> Result<usize> {
+    usize::try_from(index)
+        .map_err(|_| Error::from_reason(format!("expected a non-negative index, got {index}")))
+}
+
 /// A `BigInt` as an `i64`, or an actionable error when out of range.
 pub(crate) fn bigint_to_i64(value: BigInt) -> Result<i64> {
     let (value, lossless) = value.get_i64();

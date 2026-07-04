@@ -833,8 +833,10 @@ impl OptionalUInt64Type {
 /// (8-32 bit, JS `number` elements) or written per 64-bit type with `BigInt`.
 macro_rules! int_serie_dtype_node {
     ($ty:ident, $value_ty:ident, $field:ident, $serie:ident, $name:literal) => {
-        #[doc = concat!("The Apache Arrow `list` of `", $name, "`: a variable-length sequence of `", $name, "`")]
-        #[doc = concat!("(single nullable `\"item\"` child), with a buffer-backed serie scalar (`yggdryl.scalar.", stringify!($serie), "`).")]
+        /// The Apache Arrow `list` of one integer value type: a variable-length
+        /// sequence (single nullable `"item"` child) with a buffer-backed serie
+        /// scalar in `yggdryl.scalar`.
+        #[doc = concat!("This is the serie of `", $name, "` — its scalar is `", stringify!($serie), "`.")]
         #[napi(namespace = "dtype")]
         #[derive(Default)]
         pub struct $ty {
@@ -843,7 +845,8 @@ macro_rules! int_serie_dtype_node {
 
         #[napi(namespace = "dtype")]
         impl $ty {
-            #[doc = concat!("The `list` of `", $name, "` data type.")]
+            /// The serie data type.
+            #[doc = concat!("The `list` of `", $name, "`.")]
             #[napi(constructor)]
             #[allow(clippy::new_without_default)]
             pub fn new() -> Self {
@@ -880,13 +883,13 @@ macro_rules! int_serie_dtype_node {
                 self.inner.child_count() as u32
             }
 
-            #[doc = concat!("The value type this serie sequences, `", $name, "`.")]
+            /// The value type this serie sequences.
             #[napi]
             pub fn value_type(&self) -> $value_ty {
                 $value_ty::default()
             }
 
-            #[doc = concat!("The default scalar: a `yggdryl.scalar.", stringify!($serie), "` holding the empty serie.")]
+            /// The default scalar: a `yggdryl.scalar` serie holding the empty serie.
             #[napi]
             pub fn default_scalar(&self) -> crate::scalar::$serie {
                 crate::scalar::$serie {
@@ -942,7 +945,7 @@ macro_rules! int_serie_wire_number_dtype {
                     .collect()
             }
 
-            #[doc = concat!("A `yggdryl.scalar.", stringify!($serie), "` holding the native serie `values`.")]
+            /// A `yggdryl.scalar` serie holding the native serie `values`.
             #[napi]
             pub fn scalar(&self, values: Vec<i64>) -> Result<crate::scalar::$serie> {
                 let values = values

@@ -305,7 +305,8 @@ int_field_node!(
 /// `yggdryl_field::SerieField<$value_ty>`.
 macro_rules! int_serie_field_node {
     ($ty:ident, $dtype:ident, $value_ty:ident, $name:literal) => {
-        #[doc = concat!("A nullable `list`-of-`", $name, "` field: a name paired with the `", stringify!($dtype), "` data type.")]
+        /// A nullable serie field: a name paired with the serie data type.
+        #[doc = concat!("This is the `list`-of-`", $name, "` column (`", stringify!($dtype), "`).")]
         #[napi(namespace = "field")]
         pub struct $ty {
             pub(crate) inner: yggdryl_field::SerieField<yggdryl_dtype::$value_ty>,
@@ -313,7 +314,7 @@ macro_rules! int_serie_field_node {
 
         #[napi(namespace = "field")]
         impl $ty {
-            #[doc = concat!("A `list`-of-`", $name, "` field named `name` (nullable by default).")]
+            /// A serie field named `name` (nullable by default).
             #[napi(constructor)]
             pub fn new(name: String, nullable: Option<bool>) -> Self {
                 Self {

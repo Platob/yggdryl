@@ -32,7 +32,7 @@ use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
 use napi_derive::napi;
 use yggdryl_scalar::Scalar;
 
-use crate::{bigint_to_i64, bigint_to_u64, data_error, wire_to_native};
+use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native};
 
 /// Reads `as_str` through the optional charset name — `"utf8"` (the default) or
 /// `"latin1"` — shared by every scalar class.
@@ -564,9 +564,10 @@ impl OptionalUInt64Scalar {
 /// elements) or written per 64-bit type with `BigInt`.
 macro_rules! int_serie_scalar_node {
     ($ty:ident, $scalar:ident, $dtype:ident, $name:literal) => {
-        #[doc = concat!("A single, possibly-null `list` of `", $name, "` — *our array*, the buffer-backed")]
-        /// serie scalar. Built dense (all-valid) from Node; the whole serie may still
-        #[doc = concat!("be null (`", stringify!($ty), ".null()`).")]
+        /// A single, possibly-null integer serie — *our array*, the buffer-backed
+        /// serie scalar. Built dense (all-valid) from Node; the whole serie may
+        /// still be null through the `null()` factory.
+        #[doc = concat!("This is the serie of `", $name, "`.")]
         #[napi(namespace = "scalar")]
         pub struct $ty {
             pub(crate) inner: yggdryl_scalar::$ty,
@@ -601,12 +602,14 @@ macro_rules! int_serie_scalar_node {
                 self.inner.is_empty()
             }
 
-            #[doc = concat!("The element at `index` as an `", stringify!($scalar), "`, or `null` when the serie is")]
-            /// null or `index` is out of bounds.
+            /// The element at `index` as the element scalar, or `null` when the
+            /// serie is null or `index` is out of bounds (a negative index
+            /// included).
             #[napi]
-            pub fn get_scalar_at(&self, index: u32) -> Option<$scalar> {
-                self.inner
-                    .get_scalar_at(index as usize)
+            pub fn get_scalar_at(&self, index: i64) -> Option<$scalar> {
+                usize::try_from(index)
+                    .ok()
+                    .and_then(|index| self.inner.get_scalar_at(index))
                     .map(|inner| $scalar { inner })
             }
 
@@ -646,12 +649,12 @@ macro_rules! int_serie_wire_number_scalar {
                     .map(|values| values.iter().copied().map(i64::from).collect())
             }
 
-            /// The element at `index` read as its native number; throws when null or
-            /// out of bounds.
+            /// The element at `index` read as its native number; throws when null,
+            /// the index is negative, or the index is past the end.
             #[napi]
-            pub fn get_at(&self, index: u32) -> Result<i64> {
+            pub fn get_at(&self, index: i64) -> Result<i64> {
                 self.inner
-                    .get_at::<$native>(index as usize)
+                    .get_at::<$native>(index_to_usize(index)?)
                     .map(i64::from)
                     .map_err(data_error)
             }
@@ -701,12 +704,12 @@ impl Int64Serie {
             .map(|values| values.iter().copied().map(BigInt::from).collect())
     }
 
-    /// The element at `index` read as its native `BigInt`; throws when null or
-    /// out of bounds.
+    /// The element at `index` read as its native `BigInt`; throws when null,
+    /// the index is negative, or the index is past the end.
     #[napi]
-    pub fn get_at(&self, index: u32) -> Result<BigInt> {
+    pub fn get_at(&self, index: i64) -> Result<BigInt> {
         self.inner
-            .get_at::<i64>(index as usize)
+            .get_at::<i64>(index_to_usize(index)?)
             .map(BigInt::from)
             .map_err(data_error)
     }
@@ -734,12 +737,12 @@ impl UInt64Serie {
             .map(|values| values.iter().copied().map(BigInt::from).collect())
     }
 
-    /// The element at `index` read as its native `BigInt`; throws when null or
-    /// out of bounds.
+    /// The element at `index` read as its native `BigInt`; throws when null,
+    /// the index is negative, or the index is past the end.
     #[napi]
-    pub fn get_at(&self, index: u32) -> Result<BigInt> {
+    pub fn get_at(&self, index: i64) -> Result<BigInt> {
         self.inner
-            .get_at::<u64>(index as usize)
+            .get_at::<u64>(index_to_usize(index)?)
             .map(BigInt::from)
             .map_err(data_error)
     }

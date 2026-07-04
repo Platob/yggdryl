@@ -179,6 +179,10 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     assert.equal(numbers.dataType().name(), 'list')
     assert.equal(numbers.dataType().valueType().name(), name)
     assert.throws(() => numbers.getAt(3)) // out of bounds
+    assert.throws(() => numbers.getAt(-1), /non-negative index/) // negative, not wrapped
+    assert.throws(() => numbers.getAt(2 ** 32)) // never aliased back into range
+    assert.equal(numbers.getScalarAt(-1), null)
+    assert.equal(numbers.getScalarAt(2 ** 32), null)
 
     // The empty serie and null are distinct states.
     const empty = new serieClass([])

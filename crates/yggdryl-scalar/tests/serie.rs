@@ -282,6 +282,18 @@ fn serie_from_a_sliced_arrow_row_keeps_the_window() {
     assert!(matches!(serie.get_at::<i32>(1), Err(DataError::NullValue)));
     assert_eq!(serie.get_at::<i32>(2).unwrap(), 5);
     assert_eq!(serie, Int32Serie::from(vec![Some(3), None, Some(5)]));
+
+    // Shared, not copied: the serie's buffer is the original child buffer,
+    // starting at the second row's offset (element index 2).
+    let child = rows
+        .values()
+        .as_any()
+        .downcast_ref::<arrow_array::Int32Array>()
+        .unwrap();
+    assert_eq!(
+        serie.values().unwrap().as_ptr(),
+        child.values()[2..].as_ptr()
+    );
 }
 
 #[test]

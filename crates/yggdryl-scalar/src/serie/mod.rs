@@ -32,8 +32,8 @@
 macro_rules! int_serie {
     ($ty:ident, $scalar:ident, $dtype:ident, $native:ty, $name:literal, $array:ident, $width:literal) => {
         #[doc = concat!("A single, possibly-null serie of `", $name, "` — *our array*, borrowing the raw Arrow")]
-        #[doc = concat!("buffers ([`ScalarBuffer<", stringify!($native), ">`]($crate::arrow_buffer::ScalarBuffer) elements plus an optional")]
-        #[doc = "[`NullBuffer`]($crate::arrow_buffer::NullBuffer)) zero-copy, optimized for native element access."]
+        #[doc = concat!("buffers ([`ScalarBuffer<", stringify!($native), ">`](crate::arrow_buffer::ScalarBuffer) elements plus an optional")]
+        #[doc = "[`NullBuffer`](crate::arrow_buffer::NullBuffer)) zero-copy, optimized for native element access."]
         #[doc = ""]
         #[doc = "Where the generic [`Serie`](crate::Serie) holds an opaque Arrow array handle and"]
         #[doc = concat!("goes through the element scalars' Arrow round trip, `", stringify!($ty), "` holds the")]
@@ -126,7 +126,7 @@ macro_rules! int_serie {
                 self.nulls.as_ref()
             }
 
-            #[doc = concat!("The elements as an Arrow [`arrow_array::", stringify!($array), "`]($crate::arrow_array::", stringify!($array), "), reassembled around the")]
+            #[doc = concat!("The elements as an Arrow [`arrow_array::", stringify!($array), "`](crate::arrow_array::", stringify!($array), "), reassembled around the")]
             /// same shared buffers (a reference-count bump, not a copy), or `None` when the
             /// serie is null.
             pub fn array(&self) -> Option<$crate::arrow_array::$array> {
@@ -210,8 +210,10 @@ macro_rules! int_serie {
             ) -> Result<(), ::yggdryl_dtype::DataError> {
                 let values = self.values.as_ref().ok_or(::yggdryl_dtype::DataError::NullValue)?;
                 // One bulk write instead of a per-element pwrite loop: serialize every
-                // slot little-endian into one buffer, then a single positioned write
-                // (the resource never grows mid-write, so the layout is identical).
+                // slot little-endian into one buffer, then a single positioned write.
+                // Elements land at the same offsets from the once-resolved start; a
+                // `Whence::End` start is now resolved once, where the old loop
+                // re-resolved a growing end before every element.
                 let bytes = values
                     .iter()
                     .flat_map(|value| value.to_le_bytes())

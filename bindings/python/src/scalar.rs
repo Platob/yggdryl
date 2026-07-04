@@ -668,13 +668,14 @@ macro_rules! int_serie_scalar_py {
             }
 
             /// The element at `index` read as its native `int`; raises `ValueError` when
-            /// null or out of bounds.
+            /// null or past the end, and `OverflowError` for a negative index.
             fn get_at(&self, index: usize) -> Result<$native, DataErr> {
                 Ok(self.inner.get_at::<$native>(index)?)
             }
 
             #[doc = concat!("The element at `index` as an `", stringify!($scalar), "`, or `None` when the serie is")]
-            /// null or `index` is out of bounds.
+            /// null or `index` is past the end (a negative index raises
+            /// `OverflowError`).
             fn get_scalar_at(&self, index: usize) -> Option<$scalar> {
                 self.inner
                     .get_scalar_at(index)
