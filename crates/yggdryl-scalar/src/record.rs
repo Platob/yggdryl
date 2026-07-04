@@ -157,6 +157,11 @@ impl Scalar for RecordScalar {
         self.scalars.as_deref()
     }
 
+    // A transposed `field | value` table — a wide row still fits the screen.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        crate::display::render_record(self, options)
+    }
+
     fn to_arrow_scalar(&self) -> ArrayRef {
         let fields = Struct::fields(&self.data_type);
         let Some(scalars) = &self.scalars else {

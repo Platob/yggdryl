@@ -268,6 +268,13 @@ macro_rules! int_serie {
                         .expect("index within the serie length")
                 })
             }
+
+            /// The serie's **item field** — the `"item"` field carrying the element
+            /// type — borrowed straight from the data type (a reference-count bump).
+            /// It is the header a tabular [`display`](Self::display) prints.
+            pub fn field(&self) -> $crate::arrow_schema::FieldRef {
+                ::yggdryl_dtype::Serie::item_field(&self.data_type)
+            }
         }
 
         impl Default for $ty {
@@ -362,6 +369,16 @@ macro_rules! int_serie {
 
             fn value(&self) -> Option<&[$native]> {
                 self.values.as_deref()
+            }
+
+            // A one-column table headed by the item field, or `null` for a null serie.
+            fn display_with(&self, options: $crate::DisplayOptions) -> String {
+                if self.values.is_none() {
+                    return "null".to_string();
+                }
+                let column = $crate::AnySerie::from_arrow($crate::Scalar::to_arrow_array(self));
+                let name = self.field().name().to_string();
+                $crate::display::render_serie(&column, &name, options)
             }
 
             fn to_arrow_scalar(&self) -> $crate::arrow_array::ArrayRef {

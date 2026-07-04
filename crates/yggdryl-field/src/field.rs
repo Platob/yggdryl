@@ -121,6 +121,26 @@ pub trait Field: std::fmt::Debug + Send + Sync {
     fn cast_dtype(&self, dtype: &dyn yggdryl_dtype::DataType) -> arrow_schema::Field {
         arrow_schema::Field::new(self.name(), dtype.to_arrow(), self.is_nullable())
     }
+
+    /// A compact, human-readable form for fast debugging: `name: type`, with a
+    /// trailing `?` when the field is nullable (`id: int64`, `age: int64?`). The type
+    /// is the data type's own [`display`](yggdryl_dtype::DataType::display) signature,
+    /// so a nested field renders in full (`items: list<int64>`).
+    ///
+    /// ```
+    /// use yggdryl_field::{Field, Int64Field};
+    /// assert_eq!(Int64Field::new("id", false).display(), "id: int64");
+    /// assert_eq!(Int64Field::new("age", true).display(), "age: int64?");
+    /// ```
+    fn display(&self) -> String {
+        use yggdryl_dtype::DataType as _;
+        format!(
+            "{}: {}{}",
+            self.name(),
+            self.data_type().display(),
+            if self.is_nullable() { "?" } else { "" }
+        )
+    }
 }
 
 /// The shared `from_arrow` metadata policy every concrete field applies before

@@ -117,6 +117,14 @@ impl Scalar for MapScalar {
         self.entries.as_ref()
     }
 
+    // The entries as a `key | value` table (the entries column is a struct), or `null`.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        match &self.entries {
+            None => "null".to_string(),
+            Some(entries) => crate::display::render_serie(entries, "entries", options),
+        }
+    }
+
     fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(entries) = &self.entries else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);

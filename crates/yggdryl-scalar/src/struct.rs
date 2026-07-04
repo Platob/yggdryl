@@ -128,6 +128,14 @@ impl Scalar for StructScalar {
         self.columns.as_deref()
     }
 
+    // The column form renders like the row it materializes to: a `field | value` table.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        match self.as_struct() {
+            Ok(record) => crate::display::render_record(&record, options),
+            Err(_) => "null".to_string(),
+        }
+    }
+
     fn to_arrow_scalar(&self) -> ArrayRef {
         let fields = Struct::fields(&self.data_type);
         let Some(columns) = &self.columns else {

@@ -83,6 +83,7 @@ pub use yggdryl_core;
 pub use yggdryl_dtype;
 
 mod any_scalar;
+mod display;
 mod from_scalar;
 mod nested_serie;
 mod scalar;
@@ -90,6 +91,7 @@ mod scalar_factory;
 mod typed_scalar;
 
 pub use any_scalar::AnyScalar;
+pub use display::DisplayOptions;
 pub use from_scalar::FromScalar;
 pub use nested_serie::NestedSerie;
 pub use scalar::Scalar;

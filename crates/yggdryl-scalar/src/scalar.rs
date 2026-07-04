@@ -343,6 +343,33 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
         self.as_bytes().map(<[u8]>::to_vec)
     }
 
+    /// A compact, human-readable rendering for fast debugging, with the default
+    /// [`DisplayOptions`](crate::DisplayOptions) (10 rows, ~100 columns wide) — see
+    /// [`display_with`](Scalar::display_with).
+    fn display(&self) -> String {
+        self.display_with(crate::DisplayOptions::default())
+    }
+
+    /// A compact, human-readable rendering for fast debugging. An **atomic** scalar
+    /// is its value (`42`, `1.5`, `"hi"`, `0x0102`, `null`); a **serie** is a table
+    /// headed by its field (name and type) with the first
+    /// [`max_rows`](crate::DisplayOptions::max_rows) elements; a **struct** serie or
+    /// record is a multi-column table (one column per field), each nested value shown
+    /// compactly so the whole tries to fit [`max_width`](crate::DisplayOptions::max_width).
+    ///
+    /// The default renders the atomic value (through the one-element Arrow form); the
+    /// serie and nested scalars override it with their tables.
+    ///
+    /// ```
+    /// use yggdryl_scalar::{Int64Scalar, Scalar};
+    /// assert_eq!(Int64Scalar::new(42).display(), "42");
+    /// assert_eq!(Int64Scalar::null().display(), "null");
+    /// ```
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        let _ = options;
+        crate::display::format_any(&crate::AnyScalar::from_arrow(self.to_arrow_scalar()))
+    }
+
     /// Cast this scalar to `dtype`, returning the value re-typed as a one-element
     /// [`arrow_array::ArrayRef`] of the target type (rehydrate it with the target
     /// scalar's [`from_arrow`](Scalar::from_arrow)).

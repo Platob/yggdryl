@@ -180,6 +180,14 @@ impl<S: Scalar<DataType = StructType>> Scalar for TypedStructSerie<S> {
         self.values.as_ref()
     }
 
+    // A table with one column per struct field, or `null` for a null serie.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        match &self.values {
+            None => "null".to_string(),
+            Some(column) => crate::display::render_serie(column, "item", options),
+        }
+    }
+
     fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);

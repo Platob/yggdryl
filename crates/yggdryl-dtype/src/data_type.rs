@@ -97,4 +97,18 @@ pub trait DataType: std::fmt::Debug + Send + Sync {
     fn from_arrow(data_type: &arrow_schema::DataType) -> Result<Self, DataError>
     where
         Self: Sized;
+
+    /// A compact, human-readable **signature** for fast debugging — our lowercase
+    /// name plus, for a container, its children in angle brackets (`int64`,
+    /// `list<int64>`, `struct<x: int64, y: float64>`, `map<utf8, int64>`,
+    /// `optional<int64>`). Built from [`to_arrow`](DataType::to_arrow) through the
+    /// shared [`signature`](crate::signature) walker, so every nesting level renders.
+    ///
+    /// ```
+    /// use yggdryl_dtype::{DataType, Int64Type};
+    /// assert_eq!(Int64Type.display(), "int64");
+    /// ```
+    fn display(&self) -> String {
+        crate::signature(&self.to_arrow())
+    }
 }
