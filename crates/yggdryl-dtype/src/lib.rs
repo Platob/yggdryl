@@ -36,6 +36,10 @@
 /// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
 /// and the `to_arrow` / `from_arrow` surface share one version.
 pub use arrow_schema;
+/// The `half` crate, re-exported so downstream code and doctests can name
+/// [`half::f16`] — the native element of the [`Float16Type`] — at the exact version
+/// this crate was built against.
+pub use half;
 /// The yggdryl foundation layer (`yggdryl-core`), re-exported so downstream code
 /// reaches the [`IOError`](yggdryl_core::IOError) wrapped by [`DataError::Io`] at
 /// the exact version this crate was built against.
@@ -81,7 +85,7 @@ pub use r#struct::{Struct, StructType, TypedStruct};
 pub use serie::{Serie, SerieType, TypedSerie, TypedSerieType};
 pub use union::{TypedUnion, Union, UnionType};
 
-pub use float::{Float32Type, Float64Type};
+pub use float::{Float16Type, Float32Type, Float64Type};
 pub use integer::{
     Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
 };

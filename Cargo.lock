@@ -1130,6 +1130,7 @@ version = "0.1.1"
 dependencies = [
  "arrow-schema",
  "criterion",
+ "half",
  "yggdryl-core",
 ]
 
@@ -1139,6 +1140,7 @@ version = "0.1.1"
 dependencies = [
  "arrow-schema",
  "criterion",
+ "half",
  "log",
  "yggdryl-dtype",
 ]
@@ -1176,6 +1178,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "criterion",
+ "half",
  "yggdryl-core",
  "yggdryl-dtype",
 ]

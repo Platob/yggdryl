@@ -40,6 +40,10 @@ arrow-schema = { version = "59.0.0", default-features = false }
 arrow-array = { version = "59.0.0", default-features = false }
 arrow-buffer = { version = "59.0.0", default-features = false }
 arrow-select = { version = "59.0.0", default-features = false }
+# `half::f16` is Apache Arrow's native element for the `float16` type (arrow-array's
+# `Float16Array` is `PrimitiveArray<Float16Type>` over it); already in the tree via
+# arrow, promoted to a direct dep so the `float16` data type / scalar can name it.
+half = { version = "2.7.1", default-features = false }
 
 [profile.release]
 lto = true

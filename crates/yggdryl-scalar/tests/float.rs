@@ -7,7 +7,7 @@ use yggdryl_scalar::yggdryl_core::{ByteBuffer, RawIOBase, Whence};
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, DataError, DataType};
 use yggdryl_scalar::{
     arrow_array, AnyScalar, AnySerie, Float32Scalar, Float32Serie, Float64Scalar, Float64Serie,
-    Scalar, TypedScalar,
+    Int64Scalar, Scalar, TypedScalar,
 };
 
 // The two float scalars share the same shape, so one macro drives a module per type:
@@ -153,6 +153,67 @@ float_scalar_tests!(
     Float64Array,
     "float64"
 );
+
+#[test]
+fn float16_reads_widen_and_narrow_exact_or_error() {
+    use yggdryl_scalar::half::f16;
+    use yggdryl_scalar::{Float16Scalar, Float16Serie};
+
+    let half = f16::from_f32(1.5);
+    let scalar = Float16Scalar::new(half);
+    assert_eq!(scalar.value(), Some(&half));
+    assert_eq!(scalar.data_type().name(), "float16");
+    assert_eq!(scalar.as_f16().unwrap(), half);
+    // f16 ⊂ f32 ⊂ f64: widening is always exact.
+    assert_eq!(scalar.as_f32().unwrap(), 1.5f32);
+    assert_eq!(scalar.as_f64().unwrap(), 1.5f64);
+    // Whole-number-in-range reads as an integer; a fractional one is inexact.
+    assert_eq!(Float16Scalar::new(f16::from_f32(3.0)).as_i64().unwrap(), 3);
+    assert!(matches!(
+        scalar.as_i64(),
+        Err(DataError::InexactConversion { .. })
+    ));
+
+    // Every scalar can narrow to f16 when exact: 1.5 fits, 0.1 does not.
+    assert_eq!(Float64Scalar::new(1.5).as_f16().unwrap(), half);
+    assert!(Float64Scalar::new(0.1).as_f16().is_err());
+    assert_eq!(Int64Scalar::new(3).as_f16().unwrap(), f16::from_f32(3.0));
+    assert!(Int64Scalar::new(100_000).as_f16().is_err()); // beyond f16's exact range
+
+    // NaN passes through; null and Arrow round-trip.
+    assert!(Float16Scalar::new(f16::NAN).as_f16().unwrap().is_nan());
+    assert!(Float16Scalar::null().is_null());
+    assert_eq!(
+        Float16Scalar::from_arrow(scalar.to_arrow_scalar().as_ref()).unwrap(),
+        scalar
+    );
+
+    // Serie: buffer-backed, decomposes in AnySerie, reads elements widened.
+    let weights = Float16Serie::from(vec![f16::from_f32(1.5), f16::from_f32(2.5)]);
+    assert_eq!(weights.len(), 2);
+    assert_eq!(weights.get_at::<f32>(1).unwrap(), 2.5);
+    assert_eq!(weights.get_scalar_at(0), Some(Float16Scalar::new(half)));
+    let column = AnySerie::from(weights.clone());
+    assert!(matches!(column, AnySerie::Float16(_)));
+    assert_eq!(
+        column.get_scalar(0),
+        Some(AnyScalar::from(Float16Scalar::new(half)))
+    );
+    assert_eq!(
+        Float16Serie::from_arrow(weights.to_arrow_scalar().as_ref()).unwrap(),
+        weights
+    );
+
+    // cast_dtype to/from float16 is exact-or-error.
+    let cast = Int64Scalar::new(3).cast_dtype(&dtype::Float16Type).unwrap();
+    assert_eq!(
+        Float16Scalar::from_arrow(cast.as_ref()).unwrap(),
+        Float16Scalar::new(f16::from_f32(3.0))
+    );
+    assert!(Float64Scalar::new(0.1)
+        .cast_dtype(&dtype::Float16Type)
+        .is_err());
+}
 
 #[test]
 fn f64_narrows_to_f32_only_when_exact() {

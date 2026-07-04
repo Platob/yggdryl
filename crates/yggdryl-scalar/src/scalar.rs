@@ -233,6 +233,15 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
         })
     }
 
+    /// The value as an [`f16`](half::f16), when exactly representable.
+    /// See [`as_i8`](Scalar::as_i8) for the shared contract.
+    fn as_f16(&self) -> Result<half::f16, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "f16",
+        })
+    }
+
     /// The value as an `f32`, when exactly representable.
     /// See [`as_i8`](Scalar::as_i8) for the shared contract.
     fn as_f32(&self) -> Result<f32, DataError> {
@@ -386,6 +395,9 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
             A::UInt16 => Arc::new(arrow_array::UInt16Array::from_iter_values([self.as_u16()?])),
             A::UInt32 => Arc::new(arrow_array::UInt32Array::from_iter_values([self.as_u32()?])),
             A::UInt64 => Arc::new(arrow_array::UInt64Array::from_iter_values([self.as_u64()?])),
+            A::Float16 => Arc::new(arrow_array::Float16Array::from_iter_values(
+                [self.as_f16()?],
+            )),
             A::Float32 => Arc::new(arrow_array::Float32Array::from_iter_values(
                 [self.as_f32()?],
             )),
@@ -480,6 +492,9 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
             ])),
             A::UInt64 => Arc::new(arrow_array::UInt64Array::from_iter_values([
                 u64::from_le_bytes(le_exact(&bytes)?),
+            ])),
+            A::Float16 => Arc::new(arrow_array::Float16Array::from_iter_values([
+                half::f16::from_le_bytes(le_exact(&bytes)?),
             ])),
             A::Float32 => Arc::new(arrow_array::Float32Array::from_iter_values([
                 f32::from_le_bytes(le_exact(&bytes)?),

@@ -8,8 +8,10 @@
 //! [`FieldFactory`](crate::FieldFactory) so the data type builds its field
 //! (`Float64Type.field("weight", false)`).
 
+mod float16;
 mod float32;
 mod float64;
 
+pub use float16::Float16Field;
 pub use float32::Float32Field;
 pub use float64::Float64Field;

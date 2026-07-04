@@ -170,6 +170,20 @@ macro_rules! float_scalar {
                 let value = self.value.ok_or(::yggdryl_dtype::DataError::NullValue)?;
                 $crate::float::float_to_int(value, "u64")
             }
+            fn as_f16(&self) -> Result<::half::f16, ::yggdryl_dtype::DataError> {
+                let value = self.value.ok_or(::yggdryl_dtype::DataError::NullValue)?;
+                let converted = ::half::f16::from_f64(value as f64);
+                // Exact only: `NaN` narrows to `NaN` (its own inequality aside), a
+                // finite value only when the narrowing round-trips.
+                if value.is_nan() || converted.to_f64() as $native == value {
+                    Ok(converted)
+                } else {
+                    Err(::yggdryl_dtype::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "f16",
+                    })
+                }
+            }
             fn as_f32(&self) -> Result<f32, ::yggdryl_dtype::DataError> {
                 let value = self.value.ok_or(::yggdryl_dtype::DataError::NullValue)?;
                 let converted = value as f32;
@@ -239,8 +253,10 @@ macro_rules! float_scalar {
 }
 pub(crate) use float_scalar;
 
+mod float16;
 mod float32;
 mod float64;
 
+pub use float16::Float16Scalar;
 pub use float32::Float32Scalar;
 pub use float64::Float64Scalar;

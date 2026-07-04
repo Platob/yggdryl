@@ -181,6 +181,20 @@ macro_rules! int_scalar {
                         target: "u64",
                     })
             }
+            fn as_f16(&self) -> Result<::half::f16, ::yggdryl_dtype::DataError> {
+                // Exactly representable only: the f16 must round-trip back to the
+                // integer (f16 has ~11 bits of mantissa, so few integers survive).
+                let value = self.value.ok_or(::yggdryl_dtype::DataError::NullValue)?;
+                let float = ::half::f16::from_f64(value as f64);
+                if float.to_f64() as i128 == value as i128 {
+                    Ok(float)
+                } else {
+                    Err(::yggdryl_dtype::DataError::InexactConversion {
+                        value: value.to_string(),
+                        target: "f16",
+                    })
+                }
+            }
             fn as_f32(&self) -> Result<f32, ::yggdryl_dtype::DataError> {
                 // Exactly representable only: an int-to-float cast rounds to an
                 // integral float, so a lossless conversion round-trips through i128.

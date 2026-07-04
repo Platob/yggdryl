@@ -3,8 +3,8 @@
 use arrow_array::{Array, ArrayRef};
 
 use crate::{
-    Float32Scalar, Float64Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, Scalar,
-    UInt16Scalar, UInt32Scalar, UInt64Scalar, UInt8Scalar,
+    Float16Scalar, Float32Scalar, Float64Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar,
+    Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar, UInt8Scalar,
 };
 
 /// A type-erased, possibly-null single value — the atomic counterpart of
@@ -56,6 +56,8 @@ pub enum AnyScalar {
     UInt32(UInt32Scalar),
     /// A `uint64` value, decomposed.
     UInt64(UInt64Scalar),
+    /// A `float16` value, decomposed.
+    Float16(Float16Scalar),
     /// A `float32` value, decomposed.
     Float32(Float32Scalar),
     /// A `float64` value, decomposed.
@@ -78,6 +80,7 @@ macro_rules! for_each_decomposed {
             AnyScalar::UInt16($scalar) => $body,
             AnyScalar::UInt32($scalar) => $body,
             AnyScalar::UInt64($scalar) => $body,
+            AnyScalar::Float16($scalar) => $body,
             AnyScalar::Float32($scalar) => $body,
             AnyScalar::Float64($scalar) => $body,
             AnyScalar::Arrow($arrow) => $fallback,
@@ -108,6 +111,7 @@ impl AnyScalar {
             A::UInt16 => decompose!(UInt16, UInt16Scalar),
             A::UInt32 => decompose!(UInt32, UInt32Scalar),
             A::UInt64 => decompose!(UInt64, UInt64Scalar),
+            A::Float16 => decompose!(Float16, Float16Scalar),
             A::Float32 => decompose!(Float32, Float32Scalar),
             A::Float64 => decompose!(Float64, Float64Scalar),
             _ => Self::Arrow(value),
@@ -150,7 +154,7 @@ impl PartialEq for AnyScalar {
                 }
             };
         }
-        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
+        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float16, Float32, Float64)
     }
 }
 
@@ -176,5 +180,5 @@ macro_rules! from_concrete {
 from_concrete!(
     Int8, Int8Scalar; Int16, Int16Scalar; Int32, Int32Scalar; Int64, Int64Scalar;
     UInt8, UInt8Scalar; UInt16, UInt16Scalar; UInt32, UInt32Scalar; UInt64, UInt64Scalar;
-    Float32, Float32Scalar; Float64, Float64Scalar;
+    Float16, Float16Scalar; Float32, Float32Scalar; Float64, Float64Scalar;
 );

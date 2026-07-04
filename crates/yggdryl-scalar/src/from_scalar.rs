@@ -75,6 +75,12 @@ impl FromScalar for u64 {
     }
 }
 
+impl FromScalar for half::f16 {
+    fn from_scalar<S: Scalar>(scalar: &S) -> Result<Self, DataError> {
+        scalar.as_f16()
+    }
+}
+
 impl FromScalar for f32 {
     fn from_scalar<S: Scalar>(scalar: &S) -> Result<Self, DataError> {
         scalar.as_f32()

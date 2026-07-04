@@ -406,6 +406,7 @@ macro_rules! int_serie {
 pub(crate) use int_serie;
 
 mod any_serie;
+mod float16_serie;
 mod float32_serie;
 mod float64_serie;
 mod int16_serie;
@@ -423,6 +424,7 @@ mod uint64_serie;
 mod uint8_serie;
 
 pub use any_serie::AnySerie;
+pub use float16_serie::Float16Serie;
 pub use float32_serie::Float32Serie;
 pub use float64_serie::Float64Serie;
 pub use int16_serie::Int16Serie;

@@ -21,6 +21,8 @@ yggdryl-core = { workspace = true }
 # Arrow interop surface: `DataType::to_arrow` / `from_arrow` mirror an
 # `arrow_schema::DataType`, and the nested types carry `arrow_schema::Fields`.
 arrow-schema = { workspace = true }
+# `half::f16` is the native element of the `float16` data type.
+half = { workspace = true }
 
 [dev-dependencies]
 # Benchmark harness for the codec / Arrow-interop benches (stable Rust has no

@@ -20,6 +20,8 @@ yggdryl-dtype = { workspace = true }
 # Arrow interop surface: `Field::to_arrow` / `from_arrow` mirror an
 # `arrow_schema::Field`.
 arrow-schema = { workspace = true }
+# `half::f16` is the native element of the `float16` field's data type.
+half = { workspace = true }
 # Optional structured logging via the `log` facade (the `log_event!` macro),
 # mirroring yggdryl-core; off by default.
 log = { version = "0.4", optional = true }

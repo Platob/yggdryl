@@ -86,7 +86,7 @@ pub use typed_optional::TypedOptionalField;
 pub use typed_serie::TypedSerieField;
 pub use union::UnionField;
 
-pub use float::{Float32Field, Float64Field};
+pub use float::{Float16Field, Float32Field, Float64Field};
 pub use integer::{
     Int16Field, Int32Field, Int64Field, Int8Field, UInt16Field, UInt32Field, UInt64Field,
     UInt8Field,

@@ -29,6 +29,9 @@ arrow-array = { workspace = true }
 # offset buffers, `arrow-select` for concatenating per-element child arrays.
 arrow-buffer = { workspace = true }
 arrow-select = { workspace = true }
+# `half::f16` is the native element of the `float16` scalar / serie, and the base
+# `Scalar::as_f16` accessor's target type.
+half = { workspace = true }
 
 [dev-dependencies]
 # Benchmark harness for the scalar / Arrow-interop benches (stable Rust has no

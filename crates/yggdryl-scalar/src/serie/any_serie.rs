@@ -3,8 +3,8 @@
 use arrow_array::{Array, ArrayRef};
 
 use crate::{
-    AnyScalar, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie, Int8Serie,
-    UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
+    AnyScalar, Float16Serie, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie,
+    Int8Serie, UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
 };
 
 /// A type-erased, buffer-backed column — the crate's **own array holder** behind
@@ -57,6 +57,8 @@ pub enum AnySerie {
     UInt32(UInt32Serie),
     /// A column of `uint64`, decomposed.
     UInt64(UInt64Serie),
+    /// A column of `float16`, decomposed.
+    Float16(Float16Serie),
     /// A column of `float32`, decomposed.
     Float32(Float32Serie),
     /// A column of `float64`, decomposed.
@@ -79,6 +81,7 @@ macro_rules! for_each_decomposed {
             AnySerie::UInt16($serie) => $body,
             AnySerie::UInt32($serie) => $body,
             AnySerie::UInt64($serie) => $body,
+            AnySerie::Float16($serie) => $body,
             AnySerie::Float32($serie) => $body,
             AnySerie::Float64($serie) => $body,
             AnySerie::Arrow($arrow) => $fallback,
@@ -112,6 +115,7 @@ impl AnySerie {
             A::UInt16 => decompose!(UInt16, UInt16Serie, arrow_array::UInt16Array),
             A::UInt32 => decompose!(UInt32, UInt32Serie, arrow_array::UInt32Array),
             A::UInt64 => decompose!(UInt64, UInt64Serie, arrow_array::UInt64Array),
+            A::Float16 => decompose!(Float16, Float16Serie, arrow_array::Float16Array),
             A::Float32 => decompose!(Float32, Float32Serie, arrow_array::Float32Array),
             A::Float64 => decompose!(Float64, Float64Serie, arrow_array::Float64Array),
             _ => Self::Arrow(values),
@@ -175,7 +179,7 @@ impl PartialEq for AnySerie {
                 }
             };
         }
-        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
+        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float16, Float32, Float64)
     }
 }
 
@@ -201,5 +205,5 @@ macro_rules! from_concrete {
 from_concrete!(
     Int8, Int8Serie; Int16, Int16Serie; Int32, Int32Serie; Int64, Int64Serie;
     UInt8, UInt8Serie; UInt16, UInt16Serie; UInt32, UInt32Serie; UInt64, UInt64Serie;
-    Float32, Float32Serie; Float64, Float64Serie;
+    Float16, Float16Serie; Float32, Float32Serie; Float64, Float64Serie;
 );

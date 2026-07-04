@@ -67,6 +67,10 @@ pub use arrow_buffer;
 /// The Apache Arrow schema layer (`arrow-schema`), re-exported so downstream code
 /// and the data types' Arrow surface share one version.
 pub use arrow_schema;
+/// The `half` crate, re-exported so downstream code and doctests can name
+/// [`half::f16`] — the native value of [`Float16Scalar`] and the target of
+/// [`Scalar::as_f16`] — at the exact version this crate was built against.
+pub use half;
 /// The yggdryl foundation layer (`yggdryl-core`), re-exported so downstream code
 /// reaches the positioned-IO surface the [`BinaryScalar`] value plugs into
 /// (`RawIOBase`, `ByteBuffer`, the cursor / slice adapters) at the exact version
@@ -110,13 +114,14 @@ pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
 pub use record::RecordScalar;
 pub use serie::{
-    AnySerie, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie,
-    StructSerie, TypedSerie, TypedStructSerie, UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
+    AnySerie, Float16Serie, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie,
+    Int8Serie, Serie, StructSerie, TypedSerie, TypedStructSerie, UInt16Serie, UInt32Serie,
+    UInt64Serie, UInt8Serie,
 };
 pub use typed_map::TypedMapScalar;
 pub use typed_optional::TypedOptionalScalar;
 
-pub use float::{Float32Scalar, Float64Scalar};
+pub use float::{Float16Scalar, Float32Scalar, Float64Scalar};
 pub use integer::{
     Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,
     UInt8Scalar,

@@ -227,6 +227,9 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
     fn as_u64(&self) -> Result<u64, DataError> {
         self.value.as_ref().ok_or(DataError::NullValue)?.as_u64()
     }
+    fn as_f16(&self) -> Result<half::f16, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_f16()
+    }
     fn as_f32(&self) -> Result<f32, DataError> {
         self.value.as_ref().ok_or(DataError::NullValue)?.as_f32()
     }
