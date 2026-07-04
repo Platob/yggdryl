@@ -6,6 +6,7 @@ use crate::{
     Float16Scalar, Float32Scalar, Float64Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar,
     Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar, UInt8Scalar,
 };
+use yggdryl_dtype::DataError;
 
 /// A type-erased, possibly-null single value — the atomic counterpart of
 /// [`AnySerie`](crate::AnySerie), the crate's **own value holder** behind a
@@ -139,7 +140,55 @@ impl AnyScalar {
             scalar => Scalar::is_null(scalar),
             value => Array::logical_null_count(value.as_ref()) > 0)
     }
+
+    /// **Unwrap** the type-erased value back to the concrete scalar `S` — the inverse
+    /// of building an `AnyScalar` from a concrete scalar. It reads through the Arrow
+    /// scalar form, so it recovers *any* scalar type (a decomposed integer / float, or
+    /// a fallback `binary` / `null` / nested value); an `S` whose data type does not
+    /// match the held value errors with
+    /// [`IncompatibleArrowType`](DataError::IncompatibleArrowType).
+    ///
+    /// The per-variant accessors ([`int64`](AnyScalar::int64), … ,
+    /// [`arrow`](AnyScalar::arrow)) borrow the decomposed value zero-copy when the
+    /// concrete type is already known; `unwrap` is the general, owned recovery.
+    pub fn unwrap<S: Scalar>(&self) -> Result<S, DataError> {
+        S::from_arrow(self.to_arrow_scalar().as_ref())
+    }
+
+    /// The held Arrow value when this is the [`Arrow`](AnyScalar::Arrow) fallback (a
+    /// one-element array of a not-yet-decomposed type), or `None` for a decomposed
+    /// numeric variant.
+    pub fn arrow(&self) -> Option<&ArrayRef> {
+        match self {
+            AnyScalar::Arrow(value) => Some(value),
+            _ => None,
+        }
+    }
 }
+
+/// Generates the zero-copy per-variant accessor `$method` borrowing the concrete
+/// scalar `$scalar` when this `AnyScalar` is the `$variant` (else `None`) — the typed
+/// unwrap for a decomposed value whose type the caller already knows.
+macro_rules! typed_accessor {
+    ($($method:ident, $variant:ident, $scalar:ty);+ $(;)?) => {
+        impl AnyScalar {
+            $(
+            #[doc = concat!("The held [`", stringify!($scalar), "`](crate::", stringify!($scalar), ") when this is the `", stringify!($variant), "` variant, borrowed zero-copy, or `None` otherwise.")]
+            pub fn $method(&self) -> Option<&$scalar> {
+                match self {
+                    AnyScalar::$variant(scalar) => Some(scalar),
+                    _ => None,
+                }
+            })+
+        }
+    };
+}
+typed_accessor!(
+    int8, Int8, Int8Scalar; int16, Int16, Int16Scalar; int32, Int32, Int32Scalar;
+    int64, Int64, Int64Scalar; uint8, UInt8, UInt8Scalar; uint16, UInt16, UInt16Scalar;
+    uint32, UInt32, UInt32Scalar; uint64, UInt64, UInt64Scalar;
+    float16, Float16, Float16Scalar; float32, Float32, Float32Scalar; float64, Float64, Float64Scalar;
+);
 
 impl PartialEq for AnyScalar {
     // Compared logically, like Arrow scalars: the decomposed fast path compares the

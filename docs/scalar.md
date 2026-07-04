@@ -374,6 +374,13 @@ counterpart one value down (a number decomposed to its concrete scalar, anything
 else a one-element Arrow value), the crate's own holder behind a `RecordScalar`'s
 fields.
 
+Both **unwrap** back to the concrete typed value: the generic `unwrap::<S>()`
+recovers *any* scalar / serie type through its `from_arrow` (erroring when the held
+type does not match), while the zero-copy per-variant accessors (`int64()` … ,
+`arrow()`) borrow a decomposed value whose type the caller already knows. The
+erasure is verified lossless for every model type by a global coherence check — a
+type is not coherent with the Any layer until it round-trips there.
+
 Every nested scalar implements the `NestedSerie` trait for easy child access:
 `child_serie_count()`, `child_serie_at(index)`, `child_serie_by(name)` and
 `child_serie_name_at(index)` — a serie has one `"item"` child, a map one

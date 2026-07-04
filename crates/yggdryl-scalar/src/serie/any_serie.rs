@@ -1,6 +1,7 @@
 //! The [`AnySerie`] type-erased column: the crate's own array holder.
 
 use arrow_array::{Array, ArrayRef};
+use yggdryl_dtype::DataError;
 
 use crate::{
     AnyScalar, Float16Serie, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie,
@@ -164,7 +165,62 @@ impl AnySerie {
             values => (index < Array::len(values.as_ref()))
                 .then(|| AnyScalar::from_arrow(Array::slice(values.as_ref(), index, 1))))
     }
+
+    /// **Unwrap** the type-erased column back to the concrete serie scalar `S` — the
+    /// inverse of building an `AnySerie` from a concrete serie. It rebuilds the
+    /// one-element `list` scalar form around the column and reads it back through
+    /// `S::from_arrow`, so it recovers *any* serie type; an `S` whose element type
+    /// does not match errors with
+    /// [`IncompatibleArrowType`](DataError::IncompatibleArrowType).
+    ///
+    /// The per-variant accessors ([`int64`](AnySerie::int64), … ,
+    /// [`arrow`](AnySerie::arrow)) borrow the decomposed serie zero-copy when the
+    /// concrete type is already known; `unwrap` is the general, owned recovery.
+    pub fn unwrap<S: crate::Scalar>(&self) -> Result<S, DataError> {
+        let item = std::sync::Arc::new(arrow_schema::Field::new("item", self.data_type(), true));
+        let list = arrow_array::ListArray::try_new(
+            item,
+            arrow_buffer::OffsetBuffer::from_lengths([self.len()]),
+            self.to_arrow(),
+            None,
+        )
+        .expect("a one-element serie of the column is valid");
+        S::from_arrow(&list)
+    }
+
+    /// The held Arrow column when this is the [`Arrow`](AnySerie::Arrow) fallback (a
+    /// not-yet-decomposed element type), or `None` for a decomposed numeric variant.
+    pub fn arrow(&self) -> Option<&ArrayRef> {
+        match self {
+            AnySerie::Arrow(values) => Some(values),
+            _ => None,
+        }
+    }
 }
+
+/// Generates the zero-copy per-variant accessor `$method` borrowing the concrete
+/// serie `$serie` when this `AnySerie` is the `$variant` (else `None`) — the typed
+/// unwrap for a decomposed column whose type the caller already knows.
+macro_rules! typed_accessor {
+    ($($method:ident, $variant:ident, $serie:ty);+ $(;)?) => {
+        impl AnySerie {
+            $(
+            #[doc = concat!("The held [`", stringify!($serie), "`](crate::", stringify!($serie), ") when this is the `", stringify!($variant), "` variant, borrowed zero-copy, or `None` otherwise.")]
+            pub fn $method(&self) -> Option<&$serie> {
+                match self {
+                    AnySerie::$variant(serie) => Some(serie),
+                    _ => None,
+                }
+            })+
+        }
+    };
+}
+typed_accessor!(
+    int8, Int8, Int8Serie; int16, Int16, Int16Serie; int32, Int32, Int32Serie;
+    int64, Int64, Int64Serie; uint8, UInt8, UInt8Serie; uint16, UInt16, UInt16Serie;
+    uint32, UInt32, UInt32Serie; uint64, UInt64, UInt64Serie;
+    float16, Float16, Float16Serie; float32, Float32, Float32Serie; float64, Float64, Float64Serie;
+);
 
 impl PartialEq for AnySerie {
     // Compared logically, like Arrow arrays: the decomposed fast path compares the
