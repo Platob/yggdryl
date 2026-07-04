@@ -83,6 +83,17 @@ impl WireFloat for f32 {
     }
 }
 
+impl WireFloat for yggdryl_scalar::half::f16 {
+    // `f16` is not a Rust primitive, so it narrows / widens through `half`'s
+    // conversions rather than `as` casts (a JS `number` is lossily narrowed to f16).
+    fn from_wire(value: f64) -> Self {
+        yggdryl_scalar::half::f16::from_f64(value)
+    }
+    fn to_wire(self) -> f64 {
+        self.to_f64()
+    }
+}
+
 impl WireFloat for f64 {
     fn from_wire(value: f64) -> Self {
         value

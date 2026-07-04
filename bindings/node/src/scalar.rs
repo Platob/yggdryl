@@ -3,12 +3,15 @@
 //! Every integer type is exposed as its scalar and its null-or-value optional
 //! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
 //! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `toIo()` hands one back), `NullScalar` and its serie scalar
+//! `ByteBuffer` — `toIo()` hands one back), `StringScalar` / `OptionalStringScalar`
+//! (the `utf8` string, crossing as a JS `string`; its core `StringBuffer` resource
+//! stays Rust-only), `NullScalar` and its serie scalar
 //! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same
 //! globally-unique names as the Rust crate, the namespace carrying the
 //! concern (the `…Scalar` suffix keeps every class distinct in napi's addon-global
 //! registry). Values adapt to JS idioms: the 8–32 bit integers and the floats
-//! (`float32` / `float64`) use `number`, the 64-bit integers use `BigInt`, and
+//! (`float16` / `float32` / `float64`, the `float16` lossily narrowed) use
+//! `number`, the 64-bit integers use `BigInt`, and
 //! scalars expose the `as*` accessors with the core
 //! contract — the value when the target represents it exactly, or a thrown error
 //! naming the fix (strings and `Buffer`s cross the FFI boundary as new JS objects,
@@ -45,6 +48,7 @@ use napi::bindgen_prelude::{
 use napi::{Env, JsUnknown};
 use napi_derive::napi;
 use yggdryl_scalar::arrow_array::{self, Array};
+use yggdryl_scalar::half::f16;
 use yggdryl_scalar::{arrow_schema, AnyScalar, AnySerie, Scalar};
 
 use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native, WireFloat};
@@ -157,6 +161,12 @@ macro_rules! as_accessors_node {
             #[napi]
             pub fn as_u64(&self) -> Result<BigInt> {
                 self.inner.as_u64().map(BigInt::from).map_err(data_error)
+            }
+            /// The value as a number (widened to f64); throws when null or not
+            /// exactly representable in f16.
+            #[napi]
+            pub fn as_f16(&self) -> Result<f64> {
+                self.inner.as_f16().map(f16::to_f64).map_err(data_error)
             }
             /// The value as a number; throws when null or not exactly
             /// representable in f32.
@@ -334,6 +344,127 @@ impl OptionalBinaryScalar {
 }
 
 as_accessors_node!(OptionalBinaryScalar);
+
+/// A single, possibly-null `utf8` value, crossing the FFI boundary as a JS
+/// `string`. The string counterpart of [`BinaryScalar`]: the value is held in the
+/// Rust core as a positioned-IO `StringBuffer`, but that resource stays Rust-only —
+/// the string crosses as text, its UTF-8 bytes reachable through `asBytes()`.
+#[napi(namespace = "scalar")]
+pub struct StringScalar {
+    pub(crate) inner: yggdryl_scalar::StringScalar,
+}
+
+#[napi(namespace = "scalar")]
+impl StringScalar {
+    /// A `utf8` scalar holding `value`.
+    #[napi(constructor)]
+    pub fn new(value: String) -> Self {
+        Self {
+            inner: yggdryl_scalar::StringScalar::new(value),
+        }
+    }
+
+    /// A null `utf8` scalar.
+    #[napi(factory)]
+    pub fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::StringScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value.
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The scalar's value as a `string`, or `null` when null.
+    #[napi]
+    pub fn value(&self) -> Option<String> {
+        self.inner.value().map(str::to_string)
+    }
+
+    /// The scalar's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::StringType {
+        crate::dtype::StringType::default()
+    }
+
+    /// The scalar's native JS value: the text as a `string`, or `null` when null —
+    /// the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<String> {
+        self.value()
+    }
+}
+
+as_accessors_node!(StringScalar);
+
+/// A single value of the union between null and `utf8`: a value variant, or the
+/// null variant.
+#[napi(namespace = "scalar")]
+pub struct OptionalStringScalar {
+    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
+        yggdryl_dtype::StringType,
+        yggdryl_scalar::StringScalar,
+    >,
+}
+
+#[napi(namespace = "scalar")]
+impl OptionalStringScalar {
+    /// A scalar holding the `utf8` value variant `value`.
+    #[napi(constructor)]
+    pub fn new(value: String) -> Self {
+        Self {
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::StringScalar::new(
+                value,
+            )),
+        }
+    }
+
+    /// The null variant.
+    #[napi(factory)]
+    pub fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::TypedOptionalScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds the null variant.
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The value as a `string`, or `null` for the null variant.
+    #[napi]
+    pub fn value(&self) -> Option<String> {
+        self.inner.value().map(str::to_string)
+    }
+
+    /// The inner scalar, when this holds the value variant.
+    #[napi]
+    pub fn scalar(&self) -> Option<StringScalar> {
+        self.inner.scalar().map(|scalar| StringScalar {
+            inner: scalar.clone(),
+        })
+    }
+
+    /// The scalar's data type: the logical optional of the value type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::OptionalStringType {
+        crate::dtype::OptionalStringType::default()
+    }
+
+    /// The scalar's native JS value: the text as a `string`, or `null` for the null
+    /// variant — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<String> {
+        self.value()
+    }
+}
+
+as_accessors_node!(OptionalStringScalar);
 
 /// Generates the width-independent surface of one integer type's scalars: the
 /// null factory, nullness, `dataType` and `scalar` of `$ty` and `$opt_ty`. The
@@ -612,6 +743,18 @@ int_scalar_node!(
 
 float_wire_number_scalar!(Float32Scalar, OptionalFloat32Scalar, f32, "float32");
 float_wire_number_scalar!(Float64Scalar, OptionalFloat64Scalar, f64, "float64");
+
+// `float16` reuses the same float surface: its native `half::f16` narrows to / widens
+// from a JS `number` (an f64) through `WireFloat`, exactly as f32 / f64 do.
+int_scalar_node!(
+    Float16Scalar,
+    OptionalFloat16Scalar,
+    Float16Type,
+    OptionalFloat16Type,
+    "float16"
+);
+
+float_wire_number_scalar!(Float16Scalar, OptionalFloat16Scalar, f16, "float16");
 
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
 // the full range), so their width-dependent surface is written out per type.
@@ -904,6 +1047,11 @@ int_serie_scalar_node!(Float64Serie, Float64Scalar, Float64SerieType, "float64")
 float_serie_wire_number_scalar!(Float32Serie, f32, "float32");
 float_serie_wire_number_scalar!(Float64Serie, f64, "float64");
 
+// The `float16` serie carries its elements as JS `number` (an f64 on the wire, see
+// `WireFloat`), like the f32 / f64 series.
+int_serie_scalar_node!(Float16Serie, Float16Scalar, Float16SerieType, "float16");
+float_serie_wire_number_scalar!(Float16Serie, f16, "float16");
+
 // The 64-bit series carry their elements as JS `BigInt` (a `number` cannot
 // represent the full range), so their width-dependent surface is written out per
 // type.
@@ -1064,6 +1212,13 @@ fn serie_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
             }
             .to_array(),
         ),
+        AnySerie::Float16(serie) => to_unknown(
+            env,
+            Float16Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
         AnySerie::Float32(serie) => to_unknown(
             env,
             Float32Serie {
@@ -1101,10 +1256,21 @@ fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
         AnyScalar::UInt16(inner) => to_unknown(env, UInt16Scalar { inner: *inner }.value()),
         AnyScalar::UInt32(inner) => to_unknown(env, UInt32Scalar { inner: *inner }.value()),
         AnyScalar::UInt64(inner) => to_unknown(env, UInt64Scalar { inner: *inner }.value()),
+        AnyScalar::Float16(inner) => to_unknown(env, Float16Scalar { inner: *inner }.value()),
         AnyScalar::Float32(inner) => to_unknown(env, Float32Scalar { inner: *inner }.value()),
         AnyScalar::Float64(inner) => to_unknown(env, Float64Scalar { inner: *inner }.value()),
         AnyScalar::Arrow(value) => match value.data_type() {
             arrow_schema::DataType::Null => to_unknown(env, Null),
+            arrow_schema::DataType::Utf8 => {
+                let array = value
+                    .as_any()
+                    .downcast_ref::<arrow_array::StringArray>()
+                    .expect("a utf8 field downcasts to its array");
+                to_unknown(
+                    env,
+                    (!Array::is_null(array, 0)).then(|| array.value(0).to_string()),
+                )
+            }
             arrow_schema::DataType::Binary => {
                 let array = value
                     .as_any()
@@ -1127,12 +1293,12 @@ fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
                 }
             }
             other => Err(Error::from_reason(format!(
-                "no JS value for a record field of Arrow type {other}; expected null, an integer, a float, binary or a numeric list"
+                "no JS value for a record field of Arrow type {other}; expected null, an integer, a float, binary, a string or a numeric list"
             ))),
         },
         // `AnyScalar` is non-exhaustive; a future decomposed variant has no wire type yet.
         other => Err(Error::from_reason(format!(
-            "no JS value for a record field of Arrow type {}; expected null, an integer, a float, binary or a numeric list",
+            "no JS value for a record field of Arrow type {}; expected null, an integer, a float, binary, a string or a numeric list",
             other.data_type()
         ))),
     }

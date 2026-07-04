@@ -2,7 +2,9 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (`yggdryl.dtype.Int64Type`, `yggdryl.dtype.OptionalInt64Type`, …),
-//! alongside `BinaryType` / `OptionalBinaryType`, `NullType`, `UnionType`,
+//! alongside `BinaryType` / `OptionalBinaryType`, `StringType` /
+//! `OptionalStringType` (the `utf8` string, a logical type over `binary`
+//! storage), `NullType`, `UnionType`,
 //! `StructType` (its child fields inferred from a plain JS object of example
 //! values, member by member through the factory's inference) and its
 //! concrete serie type (e.g. `Int64SerieType`, the `list` of `int64` — every
@@ -10,8 +12,10 @@
 //! names as the Rust crate, the namespace carrying the concern (napi registers class constructors by
 //! JS class name in one addon-global registry, and the `…Type` / `…Field` /
 //! `…Scalar` suffixes keep the three concerns' classes distinct). Values adapt to
-//! JS idioms: the 8–32 bit integers and the floats (and their series' elements)
-//! carry their codec values as `number`, the 64-bit integers as `BigInt`. Data
+//! JS idioms: the 8–32 bit integers and the floats (`float16` / `float32` /
+//! `float64`, and their series' elements) carry their codec values as `number`
+//! (a `float16` lossily narrowed), the 64-bit integers as `BigInt`, and a string
+//! as a `string`. Data
 //! types expose the
 //! descriptor surface (`name`, `arrowFormat`, widths), the native byte codec,
 //! and — where they are typed factories (the integers, `BinaryType`, the serie
@@ -34,6 +38,7 @@
 
 use napi::bindgen_prelude::{BigInt, Buffer, Object, Result};
 use napi_derive::napi;
+use yggdryl_dtype::half::f16;
 use yggdryl_dtype::{DataType, Logical, Nested, Struct, TypedDataType, Union};
 use yggdryl_field::FieldFactory;
 use yggdryl_scalar::ScalarFactory;
@@ -387,6 +392,196 @@ impl OptionalBinaryType {
             .native_from_bytes(&bytes)
             .map(Buffer::from)
             .map_err(data_error)
+    }
+}
+
+/// The Apache Arrow `utf8` data type: a variable-length UTF-8 string. A logical
+/// type over `binary` storage; its native value crosses as a JS `string`.
+#[napi(namespace = "dtype")]
+#[derive(Default)]
+pub struct StringType {
+    pub(crate) inner: yggdryl_dtype::StringType,
+}
+
+#[napi(namespace = "dtype")]
+impl StringType {
+    /// The `utf8` data type.
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"utf8"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"u"`.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A string value has no fixed byte width.
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// A string value has no fixed bit width.
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// Serialize a native value into its Arrow bytes — the string's UTF-8 bytes.
+    #[napi]
+    pub fn native_to_bytes(&self, value: String) -> Buffer {
+        Buffer::from(self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — validates UTF-8; non-UTF-8
+    /// bytes throw.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<String> {
+        self.inner.native_from_bytes(&bytes).map_err(data_error)
+    }
+
+    /// The type's default native value, the empty string.
+    #[napi]
+    pub fn default_value(&self) -> String {
+        TypedDataType::default_value(&self.inner)
+    }
+
+    /// The field of this type named `name` (nullable by default).
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::StringField {
+        crate::field::StringField {
+            inner: self.inner.field(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// A `yggdryl.scalar.StringScalar` holding `value`.
+    #[napi]
+    pub fn scalar(&self, value: String) -> crate::scalar::StringScalar {
+        crate::scalar::StringScalar {
+            inner: self.inner.scalar(value),
+        }
+    }
+
+    /// The default scalar: a `yggdryl.scalar.StringScalar` holding the empty string.
+    #[napi]
+    pub fn default_scalar(&self) -> crate::scalar::StringScalar {
+        crate::scalar::StringScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The logical optional of this type (stored as the null-or-value union).
+    #[napi]
+    pub fn optional(&self) -> OptionalStringType {
+        OptionalStringType::default()
+    }
+}
+
+/// The logical optional of `utf8`: a value, or null — stored as the
+/// null-or-`utf8` union.
+#[napi(namespace = "dtype")]
+#[derive(Default)]
+pub struct OptionalStringType {
+    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::StringType>,
+}
+
+#[napi(namespace = "dtype")]
+impl OptionalStringType {
+    /// The optional `utf8` data type.
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"optional"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string of the union storage.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// An optional has no fixed byte width (union storage).
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// An optional has no fixed bit width (union storage).
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// The value type this optional wraps.
+    #[napi]
+    pub fn value_type(&self) -> StringType {
+        StringType::default()
+    }
+
+    /// The physical storage: the sparse null-or-value union.
+    #[napi]
+    pub fn storage(&self) -> UnionType {
+        UnionType {
+            inner: self.inner.storage().clone(),
+        }
+    }
+
+    /// The default native value: the value type's default, the empty string.
+    #[napi]
+    pub fn default_value(&self) -> String {
+        TypedDataType::default_value(&self.inner)
+    }
+
+    /// The field of this type named `name` (nullable by default).
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::OptionalStringField {
+        crate::field::OptionalStringField {
+            inner: self.inner.field(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// A `yggdryl.scalar.OptionalStringScalar` holding the value variant `value`.
+    #[napi]
+    pub fn scalar(&self, value: String) -> crate::scalar::OptionalStringScalar {
+        crate::scalar::OptionalStringScalar {
+            inner: self.inner.scalar(value),
+        }
+    }
+
+    /// The default scalar: the null variant (the scalar models nullness).
+    #[napi]
+    pub fn default_scalar(&self) -> crate::scalar::OptionalStringScalar {
+        crate::scalar::OptionalStringScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// Serialize a native value into its Arrow bytes — the value type's UTF-8 codec.
+    #[napi]
+    pub fn native_to_bytes(&self, value: String) -> Buffer {
+        Buffer::from(self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the exact inverse of
+    /// `nativeToBytes`; non-UTF-8 bytes throw.
+    #[napi]
+    pub fn native_from_bytes(&self, bytes: Buffer) -> Result<String> {
+        self.inner.native_from_bytes(&bytes).map_err(data_error)
     }
 }
 
@@ -864,6 +1059,28 @@ float_wire_number_dtype!(
     "float64"
 );
 
+// `float16` reuses the same data-type surface: its native `half::f16` narrows to /
+// widens from a JS `number` (an f64) through `WireFloat`, exactly as f32 / f64 do.
+int_dtype_node!(
+    Float16Type,
+    OptionalFloat16Type,
+    Float16Field,
+    OptionalFloat16Field,
+    Float16Scalar,
+    OptionalFloat16Scalar,
+    Float16Type,
+    "float16"
+);
+
+float_wire_number_dtype!(
+    Float16Type,
+    OptionalFloat16Type,
+    Float16Scalar,
+    OptionalFloat16Scalar,
+    f16,
+    "float16"
+);
+
 // The 64-bit types carry their values as JS `BigInt` (a `number` cannot represent
 // the full range), so their width-dependent surface is written out per type.
 
@@ -1279,6 +1496,17 @@ int_serie_dtype_node!(
 
 float_serie_wire_number_dtype!(Float32SerieType, Float32Serie, f32, "float32");
 float_serie_wire_number_dtype!(Float64SerieType, Float64Serie, f64, "float64");
+
+// The `float16` serie type carries its codec elements as JS `number` (an f64 on the
+// wire, see `WireFloat`), like the f32 / f64 serie types.
+int_serie_dtype_node!(
+    Float16SerieType,
+    Float16Type,
+    Float16SerieField,
+    Float16Serie,
+    "float16"
+);
+float_serie_wire_number_dtype!(Float16SerieType, Float16Serie, f16, "float16");
 
 // The 64-bit series carry their elements as JS `BigInt` (a `number` cannot
 // represent the full range), so their width-dependent surface is written out per

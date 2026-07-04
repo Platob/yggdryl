@@ -36,6 +36,16 @@ def test_record_reads_a_float_field():
     assert row.to_pyvalue().weight == 1.5
 
 
+def test_record_reads_a_string_field():
+    # A Python str child infers a utf8 field, read back as a Python str.
+    row = scalar.RecordScalar({"id": 7, "name": "Ada"})
+    assert row.field_names() == ["id", "name"]
+    assert row.data_type().field_names() == ["id", "name"]
+    assert row.get("name") == "Ada"
+    assert row.to_pydict() == {"id": 7, "name": "Ada"}
+    assert row.to_pyvalue().name == "Ada"
+
+
 def test_record_to_pyvalue_is_a_singleton_dataclass_instance():
     row = scalar.RecordScalar({"x": 1, "y": 2})
     value = row.to_pyvalue()
@@ -86,9 +96,10 @@ def test_struct_type_resolves_example_values_and_dtype_instances():
     assert struct.child_count() == 4
     assert struct.field_names() == ["x", "blob", "scores", "point"]
 
-    # A value the inference has no type for names the fix.
+    # A value the inference has no type for names the fix (a str is now a utf8
+    # child, so bool remains a still-unsupported case).
     with pytest.raises(ValueError):
-        dtype.StructType({"x": "text"})
+        dtype.StructType({"x": True})
     with pytest.raises(ValueError, match="str field name"):
         dtype.StructType({1: 2})
 

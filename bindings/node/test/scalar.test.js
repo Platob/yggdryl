@@ -231,8 +231,10 @@ test('a serie element out of the value range is refused', () => {
 })
 
 // The floats carry their value and serie elements as JS `number` (an f64 on the
-// wire; float32 rounds to nearest). 1.5, 2.5, 3.5 are exact in both widths.
+// wire; float16 / float32 narrow to nearest). 1.5, 2.5, 3.5 (and the whole 3) are
+// exact in every width.
 const FLOATS = [
+  { scalarClass: scalar.Float16Scalar, optional: scalar.OptionalFloat16Scalar, serieClass: scalar.Float16Serie, name: 'float16' },
   { scalarClass: scalar.Float32Scalar, optional: scalar.OptionalFloat32Scalar, serieClass: scalar.Float32Serie, name: 'float32' },
   { scalarClass: scalar.Float64Scalar, optional: scalar.OptionalFloat64Scalar, serieClass: scalar.Float64Serie, name: 'float64' },
 ]
@@ -250,8 +252,10 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
   })
 
   test(`${name} accessors read floats and whole numbers`, () => {
-    // A whole-number float reads as every numeric target and widens exactly.
+    // A whole-number float reads as every numeric target and widens exactly (3 and
+    // 1.5 are exact in f16, so asF16 answers for every width).
     const whole = new scalarClass(3)
+    assert.equal(whole.asF16(), 3)
     assert.equal(whole.asF32(), 3)
     assert.equal(whole.asF64(), 3)
     assert.equal(whole.asI64(), 3n)
@@ -260,6 +264,7 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
 
     // A fractional float widens exactly but is not an integer: an actionable error.
     const frac = new scalarClass(1.5)
+    assert.equal(frac.asF16(), 1.5)
     assert.equal(frac.asF64(), 1.5)
     assert.throws(() => frac.asI64(), /not exactly representable/)
     // Never a bool, a str or bytes.
@@ -324,3 +329,65 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
     assert.equal(serieClass.null().toJsValue(), null)
   })
 }
+
+test('float16 narrows a number lossily on the wire', () => {
+  // A JS `number` is an f64: `0.1` has no exact f16, so it narrows to the nearest
+  // representable value (JS-idiomatic lossy narrowing).
+  const approx = new scalar.Float16Scalar(0.1)
+  assert.notEqual(approx.value(), 0.1)
+  assert.ok(Math.abs(approx.value() - 0.1) < 1e-3)
+
+  // A value exact in f16 survives, and asF16 widens it back to a number.
+  assert.equal(new scalar.Float16Scalar(0.5).value(), 0.5)
+  assert.equal(new scalar.Float16Scalar(0.5).asF16(), 0.5)
+
+  // A serie narrows each element the same way.
+  const numbers = new scalar.Float16Serie([0.5, 0.1])
+  assert.equal(numbers.getAt(0), 0.5)
+  assert.ok(Math.abs(numbers.getAt(1) - 0.1) < 1e-3)
+})
+
+test('string scalar reads text and bytes', () => {
+  const greeting = new scalar.StringScalar('hé')
+  assert.equal(greeting.isNull(), false)
+  assert.equal(greeting.value(), 'hé')
+  assert.equal(greeting.asStr(), 'hé')
+  assert.deepEqual(greeting.asBytes(), Buffer.from('hé', 'utf8')) // the UTF-8 bytes
+  assert.equal(greeting.dataType().name(), 'utf8')
+  assert.equal(greeting.toJsValue(), 'hé')
+  // A string is never a number: an actionable error.
+  assert.throws(() => greeting.asI64(), /no i64 conversion/)
+
+  // Unicode (multi-byte, astral) round-trips through the boundary.
+  assert.equal(new scalar.StringScalar('日本語 😀').value(), '日本語 😀')
+
+  // The empty string and null are distinct states.
+  assert.equal(new scalar.StringScalar('').isNull(), false)
+  assert.equal(new scalar.StringScalar('').value(), '')
+  const missing = scalar.StringScalar.null()
+  assert.equal(missing.isNull(), true)
+  assert.equal(missing.value(), null)
+  assert.equal(missing.toJsValue(), null)
+  assert.throws(() => missing.asStr(), /is null/)
+  assert.throws(() => missing.asBytes(), /is null/)
+})
+
+test('optional string redirects to the inner scalar', () => {
+  const some = new scalar.OptionalStringScalar('hi')
+  assert.equal(some.isNull(), false)
+  assert.equal(some.value(), 'hi')
+  assert.equal(some.scalar().value(), 'hi')
+  assert.equal(some.asStr(), 'hi')
+  assert.deepEqual(some.asBytes(), Buffer.from('hi'))
+
+  const optType = some.dataType()
+  assert.equal(optType.name(), 'optional')
+  assert.equal(optType.valueType().name(), 'utf8')
+  assert.equal(optType.storage().name(), 'union')
+
+  const missing = scalar.OptionalStringScalar.null()
+  assert.equal(missing.isNull(), true)
+  assert.equal(missing.value(), null)
+  assert.equal(missing.scalar(), null)
+  assert.throws(() => missing.asStr(), /is null/)
+})

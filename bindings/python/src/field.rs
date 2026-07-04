@@ -1,8 +1,9 @@
 //! The `yggdryl.field` submodule — thin wrappers over the `yggdryl-field` crate.
 //!
-//! Every integer type is exposed as its field and its optional field (e.g.
-//! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField`, `StructField` (taking a
+//! Every integer and float type is exposed as its field and its optional field
+//! (e.g. `Int64Field`, `OptionalInt64Field`, and the `float16` family), alongside
+//! `BinaryField` / `OptionalBinaryField`, `StringField` / `OptionalStringField`
+//! (the `utf8` field), `NullField`, `UnionField`, `StructField` (taking a
 //! `yggdryl.dtype.StructType`, like `UnionField` takes its dynamic type) and its
 //! concrete serie field (e.g. `Int64SerieField`, a column of `Int64SerieType`) —
 //! the same suffixed names as the Rust crate, the submodule carrying the concern.
@@ -193,6 +194,73 @@ impl OptionalBinaryField {
     }
 }
 
+/// A nullable `utf8` field: a name paired with the data type.
+#[pyclass]
+pub struct StringField {
+    pub(crate) inner: yggdryl_field::StringField,
+}
+
+#[pymethods]
+impl StringField {
+    /// A `utf8` field named `name`.
+    #[new]
+    #[pyo3(signature = (name, nullable = true))]
+    fn new(name: String, nullable: bool) -> Self {
+        Self {
+            inner: yggdryl_field::StringField::new(name, nullable),
+        }
+    }
+
+    /// The field's name.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    fn data_type(&self) -> crate::dtype::StringType {
+        crate::dtype::StringType::default()
+    }
+
+    /// Whether values in this field may be null.
+    fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable optional-`utf8` field: a name paired with the logical optional data
+/// type.
+#[pyclass]
+pub struct OptionalStringField {
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::StringType>,
+}
+
+#[pymethods]
+impl OptionalStringField {
+    /// An optional-`utf8` field named `name`.
+    #[new]
+    #[pyo3(signature = (name, nullable = true))]
+    fn new(name: String, nullable: bool) -> Self {
+        Self {
+            inner: yggdryl_field::TypedOptionalField::new(name, nullable),
+        }
+    }
+
+    /// The field's name.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    fn data_type(&self) -> crate::dtype::OptionalStringType {
+        crate::dtype::OptionalStringType::default()
+    }
+
+    /// Whether values in this field may be null.
+    fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
 /// Generates the two field wrappers of one integer type: the field `$ty` and the
 /// optional field `$opt_ty` — each a thin delegation to the `yggdryl-field`
 /// types.
@@ -330,6 +398,13 @@ int_field_py!(
     "float32"
 );
 int_field_py!(
+    Float16Field,
+    OptionalFloat16Field,
+    Float16Type,
+    OptionalFloat16Type,
+    "float16"
+);
+int_field_py!(
     Float64Field,
     OptionalFloat64Field,
     Float64Type,
@@ -385,6 +460,7 @@ int_serie_field_py!(UInt8SerieField, UInt8SerieType, UInt8Type, "uint8");
 int_serie_field_py!(UInt16SerieField, UInt16SerieType, UInt16Type, "uint16");
 int_serie_field_py!(UInt32SerieField, UInt32SerieType, UInt32Type, "uint32");
 int_serie_field_py!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");
+int_serie_field_py!(Float16SerieField, Float16SerieType, Float16Type, "float16");
 int_serie_field_py!(Float32SerieField, Float32SerieType, Float32Type, "float32");
 int_serie_field_py!(Float64SerieField, Float64SerieType, Float64Type, "float64");
 
@@ -395,6 +471,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullField>()?;
     module.add_class::<BinaryField>()?;
     module.add_class::<OptionalBinaryField>()?;
+    module.add_class::<StringField>()?;
+    module.add_class::<OptionalStringField>()?;
     module.add_class::<Int8Field>()?;
     module.add_class::<OptionalInt8Field>()?;
     module.add_class::<Int16Field>()?;
@@ -411,6 +489,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Field>()?;
     module.add_class::<UInt64Field>()?;
     module.add_class::<OptionalUInt64Field>()?;
+    module.add_class::<Float16Field>()?;
+    module.add_class::<OptionalFloat16Field>()?;
     module.add_class::<Float32Field>()?;
     module.add_class::<OptionalFloat32Field>()?;
     module.add_class::<Float64Field>()?;
@@ -423,6 +503,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16SerieField>()?;
     module.add_class::<UInt32SerieField>()?;
     module.add_class::<UInt64SerieField>()?;
+    module.add_class::<Float16SerieField>()?;
     module.add_class::<Float32SerieField>()?;
     module.add_class::<Float64SerieField>()?;
     Ok(())

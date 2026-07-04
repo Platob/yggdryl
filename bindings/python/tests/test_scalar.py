@@ -20,6 +20,7 @@ IDS = [case[2] for case in INTEGERS]
 
 # (scalar, optional scalar, native float accessor, name)
 FLOATS = [
+    (scalar.Float16Scalar, scalar.OptionalFloat16Scalar, "as_f16", "float16"),
     (scalar.Float32Scalar, scalar.OptionalFloat32Scalar, "as_f32", "float32"),
     (scalar.Float64Scalar, scalar.OptionalFloat64Scalar, "as_f64", "float64"),
 ]
@@ -162,6 +163,86 @@ def test_optional_float_scalar_redirects_to_the_inner_scalar(case):
         missing.as_f64()
 
 
+def test_float16_widens_through_every_float_accessor():
+    # The native half::f16 crosses as a Python float; every float accessor widens.
+    weight = scalar.Float16Scalar(1.5)  # 1.5 is exact in f16
+    assert weight.value() == 1.5
+    assert weight.to_pyvalue() == 1.5
+    assert weight.as_f16() == 1.5
+    assert weight.as_f32() == 1.5
+    assert weight.as_f64() == 1.5
+    assert weight.data_type().name() == "float16"
+    # A whole float16 reads as an int; a fractional one never does.
+    assert scalar.Float16Scalar(3.0).as_i64() == 3
+    with pytest.raises(ValueError, match="not exactly representable"):
+        scalar.Float16Scalar(1.5).as_i64()
+    # Null holds no value.
+    missing = scalar.Float16Scalar.null()
+    assert missing.is_null() is True
+    assert missing.value() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_f16()
+
+
+def test_as_f16_is_available_on_every_scalar():
+    # as_f16 sits alongside as_f32 / as_f64 on every scalar, widening f16 to a float.
+    assert scalar.Int64Scalar(3).as_f16() == 3.0
+    assert scalar.Float64Scalar(0.5).as_f16() == 0.5
+    # A value with no exact f16 raises, naming the fix.
+    with pytest.raises(ValueError, match="not exactly representable"):
+        scalar.Int64Scalar(123457).as_f16()
+    # A non-numeric value has no f16 form.
+    with pytest.raises(ValueError, match="no f16 conversion"):
+        scalar.BinaryScalar(b"hi").as_f16()
+
+
+def test_string_scalar_reads_text_and_bytes():
+    greeting = scalar.StringScalar("hi")
+    assert greeting.is_null() is False
+    assert greeting.value() == "hi"
+    assert greeting.to_pyvalue() == "hi"
+    assert greeting.as_str() == "hi"
+    assert greeting.as_bytes() == b"hi"
+    assert greeting.data_type().name() == "utf8"
+    # Unicode round-trips as text, and its UTF-8 bytes are reachable.
+    accented = scalar.StringScalar("hé")
+    assert accented.value() == "hé"
+    assert accented.as_bytes() == b"h\xc3\xa9"
+    # A string has no numeric form.
+    with pytest.raises(ValueError, match="no i64 conversion"):
+        greeting.as_i64()
+
+    # The empty string and null are distinct states.
+    assert scalar.StringScalar("").is_null() is False
+    missing = scalar.StringScalar.null()
+    assert missing.is_null() is True
+    assert missing.value() is None
+    assert missing.to_pyvalue() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_str()
+
+
+def test_optional_string_redirects_to_the_inner_scalar():
+    some = scalar.OptionalStringScalar("hi")
+    assert some.is_null() is False
+    assert some.value() == "hi"
+    assert some.scalar().value() == "hi"
+    assert some.as_str() == "hi"
+    assert some.as_bytes() == b"hi"
+
+    opt_type = some.data_type()
+    assert opt_type.name() == "optional"
+    assert opt_type.value_type().name() == "utf8"
+    assert opt_type.storage().name() == "union"
+
+    missing = scalar.OptionalStringScalar.null()
+    assert missing.is_null() is True
+    assert missing.scalar() is None
+    assert missing.to_pyvalue() is None
+    with pytest.raises(ValueError, match="is null"):
+        missing.as_str()
+
+
 def test_binary_scalar_reads_bytes_and_io():
     blob = scalar.BinaryScalar(b"\x01\x02\x03")
     assert blob.is_null() is False
@@ -276,6 +357,7 @@ def test_serie_holds_a_sequence(case):
 
 # (serie scalar, value type name)
 FLOAT_SERIES = [
+    (scalar.Float16Serie, "float16"),
     (scalar.Float32Serie, "float32"),
     (scalar.Float64Serie, "float64"),
 ]

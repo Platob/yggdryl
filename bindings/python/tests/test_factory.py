@@ -28,6 +28,12 @@ def test_scalar_infers_the_type_from_the_value():
     # An empty list defaults to the int64 serie.
     assert factory.scalar([]).data_type().name() == "list"
 
+    # str -> utf8, symmetric with bytes -> binary.
+    text = factory.scalar("héllo")
+    assert text.data_type().name() == "utf8"
+    assert text.value() == "héllo"
+    assert text.as_bytes() == "héllo".encode("utf-8")
+
     # float -> float64; a list carrying a fractional value -> a float64 serie.
     weight = factory.scalar(1.5)
     assert weight.data_type().name() == "float64"
@@ -92,6 +98,7 @@ def test_a_dtype_object_yields_its_default_scalar():
 def test_dtype_infers_the_type_from_the_value():
     assert factory.dtype(42).name() == "int64"
     assert factory.dtype(1.5).name() == "float64"
+    assert factory.dtype("x").name() == "utf8"
     assert factory.dtype(b"x").name() == "binary"
     assert factory.dtype(None).name() == "null"
     assert factory.dtype([1, 2, 3]).name() == "list"
@@ -137,6 +144,10 @@ def test_field_infers_the_type_and_keeps_the_name():
     assert weight.name() == "w"
     assert weight.data_type().name() == "float64"
 
+    label = factory.field("label", "text")
+    assert label.name() == "label"
+    assert label.data_type().name() == "utf8"
+
     missing = factory.field("maybe", None)
     assert missing.data_type().name() == "null"
 
@@ -170,10 +181,32 @@ def test_float_handles_round_trip():
     assert type(factory.field("ws", dtype.Float64SerieType())) is field.Float64SerieField
 
 
-@pytest.mark.parametrize("value", ["text", True, [1, "x"]])
+def test_float16_and_string_handles_round_trip():
+    # The float16 scalar / dtype / field / serie handles are accepted like the rest.
+    assert type(factory.scalar(scalar.Float16Scalar(1.5))) is scalar.Float16Scalar
+    assert factory.scalar(scalar.Float16Serie([1.5])).to_pylist() == [1.5]
+    assert factory.scalar(dtype.Float16Type()).value() == 0.0
+    assert factory.scalar(dtype.Float16SerieType()).to_pylist() == []
+    assert factory.dtype(scalar.Float16Scalar(1.5)).name() == "float16"
+    assert factory.dtype(field.Float16Field("w")).name() == "float16"
+    assert factory.dtype(field.Float16SerieField("ws")).value_type().name() == "float16"
+    assert type(factory.field("w", dtype.Float16Type())) is field.Float16Field
+    assert type(factory.field("w", scalar.Float16Scalar(1.5))) is field.Float16Field
+
+    # The string scalar / dtype / field handles are accepted too.
+    assert type(factory.scalar(scalar.StringScalar("hi"))) is scalar.StringScalar
+    assert factory.scalar(dtype.StringType()).value() == ""
+    assert factory.dtype(scalar.StringScalar("hi")).name() == "utf8"
+    assert factory.dtype(dtype.StringType()).name() == "utf8"
+    assert factory.dtype(field.StringField("s")).name() == "utf8"
+    assert type(factory.field("s", dtype.StringType())) is field.StringField
+    assert type(factory.field("s", scalar.StringScalar("hi"))) is field.StringField
+
+
+@pytest.mark.parametrize("value", [True, [1, "x"]])
 def test_unsupported_values_raise(value):
-    # A str, bool, or a list mixing numbers and non-numbers has no matching model
-    # type (a float and a dict of inferable values are supported).
+    # A bool, or a list mixing numbers and non-numbers has no matching model type
+    # (a float, a str and a dict of inferable values are all supported).
     with pytest.raises(ValueError):
         factory.scalar(value)
     with pytest.raises(ValueError):

@@ -4,25 +4,25 @@
 //! `factory.field(name, value)` infer the data type from a native Python value and
 //! build the matching `yggdryl.scalar` / `yggdryl.dtype` / `yggdryl.field` object,
 //! so a value crosses without naming its type. The inference mirrors the model's
-//! available types: `int` → `int64`, `float` → `float64`, `bytes` / `bytearray` →
-//! `binary`, `None` → `null`, a homogeneous `list` of ints → an `int64` serie (a
-//! list carrying any fractional value → a `float64` serie), and a `dict` of named
-//! values → a `struct` (`factory.scalar` builds the `RecordScalar` row,
-//! `factory.dtype` the `StructType`, `factory.field` the `StructField`). Every
-//! object of the model is an inference input too: `factory.scalar` hands a scalar
-//! object back as a new handle of the same class and a data type object its
+//! available types: `int` → `int64`, `float` → `float64`, `str` → `utf8`, `bytes`
+//! / `bytearray` → `binary`, `None` → `null`, a homogeneous `list` of ints → an
+//! `int64` serie (a list carrying any fractional value → a `float64` serie), and a
+//! `dict` of named values → a `struct` (`factory.scalar` builds the `RecordScalar`
+//! row, `factory.dtype` the `StructType`, `factory.field` the `StructField`).
+//! Every object of the model is an inference input too: `factory.scalar` hands a
+//! scalar object back as a new handle of the same class and a data type object its
 //! default scalar; `factory.dtype` maps a scalar, data type or field object to
 //! its data type; `factory.field` pairs `name` with a scalar or data type
-//! object's field. A value the model has no type for (a `str`, `bool`, or a list
-//! mixing numbers and non-numbers) raises a `ValueError` — build it through the
-//! explicit per-type factories.
+//! object's field. A value the model has no type for (a `bool`, or a list mixing
+//! numbers and non-numbers) raises a `ValueError` — build it through the explicit
+//! per-type factories.
 
 // pyo3's `#[pyfunction]` expansion re-wraps the already-`PyErr` result into `PyErr`;
 // clippy flags that generated conversion (on the return-type span) as useless.
 #![allow(clippy::useless_conversion)]
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PyList, PyString};
 use yggdryl_dtype::{arrow_schema, DataType};
 use yggdryl_field::{Field, FieldFactory};
 use yggdryl_scalar::{Scalar, ScalarFactory};
@@ -36,6 +36,8 @@ pub(crate) enum Inferred {
     Int64(i64),
     Float64(f64),
     Binary(Vec<u8>),
+    /// A Python `str` → `utf8`, symmetric with `bytes` → `binary`.
+    String(String),
     Serie(Vec<i64>),
     /// A homogeneous list carrying any fractional value → a `float64` serie.
     FloatSerie(Vec<f64>),
@@ -52,6 +54,7 @@ impl Inferred {
             Inferred::Int64(_) => yggdryl_dtype::Int64Type.to_arrow(),
             Inferred::Float64(_) => yggdryl_dtype::Float64Type.to_arrow(),
             Inferred::Binary(_) => yggdryl_dtype::BinaryType.to_arrow(),
+            Inferred::String(_) => yggdryl_dtype::StringType.to_arrow(),
             Inferred::Serie(_) => {
                 yggdryl_dtype::TypedSerieType::<yggdryl_dtype::Int64Type>::default().to_arrow()
             }
@@ -79,6 +82,9 @@ impl Inferred {
             }
             Inferred::Binary(bytes) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::BinaryScalar::new(bytes.clone()).to_arrow_scalar(),
+            ),
+            Inferred::String(text) => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::StringScalar::new(text.clone()).to_arrow_scalar(),
             ),
             Inferred::Serie(values) => yggdryl_scalar::AnyScalar::from_arrow(
                 yggdryl_scalar::Int64Serie::from(values.clone()).to_arrow_scalar(),
@@ -149,6 +155,7 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
     arrow_of!(
         NullType,
         BinaryType,
+        StringType,
         StructType,
         Int8Type,
         Int16Type,
@@ -158,6 +165,7 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
         UInt16Type,
         UInt32Type,
         UInt64Type,
+        Float16Type,
         Float32Type,
         Float64Type,
         Int8SerieType,
@@ -168,6 +176,7 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
         UInt16SerieType,
         UInt32SerieType,
         UInt64SerieType,
+        Float16SerieType,
         Float32SerieType,
         Float64SerieType,
     );
@@ -178,8 +187,8 @@ pub(crate) fn resolve_arrow_dtype(value: &Bound<'_, PyAny>) -> PyResult<arrow_sc
 fn unsupported(py_type: &str) -> PyErr {
     DataErr::Message(format!(
         "cannot infer a yggdryl type from a Python {py_type}; the model has no matching type — \
-         use int / bytes / None / a list of int / a dict of named values, one of the model's \
-         scalar / dtype / field objects, or an explicit per-type factory"
+         use int / float / str / bytes / None / a list of numbers / a dict of named values, one \
+         of the model's scalar / dtype / field objects, or an explicit per-type factory"
     ))
     .into()
 }
@@ -211,6 +220,10 @@ fn infer(value: &Bound<'_, PyAny>) -> PyResult<Inferred> {
     }
     if value.is_instance_of::<PyBytes>() || value.is_instance_of::<PyByteArray>() {
         return Ok(Inferred::Binary(value.extract()?));
+    }
+    // A Python `str` → `utf8`, symmetric with `bytes` → `binary`.
+    if value.is_instance_of::<PyString>() {
+        return Ok(Inferred::String(value.extract()?));
     }
     if value.is_instance_of::<PyList>() {
         // A homogeneous list of ints → an int64 serie; a list carrying any
@@ -257,6 +270,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     same_scalar!(
         NullScalar,
         BinaryScalar,
+        StringScalar,
         RecordScalar,
         Int8Scalar,
         Int16Scalar,
@@ -266,6 +280,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Scalar,
         UInt32Scalar,
         UInt64Scalar,
+        Float16Scalar,
         Float32Scalar,
         Float64Scalar,
         Int8Serie,
@@ -276,6 +291,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Serie,
         UInt32Serie,
         UInt64Serie,
+        Float16Serie,
         Float32Serie,
         Float64Serie,
     );
@@ -294,6 +310,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     }
     default_scalar_of!(
         (BinaryType, BinaryScalar),
+        (StringType, StringScalar),
         (Int8Type, Int8Scalar),
         (Int16Type, Int16Scalar),
         (Int32Type, Int32Scalar),
@@ -302,6 +319,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Type, UInt16Scalar),
         (UInt32Type, UInt32Scalar),
         (UInt64Type, UInt64Scalar),
+        (Float16Type, Float16Scalar),
         (Float32Type, Float32Scalar),
         (Float64Type, Float64Scalar),
     );
@@ -322,6 +340,7 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16SerieType, UInt16Serie),
         (UInt32SerieType, UInt32Serie),
         (UInt64SerieType, UInt64Serie),
+        (Float16SerieType, Float16Serie),
         (Float32SerieType, Float32Serie),
         (Float64SerieType, Float64Serie),
     );
@@ -345,6 +364,13 @@ fn scalar(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             py,
             crate::scalar::BinaryScalar {
                 inner: yggdryl_scalar::BinaryScalar::new(bytes),
+            },
+        )?
+        .into_any(),
+        Inferred::String(text) => Py::new(
+            py,
+            crate::scalar::StringScalar {
+                inner: yggdryl_scalar::StringScalar::new(text),
             },
         )?
         .into_any(),
@@ -388,6 +414,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
     same_dtype!(
         NullType,
         BinaryType,
+        StringType,
         Int8Type,
         Int16Type,
         Int32Type,
@@ -396,6 +423,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16Type,
         UInt32Type,
         UInt64Type,
+        Float16Type,
         Float32Type,
         Float64Type,
         Int8SerieType,
@@ -406,6 +434,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         UInt16SerieType,
         UInt32SerieType,
         UInt64SerieType,
+        Float16SerieType,
         Float32SerieType,
         Float64SerieType,
     );
@@ -424,6 +453,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         scalar,
         (NullScalar, NullType),
         (BinaryScalar, BinaryType),
+        (StringScalar, StringType),
         (Int8Scalar, Int8Type),
         (Int16Scalar, Int16Type),
         (Int32Scalar, Int32Type),
@@ -432,6 +462,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Scalar, UInt16Type),
         (UInt32Scalar, UInt32Type),
         (UInt64Scalar, UInt64Type),
+        (Float16Scalar, Float16Type),
         (Float32Scalar, Float32Type),
         (Float64Scalar, Float64Type),
         (Int8Serie, Int8SerieType),
@@ -442,6 +473,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Serie, UInt16SerieType),
         (UInt32Serie, UInt32SerieType),
         (UInt64Serie, UInt64SerieType),
+        (Float16Serie, Float16SerieType),
         (Float32Serie, Float32SerieType),
         (Float64Serie, Float64SerieType),
     );
@@ -453,6 +485,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         field,
         (NullField, NullType),
         (BinaryField, BinaryType),
+        (StringField, StringType),
         (Int8Field, Int8Type),
         (Int16Field, Int16Type),
         (Int32Field, Int32Type),
@@ -461,6 +494,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16Field, UInt16Type),
         (UInt32Field, UInt32Type),
         (UInt64Field, UInt64Type),
+        (Float16Field, Float16Type),
         (Float32Field, Float32Type),
         (Float64Field, Float64Type),
         (Int8SerieField, Int8SerieType),
@@ -471,6 +505,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         (UInt16SerieField, UInt16SerieType),
         (UInt32SerieField, UInt32SerieType),
         (UInt64SerieField, UInt64SerieType),
+        (Float16SerieField, Float16SerieType),
         (Float32SerieField, Float32SerieType),
         (Float64SerieField, Float64SerieType),
     );
@@ -483,6 +518,7 @@ fn dtype(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
         Inferred::Int64(_) => Py::new(py, crate::dtype::Int64Type::default())?.into_any(),
         Inferred::Float64(_) => Py::new(py, crate::dtype::Float64Type::default())?.into_any(),
         Inferred::Binary(_) => Py::new(py, crate::dtype::BinaryType::default())?.into_any(),
+        Inferred::String(_) => Py::new(py, crate::dtype::StringType::default())?.into_any(),
         Inferred::Serie(_) => Py::new(py, crate::dtype::Int64SerieType::default())?.into_any(),
         Inferred::FloatSerie(_) => {
             Py::new(py, crate::dtype::Float64SerieType::default())?.into_any()
@@ -532,6 +568,7 @@ fn field(
     }
     field_of_dtype!(
         (BinaryType, BinaryField),
+        (StringType, StringField),
         (Int8Type, Int8Field),
         (Int16Type, Int16Field),
         (Int32Type, Int32Field),
@@ -540,6 +577,7 @@ fn field(
         (UInt16Type, UInt16Field),
         (UInt32Type, UInt32Field),
         (UInt64Type, UInt64Field),
+        (Float16Type, Float16Field),
         (Float32Type, Float32Field),
         (Float64Type, Float64Field),
         (Int8SerieType, Int8SerieField),
@@ -550,6 +588,7 @@ fn field(
         (UInt16SerieType, UInt16SerieField),
         (UInt32SerieType, UInt32SerieField),
         (UInt64SerieType, UInt64SerieField),
+        (Float16SerieType, Float16SerieField),
         (Float32SerieType, Float32SerieField),
         (Float64SerieType, Float64SerieField),
     );
@@ -581,6 +620,7 @@ fn field(
     }
     field_of_scalar!(
         (BinaryScalar, BinaryField),
+        (StringScalar, StringField),
         (Int8Scalar, Int8Field),
         (Int16Scalar, Int16Field),
         (Int32Scalar, Int32Field),
@@ -589,6 +629,7 @@ fn field(
         (UInt16Scalar, UInt16Field),
         (UInt32Scalar, UInt32Field),
         (UInt64Scalar, UInt64Field),
+        (Float16Scalar, Float16Field),
         (Float32Scalar, Float32Field),
         (Float64Scalar, Float64Field),
         (Int8Serie, Int8SerieField),
@@ -599,6 +640,7 @@ fn field(
         (UInt16Serie, UInt16SerieField),
         (UInt32Serie, UInt32SerieField),
         (UInt64Serie, UInt64SerieField),
+        (Float16Serie, Float16SerieField),
         (Float32Serie, Float32SerieField),
         (Float64Serie, Float64SerieField),
     );
@@ -628,6 +670,13 @@ fn field(
             py,
             crate::field::BinaryField {
                 inner: yggdryl_field::BinaryField::new(name, nullable),
+            },
+        )?
+        .into_any(),
+        Inferred::String(_) => Py::new(
+            py,
+            crate::field::StringField {
+                inner: yggdryl_field::StringField::new(name, nullable),
             },
         )?
         .into_any(),

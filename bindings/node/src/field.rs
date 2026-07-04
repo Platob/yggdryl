@@ -1,8 +1,10 @@
 //! The `yggdryl.field` namespace — thin wrappers over the `yggdryl-field` crate.
 //!
-//! Every integer and float type is exposed as its field and its optional field
+//! Every integer and float type (`float16` / `float32` / `float64`) is exposed as
+//! its field and its optional field
 //! (e.g. `Int64Field`, `OptionalInt64Field`, `Float64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField`, `StructField` (like
+//! `OptionalBinaryField`, `StringField` / `OptionalStringField` (the `utf8`
+//! string), `NullField`, `UnionField`, `StructField` (like
 //! `UnionField`, built over its parameterised `yggdryl.dtype` data type) and its
 //! concrete serie field
 //! (e.g. `Int64SerieField`, a column of `Int64SerieType`) — the same
@@ -212,6 +214,77 @@ impl OptionalBinaryField {
     }
 }
 
+/// A nullable `utf8` field: a name paired with the data type.
+#[napi(namespace = "field")]
+pub struct StringField {
+    pub(crate) inner: yggdryl_field::StringField,
+}
+
+#[napi(namespace = "field")]
+impl StringField {
+    /// A `utf8` field named `name` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_field::StringField::new(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::StringType {
+        crate::dtype::StringType::default()
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable optional-`utf8` field: a name paired with the logical optional
+/// data type.
+#[napi(namespace = "field")]
+pub struct OptionalStringField {
+    pub(crate) inner: yggdryl_field::TypedOptionalField<yggdryl_dtype::StringType>,
+}
+
+#[napi(namespace = "field")]
+impl OptionalStringField {
+    /// An optional-`utf8` field named `name` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_field::TypedOptionalField::new(name, nullable.unwrap_or(true)),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::OptionalStringType {
+        crate::dtype::OptionalStringType::default()
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
 /// Generates the two field wrappers of one integer type: the field `$ty` and the
 /// optional field `$opt_ty` — each a thin delegation to the `yggdryl-field`
 /// types.
@@ -348,6 +421,13 @@ int_field_node!(
 
 // The floats reuse the same field shape (a name paired with a fixed-width data type).
 int_field_node!(
+    Float16Field,
+    OptionalFloat16Field,
+    Float16Type,
+    OptionalFloat16Type,
+    "float16"
+);
+int_field_node!(
     Float32Field,
     OptionalFloat32Field,
     Float32Type,
@@ -413,5 +493,6 @@ int_serie_field_node!(UInt8SerieField, UInt8SerieType, UInt8Type, "uint8");
 int_serie_field_node!(UInt16SerieField, UInt16SerieType, UInt16Type, "uint16");
 int_serie_field_node!(UInt32SerieField, UInt32SerieType, UInt32Type, "uint32");
 int_serie_field_node!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");
+int_serie_field_node!(Float16SerieField, Float16SerieType, Float16Type, "float16");
 int_serie_field_node!(Float32SerieField, Float32SerieType, Float32Type, "float32");
 int_serie_field_node!(Float64SerieField, Float64SerieType, Float64Type, "float64");

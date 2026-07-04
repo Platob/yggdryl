@@ -208,6 +208,59 @@ bytes.
     }
     ```
 
+The `utf8` string scalar reads the same way, one type up — the value is a string
+(bytes underneath):
+
+=== "Python"
+
+    ```python
+    from yggdryl import scalar
+
+    greeting = scalar.StringScalar("hé")
+    assert greeting.value() == "hé"
+    assert greeting.as_str() == "hé"
+    assert greeting.as_bytes() == b"h\xc3\xa9"  # the UTF-8 bytes
+    assert greeting.data_type().name() == "utf8"
+
+    assert scalar.StringScalar.null().is_null()
+    assert scalar.OptionalStringScalar("hé").as_str() == "hé"
+    ```
+
+=== "Node"
+
+    ```js
+    const { scalar } = require('yggdryl')
+
+    const greeting = new scalar.StringScalar('hé')
+    assert.equal(greeting.value(), 'hé')
+    assert.equal(greeting.asStr(), 'hé')
+    assert.deepEqual(greeting.asBytes(), Buffer.from('hé')) // the UTF-8 bytes
+    assert.equal(greeting.dataType().name(), 'utf8')
+
+    assert.equal(scalar.StringScalar.null().isNull(), true)
+    assert.equal(new scalar.OptionalStringScalar('hé').asStr(), 'hé')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::IOBase;
+    use yggdryl_scalar::{Scalar, StringScalar};
+
+    fn main() {
+        let greeting = StringScalar::new("hé".to_string());
+        assert_eq!(greeting.value(), Some("hé"));
+        assert_eq!(greeting.as_str(None).unwrap(), "hé");
+        assert_eq!(greeting.as_bytes().unwrap(), &[b'h', 0xC3, 0xA9][..]); // UTF-8 bytes
+
+        // The value is a core StringBuffer: a typed char view over the bytes.
+        let io = greeting.io().unwrap();
+        assert_eq!(IOBase::<char>::size(io), 2); // two chars, three bytes
+
+        assert!(StringScalar::null().is_null());
+    }
+    ```
+
 ## The optional scalar
 
 `TypedOptionalScalar<D, S>` is the null-or-value scalar over union storage: an inner

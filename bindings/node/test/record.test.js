@@ -86,7 +86,22 @@ test('record with a float member reads the number', () => {
   assert.deepEqual(structType.fieldNames(), ['id', 'weight'])
 })
 
+test('record with a string member reads the text', () => {
+  // A string member infers utf8, read back as a string.
+  const row = new scalar.RecordScalar({ id: 7, name: 'ada' })
+  assert.deepEqual(row.fieldNames(), ['id', 'name'])
+  assert.equal(row.dataType().childCount(), 2)
+  assert.equal(row.get('id'), 7n)
+  assert.equal(row.get('name'), 'ada') // read back as a string, one FFI call
+  assert.deepEqual(row.toJsValue(), { id: 7n, name: 'ada' })
+
+  // The inferred struct data type carries the utf8 member.
+  const structType = new dtype.StructType({ id: 7, name: 'ada' })
+  assert.deepEqual(structType.fieldNames(), ['id', 'name'])
+})
+
 test('a member the model cannot infer throws', () => {
-  assert.throws(() => new scalar.RecordScalar({ bad: 'text' }), /bad/)
+  // A boolean has no model type (a string is now a valid utf8 member).
+  assert.throws(() => new scalar.RecordScalar({ bad: true }), /bad/)
   assert.throws(() => new dtype.StructType({ bad: true }), /bad/)
 })

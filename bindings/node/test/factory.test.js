@@ -85,6 +85,55 @@ test('factory accepts its own float data types', () => {
   assert.equal(factory.field('w', new dtype.Float32Type()).dataType().name(), 'float32')
 })
 
+test('factory infers utf8 from a string', () => {
+  // A string -> utf8, symmetric with a Buffer -> binary.
+  const text = factory.scalar('hello')
+  assert.ok(text instanceof scalar.StringScalar)
+  assert.equal(text.dataType().name(), 'utf8')
+  assert.equal(text.value(), 'hello')
+  assert.equal(factory.dtype('hello').name(), 'utf8')
+  assert.equal(factory.field('label', 'hello').dataType().name(), 'utf8')
+
+  // Unicode and the empty string are valid utf8 values.
+  assert.equal(factory.scalar('日本語').value(), '日本語')
+  assert.equal(factory.scalar('').dataType().name(), 'utf8')
+})
+
+test('factory accepts its own float16 handles', () => {
+  // A float16 scalar / serie handle re-wraps as the same class over the same value...
+  assert.ok(factory.scalar(new scalar.Float16Scalar(0.5)) instanceof scalar.Float16Scalar)
+  assert.equal(factory.scalar(new scalar.Float16Scalar(0.5)).value(), 0.5)
+  assert.deepEqual(factory.scalar(new scalar.Float16Serie([0.5, 1.5])).toArray(), [0.5, 1.5])
+
+  // ...and classifies as its data type for dtype() / field().
+  assert.equal(factory.dtype(new scalar.Float16Scalar(0.5)).name(), 'float16')
+  assert.equal(factory.dtype(new scalar.Float16Serie([0.5])).name(), 'list')
+  assert.equal(factory.field('w', new scalar.Float16Scalar(0.5)).dataType().name(), 'float16')
+
+  // A float16 data type handle is the identity for dtype()...
+  assert.equal(factory.dtype(new dtype.Float16Type()).name(), 'float16')
+  assert.equal(factory.dtype(new dtype.Float16SerieType()).valueType().name(), 'float16')
+
+  // ...and builds its default scalar for scalar().
+  assert.equal(factory.scalar(new dtype.Float16Type()).value(), 0)
+  assert.deepEqual(factory.scalar(new dtype.Float16SerieType()).toArray(), [])
+  assert.equal(factory.field('w', new dtype.Float16Type()).dataType().name(), 'float16')
+})
+
+test('factory accepts its own string handles', () => {
+  // A string scalar handle re-wraps as the same class over the same value...
+  assert.ok(factory.scalar(new scalar.StringScalar('hi')) instanceof scalar.StringScalar)
+  assert.equal(factory.scalar(new scalar.StringScalar('hi')).value(), 'hi')
+  assert.equal(factory.dtype(new scalar.StringScalar('hi')).name(), 'utf8')
+  assert.equal(factory.field('label', new scalar.StringScalar('hi')).dataType().name(), 'utf8')
+
+  // ...and a string data type is the identity for dtype(), its default scalar the
+  // empty string for scalar().
+  assert.equal(factory.dtype(new dtype.StringType()).name(), 'utf8')
+  assert.equal(factory.scalar(new dtype.StringType()).value(), '')
+  assert.equal(factory.field('label', new dtype.StringType()).dataType().name(), 'utf8')
+})
+
 test('factory.field infers the type and keeps the name', () => {
   const idField = factory.field('id', 42)
   assert.equal(idField.name(), 'id')
@@ -152,9 +201,9 @@ test('factory accepts its own data types', () => {
 })
 
 test('unsupported values throw', () => {
-  // A string, a boolean, a non-numeric array, and an object with a member of no
-  // matching model type. (A fractional number is now a valid float64.)
-  for (const value of ['text', true, ['x'], { bad: 'text' }]) {
+  // A boolean, a non-numeric array, and an object with a member of no matching
+  // model type. (A string is now a valid utf8, a fractional number a valid float64.)
+  for (const value of [true, ['x'], { bad: true }]) {
     assert.throws(() => factory.scalar(value))
     assert.throws(() => factory.dtype(value))
   }

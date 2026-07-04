@@ -1,8 +1,11 @@
 //! The `yggdryl.dtype` submodule — thin wrappers over the `yggdryl-dtype` crate.
 //!
-//! Every integer type is exposed as its data type and its logical optional data
-//! type (e.g. `Int64Type`, `OptionalInt64Type`), alongside `BinaryType` /
-//! `OptionalBinaryType`, `NullType`, `UnionType`, `StructType` (built from a dict
+//! Every integer and float type is exposed as its data type and its logical
+//! optional data type (e.g. `Int64Type`, `OptionalInt64Type`; the `float16`
+//! family's native `half::f16` crosses its codec/scalar values as a Python
+//! `float`), alongside `BinaryType` / `OptionalBinaryType`, `StringType` /
+//! `OptionalStringType` (the `utf8` logical type over binary storage, its value
+//! crossing as `str`), `NullType`, `UnionType`, `StructType` (built from a dict
 //! mapping field names to example values or dtype instances, resolved through the
 //! factory's inference) and its concrete serie type (e.g. `Int64SerieType`, the
 //! `list` of `int64` — every integer value type has a buffer-backed serie scalar)
@@ -365,6 +368,178 @@ impl OptionalBinaryType {
     }
 }
 
+/// The Apache Arrow `utf8` data type: a variable-length UTF-8 string. A **logical**
+/// type over `binary` storage (a string *is* bytes, reinterpreted as text), so its
+/// byte codec is UTF-8 and validates on the way back; the core `StringBuffer` stays
+/// Rust-only, so the value crosses as Python `str`.
+#[pyclass]
+#[derive(Default)]
+pub struct StringType {
+    pub(crate) inner: yggdryl_dtype::StringType,
+}
+
+#[pymethods]
+impl StringType {
+    /// The `utf8` data type.
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"utf8"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"u"`.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A string value has no fixed byte width.
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// A string value has no fixed bit width.
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// Serialize a native value into its Arrow bytes — the string's UTF-8 bytes.
+    fn native_to_bytes<'py>(&self, py: Python<'py>, value: String) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the exact inverse of
+    /// `native_to_bytes`; non-UTF-8 bytes raise `ValueError`.
+    fn native_from_bytes(&self, bytes: &[u8]) -> Result<String, DataErr> {
+        Ok(self.inner.native_from_bytes(bytes)?)
+    }
+
+    /// The type's default native value, `""`.
+    fn default_value(&self) -> String {
+        self.inner.default_value()
+    }
+
+    /// The default scalar: a `yggdryl.scalar.StringScalar` holding `""`.
+    fn default_scalar(&self) -> crate::scalar::StringScalar {
+        crate::scalar::StringScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The `utf8` field named `name` (nullable by default) — a `yggdryl.field`
+    /// class.
+    #[pyo3(signature = (name, nullable = true))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::StringField {
+        crate::field::StringField {
+            inner: self.inner.field(name, nullable),
+        }
+    }
+
+    /// A `utf8` scalar holding `value` — a `yggdryl.scalar` class.
+    fn scalar(&self, value: String) -> crate::scalar::StringScalar {
+        crate::scalar::StringScalar {
+            inner: self.inner.scalar(value),
+        }
+    }
+
+    /// The logical optional of this type (stored as the null-or-value union).
+    fn optional(&self) -> OptionalStringType {
+        OptionalStringType::default()
+    }
+}
+
+/// The logical optional of `utf8`: a value, or null — stored as the null-or-`utf8`
+/// union.
+#[pyclass]
+#[derive(Default)]
+pub struct OptionalStringType {
+    pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::StringType>,
+}
+
+#[pymethods]
+impl OptionalStringType {
+    /// The optional `utf8` data type.
+    #[new]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// The type's lowercase name, `"optional"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string of the union storage.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// An optional has no fixed byte width (union storage).
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// An optional has no fixed bit width (union storage).
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// The value type this optional wraps.
+    fn value_type(&self) -> StringType {
+        StringType::default()
+    }
+
+    /// The physical storage: the sparse null-or-value union.
+    fn storage(&self) -> UnionType {
+        UnionType {
+            inner: self.inner.storage().clone(),
+        }
+    }
+
+    /// The default native value: the value type's default, `""`.
+    fn default_value(&self) -> String {
+        self.inner.default_value()
+    }
+
+    /// The default scalar: the null variant (the scalar models nullness).
+    fn default_scalar(&self) -> crate::scalar::OptionalStringScalar {
+        crate::scalar::OptionalStringScalar {
+            inner: self.inner.default_scalar(),
+        }
+    }
+
+    /// The optional-`utf8` field named `name` (nullable by default) — a
+    /// `yggdryl.field` class.
+    #[pyo3(signature = (name, nullable = true))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::OptionalStringField {
+        crate::field::OptionalStringField {
+            inner: self.inner.field(name, nullable),
+        }
+    }
+
+    /// An optional-`utf8` scalar holding the value variant `value` — a
+    /// `yggdryl.scalar` class.
+    fn scalar(&self, value: String) -> crate::scalar::OptionalStringScalar {
+        crate::scalar::OptionalStringScalar {
+            inner: self.inner.scalar(value),
+        }
+    }
+
+    /// Serialize a native value into its Arrow bytes — the value type's codec.
+    fn native_to_bytes<'py>(&self, py: Python<'py>, value: String) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.native_to_bytes(&value))
+    }
+
+    /// Deserialize Arrow bytes into a native value — the exact inverse of
+    /// `native_to_bytes`; non-UTF-8 bytes raise `ValueError`.
+    fn native_from_bytes(&self, bytes: &[u8]) -> Result<String, DataErr> {
+        Ok(self.inner.native_from_bytes(bytes)?)
+    }
+}
+
 /// Generates the two data-type wrappers of one integer type: the data type `$ty`
 /// (with the byte codec, defaults, `field` / `scalar` factories and `optional()`)
 /// and the logical optional data type `$opt_ty` (over union storage) — each a thin
@@ -646,6 +821,211 @@ int_dtype_py!(
     "float64"
 );
 
+/// Generates the two `float16` data-type wrappers — the data type `$ty` and the
+/// logical optional `$opt_ty` — mirroring [`int_dtype_py!`], except the native
+/// `half::f16` does not cross the FFI boundary: it crosses as a Python `float`
+/// (f64), so the byte codec, `default_value` and `scalar` factory narrow the
+/// incoming `f64` to `f16` and widen `f16` back on the way out. `$field` /
+/// `$opt_field` name the `yggdryl.field` classes, `$scalar` / `$opt_scalar` the
+/// `yggdryl.scalar` classes.
+macro_rules! float16_dtype_py {
+    ($ty:ident, $opt_ty:ident, $field:ident, $opt_field:ident, $scalar:ident, $opt_scalar:ident, $name:literal) => {
+        #[doc = concat!("The Apache Arrow `", $name, "` data type (native `half::f16`, crossing as a Python `float`).")]
+        #[pyclass]
+        #[derive(Default)]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_dtype::$ty,
+        }
+
+        #[pymethods]
+        impl $ty {
+            #[doc = concat!("The `", $name, "` data type.")]
+            #[new]
+            fn new() -> Self {
+                Self::default()
+            }
+
+            #[doc = concat!("The type's lowercase name, `\"", $name, "\"`.")]
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string.
+            fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// The fixed size of one value, in bytes.
+            fn byte_width(&self) -> Option<usize> {
+                self.inner.byte_width()
+            }
+
+            /// The fixed size of one value, in bits.
+            fn bit_width(&self) -> Option<usize> {
+                self.inner.bit_width()
+            }
+
+            /// Serialize a native value into its little-endian Arrow bytes (the
+            /// Python `float` narrowed to f16).
+            fn native_to_bytes<'py>(&self, py: Python<'py>, value: f64) -> Bound<'py, PyBytes> {
+                PyBytes::new_bound(
+                    py,
+                    &self
+                        .inner
+                        .native_to_bytes(&yggdryl_dtype::half::f16::from_f64(value)),
+                )
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value (widened to
+            /// a Python `float`) — the exact inverse of `native_to_bytes`; the wrong
+            /// length raises `ValueError`.
+            fn native_from_bytes(&self, bytes: &[u8]) -> Result<f64, DataErr> {
+                Ok(self.inner.native_from_bytes(bytes)?.to_f64())
+            }
+
+            /// The type's default native value, `0.0`.
+            fn default_value(&self) -> f64 {
+                self.inner.default_value().to_f64()
+            }
+
+            /// The default scalar: a `yggdryl.scalar` class holding `0.0`.
+            fn default_scalar(&self) -> crate::scalar::$scalar {
+                crate::scalar::$scalar {
+                    inner: self.inner.default_scalar(),
+                }
+            }
+
+            /// The field of this type named `name` (nullable by default) — a
+            /// `yggdryl.field` class.
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$field {
+                crate::field::$field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            /// A scalar of this type holding `value` (narrowed to f16) — a
+            /// `yggdryl.scalar` class.
+            fn scalar(&self, value: f64) -> crate::scalar::$scalar {
+                crate::scalar::$scalar {
+                    inner: self.inner.scalar(yggdryl_dtype::half::f16::from_f64(value)),
+                }
+            }
+
+            /// The logical optional of this type (stored as the null-or-value
+            /// union).
+            fn optional(&self) -> $opt_ty {
+                $opt_ty::default()
+            }
+        }
+
+        #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
+        #[pyclass]
+        #[derive(Default)]
+        pub struct $opt_ty {
+            pub(crate) inner: yggdryl_dtype::TypedOptionalType<yggdryl_dtype::$ty>,
+        }
+
+        #[pymethods]
+        impl $opt_ty {
+            #[doc = concat!("The optional `", $name, "` data type.")]
+            #[new]
+            fn new() -> Self {
+                Self::default()
+            }
+
+            /// The type's lowercase name, `"optional"`.
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string of the union storage.
+            fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// An optional has no fixed byte width (union storage).
+            fn byte_width(&self) -> Option<usize> {
+                self.inner.byte_width()
+            }
+
+            /// An optional has no fixed bit width (union storage).
+            fn bit_width(&self) -> Option<usize> {
+                self.inner.bit_width()
+            }
+
+            /// The value type this optional wraps.
+            fn value_type(&self) -> $ty {
+                $ty::default()
+            }
+
+            /// The physical storage: the sparse null-or-value union.
+            fn storage(&self) -> UnionType {
+                UnionType {
+                    inner: self.inner.storage().clone(),
+                }
+            }
+
+            /// The default native value: the value type's default, `0.0`.
+            fn default_value(&self) -> f64 {
+                self.inner.default_value().to_f64()
+            }
+
+            /// The default scalar: the null variant (the scalar models nullness).
+            fn default_scalar(&self) -> crate::scalar::$opt_scalar {
+                crate::scalar::$opt_scalar {
+                    inner: self.inner.default_scalar(),
+                }
+            }
+
+            /// The optional field of this type named `name` (nullable by default) — a
+            /// `yggdryl.field` class.
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$opt_field {
+                crate::field::$opt_field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            /// An optional scalar holding the value variant `value` (narrowed to
+            /// f16) — a `yggdryl.scalar` class.
+            fn scalar(&self, value: f64) -> crate::scalar::$opt_scalar {
+                crate::scalar::$opt_scalar {
+                    inner: self.inner.scalar(yggdryl_dtype::half::f16::from_f64(value)),
+                }
+            }
+
+            /// Serialize a native value into its little-endian Arrow bytes (the
+            /// Python `float` narrowed to f16) — the value type's codec.
+            fn native_to_bytes<'py>(&self, py: Python<'py>, value: f64) -> Bound<'py, PyBytes> {
+                PyBytes::new_bound(
+                    py,
+                    &self
+                        .inner
+                        .native_to_bytes(&yggdryl_dtype::half::f16::from_f64(value)),
+                )
+            }
+
+            /// Deserialize little-endian Arrow bytes into a native value (widened to
+            /// a Python `float`) — the exact inverse of `native_to_bytes`; the wrong
+            /// length raises `ValueError`.
+            fn native_from_bytes(&self, bytes: &[u8]) -> Result<f64, DataErr> {
+                Ok(self.inner.native_from_bytes(bytes)?.to_f64())
+            }
+        }
+    };
+}
+
+float16_dtype_py!(
+    Float16Type,
+    OptionalFloat16Type,
+    Float16Field,
+    OptionalFloat16Field,
+    Float16Scalar,
+    OptionalFloat16Scalar,
+    "float16"
+);
+
 /// Generates the concrete serie data type of one integer value type: `$ty`, the
 /// Apache Arrow `list` of `$name` (single nullable `"item"` child) — a thin
 /// delegation to `yggdryl_dtype::TypedSerieType<$value_ty>`. `$field` / `$serie` name
@@ -827,6 +1207,129 @@ int_serie_dtype_py!(
     "float64"
 );
 
+/// Generates the concrete `float16` serie data type `$ty`, mirroring
+/// [`int_serie_dtype_py!`], except the native `half::f16` does not cross the FFI
+/// boundary: the byte codec, `default_value` and `scalar` factory narrow each
+/// incoming Python `float` (f64) to `f16` and widen `f16` back on the way out.
+/// `$field` / `$serie` name the `yggdryl.field` / `yggdryl.scalar` classes.
+macro_rules! float16_serie_dtype_py {
+    ($ty:ident, $value_ty:ident, $field:ident, $serie:ident, $name:literal) => {
+        #[doc = concat!("The Apache Arrow `list` of `", $name, "`: a variable-length sequence of `", $name, "`")]
+        #[doc = concat!("(single nullable `\"item\"` child), with a buffer-backed serie scalar (`yggdryl.scalar.", stringify!($serie), "`).")]
+        #[pyclass]
+        #[derive(Default)]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_dtype::TypedSerieType<yggdryl_dtype::$value_ty>,
+        }
+
+        #[pymethods]
+        impl $ty {
+            #[doc = concat!("The `list` of `", $name, "` data type.")]
+            #[new]
+            fn new() -> Self {
+                Self::default()
+            }
+
+            /// The type's lowercase name, `"list"`.
+            fn name(&self) -> String {
+                self.inner.name().to_string()
+            }
+
+            /// The Arrow C Data Interface format string, `"+l"`.
+            fn arrow_format(&self) -> String {
+                self.inner.arrow_format()
+            }
+
+            /// A serie has no fixed byte width.
+            fn byte_width(&self) -> Option<usize> {
+                self.inner.byte_width()
+            }
+
+            /// A serie has no fixed bit width.
+            fn bit_width(&self) -> Option<usize> {
+                self.inner.bit_width()
+            }
+
+            /// The number of child fields, `1` (the `"item"` field).
+            fn child_count(&self) -> usize {
+                self.inner.child_count()
+            }
+
+            #[doc = concat!("The value type this serie sequences, `", $name, "`.")]
+            fn value_type(&self) -> $value_ty {
+                $value_ty::default()
+            }
+
+            /// Serialize a native serie into its Arrow bytes — the value type's codec
+            /// (each Python `float` narrowed to f16), concatenated per element.
+            fn native_to_bytes<'py>(&self, py: Python<'py>, values: Vec<f64>) -> Bound<'py, PyBytes> {
+                let values = values
+                    .into_iter()
+                    .map(yggdryl_dtype::half::f16::from_f64)
+                    .collect::<Vec<_>>();
+                PyBytes::new_bound(py, &self.inner.native_to_bytes(&values))
+            }
+
+            /// Deserialize Arrow bytes into a native serie (each element widened to a
+            /// Python `float`) — the exact inverse of `native_to_bytes`; a length that
+            /// is not a whole number of elements raises `ValueError`.
+            fn native_from_bytes(&self, bytes: &[u8]) -> Result<Vec<f64>, DataErr> {
+                Ok(self
+                    .inner
+                    .native_from_bytes(bytes)?
+                    .iter()
+                    .map(|value| value.to_f64())
+                    .collect())
+            }
+
+            /// The type's default native value, the empty serie.
+            fn default_value(&self) -> Vec<f64> {
+                self.inner
+                    .default_value()
+                    .iter()
+                    .map(|value| value.to_f64())
+                    .collect()
+            }
+
+            #[doc = concat!("The default scalar: a `yggdryl.scalar.", stringify!($serie), "` holding the empty serie.")]
+            fn default_scalar(&self) -> crate::scalar::$serie {
+                crate::scalar::$serie {
+                    inner: yggdryl_scalar::$serie::default(),
+                }
+            }
+
+            /// The field of this type named `name` (nullable by default) — a
+            #[doc = concat!("`yggdryl.field.", stringify!($field), "`.")]
+            #[pyo3(signature = (name, nullable = true))]
+            fn field(&self, name: String, nullable: bool) -> crate::field::$field {
+                crate::field::$field {
+                    inner: self.inner.field(name, nullable),
+                }
+            }
+
+            #[doc = concat!("A `yggdryl.scalar.", stringify!($serie), "` holding the native serie `values` (each narrowed to f16).")]
+            fn scalar(&self, values: Vec<f64>) -> crate::scalar::$serie {
+                crate::scalar::$serie {
+                    inner: yggdryl_scalar::$serie::from(
+                        values
+                            .into_iter()
+                            .map(yggdryl_dtype::half::f16::from_f64)
+                            .collect::<Vec<_>>(),
+                    ),
+                }
+            }
+        }
+    };
+}
+
+float16_serie_dtype_py!(
+    Float16SerieType,
+    Float16Type,
+    Float16SerieField,
+    Float16Serie,
+    "float16"
+);
+
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UnionType>()?;
@@ -834,6 +1337,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullType>()?;
     module.add_class::<BinaryType>()?;
     module.add_class::<OptionalBinaryType>()?;
+    module.add_class::<StringType>()?;
+    module.add_class::<OptionalStringType>()?;
     module.add_class::<Int8Type>()?;
     module.add_class::<OptionalInt8Type>()?;
     module.add_class::<Int16Type>()?;
@@ -850,6 +1355,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Type>()?;
     module.add_class::<UInt64Type>()?;
     module.add_class::<OptionalUInt64Type>()?;
+    module.add_class::<Float16Type>()?;
+    module.add_class::<OptionalFloat16Type>()?;
     module.add_class::<Float32Type>()?;
     module.add_class::<OptionalFloat32Type>()?;
     module.add_class::<Float64Type>()?;
@@ -862,6 +1369,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16SerieType>()?;
     module.add_class::<UInt32SerieType>()?;
     module.add_class::<UInt64SerieType>()?;
+    module.add_class::<Float16SerieType>()?;
     module.add_class::<Float32SerieType>()?;
     module.add_class::<Float64SerieType>()?;
     Ok(())

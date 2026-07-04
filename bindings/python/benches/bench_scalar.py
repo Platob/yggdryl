@@ -30,6 +30,8 @@ def main():
     numbers = scalar.Int64Serie([1, 2, 3, 4])
     weight = scalar.Float64Scalar(1.5)
     weights = scalar.Float64Serie([1.5, 2.5, 3.5, 4.5])
+    half = scalar.Float16Scalar(1.5)
+    text = scalar.StringScalar("hello")
 
     bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
     bench("Int64Scalar.null()", scalar.Int64Scalar.null)
@@ -48,6 +50,11 @@ def main():
     bench("float.as_f64() direct", weight.as_f64)
     bench("float.to_pyvalue()", weight.to_pyvalue)
     bench("float serie.to_pyvalue()", weights.to_pyvalue)
+    bench("Float16Scalar(1.5)", lambda: scalar.Float16Scalar(1.5))
+    bench("float16.as_f16() widened", half.as_f16)
+    bench("float16.to_pyvalue()", half.to_pyvalue)
+    bench("StringScalar('hello')", lambda: scalar.StringScalar("hello"))
+    bench("string.to_pyvalue()", text.to_pyvalue)
 
 
 if __name__ == "__main__":

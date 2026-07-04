@@ -6,7 +6,7 @@
 // building the matching object across the FFI boundary. No dependencies: run with
 // `npm run bench`.
 
-const { factory } = require('..')
+const { factory, scalar } = require('..')
 
 const N = 200_000
 
@@ -23,11 +23,14 @@ function bench(label, fn) {
 const blob = Buffer.from([1, 2, 3, 4])
 const row = { id: 42, payload: blob, scores: [1, 2, 3, 4] }
 const record = factory.scalar(row)
+const half16 = new scalar.Float16Scalar(1.5)
 
 bench('factory.scalar(number)', () => factory.scalar(42))
 bench('factory.scalar(float)', () => factory.scalar(1.5))
 bench('factory.scalar(bigint)', () => factory.scalar(42n))
 bench('factory.scalar(Buffer)', () => factory.scalar(blob))
+bench('factory.scalar(string)', () => factory.scalar('hello'))
+bench('factory.scalar(Float16Scalar)', () => factory.scalar(half16))
 bench('factory.scalar(null)', () => factory.scalar(null))
 bench('factory.scalar(array)', () => factory.scalar([1, 2, 3, 4]))
 bench('factory.scalar(float array)', () => factory.scalar([1.5, 2.5, 3.5, 4.5]))

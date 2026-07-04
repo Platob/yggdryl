@@ -37,6 +37,7 @@ values:
 | --- | --- |
 | `int` (Python) / integer `number` or `bigint` (Node) | `int64` |
 | `float` (Python) / fractional `number` (Node) | `float64` |
+| `str` (Python) / `string` (Node) | `utf8` |
 | `bytes` / `bytearray` (Python) / `Buffer` (Node) | `binary` |
 | `None` (Python) / `null` / `undefined` (Node) | `null` |
 | a list/array of integers | `int64` serie (empty defaults to it) |
@@ -51,11 +52,13 @@ The `int64` / `float64` split follows each language's idiom: Python distinguishe
 JS has one `number` type, so Node splits on the value — a **whole** number is
 `int64`, a **fractional** one `float64` (`42` → `int64`, `1.5` → `float64`).
 
-A value the model has no type for — a `str`/`string`, `bool`/`boolean`, an integer
-outside the `int64` range, or a list of mixed / non-numeric elements — raises an
-actionable error. Build those through the explicit per-type factories. External
-Arrow objects (pyarrow, Arrow JS) await the Arrow C Data Interface and are
-documented future work.
+A value the model has no type for — a `bool`/`boolean`, an integer outside the
+`int64` range, or a list of mixed / non-numeric elements — raises an actionable
+error. (`float16` is never *inferred* — a Python `float` / JS `number` infers the
+lossless `float64` — but the `Float16*` types are built through the explicit
+factories.) Build those through the explicit per-type factories. External Arrow
+objects (pyarrow, Arrow JS) await the Arrow C Data Interface and are documented
+future work.
 
 ## `scalar` / `dtype` / `field`
 
@@ -71,6 +74,7 @@ matching field (keeping the name, nullable by default).
     # scalar(value): infer the type and build the scalar.
     assert factory.scalar(42).data_type().name() == "int64"
     assert factory.scalar(1.5).data_type().name() == "float64"  # a float
+    assert factory.scalar("text").data_type().name() == "utf8"  # a string
     assert factory.scalar(b"\x01\x02").data_type().name() == "binary"
     assert factory.scalar(None).is_null()
     assert factory.scalar([1, 2, 3]).to_pylist() == [1, 2, 3]  # int64 serie
@@ -84,7 +88,7 @@ matching field (keeping the name, nullable by default).
 
     # A value with no model type raises.
     try:
-        factory.scalar("text")  # a string
+        factory.scalar(True)  # a bool
     except ValueError:
         pass
     ```
@@ -97,6 +101,7 @@ matching field (keeping the name, nullable by default).
     // scalar(value): infer the type and build the scalar.
     assert.equal(factory.scalar(42).dataType().name(), 'int64') // whole number
     assert.equal(factory.scalar(1.5).dataType().name(), 'float64') // fractional number
+    assert.equal(factory.scalar('text').dataType().name(), 'utf8') // a string
     assert.equal(factory.scalar(Buffer.from([1, 2])).dataType().name(), 'binary')
     assert.ok(factory.scalar(null).isNull())
     assert.deepEqual(factory.scalar([1, 2, 3]).toArray(), [1n, 2n, 3n]) // int64 serie
@@ -109,7 +114,7 @@ matching field (keeping the name, nullable by default).
     assert.equal(scores.dataType().name(), 'list')
 
     // A value with no model type throws.
-    assert.throws(() => factory.scalar('text')) // a string
+    assert.throws(() => factory.scalar(true)) // a boolean
     ```
 
 === "Rust"

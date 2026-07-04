@@ -29,6 +29,7 @@ def main():
     bench("factory.scalar(int)", lambda: factory.scalar(42))
     bench("factory.scalar(float)", lambda: factory.scalar(1.5))
     bench("factory.scalar(bytes)", lambda: factory.scalar(b"\x01\x02\x03\x04"))
+    bench("factory.scalar(str)", lambda: factory.scalar("hello"))
     bench("factory.scalar(None)", lambda: factory.scalar(None))
     bench("factory.scalar(list[int])", lambda: factory.scalar([1, 2, 3, 4]))
     bench("factory.scalar(list[float])", lambda: factory.scalar([1.5, 2.5, 3.5, 4.5]))

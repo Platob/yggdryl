@@ -1,12 +1,16 @@
 //! The `yggdryl.scalar` submodule — thin wrappers over the `yggdryl-scalar` crate.
 //!
-//! Every integer type is exposed as its scalar and its null-or-value optional
-//! scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`), alongside `BinaryScalar` /
-//! `OptionalBinaryScalar` (whose value is held as a core positioned-IO
-//! `ByteBuffer` — `to_io()` hands one back), `NullScalar`, `RecordScalar` (the
-//! `struct` row built from a dict, its children inferred like the factory's) and
-//! its serie scalar (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) —
-//! the same suffixed names as the Rust crate, the submodule carrying the concern.
+//! Every integer and float type is exposed as its scalar and its null-or-value
+//! optional scalar (e.g. `Int64Scalar`, `OptionalInt64Scalar`; the `float16`
+//! family's native `half::f16` crosses as a Python `float`), alongside
+//! `BinaryScalar` / `OptionalBinaryScalar` (whose value is held as a core
+//! positioned-IO `ByteBuffer` — `to_io()` hands one back), `StringScalar` /
+//! `OptionalStringScalar` (a `utf8` value crossing as Python `str`, its UTF-8
+//! bytes reachable through `as_bytes` — the core `StringBuffer` stays Rust-only,
+//! so there is no `to_io()`), `NullScalar`, `RecordScalar` (the `struct` row built
+//! from a dict, its children inferred like the factory's) and its serie scalar
+//! (e.g. `Int64Serie`, the buffer-backed `list` of `int64`) — the same suffixed
+//! names as the Rust crate, the submodule carrying the concern.
 //! Scalars expose the
 //! `as_*` accessors with the core contract: the value when the target represents
 //! it exactly, or a raised `ValueError` naming the fix (strings and bytes cross
@@ -204,6 +208,11 @@ impl BinaryScalar {
     fn as_u64(&self) -> Result<u64, DataErr> {
         Ok(self.inner.as_u64()?)
     }
+    /// The value as a `float` (a Python `float`, `f16` widened to f64);
+    /// raises `ValueError` when null or not exactly representable in f16.
+    fn as_f16(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f16()?.to_f64())
+    }
     /// The value as a `float`; raises `ValueError` when null or not
     /// exactly representable in f32.
     fn as_f32(&self) -> Result<f32, DataErr> {
@@ -334,6 +343,11 @@ impl OptionalBinaryScalar {
     }
     /// The value as a `float`; raises `ValueError` (a binary value has no
     /// numeric form).
+    fn as_f16(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f16()?.to_f64())
+    }
+    /// The value as a `float`; raises `ValueError` (a binary value has no
+    /// numeric form).
     fn as_f32(&self) -> Result<f32, DataErr> {
         Ok(self.inner.as_f32()?)
     }
@@ -450,6 +464,11 @@ macro_rules! int_scalar_py {
             /// null or not exactly representable.
             fn as_u64(&self) -> Result<u64, DataErr> {
                 Ok(self.inner.as_u64()?)
+            }
+            /// The value as a `float` (a Python `float`, `f16` widened to f64);
+            /// raises `ValueError` when null or not exactly representable in f16.
+            fn as_f16(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f16()?.to_f64())
             }
             /// The value as a `float`; raises `ValueError` when null or not
             /// exactly representable in f32.
@@ -571,6 +590,11 @@ macro_rules! int_scalar_py {
             fn as_u64(&self) -> Result<u64, DataErr> {
                 Ok(self.inner.as_u64()?)
             }
+            /// The value as a `float` (a Python `float`, `f16` widened to f64);
+            /// raises `ValueError` when null or not exactly representable in f16.
+            fn as_f16(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f16()?.to_f64())
+            }
             /// The value as a `float`; raises `ValueError` when null or not
             /// exactly representable in f32.
             fn as_f32(&self) -> Result<f32, DataErr> {
@@ -683,6 +707,522 @@ int_scalar_py!(
     "float64"
 );
 
+/// Generates the two `float16` scalar wrappers — the scalar `$ty` and the
+/// null-or-value `$opt_ty` — mirroring [`int_scalar_py!`], except the native
+/// `half::f16` does not cross the FFI boundary: it crosses as a Python `float`
+/// (f64), so the constructor narrows the incoming `f64` to `f16` and every
+/// value-carrying method (`value` / `to_pyvalue` / `as_f16`) widens `f16` back
+/// to `f64`. `$dtype` / `$opt_dtype` name the `yggdryl.dtype` classes.
+macro_rules! float16_scalar_py {
+    ($ty:ident, $opt_ty:ident, $dtype:ident, $opt_dtype:ident, $name:literal) => {
+        #[doc = concat!("A single, possibly-null `", $name, "` value (crossing as a Python `float`).")]
+        #[pyclass]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_scalar::$ty,
+        }
+
+        #[pymethods]
+        impl $ty {
+            #[doc = concat!("A `", $name, "` scalar holding `value` (narrowed from the Python `float`).")]
+            #[new]
+            fn new(value: f64) -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::new(yggdryl_scalar::half::f16::from_f64(value)),
+                }
+            }
+
+            #[doc = concat!("A null `", $name, "` scalar.")]
+            #[staticmethod]
+            fn null() -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::null(),
+                }
+            }
+
+            /// Whether this scalar holds a null value.
+            fn is_null(&self) -> bool {
+                self.inner.is_null()
+            }
+
+            /// The scalar's value as a Python `float` (f16 widened to f64), or
+            /// `None` when null.
+            fn value(&self) -> Option<f64> {
+                self.inner.value().map(|value| value.to_f64())
+            }
+
+            /// The scalar's native Python value: its `float`, or `None` when null
+            /// (the general native accessor: one FFI crossing).
+            fn to_pyvalue(&self) -> Option<f64> {
+                self.value()
+            }
+
+            /// The scalar's data type.
+            fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
+            }
+
+            /// The value as an `int` in the i8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i8(&self) -> Result<i8, DataErr> {
+                Ok(self.inner.as_i8()?)
+            }
+            /// The value as an `int` in the i16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i16(&self) -> Result<i16, DataErr> {
+                Ok(self.inner.as_i16()?)
+            }
+            /// The value as an `int` in the i32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i32(&self) -> Result<i32, DataErr> {
+                Ok(self.inner.as_i32()?)
+            }
+            /// The value as an `int` in the i64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i64(&self) -> Result<i64, DataErr> {
+                Ok(self.inner.as_i64()?)
+            }
+            /// The value as an `int` in the u8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u8(&self) -> Result<u8, DataErr> {
+                Ok(self.inner.as_u8()?)
+            }
+            /// The value as an `int` in the u16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u16(&self) -> Result<u16, DataErr> {
+                Ok(self.inner.as_u16()?)
+            }
+            /// The value as an `int` in the u32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u32(&self) -> Result<u32, DataErr> {
+                Ok(self.inner.as_u32()?)
+            }
+            /// The value as an `int` in the u64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u64(&self) -> Result<u64, DataErr> {
+                Ok(self.inner.as_u64()?)
+            }
+            /// The value as a `float` (a Python `float`, `f16` widened to f64);
+            /// raises `ValueError` when null — always exact (the native width).
+            fn as_f16(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f16()?.to_f64())
+            }
+            /// The value as a `float`; raises `ValueError` when null — always
+            /// exact (every f16 widens to f32).
+            fn as_f32(&self) -> Result<f32, DataErr> {
+                Ok(self.inner.as_f32()?)
+            }
+            /// The value as a `float`; raises `ValueError` when null — always
+            /// exact (every f16 widens to f64).
+            fn as_f64(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f64()?)
+            }
+            /// The value as a `bool`; raises `ValueError` when null or the value
+            /// is not a boolean.
+            fn as_bool(&self) -> Result<bool, DataErr> {
+                Ok(self.inner.as_bool()?)
+            }
+            /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+            /// default, or `"latin1"`); raises `ValueError` when null or not
+            /// decodable.
+            #[pyo3(signature = (charset = None))]
+            fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+                as_str_with(&self.inner, charset)
+            }
+            /// The value as `bytes`; raises `ValueError` when null or the value
+            /// has no byte-sequence form.
+            fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+                Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+            }
+        }
+
+        #[doc = concat!("A single value of the union between null and `", $name, "`: a value variant, or the null variant.")]
+        #[pyclass]
+        pub struct $opt_ty {
+            pub(crate) inner:
+                yggdryl_scalar::TypedOptionalScalar<yggdryl_dtype::$dtype, yggdryl_scalar::$ty>,
+        }
+
+        #[pymethods]
+        impl $opt_ty {
+            #[doc = concat!("A scalar holding the `", $name, "` value variant `value` (narrowed from the Python `float`).")]
+            #[new]
+            fn new(value: f64) -> Self {
+                Self {
+                    inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::$ty::new(
+                        yggdryl_scalar::half::f16::from_f64(value),
+                    )),
+                }
+            }
+
+            /// The null variant.
+            #[staticmethod]
+            fn null() -> Self {
+                Self {
+                    inner: yggdryl_scalar::TypedOptionalScalar::null(),
+                }
+            }
+
+            /// Whether this scalar holds the null variant.
+            fn is_null(&self) -> bool {
+                self.inner.is_null()
+            }
+
+            /// The value as a Python `float` (f16 widened to f64), or `None` for
+            /// the null variant.
+            fn value(&self) -> Option<f64> {
+                self.inner.value().map(|value| value.to_f64())
+            }
+
+            /// The inner scalar, when this holds the value variant.
+            fn scalar(&self) -> Option<$ty> {
+                self.inner.scalar().map(|scalar| $ty { inner: *scalar })
+            }
+
+            /// The scalar's native Python value: its `float`, or `None` for the
+            /// null variant (the general native accessor: one FFI crossing).
+            fn to_pyvalue(&self) -> Option<f64> {
+                self.value()
+            }
+
+            /// The scalar's data type: the logical optional of the value type.
+            fn data_type(&self) -> crate::dtype::$opt_dtype {
+                crate::dtype::$opt_dtype::default()
+            }
+
+            /// The value as an `int` in the i8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i8(&self) -> Result<i8, DataErr> {
+                Ok(self.inner.as_i8()?)
+            }
+            /// The value as an `int` in the i16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i16(&self) -> Result<i16, DataErr> {
+                Ok(self.inner.as_i16()?)
+            }
+            /// The value as an `int` in the i32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i32(&self) -> Result<i32, DataErr> {
+                Ok(self.inner.as_i32()?)
+            }
+            /// The value as an `int` in the i64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_i64(&self) -> Result<i64, DataErr> {
+                Ok(self.inner.as_i64()?)
+            }
+            /// The value as an `int` in the u8 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u8(&self) -> Result<u8, DataErr> {
+                Ok(self.inner.as_u8()?)
+            }
+            /// The value as an `int` in the u16 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u16(&self) -> Result<u16, DataErr> {
+                Ok(self.inner.as_u16()?)
+            }
+            /// The value as an `int` in the u32 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u32(&self) -> Result<u32, DataErr> {
+                Ok(self.inner.as_u32()?)
+            }
+            /// The value as an `int` in the u64 range; raises `ValueError` when
+            /// null or not exactly representable.
+            fn as_u64(&self) -> Result<u64, DataErr> {
+                Ok(self.inner.as_u64()?)
+            }
+            /// The value as a `float` (a Python `float`, `f16` widened to f64);
+            /// raises `ValueError` when null — always exact (the native width).
+            fn as_f16(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f16()?.to_f64())
+            }
+            /// The value as a `float`; raises `ValueError` when null — always
+            /// exact (every f16 widens to f32).
+            fn as_f32(&self) -> Result<f32, DataErr> {
+                Ok(self.inner.as_f32()?)
+            }
+            /// The value as a `float`; raises `ValueError` when null — always
+            /// exact (every f16 widens to f64).
+            fn as_f64(&self) -> Result<f64, DataErr> {
+                Ok(self.inner.as_f64()?)
+            }
+            /// The value as a `bool`; raises `ValueError` when null or the value
+            /// is not a boolean.
+            fn as_bool(&self) -> Result<bool, DataErr> {
+                Ok(self.inner.as_bool()?)
+            }
+            /// The value as a `str`; `charset` picks the decoder (`"utf8"`, the
+            /// default, or `"latin1"`); raises `ValueError` when null or not
+            /// decodable.
+            #[pyo3(signature = (charset = None))]
+            fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+                as_str_with(&self.inner, charset)
+            }
+            /// The value as `bytes`; raises `ValueError` when null or the value
+            /// has no byte-sequence form.
+            fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+                Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+            }
+        }
+    };
+}
+
+float16_scalar_py!(
+    Float16Scalar,
+    OptionalFloat16Scalar,
+    Float16Type,
+    OptionalFloat16Type,
+    "float16"
+);
+
+/// A single, possibly-null `utf8` value, holding its text as new Python `str`
+/// objects at the FFI boundary (the core `StringBuffer` stays Rust-only — see the
+/// module doc). It mirrors [`BinaryScalar`], except the value crosses as `str`
+/// (its UTF-8 `bytes` reachable through `as_bytes`) instead of `bytes`.
+#[pyclass]
+pub struct StringScalar {
+    pub(crate) inner: yggdryl_scalar::StringScalar,
+}
+
+#[pymethods]
+impl StringScalar {
+    /// A `utf8` scalar holding `value`.
+    #[new]
+    fn new(value: String) -> Self {
+        Self {
+            inner: yggdryl_scalar::StringScalar::new(value),
+        }
+    }
+
+    /// A null `utf8` scalar.
+    #[staticmethod]
+    fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::StringScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds a null value.
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The scalar's value as `str`, or `None` when null.
+    fn value(&self) -> Option<String> {
+        self.inner.value().map(str::to_string)
+    }
+
+    /// The scalar's native Python value: its `str`, or `None` when null (the
+    /// general native accessor: one FFI crossing).
+    fn to_pyvalue(&self) -> Option<String> {
+        self.value()
+    }
+
+    /// The scalar's data type.
+    fn data_type(&self) -> crate::dtype::StringType {
+        crate::dtype::StringType::default()
+    }
+
+    /// The value as an `int` in the i8 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i8(&self) -> Result<i8, DataErr> {
+        Ok(self.inner.as_i8()?)
+    }
+    /// The value as an `int` in the i16 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i16(&self) -> Result<i16, DataErr> {
+        Ok(self.inner.as_i16()?)
+    }
+    /// The value as an `int` in the i32 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i32(&self) -> Result<i32, DataErr> {
+        Ok(self.inner.as_i32()?)
+    }
+    /// The value as an `int` in the i64 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i64(&self) -> Result<i64, DataErr> {
+        Ok(self.inner.as_i64()?)
+    }
+    /// The value as an `int` in the u8 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u8(&self) -> Result<u8, DataErr> {
+        Ok(self.inner.as_u8()?)
+    }
+    /// The value as an `int` in the u16 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u16(&self) -> Result<u16, DataErr> {
+        Ok(self.inner.as_u16()?)
+    }
+    /// The value as an `int` in the u32 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u32(&self) -> Result<u32, DataErr> {
+        Ok(self.inner.as_u32()?)
+    }
+    /// The value as an `int` in the u64 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u64(&self) -> Result<u64, DataErr> {
+        Ok(self.inner.as_u64()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f16(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f16()?.to_f64())
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f32(&self) -> Result<f32, DataErr> {
+        Ok(self.inner.as_f32()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f64(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f64()?)
+    }
+    /// The value as a `bool`; raises `ValueError` (a string value is not a
+    /// boolean).
+    fn as_bool(&self) -> Result<bool, DataErr> {
+        Ok(self.inner.as_bool()?)
+    }
+    /// The value as a `str` — the native type; `charset` picks the decoder
+    /// (`"utf8"`, the default, or `"latin1"`); raises `ValueError` when null.
+    #[pyo3(signature = (charset = None))]
+    fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+        as_str_with(&self.inner, charset)
+    }
+    /// The value as its UTF-8 `bytes`; raises `ValueError` when null.
+    fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+    }
+}
+
+/// A single value of the union between null and `utf8`: a value variant, or the
+/// null variant — the string counterpart of [`OptionalBinaryScalar`].
+#[pyclass]
+pub struct OptionalStringScalar {
+    pub(crate) inner: yggdryl_scalar::TypedOptionalScalar<
+        yggdryl_dtype::StringType,
+        yggdryl_scalar::StringScalar,
+    >,
+}
+
+#[pymethods]
+impl OptionalStringScalar {
+    /// A scalar holding the `utf8` value variant `value`.
+    #[new]
+    fn new(value: String) -> Self {
+        Self {
+            inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::StringScalar::new(
+                value,
+            )),
+        }
+    }
+
+    /// The null variant.
+    #[staticmethod]
+    fn null() -> Self {
+        Self {
+            inner: yggdryl_scalar::TypedOptionalScalar::null(),
+        }
+    }
+
+    /// Whether this scalar holds the null variant.
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The value as `str`, or `None` for the null variant.
+    fn value(&self) -> Option<String> {
+        self.inner.value().map(str::to_string)
+    }
+
+    /// The inner scalar, when this holds the value variant.
+    fn scalar(&self) -> Option<StringScalar> {
+        self.inner.scalar().map(|scalar| StringScalar {
+            inner: scalar.clone(),
+        })
+    }
+
+    /// The scalar's native Python value: its `str`, or `None` for the null
+    /// variant (the general native accessor: one FFI crossing).
+    fn to_pyvalue(&self) -> Option<String> {
+        self.value()
+    }
+
+    /// The scalar's data type: the logical optional of the value type.
+    fn data_type(&self) -> crate::dtype::OptionalStringType {
+        crate::dtype::OptionalStringType::default()
+    }
+
+    /// The value as an `int` in the i8 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i8(&self) -> Result<i8, DataErr> {
+        Ok(self.inner.as_i8()?)
+    }
+    /// The value as an `int` in the i16 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i16(&self) -> Result<i16, DataErr> {
+        Ok(self.inner.as_i16()?)
+    }
+    /// The value as an `int` in the i32 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i32(&self) -> Result<i32, DataErr> {
+        Ok(self.inner.as_i32()?)
+    }
+    /// The value as an `int` in the i64 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_i64(&self) -> Result<i64, DataErr> {
+        Ok(self.inner.as_i64()?)
+    }
+    /// The value as an `int` in the u8 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u8(&self) -> Result<u8, DataErr> {
+        Ok(self.inner.as_u8()?)
+    }
+    /// The value as an `int` in the u16 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u16(&self) -> Result<u16, DataErr> {
+        Ok(self.inner.as_u16()?)
+    }
+    /// The value as an `int` in the u32 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u32(&self) -> Result<u32, DataErr> {
+        Ok(self.inner.as_u32()?)
+    }
+    /// The value as an `int` in the u64 range; raises `ValueError` (a string
+    /// value has no numeric form).
+    fn as_u64(&self) -> Result<u64, DataErr> {
+        Ok(self.inner.as_u64()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f16(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f16()?.to_f64())
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f32(&self) -> Result<f32, DataErr> {
+        Ok(self.inner.as_f32()?)
+    }
+    /// The value as a `float`; raises `ValueError` (a string value has no
+    /// numeric form).
+    fn as_f64(&self) -> Result<f64, DataErr> {
+        Ok(self.inner.as_f64()?)
+    }
+    /// The value as a `bool`; raises `ValueError` (a string value is not a
+    /// boolean).
+    fn as_bool(&self) -> Result<bool, DataErr> {
+        Ok(self.inner.as_bool()?)
+    }
+    /// The value as a `str` — the native type; `charset` picks the decoder
+    /// (`"utf8"`, the default, or `"latin1"`); raises `ValueError` when null.
+    #[pyo3(signature = (charset = None))]
+    fn as_str(&self, charset: Option<&str>) -> Result<String, DataErr> {
+        as_str_with(&self.inner, charset)
+    }
+    /// The value as its UTF-8 `bytes`; raises `ValueError` when null.
+    fn as_bytes<'py>(&self, py: Python<'py>) -> Result<Bound<'py, PyBytes>, DataErr> {
+        Ok(PyBytes::new_bound(py, self.inner.as_bytes()?))
+    }
+}
+
 /// Generates the concrete serie scalar of one integer value type: `$ty`, the
 /// buffer-backed `list` of `$name` — a thin delegation to `yggdryl_scalar::$ty`.
 /// `$scalar` names the element scalar class, `$dtype` the `yggdryl.dtype` class.
@@ -790,6 +1330,104 @@ int_serie_scalar_py!(
     "float64"
 );
 
+/// Generates the concrete `float16` serie scalar `$ty`, mirroring
+/// [`int_serie_scalar_py!`], except the native `half::f16` does not cross the FFI
+/// boundary: the builder narrows each incoming Python `float` (f64) to `f16`, and
+/// every value-carrying method (`to_pylist` / `to_pyvalue` / `get_at`) widens
+/// `f16` back to `f64`. `$scalar` names the element scalar, `$dtype` the
+/// `yggdryl.dtype` class.
+macro_rules! float16_serie_scalar_py {
+    ($ty:ident, $scalar:ident, $dtype:ident, $name:literal) => {
+        #[doc = concat!("A single, possibly-null `list` of `", $name, "` — *our array*, the buffer-backed")]
+        /// serie scalar. Built dense (all-valid) from Python `float` values (narrowed to
+        #[doc = concat!("f16); the whole serie may still be null (`", stringify!($ty), ".null()`).")]
+        #[pyclass]
+        pub struct $ty {
+            pub(crate) inner: yggdryl_scalar::$ty,
+        }
+
+        #[pymethods]
+        impl $ty {
+            /// A serie holding the native serie `values` (all-valid), each narrowed
+            /// from the Python `float` to f16.
+            #[new]
+            fn new(values: Vec<f64>) -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::from(
+                        values
+                            .into_iter()
+                            .map(yggdryl_scalar::half::f16::from_f64)
+                            .collect::<Vec<_>>(),
+                    ),
+                }
+            }
+
+            /// The null serie scalar.
+            #[staticmethod]
+            fn null() -> Self {
+                Self {
+                    inner: yggdryl_scalar::$ty::null(),
+                }
+            }
+
+            /// Whether this scalar holds a null value (distinct from the empty serie).
+            fn is_null(&self) -> bool {
+                self.inner.is_null()
+            }
+
+            /// The number of elements, `0` when null or empty (`is_null` distinguishes
+            /// the two).
+            fn len(&self) -> usize {
+                self.inner.len()
+            }
+
+            /// Whether the sequence holds no elements (also `True` when null).
+            fn is_empty(&self) -> bool {
+                self.inner.is_empty()
+            }
+
+            /// The whole element buffer copied out as a Python `list[float]` (each
+            /// f16 widened to f64), or `None` when null — the pyarrow-style name for
+            /// a native-container copy-out (the zero-copy borrow stays Rust-only).
+            fn to_pylist(&self) -> Option<Vec<f64>> {
+                self.inner
+                    .values()
+                    .map(|values| values.iter().map(|value| value.to_f64()).collect())
+            }
+
+            /// The scalar's native Python value: its `list[float]`, or `None` when
+            /// null (the general native accessor: one FFI crossing) — the serie
+            /// spelling of `to_pylist`.
+            fn to_pyvalue(&self) -> Option<Vec<f64>> {
+                self.to_pylist()
+            }
+
+            /// The element at `index` read as a Python `float` (f16 widened to f64);
+            /// raises `ValueError` when null or past the end, and `OverflowError` for
+            /// a negative index.
+            fn get_at(&self, index: usize) -> Result<f64, DataErr> {
+                Ok(self.inner.get_at::<f64>(index)?)
+            }
+
+            #[doc = concat!("The element at `index` as a `", stringify!($scalar), "`, or `None` when the serie is")]
+            /// null or `index` is past the end (a negative index raises
+            /// `OverflowError`).
+            fn get_scalar_at(&self, index: usize) -> Option<$scalar> {
+                self.inner
+                    .get_scalar_at(index)
+                    .map(|inner| $scalar { inner })
+            }
+
+            /// The scalar's data type.
+            fn data_type(&self) -> crate::dtype::$dtype {
+                crate::dtype::$dtype::default()
+            }
+        }
+    };
+}
+
+float16_serie_scalar_py!(Float16Serie, Float16Scalar, Float16SerieType, "float16");
+
 /// Raises a `ValueError` naming a record child type the bindings cannot convert
 /// to a native Python value yet.
 fn child_unrepresentable(data_type: &yggdryl_scalar::arrow_schema::DataType) -> PyErr {
@@ -803,6 +1441,18 @@ fn child_unrepresentable(data_type: &yggdryl_scalar::arrow_schema::DataType) -> 
 /// A child serie's elements as a Python `list` of native values (a null element
 /// reads as `None`) — the record child form of `to_pylist`.
 fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult<PyObject> {
+    // `f16` is not a Python type: a float16 serie's elements widen to Python floats.
+    if let yggdryl_scalar::AnySerie::Float16(serie) = serie {
+        return Ok((0..serie.len())
+            .map(|index| {
+                serie
+                    .get_scalar_at(index)
+                    .and_then(|scalar| scalar.value().copied())
+                    .map(|value| value.to_f64())
+            })
+            .collect::<Vec<_>>()
+            .into_py(py));
+    }
     macro_rules! elements {
         ($($variant:ident),+ $(,)?) => {
             match serie {
@@ -826,6 +1476,10 @@ fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult
 fn scalar_to_pyvalue(py: Python<'_>, scalar: &yggdryl_scalar::AnyScalar) -> PyResult<PyObject> {
     use yggdryl_scalar::arrow_array::{self, Array};
     use yggdryl_scalar::arrow_schema::DataType as ArrowType;
+    // `f16` is not a Python type: a float16 child widens to a Python float.
+    if let yggdryl_scalar::AnyScalar::Float16(value) = scalar {
+        return Ok(value.value().map(|value| value.to_f64()).into_py(py));
+    }
     macro_rules! atom {
         ($($variant:ident),+ $(,)?) => {
             match scalar {
@@ -842,6 +1496,17 @@ fn scalar_to_pyvalue(py: Python<'_>, scalar: &yggdryl_scalar::AnyScalar) -> PyRe
                             py.None()
                         } else {
                             PyBytes::new_bound(py, value.value(0)).into_py(py)
+                        })
+                    }
+                    ArrowType::Utf8 => {
+                        let value = value
+                            .as_any()
+                            .downcast_ref::<arrow_array::StringArray>()
+                            .expect("a utf8 field is a string array");
+                        Ok(if value.is_null(0) {
+                            py.None()
+                        } else {
+                            value.value(0).into_py(py)
                         })
                     }
                     ArrowType::List(_) => {
@@ -1001,6 +1666,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullScalar>()?;
     module.add_class::<BinaryScalar>()?;
     module.add_class::<OptionalBinaryScalar>()?;
+    module.add_class::<StringScalar>()?;
+    module.add_class::<OptionalStringScalar>()?;
     module.add_class::<Int8Scalar>()?;
     module.add_class::<OptionalInt8Scalar>()?;
     module.add_class::<Int16Scalar>()?;
@@ -1017,6 +1684,8 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<OptionalUInt32Scalar>()?;
     module.add_class::<UInt64Scalar>()?;
     module.add_class::<OptionalUInt64Scalar>()?;
+    module.add_class::<Float16Scalar>()?;
+    module.add_class::<OptionalFloat16Scalar>()?;
     module.add_class::<Float32Scalar>()?;
     module.add_class::<OptionalFloat32Scalar>()?;
     module.add_class::<Float64Scalar>()?;
@@ -1029,6 +1698,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UInt16Serie>()?;
     module.add_class::<UInt32Serie>()?;
     module.add_class::<UInt64Serie>()?;
+    module.add_class::<Float16Serie>()?;
     module.add_class::<Float32Serie>()?;
     module.add_class::<Float64Serie>()?;
     module.add_class::<RecordScalar>()?;
