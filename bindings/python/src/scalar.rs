@@ -41,7 +41,9 @@
 //! scalars — the generic `Serie` / `MapScalar`, the plain `StructScalar` row
 //! value (its accessor surface is exposed as `RecordScalar`), the struct-row
 //! series `StructSerie` / `TypedStructSerie`, and the type-erased `AnySerie` /
-//! `AnyScalar` holders behind them — have no concrete FFI shape yet.
+//! `AnyScalar` holders behind them — have no concrete FFI shape yet. The lazy serie
+//! iterators (`iter_scalars` / `iter_records`) are Rust-only too; iterate the
+//! materialized `to_pylist()` instead.
 
 // pyo3's `#[pymethods]` expansion re-wraps the already-`PyErr` result of the
 // `PyResult`-returning record methods into `PyErr`; clippy flags that generated

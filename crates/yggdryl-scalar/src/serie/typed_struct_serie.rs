@@ -113,6 +113,33 @@ impl<S: Scalar<DataType = StructType>> TypedStructSerie<S> {
         let element = values.to_arrow().slice(index, 1);
         S::from_arrow(element.as_ref()).ok()
     }
+
+    /// An iterator over the rows as [`RecordScalar`](crate::RecordScalar) row atoms,
+    /// in order (a null row is the record's null; a null serie yields nothing) —
+    /// independent of the row scalar type `S`, the rows always read back as records.
+    /// The struct column is reconstituted **once**, and each step slices one row from
+    /// it — linear, unlike a [`get_scalar_at`](TypedStructSerie::get_scalar_at) loop.
+    /// The iterator owns a reference-counted view of the column, borrowing nothing,
+    /// and is [`ExactSizeIterator`] / [`DoubleEndedIterator`].
+    ///
+    /// ```
+    /// use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema};
+    /// use yggdryl_scalar::{AnyScalar, Int64Scalar, RecordScalar, Scalar, TypedStructSerie};
+    ///
+    /// let point = dtype::StructType::new(arrow_schema::Fields::from(vec![
+    ///     arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
+    /// ]));
+    /// let row = |x| RecordScalar::new(point.clone(), vec![AnyScalar::from(Int64Scalar::new(x))]).unwrap();
+    ///
+    /// let points = TypedStructSerie::new(point.clone(), vec![row(1), row(2)]);
+    /// let rows: Vec<RecordScalar> = points.iter_records().collect();
+    /// assert_eq!(rows, vec![row(1), row(2)]);
+    /// assert_eq!(points.iter_records().len(), 2); // exact size, no walk
+    /// ```
+    pub fn iter_records(&self) -> impl ExactSizeIterator<Item = crate::RecordScalar> + DoubleEndedIterator
+    {
+        super::struct_serie::iter_records(self.values.as_ref(), self.len())
+    }
 }
 
 impl<S: Scalar<DataType = StructType>> Clone for TypedStructSerie<S> {

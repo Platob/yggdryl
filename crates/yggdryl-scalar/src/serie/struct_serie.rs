@@ -30,6 +30,24 @@ pub(crate) fn project_field(values: Option<&AnySerie>, index: usize) -> Option<A
         .map(|field_column| AnySerie::from_arrow(field_column.clone()))
 }
 
+/// An owning row iterator over a struct column: reconstitutes the column once (a
+/// reference-count bump), then slices one row per step and reads it back as a
+/// [`RecordScalar`] — the shared iterator behind both struct series' `iter_records`.
+/// A null serie (`values` is `None`) yields nothing.
+pub(crate) fn iter_records(
+    values: Option<&AnySerie>,
+    len: usize,
+) -> impl ExactSizeIterator<Item = RecordScalar> + DoubleEndedIterator {
+    let column = values.map(AnySerie::to_arrow);
+    (0..len).map(move |index| {
+        let row = column
+            .as_ref()
+            .expect("a serie with rows has a column")
+            .slice(index, 1);
+        RecordScalar::from_arrow(row.as_ref()).expect("a struct row reads back as a record")
+    })
+}
+
 /// A single, possibly-null `list<struct>` value with its row type erased — *our
 /// array* of struct rows, holding them as the crate's own [`AnySerie`] struct column,
 /// carrying a dynamic [`SerieType`](yggdryl_dtype::SerieType).
@@ -98,6 +116,16 @@ impl StructSerie {
         }
         let element = values.to_arrow().slice(index, 1);
         RecordScalar::from_arrow(element.as_ref()).ok()
+    }
+
+    /// An iterator over the rows as [`RecordScalar`](crate::RecordScalar) row atoms,
+    /// in order (a null row is the record's null; a null serie yields nothing). The
+    /// struct column is reconstituted **once**, and each step slices one row from it
+    /// — linear, unlike a [`get_row`](StructSerie::get_row) loop. The iterator owns a
+    /// reference-counted view of the column, borrowing nothing, and is
+    /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].
+    pub fn iter_records(&self) -> impl ExactSizeIterator<Item = RecordScalar> + DoubleEndedIterator {
+        iter_records(self.values.as_ref(), self.len())
     }
 }
 

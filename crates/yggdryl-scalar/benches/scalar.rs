@@ -314,6 +314,16 @@ fn record(c: &mut Criterion) {
         )
     });
 
+    // Iterating the rows against the indexed `get_scalar_at` loop above: the iterator
+    // reconstitutes the struct column once, then slices per row.
+    group.bench_function("struct_serie_iter_records", |b| {
+        b.iter(|| {
+            for record in points.iter_records() {
+                black_box(record);
+            }
+        })
+    });
+
     group.finish();
 }
 

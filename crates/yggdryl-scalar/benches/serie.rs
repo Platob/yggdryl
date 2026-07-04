@@ -84,6 +84,17 @@ fn arrow(c: &mut Criterion) {
         })
     });
 
+    // The iterator against the same generic serie: it reconstitutes the element
+    // column once and slices per step, where the `get_scalar_at` loop above
+    // reconstitutes it on every call — so this measures the linear-vs-quadratic gap.
+    group.bench_function("serie_iter_scalars", |b| {
+        b.iter(|| {
+            for scalar in generic.iter_scalars() {
+                black_box(scalar);
+            }
+        })
+    });
+
     group.finish();
 }
 

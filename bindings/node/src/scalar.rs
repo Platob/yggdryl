@@ -40,7 +40,8 @@
 //! accessor twin `RecordScalar` *is* bound), the struct-row series `StructSerie` /
 //! `TypedStructSerie`, and the type-erased `AnySerie` / `AnyScalar` holders behind
 //! them (whose fields cross as native JS values instead of as a class) — have no
-//! concrete FFI shape yet.
+//! concrete FFI shape yet. The lazy serie iterators (`iter_scalars` /
+//! `iter_records`) are Rust-only too; iterate the materialized `toArray()` instead.
 
 use napi::bindgen_prelude::{
     BigInt, Buffer, Error, FromNapiValue, Null, Object, Result, ToNapiValue,

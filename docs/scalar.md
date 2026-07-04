@@ -421,6 +421,49 @@ Each of `serie` / `map` / `optional` also has a dynamic base (`Serie`, `MapScala
 `OptionalScalar`) with the element type erased — the base `Scalar` surface only —
 that the typed generics `erase()` back to.
 
+Rust also **iterates** a serie: `iter_scalars()` walks the elements as inner
+scalars (`TypedSerie<D, S>` yields `S`, the dynamic `Serie` yields the type-erased
+`AnyScalar`), and `iter_records()` walks a struct serie's rows as `RecordScalar`
+atoms. Each reconstitutes the element column **once** and slices per step — so the
+walk is linear where a `get_scalar_at` loop reconstitutes on every call — and the
+returned iterator borrows nothing (it owns a reference-counted view of the column),
+so it is `ExactSizeIterator` / `DoubleEndedIterator`. The iterators are **Rust-only**
+(lazy, like the two-resource IO streams): the bindings iterate the materialized
+`to_pylist()` / `toArray()`, stated here and in both binding module docs.
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype
+
+    numbers = dtype.Int64SerieType().scalar([1, 2, 3])
+    # The lazy iterator is Rust-only; iterate the materialized list.
+    assert [value for value in numbers.to_pylist()] == [1, 2, 3]
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    const numbers = new dtype.Int64SerieType().scalar([1n, 2n, 3n])
+    // The lazy iterator is Rust-only; iterate the materialized array.
+    assert.deepEqual([...numbers.toArray()], [1n, 2n, 3n])
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_scalar::{Int64Scalar, Scalar, TypedSerie};
+
+    fn main() {
+        let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);
+        let values: Vec<i64> = numbers.iter_scalars().map(|s| s.as_i64().unwrap()).collect();
+        assert_eq!(values, vec![1, 2]);
+        assert_eq!(numbers.iter_scalars().len(), 2); // exact size, borrows nothing
+    }
+    ```
+
 ### AnySerie, AnyScalar and NestedSerie
 
 `AnySerie` is the type-erased column behind every nested scalar: the fixed-width

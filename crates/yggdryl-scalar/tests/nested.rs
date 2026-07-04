@@ -279,6 +279,47 @@ fn struct_serie_carries_a_null_row_among_present_ones() {
 }
 
 #[test]
+fn iter_records_walks_every_row_in_order() {
+    let rows = vec![point(1, 2), RecordScalar::null(point_type()), point(5, 6)];
+    let typed = TypedStructSerie::new(point_type(), rows.clone());
+
+    // Typed and erased series iterate identically — both yield RecordScalar rows,
+    // in order, with the null row preserved, and report their length exactly.
+    for serie_records in [
+        typed.iter_records().collect::<Vec<_>>(),
+        typed.erase().iter_records().collect::<Vec<_>>(),
+    ] {
+        assert_eq!(serie_records, rows);
+    }
+    assert_eq!(typed.iter_records().len(), 3);
+    assert_eq!(typed.erase().iter_records().len(), 3);
+
+    // The iterator agrees row-for-row with the indexed accessors.
+    for (index, record) in typed.iter_records().enumerate() {
+        assert_eq!(Some(&record), typed.get_scalar_at(index).as_ref());
+        assert_eq!(Some(record), typed.erase().get_row(index));
+    }
+
+    // Double-ended: reversed row order.
+    let reversed: Vec<RecordScalar> = typed.iter_records().rev().collect();
+    assert_eq!(reversed, vec![point(5, 6), RecordScalar::null(point_type()), point(1, 2)]);
+
+    // The empty serie and the null serie both iterate as empty.
+    assert_eq!(
+        TypedStructSerie::<RecordScalar>::new(point_type(), vec![])
+            .iter_records()
+            .count(),
+        0
+    );
+    assert_eq!(
+        TypedStructSerie::<RecordScalar>::null(point_type())
+            .iter_records()
+            .count(),
+        0
+    );
+}
+
+#[test]
 fn as_nested_accessors_follow_the_as_contract() {
     // as_serie: every serie shape answers; the handles agree through Arrow.
     let typed = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);

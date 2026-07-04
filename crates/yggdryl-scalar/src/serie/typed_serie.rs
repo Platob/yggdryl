@@ -135,6 +135,37 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
         let scalar = S::from_arrow(element.as_ref())?;
         T::from_scalar(&scalar)
     }
+
+    /// An iterator over the elements as inner scalars, in order (a null element is
+    /// the inner null scalar; a null serie yields nothing). The element column is
+    /// reconstituted **once**, and each step slices one element from it — so the
+    /// whole walk is linear, unlike a [`get_scalar_at`](TypedSerie::get_scalar_at)
+    /// loop, which reconstitutes the column on every call. The returned iterator
+    /// owns a reference-counted view of the column, so it borrows nothing and is
+    /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].
+    ///
+    /// ```
+    /// use yggdryl_scalar::{Int64Scalar, Scalar, TypedSerie};
+    ///
+    /// let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    /// let scalars: Vec<Int64Scalar> = numbers.iter_scalars().collect();
+    /// assert_eq!(scalars, vec![Int64Scalar::new(1), Int64Scalar::null()]);
+    /// assert_eq!(numbers.iter_scalars().len(), 2); // exact size, no walk
+    /// assert_eq!(TypedSerie::<_, Int64Scalar>::null().iter_scalars().count(), 0);
+    /// ```
+    pub fn iter_scalars(&self) -> impl ExactSizeIterator<Item = S> + DoubleEndedIterator {
+        let len = self.len();
+        // Reconstituted once (a reference-count bump for an Arrow-backed column, one
+        // rebuild for a decomposed one), then sliced per element below.
+        let elements = self.values.as_ref().map(AnySerie::to_arrow);
+        (0..len).map(move |index| {
+            let element = elements
+                .as_ref()
+                .expect("a serie with elements has a column")
+                .slice(index, 1);
+            S::from_arrow(element.as_ref()).expect("a serie element reads back as its scalar")
+        })
+    }
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>> Default for TypedSerie<D, S> {

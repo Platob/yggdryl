@@ -340,6 +340,57 @@ fn dynamic_serie_erases_and_round_trips() {
 }
 
 #[test]
+fn iter_scalars_walks_every_element_in_order() {
+    let numbers = Int64GenericSerie::new(vec![
+        Int64Scalar::new(1),
+        Int64Scalar::null(), // a null element yields the inner null scalar
+        Int64Scalar::new(3),
+    ]);
+
+    // Order, the null element, and exact size (without walking).
+    assert_eq!(numbers.iter_scalars().len(), 3);
+    let scalars: Vec<Int64Scalar> = numbers.iter_scalars().collect();
+    assert_eq!(
+        scalars,
+        vec![Int64Scalar::new(1), Int64Scalar::null(), Int64Scalar::new(3)]
+    );
+
+    // The iterator agrees element-for-element with the indexed accessor.
+    for (index, scalar) in numbers.iter_scalars().enumerate() {
+        assert_eq!(Some(scalar), numbers.get_scalar_at(index));
+    }
+
+    // Double-ended: reversed order.
+    let reversed: Vec<Int64Scalar> = numbers.iter_scalars().rev().collect();
+    assert_eq!(
+        reversed,
+        vec![Int64Scalar::new(3), Int64Scalar::null(), Int64Scalar::new(1)]
+    );
+
+    // The empty serie and the null serie both iterate as empty.
+    assert_eq!(Int64GenericSerie::new(vec![]).iter_scalars().count(), 0);
+    assert_eq!(Int64GenericSerie::null().iter_scalars().count(), 0);
+    assert_eq!(Int64GenericSerie::null().iter_scalars().len(), 0);
+}
+
+#[test]
+fn dynamic_serie_iter_scalars_yields_type_erased_atoms() {
+    let numbers = Int64GenericSerie::new(vec![Int64Scalar::new(10), Int64Scalar::new(20)]).erase();
+
+    let atoms: Vec<_> = numbers.iter_scalars().collect();
+    assert_eq!(atoms.len(), 2);
+    assert_eq!(numbers.iter_scalars().len(), 2);
+    let values: Vec<i64> = numbers
+        .iter_scalars()
+        .map(|atom| atom.int64().unwrap().as_i64().unwrap())
+        .collect();
+    assert_eq!(values, vec![10, 20]);
+
+    // A null dynamic serie iterates as empty.
+    assert_eq!(Int64GenericSerie::null().erase().iter_scalars().count(), 0);
+}
+
+#[test]
 fn serie_scalars_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Serie>();

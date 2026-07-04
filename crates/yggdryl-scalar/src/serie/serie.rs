@@ -61,6 +61,40 @@ impl Serie {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// An iterator over the elements as type-erased [`AnyScalar`](crate::AnyScalar)
+    /// atoms, in order (a null element is the atom's null; a null serie yields
+    /// nothing). Each step reads one element straight from the decomposed column —
+    /// a buffer read for a numeric element, a one-element slice for anything else —
+    /// so the walk never reconstitutes the whole Arrow array. The iterator owns a
+    /// reference-counted view of the column, borrowing nothing, and is
+    /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].
+    ///
+    /// ```
+    /// use yggdryl_scalar::{Int64Scalar, Scalar, TypedSerie};
+    ///
+    /// let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]).erase();
+    /// let values: Vec<i64> = numbers
+    ///     .iter_scalars()
+    ///     .map(|atom| atom.int64().unwrap().as_i64().unwrap()) // the zero-copy typed view
+    ///     .collect();
+    /// assert_eq!(values, vec![1, 2]);
+    /// assert_eq!(numbers.iter_scalars().len(), 2); // exact size, no walk
+    /// ```
+    pub fn iter_scalars(&self) -> impl ExactSizeIterator<Item = crate::AnyScalar> + DoubleEndedIterator
+    {
+        let len = self.len();
+        // A reference-count bump of the decomposed column; `get_scalar` then reads
+        // each element from its buffers (no whole-array reconstitution).
+        let values = self.values.clone();
+        (0..len).map(move |index| {
+            values
+                .as_ref()
+                .expect("a serie with elements has a column")
+                .get_scalar(index)
+                .expect("index within bounds")
+        })
+    }
 }
 
 impl PartialEq for Serie {
