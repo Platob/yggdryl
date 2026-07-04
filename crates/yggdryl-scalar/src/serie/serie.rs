@@ -81,8 +81,9 @@ impl Serie {
     /// assert_eq!(values, vec![1, 2]);
     /// assert_eq!(numbers.iter_scalars().len(), 2); // exact size, no walk
     /// ```
-    pub fn iter_scalars(&self) -> impl ExactSizeIterator<Item = crate::AnyScalar> + DoubleEndedIterator
-    {
+    pub fn iter_scalars(
+        &self,
+    ) -> impl ExactSizeIterator<Item = crate::AnyScalar> + DoubleEndedIterator {
         let len = self.len();
         // A reference-count bump of the decomposed column; `get_scalar` then reads
         // each element from its buffers (no whole-array reconstitution).

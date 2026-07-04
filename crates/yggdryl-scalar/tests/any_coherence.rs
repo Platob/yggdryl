@@ -11,8 +11,8 @@ use yggdryl_scalar::yggdryl_dtype::{DataError, DataType};
 use yggdryl_scalar::{
     arrow_array, AnyScalar, AnySerie, BinaryScalar, Float16Scalar, Float16Serie, Float32Scalar,
     Float32Serie, Float64Scalar, Float64Serie, Int16Scalar, Int16Serie, Int32Scalar, Int32Serie,
-    Int64Scalar, Int64Serie, Int8Scalar, Int8Serie, NullScalar, Scalar, Utf8Scalar, UInt16Scalar,
-    UInt16Serie, UInt32Scalar, UInt32Serie, UInt64Scalar, UInt64Serie, UInt8Scalar, UInt8Serie,
+    Int64Scalar, Int64Serie, Int8Scalar, Int8Serie, NullScalar, Scalar, UInt16Scalar, UInt16Serie,
+    UInt32Scalar, UInt32Serie, UInt64Scalar, UInt64Serie, UInt8Scalar, UInt8Serie, Utf8Scalar,
 };
 
 /// Assert a scalar survives the `AnyScalar` erasure losslessly: `is_null`,

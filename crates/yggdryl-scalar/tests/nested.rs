@@ -302,7 +302,10 @@ fn iter_records_walks_every_row_in_order() {
 
     // Double-ended: reversed row order.
     let reversed: Vec<RecordScalar> = typed.iter_records().rev().collect();
-    assert_eq!(reversed, vec![point(5, 6), RecordScalar::null(point_type()), point(1, 2)]);
+    assert_eq!(
+        reversed,
+        vec![point(5, 6), RecordScalar::null(point_type()), point(1, 2)]
+    );
 
     // The empty serie and the null serie both iterate as empty.
     assert_eq!(

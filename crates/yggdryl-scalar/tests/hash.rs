@@ -22,26 +22,49 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 // and the type de-duplicates in a `HashSet`.
 fn assert_hashes<T: Hash + Eq + Clone + std::fmt::Debug>(a: T, same: T, different: T) {
     assert_eq!(a, same, "the two values should be equal");
-    assert_eq!(hash_of(&a), hash_of(&same), "equal values must hash equally");
+    assert_eq!(
+        hash_of(&a),
+        hash_of(&same),
+        "equal values must hash equally"
+    );
     assert_ne!(a, different, "the third value should differ");
 
     let set: HashSet<T> = [a.clone(), same, different.clone()].into_iter().collect();
-    assert_eq!(set.len(), 2, "equal values collapse, the different one stays");
+    assert_eq!(
+        set.len(),
+        2,
+        "equal values collapse, the different one stays"
+    );
     assert!(set.contains(&a));
     assert!(set.contains(&different));
 }
 
 #[test]
 fn integer_scalars_are_hashable() {
-    assert_hashes(Int64Scalar::new(1), Int64Scalar::new(1), Int64Scalar::new(2));
-    assert_hashes(UInt8Scalar::new(7), UInt8Scalar::new(7), UInt8Scalar::new(8));
+    assert_hashes(
+        Int64Scalar::new(1),
+        Int64Scalar::new(1),
+        Int64Scalar::new(2),
+    );
+    assert_hashes(
+        UInt8Scalar::new(7),
+        UInt8Scalar::new(7),
+        UInt8Scalar::new(8),
+    );
     // Null is a distinct, hashable value.
-    assert_hashes(Int64Scalar::null(), Int64Scalar::null(), Int64Scalar::new(0));
+    assert_hashes(
+        Int64Scalar::null(),
+        Int64Scalar::null(),
+        Int64Scalar::new(0),
+    );
 }
 
 #[test]
 fn null_scalar_is_hashable() {
-    assert_eq!(hash_of(&NullScalar::default()), hash_of(&NullScalar::default()));
+    assert_eq!(
+        hash_of(&NullScalar::default()),
+        hash_of(&NullScalar::default())
+    );
     let set: HashSet<NullScalar> = [NullScalar::default(), NullScalar::default()]
         .into_iter()
         .collect();
@@ -128,6 +151,9 @@ fn concrete_series_are_hashable() {
     // A per-element null is respected: [1, null] differs from [1, 2], and the null
     // slot's arbitrary buffer byte does not leak into the hash.
     let with_null = Int64Serie::from(vec![Some(1), None]);
-    assert_eq!(hash_of(&with_null), hash_of(&Int64Serie::from(vec![Some(1), None])));
+    assert_eq!(
+        hash_of(&with_null),
+        hash_of(&Int64Serie::from(vec![Some(1), None]))
+    );
     assert_ne!(with_null, Int64Serie::from(vec![Some(1), Some(2)]));
 }

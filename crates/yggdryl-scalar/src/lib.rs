@@ -104,10 +104,10 @@ pub mod null;
 pub mod optional;
 pub mod record;
 pub mod serie;
-pub mod utf8;
 pub mod r#struct;
 pub mod typed_map;
 pub mod typed_optional;
+pub mod utf8;
 
 pub use binary::BinaryScalar;
 pub use map::MapScalar;
@@ -120,9 +120,9 @@ pub use serie::{
     Int8Serie, Serie, StructSerie, TypedSerie, TypedStructSerie, UInt16Serie, UInt32Serie,
     UInt64Serie, UInt8Serie,
 };
-pub use utf8::Utf8Scalar;
 pub use typed_map::TypedMapScalar;
 pub use typed_optional::TypedOptionalScalar;
+pub use utf8::Utf8Scalar;
 
 pub use float::{Float16Scalar, Float32Scalar, Float64Scalar};
 pub use integer::{

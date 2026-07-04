@@ -74,9 +74,9 @@ pub mod map;
 pub mod null;
 pub mod optional;
 pub mod serie;
-pub mod utf8;
 pub mod r#struct;
 pub mod union;
+pub mod utf8;
 
 pub use binary::BinaryType;
 pub use map::{Map, MapType, TypedMap, TypedMapType};
@@ -84,8 +84,8 @@ pub use null::NullType;
 pub use optional::{Optional, OptionalType, TypedOptional, TypedOptionalType};
 pub use r#struct::{Struct, StructType, TypedStruct};
 pub use serie::{Serie, SerieType, TypedSerie, TypedSerieType};
-pub use utf8::Utf8Type;
 pub use union::{TypedUnion, Union, UnionType};
+pub use utf8::Utf8Type;
 
 pub use float::{Float16Type, Float32Type, Float64Type};
 pub use integer::{

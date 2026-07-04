@@ -31,11 +31,11 @@ use yggdryl_scalar::{AnyScalar, Scalar};
 use crate::data_error;
 use crate::dtype::{
     BinaryType, Float16SerieType, Float16Type, Float32SerieType, Float32Type, Float64SerieType,
-    Float64Type, Int64SerieType, Int64Type, NullType, Utf8Type, StructType,
+    Float64Type, Int64SerieType, Int64Type, NullType, StructType, Utf8Type,
 };
 use crate::field::{
     BinaryField, Float16Field, Float16SerieField, Float32Field, Float32SerieField, Float64Field,
-    Float64SerieField, Int64Field, Int64SerieField, NullField, Utf8Field, StructField,
+    Float64SerieField, Int64Field, Int64SerieField, NullField, StructField, Utf8Field,
 };
 use crate::scalar::{
     BinaryScalar, Float16Scalar, Float16Serie, Float32Scalar, Float32Serie, Float64Scalar,
@@ -423,9 +423,9 @@ pub fn dtype(
         Classified::Float32Serie(_) | Classified::Float32SerieType => {
             Either12::H(Float32SerieType::default())
         }
-        Classified::Value(Inferred::Utf8(_))
-        | Classified::Utf8Scalar(_)
-        | Classified::Utf8Type => Either12::J(Utf8Type::default()),
+        Classified::Value(Inferred::Utf8(_)) | Classified::Utf8Scalar(_) | Classified::Utf8Type => {
+            Either12::J(Utf8Type::default())
+        }
         Classified::Float16Scalar(_) | Classified::Float16Type => {
             Either12::K(Float16Type::default())
         }
@@ -506,11 +506,11 @@ pub fn field(
                 inner: yggdryl_field::TypedSerieField::new(name, nullable),
             })
         }
-        Classified::Value(Inferred::Utf8(_))
-        | Classified::Utf8Scalar(_)
-        | Classified::Utf8Type => Either12::J(Utf8Field {
-            inner: yggdryl_field::Utf8Field::new(name, nullable),
-        }),
+        Classified::Value(Inferred::Utf8(_)) | Classified::Utf8Scalar(_) | Classified::Utf8Type => {
+            Either12::J(Utf8Field {
+                inner: yggdryl_field::Utf8Field::new(name, nullable),
+            })
+        }
         Classified::Float16Scalar(_) | Classified::Float16Type => Either12::K(Float16Field {
             inner: yggdryl_field::Float16Field::new(name, nullable),
         }),

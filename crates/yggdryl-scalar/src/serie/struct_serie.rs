@@ -124,7 +124,9 @@ impl StructSerie {
     /// — linear, unlike a [`get_row`](StructSerie::get_row) loop. The iterator owns a
     /// reference-counted view of the column, borrowing nothing, and is
     /// [`ExactSizeIterator`] / [`DoubleEndedIterator`].
-    pub fn iter_records(&self) -> impl ExactSizeIterator<Item = RecordScalar> + DoubleEndedIterator {
+    pub fn iter_records(
+        &self,
+    ) -> impl ExactSizeIterator<Item = RecordScalar> + DoubleEndedIterator {
         iter_records(self.values.as_ref(), self.len())
     }
 }

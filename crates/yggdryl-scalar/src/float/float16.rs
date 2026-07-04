@@ -45,7 +45,13 @@ impl std::cmp::Eq for Float16Scalar {}
 impl std::hash::Hash for Float16Scalar {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.value
-            .map(|value| if value.to_f32() == 0.0 { 0 } else { value.to_bits() })
+            .map(|value| {
+                if value.to_f32() == 0.0 {
+                    0
+                } else {
+                    value.to_bits()
+                }
+            })
             .hash(state);
     }
 }

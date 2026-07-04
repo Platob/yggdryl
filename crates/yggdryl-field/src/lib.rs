@@ -69,12 +69,12 @@ pub mod map;
 pub mod null;
 pub mod optional;
 pub mod serie;
-pub mod utf8;
 pub mod r#struct;
 pub mod typed_map;
 pub mod typed_optional;
 pub mod typed_serie;
 pub mod union;
+pub mod utf8;
 
 pub use binary::BinaryField;
 pub use map::MapField;
@@ -82,11 +82,11 @@ pub use null::NullField;
 pub use optional::OptionalField;
 pub use r#struct::StructField;
 pub use serie::SerieField;
-pub use utf8::Utf8Field;
 pub use typed_map::TypedMapField;
 pub use typed_optional::TypedOptionalField;
 pub use typed_serie::TypedSerieField;
 pub use union::UnionField;
+pub use utf8::Utf8Field;
 
 pub use float::{Float16Field, Float32Field, Float64Field};
 pub use integer::{

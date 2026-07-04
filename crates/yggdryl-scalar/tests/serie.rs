@@ -365,7 +365,11 @@ fn iter_scalars_walks_every_element_in_order() {
     let scalars: Vec<Int64Scalar> = numbers.iter_scalars().collect();
     assert_eq!(
         scalars,
-        vec![Int64Scalar::new(1), Int64Scalar::null(), Int64Scalar::new(3)]
+        vec![
+            Int64Scalar::new(1),
+            Int64Scalar::null(),
+            Int64Scalar::new(3)
+        ]
     );
 
     // The iterator agrees element-for-element with the indexed accessor.
@@ -377,7 +381,11 @@ fn iter_scalars_walks_every_element_in_order() {
     let reversed: Vec<Int64Scalar> = numbers.iter_scalars().rev().collect();
     assert_eq!(
         reversed,
-        vec![Int64Scalar::new(3), Int64Scalar::null(), Int64Scalar::new(1)]
+        vec![
+            Int64Scalar::new(3),
+            Int64Scalar::null(),
+            Int64Scalar::new(1)
+        ]
     );
 
     // The empty serie and the null serie both iterate as empty.

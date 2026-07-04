@@ -15,8 +15,8 @@ mod raw_cursor;
 mod raw_slice;
 mod seekable;
 mod slice;
-mod utf8_buffer;
 mod typed;
+mod utf8_buffer;
 mod whence;
 
 pub use bit_buffer::BitBuffer;
@@ -28,8 +28,8 @@ pub use raw_cursor::RawIOCursor;
 pub use raw_slice::RawIOSlice;
 pub use seekable::Seekable;
 pub use slice::IOSlice;
-pub use utf8_buffer::Utf8Buffer;
 pub use typed::IOBase;
+pub use utf8_buffer::Utf8Buffer;
 pub use whence::Whence;
 
 /// Bytes copied per chunk by the default `pread_raw_io` / `pwrite_raw_io` streams, so a

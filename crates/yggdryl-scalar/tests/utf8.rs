@@ -4,7 +4,7 @@
 
 use yggdryl_scalar::yggdryl_core::{IOBase, Latin1, RawIOBase, Whence};
 use yggdryl_scalar::yggdryl_dtype::{DataError, DataType, Logical, Utf8Type};
-use yggdryl_scalar::{arrow_array, Scalar, ScalarFactory, Utf8Scalar, TypedScalar};
+use yggdryl_scalar::{arrow_array, Scalar, ScalarFactory, TypedScalar, Utf8Scalar};
 
 #[test]
 fn holds_a_string_or_null_and_borrows_it() {

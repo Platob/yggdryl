@@ -136,8 +136,9 @@ impl<S: Scalar<DataType = StructType>> TypedStructSerie<S> {
     /// assert_eq!(rows, vec![row(1), row(2)]);
     /// assert_eq!(points.iter_records().len(), 2); // exact size, no walk
     /// ```
-    pub fn iter_records(&self) -> impl ExactSizeIterator<Item = crate::RecordScalar> + DoubleEndedIterator
-    {
+    pub fn iter_records(
+        &self,
+    ) -> impl ExactSizeIterator<Item = crate::RecordScalar> + DoubleEndedIterator {
         super::struct_serie::iter_records(self.values.as_ref(), self.len())
     }
 }
