@@ -114,6 +114,15 @@ fn format_arrow(array: &dyn Array, index: usize) -> String {
                 format!("[{}]", cells.join(", "))
             })
             .unwrap_or_else(|| "[…]".to_string()),
+        DataType::Null => "null".to_string(),
+        // A union (an `optional`'s storage): unwrap into the active variant and format
+        // that child — recursing on the *child*, never the union itself, so it always
+        // terminates (formatting the union directly would loop forever).
+        DataType::Union(..) => array
+            .as_any()
+            .downcast_ref::<arrow_array::UnionArray>()
+            .map(|union| format_arrow(union.value(index).as_ref(), 0))
+            .unwrap_or_else(|| "null".to_string()),
         // Numeric / other leaves: read the one element through a one-row AnyScalar.
         _ => {
             let one = AnyScalar::from_arrow(array.slice(index, 1));

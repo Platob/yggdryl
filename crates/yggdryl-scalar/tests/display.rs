@@ -52,6 +52,19 @@ fn data_type_signatures_are_recursive() {
     assert_eq!(optional.display(), "optional<int64>");
 }
 
+#[test]
+fn optional_scalar_displays_the_inner_value_not_its_union() {
+    // Regression: an optional's storage is a union; displaying it must delegate to the
+    // inner scalar (or `null`), never recurse into the union representation.
+    use yggdryl_scalar::yggdryl_dtype::Int64Type;
+    use yggdryl_scalar::TypedOptionalScalar;
+
+    let some = TypedOptionalScalar::<Int64Type, Int64Scalar>::new(Int64Scalar::new(7));
+    assert_eq!(some.display(), "7");
+    let none: TypedOptionalScalar<Int64Type, Int64Scalar> = TypedOptionalScalar::null();
+    assert_eq!(none.display(), "null");
+}
+
 // ---- serie tables ----
 
 #[test]

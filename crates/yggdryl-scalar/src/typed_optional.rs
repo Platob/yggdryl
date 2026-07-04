@@ -149,6 +149,15 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
         self.value.as_ref().and_then(|scalar| scalar.value())
     }
 
+    // Delegate to the inner scalar (its own value/table), or `null` — rendering the
+    // union storage directly would be noise.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        match &self.value {
+            Some(scalar) => scalar.display_with(options),
+            None => "null".to_string(),
+        }
+    }
+
     fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
         let storage = self.data_type.storage();
         let (_, value_field) = storage
