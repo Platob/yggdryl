@@ -450,11 +450,14 @@ type) with the first `max_rows` (default **10**) elements and a `… (N more)` f
 and a **map** a two-column `key | value` table. Any value that lands in a *cell* — a
 struct field, a list element, a map entry — is shown compactly inline (`{x: 1}`,
 `[1, 2, …]`, `{7: 42, …}`), and nesting past a small depth collapses to a bare `{…}` /
-`[…]` so a deeply-nested value stays readable. Wide tables try to fit `max_width`
-(default 100) by collapsing trailing columns into a `…` column. Only `max_rows` are
-ever formatted — even a map, which assembles just its first rows — so displaying a huge
-value is cheap. Pass explicit limits with `display_with` (Rust / Python) /
-`displayWith` (Node); the concrete series also expose a fast `field()`.
+`[…]` so a deeply-nested value stays readable. Column widths are **adaptive**: each is
+sized to its content, and a table wider than `max_width` (default 100) squeezes its
+variable-length (utf8 / binary / nested) columns first, dropping trailing columns into a
+`…` column only as a last resort — a numeric column keeps every digit rather than
+truncating a number. Only `max_rows` are ever formatted — even a map, which assembles
+just its first rows — so displaying a huge value is cheap. Pass explicit limits with
+`display_with` (Rust / Python) / `displayWith` (Node); the concrete series also expose a
+fast `field()`.
 
 === "Python"
 

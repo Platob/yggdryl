@@ -6,12 +6,22 @@
 //! serie / record renders as a multi-column table (one column per field), and a
 //! **map** as a two-column `key | value` table. Any value that lands in a *cell*
 //! (a struct field, a list element, a map key/value) is shown compactly inline —
-//! `{x: 1, name: "a"}`, `[1, 2, …]`, `{7: 42, …}` — so the whole thing tries to fit
-//! the [`max_width`](DisplayOptions::max_width). Nesting past [`MAX_DEPTH`] collapses
+//! `{x: 1, name: "a"}`, `[1, 2, …]`, `{7: 42, …}`. Nesting past [`MAX_DEPTH`] collapses
 //! to a bare `{…}` / `[…]`, which both keeps a pathological value readable and is the
-//! backstop that stops a container type with no dedicated arm (a bare Arrow union or
-//! map) from recursing forever. The [`Display`](std::fmt::Display) impls use the
-//! defaults ([`DisplayOptions::default`]); `display_with` takes an explicit
+//! backstop that stops a self-referential value from recursing forever.
+//!
+//! **Every value is formatted through the crate's own scalars** — the decomposed
+//! numerics, then [`Utf8Scalar`](crate::Utf8Scalar) / [`BinaryScalar`](crate::BinaryScalar)
+//! / [`RecordScalar`](crate::RecordScalar) / [`Serie`](crate::Serie) /
+//! [`MapScalar`](crate::MapScalar) / [`OptionalScalar`](crate::OptionalScalar) — never by
+//! reaching into an Arrow array; the data type only *routes* to the right scalar.
+//!
+//! Column widths are **adaptive**: each column is discovered from its content, then a
+//! table too wide for [`max_width`](DisplayOptions::max_width) squeezes its *elastic*
+//! columns (variable-length utf8 / binary / nested values — see [`value_profile`]) and
+//! only drops whole columns into a trailing `…` column as a last resort, so a **rigid**
+//! numeric column never has its digits truncated. The [`Display`](std::fmt::Display)
+//! impls use the defaults ([`DisplayOptions::default`]); `display_with` takes an explicit
 //! [`DisplayOptions`].
 
 use crate::AnyScalar;
@@ -25,8 +35,9 @@ pub struct DisplayOptions {
     /// The maximum number of rows a serie / struct-serie table prints before it
     /// truncates with a `… (N more)` footer. Default `10`.
     pub max_rows: usize,
-    /// The width, in characters, the table tries to fit — columns that overflow are
-    /// dropped into a trailing `…` column and long cells are elided. Default `100`.
+    /// The width, in characters, the table tries to fit — elastic (variable-length)
+    /// columns are squeezed first, then trailing columns are dropped into a `…` column;
+    /// rigid numeric columns keep their digits. Default `100`.
     pub max_width: usize,
 }
 
@@ -44,26 +55,66 @@ const MAX_CELL: usize = 40;
 
 /// How deep a nested cell (a struct/list/map inside a struct/list/map) recurses before
 /// it collapses to a bare `{…}` / `[…]`. It keeps a pathological value readable, and —
-/// because every arm that recurses (including the `_` fallback's bounce back through
-/// [`format_any`]) counts against it — it is the hard backstop that stops a container
-/// type with no dedicated arm (a bare Arrow union or map) from recursing forever.
+/// because every recursing arm (including an optional unwrapping its inner value) counts
+/// against it — it is the hard backstop that stops a self-referential value from
+/// recursing forever.
 const MAX_DEPTH: usize = 5;
 
 /// The most elements a nested `list` or `map` cell prints inline before it elides the
 /// tail with `…`.
 const MAX_INLINE: usize = 6;
 
+/// The narrowest a column is ever shrunk to when fitting the width budget — narrow
+/// enough to reclaim space, wide enough that `ab…` still says something.
+const MIN_COL: usize = 3;
+
+/// The width an **elastic** column (a variable-length utf8 / binary / nested value)
+/// may be squeezed down to before whole columns start being dropped instead.
+const ELASTIC_FLOOR: usize = 8;
+
 /// Elide `text` to `max` characters (counting `char`s, good enough for debug), adding
-/// a trailing `…` when cut.
+/// a trailing `…` when cut. The result is always at most `max` characters.
 fn elide(text: &str, max: usize) -> String {
     let count = text.chars().count();
     if count <= max {
         return text.to_string();
     }
-    let keep = max.saturating_sub(1).max(1);
-    let mut out: String = text.chars().take(keep).collect();
-    out.push('…');
-    out
+    match max {
+        0 => String::new(),
+        1 => "…".to_string(),
+        _ => {
+            let mut out: String = text.chars().take(max - 1).collect();
+            out.push('…');
+            out
+        }
+    }
+}
+
+/// The datatype-derived rendering profile of a column value: the widest a single value
+/// can print (`cap`), and whether the column is **elastic** — a variable-length value
+/// (utf8, binary, or a nested list/struct/map) that may be abbreviated to fit the
+/// screen, as opposed to a fixed-width number / bool / null whose digits must never be
+/// truncated. This is where display leans on *our* data types: the type, not the
+/// stringified value, decides how a column may be squeezed.
+fn value_profile(data_type: &DataType) -> (usize, bool) {
+    match data_type {
+        DataType::Boolean => (5, false), // "false"
+        DataType::Int8 => (4, false),    // "-128"
+        DataType::Int16 => (6, false),   // "-32768"
+        DataType::Int32 => (11, false),  // "-2147483648"
+        DataType::Int64 => (20, false),  // "-9223372036854775808"
+        DataType::UInt8 => (3, false),   // "255"
+        DataType::UInt16 => (5, false),  // "65535"
+        DataType::UInt32 => (10, false), // "4294967295"
+        DataType::UInt64 => (20, false), // "18446744073709551615"
+        DataType::Float16 => (12, false),
+        DataType::Float32 => (16, false),
+        DataType::Float64 => (24, false),
+        DataType::Null => (4, false), // "null"
+        // Everything variable-length (utf8, binary, list, struct, map, union, …) may
+        // be elided to fit.
+        _ => (MAX_CELL, true),
+    }
 }
 
 /// The display width of `text` in characters.
@@ -71,136 +122,65 @@ fn width(text: &str) -> usize {
     text.chars().count()
 }
 
-/// Format one element of an Arrow array at `index` compactly — the fallback for the
-/// values a type-erased [`AnyScalar`] holds as Arrow (utf8, binary, null and the
-/// nested types), and for the cells of a struct column. `depth` bounds nesting (see
-/// [`MAX_DEPTH`]).
-fn format_arrow(array: &dyn Array, index: usize, depth: usize) -> String {
-    use arrow_array::{
-        BinaryArray, BooleanArray, LargeListArray, LargeStringArray, ListArray, MapArray,
-        StringArray, StructArray,
-    };
-    if index >= array.len() || array.is_null(index) {
+/// Format a struct row as a compact inline cell `{name: v, …}`, reading each field
+/// through the record's own [`AnyScalar`](crate::AnyScalar) — never an Arrow downcast.
+fn format_record_cell(record: &crate::RecordScalar, depth: usize) -> String {
+    use crate::Scalar;
+    let Some(scalars) = record.value() else {
         return "null".to_string();
-    }
-    // Past the depth budget a nested container collapses to a bare marker — both to
-    // keep a pathological value readable and to guarantee termination.
-    if depth > MAX_DEPTH {
-        return match array.data_type() {
-            DataType::Struct(_) | DataType::Map(..) | DataType::Union(..) => "{…}".to_string(),
-            DataType::List(_) | DataType::LargeList(_) => "[…]".to_string(),
-            _ => "…".to_string(),
-        };
-    }
-    match array.data_type() {
-        DataType::Utf8 => array
-            .as_any()
-            .downcast_ref::<StringArray>()
-            .map(|a| format!("{:?}", a.value(index)))
-            .unwrap_or_else(|| "?".to_string()),
-        DataType::LargeUtf8 => array
-            .as_any()
-            .downcast_ref::<LargeStringArray>()
-            .map(|a| format!("{:?}", a.value(index)))
-            .unwrap_or_else(|| "?".to_string()),
-        DataType::Binary => array
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .map(|a| hex(a.value(index)))
-            .unwrap_or_else(|| "?".to_string()),
-        DataType::Boolean => array
-            .as_any()
-            .downcast_ref::<BooleanArray>()
-            .map(|a| a.value(index).to_string())
-            .unwrap_or_else(|| "?".to_string()),
-        DataType::Struct(_) => array
-            .as_any()
-            .downcast_ref::<StructArray>()
-            .map(|entries| {
-                let inner = entries
-                    .columns()
-                    .iter()
-                    .zip(struct_field_names(entries))
-                    .map(|(column, name)| {
-                        format!("{name}: {}", format_arrow(column, index, depth + 1))
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{{{inner}}}")
-            })
-            .unwrap_or_else(|| "{…}".to_string()),
-        DataType::List(_) => array
-            .as_any()
-            .downcast_ref::<ListArray>()
-            .map(|list| format_list_cell(&list.value(index), depth))
-            .unwrap_or_else(|| "[…]".to_string()),
-        DataType::LargeList(_) => array
-            .as_any()
-            .downcast_ref::<LargeListArray>()
-            .map(|list| format_list_cell(&list.value(index), depth))
-            .unwrap_or_else(|| "[…]".to_string()),
-        // A map: its entries struct's key/value pair up as `{key: value, …}`.
-        DataType::Map(..) => array
-            .as_any()
-            .downcast_ref::<MapArray>()
-            .map(|map| {
-                let entries = map.value(index);
-                let keys = entries.column(0);
-                let values = entries.column(1);
-                let shown = entries.len().min(MAX_INLINE);
-                let mut cells: Vec<String> = (0..shown)
-                    .map(|i| {
-                        format!(
-                            "{}: {}",
-                            format_arrow(keys, i, depth + 1),
-                            format_arrow(values, i, depth + 1)
-                        )
-                    })
-                    .collect();
-                if entries.len() > shown {
-                    cells.push("…".to_string());
-                }
-                format!("{{{}}}", cells.join(", "))
-            })
-            .unwrap_or_else(|| "{…}".to_string()),
-        DataType::Null => "null".to_string(),
-        // A union (an `optional`'s storage): unwrap into the active variant and format
-        // that child — recursing on the *child*, never the union itself, so it always
-        // terminates (formatting the union directly would loop forever).
-        DataType::Union(..) => array
-            .as_any()
-            .downcast_ref::<arrow_array::UnionArray>()
-            .map(|union| format_arrow(union.value(index).as_ref(), 0, depth + 1))
-            .unwrap_or_else(|| "null".to_string()),
-        // Numeric / other leaves: read the one element through a one-row AnyScalar. The
-        // bounce carries `depth`, so a container type with no arm above still hits the
-        // depth backstop instead of looping.
-        _ => {
-            let one = AnyScalar::from_arrow(array.slice(index, 1));
-            format_any_at(&one, depth)
-        }
-    }
+    };
+    let fields = yggdryl_dtype::Struct::fields(record.data_type());
+    let inner = scalars
+        .iter()
+        .zip(fields.iter())
+        .map(|(scalar, field)| format!("{}: {}", field.name(), format_any_at(scalar, depth + 1)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{{{inner}}}")
 }
 
-/// Format a list element (already sliced out of its parent) as `[a, b, …]`, showing
-/// the first [`MAX_INLINE`] items — shared by the `List` and `LargeList` cell arms.
-fn format_list_cell(element: &dyn Array, depth: usize) -> String {
-    let shown = element.len().min(MAX_INLINE);
+/// Format a serie's items as a compact inline cell `[a, b, …]` (the first [`MAX_INLINE`]
+/// shown), reading each element through the column's own [`AnyScalar`](crate::AnyScalar).
+fn format_serie_cell(items: &crate::AnySerie, depth: usize) -> String {
+    let shown = items.len().min(MAX_INLINE);
     let mut cells: Vec<String> = (0..shown)
-        .map(|i| format_arrow(element, i, depth + 1))
+        .map(|index| {
+            items.get_scalar(index).map_or_else(
+                || "null".to_string(),
+                |scalar| format_any_at(&scalar, depth + 1),
+            )
+        })
         .collect();
-    if element.len() > shown {
+    if items.len() > shown {
         cells.push("…".to_string());
     }
     format!("[{}]", cells.join(", "))
 }
 
-/// The field names of a struct array (its child field names), in column order.
-fn struct_field_names(entries: &arrow_array::StructArray) -> Vec<String> {
-    match entries.data_type() {
-        DataType::Struct(fields) => fields.iter().map(|f| f.name().to_string()).collect(),
-        _ => (0..entries.num_columns()).map(|i| i.to_string()).collect(),
+/// Format a map's entries as a compact inline cell `{k: v, …}` (the first [`MAX_INLINE`]
+/// shown), reading the key and value columns through the map's own
+/// [`AnySerie`](crate::AnySerie) projections.
+fn format_map_cell(map: &crate::MapScalar, depth: usize) -> String {
+    use crate::NestedSerie;
+    let (Some(keys), Some(values)) = (map.child_serie_by("key"), map.child_serie_by("value"))
+    else {
+        return "null".to_string();
+    };
+    let len = keys.len().min(values.len());
+    let shown = len.min(MAX_INLINE);
+    let cell = |serie: &crate::AnySerie, index: usize| {
+        serie.get_scalar(index).map_or_else(
+            || "null".to_string(),
+            |scalar| format_any_at(&scalar, depth + 1),
+        )
+    };
+    let mut cells: Vec<String> = (0..shown)
+        .map(|index| format!("{}: {}", cell(&keys, index), cell(&values, index)))
+        .collect();
+    if len > shown {
+        cells.push("…".to_string());
     }
+    format!("{{{}}}", cells.join(", "))
 }
 
 /// A byte slice as `0x`-prefixed hex, the first 16 bytes then `…`.
@@ -217,14 +197,19 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// Format a type-erased [`AnyScalar`] as a compact cell value — the shared value
-/// formatter behind every table cell and the atomic scalars' own display.
+/// formatter behind every table cell and the atomic scalars' own display. Every value
+/// is read through the crate's **own** scalars: the decomposed numerics, then
+/// [`Utf8Scalar`](crate::Utf8Scalar) / [`BinaryScalar`](crate::BinaryScalar) /
+/// [`RecordScalar`](crate::RecordScalar) / [`Serie`](crate::Serie) /
+/// [`MapScalar`](crate::MapScalar) / [`OptionalScalar`](crate::OptionalScalar) — the
+/// data type only *routes* to the right scalar, it is never formatted out of Arrow.
 pub(crate) fn format_any(any: &AnyScalar) -> String {
     format_any_at(any, 0)
 }
 
-/// [`format_any`] carrying the current nesting `depth`, so the Arrow bounce keeps
-/// counting against [`MAX_DEPTH`] rather than resetting it (the recursion backstop).
+/// [`format_any`] carrying the current nesting `depth` (see [`MAX_DEPTH`]).
 fn format_any_at(any: &AnyScalar, depth: usize) -> String {
+    use crate::{BinaryScalar, MapScalar, OptionalScalar, RecordScalar, Scalar, Serie, Utf8Scalar};
     if any.is_null() {
         return "null".to_string();
     }
@@ -232,32 +217,174 @@ fn format_any_at(any: &AnyScalar, depth: usize) -> String {
     macro_rules! numeric {
         ($($accessor:ident),+ $(,)?) => {
             $(if let Some(scalar) = any.$accessor() {
-                if let Some(value) = crate::Scalar::value(scalar) {
+                if let Some(value) = Scalar::value(scalar) {
                     return value.to_string();
                 }
             })+
         };
     }
     numeric!(int8, int16, int32, int64, uint8, uint16, uint32, uint64, float16, float32, float64);
-    // Everything else (utf8, binary, null, nested) is held as Arrow.
-    match any.arrow() {
-        Some(array) => format_arrow(array.as_ref(), 0, depth + 1),
-        None => "null".to_string(),
+    let data_type = any.data_type();
+    // Past the depth budget a nested value collapses to a bare marker — both to keep a
+    // pathological value readable and as the hard stop against a container type
+    // recursing forever.
+    if depth > MAX_DEPTH {
+        return match data_type {
+            DataType::Struct(_) | DataType::Map(..) | DataType::Union(..) => "{…}".to_string(),
+            DataType::List(_) | DataType::LargeList(_) => "[…]".to_string(),
+            _ => "…".to_string(),
+        };
+    }
+    // Recover the value as its concrete scalar and read through *that*.
+    match data_type {
+        DataType::Utf8 | DataType::LargeUtf8 => any
+            .unwrap::<Utf8Scalar>()
+            .ok()
+            .and_then(|scalar| scalar.value().map(|text| format!("{text:?}")))
+            .unwrap_or_else(|| "null".to_string()),
+        DataType::Binary | DataType::LargeBinary => any
+            .unwrap::<BinaryScalar>()
+            .ok()
+            .and_then(|scalar| scalar.value().map(hex))
+            .unwrap_or_else(|| "null".to_string()),
+        DataType::Struct(_) => match any.unwrap::<RecordScalar>() {
+            Ok(record) => format_record_cell(&record, depth),
+            Err(_) => "{…}".to_string(),
+        },
+        DataType::List(_) | DataType::LargeList(_) => match any.unwrap::<Serie>() {
+            Ok(serie) => serie.value().map_or_else(
+                || "null".to_string(),
+                |items| format_serie_cell(items, depth),
+            ),
+            Err(_) => "[…]".to_string(),
+        },
+        DataType::Map(..) => match any.unwrap::<MapScalar>() {
+            Ok(map) => format_map_cell(&map, depth),
+            Err(_) => "{…}".to_string(),
+        },
+        // An optional's union storage: recover it and format the inner value (or null),
+        // recursing on the *inner* — never the union — so it always terminates.
+        DataType::Union(..) => match any.unwrap::<OptionalScalar>() {
+            Ok(optional) => match optional.value() {
+                Some(child) => {
+                    let inner = AnyScalar::from_arrow(arrow_array::make_array(child.to_data()));
+                    format_any_at(&inner, depth + 1)
+                }
+                None => "null".to_string(),
+            },
+            Err(_) => "null".to_string(),
+        },
+        // `null`, and anything the crate's scalars do not model.
+        _ => "null".to_string(),
     }
 }
 
-/// A single table column: its two-line header (name, then type signature) and its
-/// already-formatted cells.
+/// A single table column: its two-line header (name, then type signature), its
+/// already-formatted cells, and — from the column's data type — how wide a value may
+/// print (`cap`) and whether it is `elastic` (abbreviable to fit the screen).
 pub(crate) struct Column {
     pub name: String,
     pub type_signature: String,
     pub cells: Vec<String>,
+    cap: usize,
+    elastic: bool,
+}
+
+impl Column {
+    /// A column of `data_type` values — its width cap and elasticity come from the
+    /// type (see [`value_profile`]).
+    fn typed(
+        name: String,
+        type_signature: String,
+        cells: Vec<String>,
+        data_type: &DataType,
+    ) -> Self {
+        let (cap, elastic) = value_profile(data_type);
+        Self {
+            name,
+            type_signature,
+            cells,
+            cap,
+            elastic,
+        }
+    }
+
+    /// A column of free-form text with no single data type — a record's `field` /
+    /// `value` sides and the overflow `…` marker: elastic, capped generously.
+    fn text(name: String, type_signature: String, cells: Vec<String>) -> Self {
+        Self {
+            name,
+            type_signature,
+            cells,
+            cap: MAX_CELL,
+            elastic: true,
+        }
+    }
+
+    /// The width this column would take unsqueezed: the widest of its header lines and
+    /// its cells.
+    fn discovered_width(&self) -> usize {
+        self.cells
+            .iter()
+            .map(|c| width(c))
+            .chain([width(&self.name), width(&self.type_signature)])
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The narrowest this column may be squeezed to: the name always stays legible, a
+    /// rigid number/bool/null keeps every character of its widest value, and an elastic
+    /// value may shrink to [`ELASTIC_FLOOR`] — never below [`MIN_COL`].
+    fn floor_width(&self) -> usize {
+        let cell_max = self.cells.iter().map(|c| width(c)).max().unwrap_or(0);
+        let value_floor = if self.elastic {
+            cell_max.min(ELASTIC_FLOOR)
+        } else {
+            cell_max
+        };
+        width(&self.name).max(value_floor).max(MIN_COL)
+    }
+}
+
+/// Shrink `widths` (each column's discovered width) toward the per-column `floors` so
+/// the table fits `max_width` — squeezing the widest shrinkable column first — then
+/// report how many leading columns survive alongside a trailing `…` marker (dropping
+/// happens only once nothing more can be squeezed). Rigid columns floor at their value
+/// width, so a table of only numbers drops columns rather than truncating digits.
+fn fit_widths(widths: &mut [usize], floors: &[usize], max_width: usize) -> usize {
+    // The rendered line is `│ w0 │ w1 │ … │`: one border plus `w + 3` per column.
+    let line = |ws: &[usize]| 1 + ws.iter().map(|w| w + 3).sum::<usize>();
+    let mut current = line(widths);
+    while current > max_width {
+        let widest = (0..widths.len())
+            .filter(|&i| widths[i] > floors[i])
+            .max_by_key(|&i| widths[i]);
+        match widest {
+            Some(i) => {
+                widths[i] -= 1;
+                current -= 1;
+            }
+            None => break, // nothing left to squeeze — fall through to dropping columns
+        }
+    }
+    if current <= max_width {
+        return widths.len();
+    }
+    // Still too wide: keep the longest leading run that fits beside a `…` marker
+    // (reserve room for a `+NNN` column), always keeping at least the first column.
+    const MARKER_COST: usize = 4 + 3;
+    let mut kept = widths.len();
+    while kept > 1 && line(&widths[..kept]) + MARKER_COST > max_width {
+        kept -= 1;
+    }
+    kept
 }
 
 /// Render `columns` (all the same cell count) as a box-drawn table, honouring
 /// [`DisplayOptions`]: at most `max_rows` body rows (with a `… (total more)` footer
-/// past that) and a best-effort fit to `max_width` — trailing columns that overflow
-/// collapse into a single `…` column, and every cell is elided to [`MAX_CELL`].
+/// past that) and an adaptive fit to `max_width` — cells are elided to their column's
+/// datatype cap, then elastic columns are squeezed and, only as a last resort, trailing
+/// columns collapse into a single `…` column.
 ///
 /// `total` is the full element count (so the footer can report how many rows were
 /// hidden).
@@ -269,58 +396,42 @@ pub(crate) fn render_table(
     if columns.is_empty() {
         return "(empty)".to_string();
     }
-    // Elide every cell and header up front.
+    // Elide headers to a generous cap and every cell to its column's datatype cap.
     for column in &mut columns {
         column.name = elide(&column.name, MAX_CELL);
         column.type_signature = elide(&column.type_signature, MAX_CELL);
+        let cap = column.cap;
         for cell in &mut column.cells {
-            *cell = elide(cell, MAX_CELL);
+            *cell = elide(cell, cap);
         }
     }
 
-    // Drop trailing columns that would overflow `max_width`, standing in a `…` column.
-    let mut budget = options.max_width;
-    let mut kept = 0usize;
-    for column in &columns {
-        let cell_width = column
-            .cells
-            .iter()
-            .map(|c| width(c))
-            .chain([width(&column.name), width(&column.type_signature)])
-            .max()
-            .unwrap_or(0);
-        let needed = cell_width + 3; // "│ " + trailing space
-        if kept > 0 && budget < needed + 4 {
-            break;
-        }
-        budget = budget.saturating_sub(needed);
-        kept += 1;
-    }
+    // Discover each column's natural width and the floor it may be squeezed to, then
+    // adaptively fit `max_width`: shrink elastic columns first, drop columns only when
+    // nothing more can give.
+    let mut widths: Vec<usize> = columns.iter().map(Column::discovered_width).collect();
+    let floors: Vec<usize> = columns.iter().map(Column::floor_width).collect();
+    let kept = fit_widths(&mut widths, &floors, options.max_width);
     let hidden_columns = columns.len() - kept;
     columns.truncate(kept);
+    widths.truncate(kept);
     if hidden_columns > 0 {
-        columns.push(Column {
-            name: "…".to_string(),
-            type_signature: format!("+{hidden_columns}"),
-            cells: vec!["…".to_string(); columns.first().map_or(0, |c| c.cells.len())],
-        });
+        let rows = columns.first().map_or(0, |c| c.cells.len());
+        let marker = Column::text(
+            "…".to_string(),
+            format!("+{hidden_columns}"),
+            vec!["…".to_string(); rows],
+        );
+        widths.push(marker.discovered_width());
+        columns.push(marker);
     }
 
-    // Column widths.
-    let widths: Vec<usize> = columns
-        .iter()
-        .map(|column| {
-            column
-                .cells
-                .iter()
-                .map(|c| width(c))
-                .chain([width(&column.name), width(&column.type_signature)])
-                .max()
-                .unwrap_or(0)
-        })
-        .collect();
-
-    let pad = |text: &str, w: usize| format!(" {text}{} ", " ".repeat(w - width(text)));
+    // Pad `text` into a `w`-wide cell, eliding first when a squeezed column is narrower
+    // than its content (the header and rigid values were already sized to fit).
+    let pad = |text: &str, w: usize| {
+        let shown = elide(text, w);
+        format!(" {shown}{} ", " ".repeat(w - width(&shown)))
+    };
     let rule = |left: &str, mid: &str, right: &str| {
         let segments: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
         format!("{left}{}{right}", segments.join(mid))
@@ -365,32 +476,37 @@ pub(crate) fn render_table(
     out
 }
 
-/// One column per field of a struct array, each field's values formatted, capped at
-/// `max_rows` rows — the shared builder behind a struct serie's table and a record's.
+/// One column per field of a struct array, each field's values formatted **through the
+/// crate's own scalars** (each child column decomposed to an [`AnySerie`](crate::AnySerie)
+/// and read by [`get_scalar`](crate::AnySerie::get_scalar)), capped at `max_rows` rows —
+/// the shared builder behind a struct serie's table and a record's. The struct layout
+/// (field names, types) is navigated on the struct array; the values are not.
 fn struct_columns(entries: &arrow_array::StructArray, max_rows: usize) -> Vec<Column> {
-    let (names, types): (Vec<String>, Vec<String>) = match entries.data_type() {
-        DataType::Struct(fields) => fields
-            .iter()
-            .map(|f| {
-                (
-                    f.name().to_string(),
-                    yggdryl_dtype::signature(f.data_type()),
-                )
-            })
-            .unzip(),
-        _ => (Vec::new(), Vec::new()),
+    let fields = match entries.data_type() {
+        DataType::Struct(fields) => fields.clone(),
+        _ => arrow_schema::Fields::empty(),
     };
     entries
         .columns()
         .iter()
         .enumerate()
         .map(|(index, child)| {
-            let shown = child.len().min(max_rows);
-            Column {
-                name: names.get(index).cloned().unwrap_or_default(),
-                type_signature: types.get(index).cloned().unwrap_or_default(),
-                cells: (0..shown).map(|row| format_arrow(child, row, 0)).collect(),
-            }
+            let field = fields.get(index);
+            let name = field.map(|f| f.name().to_string()).unwrap_or_default();
+            let type_signature = field
+                .map(|f| yggdryl_dtype::signature(f.data_type()))
+                .unwrap_or_default();
+            // Read the field's values through our own column, not the Arrow array.
+            let serie = crate::AnySerie::from_arrow(child.clone());
+            let shown = serie.len().min(max_rows);
+            let cells = (0..shown)
+                .map(|row| {
+                    serie
+                        .get_scalar(row)
+                        .map_or_else(|| "null".to_string(), |scalar| format_any(&scalar))
+                })
+                .collect();
+            Column::typed(name, type_signature, cells, child.data_type())
         })
         .collect()
 }
@@ -424,52 +540,41 @@ pub(crate) fn render_serie_with_total(
         }
     }
     let shown = column.len().min(options.max_rows);
-    let single = Column {
-        name: item_name.to_string(),
-        type_signature: yggdryl_dtype::signature(arrow.data_type()),
-        cells: (0..shown)
-            .map(|index| {
-                column
-                    .get_scalar(index)
-                    .map_or_else(|| "null".to_string(), |any| format_any(&any))
-            })
-            .collect(),
-    };
+    let cells = (0..shown)
+        .map(|index| {
+            column
+                .get_scalar(index)
+                .map_or_else(|| "null".to_string(), |any| format_any(&any))
+        })
+        .collect();
+    let single = Column::typed(
+        item_name.to_string(),
+        yggdryl_dtype::signature(arrow.data_type()),
+        cells,
+        arrow.data_type(),
+    );
     render_table(vec![single], total, options)
 }
 
 /// Render a single struct row (a [`RecordScalar`](crate::RecordScalar)) as a
-/// one-row-per-field table (`field | type | value`), so a record reads like a
-/// transposed one-row serie.
-pub(crate) fn render_record(record: &crate::RecordScalar, _options: DisplayOptions) -> String {
+/// one-row-per-field table (`field | value`), so a record reads like a transposed
+/// one-row serie. The fields are read straight off the record's own
+/// [`AnyScalar`](crate::AnyScalar)s — no Arrow round trip.
+pub(crate) fn render_record(record: &crate::RecordScalar, options: DisplayOptions) -> String {
     use crate::Scalar;
-    if record.is_null() {
+    let Some(scalars) = record.value() else {
         return "null".to_string();
-    }
-    let arrow = record.to_arrow_scalar();
-    let entries = match arrow.as_any().downcast_ref::<arrow_array::StructArray>() {
-        Some(entries) => entries,
-        None => return "null".to_string(),
     };
-    let columns = struct_columns(entries, 1);
+    let fields = yggdryl_dtype::Struct::fields(record.data_type());
     // Transpose to a two-column `field | value` table so a wide record still fits.
-    let rows: Vec<Column> = vec![
-        Column {
-            name: "field".to_string(),
-            type_signature: "".to_string(),
-            cells: columns
-                .iter()
-                .map(|c| format!("{}: {}", c.name, c.type_signature))
-                .collect(),
-        },
-        Column {
-            name: "value".to_string(),
-            type_signature: "".to_string(),
-            cells: columns
-                .iter()
-                .map(|c| c.cells.first().cloned().unwrap_or_default())
-                .collect(),
-        },
+    let field_cells: Vec<String> = fields
+        .iter()
+        .map(|f| format!("{}: {}", f.name(), yggdryl_dtype::signature(f.data_type())))
+        .collect();
+    let value_cells: Vec<String> = scalars.iter().map(format_any).collect();
+    let rows = vec![
+        Column::text("field".to_string(), String::new(), field_cells),
+        Column::text("value".to_string(), String::new(), value_cells),
     ];
-    render_table(rows, columns.len(), DisplayOptions::default())
+    render_table(rows, scalars.len(), options)
 }

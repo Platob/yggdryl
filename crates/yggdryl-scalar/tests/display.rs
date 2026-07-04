@@ -197,6 +197,72 @@ fn a_wide_struct_serie_fits_the_screen() {
     }
 }
 
+// ---- adaptive width: elastic strings shrink, rigid numbers keep their digits ----
+
+fn mixed_type() -> dtype::StructType {
+    dtype::StructType::new(arrow_schema::Fields::from(vec![
+        arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+        arrow_schema::Field::new("description", arrow_schema::DataType::Utf8, true),
+    ]))
+}
+
+fn mixed_row(id: i64, description: &str) -> RecordScalar {
+    RecordScalar::new(
+        mixed_type(),
+        vec![
+            AnyScalar::from(Int64Scalar::new(id)),
+            AnyScalar::from_arrow(Utf8Scalar::new(description.into()).to_arrow_scalar()),
+        ],
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_narrow_table_shrinks_the_elastic_column_before_dropping_it() {
+    // A wide utf8 column next to a numeric one: under a tight width the string column
+    // is elided to fit, but no column is dropped and the numbers keep every digit.
+    let serie = TypedStructSerie::new(
+        mixed_type(),
+        vec![
+            mixed_row(
+                1234567,
+                "a very long description that would blow the width budget wide open",
+            ),
+            mixed_row(2, "another quite lengthy description string here"),
+        ],
+    );
+    let narrow = serie.display_with(DisplayOptions {
+        max_width: 48,
+        ..Default::default()
+    });
+    // Both columns still present (the elastic one shrank rather than being dropped).
+    assert!(narrow.contains("id"));
+    assert!(narrow.contains("description"));
+    assert!(!narrow.contains('+')); // no `+N` overflow marker: nothing was dropped
+                                    // The numeric values are shown in full — a rigid column never truncates digits.
+    assert!(narrow.contains("1234567"), "got: {narrow}");
+    // The long strings are elided (they did not fit whole).
+    assert!(narrow.contains('…'));
+    // Every line fits the budget.
+    for line in narrow.lines() {
+        assert!(line.chars().count() <= 52, "line too wide: {line:?}");
+    }
+}
+
+#[test]
+fn a_rigid_numeric_column_keeps_its_value_even_when_squeezed() {
+    // Even at an extreme width, a numeric column keeps its digits: it drops whole
+    // columns rather than truncating a number.
+    let serie = TypedStructSerie::new(mixed_type(), vec![mixed_row(9223372036854775807, "x")]);
+    let tiny = serie.display_with(DisplayOptions {
+        max_width: 24,
+        ..Default::default()
+    });
+    // The i64 keeps all twenty digits; the elastic column collapses to the `…` marker.
+    assert!(tiny.contains("9223372036854775807"), "got: {tiny}");
+    assert!(tiny.contains('…'));
+}
+
 // ---- nested: maps, list cells, and recursive containers ----
 
 #[test]
