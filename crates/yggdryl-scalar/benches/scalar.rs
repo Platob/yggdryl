@@ -223,7 +223,7 @@ fn factory(c: &mut Criterion) {
 // The RecordScalar generic struct-row accessor: build a row and read children.
 fn record(c: &mut Criterion) {
     use yggdryl_scalar::yggdryl_dtype::arrow_schema;
-    use yggdryl_scalar::{RecordScalar, Scalar};
+    use yggdryl_scalar::{AnyScalar, NestedSerie, RecordScalar};
 
     let mut group = c.benchmark_group("record");
     group.throughput(Throughput::Elements(N as u64));
@@ -239,10 +239,8 @@ fn record(c: &mut Criterion) {
                     RecordScalar::new(
                         point.clone(),
                         vec![
-                            Int64Scalar::new(black_box(value)).to_arrow_scalar().into(),
-                            Int64Scalar::new(black_box(value + 1))
-                                .to_arrow_scalar()
-                                .into(),
+                            AnyScalar::from(Int64Scalar::new(black_box(value))),
+                            AnyScalar::from(Int64Scalar::new(black_box(value + 1))),
                         ],
                     )
                     .unwrap(),
@@ -252,10 +250,10 @@ fn record(c: &mut Criterion) {
     });
 
     let row = RecordScalar::new(
-        point,
+        point.clone(),
         vec![
-            Int64Scalar::new(1).to_arrow_scalar().into(),
-            Int64Scalar::new(2).to_arrow_scalar().into(),
+            AnyScalar::from(Int64Scalar::new(1)),
+            AnyScalar::from(Int64Scalar::new(2)),
         ],
     )
     .unwrap();
@@ -265,6 +263,31 @@ fn record(c: &mut Criterion) {
                 black_box(row.scalar_by(black_box("y")));
             }
         })
+    });
+
+    // A serie of struct rows: build it once, then read rows and field columns back.
+    let rows: Vec<RecordScalar> = (0..N as i64)
+        .map(|value| {
+            RecordScalar::new(
+                point.clone(),
+                vec![
+                    AnyScalar::from(Int64Scalar::new(value)),
+                    AnyScalar::from(Int64Scalar::new(value + 1)),
+                ],
+            )
+            .unwrap()
+        })
+        .collect();
+    let points = yggdryl_scalar::TypedStructSerie::new(point, rows);
+    group.bench_function("struct_serie_get_scalar_at", |b| {
+        b.iter(|| {
+            for index in 0..N {
+                black_box(points.get_scalar_at(black_box(index)));
+            }
+        })
+    });
+    group.bench_function("struct_serie_field_column", |b| {
+        b.iter(|| black_box(points.child_serie_by(black_box("x"))))
     });
 
     group.finish();

@@ -21,7 +21,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl_dtype::arrow_schema;
-use yggdryl_scalar::{AnySerie, Scalar};
+use yggdryl_scalar::{AnyScalar, Scalar};
 
 use crate::data_error;
 use crate::dtype::{BinaryType, Int64SerieType, Int64Type, NullType, StructType};
@@ -73,25 +73,23 @@ pub(crate) fn infer(value: NativeValue) -> Result<Inferred> {
 }
 
 /// One inferred struct member: the Arrow field named `name` (nullable, like every
-/// factory-built field) and the one-element child column holding the value — the
-/// field's type is read off the built column, so the two always agree.
-fn inferred_member(name: String, inferred: Inferred) -> (arrow_schema::Field, AnySerie) {
-    let column: AnySerie = match inferred {
-        Inferred::Null => yggdryl_scalar::NullScalar::default()
-            .to_arrow_scalar()
-            .into(),
-        Inferred::Int64(integer) => yggdryl_scalar::Int64Scalar::new(integer)
-            .to_arrow_scalar()
-            .into(),
-        Inferred::Binary(bytes) => yggdryl_scalar::BinaryScalar::new(bytes)
-            .to_arrow_scalar()
-            .into(),
-        Inferred::Serie(values) => yggdryl_scalar::Int64Serie::from(values)
-            .to_arrow_scalar()
-            .into(),
+/// factory-built field) and the atomic scalar holding the value — the field's type
+/// is read off the built scalar, so the two always agree.
+fn inferred_member(name: String, inferred: Inferred) -> (arrow_schema::Field, AnyScalar) {
+    let scalar: AnyScalar = match inferred {
+        Inferred::Null => {
+            AnyScalar::from_arrow(yggdryl_scalar::NullScalar::default().to_arrow_scalar())
+        }
+        Inferred::Int64(integer) => AnyScalar::from(yggdryl_scalar::Int64Scalar::new(integer)),
+        Inferred::Binary(bytes) => {
+            AnyScalar::from_arrow(yggdryl_scalar::BinaryScalar::new(bytes).to_arrow_scalar())
+        }
+        Inferred::Serie(values) => {
+            AnyScalar::from_arrow(yggdryl_scalar::Int64Serie::from(values).to_arrow_scalar())
+        }
     };
-    let field = arrow_schema::Field::new(name, column.data_type(), true);
-    (field, column)
+    let field = arrow_schema::Field::new(name, scalar.data_type(), true);
+    (field, scalar)
 }
 
 /// A core record row from a plain JS object: each member's value runs through
@@ -99,7 +97,7 @@ fn inferred_member(name: String, inferred: Inferred) -> (arrow_schema::Field, An
 pub(crate) fn record_from_object(object: &Object) -> Result<yggdryl_scalar::RecordScalar> {
     let names = Object::keys(object)?;
     let mut fields = Vec::with_capacity(names.len());
-    let mut columns = Vec::with_capacity(names.len());
+    let mut scalars = Vec::with_capacity(names.len());
     for name in names {
         let value = object.get::<_, NativeValue>(&name).map_err(|error| {
             Error::from_reason(format!(
@@ -107,13 +105,13 @@ pub(crate) fn record_from_object(object: &Object) -> Result<yggdryl_scalar::Reco
                 error.reason
             ))
         })?;
-        let (field, column) = inferred_member(name, infer(value.flatten())?);
+        let (field, scalar) = inferred_member(name, infer(value.flatten())?);
         fields.push(field);
-        columns.push(column);
+        scalars.push(scalar);
     }
     yggdryl_scalar::RecordScalar::new(
         yggdryl_dtype::StructType::new(arrow_schema::Fields::from(fields)),
-        columns,
+        scalars,
     )
     .map_err(data_error)
 }

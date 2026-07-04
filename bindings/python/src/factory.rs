@@ -54,23 +54,27 @@ impl Inferred {
         }
     }
 
-    /// The inferred value as a one-element column — the matching scalar's Arrow
-    /// scalar form, decomposed into the core's own holder (a record child).
-    fn to_column(&self) -> Result<yggdryl_scalar::AnySerie, DataErr> {
+    /// The inferred value as a single atomic scalar — the core's own type-erased
+    /// [`AnyScalar`](yggdryl_scalar::AnyScalar) holder (a record field). The `int64`
+    /// value stays decomposed as its concrete scalar; anything else keeps its
+    /// one-element Arrow form.
+    fn to_scalar(&self) -> Result<yggdryl_scalar::AnyScalar, DataErr> {
         Ok(match self {
-            Inferred::Null => yggdryl_scalar::NullScalar::default()
-                .to_arrow_scalar()
-                .into(),
-            Inferred::Int64(integer) => yggdryl_scalar::Int64Scalar::new(*integer)
-                .to_arrow_scalar()
-                .into(),
-            Inferred::Binary(bytes) => yggdryl_scalar::BinaryScalar::new(bytes.clone())
-                .to_arrow_scalar()
-                .into(),
-            Inferred::Serie(values) => yggdryl_scalar::Int64Serie::from(values.clone())
-                .to_arrow_scalar()
-                .into(),
-            Inferred::Record(entries) => record_of(entries)?.to_arrow_scalar().into(),
+            Inferred::Null => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::NullScalar::default().to_arrow_scalar(),
+            ),
+            Inferred::Int64(integer) => {
+                yggdryl_scalar::AnyScalar::from(yggdryl_scalar::Int64Scalar::new(*integer))
+            }
+            Inferred::Binary(bytes) => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::BinaryScalar::new(bytes.clone()).to_arrow_scalar(),
+            ),
+            Inferred::Serie(values) => yggdryl_scalar::AnyScalar::from_arrow(
+                yggdryl_scalar::Int64Serie::from(values.clone()).to_arrow_scalar(),
+            ),
+            Inferred::Record(entries) => {
+                yggdryl_scalar::AnyScalar::from_arrow(record_of(entries)?.to_arrow_scalar())
+            }
         })
     }
 }
@@ -88,17 +92,17 @@ pub(crate) fn struct_type_of(entries: &[(String, Inferred)]) -> yggdryl_dtype::S
 }
 
 /// The core record scalar of inferred dict `entries`: the struct type plus one
-/// one-element child column per field, each built once in Rust.
+/// atomic scalar per field, each built once in Rust.
 pub(crate) fn record_of(
     entries: &[(String, Inferred)],
 ) -> Result<yggdryl_scalar::RecordScalar, DataErr> {
-    let columns = entries
+    let scalars = entries
         .iter()
-        .map(|(_, value)| value.to_column())
+        .map(|(_, value)| value.to_scalar())
         .collect::<Result<Vec<_>, DataErr>>()?;
     Ok(yggdryl_scalar::RecordScalar::new(
         struct_type_of(entries),
-        columns,
+        scalars,
     )?)
 }
 

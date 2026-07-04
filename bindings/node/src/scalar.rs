@@ -32,10 +32,11 @@
 //! construction, `to_arrow_array` / `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo`
 //! two-resource bridge (which borrow a second IO resource at once), so a serie
 //! built from Node is a dense (all-valid) serie. The still-generic nested scalars
-//! — the generic `Serie` / `MapScalar`, and the plain `StructScalar` row value
-//! (its accessor twin `RecordScalar` *is* bound; the `AnySerie` child columns
-//! cross as native JS values instead of as a class) — have no concrete FFI
-//! shape yet.
+//! — the generic `Serie` / `MapScalar`, the plain `StructScalar` row value (its
+//! accessor twin `RecordScalar` *is* bound), the struct-row series `StructSerie` /
+//! `TypedStructSerie`, and the type-erased `AnySerie` / `AnyScalar` holders behind
+//! them (whose fields cross as native JS values instead of as a class) — have no
+//! concrete FFI shape yet.
 
 use napi::bindgen_prelude::{
     BigInt, Buffer, Error, FromNapiValue, Null, Object, Result, ToNapiValue,
@@ -43,7 +44,7 @@ use napi::bindgen_prelude::{
 use napi::{Env, JsUnknown};
 use napi_derive::napi;
 use yggdryl_scalar::arrow_array::{self, Array};
-use yggdryl_scalar::{arrow_schema, AnySerie, Scalar};
+use yggdryl_scalar::{arrow_schema, AnyScalar, AnySerie, Scalar};
 
 use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native};
 
@@ -853,9 +854,9 @@ impl UInt64Serie {
     }
 }
 
-// The record scalar: the `struct` row. Its child columns are core `AnySerie`
-// one-element columns; they cross the FFI boundary as native JS values, converted
-// once in Rust by the helpers below.
+// The record scalar: the `struct` row. Its fields are core `AnyScalar` atoms (and
+// their list fields core `AnySerie` columns); they cross the FFI boundary as native
+// JS values, converted once in Rust by the helpers below.
 
 /// A napi-typed value erased to a `JsUnknown`, so heterogeneous record members
 /// share one return surface.
@@ -937,73 +938,34 @@ fn serie_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
 /// `BigInt` for the 64-bit ones, a `Buffer` for binary, the `toArray()` array for
 /// a serie, `null` for null), read through the classes' own `value()` /
 /// `toArray()` so the conversion lives in one place.
-fn element_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
-    match column {
-        AnySerie::Int8(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| Int8Scalar { inner }.value()),
-        ),
-        AnySerie::Int16(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| Int16Scalar { inner }.value()),
-        ),
-        AnySerie::Int32(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| Int32Scalar { inner }.value()),
-        ),
-        AnySerie::Int64(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| Int64Scalar { inner }.value()),
-        ),
-        AnySerie::UInt8(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| UInt8Scalar { inner }.value()),
-        ),
-        AnySerie::UInt16(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| UInt16Scalar { inner }.value()),
-        ),
-        AnySerie::UInt32(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| UInt32Scalar { inner }.value()),
-        ),
-        AnySerie::UInt64(serie) => to_unknown(
-            env,
-            serie
-                .get_scalar_at(0)
-                .and_then(|inner| UInt64Scalar { inner }.value()),
-        ),
-        AnySerie::Arrow(values) => match values.data_type() {
+fn scalar_to_js(env: &Env, scalar: &AnyScalar) -> Result<JsUnknown> {
+    // The decomposed integer field reuses its wrapper class' `value()` conversion.
+    match scalar {
+        AnyScalar::Int8(inner) => to_unknown(env, Int8Scalar { inner: *inner }.value()),
+        AnyScalar::Int16(inner) => to_unknown(env, Int16Scalar { inner: *inner }.value()),
+        AnyScalar::Int32(inner) => to_unknown(env, Int32Scalar { inner: *inner }.value()),
+        AnyScalar::Int64(inner) => to_unknown(env, Int64Scalar { inner: *inner }.value()),
+        AnyScalar::UInt8(inner) => to_unknown(env, UInt8Scalar { inner: *inner }.value()),
+        AnyScalar::UInt16(inner) => to_unknown(env, UInt16Scalar { inner: *inner }.value()),
+        AnyScalar::UInt32(inner) => to_unknown(env, UInt32Scalar { inner: *inner }.value()),
+        AnyScalar::UInt64(inner) => to_unknown(env, UInt64Scalar { inner: *inner }.value()),
+        AnyScalar::Arrow(value) => match value.data_type() {
             arrow_schema::DataType::Null => to_unknown(env, Null),
             arrow_schema::DataType::Binary => {
-                let array = values
+                let array = value
                     .as_any()
                     .downcast_ref::<arrow_array::BinaryArray>()
-                    .expect("a binary column downcasts to its array");
+                    .expect("a binary field downcasts to its array");
                 to_unknown(
                     env,
                     (!Array::is_null(array, 0)).then(|| Buffer::from(array.value(0).to_vec())),
                 )
             }
             arrow_schema::DataType::List(_) => {
-                let array = values
+                let array = value
                     .as_any()
                     .downcast_ref::<arrow_array::ListArray>()
-                    .expect("a list column downcasts to its array");
+                    .expect("a list field downcasts to its array");
                 if Array::is_null(array, 0) {
                     to_unknown(env, Null)
                 } else {
@@ -1011,11 +973,12 @@ fn element_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
                 }
             }
             other => Err(Error::from_reason(format!(
-                "no JS value for a record child of Arrow type {other}; expected null, an integer, binary or an integer list"
+                "no JS value for a record field of Arrow type {other}; expected null, an integer, binary or an integer list"
             ))),
         },
+        // `AnyScalar` is non-exhaustive; a future decomposed variant has no wire type yet.
         other => Err(Error::from_reason(format!(
-            "no JS value for a record child of Arrow type {}; expected null, an integer, binary or an integer list",
+            "no JS value for a record field of Arrow type {}; expected null, an integer, binary or an integer list",
             other.data_type()
         ))),
     }
@@ -1076,7 +1039,7 @@ impl RecordScalar {
     #[napi]
     pub fn get(&self, env: Env, name: String) -> Result<JsUnknown> {
         match self.inner.scalar_by(&name) {
-            Some(column) => element_to_js(&env, &column),
+            Some(scalar) => scalar_to_js(&env, &scalar),
             None => to_unknown(&env, Null),
         }
     }
@@ -1086,12 +1049,12 @@ impl RecordScalar {
     /// whole row.
     #[napi]
     pub fn to_js_value(&self, env: Env) -> Result<Option<Object>> {
-        let Some(columns) = self.inner.value() else {
+        let Some(scalars) = self.inner.value() else {
             return Ok(None);
         };
         let mut object = env.create_object()?;
-        for (name, column) in self.field_names().into_iter().zip(columns) {
-            object.set(name, element_to_js(&env, column)?)?;
+        for (name, scalar) in self.field_names().into_iter().zip(scalars) {
+            object.set(name, scalar_to_js(&env, scalar)?)?;
         }
         Ok(Some(object))
     }

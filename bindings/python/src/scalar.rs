@@ -34,9 +34,10 @@
 //! `to_arrow_array` / `nulls` Arrow-buffer surface and `from_io` / `pwrite_io`
 //! two-resource bridge (which borrow a second IO resource at once), so a serie
 //! built from Python is a dense (all-valid) serie. The still-generic nested
-//! scalars — the generic `Serie` / `MapScalar`, and the plain `StructScalar` row
-//! value (its accessor surface is exposed as `RecordScalar`) — have no concrete
-//! FFI shape yet.
+//! scalars — the generic `Serie` / `MapScalar`, the plain `StructScalar` row
+//! value (its accessor surface is exposed as `RecordScalar`), the struct-row
+//! series `StructSerie` / `TypedStructSerie`, and the type-erased `AnySerie` /
+//! `AnyScalar` holders behind them — have no concrete FFI shape yet.
 
 // pyo3's `#[pymethods]` expansion re-wraps the already-`PyErr` result of the
 // `PyResult`-returning record methods into `PyErr`; clippy flags that generated
@@ -790,43 +791,41 @@ fn serie_to_pylist(py: Python<'_>, serie: &yggdryl_scalar::AnySerie) -> PyResult
     elements!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
 }
 
-/// The native Python value of a record's one-element child column — `get`,
-/// `to_pydict` and `to_pyvalue` all convert through this single crossing.
-fn column_to_pyvalue(py: Python<'_>, column: &yggdryl_scalar::AnySerie) -> PyResult<PyObject> {
+/// The native Python value of a record's field scalar — `get`, `to_pydict` and
+/// `to_pyvalue` all convert through this single crossing.
+fn scalar_to_pyvalue(py: Python<'_>, scalar: &yggdryl_scalar::AnyScalar) -> PyResult<PyObject> {
     use yggdryl_scalar::arrow_array::{self, Array};
     use yggdryl_scalar::arrow_schema::DataType as ArrowType;
-    macro_rules! element {
+    macro_rules! atom {
         ($($variant:ident),+ $(,)?) => {
-            match column {
-                $(yggdryl_scalar::AnySerie::$variant(serie) => Ok(serie
-                    .get_scalar_at(0)
-                    .and_then(|scalar| scalar.value().copied())
-                    .into_py(py)),)+
-                yggdryl_scalar::AnySerie::Arrow(values) => match values.data_type() {
+            match scalar {
+                // The decomposed integer field reads its native value directly.
+                $(yggdryl_scalar::AnyScalar::$variant(value) => Ok(value.value().copied().into_py(py)),)+
+                yggdryl_scalar::AnyScalar::Arrow(value) => match value.data_type() {
                     ArrowType::Null => Ok(py.None()),
                     ArrowType::Binary => {
-                        let values = values
+                        let value = value
                             .as_any()
                             .downcast_ref::<arrow_array::BinaryArray>()
-                            .expect("a binary child is a binary array");
-                        Ok(if values.is_null(0) {
+                            .expect("a binary field is a binary array");
+                        Ok(if value.is_null(0) {
                             py.None()
                         } else {
-                            PyBytes::new_bound(py, values.value(0)).into_py(py)
+                            PyBytes::new_bound(py, value.value(0)).into_py(py)
                         })
                     }
                     ArrowType::List(_) => {
-                        let values = values
+                        let value = value
                             .as_any()
                             .downcast_ref::<arrow_array::ListArray>()
-                            .expect("a serie child is a list array");
-                        if values.is_null(0) {
+                            .expect("a serie field is a list array");
+                        if value.is_null(0) {
                             return Ok(py.None());
                         }
-                        serie_to_pylist(py, &yggdryl_scalar::AnySerie::from_arrow(values.value(0)))
+                        serie_to_pylist(py, &yggdryl_scalar::AnySerie::from_arrow(value.value(0)))
                     }
                     ArrowType::Struct(_) => RecordScalar {
-                        inner: yggdryl_scalar::RecordScalar::from_arrow(values.as_ref())
+                        inner: yggdryl_scalar::RecordScalar::from_arrow(value.as_ref())
                             .map_err(DataErr::from)?,
                     }
                     .to_pyvalue(py),
@@ -836,7 +835,7 @@ fn column_to_pyvalue(py: Python<'_>, column: &yggdryl_scalar::AnySerie) -> PyRes
             }
         };
     }
-    element!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+    atom!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
 }
 
 /// The auto-generated singleton dataclasses behind `RecordScalar.to_pyvalue`,
@@ -920,7 +919,7 @@ impl RecordScalar {
     /// record is null or no field carries the name.
     fn get(&self, py: Python<'_>, name: &str) -> PyResult<PyObject> {
         match self.inner.scalar_by(name) {
-            Some(column) => column_to_pyvalue(py, &column),
+            Some(scalar) => scalar_to_pyvalue(py, &scalar),
             None => Ok(py.None()),
         }
     }
@@ -933,11 +932,11 @@ impl RecordScalar {
         }
         let row = PyDict::new_bound(py);
         for (index, field) in self.inner.data_type().fields().iter().enumerate() {
-            let column = self
+            let scalar = self
                 .inner
                 .scalar_at(index)
-                .expect("a present record holds every column");
-            row.set_item(field.name(), column_to_pyvalue(py, &column)?)?;
+                .expect("a present record holds every field");
+            row.set_item(field.name(), scalar_to_pyvalue(py, &scalar)?)?;
         }
         Ok(Some(row))
     }
@@ -956,11 +955,11 @@ impl RecordScalar {
         let class = record_class(py, &names)?;
         let values = (0..fields.len())
             .map(|index| {
-                let column = self
+                let scalar = self
                     .inner
                     .scalar_at(index)
-                    .expect("a present record holds every column");
-                column_to_pyvalue(py, &column)
+                    .expect("a present record holds every field");
+                scalar_to_pyvalue(py, &scalar)
             })
             .collect::<PyResult<Vec<_>>>()?;
         Ok(class.call1(PyTuple::new_bound(py, values))?.unbind())

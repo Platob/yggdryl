@@ -41,10 +41,15 @@
 //! column (integer elements decomposed to raw buffers, anything else zero-copy
 //! Arrow) — a list holds its item serie, a map its entries serie, a struct an
 //! array of column series — reconstituting Arrow arrays on demand and decomposing
-//! them on the way in, reference-count bumps only. The [`NestedSerie`] trait adds
-//! easy child access (`child_serie_at` / `child_serie_by`), [`RecordScalar`] the
-//! generic struct-row accessor, and the base [`Scalar`]'s `as_serie` / `as_map` /
-//! `as_struct` hand back the dynamic nested forms.
+//! them on the way in, reference-count bumps only. Its atomic counterpart is
+//! [`AnyScalar`], the type-erased single value behind [`RecordScalar`]'s fields.
+//! The [`NestedSerie`] trait adds easy child access (`child_serie_at` /
+//! `child_serie_by`); [`RecordScalar`] is the row-oriented struct atom (an array of
+//! one [`AnyScalar`] per field) that [`Scalar::as_struct`] materializes; and the
+//! specialized [`StructSerie`] / [`TypedStructSerie`] hold a serie of struct rows
+//! (the generic [`TypedSerie`] cannot, a struct having no compile-time default
+//! shape), reading each row back as a [`RecordScalar`]. The base [`Scalar`]'s
+//! `as_serie` / `as_map` / `as_struct` hand back the dynamic nested forms.
 //!
 //! Every scalar converts to and from its Apache Arrow equivalent (`to_arrow_scalar` /
 //! `from_arrow`): a one-element [`arrow_array`] array — Arrow's own scalar
@@ -72,12 +77,14 @@ pub use yggdryl_core;
 /// exact version this crate was built against.
 pub use yggdryl_dtype;
 
+mod any_scalar;
 mod from_scalar;
 mod nested_serie;
 mod scalar;
 mod scalar_factory;
 mod typed_scalar;
 
+pub use any_scalar::AnyScalar;
 pub use from_scalar::FromScalar;
 pub use nested_serie::NestedSerie;
 pub use scalar::Scalar;
@@ -102,8 +109,8 @@ pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
 pub use record::RecordScalar;
 pub use serie::{
-    AnySerie, Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, TypedSerie, UInt16Serie,
-    UInt32Serie, UInt64Serie, UInt8Serie,
+    AnySerie, Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, StructSerie, TypedSerie,
+    TypedStructSerie, UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
 };
 pub use typed_map::TypedMapScalar;
 pub use typed_optional::TypedOptionalScalar;

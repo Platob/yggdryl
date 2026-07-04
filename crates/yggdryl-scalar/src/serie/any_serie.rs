@@ -3,8 +3,8 @@
 use arrow_array::{Array, ArrayRef};
 
 use crate::{
-    Int16Serie, Int32Serie, Int64Serie, Int8Serie, UInt16Serie, UInt32Serie, UInt64Serie,
-    UInt8Serie,
+    AnyScalar, Int16Serie, Int32Serie, Int64Serie, Int8Serie, UInt16Serie, UInt32Serie,
+    UInt64Serie, UInt8Serie,
 };
 
 /// A type-erased, buffer-backed column — the crate's **own array holder** behind
@@ -138,6 +138,18 @@ impl AnySerie {
     /// decomposed serie stays decomposed.
     pub fn slice(&self, offset: usize, length: usize) -> Self {
         Self::from_arrow(self.to_arrow().slice(offset, length))
+    }
+
+    /// The element at `index` as a type-erased [`AnyScalar`], or `None` past the end
+    /// — the integer columns read the element straight from their buffers (no Arrow
+    /// round trip), any other column slices one element and decomposes it. This is
+    /// the per-value bridge behind [`RecordScalar`](crate::RecordScalar) and the
+    /// struct series' row access.
+    pub fn get_scalar(&self, index: usize) -> Option<AnyScalar> {
+        for_each_int!(self,
+            serie => serie.get_scalar_at(index).map(AnyScalar::from),
+            values => (index < Array::len(values.as_ref()))
+                .then(|| AnyScalar::from_arrow(Array::slice(values.as_ref(), index, 1))))
     }
 }
 

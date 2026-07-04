@@ -172,10 +172,21 @@ impl Scalar for StructScalar {
     }
 
     fn as_struct(&self) -> Result<crate::RecordScalar, DataError> {
-        // The same row with the generic accessor surface — shared zero-copy.
+        // Materialize the row field-by-field: each one-element column's sole element
+        // becomes an atomic scalar — reference-count bumps, not copies.
+        let scalars = self.columns.as_ref().map(|columns| {
+            columns
+                .iter()
+                .map(|column| {
+                    column
+                        .get_scalar(0)
+                        .expect("a struct scalar's column is one element long")
+                })
+                .collect()
+        });
         Ok(crate::RecordScalar::from_parts(
             self.data_type.clone(),
-            self.columns.clone(),
+            scalars,
         ))
     }
 }

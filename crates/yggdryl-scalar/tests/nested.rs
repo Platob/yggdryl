@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, DataError, DataType};
 use yggdryl_scalar::{
-    arrow_array, AnySerie, Int64Scalar, Int64Serie, MapScalar, NestedSerie, RecordScalar, Scalar,
-    StructScalar, TypedMapScalar, TypedOptionalScalar, TypedSerie, UInt8Scalar,
+    arrow_array, AnyScalar, AnySerie, Int64Scalar, Int64Serie, MapScalar, NestedSerie,
+    RecordScalar, Scalar, StructScalar, StructSerie, TypedMapScalar, TypedOptionalScalar,
+    TypedSerie, TypedStructSerie, UInt8Scalar,
 };
 
 fn point_type() -> dtype::StructType {
@@ -17,15 +18,19 @@ fn point_type() -> dtype::StructType {
     ]))
 }
 
-fn point_record() -> RecordScalar {
+fn point(x: i64, y: i64) -> RecordScalar {
     RecordScalar::new(
         point_type(),
         vec![
-            Int64Scalar::new(1).to_arrow_scalar().into(),
-            Int64Scalar::new(2).to_arrow_scalar().into(),
+            AnyScalar::from(Int64Scalar::new(x)),
+            AnyScalar::from(Int64Scalar::new(y)),
         ],
     )
     .unwrap()
+}
+
+fn point_record() -> RecordScalar {
+    point(1, 2)
 }
 
 #[test]
@@ -34,16 +39,14 @@ fn record_gives_generic_child_scalar_access() {
     assert_eq!(row.data_type().name(), "struct");
     assert!(!row.is_null());
 
-    // By position and by field name; the handle rehydrates through from_arrow.
-    let x = row.scalar_at(0).unwrap();
+    // By position and by field name; each field is its own atomic scalar.
     assert_eq!(
-        Int64Scalar::from_arrow(x.to_arrow().as_ref()).unwrap(),
-        Int64Scalar::new(1)
+        row.scalar_at(0).unwrap(),
+        AnyScalar::from(Int64Scalar::new(1))
     );
-    let y = row.scalar_by("y").unwrap();
     assert_eq!(
-        Int64Scalar::from_arrow(y.to_arrow().as_ref()).unwrap(),
-        Int64Scalar::new(2)
+        row.scalar_by("y").unwrap(),
+        AnyScalar::from(Int64Scalar::new(2))
     );
     assert!(row.scalar_at(2).is_none());
     assert!(row.scalar_by("z").is_none());
@@ -64,11 +67,11 @@ fn record_gives_generic_child_scalar_access() {
 
 #[test]
 fn record_construction_is_validated() {
-    // Arity, per-column length, and per-column type all validated.
+    // Arity and per-scalar type both validated.
     assert!(matches!(
         RecordScalar::new(
             point_type(),
-            vec![Int64Scalar::new(1).to_arrow_scalar().into()]
+            vec![AnyScalar::from(Int64Scalar::new(1))] // one scalar, two fields
         ),
         Err(DataError::IncompatibleArrowType { .. })
     ));
@@ -76,18 +79,8 @@ fn record_construction_is_validated() {
         RecordScalar::new(
             point_type(),
             vec![
-                AnySerie::from(Int64Serie::from(vec![1, 2])), // two elements, not one
-                Int64Scalar::new(2).to_arrow_scalar().into(),
-            ],
-        ),
-        Err(DataError::InvalidScalarLength { got: 2 })
-    ));
-    assert!(matches!(
-        RecordScalar::new(
-            point_type(),
-            vec![
-                UInt8Scalar::new(1).to_arrow_scalar().into(), // uint8 where int64 declared
-                Int64Scalar::new(2).to_arrow_scalar().into(),
+                AnyScalar::from(UInt8Scalar::new(1)), // uint8 where int64 declared
+                AnyScalar::from(Int64Scalar::new(2)),
             ],
         ),
         Err(DataError::IncompatibleArrowType { .. })
@@ -172,6 +165,89 @@ fn struct_children_are_the_columns_by_name() {
     let record = row.as_struct().unwrap();
     assert_eq!(record, point_record());
     assert_eq!(record.child_serie_by("x"), row.child_serie_by("x"));
+}
+
+#[test]
+fn struct_serie_holds_rows_and_field_columns() {
+    let points = TypedStructSerie::new(point_type(), vec![point(1, 2), point(3, 4)]);
+    assert_eq!(points.len(), 2);
+    assert!(!points.is_null());
+    assert_eq!(points.data_type().name(), "list");
+
+    // Rows come back as records, by position.
+    assert_eq!(points.get_scalar_at(0), Some(point(1, 2)));
+    assert_eq!(points.get_scalar_at(1), Some(point(3, 4)));
+    assert!(points.get_scalar_at(2).is_none());
+
+    // The children are the struct's field columns, not one "item" child.
+    assert_eq!(points.child_serie_count(), 2);
+    assert_eq!(points.child_serie_name_at(0).as_deref(), Some("x"));
+    let xs = points.child_serie_by("x").unwrap();
+    assert_eq!(xs.len(), 2); // "x" across both rows
+    assert!(matches!(xs, AnySerie::Int64(_)));
+    assert!(points.child_serie_by("z").is_none());
+
+    // The Arrow round trip shares the buffers.
+    assert_eq!(
+        TypedStructSerie::from_arrow(points.to_arrow_scalar().as_ref()).unwrap(),
+        points
+    );
+
+    // Erase to the dynamic StructSerie — rows read back as records, fields as columns.
+    let dynamic = points.erase();
+    assert_eq!(dynamic.len(), 2);
+    assert_eq!(dynamic.get_row(1), Some(point(3, 4)));
+    assert_eq!(dynamic.child_serie_by("y").unwrap().len(), 2);
+    assert_eq!(
+        StructSerie::from_arrow(dynamic.to_arrow_scalar().as_ref()).unwrap(),
+        dynamic
+    );
+
+    // as_serie hands back the generic dynamic list of the same rows.
+    assert_eq!(points.as_serie().unwrap().len(), 2);
+}
+
+#[test]
+fn struct_serie_row_type_is_generic_over_scalar() {
+    // The row scalar type is a parameter: a serie read back as the column-oriented
+    // StructScalar rather than the RecordScalar row atom.
+    let columns: TypedStructSerie<StructScalar> = TypedStructSerie::new(
+        point_type(),
+        vec![StructScalar::new(
+            point_type(),
+            vec![
+                Arc::new(arrow_array::Int64Array::from_iter_values([1])),
+                Arc::new(arrow_array::Int64Array::from_iter_values([2])),
+            ],
+        )
+        .unwrap()],
+    );
+    assert_eq!(columns.len(), 1);
+    assert_eq!(
+        columns.get_scalar_at(0).unwrap().as_struct().unwrap(),
+        point(1, 2)
+    );
+}
+
+#[test]
+fn struct_serie_null_and_empty_are_distinct() {
+    let missing: TypedStructSerie<RecordScalar> = TypedStructSerie::null(point_type());
+    assert!(missing.is_null());
+    assert_eq!(missing.len(), 0);
+    assert!(missing.get_scalar_at(0).is_none());
+    // Even null, the field columns are named from the item struct.
+    assert_eq!(missing.child_serie_count(), 2);
+    assert!(missing.child_serie_at(0).is_none());
+    assert_eq!(
+        TypedStructSerie::<RecordScalar>::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        missing
+    );
+
+    let empty = TypedStructSerie::<RecordScalar>::new(point_type(), vec![]);
+    assert!(!empty.is_null()); // empty is not null
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+    assert_ne!(empty, missing);
 }
 
 #[test]

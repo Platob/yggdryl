@@ -32,8 +32,9 @@ per-element-null construction, `to_arrow_array` / `nulls` Arrow-buffer surface a
 or borrow a second IO resource at once), so a serie built from a binding is a
 dense (all-valid) serie. The dynamic bases and typed generics of the
 [nested scalars](#nested-scalars-serie-map-and-struct) — `Serie` / `TypedSerie`,
-`MapScalar` / `TypedMapScalar`, `StructScalar` — and the [`AnySerie` /
-`NestedSerie`](#anyserie-and-nestedserie) child handles (arrow-backed columns)
+`MapScalar` / `TypedMapScalar`, `StructScalar`, the struct-row series `StructSerie`
+/ `TypedStructSerie` — and the [`AnySerie` / `AnyScalar` /
+`NestedSerie`](#anyserie-anyscalar-and-nestedserie) type-erased holders behind them
 have no concrete FFI shape yet; the struct family crosses as
 [`RecordScalar`](#recordscalar), built from a `dict` / plain object with every
 field inferred.
@@ -319,12 +320,14 @@ fn main() {
 
 ## Nested scalars: serie, map and struct
 
-Every nested scalar holds **our own series** — [`AnySerie`](#anyserie-and-nestedserie)
+Every nested scalar holds **our own series** — [`AnySerie`](#anyserie-anyscalar-and-nestedserie)
 columns, integer elements decomposed to their raw buffers, anything else zero-copy
 Arrow — and reconstitutes Arrow arrays on demand: a list holds its *item serie*, a
 map holds its *entries serie* (a serie of struct entries), and a struct holds an
-*array of column series*. Constructing `from_arrow` decomposes the incoming array;
-both directions are reference-count bumps, never element copies.
+*array of column series*. Its atomic counterpart is `AnyScalar`, the type-erased
+single value behind a [`RecordScalar`](#recordscalar)'s fields. Constructing
+`from_arrow` decomposes the incoming array; both directions are reference-count
+bumps, never element copies.
 
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy item
 serie — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
@@ -347,36 +350,46 @@ the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
 `TypedMapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row
 of one-element column series, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow_scalar` / `from_arrow`.
+A **serie of struct rows** is `StructSerie` / `TypedStructSerie<S>` — the struct
+counterpart of `Serie` / `TypedSerie` that the generic serie cannot express (a
+`StructType` has no compile-time default shape), reading each row back as its `S`
+scalar (a `RecordScalar` row atom, or a `StructScalar`) and exposing the struct's
+*field columns* as its children.
 Each of `serie` / `map` / `optional` also has a dynamic base (`Serie`, `MapScalar`,
 `OptionalScalar`) with the element type erased — the base `Scalar` surface only —
 that the typed generics `erase()` back to.
 
-### AnySerie and NestedSerie
+### AnySerie, AnyScalar and NestedSerie
 
 `AnySerie` is the type-erased column behind every nested scalar: the integer
 element types are held **decomposed** as the concrete buffer-backed series
 (`Int8Serie` … `UInt64Serie`); any other element type keeps its Arrow array
 zero-copy in the `Arrow` fallback (more decomposed variants land as concrete
-series do). `from_arrow` decomposes, `to_arrow` reconstitutes, `slice` windows —
-all sharing buffers.
+series do). `from_arrow` decomposes, `to_arrow` reconstitutes, `slice` windows,
+and `get_scalar(index)` reads one element out as an `AnyScalar` — all sharing
+buffers. `AnyScalar` is the atomic counterpart one value down (an `int` decomposed
+to its concrete scalar, anything else a one-element Arrow value), the crate's own
+holder behind a `RecordScalar`'s fields.
 
 Every nested scalar implements the `NestedSerie` trait for easy child access:
 `child_serie_count()`, `child_serie_at(index)`, `child_serie_by(name)` and
 `child_serie_name_at(index)` — a serie has one `"item"` child, a map one
-`"entries"` child (plus the `"key"` / `"value"` projections by name), and a
-struct / record one child per field, by position and by field name. Handles are
-zero-copy `AnySerie` clones; a null scalar has no children.
+`"entries"` child (plus the `"key"` / `"value"` projections by name), a struct /
+record one child per field, and a struct serie one field column per field, by
+position and by field name. Handles are zero-copy `AnySerie` clones; a null scalar
+has no children.
 
 ### RecordScalar
 
-`RecordScalar` is the **generic struct-row accessor**: an array of one-element
-child series sharing one `StructType`. `scalar_at(index)` / `scalar_by(name)`
-hand back a child's one-element serie (rehydrate with the matching scalar's
-`from_arrow`); `StructScalar` — the plain row value — converts to it with the
-base accessor `as_struct()`. In the bindings a record is built straight from a
-`dict` (Python) / plain object (Node) with every field inferred, and reads back
-out as an auto-generated **singleton dataclass** (one frozen dataclass per
-schema, cached) in Python or a plain object in JS.
+`RecordScalar` is the **row-oriented struct atom**: an array of one `AnyScalar` per
+field, sharing one `StructType`. Where `StructScalar` is the column-oriented row
+(one one-element serie per field), `RecordScalar` materializes it field-by-field —
+`scalar_at(index)` / `scalar_by(name)` hand back a field's atomic scalar directly,
+and `StructScalar` converts to it with the base accessor `as_struct()`. In the
+bindings a record is built straight from a `dict` (Python) / plain object (Node)
+with every field inferred, and reads back out as an auto-generated **singleton
+dataclass** (one frozen dataclass per schema, cached) in Python or a plain object
+in JS.
 
 ### `as_serie` / `as_map` / `as_struct` and the native-value accessors
 
@@ -452,11 +465,13 @@ type:
 The generic `Serie`, per-element nulls and the Arrow / IO surface stay Rust-only:
 
 !!! note "Rust only"
-    The generic `Serie` / `MapScalar` / `StructScalar` are generic over their
-    child types (or carry dynamic Arrow fields), and the concrete series'
-    `to_arrow_scalar` / `from_arrow`, `to_arrow_array` / `nulls` and `from_io` / `pwrite_io` share
-    raw Arrow buffers or borrow a second IO resource at once — none crosses the
-    FFI boundary yet, so from a binding a serie is a dense (all-valid) serie.
+    The generic `Serie` / `MapScalar` / `StructScalar`, the struct-row series
+    `StructSerie` / `TypedStructSerie` and the type-erased `AnySerie` / `AnyScalar`
+    holders are generic over their child types (or carry dynamic Arrow fields), and
+    the concrete series' `to_arrow_scalar` / `from_arrow`, `to_arrow_array` / `nulls`
+    and `from_io` / `pwrite_io` share raw Arrow buffers or borrow a second IO
+    resource at once — none crosses the FFI boundary yet, so from a binding a serie
+    is a dense (all-valid) serie.
 
 ```rust
 use yggdryl_scalar::yggdryl_dtype as dtype;
