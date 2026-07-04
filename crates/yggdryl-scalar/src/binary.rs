@@ -60,6 +60,14 @@ pub struct BinaryScalar {
     value: Option<ByteBuffer>,
 }
 
+impl std::hash::Hash for BinaryScalar {
+    // Hashed by content — the raw bytes (or `None` for null) — matching equality, so
+    // a `binary` scalar can key a map.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.as_ref().map(ByteBuffer::as_bytes).hash(state);
+    }
+}
+
 impl BinaryScalar {
     /// A `binary` scalar holding `value` (empty bytes are the empty value, not
     /// null).

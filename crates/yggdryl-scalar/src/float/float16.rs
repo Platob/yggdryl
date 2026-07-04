@@ -37,6 +37,19 @@ pub struct Float16Scalar {
     value: Option<f16>,
 }
 
+// Hashed by bit pattern, like [`Float32Scalar`](crate::Float32Scalar) — `-0.0`
+// canonicalizes to `+0.0` (hashing equal, as they compare equal), a `NaN` hashes by
+// its bits though it is unequal to itself by value. `Eq` is the pragmatic marker.
+impl std::cmp::Eq for Float16Scalar {}
+
+impl std::hash::Hash for Float16Scalar {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value
+            .map(|value| if value.to_f32() == 0.0 { 0 } else { value.to_bits() })
+            .hash(state);
+    }
+}
+
 impl Float16Scalar {
     /// A `float16` scalar holding `value`.
     pub fn new(value: f16) -> Self {

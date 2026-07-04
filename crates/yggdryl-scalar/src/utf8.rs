@@ -46,6 +46,14 @@ pub struct Utf8Scalar {
     value: Option<Utf8Buffer>,
 }
 
+impl std::hash::Hash for Utf8Scalar {
+    // Hashed by content — the UTF-8 bytes (or `None` for null) — matching equality, so
+    // a `utf8` scalar can key a map.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.as_ref().map(Utf8Buffer::as_bytes).hash(state);
+    }
+}
+
 impl Utf8Scalar {
     /// A `utf8` scalar holding `value` (an empty string is the empty value, not
     /// null).

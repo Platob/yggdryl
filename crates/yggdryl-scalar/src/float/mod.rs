@@ -54,6 +54,20 @@ macro_rules! float_scalar {
             value: Option<$native>,
         }
 
+        // Hashed by bit pattern, so a float scalar can key a map: `-0.0` canonicalizes
+        // to `+0.0` (hashing equal, as they compare equal), and a `NaN` hashes by its
+        // bits though it is unequal to itself by value — the usual float-in-a-set
+        // caveat. `Eq` is the pragmatic marker the type-erased holders already carry.
+        impl ::std::cmp::Eq for $ty {}
+
+        impl ::std::hash::Hash for $ty {
+            fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+                self.value
+                    .map(|value| if value == 0.0 { 0 } else { value.to_bits() })
+                    .hash(state);
+            }
+        }
+
         impl $ty {
             #[doc = concat!("A `", $name, "` scalar holding `value`.")]
             pub fn new(value: $native) -> Self {

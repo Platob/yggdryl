@@ -293,6 +293,30 @@ macro_rules! int_serie {
 
         impl Eq for $ty {}
 
+        impl ::std::hash::Hash for $ty {
+            // Hashed to match the logical equality above: a null serie is one marker,
+            // a present serie is its length then each element — the little-endian bytes
+            // when valid, a bare null marker otherwise (a null slot's buffer byte is
+            // arbitrary and must not be hashed).
+            fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+                match &self.values {
+                    None => state.write_u8(0),
+                    Some(values) => {
+                        state.write_u8(1);
+                        ::std::hash::Hash::hash(&values.len(), state);
+                        for (index, value) in values.iter().enumerate() {
+                            if self.nulls.as_ref().is_none_or(|nulls| nulls.is_valid(index)) {
+                                state.write_u8(1);
+                                state.write(&value.to_le_bytes());
+                            } else {
+                                state.write_u8(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         impl ::core::convert::From<$crate::arrow_buffer::ScalarBuffer<$native>> for $ty {
             /// An all-valid array borrowing the element buffer zero-copy.
             fn from(values: $crate::arrow_buffer::ScalarBuffer<$native>) -> Self {
