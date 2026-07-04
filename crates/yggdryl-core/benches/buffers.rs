@@ -1,7 +1,7 @@
-//! Benchmarks for the `ByteBuffer` and `BitBuffer` resources.
+//! Benchmarks for the `ByteBuffer`, `BitBuffer` and `StringBuffer` resources.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use yggdryl_core::{BitBuffer, ByteBuffer, RawIOBase, Whence};
+use yggdryl_core::{BitBuffer, ByteBuffer, IOBase, RawIOBase, StringBuffer, Whence};
 
 const N: usize = 4096;
 const STREAM_N: usize = 256 * 1024; // four 64 KiB chunks
@@ -70,6 +70,38 @@ fn bit_buffer(c: &mut Criterion) {
     group.finish();
 }
 
+// The StringBuffer: UTF-8 byte storage with a typed char view. `char_len` /
+// IOBase::size scan the content, so the multi-byte case is the interesting one.
+fn string_buffer(c: &mut Criterion) {
+    let mut group = c.benchmark_group("string_buffer");
+    group.throughput(Throughput::Bytes(N as u64));
+
+    // A mixed ASCII / 2-byte string of roughly N bytes.
+    let content: String = "aé".repeat(N / 3);
+
+    group.bench_function("from_string", |b| {
+        b.iter(|| StringBuffer::from_string(black_box(content.clone())))
+    });
+
+    let text = StringBuffer::from_string(content.clone());
+    group.bench_function("as_str", |b| b.iter(|| black_box(text.as_str().unwrap())));
+    group.bench_function("char_len", |b| b.iter(|| black_box(text.char_len())));
+
+    group.bench_function("pwrite_char", |b| {
+        b.iter(|| {
+            let mut buffer = StringBuffer::new();
+            for _ in 0..N / 2 {
+                buffer
+                    .pwrite_one(buffer.byte_size(), Whence::Start, black_box(&'é'))
+                    .unwrap();
+            }
+            buffer
+        })
+    });
+
+    group.finish();
+}
+
 fn stream(c: &mut Criterion) {
     let mut group = c.benchmark_group("stream");
     group.throughput(Throughput::Bytes(STREAM_N as u64));
@@ -97,5 +129,5 @@ fn stream(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, byte_buffer, bit_buffer, stream);
+criterion_group!(benches, byte_buffer, bit_buffer, string_buffer, stream);
 criterion_main!(benches);

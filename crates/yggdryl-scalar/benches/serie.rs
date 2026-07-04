@@ -147,6 +147,18 @@ fn float(c: &mut Criterion) {
         b.iter(|| black_box(Float64Serie::from_io(black_box(&buffer)).unwrap()))
     });
 
+    // The half-precision serie shares the buffer-backed path (2 bytes per element).
+    let halves = yggdryl_scalar::Float16Serie::from(
+        (0..N)
+            .map(|value| yggdryl_scalar::half::f16::from_f64(value as f64 + 0.5))
+            .collect::<Vec<_>>(),
+    );
+    let mut narrow = ByteBuffer::new();
+    halves.pwrite_io(&mut narrow, 0, Whence::Start).unwrap();
+    group.bench_function("float16_serie_from_io", |b| {
+        b.iter(|| black_box(yggdryl_scalar::Float16Serie::from_io(black_box(&narrow)).unwrap()))
+    });
+
     group.finish();
 }
 
