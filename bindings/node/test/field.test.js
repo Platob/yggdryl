@@ -99,3 +99,10 @@ for (const { fieldClass, ty, name } of SERIES) {
     assert.equal(new ty().field('scores').dataType().name(), 'list')
   })
 }
+
+test('fields render as name: type', () => {
+  assert.equal(new field.Int64Field('id', false).display(), 'id: int64')
+  assert.equal(new field.Int64Field('age').display(), 'age: int64?') // a trailing ? when nullable
+  assert.equal(String(new field.Utf8Field('name', false)), 'name: utf8') // napi maps display() to toString()
+  assert.equal(new field.Int64SerieField('scores', false).display(), 'scores: list<int64>')
+})

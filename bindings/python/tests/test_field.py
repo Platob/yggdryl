@@ -116,3 +116,13 @@ def test_serie_field(case):
     assert field_class("scores", False).is_nullable() is False
     # The data type's factory builds the same field.
     assert serie_type().field("scores").data_type().name() == "list"
+
+
+def test_display_renders_name_and_type():
+    # repr/str/display render `name: type`, with a trailing `?` when nullable.
+    strict = field.Int64Field("id", False)
+    assert strict.display() == "id: int64"
+    assert repr(strict) == "id: int64"
+    assert str(strict) == "id: int64"
+    assert field.Int64Field("age").display() == "age: int64?"  # nullable
+    assert field.Int64SerieField("scores", False).display() == "scores: list<int64>"

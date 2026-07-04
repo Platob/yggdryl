@@ -223,3 +223,16 @@ def test_serie_type_is_a_factory(case):
     numbers = serie.scalar([low, 0, high])
     assert numbers.to_pylist() == [low, 0, high]
     assert numbers.data_type().value_type().name() == name
+
+
+def test_display_renders_the_type_signature():
+    # repr/str/display all render the compact type signature.
+    assert dtype.Int64Type().display() == "int64"
+    assert repr(dtype.Int64Type()) == "int64"
+    assert str(dtype.Int64Type()) == "int64"
+    assert dtype.NullType().display() == "null"
+    # A container renders its nested signature.
+    assert dtype.Int64SerieType().display() == "list<int64>"
+    assert dtype.Int64Type().optional().display() == "optional<int64>"
+    struct = dtype.StructType({"x": 1, "weight": 1.5})
+    assert struct.display() == "struct<x: int64, weight: float64>"

@@ -222,6 +222,42 @@ fn main() {
 }
 ```
 
+## Display
+
+`display()` renders a field as `name: type` for fast debugging — a trailing `?`
+marks a nullable field, and the type is the data type's own recursive
+[signature](dtype.md#display) (so `items: list<int64>?`). The bindings also wire it to
+the native form (Python `repr()`, JS `toString()`).
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype
+
+    assert dtype.Int64Type().field("id", False).display() == "id: int64"
+    assert dtype.Int64Type().field("age", True).display() == "age: int64?"
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    assert.equal(new dtype.Int64Type().field('id', false).display(), 'id: int64')
+    assert.equal(new dtype.Int64Type().field('age', true).display(), 'age: int64?')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_field::{Field, Int64Field};
+
+    fn main() {
+        assert_eq!(Int64Field::new("id", false).display(), "id: int64");
+        assert_eq!(Int64Field::new("age", true).display(), "age: int64?");
+    }
+    ```
+
 ## The trait layers
 
 - **`Field`** — the untyped base: a named, nullable column

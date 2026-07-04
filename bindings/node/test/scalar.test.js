@@ -466,3 +466,28 @@ test('optional string redirects to the inner scalar', () => {
   assert.equal(missing.scalar(), null)
   assert.throws(() => missing.asStr(), /is null/)
 })
+
+test('scalars render their value; null renders "null"', () => {
+  assert.equal(new scalar.Int64Scalar(42n).display(), '42')
+  assert.equal(String(new scalar.Int64Scalar(42n)), '42') // napi maps display() to toString()
+  assert.equal(`${new scalar.Int32Scalar(7)}`, '7') // template literals too
+  assert.equal(new scalar.Utf8Scalar('hi').display(), '"hi"')
+  assert.equal(scalar.Int64Scalar.null().display(), 'null')
+  assert.equal(new scalar.NullScalar().display(), 'null')
+  // An optional shows its inner value (not its union storage), or 'null'.
+  assert.equal(new scalar.OptionalInt64Scalar(7n).display(), '7')
+  assert.equal(scalar.OptionalInt64Scalar.null().display(), 'null')
+  assert.equal(new scalar.OptionalUtf8Scalar('hi').display(), '"hi"')
+})
+
+test('a serie renders a box-drawn table headed by its item field', () => {
+  const numbers = new scalar.Int64Serie([1n, 2n, 3n])
+  const table = numbers.display()
+  assert.ok(table.includes('┌') && table.includes('│')) // box-drawing
+  assert.ok(table.includes('item') && table.includes('int64')) // the item-field header
+  assert.equal(numbers.field(), 'item: int64') // its compact item field
+
+  // displayWith truncates a longer serie with a `… (N more)` footer.
+  const long = new scalar.Int32Serie([1, 2, 3, 4, 5, 6, 7, 8])
+  assert.ok(long.displayWith(3).includes('… (5 more)')) // 8 elements, 3 shown
+})

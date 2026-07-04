@@ -436,6 +436,72 @@ holders (`AnyScalar`, `RecordScalar`, the maps and the dynamic / struct series) 
     }
     ```
 
+## Display
+
+Every data type, field and scalar has a compact, human-readable **`display()`** for
+fast debugging (the bindings also wire it to the language's native form — Python
+`repr()` / `print()`, JS `toString()` / template literals / `console.log`). A data
+type is a recursive **signature** (`int64`, `list<int64>`,
+`struct<x: int64, y: float64>`, `optional<int64>`); a field is `name: type` (a
+trailing `?` when nullable); an **atomic** scalar is its value (`42`, `1.5`, `"hi"`,
+`0x0102`, `null`); a **serie** is a box-drawn **table** headed by its field (name and
+type) with the first `max_rows` (default **10**) elements and a `… (N more)` footer; a
+**struct** serie is one column per field (nested values shown compactly), a record a
+transposed `field | value` table. Wide tables try to fit `max_width` (default 100) by
+collapsing trailing columns into a `…` column. Only `max_rows` are ever formatted, so
+displaying a huge serie is cheap. Pass explicit limits with `display_with` (Rust /
+Python) / `displayWith` (Node); the concrete series also expose a fast `field()`.
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype
+
+    assert dtype.Int64Type().display() == "int64"
+    numbers = dtype.Int64SerieType().scalar([1, 2, 3])
+    assert numbers.field() == "item: int64"            # the fast item-field accessor
+    print(numbers)                                     # __str__ → the table
+    table = numbers.display()
+    assert "┌" in table and "item" in table and "int64" in table
+    # A long serie truncates; a custom row budget is display_with.
+    big = dtype.Int64SerieType().scalar(list(range(50)))
+    assert big.display_with(max_rows=3).endswith("… (47 more)")
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    assert.equal(new dtype.Int64Type().display(), 'int64')
+    const numbers = new dtype.Int64SerieType().scalar([1n, 2n, 3n])
+    assert.equal(numbers.field(), 'item: int64') // the fast item-field accessor
+    const table = numbers.display() // also `String(numbers)` / `${numbers}`
+    assert.ok(table.includes('┌') && table.includes('item'))
+    const big = new dtype.Int64SerieType().scalar([...Array(50).keys()].map(BigInt))
+    assert.ok(big.displayWith(3).endsWith('… (47 more)'))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_scalar::yggdryl_dtype::{DataType, Int64Type};
+    use yggdryl_scalar::{DisplayOptions, Int64Scalar, Int64Serie, Scalar};
+
+    fn main() {
+        assert_eq!(Int64Type.display(), "int64");
+        assert_eq!(Int64Scalar::new(42).display(), "42");
+
+        let numbers = Int64Serie::from(vec![1i64, 2, 3]);
+        assert_eq!(numbers.field().name(), "item"); // the fast item-field accessor
+        assert!(numbers.display().contains("int64")); // the box-drawn table
+        // Explicit limits with display_with.
+        let big = Int64Serie::from((0..50i64).collect::<Vec<_>>());
+        let three = big.display_with(DisplayOptions { max_rows: 3, ..Default::default() });
+        assert!(three.ends_with("… (47 more)"));
+    }
+    ```
+
 ## Nested scalars: serie, map and struct
 
 Every nested scalar holds **our own series** — [`AnySerie`](#anyserie-anyscalar-and-nestedserie)

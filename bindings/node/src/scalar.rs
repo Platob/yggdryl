@@ -127,6 +127,29 @@ impl NullScalar {
     pub fn hash_code(&self) -> i32 {
         hash_code_of(&self.inner)
     }
+
+    /// A compact rendering for fast debugging: `null`.
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty value — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
+    }
 }
 
 /// Generates the `as*` accessor block for a scalar wrapper class: the value when
@@ -306,6 +329,29 @@ impl BinaryScalar {
     pub fn hash_code(&self) -> i32 {
         hash_code_of(&self.inner)
     }
+
+    /// A compact rendering for fast debugging: the value (`0x0102`, `null`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty value — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
+    }
 }
 
 as_accessors_node!(BinaryScalar);
@@ -372,6 +418,29 @@ impl OptionalBinaryScalar {
     pub fn to_js_value(&self) -> Option<Buffer> {
         self.value()
     }
+
+    /// A compact rendering for fast debugging: the value (`0x0102`, `null`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty value — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
+    }
 }
 
 as_accessors_node!(OptionalBinaryScalar);
@@ -435,6 +504,29 @@ impl Utf8Scalar {
     pub fn hash_code(&self) -> i32 {
         hash_code_of(&self.inner)
     }
+
+    /// A compact rendering for fast debugging: the value (`"hi"`, `null`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty value — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
+    }
 }
 
 as_accessors_node!(Utf8Scalar);
@@ -497,6 +589,29 @@ impl OptionalUtf8Scalar {
     pub fn to_js_value(&self) -> Option<String> {
         self.value()
     }
+
+    /// A compact rendering for fast debugging: the value (`"hi"`, `null`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty value — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
+    }
 }
 
 as_accessors_node!(OptionalUtf8Scalar);
@@ -543,6 +658,30 @@ macro_rules! int_scalar_node {
             pub fn hash_code(&self) -> i32 {
                 hash_code_of(&self.inner)
             }
+
+            /// A compact rendering for fast debugging: the atomic value (`42`,
+            /// `1.5`, `null`).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty value — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The rendering with explicit limits (`maxRows` rows, `maxWidth`
+            /// columns; defaults 10 / 100).
+            #[napi]
+            pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+                self.inner.display_with(yggdryl_scalar::DisplayOptions {
+                    max_rows: max_rows.unwrap_or(10) as usize,
+                    max_width: max_width.unwrap_or(100) as usize,
+                })
+            }
         }
 
         as_accessors_node!($ty);
@@ -580,6 +719,30 @@ macro_rules! int_scalar_node {
             #[napi]
             pub fn data_type(&self) -> crate::dtype::$opt_dtype {
                 crate::dtype::$opt_dtype::default()
+            }
+
+            /// A compact rendering for fast debugging: the atomic value (`42`,
+            /// `1.5`, `null`).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty value — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The rendering with explicit limits (`maxRows` rows, `maxWidth`
+            /// columns; defaults 10 / 100).
+            #[napi]
+            pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+                self.inner.display_with(yggdryl_scalar::DisplayOptions {
+                    max_rows: max_rows.unwrap_or(10) as usize,
+                    max_width: max_width.unwrap_or(100) as usize,
+                })
             }
         }
 
@@ -984,6 +1147,42 @@ macro_rules! int_serie_scalar_node {
             #[napi]
             pub fn hash_code(&self) -> i32 {
                 hash_code_of(&self.inner)
+            }
+
+            /// A box-drawn table for fast debugging: the serie's item-field header
+            /// and its first rows.
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty table — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The table with explicit limits (`maxRows` rows, `maxWidth`
+            /// columns; defaults 10 / 100) — a `… (N more)` footer when the serie
+            /// is longer than `maxRows`.
+            #[napi]
+            pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+                self.inner.display_with(yggdryl_scalar::DisplayOptions {
+                    max_rows: max_rows.unwrap_or(10) as usize,
+                    max_width: max_width.unwrap_or(100) as usize,
+                })
+            }
+
+            /// The serie's item field in compact `name: type` form (e.g.
+            /// `"item: int64"`) — the header a tabular `display` prints.
+            #[napi]
+            pub fn field(&self) -> String {
+                format!(
+                    "{}: {}",
+                    self.inner.field().name(),
+                    yggdryl_scalar::yggdryl_dtype::signature(self.inner.field().data_type())
+                )
             }
         }
     };
@@ -1442,5 +1641,29 @@ impl RecordScalar {
             object.set(name, scalar_to_js(&env, scalar)?)?;
         }
         Ok(Some(object))
+    }
+
+    /// A compact rendering for fast debugging: a transposed table, one row per
+    /// field.
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty table — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The rendering with explicit limits (`maxRows` rows, `maxWidth` columns;
+    /// defaults 10 / 100).
+    #[napi]
+    pub fn display_with(&self, max_rows: Option<u32>, max_width: Option<u32>) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows: max_rows.unwrap_or(10) as usize,
+            max_width: max_width.unwrap_or(100) as usize,
+        })
     }
 }

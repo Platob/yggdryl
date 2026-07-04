@@ -332,6 +332,43 @@ for `Int32SerieType` / plain numbers, and so on down to `Int8SerieType`.
     child types as Arrow fields or a generic parameter, so they have no concrete FFI
     shape yet and are not exposed to Python or Node.
 
+## Display
+
+`display()` renders a type's compact, recursive **signature** for fast debugging —
+its lowercase name plus, for a container, its children in angle brackets. The
+bindings also wire it to the native form (Python `repr()`, JS `toString()`). See
+[Display](scalar.md#display) on the scalar page for the full story across the layers.
+
+=== "Python"
+
+    ```python
+    from yggdryl import dtype
+
+    assert dtype.Int64Type().display() == "int64"
+    assert dtype.Int64SerieType().display() == "list<int64>"
+    ```
+
+=== "Node"
+
+    ```js
+    const { dtype } = require('yggdryl')
+
+    assert.equal(new dtype.Int64Type().display(), 'int64')
+    assert.equal(new dtype.Int64SerieType().display(), 'list<int64>')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_dtype::{DataType, Int64Type};
+
+    fn main() {
+        assert_eq!(Int64Type.display(), "int64");
+        // A container nests its children: `list<int64>`, `struct<x: int64>`, …
+        assert_eq!(yggdryl_dtype::signature(&Int64Type.to_arrow()), "int64");
+    }
+    ```
+
 ## The trait layers
 
 ### Untyped base

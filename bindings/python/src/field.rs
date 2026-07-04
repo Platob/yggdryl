@@ -56,6 +56,22 @@ impl UnionField {
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `struct` field: a name paired with a `yggdryl.dtype.StructType`
@@ -92,6 +108,22 @@ impl StructField {
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A `null` field: a name paired with the null data type.
@@ -125,6 +157,22 @@ impl NullField {
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `binary` field: a name paired with the data type.
@@ -157,6 +205,22 @@ impl BinaryField {
     /// Whether values in this field may be null.
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -192,6 +256,22 @@ impl OptionalBinaryField {
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `utf8` field: a name paired with the data type.
@@ -224,6 +304,22 @@ impl Utf8Field {
     /// Whether values in this field may be null.
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -258,6 +354,22 @@ impl OptionalUtf8Field {
     /// Whether values in this field may be null.
     fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `name: type`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `name: type`.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -297,6 +409,22 @@ macro_rules! int_field_py {
             fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
             }
+
+            /// A compact `name: type` form for fast debugging (a trailing `?`
+            /// when nullable).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows `name: type`.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows `name: type`.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
         }
 
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
@@ -329,6 +457,22 @@ macro_rules! int_field_py {
             /// Whether values in this field may be null.
             fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
+            }
+
+            /// A compact `name: type` form for fast debugging (a trailing `?`
+            /// when nullable).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows `name: type`.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows `name: type`.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -447,6 +591,22 @@ macro_rules! int_serie_field_py {
             /// Whether values in this field may be null.
             fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
+            }
+
+            /// A compact `name: type` form for fast debugging (e.g.
+            /// `scores: list<int64>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows `name: type`.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows `name: type`.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };

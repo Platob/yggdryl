@@ -526,3 +526,43 @@ def test_serie_is_hashable_and_value_comparable(serie_class, a, b):
     assert serie_class.null() == serie_class.null()
     assert hash(serie_class.null()) == hash(serie_class.null())
     assert len({serie_class.null(), serie_class.null()}) == 1
+
+
+def test_display_and_repr_render_the_value():
+    # An atomic scalar renders as its value through display/repr/str.
+    answer = scalar.Int64Scalar(42)
+    assert answer.display() == "42"
+    assert repr(answer) == "42"
+    assert str(answer) == "42"
+    # A null scalar renders as "null"; a string renders quoted.
+    assert scalar.Int64Scalar.null().display() == "null"
+    assert repr(scalar.NullScalar()) == "null"
+    assert scalar.Utf8Scalar("hi").display() == '"hi"'
+    # An optional shows its inner value (not its union storage), or "null".
+    assert scalar.OptionalInt64Scalar(7).display() == "7"
+    assert scalar.OptionalInt64Scalar.null().display() == "null"
+    assert scalar.OptionalUtf8Scalar("hi").display() == '"hi"'
+
+
+def test_serie_display_is_a_box_drawn_table():
+    numbers = scalar.Int64Serie([1, 2, 3])
+    rendered = numbers.display()
+    # A serie renders as a box-drawn table headed by its item field.
+    assert "┌" in rendered
+    assert "│" in rendered
+    assert "item" in rendered
+    assert repr(numbers) == rendered
+    assert str(numbers) == rendered
+    # A null serie renders as "null".
+    assert scalar.Int64Serie.null().display() == "null"
+    # The item field in compact name: type form.
+    assert scalar.Int64Serie([1, 2, 3]).field() == "item: int64"
+    assert scalar.Float64Serie([1.5]).field() == "item: float64"
+
+
+def test_serie_display_with_truncates_a_long_serie():
+    numbers = scalar.Int64Serie(list(range(100)))
+    # max_rows caps the body rows, with a footer counting the hidden ones.
+    assert "… (97 more)" in numbers.display_with(max_rows=3)
+    # The no-arg display keeps the default 10 rows.
+    assert "… (90 more)" in numbers.display()

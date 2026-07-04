@@ -93,6 +93,20 @@ impl UnionType {
             yggdryl_dtype::arrow_schema::UnionMode::Dense => "dense",
         }
     }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `struct` data type: an ordered set of named child fields,
@@ -157,6 +171,20 @@ impl StructType {
             .map(|field| field.name().to_string())
             .collect()
     }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `null` data type: every value is null, with no storage.
@@ -197,6 +225,20 @@ impl NullType {
     #[napi]
     pub fn bit_width(&self) -> Option<u32> {
         self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -290,6 +332,20 @@ impl BinaryType {
     #[napi]
     pub fn optional(&self) -> OptionalBinaryType {
         OptionalBinaryType::default()
+    }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -393,6 +449,20 @@ impl OptionalBinaryType {
             .map(Buffer::from)
             .map_err(data_error)
     }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `utf8` data type: a variable-length UTF-8 string. A logical
@@ -483,6 +553,20 @@ impl Utf8Type {
     #[napi]
     pub fn optional(&self) -> OptionalUtf8Type {
         OptionalUtf8Type::default()
+    }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -583,6 +667,20 @@ impl OptionalUtf8Type {
     pub fn native_from_bytes(&self, bytes: Buffer) -> Result<String> {
         self.inner.native_from_bytes(&bytes).map_err(data_error)
     }
+
+    /// A compact type signature for fast debugging (e.g. `int64`, `list<int64>`,
+    /// `optional<int64>`).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty signature — napi exposes this as `toString()`, so `String(x)`,
+    /// template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// Generates the width-independent surface of one integer type: the data type
@@ -654,6 +752,20 @@ macro_rules! int_dtype_node {
             pub fn optional(&self) -> $opt_ty {
                 $opt_ty::default()
             }
+
+            /// A compact type signature for fast debugging (e.g. `int64`,
+            /// `list<int64>`, `optional<int64>`).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty signature — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
+            }
         }
 
         #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
@@ -724,6 +836,20 @@ macro_rules! int_dtype_node {
                 UnionType {
                     inner: self.inner.storage().clone(),
                 }
+            }
+
+            /// A compact type signature for fast debugging (e.g. `int64`,
+            /// `list<int64>`, `optional<int64>`).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty signature — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -1309,6 +1435,20 @@ macro_rules! int_serie_dtype_node {
                 crate::field::$field {
                     inner: self.inner.field(name, nullable.unwrap_or(true)),
                 }
+            }
+
+            /// A compact type signature for fast debugging (e.g. `int64`,
+            /// `list<int64>`, `optional<int64>`).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty signature — napi exposes this as `toString()`, so
+            /// `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
             }
         }
     };

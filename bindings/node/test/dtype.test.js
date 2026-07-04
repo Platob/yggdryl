@@ -204,3 +204,12 @@ for (const { ty, name, width, low, high, wire } of SERIES) {
     assert.equal(numbers.dataType().valueType().name(), name)
   })
 }
+
+test('data types render a compact signature', () => {
+  assert.equal(new dtype.Int64Type().display(), 'int64')
+  assert.equal(String(new dtype.Int64Type()), 'int64') // napi maps display() to toString()
+  assert.equal(`${new dtype.Float64Type()}`, 'float64') // template literals too
+  assert.equal(new dtype.OptionalInt64Type().display(), 'optional<int64>')
+  assert.equal(new dtype.Int64SerieType().display(), 'list<int64>')
+  assert.equal(new dtype.Utf8Type().display(), 'utf8')
+})

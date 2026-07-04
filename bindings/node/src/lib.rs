@@ -12,6 +12,11 @@
 //! without naming its type. The wrappers are thin: all logic lives in the Rust
 //! crates, so the Node and Python bindings behave identically.
 
+// Every class exposes a `to_string` inherent method that napi maps to JS
+// `toString()` (its pretty `display()` form); the wrappers hold no `Display` impl,
+// so clippy's `inherent_to_string` would fire on each — the mapping is deliberate.
+#![allow(clippy::inherent_to_string)]
+
 use napi::bindgen_prelude::{BigInt, Error, Result};
 
 pub mod core;

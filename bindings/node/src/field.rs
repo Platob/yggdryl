@@ -64,6 +64,20 @@ impl UnionField {
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `struct` field: a name paired with a `yggdryl.dtype.StructType`
@@ -106,6 +120,20 @@ impl StructField {
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A `null` field: a name paired with the null data type.
@@ -141,6 +169,20 @@ impl NullField {
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `binary` field: a name paired with the data type.
@@ -175,6 +217,20 @@ impl BinaryField {
     #[napi]
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -212,6 +268,20 @@ impl OptionalBinaryField {
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
     }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// A nullable `utf8` field: a name paired with the data type.
@@ -246,6 +316,20 @@ impl Utf8Field {
     #[napi]
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -282,6 +366,20 @@ impl OptionalUtf8Field {
     #[napi]
     pub fn is_nullable(&self) -> bool {
         self.inner.is_nullable()
+    }
+
+    /// A compact `name: type` form for fast debugging (a trailing `?` when
+    /// nullable).
+    #[napi]
+    pub fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The pretty `name: type` form — napi exposes this as `toString()`, so
+    /// `String(x)`, template literals and `console.log` show it.
+    #[napi]
+    pub fn to_string(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -323,6 +421,20 @@ macro_rules! int_field_node {
             pub fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
             }
+
+            /// A compact `name: type` form for fast debugging (a trailing `?`
+            /// when nullable).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty `name: type` form — napi exposes this as `toString()`,
+            /// so `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
+            }
         }
 
         #[doc = concat!("A nullable optional-`", $name, "` field: a name paired with the logical optional data type.")]
@@ -357,6 +469,20 @@ macro_rules! int_field_node {
             #[napi]
             pub fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
+            }
+
+            /// A compact `name: type` form for fast debugging (a trailing `?`
+            /// when nullable).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty `name: type` form — napi exposes this as `toString()`,
+            /// so `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -480,6 +606,20 @@ macro_rules! int_serie_field_node {
             #[napi]
             pub fn is_nullable(&self) -> bool {
                 self.inner.is_nullable()
+            }
+
+            /// A compact `name: type` form for fast debugging (a trailing `?`
+            /// when nullable).
+            #[napi]
+            pub fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The pretty `name: type` form — napi exposes this as `toString()`,
+            /// so `String(x)`, template literals and `console.log` show it.
+            #[napi]
+            pub fn to_string(&self) -> String {
+                self.inner.display()
             }
         }
     };

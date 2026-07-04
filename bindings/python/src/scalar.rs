@@ -112,6 +112,31 @@ impl NullScalar {
         Self::default()
     }
 
+    /// A compact rendering for fast debugging — always `null`.
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows `null`.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows `null`.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` rendering with explicit limits (`max_rows` body rows,
+    /// `max_width` columns) — series and records honour both.
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
+        })
+    }
+
     /// Always `True`.
     fn is_null(&self) -> bool {
         self.inner.is_null()
@@ -154,6 +179,31 @@ impl BinaryScalar {
         Self {
             inner: yggdryl_scalar::BinaryScalar::new(value),
         }
+    }
+
+    /// A compact rendering for fast debugging — the value (`0x0102`, `null`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows the value.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows the value.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` rendering with explicit limits (`max_rows` body rows,
+    /// `max_width` columns) — series and records honour both.
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
+        })
     }
 
     /// A null `binary` scalar.
@@ -314,6 +364,31 @@ impl OptionalBinaryScalar {
         }
     }
 
+    /// A compact rendering for fast debugging — the value (`0x0102`, `null`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows the value.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows the value.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` rendering with explicit limits (`max_rows` body rows,
+    /// `max_width` columns) — series and records honour both.
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
+        })
+    }
+
     /// The null variant.
     #[staticmethod]
     fn null() -> Self {
@@ -447,6 +522,29 @@ macro_rules! int_scalar_py {
                 }
             }
 
+            /// A compact rendering for fast debugging — the value (`42`, `null`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows the value.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows the value.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` rendering with explicit limits (`max_rows` body
+            /// rows, `max_width` columns) — series and records honour both.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
+            }
+
             #[doc = concat!("A null `", $name, "` scalar.")]
             #[staticmethod]
             fn null() -> Self {
@@ -578,6 +676,29 @@ macro_rules! int_scalar_py {
                 Self {
                     inner: yggdryl_scalar::TypedOptionalScalar::new(yggdryl_scalar::$ty::new(value)),
                 }
+            }
+
+            /// A compact rendering for fast debugging — the value (`42`, `null`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows the value.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows the value.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` rendering with explicit limits (`max_rows` body
+            /// rows, `max_width` columns) — series and records honour both.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
             }
 
             /// The null variant.
@@ -795,6 +916,29 @@ macro_rules! float16_scalar_py {
                 }
             }
 
+            /// A compact rendering for fast debugging — the value (`1.5`, `null`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows the value.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows the value.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` rendering with explicit limits (`max_rows` body
+            /// rows, `max_width` columns) — series and records honour both.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
+            }
+
             #[doc = concat!("A null `", $name, "` scalar.")]
             #[staticmethod]
             fn null() -> Self {
@@ -929,6 +1073,29 @@ macro_rules! float16_scalar_py {
                         yggdryl_scalar::half::f16::from_f64(value),
                     )),
                 }
+            }
+
+            /// A compact rendering for fast debugging — the value (`1.5`, `null`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `repr(x)` shows the value.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` form — `print(x)` shows the value.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` rendering with explicit limits (`max_rows` body
+            /// rows, `max_width` columns) — series and records honour both.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
             }
 
             /// The null variant.
@@ -1069,6 +1236,31 @@ impl Utf8Scalar {
         }
     }
 
+    /// A compact rendering for fast debugging — the value (`"hi"`, `null`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows the value.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows the value.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` rendering with explicit limits (`max_rows` body rows,
+    /// `max_width` columns) — series and records honour both.
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
+        })
+    }
+
     /// A null `utf8` scalar.
     #[staticmethod]
     fn null() -> Self {
@@ -1201,6 +1393,31 @@ impl OptionalUtf8Scalar {
         }
     }
 
+    /// A compact rendering for fast debugging — the value (`"hi"`, `null`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `repr(x)` shows the value.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` form — `print(x)` shows the value.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` rendering with explicit limits (`max_rows` body rows,
+    /// `max_width` columns) — series and records honour both.
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
+        })
+    }
+
     /// The null variant.
     #[staticmethod]
     fn null() -> Self {
@@ -1330,6 +1547,39 @@ macro_rules! int_serie_scalar_py {
                 Self {
                     inner: yggdryl_scalar::$ty::from(values),
                 }
+            }
+
+            /// A compact box-drawn table for fast debugging — the item field
+            /// header and the first rows (`null` for a null serie).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table — `repr(x)` shows it.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table — `print(x)` shows it.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table with explicit limits — at most `max_rows`
+            /// body rows (a `… (N more)` footer past that), fit to `max_width`.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
+            }
+
+            /// The item field in compact `name: type` form (e.g. `item: int64`).
+            fn field(&self) -> String {
+                format!(
+                    "{}: {}",
+                    self.inner.field().name(),
+                    yggdryl_scalar::yggdryl_dtype::signature(self.inner.field().data_type())
+                )
             }
 
             /// The null serie scalar.
@@ -1485,6 +1735,39 @@ macro_rules! float16_serie_scalar_py {
                             .collect::<Vec<_>>(),
                     ),
                 }
+            }
+
+            /// A compact box-drawn table for fast debugging — the item field
+            /// header and the first rows (`null` for a null serie).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table — `repr(x)` shows it.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table — `print(x)` shows it.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` table with explicit limits — at most `max_rows`
+            /// body rows (a `… (N more)` footer past that), fit to `max_width`.
+            #[pyo3(signature = (max_rows = 10, max_width = 100))]
+            fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+                self.inner
+                    .display_with(yggdryl_scalar::DisplayOptions { max_rows, max_width })
+            }
+
+            /// The item field in compact `name: type` form (`item: float16`).
+            fn field(&self) -> String {
+                format!(
+                    "{}: {}",
+                    self.inner.field().name(),
+                    yggdryl_scalar::yggdryl_dtype::signature(self.inner.field().data_type())
+                )
             }
 
             /// The null serie scalar.
@@ -1741,6 +2024,32 @@ impl RecordScalar {
     fn new(row: &Bound<'_, PyDict>) -> PyResult<Self> {
         Ok(Self {
             inner: crate::factory::record_of(&crate::factory::infer_entries(row)?)?,
+        })
+    }
+
+    /// A compact transposed `field | value` table for fast debugging (`null`
+    /// for a null record).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` table — `repr(x)` shows it.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` table — `print(x)` shows it.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` table with explicit limits (`max_rows` body rows,
+    /// `max_width` columns).
+    #[pyo3(signature = (max_rows = 10, max_width = 100))]
+    fn display_with(&self, max_rows: usize, max_width: usize) -> String {
+        self.inner.display_with(yggdryl_scalar::DisplayOptions {
+            max_rows,
+            max_width,
         })
     }
 

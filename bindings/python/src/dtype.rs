@@ -78,6 +78,21 @@ impl UnionType {
             yggdryl_dtype::arrow_schema::UnionMode::Dense => "dense",
         }
     }
+
+    /// A compact type signature for fast debugging (the union's child types).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `struct` data type: an ordered set of named child fields,
@@ -147,6 +162,22 @@ impl StructType {
             .map(|field| field.name().clone())
             .collect()
     }
+
+    /// A compact type signature for fast debugging (e.g.
+    /// `struct<x: int64, y: float64>`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `null` data type: every value is null, with no storage.
@@ -182,6 +213,21 @@ impl NullType {
     /// The null type has no storage, so no bit width.
     fn bit_width(&self) -> Option<usize> {
         self.inner.bit_width()
+    }
+
+    /// A compact type signature for fast debugging, `"null"`.
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -269,6 +315,21 @@ impl BinaryType {
     /// The logical optional of this type (stored as the null-or-value union).
     fn optional(&self) -> OptionalBinaryType {
         OptionalBinaryType::default()
+    }
+
+    /// A compact type signature for fast debugging, `"binary"`.
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -366,6 +427,21 @@ impl OptionalBinaryType {
             &self.inner.native_from_bytes(bytes)?,
         ))
     }
+
+    /// A compact type signature for fast debugging (e.g. `optional<binary>`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// The Apache Arrow `utf8` data type: a variable-length UTF-8 string. A **logical**
@@ -448,6 +524,21 @@ impl Utf8Type {
     /// The logical optional of this type (stored as the null-or-value union).
     fn optional(&self) -> OptionalUtf8Type {
         OptionalUtf8Type::default()
+    }
+
+    /// A compact type signature for fast debugging, `"utf8"`.
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
     }
 }
 
@@ -538,6 +629,21 @@ impl OptionalUtf8Type {
     fn native_from_bytes(&self, bytes: &[u8]) -> Result<String, DataErr> {
         Ok(self.inner.native_from_bytes(bytes)?)
     }
+
+    /// A compact type signature for fast debugging (e.g. `optional<utf8>`).
+    fn display(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `repr(x)` shows the pretty form.
+    fn __repr__(&self) -> String {
+        self.inner.display()
+    }
+
+    /// The `display()` signature — `print(x)` shows the pretty form.
+    fn __str__(&self) -> String {
+        self.inner.display()
+    }
 }
 
 /// Generates the two data-type wrappers of one integer type: the data type `$ty`
@@ -627,6 +733,22 @@ macro_rules! int_dtype_py {
             fn optional(&self) -> $opt_ty {
                 $opt_ty::default()
             }
+
+            /// A compact type signature for fast debugging (e.g. `int64`,
+            /// `list<int64>`, `optional<int64>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
         }
 
         #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
@@ -715,6 +837,21 @@ macro_rules! int_dtype_py {
             /// inverse of `native_to_bytes`; the wrong length raises `ValueError`.
             fn native_from_bytes(&self, bytes: &[u8]) -> Result<$native, DataErr> {
                 Ok(self.inner.native_from_bytes(bytes)?)
+            }
+
+            /// A compact type signature for fast debugging (e.g. `optional<int64>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -917,6 +1054,21 @@ macro_rules! float16_dtype_py {
             fn optional(&self) -> $opt_ty {
                 $opt_ty::default()
             }
+
+            /// A compact type signature for fast debugging (e.g. `float16`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
+            }
         }
 
         #[doc = concat!("The logical optional of `", $name, "`: a value, or null — stored as the null-or-`", $name, "` union.")]
@@ -1011,6 +1163,21 @@ macro_rules! float16_dtype_py {
             /// length raises `ValueError`.
             fn native_from_bytes(&self, bytes: &[u8]) -> Result<f64, DataErr> {
                 Ok(self.inner.native_from_bytes(bytes)?.to_f64())
+            }
+
+            /// A compact type signature for fast debugging (e.g. `optional<float16>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -1121,6 +1288,21 @@ macro_rules! int_serie_dtype_py {
                 crate::scalar::$serie {
                     inner: yggdryl_scalar::$serie::from(values),
                 }
+            }
+
+            /// A compact type signature for fast debugging (e.g. `list<int64>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };
@@ -1317,6 +1499,21 @@ macro_rules! float16_serie_dtype_py {
                             .collect::<Vec<_>>(),
                     ),
                 }
+            }
+
+            /// A compact type signature for fast debugging (`list<float16>`).
+            fn display(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `repr(x)` shows the pretty form.
+            fn __repr__(&self) -> String {
+                self.inner.display()
+            }
+
+            /// The `display()` signature — `print(x)` shows the pretty form.
+            fn __str__(&self) -> String {
+                self.inner.display()
             }
         }
     };
