@@ -120,5 +120,32 @@ fn io(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, serie, arrow, io);
+// The AnySerie type-erased column: zero-copy decomposition from Arrow and
+// on-demand reconstitution — the internals behind every nested scalar.
+fn any_serie(c: &mut Criterion) {
+    use yggdryl_scalar::AnySerie;
+
+    let mut group = c.benchmark_group("any_serie");
+    group.throughput(Throughput::Elements(N as u64));
+
+    let arrow: yggdryl_scalar::arrow_array::ArrayRef = std::sync::Arc::new(
+        yggdryl_scalar::arrow_array::Int64Array::from((0..N as i64).collect::<Vec<_>>()),
+    );
+    group.bench_function("decompose_int64", |b| {
+        b.iter(|| black_box(AnySerie::from_arrow(black_box(arrow.clone()))))
+    });
+
+    let decomposed = AnySerie::from_arrow(arrow.clone());
+    group.bench_function("recompose_int64", |b| {
+        b.iter(|| black_box(decomposed.to_arrow()))
+    });
+
+    group.bench_function("slice_int64", |b| {
+        b.iter(|| black_box(decomposed.slice(black_box(N / 4), black_box(N / 2))))
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, serie, any_serie, arrow, io);
 criterion_main!(benches);

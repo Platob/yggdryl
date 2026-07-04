@@ -78,7 +78,10 @@ where
     /// [`MapScalar`](crate::MapScalar) over the same entries assembled into one Arrow
     /// struct array (a null map erases to the null map).
     pub fn erase(&self) -> crate::MapScalar {
-        crate::MapScalar::from_parts(self.data_type.erase(), self.entries_struct())
+        crate::MapScalar::from_parts(
+            self.data_type.erase(),
+            self.entries_struct().map(crate::AnySerie::from_arrow),
+        )
     }
 
     /// The entries assembled into their Arrow `"entries"` struct array (the `"key"`
@@ -193,6 +196,43 @@ where
             Some(keys.into_iter().zip(values).collect())
         };
         Ok(Self { data_type, entries })
+    }
+
+    fn as_map(&self) -> Result<crate::MapScalar, DataError> {
+        Ok(self.erase())
+    }
+}
+
+impl<K, V, SK, SV> crate::NestedSerie for TypedMapScalar<K, V, SK, SV>
+where
+    K: DataType + Default,
+    V: DataType + Default,
+    SK: Scalar<DataType = K>,
+    SV: Scalar<DataType = V>,
+{
+    fn child_serie_count(&self) -> usize {
+        1
+    }
+
+    // The entries struct is assembled on demand from the native entries (the typed
+    // map stores the scalars themselves — the most decomposed form).
+    fn child_serie_at(&self, index: usize) -> Option<crate::AnySerie> {
+        (index == 0)
+            .then(|| self.entries_struct().map(crate::AnySerie::from_arrow))
+            .flatten()
+    }
+
+    fn child_serie_name_at(&self, index: usize) -> Option<String> {
+        (index == 0).then(|| "entries".to_string())
+    }
+
+    fn child_serie_by(&self, name: &str) -> Option<crate::AnySerie> {
+        match name {
+            "entries" => self.child_serie_at(0),
+            // The key / value projections redirect through the erased map.
+            "key" | "value" => self.erase().child_serie_by(name),
+            _ => None,
+        }
     }
 }
 

@@ -57,6 +57,16 @@ type they are looking at from the shape of the code.
    use the chunked streams — `pread_raw_io` / `pwrite_raw_io` by bytes, or
    `pread_typed_io` / `pwrite_typed_io` by items — rather than materializing whole
    copies.
+7. **Prefer our optimized implementations over scripting-side conversion.** When
+   both a core path and a Python/JS-side path could produce a result, bind the
+   core path: a value crosses the FFI boundary **once**, as one whole native
+   value (`to_pyvalue` / `to_pylist` / `toJsValue` / `toArray`, the inference
+   factory), never through per-element scripting loops or repeated
+   serialize/deserialize round trips. Internally the nested values hold **our own
+   series** (buffer-decomposed columns) and reconstitute Arrow arrays on demand,
+   zero-copy — new binding surfaces must reuse those holders rather than
+   materializing intermediate copies, and a binding method that would loop in the
+   scripting language belongs in the Rust core instead.
 
 ## Workspace layout
 

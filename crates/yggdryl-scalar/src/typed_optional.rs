@@ -255,6 +255,15 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
             .ok_or(DataError::NullValue)?
             .value_le_bytes()
     }
+    fn as_serie(&self) -> Result<crate::Serie, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_serie()
+    }
+    fn as_map(&self) -> Result<crate::MapScalar, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_map()
+    }
+    fn as_struct(&self) -> Result<crate::RecordScalar, DataError> {
+        self.value.as_ref().ok_or(DataError::NullValue)?.as_struct()
+    }
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>>

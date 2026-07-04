@@ -23,10 +23,12 @@ Four things stay **Rust-only**, stated here and in both binding module docs: the
 `UnionType` from arbitrary child fields (reached in the bindings through an
 optional data type's `storage()`), the [`DataTypeId`](#type-ids) classifier, and
 the dynamic base [nested types](#nested-types-serie-map-and-struct) and their typed
-generics (`SerieType` / `TypedSerieType`, `MapType` / `TypedMapType`, `StructType`)
-over a non-integer value type, which have no concrete FFI shape yet — the exceptions,
-the concrete integer serie types (`Int8SerieType` … `UInt64SerieType`, the `list` of
-each integer), are exposed to both bindings.
+generics (`SerieType` / `TypedSerieType`, `MapType` / `TypedMapType`) over a
+non-integer value type, which have no concrete FFI shape yet — the exceptions, the
+concrete integer serie types (`Int8SerieType` … `UInt64SerieType`, the `list` of
+each integer) and `StructType` (built in the bindings from a `dict` / plain object
+of field name → example value, each field's type inferred), are exposed to both
+bindings.
 
 The trait layers carry no lifetime parameter (FFI-clean); the untyped base is
 `Debug + Send + Sync` so schemas are printable and shareable across threads and

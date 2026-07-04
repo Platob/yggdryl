@@ -17,8 +17,10 @@ and in both binding module docs: the [Arrow interop](#arrow-interop) surface
 (`to_arrow` / `from_arrow`, and `cast_dtype` which returns a re-typed
 `arrow-schema` field — all exchange `arrow-schema` values that cannot cross the
 FFI boundary), and the dynamic-base and typed nested fields (`SerieField` /
-`TypedSerieField` over a non-integer value type, `MapField` / `TypedMapField`,
-`StructField`), which have no concrete FFI shape yet.
+`TypedSerieField` over a non-integer value type, `MapField` / `TypedMapField`),
+which have no concrete FFI shape yet — `StructField` crosses, paired with the
+bindings' `StructType` (built from a `dict` / plain object with each field's type
+inferred).
 
 ## Fields pair a name with a data type
 

@@ -3,7 +3,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{Scalar, ScalarFactory, TypedScalar};
+use crate::{AnySerie, Scalar, ScalarFactory, TypedScalar};
 use arrow_array::ArrayRef;
 // The `Serie` / `TypedSerie` dtype traits are imported anonymously (their
 // `item_field()` / `value_type()` accessors are all we need) so they do not clash
@@ -53,7 +53,7 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 #[derive(Debug)]
 pub struct TypedSerie<D, S> {
     data_type: TypedSerieType<D>,
-    values: Option<ArrayRef>,
+    values: Option<AnySerie>,
     element: PhantomData<S>,
 }
 
@@ -78,11 +78,12 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
         }
     }
 
-    /// A scalar over an already-built Arrow `elements` array, shared zero-copy.
+    /// A scalar over an already-built Arrow `elements` array, decomposed into the
+    /// crate's own serie and shared zero-copy.
     pub(crate) fn from_elements(elements: ArrayRef) -> Self {
         Self {
             data_type: TypedSerieType::default(),
-            values: Some(elements),
+            values: Some(AnySerie::from_arrow(elements)),
             element: PhantomData,
         }
     }
@@ -96,9 +97,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
     /// The number of elements, `0` when null or empty ([`is_null`](Scalar::is_null)
     /// distinguishes the two).
     pub fn len(&self) -> usize {
-        self.values
-            .as_ref()
-            .map_or(0, |values| arrow_array::Array::len(values.as_ref()))
+        self.values.as_ref().map_or(0, AnySerie::len)
     }
 
     /// Whether the sequence holds no elements (also `true` when null).
@@ -110,10 +109,10 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
     /// scalar), or `None` when the serie is null or `index` is out of bounds.
     pub fn get_scalar_at(&self, index: usize) -> Option<S> {
         let values = self.values.as_ref()?;
-        if index >= arrow_array::Array::len(values.as_ref()) {
+        if index >= values.len() {
             return None;
         }
-        let element = arrow_array::Array::slice(values.as_ref(), index, 1);
+        let element = values.to_arrow().slice(index, 1);
         S::from_arrow(element.as_ref()).ok()
     }
 
@@ -128,11 +127,11 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
     /// with the `as_*` contract's own errors.
     pub fn get_at<T: crate::FromScalar>(&self, index: usize) -> Result<T, DataError> {
         let values = self.values.as_ref().ok_or(DataError::NullValue)?;
-        let length = arrow_array::Array::len(values.as_ref());
+        let length = values.len();
         if index >= length {
             return Err(DataError::OutOfBounds { index, len: length });
         }
-        let element = arrow_array::Array::slice(values.as_ref(), index, 1);
+        let element = values.to_arrow().slice(index, 1);
         let scalar = S::from_arrow(element.as_ref())?;
         T::from_scalar(&scalar)
     }
@@ -160,11 +159,7 @@ impl<D, S> PartialEq for TypedSerie<D, S> {
     // The backing arrays compare by value through `dyn Array` equality, so two
     // lists are equal when their elements (and nulls) are.
     fn eq(&self, other: &Self) -> bool {
-        match (&self.values, &other.values) {
-            (None, None) => true,
-            (Some(left), Some(right)) => left.as_ref() == right.as_ref(),
-            _ => false,
-        }
+        self.values == other.values
     }
 }
 
@@ -189,7 +184,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> From<Option<Vec<S>>> for Ty
 
 impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S> {
     type DataType = TypedSerieType<D>;
-    type Value = dyn arrow_array::Array;
+    type Value = AnySerie;
 
     fn data_type(&self) -> &TypedSerieType<D> {
         &self.data_type
@@ -199,20 +194,20 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S>
         self.values.is_none()
     }
 
-    fn value(&self) -> Option<&(dyn arrow_array::Array + 'static)> {
-        self.values.as_deref()
+    fn value(&self) -> Option<&AnySerie> {
+        self.values.as_ref()
     }
 
     fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        // The child array is shared into the one-element serie — a reference-count
-        // bump, not a copy.
+        // The item serie is reconstituted into the one-element serie — a
+        // reference-count bump, not a copy.
         let array = arrow_array::ListArray::try_new(
             self.data_type.item_field(),
-            arrow_buffer::OffsetBuffer::from_lengths([arrow_array::Array::len(values.as_ref())]),
-            values.clone(),
+            arrow_buffer::OffsetBuffer::from_lengths([values.len()]),
+            values.to_arrow(),
             None,
         )
         .expect("a one-element serie of the value type's child is valid");
@@ -234,7 +229,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S>
         let values = if arrow_array::Array::is_null(array, 0) {
             None
         } else {
-            Some(array.value(0))
+            Some(AnySerie::from_arrow(array.value(0)))
         };
         Ok(Self {
             data_type,
@@ -242,11 +237,28 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S>
             element: PhantomData,
         })
     }
+
+    fn as_serie(&self) -> Result<crate::Serie, DataError> {
+        Ok(self.erase())
+    }
+}
+
+impl<D, S> crate::NestedSerie for TypedSerie<D, S> {
+    fn child_serie_count(&self) -> usize {
+        1
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<AnySerie> {
+        (index == 0).then(|| self.values.clone()).flatten()
+    }
+
+    fn child_serie_name_at(&self, index: usize) -> Option<String> {
+        (index == 0).then(|| "item".to_string())
+    }
 }
 
 impl<D: DataType + Default, S: Scalar<DataType = D>>
-    TypedScalar<TypedSerieType<D>, dyn arrow_array::Array, arrow_array::ListArray>
-    for TypedSerie<D, S>
+    TypedScalar<TypedSerieType<D>, AnySerie, arrow_array::ListArray> for TypedSerie<D, S>
 {
 }
 

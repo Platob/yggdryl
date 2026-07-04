@@ -1,18 +1,21 @@
 //! The [`StructScalar`] scalar of the [`StructType`](yggdryl_dtype::StructType) data
 //! type.
 
-use crate::{Scalar, TypedScalar};
+use crate::{AnySerie, Scalar, TypedScalar};
 use arrow_array::ArrayRef;
 use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 
-/// A single, possibly-null `struct` value: one row, held as one one-element Arrow
-/// column per child field.
+/// A single, possibly-null `struct` value: one row, held as one one-element child
+/// serie per field — an array of the crate's own [`AnySerie`] columns.
 ///
 /// Like its data type ([`StructType`](yggdryl_dtype::StructType)), it is dynamic —
 /// the children are only known at runtime — so its [`Value`](Scalar::Value) is the
-/// borrowed slice of column [`ArrayRef`]s (each of length one), and construction
-/// validates the columns against the declared fields with actionable errors. Being
-/// dynamic, it has no [`ScalarFactory`](crate::ScalarFactory).
+/// borrowed slice of one-element column series, and construction validates the
+/// columns against the declared fields with actionable errors. The Arrow forms are
+/// reconstituted on demand (reference-count bumps); the generic per-child accessor
+/// surface is [`RecordScalar`](crate::RecordScalar), reached with
+/// [`as_struct`](Scalar::as_struct). Being dynamic, it has no
+/// [`ScalarFactory`](crate::ScalarFactory).
 ///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, DataType};
@@ -41,15 +44,16 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 ///
 /// assert!(StructScalar::null(point).is_null());
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructScalar {
     data_type: StructType,
-    columns: Option<Vec<ArrayRef>>,
+    columns: Option<Vec<AnySerie>>,
 }
 
 impl StructScalar {
     /// A scalar holding one row of `data_type`: one one-element column per child
-    /// field, in field order. A column count, length or type mismatch errors with
+    /// field, in field order — each decomposed into the crate's own serie, sharing
+    /// the buffers zero-copy. A column count, length or type mismatch errors with
     /// an actionable [`DataError`].
     pub fn new(data_type: StructType, columns: Vec<ArrayRef>) -> Result<Self, DataError> {
         let fields = Struct::fields(&data_type);
@@ -79,7 +83,7 @@ impl StructScalar {
         }
         Ok(Self {
             data_type,
-            columns: Some(columns),
+            columns: Some(columns.into_iter().map(AnySerie::from_arrow).collect()),
         })
     }
 
@@ -92,28 +96,25 @@ impl StructScalar {
     }
 }
 
-impl PartialEq for StructScalar {
-    // Column `ArrayRef`s compare by value through the `Array` `PartialEq` on their
-    // data, so two rows are equal when their types and values are.
-    fn eq(&self, other: &Self) -> bool {
-        self.data_type == other.data_type
-            && match (&self.columns, &other.columns) {
-                (None, None) => true,
-                (Some(left), Some(right)) => {
-                    left.len() == right.len()
-                        && left
-                            .iter()
-                            .zip(right)
-                            .all(|(a, b)| a.as_ref() == b.as_ref())
-                }
-                _ => false,
-            }
+impl crate::NestedSerie for StructScalar {
+    fn child_serie_count(&self) -> usize {
+        Struct::fields(&self.data_type).len()
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<AnySerie> {
+        self.columns.as_ref()?.get(index).cloned()
+    }
+
+    fn child_serie_name_at(&self, index: usize) -> Option<String> {
+        Struct::fields(&self.data_type)
+            .get(index)
+            .map(|field| field.name().to_string())
     }
 }
 
 impl Scalar for StructScalar {
     type DataType = StructType;
-    type Value = [ArrayRef];
+    type Value = [AnySerie];
 
     fn data_type(&self) -> &StructType {
         &self.data_type
@@ -123,7 +124,7 @@ impl Scalar for StructScalar {
         self.columns.is_none()
     }
 
-    fn value(&self) -> Option<&[ArrayRef]> {
+    fn value(&self) -> Option<&[AnySerie]> {
         self.columns.as_deref()
     }
 
@@ -132,9 +133,15 @@ impl Scalar for StructScalar {
         let Some(columns) = &self.columns else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        let array =
-            arrow_array::StructArray::try_new_with_length(fields.clone(), columns.clone(), None, 1)
-                .expect("validated one-element columns assemble into a one-row struct");
+        // The column series are reconstituted into the one-row struct —
+        // reference-count bumps, not copies.
+        let array = arrow_array::StructArray::try_new_with_length(
+            fields.clone(),
+            columns.iter().map(AnySerie::to_arrow).collect(),
+            None,
+            1,
+        )
+        .expect("validated one-element columns assemble into a one-row struct");
         std::sync::Arc::new(array)
     }
 
@@ -155,12 +162,22 @@ impl Scalar for StructScalar {
                 array
                     .columns()
                     .iter()
-                    .map(|column| arrow_array::Array::slice(column.as_ref(), 0, 1))
+                    .map(|column| {
+                        AnySerie::from_arrow(arrow_array::Array::slice(column.as_ref(), 0, 1))
+                    })
                     .collect(),
             )
         };
         Ok(Self { data_type, columns })
     }
+
+    fn as_struct(&self) -> Result<crate::RecordScalar, DataError> {
+        // The same row with the generic accessor surface — shared zero-copy.
+        Ok(crate::RecordScalar::from_parts(
+            self.data_type.clone(),
+            self.columns.clone(),
+        ))
+    }
 }
 
-impl TypedScalar<StructType, [ArrayRef], arrow_array::StructArray> for StructScalar {}
+impl TypedScalar<StructType, [AnySerie], arrow_array::StructArray> for StructScalar {}

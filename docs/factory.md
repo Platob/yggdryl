@@ -10,21 +10,45 @@ factories the model already carries (a data type builds its own scalar and field
 see [`ScalarFactory`](scalar.md) / [`FieldFactory`](field.md)). In Rust you name the
 type directly (`Int64Type.scalar(42)`); the bindings add the inferring shortcut.
 
+## From easy to most optimized
+
+The three factory tiers trade convenience for control; pick the lowest tier that
+fits and move down as a path gets hot:
+
+1. **Inference (easiest)** — the bindings' `factory.scalar/dtype/field(value)`:
+   nothing named, the type inferred from the value (native values, `dict` / plain
+   objects, or any yggdryl object). One FFI call; ideal for scripting ergonomics.
+2. **Per-type factories (typed)** — the model's own `ScalarFactory` /
+   `FieldFactory`: the data type builds its scalar and field
+   (`Int64Type.scalar(42)`, `data_type.field("id", False)`) with no inference cost
+   and the concrete class statically known.
+3. **Direct constructors + zero-copy Arrow (most optimized)** — the concrete
+   constructors (`Int64Serie` from a buffer, `RecordScalar` from column series) and
+   the `from_arrow` decomposition, which take existing buffers apart and share
+   them: reference-count bumps, never element copies.
+
 ## Inference
 
-The inference mirrors the model's available types:
+The inference mirrors the model's available types, and — since Python and JS are
+the inferring surfaces — accepts **any object of this project** as well as native
+values:
 
-| Native value | Inferred type |
+| Value | Inferred type |
 | --- | --- |
 | `int` (Python) / integer `number` or `bigint` (Node) | `int64` |
 | `bytes` / `bytearray` (Python) / `Buffer` (Node) | `binary` |
 | `None` (Python) / `null` / `undefined` (Node) | `null` |
 | a list/array of integers | `int64` serie (empty defaults to it) |
+| a `dict` (Python) / plain object (Node) | `struct` — a `RecordScalar` row, each field inferred |
+| a yggdryl **scalar** object | its own data type (`scalar()` re-wraps the value) |
+| a yggdryl **dtype** object | itself (`scalar()` builds its default scalar) |
+| a yggdryl **field** object | its data type |
 
-A value the model has no type for — a `float`, `str`/`string`, `bool`/`boolean`, a
-`dict`/plain object, an integer outside the `int64` range, or a list of anything but
-integers — raises an actionable error. Build those through the explicit per-type
-factories.
+A value the model has no type for — a `float`, `str`/`string`, `bool`/`boolean`,
+an integer outside the `int64` range, or a list of anything but integers — raises
+an actionable error. Build those through the explicit per-type factories.
+External Arrow objects (pyarrow, Arrow JS) await the Arrow C Data Interface and
+are documented future work.
 
 ## `scalar` / `dtype` / `field`
 

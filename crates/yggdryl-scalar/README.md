@@ -68,6 +68,15 @@ let missing: TypedOptionalScalar<dtype::Int64Type, Int64Scalar> = TypedOptionalS
 assert!(missing.is_null());
 ```
 
+Every nested value holds **our own series** — the type-erased `AnySerie` column
+(integers decomposed to raw buffers, anything else zero-copy Arrow); a list holds
+its item serie, a map its entries serie, a struct an array of column series —
+reconstituting Arrow arrays on demand and decomposing them on the way in. The
+`NestedSerie` trait adds child access (`child_serie_at(index)` /
+`child_serie_by(name)`), `RecordScalar` is the generic struct-row accessor
+(`scalar_at` / `scalar_by`), and the base `Scalar` gains `as_serie` / `as_map` /
+`as_struct` alongside the `as_*` contract.
+
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
 child array — `to_arrow_scalar` / `from_arrow` are reference-count bumps — with the
 scalar accessors `get_scalar_at(index)` / `get_at::<T>(index)` and `len` /

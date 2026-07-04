@@ -220,5 +220,55 @@ fn factory(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, scalar, accessor, optional, factory);
+// The RecordScalar generic struct-row accessor: build a row and read children.
+fn record(c: &mut Criterion) {
+    use yggdryl_scalar::yggdryl_dtype::arrow_schema;
+    use yggdryl_scalar::{RecordScalar, Scalar};
+
+    let mut group = c.benchmark_group("record");
+    group.throughput(Throughput::Elements(N as u64));
+
+    let point = yggdryl_scalar::yggdryl_dtype::StructType::new(arrow_schema::Fields::from(vec![
+        arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
+        arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
+    ]));
+    group.bench_function("record_new", |b| {
+        b.iter(|| {
+            for value in 0..N as i64 {
+                black_box(
+                    RecordScalar::new(
+                        point.clone(),
+                        vec![
+                            Int64Scalar::new(black_box(value)).to_arrow_scalar().into(),
+                            Int64Scalar::new(black_box(value + 1))
+                                .to_arrow_scalar()
+                                .into(),
+                        ],
+                    )
+                    .unwrap(),
+                );
+            }
+        })
+    });
+
+    let row = RecordScalar::new(
+        point,
+        vec![
+            Int64Scalar::new(1).to_arrow_scalar().into(),
+            Int64Scalar::new(2).to_arrow_scalar().into(),
+        ],
+    )
+    .unwrap();
+    group.bench_function("record_scalar_by", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(row.scalar_by(black_box("y")));
+            }
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, scalar, accessor, optional, factory, record);
 criterion_main!(benches);

@@ -288,6 +288,39 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
         })
     }
 
+    /// The value as a dynamic [`Serie`](crate::Serie), when the value is a
+    /// sequence — the serie scalars answer with a zero-copy handle over their item
+    /// serie (a reference-count bump, not a copy).
+    /// See [`as_i8`](Scalar::as_i8) for the shared contract.
+    fn as_serie(&self) -> Result<crate::Serie, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "serie",
+        })
+    }
+
+    /// The value as a dynamic [`MapScalar`](crate::MapScalar), when the value is a
+    /// key–value sequence — the map scalars answer with a zero-copy handle over
+    /// their entries serie.
+    /// See [`as_i8`](Scalar::as_i8) for the shared contract.
+    fn as_map(&self) -> Result<crate::MapScalar, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "map",
+        })
+    }
+
+    /// The value as a [`RecordScalar`](crate::RecordScalar), when the value is a
+    /// struct row — the struct scalars answer with a zero-copy handle over their
+    /// column series, giving the generic per-child scalar access.
+    /// See [`as_i8`](Scalar::as_i8) for the shared contract.
+    fn as_struct(&self) -> Result<crate::RecordScalar, DataError> {
+        Err(DataError::UnsupportedConversion {
+            data_type: self.data_type().name().to_string(),
+            target: "struct",
+        })
+    }
+
     /// The value's raw little-endian byte encoding — the fixed-width type's own
     /// layout (`i64` as its 8 bytes, `binary` as its bytes), the source of the
     /// [`cast_dtype_unchecked`](Scalar::cast_dtype_unchecked) reinterpret cast.

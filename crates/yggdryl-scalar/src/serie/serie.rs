@@ -1,57 +1,60 @@
 //! The dynamic [`Serie`] scalar of the [`SerieType`](yggdryl_dtype::SerieType) data
 //! type.
 
-use crate::Scalar;
+use crate::{AnySerie, Scalar};
 use arrow_array::ArrayRef;
 // The `Serie` dtype trait is imported anonymously (its `item_field()` accessor is all
 // we need) so it does not clash with this module's own `Serie` scalar type.
 use yggdryl_dtype::Serie as _;
 use yggdryl_dtype::{DataError, DataType, SerieType};
 
-/// A single, possibly-null `list` value with its element type erased — *our array*
-/// backed by one zero-copy Arrow child array, carrying a dynamic
+/// A single, possibly-null `list` value with its element type erased — *our array*,
+/// holding its items as the crate's own [`AnySerie`] column, carrying a dynamic
 /// [`SerieType`](yggdryl_dtype::SerieType).
 ///
-/// It is the untyped base of the statically-typed
-/// [`TypedSerie<D, S>`](crate::TypedSerie): it implements only the base [`Scalar`]
-/// surface ([`to_arrow_scalar`](Scalar::to_arrow_scalar) /
-/// [`to_arrow_array`](Scalar::to_arrow_array) / [`from_arrow`](Scalar::from_arrow),
-/// all reference-count bumps) plus [`len`](Serie::len) / [`is_empty`](Serie::is_empty),
-/// since the element scalar type is erased — the per-element scalar accessors and the
-/// [`TypedScalar`](crate::TypedScalar) surface live on `TypedSerie<D, S>`, which
-/// [`erase`](crate::TypedSerie::erase)s back to this type. (For `int64` there is the
-/// concrete, buffer-backed [`Int64Serie`](crate::Int64Serie).)
+/// The items live in an [`AnySerie`] — integer elements decomposed to their raw
+/// buffers, anything else zero-copy Arrow — so the Arrow forms are reconstituted on
+/// demand ([`to_arrow_scalar`](Scalar::to_arrow_scalar) /
+/// [`to_arrow_array`](Scalar::to_arrow_array), reference-count bumps) and
+/// [`from_arrow`](Scalar::from_arrow) *decomposes* the incoming array. It is the
+/// untyped base of the statically-typed [`TypedSerie<D, S>`](crate::TypedSerie): it
+/// implements only the base [`Scalar`] surface plus [`len`](Serie::len) /
+/// [`is_empty`](Serie::is_empty) and the [`NestedSerie`](crate::NestedSerie) child
+/// access, since the element scalar type is erased — the per-element scalar
+/// accessors and the [`TypedScalar`](crate::TypedScalar) surface live on
+/// `TypedSerie<D, S>`, which [`erase`](crate::TypedSerie::erase)s back to this type.
+/// (For `int64` there is the concrete, buffer-backed
+/// [`Int64Serie`](crate::Int64Serie).)
 ///
 /// ```
 /// use yggdryl_scalar::yggdryl_dtype::{DataType, Int64Type};
-/// use yggdryl_scalar::{Int64Scalar, Scalar, TypedSerie};
+/// use yggdryl_scalar::{Int64Scalar, NestedSerie, Scalar, TypedSerie};
 ///
 /// // A dynamic serie is reached by erasing a typed one, or from Arrow.
 /// let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]).erase();
 /// assert!(!numbers.is_null());
 /// assert_eq!(numbers.len(), 2);
 /// assert_eq!(numbers.data_type().name(), "list");
+/// assert_eq!(numbers.child_serie_at(0).unwrap().len(), 2); // the item serie
 /// assert_eq!(yggdryl_scalar::Serie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(), numbers);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Serie {
     data_type: SerieType,
-    values: Option<ArrayRef>,
+    values: Option<AnySerie>,
 }
 
 impl Serie {
-    /// A dynamic serie over an already-built Arrow `values` element array (shared
-    /// zero-copy) of the given dynamic `data_type`, or the null serie for `None`.
-    pub(crate) fn from_parts(data_type: SerieType, values: Option<ArrayRef>) -> Self {
+    /// A dynamic serie over an already-built item serie `values` (shared zero-copy)
+    /// of the given dynamic `data_type`, or the null serie for `None`.
+    pub(crate) fn from_parts(data_type: SerieType, values: Option<AnySerie>) -> Self {
         Self { data_type, values }
     }
 
     /// The number of elements, `0` when null or empty ([`is_null`](Scalar::is_null)
     /// distinguishes the two).
     pub fn len(&self) -> usize {
-        self.values
-            .as_ref()
-            .map_or(0, |values| arrow_array::Array::len(values.as_ref()))
+        self.values.as_ref().map_or(0, AnySerie::len)
     }
 
     /// Whether the sequence holds no elements (also `true` when null).
@@ -61,23 +64,32 @@ impl Serie {
 }
 
 impl PartialEq for Serie {
-    // The backing arrays compare by value through `dyn Array` equality, so two
-    // series are equal when their elements (and nulls) are; null is distinct from
-    // every present serie.
+    // Compared logically, like Arrow arrays: two series are equal when their item
+    // series are; null is distinct from every present serie.
     fn eq(&self, other: &Self) -> bool {
-        match (&self.values, &other.values) {
-            (None, None) => true,
-            (Some(left), Some(right)) => left.as_ref() == right.as_ref(),
-            _ => false,
-        }
+        self.values == other.values
     }
 }
 
 impl Eq for Serie {}
 
+impl crate::NestedSerie for Serie {
+    fn child_serie_count(&self) -> usize {
+        1
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<AnySerie> {
+        (index == 0).then(|| self.values.clone()).flatten()
+    }
+
+    fn child_serie_name_at(&self, index: usize) -> Option<String> {
+        (index == 0).then(|| "item".to_string())
+    }
+}
+
 impl Scalar for Serie {
     type DataType = SerieType;
-    type Value = dyn arrow_array::Array;
+    type Value = AnySerie;
 
     fn data_type(&self) -> &SerieType {
         &self.data_type
@@ -87,20 +99,20 @@ impl Scalar for Serie {
         self.values.is_none()
     }
 
-    fn value(&self) -> Option<&(dyn arrow_array::Array + 'static)> {
-        self.values.as_deref()
+    fn value(&self) -> Option<&AnySerie> {
+        self.values.as_ref()
     }
 
     fn to_arrow_scalar(&self) -> ArrayRef {
         let Some(values) = &self.values else {
             return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
         };
-        // The child array is shared into the one-element serie — a reference-count
-        // bump, not a copy.
+        // The item serie is reconstituted into the one-element serie —
+        // reference-count bumps, not copies.
         let array = arrow_array::ListArray::try_new(
             self.data_type.item_field(),
-            arrow_buffer::OffsetBuffer::from_lengths([arrow_array::Array::len(values.as_ref())]),
-            values.clone(),
+            arrow_buffer::OffsetBuffer::from_lengths([values.len()]),
+            values.to_arrow(),
             None,
         )
         .expect("a one-element serie of the value type's child is valid");
@@ -108,11 +120,12 @@ impl Scalar for Serie {
     }
 
     fn to_arrow_array(&self) -> ArrayRef {
-        // The element array itself (empty of the value type when null, told apart
-        // from an empty serie by `is_null`).
-        self.values.clone().unwrap_or_else(|| {
-            arrow_array::new_empty_array(self.data_type.item_field().data_type())
-        })
+        // The item serie itself, reconstituted (empty of the value type when null,
+        // told apart from an empty serie by `is_null`).
+        self.values.as_ref().map_or_else(
+            || arrow_array::new_empty_array(self.data_type.item_field().data_type()),
+            AnySerie::to_arrow,
+        )
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {
@@ -120,8 +133,8 @@ impl Scalar for Serie {
         if length != 1 {
             return Err(DataError::InvalidScalarLength { got: length });
         }
-        // The data type validates the layout; the elements themselves are shared
-        // zero-copy.
+        // The data type validates the layout; the items are decomposed into the
+        // crate's own serie, sharing the buffers zero-copy.
         let data_type = SerieType::from_arrow(arrow_array::Array::data_type(array))?;
         let array = array
             .as_any()
@@ -130,8 +143,12 @@ impl Scalar for Serie {
         let values = if arrow_array::Array::is_null(array, 0) {
             None
         } else {
-            Some(array.value(0))
+            Some(AnySerie::from_arrow(array.value(0)))
         };
         Ok(Self { data_type, values })
+    }
+
+    fn as_serie(&self) -> Result<Serie, DataError> {
+        Ok(self.clone())
     }
 }

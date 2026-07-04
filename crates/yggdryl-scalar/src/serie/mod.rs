@@ -350,6 +350,17 @@ macro_rules! int_serie {
                 ::std::sync::Arc::new($ty::to_arrow_array(self))
             }
 
+            // The dynamic serie view: this concrete serie becomes the item serie of
+            // a dynamic handle — a reference-count bump, not a copy.
+            fn as_serie(&self) -> Result<$crate::Serie, ::yggdryl_dtype::DataError> {
+                Ok($crate::Serie::from_parts(
+                    self.data_type.erase(),
+                    self.values
+                        .as_ref()
+                        .map(|_| $crate::AnySerie::from(self.clone())),
+                ))
+            }
+
             fn from_arrow(
                 array: &dyn $crate::arrow_array::Array,
             ) -> Result<Self, ::yggdryl_dtype::DataError> {
@@ -394,6 +405,7 @@ macro_rules! int_serie {
 }
 pub(crate) use int_serie;
 
+mod any_serie;
 mod int16_serie;
 mod int32_serie;
 mod int64_serie;
@@ -406,6 +418,7 @@ mod uint32_serie;
 mod uint64_serie;
 mod uint8_serie;
 
+pub use any_serie::AnySerie;
 pub use int16_serie::Int16Serie;
 pub use int32_serie::Int32Serie;
 pub use int64_serie::Int64Serie;

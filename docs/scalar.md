@@ -32,7 +32,11 @@ per-element-null construction, `to_arrow_array` / `nulls` Arrow-buffer surface a
 or borrow a second IO resource at once), so a serie built from a binding is a
 dense (all-valid) serie. The dynamic bases and typed generics of the
 [nested scalars](#nested-scalars-serie-map-and-struct) — `Serie` / `TypedSerie`,
-`MapScalar` / `TypedMapScalar`, `StructScalar` — have no concrete FFI shape yet.
+`MapScalar` / `TypedMapScalar`, `StructScalar` — and the [`AnySerie` /
+`NestedSerie`](#anyserie-and-nestedserie) child handles (arrow-backed columns)
+have no concrete FFI shape yet; the struct family crosses as
+[`RecordScalar`](#recordscalar), built from a `dict` / plain object with every
+field inferred.
 
 ## Scalars hold a value or null
 
@@ -315,8 +319,15 @@ fn main() {
 
 ## Nested scalars: serie, map and struct
 
-The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
-child array — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
+Every nested scalar holds **our own series** — [`AnySerie`](#anyserie-and-nestedserie)
+columns, integer elements decomposed to their raw buffers, anything else zero-copy
+Arrow — and reconstitutes Arrow arrays on demand: a list holds its *item serie*, a
+map holds its *entries serie* (a serie of struct entries), and a struct holds an
+*array of column series*. Constructing `from_arrow` decomposes the incoming array;
+both directions are reference-count bumps, never element copies.
+
+The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy item
+serie — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`get_scalar_at(index)` redirects one element through the inner scalar's own
 `from_arrow`, and the generic native accessor `get_at::<T>(index)` reads an
@@ -334,11 +345,49 @@ the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
 `yggdryl-core` positioned-IO resource in one bulk little-endian
 `pread_byte_array` / `pwrite_byte_array` transfer.
 `TypedMapScalar<K, V, SK, SV>` holds the entry sequence and `StructScalar` one row
-of one-element Arrow columns, each round-tripping through a one-element Arrow array
+of one-element column series, each round-tripping through a one-element Arrow array
 whose children redirect to the inner scalars' own `to_arrow_scalar` / `from_arrow`.
 Each of `serie` / `map` / `optional` also has a dynamic base (`Serie`, `MapScalar`,
 `OptionalScalar`) with the element type erased — the base `Scalar` surface only —
 that the typed generics `erase()` back to.
+
+### AnySerie and NestedSerie
+
+`AnySerie` is the type-erased column behind every nested scalar: the integer
+element types are held **decomposed** as the concrete buffer-backed series
+(`Int8Serie` … `UInt64Serie`); any other element type keeps its Arrow array
+zero-copy in the `Arrow` fallback (more decomposed variants land as concrete
+series do). `from_arrow` decomposes, `to_arrow` reconstitutes, `slice` windows —
+all sharing buffers.
+
+Every nested scalar implements the `NestedSerie` trait for easy child access:
+`child_serie_count()`, `child_serie_at(index)`, `child_serie_by(name)` and
+`child_serie_name_at(index)` — a serie has one `"item"` child, a map one
+`"entries"` child (plus the `"key"` / `"value"` projections by name), and a
+struct / record one child per field, by position and by field name. Handles are
+zero-copy `AnySerie` clones; a null scalar has no children.
+
+### RecordScalar
+
+`RecordScalar` is the **generic struct-row accessor**: an array of one-element
+child series sharing one `StructType`. `scalar_at(index)` / `scalar_by(name)`
+hand back a child's one-element serie (rehydrate with the matching scalar's
+`from_arrow`); `StructScalar` — the plain row value — converts to it with the
+base accessor `as_struct()`. In the bindings a record is built straight from a
+`dict` (Python) / plain object (Node) with every field inferred, and reads back
+out as an auto-generated **singleton dataclass** (one frozen dataclass per
+schema, cached) in Python or a plain object in JS.
+
+### `as_serie` / `as_map` / `as_struct` and the native-value accessors
+
+The base `Scalar` carries three nested accessors under the same exact-or-error
+`as_*` contract: `as_serie()` hands back the dynamic `Serie`, `as_map()` the
+dynamic `MapScalar`, and `as_struct()` the `RecordScalar` — zero-copy handles on
+the scalars that have the shape, `UnsupportedConversion` on the ones that don't
+(the optional redirects to its inner scalar). In the bindings, every scalar also
+carries the general native-value accessor — `to_pyvalue()` (Python) /
+`toJsValue()` (Node) — implemented in the core so the value crosses the FFI
+boundary **once**, never through per-element scripting loops.
 
 The integer series are the nested scalars exposed to the bindings — built dense
 (all-valid) from a native sequence, the whole serie still nullable through
