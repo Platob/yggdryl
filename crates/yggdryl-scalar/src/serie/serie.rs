@@ -90,14 +90,6 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Serie<D, S> {
             .map_or(0, |values| arrow_array::Array::len(values.as_ref()))
     }
 
-    /// The elements converted out as the backing Arrow child [`ArrayRef`] (a
-    /// reference-count bump, not a copy), or `None` when the serie is null — the
-    /// explicit conversion name, next to [`to_arrow`](Scalar::to_arrow) (the
-    /// one-element serie scalar form this array is the child of).
-    pub fn to_arrow_array(&self) -> Option<ArrayRef> {
-        self.values.clone()
-    }
-
     /// Whether the sequence holds no elements (also `true` when null).
     pub fn is_empty(&self) -> bool {
         self.len() == 0

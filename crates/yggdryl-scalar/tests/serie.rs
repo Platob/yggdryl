@@ -50,11 +50,6 @@ fn serie_scalar_round_trips_all_shapes() {
     // Construction from native shapes.
     assert_eq!(Int64GenericSerie::from(None::<Vec<Int64Scalar>>), missing);
 
-    // The explicit Arrow-array conversion hands back the child, shared.
-    let elements = numbers.to_arrow_array().unwrap();
-    assert_eq!(arrow_array::Array::len(elements.as_ref()), 2);
-    assert!(missing.to_arrow_array().is_none());
-
     // A non-serie array is refused.
     assert!(matches!(
         Int64GenericSerie::from_arrow(&arrow_array::Int64Array::from_iter_values([1])),
