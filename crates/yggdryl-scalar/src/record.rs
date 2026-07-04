@@ -11,7 +11,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// (one one-element serie per field), `RecordScalar` is the **row-oriented** atom —
 /// the struct value materialized field-by-field as the crate's own atomic scalars, so
 /// [`get_any_scalar_at`](RecordScalar::get_any_scalar_at) /
-/// [`get_any_scalar_by`](RecordScalar::get_any_scalar_by)
+/// [`any_scalar_by`](RecordScalar::any_scalar_by)
 /// hand back a field's [`AnyScalar`](crate::AnyScalar) directly (integer fields
 /// decomposed to their concrete scalars, anything else a one-element Arrow value), and
 /// the [`NestedSerie`](crate::NestedSerie) child access mirrors it. A present row holds
@@ -39,7 +39,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// assert_eq!(row.child_serie_count(), 2);
 ///
 /// // Generic per-field scalar access, by position and by field name.
-/// assert_eq!(row.get_any_scalar_by("y").unwrap(), AnyScalar::from(Int64Scalar::new(2)));
+/// assert_eq!(row.any_scalar_by("y").unwrap(), AnyScalar::from(Int64Scalar::new(2)));
 ///
 /// // The Arrow round trip preserves the row.
 /// assert_eq!(RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(), row);
@@ -105,7 +105,7 @@ impl RecordScalar {
 
     /// The field scalar of the field named `name`, or `None` when the record is null
     /// or no field carries the name.
-    pub fn get_any_scalar_by(&self, name: &str) -> Option<AnyScalar> {
+    pub fn any_scalar_by(&self, name: &str) -> Option<AnyScalar> {
         let index = self
             .data_type
             .fields()

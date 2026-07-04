@@ -1622,7 +1622,7 @@ impl RecordScalar {
     /// one FFI call.
     #[napi]
     pub fn get(&self, env: Env, name: String) -> Result<JsUnknown> {
-        match self.inner.get_any_scalar_by(&name) {
+        match self.inner.any_scalar_by(&name) {
             Some(scalar) => scalar_to_js(&env, &scalar),
             None => to_unknown(&env, Null),
         }

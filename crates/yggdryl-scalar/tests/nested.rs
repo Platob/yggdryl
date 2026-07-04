@@ -45,11 +45,11 @@ fn record_gives_generic_child_scalar_access() {
         AnyScalar::from(Int64Scalar::new(1))
     );
     assert_eq!(
-        row.get_any_scalar_by("y").unwrap(),
+        row.any_scalar_by("y").unwrap(),
         AnyScalar::from(Int64Scalar::new(2))
     );
     assert!(row.get_any_scalar_at(2).is_none());
-    assert!(row.get_any_scalar_by("z").is_none());
+    assert!(row.any_scalar_by("z").is_none());
 
     // The Arrow round trip preserves the row; a null record round-trips too.
     assert_eq!(
