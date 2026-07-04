@@ -2,20 +2,21 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField` and its concrete serie field
-//! (e.g. `Int64SerieField`, a column of `Int64SerieType`) — the same suffixed
-//! names as the Rust crate, the submodule carrying the concern. A field pairs a name with
-//! its `yggdryl.dtype` data type and a nullability flag (`True` by default, as a
-//! keyword default); a data type also builds its field directly through its
-//! `field(name, nullable=True)` factory.
+//! `OptionalBinaryField`, `NullField`, `UnionField`, `StructField` (taking a
+//! `yggdryl.dtype.StructType`, like `UnionField` takes its dynamic type) and its
+//! concrete serie field (e.g. `Int64SerieField`, a column of `Int64SerieType`) —
+//! the same suffixed names as the Rust crate, the submodule carrying the concern.
+//! A field pairs a name with its `yggdryl.dtype` data type and a nullability flag
+//! (`True` by default, as a keyword default); a data type also builds its field
+//! directly through its `field(name, nullable=True)` factory.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow` / `from_arrow`, and `cast_dtype` which returns a re-typed
 //! `arrow-schema` field — all exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the dynamic base
 //! and typed nested fields (`SerieField` / `TypedSerieField` over a non-integer
-//! value type, `MapField` / `TypedMapField`, `StructField`), which have no concrete
-//! FFI shape yet.
+//! value type, `MapField` / `TypedMapField`), which have no concrete FFI shape
+//! yet.
 
 use pyo3::prelude::*;
 use yggdryl_field::Field;
@@ -46,6 +47,42 @@ impl UnionField {
     /// The field's data type.
     fn data_type(&self) -> crate::dtype::UnionType {
         crate::dtype::UnionType {
+            inner: self.inner.data_type().clone(),
+        }
+    }
+
+    /// Whether values in this field may be null.
+    fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable `struct` field: a name paired with a `yggdryl.dtype.StructType`
+/// data type.
+#[pyclass]
+pub struct StructField {
+    pub(crate) inner: yggdryl_field::StructField,
+}
+
+#[pymethods]
+impl StructField {
+    /// A field named `name` of the struct type `data_type`.
+    #[new]
+    #[pyo3(signature = (name, data_type, nullable = true))]
+    fn new(name: String, data_type: &crate::dtype::StructType, nullable: bool) -> Self {
+        Self {
+            inner: yggdryl_field::StructField::new(name, data_type.inner.clone(), nullable),
+        }
+    }
+
+    /// The field's name.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    fn data_type(&self) -> crate::dtype::StructType {
+        crate::dtype::StructType {
             inner: self.inner.data_type().clone(),
         }
     }
@@ -338,6 +375,7 @@ int_serie_field_py!(UInt64SerieField, UInt64SerieType, UInt64Type, "uint64");
 /// Populates the `field` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UnionField>()?;
+    module.add_class::<StructField>()?;
     module.add_class::<NullField>()?;
     module.add_class::<BinaryField>()?;
     module.add_class::<OptionalBinaryField>()?;

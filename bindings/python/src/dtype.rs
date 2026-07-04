@@ -2,13 +2,15 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (e.g. `Int64Type`, `OptionalInt64Type`), alongside `BinaryType` /
-//! `OptionalBinaryType`, `NullType`, `UnionType` and its concrete serie type
-//! (e.g. `Int64SerieType`, the `list` of `int64` — every integer value type has a
-//! buffer-backed serie scalar) — the same suffixed names as the Rust crate, the
-//! submodule carrying the concern. Data types expose the descriptor surface (`name`,
-//! `arrow_format`, widths), the native byte codec, and — as the model's factory
-//! hub — their defaults (`default_scalar`) and their `field` / `scalar` builders
-//! (`field` hands back a `yggdryl.field` class, `scalar` and `default_scalar` a
+//! `OptionalBinaryType`, `NullType`, `UnionType`, `StructType` (built from a dict
+//! mapping field names to example values or dtype instances, resolved through the
+//! factory's inference) and its concrete serie type (e.g. `Int64SerieType`, the
+//! `list` of `int64` — every integer value type has a buffer-backed serie scalar)
+//! — the same suffixed names as the Rust crate, the submodule carrying the
+//! concern. Data types expose the descriptor surface (`name`, `arrow_format`,
+//! widths), the native byte codec, and — as the model's factory hub — their
+//! defaults (`default_scalar`) and their `field` / `scalar` builders (`field`
+//! hands back a `yggdryl.field` class, `scalar` and `default_scalar` a
 //! `yggdryl.scalar` class).
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
@@ -19,12 +21,12 @@
 //! the `DataTypeId` classifier (a method-bearing enum the bindings cannot model
 //! uniformly), and the dynamic base nested types and their typed generics
 //! (`SerieType` / `TypedSerieType` over a non-integer value type, `MapType` /
-//! `TypedMapType`, `StructType`, and the per-family trait pairs), which have no
-//! concrete FFI shape yet.
+//! `TypedMapType`, and the per-family trait pairs), which have no concrete FFI
+//! shape yet.
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
-use yggdryl_dtype::{DataType, Logical, Nested, TypedDataType, Union};
+use pyo3::types::{PyBytes, PyDict};
+use yggdryl_dtype::{DataType, Logical, Nested, Struct, TypedDataType, Union};
 use yggdryl_field::FieldFactory;
 use yggdryl_scalar::ScalarFactory;
 
@@ -72,6 +74,75 @@ impl UnionType {
             yggdryl_dtype::arrow_schema::UnionMode::Sparse => "sparse",
             yggdryl_dtype::arrow_schema::UnionMode::Dense => "dense",
         }
+    }
+}
+
+/// The Apache Arrow `struct` data type: an ordered set of named child fields,
+/// built from a dict declaring each child by example value or dtype instance.
+#[pyclass]
+#[derive(Clone)]
+pub struct StructType {
+    pub(crate) inner: yggdryl_dtype::StructType,
+}
+
+#[pymethods]
+impl StructType {
+    /// A struct of the child `fields`: a dict mapping each field name to an
+    /// example native value (`int` → `int64`, `bytes` → `binary`, `None` →
+    /// `null`, a list of ints → the `int64` serie, a dict → a nested struct) or
+    /// a `yggdryl.dtype` class instance; every child field is nullable.
+    #[new]
+    fn new(fields: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let mut children = Vec::with_capacity(fields.len());
+        for (name, value) in fields.iter() {
+            let name = name.extract::<String>().map_err(|_| {
+                PyErr::from(DataErr::Message(
+                    "cannot build a struct: every dict key must be a str field name".to_string(),
+                ))
+            })?;
+            children.push(yggdryl_dtype::arrow_schema::Field::new(
+                name,
+                crate::factory::resolve_arrow_dtype(&value)?,
+                true,
+            ));
+        }
+        Ok(Self {
+            inner: yggdryl_dtype::StructType::new(children.into()),
+        })
+    }
+
+    /// The type's lowercase name, `"struct"`.
+    fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"+s"`.
+    fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A struct has no fixed byte width.
+    fn byte_width(&self) -> Option<usize> {
+        self.inner.byte_width()
+    }
+
+    /// A struct has no fixed bit width.
+    fn bit_width(&self) -> Option<usize> {
+        self.inner.bit_width()
+    }
+
+    /// The number of child fields.
+    fn child_count(&self) -> usize {
+        self.inner.child_count()
+    }
+
+    /// The child field names, in declaration order.
+    fn field_names(&self) -> Vec<String> {
+        self.inner
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect()
     }
 }
 
@@ -723,6 +794,7 @@ int_serie_dtype_py!(
 /// Populates the `dtype` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<UnionType>()?;
+    module.add_class::<StructType>()?;
     module.add_class::<NullType>()?;
     module.add_class::<BinaryType>()?;
     module.add_class::<OptionalBinaryType>()?;

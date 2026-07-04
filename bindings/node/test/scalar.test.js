@@ -197,6 +197,30 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
   })
 }
 
+test('toJsValue is the general native accessor', () => {
+  // One FFI call per scalar: the class' wire type, or null when null.
+  assert.equal(new scalar.Int32Scalar(42).toJsValue(), 42)
+  assert.equal(new scalar.UInt8Scalar(255).toJsValue(), 255)
+  assert.equal(new scalar.Int64Scalar(2n ** 63n - 1n).toJsValue(), 2n ** 63n - 1n)
+  assert.equal(new scalar.UInt64Scalar(2n ** 64n - 1n).toJsValue(), 2n ** 64n - 1n)
+  assert.equal(scalar.Int32Scalar.null().toJsValue(), null)
+  assert.equal(scalar.Int64Scalar.null().toJsValue(), null)
+  // Optionals mirror their inner scalar.
+  assert.equal(new scalar.OptionalInt32Scalar(42).toJsValue(), 42)
+  assert.equal(new scalar.OptionalInt64Scalar(42n).toJsValue(), 42n)
+  assert.equal(scalar.OptionalInt64Scalar.null().toJsValue(), null)
+  // Binary crosses as a Buffer.
+  assert.deepEqual(new scalar.BinaryScalar(Buffer.from([1, 2])).toJsValue(), Buffer.from([1, 2]))
+  assert.equal(scalar.BinaryScalar.null().toJsValue(), null)
+  assert.equal(scalar.OptionalBinaryScalar.null().toJsValue(), null)
+  // A serie crosses as the same array toArray() returns.
+  assert.deepEqual(new scalar.Int32Serie([1, 2]).toJsValue(), [1, 2])
+  assert.deepEqual(new scalar.Int64Serie([1n, 2n]).toJsValue(), [1n, 2n])
+  assert.equal(scalar.Int64Serie.null().toJsValue(), null)
+  // The null scalar is always null.
+  assert.equal(new scalar.NullScalar().toJsValue(), null)
+})
+
 test('a serie element out of the value range is refused', () => {
   // The 8-32 bit constructors range-check each element with an actionable error.
   assert.throws(() => new scalar.Int8Serie([128]), /int8/)

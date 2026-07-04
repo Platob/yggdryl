@@ -14,7 +14,12 @@
 //! so the Rust-side "borrow, never copy" guarantee applies up to that boundary
 //! copy). Optional scalars adapt construction to idioms: they are built straight
 //! from the native value (`new OptionalInt64Scalar(42n)`), the inner scalar being
-//! an implementation detail reachable through `scalar()`.
+//! an implementation detail reachable through `scalar()`. `RecordScalar` is the
+//! `struct` row, built from a plain JS object whose members are inferred like the
+//! factory's, read back per field with `get(name)`. Every scalar class carries
+//! `toJsValue()`, the general native-value accessor: the whole native value
+//! (`null` when null, a record as a plain `{field: value}` object) built in one
+//! FFI call — conversions happen once in Rust, never in per-element JS loops.
 //!
 //! Rust-only (stated here and on the docs site): the Arrow interop surface
 //! (`to_arrow_scalar` / `to_arrow_array` / `from_arrow`, and `castDtype` /
@@ -27,12 +32,18 @@
 //! construction, `to_arrow_array` / `nulls` Arrow-buffer surface and `fromIo` / `pwriteIo`
 //! two-resource bridge (which borrow a second IO resource at once), so a serie
 //! built from Node is a dense (all-valid) serie. The still-generic nested scalars
-//! — the generic `Serie` / `MapScalar` / `StructScalar` — have no concrete FFI
+//! — the generic `Serie` / `MapScalar`, and the plain `StructScalar` row value
+//! (its accessor twin `RecordScalar` *is* bound; the `AnySerie` child columns
+//! cross as native JS values instead of as a class) — have no concrete FFI
 //! shape yet.
 
-use napi::bindgen_prelude::{BigInt, Buffer, Error, Result};
+use napi::bindgen_prelude::{
+    BigInt, Buffer, Error, FromNapiValue, Null, Object, Result, ToNapiValue,
+};
+use napi::{Env, JsUnknown};
 use napi_derive::napi;
-use yggdryl_scalar::Scalar;
+use yggdryl_scalar::arrow_array::{self, Array};
+use yggdryl_scalar::{arrow_schema, AnySerie, Scalar};
 
 use crate::{bigint_to_i64, bigint_to_u64, data_error, index_to_usize, wire_to_native};
 
@@ -79,6 +90,13 @@ impl NullScalar {
     #[napi]
     pub fn data_type(&self) -> crate::dtype::NullType {
         crate::dtype::NullType::default()
+    }
+
+    /// The scalar's native JS value: always `null` — the general native
+    /// accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Null {
+        Null
     }
 }
 
@@ -238,6 +256,13 @@ impl BinaryScalar {
             .into_io_slice()
             .map(crate::core::ByteBufferSlice::from_inner)
     }
+
+    /// The scalar's native JS value: the bytes as a `Buffer`, or `null` when
+    /// null — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<Buffer> {
+        self.value()
+    }
 }
 
 as_accessors_node!(BinaryScalar);
@@ -296,6 +321,13 @@ impl OptionalBinaryScalar {
     #[napi]
     pub fn data_type(&self) -> crate::dtype::OptionalBinaryType {
         crate::dtype::OptionalBinaryType::default()
+    }
+
+    /// The scalar's native JS value: the bytes as a `Buffer`, or `null` for the
+    /// null variant — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<Buffer> {
+        self.value()
     }
 }
 
@@ -399,6 +431,13 @@ macro_rules! int_wire_number_scalar {
             pub fn value(&self) -> Option<i64> {
                 self.inner.value().copied().map(i64::from)
             }
+
+            /// The scalar's native JS value: the number, or `null` when null —
+            /// the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<i64> {
+                self.value()
+            }
         }
 
         #[napi(namespace = "scalar")]
@@ -417,6 +456,13 @@ macro_rules! int_wire_number_scalar {
             #[napi]
             pub fn value(&self) -> Option<i64> {
                 self.inner.value().copied().map(i64::from)
+            }
+
+            /// The scalar's native JS value: the number, or `null` for the null
+            /// variant — the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<i64> {
+                self.value()
             }
         }
     };
@@ -504,6 +550,13 @@ impl Int64Scalar {
     pub fn value(&self) -> Option<BigInt> {
         self.inner.value().copied().map(BigInt::from)
     }
+
+    /// The scalar's native JS value: the `BigInt`, or `null` when null — the
+    /// general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<BigInt> {
+        self.value()
+    }
 }
 
 #[napi(namespace = "scalar")]
@@ -523,6 +576,13 @@ impl OptionalInt64Scalar {
     pub fn value(&self) -> Option<BigInt> {
         self.inner.value().copied().map(BigInt::from)
     }
+
+    /// The scalar's native JS value: the `BigInt`, or `null` for the null
+    /// variant — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<BigInt> {
+        self.value()
+    }
 }
 
 #[napi(namespace = "scalar")]
@@ -539,6 +599,13 @@ impl UInt64Scalar {
     #[napi]
     pub fn value(&self) -> Option<BigInt> {
         self.inner.value().copied().map(BigInt::from)
+    }
+
+    /// The scalar's native JS value: the `BigInt`, or `null` when null — the
+    /// general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<BigInt> {
+        self.value()
     }
 }
 
@@ -558,6 +625,13 @@ impl OptionalUInt64Scalar {
     #[napi]
     pub fn value(&self) -> Option<BigInt> {
         self.inner.value().copied().map(BigInt::from)
+    }
+
+    /// The scalar's native JS value: the `BigInt`, or `null` for the null
+    /// variant — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<BigInt> {
+        self.value()
     }
 }
 
@@ -664,6 +738,13 @@ macro_rules! int_serie_wire_number_scalar {
                     .map(i64::from)
                     .map_err(data_error)
             }
+
+            /// The scalar's native JS value: the `toArray()` array of numbers, or
+            /// `null` when null — the general native accessor, one FFI call.
+            #[napi]
+            pub fn to_js_value(&self) -> Option<Vec<i64>> {
+                self.to_array()
+            }
         }
     };
 }
@@ -721,6 +802,13 @@ impl Int64Serie {
             .map(BigInt::from)
             .map_err(data_error)
     }
+
+    /// The scalar's native JS value: the `toArray()` array of `BigInt`, or
+    /// `null` when null — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<Vec<BigInt>> {
+        self.to_array()
+    }
 }
 
 #[napi(namespace = "scalar")]
@@ -755,5 +843,256 @@ impl UInt64Serie {
             .get_at::<u64>(index_to_usize(index)?)
             .map(BigInt::from)
             .map_err(data_error)
+    }
+
+    /// The scalar's native JS value: the `toArray()` array of `BigInt`, or
+    /// `null` when null — the general native accessor, one FFI call.
+    #[napi]
+    pub fn to_js_value(&self) -> Option<Vec<BigInt>> {
+        self.to_array()
+    }
+}
+
+// The record scalar: the `struct` row. Its child columns are core `AnySerie`
+// one-element columns; they cross the FFI boundary as native JS values, converted
+// once in Rust by the helpers below.
+
+/// A napi-typed value erased to a `JsUnknown`, so heterogeneous record members
+/// share one return surface.
+fn to_unknown<T: ToNapiValue>(env: &Env, value: T) -> Result<JsUnknown> {
+    let raw = unsafe { T::to_napi_value(env.raw(), value)? };
+    unsafe { JsUnknown::from_napi_value(env.raw(), raw) }
+}
+
+/// A whole integer column as the JS array its serie class' `toArray()` returns
+/// (`null` for the null serie) — the serie classes carry the element conversion,
+/// so it lives in one place.
+fn serie_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
+    match column {
+        AnySerie::Int8(serie) => to_unknown(
+            env,
+            Int8Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::Int16(serie) => to_unknown(
+            env,
+            Int16Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::Int32(serie) => to_unknown(
+            env,
+            Int32Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::Int64(serie) => to_unknown(
+            env,
+            Int64Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::UInt8(serie) => to_unknown(
+            env,
+            UInt8Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::UInt16(serie) => to_unknown(
+            env,
+            UInt16Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::UInt32(serie) => to_unknown(
+            env,
+            UInt32Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        AnySerie::UInt64(serie) => to_unknown(
+            env,
+            UInt64Serie {
+                inner: serie.clone(),
+            }
+            .to_array(),
+        ),
+        other => Err(Error::from_reason(format!(
+            "no JS array for a serie of Arrow type {}; expected an integer serie",
+            other.data_type()
+        ))),
+    }
+}
+
+/// The single element of a one-element record column as its JS value — the wire
+/// types the scalar classes already use (`number` for the 8–32 bit integers,
+/// `BigInt` for the 64-bit ones, a `Buffer` for binary, the `toArray()` array for
+/// a serie, `null` for null), read through the classes' own `value()` /
+/// `toArray()` so the conversion lives in one place.
+fn element_to_js(env: &Env, column: &AnySerie) -> Result<JsUnknown> {
+    match column {
+        AnySerie::Int8(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| Int8Scalar { inner }.value()),
+        ),
+        AnySerie::Int16(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| Int16Scalar { inner }.value()),
+        ),
+        AnySerie::Int32(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| Int32Scalar { inner }.value()),
+        ),
+        AnySerie::Int64(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| Int64Scalar { inner }.value()),
+        ),
+        AnySerie::UInt8(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| UInt8Scalar { inner }.value()),
+        ),
+        AnySerie::UInt16(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| UInt16Scalar { inner }.value()),
+        ),
+        AnySerie::UInt32(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| UInt32Scalar { inner }.value()),
+        ),
+        AnySerie::UInt64(serie) => to_unknown(
+            env,
+            serie
+                .get_scalar_at(0)
+                .and_then(|inner| UInt64Scalar { inner }.value()),
+        ),
+        AnySerie::Arrow(values) => match values.data_type() {
+            arrow_schema::DataType::Null => to_unknown(env, Null),
+            arrow_schema::DataType::Binary => {
+                let array = values
+                    .as_any()
+                    .downcast_ref::<arrow_array::BinaryArray>()
+                    .expect("a binary column downcasts to its array");
+                to_unknown(
+                    env,
+                    (!Array::is_null(array, 0)).then(|| Buffer::from(array.value(0).to_vec())),
+                )
+            }
+            arrow_schema::DataType::List(_) => {
+                let array = values
+                    .as_any()
+                    .downcast_ref::<arrow_array::ListArray>()
+                    .expect("a list column downcasts to its array");
+                if Array::is_null(array, 0) {
+                    to_unknown(env, Null)
+                } else {
+                    serie_to_js(env, &AnySerie::from_arrow(array.value(0)))
+                }
+            }
+            other => Err(Error::from_reason(format!(
+                "no JS value for a record child of Arrow type {other}; expected null, an integer, binary or an integer list"
+            ))),
+        },
+        other => Err(Error::from_reason(format!(
+            "no JS value for a record child of Arrow type {}; expected null, an integer, binary or an integer list",
+            other.data_type()
+        ))),
+    }
+}
+
+/// A single, possibly-null `struct` row — *the record*, built from a plain JS
+/// object whose members are inferred like the factory's (an integer `number` /
+/// `bigint` → `int64`, a `Buffer` → `binary`, `null` → `null`, an array of
+/// integers → the `int64` serie), each held as a one-element child column of the
+/// shared `yggdryl.dtype.StructType`.
+#[napi(namespace = "scalar")]
+pub struct RecordScalar {
+    pub(crate) inner: yggdryl_scalar::RecordScalar,
+}
+
+#[napi(namespace = "scalar")]
+impl RecordScalar {
+    /// A record whose fields are inferred from `fields`' members, each value the
+    /// field's value.
+    #[napi(constructor)]
+    pub fn new(fields: Object) -> Result<Self> {
+        Ok(Self {
+            inner: crate::factory::record_from_object(&fields)?,
+        })
+    }
+
+    /// The null record of the struct type `dataType`.
+    #[napi(factory)]
+    pub fn null(data_type: &crate::dtype::StructType) -> Self {
+        Self {
+            inner: yggdryl_scalar::RecordScalar::null(data_type.inner.clone()),
+        }
+    }
+
+    /// Whether this record is the null row.
+    #[napi]
+    pub fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// The scalar's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::StructType {
+        crate::dtype::StructType {
+            inner: self.inner.data_type().clone(),
+        }
+    }
+
+    /// The child field names, in order.
+    #[napi]
+    pub fn field_names(&self) -> Vec<String> {
+        self.data_type().field_names()
+    }
+
+    /// The field `name`'s value as its native JS value (the child class' wire
+    /// type), or `null` when the record is null or no field carries the name —
+    /// one FFI call.
+    #[napi]
+    pub fn get(&self, env: Env, name: String) -> Result<JsUnknown> {
+        match self.inner.scalar_by(&name) {
+            Some(column) => element_to_js(&env, &column),
+            None => to_unknown(&env, Null),
+        }
+    }
+
+    /// The record's native JS value: a plain `{field: value}` object, or `null`
+    /// for the null row — the general native accessor, one FFI call for the
+    /// whole row.
+    #[napi]
+    pub fn to_js_value(&self, env: Env) -> Result<Option<Object>> {
+        let Some(columns) = self.inner.value() else {
+            return Ok(None);
+        };
+        let mut object = env.create_object()?;
+        for (name, column) in self.field_names().into_iter().zip(columns) {
+            object.set(name, element_to_js(&env, column)?)?;
+        }
+        Ok(Some(object))
     }
 }

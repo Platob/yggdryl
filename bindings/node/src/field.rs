@@ -2,7 +2,9 @@
 //!
 //! Every integer type is exposed as its field and its optional field (e.g.
 //! `Int64Field`, `OptionalInt64Field`), alongside `BinaryField` /
-//! `OptionalBinaryField`, `NullField`, `UnionField` and its concrete serie field
+//! `OptionalBinaryField`, `NullField`, `UnionField`, `StructField` (like
+//! `UnionField`, built over its parameterised `yggdryl.dtype` data type) and its
+//! concrete serie field
 //! (e.g. `Int64SerieField`, a column of `Int64SerieType`) — the same
 //! globally-unique names as the Rust crate, the namespace carrying the concern (the `…Field`
 //! suffix keeps every class distinct in napi's addon-global registry). A field
@@ -14,7 +16,7 @@
 //! `arrow-schema` field — all exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work) and the dynamic base
 //! and typed nested fields (`SerieField` / `TypedSerieField` over a non-integer
-//! value type, `MapField` / `TypedMapField`, `StructField`), which have no concrete
+//! value type, `MapField` / `TypedMapField`), which have no concrete
 //! FFI shape yet.
 
 use napi_derive::napi;
@@ -51,6 +53,48 @@ impl UnionField {
     #[napi]
     pub fn data_type(&self) -> crate::dtype::UnionType {
         crate::dtype::UnionType {
+            inner: self.inner.data_type().clone(),
+        }
+    }
+
+    /// Whether values in this field may be null.
+    #[napi]
+    pub fn is_nullable(&self) -> bool {
+        self.inner.is_nullable()
+    }
+}
+
+/// A nullable `struct` field: a name paired with a `yggdryl.dtype.StructType`
+/// data type.
+#[napi(namespace = "field")]
+pub struct StructField {
+    pub(crate) inner: yggdryl_field::StructField,
+}
+
+#[napi(namespace = "field")]
+impl StructField {
+    /// A field named `name` of the struct type `dataType` (nullable by default).
+    #[napi(constructor)]
+    pub fn new(name: String, data_type: &crate::dtype::StructType, nullable: Option<bool>) -> Self {
+        Self {
+            inner: yggdryl_field::StructField::new(
+                name,
+                data_type.inner.clone(),
+                nullable.unwrap_or(true),
+            ),
+        }
+    }
+
+    /// The field's name.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The field's data type.
+    #[napi]
+    pub fn data_type(&self) -> crate::dtype::StructType {
+        crate::dtype::StructType {
             inner: self.inner.data_type().clone(),
         }
     }

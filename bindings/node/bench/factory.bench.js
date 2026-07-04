@@ -21,11 +21,16 @@ function bench(label, fn) {
 }
 
 const blob = Buffer.from([1, 2, 3, 4])
+const row = { id: 42, payload: blob, scores: [1, 2, 3, 4] }
+const record = factory.scalar(row)
 
 bench('factory.scalar(number)', () => factory.scalar(42))
 bench('factory.scalar(bigint)', () => factory.scalar(42n))
 bench('factory.scalar(Buffer)', () => factory.scalar(blob))
 bench('factory.scalar(null)', () => factory.scalar(null))
 bench('factory.scalar(array)', () => factory.scalar([1, 2, 3, 4]))
+bench('factory.scalar(object) record', () => factory.scalar(row))
 bench('factory.dtype(number)', () => factory.dtype(42))
+bench('factory.dtype(object) struct', () => factory.dtype(row))
 bench('factory.field(name, number)', () => factory.field('id', 42))
+bench('RecordScalar.toJsValue()', () => record.toJsValue())

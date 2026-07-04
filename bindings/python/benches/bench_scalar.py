@@ -26,6 +26,8 @@ def bench(label, function):
 def main():
     value = scalar.Int64Scalar(42)
     optional = scalar.OptionalInt64Scalar(42)
+    blob = scalar.BinaryScalar(b"\x01\x02\x03\x04")
+    numbers = scalar.Int64Serie([1, 2, 3, 4])
 
     bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
     bench("Int64Scalar.null()", scalar.Int64Scalar.null)
@@ -33,9 +35,13 @@ def main():
     bench("scalar.as_i64() direct", value.as_i64)
     bench("scalar.as_i8() converted", value.as_i8)
     bench("scalar.as_f64() checked", value.as_f64)
+    bench("scalar.to_pyvalue()", value.to_pyvalue)
     bench("OptionalInt64Scalar(42)", lambda: scalar.OptionalInt64Scalar(42))
     bench("optional.as_i64() redirected", optional.as_i64)
     bench("optional.data_type()", optional.data_type)
+    bench("optional.to_pyvalue()", optional.to_pyvalue)
+    bench("binary.to_pyvalue()", blob.to_pyvalue)
+    bench("serie.to_pyvalue()", numbers.to_pyvalue)
 
 
 if __name__ == "__main__":

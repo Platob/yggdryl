@@ -2,7 +2,9 @@
 //!
 //! Every integer type is exposed as its data type and its logical optional data
 //! type (`yggdryl.dtype.Int64Type`, `yggdryl.dtype.OptionalInt64Type`, …),
-//! alongside `BinaryType` / `OptionalBinaryType`, `NullType`, `UnionType` and its
+//! alongside `BinaryType` / `OptionalBinaryType`, `NullType`, `UnionType`,
+//! `StructType` (its child fields inferred from a plain JS object of example
+//! values, member by member through the factory's inference) and its
 //! concrete serie type (e.g. `Int64SerieType`, the `list` of `int64` — every
 //! integer value type has a buffer-backed serie scalar) — the same globally-unique
 //! names as the Rust crate, the namespace carrying the concern (napi registers class constructors by
@@ -20,16 +22,18 @@
 //! (`to_arrow` / `from_arrow` exchange `arrow-schema` values that cannot cross
 //! the FFI boundary; C Data Interface interop is future work), construction of a
 //! `UnionType` from arbitrary child fields (its `UnionFields` is an arrow-schema
-//! value — `UnionType` is reached through an optional data type's `storage()`), the
+//! value — `UnionType` is reached through an optional data type's `storage()`),
+//! construction of a `StructType` from raw arrow-schema fields likewise (the
+//! binding infers its fields from example values instead), the
 //! `DataTypeId` classifier (a method-bearing enum the bindings cannot model
 //! uniformly), and the dynamic base nested types and their typed generics
 //! (`SerieType` / `TypedSerieType` over a non-integer value type, `MapType` /
-//! `TypedMapType`, `StructType`, and the per-family trait pairs), which have no
+//! `TypedMapType`, and the per-family trait pairs), which have no
 //! concrete FFI shape yet.
 
-use napi::bindgen_prelude::{BigInt, Buffer, Result};
+use napi::bindgen_prelude::{BigInt, Buffer, Object, Result};
 use napi_derive::napi;
-use yggdryl_dtype::{DataType, Logical, Nested, TypedDataType, Union};
+use yggdryl_dtype::{DataType, Logical, Nested, Struct, TypedDataType, Union};
 use yggdryl_field::FieldFactory;
 use yggdryl_scalar::ScalarFactory;
 
@@ -82,6 +86,69 @@ impl UnionType {
             yggdryl_dtype::arrow_schema::UnionMode::Sparse => "sparse",
             yggdryl_dtype::arrow_schema::UnionMode::Dense => "dense",
         }
+    }
+}
+
+/// The Apache Arrow `struct` data type: an ordered set of named child fields,
+/// inferred from a plain JS object of example values — each member through the
+/// factory's inference (an integer `number` / `bigint` → `int64`, a `Buffer` →
+/// `binary`, `null` → `null`, an array of integers → the `int64` serie).
+/// Construction from raw Arrow fields stays Rust-only.
+#[napi(namespace = "dtype")]
+pub struct StructType {
+    pub(crate) inner: yggdryl_dtype::StructType,
+}
+
+#[napi(namespace = "dtype")]
+impl StructType {
+    /// A struct whose child fields are inferred from `fields`' members, each
+    /// value an example of its field's type (nullable, like every factory-built
+    /// field).
+    #[napi(constructor)]
+    pub fn new(fields: Object) -> Result<Self> {
+        Ok(Self {
+            inner: crate::factory::struct_type_from_object(&fields)?,
+        })
+    }
+
+    /// The type's lowercase name, `"struct"`.
+    #[napi]
+    pub fn name(&self) -> String {
+        self.inner.name().to_string()
+    }
+
+    /// The Arrow C Data Interface format string, `"+s"`.
+    #[napi]
+    pub fn arrow_format(&self) -> String {
+        self.inner.arrow_format()
+    }
+
+    /// A struct has no fixed byte width.
+    #[napi]
+    pub fn byte_width(&self) -> Option<u32> {
+        self.inner.byte_width().map(|width| width as u32)
+    }
+
+    /// A struct has no fixed bit width.
+    #[napi]
+    pub fn bit_width(&self) -> Option<u32> {
+        self.inner.bit_width().map(|width| width as u32)
+    }
+
+    /// The number of child fields.
+    #[napi]
+    pub fn child_count(&self) -> u32 {
+        self.inner.child_count() as u32
+    }
+
+    /// The child field names, in order.
+    #[napi]
+    pub fn field_names(&self) -> Vec<String> {
+        self.inner
+            .fields()
+            .iter()
+            .map(|field| field.name().to_string())
+            .collect()
     }
 }
 

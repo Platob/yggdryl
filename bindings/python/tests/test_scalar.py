@@ -208,3 +208,29 @@ def test_serie_holds_a_sequence(case):
     assert missing.to_pylist() is None
     with pytest.raises(ValueError):
         missing.get_at(0)
+
+
+def test_to_pyvalue_is_the_general_native_accessor():
+    # One call per scalar: the whole native value, or None when null.
+    assert scalar.NullScalar().to_pyvalue() is None
+    assert scalar.BinaryScalar(b"\x01\x02").to_pyvalue() == b"\x01\x02"
+    assert scalar.BinaryScalar.null().to_pyvalue() is None
+    assert scalar.OptionalBinaryScalar(b"hi").to_pyvalue() == b"hi"
+    assert scalar.OptionalBinaryScalar.null().to_pyvalue() is None
+    for scalar_class, optional, _, low, high in INTEGERS:
+        assert scalar_class(42).to_pyvalue() == 42
+        assert scalar_class(low).to_pyvalue() == low
+        assert scalar_class(high).to_pyvalue() == high
+        assert scalar_class.null().to_pyvalue() is None
+        assert optional(42).to_pyvalue() == 42
+        assert optional.null().to_pyvalue() is None
+    for serie_class, _, low, high in SERIES:
+        assert serie_class([low, high]).to_pyvalue() == [low, high]
+        assert serie_class([]).to_pyvalue() == []
+        assert serie_class.null().to_pyvalue() is None
+    # The record's native value is its singleton dataclass (see test_record.py).
+    import dataclasses
+
+    row = scalar.RecordScalar({"x": 1}).to_pyvalue()
+    assert dataclasses.is_dataclass(row)
+    assert row.x == 1
