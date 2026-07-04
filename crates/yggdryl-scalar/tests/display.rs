@@ -5,8 +5,9 @@
 
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, DataType};
 use yggdryl_scalar::{
-    AnyScalar, BinaryScalar, DisplayOptions, Float64Scalar, Int64Scalar, Int64Serie, RecordScalar,
-    Scalar, TypedStructSerie, Utf8Scalar,
+    AnyScalar, BinaryScalar, DisplayOptions, Float64Scalar, Int64Scalar, Int64Serie, MapScalar,
+    RecordScalar, Scalar, Serie, TypedMapScalar, TypedSerie, TypedStructSerie, UInt8Scalar,
+    Utf8Scalar,
 };
 
 // ---- atomic scalars ----
@@ -194,4 +195,246 @@ fn a_wide_struct_serie_fits_the_screen() {
     for line in narrow.lines() {
         assert!(line.chars().count() <= 46, "line too wide: {line:?}");
     }
+}
+
+// ---- nested: maps, list cells, and recursive containers ----
+
+#[test]
+fn map_renders_a_key_value_table() {
+    let ranks = TypedMapScalar::new(vec![
+        (UInt8Scalar::new(7), Int64Scalar::new(42)),
+        (UInt8Scalar::new(9), Int64Scalar::new(100)),
+    ])
+    .unwrap();
+    let expected = "\
+┌───────┬───────┐
+│ key   │ value │
+│ uint8 │ int64 │
+├───────┼───────┤
+│ 7     │ 42    │
+│ 9     │ 100   │
+└───────┴───────┘";
+    // The typed map and the dynamic map it erases to render identically.
+    assert_eq!(ranks.display(), expected);
+    assert_eq!(ranks.erase().display(), expected);
+}
+
+#[test]
+fn typed_map_display_does_not_recurse_into_its_union_storage() {
+    // Regression: a `TypedMapScalar` used the atomic default, whose Arrow bounce had no
+    // `Map` arm — it re-wrapped the same map and recursed until the stack overflowed.
+    let one = TypedMapScalar::new(vec![(UInt8Scalar::new(1), Int64Scalar::new(2))]).unwrap();
+    assert!(one.display().contains("│ 1"));
+    assert!(one.display().contains("│ 2"));
+    // The null and empty maps stay distinct and never blow up.
+    let null: TypedMapScalar<dtype::UInt8Type, dtype::Int64Type, UInt8Scalar, Int64Scalar> =
+        TypedMapScalar::null();
+    assert_eq!(null.display(), "null");
+    let empty: TypedMapScalar<dtype::UInt8Type, dtype::Int64Type, UInt8Scalar, Int64Scalar> =
+        TypedMapScalar::default();
+    assert!(empty.display().contains("key"));
+    assert!(!empty.display().contains("null"));
+}
+
+#[test]
+fn a_big_map_only_formats_max_rows_but_footers_the_true_total() {
+    // The typed map must not materialize every entry to print the first few: only the
+    // head is assembled, yet the footer still reports the full count.
+    let big = TypedMapScalar::new(
+        (0..25u8)
+            .map(|k| (UInt8Scalar::new(k), Int64Scalar::new(i64::from(k))))
+            .collect(),
+    )
+    .unwrap();
+    let shown = big.display();
+    assert!(shown.contains("│ 0")); // first entry present
+    assert!(shown.contains("│ 9")); // the tenth entry present
+    assert!(shown.ends_with("… (15 more)")); // 25 - 10 rendered
+                                             // A custom row budget renders more entries and updates the footer.
+    let three = big.display_with(DisplayOptions {
+        max_rows: 3,
+        ..Default::default()
+    });
+    assert!(three.ends_with("… (22 more)"));
+}
+
+#[test]
+fn a_serie_of_lists_renders_each_list_inline() {
+    let lists = TypedSerie::new(vec![
+        TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]),
+        TypedSerie::new(vec![
+            Int64Scalar::new(3),
+            Int64Scalar::new(4),
+            Int64Scalar::new(5),
+        ]),
+    ]);
+    let expected = "\
+┌─────────────┐
+│ item        │
+│ list<int64> │
+├─────────────┤
+│ [1, 2]      │
+│ [3, 4, 5]   │
+└─────────────┘";
+    assert_eq!(lists.display(), expected);
+}
+
+#[test]
+fn a_long_list_cell_elides_past_six_elements() {
+    let long: Vec<Int64Scalar> = (0..20).map(Int64Scalar::new).collect();
+    let serie = TypedSerie::new(vec![TypedSerie::new(long)]);
+    let shown = serie.display();
+    assert!(shown.contains("[0, 1, 2, 3, 4, 5, …]"), "got: {shown}");
+}
+
+#[test]
+fn a_struct_serie_renders_nested_list_and_struct_fields_inline() {
+    let loc_ty = dtype::StructType::new(arrow_schema::Fields::from(vec![
+        arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
+        arrow_schema::Field::new("y", arrow_schema::DataType::Int64, false),
+    ]));
+    let row_ty = dtype::StructType::new(arrow_schema::Fields::from(vec![
+        arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+        arrow_schema::Field::new(
+            "tags",
+            arrow_schema::DataType::List(std::sync::Arc::new(arrow_schema::Field::new(
+                "item",
+                arrow_schema::DataType::Utf8,
+                true,
+            ))),
+            true,
+        ),
+        arrow_schema::Field::new("loc", loc_ty.to_arrow(), true),
+    ]));
+    let tags = TypedSerie::new(vec![
+        Utf8Scalar::new("red".into()),
+        Utf8Scalar::new("blue".into()),
+    ]);
+    let loc = RecordScalar::new(
+        loc_ty,
+        vec![
+            AnyScalar::from(Int64Scalar::new(10)),
+            AnyScalar::from(Int64Scalar::new(20)),
+        ],
+    )
+    .unwrap();
+    let row = RecordScalar::new(
+        row_ty.clone(),
+        vec![
+            AnyScalar::from(Int64Scalar::new(1)),
+            AnyScalar::from_arrow(tags.to_arrow_scalar()),
+            AnyScalar::from_arrow(loc.to_arrow_scalar()),
+        ],
+    )
+    .unwrap();
+    let serie = TypedStructSerie::new(row_ty, vec![row.clone()]);
+    let shown = serie.display();
+    // One column per field; the nested list and struct fields render as compact cells.
+    assert!(shown.contains("│ [\"red\", \"blue\"]"), "got: {shown}");
+    assert!(shown.contains("│ {x: 10, y: 20}"), "got: {shown}");
+    assert!(shown.contains("list<utf8>"));
+    assert!(shown.contains("struct<x: int64, y: int64>"));
+
+    // The record itself (transposed) shows the same nested cells against their fields.
+    let record = row.display();
+    assert!(record.contains("tags: list<utf8>"));
+    assert!(record.contains("[\"red\", \"blue\"]"));
+    assert!(record.contains("loc: struct<x: int64, y: int64>"));
+    assert!(record.contains("{x: 10, y: 20}"));
+}
+
+#[test]
+fn deeply_nested_lists_collapse_at_the_depth_cap() {
+    // A list nested far past the cap must collapse to `[…]`, never overflow the stack.
+    use arrow_array::Array;
+    let mut nested: std::sync::Arc<dyn Array> =
+        std::sync::Arc::new(arrow_array::Int64Array::from(vec![1i64, 2, 3]));
+    for _ in 0..8 {
+        let field = std::sync::Arc::new(arrow_schema::Field::new(
+            "item",
+            nested.data_type().clone(),
+            true,
+        ));
+        nested = std::sync::Arc::new(
+            arrow_array::ListArray::try_new(
+                field,
+                arrow_buffer::OffsetBuffer::from_lengths([nested.len()]),
+                nested,
+                None,
+            )
+            .unwrap(),
+        );
+    }
+    let serie = Serie::from_arrow(&nested).unwrap();
+    let shown = serie.display();
+    // The innermost levels collapse to a single `…`, bounding the cell.
+    assert!(shown.contains("[[[[[[…]]]]]]"), "got: {shown}");
+    // Every cell line stays within the elision budget (no runaway wall of brackets).
+    for line in shown.lines() {
+        assert!(line.chars().count() <= 46, "line too wide: {line:?}");
+    }
+}
+
+#[test]
+fn a_map_cell_with_a_struct_value_renders_inline() {
+    // A map whose value is a struct, reached through the dynamic map from Arrow, shows
+    // each entry's struct value compactly.
+    use arrow_array::Array;
+    let value_struct = arrow_array::StructArray::from(vec![
+        (
+            std::sync::Arc::new(arrow_schema::Field::new(
+                "x",
+                arrow_schema::DataType::Int64,
+                false,
+            )),
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![1i64, 3]))
+                as std::sync::Arc<dyn Array>,
+        ),
+        (
+            std::sync::Arc::new(arrow_schema::Field::new(
+                "y",
+                arrow_schema::DataType::Int64,
+                false,
+            )),
+            std::sync::Arc::new(arrow_array::Int64Array::from(vec![2i64, 4]))
+                as std::sync::Arc<dyn Array>,
+        ),
+    ]);
+    let entries_struct = arrow_array::StructArray::from(vec![
+        (
+            std::sync::Arc::new(arrow_schema::Field::new(
+                "key",
+                arrow_schema::DataType::UInt8,
+                false,
+            )),
+            std::sync::Arc::new(arrow_array::UInt8Array::from(vec![1u8, 2]))
+                as std::sync::Arc<dyn Array>,
+        ),
+        (
+            std::sync::Arc::new(arrow_schema::Field::new(
+                "value",
+                value_struct.data_type().clone(),
+                true,
+            )),
+            std::sync::Arc::new(value_struct) as std::sync::Arc<dyn Array>,
+        ),
+    ]);
+    let entries_field = std::sync::Arc::new(arrow_schema::Field::new(
+        "entries",
+        entries_struct.data_type().clone(),
+        false,
+    ));
+    let map_array = arrow_array::MapArray::try_new(
+        entries_field,
+        arrow_buffer::OffsetBuffer::from_lengths([2usize]),
+        entries_struct,
+        None,
+        false,
+    )
+    .unwrap();
+    let map = MapScalar::from_arrow(&map_array as &dyn Array).unwrap();
+    let shown = map.display();
+    assert!(shown.contains("│ {x: 1, y: 2}"), "got: {shown}");
+    assert!(shown.contains("│ {x: 3, y: 4}"), "got: {shown}");
+    assert!(shown.contains("struct<x: int64, y: int64>"));
 }

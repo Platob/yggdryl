@@ -88,11 +88,21 @@ where
     /// and `"value"` columns), or `None` when null — the shared assembly behind
     /// [`to_arrow_scalar`](Scalar::to_arrow_scalar) and [`erase`](TypedMapScalar::erase).
     fn entries_struct(&self) -> Option<arrow_array::ArrayRef> {
+        self.entries_struct_limited(usize::MAX)
+    }
+
+    /// The first `limit` entries assembled into their `"entries"` struct array (or all
+    /// of them when `limit` exceeds the count), or `None` when null. Display assembles
+    /// only the first [`max_rows`](crate::DisplayOptions::max_rows) rows through this,
+    /// so printing a huge typed map stays cheap rather than materializing every entry.
+    fn entries_struct_limited(&self, limit: usize) -> Option<arrow_array::ArrayRef> {
         let entries = self.entries.as_ref()?;
+        let shown = limit.min(entries.len());
         let entry_fields = self.data_type.entry_fields();
         let keys = concat_scalar_arrays(
             entries
                 .iter()
+                .take(shown)
                 .map(|(key, _)| key.to_arrow_scalar())
                 .collect(),
             || entry_fields[0].data_type().clone(),
@@ -100,6 +110,7 @@ where
         let values = concat_scalar_arrays(
             entries
                 .iter()
+                .take(shown)
                 .map(|(_, value)| value.to_arrow_scalar())
                 .collect(),
             || entry_fields[1].data_type().clone(),
@@ -108,7 +119,7 @@ where
             entry_fields,
             vec![keys, values],
             None,
-            entries.len(),
+            shown,
         )
         .expect("per-entry one-element arrays assemble into the entries struct");
         Some(std::sync::Arc::new(entry_struct))
@@ -151,6 +162,21 @@ where
 
     fn value(&self) -> Option<&[(SK, SV)]> {
         self.entries.as_deref()
+    }
+
+    // A `key | value` table. Only the first `max_rows` entries are assembled — never
+    // the whole map (which `erase` would do) — so printing a huge typed map stays
+    // cheap; the true entry count still drives the `… (N more)` footer.
+    fn display_with(&self, options: crate::DisplayOptions) -> String {
+        match self.entries_struct_limited(options.max_rows) {
+            None => "null".to_string(),
+            Some(head) => crate::display::render_serie_with_total(
+                &crate::AnySerie::from_arrow(head),
+                "entries",
+                self.entries.as_ref().map_or(0, Vec::len),
+                options,
+            ),
+        }
     }
 
     fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {

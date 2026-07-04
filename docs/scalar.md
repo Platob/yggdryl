@@ -446,11 +446,15 @@ type is a recursive **signature** (`int64`, `list<int64>`,
 trailing `?` when nullable); an **atomic** scalar is its value (`42`, `1.5`, `"hi"`,
 `0x0102`, `null`); a **serie** is a box-drawn **table** headed by its field (name and
 type) with the first `max_rows` (default **10**) elements and a `… (N more)` footer; a
-**struct** serie is one column per field (nested values shown compactly), a record a
-transposed `field | value` table. Wide tables try to fit `max_width` (default 100) by
-collapsing trailing columns into a `…` column. Only `max_rows` are ever formatted, so
-displaying a huge serie is cheap. Pass explicit limits with `display_with` (Rust /
-Python) / `displayWith` (Node); the concrete series also expose a fast `field()`.
+**struct** serie is one column per field, a record a transposed `field | value` table,
+and a **map** a two-column `key | value` table. Any value that lands in a *cell* — a
+struct field, a list element, a map entry — is shown compactly inline (`{x: 1}`,
+`[1, 2, …]`, `{7: 42, …}`), and nesting past a small depth collapses to a bare `{…}` /
+`[…]` so a deeply-nested value stays readable. Wide tables try to fit `max_width`
+(default 100) by collapsing trailing columns into a `…` column. Only `max_rows` are
+ever formatted — even a map, which assembles just its first rows — so displaying a huge
+value is cheap. Pass explicit limits with `display_with` (Rust / Python) /
+`displayWith` (Node); the concrete series also expose a fast `field()`.
 
 === "Python"
 

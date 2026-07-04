@@ -4,7 +4,10 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use yggdryl_scalar::yggdryl_dtype::{self as dtype, arrow_schema, DataType};
-use yggdryl_scalar::{AnyScalar, Int64Scalar, Int64Serie, RecordScalar, Scalar, TypedStructSerie};
+use yggdryl_scalar::{
+    AnyScalar, Int64Scalar, Int64Serie, RecordScalar, Scalar, TypedMapScalar, TypedStructSerie,
+    UInt8Scalar,
+};
 
 const N: usize = 4096;
 
@@ -41,6 +44,20 @@ fn display(c: &mut Criterion) {
     group.bench_function("struct_serie_display", |b| {
         b.iter(|| black_box(points.display()))
     });
+
+    // A map table over a 4096-entry map — again only the first rows are formatted.
+    let ranks = TypedMapScalar::new(
+        (0..N)
+            .map(|value| {
+                (
+                    UInt8Scalar::new(value as u8),
+                    Int64Scalar::new(value as i64),
+                )
+            })
+            .collect(),
+    )
+    .unwrap();
+    group.bench_function("map_display", |b| b.iter(|| black_box(ranks.display())));
 
     // The recursive data-type signature.
     let nested = dtype::SerieType::new(point_type.to_arrow());

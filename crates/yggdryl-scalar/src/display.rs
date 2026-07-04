@@ -3,10 +3,15 @@
 //! An **atomic** scalar renders as its value (`42`, `1.5`, `"hi"`, `0x0102`,
 //! `null`); a **serie** renders as a one-column table headed by its field (name and
 //! type) with the first [`max_rows`](DisplayOptions::max_rows) elements; a **struct**
-//! serie / record renders as a multi-column table (one column per field), each nested
-//! value shown compactly so the whole thing tries to fit the
-//! [`max_width`](DisplayOptions::max_width). The [`Display`](std::fmt::Display) impls
-//! use the defaults ([`DisplayOptions::default`]); `display_with` takes an explicit
+//! serie / record renders as a multi-column table (one column per field), and a
+//! **map** as a two-column `key | value` table. Any value that lands in a *cell*
+//! (a struct field, a list element, a map key/value) is shown compactly inline —
+//! `{x: 1, name: "a"}`, `[1, 2, …]`, `{7: 42, …}` — so the whole thing tries to fit
+//! the [`max_width`](DisplayOptions::max_width). Nesting past [`MAX_DEPTH`] collapses
+//! to a bare `{…}` / `[…]`, which both keeps a pathological value readable and is the
+//! backstop that stops a container type with no dedicated arm (a bare Arrow union or
+//! map) from recursing forever. The [`Display`](std::fmt::Display) impls use the
+//! defaults ([`DisplayOptions::default`]); `display_with` takes an explicit
 //! [`DisplayOptions`].
 
 use crate::AnyScalar;
@@ -37,6 +42,17 @@ impl Default for DisplayOptions {
 /// The widest a single cell prints before it is elided with `…`.
 const MAX_CELL: usize = 40;
 
+/// How deep a nested cell (a struct/list/map inside a struct/list/map) recurses before
+/// it collapses to a bare `{…}` / `[…]`. It keeps a pathological value readable, and —
+/// because every arm that recurses (including the `_` fallback's bounce back through
+/// [`format_any`]) counts against it — it is the hard backstop that stops a container
+/// type with no dedicated arm (a bare Arrow union or map) from recursing forever.
+const MAX_DEPTH: usize = 5;
+
+/// The most elements a nested `list` or `map` cell prints inline before it elides the
+/// tail with `…`.
+const MAX_INLINE: usize = 6;
+
 /// Elide `text` to `max` characters (counting `char`s, good enough for debug), adding
 /// a trailing `…` when cut.
 fn elide(text: &str, max: usize) -> String {
@@ -57,13 +73,24 @@ fn width(text: &str) -> usize {
 
 /// Format one element of an Arrow array at `index` compactly — the fallback for the
 /// values a type-erased [`AnyScalar`] holds as Arrow (utf8, binary, null and the
-/// nested types), and for the cells of a struct column.
-fn format_arrow(array: &dyn Array, index: usize) -> String {
+/// nested types), and for the cells of a struct column. `depth` bounds nesting (see
+/// [`MAX_DEPTH`]).
+fn format_arrow(array: &dyn Array, index: usize, depth: usize) -> String {
     use arrow_array::{
-        BinaryArray, BooleanArray, LargeStringArray, ListArray, StringArray, StructArray,
+        BinaryArray, BooleanArray, LargeListArray, LargeStringArray, ListArray, MapArray,
+        StringArray, StructArray,
     };
     if index >= array.len() || array.is_null(index) {
         return "null".to_string();
+    }
+    // Past the depth budget a nested container collapses to a bare marker — both to
+    // keep a pathological value readable and to guarantee termination.
+    if depth > MAX_DEPTH {
+        return match array.data_type() {
+            DataType::Struct(_) | DataType::Map(..) | DataType::Union(..) => "{…}".to_string(),
+            DataType::List(_) | DataType::LargeList(_) => "[…]".to_string(),
+            _ => "…".to_string(),
+        };
     }
     match array.data_type() {
         DataType::Utf8 => array
@@ -94,7 +121,9 @@ fn format_arrow(array: &dyn Array, index: usize) -> String {
                     .columns()
                     .iter()
                     .zip(struct_field_names(entries))
-                    .map(|(column, name)| format!("{name}: {}", format_arrow(column, index)))
+                    .map(|(column, name)| {
+                        format!("{name}: {}", format_arrow(column, index, depth + 1))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{{{inner}}}")
@@ -103,17 +132,37 @@ fn format_arrow(array: &dyn Array, index: usize) -> String {
         DataType::List(_) => array
             .as_any()
             .downcast_ref::<ListArray>()
-            .map(|list| {
-                let element = list.value(index);
-                let shown = element.len().min(6);
-                let mut cells: Vec<String> =
-                    (0..shown).map(|i| format_arrow(&element, i)).collect();
-                if element.len() > shown {
+            .map(|list| format_list_cell(&list.value(index), depth))
+            .unwrap_or_else(|| "[…]".to_string()),
+        DataType::LargeList(_) => array
+            .as_any()
+            .downcast_ref::<LargeListArray>()
+            .map(|list| format_list_cell(&list.value(index), depth))
+            .unwrap_or_else(|| "[…]".to_string()),
+        // A map: its entries struct's key/value pair up as `{key: value, …}`.
+        DataType::Map(..) => array
+            .as_any()
+            .downcast_ref::<MapArray>()
+            .map(|map| {
+                let entries = map.value(index);
+                let keys = entries.column(0);
+                let values = entries.column(1);
+                let shown = entries.len().min(MAX_INLINE);
+                let mut cells: Vec<String> = (0..shown)
+                    .map(|i| {
+                        format!(
+                            "{}: {}",
+                            format_arrow(keys, i, depth + 1),
+                            format_arrow(values, i, depth + 1)
+                        )
+                    })
+                    .collect();
+                if entries.len() > shown {
                     cells.push("…".to_string());
                 }
-                format!("[{}]", cells.join(", "))
+                format!("{{{}}}", cells.join(", "))
             })
-            .unwrap_or_else(|| "[…]".to_string()),
+            .unwrap_or_else(|| "{…}".to_string()),
         DataType::Null => "null".to_string(),
         // A union (an `optional`'s storage): unwrap into the active variant and format
         // that child — recursing on the *child*, never the union itself, so it always
@@ -121,14 +170,29 @@ fn format_arrow(array: &dyn Array, index: usize) -> String {
         DataType::Union(..) => array
             .as_any()
             .downcast_ref::<arrow_array::UnionArray>()
-            .map(|union| format_arrow(union.value(index).as_ref(), 0))
+            .map(|union| format_arrow(union.value(index).as_ref(), 0, depth + 1))
             .unwrap_or_else(|| "null".to_string()),
-        // Numeric / other leaves: read the one element through a one-row AnyScalar.
+        // Numeric / other leaves: read the one element through a one-row AnyScalar. The
+        // bounce carries `depth`, so a container type with no arm above still hits the
+        // depth backstop instead of looping.
         _ => {
             let one = AnyScalar::from_arrow(array.slice(index, 1));
-            format_any(&one)
+            format_any_at(&one, depth)
         }
     }
+}
+
+/// Format a list element (already sliced out of its parent) as `[a, b, …]`, showing
+/// the first [`MAX_INLINE`] items — shared by the `List` and `LargeList` cell arms.
+fn format_list_cell(element: &dyn Array, depth: usize) -> String {
+    let shown = element.len().min(MAX_INLINE);
+    let mut cells: Vec<String> = (0..shown)
+        .map(|i| format_arrow(element, i, depth + 1))
+        .collect();
+    if element.len() > shown {
+        cells.push("…".to_string());
+    }
+    format!("[{}]", cells.join(", "))
 }
 
 /// The field names of a struct array (its child field names), in column order.
@@ -155,6 +219,12 @@ fn hex(bytes: &[u8]) -> String {
 /// Format a type-erased [`AnyScalar`] as a compact cell value — the shared value
 /// formatter behind every table cell and the atomic scalars' own display.
 pub(crate) fn format_any(any: &AnyScalar) -> String {
+    format_any_at(any, 0)
+}
+
+/// [`format_any`] carrying the current nesting `depth`, so the Arrow bounce keeps
+/// counting against [`MAX_DEPTH`] rather than resetting it (the recursion backstop).
+fn format_any_at(any: &AnyScalar, depth: usize) -> String {
     if any.is_null() {
         return "null".to_string();
     }
@@ -171,7 +241,7 @@ pub(crate) fn format_any(any: &AnyScalar) -> String {
     numeric!(int8, int16, int32, int64, uint8, uint16, uint32, uint64, float16, float32, float64);
     // Everything else (utf8, binary, null, nested) is held as Arrow.
     match any.arrow() {
-        Some(array) => format_arrow(array.as_ref(), 0),
+        Some(array) => format_arrow(array.as_ref(), 0, depth + 1),
         None => "null".to_string(),
     }
 }
@@ -319,7 +389,7 @@ fn struct_columns(entries: &arrow_array::StructArray, max_rows: usize) -> Vec<Co
             Column {
                 name: names.get(index).cloned().unwrap_or_default(),
                 type_signature: types.get(index).cloned().unwrap_or_default(),
-                cells: (0..shown).map(|row| format_arrow(child, row)).collect(),
+                cells: (0..shown).map(|row| format_arrow(child, row, 0)).collect(),
             }
         })
         .collect()
@@ -334,14 +404,23 @@ pub(crate) fn render_serie(
     item_name: &str,
     options: DisplayOptions,
 ) -> String {
+    render_serie_with_total(column, item_name, column.len(), options)
+}
+
+/// [`render_serie`] with the true element `total` supplied separately, so a caller
+/// that has already trimmed `column` to the first [`max_rows`](DisplayOptions::max_rows)
+/// entries (a typed map, which must assemble its entries) still gets the right
+/// `… (N more)` footer without materializing the whole thing.
+pub(crate) fn render_serie_with_total(
+    column: &crate::AnySerie,
+    item_name: &str,
+    total: usize,
+    options: DisplayOptions,
+) -> String {
     let arrow = column.to_arrow();
     if let DataType::Struct(_) = arrow.data_type() {
         if let Some(entries) = arrow.as_any().downcast_ref::<arrow_array::StructArray>() {
-            return render_table(
-                struct_columns(entries, options.max_rows),
-                column.len(),
-                options,
-            );
+            return render_table(struct_columns(entries, options.max_rows), total, options);
         }
     }
     let shown = column.len().min(options.max_rows);
@@ -356,7 +435,7 @@ pub(crate) fn render_serie(
             })
             .collect(),
     };
-    render_table(vec![single], column.len(), options)
+    render_table(vec![single], total, options)
 }
 
 /// Render a single struct row (a [`RecordScalar`](crate::RecordScalar)) as a
