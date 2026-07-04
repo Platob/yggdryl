@@ -251,6 +251,34 @@ fn struct_serie_null_and_empty_are_distinct() {
 }
 
 #[test]
+fn struct_serie_carries_a_null_row_among_present_ones() {
+    // A row-level null (the whole struct absent) is distinct from a null serie: the
+    // serie is present, only its middle row is null. This exercises the validity
+    // bitmap through the concat assembly and the sliced `from_arrow` read-back.
+    let rows = vec![point(1, 2), RecordScalar::null(point_type()), point(5, 6)];
+    let serie = TypedStructSerie::new(point_type(), rows);
+    assert_eq!(serie.len(), 3);
+    assert!(!serie.is_null());
+
+    // The present rows read back; the middle row reads back as a null record.
+    assert_eq!(serie.get_scalar_at(0), Some(point(1, 2)));
+    assert!(serie.get_scalar_at(1).expect("the row exists").is_null());
+    assert_eq!(serie.get_scalar_at(2), Some(point(5, 6)));
+
+    // The field column still spans every row (the null row included).
+    assert_eq!(serie.child_serie_by("x").unwrap().len(), 3);
+
+    // The Arrow round trip and the erased view both preserve the null row.
+    assert_eq!(
+        TypedStructSerie::<RecordScalar>::from_arrow(serie.to_arrow_scalar().as_ref()).unwrap(),
+        serie
+    );
+    assert_eq!(serie.erase().get_row(1).expect("the row exists"), {
+        RecordScalar::null(point_type())
+    });
+}
+
+#[test]
 fn as_nested_accessors_follow_the_as_contract() {
     // as_serie: every serie shape answers; the handles agree through Arrow.
     let typed = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::new(2)]);

@@ -278,7 +278,7 @@ fn record(c: &mut Criterion) {
             .unwrap()
         })
         .collect();
-    let points = yggdryl_scalar::TypedStructSerie::new(point, rows);
+    let points = yggdryl_scalar::TypedStructSerie::new(point.clone(), rows);
     group.bench_function("struct_serie_get_scalar_at", |b| {
         b.iter(|| {
             for index in 0..N {
@@ -288,6 +288,30 @@ fn record(c: &mut Criterion) {
     });
     group.bench_function("struct_serie_field_column", |b| {
         b.iter(|| black_box(points.child_serie_by(black_box("x"))))
+    });
+
+    // The assembly path: build one struct column from N row scalars — each row's
+    // `to_arrow_scalar` plus a single `concat` — the cost paid once at construction,
+    // measured apart from the row-scalar building (done in the untimed setup).
+    group.bench_function("struct_serie_new", |b| {
+        b.iter_batched(
+            || {
+                (0..N as i64)
+                    .map(|value| {
+                        RecordScalar::new(
+                            point.clone(),
+                            vec![
+                                AnyScalar::from(Int64Scalar::new(value)),
+                                AnyScalar::from(Int64Scalar::new(value + 1)),
+                            ],
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<_>>()
+            },
+            |rows| black_box(yggdryl_scalar::TypedStructSerie::new(point.clone(), rows)),
+            criterion::BatchSize::SmallInput,
+        )
     });
 
     group.finish();
