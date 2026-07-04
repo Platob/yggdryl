@@ -63,6 +63,7 @@ pub use field_factory::FieldFactory;
 pub use typed_field::TypedField;
 
 pub mod binary;
+pub mod float;
 pub mod integer;
 pub mod map;
 pub mod null;
@@ -85,6 +86,7 @@ pub use typed_optional::TypedOptionalField;
 pub use typed_serie::TypedSerieField;
 pub use union::UnionField;
 
+pub use float::{Float32Field, Float64Field};
 pub use integer::{
     Int16Field, Int32Field, Int64Field, Int8Field, UInt16Field, UInt32Field, UInt64Field,
     UInt8Field,

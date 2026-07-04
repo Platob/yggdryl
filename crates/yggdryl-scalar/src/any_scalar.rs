@@ -3,19 +3,19 @@
 use arrow_array::{Array, ArrayRef};
 
 use crate::{
-    Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, Scalar, UInt16Scalar, UInt32Scalar,
-    UInt64Scalar, UInt8Scalar,
+    Float32Scalar, Float64Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, Scalar,
+    UInt16Scalar, UInt32Scalar, UInt64Scalar, UInt8Scalar,
 };
 
 /// A type-erased, possibly-null single value — the atomic counterpart of
 /// [`AnySerie`](crate::AnySerie), the crate's **own value holder** behind a
 /// [`RecordScalar`](crate::RecordScalar)'s fields (one `AnyScalar` per struct field).
 ///
-/// It mirrors [`AnySerie`](crate::AnySerie) one value down: the integer types are held
-/// *decomposed* as their concrete scalars ([`Int8Scalar`] … [`UInt64Scalar`]) — a
-/// bare native `Option<int>`, read without an Arrow downcast — while any other type
-/// keeps its one-element Arrow array zero-copy in the [`Arrow`](AnyScalar::Arrow)
-/// fallback. Both directions of the Arrow boundary are reference-count bumps, never
+/// It mirrors [`AnySerie`](crate::AnySerie) one value down: the fixed-width numeric
+/// types are held *decomposed* as their concrete scalars (the integers [`Int8Scalar`]
+/// … [`UInt64Scalar`] and the floats [`Float32Scalar`] / [`Float64Scalar`]) — a bare
+/// native `Option`, read without an Arrow downcast — while any other type keeps its
+/// one-element Arrow array zero-copy in the [`Arrow`](AnyScalar::Arrow) fallback. Both directions of the Arrow boundary are reference-count bumps, never
 /// copies: [`from_arrow`](AnyScalar::from_arrow) *decomposes* a one-element array into
 /// the matching scalar, and [`to_arrow_scalar`](AnyScalar::to_arrow_scalar)
 /// *reconstitutes* the one-element array on demand.
@@ -56,14 +56,18 @@ pub enum AnyScalar {
     UInt32(UInt32Scalar),
     /// A `uint64` value, decomposed.
     UInt64(UInt64Scalar),
+    /// A `float32` value, decomposed.
+    Float32(Float32Scalar),
+    /// A `float64` value, decomposed.
+    Float64(Float64Scalar),
     /// Any other type, held as its one-element Arrow array zero-copy (decomposed
     /// variants are added as concrete scalars land).
     Arrow(ArrayRef),
 }
 
-/// Expands one arm per decomposed integer variant, so every `match` below stays
-/// exhaustive without repeating the eight widths by hand.
-macro_rules! for_each_int {
+/// Expands one arm per decomposed numeric variant, so every `match` below stays
+/// exhaustive without repeating the ten widths by hand.
+macro_rules! for_each_decomposed {
     ($self:expr, $scalar:ident => $body:expr, $arrow:ident => $fallback:expr) => {
         match $self {
             AnyScalar::Int8($scalar) => $body,
@@ -74,6 +78,8 @@ macro_rules! for_each_int {
             AnyScalar::UInt16($scalar) => $body,
             AnyScalar::UInt32($scalar) => $body,
             AnyScalar::UInt64($scalar) => $body,
+            AnyScalar::Float32($scalar) => $body,
+            AnyScalar::Float64($scalar) => $body,
             AnyScalar::Arrow($arrow) => $fallback,
         }
     };
@@ -102,6 +108,8 @@ impl AnyScalar {
             A::UInt16 => decompose!(UInt16, UInt16Scalar),
             A::UInt32 => decompose!(UInt32, UInt32Scalar),
             A::UInt64 => decompose!(UInt64, UInt64Scalar),
+            A::Float32 => decompose!(Float32, Float32Scalar),
+            A::Float64 => decompose!(Float64, Float64Scalar),
             _ => Self::Arrow(value),
         }
     }
@@ -109,7 +117,7 @@ impl AnyScalar {
     /// Reconstitute the one-element Arrow array on demand — the decomposed scalar
     /// rebuilds it, the fallback clones its handle (reference-count bumps only).
     pub fn to_arrow_scalar(&self) -> ArrayRef {
-        for_each_int!(self,
+        for_each_decomposed!(self,
             scalar => scalar.to_arrow_scalar(),
             value => value.clone())
     }
@@ -123,7 +131,7 @@ impl AnyScalar {
     pub fn is_null(&self) -> bool {
         // The *logical* null count, so an all-null `NullArray` (which carries no
         // physical null buffer) still reads as null.
-        for_each_int!(self,
+        for_each_decomposed!(self,
             scalar => Scalar::is_null(scalar),
             value => Array::logical_null_count(value.as_ref()) > 0)
     }
@@ -142,7 +150,7 @@ impl PartialEq for AnyScalar {
                 }
             };
         }
-        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
     }
 }
 
@@ -168,4 +176,5 @@ macro_rules! from_concrete {
 from_concrete!(
     Int8, Int8Scalar; Int16, Int16Scalar; Int32, Int32Scalar; Int64, Int64Scalar;
     UInt8, UInt8Scalar; UInt16, UInt16Scalar; UInt32, UInt32Scalar; UInt64, UInt64Scalar;
+    Float32, Float32Scalar; Float64, Float64Scalar;
 );

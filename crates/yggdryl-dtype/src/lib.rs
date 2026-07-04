@@ -64,6 +64,7 @@ pub use typed_logical::TypedLogical;
 pub use typed_nested::TypedNested;
 
 pub mod binary;
+pub mod float;
 pub mod integer;
 pub mod map;
 pub mod null;
@@ -80,6 +81,7 @@ pub use r#struct::{Struct, StructType, TypedStruct};
 pub use serie::{Serie, SerieType, TypedSerie, TypedSerieType};
 pub use union::{TypedUnion, Union, UnionType};
 
+pub use float::{Float32Type, Float64Type};
 pub use integer::{
     Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
 };

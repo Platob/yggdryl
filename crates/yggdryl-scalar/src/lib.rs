@@ -92,6 +92,7 @@ pub use scalar_factory::ScalarFactory;
 pub use typed_scalar::TypedScalar;
 
 pub mod binary;
+pub mod float;
 pub mod integer;
 pub mod map;
 pub mod null;
@@ -109,12 +110,13 @@ pub use optional::OptionalScalar;
 pub use r#struct::StructScalar;
 pub use record::RecordScalar;
 pub use serie::{
-    AnySerie, Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie, StructSerie, TypedSerie,
-    TypedStructSerie, UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
+    AnySerie, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie, Int8Serie, Serie,
+    StructSerie, TypedSerie, TypedStructSerie, UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
 };
 pub use typed_map::TypedMapScalar;
 pub use typed_optional::TypedOptionalScalar;
 
+pub use float::{Float32Scalar, Float64Scalar};
 pub use integer::{
     Int16Scalar, Int32Scalar, Int64Scalar, Int8Scalar, UInt16Scalar, UInt32Scalar, UInt64Scalar,
     UInt8Scalar,

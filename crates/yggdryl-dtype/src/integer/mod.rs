@@ -13,7 +13,7 @@
 /// / [`arrow_schema::DataType`] variant.
 macro_rules! int_data_type {
     ($ty:ident, $native:ty, $name:literal, $format:literal, $width:literal, $id:ident) => {
-        #[doc = concat!("The Apache Arrow `", $name, "` data type: a fixed-width integer primitive (native `", stringify!($native), "`).")]
+        #[doc = concat!("The Apache Arrow `", $name, "` data type: a fixed-width primitive (native `", stringify!($native), "`).")]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
         pub struct $ty;
 

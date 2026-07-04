@@ -3,17 +3,18 @@
 use arrow_array::{Array, ArrayRef};
 
 use crate::{
-    AnyScalar, Int16Serie, Int32Serie, Int64Serie, Int8Serie, UInt16Serie, UInt32Serie,
-    UInt64Serie, UInt8Serie,
+    AnyScalar, Float32Serie, Float64Serie, Int16Serie, Int32Serie, Int64Serie, Int8Serie,
+    UInt16Serie, UInt32Serie, UInt64Serie, UInt8Serie,
 };
 
 /// A type-erased, buffer-backed column — the crate's **own array holder** behind
 /// the nested scalars (the serie's items, the map's entries, the struct's columns).
 ///
-/// The integer element types are held *decomposed* as the concrete buffer-backed
-/// series ([`Int8Serie`] … [`UInt64Serie`]) — the raw `ScalarBuffer` + `NullBuffer`
-/// pair, leaner than an Arrow array handle and read without per-access downcasts —
-/// while any other element type keeps its Arrow array zero-copy in the
+/// The fixed-width numeric element types are held *decomposed* as the concrete
+/// buffer-backed series (the integers [`Int8Serie`] … [`UInt64Serie`] and the floats
+/// [`Float32Serie`] / [`Float64Serie`]) — the raw `ScalarBuffer` + `NullBuffer` pair,
+/// leaner than an Arrow array handle and read without per-access downcasts — while any
+/// other element type keeps its Arrow array zero-copy in the
 /// [`Arrow`](AnySerie::Arrow) fallback. Both directions of the Arrow boundary are
 /// reference-count bumps, never element copies: [`from_arrow`](AnySerie::from_arrow)
 /// *decomposes* an Arrow array into the matching serie, and
@@ -56,14 +57,18 @@ pub enum AnySerie {
     UInt32(UInt32Serie),
     /// A column of `uint64`, decomposed.
     UInt64(UInt64Serie),
+    /// A column of `float32`, decomposed.
+    Float32(Float32Serie),
+    /// A column of `float64`, decomposed.
+    Float64(Float64Serie),
     /// Any other element type, held as its Arrow array zero-copy (decomposed
     /// variants are added as concrete series land).
     Arrow(ArrayRef),
 }
 
-/// Expands one arm per decomposed integer variant, so every `match` below stays
-/// exhaustive without repeating the eight widths by hand.
-macro_rules! for_each_int {
+/// Expands one arm per decomposed numeric variant, so every `match` below stays
+/// exhaustive without repeating the ten widths by hand.
+macro_rules! for_each_decomposed {
     ($self:expr, $serie:ident => $body:expr, $arrow:ident => $fallback:expr) => {
         match $self {
             AnySerie::Int8($serie) => $body,
@@ -74,6 +79,8 @@ macro_rules! for_each_int {
             AnySerie::UInt16($serie) => $body,
             AnySerie::UInt32($serie) => $body,
             AnySerie::UInt64($serie) => $body,
+            AnySerie::Float32($serie) => $body,
+            AnySerie::Float64($serie) => $body,
             AnySerie::Arrow($arrow) => $fallback,
         }
     };
@@ -105,6 +112,8 @@ impl AnySerie {
             A::UInt16 => decompose!(UInt16, UInt16Serie, arrow_array::UInt16Array),
             A::UInt32 => decompose!(UInt32, UInt32Serie, arrow_array::UInt32Array),
             A::UInt64 => decompose!(UInt64, UInt64Serie, arrow_array::UInt64Array),
+            A::Float32 => decompose!(Float32, Float32Serie, arrow_array::Float32Array),
+            A::Float64 => decompose!(Float64, Float64Serie, arrow_array::Float64Array),
             _ => Self::Arrow(values),
         }
     }
@@ -113,14 +122,14 @@ impl AnySerie {
     /// around the same shared buffers (reference-count bumps, never element
     /// copies), the fallback clones its handle.
     pub fn to_arrow(&self) -> ArrayRef {
-        for_each_int!(self,
+        for_each_decomposed!(self,
             serie => std::sync::Arc::new(serie.to_arrow_array()),
             values => values.clone())
     }
 
     /// The number of elements in the column.
     pub fn len(&self) -> usize {
-        for_each_int!(self, serie => serie.len(), values => Array::len(values.as_ref()))
+        for_each_decomposed!(self, serie => serie.len(), values => Array::len(values.as_ref()))
     }
 
     /// Whether the column holds no elements.
@@ -146,7 +155,7 @@ impl AnySerie {
     /// the per-value bridge behind [`RecordScalar`](crate::RecordScalar) and the
     /// struct series' row access.
     pub fn get_scalar(&self, index: usize) -> Option<AnyScalar> {
-        for_each_int!(self,
+        for_each_decomposed!(self,
             serie => serie.get_scalar_at(index).map(AnyScalar::from),
             values => (index < Array::len(values.as_ref()))
                 .then(|| AnyScalar::from_arrow(Array::slice(values.as_ref(), index, 1))))
@@ -166,7 +175,7 @@ impl PartialEq for AnySerie {
                 }
             };
         }
-        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+        same!(Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
     }
 }
 
@@ -192,4 +201,5 @@ macro_rules! from_concrete {
 from_concrete!(
     Int8, Int8Serie; Int16, Int16Serie; Int32, Int32Serie; Int64, Int64Serie;
     UInt8, UInt8Serie; UInt16, UInt16Serie; UInt32, UInt32Serie; UInt64, UInt64Serie;
+    Float32, Float32Serie; Float64, Float64Serie;
 );

@@ -120,6 +120,36 @@ fn io(c: &mut Criterion) {
     group.finish();
 }
 
+// The float serie: buffer-backed like the integers, bridged through positioned IO.
+fn float(c: &mut Criterion) {
+    use yggdryl_scalar::Float64Serie;
+
+    let mut group = c.benchmark_group("float_serie");
+    group.throughput(Throughput::Elements(N as u64));
+
+    let values = (0..N).map(|value| value as f64 + 0.5).collect::<Vec<_>>();
+    group.bench_function("float64_serie_from_vec", |b| {
+        b.iter_batched(
+            || values.clone(),
+            |values| black_box(Float64Serie::from(values)),
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    let weights = Float64Serie::from(values.clone());
+    group.bench_function("float64_serie_get_at", |b| {
+        b.iter(|| black_box(weights.get_at::<f64>(black_box(N / 2)).unwrap()))
+    });
+
+    let mut buffer = ByteBuffer::new();
+    weights.pwrite_io(&mut buffer, 0, Whence::Start).unwrap();
+    group.bench_function("float64_serie_from_io", |b| {
+        b.iter(|| black_box(Float64Serie::from_io(black_box(&buffer)).unwrap()))
+    });
+
+    group.finish();
+}
+
 // The AnySerie type-erased column: zero-copy decomposition from Arrow and
 // on-demand reconstitution — the internals behind every nested scalar.
 fn any_serie(c: &mut Criterion) {
@@ -147,5 +177,5 @@ fn any_serie(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, serie, any_serie, arrow, io);
+criterion_group!(benches, serie, float, any_serie, arrow, io);
 criterion_main!(benches);
