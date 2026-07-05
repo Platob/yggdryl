@@ -630,8 +630,10 @@ has no children.
 `RecordScalar` is the **row-oriented struct atom**: an array of one `AnyScalar` per
 field, sharing one `StructType`. Where `StructScalar` is the column-oriented row
 (one one-element serie per field), `RecordScalar` materializes it field-by-field —
-`any_scalar_at(index)` / `any_scalar_by(name)` hand back a field's atomic scalar directly,
-and `StructScalar` converts to it with the base accessor `as_struct()`. In the
+`any_scalar_at(index)` / `any_scalar_by(name)` hand back a field's atomic `AnyScalar`
+directly, and the generic `scalar_at::<S>(index)` / `scalar_by::<S>(name)` unwrap it to a
+concrete scalar (typed, so **Rust-only**). `StructScalar` converts to a record with the
+base accessor `as_struct()`. In the
 bindings a record is built straight from a `dict` (Python) / plain object (Node)
 with every field inferred, and reads back out as an auto-generated **singleton
 dataclass** (one frozen dataclass per schema, cached) in Python or a plain object

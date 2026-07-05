@@ -41,6 +41,10 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// // Generic per-field scalar access, by position and by field name.
 /// assert_eq!(row.any_scalar_by("y").unwrap(), AnyScalar::from(Int64Scalar::new(2)));
 ///
+/// // ...or unwrapped straight to a concrete scalar (typed, Rust-only).
+/// assert_eq!(row.scalar_at::<Int64Scalar>(0), Some(Int64Scalar::new(1)));
+/// assert_eq!(row.scalar_by::<Int64Scalar>("y"), Some(Int64Scalar::new(2)));
+///
 /// // The Arrow round trip preserves the row.
 /// assert_eq!(RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(), row);
 /// ```
@@ -112,6 +116,29 @@ impl RecordScalar {
             .iter()
             .position(|field| field.name() == name)?;
         self.any_scalar_at(index)
+    }
+
+    /// The field scalar at `index` unwrapped to the concrete scalar `S`, or `None` when
+    /// the record is null, `index` is out of bounds, or the field is not an `S` — the
+    /// typed counterpart of [`any_scalar_at`](RecordScalar::any_scalar_at).
+    ///
+    /// It is generic over the target scalar, so it stays **Rust-only**: the bindings
+    /// read a field through the record's native-value accessors (`get` / `to_pyvalue`
+    /// / `to_js_value`).
+    pub fn scalar_at<S: Scalar>(&self, index: usize) -> Option<S> {
+        self.any_scalar_at(index)
+            .and_then(|scalar| scalar.unwrap::<S>().ok())
+    }
+
+    /// The field scalar named `name` unwrapped to the concrete scalar `S`, or `None`
+    /// when the record is null, no field carries the name, or the field is not an `S`
+    /// — the typed counterpart of [`any_scalar_by`](RecordScalar::any_scalar_by).
+    ///
+    /// Generic over the target scalar, so it stays **Rust-only** (like
+    /// [`scalar_at`](RecordScalar::scalar_at)).
+    pub fn scalar_by<S: Scalar>(&self, name: &str) -> Option<S> {
+        self.any_scalar_by(name)
+            .and_then(|scalar| scalar.unwrap::<S>().ok())
     }
 }
 
