@@ -43,7 +43,7 @@ use yggdryl_dtype::{
 ///
 /// // The Arrow form is a one-element union array; from_arrow redirects the value
 /// // child back through the inner scalar, and erase() drops the static type.
-/// let arrow = answer.to_arrow_scalar();
+/// let arrow = answer.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(TypedOptionalScalar::from_arrow(arrow.as_ref()).unwrap(), answer);
 /// assert_eq!(answer.erase().data_type().name(), "optional");
@@ -86,7 +86,9 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedOptionalScalar<D, S> {
     pub fn erase(&self) -> crate::OptionalScalar {
         crate::OptionalScalar::from_parts(
             self.data_type.erase(),
-            self.value.as_ref().map(|scalar| scalar.to_arrow_scalar()),
+            self.value
+                .as_ref()
+                .map(|scalar| scalar.to_arrow_scalar().into_inner()),
         )
     }
 }
@@ -158,7 +160,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
         }
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
         let storage = self.data_type.storage();
         let (_, value_field) = storage
             .fields()
@@ -173,7 +175,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
         // Sparse layout: both children are one element long; the unselected child
         // holds a null.
         let value_child = match &self.value {
-            Some(scalar) if !scalar.is_null() => scalar.to_arrow_scalar(),
+            Some(scalar) if !scalar.is_null() => scalar.to_arrow_scalar().into_inner(),
             _ => arrow_array::new_null_array(value_field.data_type(), 1),
         };
         let children = vec![
@@ -187,7 +189,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedOptionalSca
             children,
         )
         .expect("a one-element sparse union of the declared fields is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

@@ -30,7 +30,7 @@ use yggdryl_dtype::{DataError, DataType, Logical, OptionalType, Union, UnionType
 ///
 /// let answer = TypedOptionalScalar::new(Int64Scalar::new(42)).erase();
 /// assert!(!answer.is_null());
-/// assert_eq!(OptionalScalar::from_arrow(answer.to_arrow_scalar().as_ref()).unwrap(), answer);
+/// assert_eq!(OptionalScalar::from_arrow(answer.to_arrow_scalar().into_inner().as_ref()).unwrap(), answer);
 /// ```
 #[derive(Debug, Clone)]
 pub struct OptionalScalar {
@@ -78,7 +78,7 @@ impl Scalar for OptionalScalar {
         self.value.as_deref()
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let storage = Logical::storage(&self.data_type);
         let (_, value_field) = storage
             .fields()
@@ -107,7 +107,7 @@ impl Scalar for OptionalScalar {
             children,
         )
         .expect("a one-element sparse union of the declared fields is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

@@ -79,7 +79,7 @@ pub(crate) fn iter_records(
 /// assert_eq!(points.get_row(1), Some(row(2)));
 /// assert_eq!(points.child_serie_by("x").unwrap().len(), 2); // the "x" field column
 /// assert_eq!(
-///     yggdryl_scalar::StructSerie::from_arrow(points.to_arrow_scalar().as_ref()).unwrap(),
+///     yggdryl_scalar::StructSerie::from_arrow(points.to_arrow_scalar().into_inner().as_ref()).unwrap(),
 ///     points
 /// );
 /// ```
@@ -181,9 +181,12 @@ impl Scalar for StructSerie {
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let Some(values) = &self.values else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The struct column is reconstituted into the one-element list — a
         // reference-count bump, not a copy.
@@ -194,7 +197,7 @@ impl Scalar for StructSerie {
             None,
         )
         .expect("a one-element serie of the struct item is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

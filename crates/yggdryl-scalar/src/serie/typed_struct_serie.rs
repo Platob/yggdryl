@@ -47,7 +47,7 @@ use yggdryl_dtype::{DataError, DataType, StructType, TypedSerieType};
 /// assert_eq!(points.child_serie_by("x").unwrap().len(), 2);
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
-/// let arrow = points.to_arrow_scalar();
+/// let arrow = points.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(TypedStructSerie::from_arrow(arrow.as_ref()).unwrap(), points);
 ///
@@ -67,7 +67,9 @@ impl<S: Scalar<DataType = StructType>> TypedStructSerie<S> {
     /// must carry `item_type`.
     pub fn new(item_type: StructType, rows: Vec<S>) -> Self {
         let elements = crate::scalar::concat_scalar_arrays(
-            rows.iter().map(Scalar::to_arrow_scalar).collect(),
+            rows.iter()
+                .map(|row| row.to_arrow_scalar().into_inner())
+                .collect(),
             || DataType::to_arrow(&item_type),
         );
         Self {
@@ -188,9 +190,12 @@ impl<S: Scalar<DataType = StructType>> Scalar for TypedStructSerie<S> {
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let Some(values) = &self.values else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The struct column is reconstituted into the one-element list — a
         // reference-count bump, not a copy.
@@ -201,7 +206,7 @@ impl<S: Scalar<DataType = StructType>> Scalar for TypedStructSerie<S> {
             None,
         )
         .expect("a one-element serie of the struct item is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

@@ -12,7 +12,7 @@ type Int64GenericSerie = TypedSerie<dtype::Int64Type, Int64Scalar>;
 fn serie_scalar_round_trips_all_shapes() {
     // Elements, the empty serie and null are three distinct states.
     let numbers = Int64GenericSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
-    let arrow = numbers.to_arrow_scalar();
+    let arrow = numbers.to_arrow_scalar().into_inner();
     assert_eq!(arrow.len(), 1);
     assert_eq!(
         Int64GenericSerie::from_arrow(arrow.as_ref()).unwrap(),
@@ -36,7 +36,7 @@ fn serie_scalar_round_trips_all_shapes() {
     let empty = Int64GenericSerie::new(Vec::new());
     assert!(!empty.is_null());
     assert_eq!(
-        Int64GenericSerie::from_arrow(empty.to_arrow_scalar().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(empty.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         empty
     );
     assert_eq!(Int64GenericSerie::default(), empty);
@@ -44,7 +44,7 @@ fn serie_scalar_round_trips_all_shapes() {
     let missing = Int64GenericSerie::null();
     assert!(missing.is_null());
     assert_eq!(
-        Int64GenericSerie::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        Int64GenericSerie::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
 
@@ -190,7 +190,7 @@ macro_rules! int_serie_tests {
             #[test]
             fn round_trips_through_arrow_zero_copy() {
                 let numbers = $ty::from(vec![Some(1), None, Some(3)]);
-                let arrow = numbers.to_arrow_scalar();
+                let arrow = numbers.to_arrow_scalar().into_inner();
                 assert_eq!(arrow.len(), 1);
                 assert_eq!($ty::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
@@ -208,13 +208,13 @@ macro_rules! int_serie_tests {
 
                 // The generic and the buffer-backed serie scalar agree on the Arrow shape.
                 let generic = TypedSerie::new(vec![$scalar::new(1), $scalar::null(), $scalar::new(3)]);
-                assert_eq!(generic.to_arrow_scalar().as_ref(), arrow.as_ref());
+                assert_eq!(generic.to_arrow_scalar().into_inner().as_ref(), arrow.as_ref());
 
                 // Empty and null are distinct states, both round-tripped.
                 let empty = $ty::default();
                 assert!(!empty.is_null());
                 assert!(empty.is_empty());
-                assert_eq!($ty::from_arrow(empty.to_arrow_scalar().as_ref()).unwrap(), empty);
+                assert_eq!($ty::from_arrow(empty.to_arrow_scalar().into_inner().as_ref()).unwrap(), empty);
 
                 let missing = $ty::null();
                 assert!(missing.is_null());
@@ -225,7 +225,7 @@ macro_rules! int_serie_tests {
                     Err(DataError::NullValue)
                 ));
                 assert_eq!(
-                    $ty::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+                    $ty::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
                     missing
                 );
 
@@ -237,7 +237,7 @@ macro_rules! int_serie_tests {
                 ));
                 let foreign = TypedSerie::new(vec![yggdryl_scalar::BinaryScalar::new(vec![1])]);
                 assert!(matches!(
-                    $ty::from_arrow(foreign.to_arrow_scalar().as_ref()),
+                    $ty::from_arrow(foreign.to_arrow_scalar().into_inner().as_ref()),
                     Err(DataError::IncompatibleArrowType { .. })
                 ));
             }
@@ -255,7 +255,7 @@ macro_rules! int_serie_tests {
                 extremes.pwrite_io(&mut buffer, 0, Whence::Start).unwrap();
                 assert_eq!($ty::from_io(&buffer).unwrap(), extremes);
                 assert_eq!(
-                    $ty::from_arrow(extremes.to_arrow_scalar().as_ref()).unwrap(),
+                    $ty::from_arrow(extremes.to_arrow_scalar().into_inner().as_ref()).unwrap(),
                     extremes
                 );
             }
@@ -344,7 +344,7 @@ fn dynamic_serie_erases_and_round_trips() {
     assert_eq!(dynamic.len(), 2);
     assert_eq!(dynamic.data_type().name(), "list");
     assert_eq!(
-        Serie::from_arrow(dynamic.to_arrow_scalar().as_ref()).unwrap(),
+        Serie::from_arrow(dynamic.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         dynamic
     );
 

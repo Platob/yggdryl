@@ -16,9 +16,9 @@ use yggdryl_dtype::DataType;
 /// [`TypedDataType<String>`](yggdryl_dtype::TypedDataType).
 ///
 /// It also names the concrete Apache Arrow types this scalar produces: `ArrowScalar`
-/// is the array type of [`to_arrow_scalar`](super::Scalar::to_arrow_scalar) (the
-/// one-element scalar form — `Int64Array` for an `int64` scalar, `ListArray` for a
-/// serie), and `ArrowArray` the array type of
+/// is the array type [`to_arrow_scalar`](super::Scalar::to_arrow_scalar) *wraps* in an
+/// [`arrow_array::Scalar`] (the one-element scalar form — `Int64Array` for an `int64`
+/// scalar, `ListArray` for a serie), and `ArrowArray` the array type of
 /// [`to_arrow_array`](super::Scalar::to_arrow_array) (the array form). `ArrowArray`
 /// **defaults to `ArrowScalar`**, since for a plain scalar the array form *is* the
 /// one-element scalar array; a serie overrides it to its element array type (so

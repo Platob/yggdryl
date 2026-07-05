@@ -111,23 +111,33 @@ pub(crate) fn infer(value: NativeValue) -> Result<Inferred> {
 /// is read off the built scalar, so the two always agree.
 fn inferred_member(name: String, inferred: Inferred) -> (arrow_schema::Field, AnyScalar) {
     let scalar: AnyScalar = match inferred {
-        Inferred::Null => {
-            AnyScalar::from_arrow(yggdryl_scalar::NullScalar::default().to_arrow_scalar())
-        }
+        Inferred::Null => AnyScalar::from_arrow(
+            yggdryl_scalar::NullScalar::default()
+                .to_arrow_scalar()
+                .into_inner(),
+        ),
         Inferred::Int64(integer) => AnyScalar::from(yggdryl_scalar::Int64Scalar::new(integer)),
         Inferred::Float64(value) => AnyScalar::from(yggdryl_scalar::Float64Scalar::new(value)),
-        Inferred::Binary(bytes) => {
-            AnyScalar::from_arrow(yggdryl_scalar::BinaryScalar::new(bytes).to_arrow_scalar())
-        }
-        Inferred::Utf8(text) => {
-            AnyScalar::from_arrow(yggdryl_scalar::Utf8Scalar::new(text).to_arrow_scalar())
-        }
-        Inferred::Serie(values) => {
-            AnyScalar::from_arrow(yggdryl_scalar::Int64Serie::from(values).to_arrow_scalar())
-        }
-        Inferred::SerieFloat64(values) => {
-            AnyScalar::from_arrow(yggdryl_scalar::Float64Serie::from(values).to_arrow_scalar())
-        }
+        Inferred::Binary(bytes) => AnyScalar::from_arrow(
+            yggdryl_scalar::BinaryScalar::new(bytes)
+                .to_arrow_scalar()
+                .into_inner(),
+        ),
+        Inferred::Utf8(text) => AnyScalar::from_arrow(
+            yggdryl_scalar::Utf8Scalar::new(text)
+                .to_arrow_scalar()
+                .into_inner(),
+        ),
+        Inferred::Serie(values) => AnyScalar::from_arrow(
+            yggdryl_scalar::Int64Serie::from(values)
+                .to_arrow_scalar()
+                .into_inner(),
+        ),
+        Inferred::SerieFloat64(values) => AnyScalar::from_arrow(
+            yggdryl_scalar::Float64Serie::from(values)
+                .to_arrow_scalar()
+                .into_inner(),
+        ),
     };
     let field = arrow_schema::Field::new(name, scalar.data_type(), true);
     (field, scalar)

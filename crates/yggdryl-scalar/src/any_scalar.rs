@@ -33,7 +33,7 @@ use yggdryl_dtype::DataError;
 /// assert!(!scalar.is_null());
 ///
 /// // ...and reconstitutes the one-element array on demand, sharing the buffers.
-/// assert_eq!(scalar.to_arrow_scalar().as_ref(), arrow.as_ref());
+/// assert_eq!(scalar.to_arrow_scalar().into_inner().as_ref(), arrow.as_ref());
 ///
 /// // A scalar is also built straight from a concrete scalar, no Arrow round trip.
 /// assert_eq!(AnyScalar::from(Int64Scalar::new(42)), scalar);
@@ -121,15 +121,15 @@ impl AnyScalar {
 
     /// Reconstitute the one-element Arrow array on demand — the decomposed scalar
     /// rebuilds it, the fallback clones its handle (reference-count bumps only).
-    pub fn to_arrow_scalar(&self) -> ArrayRef {
-        for_each_decomposed!(self,
-            scalar => scalar.to_arrow_scalar(),
-            value => value.clone())
+    pub fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
+        arrow_array::Scalar::new(for_each_decomposed!(self,
+            scalar => scalar.to_arrow_scalar().into_inner(),
+            value => value.clone()))
     }
 
     /// The Arrow data type of the value.
     pub fn data_type(&self) -> arrow_schema::DataType {
-        self.to_arrow_scalar().data_type().clone()
+        self.to_arrow_scalar().into_inner().data_type().clone()
     }
 
     /// Whether the value is null.
@@ -152,7 +152,7 @@ impl AnyScalar {
     /// [`arrow`](AnyScalar::arrow)) borrow the decomposed value zero-copy when the
     /// concrete type is already known; `unwrap` is the general, owned recovery.
     pub fn unwrap<S: Scalar>(&self) -> Result<S, DataError> {
-        S::from_arrow(self.to_arrow_scalar().as_ref())
+        S::from_arrow(self.to_arrow_scalar().into_inner().as_ref())
     }
 
     /// The held Arrow value when this is the [`Arrow`](AnyScalar::Arrow) fallback (a
@@ -225,7 +225,10 @@ impl PartialEq for AnyScalar {
             ($($variant:ident),+) => {
                 match (self, other) {
                     $((AnyScalar::$variant(left), AnyScalar::$variant(right)) => left == right,)+
-                    (left, right) => left.to_arrow_scalar().as_ref() == right.to_arrow_scalar().as_ref(),
+                    (left, right) => {
+                        left.to_arrow_scalar().into_inner().as_ref()
+                            == right.to_arrow_scalar().into_inner().as_ref()
+                    }
                 }
             };
         }

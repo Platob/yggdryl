@@ -69,14 +69,14 @@ fn record_gives_generic_child_scalar_access() {
 
     // The Arrow round trip preserves the row; a null record round-trips too.
     assert_eq!(
-        RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(),
+        RecordScalar::from_arrow(row.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         row
     );
     let missing = RecordScalar::null(point_type());
     assert!(missing.is_null());
     assert!(missing.any_scalar_at(0).is_none());
     assert_eq!(
-        RecordScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        RecordScalar::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
 }
@@ -205,7 +205,7 @@ fn struct_serie_holds_rows_and_field_columns() {
 
     // The Arrow round trip shares the buffers.
     assert_eq!(
-        TypedStructSerie::from_arrow(points.to_arrow_scalar().as_ref()).unwrap(),
+        TypedStructSerie::from_arrow(points.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         points
     );
 
@@ -215,7 +215,7 @@ fn struct_serie_holds_rows_and_field_columns() {
     assert_eq!(dynamic.get_row(1), Some(point(3, 4)));
     assert_eq!(dynamic.child_serie_by("y").unwrap().len(), 2);
     assert_eq!(
-        StructSerie::from_arrow(dynamic.to_arrow_scalar().as_ref()).unwrap(),
+        StructSerie::from_arrow(dynamic.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         dynamic
     );
 
@@ -255,7 +255,10 @@ fn struct_serie_null_and_empty_are_distinct() {
     assert_eq!(missing.child_serie_count(), 2);
     assert!(missing.child_serie_at(0).is_none());
     assert_eq!(
-        TypedStructSerie::<RecordScalar>::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        TypedStructSerie::<RecordScalar>::from_arrow(
+            missing.to_arrow_scalar().into_inner().as_ref()
+        )
+        .unwrap(),
         missing
     );
 
@@ -286,7 +289,8 @@ fn struct_serie_carries_a_null_row_among_present_ones() {
 
     // The Arrow round trip and the erased view both preserve the null row.
     assert_eq!(
-        TypedStructSerie::<RecordScalar>::from_arrow(serie.to_arrow_scalar().as_ref()).unwrap(),
+        TypedStructSerie::<RecordScalar>::from_arrow(serie.to_arrow_scalar().into_inner().as_ref())
+            .unwrap(),
         serie
     );
     assert_eq!(serie.erase().get_row(1).expect("the row exists"), {
@@ -353,7 +357,7 @@ fn as_nested_accessors_follow_the_as_contract() {
     let ranks = TypedMapScalar::new(vec![(UInt8Scalar::new(7), Int64Scalar::new(42))]).unwrap();
     assert_eq!(ranks.as_map().unwrap(), ranks.erase());
     assert_eq!(
-        MapScalar::from_arrow(ranks.to_arrow_scalar().as_ref())
+        MapScalar::from_arrow(ranks.to_arrow_scalar().into_inner().as_ref())
             .unwrap()
             .as_map()
             .unwrap(),

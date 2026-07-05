@@ -47,7 +47,7 @@ use yggdryl_dtype::{BinaryType, DataError};
 /// assert_eq!(BinaryScalar::new(vec![0xE9]).as_str(Some(&Latin1)).unwrap(), "\u{e9}");
 ///
 /// // The Arrow round trip is exact.
-/// let arrow = blob.to_arrow_scalar();
+/// let arrow = blob.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(BinaryScalar::from_arrow(arrow.as_ref()).unwrap(), blob);
 ///
@@ -166,8 +166,8 @@ impl Scalar for BinaryScalar {
         self.value.as_ref().map(ByteBuffer::as_bytes)
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
-        match &self.value {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
+        arrow_array::Scalar::new(match &self.value {
             Some(value) => std::sync::Arc::new(arrow_array::BinaryArray::from_iter_values([
                 value.as_bytes()
             ])),
@@ -179,7 +179,7 @@ impl Scalar for BinaryScalar {
                 NULL.get_or_init(|| std::sync::Arc::new(arrow_array::BinaryArray::new_null(1)))
                     .clone()
             }
-        }
+        })
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

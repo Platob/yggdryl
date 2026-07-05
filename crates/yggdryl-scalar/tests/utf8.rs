@@ -62,10 +62,10 @@ fn value_is_a_positioned_io_resource_with_a_char_view() {
 #[test]
 fn round_trips_through_arrow_and_decodes_charsets() {
     let greeting = Utf8Scalar::new("hi".to_string());
-    let arrow = greeting.to_arrow_scalar();
+    let arrow = greeting.to_arrow_scalar().into_inner();
     assert_eq!(arrow.len(), 1);
     assert_eq!(Utf8Scalar::from_arrow(arrow.as_ref()).unwrap(), greeting);
-    assert!(Utf8Scalar::null().to_arrow_scalar().is_null(0));
+    assert!(Utf8Scalar::null().to_arrow_scalar().into_inner().is_null(0));
 
     // More than one value is not a scalar; a wrong array type is refused.
     let two = arrow_array::StringArray::from(vec!["a", "b"]);

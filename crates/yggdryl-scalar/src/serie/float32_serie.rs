@@ -21,7 +21,7 @@
 //! assert_eq!(sparse.scalar_at(1), Some(Float32Scalar::null()));
 //!
 //! // The Arrow round trip shares the buffers — no element is copied.
-//! let arrow = weights.to_arrow_scalar();
+//! let arrow = weights.to_arrow_scalar().into_inner();
 //! assert_eq!(arrow.len(), 1);
 //! assert_eq!(Float32Serie::from_arrow(arrow.as_ref()).unwrap(), weights);
 //!

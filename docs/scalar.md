@@ -324,9 +324,11 @@ as concrete per-type classes built straight from the native value:
     the FFI boundary — the bindings will gain this surface through the Arrow C
     Data Interface as it lands.
 
-A scalar mirrors Arrow's own scalar representation — a one-element `arrow_array`
-array, null when the scalar is null — with a `to_arrow_scalar` / `from_arrow` pair
-(`from_arrow` is the exact inverse, refusing a mismatched Arrow value with
+A scalar mirrors Arrow's own scalar representation: `to_arrow_scalar` returns a real
+[`arrow_array::Scalar`](https://docs.rs/arrow-array/latest/arrow_array/struct.Scalar.html)
+— Arrow's scalar `Datum`, wrapping a one-element array (null when the scalar is null) —
+so it plugs straight into arrow-rs kernels; `into_inner()` unwraps the length-1 array,
+whose exact inverse is `from_arrow` (which refuses a mismatched Arrow value with
 `DataError`). The `arrow-array` and `arrow-buffer` subset crates are re-exported
 from the crate root so downstream code uses the exact versions the crate was
 built against.
@@ -336,10 +338,10 @@ use yggdryl_scalar::arrow_array::Array;
 use yggdryl_scalar::{Int64Scalar, Scalar};
 
 fn main() {
-    let arrow = Int64Scalar::new(42).to_arrow_scalar();
+    let arrow = Int64Scalar::new(42).to_arrow_scalar().into_inner();
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
     assert_eq!(Int64Scalar::from_arrow(arrow.as_ref()).unwrap(), Int64Scalar::new(42));
-    assert!(Int64Scalar::null().to_arrow_scalar().is_null(0));
+    assert!(Int64Scalar::null().to_arrow_scalar().into_inner().is_null(0));
 }
 ```
 
@@ -733,12 +735,12 @@ fn main() {
     let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
     assert_eq!(numbers.value_at::<i64>(0).unwrap(), 1); // the native value, any target
-    let arrow = numbers.to_arrow_scalar(); // a one-element ListArray sharing the elements
+    let arrow = numbers.to_arrow_scalar().into_inner(); // a one-element ListArray sharing the elements
     assert_eq!(TypedSerie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
     // Int64Serie shares the same buffers across the Arrow boundary, zero-copy.
     let fast = Int64Serie::from(vec![1, 2, 3]);
-    assert_eq!(Int64Serie::from_arrow(fast.to_arrow_scalar().as_ref()).unwrap(), fast);
+    assert_eq!(Int64Serie::from_arrow(fast.to_arrow_scalar().into_inner().as_ref()).unwrap(), fast);
 
     // The type parameters name the dtype-layer types.
     let _: TypedSerie<dtype::Int64Type, Int64Scalar> = TypedSerie::default();

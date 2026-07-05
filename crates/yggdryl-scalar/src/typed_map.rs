@@ -27,7 +27,7 @@ use yggdryl_dtype::{DataError, DataType, Map, TypedMap, TypedMapType};
 /// assert_eq!(ranks.data_type().name(), "map");
 ///
 /// // The Arrow round trip preserves the entries.
-/// let arrow = ranks.to_arrow_scalar();
+/// let arrow = ranks.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(TypedMapScalar::from_arrow(arrow.as_ref()).unwrap(), ranks);
 ///
@@ -103,7 +103,7 @@ where
             entries
                 .iter()
                 .take(shown)
-                .map(|(key, _)| key.to_arrow_scalar())
+                .map(|(key, _)| key.to_arrow_scalar().into_inner())
                 .collect(),
             || entry_fields[0].data_type().clone(),
         );
@@ -111,7 +111,7 @@ where
             entries
                 .iter()
                 .take(shown)
-                .map(|(_, value)| value.to_arrow_scalar())
+                .map(|(_, value)| value.to_arrow_scalar().into_inner())
                 .collect(),
             || entry_fields[1].data_type().clone(),
         );
@@ -179,9 +179,12 @@ where
         }
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
         let Some(entries) = self.entries_struct() else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The assembled entries struct is shared into the one-element map — a
         // reference-count bump, not a copy.
@@ -198,7 +201,7 @@ where
             false,
         )
         .expect("a one-element map of the declared entries struct is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

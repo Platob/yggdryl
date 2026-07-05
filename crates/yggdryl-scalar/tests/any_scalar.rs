@@ -18,7 +18,11 @@ fn decomposes_integers_and_falls_back_for_others() {
     assert_eq!(integer.data_type(), arrow_schema::DataType::Int64);
 
     // Any other type keeps its one-element Arrow array in the fallback.
-    let bytes = AnyScalar::from_arrow(BinaryScalar::new(vec![1, 2, 3]).to_arrow_scalar());
+    let bytes = AnyScalar::from_arrow(
+        BinaryScalar::new(vec![1, 2, 3])
+            .to_arrow_scalar()
+            .into_inner(),
+    );
     assert!(matches!(bytes, AnyScalar::Arrow(_)));
     assert_eq!(bytes.data_type(), arrow_schema::DataType::Binary);
 }
@@ -34,6 +38,7 @@ fn from_concrete_and_from_arrow_agree() {
     assert_eq!(
         AnyScalar::from(Int64Scalar::new(7))
             .to_arrow_scalar()
+            .into_inner()
             .as_ref(),
         arrow.as_ref()
     );
@@ -41,11 +46,11 @@ fn from_concrete_and_from_arrow_agree() {
 
 #[test]
 fn null_survives_both_representations() {
-    let integer = AnyScalar::from_arrow(Int64Scalar::null().to_arrow_scalar());
+    let integer = AnyScalar::from_arrow(Int64Scalar::null().to_arrow_scalar().into_inner());
     assert!(integer.is_null());
     assert!(matches!(integer, AnyScalar::Int64(_)));
 
-    let nothing = AnyScalar::from_arrow(NullScalar::default().to_arrow_scalar());
+    let nothing = AnyScalar::from_arrow(NullScalar::default().to_arrow_scalar().into_inner());
     assert!(nothing.is_null());
     assert!(matches!(nothing, AnyScalar::Arrow(_)));
 }
@@ -54,7 +59,7 @@ fn null_survives_both_representations() {
 fn equality_bridges_representations() {
     // A decomposed value equals its zero-copy passthrough twin.
     let decomposed = AnyScalar::from(Int64Scalar::new(5));
-    let passthrough = AnyScalar::Arrow(Int64Scalar::new(5).to_arrow_scalar());
+    let passthrough = AnyScalar::Arrow(Int64Scalar::new(5).to_arrow_scalar().into_inner());
     assert_eq!(decomposed, passthrough);
 
     assert_ne!(decomposed, AnyScalar::from(Int64Scalar::new(6)));
@@ -83,7 +88,7 @@ fn any_serie_get_scalar_reads_one_element() {
     let first = bytes.any_scalar_at(0).unwrap();
     assert!(matches!(first, AnyScalar::Arrow(_)));
     assert_eq!(
-        BinaryScalar::from_arrow(first.to_arrow_scalar().as_ref()).unwrap(),
+        BinaryScalar::from_arrow(first.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         BinaryScalar::new(b"a".to_vec())
     );
 }

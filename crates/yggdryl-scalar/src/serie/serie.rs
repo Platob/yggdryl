@@ -36,7 +36,7 @@ use yggdryl_dtype::{DataError, DataType, SerieType};
 /// assert_eq!(numbers.len(), 2);
 /// assert_eq!(numbers.data_type().name(), "list");
 /// assert_eq!(numbers.child_serie_at(0).unwrap().len(), 2); // the item serie
-/// assert_eq!(yggdryl_scalar::Serie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(), numbers);
+/// assert_eq!(yggdryl_scalar::Serie::from_arrow(numbers.to_arrow_scalar().into_inner().as_ref()).unwrap(), numbers);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Serie {
@@ -146,9 +146,12 @@ impl Scalar for Serie {
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let Some(values) = &self.values else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The item serie is reconstituted into the one-element serie —
         // reference-count bumps, not copies.
@@ -159,7 +162,7 @@ impl Scalar for Serie {
             None,
         )
         .expect("a one-element serie of the value type's child is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn to_arrow_array(&self) -> ArrayRef {

@@ -58,7 +58,7 @@ use yggdryl_scalar::yggdryl_dtype as dtype;
 let scalar = Int64Scalar::from(42);
 assert_eq!(scalar.value(), Some(&42));
 assert_eq!(scalar.as_i8().unwrap(), 42); // converted, exact-or-error
-assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow_scalar().as_ref()).unwrap(), scalar);
+assert_eq!(Int64Scalar::from_arrow(scalar.to_arrow_scalar().into_inner().as_ref()).unwrap(), scalar);
 
 // The optional scalar: a value variant or the null variant, over union storage,
 // with access redirected to the inner scalar.

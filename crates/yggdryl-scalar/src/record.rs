@@ -50,7 +50,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// assert_eq!(row.value_by::<i64>("y"), Some(2));
 ///
 /// // The Arrow round trip preserves the row.
-/// assert_eq!(RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(), row);
+/// assert_eq!(RecordScalar::from_arrow(row.to_arrow_scalar().into_inner().as_ref()).unwrap(), row);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordScalar {
@@ -196,7 +196,7 @@ impl crate::NestedSerie for RecordScalar {
         // The field scalar handed out as its one-element column (rehydrate with the
         // matching scalar's `from_arrow`) — the NestedSerie contract is column-shaped.
         self.any_scalar_at(index)
-            .map(|scalar| AnySerie::from_arrow(scalar.to_arrow_scalar()))
+            .map(|scalar| AnySerie::from_arrow(scalar.to_arrow_scalar().into_inner()))
     }
 
     fn child_serie_name_at(&self, index: usize) -> Option<String> {
@@ -228,21 +228,27 @@ impl Scalar for RecordScalar {
         crate::display::render_record(self, options)
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let fields = Struct::fields(&self.data_type);
         let Some(scalars) = &self.scalars else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // Each field scalar is reconstituted into its one-element column, assembled
         // into the one-element struct row — reference-count bumps, not copies.
         let array = arrow_array::StructArray::try_new_with_length(
             fields.clone(),
-            scalars.iter().map(AnyScalar::to_arrow_scalar).collect(),
+            scalars
+                .iter()
+                .map(|scalar| scalar.to_arrow_scalar().into_inner())
+                .collect(),
             None,
             1,
         )
         .expect("one field scalar per declared field assembles into the row");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

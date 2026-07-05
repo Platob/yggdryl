@@ -90,8 +90,8 @@ impl Scalar for Float16Scalar {
         self.value.as_ref()
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
-        match self.value {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
+        arrow_array::Scalar::new(match self.value {
             Some(value) => {
                 std::sync::Arc::new(arrow_array::Float16Array::from_iter_values([value]))
             }
@@ -103,7 +103,7 @@ impl Scalar for Float16Scalar {
                 NULL.get_or_init(|| std::sync::Arc::new(arrow_array::Float16Array::new_null(1)))
                     .clone()
             }
-        }
+        })
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

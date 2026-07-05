@@ -58,8 +58,10 @@ macro_rules! int_scalar {
             fn value(&self) -> Option<&$native> {
                 self.value.as_ref()
             }
-            fn to_arrow_scalar(&self) -> $crate::arrow_array::ArrayRef {
-                match self.value {
+            fn to_arrow_scalar(
+                &self,
+            ) -> $crate::arrow_array::Scalar<$crate::arrow_array::ArrayRef> {
+                $crate::arrow_array::Scalar::new(match self.value {
                     // One element, no null buffer — cheaper than building through
                     // `Vec<Option<_>>`.
                     Some(value) => {
@@ -78,7 +80,7 @@ macro_rules! int_scalar {
                         })
                         .clone()
                     }
-                }
+                })
             }
             fn from_arrow(
                 array: &dyn $crate::arrow_array::Array,

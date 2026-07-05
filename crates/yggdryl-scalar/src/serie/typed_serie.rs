@@ -43,7 +43,7 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
-/// let arrow = numbers.to_arrow_scalar();
+/// let arrow = numbers.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(TypedSerie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 ///
@@ -64,7 +64,10 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
         // The element type is only needed to type an *empty* child, so it is built
         // lazily — a non-empty serie never constructs `D::default()`.
         Self::from_elements(crate::scalar::concat_scalar_arrays(
-            values.iter().map(Scalar::to_arrow_scalar).collect(),
+            values
+                .iter()
+                .map(|value| value.to_arrow_scalar().into_inner())
+                .collect(),
             || D::default().to_arrow(),
         ))
     }
@@ -237,9 +240,12 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S>
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let Some(values) = &self.values else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The item serie is reconstituted into the one-element serie — a
         // reference-count bump, not a copy.
@@ -250,7 +256,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> Scalar for TypedSerie<D, S>
             None,
         )
         .expect("a one-element serie of the value type's child is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

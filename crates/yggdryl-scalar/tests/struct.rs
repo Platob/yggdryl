@@ -22,14 +22,14 @@ fn struct_scalar_validates_and_round_trips() {
     let row = StructScalar::new(point.clone(), vec![column(1), column(2)]).unwrap();
     assert!(!row.is_null());
     assert_eq!(row.value().map(<[_]>::len), Some(2));
-    let arrow = row.to_arrow_scalar();
+    let arrow = row.to_arrow_scalar().into_inner();
     assert_eq!(arrow.len(), 1);
     assert_eq!(StructScalar::from_arrow(arrow.as_ref()).unwrap(), row);
 
     let missing = StructScalar::null(point.clone());
     assert!(missing.is_null());
     assert_eq!(
-        StructScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        StructScalar::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
 

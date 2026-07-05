@@ -100,10 +100,10 @@ macro_rules! float_scalar_tests {
             #[test]
             fn round_trips_through_arrow() {
                 let weight = $ty::new(1.5);
-                let arrow = weight.to_arrow_scalar();
+                let arrow = weight.to_arrow_scalar().into_inner();
                 assert_eq!(arrow.len(), 1);
                 assert_eq!($ty::from_arrow(arrow.as_ref()).unwrap(), weight);
-                assert!($ty::null().to_arrow_scalar().is_null(0));
+                assert!($ty::null().to_arrow_scalar().into_inner().is_null(0));
 
                 // More than one value is not a scalar; a wrong array type is refused.
                 let two = arrow_array::$array::from_iter_values([1.0, 2.0]);
@@ -184,7 +184,7 @@ fn float16_reads_widen_and_narrow_exact_or_error() {
     assert!(Float16Scalar::new(f16::NAN).as_f16().unwrap().is_nan());
     assert!(Float16Scalar::null().is_null());
     assert_eq!(
-        Float16Scalar::from_arrow(scalar.to_arrow_scalar().as_ref()).unwrap(),
+        Float16Scalar::from_arrow(scalar.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         scalar
     );
 
@@ -200,7 +200,7 @@ fn float16_reads_widen_and_narrow_exact_or_error() {
         Some(AnyScalar::from(Float16Scalar::new(half)))
     );
     assert_eq!(
-        Float16Serie::from_arrow(weights.to_arrow_scalar().as_ref()).unwrap(),
+        Float16Serie::from_arrow(weights.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         weights
     );
 
@@ -291,7 +291,7 @@ fn any_serie_decomposes_floats() {
         Some(AnyScalar::from(Float64Scalar::new(1.5)))
     );
     assert!(matches!(
-        AnyScalar::from_arrow(Float32Scalar::new(1.5).to_arrow_scalar()),
+        AnyScalar::from_arrow(Float32Scalar::new(1.5).to_arrow_scalar().into_inner()),
         AnyScalar::Float32(_)
     ));
 }

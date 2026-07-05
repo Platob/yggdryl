@@ -16,14 +16,14 @@ fn map_scalar_round_trips() {
     .unwrap();
     assert!(!scalar.is_null());
     assert_eq!(scalar.value().map(<[_]>::len), Some(2));
-    let arrow = scalar.to_arrow_scalar();
+    let arrow = scalar.to_arrow_scalar().into_inner();
     assert_eq!(arrow.len(), 1);
     assert_eq!(RankMap::from_arrow(arrow.as_ref()).unwrap(), scalar);
 
     let missing = RankMap::null();
     assert!(missing.is_null());
     assert_eq!(
-        RankMap::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        RankMap::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
     assert_eq!(RankMap::default(), RankMap::new(Vec::new()).unwrap());
@@ -53,11 +53,11 @@ fn dynamic_map_scalar_round_trips() {
     // The dynamic map round-trips through Arrow, and its Arrow form matches the
     // typed scalar's — erasing loses the static types, not the value.
     assert_eq!(
-        MapScalar::from_arrow(dynamic.to_arrow_scalar().as_ref()).unwrap(),
+        MapScalar::from_arrow(dynamic.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         dynamic
     );
-    let dynamic_arrow = dynamic.to_arrow_scalar();
-    let typed_arrow = typed.to_arrow_scalar();
+    let dynamic_arrow = dynamic.to_arrow_scalar().into_inner();
+    let typed_arrow = typed.to_arrow_scalar().into_inner();
     assert_eq!(dynamic_arrow.as_ref(), typed_arrow.as_ref());
 
     // The null map erases to the dynamic null map.
@@ -65,7 +65,7 @@ fn dynamic_map_scalar_round_trips() {
     assert!(missing.is_null());
     assert_eq!(missing.len(), 0);
     assert_eq!(
-        MapScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        MapScalar::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
 }

@@ -54,11 +54,11 @@ impl Scalar for Utf8Scalar {
     fn value(&self) -> Option<&str> {
         self.value.as_deref()
     }
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(match &self.value {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
+        arrow_array::Scalar::new(std::sync::Arc::new(match &self.value {
             Some(value) => arrow_array::StringArray::from_iter_values([value]),
             None => arrow_array::StringArray::new_null(1),
-        })
+        }))
     }
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {
         if array.len() != 1 {
@@ -132,7 +132,7 @@ fn a_variable_width_scalar_round_trips_through_arrow() {
         data_type: Utf8,
         value: Some("hi".to_string()),
     };
-    let arrow = hello.to_arrow_scalar();
+    let arrow = hello.to_arrow_scalar().into_inner();
     assert_eq!((arrow.len(), arrow.null_count()), (1, 0));
     assert_eq!(
         Utf8Scalar::from_arrow(arrow.as_ref()).unwrap().value(),
@@ -143,7 +143,9 @@ fn a_variable_width_scalar_round_trips_through_arrow() {
         data_type: Utf8,
         value: None,
     };
-    assert!(Utf8Scalar::from_arrow(missing.to_arrow_scalar().as_ref())
-        .unwrap()
-        .is_null());
+    assert!(
+        Utf8Scalar::from_arrow(missing.to_arrow_scalar().into_inner().as_ref())
+            .unwrap()
+            .is_null()
+    );
 }

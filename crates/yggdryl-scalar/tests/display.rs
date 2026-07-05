@@ -134,7 +134,7 @@ fn point(x: i64, name: &str) -> RecordScalar {
         point_type(),
         vec![
             AnyScalar::from(Int64Scalar::new(x)),
-            AnyScalar::from_arrow(Utf8Scalar::new(name.into()).to_arrow_scalar()),
+            AnyScalar::from_arrow(Utf8Scalar::new(name.into()).to_arrow_scalar().into_inner()),
         ],
     )
     .unwrap()
@@ -211,7 +211,11 @@ fn mixed_row(id: i64, description: &str) -> RecordScalar {
         mixed_type(),
         vec![
             AnyScalar::from(Int64Scalar::new(id)),
-            AnyScalar::from_arrow(Utf8Scalar::new(description.into()).to_arrow_scalar()),
+            AnyScalar::from_arrow(
+                Utf8Scalar::new(description.into())
+                    .to_arrow_scalar()
+                    .into_inner(),
+            ),
         ],
     )
     .unwrap()
@@ -388,8 +392,8 @@ fn a_struct_serie_renders_nested_list_and_struct_fields_inline() {
         row_ty.clone(),
         vec![
             AnyScalar::from(Int64Scalar::new(1)),
-            AnyScalar::from_arrow(tags.to_arrow_scalar()),
-            AnyScalar::from_arrow(loc.to_arrow_scalar()),
+            AnyScalar::from_arrow(tags.to_arrow_scalar().into_inner()),
+            AnyScalar::from_arrow(loc.to_arrow_scalar().into_inner()),
         ],
     )
     .unwrap();

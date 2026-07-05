@@ -34,7 +34,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N as i64 {
-                black_box(Int64Scalar::new(value).to_arrow_scalar());
+                black_box(Int64Scalar::new(value).to_arrow_scalar().into_inner());
             }
         })
     });
@@ -42,12 +42,12 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int64_to_arrow_null", |b| {
         b.iter(|| {
             for _ in 0..N {
-                black_box(Int64Scalar::null().to_arrow_scalar());
+                black_box(Int64Scalar::null().to_arrow_scalar().into_inner());
             }
         })
     });
 
-    let arrow = Int64Scalar::new(42).to_arrow_scalar();
+    let arrow = Int64Scalar::new(42).to_arrow_scalar().into_inner();
     group.bench_function("int64_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {
@@ -60,7 +60,7 @@ fn scalar(c: &mut Criterion) {
     group.bench_function("int8_to_arrow_value", |b| {
         b.iter(|| {
             for value in 0..N {
-                black_box(Int8Scalar::new(value as i8).to_arrow_scalar());
+                black_box(Int8Scalar::new(value as i8).to_arrow_scalar().into_inner());
             }
         })
     });
@@ -123,7 +123,7 @@ fn optional(c: &mut Criterion) {
         let scalar = OptionalInt64::new(Int64Scalar::new(42));
         b.iter(|| {
             for _ in 0..N {
-                black_box(scalar.to_arrow_scalar());
+                black_box(scalar.to_arrow_scalar().into_inner());
             }
         })
     });
@@ -132,12 +132,14 @@ fn optional(c: &mut Criterion) {
         let scalar = OptionalInt64::null();
         b.iter(|| {
             for _ in 0..N {
-                black_box(scalar.to_arrow_scalar());
+                black_box(scalar.to_arrow_scalar().into_inner());
             }
         })
     });
 
-    let arrow = OptionalInt64::new(Int64Scalar::new(42)).to_arrow_scalar();
+    let arrow = OptionalInt64::new(Int64Scalar::new(42))
+        .to_arrow_scalar()
+        .into_inner();
     group.bench_function("optional_from_arrow", |b| {
         b.iter(|| {
             for _ in 0..N {

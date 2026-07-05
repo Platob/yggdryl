@@ -72,7 +72,9 @@ impl Inferred {
     fn to_scalar(&self) -> Result<yggdryl_scalar::AnyScalar, DataErr> {
         Ok(match self {
             Inferred::Null => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::NullScalar::default().to_arrow_scalar(),
+                yggdryl_scalar::NullScalar::default()
+                    .to_arrow_scalar()
+                    .into_inner(),
             ),
             Inferred::Int64(integer) => {
                 yggdryl_scalar::AnyScalar::from(yggdryl_scalar::Int64Scalar::new(*integer))
@@ -81,20 +83,28 @@ impl Inferred {
                 yggdryl_scalar::AnyScalar::from(yggdryl_scalar::Float64Scalar::new(*float))
             }
             Inferred::Binary(bytes) => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::BinaryScalar::new(bytes.clone()).to_arrow_scalar(),
+                yggdryl_scalar::BinaryScalar::new(bytes.clone())
+                    .to_arrow_scalar()
+                    .into_inner(),
             ),
             Inferred::Utf8(text) => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::Utf8Scalar::new(text.clone()).to_arrow_scalar(),
+                yggdryl_scalar::Utf8Scalar::new(text.clone())
+                    .to_arrow_scalar()
+                    .into_inner(),
             ),
             Inferred::Serie(values) => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::Int64Serie::from(values.clone()).to_arrow_scalar(),
+                yggdryl_scalar::Int64Serie::from(values.clone())
+                    .to_arrow_scalar()
+                    .into_inner(),
             ),
             Inferred::FloatSerie(values) => yggdryl_scalar::AnyScalar::from_arrow(
-                yggdryl_scalar::Float64Serie::from(values.clone()).to_arrow_scalar(),
+                yggdryl_scalar::Float64Serie::from(values.clone())
+                    .to_arrow_scalar()
+                    .into_inner(),
             ),
-            Inferred::Record(entries) => {
-                yggdryl_scalar::AnyScalar::from_arrow(record_of(entries)?.to_arrow_scalar())
-            }
+            Inferred::Record(entries) => yggdryl_scalar::AnyScalar::from_arrow(
+                record_of(entries)?.to_arrow_scalar().into_inner(),
+            ),
         })
     }
 }

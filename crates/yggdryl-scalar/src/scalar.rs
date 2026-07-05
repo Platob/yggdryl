@@ -53,11 +53,11 @@ use yggdryl_dtype::{DataError, DataType};
 ///     fn value(&self) -> Option<&i32> {
 ///         self.value.as_ref()
 ///     }
-///     fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
-///         std::sync::Arc::new(match self.value {
+///     fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
+///         arrow_array::Scalar::new(std::sync::Arc::new(match self.value {
 ///             Some(value) => arrow_array::Int32Array::from_iter_values([value]),
 ///             None => arrow_array::Int32Array::new_null(1),
-///         })
+///         }))
 ///     }
 ///     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {
 ///         if array.len() != 1 {
@@ -92,14 +92,14 @@ use yggdryl_dtype::{DataError, DataType};
 /// // An int32 has no str conversion (the default): an actionable error.
 /// assert!(matches!(answer.as_str(None), Err(DataError::UnsupportedConversion { .. })));
 ///
-/// // Arrow interop: a one-element array, round-tripped.
-/// let arrow = answer.to_arrow_scalar();
+/// // Arrow interop: a real Arrow scalar (a `Datum`) wrapping a one-element array.
+/// let arrow = answer.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(Int32Scalar::from_arrow(arrow.as_ref()).unwrap().value(), Some(&42));
 ///
 /// let missing = Int32Scalar { data_type: Int32Type, value: None };
 /// assert!(missing.is_null());
-/// assert!(missing.to_arrow_scalar().is_null(0));
+/// assert!(missing.to_arrow_scalar().into_inner().is_null(0));
 /// ```
 pub trait Scalar: std::fmt::Debug + Send + Sync {
     /// The concrete data type of this scalar.
@@ -118,27 +118,29 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
     /// The scalar's value, or `None` when it [`is_null`](Scalar::is_null).
     fn value(&self) -> Option<&Self::Value>;
 
-    /// The Apache Arrow **scalar** form of this value: a one-element
-    /// [`arrow_array::ArrayRef`] of this scalar's data type, holding the value (or a
-    /// null). This is Arrow's own scalar representation — a length-1 array — so it
-    /// plugs straight into arrow-rs kernels (wrap it in `arrow_array::Scalar` for a
-    /// `Datum`). Its exact inverse is [`from_arrow`](Scalar::from_arrow).
+    /// The Apache Arrow **scalar** form of this value: a real
+    /// [`arrow_array::Scalar`] — Arrow's own scalar [`Datum`](arrow_array::Datum),
+    /// wrapping a one-element array of this scalar's data type — so it plugs straight
+    /// into arrow-rs kernels. [`into_inner`](arrow_array::Scalar::into_inner) unwraps
+    /// the length-1 [`ArrayRef`](arrow_array::ArrayRef); that array's exact inverse is
+    /// [`from_arrow`](Scalar::from_arrow).
     ///
-    /// A concrete scalar names the concrete array type it produces as the
+    /// A concrete scalar names the concrete array type it wraps as the
     /// [`TypedScalar`](crate::TypedScalar) `ArrowScalar` parameter.
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef;
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef>;
 
     /// The Apache Arrow **array** form of this value. For a plain scalar this is the
-    /// same one-element array as [`to_arrow_scalar`](Scalar::to_arrow_scalar) — a
-    /// scalar *is* a length-1 array — so it defaults to it; a sequence scalar (a
-    /// serie) overrides this to hand back its element array instead (empty when the
-    /// serie is null, told apart from an empty serie by [`is_null`](Scalar::is_null)).
+    /// same one-element array [`to_arrow_scalar`](Scalar::to_arrow_scalar) wraps — a
+    /// scalar *is* a length-1 array — so it defaults to unwrapping it; a sequence
+    /// scalar (a serie) overrides this to hand back its element array instead (empty
+    /// when the serie is null, told apart from an empty serie by
+    /// [`is_null`](Scalar::is_null)).
     ///
     /// A concrete scalar names the concrete array type it produces as the
     /// [`TypedScalar`](crate::TypedScalar) `ArrowArray` parameter (which defaults to
     /// `ArrowScalar`).
     fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        self.to_arrow_scalar()
+        self.to_arrow_scalar().into_inner()
     }
 
     /// Build this scalar from its one-element Apache Arrow array — the exact inverse
@@ -367,7 +369,9 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
     /// ```
     fn display_with(&self, options: crate::DisplayOptions) -> String {
         let _ = options;
-        crate::display::format_any(&crate::AnyScalar::from_arrow(self.to_arrow_scalar()))
+        crate::display::format_any(&crate::AnyScalar::from_arrow(
+            self.to_arrow_scalar().into_inner(),
+        ))
     }
 
     /// Cast this scalar to `dtype`, returning the value re-typed as a one-element
@@ -410,7 +414,7 @@ pub trait Scalar: std::fmt::Debug + Send + Sync {
             return Ok(arrow_array::new_null_array(&target, 1));
         }
         if target == self.data_type().to_arrow() {
-            return Ok(self.to_arrow_scalar());
+            return Ok(self.to_arrow_scalar().into_inner());
         }
         use arrow_schema::DataType as A;
         let array: arrow_array::ArrayRef = match &target {

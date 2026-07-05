@@ -21,7 +21,7 @@
 //! assert_eq!(numbers.len(), 2);
 //! assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
 //! assert_eq!(
-//!     TypedSerie::from_arrow(numbers.to_arrow_scalar().as_ref()).unwrap(),
+//!     TypedSerie::from_arrow(numbers.to_arrow_scalar().into_inner().as_ref()).unwrap(),
 //!     numbers
 //! );
 //! ```
@@ -381,12 +381,14 @@ macro_rules! int_serie {
                 $crate::display::render_serie(&column, &name, options)
             }
 
-            fn to_arrow_scalar(&self) -> $crate::arrow_array::ArrayRef {
+            fn to_arrow_scalar(
+                &self,
+            ) -> $crate::arrow_array::Scalar<$crate::arrow_array::ArrayRef> {
                 let Some(values) = &self.values else {
-                    return $crate::arrow_array::new_null_array(
+                    return $crate::arrow_array::Scalar::new($crate::arrow_array::new_null_array(
                         &::yggdryl_dtype::DataType::to_arrow(&self.data_type),
                         1,
-                    );
+                    ));
                 };
                 // The buffers are reassembled into the one-element serie —
                 // reference-count bumps, not copies.
@@ -398,7 +400,7 @@ macro_rules! int_serie {
                     None,
                 )
                 .expect(concat!("a one-element serie of ", $name, " elements is valid"));
-                ::std::sync::Arc::new(array)
+                $crate::arrow_array::Scalar::new(::std::sync::Arc::new(array))
             }
 
             // The base trait's array form: the element array (not the one-element

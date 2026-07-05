@@ -19,7 +19,7 @@ use yggdryl_scalar::{
 /// `data_type`, the Arrow round trip, and `unwrap` all agree with the original.
 fn scalar_coheres<S: Scalar + PartialEq + Debug + Clone>(scalar: S) {
     let name = scalar.data_type().name().to_string();
-    let any = AnyScalar::from_arrow(scalar.to_arrow_scalar());
+    let any = AnyScalar::from_arrow(scalar.to_arrow_scalar().into_inner());
 
     assert_eq!(
         any.is_null(),
@@ -32,7 +32,7 @@ fn scalar_coheres<S: Scalar + PartialEq + Debug + Clone>(scalar: S) {
         "data_type mismatch for {name}"
     );
     assert_eq!(
-        S::from_arrow(any.to_arrow_scalar().as_ref()).unwrap(),
+        S::from_arrow(any.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         scalar,
         "Arrow round trip mismatch for {name}"
     );

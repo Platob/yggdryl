@@ -38,7 +38,7 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// assert_eq!(row.value().map(<[_]>::len), Some(2));
 ///
 /// // The Arrow round trip preserves the row.
-/// let arrow = row.to_arrow_scalar();
+/// let arrow = row.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(StructScalar::from_arrow(arrow.as_ref()).unwrap(), row);
 ///
@@ -136,10 +136,13 @@ impl Scalar for StructScalar {
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let fields = Struct::fields(&self.data_type);
         let Some(columns) = &self.columns else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The column series are reconstituted into the one-row struct —
         // reference-count bumps, not copies.
@@ -150,7 +153,7 @@ impl Scalar for StructScalar {
             1,
         )
         .expect("validated one-element columns assemble into a one-row struct");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

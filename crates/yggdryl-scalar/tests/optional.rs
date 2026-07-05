@@ -77,7 +77,7 @@ fn optional_scalar_redirects_access_to_the_inner_scalar() {
 fn optional_scalar_arrow_round_trips_both_variants() {
     // Value variant: a one-element sparse union selecting the value child.
     let answer = OptionalInt64::new(Int64Scalar::new(42));
-    let arrow = answer.to_arrow_scalar();
+    let arrow = answer.to_arrow_scalar().into_inner();
     assert_eq!(arrow.len(), 1);
     assert_eq!(
         arrow.data_type(),
@@ -92,7 +92,7 @@ fn optional_scalar_arrow_round_trips_both_variants() {
 
     // Null variant: the type id selects the null child.
     let missing = OptionalInt64::null();
-    let arrow = missing.to_arrow_scalar();
+    let arrow = missing.to_arrow_scalar().into_inner();
     let union_array = arrow
         .as_any()
         .downcast_ref::<arrow_array::UnionArray>()
@@ -103,7 +103,7 @@ fn optional_scalar_arrow_round_trips_both_variants() {
     // A null inner scalar normalized at construction: the round trip is the exact
     // inverse — full equality, not just agreement on nullness.
     let inner_null = OptionalInt64::new(Int64Scalar::null());
-    let arrow = inner_null.to_arrow_scalar();
+    let arrow = inner_null.to_arrow_scalar().into_inner();
     let union_array = arrow
         .as_any()
         .downcast_ref::<arrow_array::UnionArray>()
@@ -125,7 +125,9 @@ fn optional_scalar_from_arrow_rejects_other_shapes() {
     ));
 
     // The right union layout but for a different value type.
-    let other = TypedOptionalScalar::new(UInt8Scalar::new(7)).to_arrow_scalar();
+    let other = TypedOptionalScalar::new(UInt8Scalar::new(7))
+        .to_arrow_scalar()
+        .into_inner();
     assert!(matches!(
         OptionalInt64::from_arrow(other.as_ref()),
         Err(DataError::IncompatibleArrowType { .. })
@@ -162,14 +164,14 @@ fn optional_scalar_erases_to_the_dynamic_base() {
     );
     // The dynamic base round-trips through Arrow, both variants.
     assert_eq!(
-        OptionalScalar::from_arrow(answer.to_arrow_scalar().as_ref()).unwrap(),
+        OptionalScalar::from_arrow(answer.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         answer
     );
 
     let missing = OptionalInt64::null().erase();
     assert!(missing.is_null());
     assert_eq!(
-        OptionalScalar::from_arrow(missing.to_arrow_scalar().as_ref()).unwrap(),
+        OptionalScalar::from_arrow(missing.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         missing
     );
 

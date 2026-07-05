@@ -34,7 +34,7 @@ use yggdryl_dtype::{DataError, DataType, MapType};
 /// assert_eq!(ranks.data_type().name(), "map");
 /// assert_eq!(ranks.child_serie_by("key").unwrap().len(), 1); // the keys projection
 /// assert_eq!(
-///     yggdryl_scalar::MapScalar::from_arrow(ranks.to_arrow_scalar().as_ref()).unwrap(),
+///     yggdryl_scalar::MapScalar::from_arrow(ranks.to_arrow_scalar().into_inner().as_ref()).unwrap(),
 ///     ranks
 /// );
 /// ```
@@ -125,9 +125,12 @@ impl Scalar for MapScalar {
         }
     }
 
-    fn to_arrow_scalar(&self) -> ArrayRef {
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<ArrayRef> {
         let Some(entries) = &self.entries else {
-            return arrow_array::new_null_array(&DataType::to_arrow(&self.data_type), 1);
+            return arrow_array::Scalar::new(arrow_array::new_null_array(
+                &DataType::to_arrow(&self.data_type),
+                1,
+            ));
         };
         // The entries serie is reconstituted into the one-element map — a
         // reference-count bump, not a copy.
@@ -145,7 +148,7 @@ impl Scalar for MapScalar {
             false,
         )
         .expect("a one-element map of the declared entries struct is valid");
-        std::sync::Arc::new(array)
+        arrow_array::Scalar::new(std::sync::Arc::new(array))
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

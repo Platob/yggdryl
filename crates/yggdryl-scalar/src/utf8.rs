@@ -34,7 +34,7 @@ use yggdryl_dtype::{DataError, Utf8Type};
 /// assert_eq!(IOBase::<char>::size(io), 2); // two chars, three bytes
 ///
 /// // The Arrow round trip is exact (Arrow's Utf8).
-/// let arrow = greeting.to_arrow_scalar();
+/// let arrow = greeting.to_arrow_scalar().into_inner();
 /// assert_eq!(arrow.len(), 1);
 /// assert_eq!(Utf8Scalar::from_arrow(arrow.as_ref()).unwrap(), greeting);
 ///
@@ -140,18 +140,22 @@ impl Scalar for Utf8Scalar {
         self.value.as_ref().and_then(|value| value.as_str().ok())
     }
 
-    fn to_arrow_scalar(&self) -> arrow_array::ArrayRef {
-        match self.value.as_ref().and_then(|value| value.as_str().ok()) {
-            Some(text) => std::sync::Arc::new(arrow_array::StringArray::from_iter_values([text])),
-            // Arrow arrays are immutable, so every null scalar shares one cached
-            // one-null array; a clone is a reference-count bump.
-            None => {
-                static NULL: std::sync::OnceLock<arrow_array::ArrayRef> =
-                    std::sync::OnceLock::new();
-                NULL.get_or_init(|| std::sync::Arc::new(arrow_array::StringArray::new_null(1)))
-                    .clone()
-            }
-        }
+    fn to_arrow_scalar(&self) -> arrow_array::Scalar<arrow_array::ArrayRef> {
+        arrow_array::Scalar::new(
+            match self.value.as_ref().and_then(|value| value.as_str().ok()) {
+                Some(text) => {
+                    std::sync::Arc::new(arrow_array::StringArray::from_iter_values([text]))
+                }
+                // Arrow arrays are immutable, so every null scalar shares one cached
+                // one-null array; a clone is a reference-count bump.
+                None => {
+                    static NULL: std::sync::OnceLock<arrow_array::ArrayRef> =
+                        std::sync::OnceLock::new();
+                    NULL.get_or_init(|| std::sync::Arc::new(arrow_array::StringArray::new_null(1)))
+                        .clone()
+                }
+            },
+        )
     }
 
     fn from_arrow(array: &dyn arrow_array::Array) -> Result<Self, DataError> {

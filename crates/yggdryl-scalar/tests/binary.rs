@@ -96,7 +96,7 @@ fn binary_scalar_arrow_round_trips_all_shapes() {
         BinaryScalar::new(Vec::new()),
         BinaryScalar::null(),
     ] {
-        let arrow = scalar.to_arrow_scalar();
+        let arrow = scalar.to_arrow_scalar().into_inner();
         assert_eq!(arrow_array::Array::len(arrow.as_ref()), 1);
         assert_eq!(BinaryScalar::from_arrow(arrow.as_ref()).unwrap(), scalar);
     }
@@ -120,7 +120,7 @@ fn binary_composes_with_the_optional_and_list_families() {
     assert_eq!(some.as_bytes().unwrap(), b"hi");
     assert_eq!(some.as_str(None).unwrap(), "hi");
     assert_eq!(
-        TypedOptionalScalar::from_arrow(some.to_arrow_scalar().as_ref()).unwrap(),
+        TypedOptionalScalar::from_arrow(some.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         some
     );
     assert!(matches!(
@@ -142,7 +142,7 @@ fn binary_composes_with_the_optional_and_list_families() {
         Err(DataError::NullValue) // a null element holds no value
     ));
     assert_eq!(
-        TypedSerie::from_arrow(blobs.to_arrow_scalar().as_ref()).unwrap(),
+        TypedSerie::from_arrow(blobs.to_arrow_scalar().into_inner().as_ref()).unwrap(),
         blobs
     );
 }

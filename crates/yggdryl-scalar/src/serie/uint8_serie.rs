@@ -24,7 +24,7 @@
 //! assert_eq!(numbers.to_arrow_array().len(), 3);
 //!
 //! // The Arrow round trip shares the buffers — no element is copied.
-//! let arrow = numbers.to_arrow_scalar();
+//! let arrow = numbers.to_arrow_scalar().into_inner();
 //! assert_eq!(arrow.len(), 1);
 //! assert_eq!(UInt8Serie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 //!
