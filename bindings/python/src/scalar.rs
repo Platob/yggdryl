@@ -2095,16 +2095,13 @@ impl RecordScalar {
     /// The whole row copied out as a Python `dict` of native values, or `None`
     /// when null — the pyarrow-style name for a native-container copy-out.
     fn to_pydict<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        if self.inner.is_null() {
+        let Some(scalars) = self.inner.value() else {
             return Ok(None);
-        }
+        };
         let row = PyDict::new_bound(py);
-        for (index, field) in self.inner.data_type().fields().iter().enumerate() {
-            let scalar = self
-                .inner
-                .any_scalar_at(index)
-                .expect("a present record holds every field");
-            row.set_item(field.name(), scalar_to_pyvalue(py, &scalar)?)?;
+        // Borrow each field in place — no per-field `AnyScalar` clone.
+        for (field, scalar) in self.inner.data_type().fields().iter().zip(scalars) {
+            row.set_item(field.name(), scalar_to_pyvalue(py, scalar)?)?;
         }
         Ok(Some(row))
     }
@@ -2115,20 +2112,16 @@ impl RecordScalar {
     /// general native accessor: the whole row converted in Rust, one FFI
     /// crossing).
     fn to_pyvalue(&self, py: Python<'_>) -> PyResult<PyObject> {
-        if self.inner.is_null() {
+        let Some(scalars) = self.inner.value() else {
             return Ok(py.None());
-        }
+        };
         let fields = self.inner.data_type().fields();
         let names = PyTuple::new_bound(py, fields.iter().map(|field| field.name().as_str()));
         let class = record_class(py, &names)?;
-        let values = (0..fields.len())
-            .map(|index| {
-                let scalar = self
-                    .inner
-                    .any_scalar_at(index)
-                    .expect("a present record holds every field");
-                scalar_to_pyvalue(py, &scalar)
-            })
+        // Borrow each field in place — no per-field `AnyScalar` clone.
+        let values = scalars
+            .iter()
+            .map(|scalar| scalar_to_pyvalue(py, scalar))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(class.call1(PyTuple::new_bound(py, values))?.unbind())
     }

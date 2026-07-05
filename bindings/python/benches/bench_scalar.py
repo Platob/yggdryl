@@ -8,7 +8,7 @@ crates/yggdryl-scalar/benches). No dependencies: run with
 
 import time
 
-from yggdryl import scalar
+from yggdryl import factory, scalar
 
 N = 200_000
 
@@ -32,6 +32,7 @@ def main():
     weights = scalar.Float64Serie([1.5, 2.5, 3.5, 4.5])
     half = scalar.Float16Scalar(1.5)
     text = scalar.Utf8Scalar("hello")
+    record = factory.scalar({"x": 1, "y": 2})
 
     bench("Int64Scalar(42)", lambda: scalar.Int64Scalar(42))
     bench("Int64Scalar.null()", scalar.Int64Scalar.null)
@@ -57,6 +58,9 @@ def main():
     bench("float16.to_pyvalue()", half.to_pyvalue)
     bench("Utf8Scalar('hello')", lambda: scalar.Utf8Scalar("hello"))
     bench("string.to_pyvalue()", text.to_pyvalue)
+    bench("record.get('y')", lambda: record.get("y"))
+    bench("record.to_pyvalue()", record.to_pyvalue)
+    bench("record.to_pydict()", record.to_pydict)
 
 
 if __name__ == "__main__":

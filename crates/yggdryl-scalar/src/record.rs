@@ -105,21 +105,35 @@ impl RecordScalar {
         Self { data_type, scalars }
     }
 
-    /// The field scalar at `index`, or `None` when the record is null or `index` is
-    /// out of bounds.
-    pub fn any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
-        self.scalars.as_ref()?.get(index).cloned()
+    /// The field scalar at `index` borrowed in place, or `None` when the record is
+    /// null or `index` is out of bounds — the shared reader behind every by-index
+    /// accessor, so the typed reads borrow the field rather than cloning it.
+    fn field_at(&self, index: usize) -> Option<&AnyScalar> {
+        self.scalars.as_ref()?.get(index)
     }
 
-    /// The field scalar of the field named `name`, or `None` when the record is null
-    /// or no field carries the name.
-    pub fn any_scalar_by(&self, name: &str) -> Option<AnyScalar> {
+    /// The field scalar named `name` borrowed in place, or `None` when the record is
+    /// null or no field carries the name — the shared reader behind every by-name
+    /// accessor.
+    fn field_by(&self, name: &str) -> Option<&AnyScalar> {
         let index = self
             .data_type
             .fields()
             .iter()
             .position(|field| field.name() == name)?;
-        self.any_scalar_at(index)
+        self.field_at(index)
+    }
+
+    /// The field scalar at `index`, or `None` when the record is null or `index` is
+    /// out of bounds.
+    pub fn any_scalar_at(&self, index: usize) -> Option<AnyScalar> {
+        self.field_at(index).cloned()
+    }
+
+    /// The field scalar of the field named `name`, or `None` when the record is null
+    /// or no field carries the name.
+    pub fn any_scalar_by(&self, name: &str) -> Option<AnyScalar> {
+        self.field_by(name).cloned()
     }
 
     /// The field scalar at `index` unwrapped to the concrete scalar `S`, or `None` when
@@ -130,8 +144,7 @@ impl RecordScalar {
     /// read a field through the record's native-value accessors (`get` / `to_pyvalue`
     /// / `to_js_value`).
     pub fn scalar_at<S: Scalar>(&self, index: usize) -> Option<S> {
-        self.any_scalar_at(index)
-            .and_then(|scalar| scalar.unwrap::<S>().ok())
+        self.field_at(index)?.unwrap::<S>().ok()
     }
 
     /// The field scalar named `name` unwrapped to the concrete scalar `S`, or `None`
@@ -141,8 +154,7 @@ impl RecordScalar {
     /// Generic over the target scalar, so it stays **Rust-only** (like
     /// [`scalar_at`](RecordScalar::scalar_at)).
     pub fn scalar_by<S: Scalar>(&self, name: &str) -> Option<S> {
-        self.any_scalar_by(name)
-            .and_then(|scalar| scalar.unwrap::<S>().ok())
+        self.field_by(name)?.unwrap::<S>().ok()
     }
 
     /// The field at `index` read as the native Rust type `T` (via
@@ -153,8 +165,7 @@ impl RecordScalar {
     /// Generic over the target, so it stays **Rust-only** (the bindings read a field
     /// through the record's native-value accessors `get` / `to_pyvalue` / `to_js_value`).
     pub fn value_at<T: crate::FromScalar>(&self, index: usize) -> Option<T> {
-        self.any_scalar_at(index)
-            .and_then(|scalar| scalar.value_as::<T>().ok())
+        self.field_at(index)?.value_as::<T>().ok()
     }
 
     /// The field named `name` read as the native Rust type `T` (via
@@ -165,8 +176,7 @@ impl RecordScalar {
     /// Generic over the target, so it stays **Rust-only** (like
     /// [`value_at`](RecordScalar::value_at)).
     pub fn value_by<T: crate::FromScalar>(&self, name: &str) -> Option<T> {
-        self.any_scalar_by(name)
-            .and_then(|scalar| scalar.value_as::<T>().ok())
+        self.field_by(name)?.value_as::<T>().ok()
     }
 }
 

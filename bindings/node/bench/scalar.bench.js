@@ -6,7 +6,7 @@
 // (dominated by napi call overhead; compare with the Rust-side criterion numbers
 // in crates/yggdryl-scalar/benches). No dependencies: run with `npm run bench`.
 
-const { scalar } = require('..')
+const { factory, scalar } = require('..')
 
 const N = 200_000
 
@@ -22,6 +22,7 @@ function bench(label, fn) {
 
 const value = new scalar.Int64Scalar(42n)
 const optional = new scalar.OptionalInt64Scalar(42n)
+const record = factory.scalar({ x: 1, y: 2 })
 
 bench('new Int64Scalar(42n)', () => new scalar.Int64Scalar(42n))
 bench('Int64Scalar.null()', () => scalar.Int64Scalar.null())
@@ -32,3 +33,5 @@ bench('scalar.asF64() checked', () => value.asF64())
 bench('new OptionalInt64Scalar(42n)', () => new scalar.OptionalInt64Scalar(42n))
 bench('optional.asI64() redirected', () => optional.asI64())
 bench('optional.dataType()', () => optional.dataType())
+bench("record.get('y')", () => record.get('y'))
+bench('record.toJsValue()', () => record.toJsValue())

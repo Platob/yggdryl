@@ -264,6 +264,36 @@ fn record(c: &mut Criterion) {
             }
         })
     });
+    group.bench_function("record_any_scalar_at", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(row.any_scalar_at(black_box(1)));
+            }
+        })
+    });
+    // The typed field accessor: recovers a concrete scalar (Rust-only).
+    group.bench_function("record_scalar_by", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(row.scalar_by::<Int64Scalar>(black_box("y")));
+            }
+        })
+    });
+    // The native-value field accessor by name and by index.
+    group.bench_function("record_value_by", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(row.value_by::<i64>(black_box("y")));
+            }
+        })
+    });
+    group.bench_function("record_value_at", |b| {
+        b.iter(|| {
+            for _ in 0..N {
+                black_box(row.value_at::<i64>(black_box(1)));
+            }
+        })
+    });
 
     // A serie of struct rows: build it once, then read rows and field columns back.
     let rows: Vec<RecordScalar> = (0..N as i64)
