@@ -164,6 +164,32 @@ impl AnyScalar {
             _ => None,
         }
     }
+
+    /// Read the value as the native Rust type `T` under the shared `as_*` contract —
+    /// the type-erased counterpart of [`FromScalar::from_scalar`](crate::FromScalar).
+    /// A decomposed numeric answers through its concrete scalar; the Arrow fallback
+    /// decomposes to the matching scalar first. A value with no `T` form (a null, a
+    /// non-representable number, or a nested value) errors, exactly as the scalar
+    /// accessor would.
+    pub(crate) fn value_as<T: crate::FromScalar>(&self) -> Result<T, DataError> {
+        use crate::{BinaryScalar, NullScalar, Scalar, Utf8Scalar};
+        for_each_decomposed!(self,
+        scalar => T::from_scalar(scalar),
+        value => {
+            let array = value.as_ref();
+            match arrow_array::Array::data_type(array) {
+                arrow_schema::DataType::Utf8 => T::from_scalar(&Utf8Scalar::from_arrow(array)?),
+                arrow_schema::DataType::Binary => {
+                    T::from_scalar(&BinaryScalar::from_arrow(array)?)
+                }
+                arrow_schema::DataType::Null => T::from_scalar(&NullScalar::from_arrow(array)?),
+                other => Err(DataError::UnsupportedConversion {
+                    data_type: other.to_string().to_lowercase(),
+                    target: "a native value",
+                }),
+            }
+        })
+    }
 }
 
 /// Generates the zero-copy per-variant accessor `$method` borrowing the concrete

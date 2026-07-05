@@ -631,9 +631,10 @@ has no children.
 field, sharing one `StructType`. Where `StructScalar` is the column-oriented row
 (one one-element serie per field), `RecordScalar` materializes it field-by-field —
 `any_scalar_at(index)` / `any_scalar_by(name)` hand back a field's atomic `AnyScalar`
-directly, and the generic `scalar_at::<S>(index)` / `scalar_by::<S>(name)` unwrap it to a
-concrete scalar (typed, so **Rust-only**). `StructScalar` converts to a record with the
-base accessor `as_struct()`. In the
+directly; the generic `scalar_at::<S>(index)` / `scalar_by::<S>(name)` unwrap it to a
+concrete scalar, and `value_at::<T>(index)` / `value_by::<T>(name)` read it as a native
+Rust value — all four typed, so **Rust-only**. `StructScalar` converts to a record with
+the base accessor `as_struct()`. In the
 bindings a record is built straight from a `dict` (Python) / plain object (Node)
 with every field inferred, and reads back out as an auto-generated **singleton
 dataclass** (one frozen dataclass per schema, cached) in Python or a plain object

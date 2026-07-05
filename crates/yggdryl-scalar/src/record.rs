@@ -45,6 +45,10 @@ use yggdryl_dtype::{DataError, DataType, Struct, StructType};
 /// assert_eq!(row.scalar_at::<Int64Scalar>(0), Some(Int64Scalar::new(1)));
 /// assert_eq!(row.scalar_by::<Int64Scalar>("y"), Some(Int64Scalar::new(2)));
 ///
+/// // ...or straight to the native Rust value (typed, Rust-only).
+/// assert_eq!(row.value_at::<i64>(0), Some(1));
+/// assert_eq!(row.value_by::<i64>("y"), Some(2));
+///
 /// // The Arrow round trip preserves the row.
 /// assert_eq!(RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(), row);
 /// ```
@@ -139,6 +143,30 @@ impl RecordScalar {
     pub fn scalar_by<S: Scalar>(&self, name: &str) -> Option<S> {
         self.any_scalar_by(name)
             .and_then(|scalar| scalar.unwrap::<S>().ok())
+    }
+
+    /// The field at `index` read as the native Rust type `T` (via
+    /// [`FromScalar`](crate::FromScalar)), or `None` when the record is null, `index`
+    /// is out of bounds, or the field has no `T` form — the native-value counterpart of
+    /// [`scalar_at`](RecordScalar::scalar_at).
+    ///
+    /// Generic over the target, so it stays **Rust-only** (the bindings read a field
+    /// through the record's native-value accessors `get` / `to_pyvalue` / `to_js_value`).
+    pub fn value_at<T: crate::FromScalar>(&self, index: usize) -> Option<T> {
+        self.any_scalar_at(index)
+            .and_then(|scalar| scalar.value_as::<T>().ok())
+    }
+
+    /// The field named `name` read as the native Rust type `T` (via
+    /// [`FromScalar`](crate::FromScalar)), or `None` when the record is null, no field
+    /// carries the name, or the field has no `T` form — the native-value counterpart of
+    /// [`scalar_by`](RecordScalar::scalar_by).
+    ///
+    /// Generic over the target, so it stays **Rust-only** (like
+    /// [`value_at`](RecordScalar::value_at)).
+    pub fn value_by<T: crate::FromScalar>(&self, name: &str) -> Option<T> {
+        self.any_scalar_by(name)
+            .and_then(|scalar| scalar.value_as::<T>().ok())
     }
 }
 

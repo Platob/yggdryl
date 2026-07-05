@@ -59,6 +59,14 @@ fn record_gives_generic_child_scalar_access() {
                                                           // A field that is not the requested scalar type reads as `None`.
     assert!(row.scalar_by::<yggdryl_scalar::Utf8Scalar>("x").is_none());
 
+    // The native-value accessors read the field as any exactly-representable target.
+    assert_eq!(row.value_at::<i64>(0), Some(1));
+    assert_eq!(row.value_by::<i64>("y"), Some(2));
+    assert_eq!(row.value_by::<i32>("y"), Some(2)); // exact conversion
+    assert!(row.value_by::<String>("x").is_none()); // an int64 has no str form
+    assert!(row.value_at::<i64>(2).is_none()); // out of bounds
+    assert!(row.value_by::<i64>("z").is_none()); // no such field
+
     // The Arrow round trip preserves the row; a null record round-trips too.
     assert_eq!(
         RecordScalar::from_arrow(row.to_arrow_scalar().as_ref()).unwrap(),
