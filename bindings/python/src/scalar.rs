@@ -1622,8 +1622,8 @@ macro_rules! int_serie_scalar_py {
 
             /// The element at `index` read as its native `int`; raises `ValueError` when
             /// null or past the end, and `OverflowError` for a negative index.
-            fn get_at(&self, index: usize) -> Result<$native, DataErr> {
-                Ok(self.inner.get_at::<$native>(index)?)
+            fn value_at(&self, index: usize) -> Result<$native, DataErr> {
+                Ok(self.inner.value_at::<$native>(index)?)
             }
 
             #[doc = concat!("The element at `index` as an `", stringify!($scalar), "`, or `None` when the serie is")]
@@ -1708,7 +1708,7 @@ int_serie_scalar_py!(
 /// Generates the concrete `float16` serie scalar `$ty`, mirroring
 /// [`int_serie_scalar_py!`], except the native `half::f16` does not cross the FFI
 /// boundary: the builder narrows each incoming Python `float` (f64) to `f16`, and
-/// every value-carrying method (`to_pylist` / `to_pyvalue` / `get_at`) widens
+/// every value-carrying method (`to_pylist` / `to_pyvalue` / `value_at`) widens
 /// `f16` back to `f64`. `$scalar` names the element scalar, `$dtype` the
 /// `yggdryl.dtype` class.
 macro_rules! float16_serie_scalar_py {
@@ -1813,8 +1813,8 @@ macro_rules! float16_serie_scalar_py {
             /// The element at `index` read as a Python `float` (f16 widened to f64);
             /// raises `ValueError` when null or past the end, and `OverflowError` for
             /// a negative index.
-            fn get_at(&self, index: usize) -> Result<f64, DataErr> {
-                Ok(self.inner.get_at::<f64>(index)?)
+            fn value_at(&self, index: usize) -> Result<f64, DataErr> {
+                Ok(self.inner.value_at::<f64>(index)?)
             }
 
             #[doc = concat!("The element at `index` as a `", stringify!($scalar), "`, or `None` when the serie is")]

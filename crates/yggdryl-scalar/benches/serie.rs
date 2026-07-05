@@ -37,10 +37,10 @@ fn serie(c: &mut Criterion) {
         b.iter(|| black_box(black_box(&numbers).values()))
     });
 
-    group.bench_function("int64_serie_get_at", |b| {
+    group.bench_function("int64_serie_value_at", |b| {
         b.iter(|| {
             for index in 0..N {
-                let _ = black_box(numbers.get_at::<i64>(black_box(index)));
+                let _ = black_box(numbers.value_at::<i64>(black_box(index)));
             }
         })
     });
@@ -148,8 +148,8 @@ fn float(c: &mut Criterion) {
     });
 
     let weights = Float64Serie::from(values.clone());
-    group.bench_function("float64_serie_get_at", |b| {
-        b.iter(|| black_box(weights.get_at::<f64>(black_box(N / 2)).unwrap()))
+    group.bench_function("float64_serie_value_at", |b| {
+        b.iter(|| black_box(weights.value_at::<f64>(black_box(N / 2)).unwrap()))
     });
 
     let mut buffer = ByteBuffer::new();

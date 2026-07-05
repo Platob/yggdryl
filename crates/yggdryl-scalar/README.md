@@ -37,7 +37,7 @@ values (the union, dynamic at runtime, has no scalar).
 - **`TypedScalar<DT: DataType, T>: Scalar<DataType = DT, Value = T>`** — a scalar whose value
   is `T` (possibly unsized: a string scalar exposes `Option<&str>`).
 - **`FromScalar`** — the native Rust targets readable out of any scalar, behind
-  the generic accessors such as `Serie::get_at::<T>` (numbers, `bool`, `String`,
+  the generic accessors such as `Serie::value_at::<T>` (numbers, `bool`, `String`,
   `Vec<u8>`, a core `ByteBufferSlice`).
 - **`ScalarFactory<T>: TypedDataType<T>`** — a typed data type builds its scalar.
   The scalar layer builds on the data types, never the other way around, so the
@@ -79,7 +79,7 @@ reconstituting Arrow arrays on demand and decomposing them on the way in. The
 
 The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy Arrow
 child array — `to_arrow_scalar` / `from_arrow` are reference-count bumps — with the
-scalar accessors `scalar_at(index)` / `get_at::<T>(index)` and `len` /
+scalar accessors `scalar_at(index)` / `value_at::<T>(index)` and `len` /
 `is_empty`. Every integer type also has its concrete serie (`Int8Serie` …
 `UInt64Serie`), borrowing the raw Arrow buffers themselves (`values()` borrows
 the native element slice without copying; `from_io` / `pwrite_io` bridge to any

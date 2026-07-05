@@ -11,13 +11,13 @@
 //! let numbers = Int32Serie::from(vec![1, 2, 3]);
 //! assert_eq!(numbers.len(), 3);
 //! assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // zero-copy buffer borrow
-//! assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2); // converted, exact-or-error
+//! assert_eq!(numbers.value_at::<i64>(1).unwrap(), 2); // converted, exact-or-error
 //! assert_eq!(numbers.scalar_at(1), Some(Int32Scalar::new(2)));
 //! assert_eq!(numbers.data_type().name(), "list");
 //!
 //! // Nulls are per element, read null-aware.
 //! let sparse = Int32Serie::from(vec![Some(1), None]);
-//! assert!(sparse.get_at::<i32>(1).is_err()); // a null element holds no value
+//! assert!(sparse.value_at::<i32>(1).is_err()); // a null element holds no value
 //! assert_eq!(sparse.scalar_at(1), Some(Int32Scalar::null()));
 //!
 //! // The elements convert out as the Arrow primitive array, shared.

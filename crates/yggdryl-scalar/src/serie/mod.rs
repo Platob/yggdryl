@@ -41,7 +41,7 @@ macro_rules! int_serie {
         #[doc = "Where the generic [`Serie`](crate::Serie) holds an opaque Arrow array handle and"]
         #[doc = concat!("goes through the element scalars' Arrow round trip, `", stringify!($ty), "` holds the")]
         #[doc = concat!("underlying buffers themselves: [`values`](", stringify!($ty), "::values) borrows the whole")]
-        #[doc = concat!("element buffer as `&[", stringify!($native), "]` without copying, [`get_at`](", stringify!($ty), "::get_at) reads")]
+        #[doc = concat!("element buffer as `&[", stringify!($native), "]` without copying, [`value_at`](", stringify!($ty), "::value_at) reads")]
         #[doc = "one element null-aware as any native Rust target, and the *scalar accessor*"]
         #[doc = concat!("[`scalar_at`](", stringify!($ty), "::scalar_at) hands back an [`", stringify!($scalar), "`](crate::", stringify!($scalar), ") (the")]
         #[doc = concat!("inner null scalar for a null slot). [`from_io`](", stringify!($ty), "::from_io) /")]
@@ -116,7 +116,7 @@ macro_rules! int_serie {
 
             /// The whole element buffer as a native slice, borrowed without copying —
             /// including the (arbitrary) slots under null elements; pair with
-            #[doc = concat!("[`get_at`](", stringify!($ty), "::get_at) or")]
+            #[doc = concat!("[`value_at`](", stringify!($ty), "::value_at) or")]
             #[doc = concat!("[`scalar_at`](", stringify!($ty), "::scalar_at) for null-aware reads.")]
             pub fn values(&self) -> Option<&[$native]> {
                 self.values.as_deref()
@@ -153,7 +153,7 @@ macro_rules! int_serie {
             /// A null serie errors with [`DataError::NullValue`](::yggdryl_dtype::DataError::NullValue),
             /// an index past the end with [`DataError::OutOfBounds`](::yggdryl_dtype::DataError::OutOfBounds),
             /// and a null or non-representable element with the `as_*` contract's own errors.
-            pub fn get_at<T: $crate::FromScalar>(
+            pub fn value_at<T: $crate::FromScalar>(
                 &self,
                 index: usize,
             ) -> Result<T, ::yggdryl_dtype::DataError> {

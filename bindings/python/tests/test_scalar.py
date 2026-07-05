@@ -330,17 +330,17 @@ def test_serie_holds_a_sequence(case):
     assert numbers.is_empty() is False
     assert numbers.len() == 3
     assert numbers.to_pylist() == [low, 2, high]  # extremes survive the buffer
-    assert numbers.get_at(0) == low
-    assert numbers.get_at(1) == 2
-    assert numbers.get_at(2) == high
+    assert numbers.value_at(0) == low
+    assert numbers.value_at(1) == 2
+    assert numbers.value_at(2) == high
     assert numbers.scalar_at(2).value() == high
     assert numbers.scalar_at(3) is None  # out of bounds
     assert numbers.data_type().name() == "list"
     assert numbers.data_type().value_type().name() == name
     with pytest.raises(ValueError):
-        numbers.get_at(3)  # out of bounds
+        numbers.value_at(3)  # out of bounds
     with pytest.raises(OverflowError):
-        numbers.get_at(-1)  # a negative index never converts
+        numbers.value_at(-1)  # a negative index never converts
 
     # The empty serie and null are distinct states.
     empty = serie_class([])
@@ -352,7 +352,7 @@ def test_serie_holds_a_sequence(case):
     assert missing.is_null() is True
     assert missing.to_pylist() is None
     with pytest.raises(ValueError):
-        missing.get_at(0)
+        missing.value_at(0)
 
 
 # (serie scalar, value type name)
@@ -372,13 +372,13 @@ def test_float_serie_holds_a_sequence(case):
     assert weights.len() == 3
     assert weights.to_pylist() == [1.5, 2.5, 3.5]
     assert weights.to_pyvalue() == [1.5, 2.5, 3.5]
-    assert weights.get_at(1) == 2.5
+    assert weights.value_at(1) == 2.5
     assert weights.scalar_at(2).value() == 3.5
     assert weights.scalar_at(3) is None  # out of bounds
     assert weights.data_type().name() == "list"
     assert weights.data_type().value_type().name() == name
     with pytest.raises(OverflowError):
-        weights.get_at(-1)  # a negative index never converts
+        weights.value_at(-1)  # a negative index never converts
 
     # The empty serie and null are distinct states.
     empty = serie_class([])
@@ -390,7 +390,7 @@ def test_float_serie_holds_a_sequence(case):
     assert missing.is_null() is True
     assert missing.to_pylist() is None
     with pytest.raises(ValueError):
-        missing.get_at(0)
+        missing.value_at(0)
 
 
 @pytest.mark.parametrize(

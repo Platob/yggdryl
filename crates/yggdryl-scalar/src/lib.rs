@@ -19,7 +19,7 @@
 //!   `ArrowArray` (the [`to_arrow_array`](Scalar::to_arrow_array) form, defaulting
 //!   to `ArrowScalar`).
 //! - [`FromScalar`] — the native Rust targets readable out of any scalar, behind
-//!   the generic accessors such as [`TypedSerie::get_at`].
+//!   the generic accessors such as [`TypedSerie::value_at`].
 //! - [`ScalarFactory`] — a typed data type builds its scalar
 //!   ([`Int64Type.scalar(42)`](ScalarFactory::scalar) → [`Int64Scalar`], plus
 //!   [`null_scalar`](ScalarFactory::null_scalar) / [`default_scalar`](ScalarFactory::default_scalar)).

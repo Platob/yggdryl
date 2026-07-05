@@ -182,16 +182,16 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     assert.equal(numbers.isEmpty(), false)
     assert.equal(numbers.len(), 3)
     assert.deepEqual(numbers.toArray(), [low, wire(2), high]) // extremes survive the buffer
-    assert.equal(numbers.getAt(0), low)
-    assert.equal(numbers.getAt(1), wire(2))
-    assert.equal(numbers.getAt(2), high)
+    assert.equal(numbers.valueAt(0), low)
+    assert.equal(numbers.valueAt(1), wire(2))
+    assert.equal(numbers.valueAt(2), high)
     assert.equal(numbers.scalarAt(2).value(), high)
     assert.equal(numbers.scalarAt(3), null) // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
     assert.equal(numbers.dataType().valueType().name(), name)
-    assert.throws(() => numbers.getAt(3)) // out of bounds
-    assert.throws(() => numbers.getAt(-1), /non-negative index/) // negative, not wrapped
-    assert.throws(() => numbers.getAt(2 ** 32)) // never aliased back into range
+    assert.throws(() => numbers.valueAt(3)) // out of bounds
+    assert.throws(() => numbers.valueAt(-1), /non-negative index/) // negative, not wrapped
+    assert.throws(() => numbers.valueAt(2 ** 32)) // never aliased back into range
     assert.equal(numbers.scalarAt(-1), null)
     assert.equal(numbers.scalarAt(2 ** 32), null)
 
@@ -204,7 +204,7 @@ for (const { serieClass, name, low, high, wire } of SERIES) {
     const missing = serieClass.null()
     assert.equal(missing.isNull(), true)
     assert.equal(missing.toArray(), null)
-    assert.throws(() => missing.getAt(0))
+    assert.throws(() => missing.valueAt(0))
   })
 
   test(`${name} serie hands back its element scalars`, () => {
@@ -344,14 +344,14 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
     assert.equal(numbers.isEmpty(), false)
     assert.equal(numbers.len(), 3)
     assert.deepEqual(numbers.toArray(), [1.5, 2.5, 3.5])
-    assert.equal(numbers.getAt(0), 1.5)
-    assert.equal(numbers.getAt(2), 3.5)
+    assert.equal(numbers.valueAt(0), 1.5)
+    assert.equal(numbers.valueAt(2), 3.5)
     assert.equal(numbers.scalarAt(2).value(), 3.5)
     assert.equal(numbers.scalarAt(3), null) // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
     assert.equal(numbers.dataType().valueType().name(), name)
-    assert.throws(() => numbers.getAt(3)) // out of bounds
-    assert.throws(() => numbers.getAt(-1), /non-negative index/) // negative, not wrapped
+    assert.throws(() => numbers.valueAt(3)) // out of bounds
+    assert.throws(() => numbers.valueAt(-1), /non-negative index/) // negative, not wrapped
 
     // The empty serie and null are distinct states.
     const empty = new serieClass([])
@@ -362,7 +362,7 @@ for (const { scalarClass, optional, serieClass, name } of FLOATS) {
     const missing = serieClass.null()
     assert.equal(missing.isNull(), true)
     assert.equal(missing.toArray(), null)
-    assert.throws(() => missing.getAt(0))
+    assert.throws(() => missing.valueAt(0))
   })
 
   test(`${name} toJsValue is the general native accessor`, () => {
@@ -418,8 +418,8 @@ test('float16 narrows a number lossily on the wire', () => {
 
   // A serie narrows each element the same way.
   const numbers = new scalar.Float16Serie([0.5, 0.1])
-  assert.equal(numbers.getAt(0), 0.5)
-  assert.ok(Math.abs(numbers.getAt(1) - 0.1) < 1e-3)
+  assert.equal(numbers.valueAt(0), 0.5)
+  assert.ok(Math.abs(numbers.valueAt(1) - 0.1) < 1e-3)
 })
 
 test('string scalar reads text and bytes', () => {

@@ -34,9 +34,9 @@ def main():
     bench("Int64Serie.null()", scalar.Int64Serie.null)
     bench("serie.len()", numbers.len)
     bench("serie.to_pylist() copy-out", numbers.to_pylist)
-    bench("serie.get_at(32)", lambda: numbers.get_at(32))
+    bench("serie.value_at(32)", lambda: numbers.value_at(32))
     bench("serie.scalar_at(32)", lambda: numbers.scalar_at(32))
-    bench("narrow.get_at(32)", lambda: narrow.get_at(32))
+    bench("narrow.value_at(32)", lambda: narrow.value_at(32))
     bench("SerieType().scalar(64 ints)", lambda: serie_type.scalar(ELEMENTS))
     bench("SerieType().native_to_bytes", lambda: serie_type.native_to_bytes(ELEMENTS))
 

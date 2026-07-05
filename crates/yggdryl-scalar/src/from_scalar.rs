@@ -5,7 +5,7 @@ use yggdryl_core::{ByteBuffer, ByteBufferSlice, RawIOBase};
 use yggdryl_dtype::DataError;
 
 /// A native Rust type readable out of any scalar — the trait behind the generic
-/// native accessors such as [`Serie::get_at`](crate::Serie::get_at).
+/// native accessors such as [`Serie::value_at`](crate::Serie::value_at).
 ///
 /// The type parameter picks the target and the read redirects to the matching
 /// `as_*` accessor, inheriting its exact-or-error contract: numbers convert

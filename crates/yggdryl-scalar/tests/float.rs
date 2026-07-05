@@ -191,7 +191,7 @@ fn float16_reads_widen_and_narrow_exact_or_error() {
     // Serie: buffer-backed, decomposes in AnySerie, reads elements widened.
     let weights = Float16Serie::from(vec![f16::from_f32(1.5), f16::from_f32(2.5)]);
     assert_eq!(weights.len(), 2);
-    assert_eq!(weights.get_at::<f32>(1).unwrap(), 2.5);
+    assert_eq!(weights.value_at::<f32>(1).unwrap(), 2.5);
     assert_eq!(weights.scalar_at(0), Some(Float16Scalar::new(half)));
     let column = AnySerie::from(weights.clone());
     assert!(matches!(column, AnySerie::Float16(_)));
@@ -233,12 +233,12 @@ fn serie_borrows_buffers_and_reads_null_aware() {
     let weights = Float64Serie::from(vec![1.5, 2.5, 3.5]);
     assert_eq!(weights.len(), 3);
     assert_eq!(weights.values(), Some(&[1.5, 2.5, 3.5][..]));
-    assert_eq!(weights.get_at::<f64>(1).unwrap(), 2.5);
+    assert_eq!(weights.value_at::<f64>(1).unwrap(), 2.5);
     assert_eq!(weights.scalar_at(2), Some(Float64Scalar::new(3.5)));
     assert_eq!(weights.scalar_at(3), None); // out of bounds
 
     let sparse = Float32Serie::from(vec![Some(1.5f32), None]);
-    assert!(sparse.get_at::<f32>(1).is_err());
+    assert!(sparse.value_at::<f32>(1).is_err());
     assert_eq!(sparse.scalar_at(1), Some(Float32Scalar::null()));
 
     // Empty and null are distinct states.

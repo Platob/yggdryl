@@ -21,7 +21,7 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 /// the assembly once, at construction. [`Value`](Scalar::Value) is the backing `dyn
 /// Array`, and the *scalar accessors* read elements back out:
 /// [`scalar_at`](TypedSerie::scalar_at) redirects one element through the
-/// inner scalar's own `from_arrow`, [`get_at`](TypedSerie::get_at) hands back an
+/// inner scalar's own `from_arrow`, [`value_at`](TypedSerie::value_at) hands back an
 /// element's value as any native Rust target, and [`len`](TypedSerie::len) /
 /// [`is_empty`](TypedSerie::is_empty) describe the sequence.
 /// [`erase`](TypedSerie::erase) drops the static element type to a dynamic
@@ -38,8 +38,8 @@ use yggdryl_dtype::{Serie as _, TypedSerie as _};
 /// assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
 /// assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
 /// assert_eq!(numbers.scalar_at(2), None); // out of bounds
-/// assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
-/// assert!(numbers.get_at::<i64>(1).is_err()); // a null element holds no value
+/// assert_eq!(numbers.value_at::<i64>(0).unwrap(), 1); // the native value, any target
+/// assert!(numbers.value_at::<i64>(1).is_err()); // a null element holds no value
 /// assert_eq!(numbers.data_type().name(), "list");
 ///
 /// // The Arrow round trip shares the buffers — no element is copied.
@@ -125,7 +125,7 @@ impl<D: DataType + Default, S: Scalar<DataType = D>> TypedSerie<D, S> {
     /// A null serie errors with [`DataError::NullValue`], an index past the end
     /// with [`DataError::OutOfBounds`], and a null or non-representable element
     /// with the `as_*` contract's own errors.
-    pub fn get_at<T: crate::FromScalar>(&self, index: usize) -> Result<T, DataError> {
+    pub fn value_at<T: crate::FromScalar>(&self, index: usize) -> Result<T, DataError> {
         let values = self.values.as_ref().ok_or(DataError::NullValue)?;
         let length = values.len();
         if index >= length {

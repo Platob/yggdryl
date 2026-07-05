@@ -524,7 +524,7 @@ The serie scalar is *our array*: `TypedSerie<D, S>` is backed by one zero-copy i
 serie — construction assembles the elements once, `to_arrow_scalar` / `from_arrow`
 are reference-count bumps, and the scalar accessors read elements back out
 (`scalar_at(index)` redirects one element through the inner scalar's own
-`from_arrow`, and the generic native accessor `get_at::<T>(index)` reads an
+`from_arrow`, and the generic native accessor `value_at::<T>(index)` reads an
 element as any native Rust target through the `as_*` contract — `i64` or any
 exactly-representable number for an `int64` element, `Vec<u8>`, `String` or a
 `yggdryl-core` `ByteBufferSlice` for a `binary` element (`FromScalar` names the
@@ -532,7 +532,7 @@ readable targets); `len` / `is_empty` describe the sequence). Every integer type
 also has its concrete serie (`Int8Serie` … `UInt64Serie`), borrowing the raw
 Arrow buffers themselves (a `ScalarBuffer` of native elements plus an optional
 `NullBuffer`): `values()` borrows the whole element buffer as a native slice
-without copying, `get_at::<T>(index)` reads one element null-aware straight from
+without copying, `value_at::<T>(index)` reads one element null-aware straight from
 the buffers, `scalar_at(index)` hands back the element scalar,
 `to_arrow_array()` converts the elements out as the Arrow primitive array around
 the same shared buffers, and `from_io` / `pwrite_io` bridge the elements to any
@@ -663,7 +663,7 @@ type:
     numbers = scalar.Int64Serie([1, 2, 3])
     assert (numbers.is_null(), numbers.is_empty(), numbers.len()) == (False, False, 3)
     assert numbers.to_pylist() == [1, 2, 3]
-    assert numbers.get_at(1) == 2                    # the native value
+    assert numbers.value_at(1) == 2                    # the native value
     assert numbers.scalar_at(2).value() == 3     # ... or the element scalar
     assert numbers.scalar_at(3) is None          # out of bounds
     assert numbers.data_type().name() == "list"
@@ -681,7 +681,7 @@ type:
     const numbers = new scalar.Int64Serie([1n, 2n, 3n])
     assert.deepEqual([numbers.isNull(), numbers.isEmpty(), numbers.len()], [false, false, 3])
     assert.deepEqual(numbers.toArray(), [1n, 2n, 3n])
-    assert.equal(numbers.getAt(1), 2n)                 // the native value
+    assert.equal(numbers.valueAt(1), 2n)                 // the native value
     assert.equal(numbers.scalarAt(2).value(), 3n)   // ... or the element scalar
     assert.equal(numbers.scalarAt(3), null)         // out of bounds
     assert.equal(numbers.dataType().name(), 'list')
@@ -700,7 +700,7 @@ type:
         let numbers = Int64Serie::from(vec![1, 2, 3]);
         assert_eq!((numbers.is_null(), numbers.is_empty(), numbers.len()), (false, false, 3));
         assert_eq!(numbers.values(), Some(&[1, 2, 3][..])); // borrows the Arrow buffer
-        assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2);   // the native value
+        assert_eq!(numbers.value_at::<i64>(1).unwrap(), 2);   // the native value
         assert_eq!(numbers.scalar_at(2), Some(Int64Scalar::new(3))); // the element scalar
         assert_eq!(numbers.data_type().name(), "list");
 
@@ -729,7 +729,7 @@ fn main() {
     // The generic TypedSerie carries per-element nulls and round-trips through Arrow.
     let numbers = TypedSerie::new(vec![Int64Scalar::new(1), Int64Scalar::null()]);
     assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
-    assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1); // the native value, any target
+    assert_eq!(numbers.value_at::<i64>(0).unwrap(), 1); // the native value, any target
     let arrow = numbers.to_arrow_scalar(); // a one-element ListArray sharing the elements
     assert_eq!(TypedSerie::from_arrow(arrow.as_ref()).unwrap(), numbers);
 
@@ -769,7 +769,7 @@ fn main() {
   `to_arrow_array` form, defaulting to `ArrowScalar`; a serie splits them, its
   scalar form a `ListArray` and its array form the element `PrimitiveArray`).
 - **`FromScalar`** — the native Rust targets readable out of any scalar, behind
-  the generic accessors such as `Serie::get_at::<T>`.
+  the generic accessors such as `Serie::value_at::<T>`.
 - **`ScalarFactory<T>: TypedDataType<T>`** — the factory: a typed data type builds
   its scalar. The scalar layer builds on the data types, never the other way
   around, so the "data type → scalar" factory lives here (implemented for every

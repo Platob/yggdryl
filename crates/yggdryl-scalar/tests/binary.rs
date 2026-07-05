@@ -136,9 +136,9 @@ fn binary_composes_with_the_optional_and_list_families() {
     ]);
     assert_eq!(blobs.len(), 2);
     assert_eq!(blobs.scalar_at(0), Some(BinaryScalar::new(vec![1])));
-    assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), vec![1u8]);
+    assert_eq!(blobs.value_at::<Vec<u8>>(0).unwrap(), vec![1u8]);
     assert!(matches!(
-        blobs.get_at::<Vec<u8>>(1),
+        blobs.value_at::<Vec<u8>>(1),
         Err(DataError::NullValue) // a null element holds no value
     ));
     assert_eq!(
@@ -171,9 +171,9 @@ fn binary_reads_as_a_byte_buffer_slice_and_any_charset() {
     // positioned-IO window.
     let blobs =
         TypedSerie::<dtype::BinaryType, BinaryScalar>::new(vec![BinaryScalar::new(b"hi".to_vec())]);
-    assert_eq!(blobs.get_at::<Vec<u8>>(0).unwrap(), b"hi".to_vec());
-    assert_eq!(blobs.get_at::<String>(0).unwrap(), "hi");
-    let window = blobs.get_at::<ByteBufferSlice>(0).unwrap();
+    assert_eq!(blobs.value_at::<Vec<u8>>(0).unwrap(), b"hi".to_vec());
+    assert_eq!(blobs.value_at::<String>(0).unwrap(), "hi");
+    let window = blobs.value_at::<ByteBufferSlice>(0).unwrap();
     assert_eq!(window.byte_size(), 2);
     assert_eq!(window.pread_byte_one(0, Whence::Start).unwrap(), b'h');
 }

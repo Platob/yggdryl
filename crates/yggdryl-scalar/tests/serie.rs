@@ -22,14 +22,14 @@ fn serie_scalar_round_trips_all_shapes() {
     // The scalar accessors read elements back out, as scalars or native values.
     assert_eq!(numbers.scalar_at(0), Some(Int64Scalar::new(1)));
     assert_eq!(numbers.scalar_at(1), Some(Int64Scalar::null()));
-    assert_eq!(numbers.get_at::<i64>(0).unwrap(), 1);
-    assert_eq!(numbers.get_at::<i32>(0).unwrap(), 1); // converted, exact-or-error
+    assert_eq!(numbers.value_at::<i64>(0).unwrap(), 1);
+    assert_eq!(numbers.value_at::<i32>(0).unwrap(), 1); // converted, exact-or-error
     assert!(matches!(
-        numbers.get_at::<i64>(1),
+        numbers.value_at::<i64>(1),
         Err(DataError::NullValue) // a null element holds no value
     ));
     assert!(matches!(
-        numbers.get_at::<i64>(2),
+        numbers.value_at::<i64>(2),
         Err(DataError::OutOfBounds { index: 2, len: 2 })
     ));
 
@@ -74,10 +74,10 @@ macro_rules! int_serie_tests {
                 assert_eq!(numbers.len(), 3);
                 assert_eq!(numbers.values(), Some(&[1, 2, 3][..]));
                 assert_eq!(numbers.value(), Some(&[1, 2, 3][..]));
-                assert_eq!(numbers.get_at::<$native>(0).unwrap(), 1);
-                assert_eq!(numbers.get_at::<i64>(1).unwrap(), 2); // converted target
+                assert_eq!(numbers.value_at::<$native>(0).unwrap(), 1);
+                assert_eq!(numbers.value_at::<i64>(1).unwrap(), 2); // converted target
                 assert!(matches!(
-                    numbers.get_at::<$native>(3),
+                    numbers.value_at::<$native>(3),
                     Err(DataError::OutOfBounds { index: 3, len: 3 })
                 ));
                 assert_eq!(numbers.scalar_at(2), Some($scalar::new(3)));
@@ -103,9 +103,9 @@ macro_rules! int_serie_tests {
 
                 // Per-element nulls are read null-aware; the raw buffer keeps the slots.
                 let sparse = $ty::from(vec![Some(1), None]);
-                assert_eq!(sparse.get_at::<$native>(0).unwrap(), 1);
+                assert_eq!(sparse.value_at::<$native>(0).unwrap(), 1);
                 assert!(matches!(
-                    sparse.get_at::<$native>(1),
+                    sparse.value_at::<$native>(1),
                     Err(DataError::NullValue)
                 ));
                 assert_eq!(sparse.scalar_at(1), Some($scalar::null()));
@@ -221,7 +221,7 @@ macro_rules! int_serie_tests {
                 assert_eq!(missing.values(), None);
                 assert!(missing.to_arrow_array().is_empty()); // null → empty array
                 assert!(matches!(
-                    missing.get_at::<$native>(0),
+                    missing.value_at::<$native>(0),
                     Err(DataError::NullValue)
                 ));
                 assert_eq!(
@@ -248,8 +248,8 @@ macro_rules! int_serie_tests {
 
                 // MIN, 0 and MAX survive the buffer, the IO bridge and Arrow intact.
                 let extremes = $ty::from(vec![<$native>::MIN, 0, <$native>::MAX]);
-                assert_eq!(extremes.get_at::<$native>(0).unwrap(), <$native>::MIN);
-                assert_eq!(extremes.get_at::<$native>(2).unwrap(), <$native>::MAX);
+                assert_eq!(extremes.value_at::<$native>(0).unwrap(), <$native>::MIN);
+                assert_eq!(extremes.value_at::<$native>(2).unwrap(), <$native>::MAX);
 
                 let mut buffer = ByteBuffer::new();
                 extremes.pwrite_io(&mut buffer, 0, Whence::Start).unwrap();
@@ -293,9 +293,12 @@ fn serie_from_a_sliced_arrow_row_keeps_the_window() {
     let row = rows.slice(1, 1);
     let serie = Int32Serie::from_arrow(&row).unwrap();
     assert_eq!(serie.len(), 3);
-    assert_eq!(serie.get_at::<i32>(0).unwrap(), 3);
-    assert!(matches!(serie.get_at::<i32>(1), Err(DataError::NullValue)));
-    assert_eq!(serie.get_at::<i32>(2).unwrap(), 5);
+    assert_eq!(serie.value_at::<i32>(0).unwrap(), 3);
+    assert!(matches!(
+        serie.value_at::<i32>(1),
+        Err(DataError::NullValue)
+    ));
+    assert_eq!(serie.value_at::<i32>(2).unwrap(), 5);
     assert_eq!(serie, Int32Serie::from(vec![Some(3), None, Some(5)]));
 
     // Shared, not copied: the serie's buffer is the original child buffer,
@@ -318,17 +321,17 @@ fn narrowing_reads_are_exact_or_error() {
     // A converted read follows the element scalar's exact-or-error contract.
     let huge = UInt64Serie::from(vec![u64::MAX]);
     assert!(matches!(
-        huge.get_at::<i64>(0),
+        huge.value_at::<i64>(0),
         Err(DataError::InexactConversion { .. })
     ));
-    assert_eq!(huge.get_at::<u64>(0).unwrap(), u64::MAX);
+    assert_eq!(huge.value_at::<u64>(0).unwrap(), u64::MAX);
 
     let negative = Int8Serie::from(vec![-1]);
     assert!(matches!(
-        negative.get_at::<u64>(0),
+        negative.value_at::<u64>(0),
         Err(DataError::InexactConversion { .. })
     ));
-    assert_eq!(negative.get_at::<i64>(0).unwrap(), -1);
+    assert_eq!(negative.value_at::<i64>(0).unwrap(), -1);
 }
 
 #[test]
