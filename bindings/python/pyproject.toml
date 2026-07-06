@@ -4,7 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "yggdryl"
-version = "0.1.0"
+# The workspace `[workspace.package].version` (root Cargo.toml) is the single
+# source of truth; `version.workspace = true` in this crate's Cargo.toml feeds it,
+# and maturin fills the wheel version from there because it is declared dynamic.
+dynamic = ["version"]
 description = "yggdryl — a Rust-core library, exposed to Python"
 readme = "README.md"
 requires-python = ">=3.7"
