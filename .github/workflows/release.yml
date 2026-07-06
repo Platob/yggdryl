@@ -141,9 +141,6 @@ jobs:
       - name: cargo publish
         run: |
           cargo publish -p yggdryl-core
-          cargo publish -p yggdryl-dtype
-          cargo publish -p yggdryl-field
-          cargo publish -p yggdryl-scalar
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

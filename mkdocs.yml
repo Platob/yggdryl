@@ -41,9 +41,3 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Positioned I/O: io.md
-  - Charset: charset.md
-  - Serialization: base.md
-  - Data types: dtype.md
-  - Fields: field.md
-  - Scalars: scalar.md

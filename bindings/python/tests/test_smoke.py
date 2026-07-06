@@ -12,4 +12,4 @@ def test_core_version():
 def test_core_hello(capfd):
     assert core.hello() is None
     out, _ = capfd.readouterr()
-    assert "Hello from yggdryl" in out
+    assert "Hello, world!" in out

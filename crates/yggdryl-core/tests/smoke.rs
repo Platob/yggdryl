@@ -1,4 +1,4 @@
-//! Smoke test for the `yggdryl-core` scaffold.
+//! Smoke test for the `yggdryl-core` hello-world skeleton.
 
 use yggdryl_core::{hello, version};
 

@@ -1,7 +1,7 @@
 {
   "name": "yggdryl",
   "version": "0.1.1",
-  "description": "yggdryl — a Rust-core URI/URL library, exposed to Node.js",
+  "description": "yggdryl — a Rust-core library, exposed to Node.js",
   "main": "index.js",
   "types": "index.d.ts",
   "license": "Apache-2.0",
@@ -11,11 +11,10 @@
   },
   "homepage": "https://github.com/Platob/yggdryl",
   "keywords": [
-    "uri",
-    "url",
-    "parser",
     "rust",
     "napi",
+    "node",
+    "ffi",
     "yggdryl"
   ],
   "napi": {
@@ -34,8 +33,7 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "test": "node --test",
-    "bench": "node bench/dtype.bench.js && node bench/field.bench.js && node bench/scalar.bench.js"
+    "test": "node --test"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
