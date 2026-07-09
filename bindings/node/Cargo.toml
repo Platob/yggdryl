@@ -1,0 +1,28 @@
+[package]
+name = "yggdryl-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Node.js extension for yggdryl, backed by the Rust core"
+publish = false
+
+[lib]
+# Leave the lib name as the default (`yggdryl_node`) so the napi CLI finds the
+# compiled artifact; the import name (`yggdryl`) comes from `napi.name` in
+# package.json, which produces `yggdryl.<triple>.node`.
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# The dependency-light Rust core; all logic lives here. `gzip-zlib-ng` swaps in the
+# SIMD-optimised zlib-ng backend so the shipped addon out-runs Node's `zlib` (stock
+# C zlib). Needs CMake + Ninja at build time — see `scripts/setup-build-deps.py`.
+yggdryl-core = { workspace = true, features = ["gzip-zlib-ng"] }
+napi = { version = "2", default-features = false, features = ["napi8"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"

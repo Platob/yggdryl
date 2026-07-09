@@ -1,0 +1,53 @@
+[package]
+name = "yggdryl-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Dependency-light foundations for yggdryl"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_core"
+path = "src/lib.rs"
+
+[features]
+# The gzip compression codec. On by default so the standard build ships it;
+# disable with `--no-default-features` to drop `flate2` and leave only the
+# codec/compression traits.
+default = ["gzip", "zstd"]
+gzip = ["dep:flate2"]
+# Swap flate2's backend to zlib-ng — a SIMD-optimised zlib, typically faster than
+# the stock C zlib that Python/Node link. Needs a C toolchain + CMake at build time
+# (see `scripts/setup-build-deps.py`); the native bindings enable it.
+gzip-zlib-ng = ["gzip", "flate2/zlib-ng"]
+# The zstd compression codec. On by default; `zstd` bundles libzstd and builds it
+# via `cc`, so a C compiler is required (CMake is not).
+zstd = ["dep:zstd"]
+
+[dependencies]
+# gzip/deflate backend; optional so it is compiled only when the `gzip` feature
+# is enabled (see `[features]`).
+flate2 = { workspace = true, optional = true }
+# zstd backend; optional, enabled by the `zstd` feature.
+zstd = { workspace = true, optional = true }
+# Apache Arrow's buffer subset — the core's data holder (`Buffer` / `MutableBuffer` /
+# `ScalarBuffer` / `BooleanBuffer` / `i256`). Not optional: `ByteBuffer`, the typed
+# buffers, and the wide-integer types are Arrow-backed for straight zero-copy access.
+arrow-buffer = { workspace = true }
+
+# Dependency-free throughput benches (`harness = false`, their own `main`).
+[[bench]]
+name = "compression"
+harness = false
+
+[[bench]]
+name = "io"
+harness = false
+
+[[bench]]
+name = "buffer"
+harness = false

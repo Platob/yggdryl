@@ -1,0 +1,46 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "yggdryl"
+# The workspace `[workspace.package].version` (root Cargo.toml) is the single
+# source of truth; `version.workspace = true` in this crate's Cargo.toml feeds it,
+# and maturin fills the wheel version from there because it is declared dynamic.
+dynamic = ["version"]
+description = "yggdryl — a Rust-core library, exposed to Python"
+readme = "README.md"
+requires-python = ">=3.7"
+license = { text = "Apache-2.0" }
+authors = [{ name = "yggdryl contributors" }]
+keywords = ["rust", "python", "ffi", "yggdryl"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+[project.urls]
+Homepage = "https://github.com/Platob/yggdryl"
+Documentation = "https://platob.github.io/yggdryl/"
+Repository = "https://github.com/Platob/yggdryl"
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+# `twine` is the recommended uploader; `maturin upload` is deprecated. `twine`
+# dropped Python 3.7, so gate it on 3.8+ (the marker keeps the wheel's own
+# `requires-python = ">=3.7"` resolvable — the publish extra is empty on 3.7).
+publish = ["twine>=5.0; python_version >= '3.8'"]
+
+[tool.maturin]
+# Build the crate in this directory and name the wheel `yggdryl`.
+manifest-path = "Cargo.toml"
+module-name = "yggdryl"
+strip = true

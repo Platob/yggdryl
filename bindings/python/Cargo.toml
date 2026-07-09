@@ -1,0 +1,32 @@
+[package]
+name = "yggdryl-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Python extension for yggdryl, backed by the Rust core"
+publish = false
+
+[lib]
+# The compiled artifact is imported from Python as `yggdryl`.
+name = "yggdryl"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# The dependency-light Rust core; all logic lives here. `gzip-zlib-ng` swaps in the
+# SIMD-optimised zlib-ng backend so the shipped extension out-runs Python's stdlib
+# `gzip` (stock C zlib). Needs CMake + Ninja at build time — see
+# `scripts/setup-build-deps.py`.
+yggdryl-core = { workspace = true, features = ["gzip-zlib-ng"] }
+
+[dependencies.pyo3]
+version = "0.22"
+# `abi3-py37` builds against the stable ABI (the limited API), so a single wheel
+# (`cp37-abi3`) is forward-compatible with every CPython from 3.7 up — one build
+# per OS/arch instead of one per interpreter version.
+# `multiple-pymethods` lets the typed IO accessors be generated into their own
+# `#[pymethods]` block (macros are not allowed inside a single block).
+features = ["extension-module", "abi3-py37", "multiple-pymethods"]

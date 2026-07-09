@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/yggdryl-core",
+    "bindings/python",
+    "bindings/node",
+]
+# `cargo build` / `cargo test` with no args only touches the pure-Rust core.
+# The Python and Node bindings are built through their own toolchains
+# (maturin / napi) so the default workflow never needs Python or Node headers.
+default-members = ["crates/yggdryl-core"]
+
+[workspace.package]
+version = "0.1.1"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["yggdryl contributors"]
+repository = "https://github.com/Platob/yggdryl"
+homepage = "https://github.com/Platob/yggdryl"
+documentation = "https://platob.github.io/yggdryl/"
+description = "yggdryl — a Rust-core library with Python and Node extensions"
+keywords = ["rust", "ffi", "python", "node", "yggdryl"]
+
+[workspace.dependencies]
+yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
+# gzip/deflate backend for the `gzip` compression codec; pulled in only by the
+# crates that enable the corresponding cargo feature.
+flate2 = "1.0"
+# zstd backend for the `zstd` compression codec (bundles libzstd, built via `cc`).
+zstd = "0.13"
+# Apache Arrow's buffer subset (only), for the opt-in `arrow` zero-copy interop.
+# Never the full `arrow` umbrella (see CLAUDE.md).
+arrow-buffer = "55"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
