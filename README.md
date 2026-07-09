@@ -1,18 +1,111 @@
 # yggdryl
 
-> **Project status: rebuilding.** The old implementation was removed and the
-> project is being rebuilt around an **Arrow-centralized** design. The foundational
-> `codec` and `compression` layers have landed; more follows, guided by the
-> contributor rules in `CLAUDE.md`.
-
-A Rust-core library with Python and Node.js extensions.
+A Rust-core library with Python and Node.js extensions, built around an
+**Apache Arrow-centralized** data model. All logic lives in the Rust core; the
+bindings are thin wrappers, so the three languages behave identically. The `codec`,
+`compression`, `io`, `buffer`, and wide-integer layers are in place, guided by the
+contributor rules in `CLAUDE.md`.
 
 📖 **Documentation: <https://platob.github.io/yggdryl/>**
 
+## Usage
+
+A few of the main examples; see the [documentation](https://platob.github.io/yggdryl/)
+for the full surface. The Python and Node bindings mirror the Rust core
+method-for-method.
+
+### Compression — gzip / zstd
+
+```python
+# Python
+from yggdryl import compression
+
+gzip = compression.Gzip()                    # level 6 by default; Zstd() is level 3
+packed = gzip.encode_byte_array(b"the quick brown fox" * 8)
+assert gzip.decode_byte_array(packed) == b"the quick brown fox" * 8
+```
+
+```js
+// Node
+const { compression } = require('yggdryl')
+
+const gzip = new compression.Gzip()          // level 6 by default
+const packed = gzip.encodeByteArray(Buffer.from('the quick brown fox'.repeat(8)))
+console.assert(gzip.decodeByteArray(packed).equals(Buffer.from('the quick brown fox'.repeat(8))))
+```
+
+```rust
+// Rust
+use yggdryl_core::{Decoder, Encoder, Gzip};
+
+let gzip = Gzip::default();                   // level 6 by default
+let data = b"the quick brown fox".repeat(8);
+let packed = gzip.encode_byte_array(&data).unwrap();
+assert_eq!(gzip.decode_byte_array(&packed).unwrap(), data);
+```
+
+### Typed buffers
+
+```python
+# Python
+from yggdryl.buffer import I32Buffer
+
+buf = I32Buffer([10, 20, 30])
+assert buf.get(1) == 20 and len(buf) == 3
+assert I32Buffer.deserialize_bytes(buf.serialize_bytes()) == buf   # byte round-trip
+```
+
+```js
+// Node
+const { I32Buffer } = require('yggdryl').buffer
+
+const buf = new I32Buffer([10, 20, 30])
+console.assert(buf.get(1) === 20 && Number(buf.length) === 3)
+console.assert(I32Buffer.deserializeBytes(buf.serializeBytes()).equals(buf))
+```
+
+```rust
+// Rust
+use yggdryl_core::I32Buffer;
+
+let buf = I32Buffer::from_slice(&[10, 20, 30]);
+assert_eq!(buf.get(1), Some(20));
+assert_eq!(I32Buffer::deserialize_bytes(&buf.serialize_bytes()).unwrap(), buf);
+```
+
+### Positioned byte IO
+
+```python
+# Python
+from yggdryl.io import ByteBuffer, Whence
+
+cursor = ByteBuffer(b"hello world").byte_cursor()
+assert cursor.pread_byte_array(5) == b"hello"                 # reads at 0, advances to 5
+assert cursor.pread_byte_array(6, Whence.Current) == b" world"
+```
+
+```js
+// Node
+const { ByteBuffer, Whence } = require('yggdryl').io
+
+const cursor = new ByteBuffer(Buffer.from('hello world')).byteCursor()
+console.assert(cursor.preadByteArray(5).equals(Buffer.from('hello')))
+console.assert(cursor.preadByteArray(6, Whence.Current).equals(Buffer.from(' world')))
+```
+
+```rust
+// Rust
+use yggdryl_core::{ByteBuffer, IOBase, Whence};
+
+let mut cursor = ByteBuffer::from_bytes(b"hello world").byte_cursor();
+assert_eq!(cursor.pread_byte_array(5, Whence::Start).unwrap(), b"hello");
+assert_eq!(cursor.pread_byte_array(6, Whence::Current).unwrap(), b" world");
+```
+
 ## Layout
 
-- `crates/yggdryl-core` — the Rust core foundations (the `codec`, `compression`, and
-  `io` layers so far).
+- `crates/yggdryl-core` — the Rust core foundations (the `codec`, `compression`, `io`,
+  `buffer`, and wide-integer layers so far).
 - `bindings/python` — the Python extension (PyO3 / maturin).
 - `bindings/node` — the Node.js extension (napi-rs).
 
@@ -76,8 +169,8 @@ first — a debug build is ~20× slower.
 
 ```bash
 cargo bench -p yggdryl-core                                   # Rust core
-(cd bindings/python && maturin develop --release) && \
-  python bindings/python/benchmarks/bench_compression.py       # Python vs stdlib gzip
+(cd bindings/python && uv run maturin develop --release) && \
+  uv run python bindings/python/benchmarks/bench_compression.py # Python vs stdlib gzip
 (cd bindings/node && npm run build) && npm --prefix bindings/node run bench  # Node vs zlib
 ```
 
@@ -91,9 +184,9 @@ Run the full gate (formatting, lints, tests across all three surfaces, and — w
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test
-(cd bindings/python && maturin develop && pytest)
+(cd bindings/python && uv run maturin develop && uv run pytest)
 (cd bindings/node && npm run build && npm test)
-mkdocs build --strict       # when docs/ or mkdocs.yml changed
+uv run mkdocs build --strict  # when docs/ or mkdocs.yml changed
 ```
 
 ## License

@@ -1,23 +1,19 @@
 # yggdryl
 
-!!! warning "Project status: rebuilding"
-    yggdryl is being rebuilt around an **Apache Arrow-centralized** data model. The
-    previous implementation was removed; only the hello-world skeleton remains. This
-    site grows as the workspace does.
-
 A **Rust-core** library with **Python** and **Node.js** extensions. All logic lives
 in the Rust crates; the bindings are thin wrappers, so the three languages behave
 identically. Functionality is grouped into namespaces mirroring `yggdryl-core`:
 `core` (the foundations), [`compression`](compression.md) (codecs like gzip),
 [`io`](io.md) (positioned byte buffers), and [`buffer`](buffer.md) (typed
-native-type buffers).
+native-type buffers), plus the [wide integers](wide_ints.md) (`i96` / `i128` /
+`i256`) that ride the IO cursors.
 
 ## Install
 
 === "Python"
 
     ```bash
-    pip install yggdryl
+    uv pip install yggdryl
     ```
 
 === "Node"

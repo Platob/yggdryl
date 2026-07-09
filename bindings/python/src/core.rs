@@ -1,7 +1,7 @@
 //! The `yggdryl.core` submodule — thin wrappers over the `yggdryl-core` crate.
 //!
-//! It currently exposes the hello-world entry points; more surface is added here as
-//! the core crate grows.
+//! It exposes the crate's `version` / `hello` entry points; the other `yggdryl-core`
+//! modules surface as their own sibling submodules (`compression`, `io`, `buffer`).
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;

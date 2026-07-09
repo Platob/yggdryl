@@ -34,7 +34,7 @@ with `decode_byte_array`.
     The Python and Node extensions build with the **`gzip-zlib-ng`** feature — a
     SIMD-optimised zlib-ng backend that is **~5.6× faster than stdlib gzip / zlib on
     level-6 encode** (the default). It needs CMake + Ninja at build time; run
-    `python scripts/setup-build-deps.py`. Pure-Rust builds default to the
+    `uv run python scripts/setup-build-deps.py`. Pure-Rust builds default to the
     toolchain-free `miniz_oxide` backend. See the
     [benchmark report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/compression/gzip.md).
 
@@ -255,8 +255,8 @@ slower and the numbers are meaningless.
 === "Python"
 
     ```bash
-    (cd bindings/python && maturin develop --release)
-    python bindings/python/benchmarks/bench_compression.py
+    (cd bindings/python && uv run maturin develop --release)
+    uv run python bindings/python/benchmarks/bench_compression.py
     ```
 
 === "Node"

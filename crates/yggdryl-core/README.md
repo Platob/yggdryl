@@ -1,13 +1,10 @@
 # yggdryl-core
 
-The Rust core foundations of **yggdryl**.
+The Rust core foundations of **yggdryl**, built around an Apache Arrow-centralized
+design.
 
-> **Project reset.** The implementation was removed and is being rebuilt around an
-> Apache Arrow-centralized design. Only the hello-world skeleton and the contributor
-> rules (`CLAUDE.md` at the repository root) remain.
-
-Alongside the clean-slate `hello` / `version` entry points, the crate hosts the
-`codec` foundations and the `compression` specialisation:
+Alongside the `hello` / `version` entry points, the crate hosts the `codec`
+foundations and the `compression` specialisation:
 
 ```rust
 use yggdryl_core::{Decoder, Encoder, Gzip};
@@ -33,12 +30,15 @@ fn main() {
 - **`buffer`** — immutable, cheaply-shared typed buffers for the native primitives
   (`I8Buffer` … `F64Buffer`) plus the bit-packed `BooleanBuffer`, round-tripping
   through little-endian bytes and wrapping the matching Arrow buffer zero-copy.
+- **`int`** — the wide signed integers `i96` / `i256` (flanking native `i128`, `i256`
+  being Arrow's own), with full arithmetic and a little-endian byte round-trip, so a
+  typed cursor reads and writes them.
 
 The codec/compression traits are Rust-only (generics and marker traits do not
 cross the FFI boundary); the Python and Node bindings expose the concrete codecs.
 
-Add further foundational types here as the design lands — one module per concern,
-each re-exported at the crate root — following the rules in `CLAUDE.md`.
+Add further foundational types here as they land — one module per concern, each
+re-exported at the crate root — following the rules in `CLAUDE.md`.
 
 [`Encoder`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/trait.Encoder.html
 [`Decoder`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/trait.Decoder.html

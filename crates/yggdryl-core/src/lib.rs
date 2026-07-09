@@ -3,14 +3,14 @@
 //! The dependency-light foundation crate for yggdryl, on which every other crate
 //! and binding builds.
 //!
-//! The project is being rebuilt around an **Apache Arrow-centralized** data model.
+//! The crate is built around an **Apache Arrow-centralized** data model.
 //! Alongside the minimal [`hello`] / [`version`] entry points it hosts the
 //! [`codec`] foundations ([`Encoder`] / [`Decoder`] and their element-generic
 //! [`TypedEncoder`] / [`TypedDecoder`] extensions), the [`compression`]
 //! specialisation ([`Compression`] and the concrete [`Gzip`] codec), the
 //! [`io`] positioned byte-IO contracts ([`IOBase`] / [`TypedIOBase`]), and the
 //! [`buffer`] typed native-type buffers ([`I64Buffer`] … [`BooleanBuffer`]). Add
-//! further foundational types here as the design lands, one module per concern, each
+//! further foundational types here as they land, one module per concern, each
 //! re-exported at the crate root, following the rules in `CLAUDE.md`.
 
 pub mod buffer;

@@ -1,7 +1,7 @@
 //! The `yggdryl.core` namespace — thin wrappers over the `yggdryl-core` crate.
 //!
-//! It currently exposes the hello-world entry points; more surface is added here as
-//! the core crate grows.
+//! It exposes the crate's `version` / `hello` entry points; the other `yggdryl-core`
+//! modules surface as their own sibling namespaces (`compression`, `io`, `buffer`).
 
 use napi_derive::napi;
 

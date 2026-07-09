@@ -1,7 +1,6 @@
 # yggdryl — contributor & agent instructions
 
-> **Project status: rebuilding.** The old implementation was removed; the project is
-> being rebuilt around an **Apache Arrow-centralized** data model, one workspace
+> yggdryl is built around an **Apache Arrow-centralized** data model, one workspace
 > crate per layer, targeting dataframe-style workloads. This file holds only the
 > **cross-cutting rules**; each crate documents its own design (type shapes, naming,
 > API surface) in its module doc comments and README, so this file stays small as
