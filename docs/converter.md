@@ -208,5 +208,15 @@ assert_eq!(IdentityConverter::<i64>::new().encode(42).unwrap(), 42);
 assert_eq!(BytesConverter::<i32>::new().encode(1).unwrap(), vec![1, 0, 0, 0]);
 ```
 
+## Benchmarks
+
+Numeric cast, flexible parse, and render have throughput benchmarks in all three
+surfaces (`cargo bench -p yggdryl-core --bench converter`;
+`bindings/*/…/converter.*`). The **bulk byte-level `cast` is the fast path** — one FFI
+crossing widens a whole buffer, ~11.6× (Python) / ~53.8× (Node) over the engines'
+element-wise typed-array widening — while per-scalar `parse` / `format` trail the
+native built-ins, so **batch through bytes** for bulk data. See the
+[report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/codec/converter.md).
+
 [`IdentityConverter<T>`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.IdentityConverter.html
 [`BytesConverter<T>`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.BytesConverter.html
