@@ -52,6 +52,12 @@ test('convert numeric scalars', () => {
   assert.equal(converter.convert(-1n, 'i64', 'i64'), -1n)
 })
 
+test('convert rejects out-of-range / fractional input (matches Python strictness)', () => {
+  assert.throws(() => converter.convert(300, 'i8', 'i16'), /range for i8/) // 300 > i8 max
+  assert.throws(() => converter.convert(3.5, 'i8', 'i16'), /not an integer/) // fractional
+  assert.throws(() => converter.format(3.5, 'i8'), /not an integer/)
+})
+
 test('parse failure is guided', () => {
   assert.throws(() => converter.parse('twelve', 'i32'), /0x-hex/)
   assert.throws(() => converter.parse('-1', 'u8'))

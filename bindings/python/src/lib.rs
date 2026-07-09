@@ -7,7 +7,9 @@
 //! buffers), all mirroring `yggdryl-core`, plus `yggdryl.infer` (a binding-only
 //! convenience that reads a value's runtime type and builds the matching buffer —
 //! `CLAUDE.md` rule 13, so it has no core counterpart) and `yggdryl.converter` (a
-//! dtype-keyed facade over the core representation converters). More
+//! dtype-keyed facade over the core's `codec::converter`, surfaced flat — as
+//! `compression` surfaces the core codec — so the `codec` grouping stays Rust-only).
+//! More
 //! submodules are added here as the crate tree grows. The wrappers are thin: all
 //! logic lives in the Rust crates, so the Python and Node bindings behave
 //! identically.

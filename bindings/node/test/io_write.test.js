@@ -51,7 +51,12 @@ test('write mixed array rejected', () => {
   assert.throws(() => c.write([1n, 2.5]), /mixed/)
 })
 
-test('write boolean array rejected', () => {
+test('write boolean array points at BooleanBuffer (matches Python)', () => {
   const c = new ByteBuffer().byteCursor()
-  assert.throws(() => c.write([true, false]), /cannot infer/)
+  assert.throws(() => c.write([true, false]), /BooleanBuffer/)
+})
+
+test('write rejects out-of-range bigint (no silent truncation)', () => {
+  const c = new ByteBuffer().byteCursor()
+  assert.throws(() => c.write([2n ** 64n]), /signed 64-bit range/)
 })

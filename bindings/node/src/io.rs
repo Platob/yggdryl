@@ -373,10 +373,18 @@ impl ByteCursor {
                         for item in items {
                             if item.get_type()? != ValueType::BigInt {
                                 return Err(napi::Error::from_reason(
-                                    "cannot write a mixed array; every element must be a bigint",
+                                    "cannot write a mixed array; every element must be a bigint \
+                                     in the signed 64-bit range",
                                 ));
                             }
-                            values.push(unsafe { item.cast::<JsBigInt>() }.get_i64()?.0);
+                            let (value, lossless) = unsafe { item.cast::<JsBigInt>() }.get_i64()?;
+                            if !lossless {
+                                return Err(napi::Error::from_reason(
+                                    "cannot write a bigint outside the signed 64-bit range; \
+                                     use raw bytes or an explicit typed cursor",
+                                ));
+                            }
+                            values.push(value);
                         }
                         self.inner.pwrite_i64_array(&values, w).map_err(to_error)?;
                         Ok((values.len() * 8) as i64)
@@ -394,9 +402,14 @@ impl ByteCursor {
                         self.inner.pwrite_f64_array(&values, w).map_err(to_error)?;
                         Ok((values.len() * 8) as i64)
                     }
-                    _ => Err(napi::Error::from_reason(
-                        "cannot infer a write; supported: Buffer, string, bigint[], number[]",
+                    ValueType::Boolean => Err(napi::Error::from_reason(
+                        "cannot infer a write for an array of boolean; write a Buffer, \
+                         or pack them with yggdryl.buffer.BooleanBuffer",
                     )),
+                    other => Err(napi::Error::from_reason(format!(
+                        "cannot infer a write from a {other:?} element; supported element \
+                         arrays are bigint[] and number[] (or pass a Buffer / string)"
+                    ))),
                 }
             }
         }

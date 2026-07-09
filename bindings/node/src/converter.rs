@@ -47,6 +47,19 @@ fn as_bigint(value: Either<f64, BigInt>) -> napi::Result<BigInt> {
     }
 }
 
+/// Extracts an integer `number` that must be whole and within `min..=max` for the
+/// small-int dtypes — rejecting out-of-range or fractional values, so Node matches
+/// Python's strict `int` extraction instead of silently saturating/truncating.
+fn as_int(value: Either<f64, BigInt>, min: f64, max: f64, name: &str) -> napi::Result<f64> {
+    let number = as_number(value)?;
+    if !number.is_finite() || number.fract() != 0.0 || number < min || number > max {
+        return Err(error_msg(&format!(
+            "value {number} is not an integer within range for {name} ({min}..={max})"
+        )));
+    }
+    Ok(number)
+}
+
 /// Decodes exactly-`width` little-endian `bytes` into the JS scalar for `pt`.
 fn scalar_to_js(pt: PrimitiveType, bytes: &[u8]) -> napi::Result<Either<f64, BigInt>> {
     Ok(match pt {
@@ -67,12 +80,18 @@ fn scalar_to_js(pt: PrimitiveType, bytes: &[u8]) -> napi::Result<Either<f64, Big
 /// Extracts a JS scalar as the `pt` element and returns its little-endian bytes.
 fn scalar_from_js(pt: PrimitiveType, value: Either<f64, BigInt>) -> napi::Result<Vec<u8>> {
     Ok(match pt {
-        PrimitiveType::I8 => (as_number(value)? as i8).to_le_vec(),
-        PrimitiveType::I16 => (as_number(value)? as i16).to_le_vec(),
-        PrimitiveType::I32 => (as_number(value)? as i32).to_le_vec(),
-        PrimitiveType::U8 => (as_number(value)? as u8).to_le_vec(),
-        PrimitiveType::U16 => (as_number(value)? as u16).to_le_vec(),
-        PrimitiveType::U32 => (as_number(value)? as u32).to_le_vec(),
+        PrimitiveType::I8 => {
+            (as_int(value, f64::from(i8::MIN), f64::from(i8::MAX), "i8")? as i8).to_le_vec()
+        }
+        PrimitiveType::I16 => {
+            (as_int(value, f64::from(i16::MIN), f64::from(i16::MAX), "i16")? as i16).to_le_vec()
+        }
+        PrimitiveType::I32 => {
+            (as_int(value, f64::from(i32::MIN), f64::from(i32::MAX), "i32")? as i32).to_le_vec()
+        }
+        PrimitiveType::U8 => (as_int(value, 0.0, f64::from(u8::MAX), "u8")? as u8).to_le_vec(),
+        PrimitiveType::U16 => (as_int(value, 0.0, f64::from(u16::MAX), "u16")? as u16).to_le_vec(),
+        PrimitiveType::U32 => (as_int(value, 0.0, f64::from(u32::MAX), "u32")? as u32).to_le_vec(),
         PrimitiveType::F32 => (as_number(value)? as f32).to_le_vec(),
         PrimitiveType::F64 => as_number(value)?.to_le_vec(),
         PrimitiveType::I64 => as_bigint(value)?.get_i64().0.to_le_vec(),

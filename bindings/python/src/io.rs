@@ -389,9 +389,11 @@ impl ByteCursor {
             return Ok(values.len() * 8);
         }
         if first.is_instance_of::<PyFloat>() {
-            let values: Vec<f64> = data
-                .extract()
-                .map_err(|_| PyValueError::new_err("cannot write a mixed float sequence"))?;
+            let values: Vec<f64> = data.extract().map_err(|_| {
+                PyValueError::new_err(
+                    "cannot write a mixed float sequence; every element must be a float",
+                )
+            })?;
             self.inner
                 .pwrite_f64_array(&values, whence.into())
                 .map_err(io_err)?;

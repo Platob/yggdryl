@@ -57,6 +57,13 @@ def test_convert_numeric_scalars():
     assert isinstance(converter.convert(5, "i32", "f64"), float)
 
 
+def test_convert_rejects_out_of_range_input():
+    # The from-dtype extraction is strict: the value must fit that dtype (parity
+    # with Node's checked extraction).
+    with pytest.raises((ValueError, OverflowError)):
+        converter.convert(300, "i8", "i16")  # 300 does not fit i8
+
+
 def test_parse_failure_is_guided():
     with pytest.raises(ValueError, match="0x-hex"):
         converter.parse("twelve", "i32")
