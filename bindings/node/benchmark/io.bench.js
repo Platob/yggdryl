@@ -65,6 +65,20 @@ function main() {
     )
   }
 
+  // Overhead check: the type-inferring write() should match pwriteByteArray on the
+  // Buffer fast path (ratio ~1.0).
+  const yggWriteInferred = () => {
+    const cursor = ByteBuffer.withByteCapacity(SIZE).byteCursor()
+    for (let pos = 0; pos < SIZE; pos += CHUNK) {
+      cursor.write(DATA.subarray(pos, Math.min(pos + CHUNK, SIZE)), Whence.Current)
+    }
+  }
+  const inferred = throughputMbS(SIZE, ITERS, yggWriteInferred)
+  const explicit = throughputMbS(SIZE, ITERS, yggWrite)
+  console.log(
+    `  write() inferred ${inferred.toFixed(1)} MB/s   pwriteByteArray ${explicit.toFixed(1)} MB/s   ${(inferred / explicit).toFixed(2)}x (overhead)`,
+  )
+
   console.log('\nTypedCursor<i64> vs BigInt64Array:')
   const count = SIZE / 8
   const values = Array.from({ length: count }, (_, i) => i) // JS numbers (i64 <-> number)

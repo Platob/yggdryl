@@ -17,9 +17,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyByteArray, PyBytes, PyDict};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PySequence, PyString};
 
 use yggdryl_core::{IOBase, IOCursor, IOSlice, IoPrimitive, TypedIOBase};
 
@@ -333,6 +333,75 @@ impl ByteCursor {
         self.inner
             .pwrite_byte_array(data, whence.into())
             .map_err(io_err)
+    }
+
+    /// Writes `data`, **inferring** its type and redirecting to the optimal write:
+    /// a bytes-like object (`bytes` / `bytearray`) writes raw bytes, a `str` writes
+    /// its UTF-8, a sequence of `int` writes little-endian `i64`, and a sequence of
+    /// `float` writes little-endian `f64`. Returns the number of **bytes** written.
+    /// For a specific width use the explicit `pwrite_*` methods.
+    #[pyo3(signature = (data, whence = Whence::Start))]
+    fn write(&mut self, data: &Bound<'_, PyAny>, whence: Whence) -> PyResult<usize> {
+        if let Ok(bytes) = data.downcast::<PyBytes>() {
+            return self
+                .inner
+                .pwrite_byte_array(bytes.as_bytes(), whence.into())
+                .map_err(io_err);
+        }
+        if let Ok(array) = data.downcast::<PyByteArray>() {
+            return self
+                .inner
+                .pwrite_byte_array(&array.to_vec(), whence.into())
+                .map_err(io_err);
+        }
+        if let Ok(text) = data.downcast::<PyString>() {
+            return self
+                .inner
+                .pwrite_byte_array(text.to_string_lossy().as_bytes(), whence.into())
+                .map_err(io_err);
+        }
+        let sequence = data.downcast::<PySequence>().map_err(|_| {
+            PyTypeError::new_err(
+                "write expects bytes, str, or a sequence of int/float; \
+                 use an explicit pwrite_* method for a specific element width",
+            )
+        })?;
+        if sequence.len()? == 0 {
+            return Ok(0);
+        }
+        let first = sequence.get_item(0)?;
+        if first.is_instance_of::<PyBool>() {
+            return Err(PyValueError::new_err(
+                "cannot infer a write for a sequence of bool; write bytes, \
+                 or pack them with yggdryl.buffer.BooleanBuffer",
+            ));
+        }
+        if first.is_instance_of::<PyInt>() {
+            let values: Vec<i64> = data.extract().map_err(|_| {
+                PyValueError::new_err(
+                    "cannot write a mixed/out-of-range int sequence; every element must \
+                     be an int in the signed 64-bit range",
+                )
+            })?;
+            self.inner
+                .pwrite_i64_array(&values, whence.into())
+                .map_err(io_err)?;
+            return Ok(values.len() * 8);
+        }
+        if first.is_instance_of::<PyFloat>() {
+            let values: Vec<f64> = data
+                .extract()
+                .map_err(|_| PyValueError::new_err("cannot write a mixed float sequence"))?;
+            self.inner
+                .pwrite_f64_array(&values, whence.into())
+                .map_err(io_err)?;
+            return Ok(values.len() * 8);
+        }
+        let shown = first.repr()?.to_string_lossy().into_owned();
+        Err(PyTypeError::new_err(format!(
+            "cannot infer a write from an element {shown}; supported element types are \
+             int and float (or pass a bytes-like object / str)"
+        )))
     }
 
     /// Reads up to `len(buf)` bytes at `whence` **into** the writable `buf` (e.g. a

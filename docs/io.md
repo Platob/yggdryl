@@ -262,6 +262,52 @@ position before the start is an error naming the valid `0..=size` range.
     assert!(cursor.byte_seek(-1, Whence::Start).is_err());
     ```
 
+## One `write` that infers the type
+
+For convenience the cursor's `write` **infers the runtime type** and redirects to the
+optimal core write — a bytes-like object writes raw bytes, a string writes its UTF-8,
+a sequence of integers writes little-endian `i64`, and a sequence of floats writes
+little-endian `f64` — returning the number of **bytes** written. It is a thin,
+zero-overhead dispatch over the explicit `pwrite_*` methods (the benchmark measures
+~1.0× versus `pwrite_byte_array` on the bytes fast path); reach for the explicit
+methods when you need a specific element width. This is a binding-only convenience;
+the Rust core stays explicitly typed.
+
+=== "Python"
+
+    ```python
+    from yggdryl.io import ByteBuffer
+
+    cursor = ByteBuffer().byte_cursor()
+    assert cursor.write(b"hello") == 5            # bytes -> raw
+    assert cursor.write("café") == 5              # str  -> UTF-8 (5 bytes)
+    assert cursor.write([1, 2, 3]) == 24          # int seq   -> i64 (3 * 8)
+    assert cursor.write([1.5, 2.5]) == 16         # float seq -> f64
+    ```
+
+=== "Node"
+
+    ```js
+    const { ByteBuffer } = require('yggdryl').io
+
+    const cursor = new ByteBuffer().byteCursor()
+    console.assert(Number(cursor.write(Buffer.from('hello'))) === 5) // Buffer -> raw
+    console.assert(Number(cursor.write('café')) === 5)               // string -> UTF-8
+    console.assert(Number(cursor.write([1n, 2n, 3n])) === 24)        // bigint[] -> i64
+    console.assert(Number(cursor.write([1.5, 2.5])) === 16)          // number[] -> f64
+    ```
+
+=== "Rust"
+
+    ```rust
+    // The core stays explicitly typed — pick the method for the element type.
+    use yggdryl_core::{ByteBuffer, IOBase, Whence};
+
+    let mut cursor = ByteBuffer::new().byte_cursor();
+    cursor.pwrite_byte_array(b"hello", Whence::Start).unwrap();
+    cursor.pwrite_i64_array(&[1, 2, 3], Whence::End).unwrap();
+    ```
+
 ## Element-typed cursors
 
 `ByteCursor`'s `tell` / `seek` count in **bytes** (its native unit). For a cursor whose

@@ -16,7 +16,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use napi::bindgen_prelude::{BigInt, Buffer};
+use napi::bindgen_prelude::{BigInt, Buffer, Either3};
+use napi::{JsBigInt, JsUnknown, ValueType};
 use napi_derive::napi;
 
 use yggdryl_core::{IOBase, IOCursor, IOSlice, TypedIOBase};
@@ -339,6 +340,66 @@ impl ByteCursor {
             .pwrite_byte_array(data.as_ref(), whence_or_start(whence))
             .map_err(to_error)?;
         Ok(n as i64)
+    }
+
+    /// Writes `data`, **inferring** its type and redirecting to the optimal write:
+    /// a `Buffer` writes raw bytes, a `string` writes its UTF-8, an array of `bigint`
+    /// writes little-endian `i64`, and an array of `number` writes little-endian
+    /// `f64`. Returns the number of **bytes** written. For a specific width use the
+    /// explicit `pwrite*` methods.
+    #[napi]
+    pub fn write(
+        &mut self,
+        data: Either3<Buffer, String, Vec<JsUnknown>>,
+        whence: Option<Whence>,
+    ) -> napi::Result<i64> {
+        let w = whence_or_start(whence);
+        match data {
+            Either3::A(buffer) => Ok(self
+                .inner
+                .pwrite_byte_array(buffer.as_ref(), w)
+                .map_err(to_error)? as i64),
+            Either3::B(text) => Ok(self
+                .inner
+                .pwrite_byte_array(text.as_bytes(), w)
+                .map_err(to_error)? as i64),
+            Either3::C(items) => {
+                if items.is_empty() {
+                    return Ok(0);
+                }
+                match items[0].get_type()? {
+                    ValueType::BigInt => {
+                        let mut values = Vec::with_capacity(items.len());
+                        for item in items {
+                            if item.get_type()? != ValueType::BigInt {
+                                return Err(napi::Error::from_reason(
+                                    "cannot write a mixed array; every element must be a bigint",
+                                ));
+                            }
+                            values.push(unsafe { item.cast::<JsBigInt>() }.get_i64()?.0);
+                        }
+                        self.inner.pwrite_i64_array(&values, w).map_err(to_error)?;
+                        Ok((values.len() * 8) as i64)
+                    }
+                    ValueType::Number => {
+                        let mut values = Vec::with_capacity(items.len());
+                        for item in items {
+                            if item.get_type()? != ValueType::Number {
+                                return Err(napi::Error::from_reason(
+                                    "cannot write a mixed array; every element must be a number",
+                                ));
+                            }
+                            values.push(item.coerce_to_number()?.get_double()?);
+                        }
+                        self.inner.pwrite_f64_array(&values, w).map_err(to_error)?;
+                        Ok((values.len() * 8) as i64)
+                    }
+                    _ => Err(napi::Error::from_reason(
+                        "cannot infer a write; supported: Buffer, string, bigint[], number[]",
+                    )),
+                }
+            }
+        }
     }
 
     /// Reads up to `buf.length` bytes at `whence` **into** the provided `buf`,

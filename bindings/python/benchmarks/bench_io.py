@@ -78,6 +78,20 @@ def main():
         std = throughput_mb_s(SIZE, ITERS, std_op)
         print(f"{name:>10}  {ygg:>8.1f}MB  {std:>8.1f}MB  {ygg / std:>6.2f}x")
 
+    # Overhead check: the type-inferring write() should match the explicit
+    # pwrite_byte_array on the bytes fast path (ratio ~1.0).
+    def ygg_write_inferred():
+        cursor = ByteBuffer.with_byte_capacity(SIZE).byte_cursor()
+        for start, end in _chunks():
+            cursor.write(DATA[start:end], Whence.Current)
+
+    inferred = throughput_mb_s(SIZE, ITERS, ygg_write_inferred)
+    explicit = throughput_mb_s(SIZE, ITERS, ygg_write)
+    print(
+        f"  write() inferred {inferred:8.1f} MB/s   "
+        f"pwrite_byte_array {explicit:8.1f} MB/s   {inferred / explicit:.2f}x (overhead)"
+    )
+
     print("\nTypedCursor<i64> vs array.array('q'):")
     count = SIZE // 8
     values = list(range(count))
