@@ -6,7 +6,8 @@
 //! (the positioned byte-IO resources), and `yggdryl.buffer` (the typed native-type
 //! buffers), all mirroring `yggdryl-core`, plus `yggdryl.infer` (a binding-only
 //! convenience that reads a value's runtime type and builds the matching buffer —
-//! `CLAUDE.md` rule 13, so it has no core counterpart). More
+//! `CLAUDE.md` rule 13, so it has no core counterpart) and `yggdryl.converter` (a
+//! dtype-keyed facade over the core representation converters). More
 //! submodules are added here as the crate tree grows. The wrappers are thin: all
 //! logic lives in the Rust crates, so the Python and Node bindings behave
 //! identically.
@@ -15,6 +16,7 @@ use pyo3::prelude::*;
 
 mod buffer;
 mod compression;
+mod converter;
 mod core;
 mod infer;
 mod io;
@@ -44,5 +46,6 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     add_submodule(py, module, "io", io::register)?;
     add_submodule(py, module, "buffer", buffer::register)?;
     add_submodule(py, module, "infer", infer::register)?;
+    add_submodule(py, module, "converter", converter::register)?;
     Ok(())
 }

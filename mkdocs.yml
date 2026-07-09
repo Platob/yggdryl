@@ -45,4 +45,5 @@ nav:
   - Wide integers: wide_ints.md
   - Typed buffers: buffer.md
   - Type inference: infer.md
+  - Converters: converter.md
   - Compression: compression.md
