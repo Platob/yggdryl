@@ -114,6 +114,24 @@ type they are looking at from the shape of the code.
     `Display` carries the guidance — and the bindings pass that text through unchanged
     (Python `ValueError`/`TypeError`, Node thrown `Error`), so all three read
     identically.
+13. **Interpreted bindings infer the type — the caller need not spell it out.** In
+    the dynamically-typed bindings (Python, Node), a typed operation that the Rust
+    core reaches through an explicit generic (`IOBase<T>` element writes, typed
+    buffer/scalar construction) instead **infers the element type from the runtime
+    value** and builds the matching buffer/scalar automatically: a Python `int` in
+    `int64` range or a JS `number`/`bigint` selects the correct integer width, a
+    `float`/`number` the correct float, a `bytes`/`Buffer` the byte buffer, a `bool`
+    the bit buffer — so `write(value)` and `buffer(values)` just work without the
+    caller naming `Int64` first. Inference is a **convenience layer over**, never a
+    replacement for, the explicit-type API: every inferring call has an explicit
+    counterpart (`write_i64` / `writeI64`, `Int64Buffer(...)`) the user can reach for
+    when a value is ambiguous (e.g. forcing `int32` for a small `int`) or when the
+    inferred choice would be wrong, and an ambiguous or out-of-range value raises the
+    rule-12 guided error naming the explicit method to call. The inference lives in
+    the binding layer only (Rust stays explicitly generic, rule 2); the two bindings
+    infer **identically** — same value-to-type mapping, same widths, same overflow
+    boundaries — and each binding's module doc and the docs site state the mapping
+    table so the auto-typing is a documented contract, not a surprise.
 
 ## Workspace layout
 

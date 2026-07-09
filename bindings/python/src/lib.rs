@@ -4,7 +4,9 @@
 //! exposed as a submodule of the top-level `yggdryl` package: `yggdryl.core` (the
 //! foundations), `yggdryl.compression` (the compression codecs), `yggdryl.io`
 //! (the positioned byte-IO resources), and `yggdryl.buffer` (the typed native-type
-//! buffers), all mirroring `yggdryl-core`. More
+//! buffers), all mirroring `yggdryl-core`, plus `yggdryl.infer` (a binding-only
+//! convenience that reads a value's runtime type and builds the matching buffer —
+//! `CLAUDE.md` rule 13, so it has no core counterpart). More
 //! submodules are added here as the crate tree grows. The wrappers are thin: all
 //! logic lives in the Rust crates, so the Python and Node bindings behave
 //! identically.
@@ -14,6 +16,7 @@ use pyo3::prelude::*;
 mod buffer;
 mod compression;
 mod core;
+mod infer;
 mod io;
 
 /// Builds a child module, runs `populate`, attaches it to `parent`, and registers
@@ -40,5 +43,6 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     add_submodule(py, module, "compression", compression::register)?;
     add_submodule(py, module, "io", io::register)?;
     add_submodule(py, module, "buffer", buffer::register)?;
+    add_submodule(py, module, "infer", infer::register)?;
     Ok(())
 }

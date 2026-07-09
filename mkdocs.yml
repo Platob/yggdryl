@@ -44,4 +44,5 @@ nav:
   - Byte IO: io.md
   - Wide integers: wide_ints.md
   - Typed buffers: buffer.md
+  - Type inference: infer.md
   - Compression: compression.md

@@ -4,7 +4,9 @@ The Node.js extension for **yggdryl**, backed by the Rust core.
 
 The package mirrors the `yggdryl-core` module tree as JS namespaces: `yggdryl.core`
 (`version` / `hello`), `yggdryl.compression` (the gzip / zstd codecs), `yggdryl.io`
-(positioned byte buffers), and `yggdryl.buffer` (typed native-type buffers).
+(positioned byte buffers), and `yggdryl.buffer` (typed native-type buffers), plus the
+binding-only `yggdryl.infer` (reads a value's runtime type and builds the matching
+buffer — no core counterpart).
 
 ```js
 const yggdryl = require('yggdryl')
