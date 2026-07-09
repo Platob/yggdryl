@@ -245,6 +245,19 @@ impl ByteCursor {
         self.inner.set_position(position);
     }
 
+    /// Adjusts the backing allocation to hold `capacity` bytes, returning the new
+    /// capacity. Growing reserves headroom; a `capacity` below the current length
+    /// truncates the content (reducing the inner buffer) and clamps the cursor.
+    fn set_byte_capacity(&mut self, capacity: usize) -> usize {
+        self.inner.set_byte_capacity(capacity)
+    }
+
+    /// Adjusts the backing allocation to hold `capacity` bits (rounded up to whole
+    /// bytes), returning the new byte capacity.
+    fn set_bit_capacity(&mut self, capacity: usize) -> usize {
+        self.inner.set_bit_capacity(capacity)
+    }
+
     /// The number of bytes the resource holds.
     fn byte_size(&self) -> PyResult<usize> {
         self.inner.byte_size().map_err(io_err)

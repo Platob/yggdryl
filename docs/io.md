@@ -194,6 +194,74 @@ Cursors read/write every fixed-width primitive (little-endian, `pread_i64` /
     scalar — use `preadI64` or raw bytes), and `f32` marshals over an `f64`
     boundary. The `large*Size` accessors are JS `BigInt`.
 
+## Auto-resize, capacity, and negative seeks
+
+A cursor **auto-grows** on write: a write past the current end zero-fills the gap and
+extends the resource, and the capacity grows to fit (a too-small `with_byte_capacity`
+hint never caps the data). `set_byte_capacity` manages the allocation directly —
+growing **reserves** headroom, while a capacity **below the current length truncates
+the content** (reducing the inner buffer) and clamps the cursor. Seeks take a signed
+offset: a negative offset from `Current` / `End` seeks backward, and a resolved
+position before the start is an error naming the valid `0..=size` range.
+
+=== "Python"
+
+    ```python
+    from yggdryl.io import ByteBuffer, Whence
+
+    cursor = ByteBuffer(b"ab").byte_cursor()
+    cursor.seek(5, Whence.Start)                 # past the 2-byte end
+    cursor.pwrite_byte_array(b"XY", Whence.Current)
+    assert cursor.as_bytes() == b"ab\x00\x00\x00XY"  # auto-grew, gap zero-filled
+
+    cursor.set_byte_capacity(3)                  # below length -> reduce the inner buffer
+    assert cursor.as_bytes() == b"ab\x00"
+
+    assert cursor.seek(-3, Whence.End) == 0      # negative offset seeks backward
+    try:
+        cursor.seek(-1, Whence.Start)            # before the start
+    except ValueError as error:
+        assert "before the start" in str(error)
+    ```
+
+=== "Node"
+
+    ```js
+    const { ByteBuffer, Whence } = require('yggdryl').io
+
+    const cursor = new ByteBuffer(Buffer.from('ab')).byteCursor()
+    cursor.seek(5, Whence.Start)
+    cursor.pwriteByteArray(Buffer.from('XY'), Whence.Current)
+    console.assert(cursor.asBytes().length === 7) // auto-grew
+
+    cursor.setByteCapacity(3)                     // below length -> reduce the inner buffer
+    console.assert(cursor.asBytes().length === 3)
+
+    console.assert(Number(cursor.seek(-3, Whence.End)) === 0)
+    try {
+      cursor.seek(-1, Whence.Start)
+    } catch (error) {
+      console.assert(/before the start/.test(error.message))
+    }
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{ByteBuffer, IOBase, Whence};
+
+    let mut cursor = ByteBuffer::from_bytes(b"ab").byte_cursor();
+    cursor.byte_seek(5, Whence::Start).unwrap();
+    cursor.pwrite_byte_array(b"XY", Whence::Current).unwrap();
+    assert_eq!(cursor.as_bytes(), b"ab\x00\x00\x00XY"); // auto-grew
+
+    cursor.set_byte_capacity(3); // below length -> reduce the inner buffer
+    assert_eq!(cursor.as_bytes(), b"ab\x00");
+
+    assert_eq!(cursor.byte_seek(-3, Whence::End).unwrap(), 0);
+    assert!(cursor.byte_seek(-1, Whence::Start).is_err());
+    ```
+
 ## Element-typed cursors
 
 `ByteCursor`'s `tell` / `seek` count in **bytes** (its native unit). For a cursor whose

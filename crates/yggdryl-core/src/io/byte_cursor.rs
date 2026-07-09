@@ -68,6 +68,47 @@ impl ByteCursor {
         self.slice()
     }
 
+    /// Adjusts the backing allocation to hold `capacity` bytes, returning the new
+    /// capacity. Growing **reserves** headroom (no reallocation until it is exceeded);
+    /// a `capacity` **below the current length truncates the content** to `capacity`
+    /// (reducing the inner buffer) and clamps the cursor to the new end.
+    ///
+    /// Because this can mutate the content it materialises the copy-on-write owned
+    /// buffer, leaving any source [`ByteBuffer`] intact.
+    ///
+    /// ```
+    /// use yggdryl_core::{ByteBuffer, IOBase, Whence};
+    ///
+    /// let mut cursor = ByteBuffer::from_bytes(b"abcdef").byte_cursor();
+    /// cursor.set_byte_capacity(3); // below the length -> reduce the inner buffer
+    /// assert_eq!(cursor.as_bytes(), b"abc");
+    ///
+    /// cursor.set_byte_capacity(64); // above -> reserve headroom, content unchanged
+    /// assert_eq!(cursor.as_bytes(), b"abc");
+    /// assert!(cursor.byte_capacity().unwrap() >= 64);
+    /// ```
+    pub fn set_byte_capacity(&mut self, capacity: usize) -> usize {
+        let bytes = self.owned_mut();
+        if capacity < bytes.len() {
+            bytes.truncate(capacity);
+        } else if capacity > bytes.capacity() {
+            bytes.reserve(capacity - bytes.len());
+        }
+        let len = bytes.len() as u64;
+        let new_capacity = bytes.capacity();
+        if self.position > len {
+            self.position = len;
+        }
+        new_capacity
+    }
+
+    /// Adjusts the backing allocation to hold `capacity` bits (rounded up to whole
+    /// bytes), returning the new byte capacity. See
+    /// [`set_byte_capacity`](ByteCursor::set_byte_capacity).
+    pub fn set_bit_capacity(&mut self, capacity: usize) -> usize {
+        self.set_byte_capacity(capacity.div_ceil(8))
+    }
+
     /// Freezes the cursor's current bytes into a new [`ByteBuffer`].
     pub fn to_byte_buffer(&self) -> ByteBuffer {
         match &self.backing {

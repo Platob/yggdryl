@@ -52,9 +52,12 @@ pub enum IoError {
 impl fmt::Display for IoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidSeek { offset, whence } => {
-                write!(f, "invalid seek: offset {offset} from {whence}")
-            }
+            Self::InvalidSeek { offset, whence } => write!(
+                f,
+                "invalid seek: offset {offset} from {whence} is out of range; the \
+                 resolved position must be within 0..=size (it went before the start \
+                 or past the addressable range)"
+            ),
             Self::UnexpectedEof { needed, available } => write!(
                 f,
                 "unexpected end of resource: needed {needed}, {available} available"

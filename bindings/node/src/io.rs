@@ -229,6 +229,21 @@ impl ByteCursor {
         self.inner.set_position(position.max(0) as u64);
     }
 
+    /// Adjusts the backing allocation to hold `capacity` bytes, returning the new
+    /// capacity. Growing reserves headroom; a `capacity` below the current length
+    /// truncates the content (reducing the inner buffer) and clamps the cursor.
+    #[napi]
+    pub fn set_byte_capacity(&mut self, capacity: i64) -> i64 {
+        self.inner.set_byte_capacity(capacity.max(0) as usize) as i64
+    }
+
+    /// Adjusts the backing allocation to hold `capacity` bits (rounded up to whole
+    /// bytes), returning the new byte capacity.
+    #[napi]
+    pub fn set_bit_capacity(&mut self, capacity: i64) -> i64 {
+        self.inner.set_bit_capacity(capacity.max(0) as usize) as i64
+    }
+
     /// The number of bytes the resource holds.
     #[napi]
     pub fn byte_size(&self) -> napi::Result<i64> {
