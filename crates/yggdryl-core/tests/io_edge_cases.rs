@@ -54,6 +54,25 @@ fn seek_past_end_then_read_yields_empty_not_error() {
 }
 
 #[test]
+fn read_into_past_end_returns_zero_without_panicking() {
+    // Regression: pread_into indexed data[start..end] with start > end and panicked.
+    let mut cursor = ByteBuffer::from_bytes(b"abcdef").byte_cursor();
+    cursor.byte_seek(100, Whence::Start).unwrap();
+    let mut buf = [0u8; 4];
+    assert_eq!(cursor.pread_into(&mut buf, Whence::Current).unwrap(), 0);
+    // The cursor does not jump backward on a past-end read.
+    assert_eq!(cursor.byte_tell().unwrap(), 100);
+
+    // The typed fast path (which routes through pread_into) is also safe past end.
+    let mut typed = I32Buffer::from_slice(&[1, 2]).cursor();
+    typed.byte_seek(100, Whence::Start).unwrap();
+    assert!(matches!(
+        typed.pread_one(Whence::Current),
+        Err(IoError::UnexpectedEof { .. })
+    ));
+}
+
+#[test]
 fn typed_negative_seek_counts_in_elements() {
     let mut cursor = I32Buffer::from_slice(&[10, 20, 30, 40]).cursor();
     // Seek to element index 4 (the end), then 2 elements back -> index 2.

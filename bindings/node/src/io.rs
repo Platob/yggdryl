@@ -459,6 +459,35 @@ impl ByteCursor {
             .map_err(to_error)
     }
 
+    /// Reads up to `count` little-endian `f32` values at `whence` (widened to JS
+    /// numbers), advancing the cursor.
+    #[napi]
+    pub fn pread_f32_array(
+        &mut self,
+        count: u32,
+        whence: Option<Whence>,
+    ) -> napi::Result<Vec<f64>> {
+        self.inner
+            .pread_f32_array(count as usize, whence_or_start(whence))
+            .map(|values| values.into_iter().map(f64::from).collect())
+            .map_err(to_error)
+    }
+
+    /// Writes the `f32` values in `data` (narrowed from JS numbers) at `whence`,
+    /// advancing the cursor.
+    #[napi]
+    pub fn pwrite_f32_array(
+        &mut self,
+        data: Vec<f64>,
+        whence: Option<Whence>,
+    ) -> napi::Result<i64> {
+        let narrowed: Vec<f32> = data.into_iter().map(|v| v as f32).collect();
+        self.inner
+            .pwrite_f32_array(&narrowed, whence_or_start(whence))
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
     /// Copies up to `size` bytes from this cursor into `sink`, advancing both.
     #[napi]
     pub fn pread_io(
@@ -1350,6 +1379,18 @@ impl ByteSlice {
             .map_err(to_error)
     }
 
+    /// Reads up to `buf.length` bytes at `whence` **into** the provided `buf`,
+    /// clamped to the window, and returns the number read. Fills the JS `Buffer` in
+    /// place (no new Buffer allocated), so reuse `buf` for zero-allocation reads.
+    #[napi]
+    pub fn pread_into(&mut self, mut buf: Buffer, whence: Option<Whence>) -> napi::Result<i64> {
+        let n = self
+            .inner
+            .pread_into(buf.as_mut(), whence_or_start(whence))
+            .map_err(to_error)?;
+        Ok(n as i64)
+    }
+
     /// Writes `data` at `whence`, clamped to the window (never grows).
     #[napi]
     pub fn pwrite_byte_array(&mut self, data: Buffer, whence: Option<Whence>) -> napi::Result<i64> {
@@ -1429,6 +1470,20 @@ macro_rules! napi_typed_slice {
                 /// The number of bytes remaining in the window.
                 #[napi]
                 pub fn byte_size(&self) -> napi::Result<i64> { self.inner.byte_size().map(|n| n as i64).map_err(to_error) }
+                /// The current position, in bits from the window start.
+                #[napi]
+                pub fn bit_tell(&self) -> napi::Result<i64> { self.inner.bit_tell().map(|p| p as i64).map_err(to_error) }
+                /// Moves to `offset` bits relative to `whence` (byte-aligned).
+                #[napi]
+                pub fn bit_seek(&mut self, offset: i64, whence: Option<Whence>) -> napi::Result<i64> {
+                    self.inner.bit_seek(offset, whence_or_start(whence)).map(|p| p as i64).map_err(to_error)
+                }
+                /// The number of bits remaining in the window.
+                #[napi]
+                pub fn bit_size(&self) -> napi::Result<i64> { self.inner.bit_size().map(|n| n as i64).map_err(to_error) }
+                /// The window's byte capacity (its fixed length).
+                #[napi]
+                pub fn byte_capacity(&self) -> napi::Result<i64> { self.inner.byte_capacity().map(|n| n as i64).map_err(to_error) }
                 #[doc = concat!("Reads a single `", stringify!($ty), "` at `whence`, advancing.")]
                 #[napi]
                 pub fn pread_one(&mut self, whence: Option<Whence>) -> napi::Result<$ty> {
@@ -1613,10 +1668,81 @@ impl F32Slice {
             .map_err(to_error)
     }
 
+    /// The current position, in bytes from the window start.
+    #[napi]
+    pub fn byte_tell(&self) -> napi::Result<i64> {
+        self.inner.byte_tell().map(|p| p as i64).map_err(to_error)
+    }
+
+    /// Moves to `offset` bytes relative to `whence`.
+    #[napi]
+    pub fn byte_seek(&mut self, offset: i64, whence: Option<Whence>) -> napi::Result<i64> {
+        self.inner
+            .byte_seek(offset, whence_or_start(whence))
+            .map(|p| p as i64)
+            .map_err(to_error)
+    }
+
+    /// The current position, in bits from the window start.
+    #[napi]
+    pub fn bit_tell(&self) -> napi::Result<i64> {
+        self.inner.bit_tell().map(|p| p as i64).map_err(to_error)
+    }
+
+    /// Moves to `offset` bits relative to `whence` (byte-aligned).
+    #[napi]
+    pub fn bit_seek(&mut self, offset: i64, whence: Option<Whence>) -> napi::Result<i64> {
+        self.inner
+            .bit_seek(offset, whence_or_start(whence))
+            .map(|p| p as i64)
+            .map_err(to_error)
+    }
+
+    /// The current byte position (mirror of `byteTell`).
+    #[napi]
+    pub fn position(&self) -> i64 {
+        self.inner.position() as i64
+    }
+
+    /// Sets the current byte position (within the window).
+    #[napi]
+    pub fn set_position(&mut self, position: i64) {
+        self.inner.set_position(position.max(0) as u64);
+    }
+
     /// The number of `f32` values remaining from the current position.
     #[napi]
     pub fn size(&self) -> napi::Result<i64> {
         TypedIOBase::<f32>::size(&self.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// The `f32` capacity (the window's fixed length).
+    #[napi]
+    pub fn capacity(&self) -> napi::Result<i64> {
+        TypedIOBase::<f32>::capacity(&self.inner)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// The number of bytes remaining in the window.
+    #[napi]
+    pub fn byte_size(&self) -> napi::Result<i64> {
+        self.inner.byte_size().map(|n| n as i64).map_err(to_error)
+    }
+
+    /// The number of bits remaining in the window.
+    #[napi]
+    pub fn bit_size(&self) -> napi::Result<i64> {
+        self.inner.bit_size().map(|n| n as i64).map_err(to_error)
+    }
+
+    /// The window's byte capacity (its fixed length).
+    #[napi]
+    pub fn byte_capacity(&self) -> napi::Result<i64> {
+        self.inner
+            .byte_capacity()
             .map(|n| n as i64)
             .map_err(to_error)
     }

@@ -182,8 +182,10 @@ impl IOBase for ByteCursor {
         let start = self.resolve(whence)?;
         let data = self.slice();
         let end = start.saturating_add(size).min(data.len());
+        // `start > end` when the cursor is past the end; `get` yields `None` -> empty.
         let out = data.get(start..end).unwrap_or(&[]).to_vec();
-        self.position = end as u64;
+        // Advance by what was actually read (never jump backward when past the end).
+        self.position = (start + out.len()) as u64;
         Ok(out)
     }
 
@@ -191,9 +193,12 @@ impl IOBase for ByteCursor {
         let start = self.resolve(whence)?;
         let data = self.slice();
         let end = start.saturating_add(buf.len()).min(data.len());
-        let n = end.saturating_sub(start);
-        buf[..n].copy_from_slice(&data[start..end]);
-        self.position = end as u64;
+        // `start > end` when the cursor is past the end; `get` yields `None` -> empty,
+        // so the read returns 0 instead of panicking on `data[start..end]`.
+        let chunk = data.get(start..end).unwrap_or(&[]);
+        let n = chunk.len();
+        buf[..n].copy_from_slice(chunk);
+        self.position = (start + n) as u64;
         Ok(n)
     }
 
