@@ -85,6 +85,22 @@ fn parse(py: Python<'_>, text: &str, dtype_name: &str) -> PyResult<PyObject> {
     scalar_to_py(py, primitive, &bytes)
 }
 
+/// Converts a numeric scalar `value` from `from_dtype` to `to_dtype` (C-style `as`),
+/// e.g. `convert(300, "i32", "u8")` or `convert(3, "i32", "f32")`.
+#[pyfunction]
+fn convert(
+    py: Python<'_>,
+    value: &Bound<'_, PyAny>,
+    from_dtype: &str,
+    to_dtype: &str,
+) -> PyResult<PyObject> {
+    let from = dtype(from_dtype)?;
+    let to = dtype(to_dtype)?;
+    let bytes = scalar_from_py(from, value)?;
+    let out = from.cast_bytes(to, &bytes).map_err(convert_err)?;
+    scalar_to_py(py, to, &out)
+}
+
 /// Renders a `dtype` scalar `value` to its string form.
 #[pyfunction]
 fn format(value: &Bound<'_, PyAny>, dtype_name: &str) -> PyResult<String> {
@@ -111,6 +127,7 @@ fn utf8_decode(data: &[u8]) -> PyResult<String> {
 /// Populates the `converter` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(pyo3::wrap_pyfunction!(cast, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(convert, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(parse, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(format, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(utf8_encode, module)?)?;

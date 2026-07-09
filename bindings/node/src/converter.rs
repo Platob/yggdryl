@@ -103,6 +103,21 @@ pub fn parse(text: String, dtype_name: String) -> napi::Result<Either<f64, BigIn
     scalar_to_js(primitive, &bytes)
 }
 
+/// Converts a numeric scalar `value` from `fromDtype` to `toDtype` (C-style `as`),
+/// e.g. `convert(300, "i32", "u8")` or `convert(3, "i32", "f32")`.
+#[napi(namespace = "converter", js_name = "convert")]
+pub fn convert(
+    value: Either<f64, BigInt>,
+    from_dtype: String,
+    to_dtype: String,
+) -> napi::Result<Either<f64, BigInt>> {
+    let from = dtype(&from_dtype)?;
+    let to = dtype(&to_dtype)?;
+    let bytes = scalar_from_js(from, value)?;
+    let out = from.cast_bytes(to, &bytes).map_err(to_error)?;
+    scalar_to_js(to, &out)
+}
+
 /// Renders a `dtype` scalar `value` to its string form.
 #[napi(namespace = "converter", js_name = "format")]
 pub fn format(value: Either<f64, BigInt>, dtype_name: String) -> napi::Result<String> {

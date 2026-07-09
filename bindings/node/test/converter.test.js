@@ -37,6 +37,21 @@ test('parse of i64 / u64 yields a bigint', () => {
   assert.equal(typeof converter.parse('5', 'i64'), 'bigint')
 })
 
+test('parse accepts comma separators', () => {
+  assert.equal(converter.parse('1,000,000', 'i64'), 1000000n)
+  assert.equal(converter.parse('1,234.5', 'f64'), 1234.5)
+})
+
+test('parse out of range shows the value', () => {
+  assert.throws(() => converter.parse('99999999999', 'i32'), /out of range/)
+})
+
+test('convert numeric scalars', () => {
+  assert.equal(converter.convert(300, 'i32', 'u8'), 44) // 300 & 0xFF
+  assert.equal(converter.convert(3, 'i32', 'f32'), 3)
+  assert.equal(converter.convert(-1n, 'i64', 'i64'), -1n)
+})
+
 test('parse failure is guided', () => {
   assert.throws(() => converter.parse('twelve', 'i32'), /0x-hex/)
   assert.throws(() => converter.parse('-1', 'u8'))

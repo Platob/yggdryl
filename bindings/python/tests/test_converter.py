@@ -40,6 +40,23 @@ def test_parse_returns_native_type():
     assert isinstance(converter.parse("5", "f64"), float)
 
 
+def test_parse_accepts_comma_separators():
+    assert converter.parse("1,000,000", "i64") == 1_000_000
+    assert converter.parse("1,234.5", "f64") == 1234.5
+
+
+def test_parse_out_of_range_shows_value():
+    with pytest.raises(ValueError, match="out of range"):
+        converter.parse("99999999999", "i32")
+
+
+def test_convert_numeric_scalars():
+    assert converter.convert(300, "i32", "u8") == 44  # 300 & 0xFF (C-style `as`)
+    assert converter.convert(3, "i32", "f32") == 3.0
+    assert converter.convert(-1, "i32", "i64") == -1
+    assert isinstance(converter.convert(5, "i32", "f64"), float)
+
+
 def test_parse_failure_is_guided():
     with pytest.raises(ValueError, match="0x-hex"):
         converter.parse("twelve", "i32")

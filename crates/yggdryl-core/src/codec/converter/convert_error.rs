@@ -38,6 +38,18 @@ pub enum ConvertError {
         /// A short description of the accepted formats.
         expected: &'static str,
     },
+    /// A value whose format was valid but which did not fit the target type's range
+    /// (e.g. `"99999999999"` into `i32`). Pass a value within `min..=max`.
+    OutOfRange {
+        /// The offending value (truncated to a reasonable length for the message).
+        input: String,
+        /// The target type name, e.g. `"i32"`.
+        target: &'static str,
+        /// The lowest value the target accepts.
+        min: String,
+        /// The highest value the target accepts.
+        max: String,
+    },
     /// A byte array that is not valid UTF-8, so it cannot decode to a string.
     InvalidUtf8 {
         /// The byte offset at which decoding failed.
@@ -65,6 +77,15 @@ impl fmt::Display for ConvertError {
                 target,
                 expected,
             } => write!(f, "cannot parse {input:?} as {target}; expected {expected}"),
+            Self::OutOfRange {
+                input,
+                target,
+                min,
+                max,
+            } => write!(
+                f,
+                "value {input:?} is out of range for {target}; expected {min}..={max}"
+            ),
             Self::InvalidUtf8 { valid_up_to } => write!(
                 f,
                 "invalid UTF-8 at byte {valid_up_to}; pass valid UTF-8 bytes"

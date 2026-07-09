@@ -54,12 +54,48 @@ element, using a C-style `as` cast (total and allocation-free).
     assert_eq!(wide.unwrap(), 7_i64.to_le_bytes());
     ```
 
+## Numeric scalar conversion
+
+`convert` casts a single numeric scalar from one dtype to another (C-style `as`,
+total) — the ergonomic single-value counterpart of the bulk byte-level `cast`.
+
+=== "Python"
+
+    ```python
+    from yggdryl import converter
+
+    assert converter.convert(300, "i32", "u8") == 44   # 300 & 0xFF
+    assert converter.convert(3, "i32", "f32") == 3.0    # widen to float
+    assert isinstance(converter.convert(5, "i32", "f64"), float)
+    ```
+
+=== "Node"
+
+    ```js
+    const { converter } = require('yggdryl')
+
+    console.assert(converter.convert(300, 'i32', 'u8') === 44)
+    console.assert(converter.convert(3, 'i32', 'f32') === 3)
+    console.assert(converter.convert(-1n, 'i64', 'i64') === -1n)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{CastConverter, TypedConverter};
+
+    assert_eq!(CastConverter::<i32, u8>::new().encode(300).unwrap(), 44);
+    assert_eq!(CastConverter::<i32, f32>::new().encode(3).unwrap(), 3.0);
+    ```
+
 ## Flexible string parsing
 
-`parse` reads a string into the dtype's scalar, trying the fastest format first and
-allocating only when a value actually needs it. Integers accept decimal, `0x` / `0o` /
-`0b` (any case), `+`/`-` signs, and `_` separators; floats accept decimal and
-scientific forms plus `inf` / `nan`. `format` renders the scalar back.
+`parse` reads a string into the dtype's scalar, trying formats **most-common first**
+and allocating only when a value actually needs it. Integers accept decimal, `0x` /
+`0o` / `0b` (any case), `+`/`-` signs, and `_` or `,` separators; floats accept
+decimal and scientific forms plus `inf` / `nan`. `format` renders the scalar back. A
+well-formed but too-big value reports the offending value (truncated when long) and
+the accepted range.
 
 === "Python"
 
@@ -69,13 +105,18 @@ scientific forms plus `inf` / `nan`. `format` renders the scalar back.
     assert converter.parse("42", "i32") == 42
     assert converter.parse("0x2A", "i32") == 42
     assert converter.parse("-1_000", "i64") == -1000
-    assert converter.parse("1.5e3", "f64") == 1500.0
+    assert converter.parse("1,234.5", "f64") == 1234.5    # comma separators
     assert converter.format(-7, "i16") == "-7"
 
     try:
         converter.parse("twelve", "i32")
     except ValueError as error:
         assert "0x-hex" in str(error)     # names the accepted formats
+
+    try:
+        converter.parse("99999999999", "i32")
+    except ValueError as error:
+        assert "out of range" in str(error)  # reports the value + range
     ```
 
 === "Node"
@@ -85,13 +126,13 @@ scientific forms plus `inf` / `nan`. `format` renders the scalar back.
 
     console.assert(converter.parse('0x2A', 'i32') === 42)
     console.assert(converter.parse('-1_000', 'i64') === -1000n) // i64 -> bigint
-    console.assert(converter.parse('1.5e3', 'f64') === 1500)
+    console.assert(converter.parse('1,234.5', 'f64') === 1234.5) // comma separators
     console.assert(converter.format(-7, 'i16') === '-7')
 
     try {
-      converter.parse('twelve', 'i32')
+      converter.parse('99999999999', 'i32') // out of range for i32
     } catch (error) {
-      console.assert(/0x-hex/.test(error.message))
+      console.assert(/out of range/.test(error.message))
     }
     ```
 

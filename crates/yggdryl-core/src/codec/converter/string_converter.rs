@@ -2,22 +2,24 @@
 
 use core::marker::PhantomData;
 use std::borrow::Cow;
+use std::num::IntErrorKind;
 
 use crate::{ConvertError, Converter, IoPrimitive, TypedConverter};
 
 /// Parses a string into a numeric primitive `T`, and renders `T` back to a string.
 ///
-/// [`encode`](TypedConverter::encode) parses flexibly and cheaply — it tries the
-/// fastest format first and only falls back when needed, allocating **only** when a
-/// value actually uses underscores or a radix prefix:
+/// [`encode`](TypedConverter::encode) parses flexibly and cheaply, trying formats
+/// **most-common first** and allocating only when a value actually needs it:
 ///
-/// * integers — decimal (with optional `+`/`-`), the radix prefixes `0x` / `0o` /
-///   `0b` (any case), and `_` digit separators;
-/// * floats — decimal and scientific (`1e9`), `inf` / `nan`, and `_` separators.
+/// * integers — decimal (optional `+`/`-`), then the radix prefixes `0x` / `0o` /
+///   `0b` (any case); `_` and `,` are accepted as digit separators;
+/// * floats — decimal and scientific (`1e9`), `inf` / `nan`; `_` and `,` separators.
 ///
 /// [`decode`](TypedConverter::decode) renders with the value's [`Display`] form. A
-/// string no format accepts yields a [`ConvertError::ParseFailed`] listing the
-/// accepted formats.
+/// string no format accepts yields a [`ConvertError::ParseFailed`]; a well-formed
+/// value that overflows the target yields a [`ConvertError::OutOfRange`] naming the
+/// value and the accepted range. The offending value is truncated in the message when
+/// long, so errors stay human-readable.
 ///
 /// ```
 /// use yggdryl_core::{StringConverter, TypedConverter};
@@ -26,7 +28,12 @@ use crate::{ConvertError, Converter, IoPrimitive, TypedConverter};
 /// assert_eq!(ints.encode("42".to_string()).unwrap(), 42);
 /// assert_eq!(ints.encode("0x2A".to_string()).unwrap(), 42);
 /// assert_eq!(ints.encode(" -1_000 ".to_string()).unwrap(), -1000);
+/// assert_eq!(ints.encode("1,000,000".to_string()).unwrap(), 1_000_000);
 /// assert_eq!(ints.decode(42).unwrap(), "42");
+///
+/// // A well-formed but too-big value reports the value and the range.
+/// let err = ints.encode("99999999999".to_string()).unwrap_err();
+/// assert!(err.to_string().contains("out of range"));
 ///
 /// let floats = StringConverter::<f64>::new();
 /// assert_eq!(floats.encode("-1.5e3".to_string()).unwrap(), -1500.0);
@@ -46,26 +53,35 @@ impl<T> StringConverter<T> {
     }
 }
 
-/// Parses `text` into `T` or builds a guided [`ConvertError::ParseFailed`].
+/// Parses `text` into `T`, mapping a failure to a guided [`ConvertError`] that carries
+/// the (truncated) offending value.
 fn parse<T: ParseNumber>(text: &str) -> Result<T, ConvertError> {
-    T::parse_flexible(text).ok_or_else(|| ConvertError::ParseFailed {
-        input: truncate(text),
-        target: T::TYPE_NAME,
-        expected: T::EXPECTED,
+    T::parse_flexible(text).map_err(|failure| match failure {
+        ParseFailure::Format => ConvertError::ParseFailed {
+            input: truncate(text),
+            target: T::TYPE_NAME,
+            expected: T::EXPECTED,
+        },
+        ParseFailure::OutOfRange { min, max } => ConvertError::OutOfRange {
+            input: truncate(text),
+            target: T::TYPE_NAME,
+            min,
+            max,
+        },
     })
 }
 
-/// Caps an offending input at 64 chars so the error message stays readable.
+/// Caps an offending input at 64 chars (on a char boundary) so the error message
+/// stays human-readable when the value is large.
 fn truncate(text: &str) -> String {
     if text.len() <= 64 {
-        text.to_string()
-    } else {
-        let mut end = 61;
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}...", &text[..end])
+        return text.to_string();
     }
+    let mut end = 61;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &text[..end])
 }
 
 impl<T: IoPrimitive + ParseNumber + core::fmt::Display> Converter for StringConverter<T> {
@@ -99,6 +115,20 @@ impl<T: IoPrimitive + ParseNumber + core::fmt::Display> TypedConverter<String, T
     }
 }
 
+/// Why a flexible parse failed — a bad format, or a good format whose value did not
+/// fit the target's range.
+pub(crate) enum ParseFailure {
+    /// No accepted format matched.
+    Format,
+    /// The format was valid but the value overflowed the target's `min..=max`.
+    OutOfRange {
+        /// The lowest value the target accepts.
+        min: String,
+        /// The highest value the target accepts.
+        max: String,
+    },
+}
+
 /// Flexibly parses one numeric primitive from a string — the internal machinery
 /// behind [`StringConverter`]. Implemented for the ten native primitives.
 pub(crate) trait ParseNumber: Sized {
@@ -106,13 +136,32 @@ pub(crate) trait ParseNumber: Sized {
     const TYPE_NAME: &'static str;
     /// The accepted formats, for error messages.
     const EXPECTED: &'static str;
-    /// Parses `input`, returning `None` if no accepted format matches.
-    fn parse_flexible(input: &str) -> Option<Self>;
+    /// Parses `input`, distinguishing a bad format from an out-of-range value.
+    fn parse_flexible(input: &str) -> Result<Self, ParseFailure>;
+}
+
+/// Whether `s` carries any digit separator (`_` or `,`).
+fn has_separators(s: &str) -> bool {
+    s.as_bytes().iter().any(|&b| b == b'_' || b == b',')
+}
+
+/// Strips `_` and `,` digit separators.
+fn strip_separators(s: &str) -> String {
+    s.chars().filter(|&c| c != '_' && c != ',').collect()
+}
+
+/// Whether a [`ParseIntError`](std::num::ParseIntError) is an overflow (vs a bad
+/// digit / empty string).
+fn is_int_overflow(error: &std::num::ParseIntError) -> bool {
+    matches!(
+        error.kind(),
+        IntErrorKind::PosOverflow | IntErrorKind::NegOverflow
+    )
 }
 
 /// Splits a flexible integer string into `(radix, sign+digits)` with any `0x`/`0o`/
-/// `0b` prefix removed and `_` separators stripped. Allocates only when the value
-/// carries a sign together with a prefix, or contains underscores.
+/// `0b` prefix removed and `_` / `,` separators stripped. Allocates only when the
+/// value carries a sign together with a prefix, or contains separators.
 fn split_radix(s: &str) -> Option<(u32, Cow<'_, str>)> {
     let (sign, rest): (&str, &str) = match s.as_bytes().first()? {
         b'+' => ("", &s[1..]),
@@ -131,8 +180,8 @@ fn split_radix(s: &str) -> Option<(u32, Cow<'_, str>)> {
     if digits.is_empty() {
         return None;
     }
-    let body: Cow<'_, str> = if digits.as_bytes().contains(&b'_') {
-        Cow::Owned(digits.replace('_', ""))
+    let body: Cow<'_, str> = if has_separators(digits) {
+        Cow::Owned(strip_separators(digits))
     } else {
         Cow::Borrowed(digits)
     };
@@ -163,28 +212,47 @@ macro_rules! parse_int {
                 const TYPE_NAME: &'static str = stringify!($ty);
                 const EXPECTED: &'static str =
                     "a decimal, 0x-hex, 0o-octal or 0b-binary integer \
-                     (optional +/- sign, _ separators allowed)";
+                     (optional +/- sign, _ or , separators allowed)";
 
-                fn parse_flexible(input: &str) -> Option<Self> {
+                fn parse_flexible(input: &str) -> Result<Self, ParseFailure> {
                     let s = input.trim();
                     if s.is_empty() {
-                        return None;
+                        return Err(ParseFailure::Format);
                     }
-                    // Fast path: plain signed decimal without separators.
-                    if !s.as_bytes().contains(&b'_') {
-                        if let Ok(value) = s.parse::<$ty>() {
-                            return Some(value);
+                    // Fast path (most common): plain signed decimal without separators.
+                    if !has_separators(s) {
+                        match s.parse::<$ty>() {
+                            Ok(value) => return Ok(value),
+                            Err(error) if is_int_overflow(&error) => {
+                                return Err(ParseFailure::OutOfRange {
+                                    min: <$ty>::MIN.to_string(),
+                                    max: <$ty>::MAX.to_string(),
+                                });
+                            }
+                            Err(_) => {} // fall through to the flexible radix path
                         }
                     }
-                    let (radix, digits) = split_radix(s)?;
-                    <$ty>::from_str_radix(&digits, radix).ok()
+                    // Less common: signs, radix prefixes, and separators.
+                    let (radix, digits) = match split_radix(s) {
+                        Some(parts) => parts,
+                        None => return Err(ParseFailure::Format),
+                    };
+                    match <$ty>::from_str_radix(&digits, radix) {
+                        Ok(value) => Ok(value),
+                        Err(error) if is_int_overflow(&error) => Err(ParseFailure::OutOfRange {
+                            min: <$ty>::MIN.to_string(),
+                            max: <$ty>::MAX.to_string(),
+                        }),
+                        Err(_) => Err(ParseFailure::Format),
+                    }
                 }
             }
         )+
     };
 }
 
-/// Stamps out [`ParseNumber`] for the native floats.
+/// Stamps out [`ParseNumber`] for the native floats (overflow parses to `inf`, so a
+/// float parse only ever fails on format).
 macro_rules! parse_float {
     ($($ty:ty),+ $(,)?) => {
         $(
@@ -192,17 +260,19 @@ macro_rules! parse_float {
                 const TYPE_NAME: &'static str = stringify!($ty);
                 const EXPECTED: &'static str =
                     "a decimal or scientific float (e.g. 3.14, -1e9, inf, nan; \
-                     _ separators allowed)";
+                     _ or , separators allowed)";
 
-                fn parse_flexible(input: &str) -> Option<Self> {
+                fn parse_flexible(input: &str) -> Result<Self, ParseFailure> {
                     let s = input.trim();
                     if s.is_empty() {
-                        return None;
+                        return Err(ParseFailure::Format);
                     }
-                    if s.as_bytes().contains(&b'_') {
-                        return s.replace('_', "").parse::<$ty>().ok();
-                    }
-                    s.parse::<$ty>().ok()
+                    let cleaned: Cow<'_, str> = if has_separators(s) {
+                        Cow::Owned(strip_separators(s))
+                    } else {
+                        Cow::Borrowed(s)
+                    };
+                    cleaned.parse::<$ty>().map_err(|_| ParseFailure::Format)
                 }
             }
         )+

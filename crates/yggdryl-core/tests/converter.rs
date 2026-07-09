@@ -99,10 +99,50 @@ fn string_parse_failure_is_guided() {
         other => panic!("unexpected error: {other:?}"),
     }
     assert!(err.to_string().contains("0x-hex"));
-
-    // Out-of-range values are rejected too.
-    assert!(ints.encode("99999999999".into()).is_err());
     assert!(ints.encode("".into()).is_err());
+}
+
+#[test]
+fn string_out_of_range_reports_the_value_and_range() {
+    let ints = StringConverter::<i32>::new();
+    let err = ints.encode("99999999999".into()).unwrap_err();
+    match &err {
+        ConvertError::OutOfRange {
+            input, target, max, ..
+        } => {
+            assert_eq!(input, "99999999999");
+            assert_eq!(*target, "i32");
+            assert_eq!(max, &i32::MAX.to_string());
+        }
+        other => panic!("expected OutOfRange, got {other:?}"),
+    }
+    assert!(err.to_string().contains("out of range"));
+
+    // A very long offending value is truncated for readability.
+    let long = "9".repeat(200);
+    let err = ints.encode(long).unwrap_err();
+    let shown = err.to_string();
+    assert!(
+        shown.contains("..."),
+        "long value should be truncated: {shown}"
+    );
+    assert!(shown.len() < 160);
+}
+
+#[test]
+fn string_accepts_comma_separators() {
+    assert_eq!(
+        StringConverter::<i64>::new()
+            .encode("1,000,000".into())
+            .unwrap(),
+        1_000_000
+    );
+    assert_eq!(
+        StringConverter::<f64>::new()
+            .encode("1,234.5".into())
+            .unwrap(),
+        1234.5
+    );
 }
 
 #[test]
