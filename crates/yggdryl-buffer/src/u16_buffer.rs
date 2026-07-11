@@ -2,4 +2,4 @@
 
 use super::primitive::primitive_buffer;
 
-primitive_buffer!(U16Buffer, u16, U16Field);
+primitive_buffer!(U16Buffer, u16);

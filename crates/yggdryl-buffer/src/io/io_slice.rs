@@ -10,7 +10,7 @@ use crate::IOBase;
 /// [`ByteSlice`](crate::ByteSlice) is the concrete one.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, IOSlice, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, IOSlice, Whence};
 ///
 /// let buffer = ByteBuffer::from_bytes(b"hello world");
 /// let mut slice = buffer.byte_slice(6, 5); // the "world" window

@@ -1,7 +1,7 @@
 //! Tests for the bounded windows `ByteSlice` and `TypedSlice<T>`: window bounds,
 //! clamped reads/writes (no growth), positions, and copy-on-write.
 
-use yggdryl_core::{
+use yggdryl_buffer::{
     i256, ByteBuffer, ByteSlice, IOBase, IOCursor, IOSlice, IoError, IoPrimitive, TypedCursor,
     TypedIOBase, TypedIOSlice, TypedSlice, Whence,
 };

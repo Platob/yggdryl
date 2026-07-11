@@ -1,7 +1,7 @@
 //! Edge-case tests for the positioned-IO surface: negative-offset seeks, auto-resize
 //! on write, and the `set_byte_capacity` reserve / reduce behaviour.
 
-use yggdryl_core::{
+use yggdryl_buffer::{
     ByteBuffer, IOBase, IOCursor, IoError, IoPrimitive, TypedCursor, TypedIOBase, Whence,
 };
 

@@ -1,11 +1,12 @@
 # Byte IO
 
-`yggdryl-core` splits byte IO `std::io::Cursor`-style into **storage** and
-**cursor**, both backed by an Apache Arrow `Buffer` (the core is Arrow-backed, so
-`from_arrow_byte_buffer` / `to_arrow_byte_buffer` and the bit-buffer equivalents are
-zero-copy):
+`yggdryl-buffer` (the foundation crate; re-exported through `yggdryl-core`) splits byte
+IO `std::io::Cursor`-style into **storage** and **cursor**, both backed by an Apache
+Arrow `Buffer` (Arrow-backed, so `from_arrow_byte_buffer` / `to_arrow_byte_buffer` and
+the bit-buffer equivalents are zero-copy):
 
-- [`ByteBuffer`] holds bytes — pure storage, no position.
+- [`ByteBuffer`] holds bytes — pure storage, no position. It is also the `u8` typed
+  buffer: `U8Buffer` is `ByteBuffer` (one merged type).
 - [`ByteCursor`] (from `ByteBuffer.byte_cursor()`) holds a share of the buffer plus
   a position, and does the reading and writing. Reads/writes **advance** the cursor
   and resolve their start via [`Whence`] (`Start` / `Current` / `End`); a write

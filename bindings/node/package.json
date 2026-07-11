@@ -2,8 +2,8 @@
   "name": "yggdryl",
   "version": "0.1.1",
   "description": "yggdryl — a Rust-core library, exposed to Node.js",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "yggdryl.js",
+  "types": "yggdryl.d.ts",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -40,6 +40,8 @@
     "@napi-rs/cli": "^2.18.0"
   },
   "files": [
+    "yggdryl.js",
+    "yggdryl.d.ts",
     "index.js",
     "index.d.ts",
     "*.node"

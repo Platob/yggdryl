@@ -8,7 +8,7 @@ use crate::IOBase;
 /// buffer stays intact). [`ByteCursor`](crate::ByteCursor) is the concrete one.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOCursor, IOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOCursor, IOBase, Whence};
 ///
 /// let mut cursor = ByteBuffer::from_bytes(b"abcdef").byte_cursor();
 /// cursor.set_position(2);

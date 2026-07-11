@@ -68,5 +68,7 @@ fn main() {
     let mutate = mops_s(iters, || {
         black_box(scratch.get_mut(Headers::CONTENT_TYPE).unwrap()).push(b'x');
     });
-    println!("  get {get:9.2} Mops/s   set {set:9.2} Mops/s   mutate(in-place) {mutate:9.2} Mops/s");
+    println!(
+        "  get {get:9.2} Mops/s   set {set:9.2} Mops/s   mutate(in-place) {mutate:9.2} Mops/s"
+    );
 }

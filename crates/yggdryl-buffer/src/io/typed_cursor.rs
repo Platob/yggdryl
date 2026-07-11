@@ -20,7 +20,7 @@ use crate::{ByteBuffer, ByteCursor, IOBase, IOCursor, IoError, IoPrimitive, Type
 /// `yggdryl-buffer` crate) or [`TypedCursor::new`].
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, TypedCursor, TypedIOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, TypedCursor, TypedIOBase, Whence};
 ///
 /// // Three little-endian i32 values as bytes.
 /// let mut bytes = Vec::new();

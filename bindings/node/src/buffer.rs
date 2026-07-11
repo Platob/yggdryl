@@ -1,14 +1,15 @@
 //! The `yggdryl.buffer` namespace — typed native-type buffers.
 //!
 //! Exposes one immutable buffer class per native primitive ([`I8Buffer`] …
-//! [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring `yggdryl-buffer`.
-//! Two Node-specific idioms, as on the IO cursor: `U64Buffer` is **omitted** (napi has
-//! no native `u64` scalar — use `I64Buffer` or raw bytes), and `F32Buffer` marshals its
-//! values over an `f64` JS boundary. Each buffer carries optional headers (an
-//! `Array<{key: Buffer, value: Buffer}>` — JS cannot key a map by bytes) and hands out
-//! the matching [`yggdryl.field`](crate::field) class via `field(name, nullable)`. The
-//! Arrow `from_arrow` / `to_arrow` interop is Rust-only (an `arrow_buffer` value does
-//! not cross the FFI boundary).
+//! [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring `yggdryl-buffer`. The
+//! `u8` buffer *is* the byte store, so `U8Buffer` is `yggdryl.io.ByteBuffer` re-exported
+//! (one merged type; the `yggdryl.js` namespace map aliases it). Two Node-specific
+//! idioms, as on the IO cursor: `U64Buffer` is **omitted** (napi has no native `u64`
+//! scalar — use `I64Buffer` or raw bytes), and `F32Buffer` marshals its values over an
+//! `f64` JS boundary. A buffer carries no schema of its own; it hands out the matching
+//! [`yggdryl.field`](crate::field) class via `field(name, nullable)` (the buffer → field
+//! bridge), and headers live on the field. The Arrow `from_arrow` / `to_arrow` interop is
+//! Rust-only (an `arrow_buffer` value does not cross the FFI boundary).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -16,12 +17,13 @@ use std::hash::{Hash, Hasher};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use yggdryl_http::{Headers, HeadersBased};
+use yggdryl_field::ToField;
+use yggdryl_http::Headers;
 
 use crate::io::{
     ByteBuffer, ByteCursor, F32Cursor, F32Slice, F64Cursor, F64Slice, I16Cursor, I16Slice,
     I32Cursor, I32Slice, I64Cursor, I64Slice, I8Cursor, I8Slice, U16Cursor, U16Slice, U32Cursor,
-    U32Slice, U8Cursor, U8Slice,
+    U32Slice,
 };
 
 /// Maps a core error to a thrown JS `Error`.
@@ -173,26 +175,11 @@ macro_rules! napi_buffer {
                     }
                 }
 
-                /// The buffer's headers as an `Array<{key, value}>`, or `null`.
-                #[napi(getter)]
-                pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
-                    headers_to_entries(self.inner.headers())
-                }
-
-                /// Returns a copy of this buffer with `headers` attached — carried into
-                /// the field this buffer hands out; it does not affect byte equality.
-                #[napi]
-                pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
-                    Self {
-                        inner: self.inner.clone().with_headers(headers_from_entries(headers)),
-                    }
-                }
-
-                #[doc = concat!("Builds the matching `", stringify!($field), "` named `name`, carrying this buffer's headers.")]
+                #[doc = concat!("Builds the matching `", stringify!($field), "` named `name` (the buffer → field bridge; a buffer carries no schema, so headers live on the field).")]
                 #[napi]
                 pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::$field {
                     crate::field::$field {
-                        inner: self.inner.field(name, nullable.unwrap_or(false)),
+                        inner: self.inner.to_field(name, nullable.unwrap_or(false)),
                     }
                 }
 
@@ -222,7 +209,6 @@ napi_buffer!(
     (I16Buffer, i16, I16Cursor, I16Slice, I16Field),
     (I32Buffer, i32, I32Cursor, I32Slice, I32Field),
     (I64Buffer, i64, I64Cursor, I64Slice, I64Field),
-    (U8Buffer, u8, U8Cursor, U8Slice, U8Field),
     (U16Buffer, u16, U16Cursor, U16Slice, U16Field),
     (U32Buffer, u32, U32Cursor, U32Slice, U32Field),
     (F64Buffer, f64, F64Cursor, F64Slice, F64Field),
@@ -339,28 +325,12 @@ impl F32Buffer {
         }
     }
 
-    /// The buffer's headers as an `Array<{key, value}>`, or `null`.
-    #[napi(getter)]
-    pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
-        headers_to_entries(self.inner.headers())
-    }
-
-    /// Returns a copy of this buffer with `headers` attached.
-    #[napi]
-    pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
-        Self {
-            inner: self
-                .inner
-                .clone()
-                .with_headers(headers_from_entries(headers)),
-        }
-    }
-
-    /// Builds the matching `F32Field` named `name`, carrying this buffer's headers.
+    /// Builds the matching `F32Field` named `name` (the buffer → field bridge; a buffer
+    /// carries no schema, so headers live on the field).
     #[napi]
     pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::F32Field {
         crate::field::F32Field {
-            inner: self.inner.field(name, nullable.unwrap_or(false)),
+            inner: self.inner.to_field(name, nullable.unwrap_or(false)),
         }
     }
 
@@ -478,28 +448,12 @@ impl BooleanBuffer {
             .map_err(to_error)
     }
 
-    /// The buffer's headers as an `Array<{key, value}>`, or `null`.
-    #[napi(getter)]
-    pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
-        headers_to_entries(self.inner.headers())
-    }
-
-    /// Returns a copy of this buffer with `headers` attached.
-    #[napi]
-    pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
-        Self {
-            inner: self
-                .inner
-                .clone()
-                .with_headers(headers_from_entries(headers)),
-        }
-    }
-
-    /// Builds the matching `BooleanField` named `name`, carrying this buffer's headers.
+    /// Builds the matching `BooleanField` named `name` (the buffer → field bridge; a
+    /// buffer carries no schema, so headers live on the field).
     #[napi]
     pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::BooleanField {
         crate::field::BooleanField {
-            inner: self.inner.field(name, nullable.unwrap_or(false)),
+            inner: self.inner.to_field(name, nullable.unwrap_or(false)),
         }
     }
 

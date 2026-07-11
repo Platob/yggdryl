@@ -54,7 +54,7 @@ fn main() {
 
 /// Zero-copy Arrow `ScalarBuffer` wrap vs a copying construction.
 fn arrow_bench(values: &[i32], size: usize, iters: u32) {
-    use yggdryl_core::arrow_buffer::ScalarBuffer;
+    use yggdryl_buffer::arrow_buffer::ScalarBuffer;
 
     let scalar = ScalarBuffer::<i32>::from(values.to_vec());
     let wrap = throughput_mb_s(size, iters, || {

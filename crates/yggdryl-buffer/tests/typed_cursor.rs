@@ -1,7 +1,7 @@
 //! Tests for the element-typed cursor `TypedCursor<T>`: `T`-unit positioning,
 //! per-type round trips, default-fill growth, and capacity.
 
-use yggdryl_core::{
+use yggdryl_buffer::{
     ByteBuffer, IOBase, IOCursor, IoError, IoPrimitive, TypedCursor, TypedIOBase, Whence,
 };
 

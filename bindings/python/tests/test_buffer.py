@@ -18,30 +18,28 @@ from yggdryl.dtype import I64Type
 from yggdryl.io import Whence
 
 
-def test_buffer_field_and_headers():
-    # A buffer hands out the matching typed field, carrying its headers.
-    annotated = I64Buffer([1, 2, 3]).with_headers({b"unit": b"ms"})
-    assert annotated.headers == {b"unit": b"ms"}
-
-    field = annotated.field("ts", True)
+def test_buffer_to_field_bridge():
+    # A buffer carries no schema of its own; it bridges to the matching typed field,
+    # and headers are applied from above (on the field).
+    field = I64Buffer([1, 2, 3]).field("ts", True)
     assert field.name == "ts"
     assert field.nullable is True
     assert field.data_type == I64Type()
-    assert field.headers == {b"unit": b"ms"}
+    assert field.headers is None
 
-    # No headers by default; field() defaults nullable to False.
-    plain = I64Buffer([1, 2, 3])
-    assert plain.headers is None
-    assert plain.field("ts").nullable is False
-    assert plain.field("ts").headers is None
+    annotated = field.with_headers({b"unit": b"ms"})
+    assert annotated.headers == {b"unit": b"ms"}
 
-    # The boolean buffer hands out a BooleanField.
+    # field() defaults nullable to False.
+    assert I64Buffer([1, 2, 3]).field("ts").nullable is False
+
+    # The boolean buffer bridges to a BooleanField.
     bfield = BooleanBuffer([True, False]).field("flag", True)
     assert bfield.name == "flag"
 
-    # Metadata is an annotation — it does not change byte identity.
-    assert I64Buffer([1, 2, 3]) == annotated
-    assert I64Buffer([1, 2, 3]).serialize_bytes() == annotated.serialize_bytes()
+    # The byte store is the u8 buffer (U8Buffer is ByteBuffer); it bridges to U8Field.
+    ufield = U8Buffer([1, 2, 3]).field("bytes")
+    assert ufield.name == "bytes"
 
 
 def test_numeric_construct_and_access():

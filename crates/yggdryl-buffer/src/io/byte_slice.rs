@@ -12,7 +12,7 @@ use crate::{ByteBuffer, ByteCursor, IOBase, IOCursor, IOSlice, IoError, TypedIOB
 /// `TypedIOSlice<u8>`. Obtain one from [`ByteBuffer::byte_slice`].
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, IOSlice, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, IOSlice, Whence};
 ///
 /// let buffer = ByteBuffer::from_bytes(b"hello world");
 /// let mut slice = buffer.byte_slice(6, 5);

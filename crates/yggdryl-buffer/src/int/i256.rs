@@ -10,7 +10,7 @@
 /// [`IoPrimitive`](crate::IoPrimitive), so `TypedCursor<i256>` reads and writes it.
 ///
 /// ```
-/// use yggdryl_core::i256;
+/// use yggdryl_buffer::i256;
 ///
 /// let max = i256::from_i128(i128::MAX);
 /// let big = max * i256::from_i128(2); // exceeds i128

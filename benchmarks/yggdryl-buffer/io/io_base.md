@@ -1,8 +1,8 @@
 # `IOBase` — typed primitive & bit arrays
 
-Source: [`crates/yggdryl-core/src/io/io_base.rs`](../../../crates/yggdryl-core/src/io/io_base.rs)
-· Bench: [`crates/yggdryl-core/benches/io.rs`](../../../crates/yggdryl-core/benches/io.rs)
-(`cargo bench -p yggdryl-core --bench io`)
+Source: [`crates/yggdryl-buffer/src/io/io_base.rs`](../../../crates/yggdryl-buffer/src/io/io_base.rs)
+· Bench: [`crates/yggdryl-buffer/benches/io.rs`](../../../crates/yggdryl-buffer/benches/io.rs)
+(`cargo bench -p yggdryl-buffer --bench io`)
 
 The typed accessors (`pread_i64` / `pread_i64_array` / `pwrite_bit_array` / …) are
 **default** methods layered on `pread_byte_array` / `pwrite_byte_array`, so every
@@ -29,7 +29,7 @@ for big-endian) and write it in one shot:
 | `pwrite_i64_array` | ~1.27 GB/s | **~2.5 GB/s (~2×)** |
 
 Correctness is covered by the endianness edge-case tests
-([`tests/typed_io.rs`](../../../crates/yggdryl-core/tests/typed_io.rs)).
+([`tests/typed_io.rs`](../../../crates/yggdryl-buffer/tests/typed_io.rs)).
 
 ## Known slow path: bit packing
 

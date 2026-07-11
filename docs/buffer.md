@@ -1,12 +1,14 @@
 # Typed buffers
 
 Where [`ByteBuffer`](io.md) is untyped byte storage, the **buffer** layer
-(`yggdryl-buffer`) is one immutable, cheaply-shared, contiguous buffer per native
-primitive — `I8Buffer` … `I64Buffer`, `U8Buffer` … `U64Buffer`, `F32Buffer`,
-`F64Buffer` — plus the bit-packed `BooleanBuffer`. Each is a value type: it clones by
-sharing its allocation, round-trips through little-endian bytes, and compares and
-hashes by content. A buffer also carries optional headers and hands out the matching
-typed [field](field.md) (see [Field & headers](#field-and-headers) below).
+(`yggdryl-buffer`, the foundation crate) is one immutable, cheaply-shared, contiguous
+buffer per native primitive — `I8Buffer` … `I64Buffer`, `U8Buffer` … `U64Buffer`,
+`F32Buffer`, `F64Buffer` — plus the bit-packed `BooleanBuffer`. The **`u8` buffer *is*
+the byte store**: `U8Buffer` is [`ByteBuffer`](io.md) (one merged type). Each is a value
+type: it clones by sharing its allocation, round-trips through little-endian bytes, and
+compares and hashes by content. A buffer carries **no schema** of its own; it hands out
+the matching typed [field](field.md) through the buffer → field bridge (see
+[To a field](#to-a-field) below), and headers live on the field.
 
 !!! note "Node type limits"
     Node omits `U64Buffer` (napi has no native `u64` scalar — use `I64Buffer` or raw
@@ -233,32 +235,30 @@ and `to_byte_buffer` / `from_byte_buffer` convert to and from a `ByteBuffer`.
     assert_eq!(I64Buffer::from_byte_buffer(&buf.to_byte_buffer()).unwrap(), buf);
     ```
 
-## Field and headers
+## To a field
 
-A buffer carries optional **headers** (a bytes→bytes map) and hands out the matching
-typed [field](field.md) via `field(name, nullable)` — `I64Buffer` → `I64Field`,
-`BooleanBuffer` → `BooleanField`, and so on. The headers is carried into that field.
+A buffer carries **no schema** of its own. It hands out the matching typed
+[field](field.md) via `field(name, nullable)` — the buffer → field bridge (`I64Buffer` →
+`I64Field`, `BooleanBuffer` → `BooleanField`, the byte/`U8Buffer` → `U8Field`). Naming,
+nullability, and [headers](http.md) are applied **from above**, on the field.
 
-!!! note "Idioms & Arrow"
-    Headers marshals as a Python `dict[bytes, bytes]` and, in Node, an
-    `Array<{key: Buffer, value: Buffer}>` (JS cannot key a map by bytes). It is an
-    annotation only — it does **not** affect the buffer's byte-content equality, and it
-    is **not** carried into Arrow's `Field` (arbitrary bytes are not valid UTF-8), so it
-    stays yggdryl-side.
+!!! note "Applied from above"
+    In Rust the bridge is the `ToField` trait (`buffer.to_field(name, nullable)`); the
+    bindings expose it as `buffer.field(name, nullable)`. Headers live on the field (a
+    Python `dict[bytes, bytes]` / a Node `Array<{key, value}>`), not the buffer — set them
+    with the field's `with_headers`. They are **not** carried into Arrow's `Field`
+    (arbitrary bytes are not valid UTF-8), so they stay yggdryl-side.
 
 === "Python"
 
     ```python
     from yggdryl.buffer import I64Buffer
 
-    buf = I64Buffer([1, 2, 3]).with_headers({b"unit": b"ms"})
-    assert buf.headers == {b"unit": b"ms"}
-
-    field = buf.field("ts", True)              # an I64Field
+    field = I64Buffer([1, 2, 3]).field("ts", True)   # an I64Field
     assert field.name == "ts" and field.nullable is True
-    assert field.headers == {b"unit": b"ms"}
 
-    assert buf == I64Buffer([1, 2, 3])         # headers is not part of byte identity
+    annotated = field.with_headers({b"unit": b"ms"})  # headers on the field
+    assert annotated.headers == {b"unit": b"ms"}
     ```
 
 === "Node"
@@ -266,31 +266,26 @@ typed [field](field.md) via `field(name, nullable)` — `I64Buffer` → `I64Fiel
     ```js
     const { I64Buffer } = require('yggdryl').buffer
 
-    const entries = [{ key: Buffer.from('unit'), value: Buffer.from('ms') }]
-    const buf = new I64Buffer([1, 2, 3]).withHeaders(entries)
-
-    const field = buf.field('ts', true)        // an I64Field
+    const field = new I64Buffer([1, 2, 3]).field('ts', true)   // an I64Field
     console.assert(field.name === 'ts' && field.nullable === true)
-    console.assert(field.headers[0].value.equals(Buffer.from('ms')))
 
-    console.assert(new I64Buffer([1, 2, 3]).equals(buf)) // headers off byte identity
+    const entries = [{ key: Buffer.from('unit'), value: Buffer.from('ms') }]
+    const annotated = field.withHeaders(entries)               // headers on the field
+    console.assert(annotated.headers[0].value.equals(Buffer.from('ms')))
     ```
 
 === "Rust"
 
     ```rust
     use yggdryl_buffer::I64Buffer;
-    use yggdryl_field::Field;
+    use yggdryl_field::{Field, ToField};
     use yggdryl_http::{Headers, HeadersBased};
 
-    let buf = I64Buffer::from_slice(&[1, 2, 3])
-        .with_headers(Headers::from_pairs([(b"unit".to_vec(), b"ms".to_vec())]));
-
-    let field = buf.field("ts", true); // an I64Field
+    let field = I64Buffer::from_slice(&[1, 2, 3]).to_field("ts", true); // an I64Field
     assert_eq!(field.name(), "ts");
-    assert_eq!(field.headers().unwrap().get(b"unit"), Some(b"ms".as_slice()));
 
-    assert_eq!(buf, I64Buffer::from_slice(&[1, 2, 3])); // headers off byte identity
+    let annotated = field.with_headers(Headers::from_pairs([(b"unit".to_vec(), b"ms".to_vec())]));
+    assert_eq!(annotated.get_header(b"unit"), Some(b"ms".as_slice()));
     ```
 
 ## Zero-copy Arrow (Rust)

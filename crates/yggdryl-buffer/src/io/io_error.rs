@@ -12,7 +12,7 @@ use crate::Whence;
 /// it surfaces as a Python `ValueError` / a thrown `Error`.
 ///
 /// ```
-/// use yggdryl_core::{IoError, Whence};
+/// use yggdryl_buffer::{IoError, Whence};
 ///
 /// let err = IoError::InvalidSeek { offset: -1, whence: Whence::Start };
 /// assert!(err.to_string().contains("start"));

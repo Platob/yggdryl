@@ -83,7 +83,7 @@ macro_rules! primitive_io {
 /// The trait is object-safe (no lifetimes) and can be held behind `dyn IOBase`.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, Whence};
 ///
 /// let mut cursor = ByteBuffer::new().byte_cursor();
 /// cursor.pwrite_i32(-1, Whence::Start).unwrap();
@@ -99,7 +99,7 @@ macro_rules! primitive_io {
 ///
 /// ```
 /// use std::io::{Read, Seek, SeekFrom, Write};
-/// use yggdryl_core::{ByteBuffer, IOBase};
+/// use yggdryl_buffer::{ByteBuffer, IOBase};
 ///
 /// let mut cursor = ByteBuffer::new().byte_cursor();
 /// let io: &mut dyn IOBase = &mut cursor;

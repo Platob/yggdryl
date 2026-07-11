@@ -24,7 +24,7 @@ use crate::ByteCursor;
 /// the byte content.
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, Whence};
 ///
 /// let buffer = ByteBuffer::from_bytes(b"hello world");
 /// let mut cursor = buffer.byte_cursor();
@@ -102,7 +102,7 @@ impl ByteBuffer {
     /// Serialises the buffer to its byte content.
     ///
     /// ```
-    /// use yggdryl_core::ByteBuffer;
+    /// use yggdryl_buffer::ByteBuffer;
     ///
     /// let buffer = ByteBuffer::from_bytes(b"payload");
     /// assert_eq!(buffer.serialize_bytes(), b"payload");
@@ -152,8 +152,8 @@ impl ByteBuffer {
     /// share the same underlying allocation (reference-counted).
     ///
     /// ```
-    /// use yggdryl_core::ByteBuffer;
-    /// use yggdryl_core::arrow_buffer::Buffer;
+    /// use yggdryl_buffer::ByteBuffer;
+    /// use yggdryl_buffer::arrow_buffer::Buffer;
     ///
     /// let arrow = Buffer::from_vec(b"payload".to_vec());
     /// let buffer = ByteBuffer::from_arrow_byte_buffer(arrow);
@@ -182,6 +182,40 @@ impl ByteBuffer {
     /// [`to_arrow_byte_buffer`](ByteBuffer::to_arrow_byte_buffer).
     pub fn to_arrow_bit_buffer(&self) -> Buffer {
         self.data.clone()
+    }
+
+    // ---- `U8Buffer` typed-buffer-family surface ----
+    //
+    // `U8Buffer` is an alias of `ByteBuffer` (the `u8` buffer *is* the byte store), so
+    // these give it the same shape as the other typed buffers (`I8Buffer` … `F64Buffer`):
+    // `len` / `get` / `as_slice` / `from_slice` / `to_vec` over `u8`. They read as byte
+    // helpers here and as the element API when the buffer is used as `U8Buffer`.
+
+    /// The number of bytes (`u8` values) held — the typed-family length, equal to
+    /// [`byte_size`](ByteBuffer::byte_size).
+    pub fn len(&self) -> usize {
+        self.byte_size()
+    }
+
+    /// Creates a buffer holding a copy of `values`.
+    pub fn from_slice(values: &[u8]) -> Self {
+        Self::from_bytes(values)
+    }
+
+    /// Borrows the bytes as a `u8` slice — the typed-family view, equal to
+    /// [`as_bytes`](ByteBuffer::as_bytes).
+    pub fn as_slice(&self) -> &[u8] {
+        self.as_bytes()
+    }
+
+    /// The byte at `index`, or `None` if out of bounds.
+    pub fn get(&self, index: usize) -> Option<u8> {
+        self.as_bytes().get(index).copied()
+    }
+
+    /// Copies the bytes out into an owned `Vec<u8>`.
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.as_bytes().to_vec()
     }
 
     /// Clones the backing bytes out into a growable Arrow [`MutableBuffer`] for a

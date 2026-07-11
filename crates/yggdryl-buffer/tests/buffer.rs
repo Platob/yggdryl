@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use yggdryl_buffer::{BooleanBuffer, BufferError, F64Buffer, I32Buffer, I64Buffer, U8Buffer};
-use yggdryl_core::{IOBase, Whence};
+use yggdryl_buffer::{IOBase, Whence};
 
 #[test]
 fn numeric_construct_and_access() {
@@ -148,80 +148,9 @@ fn boolean_serialize_round_trip() {
     assert_eq!(set.len(), 2);
 }
 
-mod field_and_headers {
-    use yggdryl_buffer::{BooleanBuffer, I64Buffer};
-    use yggdryl_field::{Field, TypedField};
-    use yggdryl_http::{Headers, HeadersBased};
-
-    #[test]
-    fn buffer_hands_out_the_matching_typed_field() {
-        // The return type is the concrete `I64Field` for `I64Buffer` (compile-time).
-        let field: yggdryl_field::I64Field = I64Buffer::from_slice(&[1, 2, 3]).field("id", false);
-        assert_eq!(field.name(), "id");
-        assert!(!field.is_nullable());
-        let _ = TypedField::data_type(&field); // the typed data type is reachable
-
-        // The boolean buffer hands out a `BooleanField`.
-        let bfield: yggdryl_field::BooleanField =
-            BooleanBuffer::from_bits(&[true, false]).field("flag", true);
-        assert_eq!(bfield.name(), "flag");
-        assert!(bfield.is_nullable());
-    }
-
-    #[test]
-    fn headers_are_attached_and_carried_into_the_field() {
-        let headers = Headers::from_pairs([(b"unit".to_vec(), b"ms".to_vec())]);
-        let buffer = I64Buffer::from_slice(&[10, 20]).with_headers(headers.clone());
-        assert_eq!(buffer.headers(), Some(&headers));
-
-        let field = buffer.field("ts", true);
-        assert_eq!(field.headers(), Some(&headers));
-
-        // A buffer without headers hands out a field without headers.
-        assert_eq!(
-            I64Buffer::from_slice(&[10, 20]).field("ts", true).headers(),
-            None
-        );
-    }
-
-    #[test]
-    fn common_header_accessors_and_zero_copy_mutation() {
-        let mut buffer = I64Buffer::from_slice(&[1]);
-        buffer.set_content_type("application/x.int64");
-        assert_eq!(
-            buffer.content_type(),
-            Some(b"application/x.int64".as_slice())
-        );
-        // Zero-copy: extend the value bytes in place (no re-insert, no map clone).
-        buffer
-            .get_header_mut(Headers::CONTENT_TYPE)
-            .unwrap()
-            .extend_from_slice(b"; le");
-        assert_eq!(
-            buffer.content_type(),
-            Some(b"application/x.int64; le".as_slice())
-        );
-        // Carried into the field it hands out.
-        assert_eq!(
-            buffer.field("v", false).content_type(),
-            Some(b"application/x.int64; le".as_slice())
-        );
-    }
-
-    #[test]
-    fn headers_do_not_affect_buffer_equality_or_bytes() {
-        let plain = I64Buffer::from_slice(&[1, 2, 3]);
-        let annotated = I64Buffer::from_slice(&[1, 2, 3])
-            .with_headers(Headers::from_pairs([(b"k".to_vec(), b"v".to_vec())]));
-        // Byte identity ignores the annotation (rule 7 is over the data bytes).
-        assert_eq!(plain, annotated);
-        assert_eq!(plain.serialize_bytes(), annotated.serialize_bytes());
-    }
-}
-
 mod arrow_interop {
+    use yggdryl_buffer::arrow_buffer::{BooleanBuffer as ArrowBooleanBuffer, Buffer, ScalarBuffer};
     use yggdryl_buffer::{BooleanBuffer, I64Buffer};
-    use yggdryl_core::arrow_buffer::{BooleanBuffer as ArrowBooleanBuffer, Buffer, ScalarBuffer};
 
     #[test]
     fn numeric_from_and_to_arrow_zero_copy() {

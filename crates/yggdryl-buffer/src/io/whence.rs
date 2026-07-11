@@ -8,7 +8,7 @@ use crate::IoError;
 /// reference point, mirroring C `SEEK_SET` / `SEEK_CUR` / `SEEK_END`.
 ///
 /// ```
-/// use yggdryl_core::Whence;
+/// use yggdryl_buffer::Whence;
 ///
 /// // 4 bytes back from the end of a 10-byte resource is absolute position 6.
 /// assert_eq!(Whence::End.resolve(-4, 0, 10).unwrap(), 6);

@@ -1,13 +1,13 @@
 # `TypedCursor<T>` — element-typed cursor throughput
 
-Source: [`crates/yggdryl-core/src/io/typed_cursor.rs`](../../../crates/yggdryl-core/src/io/typed_cursor.rs)
-· Bench: [`crates/yggdryl-core/benches/io.rs`](../../../crates/yggdryl-core/benches/io.rs)
-(`cargo bench -p yggdryl-core --bench io`)
+Source: [`crates/yggdryl-buffer/src/io/typed_cursor.rs`](../../../crates/yggdryl-buffer/src/io/typed_cursor.rs)
+· Bench: [`crates/yggdryl-buffer/benches/io.rs`](../../../crates/yggdryl-buffer/benches/io.rs)
+(`cargo bench -p yggdryl-buffer --bench io`)
 
 `TypedCursor<T>` is the element-typed cursor whose native unit is a `T` value:
 `pwrite_array` / `pread_array` move whole `T`s (little-endian), `tell` / `seek` count
 in `T` units, and a write past the end fills the gap with the `T`
-[`default_value`](../../../crates/yggdryl-core/src/io/typed_io_base.rs). It wraps a
+[`default_value`](../../../crates/yggdryl-buffer/src/io/typed_io_base.rs). It wraps a
 `ByteCursor`, so it inherits copy-on-write and the byte/bit positions. Corpus: 1 MiB
 of `i64` (131 072 values), 200 iterations, `--release`.
 
@@ -78,7 +78,7 @@ Growing a typed cursor past the end fills the gap with `default_byte_array`, i.e
 zero, so it coincides with the byte cursor's zero-fill — but routing the fill through
 `default_value` keeps it correct for a hypothetical non-zero-default `T` and documents
 the intent. Coverage:
-[`tests/typed_cursor.rs`](../../../crates/yggdryl-core/tests/typed_cursor.rs).
+[`tests/typed_cursor.rs`](../../../crates/yggdryl-buffer/tests/typed_cursor.rs).
 
 ## Read path left safe
 

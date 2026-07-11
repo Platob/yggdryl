@@ -37,7 +37,7 @@ impl Clone for Backing {
 /// `TypedIOCursor<u8>`. Obtain one from [`ByteBuffer::byte_cursor`].
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, Whence};
 ///
 /// let buffer = ByteBuffer::from_bytes(b"abcdef");
 /// let mut cursor = buffer.byte_cursor();
@@ -77,7 +77,7 @@ impl ByteCursor {
     /// buffer, leaving any source [`ByteBuffer`] intact.
     ///
     /// ```
-    /// use yggdryl_core::{ByteBuffer, IOBase, Whence};
+    /// use yggdryl_buffer::{ByteBuffer, IOBase, Whence};
     ///
     /// let mut cursor = ByteBuffer::from_bytes(b"abcdef").byte_cursor();
     /// cursor.set_byte_capacity(3); // below the length -> reduce the inner buffer

@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Typed, Arrow-backed buffers for yggdryl — the Buffer layer"
+description = "Arrow-backed byte/typed buffers, positioned IO, and wide integers — yggdryl's foundation"
 keywords.workspace = true
 readme = "README.md"
 
@@ -15,19 +15,17 @@ name = "yggdryl_buffer"
 path = "src/lib.rs"
 
 [dependencies]
-# The io foundations a buffer bridges to (`ByteBuffer`, `ByteCursor`, `TypedCursor`,
-# `TypedSlice`). Dependencies point strictly downward.
-yggdryl-core = { workspace = true }
-# The field a buffer hands out from its element type + headers (`I64Buffer::field` →
-# `I64Field`). Places the buffer layer above field: buffer → field → dtype → core.
-yggdryl-field = { workspace = true }
-# The generic header map (`Headers` / `HeadersBased`) a buffer carries.
-yggdryl-http = { workspace = true }
-# Apache Arrow's buffer subset — the backing store (`ScalarBuffer` / `BooleanBuffer`),
-# wrapped zero-copy by `from_arrow` / `to_arrow`.
+# Apache Arrow's buffer subset — the backing store for every resource here: the byte
+# `Buffer`/`MutableBuffer`, the typed `ScalarBuffer`, the `BooleanBuffer`, and the wide
+# `i256`. Not optional — the whole crate is Arrow-backed for straight zero-copy access.
+# This is the crate's ONLY dependency: it is the foundation the rest of yggdryl builds on.
 arrow-buffer = { workspace = true }
 
-# Dependency-free throughput bench (`harness = false`, its own `main`).
+# Dependency-free throughput benches (`harness = false`, their own `main`).
 [[bench]]
 name = "buffer"
+harness = false
+
+[[bench]]
+name = "io"
 harness = false

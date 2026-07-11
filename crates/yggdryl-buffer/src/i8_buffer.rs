@@ -2,4 +2,4 @@
 
 use super::primitive::primitive_buffer;
 
-primitive_buffer!(I8Buffer, i8, I8Field);
+primitive_buffer!(I8Buffer, i8);

@@ -3,7 +3,7 @@
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-use yggdryl_core::{ByteBuffer, IOBase};
+use yggdryl_buffer::{ByteBuffer, IOBase};
 
 #[test]
 fn dyn_iobase_reads_sequentially() {

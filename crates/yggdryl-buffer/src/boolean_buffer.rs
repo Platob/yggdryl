@@ -3,11 +3,8 @@
 use core::fmt;
 
 use arrow_buffer::Buffer;
-use yggdryl_core::ByteBuffer;
-use yggdryl_field::BooleanField;
-use yggdryl_http::{Headers, HeadersBased};
 
-use crate::BufferError;
+use crate::{BufferError, ByteBuffer};
 
 /// The mask selecting the valid low bits of a bit buffer's final byte (`0xFF` when
 /// the length is a whole number of bytes, so the last byte is fully used).
@@ -42,7 +39,6 @@ const fn trailing_mask(len: usize) -> u8 {
 pub struct BooleanBuffer {
     // Always byte-aligned (offset 0), so `as_bytes` is a straight slice.
     data: arrow_buffer::BooleanBuffer,
-    headers: Option<Headers>,
 }
 
 impl BooleanBuffer {
@@ -51,17 +47,6 @@ impl BooleanBuffer {
     fn from_packed(bytes: Vec<u8>, len: usize) -> Self {
         Self {
             data: arrow_buffer::BooleanBuffer::new(Buffer::from_vec(bytes), 0, len),
-            headers: None,
-        }
-    }
-
-    /// Builds the matching [`BooleanField`] named `name` (nullable `nullable`), carrying
-    /// this buffer's headers.
-    pub fn field(&self, name: impl Into<String>, nullable: bool) -> BooleanField {
-        let field = BooleanField::new(name, nullable);
-        match &self.headers {
-            Some(headers) => HeadersBased::with_headers(field, headers.clone()),
-            None => field,
         }
     }
 
@@ -194,10 +179,7 @@ impl BooleanBuffer {
     /// wrapped bitmap is always byte-aligned.
     pub fn from_arrow(buffer: arrow_buffer::BooleanBuffer) -> Self {
         if buffer.offset() == 0 {
-            Self {
-                data: buffer,
-                headers: None,
-            }
+            Self { data: buffer }
         } else {
             let len = buffer.len();
             let mut bytes = vec![0u8; len.div_ceil(8)];
@@ -264,17 +246,5 @@ impl core::hash::Hash for BooleanBuffer {
             bytes[..n - 1].hash(state);
             (bytes[n - 1] & trailing_mask(len)).hash(state);
         }
-    }
-}
-
-// Header get / add / update / delete + the `with_headers` builder come from the one
-// shared trait; the buffer only supplies the slot.
-impl HeadersBased for BooleanBuffer {
-    fn headers(&self) -> Option<&Headers> {
-        self.headers.as_ref()
-    }
-
-    fn headers_mut(&mut self) -> &mut Option<Headers> {
-        &mut self.headers
     }
 }

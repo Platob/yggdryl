@@ -19,7 +19,7 @@ use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 /// [`IoPrimitive`](crate::IoPrimitive): `TypedCursor<i96>` reads and writes it.
 ///
 /// ```
-/// use yggdryl_core::i96;
+/// use yggdryl_buffer::i96;
 ///
 /// let a = i96::from_i64(1_000_000_000_000);
 /// assert_eq!((a * i96::from_i64(1000)).to_i128(), 1_000_000_000_000_000);

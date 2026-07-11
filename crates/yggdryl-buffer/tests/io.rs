@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use yggdryl_core::{ByteBuffer, ByteCursor, IOBase, IOCursor, IoError, TypedIOBase, Whence};
+use yggdryl_buffer::{ByteBuffer, ByteCursor, IOBase, IOCursor, IoError, TypedIOBase, Whence};
 
 #[test]
 fn cursor_reads_and_writes_advance() {
@@ -268,8 +268,8 @@ fn unaligned_bit_seek_is_rejected_with_guidance() {
 }
 
 mod arrow_interop {
-    use yggdryl_core::arrow_buffer::Buffer;
-    use yggdryl_core::{ByteBuffer, IOBase, Whence};
+    use yggdryl_buffer::arrow_buffer::Buffer;
+    use yggdryl_buffer::{ByteBuffer, IOBase, Whence};
 
     #[test]
     fn from_arrow_round_trips_and_reads() {

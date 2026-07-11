@@ -18,7 +18,7 @@ use crate::{i256, i96};
 /// [`default_byte_array`](crate::TypedIOBase::default_byte_array)).
 ///
 /// ```
-/// use yggdryl_core::IoPrimitive;
+/// use yggdryl_buffer::IoPrimitive;
 ///
 /// assert_eq!(<i32 as IoPrimitive>::WIDTH, 4);
 /// assert_eq!(i32::from_le_slice(&[0x04, 0x03, 0x02, 0x01]), 0x0102_0304);

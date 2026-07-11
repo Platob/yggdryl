@@ -86,12 +86,13 @@ pub struct ByteBuffer {
 
 #[pymethods]
 impl ByteBuffer {
-    /// Creates a buffer, optionally holding a copy of `data`.
+    /// Creates a buffer, optionally holding a copy of `data` (a `bytes`/`bytearray` or a
+    /// list of `int` byte values — `ByteBuffer` is also the `u8` buffer, `U8Buffer`).
     #[new]
     #[pyo3(signature = (data = None))]
-    fn new(data: Option<&[u8]>) -> Self {
+    fn new(data: Option<Vec<u8>>) -> Self {
         let inner = match data {
-            Some(bytes) => yggdryl_core::ByteBuffer::from_bytes(bytes),
+            Some(bytes) => yggdryl_core::ByteBuffer::from_vec(bytes),
             None => yggdryl_core::ByteBuffer::new(),
         };
         Self { inner }
@@ -141,6 +142,32 @@ impl ByteBuffer {
     /// A copy of the backing bytes.
     fn as_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_bytes())
+    }
+
+    // ---- `U8Buffer` typed-buffer-family surface (the `u8` buffer *is* the byte store) ----
+
+    /// The number of bytes (`u8` values) held.
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// The byte at `index`, or `None` if out of bounds.
+    fn get(&self, index: usize) -> Option<u8> {
+        self.inner.get(index)
+    }
+
+    /// A `list` of the byte values.
+    fn to_list(&self) -> Vec<u8> {
+        self.inner.to_vec()
+    }
+
+    /// Builds the matching `U8Field` named `name` (the byte buffer's field).
+    #[pyo3(signature = (name, nullable = false))]
+    fn field(&self, name: String, nullable: bool) -> crate::field::U8Field {
+        use yggdryl_field::ToField;
+        crate::field::U8Field {
+            inner: self.inner.to_field(name, nullable),
+        }
     }
 
     /// Serialises the buffer to its byte content.

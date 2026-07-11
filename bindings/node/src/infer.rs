@@ -25,7 +25,8 @@ use napi::bindgen_prelude::{Buffer, Either, Either4};
 use napi::{JsBigInt, JsUnknown, ValueType};
 use napi_derive::napi;
 
-use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer, U8Buffer};
+use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer};
+use crate::io::ByteBuffer;
 
 /// Builds a thrown JS `Error` from a message.
 fn to_error(message: &str) -> napi::Error {
@@ -39,11 +40,11 @@ fn to_error(message: &str) -> napi::Error {
 #[napi(namespace = "infer", js_name = "buffer")]
 pub fn buffer(
     values: Either<Buffer, Vec<JsUnknown>>,
-) -> napi::Result<Either4<I64Buffer, F64Buffer, BooleanBuffer, U8Buffer>> {
+) -> napi::Result<Either4<I64Buffer, F64Buffer, BooleanBuffer, ByteBuffer>> {
     let items = match values {
-        // A `Buffer` / `Uint8Array` is the byte buffer directly.
+        // A `Buffer` / `Uint8Array` is the byte buffer directly (the merged `U8Buffer`).
         Either::A(bytes) => {
-            return Ok(Either4::D(U8Buffer {
+            return Ok(Either4::D(ByteBuffer {
                 inner: yggdryl_buffer::U8Buffer::from_vec(bytes.to_vec()),
             }));
         }

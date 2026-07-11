@@ -27,11 +27,12 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyFloat, PyInt, PySequence};
 
-use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer, U8Buffer};
+use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer};
+use crate::io::ByteBuffer;
 
-/// Wraps a core `U8Buffer` for the bytes-like paths.
-fn u8_buffer(bytes: Vec<u8>) -> U8Buffer {
-    U8Buffer {
+/// Wraps the merged byte buffer (`U8Buffer` is `ByteBuffer`) for the bytes-like paths.
+fn u8_buffer(bytes: Vec<u8>) -> ByteBuffer {
+    ByteBuffer {
         inner: yggdryl_buffer::U8Buffer::from_vec(bytes),
     }
 }

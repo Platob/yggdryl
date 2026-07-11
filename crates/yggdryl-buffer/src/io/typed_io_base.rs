@@ -21,7 +21,7 @@ fn width<T: IoPrimitive>() -> u64 {
 /// case coincides with [`IOBase`].
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, TypedIOBase, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, TypedIOBase, Whence};
 ///
 /// let mut cursor = ByteBuffer::new().byte_cursor(); // TypedIOBase<u8>
 /// cursor.pwrite_array(&[1, 2, 3], Whence::Start).unwrap();

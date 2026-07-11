@@ -2,4 +2,4 @@
 
 use super::primitive::primitive_buffer;
 
-primitive_buffer!(I32Buffer, i32, I32Field);
+primitive_buffer!(I32Buffer, i32);

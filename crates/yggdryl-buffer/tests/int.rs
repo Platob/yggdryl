@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use yggdryl_core::{i256, i96, TypedCursor, TypedIOBase, Whence};
+use yggdryl_buffer::{i256, i96, TypedCursor, TypedIOBase, Whence};
 
 #[test]
 fn i96_range_and_constants() {
@@ -179,7 +179,7 @@ fn i256_arithmetic_and_bytes() {
     assert_eq!(doubled.to_i128(), None, "exceeds i128");
     assert_eq!(doubled, big + big);
     assert_eq!(i256::from_le_bytes(doubled.to_le_bytes()), doubled);
-    assert_eq!(<i256 as yggdryl_core::IoPrimitive>::ZERO, i256::ZERO);
+    assert_eq!(<i256 as yggdryl_buffer::IoPrimitive>::ZERO, i256::ZERO);
 }
 
 #[test]

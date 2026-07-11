@@ -1,7 +1,7 @@
 //! Exhaustive per-type tests for the typed cursor surface, driven through
 //! `ByteCursor`. Bit access lives on the (separate) bit buffer, not here.
 
-use yggdryl_core::{ByteBuffer, IOBase, IoError, Whence};
+use yggdryl_buffer::{ByteBuffer, IOBase, IoError, Whence};
 
 #[test]
 fn every_primitive_round_trips() {

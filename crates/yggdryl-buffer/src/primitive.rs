@@ -3,16 +3,16 @@
 //! shares one implementation, mirroring the `primitive_io!` macro in the IO layer.
 
 /// Generates one immutable, cheaply-shared contiguous buffer type for a fixed-width
-/// native primitive `$ty`, named `$name`, whose [`field`](Self::field) accessor hands
-/// out a `$field` (e.g. `I64Buffer` → `I64Field`).
+/// native primitive `$ty`, named `$name`.
 ///
 /// The backing is an `arrow_buffer::ScalarBuffer<$ty>` (Arrow-backed), so an Arrow
 /// buffer is wrapped **zero-copy** and an owned `Vec` becomes one without a copy; it
-/// hands out an aligned `&[$ty]` view. The buffer also carries optional
-/// [`Headers`](yggdryl_http::Headers) — an annotation that does **not** affect its
-/// byte-content equality/hashing.
+/// hands out an aligned `&[$ty]` view and bridges to positioned IO through a
+/// [`TypedCursor`](crate::TypedCursor) / [`TypedSlice`](crate::TypedSlice). A buffer
+/// carries no schema — naming, nullability, and headers are applied from the
+/// `yggdryl-field` layer above.
 macro_rules! primitive_buffer {
-    ($name:ident, $ty:ty, $field:ident) => {
+    ($name:ident, $ty:ty) => {
         #[doc = concat!("An immutable, cheaply-shared contiguous buffer of `", stringify!($ty), "` values.")]
         ///
         /// Cloning shares the allocation (an `Arc`/Arrow refcount bump). The buffer
@@ -20,10 +20,9 @@ macro_rules! primitive_buffer {
         /// access ([`get`](Self::get)), and round-trips through little-endian bytes
         /// ([`serialize_bytes`](Self::serialize_bytes) /
         /// [`deserialize_bytes`](Self::deserialize_bytes)); equality and hashing are
-        /// by byte content, so two buffers are equal iff their `serialize_bytes` are
-        /// (attached [`headers`](Self::headers) do not affect this). Bridge to
-        /// positioned IO with [`byte_cursor`](Self::byte_cursor), and hand out the
-        #[doc = concat!("matching [`", stringify!($field), "`](yggdryl_field::", stringify!($field), ") with [`field`](Self::field).")]
+        /// by byte content, so two buffers are equal iff their `serialize_bytes` are.
+        /// Bridge to positioned IO with [`byte_cursor`](Self::byte_cursor),
+        /// [`cursor`](Self::cursor), or [`slice`](Self::slice).
         ///
         #[doc = concat!("```")]
         #[doc = concat!("use yggdryl_buffer::", stringify!($name), ";")]
@@ -36,7 +35,6 @@ macro_rules! primitive_buffer {
         #[derive(Clone)]
         pub struct $name {
             data: arrow_buffer::ScalarBuffer<$ty>,
-            headers: Option<yggdryl_http::Headers>,
         }
 
         impl $name {
@@ -49,18 +47,6 @@ macro_rules! primitive_buffer {
             pub fn from_vec(values: Vec<$ty>) -> Self {
                 Self {
                     data: arrow_buffer::ScalarBuffer::from(values),
-                    headers: None,
-                }
-            }
-
-            #[doc = concat!("Builds the matching [`", stringify!($field), "`](yggdryl_field::", stringify!($field), ") named `name` (nullable `nullable`), carrying this buffer's headers.")]
-            pub fn field(&self, name: impl Into<String>, nullable: bool) -> yggdryl_field::$field {
-                let field = yggdryl_field::$field::new(name, nullable);
-                match &self.headers {
-                    Some(headers) => {
-                        yggdryl_http::HeadersBased::with_headers(field, headers.clone())
-                    }
-                    None => field,
                 }
             }
 
@@ -132,8 +118,7 @@ macro_rules! primitive_buffer {
             /// # Errors
             /// [`BufferError::InvalidByteLength`](crate::BufferError::InvalidByteLength)
             /// if `bytes.len()` is not a multiple of the element width.
-            // `W` is 1 for the byte buffers (`I8Buffer` / `U8Buffer`), where the width
-            // check is a harmless no-op — every length is valid.
+            // `W` is 1 for `I8Buffer`, where the width check is a harmless no-op.
             #[allow(clippy::modulo_one)]
             pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, $crate::BufferError> {
                 const W: usize = core::mem::size_of::<$ty>();
@@ -153,47 +138,44 @@ macro_rules! primitive_buffer {
                 Ok(Self::from_vec(values))
             }
 
-            /// Freezes the values into a [`ByteBuffer`](yggdryl_core::ByteBuffer) of their
+            /// Freezes the values into a [`ByteBuffer`](crate::ByteBuffer) of their
             /// little-endian bytes, for positioned IO.
-            pub fn to_byte_buffer(&self) -> yggdryl_core::ByteBuffer {
-                yggdryl_core::ByteBuffer::from_vec(self.serialize_bytes())
+            pub fn to_byte_buffer(&self) -> crate::ByteBuffer {
+                crate::ByteBuffer::from_vec(self.serialize_bytes())
             }
 
-            /// Opens a [`ByteCursor`](yggdryl_core::ByteCursor) over the values' bytes.
-            pub fn byte_cursor(&self) -> yggdryl_core::ByteCursor {
+            /// Opens a [`ByteCursor`](crate::ByteCursor) over the values' bytes.
+            pub fn byte_cursor(&self) -> crate::ByteCursor {
                 self.to_byte_buffer().byte_cursor()
             }
 
-            #[doc = concat!("Opens a [`TypedCursor`](yggdryl_core::TypedCursor) over the values (native `", stringify!($ty), "` units).")]
-            pub fn cursor(&self) -> yggdryl_core::TypedCursor<$ty> {
-                yggdryl_core::TypedCursor::new(self.to_byte_buffer())
+            #[doc = concat!("Opens a [`TypedCursor`](crate::TypedCursor) over the values (native `", stringify!($ty), "` units).")]
+            pub fn cursor(&self) -> crate::TypedCursor<$ty> {
+                crate::TypedCursor::new(self.to_byte_buffer())
             }
 
-            #[doc = concat!("Opens a [`TypedSlice`](yggdryl_core::TypedSlice) over the `offset..offset+len` window of values (in `", stringify!($ty), "` units), clamped to the buffer.")]
-            pub fn slice(&self, offset: usize, len: usize) -> yggdryl_core::TypedSlice<$ty> {
+            #[doc = concat!("Opens a [`TypedSlice`](crate::TypedSlice) over the `offset..offset+len` window of values (in `", stringify!($ty), "` units), clamped to the buffer.")]
+            pub fn slice(&self, offset: usize, len: usize) -> crate::TypedSlice<$ty> {
                 const W: usize = core::mem::size_of::<$ty>();
-                yggdryl_core::TypedSlice::new(
+                crate::TypedSlice::new(
                     self.to_byte_buffer(),
                     (offset as u64).saturating_mul(W as u64),
                     len.saturating_mul(W),
                 )
             }
 
-            #[doc = concat!("Decodes a [`ByteBuffer`](yggdryl_core::ByteBuffer) of little-endian `", stringify!($ty), "` bytes.")]
+            #[doc = concat!("Decodes a [`ByteBuffer`](crate::ByteBuffer) of little-endian `", stringify!($ty), "` bytes.")]
             ///
             /// # Errors
             /// As [`deserialize_bytes`](Self::deserialize_bytes).
-            pub fn from_byte_buffer(buffer: &yggdryl_core::ByteBuffer) -> Result<Self, $crate::BufferError> {
+            pub fn from_byte_buffer(buffer: &crate::ByteBuffer) -> Result<Self, $crate::BufferError> {
                 Self::deserialize_bytes(buffer.as_bytes())
             }
 
             /// Wraps an Arrow `ScalarBuffer` **zero-copy** — the two share the same
             /// underlying allocation (reference-counted).
             pub fn from_arrow(buffer: arrow_buffer::ScalarBuffer<$ty>) -> Self {
-                Self {
-                    data: buffer,
-                    headers: None,
-                }
+                Self { data: buffer }
             }
 
             /// Exports the values as an Arrow `ScalarBuffer` — **zero-copy** (an `Arc`
@@ -231,18 +213,6 @@ macro_rules! primitive_buffer {
         impl core::hash::Hash for $name {
             fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
                 self.as_bytes().hash(state);
-            }
-        }
-
-        // Header get / add / update / delete + the `with_headers` builder come from this
-        // one trait (shared with the field layer); the buffer only supplies the slot.
-        impl yggdryl_http::HeadersBased for $name {
-            fn headers(&self) -> Option<&yggdryl_http::Headers> {
-                self.headers.as_ref()
-            }
-
-            fn headers_mut(&mut self) -> &mut Option<yggdryl_http::Headers> {
-                &mut self.headers
             }
         }
     };

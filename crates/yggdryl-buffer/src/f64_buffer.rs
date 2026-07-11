@@ -2,4 +2,4 @@
 
 use super::primitive::primitive_buffer;
 
-primitive_buffer!(F64Buffer, f64, F64Field);
+primitive_buffer!(F64Buffer, f64);

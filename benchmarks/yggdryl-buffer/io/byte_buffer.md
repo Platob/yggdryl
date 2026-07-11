@@ -1,9 +1,9 @@
 # `ByteBuffer` / `ByteCursor` — cursor byte IO
 
-Source: [`crates/yggdryl-core/src/io/byte_buffer.rs`](../../../crates/yggdryl-core/src/io/byte_buffer.rs)
-· [`byte_cursor.rs`](../../../crates/yggdryl-core/src/io/byte_cursor.rs)
-· Bench: [`crates/yggdryl-core/benches/io.rs`](../../../crates/yggdryl-core/benches/io.rs)
-(`cargo bench -p yggdryl-core --bench io`)
+Source: [`crates/yggdryl-buffer/src/io/byte_buffer.rs`](../../../crates/yggdryl-buffer/src/io/byte_buffer.rs)
+· [`byte_cursor.rs`](../../../crates/yggdryl-buffer/src/io/byte_cursor.rs)
+· Bench: [`crates/yggdryl-buffer/benches/io.rs`](../../../crates/yggdryl-buffer/benches/io.rs)
+(`cargo bench -p yggdryl-buffer --bench io`)
 
 IO is split `std::io::Cursor`-style: a [`ByteBuffer`] is immutable storage, a
 [`ByteCursor`] holds a share plus a position and does the advancing reads/writes

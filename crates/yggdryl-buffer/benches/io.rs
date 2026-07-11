@@ -1,12 +1,13 @@
-//! Throughput benchmark for cursor IO ([`ByteCursor`](yggdryl_core::ByteCursor))
-//! and, when `gzip` is enabled, streaming compression vs the one-shot codec.
+//! Throughput benchmark for cursor IO ([`ByteCursor`](yggdryl_buffer::ByteCursor)) and
+//! the typed cursors/slices, wide-integer element IO, resource transfer, and zero-copy
+//! Arrow wrapping.
 //!
 //! Dependency-free (`harness = false`, a plain `main`). Run with
-//! `cargo bench -p yggdryl-core`.
+//! `cargo bench -p yggdryl-buffer --bench io`.
 
 use std::time::Instant;
 
-use yggdryl_core::{ByteBuffer, IOBase, IoPrimitive, TypedIOBase, Whence};
+use yggdryl_buffer::{ByteBuffer, IOBase, IoPrimitive, TypedIOBase, Whence};
 
 /// Runs `op` `iters` times, returning MB/s over `bytes` processed per iteration.
 fn throughput_mb_s(bytes: usize, iters: u32, mut op: impl FnMut()) -> f64 {
@@ -70,15 +71,12 @@ fn main() {
     slice_bench(&data, iters);
     transfer_bench(&data, iters);
     arrow_bench(size, iters);
-
-    #[cfg(feature = "gzip")]
-    stream_bench(&data, iters);
 }
 
 /// Zero-copy Arrow wrap vs a copying construction over a 1 MiB payload.
 fn arrow_bench(size: usize, iters: u32) {
-    use yggdryl_core::arrow_buffer::Buffer;
-    use yggdryl_core::ByteBuffer;
+    use yggdryl_buffer::arrow_buffer::Buffer;
+    use yggdryl_buffer::ByteBuffer;
 
     let data = vec![b'x'; size];
     let arrow = Buffer::from_vec(data.clone());
@@ -122,7 +120,8 @@ fn typed_cursor_bench(size: usize, iters: u32) {
     let values: Vec<i64> = (0..count as i64).collect();
 
     let write = throughput_mb_s(size, iters, || {
-        let mut cursor = <yggdryl_core::TypedCursor<i64> as TypedIOBase<i64>>::with_capacity(count);
+        let mut cursor =
+            <yggdryl_buffer::TypedCursor<i64> as TypedIOBase<i64>>::with_capacity(count);
         cursor.pwrite_array(&values, Whence::Start).unwrap();
     });
 
@@ -134,7 +133,7 @@ fn typed_cursor_bench(size: usize, iters: u32) {
     }
     let frozen = ByteBuffer::from_vec(frozen_bytes);
     let read = throughput_mb_s(size, iters, || {
-        yggdryl_core::TypedCursor::<i64>::new(frozen.clone())
+        yggdryl_buffer::TypedCursor::<i64>::new(frozen.clone())
             .pread_array(count, Whence::Start)
             .unwrap();
     });
@@ -144,7 +143,7 @@ fn typed_cursor_bench(size: usize, iters: u32) {
 
 /// Wide-integer (`i256`, 32 bytes each) typed-cursor throughput over a 1 MiB payload.
 fn wide_int_bench(size: usize, iters: u32) {
-    use yggdryl_core::{i256, TypedCursor, TypedIOBase};
+    use yggdryl_buffer::{i256, TypedCursor, TypedIOBase};
 
     let count = size / 32;
     let values: Vec<i256> = (0..count as i128).map(i256::from_i128).collect();
@@ -172,7 +171,7 @@ fn wide_int_bench(size: usize, iters: u32) {
 /// [`ByteCursor`], over a 1 MiB window. A slice should carry no measurable overhead
 /// beyond its clamping.
 fn slice_bench(data: &[u8], iters: u32) {
-    use yggdryl_core::{IOSlice, TypedIOBase};
+    use yggdryl_buffer::{IOSlice, TypedIOBase};
 
     let size = data.len();
     let source = ByteBuffer::from_bytes(data);
@@ -210,34 +209,3 @@ fn transfer_bench(data: &[u8], iters: u32) {
     println!("  pread_io (cursor -> cursor) {transfer:9.1} MB/s");
 }
 
-/// Compares streaming compression through cursors against the one-shot codec.
-#[cfg(feature = "gzip")]
-fn stream_bench(data: &[u8], iters: u32) {
-    use yggdryl_core::{CompressionDecoder, CompressionEncoder, Decoder, Encoder, Gzip};
-
-    let gzip = Gzip::new(6).unwrap();
-    let size = data.len();
-    let source_buf = ByteBuffer::from_bytes(data);
-    let compressed_buf = ByteBuffer::from_bytes(&gzip.encode_byte_array(data).unwrap());
-
-    let stream_c = throughput_mb_s(size, iters, || {
-        let mut source = source_buf.byte_cursor();
-        let mut sink = ByteBuffer::with_byte_capacity(size / 2).byte_cursor();
-        gzip.compress_stream(&mut source, &mut sink).unwrap();
-    });
-    let oneshot_c = throughput_mb_s(size, iters, || {
-        gzip.encode_byte_array(data).unwrap();
-    });
-    let stream_d = throughput_mb_s(size, iters, || {
-        let mut source = compressed_buf.byte_cursor();
-        let mut sink = ByteBuffer::with_byte_capacity(size).byte_cursor();
-        gzip.decompress_stream(&mut source, &mut sink).unwrap();
-    });
-    let oneshot_d = throughput_mb_s(size, iters, || {
-        gzip.decode_byte_array(compressed_buf.as_bytes()).unwrap();
-    });
-
-    println!("gzip level 6, streaming (cursor) vs one-shot:");
-    println!("  compress   stream {stream_c:9.1} MB/s   one-shot {oneshot_c:9.1} MB/s");
-    println!("  decompress stream {stream_d:9.1} MB/s   one-shot {oneshot_d:9.1} MB/s");
-}

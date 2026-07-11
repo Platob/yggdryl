@@ -16,11 +16,12 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use napi::bindgen_prelude::{BigInt, Buffer, Either3};
+use napi::bindgen_prelude::{BigInt, Buffer, Either, Either3};
 use napi::{JsBigInt, JsUnknown, ValueType};
 use napi_derive::napi;
 
 use yggdryl_core::{IOBase, IOCursor, IOSlice, TypedIOBase};
+use yggdryl_field::ToField;
 
 /// Maps a core IO error to a thrown JS `Error`.
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
@@ -63,11 +64,13 @@ pub struct ByteBuffer {
 
 #[napi(namespace = "io")]
 impl ByteBuffer {
-    /// Creates a buffer, optionally holding a copy of `data`.
+    /// Creates a buffer, optionally holding a copy of `data` (a `Buffer` or an array of
+    /// `u8` values — `ByteBuffer` is also the `u8` buffer, `U8Buffer`).
     #[napi(constructor)]
-    pub fn new(data: Option<Buffer>) -> Self {
+    pub fn new(data: Option<Either<Buffer, Vec<u8>>>) -> Self {
         let inner = match data {
-            Some(bytes) => yggdryl_core::ByteBuffer::from_bytes(bytes.as_ref()),
+            Some(Either::A(bytes)) => yggdryl_core::ByteBuffer::from_bytes(bytes.as_ref()),
+            Some(Either::B(values)) => yggdryl_core::ByteBuffer::from_vec(values),
             None => yggdryl_core::ByteBuffer::new(),
         };
         Self { inner }
@@ -129,6 +132,34 @@ impl ByteBuffer {
     #[napi]
     pub fn as_bytes(&self) -> Buffer {
         self.inner.as_bytes().to_vec().into()
+    }
+
+    // ---- `U8Buffer` typed-buffer-family surface (the `u8` buffer *is* the byte store) ----
+
+    /// The number of bytes (`u8` values) held.
+    #[napi]
+    pub fn len(&self) -> i64 {
+        self.inner.len() as i64
+    }
+
+    /// The byte at `index`, or `null` if out of bounds.
+    #[napi]
+    pub fn get(&self, index: u32) -> Option<u8> {
+        self.inner.get(index as usize)
+    }
+
+    /// An array of the byte values.
+    #[napi]
+    pub fn to_array(&self) -> Vec<u8> {
+        self.inner.to_vec()
+    }
+
+    /// Builds the matching `U8Field` named `name` (the byte buffer's field).
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::U8Field {
+        crate::field::U8Field {
+            inner: self.inner.to_field(name, nullable.unwrap_or(false)),
+        }
     }
 
     /// Serialises the buffer to its byte content.

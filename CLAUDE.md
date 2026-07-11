@@ -138,39 +138,44 @@ type they are looking at from the shape of the code.
 One crate per layer; dependencies point strictly downward (a lower layer never
 imports an upper one — needing the reverse means the abstraction belongs lower).
 
-- `crates/yggdryl-core` — foundations (streaming byte-IO, shared error types).
-  **Apache Arrow's buffers are the core's data holder, not an optional layer**:
-  `ByteBuffer`/`ByteCursor` are backed by an Arrow `Buffer`/`MutableBuffer`, the
-  bit buffer by an Arrow `BooleanBuffer`, and the wide integers by `arrow_buffer::i256`;
-  `arrow-buffer` is therefore a hard (non-optional) dependency, so
-  `from_arrow_byte_buffer`/`to_arrow_byte_buffer` (and the bit-buffer equivalents)
-  hand the allocation across zero-copy. The compression codecs (`gzip`, `zstd`) remain
-  optional cargo features, **on by default** so a plain dependency ships the full
+- `crates/yggdryl-buffer` — **the foundation crate** (its only dependency is
+  `arrow-buffer`), holding three concerns: the **positioned IO** (`ByteBuffer` /
+  `ByteCursor` / `ByteSlice`, the `IOBase` / `TypedIOBase` contracts, the typed
+  `TypedCursor` / `TypedSlice`, `IoPrimitive`), the **typed buffers** (`I8Buffer` …
+  `F64Buffer`, `BooleanBuffer`), and the **wide integers** (`i96` / `i256`).
+  **Apache Arrow's buffers are the data holder, not an optional layer**: `ByteBuffer` is
+  an Arrow `Buffer`/`MutableBuffer`, a typed buffer a `ScalarBuffer`, the bit buffer a
+  `BooleanBuffer`, the wide integer `arrow_buffer::i256`; `from_arrow*`/`to_arrow*` hand
+  the allocation across zero-copy. The **`u8` buffer *is* the byte store**: `U8Buffer` is
+  a `pub type` alias of `ByteBuffer` (one merged type). A buffer carries **no schema** —
+  naming, nullability, and `Headers` are applied from the field layer above (the
+  `ToField` bridge), so this crate depends on neither field nor http. Type names use the
+  short primitive form (`I8`/`U8`/`F32`, not `Int8`/`UInt8`/`Float32`).
+- `crates/yggdryl-core` — the codec layer built **on** `yggdryl-buffer`: the
+  `Encoder`/`Decoder`/`Converter` foundations and the `compression` codecs. It re-exports
+  the buffer/io/wide-int types (`yggdryl_core::{ByteBuffer, TypedCursor, i256, …}`) so
+  downstream callers reach them through core too. The compression codecs (`gzip`, `zstd`)
+  are optional cargo features, **on by default** so a plain dependency ships the full
   surface; a `--no-default-features` build drops only those codecs.
 - `crates/yggdryl-http` — a dependency-free, generic header map: `Headers` (an ordered
   bytes→bytes map with byte + UTF-8 string accessors, zero-copy in-place value mutation
   via `get_mut`, pre-built `name`/`comment`/`content-type`/`content-encoding` accessors,
   and a deterministic byte codec) plus the `HeadersBased` trait a header-carrying type
-  implements. A `Field` and a buffer carry optional `Headers` as their annotations —
-  yggdryl-side only, never written into Arrow's `Field`.
+  implements. A `Field` carries optional `Headers` as its annotations — yggdryl-side
+  only, never written into Arrow's `Field`.
 - `crates/yggdryl-dtype`, `crates/yggdryl-field`, `crates/yggdryl-scalar` — the
   Arrow data-model layers (data types, then fields, then scalars), one concern per
   crate so the concrete types share one naming convention across the layers
   (`yggdryl_dtype::I64Type` / `yggdryl_field::I64Field` / `yggdryl_scalar::I64Scalar`).
   A `Field` carries optional `yggdryl_http::Headers` via the `HeadersBased` supertrait.
-  (Type names use the short primitive form — `I8`/`U8`/`F32`, not `Int8`/`UInt8`/`Float32`
-  — matching the buffers.)
-- `crates/yggdryl-buffer` — the typed, Arrow-backed buffers (`I8Buffer` … `F64Buffer`,
-  `BooleanBuffer`). It sits **above** field (buffer → field → dtype → core, and depends on
-  `yggdryl-http`) so each buffer carries optional `Headers` and hands out its matching
-  typed field via `buffer.field(name, nullable)` (`I64Buffer` → `I64Field`); the headers
-  are an annotation that does not affect the buffer's byte-content equality. It depends on
-  `yggdryl-core` for the io cursors and `arrow-buffer` for the backing store. Core does
-  **not** re-export the buffers (that would cycle), so the bindings import them from
-  `yggdryl_buffer`.
-- Higher layers (logical types, nested types, kernels) and service crates
-  (e.g. HTTP) are added as further workspace members, each depending only on the
-  layers below it.
+  `yggdryl-field` also owns the **buffer → field bridge** (`ToField`): it sits above the
+  buffer foundation and turns a typed buffer into its matching typed field from above
+  (`I64Buffer::to_field(name, nullable)` → `I64Field`), since a buffer carries no schema.
+- Overall the layers point strictly downward:
+  `field → { dtype → core → buffer, http, buffer }`, `scalar → dtype`, with
+  `yggdryl-buffer` at the bottom and `yggdryl-http` standalone. Higher layers (logical
+  types, nested types, kernels) and service crates are added as further workspace
+  members, each depending only on the layers below it.
 - `bindings/python/` (PyO3/maturin) and `bindings/node/` (napi-rs) are **thin
   wrappers**: they translate types/errors and delegate — each method is one or two
   lines calling `self.inner`, `pub(crate)` so sibling modules can convert — and

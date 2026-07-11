@@ -5,8 +5,8 @@ each report lives at the path of the code file it measures:
 
 | Report | Measures |
 | --- | --- |
-| [yggdryl-core/io/byte_buffer.md](yggdryl-core/io/byte_buffer.md) | `ByteBuffer` positioned byte IO + resource transfer |
-| [yggdryl-core/io/io_base.md](yggdryl-core/io/io_base.md) | `IOBase` typed primitive & bit arrays |
+| [yggdryl-buffer/io/byte_buffer.md](yggdryl-buffer/io/byte_buffer.md) | `ByteBuffer` positioned byte IO + resource transfer |
+| [yggdryl-buffer/io/io_base.md](yggdryl-buffer/io/io_base.md) | `IOBase` typed primitive & bit arrays |
 | [yggdryl-buffer/buffer/primitive_buffer.md](yggdryl-buffer/buffer/primitive_buffer.md) | typed buffers: construct, byte round-trips, Arrow |
 | [yggdryl-http/http/headers.md](yggdryl-http/http/headers.md) | headers: serialize/deserialize + get/set/zero-copy mutate |
 | [yggdryl-core/codec/converter.md](yggdryl-core/codec/converter.md) | converters: numeric cast, flexible parse, render |
@@ -19,7 +19,7 @@ The Rust core benches are dependency-free (`harness = false`); the binding scrip
 weigh yggdryl against each platform's native equivalent:
 
 ```bash
-cargo bench -p yggdryl-core -p yggdryl-buffer          # Rust (io/compression + buffers)
+cargo bench -p yggdryl-buffer -p yggdryl-core          # Rust (io + buffers, then compression/converter)
 (cd bindings/python && uv run maturin develop --release)  # then:
 uv run python bindings/python/benchmarks/bench_io.py
 uv run python bindings/python/benchmarks/bench_buffer.py

@@ -29,23 +29,22 @@ gzip-zlib-ng = ["gzip", "flate2/zlib-ng"]
 zstd = ["dep:zstd"]
 
 [dependencies]
+# The foundation: Arrow-backed buffers, positioned IO (`ByteBuffer` / `IOBase` /
+# `TypedCursor` …), and the wide integers the codecs read and write. Core builds its
+# encoders/decoders/converters/compression on this layer and re-exports its io types.
+yggdryl-buffer = { workspace = true }
 # gzip/deflate backend; optional so it is compiled only when the `gzip` feature
 # is enabled (see `[features]`).
 flate2 = { workspace = true, optional = true }
 # zstd backend; optional, enabled by the `zstd` feature.
 zstd = { workspace = true, optional = true }
-# Apache Arrow's buffer subset — the core's data holder (`Buffer` / `MutableBuffer` /
-# `ScalarBuffer` / `BooleanBuffer` / `i256`). Not optional: `ByteBuffer`, the typed
-# buffers, and the wide-integer types are Arrow-backed for straight zero-copy access.
+# Apache Arrow's buffer subset — used directly by the codecs (`Buffer` / `i256`); the
+# buffers and io types come from `yggdryl-buffer` (itself Arrow-backed).
 arrow-buffer = { workspace = true }
 
 # Dependency-free throughput benches (`harness = false`, their own `main`).
 [[bench]]
 name = "compression"
-harness = false
-
-[[bench]]
-name = "io"
 harness = false
 
 [[bench]]

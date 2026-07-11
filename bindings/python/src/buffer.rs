@@ -1,48 +1,36 @@
 //! The `yggdryl.buffer` submodule — typed native-type buffers.
 //!
-//! Exposes one immutable buffer class per native primitive
-//! ([`I8Buffer`] … [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring
-//! `yggdryl-buffer`. Each buffer carries optional headers (a `dict[bytes, bytes]`) and
-//! hands out the matching [`yggdryl.field`](crate::field) class via `field(name,
-//! nullable)`. The Arrow `from_arrow` / `to_arrow` interop is Rust-only (an
-//! `arrow_buffer` value does not cross the FFI boundary), exactly as for
-//! `yggdryl.io.ByteBuffer`.
+//! Exposes one immutable buffer class per native primitive ([`I8Buffer`] …
+//! [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring `yggdryl-buffer`. The
+//! `u8` buffer *is* the byte store, so `U8Buffer` is [`yggdryl.io.ByteBuffer`](crate::io)
+//! re-exported here (one merged type). A buffer carries no schema of its own; it hands out
+//! the matching [`yggdryl.field`](crate::field) class via `field(name, nullable)` (the
+//! buffer → field bridge), and headers live on the field. The Arrow `from_arrow` /
+//! `to_arrow` interop is Rust-only (an `arrow_buffer` value does not cross the FFI
+//! boundary), exactly as for `yggdryl.io.ByteBuffer`.
 
 // The `#[pymethods]` macro emits identity `.into()` conversions on `PyResult`
 // returns that clippy flags as useless; silence it at module scope.
 #![allow(clippy::useless_conversion)]
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::PyBytes;
 
-use yggdryl_http::{Headers, HeadersBased};
+use yggdryl_field::ToField;
 
 use crate::io::{
     ByteBuffer, ByteCursor, F32Cursor, F32Slice, F64Cursor, F64Slice, I16Cursor, I16Slice,
     I32Cursor, I32Slice, I64Cursor, I64Slice, I8Cursor, I8Slice, U16Cursor, U16Slice, U32Cursor,
-    U32Slice, U64Cursor, U64Slice, U8Cursor, U8Slice,
+    U32Slice, U64Cursor, U64Slice,
 };
 
 /// Maps a core [`yggdryl_buffer::BufferError`] to a Python `ValueError`.
 fn buffer_err(error: yggdryl_buffer::BufferError) -> PyErr {
     PyValueError::new_err(error.to_string())
-}
-
-/// Builds a Python `dict[bytes, bytes]` from a buffer's headers (or `None`).
-fn headers_to_dict<'py>(py: Python<'py>, headers: Option<&Headers>) -> Option<Bound<'py, PyDict>> {
-    headers.map(|meta| {
-        let dict = PyDict::new_bound(py);
-        for (key, value) in meta.pairs() {
-            dict.set_item(PyBytes::new_bound(py, key), PyBytes::new_bound(py, value))
-                .expect("inserting into a fresh dict cannot fail");
-        }
-        dict
-    })
 }
 
 /// Generates the pyo3 wrapper class for one numeric buffer type.
@@ -148,26 +136,11 @@ macro_rules! py_primitive_buffer {
                     }
                 }
 
-                /// The buffer's headers as a `dict[bytes, bytes]`, or `None`.
-                #[getter]
-                fn headers<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyDict>> {
-                    headers_to_dict(py, self.inner.headers())
-                }
-
-                /// Returns a copy of this buffer with `headers` (a `dict[bytes, bytes]`)
-                /// attached — carried into the field this buffer hands out; it does not
-                /// affect the buffer's byte-content equality.
-                fn with_headers(&self, headers: HashMap<Vec<u8>, Vec<u8>>) -> Self {
-                    Self {
-                        inner: self.inner.clone().with_headers(Headers::from_pairs(headers)),
-                    }
-                }
-
-                #[doc = concat!("Builds the matching `", stringify!($field), "` named `name`, carrying this buffer's headers.")]
+                #[doc = concat!("Builds the matching `", stringify!($field), "` named `name` (the buffer → field bridge; a buffer carries no schema, so headers live on the field).")]
                 #[pyo3(signature = (name, nullable = false))]
                 fn field(&self, name: String, nullable: bool) -> crate::field::$field {
                     crate::field::$field {
-                        inner: self.inner.field(name, nullable),
+                        inner: self.inner.to_field(name, nullable),
                     }
                 }
 
@@ -205,7 +178,6 @@ py_primitive_buffer!(
     (I16Buffer, i16, I16Cursor, I16Slice, I16Field),
     (I32Buffer, i32, I32Cursor, I32Slice, I32Field),
     (I64Buffer, i64, I64Cursor, I64Slice, I64Field),
-    (U8Buffer, u8, U8Cursor, U8Slice, U8Field),
     (U16Buffer, u16, U16Cursor, U16Slice, U16Field),
     (U32Buffer, u32, U32Cursor, U32Slice, U32Field),
     (U64Buffer, u64, U64Cursor, U64Slice, U64Field),
@@ -304,27 +276,12 @@ impl BooleanBuffer {
             .map_err(buffer_err)
     }
 
-    /// The buffer's headers as a `dict[bytes, bytes]`, or `None`.
-    #[getter]
-    fn headers<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyDict>> {
-        headers_to_dict(py, self.inner.headers())
-    }
-
-    /// Returns a copy of this buffer with `headers` (a `dict[bytes, bytes]`) attached.
-    fn with_headers(&self, headers: HashMap<Vec<u8>, Vec<u8>>) -> Self {
-        Self {
-            inner: self
-                .inner
-                .clone()
-                .with_headers(Headers::from_pairs(headers)),
-        }
-    }
-
-    /// Builds the matching `BooleanField` named `name`, carrying this buffer's headers.
+    /// Builds the matching `BooleanField` named `name` (the buffer → field bridge; a
+    /// buffer carries no schema, so headers live on the field).
     #[pyo3(signature = (name, nullable = false))]
     fn field(&self, name: String, nullable: bool) -> crate::field::BooleanField {
         crate::field::BooleanField {
-            inner: self.inner.field(name, nullable),
+            inner: self.inner.to_field(name, nullable),
         }
     }
 
@@ -360,7 +317,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<I16Buffer>()?;
     module.add_class::<I32Buffer>()?;
     module.add_class::<I64Buffer>()?;
-    module.add_class::<U8Buffer>()?;
+    // `U8Buffer` is the byte store: expose `yggdryl.io.ByteBuffer` here under that name so
+    // `yggdryl.buffer.U8Buffer is yggdryl.io.ByteBuffer` (one merged type).
+    module.add("U8Buffer", module.py().get_type_bound::<ByteBuffer>())?;
     module.add_class::<U16Buffer>()?;
     module.add_class::<U32Buffer>()?;
     module.add_class::<U64Buffer>()?;

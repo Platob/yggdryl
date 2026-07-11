@@ -571,9 +571,6 @@ name = "yggdryl-buffer"
 version = "0.1.1"
 dependencies = [
  "arrow-buffer",
- "yggdryl-core",
- "yggdryl-field",
- "yggdryl-http",
 ]
 
 [[package]]
@@ -582,6 +579,7 @@ version = "0.1.1"
 dependencies = [
  "arrow-buffer",
  "flate2",
+ "yggdryl-buffer",
  "zstd",
 ]
 
@@ -598,6 +596,7 @@ name = "yggdryl-field"
 version = "0.1.1"
 dependencies = [
  "arrow-schema",
+ "yggdryl-buffer",
  "yggdryl-core",
  "yggdryl-dtype",
  "yggdryl-http",

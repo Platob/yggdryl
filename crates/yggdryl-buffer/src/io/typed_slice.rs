@@ -21,7 +21,7 @@ use crate::{
 /// [`TypedSlice::new`].
 ///
 /// ```
-/// use yggdryl_core::{ByteBuffer, IOBase, TypedIOBase, TypedSlice, Whence};
+/// use yggdryl_buffer::{ByteBuffer, IOBase, TypedIOBase, TypedSlice, Whence};
 ///
 /// // Five little-endian i32 values as bytes.
 /// let mut bytes = Vec::new();
