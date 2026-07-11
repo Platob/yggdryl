@@ -6,6 +6,8 @@
 //! - the **wide integers** ([`int`]) — [`i96`] and [`i256`] flanking native `i128`, each a
 //!   serializable value type (the io element codec that reads/writes them lives one layer
 //!   up in `yggdryl-buffer`);
+//! - the **fixed-width decimals** ([`decimal`]) — [`Decimal32`] / [`Decimal64`] /
+//!   [`Decimal128`] / [`Decimal256`] (mantissa + scale), byte-based and inter-convertible;
 //! - the **byte-codec base** ([`codec`]) — the [`Encoder`] / [`Decoder`] byte-array
 //!   contracts, their element-generic [`TypedEncoder`] / [`TypedDecoder`] extensions, and
 //!   the [`EncodeError`] / [`DecodeError`] types.
@@ -16,9 +18,11 @@
 //! `yggdryl-converter`. One module per concern, each re-exported at the crate root.
 
 pub mod codec;
+pub mod decimal;
 pub mod int;
 
 pub use codec::{DecodeError, Decoder, EncodeError, Encoder, TypedDecoder, TypedEncoder};
+pub use decimal::{Decimal, Decimal128, Decimal256, Decimal32, Decimal64, DecimalError};
 pub use int::{i256, i96};
 
 /// Re-export of the exact `arrow-buffer` the wide integers are backed by, so callers
