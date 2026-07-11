@@ -1,13 +1,15 @@
-//! Throughput benchmark for the gzip codec.
+//! Throughput benchmark for the gzip and zstd codecs.
 //!
 //! Dependency-free (`harness = false`, a plain `main`) so it adds no dev-deps: it
-//! times [`Gzip`](yggdryl_compression::Gzip) encode/decode over a fixed corpus and prints
+//! times [`Gzip`](yggdryl_compression::Gzip) (and, under the `zstd` feature,
+//! [`Zstd`](yggdryl_compression::Zstd)) encode/decode over a fixed corpus and prints
 //! MB/s, in the same shape as the Python and Node comparison scripts
 //! (`bindings/*/bench*`), so the Rust core, `flate2`-in-Python, and `zlib`-in-Node
-//! numbers line up side by side.
+//! numbers line up side by side (the binding scripts weigh gzip against the platform
+//! codec; zstd has no native baseline so it is timed yggdryl-only).
 //!
-//! Run with `cargo bench -p yggdryl-core`. The gzip-dependent body is compiled only
-//! when the `gzip` feature is on (it is by default).
+//! Run with `cargo bench -p yggdryl-compression`. The gzip body is compiled only when the
+//! `gzip` feature is on and the zstd body only when `zstd` is on (both are by default).
 
 #[cfg(feature = "gzip")]
 fn main() {

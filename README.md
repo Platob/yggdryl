@@ -134,7 +134,7 @@ toolchain is needed for the common loop:
 ```bash
 cargo build                 # build the core
 cargo test                  # unit, integration, and doctests
-cargo bench -p yggdryl-core # run the codec throughput benchmark
+cargo bench --workspace     # run the throughput benchmarks (per-crate benches)
 ```
 
 The core is a library (no binary yet); exercise it through `cargo test`, the
@@ -168,7 +168,7 @@ Each surface has a throughput benchmark; the Python and Node scripts compare
 first — a debug build is ~20× slower.
 
 ```bash
-cargo bench -p yggdryl-core                                   # Rust core
+cargo bench -p yggdryl-compression --bench compression        # Rust core (gzip/zstd)
 (cd bindings/python && uv run maturin develop --release) && \
   uv run python bindings/python/benchmarks/bench_compression.py # Python vs stdlib gzip
 (cd bindings/node && npm run build) && npm --prefix bindings/node run bench  # Node vs zlib

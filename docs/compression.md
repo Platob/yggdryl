@@ -36,7 +36,7 @@ with `decode_byte_array`.
     level-6 encode** (the default). It needs CMake + Ninja at build time; run
     `uv run python scripts/setup-build-deps.py`. Pure-Rust builds default to the
     toolchain-free `miniz_oxide` backend. See the
-    [benchmark report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/compression/gzip.md).
+    [benchmark report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-compression/compression/gzip.md).
 
 === "Python"
 
@@ -269,7 +269,7 @@ slower and the numbers are meaningless.
 === "Rust"
 
     ```bash
-    cargo bench -p yggdryl-core   # the bench profile is optimised
+    cargo bench -p yggdryl-compression   # the bench profile is optimised
     ```
 
 [`Encoder`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/trait.Encoder.html

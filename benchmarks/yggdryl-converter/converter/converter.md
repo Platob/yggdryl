@@ -1,8 +1,8 @@
 # Converters — numeric cast, flexible parse, render
 
-Source: [`crates/yggdryl-core/src/codec/converter/`](../../../crates/yggdryl-core/src/codec/converter/)
-· Bench: [`crates/yggdryl-core/benches/converter.rs`](../../../crates/yggdryl-core/benches/converter.rs)
-(`cargo bench -p yggdryl-core --bench converter`)
+Source: [`crates/yggdryl-converter/src/converter.rs`](../../../crates/yggdryl-converter/src/converter.rs)
+· Bench: [`crates/yggdryl-converter/benches/converter.rs`](../../../crates/yggdryl-converter/benches/converter.rs)
+(`cargo bench -p yggdryl-converter --bench converter`)
 
 The converter family maps between representations: a dtype-keyed numeric **cast**
 (bulk, little-endian bytes), a flexible string **parse**, and a **render** back to

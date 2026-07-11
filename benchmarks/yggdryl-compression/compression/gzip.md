@@ -1,8 +1,8 @@
 # `Gzip` — gzip compression
 
-Source: [`crates/yggdryl-core/src/compression/gzip.rs`](../../../crates/yggdryl-core/src/compression/gzip.rs)
-· Benches: [`benches/compression.rs`](../../../crates/yggdryl-core/benches/compression.rs)
-(one-shot) and [`benches/io.rs`](../../../crates/yggdryl-core/benches/io.rs) (streaming)
+Source: [`crates/yggdryl-compression/src/gzip.rs`](../../../crates/yggdryl-compression/src/gzip.rs)
+· Bench: [`crates/yggdryl-compression/benches/compression.rs`](../../../crates/yggdryl-compression/benches/compression.rs)
+(one-shot; `cargo bench -p yggdryl-compression --bench compression`)
 
 Corpus: 1 MiB of English-like text, 200 iterations, `--release`.
 

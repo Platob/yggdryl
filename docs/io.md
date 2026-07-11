@@ -563,11 +563,11 @@ Rust-only — an `arrow_buffer::Buffer` does not cross the FFI boundary.
 ## Benchmarks
 
 Cursor IO, the element-typed cursor, the bounded slices, and streaming have throughput
-benchmarks in all three surfaces (`cargo bench -p yggdryl-core`; `bindings/*/…/io.*`).
-See the
-[byte report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/byte_buffer.md),
-the [`TypedCursor` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/typed_cursor.md),
-and the [`ByteSlice` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/byte_slice.md).
+benchmarks in all three surfaces (`cargo bench -p yggdryl-buffer --bench io`;
+`bindings/*/…/io.*`). See the
+[byte report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-buffer/io/byte_buffer.md),
+the [`TypedCursor` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-buffer/io/typed_cursor.md),
+and the [`ByteSlice` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-buffer/io/byte_slice.md).
 
 [`ByteBuffer`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.ByteBuffer.html
 [`ByteCursor`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.ByteCursor.html

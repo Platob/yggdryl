@@ -1,8 +1,11 @@
-"""Compare yggdryl's gzip codec against the Python standard library.
+"""Compare yggdryl's gzip codec against the Python standard library, plus a zstd pass.
 
 Both compress the same corpus at the same level; the script reports MB/s for each
 and the speedup, so the Rust-backed `yggdryl.compression.Gzip` (flate2 /
-miniz_oxide) can be weighed against stdlib `gzip` (the C `zlib`).
+miniz_oxide) can be weighed against stdlib `gzip` (the C `zlib`). It then times
+`yggdryl.compression.Zstd` over the same corpus at the Rust bench's levels — this pass
+is **yggdryl-only** (the Python standard library ships no zstd baseline to compare
+against).
 
 Build the extension in RELEASE first — a debug build is ~20x slower and the
 numbers are meaningless:
@@ -19,6 +22,7 @@ from yggdryl import compression
 CORPUS = (b"the quick brown fox jumps over the lazy dog. " * 23_302)[: 1 << 20]
 ITERS = 200
 LEVELS = (1, 6, 9)
+ZSTD_LEVELS = (1, 3, 19)
 
 
 def throughput_mb_s(nbytes, iters, op):
@@ -53,6 +57,27 @@ def main():
             print(
                 f"{level:>5}  {op_name:>7}  {ygg_mb:>8.1f}MB  {std_mb:>8.1f}MB  {speedup:>7.2f}x"
             )
+
+    # zstd: yggdryl-only (the standard library has no zstd), matching the Rust bench levels.
+    print(
+        f"\nzstd throughput over {len(CORPUS) // 1024} KiB, {ITERS} iters "
+        "(yggdryl-only — no stdlib baseline):\n"
+    )
+    zheader = f"{'level':>5}  {'op':>7}  {'yggdryl':>10}  {'ratio':>8}"
+    print(zheader)
+    print("-" * len(zheader))
+
+    for level in ZSTD_LEVELS:
+        ygg = compression.Zstd(level)
+        packed = ygg.encode_byte_array(CORPUS)
+        ratio = len(CORPUS) / len(packed)
+        cases = (
+            ("encode", lambda op=ygg: op.encode_byte_array(CORPUS)),
+            ("decode", lambda op=ygg, p=packed: op.decode_byte_array(p)),
+        )
+        for op_name, ygg_op in cases:
+            ygg_mb = throughput_mb_s(len(CORPUS), ITERS, ygg_op)
+            print(f"{level:>5}  {op_name:>7}  {ygg_mb:>8.1f}MB  {ratio:>7.2f}x")
 
 
 if __name__ == "__main__":

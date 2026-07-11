@@ -44,5 +44,5 @@ the bindings expose the IO cursors, not the scalar types.
 ## Benchmarks
 
 The wide-integer typed cursor has a throughput benchmark alongside the native typed
-cursor (`cargo bench -p yggdryl-core --bench io`); see the
-[`TypedCursor` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/typed_cursor.md).
+cursor (`cargo bench -p yggdryl-buffer --bench io`); see the
+[`TypedCursor` report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-buffer/io/typed_cursor.md).

@@ -1,8 +1,8 @@
 # `Zstd` — Zstandard compression
 
-Source: [`crates/yggdryl-core/src/compression/zstd.rs`](../../../crates/yggdryl-core/src/compression/zstd.rs)
-· Bench: [`benches/compression.rs`](../../../crates/yggdryl-core/benches/compression.rs)
-(`cargo bench -p yggdryl-core --bench compression`)
+Source: [`crates/yggdryl-compression/src/zstd.rs`](../../../crates/yggdryl-compression/src/zstd.rs)
+· Bench: [`crates/yggdryl-compression/benches/compression.rs`](../../../crates/yggdryl-compression/benches/compression.rs)
+(`cargo bench -p yggdryl-compression --bench compression`)
 
 Backed by `zstd` (bundles libzstd, built via `cc` — a C compiler is required, CMake
 is not). Corpus: 1 MiB of English-like text, 200 iterations, `--release`.

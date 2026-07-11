@@ -9,9 +9,9 @@ each report lives at the path of the code file it measures:
 | [yggdryl-buffer/io/io_base.md](yggdryl-buffer/io/io_base.md) | `IOBase` typed primitive & bit arrays |
 | [yggdryl-buffer/buffer/primitive_buffer.md](yggdryl-buffer/buffer/primitive_buffer.md) | typed buffers: construct, byte round-trips, Arrow |
 | [yggdryl-http/http/headers.md](yggdryl-http/http/headers.md) | headers: serialize/deserialize + get/set/zero-copy mutate |
-| [yggdryl-core/codec/converter.md](yggdryl-core/codec/converter.md) | converters: numeric cast, flexible parse, render |
-| [yggdryl-core/compression/gzip.md](yggdryl-core/compression/gzip.md) | gzip one-shot & streaming |
-| [yggdryl-core/compression/zstd.md](yggdryl-core/compression/zstd.md) | zstd one-shot & vs gzip |
+| [yggdryl-converter/converter/converter.md](yggdryl-converter/converter/converter.md) | converters: numeric cast, flexible parse, render |
+| [yggdryl-compression/compression/gzip.md](yggdryl-compression/compression/gzip.md) | gzip one-shot |
+| [yggdryl-compression/compression/zstd.md](yggdryl-compression/compression/zstd.md) | zstd one-shot & vs gzip |
 
 ## Producing the numbers
 
