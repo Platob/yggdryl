@@ -58,10 +58,15 @@ def test_convert_numeric_scalars():
 
 
 def test_convert_rejects_out_of_range_input():
-    # The from-dtype extraction is strict: the value must fit that dtype (parity
-    # with Node's checked extraction).
-    with pytest.raises((ValueError, OverflowError)):
+    # The from-dtype range check is core-owned, so it is strict AND guided (rule 12),
+    # naming the value and the accepted range — identical to the Node binding.
+    with pytest.raises(ValueError, match="out of range for i8"):
         converter.convert(300, "i8", "i16")  # 300 does not fit i8
+    # 64-bit dtypes go through the same check: a value past i64 is rejected, not truncated.
+    with pytest.raises(ValueError, match="out of range for i64"):
+        converter.convert(2**63, "i64", "i64")  # i64 max is 2**63 - 1
+    with pytest.raises(ValueError, match="out of range for u64"):
+        converter.convert(-1, "u64", "u64")  # negative does not fit u64
 
 
 def test_parse_failure_is_guided():

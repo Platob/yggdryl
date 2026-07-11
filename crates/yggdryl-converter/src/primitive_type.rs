@@ -71,6 +71,52 @@ impl PrimitiveType {
         let out = self.string_invert_bytes(bytes)?;
         Ok(String::from_utf8(out).expect("Display output is valid UTF-8"))
     }
+
+    /// Range-checks an integer `value` against this type and returns its little-endian
+    /// bytes, or a guided [`ConvertError::OutOfRange`] naming the accepted `min..=max`.
+    /// The two float types accept the integer by converting it (`value as f32` / `f64`).
+    ///
+    /// This is the core-owned check the dynamically-typed bindings call after widening a
+    /// Python `int` / JS `bigint`|`number` to `i128`, so an out-of-range integer raises one
+    /// identical, guided message across Python and Node instead of each binding rolling its
+    /// own (or silently truncating) — `CLAUDE.md` rules 12 & 13.
+    ///
+    /// ```
+    /// use yggdryl_converter::{ConvertError, PrimitiveType};
+    ///
+    /// assert_eq!(PrimitiveType::U8.int_to_le_bytes(200).unwrap(), vec![200]);
+    /// assert_eq!(PrimitiveType::I8.int_to_le_bytes(-5).unwrap(), (-5_i8).to_le_bytes());
+    /// let err = PrimitiveType::U8.int_to_le_bytes(300).unwrap_err();
+    /// assert!(matches!(err, ConvertError::OutOfRange { .. }));
+    /// assert!(err.to_string().contains("0..=255"));
+    /// ```
+    pub fn int_to_le_bytes(self, value: i128) -> Result<Vec<u8>, ConvertError> {
+        use PrimitiveType::*;
+        let (min, max): (i128, i128) = match self {
+            I8 => (i8::MIN as i128, i8::MAX as i128),
+            I16 => (i16::MIN as i128, i16::MAX as i128),
+            I32 => (i32::MIN as i128, i32::MAX as i128),
+            I64 => (i64::MIN as i128, i64::MAX as i128),
+            U8 => (0, u8::MAX as i128),
+            U16 => (0, u16::MAX as i128),
+            U32 => (0, u32::MAX as i128),
+            U64 => (0, u64::MAX as i128),
+            // Floats hold any i128, converting; no range to check.
+            F32 => return Ok((value as f32).to_le_bytes().to_vec()),
+            F64 => return Ok((value as f64).to_le_bytes().to_vec()),
+        };
+        if value < min || value > max {
+            return Err(ConvertError::OutOfRange {
+                input: value.to_string(),
+                target: self.name(),
+                min: min.to_string(),
+                max: max.to_string(),
+            });
+        }
+        // In range: the low `width` little-endian bytes of the two's-complement value are
+        // exactly this type's encoding, for both the signed and unsigned widths.
+        Ok(value.to_le_bytes()[..self.width()].to_vec())
+    }
 }
 
 /// Generates the [`PrimitiveType`] facade from the `(variant, type, name)` list: the

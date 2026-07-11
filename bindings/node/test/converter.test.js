@@ -56,6 +56,11 @@ test('convert rejects out-of-range / fractional input (matches Python strictness
   assert.throws(() => converter.convert(300, 'i8', 'i16'), /range for i8/) // 300 > i8 max
   assert.throws(() => converter.convert(3.5, 'i8', 'i16'), /not an integer/) // fractional
   assert.throws(() => converter.format(3.5, 'i8'), /not an integer/)
+  // 64-bit dtypes: a bigint past the range is rejected (core check), not truncated.
+  assert.throws(() => converter.convert(2n ** 63n, 'i64', 'i64'), /out of range for i64/)
+  assert.throws(() => converter.convert(-1n, 'u64', 'u64'), /out of range for u64/)
+  // A bigint beyond 128 bits cannot even be represented — guided error, no wraparound.
+  assert.throws(() => converter.convert(2n ** 200n, 'i64', 'i64'), /exceeds 128 bits/)
 })
 
 test('parse failure is guided', () => {

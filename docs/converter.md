@@ -57,7 +57,11 @@ element, using a C-style `as` cast (total and allocation-free).
 ## Numeric scalar conversion
 
 `convert` casts a single numeric scalar from one dtype to another (C-style `as`,
-total) — the ergonomic single-value counterpart of the bulk byte-level `cast`.
+total) — the ergonomic single-value counterpart of the bulk byte-level `cast`. The
+input value must fit the **source** dtype: an out-of-range integer raises the same
+guided "out of range for …" error in both bindings (naming the value and the accepted
+range), rather than being silently truncated. This range check is core-owned, so the
+64-bit dtypes reject an out-of-range `bigint`/`int` exactly as the small ones do.
 
 === "Python"
 
@@ -272,12 +276,12 @@ assert_eq!(BytesConverter::<i32>::new().encode(1).unwrap(), vec![1, 0, 0, 0]);
 ## Benchmarks
 
 Numeric cast, flexible parse, and render have throughput benchmarks in all three
-surfaces (`cargo bench -p yggdryl-core --bench converter`;
+surfaces (`cargo bench -p yggdryl-converter --bench converter`;
 `bindings/*/…/converter.*`). The **bulk byte-level `cast` is the fast path** — one FFI
 crossing widens a whole buffer, ~11.6× (Python) / ~53.8× (Node) over the engines'
 element-wise typed-array widening — while per-scalar `parse` / `format` trail the
 native built-ins, so **batch through bytes** for bulk data. See the
-[report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/codec/converter.md).
+[report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-converter/converter/converter.md).
 
 [`IdentityConverter<T>`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.IdentityConverter.html
 [`BytesConverter<T>`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.BytesConverter.html

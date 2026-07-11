@@ -53,25 +53,54 @@ fn as_number(value: Either<f64, BigInt>) -> napi::Result<f64> {
     }
 }
 
-/// Extracts the `bigint` branch, or errors (used for the `i64` / `u64` dtypes).
-fn as_bigint(value: Either<f64, BigInt>) -> napi::Result<BigInt> {
-    match value {
-        Either::B(big) => Ok(big),
-        Either::A(_) => Err(error_msg("expected a bigint for the i64 / u64 dtypes")),
+/// Widens a `bigint` to an `i128`, or errors if it exceeds 128 bits — so a huge or negative
+/// value reaches the core range check (rule 12) instead of being silently truncated by
+/// `get_i64()` / `get_u64()`.
+fn bigint_to_i128(big: BigInt) -> napi::Result<i128> {
+    let BigInt { sign_bit, words } = big;
+    if words.len() > 2 {
+        return Err(error_msg(
+            "bigint is too large for any integer dtype (exceeds 128 bits)",
+        ));
     }
+    let lo = words.first().copied().unwrap_or(0) as u128;
+    let hi = words.get(1).copied().unwrap_or(0) as u128;
+    let magnitude = lo | (hi << 64);
+    // |i128::MIN| is i128::MAX + 1, so a negative value may reach exactly that magnitude.
+    let limit = if sign_bit {
+        (i128::MAX as u128) + 1
+    } else {
+        i128::MAX as u128
+    };
+    if magnitude > limit {
+        return Err(error_msg(
+            "bigint is too large for any integer dtype (exceeds 128 bits)",
+        ));
+    }
+    let signed = magnitude as i128; // wraps to i128::MIN exactly when magnitude == 2^127
+    Ok(if sign_bit {
+        signed.wrapping_neg()
+    } else {
+        signed
+    })
 }
 
-/// Extracts an integer `number` that must be whole and within `min..=max` for the
-/// small-int dtypes — rejecting out-of-range or fractional values, so Node matches
-/// Python's strict `int` extraction instead of silently saturating/truncating.
-fn as_int(value: Either<f64, BigInt>, min: f64, max: f64, name: &str) -> napi::Result<f64> {
-    let number = as_number(value)?;
-    if !number.is_finite() || number.fract() != 0.0 || number < min || number > max {
-        return Err(error_msg(&format!(
-            "value {number} is not an integer within range for {name} ({min}..={max})"
-        )));
+/// Widens a JS `number` or `bigint` to an `i128` for the integer dtypes, rejecting a
+/// non-whole `number`. The core [`PrimitiveType::int_to_le_bytes`] then range-checks it,
+/// so both a `number` and a `bigint` work for any integer dtype and out-of-range values
+/// raise the same guided message as Python — never a silent truncation.
+fn as_i128(value: Either<f64, BigInt>, name: &str) -> napi::Result<i128> {
+    match value {
+        Either::A(number) => {
+            if !number.is_finite() || number.fract() != 0.0 {
+                return Err(error_msg(&format!(
+                    "value {number} is not an integer; {name} needs a whole number"
+                )));
+            }
+            Ok(number as i128)
+        }
+        Either::B(big) => bigint_to_i128(big),
     }
-    Ok(number)
 }
 
 /// Decodes exactly-`width` little-endian `bytes` into the JS scalar for `pt`.
@@ -91,30 +120,18 @@ fn scalar_to_js(pt: PrimitiveType, bytes: &[u8]) -> napi::Result<Either<f64, Big
     })
 }
 
-/// Extracts a JS scalar as the `pt` element and returns its little-endian bytes.
+/// Extracts a JS scalar as the `pt` element and returns its little-endian bytes. The
+/// integer dtypes widen to `i128` and defer the range check to the core
+/// [`PrimitiveType::int_to_le_bytes`], so out-of-range values raise the same guided error
+/// as Python instead of `get_i64()` / `get_u64()` silently truncating them.
 fn scalar_from_js(pt: PrimitiveType, value: Either<f64, BigInt>) -> napi::Result<Vec<u8>> {
-    Ok(match pt {
-        PrimitiveType::I8 => {
-            (as_int(value, f64::from(i8::MIN), f64::from(i8::MAX), "i8")? as i8).to_le_vec()
-        }
-        PrimitiveType::I16 => {
-            (as_int(value, f64::from(i16::MIN), f64::from(i16::MAX), "i16")? as i16).to_le_vec()
-        }
-        PrimitiveType::I32 => {
-            (as_int(value, f64::from(i32::MIN), f64::from(i32::MAX), "i32")? as i32).to_le_vec()
-        }
-        PrimitiveType::U8 => (as_int(value, 0.0, f64::from(u8::MAX), "u8")? as u8).to_le_vec(),
-        PrimitiveType::U16 => (as_int(value, 0.0, f64::from(u16::MAX), "u16")? as u16).to_le_vec(),
-        PrimitiveType::U32 => (as_int(value, 0.0, f64::from(u32::MAX), "u32")? as u32).to_le_vec(),
-        PrimitiveType::F32 => (as_number(value)? as f32).to_le_vec(),
-        PrimitiveType::F64 => as_number(value)?.to_le_vec(),
-        PrimitiveType::I64 => as_bigint(value)?.get_i64().0.to_le_vec(),
-        PrimitiveType::U64 => {
-            let (_, unsigned, _) = as_bigint(value)?.get_u64();
-            unsigned.to_le_vec()
-        }
-        _ => return Err(error_msg("unsupported dtype")),
-    })
+    match pt {
+        PrimitiveType::F32 => Ok((as_number(value)? as f32).to_le_vec()),
+        PrimitiveType::F64 => Ok(as_number(value)?.to_le_vec()),
+        _ => pt
+            .int_to_le_bytes(as_i128(value, pt.name())?)
+            .map_err(to_error),
+    }
 }
 
 /// Casts packed little-endian `data` from `fromDtype` to `toDtype` (C-style `as`),

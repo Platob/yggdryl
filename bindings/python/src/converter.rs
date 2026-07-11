@@ -56,20 +56,17 @@ fn scalar_to_py(py: Python<'_>, pt: PrimitiveType, bytes: &[u8]) -> PyResult<PyO
 }
 
 /// Extracts a Python scalar as the `pt` element and returns its little-endian bytes.
+/// The integer dtypes widen the `int` to `i128` and defer the range check to the core
+/// [`PrimitiveType::int_to_le_bytes`], so an out-of-range value raises the same guided
+/// `ValueError` as the Node binding (rule 12), not an opaque `OverflowError`.
 fn scalar_from_py(pt: PrimitiveType, value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
-    Ok(match pt {
-        PrimitiveType::I8 => value.extract::<i8>()?.to_le_vec(),
-        PrimitiveType::I16 => value.extract::<i16>()?.to_le_vec(),
-        PrimitiveType::I32 => value.extract::<i32>()?.to_le_vec(),
-        PrimitiveType::I64 => value.extract::<i64>()?.to_le_vec(),
-        PrimitiveType::U8 => value.extract::<u8>()?.to_le_vec(),
-        PrimitiveType::U16 => value.extract::<u16>()?.to_le_vec(),
-        PrimitiveType::U32 => value.extract::<u32>()?.to_le_vec(),
-        PrimitiveType::U64 => value.extract::<u64>()?.to_le_vec(),
-        PrimitiveType::F32 => value.extract::<f32>()?.to_le_vec(),
-        PrimitiveType::F64 => value.extract::<f64>()?.to_le_vec(),
-        _ => return Err(PyValueError::new_err("unsupported dtype")),
-    })
+    match pt {
+        PrimitiveType::F32 => Ok(value.extract::<f32>()?.to_le_vec()),
+        PrimitiveType::F64 => Ok(value.extract::<f64>()?.to_le_vec()),
+        _ => pt
+            .int_to_le_bytes(value.extract::<i128>()?)
+            .map_err(convert_err),
+    }
 }
 
 /// Casts packed little-endian `data` from `from_dtype` to `to_dtype` (C-style `as`),
