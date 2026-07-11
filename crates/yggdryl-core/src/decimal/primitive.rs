@@ -175,30 +175,44 @@ pub(crate) use decimal_primitive;
 /// passes `None` when its mantissa itself exceeds `i128`).
 pub(crate) fn decimal_to_i128(mantissa: i128, scale: i8) -> Option<i128> {
     if scale >= 0 {
-        Some(mantissa / 10i128.checked_pow(scale as u32)?)
+        // A divisor beyond `i128` (scale >= 39) means `|value| < 1`, so the integer part is
+        // `0` — not an overflow. Only the intermediate divisor overflowed, never the result.
+        match 10i128.checked_pow(scale as u32) {
+            Some(pow) => Some(mantissa / pow),
+            None => Some(0),
+        }
     } else {
         mantissa.checked_mul(10i128.checked_pow((-(scale as i32)) as u32)?)
     }
 }
 
-/// Rescales an `i128` mantissa from `old` to `new` scale, or `None` on overflow.
+/// Rescales an `i128` mantissa from `old` to `new` scale, or `None` when *widening* the
+/// scale overflows the width (narrowing can only shrink the mantissa, so it never fails).
 pub(crate) fn rescale_i128(mantissa: i128, old: i8, new: i8) -> Option<i128> {
     let diff = new as i32 - old as i32;
     if diff >= 0 {
         mantissa.checked_mul(10i128.checked_pow(diff as u32)?)
     } else {
-        Some(mantissa / 10i128.checked_pow((-diff) as u32)?)
+        // Dividing by a power beyond `i128` truncates the mantissa to `0` — never overflow.
+        match 10i128.checked_pow((-diff) as u32) {
+            Some(pow) => Some(mantissa / pow),
+            None => Some(0),
+        }
     }
 }
 
 /// Renders `mantissa × 10^(−scale)` as a decimal string (used by every width's `Display`).
 pub(crate) fn format_decimal(mantissa: i128, scale: i8) -> String {
     if scale <= 0 {
-        // Whole number, possibly with trailing zeros.
-        return match 10i128.checked_pow((-scale) as u32) {
-            Some(mul) => (mantissa.saturating_mul(mul)).to_string(),
-            None => mantissa.to_string(),
-        };
+        // Whole number: the mantissa's digits with `-scale` trailing zeros. Built as text so
+        // no power-of-ten multiplication can overflow (`scale == i8::MIN`) or silently
+        // saturate/drop the magnitude for large negative scales.
+        if mantissa == 0 {
+            return "0".to_string();
+        }
+        let zeros = (-(scale as i32)) as usize;
+        let sign = if mantissa < 0 { "-" } else { "" };
+        return format!("{sign}{}{}", mantissa.unsigned_abs(), "0".repeat(zeros));
     }
     let scale = scale as usize;
     let neg = mantissa < 0;

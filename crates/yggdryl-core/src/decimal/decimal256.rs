@@ -42,6 +42,20 @@ fn i256_to_f64(value: i256) -> f64 {
     }
 }
 
+/// Rounds a finite `f64` to an [`i256`]. Magnitudes within `i128` are taken directly;
+/// larger ones parse the float's plain-integer text, so the full 256-bit range is reachable
+/// (a bare `f64 as i128` cast would saturate at `i128::MAX`, capping the very range
+/// `Decimal256` exists to hold). Non-finite inputs map to zero.
+fn i256_from_f64(value: f64) -> i256 {
+    if !value.is_finite() {
+        return i256::from_i128(0);
+    }
+    if (i128::MIN as f64..=i128::MAX as f64).contains(&value) {
+        return i256::from_i128(value as i128);
+    }
+    i256::from_string(&format!("{value:.0}")).unwrap_or_else(|| i256::from_i128(0))
+}
+
 impl Decimal256 {
     /// The mantissa width in bits.
     pub const BITS: u32 = 256;
@@ -69,12 +83,13 @@ impl Decimal256 {
         }
     }
 
-    /// Builds a decimal approximating `value` at `scale` (via [`Decimal128`] for the
-    /// common in-range case; large magnitudes saturate).
+    /// Builds a decimal approximating `value` at `scale`. Magnitudes within `i128` are
+    /// exact-to-`f64`; larger ones route through the float's integer text (an `f64` carries
+    /// only ~15 significant digits, so this is as precise as the input). Non-finite → zero.
     pub fn from_f64(value: f64, scale: i8) -> Self {
-        let scaled = value * 10f64.powi(scale as i32);
+        let scaled = (value * 10f64.powi(scale as i32)).round();
         Self {
-            mantissa: i256::from_i128(scaled.round() as i128),
+            mantissa: i256_from_f64(scaled),
             scale,
         }
     }

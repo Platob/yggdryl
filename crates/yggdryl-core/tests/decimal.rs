@@ -111,3 +111,83 @@ fn display_formats_the_scaled_value() {
     assert_eq!(Decimal64::new(42, 0).to_string(), "42");
     assert_eq!(Decimal64::new(100, 2).to_string(), "1.00");
 }
+
+// --- Regression tests for edge-case bugs found in review ---
+
+#[test]
+fn display_extreme_and_negative_scales() {
+    // scale == i8::MIN must not panic on the `-scale` negation (was `-(i8::MIN)`).
+    assert_eq!(Decimal64::new(0, i8::MIN).to_string(), "0");
+    assert_eq!(
+        Decimal32::new(1, i8::MIN).to_string(),
+        format!("1{}", "0".repeat(128))
+    );
+
+    // Negative scale renders exactly — no i128 saturation, no dropped magnitude.
+    assert_eq!(Decimal64::new(5, -2).to_string(), "500");
+    assert_eq!(
+        Decimal32::new(5, -39).to_string(),
+        format!("5{}", "0".repeat(39))
+    );
+    assert_eq!(
+        Decimal128::new(i128::MAX, -1).to_string(),
+        format!("{}0", i128::MAX)
+    );
+    assert_eq!(Decimal64::new(-42, -2).to_string(), "-4200");
+    assert_eq!(Decimal64::new(0, -5).to_string(), "0");
+}
+
+#[test]
+fn to_i128_large_positive_scale_is_zero_not_overflow() {
+    // scale >= 39: 10^scale exceeds i128, but the integer part is unambiguously 0.
+    assert_eq!(Decimal128::new(123, 40).to_i128(), Some(0));
+    assert_eq!(Decimal64::new(i64::MAX, 39).to_i128(), Some(0));
+    // Negative scale still overflows genuinely when the multiplied value exceeds i128.
+    assert_eq!(Decimal128::new(i128::MAX, -1).to_i128(), None);
+}
+
+#[test]
+fn rescale_far_down_truncates_to_zero() {
+    // Narrowing the scale by a huge delta can only shrink the mantissa -> 0, never overflow.
+    assert_eq!(
+        Decimal64::new(5, 100).rescale(-50).unwrap(),
+        Decimal64::new(0, -50)
+    );
+    assert_eq!(
+        Decimal32::new(999, 50).rescale(0).unwrap(),
+        Decimal32::new(0, 0)
+    );
+}
+
+#[test]
+fn decimal256_from_f64_reaches_beyond_i128() {
+    // A magnitude past i128 must not saturate at i128::MAX (the whole point of Decimal256).
+    let d = Decimal256::from_f64(1e30, 12); // mantissa ~ 1e42, far beyond i128
+    assert!(d.to_i128().is_none(), "value should exceed i128");
+    assert!(d.to_f64().is_finite() && d.to_f64() > 1e29);
+    // Non-finite inputs map to zero rather than a garbage saturation.
+    assert_eq!(
+        Decimal256::from_f64(f64::NAN, 2).mantissa(),
+        i256::from_i128(0)
+    );
+    assert_eq!(
+        Decimal256::from_f64(f64::INFINITY, 0).mantissa(),
+        i256::from_i128(0)
+    );
+}
+
+#[test]
+fn equal_values_hash_equal() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let hash = |d: &Decimal64| {
+        let mut h = DefaultHasher::new();
+        d.hash(&mut h);
+        h.finish()
+    };
+    let a = Decimal64::new(12_345, 2);
+    let b = Decimal64::new(12_345, 2);
+    assert_eq!(a, b);
+    assert_eq!(hash(&a), hash(&b)); // equal values hash equal (rule 7)
+}
