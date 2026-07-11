@@ -1,7 +1,19 @@
 //! Edge-case tests for the positioned-IO surface: negative-offset seeks, auto-resize
 //! on write, and the `set_byte_capacity` reserve / reduce behaviour.
 
-use yggdryl_core::{ByteBuffer, I32Buffer, IOBase, IOCursor, IoError, TypedIOBase, Whence};
+use yggdryl_core::{
+    ByteBuffer, IOBase, IOCursor, IoError, IoPrimitive, TypedCursor, TypedIOBase, Whence,
+};
+
+/// Builds a `TypedCursor<T>` over `values`' little-endian bytes — the buffer-free
+/// stand-in for a typed buffer's `.cursor()` now that buffers live in `yggdryl-buffer`.
+fn typed_cursor<T: IoPrimitive>(values: &[T]) -> TypedCursor<T> {
+    let mut bytes = Vec::new();
+    for &value in values {
+        value.write_le(&mut bytes);
+    }
+    TypedCursor::new(ByteBuffer::from_vec(bytes))
+}
 
 // -------------------------------------------------------------------------------
 // Negative-offset seeks
@@ -64,7 +76,7 @@ fn read_into_past_end_returns_zero_without_panicking() {
     assert_eq!(cursor.byte_tell().unwrap(), 100);
 
     // The typed fast path (which routes through pread_into) is also safe past end.
-    let mut typed = I32Buffer::from_slice(&[1, 2]).cursor();
+    let mut typed = typed_cursor::<i32>(&[1, 2]);
     typed.byte_seek(100, Whence::Start).unwrap();
     assert!(matches!(
         typed.pread_one(Whence::Current),
@@ -74,7 +86,7 @@ fn read_into_past_end_returns_zero_without_panicking() {
 
 #[test]
 fn typed_negative_seek_counts_in_elements() {
-    let mut cursor = I32Buffer::from_slice(&[10, 20, 30, 40]).cursor();
+    let mut cursor = typed_cursor::<i32>(&[10, 20, 30, 40]);
     // Seek to element index 4 (the end), then 2 elements back -> index 2.
     assert_eq!(
         TypedIOBase::<i32>::seek(&mut cursor, -2, Whence::End).unwrap(),

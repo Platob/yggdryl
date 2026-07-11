@@ -19,8 +19,8 @@ mod typed_decoder;
 mod typed_encoder;
 
 pub use converter::{
-    BytesConverter, CastConverter, ConvertError, Converter, IdentityConverter, PrimitiveType,
-    StringConverter, TypedConverter, Utf8Converter,
+    BytesConverter, CastConverter, ConvertError, Converter, ConverterKind, IdentityConverter,
+    PrimitiveType, StringConverter, TypedConverter, Utf8Converter,
 };
 pub use decode_error::DecodeError;
 pub use decoder::Decoder;

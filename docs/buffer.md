@@ -1,11 +1,12 @@
 # Typed buffers
 
-Where [`ByteBuffer`](io.md) is untyped byte storage, `yggdryl-core`'s **buffer**
-layer is one immutable, cheaply-shared, contiguous buffer per native primitive —
-`I8Buffer` … `I64Buffer`, `U8Buffer` … `U64Buffer`, `F32Buffer`, `F64Buffer` — plus
-the bit-packed `BooleanBuffer`. Each is a value type: it clones by sharing its
-allocation, round-trips through little-endian bytes, and compares and hashes by
-content.
+Where [`ByteBuffer`](io.md) is untyped byte storage, the **buffer** layer
+(`yggdryl-buffer`) is one immutable, cheaply-shared, contiguous buffer per native
+primitive — `I8Buffer` … `I64Buffer`, `U8Buffer` … `U64Buffer`, `F32Buffer`,
+`F64Buffer` — plus the bit-packed `BooleanBuffer`. Each is a value type: it clones by
+sharing its allocation, round-trips through little-endian bytes, and compares and
+hashes by content. A buffer also carries optional headers and hands out the matching
+typed [field](field.md) (see [Field & headers](#field-and-headers) below).
 
 !!! note "Node type limits"
     Node omits `U64Buffer` (napi has no native `u64` scalar — use `I64Buffer` or raw
@@ -42,7 +43,7 @@ content.
 === "Rust"
 
     ```rust
-    use yggdryl_core::I32Buffer;
+    use yggdryl_buffer::I32Buffer;
 
     let buf = I32Buffer::from_slice(&[10, 20, 30]);
     assert_eq!(buf.len(), 3);
@@ -91,7 +92,7 @@ that is not a whole number of values is rejected with an actionable message.
 === "Rust"
 
     ```rust
-    use yggdryl_core::{BufferError, I32Buffer};
+    use yggdryl_buffer::{BufferError, I32Buffer};
 
     let buf = I32Buffer::from_slice(&[1, -2, 3]);
     let data = buf.serialize_bytes(); // 12 little-endian bytes
@@ -132,7 +133,7 @@ hash equal — comparison is by *byte content*, so the float buffers compare bit
 === "Rust"
 
     ```rust
-    use yggdryl_core::F64Buffer;
+    use yggdryl_buffer::F64Buffer;
 
     assert_eq!(F64Buffer::from_slice(&[f64::NAN]), F64Buffer::from_slice(&[f64::NAN]));
     assert_ne!(F64Buffer::from_slice(&[0.0]), F64Buffer::from_slice(&[-0.0]));
@@ -176,7 +177,7 @@ packed bytes are canonical.
 === "Rust"
 
     ```rust
-    use yggdryl_core::BooleanBuffer;
+    use yggdryl_buffer::BooleanBuffer;
 
     let bits = BooleanBuffer::from_bits(&[true, false, true, true]); // 0b1101
     assert_eq!(bits.get(2), Some(true));
@@ -222,13 +223,74 @@ and `to_byte_buffer` / `from_byte_buffer` convert to and from a `ByteBuffer`.
 === "Rust"
 
     ```rust
-    use yggdryl_core::{I64Buffer, IOBase, Whence};
+    use yggdryl_buffer::I64Buffer;
+    use yggdryl_core::{IOBase, Whence};
 
     let mut cursor = I64Buffer::from_slice(&[7, 8, 9]).byte_cursor();
     assert_eq!(cursor.pread_i64_array(3, Whence::Start).unwrap(), [7, 8, 9]);
 
     let buf = I64Buffer::from_slice(&[7, 8, 9]);
     assert_eq!(I64Buffer::from_byte_buffer(&buf.to_byte_buffer()).unwrap(), buf);
+    ```
+
+## Field and headers
+
+A buffer carries optional **headers** (a bytes→bytes map) and hands out the matching
+typed [field](field.md) via `field(name, nullable)` — `I64Buffer` → `I64Field`,
+`BooleanBuffer` → `BooleanField`, and so on. The headers is carried into that field.
+
+!!! note "Idioms & Arrow"
+    Headers marshals as a Python `dict[bytes, bytes]` and, in Node, an
+    `Array<{key: Buffer, value: Buffer}>` (JS cannot key a map by bytes). It is an
+    annotation only — it does **not** affect the buffer's byte-content equality, and it
+    is **not** carried into Arrow's `Field` (arbitrary bytes are not valid UTF-8), so it
+    stays yggdryl-side.
+
+=== "Python"
+
+    ```python
+    from yggdryl.buffer import I64Buffer
+
+    buf = I64Buffer([1, 2, 3]).with_headers({b"unit": b"ms"})
+    assert buf.headers == {b"unit": b"ms"}
+
+    field = buf.field("ts", True)              # an I64Field
+    assert field.name == "ts" and field.nullable is True
+    assert field.headers == {b"unit": b"ms"}
+
+    assert buf == I64Buffer([1, 2, 3])         # headers is not part of byte identity
+    ```
+
+=== "Node"
+
+    ```js
+    const { I64Buffer } = require('yggdryl').buffer
+
+    const entries = [{ key: Buffer.from('unit'), value: Buffer.from('ms') }]
+    const buf = new I64Buffer([1, 2, 3]).withHeaders(entries)
+
+    const field = buf.field('ts', true)        // an I64Field
+    console.assert(field.name === 'ts' && field.nullable === true)
+    console.assert(field.headers[0].value.equals(Buffer.from('ms')))
+
+    console.assert(new I64Buffer([1, 2, 3]).equals(buf)) // headers off byte identity
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_buffer::I64Buffer;
+    use yggdryl_field::Field;
+    use yggdryl_http::{Headers, HeadersBased};
+
+    let buf = I64Buffer::from_slice(&[1, 2, 3])
+        .with_headers(Headers::from_pairs([(b"unit".to_vec(), b"ms".to_vec())]));
+
+    let field = buf.field("ts", true); // an I64Field
+    assert_eq!(field.name(), "ts");
+    assert_eq!(field.headers().unwrap().get(b"unit"), Some(b"ms".as_slice()));
+
+    assert_eq!(buf, I64Buffer::from_slice(&[1, 2, 3])); // headers off byte identity
     ```
 
 ## Zero-copy Arrow (Rust)
@@ -240,7 +302,7 @@ so it wraps one **zero-copy** — sharing the allocation — and emits one back;
 (the same choice as [`ByteBuffer`](io.md)).
 
 ```rust
-use yggdryl_core::I64Buffer;
+use yggdryl_buffer::I64Buffer;
 use yggdryl_core::arrow_buffer::ScalarBuffer; // re-exported at the matching version
 
 let scalar = ScalarBuffer::<i64>::from(vec![1, 2, 3]);
@@ -254,8 +316,8 @@ assert_eq!(out.as_ref(), &[1, 2, 3]);
 ## Benchmarks
 
 Buffer construction, byte round-trips, and Arrow interop have throughput benchmarks
-in all three surfaces (`cargo bench -p yggdryl-core`; `bindings/*/…/buffer.*`). See
-the [report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/buffer/primitive_buffer.md).
+in all three surfaces (`cargo bench -p yggdryl-buffer`; `bindings/*/…/buffer.*`). See
+the [report](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-buffer/buffer/primitive_buffer.md).
 
-[`I64Buffer`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.I64Buffer.html
-[`BooleanBuffer`]: https://docs.rs/yggdryl-core/latest/yggdryl_core/struct.BooleanBuffer.html
+[`I64Buffer`]: https://docs.rs/yggdryl-buffer/latest/yggdryl_buffer/struct.I64Buffer.html
+[`BooleanBuffer`]: https://docs.rs/yggdryl-buffer/latest/yggdryl_buffer/struct.BooleanBuffer.html

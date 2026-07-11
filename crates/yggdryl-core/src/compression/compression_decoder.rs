@@ -2,7 +2,6 @@
 
 use std::io::{Read, Write};
 
-use super::stream::{IoReader, IoWriter};
 use crate::{DecodeError, Decoder, IOBase};
 
 /// A [`Decoder`] whose [`decode_byte_array`](Decoder::decode_byte_array)
@@ -40,10 +39,9 @@ pub trait CompressionDecoder: Decoder {
         sink: &mut dyn IOBase,
     ) -> Result<u64, DecodeError> {
         let mut input = Vec::new();
-        IoReader::new(source).read_to_end(&mut input)?;
+        source.read_to_end(&mut input)?;
         let output = self.decode_byte_array(&input)?;
-        let mut writer = IoWriter::new(sink);
-        writer.write_all(&output)?;
-        Ok(writer.written())
+        sink.write_all(&output)?;
+        Ok(output.len() as u64)
     }
 }

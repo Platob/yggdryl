@@ -14,7 +14,38 @@ const {
   F64Buffer,
   BooleanBuffer,
 } = yggdryl.buffer
+const { I64Type } = yggdryl.dtype
 const { Whence } = yggdryl.io
+
+test('buffer field() and headers', () => {
+  const entries = [{ key: Buffer.from('unit'), value: Buffer.from('ms') }]
+  const annotated = new I64Buffer([1, 2, 3]).withHeaders(entries)
+
+  // headers round-trips as an Array<{key, value}>.
+  const meta = annotated.headers
+  assert.equal(meta.length, 1)
+  assert.ok(meta[0].key.equals(Buffer.from('unit')))
+  assert.ok(meta[0].value.equals(Buffer.from('ms')))
+
+  // field() hands out the matching typed field, carrying the headers.
+  const field = annotated.field('ts', true)
+  assert.equal(field.name, 'ts')
+  assert.equal(field.nullable, true)
+  assert.ok(field.dataType.equals(new I64Type()))
+  assert.ok(field.headers[0].value.equals(Buffer.from('ms')))
+
+  // No headers by default; field() defaults nullable to false.
+  const plain = new I64Buffer([1, 2, 3])
+  assert.equal(plain.headers, null)
+  assert.equal(plain.field('ts').nullable, false)
+  assert.equal(plain.field('ts').headers, null)
+
+  // The boolean buffer hands out a BooleanField.
+  assert.equal(new BooleanBuffer([true, false]).field('flag', true).name, 'flag')
+
+  // Headers is an annotation — it does not change byte identity.
+  assert.ok(new I64Buffer([1, 2, 3]).equals(annotated))
+})
 
 test('buffer numeric construct + access', () => {
   const buf = new I32Buffer([10, 20, 30])

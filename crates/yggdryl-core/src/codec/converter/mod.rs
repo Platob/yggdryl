@@ -17,6 +17,7 @@ mod convert_error;
 // (rule 1) — the same-name-as-parent is the convention, not an accident.
 #[allow(clippy::module_inception)]
 mod converter;
+mod converter_kind;
 mod identity_converter;
 mod primitive_type;
 mod string_converter;
@@ -27,6 +28,7 @@ pub use bytes_converter::BytesConverter;
 pub use cast_converter::CastConverter;
 pub use convert_error::ConvertError;
 pub use converter::Converter;
+pub use converter_kind::ConverterKind;
 pub use identity_converter::IdentityConverter;
 pub use primitive_type::PrimitiveType;
 pub use string_converter::StringConverter;

@@ -22,6 +22,7 @@ mod io_cursor;
 mod io_error;
 mod io_slice;
 mod primitive;
+mod std_io;
 mod typed_cursor;
 mod typed_io_base;
 mod typed_io_cursor;

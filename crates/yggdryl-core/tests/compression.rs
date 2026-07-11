@@ -235,6 +235,37 @@ fn gzip_streams_between_byte_buffers() {
 }
 
 #[test]
+fn stream_count_is_the_bytes_written_not_the_absolute_position() {
+    // The streamed byte count comes from how far the sink cursor advances, so it must
+    // report the bytes written *this call* — a delta — even when the sink already holds
+    // content and is positioned past it (writes append after the prefix).
+    use yggdryl_core::{ByteBuffer, IOBase, Whence};
+
+    let gzip = Gzip::new(6).unwrap();
+    let original = b"append after me ".repeat(64);
+
+    let mut source = ByteBuffer::from_bytes(&original).byte_cursor();
+    let mut sink = ByteBuffer::new().byte_cursor();
+    let prefix = b"PREFIX-BYTES";
+    sink.pwrite_byte_array(prefix, Whence::Start).unwrap(); // cursor now at prefix end
+
+    let written = gzip.compress_stream(&mut source, &mut sink).unwrap();
+
+    // The count is the compressed size (delta), strictly less than the total sink length.
+    assert!(written > 0);
+    assert_eq!(written, sink.as_bytes().len() as u64 - prefix.len() as u64);
+    assert!((written as usize) < sink.as_bytes().len());
+
+    // The sink is prefix followed by the gzip stream, which decodes to the original.
+    assert_eq!(&sink.as_bytes()[..prefix.len()], prefix);
+    assert_eq!(
+        gzip.decode_byte_array(&sink.as_bytes()[prefix.len()..])
+            .unwrap(),
+        original
+    );
+}
+
+#[test]
 fn streaming_matches_one_shot_encoding() {
     use yggdryl_core::{ByteBuffer, IOBase, Whence};
 

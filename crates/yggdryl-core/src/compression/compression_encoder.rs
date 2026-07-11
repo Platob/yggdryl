@@ -2,7 +2,6 @@
 
 use std::io::{Read, Write};
 
-use super::stream::{IoReader, IoWriter};
 use crate::{EncodeError, Encoder, IOBase};
 
 /// An [`Encoder`] whose [`encode_byte_array`](Encoder::encode_byte_array)
@@ -42,10 +41,9 @@ pub trait CompressionEncoder: Encoder {
         sink: &mut dyn IOBase,
     ) -> Result<u64, EncodeError> {
         let mut input = Vec::new();
-        IoReader::new(source).read_to_end(&mut input)?;
+        source.read_to_end(&mut input)?;
         let output = self.encode_byte_array(&input)?;
-        let mut writer = IoWriter::new(sink);
-        writer.write_all(&output)?;
-        Ok(writer.written())
+        sink.write_all(&output)?;
+        Ok(output.len() as u64)
     }
 }

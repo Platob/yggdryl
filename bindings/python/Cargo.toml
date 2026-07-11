@@ -21,6 +21,15 @@ path = "src/lib.rs"
 # `gzip` (stock C zlib). Needs CMake + Ninja at build time — see
 # `scripts/setup-build-deps.py`.
 yggdryl-core = { workspace = true, features = ["gzip-zlib-ng"] }
+# The Arrow data-model layers, exposed as the `yggdryl.dtype` / `.field` / `.scalar`
+# submodules. Thin wrappers; all logic lives in these crates.
+yggdryl-dtype = { workspace = true }
+yggdryl-field = { workspace = true }
+yggdryl-scalar = { workspace = true }
+# The typed buffers (moved out of core), exposed as the `yggdryl.buffer` submodule.
+yggdryl-buffer = { workspace = true }
+# The generic header map backing field/buffer `headers`.
+yggdryl-http = { workspace = true }
 
 [dependencies.pyo3]
 version = "0.22"

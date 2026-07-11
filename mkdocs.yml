@@ -44,6 +44,10 @@ nav:
   - Byte IO: io.md
   - Wide integers: wide_ints.md
   - Typed buffers: buffer.md
+  - Headers: http.md
+  - Data types: dtype.md
+  - Fields: field.md
+  - Scalars: scalar.md
   - Type inference: infer.md
   - Converters: converter.md
   - Compression: compression.md

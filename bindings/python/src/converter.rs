@@ -14,7 +14,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::{IoPrimitive, PrimitiveType, TypedConverter, Utf8Converter};
+use yggdryl_core::{ConverterKind, IoPrimitive, PrimitiveType, TypedConverter, Utf8Converter};
 
 /// Maps a core [`ConvertError`](yggdryl_core::ConvertError) to a Python `ValueError`.
 fn convert_err(error: yggdryl_core::ConvertError) -> PyErr {
@@ -24,6 +24,16 @@ fn convert_err(error: yggdryl_core::ConvertError) -> PyErr {
 /// Resolves a dtype name, or a guided `ValueError`.
 fn dtype(name: &str) -> PyResult<PrimitiveType> {
     PrimitiveType::from_name(name).map_err(convert_err)
+}
+
+/// Resolves a converter-kind name, or a guided `ValueError`.
+fn kind(name: &str) -> PyResult<ConverterKind> {
+    ConverterKind::from_name(name).map_err(convert_err)
+}
+
+/// Resolves an optional dtype name (`None` passes through as no argument).
+fn opt_dtype(name: Option<&str>) -> PyResult<Option<PrimitiveType>> {
+    name.map(dtype).transpose()
 }
 
 /// Decodes exactly-`width` little-endian `bytes` into the Python scalar for `pt` — an
@@ -109,6 +119,43 @@ fn format(value: &Bound<'_, PyAny>, dtype_name: &str) -> PyResult<String> {
     primitive.format_bytes(&bytes).map_err(convert_err)
 }
 
+/// Runs a named converter forward over the whole `data` byte array — the general
+/// "overall" convert. `converter` is one of `"cast"`, `"string"`, `"bytes"`, `"utf8"`;
+/// `from_dtype` / `to_dtype` name the dtype arguments the kind needs (both for `cast`,
+/// one — `from_dtype` — for `string` / `bytes`, neither for `utf8`).
+#[pyfunction]
+#[pyo3(signature = (data, converter, from_dtype=None, to_dtype=None))]
+fn convert_bytes<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    converter: &str,
+    from_dtype: Option<&str>,
+    to_dtype: Option<&str>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let out = kind(converter)?
+        .convert_bytes(data, opt_dtype(from_dtype)?, opt_dtype(to_dtype)?)
+        .map_err(convert_err)?;
+    Ok(PyBytes::new_bound(py, &out))
+}
+
+/// Runs a named converter backward over the whole `data` byte array — the exact
+/// inverse of [`convert_bytes`], with the same arguments (e.g. `invert_bytes(le, "string",
+/// "i32")` renders i32 bytes back to their decimal text).
+#[pyfunction]
+#[pyo3(signature = (data, converter, from_dtype=None, to_dtype=None))]
+fn invert_bytes<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    converter: &str,
+    from_dtype: Option<&str>,
+    to_dtype: Option<&str>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let out = kind(converter)?
+        .invert_bytes(data, opt_dtype(from_dtype)?, opt_dtype(to_dtype)?)
+        .map_err(convert_err)?;
+    Ok(PyBytes::new_bound(py, &out))
+}
+
 /// Encodes `text` to its UTF-8 bytes.
 #[pyfunction]
 fn utf8_encode<'py>(py: Python<'py>, text: &str) -> Bound<'py, PyBytes> {
@@ -128,6 +175,8 @@ fn utf8_decode(data: &[u8]) -> PyResult<String> {
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(pyo3::wrap_pyfunction!(cast, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(convert, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(convert_bytes, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(invert_bytes, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(parse, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(format, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(utf8_encode, module)?)?;

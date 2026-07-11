@@ -1,0 +1,33 @@
+[package]
+name = "yggdryl-buffer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Typed, Arrow-backed buffers for yggdryl — the Buffer layer"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_buffer"
+path = "src/lib.rs"
+
+[dependencies]
+# The io foundations a buffer bridges to (`ByteBuffer`, `ByteCursor`, `TypedCursor`,
+# `TypedSlice`). Dependencies point strictly downward.
+yggdryl-core = { workspace = true }
+# The field a buffer hands out from its element type + headers (`I64Buffer::field` →
+# `I64Field`). Places the buffer layer above field: buffer → field → dtype → core.
+yggdryl-field = { workspace = true }
+# The generic header map (`Headers` / `HeadersBased`) a buffer carries.
+yggdryl-http = { workspace = true }
+# Apache Arrow's buffer subset — the backing store (`ScalarBuffer` / `BooleanBuffer`),
+# wrapped zero-copy by `from_arrow` / `to_arrow`.
+arrow-buffer = { workspace = true }
+
+# Dependency-free throughput bench (`harness = false`, its own `main`).
+[[bench]]
+name = "buffer"
+harness = false

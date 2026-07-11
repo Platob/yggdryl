@@ -2,13 +2,25 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-http",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-field",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-buffer",
     "bindings/python",
     "bindings/node",
 ]
-# `cargo build` / `cargo test` with no args only touches the pure-Rust core.
+# `cargo build` / `cargo test` with no args only touches the pure-Rust layers.
 # The Python and Node bindings are built through their own toolchains
 # (maturin / napi) so the default workflow never needs Python or Node headers.
-default-members = ["crates/yggdryl-core"]
+default-members = [
+    "crates/yggdryl-core",
+    "crates/yggdryl-http",
+    "crates/yggdryl-dtype",
+    "crates/yggdryl-field",
+    "crates/yggdryl-scalar",
+    "crates/yggdryl-buffer",
+]
 
 [workspace.package]
 version = "0.1.1"
@@ -22,7 +34,14 @@ description = "yggdryl — a Rust-core library with Python and Node extensions"
 keywords = ["rust", "ffi", "python", "node", "yggdryl"]
 
 [workspace.dependencies]
+# The Arrow data-model layers, each depending strictly downward (scalar → field →
+# dtype → core). Pinned at 0.1.0 (caret) so a 0.1.x bump only touches the version line.
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
+yggdryl-http = { path = "crates/yggdryl-http", version = "0.1.0" }
+yggdryl-dtype = { path = "crates/yggdryl-dtype", version = "0.1.0" }
+yggdryl-field = { path = "crates/yggdryl-field", version = "0.1.0" }
+yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0" }
+yggdryl-buffer = { path = "crates/yggdryl-buffer", version = "0.1.0" }
 # gzip/deflate backend for the `gzip` compression codec; pulled in only by the
 # crates that enable the corresponding cargo feature.
 flate2 = "1.0"
@@ -31,6 +50,10 @@ zstd = "0.13"
 # Apache Arrow's buffer subset (only), for the opt-in `arrow` zero-copy interop.
 # Never the full `arrow` umbrella (see CLAUDE.md).
 arrow-buffer = "55"
+# Apache Arrow's schema subset — `arrow_schema::DataType` / `arrow_schema::Field`, the
+# canonical Arrow type/field descriptors the dtype and field layers convert to and from.
+# Same 55.x line as arrow-buffer; only the subset crate, never the `arrow` umbrella.
+arrow-schema = "55"
 
 [profile.release]
 lto = true

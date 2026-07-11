@@ -14,7 +14,34 @@ from yggdryl.buffer import (
     U8Buffer,
     U64Buffer,
 )
+from yggdryl.dtype import I64Type
 from yggdryl.io import Whence
+
+
+def test_buffer_field_and_headers():
+    # A buffer hands out the matching typed field, carrying its headers.
+    annotated = I64Buffer([1, 2, 3]).with_headers({b"unit": b"ms"})
+    assert annotated.headers == {b"unit": b"ms"}
+
+    field = annotated.field("ts", True)
+    assert field.name == "ts"
+    assert field.nullable is True
+    assert field.data_type == I64Type()
+    assert field.headers == {b"unit": b"ms"}
+
+    # No headers by default; field() defaults nullable to False.
+    plain = I64Buffer([1, 2, 3])
+    assert plain.headers is None
+    assert plain.field("ts").nullable is False
+    assert plain.field("ts").headers is None
+
+    # The boolean buffer hands out a BooleanField.
+    bfield = BooleanBuffer([True, False]).field("flag", True)
+    assert bfield.name == "flag"
+
+    # Metadata is an annotation — it does not change byte identity.
+    assert I64Buffer([1, 2, 3]) == annotated
+    assert I64Buffer([1, 2, 3]).serialize_bytes() == annotated.serialize_bytes()
 
 
 def test_numeric_construct_and_access():

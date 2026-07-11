@@ -44,7 +44,7 @@ pub fn buffer(
         // A `Buffer` / `Uint8Array` is the byte buffer directly.
         Either::A(bytes) => {
             return Ok(Either4::D(U8Buffer {
-                inner: yggdryl_core::U8Buffer::from_vec(bytes.to_vec()),
+                inner: yggdryl_buffer::U8Buffer::from_vec(bytes.to_vec()),
             }));
         }
         Either::B(items) => items,
@@ -70,7 +70,7 @@ pub fn buffer(
                 bits.push(item.coerce_to_bool()?.get_value()?);
             }
             Ok(Either4::C(BooleanBuffer {
-                inner: yggdryl_core::BooleanBuffer::from_bits(&bits),
+                inner: yggdryl_buffer::BooleanBuffer::from_bits(&bits),
             }))
         }
         ValueType::BigInt => {
@@ -93,7 +93,7 @@ pub fn buffer(
                 ints.push(value);
             }
             Ok(Either4::A(I64Buffer {
-                inner: yggdryl_core::I64Buffer::from_vec(ints),
+                inner: yggdryl_buffer::I64Buffer::from_vec(ints),
             }))
         }
         ValueType::Number => {
@@ -108,7 +108,7 @@ pub fn buffer(
                 floats.push(item.coerce_to_number()?.get_double()?);
             }
             Ok(Either4::B(F64Buffer {
-                inner: yggdryl_core::F64Buffer::from_vec(floats),
+                inner: yggdryl_buffer::F64Buffer::from_vec(floats),
             }))
         }
         _ => Err(to_error(

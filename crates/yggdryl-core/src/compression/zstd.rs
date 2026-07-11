@@ -1,12 +1,11 @@
 //! [`Zstd`] — the Zstandard (RFC 8878) compression codec.
 
-use std::io;
+use std::io::{self, Seek};
 
 // `zstd` bundles libzstd (built via `cc`); pulled in only under the `zstd` feature.
 use zstd::stream::read::Decoder as ZstdDecoder;
 use zstd::stream::write::Encoder as ZstdEncoder;
 
-use super::stream::{IoReader, IoWriter};
 use crate::{
     Compression, CompressionDecoder, CompressionEncoder, DecodeError, Decoder, EncodeError,
     Encoder, IOBase, TypedDecoder, TypedEncoder,
@@ -135,9 +134,12 @@ impl CompressionEncoder for Zstd {
         source: &mut dyn IOBase,
         sink: &mut dyn IOBase,
     ) -> Result<u64, EncodeError> {
-        let mut encoder = ZstdEncoder::new(IoWriter::new(sink), self.level)?;
-        io::copy(&mut IoReader::new(source), &mut encoder)?;
-        Ok(encoder.finish()?.written())
+        let start = sink.stream_position()?;
+        let mut encoder = ZstdEncoder::new(&mut *sink, self.level)?;
+        io::copy(&mut *source, &mut encoder)?;
+        encoder.finish()?;
+        // Bytes written = how far the sink cursor advanced (writes only move forward).
+        Ok(sink.stream_position()?.saturating_sub(start))
     }
 }
 
@@ -149,9 +151,9 @@ impl CompressionDecoder for Zstd {
         source: &mut dyn IOBase,
         sink: &mut dyn IOBase,
     ) -> Result<u64, DecodeError> {
-        let mut writer = IoWriter::new(sink);
-        io::copy(&mut ZstdDecoder::new(IoReader::new(source))?, &mut writer)?;
-        Ok(writer.written())
+        let start = sink.stream_position()?;
+        io::copy(&mut ZstdDecoder::new(&mut *source)?, &mut *sink)?;
+        Ok(sink.stream_position()?.saturating_sub(start))
     }
 }
 

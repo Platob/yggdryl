@@ -90,6 +90,25 @@ macro_rules! primitive_io {
 /// cursor.byte_seek(0, Whence::Start).unwrap();
 /// assert_eq!(cursor.pread_i32(Whence::Current).unwrap(), -1);
 /// ```
+///
+/// A `&mut dyn IOBase` is also a [`std::io::Read`] + [`Write`](std::io::Write) +
+/// [`Seek`](std::io::Seek) — reads/writes happen at [`Current`](Whence::Current) and
+/// `Seek` maps to [`byte_seek`](IOBase::byte_seek) — so a cursor plugs straight into the
+/// standard streaming ecosystem (`io::copy`, codec backends, `read_to_end`, …) with no
+/// wrapper. This interop is Rust-only (`std::io` does not cross the FFI boundary).
+///
+/// ```
+/// use std::io::{Read, Seek, SeekFrom, Write};
+/// use yggdryl_core::{ByteBuffer, IOBase};
+///
+/// let mut cursor = ByteBuffer::new().byte_cursor();
+/// let io: &mut dyn IOBase = &mut cursor;
+/// io.write_all(b"hi").unwrap();
+/// io.seek(SeekFrom::Start(0)).unwrap();
+/// let mut buf = Vec::new();
+/// io.read_to_end(&mut buf).unwrap();
+/// assert_eq!(buf, b"hi");
+/// ```
 #[allow(clippy::upper_case_acronyms)] // `IO` matches the project's IO-trait naming.
 pub trait IOBase {
     /// Creates a cursor over a fresh resource able to hold `capacity` bytes without

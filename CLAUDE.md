@@ -147,10 +147,27 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   hand the allocation across zero-copy. The compression codecs (`gzip`, `zstd`) remain
   optional cargo features, **on by default** so a plain dependency ships the full
   surface; a `--no-default-features` build drops only those codecs.
+- `crates/yggdryl-http` — a dependency-free, generic header map: `Headers` (an ordered
+  bytes→bytes map with byte + UTF-8 string accessors, zero-copy in-place value mutation
+  via `get_mut`, pre-built `name`/`comment`/`content-type`/`content-encoding` accessors,
+  and a deterministic byte codec) plus the `HeadersBased` trait a header-carrying type
+  implements. A `Field` and a buffer carry optional `Headers` as their annotations —
+  yggdryl-side only, never written into Arrow's `Field`.
 - `crates/yggdryl-dtype`, `crates/yggdryl-field`, `crates/yggdryl-scalar` — the
   Arrow data-model layers (data types, then fields, then scalars), one concern per
   crate so the concrete types share one naming convention across the layers
-  (`yggdryl_dtype::Int64Type` / `yggdryl_field::Int64Field` / `yggdryl_scalar::Int64Scalar`).
+  (`yggdryl_dtype::I64Type` / `yggdryl_field::I64Field` / `yggdryl_scalar::I64Scalar`).
+  A `Field` carries optional `yggdryl_http::Headers` via the `HeadersBased` supertrait.
+  (Type names use the short primitive form — `I8`/`U8`/`F32`, not `Int8`/`UInt8`/`Float32`
+  — matching the buffers.)
+- `crates/yggdryl-buffer` — the typed, Arrow-backed buffers (`I8Buffer` … `F64Buffer`,
+  `BooleanBuffer`). It sits **above** field (buffer → field → dtype → core, and depends on
+  `yggdryl-http`) so each buffer carries optional `Headers` and hands out its matching
+  typed field via `buffer.field(name, nullable)` (`I64Buffer` → `I64Field`); the headers
+  are an annotation that does not affect the buffer's byte-content equality. It depends on
+  `yggdryl-core` for the io cursors and `arrow-buffer` for the backing store. Core does
+  **not** re-export the buffers (that would cycle), so the bindings import them from
+  `yggdryl_buffer`.
 - Higher layers (logical types, nested types, kernels) and service crates
   (e.g. HTTP) are added as further workspace members, each depending only on the
   layers below it.
@@ -161,7 +178,7 @@ imports an upper one — needing the reverse means the abstraction belongs lower
   (`yggdryl-core` → `yggdryl.core`): Python via `sys.modules`; Node via
   `#[napi(namespace = "…")]` where class names are unique, and via the
   hand-written `yggdryl.js` / `yggdryl.d.ts` namespace map over uniquely-prefixed
-  native classes (`DtypeInt64Type` → `yggdryl.dtype.Int64Type`) where they are not — napi
+  native classes (`DtypeI64Type` → `yggdryl.dtype.I64Type`) where they are not — napi
   registers class constructors by JS class name in one addon-global registry, so
   same-named classes across namespaces would collide. The binding source mirrors
   the crate tree (`src/<crate>.rs` or `src/<crate>/` per crate, `lib.rs` wiring

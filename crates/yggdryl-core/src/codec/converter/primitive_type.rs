@@ -1,6 +1,6 @@
 //! [`PrimitiveType`] — a runtime dtype tag and the dtype-keyed converter facade.
 
-use crate::{CastConverter, ConvertError, Converter, StringConverter};
+use crate::{BytesConverter, CastConverter, ConvertError, Converter, StringConverter};
 
 /// The ten native primitive element types, as a runtime tag.
 ///
@@ -56,6 +56,21 @@ pub enum PrimitiveType {
 impl PrimitiveType {
     /// The accepted dtype names, for error messages.
     pub const EXPECTED: &'static str = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64";
+
+    /// Flexibly parses `text` into one value of this type, returning its little-endian
+    /// bytes (see [`StringConverter`]) — the `&str` convenience over
+    /// [`string_convert_bytes`](PrimitiveType::string_convert_bytes).
+    pub fn parse_bytes(self, text: &str) -> Result<Vec<u8>, ConvertError> {
+        self.string_convert_bytes(text.as_bytes())
+    }
+
+    /// Renders one value of this type (from its little-endian `bytes`) to its string
+    /// form (see [`StringConverter`]) — the `String` convenience over
+    /// [`string_invert_bytes`](PrimitiveType::string_invert_bytes).
+    pub fn format_bytes(self, bytes: &[u8]) -> Result<String, ConvertError> {
+        let out = self.string_invert_bytes(bytes)?;
+        Ok(String::from_utf8(out).expect("Display output is valid UTF-8"))
+    }
 }
 
 /// Generates the [`PrimitiveType`] facade from the `(variant, type, name)` list: the
@@ -95,23 +110,32 @@ macro_rules! primitive_type {
                 primitive_type!(@cast self, to, bytes, [$(($pt, $ty)),+], [$(($pt, $ty)),+])
             }
 
-            /// Flexibly parses `text` into one value of this type, returning its
-            /// little-endian bytes (see [`StringConverter`]).
-            pub fn parse_bytes(self, text: &str) -> Result<Vec<u8>, ConvertError> {
+            /// Parses UTF-8 text `bytes` into one value of this type (flexible formats),
+            /// returning its little-endian bytes — the [`StringConverter`] forward
+            /// byte-array conversion.
+            pub fn string_convert_bytes(self, bytes: &[u8]) -> Result<Vec<u8>, ConvertError> {
                 match self {
                     $(PrimitiveType::$pt =>
-                        StringConverter::<$ty>::new().convert_byte_array(text.as_bytes()),)+
+                        StringConverter::<$ty>::new().convert_byte_array(bytes),)+
                 }
             }
 
             /// Renders one value of this type (from its little-endian `bytes`) to its
-            /// string form (see [`StringConverter`]).
-            pub fn format_bytes(self, bytes: &[u8]) -> Result<String, ConvertError> {
+            /// UTF-8 text bytes — the [`StringConverter`] inverse byte-array conversion.
+            pub fn string_invert_bytes(self, bytes: &[u8]) -> Result<Vec<u8>, ConvertError> {
                 match self {
-                    $(PrimitiveType::$pt => {
-                        let out = StringConverter::<$ty>::new().invert_byte_array(bytes)?;
-                        Ok(String::from_utf8(out).expect("Display output is valid UTF-8"))
-                    })+
+                    $(PrimitiveType::$pt =>
+                        StringConverter::<$ty>::new().invert_byte_array(bytes),)+
+                }
+            }
+
+            /// Validates that `bytes` is a whole number of this type's values and
+            /// returns them unchanged — the [`BytesConverter`] byte-array conversion
+            /// (identical forward and inverse).
+            pub fn bytes_convert_bytes(self, bytes: &[u8]) -> Result<Vec<u8>, ConvertError> {
+                match self {
+                    $(PrimitiveType::$pt =>
+                        BytesConverter::<$ty>::new().convert_byte_array(bytes),)+
                 }
             }
         }

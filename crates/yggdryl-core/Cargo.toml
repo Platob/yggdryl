@@ -49,9 +49,5 @@ name = "io"
 harness = false
 
 [[bench]]
-name = "buffer"
-harness = false
-
-[[bench]]
 name = "converter"
 harness = false

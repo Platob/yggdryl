@@ -18,7 +18,6 @@ mod compress_io;
 mod compression;
 mod compression_decoder;
 mod compression_encoder;
-mod stream;
 mod typed_compression_decoder;
 mod typed_compression_encoder;
 

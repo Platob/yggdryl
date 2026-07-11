@@ -1,0 +1,24 @@
+[package]
+name = "yggdryl-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Generic HTTP-style header maps for yggdryl (Headers, HeadersBased)"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_http"
+path = "src/lib.rs"
+
+# Standalone: a dependency-free, byte-based header map that upper layers (field,
+# buffer, and future HTTP surfaces) build on.
+[dependencies]
+
+# Dependency-free throughput bench (`harness = false`, its own `main`).
+[[bench]]
+name = "headers"
+harness = false

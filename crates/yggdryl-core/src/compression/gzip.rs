@@ -1,6 +1,6 @@
 //! [`Gzip`] — the gzip (RFC 1952) compression codec.
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, Write};
 
 // `flate2` is the de-facto gzip/deflate backend; pulled in only under the
 // off-by-default `gzip` feature so a build that does not need gzip stays lean.
@@ -8,7 +8,6 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression as Flate2Compression;
 
-use super::stream::{IoReader, IoWriter};
 use crate::{
     Compression, CompressionDecoder, CompressionEncoder, DecodeError, Decoder, EncodeError,
     Encoder, IOBase, TypedDecoder, TypedEncoder,
@@ -155,9 +154,12 @@ impl CompressionEncoder for Gzip {
         source: &mut dyn IOBase,
         sink: &mut dyn IOBase,
     ) -> Result<u64, EncodeError> {
-        let mut encoder = GzEncoder::new(IoWriter::new(sink), Flate2Compression::new(self.level));
-        io::copy(&mut IoReader::new(source), &mut encoder)?;
-        Ok(encoder.finish()?.written())
+        let start = sink.stream_position()?;
+        let mut encoder = GzEncoder::new(&mut *sink, Flate2Compression::new(self.level));
+        io::copy(&mut *source, &mut encoder)?;
+        encoder.finish()?;
+        // Bytes written = how far the sink cursor advanced (writes only move forward).
+        Ok(sink.stream_position()?.saturating_sub(start))
     }
 }
 
@@ -169,9 +171,9 @@ impl CompressionDecoder for Gzip {
         source: &mut dyn IOBase,
         sink: &mut dyn IOBase,
     ) -> Result<u64, DecodeError> {
-        let mut writer = IoWriter::new(sink);
-        io::copy(&mut GzDecoder::new(IoReader::new(source)), &mut writer)?;
-        Ok(writer.written())
+        let start = sink.stream_position()?;
+        io::copy(&mut GzDecoder::new(&mut *source), &mut *sink)?;
+        Ok(sink.stream_position()?.saturating_sub(start))
     }
 }
 

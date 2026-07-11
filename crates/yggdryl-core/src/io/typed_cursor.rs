@@ -16,14 +16,18 @@ use crate::{ByteBuffer, ByteCursor, IOBase, IOCursor, IoError, IoPrimitive, Type
 /// [`bit_seek`](IOBase::bit_seek) byte/bit positions remain available.
 ///
 /// Like [`ByteCursor`] it is copy-on-write over its source [`ByteBuffer`], so writes
-/// leave the buffer intact. Obtain one from a typed buffer's `cursor`
-/// (e.g. [`I64Buffer::cursor`](crate::I64Buffer::cursor)) or
-/// [`TypedCursor::new`].
+/// leave the buffer intact. Obtain one from a typed buffer's `cursor` (in the
+/// `yggdryl-buffer` crate) or [`TypedCursor::new`].
 ///
 /// ```
-/// use yggdryl_core::{I32Buffer, IOBase, TypedIOBase, Whence};
+/// use yggdryl_core::{ByteBuffer, IOBase, TypedCursor, TypedIOBase, Whence};
 ///
-/// let mut cursor = I32Buffer::from_slice(&[10, 20, 30]).cursor();
+/// // Three little-endian i32 values as bytes.
+/// let mut bytes = Vec::new();
+/// for value in [10_i32, 20, 30] {
+///     bytes.extend_from_slice(&value.to_le_bytes());
+/// }
+/// let mut cursor = TypedCursor::<i32>::new(ByteBuffer::from_vec(bytes));
 /// assert_eq!(cursor.pread_one(Whence::Start).unwrap(), 10);
 /// assert_eq!(cursor.tell().unwrap(), 1); // one i32 in
 /// cursor.seek(2, Whence::Start).unwrap();

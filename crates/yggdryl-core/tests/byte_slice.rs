@@ -2,9 +2,19 @@
 //! clamped reads/writes (no growth), positions, and copy-on-write.
 
 use yggdryl_core::{
-    i256, ByteBuffer, ByteSlice, I32Buffer, IOBase, IOCursor, IOSlice, IoError, TypedCursor,
+    i256, ByteBuffer, ByteSlice, IOBase, IOCursor, IOSlice, IoError, IoPrimitive, TypedCursor,
     TypedIOBase, TypedIOSlice, TypedSlice, Whence,
 };
+
+/// Builds a `ByteBuffer` of `values`' little-endian bytes — the buffer-free stand-in for
+/// a typed buffer's bytes now that buffers live in `yggdryl-buffer`.
+fn byte_buffer<T: IoPrimitive>(values: &[T]) -> ByteBuffer {
+    let mut bytes = Vec::new();
+    for &value in values {
+        value.write_le(&mut bytes);
+    }
+    ByteBuffer::from_vec(bytes)
+}
 
 #[test]
 fn byte_slice_bounds_and_clamped_read() {
@@ -67,8 +77,8 @@ fn byte_slice_clamps_window_to_the_buffer() {
 
 #[test]
 fn typed_slice_over_a_typed_buffer() {
-    let buffer = I32Buffer::from_slice(&[10, 20, 30, 40, 50]);
-    let mut slice = buffer.slice(1, 3); // [20, 30, 40]
+    // Elements 1..4 of five i32 → the [20, 30, 40] window (bytes 4..16).
+    let mut slice = TypedSlice::<i32>::new(byte_buffer(&[10_i32, 20, 30, 40, 50]), 4, 12);
     assert_eq!(slice.slice_offset(), 4, "byte offset of element 1");
     assert_eq!(slice.slice_len(), 12, "3 i32 = 12 bytes");
     assert_eq!(slice.size().unwrap(), 3, "3 i32 remaining");
@@ -87,12 +97,12 @@ fn typed_slice_over_a_typed_buffer() {
 
 #[test]
 fn typed_slice_write_is_clamped_to_whole_values() {
-    let buffer = I32Buffer::from_slice(&[0, 0, 0]);
-    let mut slice = TypedSlice::<i32>::new(buffer.to_byte_buffer(), 4, 8); // 2 i32 window
-                                                                           // Writing 3 values into a 2-value window writes only the 2 that fit.
+    let source = byte_buffer(&[0_i32, 0, 0]);
+    let mut slice = TypedSlice::<i32>::new(source.clone(), 4, 8); // 2 i32 window
+                                                                  // Writing 3 values into a 2-value window writes only the 2 that fit.
     assert_eq!(slice.pwrite_array(&[7, 8, 9], Whence::Start).unwrap(), 2);
     assert_eq!(slice.pread_array(2, Whence::Start).unwrap(), vec![7, 8]);
-    assert_eq!(buffer.as_slice(), &[0, 0, 0], "source buffer untouched");
+    assert_eq!(source.as_bytes(), [0u8; 12], "source buffer untouched");
 }
 
 #[test]
@@ -178,8 +188,7 @@ fn byte_slice_from_byte_cursor_windows_the_cursor_bytes() {
 
 #[test]
 fn typed_slice_pread_one_is_eof_at_the_window_end() {
-    let buffer = I32Buffer::from_slice(&[1, 2]);
-    let mut slice = buffer.slice(0, 2);
+    let mut slice = TypedSlice::<i32>::new(byte_buffer(&[1_i32, 2]), 0, 8);
     assert_eq!(slice.pread_array(2, Whence::Start).unwrap(), vec![1, 2]);
     assert!(matches!(
         slice.pread_one(Whence::Current).unwrap_err(),

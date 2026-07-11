@@ -74,3 +74,39 @@ test('utf8 round trip and validation', () => {
   assert.equal(converter.utf8Decode(Buffer.from('café', 'utf8')), 'café')
   assert.throws(() => converter.utf8Decode(Buffer.from([0xff])), /UTF-8/)
 })
+
+test('convertBytes cast round trips', () => {
+  const data = Buffer.alloc(4)
+  data.writeInt32LE(7)
+  const wide = converter.convertBytes(data, 'cast', 'i32', 'i64')
+  const expected = Buffer.alloc(8)
+  expected.writeBigInt64LE(7n)
+  assert.ok(wide.equals(expected))
+  // invert casts the i64 bytes back to i32.
+  assert.ok(converter.invertBytes(wide, 'cast', 'i32', 'i64').equals(data))
+})
+
+test('convertBytes string convert and invert', () => {
+  // 'overall' string convert: UTF-8 text bytes -> i32 little-endian bytes.
+  const le = converter.convertBytes(Buffer.from('42'), 'string', 'i32')
+  const expected = Buffer.alloc(4)
+  expected.writeInt32LE(42)
+  assert.ok(le.equals(expected))
+  // invert string: i32 bytes -> decimal text bytes.
+  assert.ok(converter.invertBytes(le, 'string', 'i32').equals(Buffer.from('42')))
+})
+
+test('convertBytes bytes and utf8 kinds', () => {
+  const payload = Buffer.alloc(4)
+  payload.writeInt32LE(258)
+  assert.ok(converter.convertBytes(payload, 'bytes', 'i32').equals(payload))
+  assert.ok(converter.invertBytes(payload, 'bytes', 'i32').equals(payload))
+  assert.ok(converter.convertBytes(Buffer.from('c'), 'utf8').equals(Buffer.from('c')))
+  assert.throws(() => converter.convertBytes(Buffer.from([0xff]), 'utf8'), /UTF-8/)
+})
+
+test('convertBytes is guided', () => {
+  assert.throws(() => converter.convertBytes(Buffer.alloc(0), 'nope', 'i32'), /unknown converter/)
+  assert.throws(() => converter.convertBytes(Buffer.alloc(4), 'cast', 'i32'), /needs a to dtype/)
+  assert.throws(() => converter.convertBytes(Buffer.from('42'), 'string'), /needs a dtype/)
+})

@@ -8,26 +8,21 @@
 //! [`codec`] foundations ([`Encoder`] / [`Decoder`] and their element-generic
 //! [`TypedEncoder`] / [`TypedDecoder`] extensions, plus the [`Converter`] /
 //! [`TypedConverter`] representation converters), the [`compression`]
-//! specialisation ([`Compression`] and the concrete [`Gzip`] codec), the
-//! [`io`] positioned byte-IO contracts ([`IOBase`] / [`TypedIOBase`]), and the
-//! [`buffer`] typed native-type buffers ([`I64Buffer`] … [`BooleanBuffer`]). Add
+//! specialisation ([`Compression`] and the concrete [`Gzip`] codec), and the
+//! [`io`] positioned byte-IO contracts ([`IOBase`] / [`TypedIOBase`]). The typed
+//! native-type buffers live one layer up in the `yggdryl-buffer` crate. Add
 //! further foundational types here as they land, one module per concern, each
 //! re-exported at the crate root, following the rules in `CLAUDE.md`.
 
-pub mod buffer;
 pub mod codec;
 pub mod compression;
 pub mod int;
 pub mod io;
 
-pub use buffer::{
-    BooleanBuffer, BufferError, F32Buffer, F64Buffer, I16Buffer, I32Buffer, I64Buffer, I8Buffer,
-    U16Buffer, U32Buffer, U64Buffer, U8Buffer,
-};
 pub use codec::{
-    BytesConverter, CastConverter, ConvertError, Converter, DecodeError, Decoder, EncodeError,
-    Encoder, IdentityConverter, PrimitiveType, StringConverter, TypedConverter, TypedDecoder,
-    TypedEncoder, Utf8Converter,
+    BytesConverter, CastConverter, ConvertError, Converter, ConverterKind, DecodeError, Decoder,
+    EncodeError, Encoder, IdentityConverter, PrimitiveType, StringConverter, TypedConverter,
+    TypedDecoder, TypedEncoder, Utf8Converter,
 };
 pub use compression::{
     CompressIO, Compression, CompressionDecoder, CompressionEncoder, TypedCompressionDecoder,

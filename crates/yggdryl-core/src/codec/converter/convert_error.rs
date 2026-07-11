@@ -62,6 +62,24 @@ pub enum ConvertError {
         /// The accepted dtype names.
         expected: &'static str,
     },
+    /// A converter-kind name that does not name a known converter family (`cast`,
+    /// `string`, …). Pass one of `expected`.
+    UnknownConverter {
+        /// The offending name.
+        name: String,
+        /// The accepted converter names.
+        expected: &'static str,
+    },
+    /// A byte-array conversion whose converter needs a dtype argument that was not
+    /// supplied (e.g. the `cast` converter with no `to` dtype). Pass the named dtype.
+    MissingDtype {
+        /// The converter kind that needs the argument, e.g. `"cast"`.
+        kind: &'static str,
+        /// The name of the missing argument, e.g. `"to"`.
+        arg: &'static str,
+        /// The accepted dtype names.
+        expected: &'static str,
+    },
 }
 
 impl fmt::Display for ConvertError {
@@ -93,6 +111,17 @@ impl fmt::Display for ConvertError {
             Self::UnknownType { name, expected } => {
                 write!(f, "unknown dtype {name:?}; expected one of {expected}")
             }
+            Self::UnknownConverter { name, expected } => {
+                write!(f, "unknown converter {name:?}; expected one of {expected}")
+            }
+            Self::MissingDtype {
+                kind,
+                arg,
+                expected,
+            } => write!(
+                f,
+                "the {kind} converter needs a {arg} dtype; pass one of {expected}"
+            ),
         }
     }
 }

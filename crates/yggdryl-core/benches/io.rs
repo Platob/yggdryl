@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use yggdryl_core::{ByteBuffer, I64Buffer, IOBase, TypedIOBase, Whence};
+use yggdryl_core::{ByteBuffer, IOBase, IoPrimitive, TypedIOBase, Whence};
 
 /// Runs `op` `iters` times, returning MB/s over `bytes` processed per iteration.
 fn throughput_mb_s(bytes: usize, iters: u32, mut op: impl FnMut()) -> f64 {
@@ -128,7 +128,11 @@ fn typed_cursor_bench(size: usize, iters: u32) {
 
     // Freeze once to a byte buffer; each read wraps it in a fresh cursor (cheap —
     // an `Arc` bump), isolating the read cost from serialisation.
-    let frozen = I64Buffer::from_slice(&values).to_byte_buffer();
+    let mut frozen_bytes = Vec::new();
+    for &value in &values {
+        value.write_le(&mut frozen_bytes);
+    }
+    let frozen = ByteBuffer::from_vec(frozen_bytes);
     let read = throughput_mb_s(size, iters, || {
         yggdryl_core::TypedCursor::<i64>::new(frozen.clone())
             .pread_array(count, Whence::Start)

@@ -28,6 +28,26 @@ zero-copy):
     the `Whence` seek origin. Node omits the `u64` classes (no native `u64` scalar) and
     marshals the `f32` classes over an `f64` boundary.
 
+!!! note "Rust `std::io` interop (Rust-only)"
+    In Rust, a `&mut dyn IOBase` **is** a `std::io::Read` + `Write` + `Seek`, so a cursor
+    drops straight into the standard streaming ecosystem (`io::copy`, `read_to_end`, codec
+    backends) with no wrapper — reads/writes act at the current position and `Seek` maps to
+    `byte_seek`. `std::io` does not cross the FFI boundary, so this has no Python/Node
+    counterpart (the bindings use the `pread_*` / `pwrite_*` methods instead).
+
+    ```rust
+    use std::io::{Read, Seek, SeekFrom, Write};
+    use yggdryl_core::{ByteBuffer, IOBase};
+
+    let mut cursor = ByteBuffer::new().byte_cursor();
+    let io: &mut dyn IOBase = &mut cursor;
+    io.write_all(b"hi").unwrap();
+    io.seek(SeekFrom::Start(0)).unwrap();
+    let mut buf = Vec::new();
+    io.read_to_end(&mut buf).unwrap();
+    assert_eq!(buf, b"hi");
+    ```
+
 ## Read and write through a cursor
 
 === "Python"

@@ -17,14 +17,19 @@ use crate::{
 /// [`slice_len`](IOSlice::slice_len), in bytes) remain available.
 ///
 /// Copy-on-write over its source [`ByteBuffer`], so writes leave the buffer intact.
-/// Obtain one from a typed buffer's `slice` (e.g.
-/// [`I64Buffer::slice`](crate::I64Buffer::slice)) or [`TypedSlice::new`].
+/// Obtain one from a typed buffer's `slice` (in the `yggdryl-buffer` crate) or
+/// [`TypedSlice::new`].
 ///
 /// ```
-/// use yggdryl_core::{I32Buffer, IOBase, TypedIOBase, Whence};
+/// use yggdryl_core::{ByteBuffer, IOBase, TypedIOBase, TypedSlice, Whence};
 ///
-/// let buffer = I32Buffer::from_slice(&[10, 20, 30, 40, 50]);
-/// let mut slice = buffer.slice(1, 3); // the [20, 30, 40] window (3 i32)
+/// // Five little-endian i32 values as bytes.
+/// let mut bytes = Vec::new();
+/// for value in [10_i32, 20, 30, 40, 50] {
+///     bytes.extend_from_slice(&value.to_le_bytes());
+/// }
+/// // A window over the [20, 30, 40] range (bytes 4..16, i.e. 3 i32).
+/// let mut slice = TypedSlice::<i32>::new(ByteBuffer::from_vec(bytes), 4, 12);
 /// assert_eq!(slice.size().unwrap(), 3);
 /// assert_eq!(slice.pread_array(100, Whence::Start).unwrap(), vec![20, 30, 40]); // clamped
 /// ```

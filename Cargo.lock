@@ -29,6 +29,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-schema"
+version = "55.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af7686986a3bf2254c9fb130c623cdcb2f8e1f15763e7c71c310f0834da3d292"
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -561,6 +567,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
+name = "yggdryl-buffer"
+version = "0.1.1"
+dependencies = [
+ "arrow-buffer",
+ "yggdryl-core",
+ "yggdryl-field",
+ "yggdryl-http",
+]
+
+[[package]]
 name = "yggdryl-core"
 version = "0.1.1"
 dependencies = [
@@ -570,13 +586,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "yggdryl-dtype"
+version = "0.1.1"
+dependencies = [
+ "arrow-schema",
+ "yggdryl-core",
+]
+
+[[package]]
+name = "yggdryl-field"
+version = "0.1.1"
+dependencies = [
+ "arrow-schema",
+ "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-http",
+]
+
+[[package]]
+name = "yggdryl-http"
+version = "0.1.1"
+
+[[package]]
 name = "yggdryl-node"
 version = "0.1.1"
 dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "yggdryl-buffer",
  "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
+ "yggdryl-http",
+ "yggdryl-scalar",
 ]
 
 [[package]]
@@ -584,7 +627,22 @@ name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
  "pyo3",
+ "yggdryl-buffer",
  "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
+ "yggdryl-http",
+ "yggdryl-scalar",
+]
+
+[[package]]
+name = "yggdryl-scalar"
+version = "0.1.1"
+dependencies = [
+ "arrow-schema",
+ "yggdryl-core",
+ "yggdryl-dtype",
+ "yggdryl-field",
 ]
 
 [[package]]

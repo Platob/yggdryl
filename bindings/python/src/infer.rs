@@ -32,7 +32,7 @@ use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer, U8Buffer};
 /// Wraps a core `U8Buffer` for the bytes-like paths.
 fn u8_buffer(bytes: Vec<u8>) -> U8Buffer {
     U8Buffer {
-        inner: yggdryl_core::U8Buffer::from_vec(bytes),
+        inner: yggdryl_buffer::U8Buffer::from_vec(bytes),
     }
 }
 
@@ -73,7 +73,7 @@ fn buffer(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             )
         })?;
         return Ok(BooleanBuffer {
-            inner: yggdryl_core::BooleanBuffer::from_bits(&bits),
+            inner: yggdryl_buffer::BooleanBuffer::from_bits(&bits),
         }
         .into_py(py));
     }
@@ -86,7 +86,7 @@ fn buffer(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             )
         })?;
         return Ok(I64Buffer {
-            inner: yggdryl_core::I64Buffer::from_vec(ints),
+            inner: yggdryl_buffer::I64Buffer::from_vec(ints),
         }
         .into_py(py));
     }
@@ -98,7 +98,7 @@ fn buffer(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<PyObject> {
             )
         })?;
         return Ok(F64Buffer {
-            inner: yggdryl_core::F64Buffer::from_vec(floats),
+            inner: yggdryl_buffer::F64Buffer::from_vec(floats),
         }
         .into_py(py));
     }

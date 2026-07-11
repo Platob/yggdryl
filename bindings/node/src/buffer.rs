@@ -1,19 +1,22 @@
 //! The `yggdryl.buffer` namespace — typed native-type buffers.
 //!
 //! Exposes one immutable buffer class per native primitive ([`I8Buffer`] …
-//! [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring
-//! `yggdryl_core::buffer`. Two Node-specific idioms, as on the IO cursor: `U64Buffer`
-//! is **omitted** (napi has no native `u64` scalar — use `I64Buffer` or raw bytes),
-//! and `F32Buffer` marshals its values over an `f64` JS boundary. `i64` values and the
-//! `length`/`len` counts follow the same JS mapping as `yggdryl.io`. The Arrow
-//! `from_arrow` / `to_arrow` interop is Rust-only (an `arrow_buffer` value does not
-//! cross the FFI boundary).
+//! [`F64Buffer`]) plus the bit-packed [`BooleanBuffer`], mirroring `yggdryl-buffer`.
+//! Two Node-specific idioms, as on the IO cursor: `U64Buffer` is **omitted** (napi has
+//! no native `u64` scalar — use `I64Buffer` or raw bytes), and `F32Buffer` marshals its
+//! values over an `f64` JS boundary. Each buffer carries optional headers (an
+//! `Array<{key: Buffer, value: Buffer}>` — JS cannot key a map by bytes) and hands out
+//! the matching [`yggdryl.field`](crate::field) class via `field(name, nullable)`. The
+//! Arrow `from_arrow` / `to_arrow` interop is Rust-only (an `arrow_buffer` value does
+//! not cross the FFI boundary).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
+
+use yggdryl_http::{Headers, HeadersBased};
 
 use crate::io::{
     ByteBuffer, ByteCursor, F32Cursor, F32Slice, F64Cursor, F64Slice, I16Cursor, I16Slice,
@@ -26,15 +29,46 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
 }
 
+/// One bytes→bytes headers entry, marshalled as `{ key, value }` (JS cannot key a map
+/// by arbitrary bytes, so headers is an array of these).
+#[napi(object)]
+pub struct HeaderEntry {
+    /// The headers key bytes.
+    pub key: Buffer,
+    /// The headers value bytes.
+    pub value: Buffer,
+}
+
+/// Converts a buffer/field's headers into the JS `Array<{key, value}>` shape (or `null`).
+pub(crate) fn headers_to_entries(headers: Option<&Headers>) -> Option<Vec<HeaderEntry>> {
+    headers.map(|meta| {
+        meta.pairs()
+            .map(|(key, value)| HeaderEntry {
+                key: key.to_vec().into(),
+                value: value.to_vec().into(),
+            })
+            .collect()
+    })
+}
+
+/// Builds a [`Headers`] from the JS `Array<{key, value}>` shape.
+pub(crate) fn headers_from_entries(entries: Vec<HeaderEntry>) -> Headers {
+    Headers::from_pairs(
+        entries
+            .into_iter()
+            .map(|entry| (entry.key.to_vec(), entry.value.to_vec())),
+    )
+}
+
 /// Generates the napi wrapper class for one numeric buffer type whose element maps
 /// to a native napi scalar.
 macro_rules! napi_buffer {
-    ($( ($name:ident, $ty:ty, $cursor:ident, $slice:ident) ),+ $(,)?) => {
+    ($( ($name:ident, $ty:ty, $cursor:ident, $slice:ident, $field:ident) ),+ $(,)?) => {
         $(
             #[doc = concat!("An immutable, cheaply-shared contiguous buffer of `", stringify!($ty), "` values.")]
             #[napi(namespace = "buffer")]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::$name,
+                pub(crate) inner: yggdryl_buffer::$name,
             }
 
             #[napi(namespace = "buffer")]
@@ -43,8 +77,8 @@ macro_rules! napi_buffer {
                 #[napi(constructor)]
                 pub fn new(values: Option<Vec<$ty>>) -> Self {
                     let inner = match values {
-                        Some(values) => yggdryl_core::$name::from_vec(values),
-                        None => yggdryl_core::$name::new(),
+                        Some(values) => yggdryl_buffer::$name::from_vec(values),
+                        None => yggdryl_buffer::$name::new(),
                     };
                     Self { inner }
                 }
@@ -94,7 +128,7 @@ macro_rules! napi_buffer {
                 #[doc = concat!("Reconstructs a buffer from little-endian `", stringify!($ty), "` bytes.")]
                 #[napi(factory)]
                 pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
-                    yggdryl_core::$name::deserialize_bytes(bytes.as_ref())
+                    yggdryl_buffer::$name::deserialize_bytes(bytes.as_ref())
                         .map(|inner| Self { inner })
                         .map_err(to_error)
                 }
@@ -110,7 +144,7 @@ macro_rules! napi_buffer {
                 /// Decodes a `ByteBuffer` of little-endian bytes into a buffer.
                 #[napi(factory)]
                 pub fn from_byte_buffer(buffer: &ByteBuffer) -> napi::Result<Self> {
-                    yggdryl_core::$name::from_byte_buffer(&buffer.inner)
+                    yggdryl_buffer::$name::from_byte_buffer(&buffer.inner)
                         .map(|inner| Self { inner })
                         .map_err(to_error)
                 }
@@ -139,6 +173,29 @@ macro_rules! napi_buffer {
                     }
                 }
 
+                /// The buffer's headers as an `Array<{key, value}>`, or `null`.
+                #[napi(getter)]
+                pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
+                    headers_to_entries(self.inner.headers())
+                }
+
+                /// Returns a copy of this buffer with `headers` attached — carried into
+                /// the field this buffer hands out; it does not affect byte equality.
+                #[napi]
+                pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
+                    Self {
+                        inner: self.inner.clone().with_headers(headers_from_entries(headers)),
+                    }
+                }
+
+                #[doc = concat!("Builds the matching `", stringify!($field), "` named `name`, carrying this buffer's headers.")]
+                #[napi]
+                pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::$field {
+                    crate::field::$field {
+                        inner: self.inner.field(name, nullable.unwrap_or(false)),
+                    }
+                }
+
                 /// Content equality.
                 #[napi]
                 pub fn equals(&self, other: &$name) -> bool {
@@ -161,21 +218,21 @@ macro_rules! napi_buffer {
 // `U64Buffer` is omitted (no native napi `u64` scalar); `F32Buffer` is defined below
 // over an `f64` boundary.
 napi_buffer!(
-    (I8Buffer, i8, I8Cursor, I8Slice),
-    (I16Buffer, i16, I16Cursor, I16Slice),
-    (I32Buffer, i32, I32Cursor, I32Slice),
-    (I64Buffer, i64, I64Cursor, I64Slice),
-    (U8Buffer, u8, U8Cursor, U8Slice),
-    (U16Buffer, u16, U16Cursor, U16Slice),
-    (U32Buffer, u32, U32Cursor, U32Slice),
-    (F64Buffer, f64, F64Cursor, F64Slice),
+    (I8Buffer, i8, I8Cursor, I8Slice, I8Field),
+    (I16Buffer, i16, I16Cursor, I16Slice, I16Field),
+    (I32Buffer, i32, I32Cursor, I32Slice, I32Field),
+    (I64Buffer, i64, I64Cursor, I64Slice, I64Field),
+    (U8Buffer, u8, U8Cursor, U8Slice, U8Field),
+    (U16Buffer, u16, U16Cursor, U16Slice, U16Field),
+    (U32Buffer, u32, U32Cursor, U32Slice, U32Field),
+    (F64Buffer, f64, F64Cursor, F64Slice, F64Field),
 );
 
 /// An immutable, cheaply-shared contiguous buffer of `f32` values (marshalled over an
 /// `f64` JS boundary).
 #[napi(namespace = "buffer")]
 pub struct F32Buffer {
-    pub(crate) inner: yggdryl_core::F32Buffer,
+    pub(crate) inner: yggdryl_buffer::F32Buffer,
 }
 
 #[napi(namespace = "buffer")]
@@ -185,9 +242,9 @@ impl F32Buffer {
     pub fn new(values: Option<Vec<f64>>) -> Self {
         let inner = match values {
             Some(values) => {
-                yggdryl_core::F32Buffer::from_vec(values.into_iter().map(|v| v as f32).collect())
+                yggdryl_buffer::F32Buffer::from_vec(values.into_iter().map(|v| v as f32).collect())
             }
-            None => yggdryl_core::F32Buffer::new(),
+            None => yggdryl_buffer::F32Buffer::new(),
         };
         Self { inner }
     }
@@ -237,7 +294,7 @@ impl F32Buffer {
     /// Reconstructs a buffer from little-endian `f32` bytes.
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
-        yggdryl_core::F32Buffer::deserialize_bytes(bytes.as_ref())
+        yggdryl_buffer::F32Buffer::deserialize_bytes(bytes.as_ref())
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -253,7 +310,7 @@ impl F32Buffer {
     /// Decodes a `ByteBuffer` of little-endian bytes into a buffer.
     #[napi(factory)]
     pub fn from_byte_buffer(buffer: &ByteBuffer) -> napi::Result<Self> {
-        yggdryl_core::F32Buffer::from_byte_buffer(&buffer.inner)
+        yggdryl_buffer::F32Buffer::from_byte_buffer(&buffer.inner)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -282,6 +339,31 @@ impl F32Buffer {
         }
     }
 
+    /// The buffer's headers as an `Array<{key, value}>`, or `null`.
+    #[napi(getter)]
+    pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
+        headers_to_entries(self.inner.headers())
+    }
+
+    /// Returns a copy of this buffer with `headers` attached.
+    #[napi]
+    pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_headers(headers_from_entries(headers)),
+        }
+    }
+
+    /// Builds the matching `F32Field` named `name`, carrying this buffer's headers.
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::F32Field {
+        crate::field::F32Field {
+            inner: self.inner.field(name, nullable.unwrap_or(false)),
+        }
+    }
+
     /// Content equality.
     #[napi]
     pub fn equals(&self, other: &F32Buffer) -> bool {
@@ -301,7 +383,7 @@ impl F32Buffer {
 /// An immutable, bit-packed (LSB-first) buffer of `bool` values.
 #[napi(namespace = "buffer")]
 pub struct BooleanBuffer {
-    pub(crate) inner: yggdryl_core::BooleanBuffer,
+    pub(crate) inner: yggdryl_buffer::BooleanBuffer,
 }
 
 #[napi(namespace = "buffer")]
@@ -310,8 +392,8 @@ impl BooleanBuffer {
     #[napi(constructor)]
     pub fn new(values: Option<Vec<bool>>) -> Self {
         let inner = match values {
-            Some(values) => yggdryl_core::BooleanBuffer::from_bits(&values),
-            None => yggdryl_core::BooleanBuffer::new(),
+            Some(values) => yggdryl_buffer::BooleanBuffer::from_bits(&values),
+            None => yggdryl_buffer::BooleanBuffer::new(),
         };
         Self { inner }
     }
@@ -319,7 +401,7 @@ impl BooleanBuffer {
     /// Wraps `bytes` (LSB-first packed bits) as a buffer of `len` bits.
     #[napi(factory)]
     pub fn from_bytes(bytes: Buffer, len: u32) -> napi::Result<Self> {
-        yggdryl_core::BooleanBuffer::from_bytes(bytes.as_ref(), len as usize)
+        yggdryl_buffer::BooleanBuffer::from_bytes(bytes.as_ref(), len as usize)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -375,7 +457,7 @@ impl BooleanBuffer {
     /// Reconstructs a buffer from `serializeBytes`.
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
-        yggdryl_core::BooleanBuffer::deserialize_bytes(bytes.as_ref())
+        yggdryl_buffer::BooleanBuffer::deserialize_bytes(bytes.as_ref())
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -391,9 +473,34 @@ impl BooleanBuffer {
     /// Reads `len` packed bits from a `ByteBuffer`.
     #[napi(factory)]
     pub fn from_byte_buffer(buffer: &ByteBuffer, len: u32) -> napi::Result<Self> {
-        yggdryl_core::BooleanBuffer::from_byte_buffer(&buffer.inner, len as usize)
+        yggdryl_buffer::BooleanBuffer::from_byte_buffer(&buffer.inner, len as usize)
             .map(|inner| Self { inner })
             .map_err(to_error)
+    }
+
+    /// The buffer's headers as an `Array<{key, value}>`, or `null`.
+    #[napi(getter)]
+    pub fn headers(&self) -> Option<Vec<HeaderEntry>> {
+        headers_to_entries(self.inner.headers())
+    }
+
+    /// Returns a copy of this buffer with `headers` attached.
+    #[napi]
+    pub fn with_headers(&self, headers: Vec<HeaderEntry>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_headers(headers_from_entries(headers)),
+        }
+    }
+
+    /// Builds the matching `BooleanField` named `name`, carrying this buffer's headers.
+    #[napi]
+    pub fn field(&self, name: String, nullable: Option<bool>) -> crate::field::BooleanField {
+        crate::field::BooleanField {
+            inner: self.inner.field(name, nullable.unwrap_or(false)),
+        }
     }
 
     /// Content equality.

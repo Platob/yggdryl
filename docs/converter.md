@@ -193,13 +193,74 @@ decode and naming the failing offset on invalid input.
     assert!(codec.decode(vec![0xFF]).is_err());
     ```
 
+## Overall convert / invert
+
+`convertBytes` runs **any** converter family over a whole byte array, and `invertBytes`
+runs its exact inverse — the general "overall" entry point. The first argument names
+the family (`"cast"`, `"string"`, `"bytes"`, `"utf8"`); the dtype arguments follow as
+the family needs them (both for `cast`, one for `string` / `bytes`, none for `utf8`). A
+missing dtype or an unknown family raises a guided error naming what to pass.
+
+The `string` inverse is the **string render over bytes** — value bytes back to their
+decimal text — the byte-level counterpart of `format`.
+
+=== "Python"
+
+    ```python
+    from yggdryl import converter
+
+    # Cast a whole i32 buffer to i64, then invert back.
+    wide = converter.convert_bytes((7).to_bytes(4, "little"), "cast", "i32", "i64")
+    assert wide == (7).to_bytes(8, "little")
+    assert converter.invert_bytes(wide, "cast", "i32", "i64") == (7).to_bytes(4, "little")
+
+    # String: text bytes -> i32 bytes, and invert i32 bytes -> text.
+    le = converter.convert_bytes(b"42", "string", "i32")
+    assert le == (42).to_bytes(4, "little", signed=True)
+    assert converter.invert_bytes(le, "string", "i32") == b"42"
+
+    try:
+        converter.convert_bytes(le, "cast", "i32")   # cast needs a `to` dtype
+    except ValueError as error:
+        assert "needs a to dtype" in str(error)
+    ```
+
+=== "Node"
+
+    ```js
+    const { converter } = require('yggdryl')
+
+    const data = Buffer.alloc(4); data.writeInt32LE(7)
+    const wide = converter.convertBytes(data, 'cast', 'i32', 'i64')
+    console.assert(converter.invertBytes(wide, 'cast', 'i32', 'i64').equals(data))
+
+    // String: text bytes -> i32 bytes, and invert i32 bytes -> text.
+    const le = converter.convertBytes(Buffer.from('42'), 'string', 'i32')
+    console.assert(converter.invertBytes(le, 'string', 'i32').equals(Buffer.from('42')))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::{ConverterKind, PrimitiveType};
+
+    let cast = ConverterKind::from_name("cast").unwrap();
+    let (i32, i64) = (Some(PrimitiveType::I32), Some(PrimitiveType::I64));
+    let wide = cast.convert_bytes(&7_i32.to_le_bytes(), i32, i64).unwrap();
+    assert_eq!(cast.invert_bytes(&wide, i32, i64).unwrap(), 7_i32.to_le_bytes());
+
+    let string = ConverterKind::from_name("string").unwrap();
+    let le = string.convert_bytes(b"42", i32, None).unwrap();
+    assert_eq!(string.invert_bytes(&le, i32, None).unwrap(), b"42");
+    ```
+
 ## Rust-only converters
 
 The core also ships [`IdentityConverter<T>`] (pass-through) and
-[`BytesConverter<T>`] (a value ↔ its little-endian bytes). These are the typed
-building blocks the facade is composed from; the bindings reach the same behaviour
-through `cast` / `parse` / `format` and the [typed buffers](buffer.md), so they are
-not replicated as separate binding calls.
+[`BytesConverter<T>`] (a value ↔ its little-endian bytes). `BytesConverter` is reachable
+from the bindings as the `"bytes"` family of `convertBytes` (above); `IdentityConverter`
+is the trivial pass-through the other families build on, so it is not replicated as a
+separate binding call.
 
 ```rust
 use yggdryl_core::{BytesConverter, IdentityConverter, TypedConverter};

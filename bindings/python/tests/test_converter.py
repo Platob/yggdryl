@@ -82,3 +82,38 @@ def test_utf8_round_trip_and_validation():
     assert converter.utf8_decode("café".encode()) == "café"
     with pytest.raises(ValueError, match="UTF-8"):
         converter.utf8_decode(b"\xff")
+
+
+def test_convert_bytes_cast_round_trips():
+    wide = converter.convert_bytes((7).to_bytes(4, "little", signed=True), "cast", "i32", "i64")
+    assert wide == (7).to_bytes(8, "little", signed=True)
+    # invert casts the i64 bytes back to i32.
+    assert converter.invert_bytes(wide, "cast", "i32", "i64") == (7).to_bytes(
+        4, "little", signed=True
+    )
+
+
+def test_convert_bytes_string_and_invert():
+    # "overall" string convert: UTF-8 text bytes -> i32 little-endian bytes.
+    le = converter.convert_bytes(b"42", "string", "i32")
+    assert le == (42).to_bytes(4, "little", signed=True)
+    # invert string: i32 bytes -> decimal text bytes.
+    assert converter.invert_bytes(le, "string", "i32") == b"42"
+
+
+def test_convert_bytes_bytes_and_utf8():
+    payload = (258).to_bytes(4, "little", signed=True)
+    assert converter.convert_bytes(payload, "bytes", "i32") == payload
+    assert converter.invert_bytes(payload, "bytes", "i32") == payload
+    assert converter.convert_bytes(b"c", "utf8") == b"c"
+    with pytest.raises(ValueError, match="UTF-8"):
+        converter.convert_bytes(b"\xff", "utf8")
+
+
+def test_convert_bytes_is_guided():
+    with pytest.raises(ValueError, match="unknown converter"):
+        converter.convert_bytes(b"", "nope", "i32")
+    with pytest.raises(ValueError, match="needs a to dtype"):
+        converter.convert_bytes((7).to_bytes(4, "little"), "cast", "i32")
+    with pytest.raises(ValueError, match="needs a dtype"):
+        converter.convert_bytes(b"42", "string")
