@@ -15,10 +15,11 @@ name = "yggdryl_buffer"
 path = "src/lib.rs"
 
 [dependencies]
+# The generic foundation: the wide integers (`i96` / `i256`) this crate's `IoPrimitive`
+# element codec reads and writes. (`yggdryl-buffer` sits directly above core.)
+yggdryl-core = { workspace = true }
 # Apache Arrow's buffer subset — the backing store for every resource here: the byte
-# `Buffer`/`MutableBuffer`, the typed `ScalarBuffer`, the `BooleanBuffer`, and the wide
-# `i256`. Not optional — the whole crate is Arrow-backed for straight zero-copy access.
-# This is the crate's ONLY dependency: it is the foundation the rest of yggdryl builds on.
+# `Buffer`/`MutableBuffer`, the typed `ScalarBuffer`, and the `BooleanBuffer`.
 arrow-buffer = { workspace = true }
 
 # Dependency-free throughput benches (`harness = false`, their own `main`).

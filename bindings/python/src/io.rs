@@ -21,7 +21,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyInt, PySequence, PyString};
 
-use yggdryl_core::{IOBase, IOCursor, IOSlice, IoPrimitive, TypedIOBase};
+use yggdryl_buffer::{IOBase, IOCursor, IOSlice, IoPrimitive, TypedIOBase};
 
 /// Marshals a wide integer to a Python `int` via `int.from_bytes` (signed, little-
 /// endian) — abi3-safe and uniform for `i96` / `i128` / `i256`, none of which map to
@@ -48,8 +48,8 @@ fn wide_from_py<T: IoPrimitive>(obj: &Bound<'_, PyAny>) -> PyResult<T> {
     Ok(T::from_le_slice(&bytes))
 }
 
-/// Maps a core [`yggdryl_core::IoError`] to a Python `ValueError`.
-fn io_err(error: yggdryl_core::IoError) -> PyErr {
+/// Maps a core [`yggdryl_buffer::IoError`] to a Python `ValueError`.
+fn io_err(error: yggdryl_buffer::IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
@@ -66,7 +66,7 @@ pub enum Whence {
     End,
 }
 
-impl From<Whence> for yggdryl_core::Whence {
+impl From<Whence> for yggdryl_buffer::Whence {
     fn from(whence: Whence) -> Self {
         match whence {
             Whence::Start => Self::Start,
@@ -81,7 +81,7 @@ impl From<Whence> for yggdryl_core::Whence {
 #[pyclass(module = "yggdryl.io")]
 #[derive(Clone)]
 pub struct ByteBuffer {
-    pub(crate) inner: yggdryl_core::ByteBuffer,
+    pub(crate) inner: yggdryl_buffer::ByteBuffer,
 }
 
 #[pymethods]
@@ -92,8 +92,8 @@ impl ByteBuffer {
     #[pyo3(signature = (data = None))]
     fn new(data: Option<Vec<u8>>) -> Self {
         let inner = match data {
-            Some(bytes) => yggdryl_core::ByteBuffer::from_vec(bytes),
-            None => yggdryl_core::ByteBuffer::new(),
+            Some(bytes) => yggdryl_buffer::ByteBuffer::from_vec(bytes),
+            None => yggdryl_buffer::ByteBuffer::new(),
         };
         Self { inner }
     }
@@ -102,7 +102,7 @@ impl ByteBuffer {
     #[staticmethod]
     fn with_byte_capacity(capacity: usize) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::with_byte_capacity(capacity),
+            inner: yggdryl_buffer::ByteBuffer::with_byte_capacity(capacity),
         }
     }
 
@@ -110,7 +110,7 @@ impl ByteBuffer {
     #[staticmethod]
     fn with_bit_capacity(capacity: usize) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::with_bit_capacity(capacity),
+            inner: yggdryl_buffer::ByteBuffer::with_bit_capacity(capacity),
         }
     }
 
@@ -179,7 +179,7 @@ impl ByteBuffer {
     #[staticmethod]
     fn deserialize_bytes(bytes: &[u8]) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::deserialize_bytes(bytes),
+            inner: yggdryl_buffer::ByteBuffer::deserialize_bytes(bytes),
         }
     }
 
@@ -232,7 +232,7 @@ impl ByteBuffer {
 #[pyclass(module = "yggdryl.io")]
 #[derive(Clone)]
 pub struct ByteCursor {
-    pub(crate) inner: yggdryl_core::ByteCursor,
+    pub(crate) inner: yggdryl_buffer::ByteCursor,
 }
 
 #[pymethods]
@@ -585,7 +585,7 @@ py_primitive_io!(
     ),
 );
 
-/// Generates one element-typed cursor class (`yggdryl_core::TypedCursor<$ty>`) whose
+/// Generates one element-typed cursor class (`yggdryl_buffer::TypedCursor<$ty>`) whose
 /// native unit is `$ty` — `tell` / `seek` count in `$ty` values, while `byte_*` /
 /// `bit_*` reach the underlying byte and bit positions. Mirrors the core
 /// `TypedCursor<T>`, one concrete class per primitive (the byte / `u8` case is
@@ -597,7 +597,7 @@ macro_rules! py_typed_cursor {
             #[pyclass(module = "yggdryl.io")]
             #[derive(Clone)]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedCursor<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedCursor<$ty>,
             }
 
             #[pymethods]
@@ -606,7 +606,7 @@ macro_rules! py_typed_cursor {
                 #[staticmethod]
                 fn with_capacity(capacity: usize) -> Self {
                     Self {
-                        inner: <yggdryl_core::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity),
+                        inner: <yggdryl_buffer::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity),
                     }
                 }
 
@@ -765,7 +765,7 @@ py_typed_cursor!(
     (F64Cursor, f64),
 );
 
-/// Generates one wide-integer cursor class (`yggdryl_core::TypedCursor<$ty>` for a
+/// Generates one wide-integer cursor class (`yggdryl_buffer::TypedCursor<$ty>` for a
 /// wide integer) whose values marshal to/from Python `int`. Same surface as the
 /// native typed cursors; only the element marshalling differs.
 macro_rules! py_wide_cursor {
@@ -775,7 +775,7 @@ macro_rules! py_wide_cursor {
             #[pyclass(module = "yggdryl.io")]
             #[derive(Clone)]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedCursor<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedCursor<$ty>,
             }
 
             #[pymethods]
@@ -784,7 +784,7 @@ macro_rules! py_wide_cursor {
                 #[staticmethod]
                 fn with_capacity(capacity: usize) -> Self {
                     Self {
-                        inner: <yggdryl_core::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity),
+                        inner: <yggdryl_buffer::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity),
                     }
                 }
 
@@ -792,7 +792,7 @@ macro_rules! py_wide_cursor {
                 #[staticmethod]
                 fn from_bytes(data: &[u8]) -> Self {
                     Self {
-                        inner: yggdryl_core::TypedCursor::new(yggdryl_core::ByteBuffer::from_bytes(data)),
+                        inner: yggdryl_buffer::TypedCursor::new(yggdryl_buffer::ByteBuffer::from_bytes(data)),
                     }
                 }
 
@@ -935,7 +935,7 @@ py_wide_cursor!(
 #[pyclass(module = "yggdryl.io")]
 #[derive(Clone)]
 pub struct ByteSlice {
-    pub(crate) inner: yggdryl_core::ByteSlice,
+    pub(crate) inner: yggdryl_buffer::ByteSlice,
 }
 
 #[pymethods]
@@ -944,8 +944,8 @@ impl ByteSlice {
     #[staticmethod]
     fn from_bytes(data: &[u8], offset: u64, len: usize) -> Self {
         Self {
-            inner: yggdryl_core::ByteSlice::new(
-                yggdryl_core::ByteBuffer::from_bytes(data),
+            inner: yggdryl_buffer::ByteSlice::new(
+                yggdryl_buffer::ByteBuffer::from_bytes(data),
                 offset,
                 len,
             ),
@@ -1061,7 +1061,7 @@ impl ByteSlice {
     }
 }
 
-/// Generates one element-typed slice class (`yggdryl_core::TypedSlice<$ty>`), the
+/// Generates one element-typed slice class (`yggdryl_buffer::TypedSlice<$ty>`), the
 /// bounded, non-growing sibling of the typed cursors.
 macro_rules! py_typed_slice {
     ($( ($name:ident, $ty:ty) ),+ $(,)?) => {
@@ -1070,7 +1070,7 @@ macro_rules! py_typed_slice {
             #[pyclass(module = "yggdryl.io")]
             #[derive(Clone)]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedSlice<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedSlice<$ty>,
             }
 
             #[pymethods]
@@ -1078,7 +1078,7 @@ macro_rules! py_typed_slice {
                 /// Opens a window over a copy of `data` spanning the byte range `[offset, offset+len)`.
                 #[staticmethod]
                 fn from_bytes(data: &[u8], offset: u64, len: usize) -> Self {
-                    Self { inner: yggdryl_core::TypedSlice::new(yggdryl_core::ByteBuffer::from_bytes(data), offset, len) }
+                    Self { inner: yggdryl_buffer::TypedSlice::new(yggdryl_buffer::ByteBuffer::from_bytes(data), offset, len) }
                 }
 
                 /// The window's start offset within the origin resource, in bytes.
@@ -1170,7 +1170,7 @@ py_typed_slice!(
     (F64Slice, f64),
 );
 
-/// Generates one wide-integer slice class (`yggdryl_core::TypedSlice<$ty>`) whose
+/// Generates one wide-integer slice class (`yggdryl_buffer::TypedSlice<$ty>`) whose
 /// values marshal to/from Python `int`.
 macro_rules! py_wide_slice {
     ($( ($name:ident, $ty:ty, $label:literal) ),+ $(,)?) => {
@@ -1179,7 +1179,7 @@ macro_rules! py_wide_slice {
             #[pyclass(module = "yggdryl.io")]
             #[derive(Clone)]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedSlice<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedSlice<$ty>,
             }
 
             #[pymethods]
@@ -1187,7 +1187,7 @@ macro_rules! py_wide_slice {
                 /// Opens a window over a copy of `data` spanning the byte range `[offset, offset+len)`.
                 #[staticmethod]
                 fn from_bytes(data: &[u8], offset: u64, len: usize) -> Self {
-                    Self { inner: yggdryl_core::TypedSlice::new(yggdryl_core::ByteBuffer::from_bytes(data), offset, len) }
+                    Self { inner: yggdryl_buffer::TypedSlice::new(yggdryl_buffer::ByteBuffer::from_bytes(data), offset, len) }
                 }
                 /// The window's start offset within the origin resource, in bytes.
                 fn slice_offset(&self) -> u64 { self.inner.slice_offset() }

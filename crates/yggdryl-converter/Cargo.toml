@@ -1,0 +1,28 @@
+[package]
+name = "yggdryl-converter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Representation converters for yggdryl (numeric cast, bytes, string) over the codec base"
+keywords.workspace = true
+readme = "README.md"
+
+[lib]
+name = "yggdryl_converter"
+path = "src/lib.rs"
+
+[dependencies]
+# The generic codec base — `Encoder` / `Decoder` and the `PrimitiveType` tag the
+# converters are keyed by.
+yggdryl-core = { workspace = true }
+# The io element codec `IoPrimitive` — the per-type little-endian stamping the numeric
+# converters build on.
+yggdryl-buffer = { workspace = true }
+
+# Dependency-free throughput bench (`harness = false`, its own `main`).
+[[bench]]
+name = "converter"
+harness = false

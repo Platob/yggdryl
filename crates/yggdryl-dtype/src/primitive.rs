@@ -9,7 +9,7 @@
 /// A primitive data type is a unit marker (its identity *is* its type, so it derives
 /// `Eq`/`Hash` trivially and serialises to an empty payload). It implements
 /// [`DataType`](crate::DataType), [`TypedDataType<$native>`](crate::TypedDataType)
-/// (value codec delegating to [`yggdryl_core::IoPrimitive`]), and
+/// (value codec delegating to [`yggdryl_buffer::IoPrimitive`]), and
 /// [`PrimitiveType`](crate::PrimitiveType) (mapping to the core tag).
 macro_rules! primitive_type {
     ($name:ident, $native:ty, $arrow:ident, $tag:ident, $lit:literal) => {
@@ -17,14 +17,14 @@ macro_rules! primitive_type {
         ///
         /// A value-free marker: all instances are equal, it serialises to an empty
         /// payload, and it converts to and from its Arrow type and the core
-        /// [`PrimitiveType`](yggdryl_core::PrimitiveType) tag.
+        /// [`PrimitiveType`](yggdryl_converter::PrimitiveType) tag.
         ///
         #[doc = concat!("```")]
         #[doc = concat!("use yggdryl_dtype::{DataType, PrimitiveType, TypedDataType, ", stringify!($name), "};")]
         #[doc = concat!("let dt = ", stringify!($name), "::new();")]
         #[doc = concat!("assert_eq!(dt.name(), \"", $lit, "\");")]
         #[doc = concat!("assert_eq!(dt.byte_width(), Some(core::mem::size_of::<", stringify!($native), ">()));")]
-        #[doc = concat!("assert_eq!(dt.primitive_tag(), Some(yggdryl_core::PrimitiveType::", stringify!($tag), "));")]
+        #[doc = concat!("assert_eq!(dt.primitive_tag(), Some(yggdryl_converter::PrimitiveType::", stringify!($tag), "));")]
         #[doc = concat!("// Byte round-trip (empty payload) and Arrow round-trip.")]
         #[doc = concat!("assert_eq!(", stringify!($name), "::deserialize_bytes(&dt.serialize_bytes()).unwrap(), dt);")]
         #[doc = concat!("assert_eq!(", stringify!($name), "::from_arrow(&dt.to_arrow()).unwrap(), dt);")]
@@ -73,9 +73,9 @@ macro_rules! primitive_type {
                 }
             }
 
-            #[doc = concat!("Builds the type from the core [`PrimitiveType`](yggdryl_core::PrimitiveType) tag, or `None` if the tag is not `", stringify!($tag), "`.")]
-            pub fn from_primitive_tag(tag: yggdryl_core::PrimitiveType) -> Option<Self> {
-                matches!(tag, yggdryl_core::PrimitiveType::$tag).then_some(Self)
+            #[doc = concat!("Builds the type from the core [`PrimitiveType`](yggdryl_converter::PrimitiveType) tag, or `None` if the tag is not `", stringify!($tag), "`.")]
+            pub fn from_primitive_tag(tag: yggdryl_converter::PrimitiveType) -> Option<Self> {
+                matches!(tag, yggdryl_converter::PrimitiveType::$tag).then_some(Self)
             }
         }
 
@@ -99,11 +99,11 @@ macro_rules! primitive_type {
 
         impl $crate::TypedDataType<$native> for $name {
             fn native_default(&self) -> $native {
-                <$native as yggdryl_core::IoPrimitive>::ZERO
+                <$native as yggdryl_buffer::IoPrimitive>::ZERO
             }
 
             fn value_to_bytes(&self, value: $native) -> Vec<u8> {
-                <$native as yggdryl_core::IoPrimitive>::to_le_vec(value)
+                <$native as yggdryl_buffer::IoPrimitive>::to_le_vec(value)
             }
 
             fn value_from_bytes(&self, bytes: &[u8]) -> Result<$native, $crate::DTypeError> {
@@ -115,13 +115,13 @@ macro_rules! primitive_type {
                         width: W,
                     });
                 }
-                Ok(<$native as yggdryl_core::IoPrimitive>::from_le_slice(bytes))
+                Ok(<$native as yggdryl_buffer::IoPrimitive>::from_le_slice(bytes))
             }
         }
 
         impl $crate::PrimitiveType for $name {
-            fn primitive_tag(&self) -> Option<yggdryl_core::PrimitiveType> {
-                Some(yggdryl_core::PrimitiveType::$tag)
+            fn primitive_tag(&self) -> Option<yggdryl_converter::PrimitiveType> {
+                Some(yggdryl_converter::PrimitiveType::$tag)
             }
         }
     };

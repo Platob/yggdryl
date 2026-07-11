@@ -7,7 +7,7 @@ use crate::{DTypeError, DataType, PrimitiveType, TypedDataType};
 /// The one hand-written member of the primitive family: it is **bit-packed** (Arrow
 /// stores 8 booleans per byte), so it has no fixed byte width
 /// ([`byte_width`](DataType::byte_width) is `None`) and no core
-/// [`PrimitiveType`](yggdryl_core::PrimitiveType) tag (that enum covers only the ten
+/// [`PrimitiveType`](yggdryl_converter::PrimitiveType) tag (that enum covers only the ten
 /// numerics), exactly as `BooleanBuffer` (in the `yggdryl-buffer` crate) is the
 /// hand-written member of the buffer family. A single value still encodes as one
 /// `0`/`1` byte through the [`TypedDataType`] codec.
@@ -107,7 +107,7 @@ impl TypedDataType<bool> for BooleanType {
 }
 
 impl PrimitiveType for BooleanType {
-    fn primitive_tag(&self) -> Option<yggdryl_core::PrimitiveType> {
+    fn primitive_tag(&self) -> Option<yggdryl_converter::PrimitiveType> {
         None
     }
 }

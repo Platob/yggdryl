@@ -9,15 +9,20 @@ use crate::EncodeError;
 /// [`TypedEncoder<T>`](crate::TypedEncoder) generalises it to arrays of an
 /// arbitrary element type, of which `T = u8` is exactly this trait.
 ///
-/// The trait is FFI-opaque (no lifetimes, object-safe); concrete implementors
-/// such as [`Gzip`](crate::Gzip) are what the Python and Node bindings expose.
+/// The trait is FFI-opaque (no lifetimes, object-safe); concrete implementors — such as
+/// `Gzip` in `yggdryl-compression` — are what the Python and Node bindings expose.
 ///
 /// ```
-/// use yggdryl_core::{Encoder, Gzip};
+/// use yggdryl_core::{Encoder, EncodeError};
 ///
-/// let gzip = Gzip::new(6).unwrap();
-/// let encoded = gzip.encode_byte_array(b"hello hello hello").unwrap();
-/// assert!(!encoded.is_empty());
+/// // A tiny example codec; real codecs like `Gzip` live in `yggdryl-compression`.
+/// struct Xor(u8);
+/// impl Encoder for Xor {
+///     fn encode_byte_array(&self, bytes: &[u8]) -> Result<Vec<u8>, EncodeError> {
+///         Ok(bytes.iter().map(|b| b ^ self.0).collect())
+///     }
+/// }
+/// assert_eq!(Xor(0xFF).encode_byte_array(&[0, 1]).unwrap(), vec![0xFF, 0xFE]);
 /// ```
 pub trait Encoder {
     /// Encodes `bytes`, returning the encoded output.

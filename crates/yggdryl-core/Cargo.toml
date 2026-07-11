@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Dependency-light foundations for yggdryl"
+description = "yggdryl's generic foundation — wide integers and the byte-codec base traits"
 keywords.workspace = true
 readme = "README.md"
 
@@ -14,39 +14,9 @@ readme = "README.md"
 name = "yggdryl_core"
 path = "src/lib.rs"
 
-[features]
-# The gzip compression codec. On by default so the standard build ships it;
-# disable with `--no-default-features` to drop `flate2` and leave only the
-# codec/compression traits.
-default = ["gzip", "zstd"]
-gzip = ["dep:flate2"]
-# Swap flate2's backend to zlib-ng — a SIMD-optimised zlib, typically faster than
-# the stock C zlib that Python/Node link. Needs a C toolchain + CMake at build time
-# (see `scripts/setup-build-deps.py`); the native bindings enable it.
-gzip-zlib-ng = ["gzip", "flate2/zlib-ng"]
-# The zstd compression codec. On by default; `zstd` bundles libzstd and builds it
-# via `cc`, so a C compiler is required (CMake is not).
-zstd = ["dep:zstd"]
-
 [dependencies]
-# The foundation: Arrow-backed buffers, positioned IO (`ByteBuffer` / `IOBase` /
-# `TypedCursor` …), and the wide integers the codecs read and write. Core builds its
-# encoders/decoders/converters/compression on this layer and re-exports its io types.
-yggdryl-buffer = { workspace = true }
-# gzip/deflate backend; optional so it is compiled only when the `gzip` feature
-# is enabled (see `[features]`).
-flate2 = { workspace = true, optional = true }
-# zstd backend; optional, enabled by the `zstd` feature.
-zstd = { workspace = true, optional = true }
-# Apache Arrow's buffer subset — used directly by the codecs (`Buffer` / `i256`); the
-# buffers and io types come from `yggdryl-buffer` (itself Arrow-backed).
+# Apache Arrow's buffer subset — the wide `i256` is Arrow's own 256-bit integer, so
+# `arrow-buffer` backs the native integer types. This is core's only dependency: it is
+# the generic base (native number types + `Encoder`/`Decoder` byte-codec traits +
+# `PrimitiveType`) that `buffer`, `compression`, `converter`, and `dtype` build on.
 arrow-buffer = { workspace = true }
-
-# Dependency-free throughput benches (`harness = false`, their own `main`).
-[[bench]]
-name = "compression"
-harness = false
-
-[[bench]]
-name = "converter"
-harness = false

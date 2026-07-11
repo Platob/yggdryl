@@ -8,7 +8,7 @@ use crate::{DTypeError, DataType};
 /// [`value_to_bytes`](TypedDataType::value_to_bytes) serialises one value to its
 /// little-endian bytes and [`value_from_bytes`](TypedDataType::value_from_bytes) is its
 /// exact inverse (validating the byte length against the type's width). The numeric
-/// primitives delegate to [`yggdryl_core::IoPrimitive`]; `Boolean` encodes as a single
+/// primitives delegate to [`yggdryl_buffer::IoPrimitive`]; `Boolean` encodes as a single
 /// `0`/`1` byte.
 ///
 /// The trait carries the generic parameter `T`, so — like `TypedConverter<S, T>` in the

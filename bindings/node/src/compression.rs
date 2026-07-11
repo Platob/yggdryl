@@ -16,7 +16,8 @@ use std::hash::{Hash, Hasher};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use yggdryl_core::{Compression, CompressionDecoder, CompressionEncoder, Decoder, Encoder};
+use yggdryl_compression::{Compression, CompressionDecoder, CompressionEncoder};
+use yggdryl_core::{Decoder, Encoder};
 
 use crate::io::ByteCursor;
 
@@ -27,11 +28,11 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
 
 /// The gzip (RFC 1952) compression codec.
 ///
-/// Mirrors `yggdryl_core::Gzip`: construct with a level in `0..=9` (default `6`),
+/// Mirrors `yggdryl_compression::Gzip`: construct with a level in `0..=9` (default `6`),
 /// then `encodeByteArray` / `decodeByteArray` to compress / decompress.
 #[napi(namespace = "compression")]
 pub struct Gzip {
-    inner: yggdryl_core::Gzip,
+    inner: yggdryl_compression::Gzip,
 }
 
 #[napi(namespace = "compression")]
@@ -39,9 +40,9 @@ impl Gzip {
     /// Creates a gzip codec at `level` (`0..=9`, default `6`).
     #[napi(constructor)]
     pub fn new(level: Option<u32>) -> napi::Result<Self> {
-        let level = level.unwrap_or(yggdryl_core::Gzip::DEFAULT_LEVEL);
+        let level = level.unwrap_or(yggdryl_compression::Gzip::DEFAULT_LEVEL);
         Ok(Self {
-            inner: yggdryl_core::Gzip::new(level).map_err(to_error)?,
+            inner: yggdryl_compression::Gzip::new(level).map_err(to_error)?,
         })
     }
 
@@ -117,7 +118,8 @@ impl Gzip {
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
         Ok(Self {
-            inner: yggdryl_core::Gzip::deserialize_bytes(bytes.as_ref()).map_err(to_error)?,
+            inner: yggdryl_compression::Gzip::deserialize_bytes(bytes.as_ref())
+                .map_err(to_error)?,
         })
     }
 
@@ -141,7 +143,7 @@ impl Gzip {
 /// The Zstandard (RFC 8878) compression codec.
 #[napi(namespace = "compression")]
 pub struct Zstd {
-    inner: yggdryl_core::Zstd,
+    inner: yggdryl_compression::Zstd,
 }
 
 #[napi(namespace = "compression")]
@@ -149,16 +151,16 @@ impl Zstd {
     /// Creates a zstd codec at `level` (default `3`).
     #[napi(constructor)]
     pub fn new(level: Option<i32>) -> napi::Result<Self> {
-        let level = level.unwrap_or(yggdryl_core::Zstd::DEFAULT_LEVEL);
+        let level = level.unwrap_or(yggdryl_compression::Zstd::DEFAULT_LEVEL);
         Ok(Self {
-            inner: yggdryl_core::Zstd::new(level).map_err(to_error)?,
+            inner: yggdryl_compression::Zstd::new(level).map_err(to_error)?,
         })
     }
 
     /// The inclusive `[min, max]` levels this build of zstd accepts.
     #[napi]
     pub fn level_range() -> Vec<i32> {
-        let (min, max) = yggdryl_core::Zstd::level_range();
+        let (min, max) = yggdryl_compression::Zstd::level_range();
         vec![min, max]
     }
 
@@ -232,7 +234,8 @@ impl Zstd {
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
         Ok(Self {
-            inner: yggdryl_core::Zstd::deserialize_bytes(bytes.as_ref()).map_err(to_error)?,
+            inner: yggdryl_compression::Zstd::deserialize_bytes(bytes.as_ref())
+                .map_err(to_error)?,
         })
     }
 

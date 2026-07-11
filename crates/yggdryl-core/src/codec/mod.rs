@@ -1,15 +1,11 @@
-//! Codec foundations: the [`Encoder`] / [`Decoder`] byte-array contracts and
-//! their element-generic [`TypedEncoder`] / [`TypedDecoder`] extensions, the
-//! representation [`converter`] family ([`Converter`] / [`TypedConverter`] and the
-//! concrete converters), plus the shared [`EncodeError`] / [`DecodeError`] /
-//! [`ConvertError`] types.
+//! Codec foundations: the [`Encoder`] / [`Decoder`] byte-array contracts, their
+//! element-generic [`TypedEncoder`] / [`TypedDecoder`] extensions, the shared
+//! [`EncodeError`] / [`DecodeError`] types, and the [`PrimitiveType`] tag.
 //!
-//! These traits are the Rust-only base of the codec hierarchy; concrete codecs
-//! (e.g. [`Gzip`](crate::Gzip)) and converters implement them and are what the Python
-//! and Node bindings expose. See [`compression`](crate::compression) for the
-//! compression specialisation.
-
-pub mod converter;
+//! These are the Rust-only, byte-slice-based **base** of the codec hierarchy — no io
+//! dependency. Concrete codecs implement them in the crates above: the compression
+//! codecs (`Gzip` / `Zstd`) in `yggdryl-compression`, the representation converters (and
+//! the `PrimitiveType` tag) in `yggdryl-converter`.
 
 mod decode_error;
 mod decoder;
@@ -18,10 +14,6 @@ mod encoder;
 mod typed_decoder;
 mod typed_encoder;
 
-pub use converter::{
-    BytesConverter, CastConverter, ConvertError, Converter, ConverterKind, IdentityConverter,
-    PrimitiveType, StringConverter, TypedConverter, Utf8Converter,
-};
 pub use decode_error::DecodeError;
 pub use decoder::Decoder;
 pub use encode_error::EncodeError;

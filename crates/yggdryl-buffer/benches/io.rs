@@ -208,4 +208,3 @@ fn transfer_bench(data: &[u8], iters: u32) {
     });
     println!("  pread_io (cursor -> cursor) {transfer:9.1} MB/s");
 }
-

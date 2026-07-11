@@ -17,18 +17,18 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# The dependency-light Rust core; all logic lives here. `gzip-zlib-ng` swaps in the
-# SIMD-optimised zlib-ng backend so the shipped addon out-runs Node's `zlib` (stock
-# C zlib). Needs CMake + Ninja at build time — see `scripts/setup-build-deps.py`.
-yggdryl-core = { workspace = true, features = ["gzip-zlib-ng"] }
-# The Arrow data-model layers, exposed as the `yggdryl.dtype` / `.field` / `.scalar`
-# namespaces. Thin wrappers; all logic lives in these crates.
+# The Rust crates, one per `yggdryl.*` namespace; all logic lives in them (thin
+# wrappers here). `gzip-zlib-ng` swaps in the SIMD-optimised zlib-ng backend so the
+# shipped addon out-runs Node's `zlib` (stock C zlib); needs CMake + Ninja at build
+# time — see `scripts/setup-build-deps.py`.
+yggdryl-core = { workspace = true }
+yggdryl-buffer = { workspace = true }
+yggdryl-compression = { workspace = true, features = ["gzip-zlib-ng"] }
+yggdryl-converter = { workspace = true }
 yggdryl-dtype = { workspace = true }
 yggdryl-field = { workspace = true }
 yggdryl-scalar = { workspace = true }
-# The typed buffers (moved out of core), exposed as the `yggdryl.buffer` namespace.
-yggdryl-buffer = { workspace = true }
-# The generic header map backing field/buffer `headers`.
+# The generic header map backing field `headers`.
 yggdryl-http = { workspace = true }
 napi = { version = "2", default-features = false, features = ["napi8"] }
 napi-derive = "2"

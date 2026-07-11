@@ -22,7 +22,7 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
 }
 
 /// Generates the napi wrapper class for one primitive data type. `$tag` is the core
-/// [`PrimitiveType`](yggdryl_core::PrimitiveType) tag name (e.g. `Some("i64")`), or
+/// [`PrimitiveType`](yggdryl_converter::PrimitiveType) tag name (e.g. `Some("i64")`), or
 /// `None` for `Boolean`.
 macro_rules! napi_primitive_dtype {
     ($( ($name:ident, $lit:literal, $tag:expr) ),+ $(,)?) => {

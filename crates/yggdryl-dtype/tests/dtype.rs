@@ -85,7 +85,7 @@ fn float_value_codec() {
 
 #[test]
 fn primitive_tags_map_to_core_enum() {
-    use yggdryl_core::PrimitiveType as Tag;
+    use yggdryl_converter::PrimitiveType as Tag;
 
     assert_eq!(I8Type::new().primitive_tag(), Some(Tag::I8));
     assert_eq!(U64Type::new().primitive_tag(), Some(Tag::U64));

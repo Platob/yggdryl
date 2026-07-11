@@ -15,9 +15,11 @@ name = "yggdryl_dtype"
 path = "src/lib.rs"
 
 [dependencies]
-# One layer down: the primitive/IO foundations (`IoPrimitive`, the `PrimitiveType`
-# runtime tag) this layer's types map onto. Dependencies point strictly downward.
-yggdryl-core = { workspace = true }
+# The io element codec `IoPrimitive` this layer's value codec delegates to.
+yggdryl-buffer = { workspace = true }
+# The `PrimitiveType` runtime tag this layer's canonical `PrimitiveType` trait bridges
+# to (via `primitive_tag` / `from_primitive_tag`).
+yggdryl-converter = { workspace = true }
 # Apache Arrow's schema subset — `arrow_schema::DataType`, the canonical Arrow type
 # descriptor every `DataType` here converts to and from. Not optional: Arrow is the
 # data model, so the conversion is always available (never the `arrow` umbrella).

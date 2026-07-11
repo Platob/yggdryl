@@ -4,7 +4,7 @@
 //! family. The core's typed converters ([`CastConverter`], [`StringConverter`], …) fix
 //! their element types at compile time, which the FFI cannot hold, so the binding
 //! keys them on a dtype **name** at runtime via
-//! [`PrimitiveType`](yggdryl_core::PrimitiveType) — one of `i8 … u64`, `f32`, `f64`.
+//! [`PrimitiveType`](yggdryl_converter::PrimitiveType) — one of `i8 … u64`, `f32`, `f64`.
 //! An unknown name, an out-of-range value, or invalid UTF-8 raises a `ValueError`
 //! whose message names the accepted dtypes / formats (core rule 12).
 
@@ -14,10 +14,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::{ConverterKind, IoPrimitive, PrimitiveType, TypedConverter, Utf8Converter};
+use yggdryl_buffer::IoPrimitive;
+use yggdryl_converter::{ConverterKind, PrimitiveType, TypedConverter, Utf8Converter};
 
-/// Maps a core [`ConvertError`](yggdryl_core::ConvertError) to a Python `ValueError`.
-fn convert_err(error: yggdryl_core::ConvertError) -> PyErr {
+/// Maps a core [`ConvertError`](yggdryl_converter::ConvertError) to a Python `ValueError`.
+fn convert_err(error: yggdryl_converter::ConvertError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 

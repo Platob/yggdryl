@@ -3,7 +3,7 @@
 //! A thin facade over `yggdryl_core`'s converter family. The core's typed converters
 //! fix their element types at compile time, which the FFI cannot hold, so the binding
 //! keys them on a dtype **name** at runtime via
-//! [`PrimitiveType`](yggdryl_core::PrimitiveType) — one of `i8 … u64`, `f32`, `f64`.
+//! [`PrimitiveType`](yggdryl_converter::PrimitiveType) — one of `i8 … u64`, `f32`, `f64`.
 //! Scalars follow the same JS mapping as the rest of the bindings: the small integers
 //! and floats marshal as `number`, while `i64` / `u64` marshal as `bigint` (so pass a
 //! `bigint` when the dtype is `i64` / `u64`). An unknown name, an out-of-range value,
@@ -12,7 +12,8 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Either};
 use napi_derive::napi;
 
-use yggdryl_core::{ConverterKind, IoPrimitive, PrimitiveType, TypedConverter, Utf8Converter};
+use yggdryl_buffer::IoPrimitive;
+use yggdryl_converter::{ConverterKind, PrimitiveType, TypedConverter, Utf8Converter};
 
 /// Maps a core error to a thrown JS `Error`.
 fn to_error(error: impl std::fmt::Display) -> napi::Error {

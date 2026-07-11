@@ -20,7 +20,7 @@ use napi::bindgen_prelude::{BigInt, Buffer, Either, Either3};
 use napi::{JsBigInt, JsUnknown, ValueType};
 use napi_derive::napi;
 
-use yggdryl_core::{IOBase, IOCursor, IOSlice, TypedIOBase};
+use yggdryl_buffer::{IOBase, IOCursor, IOSlice, TypedIOBase};
 use yggdryl_field::ToField;
 
 /// Maps a core IO error to a thrown JS `Error`.
@@ -40,7 +40,7 @@ pub enum Whence {
     End,
 }
 
-impl From<Whence> for yggdryl_core::Whence {
+impl From<Whence> for yggdryl_buffer::Whence {
     fn from(whence: Whence) -> Self {
         match whence {
             Whence::Start => Self::Start,
@@ -51,7 +51,7 @@ impl From<Whence> for yggdryl_core::Whence {
 }
 
 /// Resolves an optional [`Whence`] (default `Start`) to the core origin.
-fn whence_or_start(whence: Option<Whence>) -> yggdryl_core::Whence {
+fn whence_or_start(whence: Option<Whence>) -> yggdryl_buffer::Whence {
     whence.unwrap_or(Whence::Start).into()
 }
 
@@ -59,7 +59,7 @@ fn whence_or_start(whence: Option<Whence>) -> yggdryl_core::Whence {
 /// [`ByteCursor`] from [`byteCursor`](ByteBuffer::byte_cursor).
 #[napi(namespace = "io")]
 pub struct ByteBuffer {
-    pub(crate) inner: yggdryl_core::ByteBuffer,
+    pub(crate) inner: yggdryl_buffer::ByteBuffer,
 }
 
 #[napi(namespace = "io")]
@@ -69,9 +69,9 @@ impl ByteBuffer {
     #[napi(constructor)]
     pub fn new(data: Option<Either<Buffer, Vec<u8>>>) -> Self {
         let inner = match data {
-            Some(Either::A(bytes)) => yggdryl_core::ByteBuffer::from_bytes(bytes.as_ref()),
-            Some(Either::B(values)) => yggdryl_core::ByteBuffer::from_vec(values),
-            None => yggdryl_core::ByteBuffer::new(),
+            Some(Either::A(bytes)) => yggdryl_buffer::ByteBuffer::from_bytes(bytes.as_ref()),
+            Some(Either::B(values)) => yggdryl_buffer::ByteBuffer::from_vec(values),
+            None => yggdryl_buffer::ByteBuffer::new(),
         };
         Self { inner }
     }
@@ -80,7 +80,7 @@ impl ByteBuffer {
     #[napi(factory)]
     pub fn with_byte_capacity(capacity: u32) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::with_byte_capacity(capacity as usize),
+            inner: yggdryl_buffer::ByteBuffer::with_byte_capacity(capacity as usize),
         }
     }
 
@@ -88,7 +88,7 @@ impl ByteBuffer {
     #[napi(factory)]
     pub fn with_bit_capacity(capacity: u32) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::with_bit_capacity(capacity as usize),
+            inner: yggdryl_buffer::ByteBuffer::with_bit_capacity(capacity as usize),
         }
     }
 
@@ -172,7 +172,7 @@ impl ByteBuffer {
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> Self {
         Self {
-            inner: yggdryl_core::ByteBuffer::deserialize_bytes(bytes.as_ref()),
+            inner: yggdryl_buffer::ByteBuffer::deserialize_bytes(bytes.as_ref()),
         }
     }
 
@@ -211,7 +211,7 @@ impl ByteBuffer {
 /// A positioned, advancing cursor over a [`ByteBuffer`].
 #[napi(namespace = "io")]
 pub struct ByteCursor {
-    pub(crate) inner: yggdryl_core::ByteCursor,
+    pub(crate) inner: yggdryl_buffer::ByteCursor,
 }
 
 #[napi(namespace = "io")]
@@ -641,7 +641,7 @@ napi_primitive_io!(
     ),
 );
 
-/// Generates one element-typed cursor class (`yggdryl_core::TypedCursor<$ty>`) whose
+/// Generates one element-typed cursor class (`yggdryl_buffer::TypedCursor<$ty>`) whose
 /// native unit is `$ty` — `tell` / `seek` count in `$ty` values, while `byte*` /
 /// `bit*` reach the underlying byte and bit positions. Mirrors the core
 /// `TypedCursor<T>`, one concrete class per primitive whose element maps to a native
@@ -653,7 +653,7 @@ macro_rules! napi_typed_cursor {
             #[doc = concat!("A positioned, advancing cursor whose native unit is a `", stringify!($ty), "` value.")]
             #[napi(namespace = "io")]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedCursor<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedCursor<$ty>,
             }
 
             #[napi(namespace = "io")]
@@ -662,7 +662,7 @@ macro_rules! napi_typed_cursor {
                 #[napi(factory)]
                 pub fn with_capacity(capacity: u32) -> Self {
                     Self {
-                        inner: <yggdryl_core::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity as usize),
+                        inner: <yggdryl_buffer::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity as usize),
                     }
                 }
 
@@ -835,7 +835,7 @@ napi_typed_cursor!(
 /// an `f64` JS boundary).
 #[napi(namespace = "io")]
 pub struct F32Cursor {
-    pub(crate) inner: yggdryl_core::TypedCursor<f32>,
+    pub(crate) inner: yggdryl_buffer::TypedCursor<f32>,
 }
 
 #[napi(namespace = "io")]
@@ -844,7 +844,7 @@ impl F32Cursor {
     #[napi(factory)]
     pub fn with_capacity(capacity: u32) -> Self {
         Self {
-            inner: <yggdryl_core::TypedCursor<f32> as TypedIOBase<f32>>::with_capacity(
+            inner: <yggdryl_buffer::TypedCursor<f32> as TypedIOBase<f32>>::with_capacity(
                 capacity as usize,
             ),
         }
@@ -1040,7 +1040,7 @@ impl F32Cursor {
 // for every width, rather than napi's `get_i128` (which flags `i128::MIN` as
 // not-lossless and cannot carry `i256`).
 
-use yggdryl_core::{i256, i96};
+use yggdryl_buffer::{i256, i96};
 
 /// Two's-complement-negates a little-endian byte buffer in place.
 fn negate_le(bytes: &mut [u8]) {
@@ -1137,7 +1137,7 @@ macro_rules! napi_wide_cursor {
             #[doc = concat!("A positioned, advancing cursor over `", stringify!($ty), "` values (marshalled as JS `BigInt`).")]
             #[napi(namespace = "io")]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedCursor<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedCursor<$ty>,
             }
 
             #[napi(namespace = "io")]
@@ -1146,7 +1146,7 @@ macro_rules! napi_wide_cursor {
                 #[napi(factory)]
                 pub fn with_capacity(capacity: u32) -> Self {
                     Self {
-                        inner: <yggdryl_core::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity as usize),
+                        inner: <yggdryl_buffer::TypedCursor<$ty> as TypedIOBase<$ty>>::with_capacity(capacity as usize),
                     }
                 }
 
@@ -1154,7 +1154,7 @@ macro_rules! napi_wide_cursor {
                 #[napi(factory)]
                 pub fn from_bytes(data: Buffer) -> Self {
                     Self {
-                        inner: yggdryl_core::TypedCursor::new(yggdryl_core::ByteBuffer::from_bytes(data.as_ref())),
+                        inner: yggdryl_buffer::TypedCursor::new(yggdryl_buffer::ByteBuffer::from_bytes(data.as_ref())),
                     }
                 }
 
@@ -1309,7 +1309,7 @@ napi_wide_cursor!(
 /// A bounded, non-growing byte **window** `[offset, offset + len)` over a `ByteBuffer`.
 #[napi(namespace = "io")]
 pub struct ByteSlice {
-    pub(crate) inner: yggdryl_core::ByteSlice,
+    pub(crate) inner: yggdryl_buffer::ByteSlice,
 }
 
 #[napi(namespace = "io")]
@@ -1318,8 +1318,8 @@ impl ByteSlice {
     #[napi(factory)]
     pub fn from_bytes(data: Buffer, offset: i64, len: u32) -> Self {
         Self {
-            inner: yggdryl_core::ByteSlice::new(
-                yggdryl_core::ByteBuffer::from_bytes(data.as_ref()),
+            inner: yggdryl_buffer::ByteSlice::new(
+                yggdryl_buffer::ByteBuffer::from_bytes(data.as_ref()),
                 offset.max(0) as u64,
                 len as usize,
             ),
@@ -1446,7 +1446,7 @@ impl ByteSlice {
     }
 }
 
-/// Generates one element-typed slice class (`yggdryl_core::TypedSlice<$ty>`) — the
+/// Generates one element-typed slice class (`yggdryl_buffer::TypedSlice<$ty>`) — the
 /// bounded, non-growing sibling of the typed cursors.
 macro_rules! napi_typed_slice {
     ($( ($name:ident, $ty:ty) ),+ $(,)?) => {
@@ -1454,7 +1454,7 @@ macro_rules! napi_typed_slice {
             #[doc = concat!("A bounded window over `", stringify!($ty), "` values (native units).")]
             #[napi(namespace = "io")]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedSlice<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedSlice<$ty>,
             }
 
             #[napi(namespace = "io")]
@@ -1462,7 +1462,7 @@ macro_rules! napi_typed_slice {
                 /// Opens a window over a copy of `data` spanning the byte range `[offset, offset+len)`.
                 #[napi(factory)]
                 pub fn from_bytes(data: Buffer, offset: i64, len: u32) -> Self {
-                    Self { inner: yggdryl_core::TypedSlice::new(yggdryl_core::ByteBuffer::from_bytes(data.as_ref()), offset.max(0) as u64, len as usize) }
+                    Self { inner: yggdryl_buffer::TypedSlice::new(yggdryl_buffer::ByteBuffer::from_bytes(data.as_ref()), offset.max(0) as u64, len as usize) }
                 }
                 /// The window's start offset within the origin resource, in bytes.
                 #[napi]
@@ -1564,7 +1564,7 @@ macro_rules! napi_wide_slice {
             #[doc = concat!("A bounded window over `", stringify!($ty), "` values (marshalled as JS `BigInt`).")]
             #[napi(namespace = "io")]
             pub struct $name {
-                pub(crate) inner: yggdryl_core::TypedSlice<$ty>,
+                pub(crate) inner: yggdryl_buffer::TypedSlice<$ty>,
             }
 
             #[napi(namespace = "io")]
@@ -1572,7 +1572,7 @@ macro_rules! napi_wide_slice {
                 /// Opens a window over a copy of `data` spanning the byte range `[offset, offset+len)`.
                 #[napi(factory)]
                 pub fn from_bytes(data: Buffer, offset: i64, len: u32) -> Self {
-                    Self { inner: yggdryl_core::TypedSlice::new(yggdryl_core::ByteBuffer::from_bytes(data.as_ref()), offset.max(0) as u64, len as usize) }
+                    Self { inner: yggdryl_buffer::TypedSlice::new(yggdryl_buffer::ByteBuffer::from_bytes(data.as_ref()), offset.max(0) as u64, len as usize) }
                 }
                 /// The window's start offset within the origin resource, in bytes.
                 #[napi]
@@ -1654,7 +1654,7 @@ napi_wide_slice!(
 /// A bounded window over `f32` values (marshalled over an `f64` JS boundary).
 #[napi(namespace = "io")]
 pub struct F32Slice {
-    pub(crate) inner: yggdryl_core::TypedSlice<f32>,
+    pub(crate) inner: yggdryl_buffer::TypedSlice<f32>,
 }
 
 #[napi(namespace = "io")]
@@ -1663,8 +1663,8 @@ impl F32Slice {
     #[napi(factory)]
     pub fn from_bytes(data: Buffer, offset: i64, len: u32) -> Self {
         Self {
-            inner: yggdryl_core::TypedSlice::new(
-                yggdryl_core::ByteBuffer::from_bytes(data.as_ref()),
+            inner: yggdryl_buffer::TypedSlice::new(
+                yggdryl_buffer::ByteBuffer::from_bytes(data.as_ref()),
                 offset.max(0) as u64,
                 len as usize,
             ),

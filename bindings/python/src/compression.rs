@@ -22,7 +22,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::{Compression, CompressionDecoder, CompressionEncoder, Decoder, Encoder};
+use yggdryl_compression::{Compression, CompressionDecoder, CompressionEncoder};
+use yggdryl_core::{Decoder, Encoder};
 
 use crate::io::ByteCursor;
 
@@ -38,22 +39,22 @@ fn decode_err(error: yggdryl_core::DecodeError) -> PyErr {
 
 /// The gzip (RFC 1952) compression codec.
 ///
-/// Mirrors `yggdryl_core::Gzip`: construct with a level in `0..=9` (default `6`),
+/// Mirrors `yggdryl_compression::Gzip`: construct with a level in `0..=9` (default `6`),
 /// then `encode_byte_array` / `decode_byte_array` to compress / decompress.
 #[pyclass(module = "yggdryl.compression", frozen)]
 #[derive(Clone)]
 pub struct Gzip {
-    inner: yggdryl_core::Gzip,
+    inner: yggdryl_compression::Gzip,
 }
 
 #[pymethods]
 impl Gzip {
     /// Creates a gzip codec at `level` (`0..=9`, default `6`).
     #[new]
-    #[pyo3(signature = (level = yggdryl_core::Gzip::DEFAULT_LEVEL))]
+    #[pyo3(signature = (level = yggdryl_compression::Gzip::DEFAULT_LEVEL))]
     fn new(level: u32) -> PyResult<Self> {
         Ok(Self {
-            inner: yggdryl_core::Gzip::new(level).map_err(encode_err)?,
+            inner: yggdryl_compression::Gzip::new(level).map_err(encode_err)?,
         })
     }
 
@@ -114,7 +115,7 @@ impl Gzip {
     #[staticmethod]
     fn deserialize_bytes(bytes: &[u8]) -> PyResult<Self> {
         Ok(Self {
-            inner: yggdryl_core::Gzip::deserialize_bytes(bytes).map_err(decode_err)?,
+            inner: yggdryl_compression::Gzip::deserialize_bytes(bytes).map_err(decode_err)?,
         })
     }
 
@@ -149,29 +150,29 @@ impl Gzip {
 
 /// The Zstandard (RFC 8878) compression codec.
 ///
-/// Mirrors `yggdryl_core::Zstd`: construct with a level in `level_range()` (default
+/// Mirrors `yggdryl_compression::Zstd`: construct with a level in `level_range()` (default
 /// `3`), then `encode_byte_array` / `decode_byte_array` or the streaming pair.
 #[pyclass(module = "yggdryl.compression", frozen)]
 #[derive(Clone)]
 pub struct Zstd {
-    inner: yggdryl_core::Zstd,
+    inner: yggdryl_compression::Zstd,
 }
 
 #[pymethods]
 impl Zstd {
     /// Creates a zstd codec at `level` (default `3`).
     #[new]
-    #[pyo3(signature = (level = yggdryl_core::Zstd::DEFAULT_LEVEL))]
+    #[pyo3(signature = (level = yggdryl_compression::Zstd::DEFAULT_LEVEL))]
     fn new(level: i32) -> PyResult<Self> {
         Ok(Self {
-            inner: yggdryl_core::Zstd::new(level).map_err(encode_err)?,
+            inner: yggdryl_compression::Zstd::new(level).map_err(encode_err)?,
         })
     }
 
     /// The inclusive `(min, max)` levels this build of zstd accepts.
     #[staticmethod]
     fn level_range() -> (i32, i32) {
-        yggdryl_core::Zstd::level_range()
+        yggdryl_compression::Zstd::level_range()
     }
 
     /// The lowercase codec name (`"zstd"`).
@@ -229,7 +230,7 @@ impl Zstd {
     #[staticmethod]
     fn deserialize_bytes(bytes: &[u8]) -> PyResult<Self> {
         Ok(Self {
-            inner: yggdryl_core::Zstd::deserialize_bytes(bytes).map_err(decode_err)?,
+            inner: yggdryl_compression::Zstd::deserialize_bytes(bytes).map_err(decode_err)?,
         })
     }
 

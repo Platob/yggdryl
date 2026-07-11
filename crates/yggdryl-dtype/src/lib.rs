@@ -17,7 +17,7 @@
 //! [`F64Type`], stamped from one `primitive_type!` macro) plus the bit-packed
 //! [`BooleanType`]. Each converts to and from its Arrow [`DataType`](arrow_schema::DataType)
 //! and round-trips through bytes; the numerics also map to the core
-//! [`PrimitiveType`](yggdryl_core::PrimitiveType) runtime tag.
+//! [`PrimitiveType`](yggdryl_converter::PrimitiveType) runtime tag.
 //!
 //! ## Canonical typing
 //!

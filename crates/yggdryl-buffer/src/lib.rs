@@ -20,8 +20,9 @@
 //!   [`IOCursor`] / [`IOSlice`] (and their typed twins); the concrete resources are the
 //!   byte [`ByteCursor`] / [`ByteSlice`] and the element-typed [`TypedCursor<T>`] /
 //!   [`TypedSlice<T>`]. The [`IoPrimitive`] element codec stamps each native type.
-//! - **Wide integers** ([`int`]). [`i96`] and [`i256`] flank native `i128`, each an
-//!   [`IoPrimitive`] a [`TypedCursor<T>`] reads and writes little-endian.
+//! - **Wide integers** (re-exported from `yggdryl-core`). [`i96`] and [`i256`] flank
+//!   native `i128`, each an [`IoPrimitive`] a [`TypedCursor<T>`] reads and writes
+//!   little-endian.
 //!
 //! A buffer here carries no schema: naming, nullability, and [`Headers`] annotations are
 //! applied **from above** (the `yggdryl-field` layer turns a buffer into a `Field`).
@@ -41,7 +42,6 @@
 //! assert_eq!(cursor.pread_array(2, Whence::Start).unwrap(), vec![1, 2]);
 //! ```
 
-pub mod int;
 pub mod io;
 
 mod primitive;
@@ -70,11 +70,11 @@ pub use u16_buffer::U16Buffer;
 pub use u32_buffer::U32Buffer;
 pub use u64_buffer::U64Buffer;
 
-pub use int::{i256, i96};
 pub use io::{
     ByteBuffer, ByteCursor, ByteSlice, IOBase, IOCursor, IOSlice, IoError, IoPrimitive,
     TypedCursor, TypedIOBase, TypedIOCursor, TypedIOSlice, TypedSlice, Whence,
 };
+pub use yggdryl_core::{i256, i96};
 
 /// The `u8` typed buffer **is** the byte store: [`ByteBuffer`] backs both, so the two names
 /// refer to one type (`CLAUDE.md` rule 1 — one concern, one type). Use `U8Buffer` when

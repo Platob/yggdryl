@@ -2,11 +2,13 @@
 resolver = "2"
 members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-buffer",
+    "crates/yggdryl-compression",
+    "crates/yggdryl-converter",
     "crates/yggdryl-http",
     "crates/yggdryl-dtype",
     "crates/yggdryl-field",
     "crates/yggdryl-scalar",
-    "crates/yggdryl-buffer",
     "bindings/python",
     "bindings/node",
 ]
@@ -15,11 +17,13 @@ members = [
 # (maturin / napi) so the default workflow never needs Python or Node headers.
 default-members = [
     "crates/yggdryl-core",
+    "crates/yggdryl-buffer",
+    "crates/yggdryl-compression",
+    "crates/yggdryl-converter",
     "crates/yggdryl-http",
     "crates/yggdryl-dtype",
     "crates/yggdryl-field",
     "crates/yggdryl-scalar",
-    "crates/yggdryl-buffer",
 ]
 
 [workspace.package]
@@ -42,6 +46,8 @@ yggdryl-dtype = { path = "crates/yggdryl-dtype", version = "0.1.0" }
 yggdryl-field = { path = "crates/yggdryl-field", version = "0.1.0" }
 yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0" }
 yggdryl-buffer = { path = "crates/yggdryl-buffer", version = "0.1.0" }
+yggdryl-compression = { path = "crates/yggdryl-compression", version = "0.1.0" }
+yggdryl-converter = { path = "crates/yggdryl-converter", version = "0.1.0" }
 # gzip/deflate backend for the `gzip` compression codec; pulled in only by the
 # crates that enable the corresponding cargo feature.
 flate2 = "1.0"
