@@ -61,7 +61,8 @@ fn value_codec_round_trips_and_length_is_guided() {
     let bytes = dt.value_to_bytes(-5);
     assert_eq!(bytes, (-5_i32).to_le_bytes());
     assert_eq!(dt.value_from_bytes(&bytes).unwrap(), -5);
-    assert_eq!(dt.native_default(), 0);
+    assert_eq!(dt.default_value(), 0);
+    assert_eq!(dt.default_any_value().downcast_ref::<i32>(), Some(&0));
 
     let err = dt.value_from_bytes(&[1, 2]).unwrap_err();
     assert_eq!(
@@ -134,4 +135,37 @@ fn value_semantics_all_instances_equal() {
     set.insert(I64Type::new());
     set.insert(I64Type::new());
     assert_eq!(set.len(), 1); // dtype markers dedup
+}
+
+#[test]
+fn null_type() {
+    use yggdryl_dtype::NullType;
+
+    let dt = NullType::new();
+    assert_eq!(dt.name(), "null");
+    assert_eq!(dt.byte_width(), Some(0)); // a null value is zero bytes
+    assert_eq!(dt.default_value(), ()); // the unit default
+    assert!(dt.default_any_value().downcast_ref::<()>().is_some());
+    assert_eq!(dt.to_arrow(), ArrowDataType::Null);
+    assert_eq!(NullType::from_arrow(&dt.to_arrow()).unwrap(), dt);
+    assert!(NullType::from_arrow(&ArrowDataType::Int64).is_err());
+
+    // The unit value round-trips through zero bytes; anything else is a guided error.
+    assert!(dt.value_to_bytes(()).is_empty());
+    assert_eq!(dt.value_from_bytes(&[]).unwrap(), ());
+    assert!(matches!(
+        dt.value_from_bytes(&[0]).unwrap_err(),
+        DTypeError::InvalidValueLength {
+            ty: "null",
+            width: 0,
+            ..
+        }
+    ));
+
+    // An empty parameter payload round-trips; a non-empty one is rejected.
+    assert_eq!(
+        NullType::deserialize_bytes(&dt.serialize_bytes()).unwrap(),
+        dt
+    );
+    assert!(NullType::deserialize_bytes(&[1]).is_err());
 }

@@ -1,7 +1,8 @@
 //! The `yggdryl.dtype` namespace — Arrow primitive data types.
 //!
 //! Exposes one class per primitive data type (`I8Type` … `F64Type`, plus the
-//! bit-packed `BooleanType`), mirroring `yggdryl_dtype`. Each carries the type-identity
+//! bit-packed `BooleanType` and the sui-generis `NullType`), mirroring `yggdryl_dtype`.
+//! Each carries the type-identity
 //! surface — `name`, `byteWidth`, `primitiveTag`, the byte codec
 //! (`serializeBytes` / `deserializeBytes`), and value semantics (`equals` /
 //! `hashCode`). The Arrow `toArrow` / `fromArrow` interop is **Rust-only** (an
@@ -105,4 +106,5 @@ napi_primitive_dtype! {
     (F32Type, "float32", Some("f32")),
     (F64Type, "float64", Some("f64")),
     (BooleanType, "boolean", None),
+    (NullType, "null", None),
 }

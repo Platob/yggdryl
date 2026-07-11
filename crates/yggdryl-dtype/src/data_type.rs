@@ -1,5 +1,7 @@
 //! [`DataType`] — the base Arrow data-type contract.
 
+use std::any::Any;
+
 use arrow_schema::DataType as ArrowDataType;
 
 /// A data type in the Apache Arrow model — the FFI-opaque base of the type hierarchy.
@@ -23,6 +25,8 @@ use arrow_schema::DataType as ArrowDataType;
 /// assert_eq!(dt.to_arrow(), ArrowDataType::Int64);
 /// // A primitive type is a value-free marker, so its payload is empty.
 /// assert!(dt.serialize_bytes().is_empty());
+/// // The FFI-opaque default value, behind a `dyn Any` (downcast to the native type).
+/// assert_eq!(dt.default_any_value().downcast_ref::<i64>(), Some(&0));
 /// ```
 pub trait DataType {
     /// The canonical lower-snake type name, e.g. `"int64"`.
@@ -39,4 +43,10 @@ pub trait DataType {
     /// type is a value-free marker, so this is empty; parameterised types (future
     /// timestamps / decimals) carry their parameters here.
     fn serialize_bytes(&self) -> Vec<u8>;
+
+    /// The type's [`default_value`](crate::TypedDataType::default_value) behind an object-safe
+    /// [`Box<dyn Any>`](std::any::Any) — the FFI-opaque counterpart usable from a
+    /// `dyn DataType`. Downcast it to the concrete native type
+    /// (`default_any_value().downcast::<i64>()`).
+    fn default_any_value(&self) -> Box<dyn Any>;
 }

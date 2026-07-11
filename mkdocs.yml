@@ -48,6 +48,8 @@ nav:
   - Data types: dtype.md
   - Fields: field.md
   - Scalars: scalar.md
+  - Null type: null.md
+  - Decimals: decimal.md
   - Type inference: infer.md
   - Converters: converter.md
   - Compression: compression.md

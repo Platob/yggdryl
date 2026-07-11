@@ -144,3 +144,28 @@ fn value_semantics() {
     set.insert(I64Field::new("a", false));
     assert_eq!(set.len(), 2);
 }
+
+#[test]
+fn null_field() {
+    use yggdryl_field::NullField;
+
+    let field = NullField::new("maybe", true)
+        .with_headers(Headers::from_pairs([(b"unit".to_vec(), b"none".to_vec())]));
+    assert_eq!(field.name(), "maybe");
+    assert!(field.is_nullable());
+    assert_eq!(TypedField::data_type(&field).name(), "null");
+    assert_eq!(field.arrow_data_type(), ArrowDataType::Null);
+    assert_eq!(field.get_header(b"unit"), Some(b"none".as_slice()));
+
+    // Byte round-trip carries the headers; Arrow round-trip drops them.
+    assert_eq!(
+        NullField::deserialize_bytes(&field.serialize_bytes()).unwrap(),
+        field
+    );
+    let arrow = ArrowField::new("maybe", ArrowDataType::Null, true);
+    assert_eq!(NullField::from_arrow(&arrow).unwrap().name(), "maybe");
+    assert!(matches!(
+        NullField::from_arrow(&ArrowField::new("x", ArrowDataType::Int64, true)).unwrap_err(),
+        FieldError::Dtype(_)
+    ));
+}

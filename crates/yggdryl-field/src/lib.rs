@@ -17,7 +17,9 @@
 //! [`F64Field`]) plus [`BooleanField`], all stamped from one `primitive_field!`
 //! macro — a field never touches the value codec, so `Boolean` is not a special case
 //! here (unlike the dtype and buffer layers). Each converts to and from an Arrow
-//! [`Field`](arrow_schema::Field) and round-trips through bytes.
+//! [`Field`](arrow_schema::Field) and round-trips through bytes. Alongside them is the
+//! sui-generis [`NullField`] (data type [`NullType`](yggdryl_dtype::NullType)), which joins
+//! no category but shares the same name / nullable / headers / byte-codec surface.
 //!
 //! ## Arrow interop is Rust-only
 //!
@@ -39,6 +41,7 @@ mod i64_field;
 mod i8_field;
 mod logical_field;
 mod nested_field;
+mod null_field;
 mod primitive_field;
 mod to_field;
 mod typed_field;
@@ -61,6 +64,7 @@ pub use i64_field::I64Field;
 pub use i8_field::I8Field;
 pub use logical_field::LogicalField;
 pub use nested_field::NestedField;
+pub use null_field::NullField;
 pub use primitive_field::PrimitiveField;
 pub use to_field::ToField;
 pub use typed_field::TypedField;

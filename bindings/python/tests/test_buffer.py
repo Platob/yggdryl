@@ -136,3 +136,12 @@ def test_all_native_buffer_types_are_exposed():
         "BooleanBuffer",
     ):
         assert hasattr(buffer, name)
+
+
+def test_none_element_becomes_default():
+    """A null element in buffer building becomes the type's default value."""
+    from yggdryl.buffer import BooleanBuffer, F64Buffer, I64Buffer
+
+    assert I64Buffer([1, None, 3]) == I64Buffer([1, 0, 3])
+    assert F64Buffer([None, 2.5]) == F64Buffer([0.0, 2.5])
+    assert BooleanBuffer([True, None]) == BooleanBuffer([True, False])

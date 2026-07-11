@@ -1,17 +1,18 @@
 //! The `yggdryl.scalar` namespace — Arrow primitive scalars.
 //!
 //! Exposes one class per primitive scalar (`I8Scalar` … `F64Scalar`,
-//! `BooleanScalar`), mirroring `yggdryl_scalar`. A scalar wraps a single value or is
-//! null; each carries `value`, `isNull`, its `dataType` (a
-//! [`yggdryl.dtype`](super::dtype) class), the byte codec, and value semantics. Two
-//! Node-specific idioms match the buffer layer's: `i64` / `u64` scalar values marshal as
-//! `bigint` (napi has no native `u64` `number`), and `F32Scalar` marshals its value
-//! over an `f64` JS boundary. Every primitive is present (no omissions).
+//! `BooleanScalar`), mirroring `yggdryl_scalar`. A scalar wraps a single, always-present
+//! value (nullability is modelled separately — a `NullType` value and, later, union
+//! types); each carries `value`, its `dataType` (a [`yggdryl.dtype`](super::dtype) class),
+//! the byte codec, and value semantics. Two Node-specific idioms match the buffer layer's:
+//! `i64` / `u64` scalar values marshal as `bigint` (napi has no native `u64` `number`),
+//! and `F32Scalar` marshals its value over an `f64` JS boundary. Every primitive is present
+//! (no omissions).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use napi::bindgen_prelude::{BigInt, Buffer};
+use napi::bindgen_prelude::{BigInt, Buffer, Null};
 use napi_derive::napi;
 
 use yggdryl_scalar::{Scalar, TypedScalar};
@@ -28,7 +29,7 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
 macro_rules! napi_primitive_scalar {
     ($( ($scalar:ident, $dtype:ident, $native:ty, $lit:literal) ),+ $(,)?) => {
         $(
-            #[doc = concat!("A single, possibly-null `", $lit, "` value.")]
+            #[doc = concat!("A single `", $lit, "` value (always present).")]
             #[napi(namespace = "scalar")]
             pub struct $scalar {
                 pub(crate) inner: yggdryl_scalar::$scalar,
@@ -37,30 +38,20 @@ macro_rules! napi_primitive_scalar {
             #[napi(namespace = "scalar")]
             impl $scalar {
                 #[napi(constructor)]
-                pub fn new(value: Option<$native>) -> Self {
-                    let inner = match value {
-                        Some(value) => yggdryl_scalar::$scalar::new(value),
-                        None => yggdryl_scalar::$scalar::null(),
-                    };
-                    Self { inner }
+                pub fn new(value: $native) -> Self {
+                    Self { inner: yggdryl_scalar::$scalar::new(value) }
                 }
 
-                /// A null scalar of this type.
+                /// The default scalar of this type (its data type's default value).
                 #[napi(factory)]
-                pub fn null() -> Self {
-                    Self { inner: yggdryl_scalar::$scalar::null() }
+                pub fn default_scalar() -> Self {
+                    Self { inner: yggdryl_scalar::$scalar::default_scalar() }
                 }
 
-                /// The scalar's value, or `null` when the scalar is null.
+                /// The scalar's value (always present).
                 #[napi(getter)]
-                pub fn value(&self) -> Option<$native> {
+                pub fn value(&self) -> $native {
                     TypedScalar::value(&self.inner)
-                }
-
-                /// Whether the scalar holds no value.
-                #[napi(getter)]
-                pub fn is_null(&self) -> bool {
-                    self.inner.is_null()
                 }
 
                 /// The scalar's data type (a `yggdryl.dtype` class).
@@ -69,7 +60,7 @@ macro_rules! napi_primitive_scalar {
                     crate::dtype::$dtype { inner: TypedScalar::data_type(&self.inner) }
                 }
 
-                /// The scalar serialised to bytes (a null flag + the value's bytes).
+                /// The scalar serialised to its value's little-endian bytes.
                 #[napi]
                 pub fn serialize_bytes(&self) -> Buffer {
                     self.inner.serialize_bytes().into()
@@ -113,8 +104,8 @@ napi_primitive_scalar! {
     (BooleanScalar, BooleanType, bool, "boolean"),
 }
 
-/// A single, possibly-null `int64` value. Its value marshals as a `bigint`, so 64-bit
-/// integers survive the JS boundary without the precision loss of a `number`.
+/// A single `int64` value (always present). It marshals as a `bigint`, so 64-bit integers
+/// survive the JS boundary without the precision loss of a `number`.
 #[napi(namespace = "scalar")]
 pub struct I64Scalar {
     pub(crate) inner: yggdryl_scalar::I64Scalar,
@@ -123,32 +114,30 @@ pub struct I64Scalar {
 #[napi(namespace = "scalar")]
 impl I64Scalar {
     #[napi(constructor)]
-    pub fn new(value: Option<BigInt>) -> Self {
-        let inner = match value {
-            Some(big) => yggdryl_scalar::I64Scalar::new(big.get_i64().0),
-            None => yggdryl_scalar::I64Scalar::null(),
-        };
-        Self { inner }
+    pub fn new(value: BigInt) -> napi::Result<Self> {
+        let (v, lossless) = value.get_i64();
+        if !lossless {
+            return Err(to_error(
+                "value out of range for int64; expected -9223372036854775808..=9223372036854775807",
+            ));
+        }
+        Ok(Self {
+            inner: yggdryl_scalar::I64Scalar::new(v),
+        })
     }
 
-    /// A null `int64` scalar.
+    /// The default scalar of this type (`0n`).
     #[napi(factory)]
-    pub fn null() -> Self {
+    pub fn default_scalar() -> Self {
         Self {
-            inner: yggdryl_scalar::I64Scalar::null(),
+            inner: yggdryl_scalar::I64Scalar::default_scalar(),
         }
     }
 
-    /// The scalar's value (a `bigint`), or `null` when the scalar is null.
+    /// The scalar's value (a `bigint`, always present).
     #[napi(getter)]
-    pub fn value(&self) -> Option<BigInt> {
-        TypedScalar::value(&self.inner).map(BigInt::from)
-    }
-
-    /// Whether the scalar holds no value.
-    #[napi(getter)]
-    pub fn is_null(&self) -> bool {
-        self.inner.is_null()
+    pub fn value(&self) -> BigInt {
+        BigInt::from(TypedScalar::value(&self.inner))
     }
 
     /// The scalar's data type (a `yggdryl.dtype` class).
@@ -159,7 +148,7 @@ impl I64Scalar {
         }
     }
 
-    /// The scalar serialised to bytes (a null flag + the value's bytes).
+    /// The scalar serialised to its value's little-endian bytes.
     #[napi]
     pub fn serialize_bytes(&self) -> Buffer {
         self.inner.serialize_bytes().into()
@@ -189,8 +178,8 @@ impl I64Scalar {
     }
 }
 
-/// A single, possibly-null `uint64` value. Its value marshals as a `bigint` (napi has no
-/// native `u64` `number`).
+/// A single `uint64` value (always present). It marshals as a `bigint` (napi has no native
+/// `u64` `number`).
 #[napi(namespace = "scalar")]
 pub struct U64Scalar {
     pub(crate) inner: yggdryl_scalar::U64Scalar,
@@ -199,32 +188,30 @@ pub struct U64Scalar {
 #[napi(namespace = "scalar")]
 impl U64Scalar {
     #[napi(constructor)]
-    pub fn new(value: Option<BigInt>) -> Self {
-        let inner = match value {
-            Some(big) => yggdryl_scalar::U64Scalar::new(big.get_u64().1),
-            None => yggdryl_scalar::U64Scalar::null(),
-        };
-        Self { inner }
+    pub fn new(value: BigInt) -> napi::Result<Self> {
+        let (sign_bit, v, lossless) = value.get_u64();
+        if sign_bit || !lossless {
+            return Err(to_error(
+                "value out of range for uint64; expected 0..=18446744073709551615",
+            ));
+        }
+        Ok(Self {
+            inner: yggdryl_scalar::U64Scalar::new(v),
+        })
     }
 
-    /// A null `uint64` scalar.
+    /// The default scalar of this type (`0n`).
     #[napi(factory)]
-    pub fn null() -> Self {
+    pub fn default_scalar() -> Self {
         Self {
-            inner: yggdryl_scalar::U64Scalar::null(),
+            inner: yggdryl_scalar::U64Scalar::default_scalar(),
         }
     }
 
-    /// The scalar's value (a `bigint`), or `null` when the scalar is null.
+    /// The scalar's value (a `bigint`, always present).
     #[napi(getter)]
-    pub fn value(&self) -> Option<BigInt> {
-        TypedScalar::value(&self.inner).map(BigInt::from)
-    }
-
-    /// Whether the scalar holds no value.
-    #[napi(getter)]
-    pub fn is_null(&self) -> bool {
-        self.inner.is_null()
+    pub fn value(&self) -> BigInt {
+        BigInt::from(TypedScalar::value(&self.inner))
     }
 
     /// The scalar's data type (a `yggdryl.dtype` class).
@@ -235,7 +222,7 @@ impl U64Scalar {
         }
     }
 
-    /// The scalar serialised to bytes (a null flag + the value's bytes).
+    /// The scalar serialised to its value's little-endian bytes.
     #[napi]
     pub fn serialize_bytes(&self) -> Buffer {
         self.inner.serialize_bytes().into()
@@ -265,8 +252,8 @@ impl U64Scalar {
     }
 }
 
-/// A single, possibly-null `float32` value. Its value marshals over an `f64` JS boundary
-/// (napi has no native `f32` `number`).
+/// A single `float32` value (always present). It marshals over an `f64` JS boundary (napi
+/// has no native `f32` `number`).
 #[napi(namespace = "scalar")]
 pub struct F32Scalar {
     pub(crate) inner: yggdryl_scalar::F32Scalar,
@@ -275,32 +262,24 @@ pub struct F32Scalar {
 #[napi(namespace = "scalar")]
 impl F32Scalar {
     #[napi(constructor)]
-    pub fn new(value: Option<f64>) -> Self {
-        let inner = match value {
-            Some(value) => yggdryl_scalar::F32Scalar::new(value as f32),
-            None => yggdryl_scalar::F32Scalar::null(),
-        };
-        Self { inner }
-    }
-
-    /// A null `float32` scalar.
-    #[napi(factory)]
-    pub fn null() -> Self {
+    pub fn new(value: f64) -> Self {
         Self {
-            inner: yggdryl_scalar::F32Scalar::null(),
+            inner: yggdryl_scalar::F32Scalar::new(value as f32),
         }
     }
 
-    /// The scalar's value (widened to `f64`), or `null` when the scalar is null.
-    #[napi(getter)]
-    pub fn value(&self) -> Option<f64> {
-        TypedScalar::value(&self.inner).map(f64::from)
+    /// The default scalar of this type (`0`).
+    #[napi(factory)]
+    pub fn default_scalar() -> Self {
+        Self {
+            inner: yggdryl_scalar::F32Scalar::default_scalar(),
+        }
     }
 
-    /// Whether the scalar holds no value.
+    /// The scalar's value (widened to `f64`, always present).
     #[napi(getter)]
-    pub fn is_null(&self) -> bool {
-        self.inner.is_null()
+    pub fn value(&self) -> f64 {
+        f64::from(TypedScalar::value(&self.inner))
     }
 
     /// The scalar's data type (a `yggdryl.dtype` class).
@@ -311,7 +290,7 @@ impl F32Scalar {
         }
     }
 
-    /// The scalar serialised to bytes (a null flag + the value's bytes).
+    /// The scalar serialised to its value's little-endian bytes.
     #[napi]
     pub fn serialize_bytes(&self) -> Buffer {
         self.inner.serialize_bytes().into()
@@ -328,6 +307,77 @@ impl F32Scalar {
     /// Content equality.
     #[napi]
     pub fn equals(&self, other: &F32Scalar) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Java-style `i32` content hash.
+    #[napi]
+    pub fn hash_code(&self) -> i32 {
+        let mut hasher = DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        let hash = hasher.finish();
+        (hash as u32 ^ (hash >> 32) as u32) as i32
+    }
+}
+
+/// The single value of the `null` data type — a scalar whose value is "null".
+///
+/// A scalar is always present, so this is not a nullable wrapper: it is the one value of
+/// the sui-generis `NullType`. Its `value` is always `null` and it serialises to zero bytes.
+#[napi(namespace = "scalar")]
+pub struct NullScalar {
+    pub(crate) inner: yggdryl_scalar::NullScalar,
+}
+
+#[napi(namespace = "scalar")]
+impl NullScalar {
+    #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            inner: yggdryl_scalar::NullScalar::new(),
+        }
+    }
+
+    /// The default scalar of this type — the null value.
+    #[napi(factory)]
+    pub fn default_scalar() -> Self {
+        Self {
+            inner: yggdryl_scalar::NullScalar::default_scalar(),
+        }
+    }
+
+    /// The scalar's value — always `null` (the null value).
+    #[napi(getter)]
+    pub fn value(&self) -> Null {
+        Null
+    }
+
+    /// The scalar's data type (a `yggdryl.dtype.NullType`).
+    #[napi(getter)]
+    pub fn data_type(&self) -> crate::dtype::NullType {
+        crate::dtype::NullType {
+            inner: TypedScalar::data_type(&self.inner),
+        }
+    }
+
+    /// The scalar serialised to its (empty) value bytes.
+    #[napi]
+    pub fn serialize_bytes(&self) -> Buffer {
+        self.inner.serialize_bytes().into()
+    }
+
+    /// Reconstructs the scalar from its serialised bytes (which must be empty).
+    #[napi(factory)]
+    pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
+        yggdryl_scalar::NullScalar::deserialize_bytes(bytes.as_ref())
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+
+    /// Content equality.
+    #[napi]
+    pub fn equals(&self, other: &NullScalar) -> bool {
         self.inner == other.inner
     }
 

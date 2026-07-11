@@ -17,7 +17,10 @@
 //! [`F64Type`], stamped from one `primitive_type!` macro) plus the bit-packed
 //! [`BooleanType`]. Each converts to and from its Arrow [`DataType`](arrow_schema::DataType)
 //! and round-trips through bytes; the numerics also map to the core
-//! [`PrimitiveType`](yggdryl_converter::PrimitiveType) runtime tag.
+//! [`PrimitiveType`](yggdryl_converter::PrimitiveType) runtime tag. Standing apart from the
+//! categories is [`NullType`] — the sui-generis `null` type whose only value is the unit
+//! `()` (zero bytes), yggdryl's representation of "null" now that scalars are always
+//! present.
 //!
 //! ## Canonical typing
 //!
@@ -47,6 +50,7 @@ mod i64_type;
 mod i8_type;
 mod logical_type;
 mod nested_type;
+mod null_type;
 mod primitive_type;
 mod typed_data_type;
 mod typed_logical_type;
@@ -68,6 +72,7 @@ pub use i64_type::I64Type;
 pub use i8_type::I8Type;
 pub use logical_type::LogicalType;
 pub use nested_type::NestedType;
+pub use null_type::NullType;
 pub use primitive_type::PrimitiveType;
 pub use typed_data_type::TypedDataType;
 pub use typed_logical_type::TypedLogicalType;

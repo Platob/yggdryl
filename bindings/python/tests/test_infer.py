@@ -62,3 +62,23 @@ def test_unsupported_element_type_is_a_guided_error():
 def test_non_sequence_is_a_guided_error():
     with pytest.raises(TypeError):
         buffer(42)
+
+
+def test_none_becomes_the_type_default():
+    # A null element materialises into the type's default value.
+    assert buffer([1, None, 3]) == I64Buffer([1, 0, 3])
+    assert buffer([1.5, None]) == F64Buffer([1.5, 0.0])
+    assert buffer([True, None, False]) == BooleanBuffer([True, False, False])
+    # The element type is inferred from the first non-null element, even with leading nulls.
+    assert buffer([None, 5, None]) == I64Buffer([0, 5, 0])
+
+
+def test_all_null_sequence_is_a_guided_error():
+    with pytest.raises(ValueError, match="every value is null"):
+        buffer([None, None])
+
+
+def test_float_first_mixed_sequence_is_rejected():
+    # An int in a float sequence raises (previously silently coerced with precision loss).
+    with pytest.raises(ValueError, match="must be a float"):
+        buffer([1.5, 2])

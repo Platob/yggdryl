@@ -46,12 +46,16 @@ macro_rules! py_primitive_buffer {
 
             #[pymethods]
             impl $name {
-                /// Creates a buffer, optionally holding a copy of `values`.
+                /// Creates a buffer, optionally holding a copy of `values`. A `None`
+                /// (null) element becomes the type's default value (`0`), so a nullable
+                /// column materialises into this non-nullable buffer.
                 #[new]
                 #[pyo3(signature = (values = None))]
-                fn new(values: Option<Vec<$ty>>) -> Self {
+                fn new(values: Option<Vec<Option<$ty>>>) -> Self {
                     let inner = match values {
-                        Some(values) => yggdryl_buffer::$name::from_vec(values),
+                        Some(values) => yggdryl_buffer::$name::from_vec(
+                            values.into_iter().map(Option::unwrap_or_default).collect(),
+                        ),
                         None => yggdryl_buffer::$name::new(),
                     };
                     Self { inner }
@@ -194,12 +198,16 @@ pub struct BooleanBuffer {
 
 #[pymethods]
 impl BooleanBuffer {
-    /// Creates a buffer, optionally packing `values`.
+    /// Creates a buffer, optionally packing `values`. A `None` (null) element becomes the
+    /// type's default value (`False`).
     #[new]
     #[pyo3(signature = (values = None))]
-    fn new(values: Option<Vec<bool>>) -> Self {
+    fn new(values: Option<Vec<Option<bool>>>) -> Self {
         let inner = match values {
-            Some(values) => yggdryl_buffer::BooleanBuffer::from_bits(&values),
+            Some(values) => {
+                let bits: Vec<bool> = values.into_iter().map(Option::unwrap_or_default).collect();
+                yggdryl_buffer::BooleanBuffer::from_bits(&bits)
+            }
             None => yggdryl_buffer::BooleanBuffer::new(),
         };
         Self { inner }

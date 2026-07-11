@@ -10,8 +10,8 @@ use crate::Scalar;
 ///
 /// ```
 /// use yggdryl_scalar::{LogicalScalar, Scalar};
-/// fn is_null<S: LogicalScalar>(scalar: &S) -> bool {
-///     scalar.is_null()
+/// fn to_bytes<S: LogicalScalar>(scalar: &S) -> Vec<u8> {
+///     scalar.serialize_bytes()
 /// }
 /// ```
 pub trait LogicalScalar: Scalar {}

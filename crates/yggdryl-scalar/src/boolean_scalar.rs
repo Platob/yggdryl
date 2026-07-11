@@ -1,4 +1,4 @@
-//! [`BooleanScalar`] — a single, possibly-null `boolean` value.
+//! [`BooleanScalar`] — a single `boolean` value.
 
 use super::primitive::primitive_scalar;
 

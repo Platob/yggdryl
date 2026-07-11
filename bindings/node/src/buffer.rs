@@ -75,11 +75,15 @@ macro_rules! napi_buffer {
 
             #[napi(namespace = "buffer")]
             impl $name {
-                /// Creates a buffer, optionally holding a copy of `values`.
+                /// Creates a buffer, optionally holding a copy of `values`. A `null` /
+                /// `undefined` element becomes the type's default value (`0`), so a
+                /// nullable column materialises into this non-nullable buffer.
                 #[napi(constructor)]
-                pub fn new(values: Option<Vec<$ty>>) -> Self {
+                pub fn new(values: Option<Vec<Option<$ty>>>) -> Self {
                     let inner = match values {
-                        Some(values) => yggdryl_buffer::$name::from_vec(values),
+                        Some(values) => yggdryl_buffer::$name::from_vec(
+                            values.into_iter().map(Option::unwrap_or_default).collect(),
+                        ),
                         None => yggdryl_buffer::$name::new(),
                     };
                     Self { inner }
@@ -223,13 +227,17 @@ pub struct F32Buffer {
 
 #[napi(namespace = "buffer")]
 impl F32Buffer {
-    /// Creates a buffer, optionally holding `values` narrowed to `f32`.
+    /// Creates a buffer, optionally holding `values` narrowed to `f32`. A `null` /
+    /// `undefined` element becomes the type's default value (`0`).
     #[napi(constructor)]
-    pub fn new(values: Option<Vec<f64>>) -> Self {
+    pub fn new(values: Option<Vec<Option<f64>>>) -> Self {
         let inner = match values {
-            Some(values) => {
-                yggdryl_buffer::F32Buffer::from_vec(values.into_iter().map(|v| v as f32).collect())
-            }
+            Some(values) => yggdryl_buffer::F32Buffer::from_vec(
+                values
+                    .into_iter()
+                    .map(|v| v.unwrap_or(0.0) as f32)
+                    .collect(),
+            ),
             None => yggdryl_buffer::F32Buffer::new(),
         };
         Self { inner }
@@ -358,11 +366,15 @@ pub struct BooleanBuffer {
 
 #[napi(namespace = "buffer")]
 impl BooleanBuffer {
-    /// Creates a buffer, optionally packing `values`.
+    /// Creates a buffer, optionally packing `values`. A `null` / `undefined` element
+    /// becomes the type's default value (`false`).
     #[napi(constructor)]
-    pub fn new(values: Option<Vec<bool>>) -> Self {
+    pub fn new(values: Option<Vec<Option<bool>>>) -> Self {
         let inner = match values {
-            Some(values) => yggdryl_buffer::BooleanBuffer::from_bits(&values),
+            Some(values) => {
+                let bits: Vec<bool> = values.into_iter().map(Option::unwrap_or_default).collect();
+                yggdryl_buffer::BooleanBuffer::from_bits(&bits)
+            }
             None => yggdryl_buffer::BooleanBuffer::new(),
         };
         Self { inner }

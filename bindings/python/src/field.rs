@@ -1,7 +1,8 @@
 //! The `yggdryl.field` submodule — Arrow primitive fields.
 //!
-//! Exposes one class per primitive field (`I8Field` … `F64Field`, `BooleanField`),
-//! mirroring `yggdryl_field`. Each carries `name`, `nullable`, its `data_type` (a
+//! Exposes one class per primitive field (`I8Field` … `F64Field`, `BooleanField`) plus
+//! the sui-generis `NullField`, mirroring `yggdryl_field`. Each carries `name`,
+//! `nullable`, its `data_type` (a
 //! [`yggdryl.dtype`](super::dtype) class), the byte codec, value semantics, and `repr`.
 //! The Arrow `to_arrow` / `from_arrow` interop is **Rust-only** (an `arrow_schema` value
 //! does not cross the FFI boundary), exactly as for the dtype layer.
@@ -147,6 +148,7 @@ py_primitive_field! {
     (F32Field, F32Type, "float32"),
     (F64Field, F64Type, "float64"),
     (BooleanField, BooleanType, "boolean"),
+    (NullField, NullType, "null"),
 }
 
 /// Populates the `field` submodule.
@@ -162,5 +164,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<F32Field>()?;
     module.add_class::<F64Field>()?;
     module.add_class::<BooleanField>()?;
+    module.add_class::<NullField>()?;
     Ok(())
 }

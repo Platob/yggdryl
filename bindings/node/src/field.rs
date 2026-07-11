@@ -1,6 +1,6 @@
 //! The `yggdryl.field` namespace — Arrow primitive fields.
 //!
-//! Exposes one class per primitive field (`I8Field` … `F64Field`, `BooleanField`),
+//! Exposes one class per primitive field (`I8Field` … `F64Field`, `BooleanField`, plus the sui-generis `NullField`),
 //! mirroring `yggdryl_field`. Each carries `name`, `nullable`, its `dataType` (a
 //! [`yggdryl.dtype`](super::dtype) class), the byte codec, and value semantics. The
 //! Arrow `toArrow` / `fromArrow` interop is **Rust-only** (an `arrow_schema` value does
@@ -117,4 +117,5 @@ napi_primitive_field! {
     (F32Field, F32Type, "float32"),
     (F64Field, F64Type, "float64"),
     (BooleanField, BooleanType, "boolean"),
+    (NullField, NullType, "null"),
 }

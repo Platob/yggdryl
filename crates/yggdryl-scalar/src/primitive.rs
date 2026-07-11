@@ -4,111 +4,88 @@
 //!
 //! The value↔bytes codec is delegated to the data type's
 //! [`TypedDataType`](yggdryl_dtype::TypedDataType), so the **same** macro covers every
-//! primitive — including `Boolean`. Equality and hashing are **by serialised bytes**
-//! (like the core buffers), so the float scalars behave bitwise (`0.0 != -0.0`, two
-//! `NaN`s with the same bits are equal) and a present value never equals a null.
+//! primitive — including `Boolean`. A scalar is **always present** (non-nullable): it holds
+//! its native value directly and serialises to just the value's little-endian bytes.
+//! Equality and hashing are **by serialised bytes** (like the core buffers), so the float
+//! scalars behave bitwise (`0.0 != -0.0`, two `NaN`s with the same bits are equal).
 
-/// Generates one primitive scalar named `$scalar` holding an `Option<$native>` of data
-/// type `$dtype`, with canonical name `$lit`. `$example` is a sample value used in the
-/// generated doctest.
+/// Generates one primitive scalar named `$scalar` holding a `$native` value of data type
+/// `$dtype`, with canonical name `$lit`. `$example` is a sample value used in the generated
+/// doctest.
 macro_rules! primitive_scalar {
     ($scalar:ident, $dtype:ident, $native:ty, $lit:literal, $example:literal) => {
-        #[doc = concat!("A single, possibly-null `", $lit, "` value.")]
+        #[doc = concat!("A single `", $lit, "` value.")]
         ///
-        /// Holds an `Option` of its native value; its data type is
+        /// Holds its native value; its data type is
         #[doc = concat!("[`", stringify!($dtype), "`](yggdryl_dtype::", stringify!($dtype), ").")]
-        /// It round-trips through bytes (a null flag followed by the value's little-endian
-        /// bytes when present) and compares/hashes by those bytes.
+        /// It round-trips through the value's little-endian bytes and compares/hashes by
+        /// those bytes.
         ///
         #[doc = concat!("```")]
         #[doc = concat!("use yggdryl_scalar::{Scalar, TypedScalar, ", stringify!($scalar), "};")]
         #[doc = concat!("let value = ", stringify!($scalar), "::new(", stringify!($example), ");")]
-        #[doc = concat!("assert_eq!(value.value(), Some(", stringify!($example), "));")]
-        #[doc = concat!("assert!(!value.is_null());")]
-        #[doc = concat!("assert!(", stringify!($scalar), "::null().is_null());")]
-        #[doc = concat!("// Byte round-trip, present and null.")]
+        #[doc = concat!("assert_eq!(value.value(), ", stringify!($example), ");")]
+        #[doc = concat!("// Byte round-trip.")]
         #[doc = concat!("assert_eq!(", stringify!($scalar), "::deserialize_bytes(&value.serialize_bytes()).unwrap(), value);")]
-        #[doc = concat!("assert_eq!(", stringify!($scalar), "::deserialize_bytes(&", stringify!($scalar), "::null().serialize_bytes()).unwrap(), ", stringify!($scalar), "::null());")]
         #[doc = concat!("```")]
         #[derive(Clone, Copy, Debug)]
         pub struct $scalar {
-            value: Option<$native>,
+            value: $native,
         }
 
         impl $scalar {
-            #[doc = concat!("Creates a present `", $lit, "` scalar holding `value`.")]
+            #[doc = concat!("Creates a `", $lit, "` scalar holding `value`.")]
             pub fn new(value: $native) -> Self {
-                Self { value: Some(value) }
+                Self { value }
             }
 
-            #[doc = concat!("Creates a null `", $lit, "` scalar.")]
-            pub fn null() -> Self {
-                Self { value: None }
-            }
-
-            /// Reconstructs the scalar from its serialised bytes (a null flag followed by
-            /// the value's little-endian bytes when present).
+            /// Reconstructs the scalar from its serialised bytes (the value's little-endian
+            /// bytes).
             ///
             /// # Errors
-            /// [`ScalarError`](crate::ScalarError) if the payload is empty, the flag is
-            /// not `0`/`1`, a null carries trailing bytes, or the value does not decode.
+            /// [`ScalarError`](crate::ScalarError) if the bytes do not decode to a value of
+            /// this data type (e.g. a wrong length).
             pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, $crate::ScalarError> {
-                let (&flag, rest) =
-                    bytes.split_first().ok_or($crate::ScalarError::EmptyPayload)?;
-                match flag {
-                    0 => {
-                        if rest.is_empty() {
-                            Ok(Self { value: None })
-                        } else {
-                            Err($crate::ScalarError::NullWithValue { len: rest.len() })
-                        }
-                    }
-                    1 => {
-                        let value = <yggdryl_dtype::$dtype as yggdryl_dtype::TypedDataType<$native>>::value_from_bytes(
-                            &yggdryl_dtype::$dtype::new(),
-                            rest,
-                        )?;
-                        Ok(Self { value: Some(value) })
-                    }
-                    other => Err($crate::ScalarError::InvalidNullFlag { flag: other }),
-                }
+                let value = <yggdryl_dtype::$dtype as yggdryl_dtype::TypedDataType<$native>>::value_from_bytes(
+                    &yggdryl_dtype::$dtype::new(),
+                    bytes,
+                )?;
+                Ok(Self { value })
             }
         }
 
         impl $crate::Scalar for $scalar {
-            fn is_null(&self) -> bool {
-                self.value.is_none()
-            }
-
             fn arrow_data_type(&self) -> arrow_schema::DataType {
                 <yggdryl_dtype::$dtype as yggdryl_dtype::DataType>::to_arrow(&yggdryl_dtype::$dtype::new())
             }
 
             fn serialize_bytes(&self) -> Vec<u8> {
-                match self.value {
-                    Some(value) => {
-                        let mut out = Vec::new();
-                        out.push(1);
-                        out.extend_from_slice(
-                            &<yggdryl_dtype::$dtype as yggdryl_dtype::TypedDataType<$native>>::value_to_bytes(
-                                &yggdryl_dtype::$dtype::new(),
-                                value,
-                            ),
-                        );
-                        out
-                    }
-                    None => vec![0],
-                }
+                <yggdryl_dtype::$dtype as yggdryl_dtype::TypedDataType<$native>>::value_to_bytes(
+                    &yggdryl_dtype::$dtype::new(),
+                    self.value,
+                )
+            }
+
+            fn default_any_scalar(&self) -> Box<dyn $crate::Scalar> {
+                Box::new(<$scalar as $crate::TypedScalar<yggdryl_dtype::$dtype, $native>>::default_scalar())
             }
         }
 
         impl $crate::TypedScalar<yggdryl_dtype::$dtype, $native> for $scalar {
-            fn value(&self) -> Option<$native> {
+            fn value(&self) -> $native {
                 self.value
             }
 
             fn data_type(&self) -> yggdryl_dtype::$dtype {
                 yggdryl_dtype::$dtype::new()
+            }
+
+            fn default_scalar() -> Self {
+                Self::new(
+                    <yggdryl_dtype::$dtype as yggdryl_dtype::TypedDataType<$native>>::default_value(
+                        &yggdryl_dtype::$dtype::new(),
+                    ),
+                )
             }
         }
 
@@ -116,7 +93,7 @@ macro_rules! primitive_scalar {
 
         // Value semantics by serialised bytes (rule 7): equal iff `serialize_bytes` are
         // equal, and equal values hash equal. Byte-based so the float scalars behave
-        // bitwise and a present value never equals a null.
+        // bitwise (`0.0 != -0.0`, same-bit `NaN`s are equal).
         impl PartialEq for $scalar {
             fn eq(&self, other: &Self) -> bool {
                 use $crate::Scalar;

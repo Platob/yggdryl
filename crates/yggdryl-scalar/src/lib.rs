@@ -1,11 +1,13 @@
 //! **yggdryl-scalar** — the Apache Arrow **scalar** layer.
 //!
-//! A scalar is a single, possibly-null value of a [`yggdryl_dtype`] data type. It is
-//! described by the same trait hierarchy shape as the [`dtype`](yggdryl_dtype) and
-//! [`field`](https://docs.rs/yggdryl-field) layers below:
+//! A scalar is a single value of a [`yggdryl_dtype`] data type. A scalar is **always
+//! present** — nullability is not a scalar property (it is modelled separately via a
+//! `NullType` value and, later, union types). It is described by the same trait hierarchy
+//! shape as the [`dtype`](yggdryl_dtype) and [`field`](https://docs.rs/yggdryl-field)
+//! layers below:
 //!
-//! * [`Scalar`] — the FFI-opaque base: [`is_null`](Scalar::is_null),
-//!   [`arrow_data_type`](Scalar::arrow_data_type), and the
+//! * [`Scalar`] — the FFI-opaque base:
+//!   [`arrow_data_type`](Scalar::arrow_data_type) and the
 //!   [`serialize_bytes`](Scalar::serialize_bytes) codec.
 //! * [`TypedScalar<DT, T>`] — the Rust-only extension exposing the typed
 //!   [`value`](TypedScalar::value) and the concrete data type `DT`.
@@ -16,9 +18,11 @@
 //! [`F64Scalar`]) plus [`BooleanScalar`], all stamped from one `primitive_scalar!`
 //! macro — the value↔bytes codec is delegated to the data type's
 //! [`TypedDataType`](yggdryl_dtype::TypedDataType), so `Boolean` is not a special case
-//! here. Each round-trips through bytes (a null flag then the value's little-endian bytes
-//! when present) and compares/hashes by those bytes, so the float scalars behave bitwise
-//! and a present value never equals a null.
+//! here. Each round-trips through its value's little-endian bytes and compares/hashes by
+//! those bytes, so the float scalars behave bitwise. Alongside them is the sui-generis
+//! [`NullScalar`] — the single (always-present) value of [`NullType`](yggdryl_dtype::NullType),
+//! `yggdryl`'s representation of a "null" value; it carries the unit `()` and serialises to
+//! zero bytes.
 
 mod primitive;
 
@@ -31,6 +35,7 @@ mod i64_scalar;
 mod i8_scalar;
 mod logical_scalar;
 mod nested_scalar;
+mod null_scalar;
 mod primitive_scalar;
 mod scalar;
 mod scalar_error;
@@ -52,6 +57,7 @@ pub use i64_scalar::I64Scalar;
 pub use i8_scalar::I8Scalar;
 pub use logical_scalar::LogicalScalar;
 pub use nested_scalar::NestedScalar;
+pub use null_scalar::NullScalar;
 pub use primitive_scalar::PrimitiveScalar;
 pub use scalar::Scalar;
 pub use scalar_error::ScalarError;

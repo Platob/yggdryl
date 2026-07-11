@@ -54,6 +54,13 @@ the matching typed [field](field.md) through the buffer → field bridge (see
     assert_eq!(buf.as_slice(), &[10, 20, 30]); // aligned, zero-copy
     ```
 
+!!! note "Null elements become the default"
+    In the bindings a `None` (Python) / `null` (Node) element in the constructor becomes the
+    type's default value (`0`, `False`) — so a nullable column materialises into a
+    non-nullable buffer: `I64Buffer([1, None, 3])` builds `[1, 0, 3]`. (The Rust `from_slice`
+    takes non-optional values; the default is
+    [`TypedDataType::default_value`](null.md).)
+
 ## Serialize to and from bytes
 
 `serialize_bytes` emits the values' little-endian bytes; `deserialize_bytes`

@@ -1,4 +1,4 @@
-//! [`I32Scalar`] — a single, possibly-null `int32` value.
+//! [`I32Scalar`] — a single `int32` value.
 
 use super::primitive::primitive_scalar;
 

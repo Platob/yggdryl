@@ -43,9 +43,21 @@ test('out-of-i64-range bigint names the remedy', () => {
 })
 
 test('mixed array is rejected', () => {
-  assert.throws(() => buffer([1n, 2.5]), /every element must be a bigint/)
+  assert.throws(() => buffer([1n, 2.5]), /element must be a bigint/)
 })
 
 test('unsupported element type is a guided error', () => {
   assert.throws(() => buffer(['a', 'b']), /boolean, bigint, and number/)
+})
+
+test('null becomes the type default', () => {
+  assert.ok(buffer([1n, null, 3n]).equals(new I64Buffer([1, 0, 3])))
+  assert.ok(buffer([1.5, null]).equals(new F64Buffer([1.5, 0])))
+  assert.ok(buffer([true, null, false]).equals(new BooleanBuffer([true, false, false])))
+  // The element type is inferred from the first non-null element, even with leading nulls.
+  assert.ok(buffer([null, 5n, null]).equals(new I64Buffer([0, 5, 0])))
+})
+
+test('all-null array is a guided error', () => {
+  assert.throws(() => buffer([null, null]), /every value is null/)
 })

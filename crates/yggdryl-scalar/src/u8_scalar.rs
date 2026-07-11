@@ -1,4 +1,4 @@
-//! [`U8Scalar`] — a single, possibly-null `uint8` value.
+//! [`U8Scalar`] — a single `uint8` value.
 
 use super::primitive::primitive_scalar;
 

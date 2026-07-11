@@ -22,11 +22,12 @@ use crate::{DTypeError, DataType};
 /// let bytes = dt.value_to_bytes(-5);
 /// assert_eq!(bytes, (-5_i32).to_le_bytes());
 /// assert_eq!(dt.value_from_bytes(&bytes).unwrap(), -5);
-/// assert_eq!(dt.native_default(), 0);
+/// assert_eq!(dt.default_value(), 0);
 /// ```
 pub trait TypedDataType<T>: DataType {
-    /// The zero / default value of this type.
-    fn native_default(&self) -> T;
+    /// The zero / default native value of this type (`0`, `false`, `()` for `null`). This
+    /// is what a null substitutes to when building a buffer from possibly-null values.
+    fn default_value(&self) -> T;
 
     /// Serialises one value to its little-endian bytes.
     fn value_to_bytes(&self, value: T) -> Vec<u8>;

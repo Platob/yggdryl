@@ -18,12 +18,18 @@
 //! | array of `bigint` (i64 range)   | `I64Buffer`     |
 //! | array of `number`               | `F64Buffer`     |
 //!
-//! An empty array, a mixed array, an out-of-`i64`-range `bigint`, or an unsupported
-//! element type throws an `Error` naming the explicit constructor to use.
+//! The element type is inferred from the **first non-null** element, and a `null` /
+//! `undefined` element becomes that type's
+//! [`default_value`](yggdryl_dtype::TypedDataType::default_value) (`0n` / `0` / `false`) —
+//! so a nullable column materialises into a non-nullable buffer. An empty array, an
+//! all-null array, a mixed array, an out-of-`i64`-range `bigint`, or an unsupported element
+//! type throws an `Error` naming the explicit constructor to use.
 
 use napi::bindgen_prelude::{Buffer, Either, Either4};
 use napi::{JsBigInt, JsUnknown, ValueType};
 use napi_derive::napi;
+
+use yggdryl_dtype::{BooleanType, F64Type, I64Type, TypedDataType};
 
 use crate::buffer::{BooleanBuffer, F64Buffer, I64Buffer};
 use crate::io::ByteBuffer;
@@ -31,6 +37,11 @@ use crate::io::ByteBuffer;
 /// Builds a thrown JS `Error` from a message.
 fn to_error(message: &str) -> napi::Error {
     napi::Error::from_reason(message.to_string())
+}
+
+/// Whether a JS value is `null` or `undefined` (a "null" element).
+fn is_nullish(ty: ValueType) -> bool {
+    matches!(ty, ValueType::Null | ValueType::Undefined)
 }
 
 /// Builds the typed buffer matching the runtime JS type of `values`, inferring the
@@ -51,62 +62,94 @@ pub fn buffer(
         Either::B(items) => items,
     };
 
-    let first = items.first().ok_or_else(|| {
-        to_error(
+    if items.is_empty() {
+        return Err(to_error(
             "cannot infer the element type from an empty array; call an explicit \
              constructor, e.g. new yggdryl.buffer.I64Buffer([])",
+        ));
+    }
+
+    // Infer the element type from the first non-null element; `null` / `undefined` become
+    // the type's default value, so a nullable column materialises into a non-nullable buffer.
+    let mut kind = None;
+    for item in &items {
+        let ty = item.get_type()?;
+        if !is_nullish(ty) {
+            kind = Some(ty);
+            break;
+        }
+    }
+    let kind = kind.ok_or_else(|| {
+        to_error(
+            "cannot infer the element type: every value is null; call an explicit \
+             constructor, e.g. new yggdryl.buffer.I64Buffer([...])",
         )
     })?;
 
-    match first.get_type()? {
+    match kind {
         ValueType::Boolean => {
+            let default = BooleanType::new().default_value();
             let mut bits = Vec::with_capacity(items.len());
             for item in items {
-                if item.get_type()? != ValueType::Boolean {
+                let ty = item.get_type()?;
+                if is_nullish(ty) {
+                    bits.push(default);
+                } else if ty == ValueType::Boolean {
+                    bits.push(item.coerce_to_bool()?.get_value()?);
+                } else {
                     return Err(to_error(
-                        "cannot infer a BooleanBuffer: every element must be a boolean; \
-                         use an explicit yggdryl.buffer constructor for a mixed array",
+                        "cannot infer a BooleanBuffer: every non-null element must be a \
+                         boolean; use an explicit yggdryl.buffer constructor for a mixed array",
                     ));
                 }
-                bits.push(item.coerce_to_bool()?.get_value()?);
             }
             Ok(Either4::C(BooleanBuffer {
                 inner: yggdryl_buffer::BooleanBuffer::from_bits(&bits),
             }))
         }
         ValueType::BigInt => {
+            let default = I64Type::new().default_value();
             let mut ints = Vec::with_capacity(items.len());
             for item in items {
-                if item.get_type()? != ValueType::BigInt {
+                let ty = item.get_type()?;
+                if is_nullish(ty) {
+                    ints.push(default);
+                } else if ty == ValueType::BigInt {
+                    let big = unsafe { item.cast::<JsBigInt>() };
+                    let (value, lossless) = big.get_i64()?;
+                    if !lossless {
+                        return Err(to_error(
+                            "cannot infer an I64Buffer: a bigint is out of the signed 64-bit \
+                             range; use raw bytes or an explicit constructor for wider integers",
+                        ));
+                    }
+                    ints.push(value);
+                } else {
                     return Err(to_error(
-                        "cannot infer an I64Buffer: every element must be a bigint; \
+                        "cannot infer an I64Buffer: every non-null element must be a bigint; \
                          use an explicit yggdryl.buffer constructor for a mixed array",
                     ));
                 }
-                let big = unsafe { item.cast::<JsBigInt>() };
-                let (value, lossless) = big.get_i64()?;
-                if !lossless {
-                    return Err(to_error(
-                        "cannot infer an I64Buffer: a bigint is out of the signed 64-bit \
-                         range; use raw bytes or an explicit constructor for wider integers",
-                    ));
-                }
-                ints.push(value);
             }
             Ok(Either4::A(I64Buffer {
                 inner: yggdryl_buffer::I64Buffer::from_vec(ints),
             }))
         }
         ValueType::Number => {
+            let default = F64Type::new().default_value();
             let mut floats = Vec::with_capacity(items.len());
             for item in items {
-                if item.get_type()? != ValueType::Number {
+                let ty = item.get_type()?;
+                if is_nullish(ty) {
+                    floats.push(default);
+                } else if ty == ValueType::Number {
+                    floats.push(item.coerce_to_number()?.get_double()?);
+                } else {
                     return Err(to_error(
-                        "cannot infer an F64Buffer: every element must be a number; \
+                        "cannot infer an F64Buffer: every non-null element must be a number; \
                          use an explicit yggdryl.buffer constructor for a mixed array",
                     ));
                 }
-                floats.push(item.coerce_to_number()?.get_double()?);
             }
             Ok(Either4::B(F64Buffer {
                 inner: yggdryl_buffer::F64Buffer::from_vec(floats),

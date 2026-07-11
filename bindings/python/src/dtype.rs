@@ -1,7 +1,8 @@
 //! The `yggdryl.dtype` submodule — Arrow primitive data types.
 //!
 //! Exposes one class per primitive data type (`I8Type` … `F64Type`, plus the
-//! bit-packed `BooleanType`), mirroring `yggdryl_dtype`. Each carries the type-identity
+//! bit-packed `BooleanType` and the sui-generis `NullType`), mirroring `yggdryl_dtype`.
+//! Each carries the type-identity
 //! surface — `name`, `byte_width`, `primitive_tag`, the byte codec
 //! (`serialize_bytes` / `deserialize_bytes`), value semantics (`==` / `hash` / pickle),
 //! and `repr`. The Arrow `to_arrow` / `from_arrow` interop is **Rust-only** (an
@@ -119,6 +120,7 @@ py_primitive_dtype! {
     (F32Type, "float32", Some("f32")),
     (F64Type, "float64", Some("f64")),
     (BooleanType, "boolean", None),
+    (NullType, "null", None),
 }
 
 /// Populates the `dtype` submodule.
@@ -134,5 +136,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<F32Type>()?;
     module.add_class::<F64Type>()?;
     module.add_class::<BooleanType>()?;
+    module.add_class::<NullType>()?;
     Ok(())
 }

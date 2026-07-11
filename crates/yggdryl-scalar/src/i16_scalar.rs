@@ -1,4 +1,4 @@
-//! [`I16Scalar`] — a single, possibly-null `int16` value.
+//! [`I16Scalar`] — a single `int16` value.
 
 use super::primitive::primitive_scalar;
 

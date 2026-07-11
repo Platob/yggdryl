@@ -133,3 +133,10 @@ test('buffer namespace surface + Node omissions', () => {
   // U64Buffer is intentionally omitted (no native napi u64 scalar)
   assert.equal(yggdryl.buffer.U64Buffer, undefined)
 })
+
+test('null element becomes the type default', () => {
+  const { F64Buffer, BooleanBuffer } = yggdryl.buffer
+  assert.ok(new I64Buffer([1, null, 3]).equals(new I64Buffer([1, 0, 3])))
+  assert.ok(new F64Buffer([null, 2.5]).equals(new F64Buffer([0, 2.5])))
+  assert.ok(new BooleanBuffer([true, null]).equals(new BooleanBuffer([true, false])))
+})

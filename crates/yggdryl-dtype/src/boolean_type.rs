@@ -83,10 +83,14 @@ impl DataType for BooleanType {
     fn serialize_bytes(&self) -> Vec<u8> {
         Vec::new()
     }
+
+    fn default_any_value(&self) -> Box<dyn core::any::Any> {
+        Box::new(<Self as TypedDataType<bool>>::default_value(self))
+    }
 }
 
 impl TypedDataType<bool> for BooleanType {
-    fn native_default(&self) -> bool {
+    fn default_value(&self) -> bool {
         false
     }
 

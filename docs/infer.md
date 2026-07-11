@@ -28,6 +28,42 @@ so an integer buffer is inferred only from `bigint` elements.
 In Python `bool` is checked before `int` (a `bool` *is* an `int`), so a sequence of
 booleans always infers a `BooleanBuffer`.
 
+## Nulls become the type default
+
+The element type is inferred from the **first non-null** element, and a `None` (Python) /
+`null` (Node) element becomes that type's default value (`0` / `0.0` / `False`) — so a
+nullable column materialises into a non-nullable buffer. The explicit
+[buffer](buffer.md) constructors fill nulls the same way.
+
+=== "Python"
+
+    ```python
+    from yggdryl.infer import buffer
+    from yggdryl.buffer import I64Buffer
+
+    assert buffer([1, None, 3]) == I64Buffer([1, 0, 3])    # None -> 0 (the i64 default)
+    assert buffer([None, 5, None]) == I64Buffer([0, 5, 0]) # type from the first non-null
+    ```
+
+=== "Node"
+
+    ```js
+    const { buffer } = require('yggdryl').infer
+    const { I64Buffer } = require('yggdryl').buffer
+
+    console.assert(buffer([1n, null, 3n]).equals(new I64Buffer([1, 0, 3])))   // null -> 0
+    console.assert(buffer([null, 5n, null]).equals(new I64Buffer([0, 5, 0])))  // type from first non-null
+    ```
+
+=== "Rust"
+
+    ```rust
+    // The core buffers are non-nullable; a type's default is `TypedDataType::default_value`.
+    use yggdryl_dtype::{I64Type, TypedDataType};
+
+    assert_eq!(I64Type::new().default_value(), 0);
+    ```
+
 ## Infer a buffer
 
 === "Python"
@@ -68,9 +104,9 @@ booleans always infers a `BooleanBuffer`.
 
 ## Guided errors
 
-An empty sequence, a mixed sequence, an out-of-`i64`-range integer, or an unsupported
-element type raises an error naming the explicit constructor to reach for instead
-(`CLAUDE.md` rule 12).
+An empty sequence, an all-null sequence, a mixed sequence, an out-of-`i64`-range integer,
+or an unsupported element type raises an error naming the explicit constructor to reach for
+instead (`CLAUDE.md` rule 12).
 
 === "Python"
 

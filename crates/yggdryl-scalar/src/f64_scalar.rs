@@ -1,4 +1,4 @@
-//! [`F64Scalar`] — a single, possibly-null `float64` value.
+//! [`F64Scalar`] — a single `float64` value.
 
 use super::primitive::primitive_scalar;
 

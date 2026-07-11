@@ -1,4 +1,4 @@
-//! [`F32Scalar`] — a single, possibly-null `float32` value.
+//! [`F32Scalar`] — a single `float32` value.
 
 use super::primitive::primitive_scalar;
 

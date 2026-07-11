@@ -21,37 +21,36 @@ const ALL_NAMES = [
   'BooleanScalar',
 ]
 
-test('present and null', () => {
+test('value and data type', () => {
   const present = new I64Scalar(7n)
-  assert.equal(present.value, 7n)
-  assert.equal(present.isNull, false)
+  assert.equal(present.value, 7n) // always present — a plain value
   assert.ok(present.dataType.equals(new I64Type()))
-
-  const nul = new I64Scalar(null)
-  assert.equal(nul.value, null)
-  assert.equal(nul.isNull, true)
-  assert.equal(new I64Scalar().isNull, true) // no-arg constructor
-  assert.equal(I64Scalar.null().isNull, true) // factory
+  assert.equal(present.isNull, undefined) // nullability is not a scalar concern
 })
 
-test('byte round trip present and null', () => {
+test('byte round trip', () => {
+  // A scalar serialises to just its value's little-endian bytes (no null flag).
   const present = new U64Scalar(2n ** 63n) // bigint value
-  assert.ok(U64Scalar.deserializeBytes(present.serializeBytes()).equals(present))
-  assert.equal(present.serializeBytes()[0], 1) // present flag
+  const raw = present.serializeBytes()
+  assert.equal(raw.length, 8)
+  assert.ok(U64Scalar.deserializeBytes(raw).equals(present))
+})
 
-  const nul = I64Scalar.null()
-  assert.ok(nul.serializeBytes().equals(Buffer.from([0])))
-  assert.ok(I64Scalar.deserializeBytes(Buffer.from([0])).equals(nul))
+test('64-bit scalars reject out-of-range bigints', () => {
+  // A bigint past the 64-bit range throws instead of being truncated by get_i64/get_u64.
+  assert.throws(() => new I64Scalar(2n ** 63n), /out of range for int64/)
+  assert.throws(() => new U64Scalar(-1n), /out of range for uint64/)
+  assert.throws(() => new U64Scalar(2n ** 64n), /out of range for uint64/)
 })
 
 test('deserialize errors are guided', () => {
-  assert.throws(() => I64Scalar.deserializeBytes(Buffer.alloc(0)), /null flag/)
-  assert.throws(() => I64Scalar.deserializeBytes(Buffer.from([2])), /expected 0/)
+  // The only decode failure is value bytes that don't fit the data type's width.
+  assert.throws(() => I64Scalar.deserializeBytes(Buffer.alloc(0)))
+  assert.throws(() => I64Scalar.deserializeBytes(Buffer.from([0, 0, 0])))
 })
 
 test('float value semantics are bitwise', () => {
   assert.ok(!new F64Scalar(0.0).equals(new F64Scalar(-0.0))) // distinct bits
-  assert.ok(!new F64Scalar(1.0).equals(F64Scalar.null()))
   assert.ok(new F64Scalar(NaN).equals(new F64Scalar(NaN))) // same bits
 })
 
@@ -66,17 +65,22 @@ test('value semantics', () => {
   assert.ok(a.equals(new I64Scalar(5n)))
   assert.ok(!a.equals(new I64Scalar(6n)))
   assert.equal(a.hashCode(), new I64Scalar(5n).hashCode())
-  assert.ok(I64Scalar.null().equals(I64Scalar.null()))
 })
 
 test('boolean scalar', () => {
   assert.equal(new BooleanScalar(true).value, true)
   assert.equal(new BooleanScalar(false).value, false)
-  assert.equal(BooleanScalar.null().isNull, true)
 })
 
 test('scalar namespace surface', () => {
   for (const name of ALL_NAMES) {
     assert.ok(yggdryl.scalar[name] !== undefined, name)
   }
+})
+
+test('default scalar', () => {
+  assert.ok(I64Scalar.defaultScalar().equals(new I64Scalar(0n)))
+  assert.equal(I64Scalar.defaultScalar().value, 0n)
+  assert.ok(F64Scalar.defaultScalar().equals(new F64Scalar(0)))
+  assert.equal(BooleanScalar.defaultScalar().value, false)
 })

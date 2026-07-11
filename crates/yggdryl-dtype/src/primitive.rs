@@ -95,10 +95,14 @@ macro_rules! primitive_type {
             fn serialize_bytes(&self) -> Vec<u8> {
                 Vec::new()
             }
+
+            fn default_any_value(&self) -> Box<dyn core::any::Any> {
+                Box::new(<Self as $crate::TypedDataType<$native>>::default_value(self))
+            }
         }
 
         impl $crate::TypedDataType<$native> for $name {
-            fn native_default(&self) -> $native {
+            fn default_value(&self) -> $native {
                 <$native as yggdryl_buffer::IoPrimitive>::ZERO
             }
 

@@ -1,4 +1,4 @@
-//! [`I8Scalar`] — a single, possibly-null `int8` value.
+//! [`I8Scalar`] — a single `int8` value.
 
 use super::primitive::primitive_scalar;
 

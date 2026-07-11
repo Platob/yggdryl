@@ -1,4 +1,4 @@
-//! [`I64Scalar`] — a single, possibly-null `int64` value.
+//! [`I64Scalar`] — a single `int64` value.
 
 use super::primitive::primitive_scalar;
 

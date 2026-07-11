@@ -10,8 +10,8 @@ use crate::Scalar;
 ///
 /// ```
 /// use yggdryl_scalar::{NestedScalar, Scalar};
-/// fn is_null<S: NestedScalar>(scalar: &S) -> bool {
-///     scalar.is_null()
+/// fn to_bytes<S: NestedScalar>(scalar: &S) -> Vec<u8> {
+///     scalar.serialize_bytes()
 /// }
 /// ```
 pub trait NestedScalar: Scalar {}
