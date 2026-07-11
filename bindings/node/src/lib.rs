@@ -6,7 +6,8 @@
 //! byte-IO resources), all mirroring `yggdryl-core`; `yggdryl.buffer` (the typed
 //! native-type buffers, mirroring `yggdryl-buffer`); `yggdryl.dtype` / `yggdryl.field` /
 //! `yggdryl.scalar` (the Arrow primitive data types, fields, and scalars, mirroring
-//! `yggdryl-dtype` / `yggdryl-field` / `yggdryl-scalar`), plus `yggdryl.infer`
+//! `yggdryl-dtype` / `yggdryl-field` / `yggdryl-scalar`); `yggdryl.decimal` (the
+//! fixed-width decimals, mirroring `yggdryl-core`'s `decimal` module); plus `yggdryl.infer`
 //! (a binding-only convenience that
 //! reads a value's runtime type and builds the matching buffer — `CLAUDE.md` rule 13,
 //! so it has no core counterpart) and `yggdryl.converter` (a dtype-keyed facade over
@@ -20,6 +21,7 @@ pub mod buffer;
 pub mod compression;
 pub mod converter;
 pub mod core;
+pub mod decimal;
 pub mod dtype;
 pub mod field;
 pub mod infer;
