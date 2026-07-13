@@ -1,12 +1,12 @@
 # yggdryl
 
-A **Rust-core** library with **Python** and **Node.js** extensions. All logic lives
-in the Rust crates; the bindings are thin wrappers, so the three languages behave
-identically. Functionality is grouped into namespaces mirroring `yggdryl-core`:
-`core` (the foundations), [`compression`](compression.md) (codecs like gzip),
-[`io`](io.md) (positioned byte buffers), and [`buffer`](buffer.md) (typed
-native-type buffers), plus the [wide integers](wide_ints.md) (`i96` / `i128` /
-`i256`) that ride the IO cursors.
+An **Apache Arrow-backed** Rust library with **Python** and **Node.js** extensions. All
+logic lives in the Rust core (`yggdryl-core`); the bindings are thin wrappers, so the three
+languages behave identically — every feature is added to the core first, then mirrored,
+method-for-method, in both extensions.
+
+Today the surface is the version string plus the [URI value types](uri.md) (`Uri` / `Url` /
+`Authority`) in the core's `io` module; more is added here as the core grows.
 
 ## Install
 
@@ -28,31 +28,67 @@ native-type buffers), plus the [wide integers](wide_ints.md) (`i96` / `i128` /
     cargo add yggdryl-core
     ```
 
-## Hello
+## Version
+
+The one value every surface exposes — the minimal end-to-end example that the Python and
+Node extensions both wire through to the Rust core.
 
 === "Python"
 
     ```python
-    from yggdryl import core
+    import yggdryl
 
-    print(core.version())
-    core.hello()  # -> Hello, world!
+    print(yggdryl.version())  # -> "0.1.1"
     ```
 
 === "Node"
 
     ```js
-    const { core } = require('yggdryl')
+    const yggdryl = require('yggdryl')
 
-    console.log(core.version())
-    core.hello() // -> Hello, world!
+    console.log(yggdryl.version()) // -> "0.1.1"
     ```
 
 === "Rust"
 
     ```rust
     fn main() {
-        println!("{}", yggdryl_core::version());
-        yggdryl_core::hello(); // -> Hello, world!
+        println!("{}", yggdryl_core::version()); // -> "0.1.1"
     }
+    ```
+
+## URIs and URLs
+
+RFC 3986 URIs, absolute URLs, and authorities — parsed from scratch, doubling as
+POSIX-normalized filesystem paths, with value semantics (equal, hashable, and
+byte-serializable) across all three languages. See [URIs and URLs](uri.md).
+
+=== "Python"
+
+    ```python
+    from yggdryl.uri import Uri
+
+    uri = Uri.parse("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag")
+    assert uri.host == "example.com"
+    assert uri.extensions == ["tar", "gz"]
+    ```
+
+=== "Node"
+
+    ```js
+    const { Uri } = require('yggdryl').uri
+
+    const uri = Uri.parse('https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag')
+    console.assert(uri.host === 'example.com')
+    console.assert(JSON.stringify(uri.extensions) === '["tar","gz"]')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::Uri;
+
+    let uri = Uri::parse("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag").unwrap();
+    assert_eq!(uri.host(), Some("example.com"));
+    assert_eq!(uri.extensions(), vec!["tar", "gz"]);
     ```

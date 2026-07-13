@@ -18,24 +18,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # `cargo clippy --workspace` compiles the pyo3 binding's build script, which needs a
+      # discoverable Python interpreter — setup-python puts one on PATH.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@v5
-      # The bindings build zlib-ng (the `gzip-zlib-ng` feature) via CMake + Ninja,
-      # exercised by the `--workspace` / `--all-features` steps below.
-      - name: Build deps (CMake, Ninja)
-        run: python scripts/setup-build-deps.py
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Clippy (all features)
-        run: cargo clippy -p yggdryl-core --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test
-      - name: Test (all features)
-        run: cargo test -p yggdryl-core --all-features
 
   python:
     name: Python extension (${{ matrix.os }})
@@ -51,9 +44,7 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v5
-      - name: Build deps (CMake, Ninja for zlib-ng)
-        run: python scripts/setup-build-deps.py
-      - name: Build & install (via maturin build backend)
+      - name: Build & install (via the maturin build backend)
         run: uv pip install --system ./bindings/python pytest
       - name: Test
         run: uv run --no-project pytest bindings/python/tests
@@ -74,15 +65,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: astral-sh/setup-uv@v5
-      - name: Build deps (CMake, Ninja for zlib-ng)
-        run: python ../../scripts/setup-build-deps.py
       - name: Install deps
         run: npm install
       - name: Build
         run: npm run build
       - name: Test
         run: npm test
+
+  docs:
+    name: Docs build (strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install MkDocs
+        run: uv pip install --system mkdocs-material
+      # `--strict` fails the build on any warning (a broken link, a page missing from nav),
+      # so the published site never drifts from the docs in the tree.
+      - name: Build
+        run: uv run --no-project mkdocs build --strict

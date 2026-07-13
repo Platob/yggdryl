@@ -1,19 +1,17 @@
 name: Release
 
-# Push to `main`: the `check` job reads the workspace version (the single source
-# of truth, `[workspace.package].version` in the root Cargo.toml) and looks for a
-# matching `v<version>` git tag. If the tag is absent the version was bumped, so
-# the workflow builds, runs the gate, publishes to all three registries, and then
-# creates the tag and a GitHub Release. If the tag already exists nothing runs
-# beyond `check`. `workflow_dispatch` behaves the same (handy to retry a bump).
+# Push to `main`: the `check` job reads the workspace version (the single source of truth,
+# `[workspace.package].version` in the root Cargo.toml) and looks for a matching `v<version>`
+# git tag. If the tag is absent the version was bumped, so the workflow builds, runs the
+# gate, publishes to all three registries, and then creates the tag and a GitHub Release. If
+# the tag already exists nothing runs beyond `check`. `workflow_dispatch` behaves the same.
 #
-# To cut a release: bump `version` under `[workspace.package]` and push to main.
-# crates.io and the Python wheels inherit it (`version.workspace = true`); the npm
-# package.json is synced from it at publish time. Inter-crate deps are caret
-# ranges, so only the workspace version needs changing for a 0.1.x bump.
+# To cut a release: bump `version` under `[workspace.package]` and push to main. crates.io
+# and the Python wheels inherit it (`version.workspace = true`); the npm package.json is
+# synced from it at publish time.
 #
-# Required repository secrets (Settings → Secrets and variables → Actions):
-#   CARGO_REGISTRY_TOKEN  crates.io API token  (Rust crates)
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   CARGO_REGISTRY_TOKEN  crates.io API token  (Rust crate)
 #   PYPI_API_TOKEN        PyPI API token       (Python wheels)
 #   NPM_TOKEN             npm automation token (Node addon)
 
@@ -65,8 +63,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Build deps (CMake, Ninja for the zlib-ng bindings)
-        run: python scripts/setup-build-deps.py
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test
@@ -86,17 +82,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # Host-side deps (used for the Windows/macOS runner builds).
-      - name: Build deps (CMake, Ninja for zlib-ng)
-        run: python scripts/setup-build-deps.py
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
           args: --release --out dist --manifest-path bindings/python/Cargo.toml
-          # The Linux wheel builds in a manylinux container: install CMake + Ninja
-          # (and the C toolchain is already present) so zlib-ng can compile.
-          before-script-linux: pip install cmake ninja
       - name: Build sdist (Linux only)
         if: matrix.os == 'ubuntu-latest'
         uses: PyO3/maturin-action@v1
@@ -126,11 +116,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Build deps (CMake, Ninja for zlib-ng)
-        run: python ../../scripts/setup-build-deps.py
       - name: Install deps
         run: npm install
       - name: Build addon
@@ -152,11 +137,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # Publish in dependency order: each layer must be on crates.io before the
-      # layer above it resolves.
       - name: cargo publish
-        run: |
-          cargo publish -p yggdryl-core
+        run: cargo publish -p yggdryl-core
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 

@@ -1,0 +1,931 @@
+//! [`Uri`] — an RFC 3986 generic URI (or a POSIX-normalized filesystem path).
+
+use core::fmt;
+use core::fmt::Write as _;
+use std::borrow::Cow;
+
+use super::{percent, Authority, HashWrite, UriError, Url};
+
+/// A generic URI split into its RFC 3986 components, doubling as a filesystem-path
+/// abstraction. Any component may be absent; a bare path (no scheme, no authority) is a
+/// perfectly good `Uri`.
+///
+/// DESIGN: the parser is written from scratch against RFC 3986 Appendix B rather than
+/// pulling the `url` crate — the core is the minimal-dependency foundation (its only
+/// dependency is `arrow-buffer`), and a full URL crate would drag in `idna`,
+/// `percent-encoding`, and friends for a component split we do compactly here.
+///
+/// DESIGN: **paths are standardized POSIX slash-based.** A Windows drive path
+/// (`C:\Users\a.txt`), a UNC path (`\\server\share`), or any back-slashed path is
+/// detected and every `\` is rewritten to `/` on the way in, so the stored `path` always
+/// uses forward slashes. A single letter followed by `:` and a slash is treated as a
+/// **drive letter** kept in the path — never a one-letter URI scheme.
+///
+/// ```
+/// use yggdryl_core::io::Uri;
+///
+/// let uri = Uri::parse("https://user:pw@example.com:8080/a/b.txt?q=1#frag").unwrap();
+/// assert_eq!(uri.scheme(), Some("https"));
+/// assert_eq!(uri.host(), Some("example.com"));
+/// assert_eq!(uri.port(), Some(8080));
+/// assert_eq!(uri.path(), "/a/b.txt");
+/// assert_eq!(uri.name(), Some("b.txt"));
+/// assert_eq!(uri.extension(), Some("txt"));
+/// assert_eq!(uri.query(), Some("q=1"));
+/// assert_eq!(uri.fragment(), Some("frag"));
+///
+/// // A Windows drive path is normalized to POSIX slashes, with no scheme.
+/// let path = Uri::parse(r"C:\Users\x\a.tar.gz").unwrap();
+/// assert_eq!(path.scheme(), None);
+/// assert_eq!(path.path(), "C:/Users/x/a.tar.gz");
+/// assert_eq!(path.extensions(), vec!["tar", "gz"]);
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct Uri {
+    scheme: Option<String>,
+    authority: Option<Authority>,
+    path: String,
+    query: Option<String>,
+    fragment: Option<String>,
+}
+
+impl Uri {
+    /// Parses `s` into its RFC 3986 components, or normalizes a bare filesystem path.
+    ///
+    /// The split follows RFC 3986 Appendix B: optional `scheme ":"`, optional
+    /// `"//" authority`, `path`, optional `"?" query`, optional `"#" fragment`; the
+    /// authority is `[ userinfo "@" ] host [ ":" port ]`. A Windows drive/UNC/back-slashed
+    /// path is instead routed through [`from_path`](Uri::from_path) and slash-normalized.
+    ///
+    /// # Errors
+    /// [`UriError::EmptyScheme`] / [`UriError::InvalidScheme`] for a malformed scheme,
+    /// [`UriError::InvalidPort`] for a non-numeric or out-of-range port.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::parse("mailto:a@b.com").unwrap().scheme(), Some("mailto"));
+    /// assert_eq!(Uri::parse("/a/b/c").unwrap().path(), "/a/b/c");
+    /// ```
+    pub fn parse(s: &str) -> Result<Uri, UriError> {
+        // DESIGN: filesystem paths are detected up front and normalized to POSIX slashes.
+        // A drive path (`X:\` / `X:/`) or UNC path (`\\…`) is unambiguous; any other
+        // scheme-less, back-slashed string is a Windows relative path.
+        if is_drive_path(s) || is_unc_path(s) {
+            return Ok(Uri::from_path(s));
+        }
+
+        let (scheme, rest) = split_scheme(s)?;
+
+        let (authority, after_authority) = if let Some(after) = rest.strip_prefix("//") {
+            let end = after.find(['/', '?', '#']).unwrap_or(after.len());
+            (Some(parse_authority(&after[..end])?), &after[end..])
+        } else {
+            (None, rest)
+        };
+
+        let (before_fragment, fragment) = match after_authority.split_once('#') {
+            Some((head, frag)) => (head, Some(frag.to_string())),
+            None => (after_authority, None),
+        };
+        let (path_str, query) = match before_fragment.split_once('?') {
+            Some((head, q)) => (head, Some(q.to_string())),
+            None => (before_fragment, None),
+        };
+
+        // A scheme-less, authority-less, back-slashed input is a bare Windows path.
+        if scheme.is_none() && authority.is_none() && path_str.contains('\\') {
+            let mut uri = Uri::from_path(path_str);
+            uri.query = query;
+            uri.fragment = fragment;
+            return Ok(uri);
+        }
+
+        Ok(Uri {
+            scheme,
+            authority,
+            path: normalize_slashes(path_str),
+            query,
+            fragment,
+        })
+    }
+
+    /// Builds a scheme-less, authority-less `Uri` from a filesystem path, rewriting every
+    /// back-slash to a forward slash so the stored path is POSIX slash-based.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::from_path(r"a\b\c").path(), "a/b/c");
+    /// assert_eq!(Uri::from_path("/a/b/c").path(), "/a/b/c");
+    /// ```
+    pub fn from_path(path: &str) -> Uri {
+        Uri {
+            path: percent::encode_owned(normalize_slashes(path), percent::is_path_safe),
+            ..Uri::default()
+        }
+    }
+
+    /// The scheme, if any.
+    pub fn scheme(&self) -> Option<&str> {
+        self.scheme.as_deref()
+    }
+
+    /// The authority, if any.
+    pub fn authority(&self) -> Option<&Authority> {
+        self.authority.as_ref()
+    }
+
+    /// The userinfo user, if this URI has an authority carrying one.
+    pub fn user(&self) -> Option<&str> {
+        self.authority.as_ref().and_then(Authority::user)
+    }
+
+    /// The userinfo password, if this URI has an authority carrying one.
+    pub fn password(&self) -> Option<&str> {
+        self.authority.as_ref().and_then(Authority::password)
+    }
+
+    /// The host, if this URI has an authority.
+    pub fn host(&self) -> Option<&str> {
+        self.authority.as_ref().map(Authority::host)
+    }
+
+    /// The port, if this URI has an authority carrying one.
+    pub fn port(&self) -> Option<u16> {
+        self.authority.as_ref().and_then(Authority::port)
+    }
+
+    /// The path, always POSIX slash-normalized (possibly empty).
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The query, if any (the text after `?`, without the `?`).
+    pub fn query(&self) -> Option<&str> {
+        self.query.as_deref()
+    }
+
+    /// The fragment, if any (the text after `#`, without the `#`).
+    pub fn fragment(&self) -> Option<&str> {
+        self.fragment.as_deref()
+    }
+
+    /// The last non-empty path segment (the filename), or `None` for an empty or
+    /// directory-like path (one ending in `/`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::from_path("/a/b/c.txt").name(), Some("c.txt"));
+    /// assert_eq!(Uri::from_path("/a/b/").name(), None);
+    /// ```
+    pub fn name(&self) -> Option<&str> {
+        let seg = self.path.rsplit('/').next().unwrap_or("");
+        if seg.is_empty() {
+            None
+        } else {
+            Some(seg)
+        }
+    }
+
+    /// The filename without its **last** extension. A leading dot marks a hidden file
+    /// (`.bashrc`) whose dot is not an extension separator, so its stem is the whole name.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::from_path("/x/archive.tar.gz").stem(), Some("archive.tar"));
+    /// assert_eq!(Uri::from_path("/x/.bashrc").stem(), Some(".bashrc"));
+    /// ```
+    pub fn stem(&self) -> Option<&str> {
+        let name = self.name()?;
+        match name.rfind('.') {
+            Some(i) if i > 0 => Some(&name[..i]),
+            _ => Some(name),
+        }
+    }
+
+    /// The last extension of the filename (without the dot), or `None` for a name with no
+    /// extension, a trailing dot, or a hidden dotfile (`.bashrc`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::from_path("/x/archive.tar.gz").extension(), Some("gz"));
+    /// assert_eq!(Uri::from_path("/x/.bashrc").extension(), None);
+    /// ```
+    pub fn extension(&self) -> Option<&str> {
+        let name = self.name()?;
+        match name.rfind('.') {
+            Some(i) if i > 0 && i + 1 < name.len() => Some(&name[i + 1..]),
+            _ => None,
+        }
+    }
+
+    /// Every extension of a multi-dot filename, outermost-last
+    /// (`archive.tar.gz` → `["tar", "gz"]`). A hidden dotfile's leading dot is ignored, so
+    /// it contributes no extension. Empty for a name with no extension or no filename.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::from_path("/x/a.b.c.d").extensions(), vec!["b", "c", "d"]);
+    /// assert!(Uri::from_path("/x/.bashrc").extensions().is_empty());
+    /// ```
+    pub fn extensions(&self) -> Vec<String> {
+        let Some(name) = self.name() else {
+            return Vec::new();
+        };
+        // A trailing dot yields no valid outermost extension — stay coherent with
+        // `extension()` (which returns `None` for a trailing dot) so `extension()` always
+        // equals `extensions().last()`.
+        if name.ends_with('.') {
+            return Vec::new();
+        }
+        // Skip the first character so a leading dot (a hidden file) is not a separator.
+        let first = name.chars().next().map(char::len_utf8).unwrap_or(0);
+        match name[first..].find('.') {
+            Some(rel) => name[first + rel + 1..]
+                .split('.')
+                .filter(|part| !part.is_empty())
+                .map(str::to_string)
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    // ---- builder mutators (consume + return Self) ----------------------------------
+
+    /// Returns this URI with the scheme set.
+    pub fn with_scheme(mut self, scheme: &str) -> Self {
+        self.set_scheme(scheme);
+        self
+    }
+
+    /// Returns this URI with the host set (creating an authority if absent).
+    pub fn with_host(mut self, host: &str) -> Self {
+        self.set_host(host);
+        self
+    }
+
+    /// Returns this URI with the port set (creating an authority if absent).
+    pub fn with_port(mut self, port: u16) -> Self {
+        self.set_port(port);
+        self
+    }
+
+    /// Returns this URI with the userinfo user set (creating an authority if absent).
+    pub fn with_user(mut self, user: &str) -> Self {
+        self.set_user(user);
+        self
+    }
+
+    /// Returns this URI with the userinfo password set (creating an authority if absent).
+    pub fn with_password(mut self, password: &str) -> Self {
+        self.set_password(password);
+        self
+    }
+
+    /// Returns this URI with the path set, re-normalized to POSIX slashes.
+    pub fn with_path(mut self, path: &str) -> Self {
+        self.set_path(path);
+        self
+    }
+
+    /// Returns this URI with the query set.
+    pub fn with_query(mut self, query: &str) -> Self {
+        self.set_query(query);
+        self
+    }
+
+    /// Returns this URI with the fragment set.
+    pub fn with_fragment(mut self, fragment: &str) -> Self {
+        self.set_fragment(fragment);
+        self
+    }
+
+    // ---- in-place setters ----------------------------------------------------------
+
+    /// Sets the scheme.
+    pub fn set_scheme(&mut self, scheme: &str) {
+        self.scheme = Some(scheme.to_string());
+    }
+
+    /// Sets the host, creating an authority if this URI had none.
+    pub fn set_host(&mut self, host: &str) {
+        self.authority_mut().set_host(host);
+    }
+
+    /// Sets the port, creating an authority if this URI had none.
+    pub fn set_port(&mut self, port: u16) {
+        self.authority_mut().set_port(Some(port));
+    }
+
+    /// Sets the userinfo user (percent-encoded for storage), creating an authority if this
+    /// URI had none.
+    pub fn set_user(&mut self, user: &str) {
+        let user = percent::encode(user, percent::is_userinfo_safe);
+        self.authority_mut().set_user(Some(&user));
+    }
+
+    /// Sets the userinfo password (percent-encoded for storage), creating an authority if
+    /// this URI had none.
+    pub fn set_password(&mut self, password: &str) {
+        let password = percent::encode(password, percent::is_userinfo_safe);
+        self.authority_mut().set_password(Some(&password));
+    }
+
+    /// Sets the path, re-normalizing back-slashes to forward slashes and percent-encoding
+    /// for storage (the `/` separators are preserved).
+    pub fn set_path(&mut self, path: &str) {
+        self.path = percent::encode_owned(normalize_slashes(path), percent::is_path_safe);
+    }
+
+    /// Sets the query, percent-encoded for storage (its `&`/`=` structure is preserved).
+    pub fn set_query(&mut self, query: &str) {
+        self.query = Some(percent::encode(query, percent::is_query_safe).into_owned());
+    }
+
+    /// Sets the fragment, percent-encoded for storage.
+    pub fn set_fragment(&mut self, fragment: &str) {
+        self.fragment = Some(percent::encode(fragment, percent::is_query_safe).into_owned());
+    }
+
+    fn authority_mut(&mut self) -> &mut Authority {
+        self.authority.get_or_insert_with(Authority::default)
+    }
+
+    // ---- byte codec + interchange --------------------------------------------------
+
+    /// The canonical URI string as UTF-8 bytes.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("sc://h/p?q#f").unwrap();
+    /// assert_eq!(uri.serialize_bytes(), b"sc://h/p?q#f");
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        self.to_canonical().into_bytes()
+    }
+
+    /// Decodes a URI from the UTF-8 bytes produced by [`serialize_bytes`](Uri::serialize_bytes)
+    /// — the exact inverse.
+    ///
+    /// # Errors
+    /// [`UriError::NonUtf8`] if the bytes are not UTF-8, or any [`parse`](Uri::parse) error.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("sc://h/p").unwrap();
+    /// assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
+    /// ```
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Uri, UriError> {
+        let text =
+            core::str::from_utf8(bytes).map_err(|_| UriError::NonUtf8 { len: bytes.len() })?;
+        Uri::parse(text)
+    }
+
+    /// Converts into a [`Url`], failing if this URI has no scheme.
+    ///
+    /// # Errors
+    /// [`UriError::MissingScheme`] when the URI is not absolute.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert!(Uri::parse("https://h/").unwrap().into_url().is_ok());
+    /// assert!(Uri::parse("/relative").unwrap().into_url().is_err());
+    /// ```
+    pub fn into_url(self) -> Result<Url, UriError> {
+        Url::try_from(self)
+    }
+
+    /// Borrows this URI as a [`Url`] by cloning, failing if it has no scheme.
+    ///
+    /// # Errors
+    /// [`UriError::MissingScheme`] when the URI is not absolute.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::parse("sc://h").unwrap().to_url().unwrap().scheme(), "sc");
+    /// ```
+    pub fn to_url(&self) -> Result<Url, UriError> {
+        Url::try_from(self.clone())
+    }
+
+    // ---- query parameters (map access + CRUD) --------------------------------------
+
+    /// The first value of query parameter `key`, or `None` if absent, as **stored**
+    /// (percent-encoded) — use [`query_param_decoded`](Uri::query_param_decoded) for the
+    /// decoded value. Zero-copy: the value borrows the query string. A bare `key` with no
+    /// `=` reads as an empty value. `key` is matched by its encoded form, so pass it decoded.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// assert_eq!(uri.query_param("a"), Some("1")); // first occurrence wins
+    /// assert_eq!(uri.query_param("b"), Some("2"));
+    /// assert_eq!(uri.query_param("z"), None);
+    /// ```
+    pub fn query_param(&self, key: &str) -> Option<&str> {
+        let query = self.query.as_deref()?;
+        let key = percent::encode(key, percent::is_query_param_safe);
+        let key: &str = &key;
+        query_pairs(query).find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+
+    /// Every value of query parameter `key`, in order — for a repeated key such as
+    /// `?a=1&a=2`. Empty if the key is absent. Zero-copy: the values borrow the query.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);
+    /// assert!(uri.query_param_all("z").is_empty());
+    /// ```
+    pub fn query_param_all(&self, key: &str) -> Vec<&str> {
+        let Some(query) = self.query.as_deref() else {
+            return Vec::new();
+        };
+        let key = percent::encode(key, percent::is_query_param_safe);
+        let key: &str = &key;
+        // Pre-size to the parameter count (an upper bound on the matches) so the collect
+        // allocates once.
+        let mut values = Vec::with_capacity(query.bytes().filter(|&b| b == b'&').count() + 1);
+        values.extend(
+            query_pairs(query)
+                .filter(|(k, _)| *k == key)
+                .map(|(_, v)| v),
+        );
+        values
+    }
+
+    /// All query parameters as ordered `(key, value)` pairs — the map view, from which a
+    /// dict/map is built directly. Empty when there is no query. Zero-copy borrows into the
+    /// query; the returned `Vec` is the only allocation, pre-sized to one.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("http://h/p?a=1&b=2").unwrap();
+    /// assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2")]);
+    /// ```
+    pub fn query_params(&self) -> Vec<(&str, &str)> {
+        let Some(query) = self.query.as_deref() else {
+            return Vec::new();
+        };
+        // Pre-size to the separator count + 1 (an upper bound), so `collect` allocates once.
+        let mut pairs = Vec::with_capacity(query.bytes().filter(|&b| b == b'&').count() + 1);
+        pairs.extend(query_pairs(query));
+        pairs
+    }
+
+    /// The first value of query parameter `key`, **percent-decoded** — the value the caller
+    /// originally set (or the decoded form of a parsed value). Borrows the query when there
+    /// is nothing to decode, otherwise owns the decoded string.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("http://h/p?q=a%20b%26c").unwrap();
+    /// assert_eq!(uri.query_param("q").as_deref(), Some("a%20b%26c")); // stored (encoded)
+    /// assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b&c")); // decoded
+    /// ```
+    pub fn query_param_decoded(&self, key: &str) -> Option<Cow<'_, str>> {
+        self.query_param(key).map(percent::decode)
+    }
+
+    /// Every value of query parameter `key`, in order, each **percent-decoded**.
+    pub fn query_param_all_decoded(&self, key: &str) -> Vec<Cow<'_, str>> {
+        self.query_param_all(key)
+            .into_iter()
+            .map(percent::decode)
+            .collect()
+    }
+
+    /// All query parameters as ordered `(key, value)` pairs, each **percent-decoded** — the
+    /// decoded map view.
+    pub fn query_params_decoded(&self) -> Vec<(Cow<'_, str>, Cow<'_, str>)> {
+        self.query_params()
+            .into_iter()
+            .map(|(key, value)| (percent::decode(key), percent::decode(value)))
+            .collect()
+    }
+
+    /// Whether query parameter `key` is present. Zero-copy; `key` is matched by its encoded
+    /// form, so pass it decoded.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let uri = Uri::parse("http://h/p?a=1").unwrap();
+    /// assert!(uri.has_query_param("a"));
+    /// assert!(!uri.has_query_param("b"));
+    /// ```
+    pub fn has_query_param(&self, key: &str) -> bool {
+        let key = percent::encode(key, percent::is_query_param_safe);
+        let key: &str = &key;
+        self.query
+            .as_deref()
+            .is_some_and(|query| query_pairs(query).any(|(k, _)| k == key))
+    }
+
+    /// Sets query parameter `key` to `value` (map semantics): updates the **first**
+    /// occurrence in place, drops any later occurrences, or appends `key=value` if the key
+    /// was absent — creating the query if there was none. Both `key` and `value` are
+    /// **percent-encoded** for storage, so a value containing `&`, `=`, `#`, or a space is
+    /// stored safely. Rebuilds the query with a single pre-sized allocation.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// uri.set_query_param("a", "9");
+    /// assert_eq!(uri.query(), Some("a=9&b=2")); // first updated, duplicate dropped
+    /// uri.set_query_param("c", "a b&c");
+    /// assert_eq!(uri.query(), Some("a=9&b=2&c=a%20b%26c")); // value encoded on store
+    /// ```
+    pub fn set_query_param(&mut self, key: &str, value: &str) {
+        let key = percent::encode(key, percent::is_query_param_safe);
+        let value = percent::encode(value, percent::is_query_param_safe);
+        let (key, value): (&str, &str) = (&key, &value);
+        let existing = self.query.as_deref().unwrap_or("");
+        let mut out = String::with_capacity(existing.len() + key.len() + value.len() + 2);
+        let mut written = false;
+        for token in existing.split('&').filter(|token| !token.is_empty()) {
+            if param_key(token) == key {
+                if !written {
+                    push_param(&mut out, key, value);
+                    written = true;
+                }
+                // later duplicates of `key` are dropped
+            } else {
+                push_token(&mut out, token);
+            }
+        }
+        if !written {
+            push_param(&mut out, key, value);
+        }
+        self.query = Some(out);
+    }
+
+    /// [`set_query_param`](Uri::set_query_param) as a builder — returns the updated `Uri`.
+    pub fn with_query_param(mut self, key: &str, value: &str) -> Self {
+        self.set_query_param(key, value);
+        self
+    }
+
+    /// Removes **every** occurrence of query parameter `key`, returning whether any were
+    /// removed. Clears the query entirely if it becomes empty. Allocates only when the key
+    /// is actually present (one pre-sized rebuild); an absent key is a no-op.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// assert!(uri.remove_query_param("a"));
+    /// assert_eq!(uri.query(), Some("b=2"));
+    /// assert!(!uri.remove_query_param("z")); // absent -> no-op
+    /// ```
+    pub fn remove_query_param(&mut self, key: &str) -> bool {
+        let Some(existing) = self.query.as_deref() else {
+            return false;
+        };
+        let key = percent::encode(key, percent::is_query_param_safe);
+        let key: &str = &key;
+        if !query_pairs(existing).any(|(k, _)| k == key) {
+            return false; // absent — no rebuild, no allocation
+        }
+        let mut out = String::with_capacity(existing.len());
+        for token in existing.split('&').filter(|token| !token.is_empty()) {
+            if param_key(token) != key {
+                push_token(&mut out, token);
+            }
+        }
+        self.query = (!out.is_empty()).then_some(out);
+        true
+    }
+
+    /// [`remove_query_param`](Uri::remove_query_param) as a builder — returns the updated `Uri`.
+    pub fn without_query_param(mut self, key: &str) -> Self {
+        self.remove_query_param(key);
+        self
+    }
+
+    /// **Bulk-updates** the query from `(key, value)` pairs in a single rebuild — each key
+    /// is set with the same map semantics as [`set_query_param`](Uri::set_query_param)
+    /// (updated in place, later existing duplicates dropped, appended if absent), and a key
+    /// repeated in `params` takes its **last** value. Cheaper than calling
+    /// `set_query_param` in a loop, which would rebuild the whole query each time.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// uri.set_query_params(&[("a", "9"), ("c", "7")]);
+    /// assert_eq!(uri.query(), Some("a=9&b=2&c=7")); // a updated (dup dropped), c appended
+    /// ```
+    pub fn set_query_params(&mut self, params: &[(&str, &str)]) {
+        if params.is_empty() {
+            return;
+        }
+        // Percent-encode (borrowing clean values), then deduplicate to one value per key
+        // (last wins), preserving first-appearance order.
+        let mut updates: Vec<(Cow<str>, Cow<str>)> = Vec::with_capacity(params.len());
+        for &(key, value) in params {
+            let key = percent::encode(key, percent::is_query_param_safe);
+            let value = percent::encode(value, percent::is_query_param_safe);
+            match updates.iter_mut().find(|(k, _)| *k == key) {
+                Some(slot) => slot.1 = value,
+                None => updates.push((key, value)),
+            }
+        }
+        let existing = self.query.as_deref().unwrap_or("");
+        let extra: usize = updates.iter().map(|(k, v)| k.len() + v.len() + 2).sum();
+        let mut out = String::with_capacity(existing.len() + extra);
+        let mut written = vec![false; updates.len()];
+        for token in existing.split('&').filter(|token| !token.is_empty()) {
+            if let Some(idx) = updates
+                .iter()
+                .position(|(k, _)| k.as_ref() == param_key(token))
+            {
+                if !written[idx] {
+                    push_param(&mut out, updates[idx].0.as_ref(), updates[idx].1.as_ref());
+                    written[idx] = true;
+                }
+                // later existing duplicates of an updated key are dropped
+            } else {
+                push_token(&mut out, token);
+            }
+        }
+        for (idx, (key, value)) in updates.iter().enumerate() {
+            if !written[idx] {
+                push_param(&mut out, key.as_ref(), value.as_ref());
+            }
+        }
+        self.query = (!out.is_empty()).then_some(out);
+    }
+
+    /// [`set_query_params`](Uri::set_query_params) as a builder — returns the updated `Uri`.
+    pub fn with_query_params(mut self, params: &[(&str, &str)]) -> Self {
+        self.set_query_params(params);
+        self
+    }
+
+    /// Normalizes the query: drops empty tokens (a stray `&`) and **stable-sorts** the
+    /// parameters by key, so equal keys keep their relative order. Lossless — repeated keys
+    /// are preserved, not merged. Rebuilds in one pre-sized allocation.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let mut uri = Uri::parse("http://h/p?c=3&a=1&b=2&a=0").unwrap();
+    /// uri.normalize_query();
+    /// assert_eq!(uri.query(), Some("a=1&a=0&b=2&c=3")); // sorted; 'a' order kept
+    ///
+    /// let mut messy = Uri::parse("http://h/p?b=2&&a=1&").unwrap();
+    /// messy.normalize_query();
+    /// assert_eq!(messy.query(), Some("a=1&b=2")); // empties cleaned, sorted
+    /// ```
+    pub fn normalize_query(&mut self) {
+        let Some(existing) = self.query.as_deref() else {
+            return;
+        };
+        let mut tokens: Vec<&str> =
+            Vec::with_capacity(existing.bytes().filter(|&b| b == b'&').count() + 1);
+        tokens.extend(existing.split('&').filter(|token| !token.is_empty()));
+        tokens.sort_by(|a, b| param_key(a).cmp(param_key(b)));
+        let mut out = String::with_capacity(existing.len());
+        for token in tokens {
+            push_token(&mut out, token);
+        }
+        self.query = (!out.is_empty()).then_some(out);
+    }
+
+    /// [`normalize_query`](Uri::normalize_query) as a builder — returns the normalized `Uri`.
+    pub fn with_normalized_query(mut self) -> Self {
+        self.normalize_query();
+        self
+    }
+
+    // ---- canonical encoding (pre-sized: one allocation) ----------------------------
+
+    /// An upper bound on the canonical string's byte length, used to pre-size the codec
+    /// buffer so it allocates exactly once. The port digits are over-counted (at most 5),
+    /// which only ever over-reserves — it never under-allocates.
+    fn encoded_len(&self) -> usize {
+        let mut len = self.path.len();
+        if let Some(scheme) = &self.scheme {
+            len += scheme.len() + 1; // "scheme:"
+        }
+        if let Some(authority) = &self.authority {
+            len += 2 + authority.encoded_len(); // "//authority"
+        }
+        if let Some(query) = &self.query {
+            len += 1 + query.len(); // "?query"
+        }
+        if let Some(fragment) = &self.fragment {
+            len += 1 + fragment.len(); // "#fragment"
+        }
+        len
+    }
+
+    /// The canonical string built into a pre-sized buffer, so it allocates **exactly once**
+    /// — `Display` alone starts from an empty `String` and reallocates several times as it
+    /// grows for a long URI. This is the single source of both the byte codec and the
+    /// value-semantics comparison, so they stay in lock-step with `Display`.
+    fn to_canonical(&self) -> String {
+        let mut buffer = String::with_capacity(self.encoded_len());
+        let _ = write!(buffer, "{self}");
+        buffer
+    }
+}
+
+impl fmt::Display for Uri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(scheme) = &self.scheme {
+            write!(f, "{scheme}:")?;
+        }
+        if let Some(authority) = &self.authority {
+            write!(f, "//{authority}")?;
+        }
+        f.write_str(&self.path)?;
+        if let Some(query) = &self.query {
+            write!(f, "?{query}")?;
+        }
+        if let Some(fragment) = &self.fragment {
+            write!(f, "#{fragment}")?;
+        }
+        Ok(())
+    }
+}
+
+// Value semantics by canonical string: equal iff `serialize_bytes` (the canonical string's
+// bytes) are equal, and equal values hash equal.
+impl PartialEq for Uri {
+    fn eq(&self, other: &Self) -> bool {
+        // Pre-sized canonical strings (one allocation each) rather than `to_string`'s
+        // grow-from-empty; the canonical string, not the components, is the identity — a
+        // password with no user and `user = Some("")` render alike and must compare equal.
+        self.to_canonical() == other.to_canonical()
+    }
+}
+
+impl Eq for Uri {}
+
+impl core::hash::Hash for Uri {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        // Stream the canonical string into the hasher without allocating a `String`.
+        let _ = write!(HashWrite(&mut *state), "{self}");
+        state.write_u8(0xff);
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// RFC 3986 parsing helpers
+// -------------------------------------------------------------------------------------
+
+/// Rewrites every back-slash to a forward slash (DESIGN: POSIX slash-based paths).
+fn normalize_slashes(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+/// Splits a raw query into ordered `(key, value)` pairs on `&` then the first `=`; a bare
+/// `key` token yields an empty value. Values are verbatim — the query is not percent-decoded,
+/// exactly like [`Uri::query`]. Empty tokens (a stray `&`) are skipped.
+fn query_pairs(query: &str) -> impl Iterator<Item = (&str, &str)> {
+    query
+        .split('&')
+        .filter(|token| !token.is_empty())
+        .map(|token| token.split_once('=').unwrap_or((token, "")))
+}
+
+/// The key portion of a `key=value` (or bare `key`) query token.
+fn param_key(token: &str) -> &str {
+    token.split_once('=').map_or(token, |(key, _)| key)
+}
+
+/// Appends `key=value` to a query being rebuilt, inserting the `&` separator when needed.
+fn push_param(out: &mut String, key: &str, value: &str) {
+    if !out.is_empty() {
+        out.push('&');
+    }
+    out.push_str(key);
+    out.push('=');
+    out.push_str(value);
+}
+
+/// Appends a verbatim token to a query being rebuilt, inserting the `&` separator when needed.
+fn push_token(out: &mut String, token: &str) {
+    if !out.is_empty() {
+        out.push('&');
+    }
+    out.push_str(token);
+}
+
+/// A drive-letter prefix: a single ASCII letter, `:`, then a slash (`C:\` or `C:/`).
+fn is_drive_path(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
+}
+
+/// A UNC prefix: two leading back-slashes (`\\server\share`).
+fn is_unc_path(s: &str) -> bool {
+    s.starts_with("\\\\")
+}
+
+/// Whether `candidate` is a syntactically valid RFC 3986 scheme.
+fn is_valid_scheme(candidate: &str) -> bool {
+    let mut chars = candidate.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+/// Splits off a leading `scheme ":"`, if the text before the first `:` (occurring before
+/// any `/`, `?`, or `#`) is a valid scheme. Returns `(None, s)` when there is no scheme.
+fn split_scheme(s: &str) -> Result<(Option<String>, &str), UriError> {
+    for (i, c) in s.char_indices() {
+        match c {
+            ':' => {
+                let candidate = &s[..i];
+                if candidate.is_empty() {
+                    return Err(UriError::EmptyScheme);
+                }
+                if !is_valid_scheme(candidate) {
+                    return Err(UriError::InvalidScheme {
+                        scheme: candidate.to_string(),
+                    });
+                }
+                return Ok((Some(candidate.to_string()), &s[i + 1..]));
+            }
+            '/' | '?' | '#' => break,
+            _ => {}
+        }
+    }
+    Ok((None, s))
+}
+
+/// Parses an authority `[ userinfo "@" ] host [ ":" port ]`, with `userinfo` split into
+/// `user [ ":" password ]` and an IPv6 literal host kept bracketed.
+fn parse_authority(auth: &str) -> Result<Authority, UriError> {
+    let (userinfo, hostport) = match auth.split_once('@') {
+        Some((ui, hp)) => (Some(ui), hp),
+        None => (None, auth),
+    };
+
+    let (user, password) = match userinfo {
+        Some(ui) => match ui.split_once(':') {
+            Some((u, p)) => (Some(u), Some(p)),
+            None => (Some(ui), None),
+        },
+        None => (None, None),
+    };
+
+    let (host, port_str) = if let Some(rest) = hostport.strip_prefix('[') {
+        // IPv6 literal: host runs through the closing bracket; a port may follow `:`.
+        match rest.split_once(']') {
+            Some((inner, tail)) => {
+                let host = format!("[{inner}]");
+                let port = tail.strip_prefix(':').filter(|p| !p.is_empty());
+                return Ok(Authority::new(user, password, &host, parse_port(port)?));
+            }
+            // No closing bracket — treat the whole thing as the host, no port.
+            None => (hostport, None),
+        }
+    } else {
+        // A reg-name / IPv4 host carries no colon, so the FIRST colon is the port separator.
+        // Splitting on the last colon (`rsplit_once`) would leave an inner colon inside the
+        // host for a malformed multi-colon authority (`a::`, `:a:`), which `Display` cannot
+        // round-trip; splitting on the first makes the leftover a port that `parse_port`
+        // then rejects with a guided error, so such inputs never become a non-round-tripping
+        // `Uri`.
+        match hostport.split_once(':') {
+            Some((h, p)) => (h, if p.is_empty() { None } else { Some(p) }),
+            None => (hostport, None),
+        }
+    };
+
+    Ok(Authority::new(user, password, host, parse_port(port_str)?))
+}
+
+/// Parses an optional decimal port into `u16`, guiding on a bad value.
+fn parse_port(port: Option<&str>) -> Result<Option<u16>, UriError> {
+    match port {
+        None => Ok(None),
+        Some(p) => p
+            .parse::<u16>()
+            .map(Some)
+            .map_err(|_| UriError::InvalidPort {
+                port: p.to_string(),
+            }),
+    }
+}

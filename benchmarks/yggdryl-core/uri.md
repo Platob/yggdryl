@@ -1,0 +1,85 @@
+# `io::Uri` — benchmark & optimization history
+
+Time **and** memory for the URI base types, in all three languages. Every harness is
+dependency-free and finishes in **1–3 s**, so it doubles as fast performance validation.
+Allocation *counts* are build-independent (same in debug and release), which is why the
+Rust harness — and the deterministic `uri_alloc` test — assert them as a regression guard;
+wall-clock is release-only and reported, not asserted.
+
+## Run
+
+```bash
+cargo bench -p yggdryl-core --bench uri                 # Rust: Mops/s + allocs/op + bytes/op
+cargo test  -p yggdryl-core --test uri_alloc            # deterministic memory budgets (ms)
+(cd bindings/python && uv run maturin develop --release && uv run python benchmarks/bench_uri.py)
+(cd bindings/node   && npm run build && node --expose-gc benchmark/uri.bench.js)
+```
+
+## Rust core (release, counting global allocator)
+
+| op | Mops/s | allocs/op | bytes/op |
+|----|-------:|----------:|---------:|
+| `Uri::parse` (URL corpus) | 2.50 | 4.18 | 42.1 |
+| `Uri::from_path` (Windows corpus) | 16.58 | 1.00 | 30.2 |
+| `serialize_bytes` | 6.39 | **1.00** | 47.7 |
+| `deserialize_bytes` | 2.26 | 4.18 | 42.1 |
+| `serialize + deserialize` | 1.54 | 5.18 | 89.8 |
+| accessors (scheme/host/path/name) | 20.66 | **0.00** | 0.0 |
+| `to_string` (Display) | 3.64 | 3.36 | 119.4 |
+| `HashMap` lookup (`Uri` key) | 2.08 | **2.00** | 95.5 |
+| `query_param` (read, first) | 13.62 | **0.00** | 0.0 |
+| `query_params` (map view) | 5.88 | **1.00** | 160.0 |
+| `query_param_decoded` (clean) | 10.61 | **0.00** | 0.0 |
+| `set_query_param` (update) | 6.91 | **1.00** | 23.0 |
+| `set_query_params` (bulk ×3) | 2.82 | **3.00** | 130.0 |
+| `normalize_query` (sort+clean) | 3.34 | **2.00** | 99.0 |
+
+`parse` allocates one `String` per present component (scheme/host/path/query/fragment/…);
+that is inherent to an owning split. The accessors return borrows, so they allocate
+nothing — the zero-copy hand-off the design promises.
+
+The query-parameter map (`query_param` / `query_param_all` / `query_params` /
+`has_query_param` + `set`/`with`/`remove`/`without`) keeps that discipline: reads are
+**zero-copy** views into the raw query, the `Vec` views pre-size to **one** allocation, and
+a write rebuilds the query in **one** pre-sized allocation (an absent-key removal is a
+0-alloc no-op). The `uri_alloc` test asserts each of these budgets.
+
+## Bindings (release)
+
+| | Python (vs `urllib`) | Node (vs WHATWG `URL`) |
+|--|--|--|
+| `parse` | 1.23 Mops/s — **7.6× urllib** | 0.41 Mops/s — 0.35× `URL` |
+| `serialize` | 3.53 Mops/s | 0.42 Mops/s |
+| bytes / parsed object | 208.6 (tracemalloc peak) | 112.3 (V8 heapUsed) |
+
+Python beats pure-Python `urllib`; Node's built-in `URL` is native C++, so for an
+operation this cheap the napi FFI crossing dominates — the wrapper is thin and the number
+is honest, not a defect. The memory columns confirm the wrappers add no runaway allocation.
+
+## Optimization history
+
+**1 — pre-sized canonical buffer (`serialize_bytes`, `Eq`).** `serialize_bytes` was
+`self.to_string().into_bytes()`; `to_string` grows a `String` from empty, so a long URI
+reallocated several times. Building into a buffer pre-sized by an `encoded_len` upper bound
+makes it allocate **exactly once**.
+
+| | before | after |
+|--|-------:|------:|
+| `serialize_bytes` allocs/op | 3.36 | **1.00** |
+| `serialize_bytes` Mops/s | 3.37 | **6.39** (1.9×) |
+
+**2 — streaming, allocation-free `Hash`.** `Hash` was `self.to_string().hash(state)` — a
+`String` per hash. It now streams the canonical rendering straight into the hasher via a
+zero-alloc `fmt::Write` adapter (`HashWrite`) plus a `0xff` terminator, reproducing the
+canonical string's own hash exactly. `Uri` as a `HashMap` key:
+
+| | before | after |
+|--|-------:|------:|
+| `HashMap` lookup allocs/op | 10.09 | **2.00** (5×) |
+| `HashMap` lookup Mops/s | 1.03 | **2.08** (2×) |
+
+Both preserve value semantics (equal iff canonical strings equal): all 41 core URI tests
+(unit + integration + edge + doctests) and the `uri_alloc` budgets stay green. The residual
+2 allocs/op on lookup are `Eq`'s two pre-sized canonical strings — string identity is
+required so a password with no user and `user = Some("")` still compare equal, which
+component-wise equality would break.

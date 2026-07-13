@@ -6,17 +6,18 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "yggdryl's generic foundation — wide integers and the byte-codec base traits"
+description = "yggdryl core — the Arrow-backed foundation"
 keywords.workspace = true
-readme = "README.md"
 
 [lib]
 name = "yggdryl_core"
 path = "src/lib.rs"
 
+# Dependency-free time+memory benchmark (its own counting allocator, plain `main`).
+[[bench]]
+name = "uri"
+harness = false
+
 [dependencies]
-# Apache Arrow's buffer subset — the wide `i256` is Arrow's own 256-bit integer, so
-# `arrow-buffer` backs the native integer types. This is core's only dependency: it is
-# the generic base (native number types + `Encoder`/`Decoder` byte-codec traits +
-# `PrimitiveType`) that `buffer`, `compression`, `converter`, and `dtype` build on.
+# Apache Arrow's buffer subset — the physical layer the foundation is built on.
 arrow-buffer = { workspace = true }

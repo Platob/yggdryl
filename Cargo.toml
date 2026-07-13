@@ -1,30 +1,10 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/yggdryl-core",
-    "crates/yggdryl-buffer",
-    "crates/yggdryl-compression",
-    "crates/yggdryl-converter",
-    "crates/yggdryl-http",
-    "crates/yggdryl-dtype",
-    "crates/yggdryl-field",
-    "crates/yggdryl-scalar",
-    "bindings/python",
-    "bindings/node",
-]
-# `cargo build` / `cargo test` with no args only touches the pure-Rust layers.
-# The Python and Node bindings are built through their own toolchains
-# (maturin / napi) so the default workflow never needs Python or Node headers.
-default-members = [
-    "crates/yggdryl-core",
-    "crates/yggdryl-buffer",
-    "crates/yggdryl-compression",
-    "crates/yggdryl-converter",
-    "crates/yggdryl-http",
-    "crates/yggdryl-dtype",
-    "crates/yggdryl-field",
-    "crates/yggdryl-scalar",
-]
+members = ["crates/yggdryl-core", "bindings/python", "bindings/node"]
+# `cargo build` / `cargo test` with no args only touch the pure-Rust core. The Python and
+# Node extensions are built through their own toolchains (maturin / napi), so the default
+# workflow never needs Python or Node headers.
+default-members = ["crates/yggdryl-core"]
 
 [workspace.package]
 version = "0.1.1"
@@ -33,33 +13,20 @@ license = "Apache-2.0"
 authors = ["yggdryl contributors"]
 repository = "https://github.com/Platob/yggdryl"
 homepage = "https://github.com/Platob/yggdryl"
-documentation = "https://platob.github.io/yggdryl/"
-description = "yggdryl — a Rust-core library with Python and Node extensions"
-keywords = ["rust", "ffi", "python", "node", "yggdryl"]
+description = "yggdryl — an Apache Arrow-backed Rust library"
+keywords = ["rust", "arrow", "yggdryl"]
 
 [workspace.dependencies]
-# The Arrow data-model layers, each depending strictly downward (scalar → field →
-# dtype → core). Pinned at 0.1.0 (caret) so a 0.1.x bump only touches the version line.
-yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.0" }
-yggdryl-http = { path = "crates/yggdryl-http", version = "0.1.0" }
-yggdryl-dtype = { path = "crates/yggdryl-dtype", version = "0.1.0" }
-yggdryl-field = { path = "crates/yggdryl-field", version = "0.1.0" }
-yggdryl-scalar = { path = "crates/yggdryl-scalar", version = "0.1.0" }
-yggdryl-buffer = { path = "crates/yggdryl-buffer", version = "0.1.0" }
-yggdryl-compression = { path = "crates/yggdryl-compression", version = "0.1.0" }
-yggdryl-converter = { path = "crates/yggdryl-converter", version = "0.1.0" }
-# gzip/deflate backend for the `gzip` compression codec; pulled in only by the
-# crates that enable the corresponding cargo feature.
-flate2 = "1.0"
-# zstd backend for the `zstd` compression codec (bundles libzstd, built via `cc`).
-zstd = "0.13"
-# Apache Arrow's buffer subset (only), for the opt-in `arrow` zero-copy interop.
-# Never the full `arrow` umbrella (see CLAUDE.md).
+# The Rust core — the source of truth the bindings delegate to.
+yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.1" }
+# Apache Arrow's buffer subset — the physical layer the foundation is built on.
 arrow-buffer = "55"
-# Apache Arrow's schema subset — `arrow_schema::DataType` / `arrow_schema::Field`, the
-# canonical Arrow type/field descriptors the dtype and field layers convert to and from.
-# Same 55.x line as arrow-buffer; only the subset crate, never the `arrow` umbrella.
-arrow-schema = "55"
+# Python extension via PyO3, targeting the stable ABI (one cp37-abi3 wheel per OS/arch).
+pyo3 = { version = "0.22", features = ["abi3-py37"] }
+# Node extension via napi-rs.
+napi = { version = "2", default-features = false, features = ["napi6"] }
+napi-derive = "2"
+napi-build = "2"
 
 [profile.release]
 lto = true

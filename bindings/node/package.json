@@ -1,49 +1,26 @@
 {
   "name": "yggdryl",
   "version": "0.1.1",
-  "description": "yggdryl — a Rust-core library, exposed to Node.js",
-  "main": "yggdryl.js",
-  "types": "yggdryl.d.ts",
+  "description": "yggdryl — an Apache Arrow-backed Rust library (Node extension)",
   "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Platob/yggdryl.git"
-  },
-  "homepage": "https://platob.github.io/yggdryl/",
-  "keywords": [
-    "rust",
-    "napi",
-    "node",
-    "ffi",
-    "yggdryl"
-  ],
+  "main": "index.js",
+  "types": "index.d.ts",
   "napi": {
-    "name": "yggdryl",
-    "triples": {
-      "defaults": false,
-      "additional": [
-        "x86_64-unknown-linux-gnu",
-        "x86_64-pc-windows-msvc"
-      ]
-    }
+    "name": "yggdryl"
   },
-  "engines": {
-    "node": ">=16"
-  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "test": "node --test",
-    "bench": "node benchmark/compression.bench.js"
+    "test": "node --test"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.0"
+    "@napi-rs/cli": "^2.18.4"
   },
-  "files": [
-    "yggdryl.js",
-    "yggdryl.d.ts",
-    "index.js",
-    "index.d.ts",
-    "*.node"
-  ]
+  "engines": {
+    "node": ">=18"
+  }
 }

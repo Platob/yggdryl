@@ -1,5 +1,5 @@
 site_name: yggdryl
-site_description: A Rust-core library with Python and Node.js extensions.
+site_description: An Apache Arrow-backed Rust library with Python and Node.js extensions.
 site_url: https://platob.github.io/yggdryl/
 repo_url: https://github.com/Platob/yggdryl
 repo_name: Platob/yggdryl
@@ -41,15 +41,4 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Byte IO: io.md
-  - Wide integers: wide_ints.md
-  - Typed buffers: buffer.md
-  - Headers: http.md
-  - Data types: dtype.md
-  - Fields: field.md
-  - Scalars: scalar.md
-  - Null type: null.md
-  - Decimals: decimal.md
-  - Type inference: infer.md
-  - Converters: converter.md
-  - Compression: compression.md
+  - URIs and URLs: uri.md

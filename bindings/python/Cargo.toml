@@ -4,37 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
-homepage.workspace = true
-description = "Python extension for yggdryl, backed by the Rust core"
+description = "yggdryl — Apache Arrow-backed Rust library (Python extension)"
 publish = false
 
 [lib]
-# The compiled artifact is imported from Python as `yggdryl`.
 name = "yggdryl"
+# A Python extension module is a C dynamic library.
 crate-type = ["cdylib"]
-path = "src/lib.rs"
 
 [dependencies]
-# The Rust crates, one per `yggdryl.*` submodule; all logic lives in them (thin
-# wrappers here). `gzip-zlib-ng` swaps in the SIMD-optimised zlib-ng backend so the
-# shipped extension out-runs Python's stdlib `gzip` (stock C zlib); needs CMake + Ninja
-# at build time — see `scripts/setup-build-deps.py`.
+# The Rust core — this binding is a thin wrapper that delegates to it.
 yggdryl-core = { workspace = true }
-yggdryl-buffer = { workspace = true }
-yggdryl-compression = { workspace = true, features = ["gzip-zlib-ng"] }
-yggdryl-converter = { workspace = true }
-yggdryl-dtype = { workspace = true }
-yggdryl-field = { workspace = true }
-yggdryl-scalar = { workspace = true }
-# The generic header map backing field `headers`.
-yggdryl-http = { workspace = true }
-
-[dependencies.pyo3]
-version = "0.22"
-# `abi3-py37` builds against the stable ABI (the limited API), so a single wheel
-# (`cp37-abi3`) is forward-compatible with every CPython from 3.7 up — one build
-# per OS/arch instead of one per interpreter version.
-# `multiple-pymethods` lets the typed IO accessors be generated into their own
-# `#[pymethods]` block (macros are not allowed inside a single block).
-features = ["extension-module", "abi3-py37", "multiple-pymethods"]
+# `extension-module` links against the interpreter at import time (added on top of the
+# workspace's stable-ABI `abi3-py37`), so `cargo build`/`cargo test` never touch this crate
+# (default-members = core); maturin builds it.
+pyo3 = { workspace = true, features = ["extension-module"] }

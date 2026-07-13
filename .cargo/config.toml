@@ -1,7 +1,0 @@
-# The `gzip-zlib-ng` feature builds zlib-ng through CMake. On this workspace's
-# Windows/MSVC setup the auto-detected Visual Studio generator is unreliable (a
-# newer VS the pinned CMake doesn't recognise), so we pin Ninja — installed, along
-# with CMake, by `scripts/setup-build-deps.py`. Harmless when zlib-ng is disabled
-# (no CMake runs), so it is safe to set workspace-wide.
-[env]
-CMAKE_GENERATOR = "Ninja"

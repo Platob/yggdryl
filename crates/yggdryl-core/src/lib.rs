@@ -1,49 +1,29 @@
-//! # yggdryl-core
+//! yggdryl core — the Apache Arrow-backed foundation.
 //!
-//! The **generic foundation** every other yggdryl crate builds on. It holds only the
-//! reusable, non-io-specific building blocks:
-//!
-//! - the **wide integers** ([`int`]) — [`i96`] and [`i256`] flanking native `i128`, each a
-//!   serializable value type (the io element codec that reads/writes them lives one layer
-//!   up in `yggdryl-buffer`);
-//! - the **fixed-width decimals** ([`decimal`]) — [`Decimal32`] / [`Decimal64`] /
-//!   [`Decimal128`] / [`Decimal256`] (mantissa + scale), byte-based and inter-convertible;
-//! - the **byte-codec base** ([`codec`]) — the [`Encoder`] / [`Decoder`] byte-array
-//!   contracts, their element-generic [`TypedEncoder`] / [`TypedDecoder`] extensions, and
-//!   the [`EncodeError`] / [`DecodeError`] types.
-//!
-//! Its only dependency is `arrow-buffer` (for `i256`). The concrete codecs build on this
-//! base in the crates above: positioned IO and the typed buffers in `yggdryl-buffer`, the
-//! compression codecs in `yggdryl-compression`, the representation converters in
-//! `yggdryl-converter`. One module per concern, each re-exported at the crate root.
+//! Minimal example: a single [`version`] function, wired through to the Python and Node
+//! extensions (`yggdryl.version()` in both). New features are added here first, in the
+//! Rust core, then mirrored thinly in each binding.
 
-pub mod codec;
-pub mod decimal;
-pub mod int;
+/// The Arrow-backed physical I/O layer (raw byte/buffer primitives).
+pub mod io;
 
-pub use codec::{DecodeError, Decoder, EncodeError, Encoder, TypedDecoder, TypedEncoder};
-pub use decimal::{Decimal, Decimal128, Decimal256, Decimal32, Decimal64, DecimalError};
-pub use int::{i256, i96};
-
-/// Re-export of the exact `arrow-buffer` the wide integers are backed by, so callers
-/// construct values against a matching version.
-pub use arrow_buffer;
-
-/// The crate version, as declared in `Cargo.toml`.
+/// The crate version string (from `Cargo.toml`), e.g. `"0.1.1"`.
+///
+/// This is the minimal end-to-end example: the same value is exposed by the Python and
+/// Node extensions.
 ///
 /// ```
 /// assert_eq!(yggdryl_core::version(), env!("CARGO_PKG_VERSION"));
 /// ```
-pub fn version() -> &'static str {
+pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// Prints `Hello, world!` to standard output — the minimal cross-language example,
-/// surfaced identically from the Python and Node bindings.
-///
-/// ```
-/// yggdryl_core::hello();
-/// ```
-pub fn hello() {
-    println!("Hello, world!");
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn version_is_the_crate_version() {
+        assert_eq!(super::version(), env!("CARGO_PKG_VERSION"));
+        assert!(!super::version().is_empty());
+    }
 }

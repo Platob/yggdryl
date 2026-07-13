@@ -4,34 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-repository.workspace = true
-homepage.workspace = true
-description = "Node.js extension for yggdryl, backed by the Rust core"
+description = "yggdryl — Apache Arrow-backed Rust library (Node extension)"
 publish = false
 
 [lib]
-# Leave the lib name as the default (`yggdryl_node`) so the napi CLI finds the
-# compiled artifact; the import name (`yggdryl`) comes from `napi.name` in
-# package.json, which produces `yggdryl.<triple>.node`.
+# A napi addon is a C dynamic library.
 crate-type = ["cdylib"]
-path = "src/lib.rs"
 
 [dependencies]
-# The Rust crates, one per `yggdryl.*` namespace; all logic lives in them (thin
-# wrappers here). `gzip-zlib-ng` swaps in the SIMD-optimised zlib-ng backend so the
-# shipped addon out-runs Node's `zlib` (stock C zlib); needs CMake + Ninja at build
-# time — see `scripts/setup-build-deps.py`.
+# The Rust core — this binding is a thin wrapper that delegates to it.
 yggdryl-core = { workspace = true }
-yggdryl-buffer = { workspace = true }
-yggdryl-compression = { workspace = true, features = ["gzip-zlib-ng"] }
-yggdryl-converter = { workspace = true }
-yggdryl-dtype = { workspace = true }
-yggdryl-field = { workspace = true }
-yggdryl-scalar = { workspace = true }
-# The generic header map backing field `headers`.
-yggdryl-http = { workspace = true }
-napi = { version = "2", default-features = false, features = ["napi8"] }
-napi-derive = "2"
+napi = { workspace = true }
+napi-derive = { workspace = true }
 
 [build-dependencies]
-napi-build = "2"
+napi-build = { workspace = true }
