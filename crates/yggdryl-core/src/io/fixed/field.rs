@@ -6,6 +6,9 @@ use core::marker::PhantomData;
 use super::{NativeType, PrimitiveType};
 use crate::io::{DataType, DataTypeId, FieldType, Headers};
 
+#[cfg(feature = "arrow")]
+use crate::io::fixed::temporal::{TimeUnit, Tz};
+
 /// The **fixed-width field** sub-trait — a [`FieldType`] over a [`NativeType`], with the
 /// typed descriptor mutualized as a default method.
 pub trait FixedField: FieldType {
@@ -281,6 +284,30 @@ impl Field {
             self.type_id
                 .to_arrow_decimal(precision, scale)
                 .expect("a decimal id always maps to an Arrow Decimal")
+        } else if self.type_id.is_temporal() {
+            // A temporal Arrow type needs a `(unit, tz)` the id + byte width cannot supply, so read
+            // them from the reserved metadata keys (present when erased from a `TemporalField`).
+            let unit = self
+                .metadata
+                .get(DataTypeId::TIME_UNIT_METADATA_KEY)
+                .and_then(TimeUnit::parse)
+                .unwrap_or(match self.type_id {
+                    DataTypeId::Date32 => TimeUnit::Day,
+                    DataTypeId::Date64 => TimeUnit::Millisecond,
+                    // Time32/Time64 only admit their own sub-domains — a Nanosecond default would
+                    // build the spec-invalid Time32(Nanosecond).
+                    DataTypeId::Time32 => TimeUnit::Millisecond,
+                    DataTypeId::Time64 => TimeUnit::Microsecond,
+                    _ => TimeUnit::Nanosecond,
+                });
+            let tz = self
+                .metadata
+                .get(DataTypeId::TIMEZONE_METADATA_KEY)
+                .and_then(Tz::parse)
+                .unwrap_or(Tz::NAIVE);
+            self.type_id
+                .to_arrow_temporal(unit, tz)
+                .unwrap_or_else(|| self.type_id.to_arrow(self.byte_width))
         } else {
             self.type_id.to_arrow(self.byte_width)
         };
@@ -288,6 +315,13 @@ impl Field {
         // The Arrow Decimal type already carries precision/scale — drop the reserved shadow keys.
         metadata.remove(DataTypeId::PRECISION_METADATA_KEY);
         metadata.remove(DataTypeId::SCALE_METADATA_KEY);
+        // A temporal Arrow type that carries its own unit/tz (Date/Time/Timestamp/Duration) needs no
+        // shadow keys either; keep them only for the `ts96` `FixedSizeBinary` form, which carries
+        // neither (its recovery on import depends on the keys).
+        if self.type_id.is_temporal() && DataTypeId::arrow_temporal_params(&data_type).is_some() {
+            metadata.remove(DataTypeId::TIME_UNIT_METADATA_KEY);
+            metadata.remove(DataTypeId::TIMEZONE_METADATA_KEY);
+        }
         // Tag the exact logical type only when the plain Arrow mapping can't be reversed to it.
         if DataTypeId::from_arrow(&data_type).map(|(id, _)| id) != Some(self.type_id) {
             metadata.insert(
@@ -320,6 +354,22 @@ impl Field {
                 metadata.insert(DataTypeId::SCALE_METADATA_KEY, &scale.to_string());
             }
         }
+        // For a temporal type, capture the Arrow type's unit/tz into the reserved keys (the `ts96`
+        // `FixedSizeBinary` form carries neither, so its keys survive from the incoming metadata).
+        if type_id.is_temporal() {
+            if let Some((unit, tz)) = DataTypeId::arrow_temporal_params(field.data_type()) {
+                metadata.insert(DataTypeId::TIME_UNIT_METADATA_KEY, unit.name());
+                metadata.insert(DataTypeId::TIMEZONE_METADATA_KEY, &tz.name());
+            }
+        }
+        // The narrow temporal ids (`ts32` / `ts96` / `duration32`) recover their true width from
+        // the tag-refined id — their Arrow carrier (`Timestamp` i64 / `FixedSizeBinary`) reports a
+        // different physical width.
+        let byte_width = if type_id.is_temporal() {
+            type_id.fixed_byte_width().unwrap_or(byte_width)
+        } else {
+            byte_width
+        };
         Some(Self {
             name: field.name().clone(),
             type_name: type_id.name(),
@@ -377,5 +427,45 @@ impl<T: NativeType> core::fmt::Debug for TypedField<T> {
             .field("type", &T::NAME)
             .field("nullable", &self.nullable)
             .finish()
+    }
+}
+
+#[cfg(all(test, feature = "arrow"))]
+mod arrow_temporal_tests {
+    use crate::io::fixed::temporal::{TimeUnit, Tz};
+    use crate::io::fixed::Field;
+    use crate::io::DataTypeId;
+
+    #[test]
+    fn time32_field_defaults_to_a_valid_arrow_unit() {
+        // No unit metadata -> the fallback must stay in Time32's domain (never Time32(Nanosecond)).
+        let arrow = Field::of("t", DataTypeId::Time32, 4, true).to_arrow();
+        assert_eq!(
+            arrow.data_type(),
+            &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Millisecond)
+        );
+    }
+
+    #[test]
+    fn to_arrow_temporal_rejects_out_of_domain_time_unit() {
+        // Centralized guard: an out-of-domain unit yields None (so callers fall back to the id default).
+        assert!(DataTypeId::Time32
+            .to_arrow_temporal(TimeUnit::Microsecond, Tz::NAIVE)
+            .is_none());
+        assert!(DataTypeId::Time64
+            .to_arrow_temporal(TimeUnit::Second, Tz::NAIVE)
+            .is_none());
+        // A field carrying an out-of-domain unit falls back to a valid type, never the invalid one.
+        let arrow = Field::of("t", DataTypeId::Time32, 4, true)
+            .with_metadata_entry(DataTypeId::TIME_UNIT_METADATA_KEY, "microsecond")
+            .to_arrow();
+        assert_ne!(
+            arrow.data_type(),
+            &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Microsecond)
+        );
+        assert!(matches!(
+            arrow.data_type(),
+            arrow_schema::DataType::Time32(_)
+        ));
     }
 }

@@ -99,6 +99,19 @@ pub use decimal::{
     DecimalSerie, DecimalType, D128, D256, D32, D64,
 };
 
+// The temporal columnar family: the two shared traits, the generic quartet, the nine concept+width
+// markers, and their per-width aliases — re-exported at the `fixed` root alongside the value types.
+pub use temporal::{
+    Date32Field, Date32Kind, Date32Scalar, Date32Serie, Date32Type, Date64Field, Date64Kind,
+    Date64Scalar, Date64Serie, Date64Type, Duration32Field, Duration32Kind, Duration32Scalar,
+    Duration32Serie, Duration32Type, Duration64Field, Duration64Kind, Duration64Scalar,
+    Duration64Serie, Duration64Type, TemporalBacking, TemporalField, TemporalNative,
+    TemporalScalar, TemporalSerie, TemporalType, Time32Field, Time32Kind, Time32Scalar,
+    Time32Serie, Time32Type, Time64Field, Time64Kind, Time64Scalar, Time64Serie, Time64Type,
+    Ts32Field, Ts32Kind, Ts32Scalar, Ts32Serie, Ts32Type, Ts64Field, Ts64Kind, Ts64Scalar,
+    Ts64Serie, Ts64Type, Ts96Field, Ts96Kind, Ts96Scalar, Ts96Serie, Ts96Type,
+};
+
 // Re-export every per-type alias at the `fixed` root, so `fixed::U8Buffer` etc. keep working
 // regardless of the integer/floating grouping.
 pub use floating::{

@@ -18,9 +18,10 @@ use core::any::Any;
 use core::fmt::Debug;
 
 use super::fixed::{
-    f16, Dec128, Dec256, Dec32, Dec64, DecimalBacking, DecimalField, DecimalSerie, Field,
-    FixedBinarySerie, FixedElement, FixedSizeSerie, FixedUtf8Serie, NativeType, NullSerie, Serie,
-    I256, I96, U256, U96,
+    f16, Date32Serie, Date64Serie, Dec128, Dec256, Dec32, Dec64, DecimalBacking, DecimalField,
+    DecimalSerie, Duration32Serie, Duration64Serie, Field, FixedBinarySerie, FixedElement,
+    FixedSizeSerie, FixedUtf8Serie, NativeType, NullSerie, Serie, TemporalBacking, TemporalField,
+    TemporalSerie, Time32Serie, Time64Serie, Ts32Serie, Ts64Serie, Ts96Serie, I256, I96, U256, U96,
 };
 use super::var::{BinarySerie, ByteSerie, Utf8Serie, VarElement};
 use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, IoError};
@@ -66,9 +67,10 @@ pub trait AnySerie: Debug + Send + Sync {
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError>;
 
     /// This column as an Arrow [`ArrayRef`](arrow_array::ArrayRef) (feature `arrow`) — delegates to
-    /// the wrapped `Serie`'s own (zero-copy where it is) converter.
+    /// the wrapped `Serie`'s own (zero-copy where it is) converter. Fallible because a temporal
+    /// column at a resolution Arrow cannot express (`Minute`…`Year`) has no Arrow array.
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef;
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError>;
 
     /// A boxed clone (value semantics for `Box<dyn AnySerie>`).
     fn clone_box(&self) -> Box<dyn AnySerie>;
@@ -118,6 +120,12 @@ impl dyn AnySerie {
     /// This column as a variable-length [`ByteSerie<E>`](ByteSerie) (`Utf8Serie` / `BinarySerie`).
     pub fn as_bytes_serie<E: VarElement>(&self) -> Option<&ByteSerie<E>> {
         self.downcast_ref::<ByteSerie<E>>()
+    }
+
+    /// This column as a [`TemporalSerie<B>`](TemporalSerie) (`Date32Serie` … `Duration64Serie`), if
+    /// it is one — keyed on the concept+width marker the field's type reports.
+    pub fn as_temporal<B: TemporalBacking>(&self) -> Option<&TemporalSerie<B>> {
+        self.downcast_ref::<TemporalSerie<B>>()
     }
 }
 
@@ -202,7 +210,7 @@ impl<T: NativeType> AnySerie for Serie<T> {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
         let data_type = T::TYPE_ID.to_arrow(T::WIDTH);
         let values = self.arrow_value_buffer();
         let nulls = self
@@ -211,7 +219,7 @@ impl<T: NativeType> AnySerie for Serie<T> {
         let data =
             arrow_data::ArrayData::try_new(data_type, self.len(), nulls, 0, vec![values], vec![])
                 .expect("a primitive column's Arc buffer is valid for its Arrow type");
-        arrow_array::make_array(data)
+        Ok(arrow_array::make_array(data))
     }
 
     eq_via_downcast!();
@@ -257,8 +265,8 @@ where
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(DecimalSerie::to_arrow_array(self))
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        Ok(std::sync::Arc::new(DecimalSerie::to_arrow_array(self)))
     }
 
     eq_via_downcast!();
@@ -296,8 +304,8 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(ByteSerie::to_arrow_array(self))
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        Ok(std::sync::Arc::new(ByteSerie::to_arrow_array(self)))
     }
 
     eq_via_downcast!();
@@ -335,8 +343,8 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(FixedSizeSerie::to_arrow_array(self))
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        Ok(std::sync::Arc::new(FixedSizeSerie::to_arrow_array(self)))
     }
 
     eq_via_downcast!();
@@ -368,8 +376,50 @@ impl AnySerie for NullSerie {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(NullSerie::to_arrow_array(self))
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        Ok(std::sync::Arc::new(NullSerie::to_arrow_array(self)))
+    }
+
+    eq_via_downcast!();
+}
+
+// The temporal columns (`Date32Serie` … `Duration64Serie`) — one blanket impl over the
+// concept+width marker, delegating to `TemporalSerie<B>`'s own codec / Arrow converter.
+impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
+    fn len(&self) -> usize {
+        TemporalSerie::len(self)
+    }
+
+    fn null_count(&self) -> usize {
+        TemporalSerie::null_count(self)
+    }
+
+    fn type_id(&self) -> DataTypeId {
+        B::TYPE_ID
+    }
+
+    fn field(&self, name: &str) -> AnyField {
+        AnyField::leaf(
+            TemporalField::<B>::new(name, self.unit(), self.timezone(), self.has_nulls()).erase(),
+        )
+    }
+
+    fn value(&self, index: usize) -> AnyScalar {
+        if index >= self.len() || self.get_count(index).is_none() {
+            return AnyScalar::Null;
+        }
+        let field = TemporalField::<B>::new("", self.unit(), self.timezone(), false).erase();
+        let bytes = self.count_bytes()[index * B::WIDTH..(index + 1) * B::WIDTH].to_vec();
+        AnyScalar::leaf(field, bytes)
+    }
+
+    fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
+        TemporalSerie::write_to(self, sink)
+    }
+
+    #[cfg(feature = "arrow")]
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        TemporalSerie::to_arrow_array(self)
     }
 
     eq_via_downcast!();
@@ -414,6 +464,15 @@ pub fn read_any_leaf(field: &AnyField, source: &mut Bytes) -> Result<Box<dyn Any
         DataTypeId::Binary => Box::new(BinarySerie::read_from(source)?),
         DataTypeId::FixedBinary => Box::new(FixedBinarySerie::read_from(source)?),
         DataTypeId::FixedUtf8 => Box::new(FixedUtf8Serie::read_from(source)?),
+        DataTypeId::Date32 => Box::new(Date32Serie::read_from(source)?),
+        DataTypeId::Date64 => Box::new(Date64Serie::read_from(source)?),
+        DataTypeId::Time32 => Box::new(Time32Serie::read_from(source)?),
+        DataTypeId::Time64 => Box::new(Time64Serie::read_from(source)?),
+        DataTypeId::Ts32 => Box::new(Ts32Serie::read_from(source)?),
+        DataTypeId::Ts64 => Box::new(Ts64Serie::read_from(source)?),
+        DataTypeId::Ts96 => Box::new(Ts96Serie::read_from(source)?),
+        DataTypeId::Duration32 => Box::new(Duration32Serie::read_from(source)?),
+        DataTypeId::Duration64 => Box::new(Duration64Serie::read_from(source)?),
         other => {
             return Err(IoError::Unsupported {
                 what: format!("cannot deserialize a leaf column of type {}", other.name()),
@@ -508,6 +567,15 @@ pub fn from_arrow_any_leaf(
         >(
             array, field
         )?)?),
+        DataTypeId::Date32 => Box::new(Date32Serie::from_arrow_array(array, field)?),
+        DataTypeId::Date64 => Box::new(Date64Serie::from_arrow_array(array, field)?),
+        DataTypeId::Time32 => Box::new(Time32Serie::from_arrow_array(array, field)?),
+        DataTypeId::Time64 => Box::new(Time64Serie::from_arrow_array(array, field)?),
+        DataTypeId::Ts32 => Box::new(Ts32Serie::from_arrow_array(array, field)?),
+        DataTypeId::Ts64 => Box::new(Ts64Serie::from_arrow_array(array, field)?),
+        DataTypeId::Ts96 => Box::new(Ts96Serie::from_arrow_array(array, field)?),
+        DataTypeId::Duration32 => Box::new(Duration32Serie::from_arrow_array(array, field)?),
+        DataTypeId::Duration64 => Box::new(Duration64Serie::from_arrow_array(array, field)?),
         _ => return Err(unsupported(field)),
     })
 }
@@ -557,5 +625,43 @@ fn unsupported(field: &arrow_schema::Field) -> IoError {
             field.name(),
             field.data_type()
         ),
+    }
+}
+
+#[cfg(test)]
+mod temporal_tests {
+    use super::*;
+    use crate::io::fixed::temporal::{TimeUnit, Ts64, Tz};
+    use crate::io::fixed::{Ts64Kind, Ts64Serie};
+    use crate::io::nested::StructSerie;
+
+    #[test]
+    fn temporal_leaf_round_trips_through_read_any_leaf_and_as_temporal() {
+        let a = Ts64::from_epoch(1_700_000_000, TimeUnit::Second, Tz::UTC).unwrap();
+        let col = Ts64Serie::from_options(TimeUnit::Second, Tz::UTC, &[Some(a), None]).unwrap();
+
+        // Erase, name the field, and read it back through the erased leaf reader.
+        let erased = boxed(col.clone());
+        let field = erased.field("t");
+        let bytes = erased.serialize_bytes();
+        let back = read_any_leaf(&field, &mut Bytes::from_slice(&bytes)).unwrap();
+        assert!(back.eq_any(erased.as_ref()));
+
+        // Downcast the erased column back to its concrete `TemporalSerie`, keyed on the marker.
+        let recovered = erased.as_temporal::<Ts64Kind>().expect("Ts64 downcast");
+        assert_eq!(*recovered, col);
+        assert!(erased
+            .as_temporal::<crate::io::fixed::Date32Kind>()
+            .is_none());
+    }
+
+    #[test]
+    fn temporal_child_round_trips_through_struct_serialize_bytes() {
+        let a = Ts64::from_epoch(10, TimeUnit::Second, Tz::UTC).unwrap();
+        let b = Ts64::from_epoch(20, TimeUnit::Second, Tz::UTC).unwrap();
+        let col = Ts64Serie::from_values(TimeUnit::Second, Tz::UTC, &[a, b]).unwrap();
+        let table = StructSerie::from_named(vec![("t", boxed(col))]).unwrap();
+        let back = StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap();
+        assert_eq!(back, table);
     }
 }

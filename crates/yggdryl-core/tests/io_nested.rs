@@ -232,7 +232,7 @@ mod arrow {
     fn struct_serie_to_from_struct_array() {
         let table = sample_table();
         let field = table.to_field("person").to_arrow_field();
-        let array = table.to_arrow_array();
+        let array = table.to_arrow_array().unwrap();
         assert_eq!(array.len(), 3);
         assert_eq!(array.num_columns(), 3);
         let names = array
@@ -263,7 +263,7 @@ mod arrow {
         let table =
             StructSerie::from_columns(vec![ids.field("id")], vec![ids], Some(&[true, false]))
                 .unwrap();
-        let array = table.to_arrow_array();
+        let array = table.to_arrow_array().unwrap();
         assert_eq!(array.null_count(), 1);
         let err = table.to_record_batch().unwrap_err();
         assert!(err.to_string().contains("RecordBatch"));
@@ -276,7 +276,7 @@ mod arrow {
         let points = StructSerie::from_named(vec![("x", xs), ("y", ys)]).unwrap();
         let outer = StructSerie::from_named(vec![("point", boxed(points))]).unwrap();
         let field = outer.to_field("outer").to_arrow_field();
-        let array = outer.to_arrow_array();
+        let array = outer.to_arrow_array().unwrap();
         assert!(array
             .column(0)
             .as_any()

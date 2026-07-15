@@ -322,8 +322,8 @@ impl AnySerie for StructSerie {
     }
 
     #[cfg(feature = "arrow")]
-    fn to_arrow_array(&self) -> arrow_array::ArrayRef {
-        std::sync::Arc::new(StructSerie::to_arrow_array(self))
+    fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
+        Ok(std::sync::Arc::new(StructSerie::to_arrow_array(self)?))
     }
 
     fn clone_box(&self) -> Box<dyn AnySerie> {
@@ -433,8 +433,9 @@ fn read_u64<R: IOCursor>(source: &mut R) -> Result<u64, IoError> {
 impl StructSerie {
     /// This struct column as an Arrow [`StructArray`](arrow_array::StructArray) — **recursive**, each
     /// child mapped by its [`AnySerie::to_arrow_array`](crate::io::AnySerie), top-level validity as a
-    /// `NullBuffer`.
-    pub fn to_arrow_array(&self) -> arrow_array::StructArray {
+    /// `NullBuffer`. Fallible because a temporal child at a resolution Arrow cannot express
+    /// (`Minute`…`Year`) has no Arrow array.
+    pub fn to_arrow_array(&self) -> Result<arrow_array::StructArray, IoError> {
         let arrow_fields: Vec<arrow_schema::Field> =
             self.fields.iter().map(AnyField::to_arrow).collect();
         let nulls = self.validity.as_ref().map(|bitmap| {
@@ -442,18 +443,18 @@ impl StructSerie {
             arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
         });
         if arrow_fields.is_empty() {
-            return arrow_array::StructArray::new_empty_fields(self.len, nulls);
+            return Ok(arrow_array::StructArray::new_empty_fields(self.len, nulls));
         }
         let child_arrays: Vec<arrow_array::ArrayRef> = self
             .columns
             .iter()
             .map(|column| column.to_arrow_array())
-            .collect();
-        arrow_array::StructArray::new(
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(arrow_array::StructArray::new(
             arrow_schema::Fields::from(arrow_fields),
             child_arrays,
             nulls,
-        )
+        ))
     }
 
     /// Builds a struct column from an Arrow [`StructArray`](arrow_array::StructArray) and its
@@ -505,7 +506,7 @@ impl StructSerie {
             .columns
             .iter()
             .map(|column| column.to_arrow_array())
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         if columns.is_empty() {
             let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(self.len));
             return arrow_array::RecordBatch::try_new_with_options(schema, columns, &options)

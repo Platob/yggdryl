@@ -139,7 +139,7 @@ fn main() {
     row(
         "StructSerie::to_arrow_array",
         measure(1, struct_iters, || {
-            let _ = AnySerie::to_arrow_array(&table);
+            let _ = AnySerie::to_arrow_array(&table).unwrap();
         }),
     );
     row(

@@ -3,6 +3,9 @@
 
 use super::DataTypeCategory;
 
+#[cfg(feature = "arrow")]
+use crate::io::fixed::temporal::{TimeUnit, Tz};
+
 /// The stable **integer identity** of a concrete data type — the one place the type space is
 /// enumerated, and the source of truth every `is_*` predicate reduces to.
 ///
@@ -573,6 +576,74 @@ impl DataTypeId {
             }
             _ => None,
         }
+    }
+
+    /// The **column-level** Arrow [`DataType`](arrow_schema::DataType) for a **temporal** id with
+    /// resolution `unit` and zone `tz` — the type the typed
+    /// [`TemporalType`](crate::io::fixed::TemporalType) and the metadata-carrying `Field` /
+    /// `TemporalSerie` array use, since a temporal type needs the `(unit, tz)` that the id + byte
+    /// width alone cannot supply. Total over the temporal band:
+    ///
+    /// - `Date32` → `Date32`, `Date64` → `Date64` (Arrow fixes their resolution — `unit` is ignored);
+    /// - `Time32` → `Time32(unit)`, `Time64` → `Time64(unit)`;
+    /// - `Ts32` / `Ts64` → `Timestamp(unit, tz)` (the narrow `Ts32` **widens** to the same `i64`
+    ///   `Timestamp`; the field's logical-type tag recovers the narrow id on import);
+    /// - `Ts96` → `FixedSizeBinary(12)` — Arrow has no 96-bit temporal type, so its unit/tz ride the
+    ///   field metadata (a **lossy** type mapping);
+    /// - `Duration32` / `Duration64` → `Duration(unit)`.
+    ///
+    /// Returns `None` for a non-temporal id, or for a `unit` Arrow cannot represent (`Minute`…`Year`,
+    /// whose [`TimeUnit::to_arrow`](crate::io::fixed::temporal::TimeUnit) is `None`) on the
+    /// unit-bearing types.
+    #[cfg(feature = "arrow")]
+    pub fn to_arrow_temporal(self, unit: TimeUnit, tz: Tz) -> Option<arrow_schema::DataType> {
+        use arrow_schema::DataType as A;
+        let zone = |tz: Tz| {
+            if tz.is_naive() {
+                None
+            } else {
+                Some(std::sync::Arc::<str>::from(tz.name()))
+            }
+        };
+        Some(match self {
+            Self::Date32 => A::Date32,
+            Self::Date64 => A::Date64,
+            // Time32/Time64 admit only their own unit sub-domain — reject an out-of-domain unit
+            // rather than emit the spec-invalid `Time32(Nanosecond)` / `Time64(Second)`.
+            Self::Time32 if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) => {
+                A::Time32(unit.to_arrow()?)
+            }
+            Self::Time64 if matches!(unit, TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
+                A::Time64(unit.to_arrow()?)
+            }
+            Self::Ts32 | Self::Ts64 => A::Timestamp(unit.to_arrow()?, zone(tz)),
+            Self::Ts96 => A::FixedSizeBinary(12),
+            Self::Duration32 | Self::Duration64 => A::Duration(unit.to_arrow()?),
+            _ => return None,
+        })
+    }
+
+    /// The `(unit, tz)` an Arrow temporal data type denotes, or `None` for any other type (including
+    /// the `ts96` `FixedSizeBinary` form, whose axes ride the field metadata) — the inverse the
+    /// erased [`Field`](crate::io::fixed::Field) and `TemporalSerie` use to recover a temporal
+    /// column's resolution / zone.
+    #[cfg(feature = "arrow")]
+    pub fn arrow_temporal_params(data_type: &arrow_schema::DataType) -> Option<(TimeUnit, Tz)> {
+        use arrow_schema::DataType as A;
+        Some(match data_type {
+            A::Date32 => (TimeUnit::Day, Tz::NAIVE),
+            A::Date64 => (TimeUnit::Millisecond, Tz::NAIVE),
+            A::Time32(u) | A::Time64(u) => (TimeUnit::from_arrow(*u), Tz::NAIVE),
+            A::Timestamp(u, zone) => {
+                let tz = match zone {
+                    Some(name) => Tz::parse(name).unwrap_or(Tz::UTC),
+                    None => Tz::NAIVE,
+                };
+                (TimeUnit::from_arrow(*u), tz)
+            }
+            A::Duration(u) => (TimeUnit::from_arrow(*u), Tz::NAIVE),
+            _ => return None,
+        })
     }
 
     /// The `(id, byte_width)` a raw Arrow [`DataType`](arrow_schema::DataType) maps to in this

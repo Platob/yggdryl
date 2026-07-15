@@ -18,15 +18,21 @@
 //! `chrono` / `chrono-tz` power the timezone offsets and are kept an implementation detail — they
 //! never appear in a public signature.
 
+mod backing;
 mod civil;
 mod date;
+mod dtype;
 mod duration;
 mod error;
+mod field;
 mod parse;
+mod scalar;
+mod serie;
 mod time;
 mod time_unit;
 mod timestamp;
 mod timezone;
+mod widths;
 
 pub use date::{Date32, Date64};
 pub use duration::{Duration32, Duration64};
@@ -35,6 +41,23 @@ pub use time::{Time32, Time64};
 pub use time_unit::TimeUnit;
 pub use timestamp::{Ts32, Ts64, Ts96};
 pub use timezone::{Timezone, Tz};
+
+// The columnar layer: the two shared traits, the generic quartet, and the nine concept+width
+// markers with their `*Type` / `*Field` / `*Scalar` / `*Serie` aliases.
+pub use backing::{TemporalBacking, TemporalNative};
+pub use dtype::TemporalType;
+pub use field::TemporalField;
+pub use scalar::TemporalScalar;
+pub use serie::TemporalSerie;
+pub use widths::{
+    Date32Field, Date32Kind, Date32Scalar, Date32Serie, Date32Type, Date64Field, Date64Kind,
+    Date64Scalar, Date64Serie, Date64Type, Duration32Field, Duration32Kind, Duration32Scalar,
+    Duration32Serie, Duration32Type, Duration64Field, Duration64Kind, Duration64Scalar,
+    Duration64Serie, Duration64Type, Time32Field, Time32Kind, Time32Scalar, Time32Serie,
+    Time32Type, Time64Field, Time64Kind, Time64Scalar, Time64Serie, Time64Type, Ts32Field,
+    Ts32Kind, Ts32Scalar, Ts32Serie, Ts32Type, Ts64Field, Ts64Kind, Ts64Scalar, Ts64Serie,
+    Ts64Type, Ts96Field, Ts96Kind, Ts96Scalar, Ts96Serie, Ts96Type,
+};
 
 /// The contract shared by every temporal value: its resolution ([`TimeUnit`]) and its timezone
 /// ([`Tz`], naive for the zone-less date/time/duration types).

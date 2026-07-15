@@ -3,7 +3,7 @@
 //! nesting, decimals with nulls, corrupt-input robustness, safe downcast, and hashable erased
 //! values.
 
-use yggdryl_core::io::fixed::{Field, Serie, I256, I96, U256, U96};
+use yggdryl_core::io::fixed::{Field, Serie, U96};
 use yggdryl_core::io::nested::StructSerie;
 use yggdryl_core::io::var::Utf8Serie;
 use yggdryl_core::io::{boxed, read_any_leaf, AnyField, Bytes, DataTypeId};
@@ -194,13 +194,14 @@ fn from_columns_present_mask_shorter_than_len_marks_only_given_rows() {
 mod arrow {
     use super::*;
     use arrow_array::Array;
+    use yggdryl_core::io::fixed::{I256, I96, U256};
     use yggdryl_core::io::{from_arrow_any_leaf, AnySerie};
 
     /// Round-trips a single-column struct through a StructArray and asserts byte-exact identity.
     fn round_trip(name: &str, column: Box<dyn AnySerie>) {
         let table = StructSerie::from_named(vec![(name, column)]).unwrap();
         let field = table.to_field("s").to_arrow_field();
-        let array = table.to_arrow_array();
+        let array = table.to_arrow_array().unwrap();
         let back = StructSerie::from_arrow_array(&array, &field).unwrap();
         assert_eq!(back, table, "array round-trip differed for {name}");
     }
@@ -309,7 +310,7 @@ mod arrow {
         let empty = StructSerie::from_named(vec![]).unwrap();
         assert_eq!(empty.num_columns(), 0);
         assert_eq!(empty.len(), 0);
-        assert_eq!(empty.to_arrow_array().num_columns(), 0);
+        assert_eq!(empty.to_arrow_array().unwrap().num_columns(), 0);
         assert_eq!(
             StructSerie::deserialize_bytes(&empty.serialize_bytes()).unwrap(),
             empty
@@ -429,7 +430,7 @@ mod arrow {
         let serie = Serie::from_values(&values);
         let direct_ptr = serie.to_arrow_array().to_data().buffers()[0].as_ptr();
         let table = StructSerie::from_named(vec![("n", boxed(serie))]).unwrap();
-        let struct_array = table.to_arrow_array();
+        let struct_array = table.to_arrow_array().unwrap();
         let child_ptr = struct_array.column(0).to_data().buffers()[0].as_ptr();
         assert_eq!(
             direct_ptr, child_ptr,
@@ -448,7 +449,7 @@ mod arrow {
         assert_eq!(inner.null_count(), 1);
         let outer = StructSerie::from_named(vec![("inner", boxed(inner))]).unwrap();
         let field = outer.to_field("s").to_arrow_field();
-        let array = outer.to_arrow_array();
+        let array = outer.to_arrow_array().unwrap();
         assert_eq!(
             StructSerie::from_arrow_array(&array, &field).unwrap(),
             outer
@@ -461,7 +462,7 @@ mod arrow {
         // exercising `wide_from_arrow`'s `offset * width` byte arithmetic.
         let wide = boxed(Serie::from_values(&[10u128, 20, 30, 40, 50]));
         let child_field = wide.field("w").to_arrow(); // tagged FixedSizeBinary(16)
-        let sliced = arrow_array::Array::slice(&wide.to_arrow_array(), 1, 3); // logical [20,30,40]
+        let sliced = arrow_array::Array::slice(&wide.to_arrow_array().unwrap(), 1, 3); // logical [20,30,40]
         let fields = arrow_schema::Fields::from(vec![child_field]);
         let struct_array = arrow_array::StructArray::new(fields, vec![sliced], None);
         let field = arrow_schema::Field::new("s", struct_array.data_type().clone(), false);
@@ -502,7 +503,7 @@ mod arrow {
         assert_eq!(batch.num_rows(), 4);
         assert_eq!(batch.num_columns(), 0);
         assert_eq!(StructSerie::from_record_batch(&batch).unwrap(), table);
-        assert_eq!(table.to_arrow_array().len(), 4);
+        assert_eq!(table.to_arrow_array().unwrap().len(), 4);
     }
 
     #[test]
@@ -523,18 +524,23 @@ mod arrow {
         assert_eq!(StructSerie::from_record_batch(&batch).unwrap(), table);
         let field = table.to_field("s").to_arrow_field();
         assert_eq!(
-            StructSerie::from_arrow_array(&table.to_arrow_array(), &field).unwrap(),
+            StructSerie::from_arrow_array(&table.to_arrow_array().unwrap(), &field).unwrap(),
             table
         );
     }
 
     #[test]
-    fn temporal_arrow_child_is_a_guided_error_not_a_panic() {
-        // Date32 is a modeled *field* type but has no column form (temporal is value-types-only),
-        // so importing it as a column errors cleanly rather than panicking.
+    fn temporal_arrow_child_imports_as_a_column() {
+        // Temporal columns are now wired into the erased layer, so importing a `Date32` Arrow array
+        // yields a real column (downcast back with `as_temporal`) — it used to be a guided
+        // "not modeled" error, when temporal was value-types-only.
+        use yggdryl_core::io::fixed::Date32Kind;
         let dates = arrow_array::Date32Array::from(vec![19_000, 19_001]);
         let field = arrow_schema::Field::new("d", arrow_schema::DataType::Date32, false);
-        let err = from_arrow_any_leaf(&dates, &field).unwrap_err();
-        assert!(err.to_string().contains("not a yggdryl-modeled"), "{err}");
+        let column = from_arrow_any_leaf(&dates, &field).unwrap();
+        assert_eq!(column.type_id(), DataTypeId::Date32);
+        let dates = column.as_temporal::<Date32Kind>().expect("Date32 column");
+        assert_eq!(dates.len(), 2);
+        assert_eq!(dates.get(0).unwrap().days(), 19_000);
     }
 }

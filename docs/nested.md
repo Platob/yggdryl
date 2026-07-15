@@ -155,7 +155,7 @@ assert_eq!(batch.num_rows(), 3);
 assert_eq!(StructSerie::from_record_batch(&batch).unwrap(), table);
 
 // Or a (nullable) StructArray, for a struct that has null rows.
-let array = table.to_arrow_array();
+let array = table.to_arrow_array().unwrap();
 ```
 
 A struct with **null rows** has no `RecordBatch` form (a batch has no top-level validity) — convert

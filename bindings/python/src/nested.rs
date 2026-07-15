@@ -555,7 +555,7 @@ impl StructSerie {
 impl StructSerie {
     /// The Arrow C Data Interface **schema** capsule (`"arrow_schema"`).
     fn __arrow_c_schema__(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let array = self.inner.to_arrow_array();
+        let array = self.inner.to_arrow_array().map_err(io_err)?;
         let schema = FFI_ArrowSchema::try_from(array.data_type()).map_err(arrow_err)?;
         let capsule = PyCapsule::new_bound(py, schema, Some(capsule_name("arrow_schema")))?;
         Ok(capsule.into_any().unbind())
@@ -571,7 +571,7 @@ impl StructSerie {
         requested_schema: Option<PyObject>,
     ) -> PyResult<(PyObject, PyObject)> {
         let _ = requested_schema;
-        let data = self.inner.to_arrow_array().into_data();
+        let data = self.inner.to_arrow_array().map_err(io_err)?.into_data();
         let (ffi_array, ffi_schema) = to_ffi(&data).map_err(arrow_err)?;
         let schema_capsule =
             PyCapsule::new_bound(py, ffi_schema, Some(capsule_name("arrow_schema")))?;
