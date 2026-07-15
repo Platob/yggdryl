@@ -2,7 +2,7 @@
 //! sub-trait of the root [`ScalarType`](crate::io::ScalarType).
 
 use super::{NativeType, PrimitiveType, Serie, TypedField};
-use crate::io::{IOCursor, IoError, ScalarType};
+use crate::io::{Bytes, IOCursor, IoError, ScalarType};
 
 /// The largest fixed-width primitive is 32 bytes (`u256`/`i256`); a stack scratch of this size
 /// (de)serializes one value with no allocation. Every [`NativeType`]'s `WIDTH` is guarded at
@@ -168,6 +168,33 @@ impl<T: NativeType> Scalar<T> {
         source.read_exact(frame)?;
         let value = (frame[0] != 0).then(|| T::read_le(&frame[1..]));
         Ok(Self { value })
+    }
+
+    /// This scalar's canonical bytes — the same one-validity-byte-then-little-endian-value frame
+    /// [`write_to`](Scalar::write_to) produces, returned as an owned `Vec`. The exact inverse of
+    /// [`deserialize_bytes`](Scalar::deserialize_bytes), and the codec the Python / Node bindings
+    /// expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Scalar;
+    ///
+    /// let value = Scalar::of(-1234i32);
+    /// assert_eq!(Scalar::<i32>::deserialize_bytes(&value.serialize_bytes()).unwrap(), value);
+    /// assert_eq!(Scalar::<i32>::null().serialize_bytes()[0], 0); // validity byte is 0 for null
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::with_capacity(Self::serialized_width());
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a scalar from the bytes produced by
+    /// [`serialize_bytes`](Scalar::serialize_bytes), erroring
+    /// ([`IoError::UnexpectedEof`]) if the frame is shorter than
+    /// [`serialized_width`](Scalar::serialized_width).
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
     }
 }
 

@@ -20,9 +20,11 @@ The family has **two faces**, tied together by the shared `DecimalBacking` / `De
 - The self-describing **value type** `D32`/`D64`/`D128`/`D256` — each value carries its own scale,
   with full checked arithmetic, true numeric ordering, conversions, and a byte codec. This is the
   "native decimal", mirrored in **Python and Node**.
-- The **columnar** descriptors `DecimalType` / `DecimalField` / `DecimalScalar` / `DecimalSerie` —
-  one `(precision, scale)` fixed per column (Arrow's model), converting **zero-copy** to/from
-  Arrow's decimal arrays. Rust core (like the rest of [`io::fixed`](fixed.md)'s value/column layer).
+- The **columnar** types `DecimalScalar` / `DecimalSerie` (and the `DecimalType` / `DecimalField`
+  descriptors) — one `(precision, scale)` fixed per column (Arrow's model), converting **zero-copy**
+  to/from Arrow's decimal arrays. `DecimalScalar` / `DecimalSerie` are mirrored in **Python and
+  Node** as `D32Scalar`/`D32Serie` … `D256Scalar`/`D256Serie` (see [Columns](#columns) below);
+  values cross as decimal strings.
 
 ## Constructing and printing
 
@@ -268,38 +270,83 @@ the truncated integer are `bigint`, and `toFloat()` gives a `number`.
     assert_eq!(D128::new(12300, 2).unwrap().to_i128().unwrap(), 123);
     ```
 
-## Columns and Arrow interop (Rust core)
+## Columns
 
 A **column** fixes one `(precision, scale)` for every element (Arrow's model) and stores raw
-coefficients, so `DecimalSerie` converts **zero-copy** to/from Arrow's decimal arrays — the
-coefficient allocation is shared (an `Arc` bump), and the array carries the column's precision and
-scale.
+coefficients. `D32Serie` … `D256Serie` (and their `D*Scalar`) are the value/column layer; every
+write re-expresses the value at the column's scale, with a guided error if it does not fit exactly
+or exceeds the precision. In Python and Node, values cross as **decimal strings** (losslessly
+parseable into the `D32` … `D256` value types for arithmetic).
+
+=== "Python"
+
+    ```python
+    from yggdryl.decimal import D128Scalar, D128Serie
+
+    s = D128Scalar("123.45")                 # precision/scale inferred from the value
+    assert s.value == "123.45" and s.precision == 5 and s.scale == 2
+    assert D128Scalar("2.5", 5, 1) == D128Scalar("2.50", 5, 2)   # equal by value
+
+    col = D128Serie(20, 2, ["123.45", None, "6"])
+    assert len(col) == 3 and col.null_count == 1
+    assert col.to_options() == ["123.45", None, "6.00"]          # re-expressed at scale 2
+    col.push("9.99"); col.set(1, "7.00")
+    assert col.get_scalar(0) == D128Scalar("123.45", 20, 2)
+    assert D128Serie.deserialize_bytes(col.serialize_bytes()) == col
+    ```
+
+=== "Node"
+
+    ```js
+    const { D128Scalar, D128Serie } = require('yggdryl').decimal
+
+    const s = new D128Scalar('123.45')       // precision/scale inferred from the value
+    assert(s.value === '123.45' && s.precision === 5 && s.scale === 2)
+    assert(new D128Scalar('2.5', 5, 1).equals(new D128Scalar('2.50', 5, 2)))   // equal by value
+
+    const col = new D128Serie(20, 2, ['123.45', null, '6'])
+    assert(col.length === 3 && col.nullCount === 1)
+    assert(JSON.stringify(col.toOptions()) === JSON.stringify(['123.45', null, '6.00']))
+    col.push('9.99'); col.set(1, '7.00')
+    assert(col.getScalar(0).equals(new D128Scalar('123.45', 20, 2)))
+    assert(D128Serie.deserializeBytes(col.serializeBytes()).equals(col))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::fixed::{D128, D128Serie};
+    use yggdryl_core::io::SerieType;
+
+    let col = D128Serie::from_options(
+        20, 2,
+        &[Some(D128::new(12345, 2).unwrap()), None, Some(D128::new(600, 2).unwrap())],
+    ).unwrap();
+    assert_eq!((col.len(), col.null_count()), (3, 1));
+    assert_eq!(col.get(0).unwrap().to_string(), "123.45");
+    assert_eq!(D128Serie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    ```
+
+A `DecimalScalar` / `DecimalSerie` element *is* a value-type `Decimal`, so the two faces compose:
+read a value out of a column (`get` / `get_scalar`), do arithmetic on it, and write it back with
+`push` (append) or `set` (overwrite index `i`) — plus the bulk `set_range` / `set_scalars` /
+`set_values` (see [Typed data — fixed-width](fixed.md#in-place-set-single-and-bulk)).
+
+**Arrow interop (Rust core).** `DecimalSerie` stores raw coefficients, so it converts **zero-copy**
+to/from Arrow's decimal arrays — the coefficient allocation is shared (an `Arc` bump), and the array
+carries the column's precision and scale.
 
 ```rust
-use yggdryl_core::io::fixed::{D128, D128Serie};
-use yggdryl_core::io::SerieType;
-
-let col = D128Serie::from_options(
-    20, 2,
-    &[Some(D128::new(12345, 2).unwrap()), None, Some(D128::new(600, 2).unwrap())],
-).unwrap();
-assert_eq!(col.len(), 3);
-assert_eq!(col.null_count(), 1);
-assert_eq!(col.get(0).unwrap().to_string(), "123.45");
-
 # #[cfg(feature = "arrow")]
 # {
+use yggdryl_core::io::fixed::{D128, D128Serie};
+
+let col = D128Serie::from_options(20, 2, &[Some(D128::new(12345, 2).unwrap()), None]).unwrap();
 let array = col.to_arrow_array();               // zero-copy Decimal128Array
 assert_eq!((array.precision(), array.scale()), (20, 2));
 assert_eq!(D128Serie::from_arrow_array(&array), col);
 # }
 ```
-
-A `DecimalScalar` / `DecimalSerie` element *is* a value-type `Decimal`, so the two faces compose:
-read a value out of a column (`get` / `get_scalar`), do arithmetic on it, and write it back with
-`push` (append) or `set` (overwrite index `i`) — plus the bulk `set_range` / `set_scalars` /
-`set_values` (see [Typed data — fixed-width](fixed.md#in-place-set-single-and-bulk)). Every write
-re-expresses the value at the column's scale/precision with a guided error.
 
 ## Design notes
 

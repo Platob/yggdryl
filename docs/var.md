@@ -87,6 +87,69 @@ assert_eq!(Utf8Serie::read_from(&mut sink).unwrap(), col);
 For binary, `from_byte_values` takes `&[Option<&[u8]>]`; the same offsets + validity layout and
 round-trip apply.
 
+## In Python and Node
+
+`Utf8Scalar` / `Utf8Serie` and `BinaryScalar` / `BinarySerie` are classes under `yggdryl.types`.
+A **UTF-8** value crosses as a `str`; a **binary** value as `bytes` (Python) / a `Buffer` (Node).
+A `Scalar` is an **immutable value** (hashable/equatable, pickles/`serializeBytes` through its
+byte codec); a `Serie` is a **mutable column** (unhashable) whose per-element `set` may rewrite
+trailing offsets. `None` / `null` is a null (distinct from an empty value), and invalid UTF-8 is
+a guided error.
+
+=== "Python"
+
+    ```python
+    from yggdryl.types import Utf8Scalar, Utf8Serie, BinaryScalar
+
+    s = Utf8Scalar("héllo")
+    assert s.value == "héllo" and not s.is_null and s.type_name == "utf8"
+    assert Utf8Scalar.deserialize_bytes(s.serialize_bytes()) == s   # byte codec
+
+    col = Utf8Serie(["a", None, "cd"])
+    assert len(col) == 3 and col.null_count == 1
+    assert col.to_options() == ["a", None, "cd"] and col[0] == "a"
+    col.set(1, "longer")                                            # grows -> offsets shift
+    assert col.to_options() == ["a", "longer", "cd"]
+    assert col.get_scalar(0) == Utf8Scalar("a")
+
+    assert BinaryScalar(bytes([0xff, 0x00])).value == b"\xff\x00"   # any bytes are valid
+    ```
+
+=== "Node"
+
+    ```js
+    const { Utf8Scalar, Utf8Serie, BinaryScalar } = require('yggdryl').types
+
+    const s = new Utf8Scalar('héllo')
+    assert(s.value === 'héllo' && !s.isNull && s.typeName === 'utf8')
+    assert(Utf8Scalar.deserializeBytes(s.serializeBytes()).equals(s))   // byte codec
+
+    const col = new Utf8Serie(['a', null, 'cd'])
+    assert(col.length === 3 && col.nullCount === 1)
+    assert(col.get(0) === 'a')
+    col.set(1, 'longer')                                                // grows -> offsets shift
+    assert(JSON.stringify(col.toOptions()) === JSON.stringify(['a', 'longer', 'cd']))
+    assert(col.getScalar(0).equals(new Utf8Scalar('a')))
+
+    assert(new BinaryScalar(Buffer.from([0xff, 0x00])).value.equals(Buffer.from([0xff, 0x00])))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::var::{BinaryScalar, Utf8Scalar, Utf8Serie};
+
+    let s = Utf8Scalar::of("héllo");
+    assert_eq!(Utf8Scalar::deserialize_bytes(&s.serialize_bytes()).unwrap(), s);
+
+    let mut col = Utf8Serie::from_strs(&[Some("a"), None, Some("cd")]);
+    col.set_str(1, Some("longer")).unwrap();
+    assert_eq!(col.get_str(0), Some("a"));
+    assert_eq!(col.get_scalar(0), Utf8Scalar::of("a"));
+
+    assert!(BinaryScalar::of(&[0xff, 0x00]).value_bytes().is_some());
+    ```
+
 ## In-place set — the offset rewrite
 
 Like every `Serie`, a variable-length column can overwrite an existing element — `set_str` /

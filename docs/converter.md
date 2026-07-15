@@ -7,10 +7,69 @@ numeric family every pair is reachable directly; every value also bridges to and
 **binary** — the two universal formats — so anything reaches anything.
 
 !!! note "Increment status"
-    This first increment covers the numeric primitives (`u8`…`i128`, `f16`/`f32`/`f64`), null
-    passthrough, and the UTF-8 / binary bridges. The wide integers, decimals, temporal, and
-    fixed-size byte types are reached today **through** the UTF-8 / binary bridges; direct
-    `Converter` impls for them, and the Python/Node mirrors of `cast`, are the next increment.
+    This increment covers the numeric primitives (`u8`…`i128`, `f16`/`f32`/`f64`), null
+    passthrough, and the UTF-8 / binary bridges — all mirrored in **Python and Node** as
+    per-target `to_<type>` methods (see [In Python and Node](#in-python-and-node)). The wide
+    integers, decimals, temporal, and fixed-size byte types are reached today **through** the
+    UTF-8 / binary bridges; direct `Converter` impls for them are the next increment.
+
+## In Python and Node
+
+Each numeric `Scalar` / `Serie` exposes a **`to_<type>` method per numeric target** (`to_i64`,
+`to_f64`, …) delegating to the core `cast`, plus the universal `to_utf8` / `to_binary` bridges (and
+their reverse on `Utf8Scalar` / `BinaryScalar`). Integer targets are range-checked (a guided
+`ValueError` / thrown `Error`); a null casts to a null of the target.
+
+=== "Python"
+
+    ```python
+    from yggdryl.types import I32Scalar, I32Serie, Utf8Scalar, BinaryScalar
+
+    assert I32Scalar(300).to_i64().value == "300"        # widen (i64 crosses as a string)
+    assert I32Scalar(300).to_f64().value == 300.0        # precision-lossy path
+    assert I32Scalar().to_i64().is_null                  # null -> null
+
+    col = I32Serie([1, None, 3]).to_i64()                # a whole column, nulls preserved
+    assert col.to_options() == ["1", None, "3"]
+
+    # Universal bridges — any <-> utf8 / binary.
+    assert I32Scalar(-7).to_utf8().to_i32().value == -7
+    assert BinaryScalar(I32Scalar(-7).to_binary().value).to_i32().value == -7
+    ```
+
+=== "Node"
+
+    ```js
+    const { I32Scalar, I32Serie, BinaryScalar } = require('yggdryl').types
+
+    assert(new I32Scalar(300).toI64().value === '300')   // widen (i64 crosses as a string)
+    assert(new I32Scalar(300).toF64().value === 300.0)   // precision-lossy path
+    assert(new I32Scalar().toI64().isNull)               // null -> null
+
+    const col = new I32Serie([1, null, 3]).toI64()       // a whole column, nulls preserved
+    assert(JSON.stringify(col.toOptions()) === JSON.stringify(['1', null, '3']))
+
+    // Universal bridges — any <-> utf8 / binary.
+    assert(new I32Scalar(-7).toUtf8().toI32().value === -7)
+    assert(new BinaryScalar(new I32Scalar(-7).toBinary().value).toI32().value === -7)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::fixed::{Scalar, Serie};
+    use yggdryl_core::io::var::BinaryScalar;
+
+    assert_eq!(Scalar::of(300i32).cast::<i64>().unwrap(), Scalar::of(300i64));
+    assert!(Scalar::of(300i32).cast::<u8>().is_err());   // 300 > u8::MAX
+    assert_eq!(Scalar::<i32>::null().cast::<i64>().unwrap(), Scalar::null());
+
+    let col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    assert_eq!(col.cast::<i64>().unwrap().to_options(), [Some(1i64), None, Some(3)]);
+
+    let bytes = Scalar::of(-7i32).to_binary();
+    assert_eq!(bytes.read_to::<i32>().unwrap(), Scalar::of(-7i32));
+    ```
 
 ## Numeric casts — range-checked, same-type is free
 

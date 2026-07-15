@@ -8,10 +8,13 @@ The core `io` module is organized to **serialize all types**, split by value sha
 
 !!! note "Python & Node"
 
-    This page describes the Rust core's **value/column** layer (`Scalar` / `Serie` / `Buffer`),
-    which is currently Rust-only. The **schema** layer it rests on — `DataType`, `Field`, and
-    its [`Headers`](headers.md) metadata (the category drill-down and metadata shown below) — is
-    mirrored in Python and Node; see [Schema layer](types.md) for the three-language API.
+    The **`Scalar` and `Serie`** value/column types are mirrored in Python and Node — one class
+    per primitive under `yggdryl.types` (`I32Scalar` / `I32Serie`, `U256Scalar` / `U256Serie`,
+    `F64Scalar` / `F64Serie`, …); see [In Python and Node](#in-python-and-node) below for the
+    three-language API. The **schema** layer they rest on — `DataType`, `Field`, and its
+    [`Headers`](headers.md) metadata — is mirrored too (see [Schema layer](types.md)). The typed
+    `Buffer<T>` (`I32Buffer` … `F64Buffer`, a raw non-nullable values store) and numeric
+    [casting](converter.md) are mirrored as well.
 
 Each fixed-width type `T` gets the same Arrow-style stack of value types, all generic over `T`
 and built on the byte-I/O [`Buffer`](io.md):
@@ -25,8 +28,9 @@ and built on the byte-I/O [`Buffer`](io.md):
 | `Serie<T>` | a **nullable column** — a validity bitmap over a values `Buffer` |
 
 `Buffer<u8>` **is** the project's byte buffer: `U8Buffer`, aliased `Bytes`, the type the
-Python/Node `yggdryl.io.Bytes` wraps. The typed columnar types (`Scalar`, `Serie`, `Field`,
-`DataType`) are in the Rust core now; their bindings follow.
+Python/Node `yggdryl.io.Bytes` wraps. The typed columnar types `Scalar` / `Serie` (and the
+`DataType` / `Field` descriptors) are mirrored in all three languages; see
+[In Python and Node](#in-python-and-node).
 
 ## The generic trait hierarchy
 
@@ -206,6 +210,96 @@ let broadcast = Scalar::of(7i32).to_serie();             // scalar -> length-1 c
 assert_eq!(broadcast.as_scalar(), Some(Scalar::of(7)));  // ...and back
 ```
 
+## In Python and Node
+
+Every primitive's `Scalar` and `Serie` is a class under `yggdryl.types` — `I32Scalar` /
+`I32Serie`, `U256Scalar` / `U256Serie`, `F64Scalar` / `F64Serie`, and so on for all 17 widths. A
+`Scalar` is an **immutable value** (hashable/equatable, pickles/`serializeBytes` through its byte
+codec); a `Serie` is a **mutable column** (so, like `bytearray`/`dict`, it is unhashable) with
+`len()`/indexing/iteration. A `None` / `null` element is a null throughout, and the byte codec
+(`serialize_bytes` / `serializeBytes`) round-trips exactly — the same bytes the Rust `write_to`
+produces.
+
+**Values marshal by width.** The small integers (`u8`…`u32`, `i8`…`i32`) cross as a native
+`int` / `number`; the wide integers (`u64`/`i64`/`u128`/`i128`) as an exact **decimal string**;
+the 96/256-bit integers (`u96`/`i96`/`u256`/`i256`), which have no cross-language numeric form,
+as their **little-endian bytes**; and the floats (`f16`/`f32`/`f64`) as a native `float` /
+`number`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.types import I32Scalar, I32Serie, U64Scalar
+
+    # A scalar: one nullable value.
+    s = I32Scalar(-5)
+    assert s.value == -5 and not s.is_null and s.type_name == "i32"
+    assert I32Scalar().is_null and I32Scalar(None).is_null
+    assert I32Scalar.deserialize_bytes(s.serialize_bytes()) == s   # byte codec
+    assert U64Scalar(2**63).value == "9223372036854775808"         # wide int -> decimal string
+
+    # A serie: one nullable column.
+    col = I32Serie([1, None, 3])
+    assert len(col) == 3 and col.null_count == 1
+    assert col.to_options() == [1, None, 3] and list(col) == [1, None, 3]
+    col.push(4); col.set(1, 20)
+    assert col[1] == 20 and col[-1] == 4                           # indexing, negatives allowed
+    assert I32Serie.deserialize_bytes(col.serialize_bytes()) == col
+
+    # Scalar <-> column interop, and a Field descriptor.
+    assert col.get_scalar(2) == I32Scalar(3)
+    assert I32Serie([7]).as_scalar() == I32Scalar(7)
+    assert col.to_field("id").nullable is False                    # inferred from the (now zero) nulls
+    ```
+
+=== "Node"
+
+    ```js
+    const { I32Scalar, I32Serie, U64Scalar } = require('yggdryl').types
+
+    // A scalar: one nullable value.
+    const s = new I32Scalar(-5)
+    assert(s.value === -5 && !s.isNull && s.typeName === 'i32')
+    assert(I32Scalar.null().isNull && new I32Scalar(null).isNull)
+    assert(I32Scalar.deserializeBytes(s.serializeBytes()).equals(s))   // byte codec
+    assert(new U64Scalar((2n ** 63n).toString()).value === '9223372036854775808') // wide int -> string
+
+    // A serie: one nullable column.
+    const col = new I32Serie([1, null, 3])
+    assert(col.length === 3 && col.nullCount === 1)
+    assert(JSON.stringify(col.toOptions()) === JSON.stringify([1, null, 3]))
+    col.push(4); col.set(1, 20)
+    assert(col.get(1) === 20)
+    assert(I32Serie.deserializeBytes(col.serializeBytes()).equals(col))
+
+    // Scalar <-> column interop, and a Field descriptor.
+    assert(col.getScalar(2).equals(new I32Scalar(3)))
+    assert(I32Serie.fromValues([7]).asScalar().equals(new I32Scalar(7)))
+    assert(col.toField('id').nullable === false)                       // inferred from the nulls
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::fixed::{Scalar, Serie};
+
+    // A scalar: one nullable value, with a Vec byte codec.
+    let s = Scalar::of(-5i32);
+    assert_eq!(s.value(), Some(-5));
+    assert_eq!(Scalar::<i32>::deserialize_bytes(&s.serialize_bytes()).unwrap(), s);
+
+    // A serie: one nullable column.
+    let mut col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    assert_eq!((col.len(), col.null_count()), (3, 1));
+    col.push(Some(4));
+    col.set(1, Some(20)).unwrap();
+    assert_eq!(Serie::<i32>::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+
+    // Scalar <-> column interop.
+    assert_eq!(col.get_scalar(2), Scalar::of(3));
+    assert_eq!(Serie::from_values(&[7i32]).as_scalar(), Some(Scalar::of(7)));
+    ```
+
 ## Optimized descriptors
 
 Type descriptors are zero-sized, so the accessors are free. `PrimitiveType<T>` exposes its
@@ -306,20 +400,53 @@ Arrow's `Null` is a type whose *every* value is null, at **zero** storage: `Null
 a `NullScalar`'s wire form is empty, and a `NullSerie` is just its length (no value buffer, no
 validity mask). Like the fixed-size byte family it has no `NativeType`, so it implements the root
 traits directly. It sits at the bottom of the type lattice — any type casts *to* and *from* it
-(see [casting](converter.md)). The descriptor is reachable in every language as `DataType.null()`.
+(see [casting](converter.md)). The `NullScalar` / `NullSerie` value types and the `DataType.null()`
+descriptor are reachable in all three languages.
 
-```rust
-use yggdryl_core::io::DataType;
-use yggdryl_core::io::fixed::{NullScalar, NullSerie, NullType};
+=== "Python"
 
-assert_eq!(NullType::new().byte_width(), 0);
-assert!(NullScalar::null().is_null());
-assert!(NullScalar::null().serialize_bytes().is_empty());
+    ```python
+    from yggdryl.types import NullScalar, NullSerie, DataType
 
-let mut col = NullSerie::with_len(2);
-col.push();                              // one more null
-assert_eq!((col.len(), col.null_count()), (3, 3)); // all null, no storage
-```
+    assert NullScalar().is_null and NullScalar().value is None
+    assert NullScalar().data_type == DataType.null()
+    assert NullScalar().serialize_bytes() == b""     # empty wire form
+
+    col = NullSerie(2)
+    col.push()                                        # one more null
+    assert len(col) == 3 and col.null_count == 3      # all null, no storage
+    assert col[0] is None and col.get_scalar(0) == NullScalar()
+    ```
+
+=== "Node"
+
+    ```js
+    const { NullScalar, NullSerie, DataType } = require('yggdryl').types
+
+    assert(new NullScalar().isNull && new NullScalar().value === null)
+    assert(new NullScalar().dataType.equals(DataType.null()))
+    assert(new NullScalar().serializeBytes().length === 0)   // empty wire form
+
+    const col = new NullSerie(2)
+    col.push()                                               // one more null
+    assert(col.length === 3 && col.nullCount === 3)          // all null, no storage
+    assert(col.get(0) === null && col.getScalar(0).equals(new NullScalar()))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::DataType;
+    use yggdryl_core::io::fixed::{NullScalar, NullSerie, NullType};
+
+    assert_eq!(NullType::new().byte_width(), 0);
+    assert!(NullScalar::null().is_null());
+    assert!(NullScalar::null().serialize_bytes().is_empty());
+
+    let mut col = NullSerie::with_len(2);
+    col.push();                              // one more null
+    assert_eq!((col.len(), col.null_count()), (3, 3)); // all null, no storage
+    ```
 
 ## Field metadata — safe, lossless Arrow round-trips
 

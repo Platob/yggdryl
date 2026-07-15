@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 use super::dtype::OFFSET_WIDTH;
 use super::{ByteField, ByteScalar, ByteType, VarElement};
 use crate::io::bitmap::Bitmap;
-use crate::io::{IOCursor, IoError, SerieType};
+use crate::io::{Bytes, IOCursor, IoError, SerieType};
 
 /// The **variable-length column** sub-trait — the sibling of
 /// [`FixedSerie`](crate::io::fixed::FixedSerie) for a column of byte slices (strings, binary),
@@ -40,7 +40,7 @@ pub trait VarSerie: SerieType {
 /// sink.rewind();
 /// assert_eq!(Utf8Serie::read_from(&mut sink).unwrap(), col);
 /// ```
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ByteSerie<E: VarElement> {
     /// `len + 1` offsets into `data` (`offsets[0] == 0`).
     offsets: Vec<i32>,
@@ -370,6 +370,31 @@ impl<E: VarElement> ByteSerie<E> {
             _element: PhantomData,
         })
     }
+
+    /// This column's canonical bytes — the same `[len][flags][validity?][offsets][data_len][data]`
+    /// frame [`write_to`](ByteSerie::write_to) produces, returned as an owned `Vec`. The exact
+    /// inverse of [`deserialize_bytes`](ByteSerie::deserialize_bytes), and the codec the Python /
+    /// Node bindings expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Serie;
+    ///
+    /// let col = Utf8Serie::from_strs(&[Some("a"), None, Some("cd")]);
+    /// assert_eq!(Utf8Serie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a column from the bytes produced by
+    /// [`serialize_bytes`](ByteSerie::serialize_bytes), validating each value for the kind and
+    /// erroring on a truncated or corrupt frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
+    }
 }
 
 /// Reads a little-endian `u64`.
@@ -401,6 +426,28 @@ impl<E: VarElement> VarSerie for ByteSerie<E> {
     }
 }
 
+// Value identity: two columns are equal iff their lengths, offsets, data, and null positions
+// match. A fully-present column compares equal whether or not its validity mask is *materialized*
+// (an absent mask and a `Some(all-present)` one, left behind after a `set` clears the last null,
+// denote the same value) — keeping identity in lock-step with the byte codec, whose
+// [`write_to`](ByteSerie::write_to) drops an all-present mask. So
+// `deserialize_bytes(serialize_bytes(x)) == x` holds for every column. (A manual impl, not a
+// derive, so this normalization holds — the derive would compare the raw `Option<Bitmap>`.)
+impl<E: VarElement> PartialEq for ByteSerie<E> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len != other.len || self.offsets != other.offsets || self.data != other.data {
+            return false;
+        }
+        match (self.has_nulls(), other.has_nulls()) {
+            (false, false) => true, // both fully present (mask or not)
+            (true, true) => self.validity == other.validity, // same null positions
+            _ => false,             // one has nulls, the other doesn't
+        }
+    }
+}
+
+impl<E: VarElement> Eq for ByteSerie<E> {}
+
 // The UTF-8 column ergonomics (`push_str` / `from_strs` / `get_str` / `to_strs`) live with the
 // `Utf8` marker in the `string` sub-module.
 
@@ -424,5 +471,31 @@ impl<E: VarElement> core::fmt::Debug for ByteSerie<E> {
             .field("null_count", &self.null_count())
             .field("data_len", &self.data.len())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Utf8Serie;
+
+    #[test]
+    fn equality_ignores_a_materialized_all_present_mask() {
+        // Clearing the last null with `set` leaves a materialized all-present validity mask; the
+        // column must still equal (and round-trip byte-equal to) the same values with no mask.
+        let mut cleared = Utf8Serie::from_strs(&[Some("a"), None, Some("cd")]);
+        cleared.set_str(1, Some("b")).unwrap();
+        assert_eq!(cleared.null_count(), 0);
+
+        let dense = Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("cd")]);
+        assert_eq!(cleared, dense);
+        assert_eq!(
+            Utf8Serie::deserialize_bytes(&cleared.serialize_bytes()).unwrap(),
+            cleared
+        );
+
+        // A null and a present-but-empty value at the same slot must still differ.
+        let a = Utf8Serie::from_strs(&[Some(""), Some("x")]);
+        let b = Utf8Serie::from_strs(&[None, Some("x")]);
+        assert_ne!(a, b);
     }
 }

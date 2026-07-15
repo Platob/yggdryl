@@ -5,7 +5,7 @@
 use core::marker::PhantomData;
 
 use super::{Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalType};
-use crate::io::{IOCursor, IoError, ScalarType};
+use crate::io::{Bytes, IOCursor, IoError, ScalarType};
 
 /// A single, possibly-null decimal value of width `B`, precision `precision`, scale `scale`.
 ///
@@ -144,6 +144,30 @@ impl<B: DecimalBacking> DecimalScalar<B> {
             scale,
             _backing: PhantomData,
         })
+    }
+
+    /// This scalar's canonical bytes — the same `[validity][precision][scale][coefficient]` frame
+    /// [`write_to`](DecimalScalar::write_to) produces, returned as an owned `Vec`. The exact inverse
+    /// of [`deserialize_bytes`](DecimalScalar::deserialize_bytes), and the codec the Python / Node
+    /// bindings expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{D64, D64Scalar};
+    ///
+    /// let scalar = D64Scalar::of(D64::new(12345, 2).unwrap()); // 123.45
+    /// assert_eq!(D64Scalar::deserialize_bytes(&scalar.serialize_bytes()).unwrap(), scalar);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::with_capacity(Self::serialized_len());
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a scalar from the bytes produced by
+    /// [`serialize_bytes`](DecimalScalar::serialize_bytes), erroring on a truncated frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
     }
 }
 

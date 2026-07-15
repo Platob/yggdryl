@@ -11,7 +11,7 @@
 
 use super::Field;
 use crate::io::{
-    DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
+    Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
 };
 
 /// Reads a little-endian `u64` from a cursor.
@@ -334,6 +334,29 @@ impl NullSerie {
         Ok(Self {
             len: read_u64(source)? as usize,
         })
+    }
+
+    /// This column's canonical bytes — just its length as a little-endian `u64`, the same frame
+    /// [`write_to`](NullSerie::write_to) produces. The exact inverse of
+    /// [`deserialize_bytes`](NullSerie::deserialize_bytes).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::NullSerie;
+    ///
+    /// let col = NullSerie::with_len(5);
+    /// assert_eq!(NullSerie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a column from the bytes produced by
+    /// [`serialize_bytes`](NullSerie::serialize_bytes), erroring on a truncated frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
     }
 
     /// This column as an Arrow [`NullArray`](arrow_array::NullArray) (feature `arrow`).

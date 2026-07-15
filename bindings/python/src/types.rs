@@ -45,7 +45,7 @@ pub struct DataType {
 }
 
 impl DataType {
-    fn of(id: DataTypeId) -> Self {
+    pub(crate) fn of(id: DataTypeId) -> Self {
         Self {
             id,
             byte_width: id.fixed_byte_width().unwrap_or(0),

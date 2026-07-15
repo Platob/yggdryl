@@ -4,7 +4,7 @@
 use core::marker::PhantomData;
 
 use super::{ByteField, ByteType, VarElement};
-use crate::io::{IOCursor, IoError, ScalarType};
+use crate::io::{Bytes, IOCursor, IoError, ScalarType};
 
 /// The **variable-length scalar** sub-trait — the sibling of
 /// [`FixedScalar`](crate::io::fixed::FixedScalar) for a value whose bytes are not a fixed width
@@ -114,6 +114,31 @@ impl<E: VarElement> ByteScalar<E> {
         let mut bytes = vec![0u8; u64::from_le_bytes(len) as usize];
         source.read_exact(&mut bytes)?;
         Self::from_bytes(&bytes)
+    }
+
+    /// This scalar's canonical bytes — the same validity-byte-then-`[len][bytes]` frame
+    /// [`write_to`](ByteScalar::write_to) produces, returned as an owned `Vec`. The exact inverse
+    /// of [`deserialize_bytes`](ByteScalar::deserialize_bytes), and the codec the Python / Node
+    /// bindings expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Scalar;
+    ///
+    /// let value = Utf8Scalar::of("héllo");
+    /// assert_eq!(Utf8Scalar::deserialize_bytes(&value.serialize_bytes()).unwrap(), value);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a scalar from the bytes produced by
+    /// [`serialize_bytes`](ByteScalar::serialize_bytes), validating a present value for the kind
+    /// (`InvalidUtf8` for bad UTF-8) and erroring on a truncated frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
     }
 }
 

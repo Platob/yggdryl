@@ -11,7 +11,7 @@ use super::{
     Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalScalar, DecimalType,
 };
 use crate::io::bitmap::Bitmap;
-use crate::io::{IOCursor, IoError, SerieType};
+use crate::io::{Bytes, IOCursor, IoError, SerieType};
 
 /// The largest coefficient is 32 bytes (`d256`); a stack scratch of this size encodes one
 /// coefficient with no allocation while building a column's raw bytes.
@@ -401,6 +401,30 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         sink.write_all(self.values.as_slice())
     }
 
+    /// This column's canonical bytes — the same `[len][precision][scale][flags][validity?][values]`
+    /// frame [`write_to`](DecimalSerie::write_to) produces, returned as an owned `Vec`. The exact
+    /// inverse of [`deserialize_bytes`](DecimalSerie::deserialize_bytes), and the codec the Python /
+    /// Node bindings expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{D128, D128Serie};
+    ///
+    /// let col = D128Serie::from_options(20, 2, &[Some(D128::new(12345, 2).unwrap()), None]).unwrap();
+    /// assert_eq!(D128Serie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a column from the bytes produced by
+    /// [`serialize_bytes`](DecimalSerie::serialize_bytes), erroring on a truncated or corrupt frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
+    }
+
     /// Reads a column written by [`write_to`](DecimalSerie::write_to).
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
         let mut header = [0u8; 8 + 3];
@@ -451,16 +475,15 @@ impl<B: DecimalBacking> SerieType for DecimalSerie<B> {
     }
 }
 
-// Structural identity: same descriptor, length, validity, and present coefficients. Comparing only
-// *present* coefficients means the unspecified bytes under null slots (Arrow leaves them undefined)
-// never affect equality.
+// Structural identity: same descriptor, length, and — at every index — the same present-or-null
+// coefficient. Because [`get_coeff`](DecimalSerie::get_coeff) returns `None` for a null slot, this
+// compare covers null *positions* directly, so it is independent of whether the validity mask is
+// materialized (an absent mask and a `Some(all-present)` one, left after a `set` clears the last
+// null, denote the same value — keeping identity in lock-step with the byte codec). Comparing only
+// *present* coefficients also means the unspecified bytes under null slots never affect equality.
 impl<B: DecimalBacking> PartialEq for DecimalSerie<B> {
     fn eq(&self, other: &Self) -> bool {
-        if self.precision != other.precision
-            || self.scale != other.scale
-            || self.len != other.len
-            || self.validity != other.validity
-        {
+        if self.precision != other.precision || self.scale != other.scale || self.len != other.len {
             return false;
         }
         (0..self.len).all(|i| self.get_coeff(i) == other.get_coeff(i))
@@ -554,5 +577,32 @@ where
             scale: array.scale(),
             _backing: PhantomData,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{D128Serie, D128};
+
+    #[test]
+    fn equality_ignores_a_materialized_all_present_mask() {
+        // Clearing the last null with `set` leaves a materialized all-present validity mask; the
+        // column must still equal (and round-trip byte-equal to) the same values with no mask.
+        let a = D128::new(12345, 2).unwrap();
+        let b = D128::new(600, 2).unwrap();
+        let mut cleared = D128Serie::from_options(20, 2, &[Some(a), None]).unwrap();
+        cleared.set(1, Some(b)).unwrap();
+        assert_eq!(cleared.null_count(), 0);
+
+        let dense = D128Serie::from_values(20, 2, &[a, b]).unwrap();
+        assert_eq!(cleared, dense);
+        assert_eq!(
+            D128Serie::deserialize_bytes(&cleared.serialize_bytes()).unwrap(),
+            cleared
+        );
+
+        // A genuine null still makes the columns differ.
+        let with_null = D128Serie::from_options(20, 2, &[Some(a), None]).unwrap();
+        assert_ne!(with_null, dense);
     }
 }

@@ -4,18 +4,24 @@
 //! The top-level `yggdryl.version()` is the minimal example; richer surfaces live in
 //! submodules that mirror the core's modules — `yggdryl.uri` (RFC 3986 URIs, absolute URLs,
 //! and authorities), `yggdryl.io` (the byte-I/O `Bytes` buffer + `Whence`, and the `Headers`
-//! metadata/header map), `yggdryl.types` (the typed-data schema layer: `DataType` / `Field`), and
+//! metadata/header map), `yggdryl.types` (the typed-data schema layer: `DataType` / `Field`, plus
+//! the fixed-width value/column types `U8Scalar`/`U8Serie` … `F64Scalar`/`F64Serie`), and
 //! `yggdryl.decimal` (the fixed-width scaled decimals `D32`/`D64`/`D128`/`D256`), all mirroring
 //! `yggdryl_core::io`.
 
 use pyo3::prelude::*;
 
+mod buffers;
 mod bytes;
+mod deccolumn;
 mod decimal;
 mod headers;
+mod nullvalues;
 mod temporal;
 mod types;
 mod uri;
+mod values;
+mod varvalues;
 
 /// The library version string — delegates to [`yggdryl_core::version`].
 #[pyfunction]
@@ -49,8 +55,17 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
         bytes::register(io)?;
         headers::register(io)
     })?;
-    add_submodule(py, module, "types", types::register)?;
-    add_submodule(py, module, "decimal", decimal::register)?;
+    add_submodule(py, module, "types", |types| {
+        types::register(types)?;
+        values::register(types)?;
+        varvalues::register(types)?;
+        nullvalues::register(types)?;
+        buffers::register(types)
+    })?;
+    add_submodule(py, module, "decimal", |decimal| {
+        decimal::register(decimal)?;
+        deccolumn::register(decimal)
+    })?;
     add_submodule(py, module, "temporal", temporal::register)?;
     Ok(())
 }

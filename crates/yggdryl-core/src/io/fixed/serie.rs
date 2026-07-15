@@ -3,7 +3,7 @@
 
 use super::{Buffer, NativeType, PrimitiveType, Scalar, TypedField};
 use crate::io::bitmap::Bitmap;
-use crate::io::{IOBase, IOCursor, IoError, SerieType};
+use crate::io::{Bytes, IOBase, IOCursor, IoError, SerieType};
 
 /// The largest fixed-width primitive is 32 bytes (`u256`/`i256`); a stack scratch of this size
 /// encodes one value with no allocation while building a column's raw bytes in one pass.
@@ -391,6 +391,31 @@ impl<T: NativeType> Serie<T> {
             len,
         })
     }
+
+    /// This column's canonical bytes — the same `[len][flags][validity?][values]` frame
+    /// [`write_to`](Serie::write_to) produces, returned as an owned `Vec`. The exact inverse of
+    /// [`deserialize_bytes`](Serie::deserialize_bytes), and the codec the Python / Node bindings
+    /// expose (`serialize_bytes` / `serializeBytes`).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    /// assert_eq!(Serie::<i32>::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a column from the bytes produced by
+    /// [`serialize_bytes`](Serie::serialize_bytes), erroring ([`IoError::UnexpectedEof`] /
+    /// [`IoError::CorruptLength`]) on a truncated or corrupt frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
+    }
 }
 
 impl<T: NativeType> Default for Serie<T> {
@@ -404,12 +429,25 @@ impl<T: NativeType> Default for Serie<T> {
 }
 
 // Value identity is **byte-wise**, unconditional over `T: NativeType`: two columns are equal iff
-// their lengths, validity masks, and raw value bytes match. `Buffer<T>` already compares by its
+// their lengths, null positions, and raw value bytes match. `Buffer<T>` already compares by its
 // bytes (not `T`'s `==`), so this is bit-canonical and works for the float types too — a manual
 // impl (not a derive) because a derive would spuriously require `T: Eq`, which the floats lack.
+//
+// A fully-present column compares equal whether or not its validity mask is *materialized*: an
+// absent mask (`None`) and a materialized all-present one (`Some(all-true)`, left behind after a
+// `set` clears the last null) denote the same value. This keeps identity in lock-step with the
+// byte codec, whose [`write_to`](Serie::write_to) already drops an all-present mask — so
+// `deserialize_bytes(serialize_bytes(x)) == x` holds for every column.
 impl<T: NativeType> PartialEq for Serie<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.len == other.len && self.validity == other.validity && self.values == other.values
+        if self.len != other.len || self.values != other.values {
+            return false;
+        }
+        match (self.has_nulls(), other.has_nulls()) {
+            (false, false) => true, // both fully present (mask or not)
+            (true, true) => self.validity == other.validity, // same null positions
+            _ => false,             // one has nulls, the other doesn't
+        }
     }
 }
 
@@ -501,5 +539,30 @@ impl<T: super::ArrowNative> Serie<T> {
             values,
             len,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equality_ignores_a_materialized_all_present_mask() {
+        // Clearing the last null with `set` leaves a materialized all-present validity mask; the
+        // column must still equal (and round-trip byte-equal to) the same values with no mask.
+        let mut cleared = Serie::from_options(&[Some(1i32), None, Some(3)]);
+        cleared.set(1, Some(2)).unwrap();
+        assert_eq!(cleared.null_count(), 0);
+
+        let dense = Serie::from_values(&[1i32, 2, 3]);
+        assert_eq!(cleared, dense);
+        assert_eq!(
+            Serie::<i32>::deserialize_bytes(&cleared.serialize_bytes()).unwrap(),
+            cleared
+        );
+
+        // A genuine null must still make the columns differ.
+        let with_null = Serie::from_options(&[Some(1i32), None, Some(3)]);
+        assert_ne!(with_null, dense);
     }
 }
