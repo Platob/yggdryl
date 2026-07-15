@@ -225,5 +225,25 @@ byte-for-byte with the Rust core.
     assert_eq!(StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap(), table);
     ```
 
-Arrow-array interop currently lives in the Rust core (behind its `arrow` feature); the extensions
-carry the structural surface and the byte codec.
+### pyarrow — zero-copy via the Arrow C Data Interface
+
+The Python extension implements the **Arrow PyCapsule protocol** (`__arrow_c_array__` /
+`__arrow_c_schema__`), so a `StructSerie` hands its columns to `pyarrow` with **no payload copy**
+(the child buffers are shared through the C Data Interface), and `StructSerie.from_arrow(...)` pulls
+any C-Data-exposing pyarrow object back the same way.
+
+```python
+import pyarrow as pa
+from yggdryl.types import StructSerie, I32Serie, Utf8Serie
+
+table = StructSerie([("id", I32Serie([1, 2, 3])), ("name", Utf8Serie(["ann", None, "cara"]))])
+
+arr = pa.array(table)                 # zero-copy import into pyarrow (a StructArray)
+assert arr.field(0).to_pylist() == [1, 2, 3]
+assert StructSerie.from_arrow(arr) == table          # and back, zero-copy
+assert StructSerie.from_arrow(pa.RecordBatch.from_struct_array(arr)) == table
+```
+
+The Node extension carries the structural surface and the byte codec; an equivalent Arrow-ecosystem
+bridge for apache-arrow JS (which has no C Data Interface consumer in its standard build) is a
+separate follow-up.

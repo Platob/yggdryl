@@ -13,9 +13,15 @@ name = "yggdryl"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The Rust core — this binding is a thin wrapper that delegates to it.
-yggdryl-core = { workspace = true }
+# The Rust core — this binding is a thin wrapper that delegates to it. The `arrow` feature
+# powers the zero-copy Arrow C Data Interface (PyCapsule) bridge to pyarrow.
+yggdryl-core = { workspace = true, features = ["arrow"] }
 # `extension-module` links against the interpreter at import time (added on top of the
 # workspace's stable-ABI `abi3-py37`), so `cargo build`/`cargo test` never touch this crate
 # (default-members = core); maturin builds it.
 pyo3 = { workspace = true, features = ["extension-module"] }
+# Arrow FFI (C Data Interface) — export/import a StructArray as ArrowArray + ArrowSchema for
+# the `__arrow_c_array__` / `__arrow_c_schema__` PyCapsule protocol pyarrow consumes zero-copy.
+# The `ffi` feature gates the `to_ffi` / `from_ffi` + `FFI_Arrow*` surface.
+arrow-array = { workspace = true, features = ["ffi"] }
+arrow-schema = { workspace = true, features = ["ffi"] }

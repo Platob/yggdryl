@@ -13,11 +13,15 @@
 #![allow(clippy::useless_conversion)]
 
 use std::collections::hash_map::DefaultHasher;
+use std::ffi::CString;
 use std::hash::{Hash, Hasher};
 
+use arrow_array::ffi::{from_ffi, to_ffi, FFI_ArrowArray};
+use arrow_array::Array;
+use arrow_schema::ffi::FFI_ArrowSchema;
 use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyCapsule};
 
 use yggdryl_core::io::fixed::{Dec128, Dec256, Dec32, Dec64, NullSerie as CoreNullSerie};
 use yggdryl_core::io::nested::{StructField as CoreStructField, StructSerie as CoreStructSerie};
@@ -36,6 +40,16 @@ use crate::varvalues::{BinarySerie, Utf8Serie};
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn io_err(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// Maps an Arrow error to a Python `ValueError`.
+fn arrow_err(error: arrow_schema::ArrowError) -> PyErr {
+    PyValueError::new_err(error.to_string())
+}
+
+/// A capsule name (`"arrow_schema"` / `"arrow_array"`), as the Arrow PyCapsule protocol requires.
+fn capsule_name(name: &str) -> CString {
+    CString::new(name).expect("a static ASCII capsule name has no interior NUL")
 }
 
 /// Boxes any yggdryl column wrapper (fixed / decimal / var / null / nested) into an erased
@@ -531,6 +545,75 @@ impl StructSerie {
             self.inner.num_columns(),
             CoreStructSerie::null_count(&self.inner)
         )
+    }
+}
+
+/// The **zero-copy Arrow C Data Interface** (PyCapsule protocol) for a struct column, so pyarrow
+/// imports it with no payload copy — `pyarrow.array(table)` / `pyarrow.record_batch(table)` and
+/// back via [`from_arrow`](StructSerie::from_arrow).
+#[pymethods]
+impl StructSerie {
+    /// The Arrow C Data Interface **schema** capsule (`"arrow_schema"`).
+    fn __arrow_c_schema__(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let array = self.inner.to_arrow_array();
+        let schema = FFI_ArrowSchema::try_from(array.data_type()).map_err(arrow_err)?;
+        let capsule = PyCapsule::new_bound(py, schema, Some(capsule_name("arrow_schema")))?;
+        Ok(capsule.into_any().unbind())
+    }
+
+    /// The Arrow C Data Interface **(schema, array)** capsule pair, exported zero-copy. The
+    /// `requested_schema` hint is accepted for protocol compatibility and ignored (this column
+    /// always exports its native schema).
+    #[pyo3(signature = (requested_schema = None))]
+    fn __arrow_c_array__(
+        &self,
+        py: Python<'_>,
+        requested_schema: Option<PyObject>,
+    ) -> PyResult<(PyObject, PyObject)> {
+        let _ = requested_schema;
+        let data = self.inner.to_arrow_array().into_data();
+        let (ffi_array, ffi_schema) = to_ffi(&data).map_err(arrow_err)?;
+        let schema_capsule =
+            PyCapsule::new_bound(py, ffi_schema, Some(capsule_name("arrow_schema")))?;
+        let array_capsule = PyCapsule::new_bound(py, ffi_array, Some(capsule_name("arrow_array")))?;
+        Ok((
+            schema_capsule.into_any().unbind(),
+            array_capsule.into_any().unbind(),
+        ))
+    }
+
+    /// Imports any object exposing the Arrow C Data Interface (a pyarrow `StructArray` /
+    /// `RecordBatch`) into a struct column, zero-copy — the inverse of `__arrow_c_array__`.
+    #[staticmethod]
+    fn from_arrow(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let pair = obj.call_method0("__arrow_c_array__")?;
+        let (schema_cap, array_cap): (Bound<'_, PyAny>, Bound<'_, PyAny>) = pair.extract()?;
+        let schema_cap = schema_cap.downcast::<PyCapsule>()?;
+        let array_cap = array_cap.downcast::<PyCapsule>()?;
+        // Move the FFI structs out of the producer's capsules, then blank the sources so the
+        // producer's capsule destructors see a released struct and do not double-free.
+        let (ffi_array, ffi_schema) = unsafe {
+            let array_ptr = array_cap.pointer() as *mut FFI_ArrowArray;
+            let schema_ptr = schema_cap.pointer() as *mut FFI_ArrowSchema;
+            let array = std::ptr::read(array_ptr);
+            let schema = std::ptr::read(schema_ptr);
+            std::ptr::write(array_ptr, FFI_ArrowArray::empty());
+            std::ptr::write(schema_ptr, FFI_ArrowSchema::empty());
+            (array, schema)
+        };
+        // SAFETY: the FFI structs were produced by a conforming Arrow C Data Interface exporter
+        // (pyarrow), and we take ownership of them above (blanking the sources).
+        let data = unsafe { from_ffi(ffi_array, &ffi_schema) }.map_err(arrow_err)?;
+        let array = arrow_array::make_array(data);
+        let struct_array = array
+            .as_any()
+            .downcast_ref::<arrow_array::StructArray>()
+            .ok_or_else(|| PyValueError::new_err("the imported Arrow array is not a struct"))?;
+        let nullable = struct_array.null_count() > 0;
+        let field = arrow_schema::Field::new("", struct_array.data_type().clone(), nullable);
+        CoreStructSerie::from_arrow_array(struct_array, &field)
+            .map(|inner| Self { inner })
+            .map_err(io_err)
     }
 }
 

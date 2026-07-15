@@ -14,7 +14,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
+# pyarrow exercises the zero-copy Arrow C Data Interface (PyCapsule) round-trip; the tests
+# `importorskip` it, so they skip cleanly where a wheel is unavailable.
+test = ["pytest", "pyarrow"]
 
 [tool.maturin]
 # One cp37-abi3 wheel per OS/arch covers CPython >= 3.7.

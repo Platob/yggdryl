@@ -153,3 +153,34 @@ def test_to_field_nullability_reflects_struct_rows_not_child_nulls():
     assert isinstance(schema, StructField)
     assert schema.name == "person"
     assert not schema.nullable
+
+
+# ---- Arrow C Data Interface (PyCapsule) bridge to pyarrow -----------------------------------
+
+
+def test_pyarrow_c_data_interface_round_trip():
+    pa = pytest.importorskip("pyarrow")
+    from yggdryl.types import I32Serie
+
+    table = StructSerie([("id", I32Serie([1, 2, 3])), ("name", Utf8Serie(["ann", None, "cara"]))])
+
+    # Export zero-copy to pyarrow via the Arrow PyCapsule interface.
+    arr = pa.array(table)  # -> a StructArray, imported through __arrow_c_array__
+    assert len(arr) == 3
+    assert [arr.type.field(i).name for i in range(arr.type.num_fields)] == ["id", "name"]
+    assert arr.field(0).to_pylist() == [1, 2, 3]
+    assert arr.field(1).to_pylist() == ["ann", None, "cara"]
+
+    # Import it back, zero-copy — the inverse direction.
+    assert StructSerie.from_arrow(arr) == table
+
+    # And through a RecordBatch (which also exposes the C Data Interface).
+    batch = pa.RecordBatch.from_struct_array(arr)
+    assert batch.num_rows == 3
+    assert StructSerie.from_arrow(batch) == table
+
+
+def test_arrow_c_schema_capsule_is_exposed():
+    # The schema capsule is produced independently of pyarrow being installed.
+    cap = _table().__arrow_c_schema__()
+    assert type(cap).__name__ == "PyCapsule"

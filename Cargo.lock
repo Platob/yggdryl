@@ -78,6 +78,9 @@ name = "arrow-schema"
 version = "56.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a0d5eb3fe25337ff83e8333a08379bdd1540b0961b1c888f6e505d971c198e1"
+dependencies = [
+ "bitflags",
+]
 
 [[package]]
 name = "autocfg"
@@ -879,6 +882,8 @@ dependencies = [
 name = "yggdryl-python"
 version = "0.1.1"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "pyo3",
  "yggdryl-core",
 ]
