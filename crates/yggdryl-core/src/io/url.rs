@@ -65,14 +65,52 @@ impl Url {
         self.inner.password()
     }
 
-    /// The host, if this URL has an authority.
+    /// The host, if this URL has an authority (IPv6 kept bracketed).
     pub fn host(&self) -> Option<&str> {
         self.inner.host()
     }
 
-    /// The port, if any.
+    /// Whether the host is a bracketed IPv6 literal — see [`Uri::host_is_ipv6`].
+    pub fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URL has an authority — see
+    /// [`Uri::host_unbracketed`].
+    pub fn host_unbracketed(&self) -> Option<&str> {
+        self.inner.host_unbracketed()
+    }
+
+    /// The port as written, if any. For the port to actually connect to use
+    /// [`port_or_default`](Url::port_or_default).
     pub fn port(&self) -> Option<u16> {
         self.inner.port()
+    }
+
+    /// The default port registered for this URL's scheme, or `None` if it has no known
+    /// default — see [`default_port`](crate::io::default_port).
+    ///
+    /// ```
+    /// use yggdryl_core::io::Url;
+    ///
+    /// assert_eq!(Url::parse("wss://h/s").unwrap().default_port(), Some(443));
+    /// assert_eq!(Url::parse("s3://bucket/key").unwrap().default_port(), None);
+    /// ```
+    pub fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// The **effective** port to connect to: the explicit [`port`](Url::port), else the
+    /// scheme's [`default_port`](Url::default_port) — see [`Uri::port_or_default`].
+    ///
+    /// ```
+    /// use yggdryl_core::io::Url;
+    ///
+    /// assert_eq!(Url::parse("https://h/p").unwrap().port_or_default(), Some(443));
+    /// assert_eq!(Url::parse("http://h:8080/p").unwrap().port_or_default(), Some(8080));
+    /// ```
+    pub fn port_or_default(&self) -> Option<u16> {
+        self.inner.port_or_default()
     }
 
     /// The path, always POSIX slash-normalized.
@@ -202,6 +240,12 @@ impl Url {
         self
     }
 
+    /// Returns this URL with the whole authority replaced (pass `None` to drop it).
+    pub fn with_authority(mut self, authority: Option<Authority>) -> Self {
+        self.inner.set_authority(authority);
+        self
+    }
+
     /// Returns this URL with the host set.
     pub fn with_host(mut self, host: &str) -> Self {
         self.inner.set_host(host);
@@ -249,6 +293,11 @@ impl Url {
     /// Sets the scheme.
     pub fn set_scheme(&mut self, scheme: &str) {
         self.inner.set_scheme(scheme);
+    }
+
+    /// Replaces the whole authority (pass `None` to drop it).
+    pub fn set_authority(&mut self, authority: Option<Authority>) {
+        self.inner.set_authority(authority);
     }
 
     /// Sets the host.
@@ -324,6 +373,36 @@ impl Url {
     /// ```
     pub fn into_uri(self) -> Uri {
         self.inner
+    }
+
+    // ---- combinators (copy / joinpath / merge) -------------------------------------
+
+    /// An explicit copy of this URL — the cross-language name for a clone.
+    pub fn copy(&self) -> Url {
+        self.clone()
+    }
+
+    /// Returns this URL with `path` joined onto its path — see [`Uri::joinpath`]. The scheme
+    /// is preserved, so the result is still an absolute URL.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Url;
+    ///
+    /// let base = Url::parse("https://api.example.com/v1").unwrap();
+    /// assert_eq!(base.joinpath("users/42").to_string(), "https://api.example.com/v1/users/42");
+    /// ```
+    pub fn joinpath(&self, path: &str) -> Url {
+        Url {
+            inner: self.inner.joinpath(path),
+        }
+    }
+
+    /// Returns a copy of this URL overlaid by `other` — see [`Uri::merge_with`]. Both carry a
+    /// scheme, so the result is always an absolute URL.
+    pub fn merge_with(&self, other: &Url) -> Url {
+        Url {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 }
 

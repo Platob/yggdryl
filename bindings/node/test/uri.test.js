@@ -4,7 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { Uri, Url, Authority } = yggdryl.uri
+const { Uri, Url, Authority, defaultPort } = yggdryl.uri
 
 test('the uri namespace exposes Uri, Url, and Authority', () => {
   for (const cls of [Uri, Url, Authority]) {
@@ -162,6 +162,120 @@ test('Url byte codec and value semantics', () => {
 
   // Decoding scheme-less bytes as a Url fails.
   assert.throws(() => Url.deserializeBytes(Buffer.from('/relative')), /requires a scheme/)
+})
+
+test('defaultPort maps well-known schemes (case-insensitive)', () => {
+  assert.equal(defaultPort('https'), 443)
+  assert.equal(defaultPort('HTTPS'), 443) // scheme is case-insensitive
+  assert.equal(defaultPort('ws'), 80)
+  assert.equal(defaultPort('postgres'), 5432)
+  assert.equal(defaultPort('s3'), null) // no registered default
+})
+
+test('portOrDefault falls back to the scheme default without mutating the Uri', () => {
+  const implicit = Uri.parse('https://example.com/p')
+  assert.equal(implicit.port, null)
+  assert.equal(implicit.defaultPort, 443)
+  assert.equal(implicit.portOrDefault, 443)
+
+  const explicit = Uri.parse('https://example.com:8443/p')
+  assert.equal(explicit.portOrDefault, 8443) // explicit wins over the default
+
+  // Scheme-less / no-default schemes report null.
+  assert.equal(Uri.parse('//h/p').portOrDefault, null)
+  assert.equal(Uri.parse('s3://bucket/key').portOrDefault, null)
+
+  // The fallback is read-only: nothing is written into the canonical form.
+  assert.equal(implicit.toString(), 'https://example.com/p') // no ":443"
+  assert.ok(!implicit.equals(Uri.parse('https://example.com:443/p')))
+
+  // Url mirrors it.
+  assert.equal(Url.parse('wss://h/socket').portOrDefault, 443)
+
+  // A parity check against the platform WHATWG URL, which fills the default port as ''.
+  const whatwg = new URL('https://example.com/p')
+  assert.equal(whatwg.port, '') // WHATWG blanks the implicit port; we surface it explicitly
+})
+
+test('IPv6 host detection and unbracketing', () => {
+  const uri = Uri.parse('http://[2001:db8::1]:8080/p')
+  assert.equal(uri.host, '[2001:db8::1]') // stored bracketed
+  assert.ok(uri.hostIsIpv6)
+  assert.equal(uri.hostUnbracketed, '2001:db8::1') // bare address to dial
+  assert.equal(uri.portOrDefault, 8080)
+
+  const plain = Uri.parse('http://example.com/p')
+  assert.ok(!plain.hostIsIpv6)
+  assert.equal(plain.hostUnbracketed, 'example.com')
+
+  // No authority -> null / false.
+  const mailto = Uri.parse('mailto:a@b.com')
+  assert.ok(!mailto.hostIsIpv6)
+  assert.equal(mailto.hostUnbracketed, null)
+
+  // Authority value type exposes the same pair.
+  const auth = Authority.fromHost('[::1]')
+  assert.ok(auth.hostIsIpv6)
+  assert.equal(auth.hostUnbracketed, '::1')
+
+  // Url mirrors it.
+  const url = Url.parse('https://[::1]/status')
+  assert.ok(url.hostIsIpv6)
+  assert.equal(url.hostUnbracketed, '::1')
+})
+
+test('joinpath combines paths correctly', () => {
+  const base = Uri.parse('https://api.example.com/v1')
+  assert.equal(base.joinpath('users').toString(), 'https://api.example.com/v1/users')
+  // Chains; a trailing slash on the base is not doubled.
+  assert.equal(base.joinpath('users').joinpath('42').path, '/v1/users/42')
+  assert.equal(Uri.fromPath('/v1/').joinpath('users').path, '/v1/users')
+  // Multi-segment in one call.
+  assert.equal(Uri.fromPath('/v1').joinpath('users/42').path, '/v1/users/42')
+  // An absolute segment resets the path; query/fragment are kept.
+  assert.equal(Uri.parse('https://h/a?x=1#f').joinpath('/b').toString(), 'https://h/b?x=1#f')
+  // A relative segment under an authority stays rooted (does not fuse into the host).
+  assert.equal(Uri.parse('https://h').joinpath('p').path, '/p')
+  // Encoded like setPath.
+  assert.equal(Uri.fromPath('/v1').joinpath('a b').path, '/v1/a%20b')
+  // Url.joinpath keeps the scheme.
+  assert.equal(Url.parse('https://h/v1').joinpath('x').scheme, 'https')
+})
+
+test('mergeWith overlays present components', () => {
+  const base = Uri.parse('https://prod.example.com/v1?trace=1')
+  // A patch with only an authority swaps the host, keeping scheme/path/query.
+  assert.equal(
+    base.mergeWith(Uri.parse('//staging.example.com')).toString(),
+    'https://staging.example.com/v1?trace=1',
+  )
+  // Merging a default (empty) URI is an identity copy.
+  assert.ok(base.mergeWith(Uri.parse('')).equals(base))
+  // Authority merges at the component level.
+  const a = new Authority('db', 'svc', 'secret', 5432)
+  assert.equal(a.mergeWith(Authority.fromHost('replica')).toString(), 'svc:secret@replica:5432')
+})
+
+test('copy is an independent clone', () => {
+  const base = Uri.parse('https://h/a?q#f')
+  const dup = base.copy()
+  assert.ok(dup.equals(base))
+  dup.setPath('/b') // mutating the copy leaves the original untouched
+  assert.equal(base.path, '/a')
+  assert.equal(dup.path, '/b')
+  assert.ok(Authority.fromHost('h').copy().equals(Authority.fromHost('h')))
+})
+
+test('withAuthority attaches a built Authority; Authority builders chain', () => {
+  const authority = Authority.fromHost('db.internal').withUser('svc').withPort(5432)
+  const built = Uri.fromPath('').withScheme('postgres').withAuthority(authority).withPath('/app')
+  assert.equal(built.toString(), 'postgres://svc@db.internal:5432/app')
+  // Dropping the authority.
+  assert.equal(Uri.parse('https://user@h:8080/p').withAuthority(null).authority, null)
+  // Authority builders chain and clear via null.
+  const a = Authority.fromHost('h').withUser('u').withPassword('p').withPort(80)
+  assert.equal(a.toString(), 'u:p@h:80')
+  assert.equal(a.withUser(null).withPassword(null).toString(), 'h:80')
 })
 
 test('an out-of-range port is a guided error naming the offending value', () => {

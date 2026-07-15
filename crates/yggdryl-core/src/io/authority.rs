@@ -72,9 +72,43 @@ impl Authority {
         self.password.as_deref()
     }
 
-    /// The host (an empty string for an empty authority such as `file:///path`).
+    /// The host (an empty string for an empty authority such as `file:///path`). An IPv6
+    /// literal keeps its brackets (`"[::1]"`); use [`host_unbracketed`](Authority::host_unbracketed)
+    /// for the bare address.
     pub fn host(&self) -> &str {
         &self.host
+    }
+
+    /// Whether the host is a bracketed IPv6 (or IP-future) literal, e.g. `"[::1]"` — the one
+    /// host form RFC 3986 wraps in `[` `]`. An unterminated `"[::1"` (no closing bracket) is
+    /// **not** counted, matching how the parser keeps it verbatim as a plain host.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Authority;
+    ///
+    /// assert!(Authority::from_host("[::1]").host_is_ipv6());
+    /// assert!(!Authority::from_host("example.com").host_is_ipv6());
+    /// ```
+    pub fn host_is_ipv6(&self) -> bool {
+        self.host.len() >= 2 && self.host.starts_with('[') && self.host.ends_with(']')
+    }
+
+    /// The host with the IPv6 literal's brackets stripped — `"[::1]"` → `"::1"` — so it can
+    /// be handed straight to a socket / resolver API; a reg-name or IPv4 host is returned
+    /// verbatim. Zero-copy: it borrows the stored host.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Authority;
+    ///
+    /// assert_eq!(Authority::from_host("[2001:db8::1]").host_unbracketed(), "2001:db8::1");
+    /// assert_eq!(Authority::from_host("example.com").host_unbracketed(), "example.com");
+    /// ```
+    pub fn host_unbracketed(&self) -> &str {
+        if self.host_is_ipv6() {
+            &self.host[1..self.host.len() - 1]
+        } else {
+            &self.host
+        }
     }
 
     /// The port, if any.
@@ -100,6 +134,61 @@ impl Authority {
     /// Sets the port.
     pub fn set_port(&mut self, port: Option<u16>) {
         self.port = port;
+    }
+
+    // ---- builder mutators + combinators --------------------------------------------
+
+    /// An explicit copy of this authority — the cross-language name for a clone.
+    pub fn copy(&self) -> Authority {
+        self.clone()
+    }
+
+    /// Returns this authority with the userinfo user set (pass `None` to clear it).
+    pub fn with_user(mut self, user: Option<&str>) -> Self {
+        self.set_user(user);
+        self
+    }
+
+    /// Returns this authority with the userinfo password set (pass `None` to clear it).
+    pub fn with_password(mut self, password: Option<&str>) -> Self {
+        self.set_password(password);
+        self
+    }
+
+    /// Returns this authority with the host set.
+    pub fn with_host(mut self, host: &str) -> Self {
+        self.set_host(host);
+        self
+    }
+
+    /// Returns this authority with the port set (pass `None` to clear it).
+    pub fn with_port(mut self, port: Option<u16>) -> Self {
+        self.set_port(port);
+        self
+    }
+
+    /// Returns a copy of this authority **overlaid** by `other`: each field `other` sets (a
+    /// `Some` user/password/port, or a non-empty host) wins, otherwise this authority's is
+    /// kept. Handy for patching just the port or credentials of a base authority.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Authority;
+    ///
+    /// let base = Authority::new(Some("svc"), Some("secret"), "db", Some(5432));
+    /// let patch = Authority::from_host("replica"); // only the host is set
+    /// assert_eq!(base.merge_with(&patch).to_string(), "svc:secret@replica:5432");
+    /// ```
+    pub fn merge_with(&self, other: &Authority) -> Authority {
+        Authority {
+            user: other.user.clone().or_else(|| self.user.clone()),
+            password: other.password.clone().or_else(|| self.password.clone()),
+            host: if other.host.is_empty() {
+                self.host.clone()
+            } else {
+                other.host.clone()
+            },
+            port: other.port.or(self.port),
+        }
     }
 
     /// An upper bound on the byte length of this authority's canonical rendering, so an

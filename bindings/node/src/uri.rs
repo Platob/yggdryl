@@ -35,6 +35,13 @@ fn java_hash<T: Hash>(value: &T) -> i32 {
     (hash as u32 ^ (hash >> 32) as u32) as i32
 }
 
+/// The IANA-registered default port for a well-known scheme (case-insensitive), or `null` if
+/// the scheme has no registered default. Mirrors [`yggdryl_core::io::default_port`].
+#[napi(js_name = "defaultPort", namespace = "uri")]
+pub fn default_port(scheme: String) -> Option<u16> {
+    io::default_port(&scheme)
+}
+
 /// The `[user[:password]@]host[:port]` authority component of a URI.
 ///
 /// The userinfo is stored as flat `user` / `password` fields (no nested type), and the
@@ -79,10 +86,24 @@ impl Authority {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host (an empty string for an empty authority such as `file:///path`).
+    /// The host (an empty string for an empty authority such as `file:///path`; an IPv6
+    /// literal keeps its brackets).
     #[napi(getter)]
     pub fn host(&self) -> String {
         self.inner.host().to_string()
+    }
+
+    /// Whether the host is a bracketed IPv6 literal (`"[::1]"`).
+    #[napi(getter)]
+    pub fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped (`"[::1]"` → `"::1"`); a reg-name/IPv4 host
+    /// passes through verbatim.
+    #[napi(getter)]
+    pub fn host_unbracketed(&self) -> String {
+        self.inner.host_unbracketed().to_string()
     }
 
     /// The port, if any.
@@ -113,6 +134,54 @@ impl Authority {
     #[napi]
     pub fn set_port(&mut self, port: Option<u16>) {
         self.inner.set_port(port);
+    }
+
+    /// An explicit copy of this authority.
+    #[napi]
+    pub fn copy(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Returns a copy with the userinfo user set (pass `null` to clear it).
+    #[napi]
+    pub fn with_user(&self, user: Option<String>) -> Self {
+        Self {
+            inner: self.inner.clone().with_user(user.as_deref()),
+        }
+    }
+
+    /// Returns a copy with the userinfo password set (pass `null` to clear it).
+    #[napi]
+    pub fn with_password(&self, password: Option<String>) -> Self {
+        Self {
+            inner: self.inner.clone().with_password(password.as_deref()),
+        }
+    }
+
+    /// Returns a copy with the host set.
+    #[napi]
+    pub fn with_host(&self, host: String) -> Self {
+        Self {
+            inner: self.inner.clone().with_host(&host),
+        }
+    }
+
+    /// Returns a copy with the port set (pass `null` to clear it).
+    #[napi]
+    pub fn with_port(&self, port: Option<u16>) -> Self {
+        Self {
+            inner: self.inner.clone().with_port(port),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each field `other` sets wins, else this one's is kept.
+    #[napi]
+    pub fn merge_with(&self, other: &Authority) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 
     /// The canonical authority string as UTF-8 bytes.
@@ -194,16 +263,43 @@ impl Uri {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host, if this URI has an authority.
+    /// The host, if this URI has an authority (an IPv6 literal keeps its brackets).
     #[napi(getter)]
     pub fn host(&self) -> Option<String> {
         self.inner.host().map(str::to_string)
     }
 
-    /// The port, if this URI has an authority carrying one.
+    /// Whether this URI's host is a bracketed IPv6 literal (`false` if it has no authority).
+    #[napi(getter)]
+    pub fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URI has an authority — the bare
+    /// address to hand to a socket API.
+    #[napi(getter)]
+    pub fn host_unbracketed(&self) -> Option<String> {
+        self.inner.host_unbracketed().map(str::to_string)
+    }
+
+    /// The port as written, if any (see `portOrDefault` for the effective port).
     #[napi(getter)]
     pub fn port(&self) -> Option<u16> {
         self.inner.port()
+    }
+
+    /// The default port registered for this URI's scheme, or `null` if scheme-less or the
+    /// scheme has no known default.
+    #[napi(getter)]
+    pub fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// The effective port to connect to: the explicit `port`, else the scheme's
+    /// `defaultPort`. `null` when neither is known. Derived on read — the URI is untouched.
+    #[napi(getter)]
+    pub fn port_or_default(&self) -> Option<u16> {
+        self.inner.port_or_default()
     }
 
     /// The path, always POSIX slash-normalized (possibly empty).
@@ -259,6 +355,17 @@ impl Uri {
     pub fn with_scheme(&self, scheme: String) -> Self {
         Self {
             inner: self.inner.clone().with_scheme(&scheme),
+        }
+    }
+
+    /// Returns a copy of this URI with the whole authority replaced (pass `null` to drop it).
+    #[napi]
+    pub fn with_authority(&self, authority: Option<&Authority>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_authority(authority.map(|a| a.inner.clone())),
         }
     }
 
@@ -326,6 +433,12 @@ impl Uri {
         self.inner.set_scheme(&scheme);
     }
 
+    /// Replaces the whole authority (pass `null` to drop it).
+    #[napi]
+    pub fn set_authority(&mut self, authority: Option<&Authority>) {
+        self.inner.set_authority(authority.map(|a| a.inner.clone()));
+    }
+
     /// Sets the host, creating an authority if this URI had none.
     #[napi]
     pub fn set_host(&mut self, host: String) {
@@ -391,6 +504,34 @@ impl Uri {
             .to_url()
             .map(|inner| Url { inner })
             .map_err(to_error)
+    }
+
+    // ---- combinators (copy / joinpath / merge) -----------------------------------------
+
+    /// An explicit copy of this URI.
+    #[napi]
+    pub fn copy(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Returns a copy with `path` joined lexically onto the path (one `/` at the seam, an
+    /// absolute segment resets it, other components kept). Encoded like `setPath`.
+    #[napi]
+    pub fn joinpath(&self, path: String) -> Self {
+        Self {
+            inner: self.inner.joinpath(&path),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URI's
+    /// is kept.
+    #[napi]
+    pub fn merge_with(&self, other: &Uri) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 
     // ---- query parameters (map access + CRUD) ------------------------------------------
@@ -591,16 +732,40 @@ impl Url {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host, if this URL has an authority.
+    /// The host, if this URL has an authority (an IPv6 literal keeps its brackets).
     #[napi(getter)]
     pub fn host(&self) -> Option<String> {
         self.inner.host().map(str::to_string)
     }
 
-    /// The port, if any.
+    /// Whether the host is a bracketed IPv6 literal (`false` if it has no authority).
+    #[napi(getter)]
+    pub fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URL has an authority.
+    #[napi(getter)]
+    pub fn host_unbracketed(&self) -> Option<String> {
+        self.inner.host_unbracketed().map(str::to_string)
+    }
+
+    /// The port as written, if any (see `portOrDefault` for the effective port).
     #[napi(getter)]
     pub fn port(&self) -> Option<u16> {
         self.inner.port()
+    }
+
+    /// The default port registered for this URL's scheme, or `null` if it has no known default.
+    #[napi(getter)]
+    pub fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// The effective port to connect to: the explicit `port`, else the scheme's `defaultPort`.
+    #[napi(getter)]
+    pub fn port_or_default(&self) -> Option<u16> {
+        self.inner.port_or_default()
     }
 
     /// The path, always POSIX slash-normalized.
@@ -652,6 +817,17 @@ impl Url {
     pub fn with_scheme(&self, scheme: String) -> Self {
         Self {
             inner: self.inner.clone().with_scheme(&scheme),
+        }
+    }
+
+    /// Returns a copy of this URL with the whole authority replaced (pass `null` to drop it).
+    #[napi]
+    pub fn with_authority(&self, authority: Option<&Authority>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_authority(authority.map(|a| a.inner.clone())),
         }
     }
 
@@ -719,6 +895,12 @@ impl Url {
         self.inner.set_scheme(&scheme);
     }
 
+    /// Replaces the whole authority (pass `null` to drop it).
+    #[napi]
+    pub fn set_authority(&mut self, authority: Option<&Authority>) {
+        self.inner.set_authority(authority.map(|a| a.inner.clone()));
+    }
+
     /// Sets the host.
     #[napi]
     pub fn set_host(&mut self, host: String) {
@@ -783,6 +965,34 @@ impl Url {
     pub fn to_uri(&self) -> Uri {
         Uri {
             inner: self.inner.as_uri().clone(),
+        }
+    }
+
+    // ---- combinators (copy / joinpath / merge) -----------------------------------------
+
+    /// An explicit copy of this URL.
+    #[napi]
+    pub fn copy(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Returns a copy with `path` joined lexically onto the path — see [`Uri.joinpath`]. The
+    /// scheme is kept, so the result is still an absolute URL.
+    #[napi]
+    pub fn joinpath(&self, path: String) -> Self {
+        Self {
+            inner: self.inner.joinpath(&path),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URL's
+    /// is kept.
+    #[napi]
+    pub fn merge_with(&self, other: &Url) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
         }
     }
 

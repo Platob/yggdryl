@@ -104,7 +104,7 @@ impl Uri {
         Ok(Uri {
             scheme,
             authority,
-            path: normalize_slashes(path_str),
+            path: normalize_slashes(path_str).into_owned(),
             query,
             fragment,
         })
@@ -121,7 +121,10 @@ impl Uri {
     /// ```
     pub fn from_path(path: &str) -> Uri {
         Uri {
-            path: percent::encode_owned(normalize_slashes(path), percent::is_path_safe),
+            path: percent::encode_owned(
+                normalize_slashes(path).into_owned(),
+                percent::is_path_safe,
+            ),
             ..Uri::default()
         }
     }
@@ -146,14 +149,73 @@ impl Uri {
         self.authority.as_ref().and_then(Authority::password)
     }
 
-    /// The host, if this URI has an authority.
+    /// The host, if this URI has an authority. An IPv6 literal keeps its brackets (`"[::1]"`);
+    /// use [`host_unbracketed`](Uri::host_unbracketed) for the bare address.
     pub fn host(&self) -> Option<&str> {
         self.authority.as_ref().map(Authority::host)
     }
 
-    /// The port, if this URI has an authority carrying one.
+    /// Whether this URI's host is a bracketed IPv6 literal (`false` if it has no authority) —
+    /// see [`Authority::host_is_ipv6`].
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert!(Uri::parse("http://[::1]:8080/p").unwrap().host_is_ipv6());
+    /// assert!(!Uri::parse("http://example.com/p").unwrap().host_is_ipv6());
+    /// ```
+    pub fn host_is_ipv6(&self) -> bool {
+        self.authority.as_ref().is_some_and(Authority::host_is_ipv6)
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URI has an authority — the bare
+    /// address to hand to a socket API. See [`Authority::host_unbracketed`].
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::parse("http://[::1]:80/p").unwrap().host_unbracketed(), Some("::1"));
+    /// assert_eq!(Uri::parse("http://h/p").unwrap().host_unbracketed(), Some("h"));
+    /// ```
+    pub fn host_unbracketed(&self) -> Option<&str> {
+        self.authority.as_ref().map(Authority::host_unbracketed)
+    }
+
+    /// The port, if this URI has an authority carrying one. This is the port **as written**;
+    /// for the port to actually connect to (falling back to the scheme's default) use
+    /// [`port_or_default`](Uri::port_or_default).
     pub fn port(&self) -> Option<u16> {
         self.authority.as_ref().and_then(Authority::port)
+    }
+
+    /// The default port registered for this URI's scheme, or `None` when it is scheme-less or
+    /// the scheme has no known default — see [`default_port`](super::default_port). A pure
+    /// lookup: it does **not** read or need the authority.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::parse("https://h/p").unwrap().default_port(), Some(443));
+    /// assert_eq!(Uri::parse("/just/a/path").unwrap().default_port(), None); // no scheme
+    /// ```
+    pub fn default_port(&self) -> Option<u16> {
+        self.scheme.as_deref().and_then(super::default_port)
+    }
+
+    /// The **effective** port to connect to: the explicit [`port`](Uri::port) if the authority
+    /// carries one, otherwise the scheme's [`default_port`](Uri::default_port). `None` when
+    /// neither is known. This is derived on read — the stored URI is untouched, so its
+    /// canonical form still round-trips.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// assert_eq!(Uri::parse("https://h/p").unwrap().port_or_default(), Some(443)); // default
+    /// assert_eq!(Uri::parse("https://h:8443/p").unwrap().port_or_default(), Some(8443)); // explicit
+    /// assert_eq!(Uri::parse("//h/p").unwrap().port_or_default(), None); // scheme-less
+    /// ```
+    pub fn port_or_default(&self) -> Option<u16> {
+        self.port().or_else(|| self.default_port())
     }
 
     /// The path, always POSIX slash-normalized (possibly empty).
@@ -263,6 +325,13 @@ impl Uri {
         self
     }
 
+    /// Returns this URI with the whole authority replaced (pass `None` to drop it) — attaches
+    /// an [`Authority`] built elsewhere in one call, rather than field by field.
+    pub fn with_authority(mut self, authority: Option<Authority>) -> Self {
+        self.set_authority(authority);
+        self
+    }
+
     /// Returns this URI with the host set (creating an authority if absent).
     pub fn with_host(mut self, host: &str) -> Self {
         self.set_host(host);
@@ -312,6 +381,11 @@ impl Uri {
         self.scheme = Some(scheme.to_string());
     }
 
+    /// Replaces the whole authority (pass `None` to drop it).
+    pub fn set_authority(&mut self, authority: Option<Authority>) {
+        self.authority = authority;
+    }
+
     /// Sets the host, creating an authority if this URI had none.
     pub fn set_host(&mut self, host: &str) {
         self.authority_mut().set_host(host);
@@ -339,7 +413,8 @@ impl Uri {
     /// Sets the path, re-normalizing back-slashes to forward slashes and percent-encoding
     /// for storage (the `/` separators are preserved).
     pub fn set_path(&mut self, path: &str) {
-        self.path = percent::encode_owned(normalize_slashes(path), percent::is_path_safe);
+        self.path =
+            percent::encode_owned(normalize_slashes(path).into_owned(), percent::is_path_safe);
     }
 
     /// Sets the query, percent-encoded for storage (its `&`/`=` structure is preserved).
@@ -354,6 +429,104 @@ impl Uri {
 
     fn authority_mut(&mut self) -> &mut Authority {
         self.authority.get_or_insert_with(Authority::default)
+    }
+
+    // ---- combinators (copy / joinpath / merge) -------------------------------------
+
+    /// An explicit copy of this URI — the cross-language name for a clone (Rust already has
+    /// [`Clone`], but Python and Node reach the same value through `copy`). Pairs with the
+    /// `with_*` builders for a one-line "copy, changing one thing".
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let base = Uri::parse("https://h/a").unwrap();
+    /// assert_eq!(base.copy(), base);
+    /// ```
+    pub fn copy(&self) -> Uri {
+        self.clone()
+    }
+
+    /// Returns this URI with `path` **joined onto its path**, purely lexically (like
+    /// `pathlib` — no `.`/`..` resolution), keeping every other component. The argument is
+    /// slash-normalized and percent-encoded like [`set_path`](Uri::set_path). Joining is
+    /// *correct*: exactly one `/` sits at the seam (a trailing slash on the base and a
+    /// segment are never doubled), an **absolute** segment (leading `/`) replaces the path,
+    /// an empty segment is a no-op, and when the URI has an authority the result stays rooted
+    /// so the segment can't fuse into the host.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let base = Uri::parse("https://api.example.com/v1").unwrap();
+    /// assert_eq!(base.joinpath("users").to_string(), "https://api.example.com/v1/users");
+    /// // A trailing slash on the base is not doubled; multi-segment input is fine.
+    /// assert_eq!(base.joinpath("users/").joinpath("42").path(), "/v1/users/42");
+    /// // An absolute segment resets the path; the query/fragment are untouched.
+    /// let q = Uri::parse("https://h/a?x=1#f").unwrap();
+    /// assert_eq!(q.joinpath("/b").to_string(), "https://h/b?x=1#f");
+    /// // With an authority, a relative segment onto an empty path stays rooted.
+    /// assert_eq!(Uri::parse("https://h").unwrap().joinpath("p").path(), "/p");
+    /// ```
+    pub fn joinpath(&self, path: &str) -> Uri {
+        let normalized = normalize_slashes(path);
+        let segment = percent::encode(&normalized, percent::is_path_safe);
+        let mut out = self.clone();
+        if segment.is_empty() {
+            return out; // joining nothing yields a plain copy
+        }
+        if segment.starts_with('/') {
+            out.path = segment.into_owned(); // absolute segment replaces the path
+            return out;
+        }
+        out.path = if self.path.is_empty() {
+            // A relative segment must stay rooted when an authority is present, else it would
+            // fuse into the host on render (`//h` + `p` -> `//hp`).
+            if self.authority.is_some() {
+                let mut joined = String::with_capacity(1 + segment.len());
+                joined.push('/');
+                joined.push_str(&segment);
+                joined
+            } else {
+                segment.into_owned()
+            }
+        } else {
+            let base = self.path.trim_end_matches('/');
+            let mut joined = String::with_capacity(base.len() + 1 + segment.len());
+            joined.push_str(base);
+            joined.push('/');
+            joined.push_str(&segment);
+            joined
+        };
+        out
+    }
+
+    /// Returns a copy of this URI **overlaid** by `other`: for each component `other`'s value
+    /// wins when it is present (a `Some` scheme/authority/query/fragment, or a non-empty
+    /// path), otherwise this URI's is kept. A mechanical component merge — no re-parsing — so
+    /// `base.merge_with(&patch)` applies only the fields `patch` actually sets. Merging with a
+    /// default (empty) URI returns a copy unchanged.
+    ///
+    /// ```
+    /// use yggdryl_core::io::Uri;
+    ///
+    /// let base = Uri::parse("https://prod.example.com/v1?trace=1").unwrap();
+    /// // A patch that only carries an authority swaps the host, keeping scheme/path/query.
+    /// let patch = Uri::parse("//staging.example.com").unwrap();
+    /// assert_eq!(base.merge_with(&patch).to_string(), "https://staging.example.com/v1?trace=1");
+    /// ```
+    pub fn merge_with(&self, other: &Uri) -> Uri {
+        Uri {
+            scheme: other.scheme.clone().or_else(|| self.scheme.clone()),
+            authority: other.authority.clone().or_else(|| self.authority.clone()),
+            path: if other.path.is_empty() {
+                self.path.clone()
+            } else {
+                other.path.clone()
+            },
+            query: other.query.clone().or_else(|| self.query.clone()),
+            fragment: other.fragment.clone().or_else(|| self.fragment.clone()),
+        }
     }
 
     // ---- byte codec + interchange --------------------------------------------------
@@ -791,9 +964,15 @@ impl core::hash::Hash for Uri {
 // RFC 3986 parsing helpers
 // -------------------------------------------------------------------------------------
 
-/// Rewrites every back-slash to a forward slash (DESIGN: POSIX slash-based paths).
-fn normalize_slashes(path: &str) -> String {
-    path.replace('\\', "/")
+/// Rewrites every back-slash to a forward slash (DESIGN: POSIX slash-based paths). Returns
+/// the input **borrowed** when it holds no back-slash — the common POSIX case — so a clean
+/// path costs no allocation here (the caller then decides whether it needs to own it).
+fn normalize_slashes(path: &str) -> Cow<'_, str> {
+    if path.contains('\\') {
+        Cow::Owned(path.replace('\\', "/"))
+    } else {
+        Cow::Borrowed(path)
+    }
 }
 
 /// Splits a raw query into ordered `(key, value)` pairs on `&` then the first `=`; a bare
