@@ -5,7 +5,7 @@ logic lives in the Rust core (`yggdryl-core`); the bindings are thin wrappers, s
 languages behave identically — every feature is added to the core first, then mirrored,
 method-for-method, in both extensions.
 
-Today the surface is the version string plus the [URI value types](uri.md) (`Uri` / `Url` /
+Today the surface is the version string plus the [URI value types](guide/uri.md) (`Uri` / `Url` /
 `Authority`) in the core's `io` module; more is added here as the core grows.
 
 ## Install
@@ -61,7 +61,7 @@ Node extensions both wire through to the Rust core.
 
 RFC 3986 URIs, absolute URLs, and authorities — parsed from scratch, doubling as
 POSIX-normalized filesystem paths, with value semantics (equal, hashable, and
-byte-serializable) across all three languages. See [URIs and URLs](uri.md).
+byte-serializable) across all three languages. See [URIs and URLs](guide/uri.md).
 
 === "Python"
 

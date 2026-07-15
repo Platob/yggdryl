@@ -2,7 +2,7 @@
 
 The **schema layer** describes columns without holding their data: a [`DataType`](#datatype)
 (the runtime type descriptor + category drill-down) and a [`Field`](#field) (a named, nullable
-column with metadata). A field's metadata is the centralized [`Headers`](headers.md) map — the
+column with metadata). A field's metadata is the centralized [`Headers`](../guide/headers.md) map — the
 single, shared key/value holder (there is no separate `Metadata` type). It is mirrored,
 method-for-method, in the Rust core and the **Python** and **Node** extensions.
 
@@ -69,7 +69,7 @@ A fixed-size byte type is classified on **both** axes (fixed-width *and* binary/
 ## Field
 
 A named, nullable column descriptor: a name, its `DataType`, a nullable flag, and a
-[`Headers`](headers.md) metadata map. It is a **value type** — it compares (and, where the
+[`Headers`](../guide/headers.md) metadata map. It is a **value type** — it compares (and, where the
 language has it, hashes) by content, metadata included — so it works as a schema entry, a map
 key, and in a set.
 
@@ -126,12 +126,12 @@ key, and in a set.
 
 ## Metadata
 
-A field's metadata **is** the centralized [`Headers`](headers.md) map — the same ordered,
+A field's metadata **is** the centralized [`Headers`](../guide/headers.md) map — the same ordered,
 case-insensitive, multi-value key/value type that backs HTTP headers. Construct a field's
 metadata from a plain `dict` / object (as above) or from a `Headers` value; read it back with
 the `Headers` accessors (`get`, `items` / `toObject`, `keys`, …). There is no separate
-`Metadata` type — see the [Headers](headers.md) page for the full surface.
+`Metadata` type — see the [Headers](../guide/headers.md) page for the full surface.
 
 The Rust core additionally records the exact logical type under a reserved metadata key so a
-lossy Arrow conversion round-trips exactly — see [Field metadata](fixed.md#field-metadata-safe-lossless-arrow-round-trips)
+lossy Arrow conversion round-trips exactly — see [Metadata & round-tripping](../arrow/metadata.md)
 (that Arrow interop is behind the core's `arrow` feature and is not part of the bindings).

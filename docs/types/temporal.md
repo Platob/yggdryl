@@ -222,7 +222,7 @@ and a time lands on the epoch date (`to_timestamp`). Widths convert within a con
 
 ## The type system knows temporals
 
-Temporals are their own [`DataTypeCategory`](types.md) — fixed-width, but **not** numeric — so
+Temporals are their own [`DataTypeCategory`](schema.md) — fixed-width, but **not** numeric — so
 `is_temporal()` drills down like every other family, and the schema layer names them.
 
 === "Python"
@@ -306,6 +306,14 @@ an optional `unit` to cast. The bindings also convert to/from the platform's nat
     let ts = Ts64::parse_str("2024-02-29 13:45:30", TimeUnit::Millisecond, Tz::UTC).unwrap();
     assert_eq!(format!("{ts:?}"), "ts64[ms, UTC](2024-02-29T13:45:30.000Z)"); // signature
     ```
+
+## Arrow interop
+
+The columnar temporal types (`Ts64Serie`, `Date32Serie`, …) convert to and from Arrow's
+`Timestamp` / `Date32` / `Date64` / `Time32` / `Time64` / `Duration` arrays, carrying their
+`(unit, tz)` — including the lossy `Ts32`/`Duration32` widen-to-`i64` and `Ts96` →
+`FixedSizeBinary(12)` cases, and the Python zero-copy pyarrow bridge. See
+[Arrow interop → Temporal](../arrow/temporal.md) for the full three-language reference.
 
 ## Design notes
 

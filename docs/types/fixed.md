@@ -12,19 +12,19 @@ The core `io` module is organized to **serialize all types**, split by value sha
     per primitive under `yggdryl.types` (`I32Scalar` / `I32Serie`, `U256Scalar` / `U256Serie`,
     `F64Scalar` / `F64Serie`, …); see [In Python and Node](#in-python-and-node) below for the
     three-language API. The **schema** layer they rest on — `DataType`, `Field`, and its
-    [`Headers`](headers.md) metadata — is mirrored too (see [Schema layer](types.md)). The typed
+    [`Headers`](../guide/headers.md) metadata — is mirrored too (see [Schema layer](schema.md)). The typed
     `Buffer<T>` (`I32Buffer` … `F64Buffer`, a raw non-nullable values store) and numeric
-    [casting](converter.md) are mirrored as well.
+    [casting](../guide/converter.md) are mirrored as well.
 
 Each fixed-width type `T` gets the same Arrow-style stack of value types, all generic over `T`
-and built on the byte-I/O [`Buffer`](io.md):
+and built on the byte-I/O [`Buffer`](../guide/io.md):
 
 | Type | Role |
 | --- | --- |
 | `PrimitiveType<T>` / `DataType` | the typed / erased **type descriptor** (name + byte width) |
 | `TypedField<T>` / `Field` | a **named, nullable column** descriptor |
 | `Scalar<T>` | **one nullable value**, with an `IOCursor` byte codec |
-| `Buffer<T>` | contiguous **storage** + byte I/O — `U8Buffer` is [`Bytes`](io.md) |
+| `Buffer<T>` | contiguous **storage** + byte I/O — `U8Buffer` is [`Bytes`](../guide/io.md) |
 | `Serie<T>` | a **nullable column** — a validity bitmap over a values `Buffer` |
 
 `Buffer<u8>` **is** the project's byte buffer: `U8Buffer`, aliased `Bytes`, the type the
@@ -35,7 +35,7 @@ Python/Node `yggdryl.io.Bytes` wraps. The typed columnar types `Scalar` / `Serie
 ## The generic trait hierarchy
 
 Each concrete type above sits under a **generic trait hierarchy**. The **root traits** are
-family-agnostic and live at the [`io`](io.md) root; each concrete family adds its own sub-trait
+family-agnostic and live at the [`io`](../guide/io.md) root; each concrete family adds its own sub-trait
 that pre-implements the shared logic as default methods — `Fixed*` here, `Var*` in
 [`io::var`](var.md) — so a concrete type supplies only 2–3 primitives. The families depend
 **downward** on the roots, never sideways on each other.
@@ -117,7 +117,7 @@ fixed_dtype!(I32DataType, i32); // pub type I32DataType = PrimitiveType<i32>;
 `Buffer<T>` holds `T` values contiguously (little-endian). It has two length notions —
 `count()` (elements) and `len()` (bytes, the `IOBase` contract) — and the full byte-I/O
 family, so it doubles as raw serialized bytes. `Scalar<T>` is one nullable value that reads
-and writes through the [`IOCursor`](io.md) abstraction.
+and writes through the [`IOCursor`](../guide/io.md) abstraction.
 
 ```rust
 use yggdryl_core::io::fixed::{Buffer, Scalar};
@@ -321,48 +321,15 @@ assert!(col.data_type().is_fixed_width());
 let _ = col.field("c", false);                          // or set nullability explicitly
 ```
 
-## Arrow interop — zero-copy for the native subset, closest-fit for the rest (feature `arrow`)
+## Arrow interop
 
-The physical layer is an Arrow `Buffer`, so with the **`arrow`** feature the fixed family
-converts to and from the wider Arrow ecosystem by **sharing the allocation** — a `Buffer` /
-`Serie` becomes an `arrow_array::PrimitiveArray` (and back) with an `Arc` bump, never a payload
-copy. The validity bitmap is LSB-first with `1 = valid`, byte-identical to Arrow's
-`NullBuffer`, so nulls round-trip too (only the tiny validity mask is materialized).
-
-Zero-copy `PrimitiveArray` interop is a **capability**, the `ArrowNative` sub-trait, implemented
-only for the types Arrow has a real primitive array for (`u8`…`i64`, `f16`/`f32`/`f64`). Every
-other `NativeType` is still first-class — full codec, `Buffer`/`Serie`, serialization — it just
-lacks the `to_arrow_array` round-trip. But `to_arrow()` (the *schema* mapping) is **total**: it
-returns the closest optimized representation for the widths Arrow can't model —
-`Decimal128(38,0)` / `Decimal256(76,0)` for `i128`/`i256`, `FixedSizeBinary(N)` for
-`u128`/`u96`/`i96`/`u256`. (These are documented as lossy: `FixedSizeBinary` drops the integer
-tag, and a scale-0 decimal under-covers the very top of the integer's range.)
-
-```rust
-# #[cfg(feature = "arrow")]
-# fn demo() {
-use yggdryl_core::io::DataType;
-use yggdryl_core::io::fixed::{Buffer, PrimitiveType, Serie, TypedField};
-
-// Buffer <-> Arrow: zero-copy (a shared Arc).
-let buffer = Buffer::<i32>::from_vec(vec![1, 2, 3, 4]);
-let array = buffer.to_arrow_array();                       // arrow_array::PrimitiveArray<Int32Type>
-let back = Buffer::<i32>::from_arrow_array(&array);
-assert!(back.to_arrow_buffer().ptr_eq(array.values().inner())); // same allocation
-
-// Serie <-> Arrow: values zero-copy, validity preserved.
-let col = Serie::from_options(&[Some(1i32), None, Some(3)]);
-assert_eq!(Serie::<i32>::from_arrow_array(&col.to_arrow_array()), col);
-
-// DataType and Field convert to/from Arrow's schema types.
-assert_eq!(PrimitiveType::<i32>::new().to_arrow(), arrow_schema::DataType::Int32);
-let arrow_field = TypedField::<i64>::new("id", false).to_arrow();
-assert_eq!(TypedField::<i64>::from_arrow(&arrow_field), Some(TypedField::new("id", false)));
-# }
-```
-
-The conversion allocates **nothing** for the buffer and dense-column value paths — see the
-[benchmark notes](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/arrow.md).
+With the **`arrow`** feature the fixed family converts to and from Arrow by **sharing the
+allocation** — a `Buffer` / `Serie` becomes an `arrow_array::PrimitiveArray` (and back) with an
+`Arc` bump for the native subset (`u8`…`i64`, `f16`/`f32`/`f64`), while the wider widths take the
+total closest-fit `to_arrow()` schema mapping (`Decimal128`/`Decimal256` for `i128`/`i256`,
+`FixedSizeBinary(N)` for `u128`/`u96`/`i96`/`u256`). **Arrow interop →
+[see Arrow interop → Primitives](../arrow/primitives.md)** for the zero-copy `ArrowNative`
+capability, the closest-fit fallback, and the three-language reference.
 
 ## Fixed-size byte types — `FixedBinary` / `FixedUtf8`
 
@@ -400,7 +367,7 @@ Arrow's `Null` is a type whose *every* value is null, at **zero** storage: `Null
 a `NullScalar`'s wire form is empty, and a `NullSerie` is just its length (no value buffer, no
 validity mask). Like the fixed-size byte family it has no `NativeType`, so it implements the root
 traits directly. It sits at the bottom of the type lattice — any type casts *to* and *from* it
-(see [casting](converter.md)). The `NullScalar` / `NullSerie` value types and the `DataType.null()`
+(see [casting](../guide/converter.md)). The `NullScalar` / `NullSerie` value types and the `DataType.null()`
 descriptor are reachable in all three languages.
 
 === "Python"
@@ -450,37 +417,14 @@ descriptor are reachable in all three languages.
 
 ## Field metadata — safe, lossless Arrow round-trips
 
-Every field carries [`Headers`](headers.md) — the centralized, ordered, case-insensitive
+Every field carries [`Headers`](../guide/headers.md) — the centralized, ordered, case-insensitive
 key/value map — as its metadata, mirroring Arrow's `Field::metadata`. Attach it with
 `with_metadata` / `with_metadata_entry`.
 
-Metadata is also what makes `to_arrow` / `from_arrow` **safe**. The Arrow data-type mapping is
-lossy and *non-injective* — `u96`, `i96`, `FixedUtf8`, and a runtime-`N` `FixedBinary` all
-collapse to `FixedSizeBinary(N)` — so a naive `from_arrow` would have to *guess*. Instead,
-`to_arrow` records the exact logical type under a reserved key (`DataTypeId::METADATA_KEY`,
-`"yggdryl.logical_type"`) **only when the plain mapping is ambiguous**, and `from_arrow` uses it
-to recover the precise type. Exact primitives (`i32` → `Int32`) and the `Decimal`-backed ints
-(`i128`/`i256`, which reverse unambiguously) add **no** tag.
-
-```rust
-# #[cfg(feature = "arrow")]
-# fn demo() {
-use yggdryl_core::io::fixed::{FixedUtf8Field, TypedField, I96, U96};
-
-// u96 -> Arrow FixedSizeBinary(12) (lossy) + a "yggdryl.logical_type" = "u96" metadata tag...
-let field = TypedField::<U96>::new("hash", false);
-let arrow = field.to_arrow();
-assert_eq!(TypedField::<U96>::from_arrow(&arrow), Some(field)); // ...so it round-trips exactly
-assert_eq!(TypedField::<I96>::from_arrow(&arrow), None);        // a same-width sibling: not i96
-
-// FixedBinary vs FixedUtf8 (both FixedSizeBinary(N)) are disambiguated by metadata, and any
-// user metadata is preserved through the round-trip.
-let fu = FixedUtf8Field::new("code", 4, true).with_metadata_entry("charset", "ascii");
-let back = FixedUtf8Field::from_arrow(&fu.to_arrow()).unwrap();
-assert_eq!(back.metadata().get("charset"), Some("ascii"));
-# }
-```
-
-A foreign `FixedSizeBinary(N)` with no yggdryl tag decodes to the safe default — `fixed_binary`
-of that width — never a guessed wide integer. Arrow carries unknown metadata keys through
-IPC/Parquet, so the discriminator survives external round-trips.
+Metadata is also what makes `to_arrow` / `from_arrow` **safe**: because the Arrow data-type
+mapping is lossy and *non-injective* (`u96`, `i96`, `FixedUtf8`, and a runtime-`N` `FixedBinary`
+all collapse to `FixedSizeBinary(N)`), `to_arrow` records the exact logical type under a reserved
+`"yggdryl.logical_type"` key when the plain mapping is ambiguous, and `from_arrow` uses it to
+recover the precise type. **Arrow interop →
+[see Arrow interop → Metadata & round-tripping](../arrow/metadata.md)** for the reserved keys and
+the full round-trip story.

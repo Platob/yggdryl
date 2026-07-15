@@ -41,13 +41,22 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - URIs and URLs: uri.md
-  - Byte I/O: io.md
-  - Schema (DataType, Field): types.md
-  - Typed data (fixed): fixed.md
-  - Typed data (variable): var.md
-  - Typed data (nested): nested.md
-  - Decimals: decimal.md
-  - Temporal: temporal.md
-  - Casting (Converter): converter.md
-  - Headers: headers.md
+  - Guide:
+      - Byte I/O: guide/io.md
+      - URIs and URLs: guide/uri.md
+      - Casting: guide/converter.md
+      - Headers: guide/headers.md
+  - Types:
+      - Schema (DataType, Field): types/schema.md
+      - Fixed-width: types/fixed.md
+      - Variable-length: types/var.md
+      - Nested (struct): types/nested.md
+      - Decimals: types/decimal.md
+      - Temporal: types/temporal.md
+  - Arrow interop:
+      - Overview: arrow/index.md
+      - Primitives: arrow/primitives.md
+      - Decimals: arrow/decimal.md
+      - Temporal: arrow/temporal.md
+      - Nested: arrow/nested.md
+      - Metadata & round-tripping: arrow/metadata.md

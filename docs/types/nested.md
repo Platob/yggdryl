@@ -134,39 +134,12 @@ round-trips whole.
 
 ## Arrow interop
 
-Behind the `arrow` feature, `StructSerie` bridges to Arrow's `StructArray` **and** `RecordBatch`,
-recursively — each leaf converting through one generic `ArrayData` (buffers + `DataType`) path, so
-numbers, decimals, temporal, fixed-size bytes, utf8, and binary all map with no per-type code. A
-struct column *is* a batch of named columns (with `--features arrow`):
-
-```rust
-use yggdryl_core::io::fixed::Serie;
-use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::boxed;
-use yggdryl_core::io::nested::StructSerie;
-
-let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
-let names = boxed(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
-let table = StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap();
-
-// A RecordBatch (each field becomes a batch column) and back — byte-exact.
-let batch = table.to_record_batch().unwrap();
-assert_eq!(batch.num_rows(), 3);
-assert_eq!(StructSerie::from_record_batch(&batch).unwrap(), table);
-
-// Or a (nullable) StructArray, for a struct that has null rows.
-let array = table.to_arrow_array().unwrap();
-```
-
-A struct with **null rows** has no `RecordBatch` form (a batch has no top-level validity) — convert
-it to a nullable `StructArray` instead; `to_record_batch` returns a guided error in that case. An
-Arrow type this crate does not model surfaces the same guided error on import.
-
-The same `arrow` feature also completes the leaf families' array interop — `Utf8Serie` /
-`BinarySerie` ↔ `StringArray` / `BinaryArray`, and the fixed-size byte columns ↔
-`FixedSizeBinaryArray` — so every column type now converts to and from an Arrow array, at both the
-typed and the erased-`AnySerie` level. As elsewhere, Arrow types never appear in a public signature;
-the mapping is centralized on [`DataTypeId`](types.md).
+Behind the `arrow` feature, `StructSerie` bridges to Arrow's `StructArray` **and** `RecordBatch`
+recursively, and the Python extension exports it to `pyarrow` zero-copy via the Arrow C Data
+Interface. **Arrow interop → [see Arrow interop → Nested](../arrow/nested.md)** for the full
+three-language reference (`StructArray` / `RecordBatch`, the null-row rule, and the PyCapsule
+bridge). The mapping is centralized on [`DataTypeId`](schema.md), and Arrow types never appear in a
+public signature.
 
 ## In Python and Node
 
@@ -225,25 +198,6 @@ byte-for-byte with the Rust core.
     assert_eq!(StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap(), table);
     ```
 
-### pyarrow — zero-copy via the Arrow C Data Interface
-
-The Python extension implements the **Arrow PyCapsule protocol** (`__arrow_c_array__` /
-`__arrow_c_schema__`), so a `StructSerie` hands its columns to `pyarrow` with **no payload copy**
-(the child buffers are shared through the C Data Interface), and `StructSerie.from_arrow(...)` pulls
-any C-Data-exposing pyarrow object back the same way.
-
-```python
-import pyarrow as pa
-from yggdryl.types import StructSerie, I32Serie, Utf8Serie
-
-table = StructSerie([("id", I32Serie([1, 2, 3])), ("name", Utf8Serie(["ann", None, "cara"]))])
-
-arr = pa.array(table)                 # zero-copy import into pyarrow (a StructArray)
-assert arr.field(0).to_pylist() == [1, 2, 3]
-assert StructSerie.from_arrow(arr) == table          # and back, zero-copy
-assert StructSerie.from_arrow(pa.RecordBatch.from_struct_array(arr)) == table
-```
-
-The Node extension carries the structural surface and the byte codec; an equivalent Arrow-ecosystem
-bridge for apache-arrow JS (which has no C Data Interface consumer in its standard build) is a
-separate follow-up.
+The Python extension additionally exports a `StructSerie` to `pyarrow` **zero-copy** through the
+Arrow PyCapsule protocol, and the Node extension interops through the shared byte codec — see
+[Arrow interop → Nested](../arrow/nested.md).

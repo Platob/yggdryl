@@ -27,13 +27,13 @@ gets a friendly alias:
 The **root traits** (`DataType`, `ScalarType`, …) are shared with the fixed family and live at
 the [`io`](fixed.md) root; `io::var` only adds the `Var*` sub-traits and the concrete types.
 There is no `VarBuffer` — a variable column's storage is the offsets + data inside its
-`ByteSerie`; the raw data buffer, when needed on its own, is just [`Bytes`](io.md).
+`ByteSerie`; the raw data buffer, when needed on its own, is just [`Bytes`](../guide/io.md).
 
 ## Scalars — one nullable value
 
 `Utf8Scalar` / `BinaryScalar` hold one nullable value. A `Utf8` value is validated on every
 input path, so `as_str()` never re-checks and never allocates. Every scalar round-trips through
-the [`IOCursor`](io.md) byte codec.
+the [`IOCursor`](../guide/io.md) byte codec.
 
 ```rust
 use yggdryl_core::io::var::{BinaryScalar, Utf8Scalar};

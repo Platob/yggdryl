@@ -6,7 +6,7 @@ order and following HTTP header conventions. It plays two roles with a single ty
 
 - an **HTTP header block** — with the common field constants, `Content-Type` / `Content-Length`
   helpers, and an HTTP text render/parse; and
-- the **centralized metadata holder** — the map a [`Field`](types.md) carries (there is no
+- the **centralized metadata holder** — the map a [`Field`](../types/schema.md) carries (there is no
   separate `Metadata` type), mirroring Arrow's `Field::metadata`.
 
 It lives in the Rust core (`yggdryl_core::io::Headers`) and is mirrored, method-for-method, in
@@ -196,7 +196,7 @@ serializes to any byte sink.
 
 ## As field metadata
 
-A [`Field`](types.md)'s metadata **is** a `Headers`. Build it from a plain map/object or a
+A [`Field`](../types/schema.md)'s metadata **is** a `Headers`. Build it from a plain map/object or a
 `Headers` value, and read it back with these same accessors:
 
 ```python

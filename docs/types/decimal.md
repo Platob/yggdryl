@@ -11,7 +11,7 @@ two's-complement coefficient integer:
 | `d128` | `D128` | `i128` | 38 | `Decimal128` |
 | `d256` | `D256` | `i256` | 76 | `Decimal256` |
 
-They report [`DataTypeCategory::Decimal`](types.md) — signed, numeric, fixed-width — so
+They report [`DataTypeCategory::Decimal`](schema.md) — signed, numeric, fixed-width — so
 `is_decimal()` drills down without a `match`.
 
 The family has **two faces**, tied together by the shared `DecimalBacking` / `DecimalCoeff` traits
@@ -332,21 +332,9 @@ read a value out of a column (`get` / `get_scalar`), do arithmetic on it, and wr
 `push` (append) or `set` (overwrite index `i`) — plus the bulk `set_range` / `set_scalars` /
 `set_values` (see [Typed data — fixed-width](fixed.md#in-place-set-single-and-bulk)).
 
-**Arrow interop (Rust core).** `DecimalSerie` stores raw coefficients, so it converts **zero-copy**
-to/from Arrow's decimal arrays — the coefficient allocation is shared (an `Arc` bump), and the array
-carries the column's precision and scale.
-
-```rust
-# #[cfg(feature = "arrow")]
-# {
-use yggdryl_core::io::fixed::{D128, D128Serie};
-
-let col = D128Serie::from_options(20, 2, &[Some(D128::new(12345, 2).unwrap()), None]).unwrap();
-let array = col.to_arrow_array();               // zero-copy Decimal128Array
-assert_eq!((array.precision(), array.scale()), (20, 2));
-assert_eq!(D128Serie::from_arrow_array(&array), col);
-# }
-```
+**Arrow interop → [see Arrow interop → Decimals](../arrow/decimal.md).** `DecimalSerie` stores raw
+coefficients, so it converts **zero-copy** to/from Arrow's `Decimal{32,64,128,256}Array` (the
+coefficient allocation is shared, and the array carries the column's precision and scale).
 
 ## Design notes
 
