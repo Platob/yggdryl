@@ -11,8 +11,10 @@ with a counting global allocator; the deterministic `io_temporal` tests assert t
 ## Run
 
 ```bash
-cargo bench -p yggdryl-core --bench temporal
+cargo bench -p yggdryl-core --bench temporal                     # value types only
+cargo bench -p yggdryl-core --features arrow --bench temporal    # + columnar Arrow interop
 cargo test  -p yggdryl-core --test io_temporal
+cargo test  -p yggdryl-core --features arrow --test temporal_arrow --test temporal_alloc
 ```
 
 ## Rust core (release, counting global allocator)
@@ -60,3 +62,42 @@ cargo test  -p yggdryl-core --test io_temporal
   (compound / clock / ISO-8601) is `~4 allocs` — one per unit token, from `TimeUnit::parse`'s
   case-fold; the bare-`m` fast path avoids a redundant one. Parsing isn't a hot loop, so this is
   left as-is rather than trading it for a no-alloc case-insensitive matcher.
+
+## Columnar Arrow interop (feature `arrow`)
+
+The `TemporalSerie<B>` ↔ Arrow columnar path. Each `op` is one operation over a whole
+**4096-element** column, so `Mops/s` counts column-ops (× 4096 for elements/s); the story is the
+`bytes/op` column — the raw counts are a `4096 × width` payload (32 KiB for `ts64`), and the native
+export **and** import must never copy it.
+
+| op | Mops/s | allocs/op | bytes/op |
+|----|-------:|----------:|---------:|
+| `Ts64Serie::from_options` (build) | 0.06 | 9 | 33840 |
+| `Ts64Serie::to_arrow_array` (native, share) | 0.92 | 7 | **755** |
+| `Ts64Serie::from_arrow_array` (share payload) | 0.02 | 3 | **1048** |
+| `Ts64Serie::serialize_bytes` | 0.07 | 21 | 67984 |
+| `Ts64Serie::deserialize_bytes` | 0.01 | 10 | 100485 |
+| `Ts32Serie::to_arrow_array` (widen i32→i64) | 0.16 | 7 | 33011 |
+| `Ts32Serie::from_arrow_array` (narrow) | 0.03 | 3 | 16464 |
+| `Ts96Serie::to_arrow_array` (FSB12, share) | 1.55 | 3 | **176** |
+| `Ts96Serie::from_arrow_array` (FSB12, share) | 0.02 | 2 | **34** |
+
+### What the columnar numbers show
+
+- **The native `ts64` export shares its 32 KiB payload.** `to_arrow_array` allocates only the
+  4096-bit (512-byte) null bitmap + Arrow shells — `755 bytes/op`, **flat in the payload**. The
+  counts `Arc` is bumped, not copied.
+- **The `ts64` import is zero-copy on the fast path (the optimization).** `from_arrow_array` over a
+  dense/offset-0/no-garbage array (every yggdryl-produced array) shares the values `Arc` and only
+  rebuilds the null mask — `1048 bytes/op` (the validity bitmap + framework), **not** the 32 KiB
+  payload. Before the optimization it always copied `len*width` and rebuilt every cell; the
+  `temporal_alloc` test pins a **dense** (null-free) import at `24 B/op` vs a garbage-under-null
+  slow-path copy at `≥ 32768 B/op`.
+- **The `ts32` widen pays exactly one buffer.** Arrow has no 32-bit temporal type, so `ts32` /
+  `duration32` sign-extend into one fresh `i64` buffer on export (`33011 bytes/op ≈ 32 KiB`) and
+  narrow back into an `i32` buffer on import (`16464 ≈ 16 KiB`) — the unavoidable width change, one
+  allocation, no more.
+- **`ts96` byte data shares too.** The `FixedSizeBinary(12)` form needs no element alignment, so both
+  directions are a pure `Arc` bump — `176` / `34 bytes/op`, independent of the 48 KiB of counts.
+- **The `serialize_bytes` codec is a full copy by design** (a self-describing frame, not zero-copy):
+  the larger `bytes/op` there is the owned `Vec` + sink, unrelated to the Arrow path.

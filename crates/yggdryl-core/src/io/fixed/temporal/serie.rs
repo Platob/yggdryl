@@ -606,6 +606,69 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         let src = data.buffers()[0].as_slice();
         let base = data.offset() * arrow_width;
 
+        // The validity mask is byte-identical to Arrow's null bitmap in either path.
+        let validity = array.nulls().map(|_| {
+            let mut bits = vec![0u8; len.div_ceil(8)];
+            for index in 0..len {
+                if array.is_valid(index) {
+                    bits[index / 8] |= 1 << (index % 8);
+                }
+            }
+            Bitmap::from_bytes(&bits, len)
+        });
+
+        // Reads and range-checks the present count at `index`, returning the guided error a
+        // foreign value that does not fit `B` produces (shared by both paths).
+        let validate = |index: usize| -> Result<(), IoError> {
+            let start = base + index * arrow_width;
+            let count = read_count_le(&src[start..start + arrow_width], arrow_width);
+            B::Native::from_count(count, unit, tz).map_err(|error| IoError::Unsupported {
+                what: format!(
+                    "Arrow value at index {index} does not fit a {} column: {error}",
+                    B::NAME
+                ),
+            })?;
+            Ok(())
+        };
+
+        // FAST PATH (zero-copy, mirrors `DecimalSerie::from_arrow_array`): a **native-width** array
+        // (not the widened `ts32` / `duration32`, whose `arrow_width` 8 ≠ `B::WIDTH` 4) with no
+        // slice offset, an exactly-sized buffer, and canonical (zeroed) bytes under its nulls —
+        // which every yggdryl-produced array is. The source bytes *are* already the column's counts,
+        // so the values buffer is shared as an `Arc` bump (no payload copy). Validation is **not**
+        // dropped: each present count is still range-checked (a non-fitting foreign value is the
+        // same guided error), and on this path a value that validates round-trips byte-for-byte, so
+        // sharing stays byte-canonical (equal columns serialize equal).
+        let has_garbage = array.nulls().is_some()
+            && (0..len).any(|index| {
+                array.is_null(index)
+                    && src[base + index * arrow_width..base + (index + 1) * arrow_width]
+                        .iter()
+                        .any(|&byte| byte != 0)
+            });
+        if arrow_width == B::WIDTH
+            && data.offset() == 0
+            && src.len() == len * B::WIDTH
+            && !has_garbage
+        {
+            for index in 0..len {
+                if !array.is_null(index) {
+                    validate(index)?;
+                }
+            }
+            return Ok(Self {
+                validity,
+                values: data.buffers()[0].clone(), // dense, canonical -> share the Arc
+                len,
+                unit,
+                tz,
+                _backing: PhantomData,
+            });
+        }
+
+        // SLOW PATH: the widened `ts32` / `duration32` (narrow an `i64` count to `i32`), any sliced
+        // / offset array, or an array carrying garbage under a null — copy the logical window,
+        // reconstruct each present cell (which range-checks + narrows), and zero the null slots.
         let mut values = vec![0u8; len * B::WIDTH];
         for index in 0..len {
             if array.is_null(index) {
@@ -623,16 +686,6 @@ impl<B: TemporalBacking> TemporalSerie<B> {
                 })?;
             native.write_le(&mut values[index * B::WIDTH..]);
         }
-
-        let validity = array.nulls().map(|_| {
-            let mut bits = vec![0u8; len.div_ceil(8)];
-            for index in 0..len {
-                if array.is_valid(index) {
-                    bits[index / 8] |= 1 << (index % 8);
-                }
-            }
-            Bitmap::from_bytes(&bits, len)
-        });
 
         Ok(Self {
             validity,
