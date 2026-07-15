@@ -1,6 +1,6 @@
 //! Deterministic allocation budgets for the `io::nested` layer. Allocation counts are optimizer-
 //! and machine-independent, so they assert the zero-copy claims directly: navigating a struct
-//! column — borrowing a child [`Column`], reading its `len` / `type_id` / null count, looking a
+//! column — borrowing a child `AnySerie`, reading its `len` / `type_id` / null count, looking a
 //! field up by name — touches **no** heap (the data lives in the columns; navigation is borrows and
 //! integer reads).
 //!

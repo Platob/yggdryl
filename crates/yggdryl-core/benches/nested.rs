@@ -1,7 +1,7 @@
 //! Time **and** memory benchmark for the `io::nested` struct layer: erasing a typed column into a
-//! [`Column`], assembling a [`StructSerie`], reading rows, and the byte-codec round-trip. Nested
-//! columns copy their leaf bytes into the erased carrier (the erased column owns its buffers), so
-//! the allocations/op column is the story — navigation is free, construction is a bounded copy.
+//! `Box<dyn AnySerie>` (via [`boxed`]), assembling a [`StructSerie`], reading rows, and the
+//! byte-codec round-trip. A struct column borrows its children (each an erased `AnySerie`), so the
+//! allocations/op column is the story — navigation is free, a row is a bounded per-cell copy.
 //!
 //! Dependency-free harness (`harness = false`), counting global allocator. Run with
 //! `cargo bench -p yggdryl-core --bench nested`.

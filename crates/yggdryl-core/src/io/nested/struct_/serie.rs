@@ -10,8 +10,8 @@ use super::scalar::StructScalar;
 use super::{StructField, StructType};
 use crate::io::bitmap::Bitmap;
 use crate::io::{
-    read_any_leaf, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, IOCursor, IoError,
-    SerieType,
+    read_any_leaf, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, Headers, IOCursor,
+    IoError, SerieType,
 };
 
 /// A **nullable struct column** — one child [`AnySerie`](crate::io::AnySerie) per field (all of the
@@ -225,7 +225,16 @@ impl StructSerie {
     /// Writes the self-contained frame to a byte sink (shared by `serialize_bytes` and the
     /// [`AnySerie`](crate::io::AnySerie) impl, so a struct child serializes recursively).
     fn write_frame(&self, sink: &mut Bytes) -> Result<(), IoError> {
-        let schema = self.to_field("").as_any_field().serialize_bytes();
+        // Encode the schema (a struct field over `self.fields`) straight from the borrowed fields —
+        // no `StructField` / `self.fields.clone()` round-trip. Read back as the struct's `children`.
+        let mut schema = Vec::new();
+        AnyField::encode_struct(
+            "",
+            self.has_nulls(),
+            &Headers::new(),
+            &self.fields,
+            &mut schema,
+        );
         sink.write_all(&(schema.len() as u64).to_le_bytes())?;
         sink.write_all(&schema)?;
         sink.write_all(&(self.len as u64).to_le_bytes())?;

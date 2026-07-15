@@ -239,16 +239,28 @@ impl AnyField {
                 nullable,
                 metadata,
                 children,
-            } => {
-                out.push(1); // struct tag
-                encode_str(name, out);
-                out.push(u8::from(*nullable));
-                encode_bytes(&metadata.serialize_bytes(), out);
-                out.extend_from_slice(&(children.len() as u64).to_le_bytes());
-                for child in children {
-                    child.encode(out);
-                }
-            }
+            } => Self::encode_struct(name, *nullable, metadata, children, out),
+        }
+    }
+
+    /// Appends a **struct** field frame from its borrowed parts — the single wire format for a
+    /// struct field, so a [`StructSerie`](crate::io::nested::StructSerie) can serialize its schema
+    /// straight from its `(name, nullable, metadata, fields)` **without cloning** them into an
+    /// `AnyField::Struct` first.
+    pub(crate) fn encode_struct(
+        name: &str,
+        nullable: bool,
+        metadata: &Headers,
+        children: &[AnyField],
+        out: &mut Vec<u8>,
+    ) {
+        out.push(1); // struct tag
+        encode_str(name, out);
+        out.push(u8::from(nullable));
+        encode_bytes(&metadata.serialize_bytes(), out);
+        out.extend_from_slice(&(children.len() as u64).to_le_bytes());
+        for child in children {
+            child.encode(out);
         }
     }
 
