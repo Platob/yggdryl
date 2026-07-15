@@ -42,3 +42,11 @@ markdown_extensions:
 nav:
   - Home: index.md
   - URIs and URLs: uri.md
+  - Byte I/O: io.md
+  - Schema (DataType, Field): types.md
+  - Typed data (fixed): fixed.md
+  - Typed data (variable): var.md
+  - Decimals: decimal.md
+  - Temporal: temporal.md
+  - Casting (Converter): converter.md
+  - Headers: headers.md

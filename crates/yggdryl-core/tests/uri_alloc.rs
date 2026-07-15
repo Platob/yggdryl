@@ -78,6 +78,59 @@ fn allocation_budgets() {
         "accessors must be zero-copy (got {borrow} allocs)"
     );
 
+    // The effective-endpoint accessors are derived on read: `default_port` / `port_or_default`
+    // are a table scan returning a `u16`, `host_is_ipv6` a `bool`, and `host_unbracketed` a
+    // borrow — none may allocate.
+    let ipv6 = Uri::parse("https://[2001:db8::1]/status").unwrap();
+    let endpoint = allocs_over(iters, || {
+        let _ = (
+            uri.default_port(),
+            uri.port_or_default(),
+            ipv6.host_is_ipv6(),
+            ipv6.host_unbracketed(),
+        );
+    });
+    assert_eq!(
+        endpoint, 0,
+        "endpoint accessors must be zero-copy (got {endpoint} allocs)"
+    );
+
+    // The combinators keep the at-most-one-copy discipline. `copy` is a plain clone; joining
+    // a clean segment must add EXACTLY ONE allocation over that clone — the single pre-sized
+    // joined path. That also proves the `Cow` back-slash normalization *borrows* on a clean
+    // segment (a `String`-returning normalize would show up as a second allocation here).
+    let copy_allocs = allocs_over(iters, || {
+        let _ = uri.copy();
+    });
+    let join_allocs = allocs_over(iters, || {
+        let _ = uri.joinpath("segment");
+    });
+    assert_eq!(
+        join_allocs,
+        copy_allocs + iters,
+        "joinpath must add exactly one allocation over a copy (got {join_allocs} vs {copy_allocs}+{iters})"
+    );
+
+    // `merge_with` clones only components, never re-parses, so overlaying a default (empty)
+    // URI allocates exactly as much as a copy.
+    let merge_allocs = allocs_over(iters, || {
+        let _ = uri.merge_with(&Uri::default());
+    });
+    assert_eq!(
+        merge_allocs, copy_allocs,
+        "merge_with(default) must allocate exactly like a copy (got {merge_allocs} vs {copy_allocs})"
+    );
+
+    // A clean POSIX `from_path` still owns exactly one string: the `Cow` normalization borrows,
+    // so there is no throwaway allocation before the final owned path.
+    let posix_from_path = allocs_over(iters, || {
+        let _ = Uri::from_path("/usr/local/share/data/set.csv");
+    });
+    assert_eq!(
+        posix_from_path, iters,
+        "from_path of a clean POSIX path must allocate exactly once (got {posix_from_path})"
+    );
+
     // The byte codec is at-most-one-copy: exactly one allocation per `serialize_bytes`,
     // regardless of URI length (the buffer is pre-sized).
     let serialize = allocs_over(iters, || {

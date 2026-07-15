@@ -171,6 +171,49 @@ fn main() {
         }),
     );
 
+    // Effective-endpoint accessors (default-port fallback + IPv6 host unbracketing): a table
+    // scan and a couple of borrows, so — like the plain accessors — zero allocations.
+    row(
+        "endpoint (port_or_default/host)",
+        measure(uris.len(), iters, || {
+            for uri in &uris {
+                let _ = (
+                    uri.default_port(),
+                    uri.port_or_default(),
+                    uri.host_is_ipv6(),
+                    uri.host_unbracketed(),
+                );
+            }
+        }),
+    );
+
+    // Combinators. `copy` is a clone; `joinpath` adds one pre-sized path allocation over that
+    // clone (no re-parse); `merge_with` overlays components, again without re-parsing.
+    row(
+        "copy (clone)",
+        measure(uris.len(), iters, || {
+            for uri in &uris {
+                let _ = uri.copy();
+            }
+        }),
+    );
+    row(
+        "joinpath (append segment)",
+        measure(uris.len(), iters, || {
+            for uri in &uris {
+                let _ = uri.joinpath("segment");
+            }
+        }),
+    );
+    row(
+        "merge_with (overlay)",
+        measure(uris.len(), iters, || {
+            for uri in &uris {
+                let _ = uri.merge_with(uri);
+            }
+        }),
+    );
+
     row(
         "to_string (Display)",
         measure(uris.len(), iters, || {

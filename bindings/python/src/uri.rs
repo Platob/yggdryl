@@ -36,6 +36,13 @@ fn uri_err(error: UriError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
+/// The IANA-registered default port for a well-known scheme (case-insensitive), or `None` if
+/// the scheme has no registered default. Mirrors [`yggdryl_core::io::default_port`].
+#[pyfunction]
+fn default_port(scheme: &str) -> Option<u16> {
+    io::default_port(scheme)
+}
+
 /// The constructor arguments an [`Authority`] pickles through: `(host, user, password, port)`.
 type AuthorityParts = (String, Option<String>, Option<String>, Option<u16>);
 
@@ -77,10 +84,24 @@ impl Authority {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host (an empty string for an empty authority such as `file:///path`).
+    /// The host (an empty string for an empty authority such as `file:///path`; an IPv6
+    /// literal keeps its brackets).
     #[getter]
     fn host(&self) -> String {
         self.inner.host().to_string()
+    }
+
+    /// Whether the host is a bracketed IPv6 literal (`"[::1]"`).
+    #[getter]
+    fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped (`"[::1]"` → `"::1"`); a reg-name/IPv4 host
+    /// passes through verbatim.
+    #[getter]
+    fn host_unbracketed(&self) -> String {
+        self.inner.host_unbracketed().to_string()
     }
 
     /// The port, if any.
@@ -110,6 +131,57 @@ impl Authority {
     #[pyo3(signature = (port = None))]
     fn set_port(&mut self, port: Option<u16>) {
         self.inner.set_port(port);
+    }
+
+    /// An explicit copy of this authority.
+    fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    /// Returns a copy with the userinfo user set (pass `None` to clear it).
+    #[pyo3(signature = (user = None))]
+    fn with_user(&self, user: Option<&str>) -> Self {
+        Self {
+            inner: self.inner.clone().with_user(user),
+        }
+    }
+
+    /// Returns a copy with the userinfo password set (pass `None` to clear it).
+    #[pyo3(signature = (password = None))]
+    fn with_password(&self, password: Option<&str>) -> Self {
+        Self {
+            inner: self.inner.clone().with_password(password),
+        }
+    }
+
+    /// Returns a copy with the host set.
+    fn with_host(&self, host: &str) -> Self {
+        Self {
+            inner: self.inner.clone().with_host(host),
+        }
+    }
+
+    /// Returns a copy with the port set (pass `None` to clear it).
+    #[pyo3(signature = (port = None))]
+    fn with_port(&self, port: Option<u16>) -> Self {
+        Self {
+            inner: self.inner.clone().with_port(port),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each field `other` sets wins, else this one's is kept.
+    fn merge_with(&self, other: &Self) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 
     fn __eq__(&self, other: &Self) -> bool {
@@ -199,16 +271,43 @@ impl Uri {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host, if this URI has an authority.
+    /// The host, if this URI has an authority (an IPv6 literal keeps its brackets).
     #[getter]
     fn host(&self) -> Option<String> {
         self.inner.host().map(str::to_string)
     }
 
-    /// The port, if any.
+    /// Whether this URI's host is a bracketed IPv6 literal (`False` if it has no authority).
+    #[getter]
+    fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URI has an authority — the bare
+    /// address to hand to a socket API.
+    #[getter]
+    fn host_unbracketed(&self) -> Option<String> {
+        self.inner.host_unbracketed().map(str::to_string)
+    }
+
+    /// The port as written, if any (see `port_or_default` for the effective port).
     #[getter]
     fn port(&self) -> Option<u16> {
         self.inner.port()
+    }
+
+    /// The default port registered for this URI's scheme, or `None` if scheme-less or the
+    /// scheme has no known default.
+    #[getter]
+    fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// The effective port to connect to: the explicit `port`, else the scheme's
+    /// `default_port`. `None` when neither is known. Derived on read — the URI is untouched.
+    #[getter]
+    fn port_or_default(&self) -> Option<u16> {
+        self.inner.port_or_default()
     }
 
     /// The path, always POSIX slash-normalized (possibly empty).
@@ -259,6 +358,17 @@ impl Uri {
     fn with_scheme(&self, scheme: &str) -> Self {
         Self {
             inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Returns a copy with the whole authority replaced (pass `None` to drop it).
+    #[pyo3(signature = (authority = None))]
+    fn with_authority(&self, authority: Option<&Authority>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_authority(authority.map(|a| a.inner.clone())),
         }
     }
 
@@ -316,6 +426,12 @@ impl Uri {
     /// Sets the scheme.
     fn set_scheme(&mut self, scheme: &str) {
         self.inner.set_scheme(scheme);
+    }
+
+    /// Replaces the whole authority (pass `None` to drop it).
+    #[pyo3(signature = (authority = None))]
+    fn set_authority(&mut self, authority: Option<&Authority>) {
+        self.inner.set_authority(authority.map(|a| a.inner.clone()));
     }
 
     /// Sets the host, creating an authority if this URI had none.
@@ -380,6 +496,37 @@ impl Uri {
     /// Alias of [`to_url`](Uri::to_url) — converts to a [`Url`] (raises if scheme-less).
     fn into_url(&self) -> PyResult<Url> {
         self.to_url()
+    }
+
+    // ---- combinators (copy / joinpath / merge) -------------------------------------
+
+    /// An explicit copy of this URI (equivalent to `copy.copy(uri)`).
+    fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    /// Returns a copy with `path` joined lexically onto the path (one `/` at the seam, an
+    /// absolute segment resets it, other components kept). Encoded like `set_path`.
+    fn joinpath(&self, path: &str) -> Self {
+        Self {
+            inner: self.inner.joinpath(path),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URI's
+    /// is kept.
+    fn merge_with(&self, other: &Self) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 
     // ---- query parameters (map access + CRUD) --------------------------------------
@@ -579,16 +726,40 @@ impl Url {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host, if this URL has an authority.
+    /// The host, if this URL has an authority (an IPv6 literal keeps its brackets).
     #[getter]
     fn host(&self) -> Option<String> {
         self.inner.host().map(str::to_string)
     }
 
-    /// The port, if any.
+    /// Whether the host is a bracketed IPv6 literal (`False` if it has no authority).
+    #[getter]
+    fn host_is_ipv6(&self) -> bool {
+        self.inner.host_is_ipv6()
+    }
+
+    /// The host with any IPv6 brackets stripped, if this URL has an authority.
+    #[getter]
+    fn host_unbracketed(&self) -> Option<String> {
+        self.inner.host_unbracketed().map(str::to_string)
+    }
+
+    /// The port as written, if any (see `port_or_default` for the effective port).
     #[getter]
     fn port(&self) -> Option<u16> {
         self.inner.port()
+    }
+
+    /// The default port registered for this URL's scheme, or `None` if it has no known default.
+    #[getter]
+    fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// The effective port to connect to: the explicit `port`, else the scheme's `default_port`.
+    #[getter]
+    fn port_or_default(&self) -> Option<u16> {
+        self.inner.port_or_default()
     }
 
     /// The path, always POSIX slash-normalized.
@@ -639,6 +810,17 @@ impl Url {
     fn with_scheme(&self, scheme: &str) -> Self {
         Self {
             inner: self.inner.clone().with_scheme(scheme),
+        }
+    }
+
+    /// Returns a copy with the whole authority replaced (pass `None` to drop it).
+    #[pyo3(signature = (authority = None))]
+    fn with_authority(&self, authority: Option<&Authority>) -> Self {
+        Self {
+            inner: self
+                .inner
+                .clone()
+                .with_authority(authority.map(|a| a.inner.clone())),
         }
     }
 
@@ -696,6 +878,12 @@ impl Url {
     /// Sets the scheme.
     fn set_scheme(&mut self, scheme: &str) {
         self.inner.set_scheme(scheme);
+    }
+
+    /// Replaces the whole authority (pass `None` to drop it).
+    #[pyo3(signature = (authority = None))]
+    fn set_authority(&mut self, authority: Option<&Authority>) {
+        self.inner.set_authority(authority.map(|a| a.inner.clone()));
     }
 
     /// Sets the host.
@@ -759,6 +947,37 @@ impl Url {
     /// Alias of [`as_uri`](Url::as_uri) — the underlying [`Uri`].
     fn into_uri(&self) -> Uri {
         self.as_uri()
+    }
+
+    // ---- combinators (copy / joinpath / merge) -------------------------------------
+
+    /// An explicit copy of this URL (equivalent to `copy.copy(url)`).
+    fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    /// Returns a copy with `path` joined lexically onto the path — see [`Uri.joinpath`]. The
+    /// scheme is kept, so the result is still an absolute URL.
+    fn joinpath(&self, path: &str) -> Self {
+        Self {
+            inner: self.inner.joinpath(path),
+        }
+    }
+
+    /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URL's
+    /// is kept.
+    fn merge_with(&self, other: &Self) -> Self {
+        Self {
+            inner: self.inner.merge_with(&other.inner),
+        }
     }
 
     // ---- query parameters (map access + CRUD) --------------------------------------
@@ -913,5 +1132,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Authority>()?;
     module.add_class::<Uri>()?;
     module.add_class::<Url>()?;
+    module.add_function(wrap_pyfunction!(default_port, module)?)?;
     Ok(())
 }

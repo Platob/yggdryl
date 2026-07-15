@@ -175,6 +175,96 @@ extension, no dot), and `extensions` (every extension of a multi-dot name, outer
     assert_eq!(Uri::parse("http://[::1]:9000/p").unwrap().host(), Some("[::1]"));
     ```
 
+## Default ports and IPv6 hosts
+
+Two derived helpers answer *"what host and port would this URI actually dial?"* — both
+computed **on read**, so they never touch the stored value (its canonical string and bytes
+still round-trip unchanged).
+
+- **`port_or_default`** — the explicit `port` if the authority carries one, otherwise the
+  scheme's registered default (`https` → 443, `ws` → 80, `postgres` → 5432, …). `default_port`
+  exposes just the scheme's default, and the module-level `default_port(scheme)` is the raw
+  table (case-insensitive; `None` for a scheme with no registered default, such as `s3`).
+- **`host_is_ipv6` / `host_unbracketed`** — the host is stored with its IPv6 brackets
+  (`"[::1]"`); `host_unbracketed` strips them (`"::1"`) so the bare address can go straight to
+  a socket API, while a reg-name or IPv4 host passes through untouched.
+
+Because the fallback is read-only, `https://h/` and `https://h:443/` stay **distinct** values
+(the second wrote the port in) even though both dial port 443.
+
+=== "Python"
+
+    ```python
+    from yggdryl.uri import Uri, Url, default_port
+
+    # A scheme's default fills in when no port was written.
+    uri = Uri.parse("https://example.com/p")
+    assert uri.port is None            # nothing was written
+    assert uri.default_port == 443     # the scheme's default
+    assert uri.port_or_default == 443  # effective port to connect to
+    assert str(uri) == "https://example.com/p"   # read-only: no ":443" added
+
+    # An explicit port wins; a scheme with no default (or none at all) is None.
+    assert Uri.parse("https://h:8443/p").port_or_default == 8443
+    assert Uri.parse("s3://bucket/key").port_or_default is None
+    assert default_port("ws") == 80 and default_port("s3") is None
+
+    # IPv6 hosts: detect and unbracket.
+    v6 = Url.parse("https://[2001:db8::1]:8080/p")
+    assert v6.host == "[2001:db8::1]"          # stored bracketed
+    assert v6.host_is_ipv6
+    assert v6.host_unbracketed == "2001:db8::1"  # bare address to dial
+    ```
+
+=== "Node"
+
+    ```js
+    const { Uri, Url, defaultPort } = require('yggdryl').uri
+
+    // A scheme's default fills in when no port was written.
+    const uri = Uri.parse('https://example.com/p')
+    console.assert(uri.port === null)            // nothing was written
+    console.assert(uri.defaultPort === 443)      // the scheme's default
+    console.assert(uri.portOrDefault === 443)    // effective port to connect to
+    console.assert(uri.toString() === 'https://example.com/p')   // read-only: no ":443"
+
+    // An explicit port wins; a scheme with no default (or none at all) is null.
+    console.assert(Uri.parse('https://h:8443/p').portOrDefault === 8443)
+    console.assert(Uri.parse('s3://bucket/key').portOrDefault === null)
+    console.assert(defaultPort('ws') === 80 && defaultPort('s3') === null)
+
+    // IPv6 hosts: detect and unbracket.
+    const v6 = Url.parse('https://[2001:db8::1]:8080/p')
+    console.assert(v6.host === '[2001:db8::1]')          // stored bracketed
+    console.assert(v6.hostIsIpv6)
+    console.assert(v6.hostUnbracketed === '2001:db8::1') // bare address to dial
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::{default_port, Uri, Url};
+
+    // A scheme's default fills in when no port was written.
+    let uri = Uri::parse("https://example.com/p").unwrap();
+    assert_eq!(uri.port(), None);              // nothing was written
+    assert_eq!(uri.default_port(), Some(443)); // the scheme's default
+    assert_eq!(uri.port_or_default(), Some(443)); // effective port to connect to
+    assert_eq!(uri.to_string(), "https://example.com/p"); // read-only: no ":443" added
+
+    // An explicit port wins; a scheme with no default (or none at all) is None.
+    assert_eq!(Uri::parse("https://h:8443/p").unwrap().port_or_default(), Some(8443));
+    assert_eq!(Uri::parse("s3://bucket/key").unwrap().port_or_default(), None);
+    assert_eq!(default_port("ws"), Some(80));
+    assert_eq!(default_port("s3"), None);
+
+    // IPv6 hosts: detect and unbracket.
+    let v6 = Url::parse("https://[2001:db8::1]:8080/p").unwrap();
+    assert_eq!(v6.host(), Some("[2001:db8::1]"));          // stored bracketed
+    assert!(v6.host_is_ipv6());
+    assert_eq!(v6.host_unbracketed(), Some("2001:db8::1")); // bare address to dial
+    ```
+
 ## Building an authority
 
 `Authority` is constructed directly (host required; userinfo and port optional) or as a
@@ -281,6 +371,94 @@ the receiver. Setting a host/port/user/password creates an authority if the URI 
     u.set_fragment("section");
     assert_eq!(u.host(), Some("new.example.com"));
     assert_eq!(u.to_string(), "https://new.example.com/x#section");
+    ```
+
+## Joining and combining
+
+Three combinators build new values from existing ones — all return a copy, so they chain
+and never mutate the receiver:
+
+- **`joinpath(segment)`** — joins a segment onto the path, *lexically* (like `pathlib`, no
+  `.`/`..` resolution). It gets the seam right: exactly one `/` between base and segment (a
+  trailing slash is never doubled), an **absolute** segment (leading `/`) replaces the path,
+  an empty segment is a no-op, and under an authority the result stays rooted so a relative
+  segment can't fuse into the host. The segment is percent-encoded like `set_path`; the
+  query and fragment are left untouched.
+- **`merge_with(other)`** — overlays `other` onto this value: each component `other` sets (a
+  present scheme/authority/query/fragment, or a non-empty path) wins, otherwise this value's
+  is kept. A mechanical component merge with no re-parsing — ideal for applying a small patch
+  over a base. `Authority.merge_with` overlays at the field level (patch just the port, say).
+- **`copy()`** — an explicit clone, the cross-language name for "duplicate this value".
+
+An [`Authority`] can also be built up with `with_user` / `with_password` / `with_host` /
+`with_port` and attached with `with_authority`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.uri import Uri, Authority
+
+    # joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
+    base = Uri.parse("https://api.example.com/v1")
+    assert str(base.joinpath("users").joinpath("42")) == "https://api.example.com/v1/users/42"
+    assert Uri.from_path("/v1/").joinpath("users").path == "/v1/users"   # not doubled
+    assert str(base.joinpath("/reset")) == "https://api.example.com/reset"
+
+    # merge_with: apply only the fields the patch sets.
+    prod = Uri.parse("https://prod.example.com/v1?trace=1")
+    assert str(prod.merge_with(Uri.parse("//staging.example.com"))) \
+        == "https://staging.example.com/v1?trace=1"
+
+    # copy is an independent clone; build an authority and attach it.
+    auth = Authority.from_host("db.internal").with_user("svc").with_port(5432)
+    dsn = Uri.from_path("").with_scheme("postgres").with_authority(auth).with_path("/app")
+    assert str(dsn) == "postgres://svc@db.internal:5432/app"
+    ```
+
+=== "Node"
+
+    ```js
+    const { Uri, Authority } = require('yggdryl').uri
+
+    // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
+    const base = Uri.parse('https://api.example.com/v1')
+    console.assert(base.joinpath('users').joinpath('42').toString() === 'https://api.example.com/v1/users/42')
+    console.assert(Uri.fromPath('/v1/').joinpath('users').path === '/v1/users')   // not doubled
+    console.assert(base.joinpath('/reset').toString() === 'https://api.example.com/reset')
+
+    // mergeWith: apply only the fields the patch sets.
+    const prod = Uri.parse('https://prod.example.com/v1?trace=1')
+    console.assert(prod.mergeWith(Uri.parse('//staging.example.com')).toString()
+      === 'https://staging.example.com/v1?trace=1')
+
+    // copy is an independent clone; build an authority and attach it.
+    const auth = Authority.fromHost('db.internal').withUser('svc').withPort(5432)
+    const dsn = Uri.fromPath('').withScheme('postgres').withAuthority(auth).withPath('/app')
+    console.assert(dsn.toString() === 'postgres://svc@db.internal:5432/app')
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::{Authority, Uri};
+
+    // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
+    let base = Uri::parse("https://api.example.com/v1").unwrap();
+    assert_eq!(base.joinpath("users").joinpath("42").to_string(), "https://api.example.com/v1/users/42");
+    assert_eq!(Uri::from_path("/v1/").joinpath("users").path(), "/v1/users");   // not doubled
+    assert_eq!(base.joinpath("/reset").to_string(), "https://api.example.com/reset");
+
+    // merge_with: apply only the fields the patch sets.
+    let prod = Uri::parse("https://prod.example.com/v1?trace=1").unwrap();
+    assert_eq!(
+        prod.merge_with(&Uri::parse("//staging.example.com").unwrap()).to_string(),
+        "https://staging.example.com/v1?trace=1",
+    );
+
+    // copy is an independent clone; build an authority and attach it.
+    let auth = Authority::from_host("db.internal").with_user(Some("svc")).with_port(Some(5432));
+    let dsn = Uri::default().with_scheme("postgres").with_authority(Some(auth)).with_path("/app");
+    assert_eq!(dsn.to_string(), "postgres://svc@db.internal:5432/app");
     ```
 
 ## Query parameters

@@ -20,9 +20,22 @@ keywords = ["rust", "arrow", "yggdryl"]
 # The Rust core — the source of truth the bindings delegate to.
 yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.1" }
 # Apache Arrow's buffer subset — the physical layer the foundation is built on.
-arrow-buffer = "55"
+# 56 adds the narrow `Decimal32`/`Decimal64` array + schema types (the 32/64-bit decimals).
+arrow-buffer = "56"
+# IEEE-754 half-precision float — the value type behind `f16` (matches arrow-buffer's half).
+half = "2"
+# Optional Arrow interop (behind the core's `arrow` feature): arrays + schema.
+arrow-array = "56"
+arrow-schema = "56"
+# Temporal: civil-calendar + timezone data. `chrono` for the calendar/offset primitives and
+# `chrono-tz` for the full IANA tz database (both pure-Rust, auto-installable). Kept an
+# implementation detail of `io::fixed::temporal` — never in a public signature.
+chrono = { version = "0.4", default-features = false, features = ["alloc"] }
+chrono-tz = { version = "0.10", default-features = false }
 # Python extension via PyO3, targeting the stable ABI (one cp37-abi3 wheel per OS/arch).
-pyo3 = { version = "0.22", features = ["abi3-py37"] }
+# `multiple-pymethods` lets a class's methods be split across several `#[pymethods]` blocks (the
+# temporal bindings share a common block via a macro plus per-type conversion blocks).
+pyo3 = { version = "0.22", features = ["abi3-py37", "multiple-pymethods"] }
 # Node extension via napi-rs.
 napi = { version = "2", default-features = false, features = ["napi6"] }
 napi-derive = "2"
