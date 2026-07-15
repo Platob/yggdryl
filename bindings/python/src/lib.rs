@@ -19,6 +19,7 @@ mod headers;
 mod nested;
 mod nullvalues;
 mod temporal;
+mod temporalcolumn;
 mod types;
 mod uri;
 mod values;
@@ -68,6 +69,9 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
         decimal::register(decimal)?;
         deccolumn::register(decimal)
     })?;
-    add_submodule(py, module, "temporal", temporal::register)?;
+    add_submodule(py, module, "temporal", |temporal| {
+        temporal::register(temporal)?;
+        temporalcolumn::register(temporal)
+    })?;
     Ok(())
 }

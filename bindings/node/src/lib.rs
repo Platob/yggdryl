@@ -19,6 +19,7 @@ pub mod headers;
 pub mod nested;
 pub mod nullvalues;
 pub mod temporal;
+pub mod temporal_column;
 pub mod types;
 pub mod uri;
 pub mod values;
