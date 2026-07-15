@@ -2,22 +2,21 @@
 //! defines a struct's shape, and the concrete implementor of the root
 //! [`DataType`](crate::io::DataType) for the nested `struct` family.
 
-use crate::io::nested::ColumnField;
-use crate::io::{DataType, DataTypeId};
+use crate::io::{AnyField, DataType, DataTypeId};
 
-/// The **typed descriptor** of a struct type — its ordered, named child fields. A struct's shape is
-/// exactly this list of [`ColumnField`]s (each itself a leaf or a nested field), so `StructType`
-/// carries no width of its own (it reports `0`; a struct is neither fixed-width nor
-/// variable-length). The named, nullable counterpart is [`StructField`](super::StructField).
+/// The **typed descriptor** of a struct type — its ordered, named child fields (each an
+/// [`AnyField`], leaf or nested). A struct's shape is exactly this list, so `StructType` has no width
+/// of its own (it reports `0`; a struct is neither fixed-width nor variable-length). The named,
+/// nullable counterpart is [`StructField`](super::StructField).
 ///
 /// ```
-/// use yggdryl_core::io::DataType;
 /// use yggdryl_core::io::fixed::{Field, PrimitiveType};
-/// use yggdryl_core::io::nested::{ColumnField, StructType};
+/// use yggdryl_core::io::nested::StructType;
+/// use yggdryl_core::io::{AnyField, DataType};
 ///
 /// let dt = StructType::new(vec![
-///     ColumnField::leaf(Field::new("id", &PrimitiveType::<i64>::new(), false)),
-///     ColumnField::leaf(Field::new("name", &PrimitiveType::<i32>::new(), true)),
+///     AnyField::leaf(Field::new("id", &PrimitiveType::<i64>::new(), false)),
+///     AnyField::leaf(Field::new("name", &PrimitiveType::<i32>::new(), true)),
 /// ]);
 /// assert_eq!(dt.name(), "struct");
 /// assert_eq!(dt.num_fields(), 2);
@@ -25,17 +24,17 @@ use crate::io::{DataType, DataTypeId};
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct StructType {
-    children: Vec<ColumnField>,
+    children: Vec<AnyField>,
 }
 
 impl StructType {
     /// A struct type from its ordered child fields.
-    pub fn new(children: Vec<ColumnField>) -> Self {
+    pub fn new(children: Vec<AnyField>) -> Self {
         Self { children }
     }
 
     /// The child fields, in order.
-    pub fn fields(&self) -> &[ColumnField] {
+    pub fn fields(&self) -> &[AnyField] {
         &self.children
     }
 
@@ -45,7 +44,7 @@ impl StructType {
     }
 
     /// The child field at `index`, or `None` if out of range.
-    pub fn field(&self, index: usize) -> Option<&ColumnField> {
+    pub fn field(&self, index: usize) -> Option<&AnyField> {
         self.children.get(index)
     }
 }
@@ -64,11 +63,11 @@ impl DataType for StructType {
     }
 
     /// The Arrow `Struct(child fields)` type (feature `arrow`) — **recursive**, each child mapped by
-    /// its [`ColumnField::to_arrow`]. Overrides the id-level shell default (which cannot supply children).
+    /// its [`AnyField::to_arrow`]. Overrides the id-level shell default (which cannot supply children).
     #[cfg(feature = "arrow")]
     fn to_arrow(&self) -> arrow_schema::DataType {
         let fields: Vec<arrow_schema::Field> =
-            self.children.iter().map(ColumnField::to_arrow).collect();
+            self.children.iter().map(AnyField::to_arrow).collect();
         arrow_schema::DataType::Struct(arrow_schema::Fields::from(fields))
     }
 }

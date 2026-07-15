@@ -9,8 +9,9 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
+use yggdryl_core::io::boxed;
 use yggdryl_core::io::fixed::Serie;
-use yggdryl_core::io::nested::{Column, StructSerie};
+use yggdryl_core::io::nested::StructSerie;
 use yggdryl_core::io::var::Utf8Serie;
 
 struct Counting;
@@ -44,8 +45,8 @@ fn allocs_over(iters: usize, mut op: impl FnMut()) -> usize {
 #[test]
 fn allocation_budgets() {
     let iters = 1000;
-    let ids = Column::from(Serie::from_values(&[1i64, 2, 3]));
-    let names = Column::from(Utf8Serie::from_strs(&[Some("a"), None, Some("c")]));
+    let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+    let names = boxed(Utf8Serie::from_strs(&[Some("a"), None, Some("c")]));
     let table = StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap();
 
     // Borrowing a child column by index is a pointer read — no heap.

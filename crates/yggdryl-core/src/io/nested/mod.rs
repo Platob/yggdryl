@@ -2,31 +2,20 @@
 //! and [`var`](crate::io::var) for types whose values are composed of other columns. Phase one ships
 //! the **struct** family; `list` (Arrow `List`) and `map` follow.
 //!
-//! A nested column holds *child columns of arbitrary type* — including other nested columns — so
-//! this module introduces two recursive, type-erased carriers the flat leaf model lacks:
+//! Nested columns hold *child columns of arbitrary type* — including other nested columns. Rather
+//! than a bespoke column type, they build entirely on the family-agnostic erased primitives at the
+//! [`io`](crate::io) root:
 //!
-//! - [`Column`] — the erased **data** column: a **thin enum over the crate's existing typed Series**
-//!   that only wraps and delegates, so every op (length, serialization, equality, Arrow conversion)
-//!   calls the wrapped `Serie`'s own implementation. It is the child carrier a [`StructSerie`] holds.
-//! - [`ColumnField`] — the erased, recursive **field** descriptor: a leaf (the flat
-//!   [`Field`](crate::io::fixed::Field), reused as `var` does) or a nested field. It is what a
-//!   [`StructField`] schema holds as children, and it maps recursively to/from Arrow.
+//! - [`AnySerie`](crate::io::AnySerie) (held as `Box<dyn AnySerie>`) — the erased child column;
+//!   every concrete `Serie` implements it, and [`StructSerie`] does too (the recursion).
+//! - [`AnyField`](crate::io::AnyField) — the recursive erased field a schema holds as children.
+//! - [`AnyScalar`](crate::io::AnyScalar) — the erased cell a struct row is built from.
 //!
-//! [`Value`] is the erased **cell value** an erased [`Column::get`] yields (and a [`StructScalar`]
-//! row is built from). Per the crate rules, Arrow stays a physical detail behind the `arrow`
-//! feature and never appears in a public signature; the erased carriers are plain value enums so the
-//! core builds without Arrow.
+//! So the nested types are thin: [`StructField`] is a validated struct-shaped `AnyField`, and
+//! [`StructSerie`] is a schema + `Vec<Box<dyn AnySerie>>`, delegating length / serialization /
+//! equality / Arrow to the wrapped Series. Arrow stays behind the `arrow` feature and never appears
+//! in a public signature.
 
-mod column;
-mod column_field;
 pub mod struct_;
-mod value;
 
-pub use column::Column;
-pub use column_field::ColumnField;
 pub use struct_::{StructField, StructScalar, StructSerie, StructType};
-pub use value::Value;
-
-// The one shared Arrow helper `StructSerie` reuses for its top-level validity (both in `nested`).
-#[cfg(feature = "arrow")]
-pub(crate) use column::validity_from_arrow;

@@ -40,7 +40,6 @@ pub trait VarSerie: SerieType {
 /// sink.rewind();
 /// assert_eq!(Utf8Serie::read_from(&mut sink).unwrap(), col);
 /// ```
-#[derive(Clone)]
 pub struct ByteSerie<E: VarElement> {
     /// `len + 1` offsets into `data` (`offsets[0] == 0`).
     offsets: Vec<i32>,
@@ -50,6 +49,21 @@ pub struct ByteSerie<E: VarElement> {
     validity: Option<Bitmap>,
     len: usize,
     _element: PhantomData<E>,
+}
+
+// A manual `Clone` (not a derive) so it does not spuriously require `E: Clone` — a var column holds
+// only `PhantomData<E>`, so cloning never touches the marker (matches how the erased `AnySerie`
+// clones a boxed column without an element-`Clone` bound).
+impl<E: VarElement> Clone for ByteSerie<E> {
+    fn clone(&self) -> Self {
+        Self {
+            offsets: self.offsets.clone(),
+            data: self.data.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            _element: PhantomData,
+        }
+    }
 }
 
 impl<E: VarElement> ByteSerie<E> {

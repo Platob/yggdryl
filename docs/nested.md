@@ -5,38 +5,80 @@
 Phase one ships the **struct** family (an ordered, named set of heterogeneous child columns);
 `list` (Arrow `List`) and `map` follow.
 
-A nested column holds child columns of arbitrary type — including other nested columns — so the
-module adds two recursive, type-erased carriers the flat leaf families do not need:
+A nested column holds child columns of arbitrary type — including other nested columns — so
+the crate adds three recursive, type-erased carriers at the **`io` root** (not inside
+`nested`), because they describe *any* column, leaf or nested:
 
 | type | role |
 | --- | --- |
-| `Column` | the erased **data** column — a **thin enum over the crate's existing Series** (`Serie<T>`, `DecimalSerie`, `ByteSerie`, `FixedSizeSerie`, `NullSerie`, `StructSerie`) that only wraps and delegates |
-| `ColumnField` | the erased, recursive **field** descriptor — a leaf (the flat `Field`, reused as `var` does) or a nested field |
-| `Value` | the erased **cell value** an erased `Column::get` yields (and a `StructScalar` row is built from) |
+| `AnySerie` | the erased **data** trait — every concrete series (`Serie<T>`, `DecimalSerie`, `ByteSerie`, `FixedSizeSerie`, `NullSerie`, and `StructSerie` itself) implements it, so a nested column holds its children as `Box<dyn AnySerie>` |
+| `AnyField` | the erased, recursive **field** descriptor — a `Leaf` (the flat `Field`, reused as `var` does) or a `Struct` carrying its child fields inline |
+| `AnyScalar` | the erased **cell value** an `AnySerie::value` yields (and a `StructScalar` row is built from) — `Null`, a `Leaf`, or a `Struct` of child values |
 
-`Column` reimplements nothing: every operation — length, the byte codec, equality, and Arrow
-conversion — calls the wrapped `Serie`'s own method, and the `Struct` variant recurses into a whole
-`StructSerie`. So the core still builds **without** the `arrow` feature (the carriers are plain value
-enums), and Arrow **recomposition is zero-copy** wherever the underlying `Serie` is: the fixed and
-decimal columns hand back their shared `Arc` buffer through their own `to_arrow_array`.
+`AnySerie` reimplements nothing: every operation — length, the byte codec, equality, and Arrow
+conversion — delegates to the wrapped series' own method, and `StructSerie` (itself an
+`AnySerie`) recurses into its children. So the core still builds **without** the `arrow`
+feature (the carriers are plain traits/enums over the existing series), and Arrow
+**recomposition is zero-copy** wherever the underlying series is: the fixed and decimal columns
+hand back their shared `Arc` buffer through their own `to_arrow_array`.
 
-## StructField — one schema, two Arrow faces
+## `boxed` — erase a series, `as_serie::<T>` — recover it
 
-`StructField` is the **single source of truth** for a struct's shape: a name, nullability, ordered
-child `ColumnField`s, and [`Headers`](headers.md) metadata. It maps to **both** an Arrow `Field`
-(of `Struct` type) *and* an Arrow `Schema` (its children as a top-level schema) — the natural bridge
-for a struct column ↔ a `RecordBatch`.
+Any concrete series erases into a `Box<dyn AnySerie>` with the free function `boxed`, and comes
+back out with a field-keyed safe downcast — no `Column` enum, no per-type wrapper:
+
+```rust
+use yggdryl_core::io::fixed::Serie;
+use yggdryl_core::io::var::Utf8Serie;
+use yggdryl_core::io::boxed;
+
+let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+let names = boxed(Utf8Serie::from_strs(&[Some("ann"), None, Some("cara")]));
+
+// Recover the concrete series by asserting the element type.
+let ids: &Serie<i64> = ids.as_serie::<i64>().unwrap();
+assert_eq!(ids.get(0), Some(1));
+```
+
+`as_serie::<T>` (and its siblings `as_decimal::<B>` / `as_bytes_serie::<E>`) is the `as_ref<T>`
+assumption keyed on the linked field: it downcasts to the concrete series if the element type
+matches, else `None` — so a caller that knows a column's `AnyField` can safely assume its type.
+
+## `AnyField` — the recursive schema leaf
+
+`AnyField` is the erased field that both a leaf and a struct share. A leaf reuses the flat
+`Field` (as `var` does); a struct carries its ordered child `AnyField`s inline, so schemas nest
+to any depth without a root→nested dependency:
 
 ```rust
 use yggdryl_core::io::FieldType;
 use yggdryl_core::io::fixed::{Field, PrimitiveType};
-use yggdryl_core::io::nested::{ColumnField, StructField};
+use yggdryl_core::io::AnyField;
+
+let id = AnyField::leaf(Field::new("id", &PrimitiveType::<i64>::new(), false));
+let person = AnyField::struct_("person", vec![id.clone()], true);
+assert!(person.is_struct() && person.nullable());
+assert_eq!(person.children()[0].name(), "id");
+```
+
+## StructField — one schema, two Arrow faces
+
+`StructField` is the **single source of truth** for a struct's shape — a validated
+struct-shaped `AnyField` (its children hold the ordered child fields). It maps to **both** an
+Arrow `Field` (of `Struct` type) *and* an Arrow `Schema` (its children as a top-level schema) —
+the natural bridge for a struct column ↔ a `RecordBatch`.
+
+```rust
+use yggdryl_core::io::FieldType;
+use yggdryl_core::io::fixed::{Field, PrimitiveType};
+use yggdryl_core::io::AnyField;
+use yggdryl_core::io::nested::StructField;
 
 let schema = StructField::new(
     "person",
     vec![
-        ColumnField::leaf(Field::new("id", &PrimitiveType::<i64>::new(), false)),
-        ColumnField::leaf(Field::new("name", &PrimitiveType::<i32>::new(), true)),
+        AnyField::leaf(Field::new("id", &PrimitiveType::<i64>::new(), false)),
+        AnyField::leaf(Field::new("name", &PrimitiveType::<i32>::new(), true)),
     ],
     true,
 );
@@ -48,50 +90,37 @@ assert_eq!(schema.index_of("name"), Some(1));
 ```
 
 It is a value type — equal and hashable by content, so a schema works as a map key — with
-`with_field` / `with_metadata` / `with_nullable` builders for one-line immutable updates. A struct
-field can itself be a child of another struct (`ColumnField::Struct`), so schemas nest arbitrarily.
-
-## Column — the erased column
-
-Any typed column erases into a `Column` with `From`, so a struct holds heterogeneous children:
-
-```rust
-use yggdryl_core::io::fixed::Serie;
-use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::nested::Column;
-
-let ids = Column::from(Serie::from_values(&[1i64, 2, 3]));
-let names = Column::from(Utf8Serie::from_strs(&[Some("ann"), None, Some("cara")]));
-```
-
-A `Column` reports its `len` / `type_id` / `null_count`, hands back a `ColumnField` for a given
-name (nullability inferred from whether it holds nulls), and — where a fixed primitive column is
-logically a temporal type — `with_field` reinterprets its logical type without touching the bytes
-(an `i32` column tagged `date32`, say). A leaf column stores its bytes *erased* (raw little-endian
-values, or offsets + data) plus a nameless logical field, so numbers, decimals, temporal, and
-fixed-size bytes all share one flat shape.
+`with_field` / `with_metadata` / `with_nullable` builders for one-line immutable updates. A
+struct field can itself be a child of another struct (an `AnyField::Struct` child), so schemas
+nest arbitrarily.
 
 ## StructSerie — a struct column
 
-`StructSerie` is a nullable struct column: one child `Column` per field (all the same length), an
-ordered schema, and an optional top-level validity mask (a null struct row).
+`StructSerie` is a nullable struct column: one child `Box<dyn AnySerie>` per field (all the same
+length), an ordered schema of `AnyField`s, and an optional top-level validity mask (a null
+struct row). It is itself an `AnySerie`, so struct-of-struct nests to any depth.
 
 ```rust
 use yggdryl_core::io::fixed::Serie;
 use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::nested::{Column, StructSerie, Value};
+use yggdryl_core::io::{boxed, AnyScalar};
+use yggdryl_core::io::nested::StructSerie;
 
-let ids = Column::from(Serie::from_values(&[1i64, 2, 3]));
-let names = Column::from(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
+let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+let names = boxed(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
 let table = StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap();
 
 assert_eq!(table.len(), 3);
 assert_eq!(table.num_columns(), 2);
 assert_eq!(table.field(1).unwrap().name(), "name");
 
-// A row is a `Value::Struct` of per-field erased values; a null row is `Value::Null`.
-let Value::Struct(row) = table.get_row(0) else { unreachable!() };
-assert_eq!(row.value_named("name").unwrap().bytes(), Some(&b"ann"[..]));
+// Downcast a child back to its concrete series, keyed on the field's type.
+let ids: &Serie<i64> = table.column(0).unwrap().as_serie::<i64>().unwrap();
+assert_eq!(ids.get(1), Some(2));
+
+// A row is an `AnyScalar::Struct` of per-field erased values; a null row is `AnyScalar::Null`.
+let AnyScalar::Struct(row) = table.row(0) else { unreachable!() };
+assert_eq!(row.len(), 2);
 
 // It round-trips byte-exactly through its own codec (schema + data are self-contained).
 assert_eq!(
@@ -113,10 +142,11 @@ struct column *is* a batch of named columns (with `--features arrow`):
 ```rust
 use yggdryl_core::io::fixed::Serie;
 use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::nested::{Column, StructSerie};
+use yggdryl_core::io::boxed;
+use yggdryl_core::io::nested::StructSerie;
 
-let ids = Column::from(Serie::from_values(&[1i64, 2, 3]));
-let names = Column::from(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
+let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+let names = boxed(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
 let table = StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap();
 
 // A RecordBatch (each field becomes a batch column) and back — byte-exact.
@@ -135,5 +165,5 @@ Arrow type this crate does not model surfaces the same guided error on import.
 The same `arrow` feature also completes the leaf families' array interop — `Utf8Serie` /
 `BinarySerie` ↔ `StringArray` / `BinaryArray`, and the fixed-size byte columns ↔
 `FixedSizeBinaryArray` — so every column type now converts to and from an Arrow array, at both the
-typed and the erased-`Column` level. As elsewhere, Arrow types never appear in a public signature;
+typed and the erased-`AnySerie` level. As elsewhere, Arrow types never appear in a public signature;
 the mapping is centralized on [`DataTypeId`](types.md).

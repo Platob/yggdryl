@@ -365,6 +365,17 @@ impl<T: NativeType> FixedBuffer for Buffer<T> {
     type Native = T;
 }
 
+/// The backing Arrow buffer for **any** `NativeType` (feature `arrow`) — the wide non-Arrow-native
+/// integers need it too, so it lives outside the `ArrowNative`-only interop block.
+#[cfg(feature = "arrow")]
+impl<T: NativeType> Buffer<T> {
+    /// The backing Arrow [`Buffer`](arrow_buffer::Buffer) — **zero-copy** (an `Arc` bump), for every
+    /// `NativeType`. Crate-internal (the erased [`AnySerie`](crate::io::AnySerie) reads it).
+    pub(crate) fn arrow_bytes(&self) -> arrow_buffer::Buffer {
+        self.bytes.clone()
+    }
+}
+
 /// Zero-copy interop with the Arrow ecosystem (feature `arrow`): a [`Buffer`] shares its
 /// `Arc`-backed allocation with an Arrow buffer / `PrimitiveArray`, so conversion is a
 /// refcount bump, never a payload copy.

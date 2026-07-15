@@ -213,16 +213,23 @@ impl<T: NativeType> Serie<T> {
         (0..self.len).map(|i| self.get(i)).collect()
     }
 
-    /// The raw little-endian value bytes (`len * T::WIDTH`, placeholder bytes under nulls) — the
-    /// flat-buffer view the erased [`Column`](crate::io::nested::Column) reads to map a *wide*
-    /// (non-Arrow-native) integer column to its closest-representation Arrow array.
+    /// The values as an **element-aligned** Arrow buffer — **zero-copy** (a shared `Arc`) when the
+    /// backing bytes are already aligned to `T` (every yggdryl-produced column is), else realigned
+    /// with one copy. The erased [`AnySerie`](crate::io::AnySerie) maps any primitive column to its
+    /// Arrow array from this buffer + the id's Arrow data type, so it is zero-copy uniformly (native
+    /// *and* wide integers), with no per-type code.
     #[cfg(feature = "arrow")]
-    pub(crate) fn value_bytes(&self) -> &[u8] {
-        self.values.as_bytes()
+    pub(crate) fn arrow_value_buffer(&self) -> arrow_buffer::Buffer {
+        let buffer = self.values.arrow_bytes();
+        if buffer.as_ptr().align_offset(core::mem::align_of::<T>()) == 0 {
+            buffer
+        } else {
+            arrow_buffer::Buffer::from(buffer.as_slice())
+        }
     }
 
-    /// The validity bitmap, if any — the null shape the erased [`Column`](crate::io::nested::Column)
-    /// reads for the wide-integer Arrow path.
+    /// The validity bitmap, if any — the null shape the erased [`AnySerie`](crate::io::AnySerie)
+    /// reads for the Arrow null buffer.
     #[cfg(feature = "arrow")]
     pub(crate) fn validity_bitmap(&self) -> Option<&crate::io::bitmap::Bitmap> {
         self.validity.as_ref()

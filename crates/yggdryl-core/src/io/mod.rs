@@ -25,6 +25,9 @@
 //! an implementation detail and never appear in a public signature; each public type lives
 //! in its own file and is mirrored, thinly, in the Python and Node extensions.
 
+mod any_field;
+mod any_scalar;
+mod any_serie;
 mod authority;
 mod bitmap;
 mod buffer_type;
@@ -49,6 +52,15 @@ mod uri_error;
 mod url;
 pub mod var;
 mod whence;
+
+// The family-agnostic, recursive **erased** primitives — an erased column (`AnySerie`, held as a
+// `Box<dyn AnySerie>`), its recursive erased field (`AnyField`), and its erased cell (`AnyScalar`) —
+// used by the nested types (and the bindings) to carry heterogeneous children.
+pub use any_field::AnyField;
+pub use any_scalar::AnyScalar;
+#[cfg(feature = "arrow")]
+pub use any_serie::from_arrow_any_leaf;
+pub use any_serie::{boxed, read_any_leaf, AnySerie};
 
 pub use authority::Authority;
 pub use fixed::Bytes;

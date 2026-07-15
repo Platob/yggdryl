@@ -10,8 +10,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
+use yggdryl_core::io::boxed;
 use yggdryl_core::io::fixed::Serie;
-use yggdryl_core::io::nested::{Column, StructSerie};
+use yggdryl_core::io::nested::StructSerie;
 use yggdryl_core::io::var::Utf8Serie;
 
 struct Counting;
@@ -57,8 +58,8 @@ fn row(name: &str, (mops, allocs, bytes): (f64, f64, f64)) {
 }
 
 fn build_table(n: usize) -> StructSerie {
-    let ids = Column::from(Serie::from_values(&(0..n as i64).collect::<Vec<_>>()));
-    let names = Column::from(Utf8Serie::from_strs(
+    let ids = boxed(Serie::from_values(&(0..n as i64).collect::<Vec<_>>()));
+    let names = boxed(Utf8Serie::from_strs(
         &(0..n).map(|_| Some("value")).collect::<Vec<_>>(),
     ));
     StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap()
@@ -80,15 +81,15 @@ fn main() {
     println!("  {}", "-".repeat(76));
 
     row(
-        "Column::from(Serie<i64>) (erase)",
+        "boxed(Serie<i64>) (erase)",
         measure(1, iters, || {
-            let _ = Column::from(Serie::from_values(&ids));
+            let _ = boxed(Serie::from_values(&ids));
         }),
     );
     row(
-        "Column::from(Utf8Serie) (erase)",
+        "boxed(Utf8Serie) (erase)",
         measure(1, iters, || {
-            let _ = Column::from(Utf8Serie::from_strs(&names));
+            let _ = boxed(Utf8Serie::from_strs(&names));
         }),
     );
     row(
@@ -100,14 +101,14 @@ fn main() {
     row(
         "StructSerie::column + type_id (navigate)",
         measure(2, iters, || {
-            let _ = table.column(0).map(Column::type_id);
-            let _ = table.column_named("name").map(Column::type_id);
+            let _ = table.column(0).map(|c| c.type_id());
+            let _ = table.column_named("name").map(|c| c.type_id());
         }),
     );
     row(
-        "StructSerie::get_row",
+        "StructSerie::row",
         measure(1, iters, || {
-            let _ = table.get_row(n / 2);
+            let _ = table.row(n / 2);
         }),
     );
     row(
