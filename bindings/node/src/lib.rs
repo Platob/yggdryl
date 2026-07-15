@@ -16,6 +16,7 @@ pub mod bytes;
 pub mod deccolumn;
 pub mod decimal;
 pub mod headers;
+pub mod nested;
 pub mod nullvalues;
 pub mod temporal;
 pub mod types;

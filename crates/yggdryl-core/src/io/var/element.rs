@@ -10,7 +10,7 @@ use crate::io::{DataTypeId, IoError};
 /// Every var value / column / descriptor is generic over one of these, so `ByteScalar<Utf8>` and
 /// `ByteScalar<Binary>` share one implementation (mirroring how `Buffer<u8>` and `Buffer<i32>`
 /// share one).
-pub trait VarElement: 'static {
+pub trait VarElement: Send + Sync + 'static {
     /// The stable, lower-case type name (`"utf8"` / `"binary"`).
     const NAME: &'static str;
     /// The [`DataTypeId`] — [`Utf8`](DataTypeId::Utf8) or [`Binary`](DataTypeId::Binary).

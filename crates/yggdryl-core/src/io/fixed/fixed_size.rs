@@ -23,7 +23,7 @@ use crate::io::{
 /// The kind of a fixed-size byte value — opaque binary or UTF-8 — the way
 /// [`VarElement`](crate::io::var::VarElement) distinguishes the variable-length kinds. Both map
 /// to Arrow's `FixedSizeBinary(N)` (Arrow has no fixed-size UTF-8 type).
-pub trait FixedElement: 'static {
+pub trait FixedElement: Send + Sync + 'static {
     /// The stable, lower-case type name (`"fixed_binary"` / `"fixed_utf8"`).
     const NAME: &'static str;
     /// The [`DataTypeId`] — [`FixedBinary`](DataTypeId::FixedBinary) or

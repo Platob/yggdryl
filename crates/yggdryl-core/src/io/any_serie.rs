@@ -32,7 +32,11 @@ const OFFSET_WIDTH: usize = core::mem::size_of::<i32>();
 /// children live in (`Box<dyn AnySerie>`). Implemented by every concrete `Serie`; each method
 /// delegates. Build one by boxing a `Serie` (`Box::new(serie) as Box<dyn AnySerie>`) or with the
 /// erased reader / Arrow importer in [`nested`](crate::io::nested).
-pub trait AnySerie: Debug {
+///
+/// `Send + Sync` because every concrete column is (its buffers are `Arc`-shared or owned `Vec`s,
+/// like Arrow's own `Send + Sync` `ArrayRef`), so an erased column — and a `StructSerie` of them —
+/// crosses threads and satisfies the language bindings' thread-safety bound.
+pub trait AnySerie: Debug + Send + Sync {
     /// The number of elements.
     fn len(&self) -> usize;
 

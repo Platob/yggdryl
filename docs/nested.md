@@ -167,3 +167,63 @@ The same `arrow` feature also completes the leaf families' array interop — `Ut
 `FixedSizeBinaryArray` — so every column type now converts to and from an Arrow array, at both the
 typed and the erased-`AnySerie` level. As elsewhere, Arrow types never appear in a public signature;
 the mapping is centralized on [`DataTypeId`](types.md).
+
+## In Python and Node
+
+Both extensions mirror the nested surface — `StructField` (the schema) and `StructSerie` (the
+column) — over the same core, so a struct built in one language **serializes to identical bytes** in
+the others. The one platform difference is how a heterogeneous child column is passed in: Python
+takes the live `Serie` objects directly, while Node (napi cannot accept an arbitrary one-of-many
+class instance) takes a schema plus each child's `serializeBytes()` frame. Both round-trip
+byte-for-byte with the Rust core.
+
+=== "Python"
+
+    ```python
+    from yggdryl.types import StructField, StructSerie, I64Serie, Utf8Serie
+
+    ids = I64Serie([1, 2, 3])
+    names = Utf8Serie(["ann", None, "cara"])
+    table = StructSerie([("id", ids), ("name", names)])          # live Serie children
+    assert len(table) == 3 and table.num_columns == 2
+    assert table.column_named("name").get(0) == "ann"            # re-wrapped, typed child
+    assert StructSerie.deserialize_bytes(table.serialize_bytes()) == table
+
+    schema = table.to_field("person")                            # StructField schema
+    assert schema.num_fields == 2 and schema.field(1).name == "name"
+    ```
+
+=== "Node"
+
+    ```js
+    const { StructField, StructSerie, I32Serie, Utf8Serie } = require('yggdryl').types
+
+    const ids = new I32Serie([1, 2, 3])
+    const names = new Utf8Serie(['ann', null, 'cara'])
+    // A child crosses as a schema field + its serialized bytes.
+    const schema = new StructField('person', [ids.toField('id'), names.toField('name')], false)
+    const table = StructSerie.fromColumns(schema, [ids.serializeBytes(), names.serializeBytes()])
+    assert(table.length === 3 && table.numColumns === 2)
+    assert(Utf8Serie.deserializeBytes(table.columnBytesNamed('name')).get(0) === 'ann')
+    assert(StructSerie.deserializeBytes(table.serializeBytes()).equals(table))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::boxed;
+    use yggdryl_core::io::fixed::Serie;
+    use yggdryl_core::io::var::Utf8Serie;
+    use yggdryl_core::io::nested::StructSerie;
+
+    let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+    let names = boxed(Utf8Serie::from_strs(&[Some("ann"), None, Some("cara")]));
+    let table = StructSerie::from_named(vec![("id", ids), ("name", names)]).unwrap();
+    assert_eq!(table.len(), 3);
+    let ids: &Serie<i64> = table.column(0).unwrap().as_serie::<i64>().unwrap();
+    assert_eq!(ids.get(0), Some(1));
+    assert_eq!(StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap(), table);
+    ```
+
+Arrow-array interop currently lives in the Rust core (behind its `arrow` feature); the extensions
+carry the structural surface and the byte codec.

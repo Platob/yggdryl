@@ -16,6 +16,7 @@ mod bytes;
 mod deccolumn;
 mod decimal;
 mod headers;
+mod nested;
 mod nullvalues;
 mod temporal;
 mod types;
@@ -60,6 +61,7 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
         values::register(types)?;
         varvalues::register(types)?;
         nullvalues::register(types)?;
+        nested::register(types)?;
         buffers::register(types)
     })?;
     add_submodule(py, module, "decimal", |decimal| {
