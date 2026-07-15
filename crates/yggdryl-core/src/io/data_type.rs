@@ -89,6 +89,26 @@ pub trait DataType {
         self.type_id().is_binary()
     }
 
+    /// Whether the type is a nested / composite type (struct, list, or map).
+    fn is_nested(&self) -> bool {
+        self.type_id().is_nested()
+    }
+
+    /// Whether the type is a struct.
+    fn is_struct(&self) -> bool {
+        self.type_id().is_struct()
+    }
+
+    /// Whether the type is a list.
+    fn is_list(&self) -> bool {
+        self.type_id().is_list()
+    }
+
+    /// Whether the type is a map.
+    fn is_map(&self) -> bool {
+        self.type_id().is_map()
+    }
+
     /// The matching (or closest) Arrow [`DataType`](arrow_schema::DataType) (feature `arrow`) —
     /// a **total** default derived from the [`type_id`](DataType::type_id) and byte width via the
     /// centralized [`DataTypeId::to_arrow`](DataTypeId::to_arrow) mapping, so every descriptor

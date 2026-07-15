@@ -29,6 +29,9 @@ impl VarElement for Utf8 {
                 position: error.valid_up_to(),
             })
     }
+
+    #[cfg(feature = "arrow")]
+    type Arrow = arrow_array::types::Utf8Type;
 }
 
 /// UTF-8 scalar ergonomics.

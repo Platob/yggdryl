@@ -19,5 +19,12 @@ pub trait VarElement: 'static {
     /// Validates raw bytes for this kind — UTF-8 must decode; binary accepts anything. Returns
     /// [`IoError::InvalidUtf8`] naming the failing byte for a bad UTF-8 value.
     fn validate(bytes: &[u8]) -> Result<(), IoError>;
-    // The Arrow mapping is centralized in `DataTypeId::to_arrow` (keyed on `TYPE_ID`).
+    // The Arrow *schema* mapping is centralized in `DataTypeId::to_arrow` (keyed on `TYPE_ID`).
+
+    /// The matching Arrow **byte-array** element type (feature `arrow`) — `Utf8Type` for strings,
+    /// `BinaryType` for binary — the type parameter of the [`GenericByteArray`](arrow_array::GenericByteArray)
+    /// a [`ByteSerie`](crate::io::var::ByteSerie) of this kind converts to/from. Constrained to the
+    /// `i32` offset width, matching this crate's single (non-`Large`) var offset axis.
+    #[cfg(feature = "arrow")]
+    type Arrow: arrow_array::types::ByteArrayType<Offset = i32>;
 }

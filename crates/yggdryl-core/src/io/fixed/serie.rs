@@ -122,6 +122,23 @@ impl<T: NativeType> Serie<T> {
         }
     }
 
+    /// A column from raw little-endian value bytes (`len * T::WIDTH`, zero placeholders under nulls)
+    /// and an optional validity mask — the low-level constructor the erased
+    /// [`Column`](crate::io::nested::Column) uses to rebuild a *wide* (non-Arrow-native) `Serie`
+    /// from an imported Arrow array's bytes. Crate-internal, Arrow-only.
+    #[cfg(feature = "arrow")]
+    pub(crate) fn from_byte_slice(
+        values: Vec<u8>,
+        validity: Option<crate::io::bitmap::Bitmap>,
+        len: usize,
+    ) -> Self {
+        Self {
+            validity,
+            values: Buffer::from_byte_vec(values),
+            len,
+        }
+    }
+
     /// Appends one element (`None` is a null). A null lazily materializes the validity mask.
     /// For building from a known set, prefer [`from_values`](Serie::from_values) /
     /// [`from_options`](Serie::from_options), which build the values in one pass instead of
@@ -194,6 +211,21 @@ impl<T: NativeType> Serie<T> {
     /// The elements as `Option`s, in order.
     pub fn to_options(&self) -> Vec<Option<T>> {
         (0..self.len).map(|i| self.get(i)).collect()
+    }
+
+    /// The raw little-endian value bytes (`len * T::WIDTH`, placeholder bytes under nulls) — the
+    /// flat-buffer view the erased [`Column`](crate::io::nested::Column) reads to map a *wide*
+    /// (non-Arrow-native) integer column to its closest-representation Arrow array.
+    #[cfg(feature = "arrow")]
+    pub(crate) fn value_bytes(&self) -> &[u8] {
+        self.values.as_bytes()
+    }
+
+    /// The validity bitmap, if any — the null shape the erased [`Column`](crate::io::nested::Column)
+    /// reads for the wide-integer Arrow path.
+    #[cfg(feature = "arrow")]
+    pub(crate) fn validity_bitmap(&self) -> Option<&crate::io::bitmap::Bitmap> {
+        self.validity.as_ref()
     }
 
     // ---- scalar interop: a column is usable as a scalar and vice versa ----------------
@@ -370,8 +402,7 @@ impl<T: NativeType> Serie<T> {
         let has_validity = header[8] != 0;
 
         let validity = if has_validity {
-            let mut bits = vec![0u8; len.div_ceil(8)];
-            source.read_exact(&mut bits)?;
+            let bits = source.read_exact_vec(len.div_ceil(8))?;
             Some(Bitmap::from_bytes(&bits, len))
         } else {
             None
@@ -383,8 +414,7 @@ impl<T: NativeType> Serie<T> {
             len: len as u64,
             width: T::WIDTH,
         })?;
-        let mut value_bytes = vec![0u8; byte_len];
-        source.read_exact(&mut value_bytes)?;
+        let value_bytes = source.read_exact_vec(byte_len)?;
         Ok(Self {
             validity,
             values: Buffer::from_bytes(&value_bytes),

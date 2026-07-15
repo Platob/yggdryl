@@ -46,6 +46,9 @@ const ALL_IDS: &[DataTypeId] = &[
     DataTypeId::LargeBinary,
     DataTypeId::Utf8,
     DataTypeId::LargeUtf8,
+    DataTypeId::Struct,
+    DataTypeId::List,
+    DataTypeId::Map,
 ];
 
 #[test]
@@ -56,7 +59,8 @@ fn data_type_id_decode_is_checked_and_round_trips() {
     }
     // Reserved-gap values decode to `None` (a checked match, never a transmute over a gap).
     for gap in [
-        0x0001, 0x0017, 0x0027, 0x0033, 0x0041, 0x0054, 0x0062, 0x0080, 0x0102, 0x0200, 0xFFFF,
+        0x0001, 0x0017, 0x0027, 0x0033, 0x0041, 0x0054, 0x0062, 0x0080, 0x0102, 0x0201, 0x0211,
+        0x0230, 0x0300, 0xFFFF,
     ] {
         assert_eq!(DataTypeId::from_u16(gap), None);
     }
@@ -121,8 +125,9 @@ fn field_of_builds_from_parts() {
 #[test]
 fn data_type_id_ranges_are_mutually_consistent() {
     for &id in ALL_IDS {
-        // Fixed-width and variable-length partition every non-null id exactly.
-        if !id.is_null() {
+        // Fixed-width and variable-length partition every non-null *leaf* id exactly; nested types
+        // are neither (their shape lives on child fields, not a byte width).
+        if !id.is_null() && !id.is_nested() {
             assert_ne!(id.is_fixed_width(), id.is_variable_length(), "{id:?}");
         }
         // An integer is never a float and vice versa; both are numeric.
@@ -183,6 +188,21 @@ fn data_type_id_ranges_are_mutually_consistent() {
         assert!(!id.is_numeric() && !id.is_binary() && !id.is_utf8() && !id.is_decimal());
     }
     assert!(DataTypeCategory::Temporal.is_temporal() && !DataTypeCategory::Temporal.is_numeric());
+    // Nested types are their own category: neither fixed-width nor variable-length, and not any leaf
+    // classification (numeric / binary / utf8 / temporal / decimal).
+    for id in [DataTypeId::Struct, DataTypeId::List, DataTypeId::Map] {
+        assert_eq!(id.category(), DataTypeCategory::Nested, "{id:?}");
+        assert!(id.is_nested() && !id.is_fixed_width() && !id.is_variable_length());
+        assert!(!id.is_numeric() && !id.is_binary() && !id.is_utf8());
+        assert!(!id.is_temporal() && !id.is_decimal());
+    }
+    assert!(
+        DataTypeId::Struct.is_struct()
+            && !DataTypeId::Struct.is_list()
+            && !DataTypeId::Struct.is_map()
+    );
+    assert!(DataTypeId::List.is_list() && DataTypeId::Map.is_map());
+    assert!(DataTypeCategory::Nested.is_nested() && !DataTypeCategory::Nested.is_numeric());
 }
 
 /// The full predicate fingerprint of a type, in a fixed order, so a whole row can be asserted

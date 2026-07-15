@@ -24,9 +24,11 @@ yggdryl-core = { path = "crates/yggdryl-core", version = "0.1.1" }
 arrow-buffer = "56"
 # IEEE-754 half-precision float — the value type behind `f16` (matches arrow-buffer's half).
 half = "2"
-# Optional Arrow interop (behind the core's `arrow` feature): arrays + schema.
+# Optional Arrow interop (behind the core's `arrow` feature): arrays + schema + the erased
+# `ArrayData` (the generic buffers+DataType array builder the nested/erased-column bridge uses).
 arrow-array = "56"
 arrow-schema = "56"
+arrow-data = "56"
 # Temporal: civil-calendar + timezone data. `chrono` for the calendar/offset primitives and
 # `chrono-tz` for the full IANA tz database (both pure-Rust, auto-installable). Kept an
 # implementation detail of `io::fixed::temporal` — never in a public signature.

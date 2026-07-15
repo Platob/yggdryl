@@ -27,7 +27,10 @@ use super::DataTypeCategory;
 /// | `0x0100..=0x0107` | variable binary (`Binary`, `LargeBinary`) |
 /// | `0x0108..=0x010F` | variable utf8 (`Utf8`, `LargeUtf8`) |
 /// | `0x0110..=0x01FF` | *reserved* — future variable-length (views, …) |
-/// | `0x0200..=…` | *reserved* — future nested / composite |
+/// | `0x0200..=0x020F` | struct (`Struct`), with reserved gaps |
+/// | `0x0210..=0x021F` | list (`List`; reserved `LargeList`/`FixedSizeList`) |
+/// | `0x0220..=0x022F` | map (`Map`) |
+/// | `0x0230..=0x02FF` | *reserved* — future nested / composite |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u16)]
 #[non_exhaustive]
@@ -113,6 +116,16 @@ pub enum DataTypeId {
     Utf8 = 0x0108,
     /// Variable-length UTF-8 string (`i64` offsets).
     LargeUtf8 = 0x0109,
+
+    /// A **struct** — an ordered, named set of child fields (Arrow `Struct`). Its children live
+    /// on the descriptor / field, not on the id.
+    Struct = 0x0200,
+    /// A **list** — a variable-size sequence of a single element type (Arrow `List`, `i32`
+    /// offsets). The element type lives on the descriptor / field.
+    List = 0x0210,
+    /// A **map** — an unordered set of `key → value` entries (Arrow `Map`). The key/value types
+    /// live on the descriptor / field.
+    Map = 0x0220,
 }
 
 impl DataTypeId {
@@ -234,6 +247,29 @@ impl DataTypeId {
         self.in_range(0x0048, 0x004F) || self.in_range(0x0108, 0x010F)
     }
 
+    /// Whether the type is a **nested / composite** type — a struct, list, or map. A nested type
+    /// is neither [`is_fixed_width`](DataTypeId::is_fixed_width) nor
+    /// [`is_variable_length`](DataTypeId::is_variable_length) (those bands are the *leaf* types); it
+    /// carries its child field(s) on the descriptor, not on the id.
+    pub const fn is_nested(self) -> bool {
+        self.in_range(0x0200, 0x02FF)
+    }
+
+    /// Whether the type is a **struct** (an ordered, named set of child fields).
+    pub const fn is_struct(self) -> bool {
+        self.in_range(0x0200, 0x020F)
+    }
+
+    /// Whether the type is a **list** (a variable-size sequence of one element type).
+    pub const fn is_list(self) -> bool {
+        self.in_range(0x0210, 0x021F)
+    }
+
+    /// Whether the type is a **map** (a set of `key → value` entries).
+    pub const fn is_map(self) -> bool {
+        self.in_range(0x0220, 0x022F)
+    }
+
     /// The coarse [`DataTypeCategory`] bucket this id falls in.
     pub const fn category(self) -> DataTypeCategory {
         if self.is_unsigned_integer() {
@@ -250,6 +286,8 @@ impl DataTypeId {
             DataTypeCategory::Utf8
         } else if self.is_binary() {
             DataTypeCategory::Binary
+        } else if self.is_nested() {
+            DataTypeCategory::Nested
         } else {
             DataTypeCategory::Null
         }
@@ -296,6 +334,9 @@ impl DataTypeId {
             0x0101 => Self::LargeBinary,
             0x0108 => Self::Utf8,
             0x0109 => Self::LargeUtf8,
+            0x0200 => Self::Struct,
+            0x0210 => Self::List,
+            0x0220 => Self::Map,
             _ => return None,
         })
     }
@@ -343,6 +384,9 @@ impl DataTypeId {
             Self::LargeBinary => "large_binary",
             Self::Utf8 => "utf8",
             Self::LargeUtf8 => "large_utf8",
+            Self::Struct => "struct",
+            Self::List => "list",
+            Self::Map => "map",
         }
     }
 
@@ -371,6 +415,9 @@ impl DataTypeId {
             Self::Binary | Self::Utf8 => 4,           // i32 offsets
             Self::LargeBinary | Self::LargeUtf8 => 8, // i64 offsets
             Self::FixedBinary | Self::FixedUtf8 => return None, // width is the runtime N
+            // Nested types have no fixed byte width — their shape lives on the descriptor's
+            // children, not the id.
+            Self::Struct | Self::List | Self::Map => return None,
         })
     }
 
@@ -414,6 +461,9 @@ impl DataTypeId {
             "large_binary" => Self::LargeBinary,
             "utf8" => Self::Utf8,
             "large_utf8" => Self::LargeUtf8,
+            "struct" => Self::Struct,
+            "list" => Self::List,
+            "map" => Self::Map,
             _ => return None,
         })
     }
@@ -473,6 +523,27 @@ impl DataTypeId {
             Self::LargeBinary => A::LargeBinary,
             Self::Utf8 => A::Utf8,
             Self::LargeUtf8 => A::LargeUtf8,
+            // DESIGN: nested types cannot be built from the id + width alone — their Arrow type
+            // needs the child field(s), which live on the typed descriptor / erased nested field.
+            // These structural *shells* keep the id-level mapping total; the real, recursive
+            // mapping is `StructField`/`ListField`/`MapField::to_arrow`. Never on the real path.
+            Self::Struct => A::Struct(arrow_schema::Fields::empty()),
+            Self::List => A::List(std::sync::Arc::new(arrow_schema::Field::new(
+                "item",
+                A::Null,
+                true,
+            ))),
+            Self::Map => A::Map(
+                std::sync::Arc::new(arrow_schema::Field::new(
+                    "entries",
+                    A::Struct(arrow_schema::Fields::from(vec![
+                        arrow_schema::Field::new("keys", A::Null, false),
+                        arrow_schema::Field::new("values", A::Null, true),
+                    ])),
+                    false,
+                )),
+                false,
+            ),
         }
     }
 
@@ -581,4 +652,25 @@ const _: () = {
     assert!(DataTypeId::Date32.is_temporal() && DataTypeId::Duration64.is_temporal());
     assert!(DataTypeId::Ts64.is_fixed_width() && !DataTypeId::Ts64.is_numeric());
     assert!(!DataTypeId::Date32.is_binary() && !DataTypeId::Date32.is_utf8());
+    // The nested band sits in its own reserved space *above* every leaf type (fixed and
+    // variable), so `is_nested` never overlaps a leaf predicate and the leaf bands stay bounded.
+    assert!(DataTypeId::Struct as u16 == 0x0200);
+    assert!(DataTypeId::List as u16 == 0x0210);
+    assert!(DataTypeId::Map as u16 == 0x0220);
+    assert!((DataTypeId::LargeUtf8 as u16) < (DataTypeId::Struct as u16));
+    assert!(
+        DataTypeId::Struct.is_nested()
+            && DataTypeId::List.is_nested()
+            && DataTypeId::Map.is_nested()
+    );
+    assert!(
+        DataTypeId::Struct.is_struct() && DataTypeId::List.is_list() && DataTypeId::Map.is_map()
+    );
+    // A nested type is neither fixed-width nor variable-length, and is not any leaf category.
+    assert!(!DataTypeId::Struct.is_fixed_width() && !DataTypeId::Struct.is_variable_length());
+    assert!(
+        !DataTypeId::List.is_numeric()
+            && !DataTypeId::Map.is_binary()
+            && !DataTypeId::Map.is_utf8()
+    );
 };

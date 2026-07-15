@@ -103,6 +103,13 @@ pub enum IoError {
         /// The column length the index had to fall inside.
         len: usize,
     },
+    /// An operation was handed a value this crate does not model — e.g. importing an Arrow array
+    /// whose type has no yggdryl mapping, or assembling a struct column from mismatched parts. The
+    /// message names what was unsupported and, where relevant, the modeled alternative.
+    Unsupported {
+        /// A guided description of the unsupported value and the fix.
+        what: String,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -163,6 +170,7 @@ impl fmt::Display for IoError {
                 "index {index} is out of bounds for a column of length {len}: `set` overwrites an \
                  existing element — `push` to grow the column, or index within [0, {len})"
             ),
+            Self::Unsupported { what } => write!(f, "{what}"),
         }
     }
 }

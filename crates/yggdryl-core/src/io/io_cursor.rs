@@ -111,6 +111,26 @@ pub trait IOCursor: IOBase {
         out
     }
 
+    /// Reads **exactly** `len` bytes into a fresh `Vec`, advancing the cursor, or errors with
+    /// [`IoError::UnexpectedEof`]. Unlike `vec![0u8; len]` + [`read_exact`](IOCursor::read_exact),
+    /// it **caps the working allocation** (64 KiB) and grows only as bytes are actually delivered —
+    /// so a corrupt/hostile declared length errors once the (short) source is exhausted instead of
+    /// aborting the process on a giant up-front allocation. The bounded counterpart of
+    /// [`read_vec`](IOCursor::read_vec), which clamps to what remains rather than requiring `len`.
+    fn read_exact_vec(&mut self, len: usize) -> Result<Vec<u8>, IoError> {
+        const CHUNK: usize = 64 * 1024;
+        let mut out = Vec::with_capacity(len.min(CHUNK));
+        let mut buf = vec![0u8; len.clamp(1, CHUNK)];
+        let mut remaining = len;
+        while remaining > 0 {
+            let take = remaining.min(buf.len());
+            self.read_exact(&mut buf[..take])?;
+            out.extend_from_slice(&buf[..take]);
+            remaining -= take;
+        }
+        Ok(out)
+    }
+
     /// Reads from the current position **to the end** into a fresh `Vec`, advancing the
     /// cursor to the end. One pre-sized allocation.
     ///

@@ -90,4 +90,24 @@ pub trait FieldType {
     fn is_binary(&self) -> bool {
         self.type_id().is_binary()
     }
+
+    /// Whether the element type is a nested / composite type (struct, list, or map).
+    fn is_nested(&self) -> bool {
+        self.type_id().is_nested()
+    }
+
+    /// Whether the element type is a struct.
+    fn is_struct(&self) -> bool {
+        self.type_id().is_struct()
+    }
+
+    /// Whether the element type is a list.
+    fn is_list(&self) -> bool {
+        self.type_id().is_list()
+    }
+
+    /// Whether the element type is a map.
+    fn is_map(&self) -> bool {
+        self.type_id().is_map()
+    }
 }

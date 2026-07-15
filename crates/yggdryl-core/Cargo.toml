@@ -55,6 +55,10 @@ name = "headers"
 harness = false
 
 [[bench]]
+name = "nested"
+harness = false
+
+[[bench]]
 name = "arrow"
 harness = false
 required-features = ["arrow"]
@@ -63,7 +67,7 @@ required-features = ["arrow"]
 default = []
 # Zero-copy interop with the wider Apache Arrow ecosystem (arrays + schema). Off by default
 # so the core stays minimal (only `arrow-buffer`); enable for `to_arrow` / `from_arrow`.
-arrow = ["dep:arrow-array", "dep:arrow-schema"]
+arrow = ["dep:arrow-array", "dep:arrow-schema", "dep:arrow-data"]
 
 [dependencies]
 # Apache Arrow's buffer subset — the physical layer the foundation is built on.
@@ -73,6 +77,7 @@ half = { workspace = true }
 # Optional: Arrow arrays + schema, for the zero-copy interop behind the `arrow` feature.
 arrow-array = { workspace = true, optional = true }
 arrow-schema = { workspace = true, optional = true }
+arrow-data = { workspace = true, optional = true }
 # Temporal calendar + full IANA timezone database (implementation detail of `io::fixed::temporal`).
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
@@ -83,3 +88,4 @@ chrono-tz = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
+arrow-data = { workspace = true }

@@ -39,6 +39,7 @@ mod io_base;
 mod io_cursor;
 mod io_error;
 mod io_slice;
+pub mod nested;
 mod percent;
 mod scalar_type;
 mod scheme;

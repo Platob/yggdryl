@@ -31,6 +31,8 @@ pub enum DataTypeCategory {
     Utf8,
     /// Opaque binary (fixed-size or variable-length).
     Binary,
+    /// A nested / composite type (struct, list, or map).
+    Nested,
 }
 
 impl DataTypeCategory {
@@ -73,5 +75,10 @@ impl DataTypeCategory {
     /// Whether the category is opaque binary.
     pub const fn is_binary(self) -> bool {
         matches!(self, Self::Binary)
+    }
+
+    /// Whether the category is a nested / composite type (struct, list, or map).
+    pub const fn is_nested(self) -> bool {
+        matches!(self, Self::Nested)
     }
 }

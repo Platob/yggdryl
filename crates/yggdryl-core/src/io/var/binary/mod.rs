@@ -20,6 +20,9 @@ impl VarElement for Binary {
     fn validate(_bytes: &[u8]) -> Result<(), IoError> {
         Ok(())
     }
+
+    #[cfg(feature = "arrow")]
+    type Arrow = arrow_array::types::BinaryType;
 }
 
 /// Binary scalar ergonomics.

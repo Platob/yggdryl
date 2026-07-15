@@ -858,6 +858,7 @@ version = "0.1.1"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-data",
  "arrow-schema",
  "chrono",
  "chrono-tz",

@@ -519,8 +519,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         source.read_exact(&mut flags)?;
 
         let validity = if flags[0] != 0 {
-            let mut bits = vec![0u8; len.div_ceil(8)];
-            source.read_exact(&mut bits)?;
+            let bits = source.read_exact_vec(len.div_ceil(8))?;
             Some(Bitmap::from_bytes(&bits, len))
         } else {
             None
@@ -530,8 +529,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
             len: len as u64,
             width,
         })?;
-        let mut data = vec![0u8; data_len];
-        source.read_exact(&mut data)?;
+        let data = source.read_exact_vec(data_len)?;
         // Validate each fixed-size slot for the kind — validating the whole `data` blob is not
         // sufficient (a multi-byte code point could straddle a slot boundary for `FixedUtf8`).
         if width > 0 {
@@ -547,6 +545,42 @@ impl<K: FixedElement> FixedSizeSerie<K> {
             len,
             _kind: PhantomData,
         })
+    }
+}
+
+/// Arrow array interop (feature `arrow`): a fixed-size byte column ↔
+/// [`FixedSizeBinaryArray`](arrow_array::FixedSizeBinaryArray). Both `FixedBinary` and `FixedUtf8`
+/// map to the same Arrow array (the utf8/binary tag is a *schema*-level distinction carried in field
+/// metadata, per [`DataTypeId`](crate::io::DataTypeId)); the flat `N`-byte data buffer maps straight
+/// across (copied, since the column owns a `Vec<u8>`).
+#[cfg(feature = "arrow")]
+impl<K: FixedElement> FixedSizeSerie<K> {
+    /// This column as an Arrow [`FixedSizeBinaryArray`](arrow_array::FixedSizeBinaryArray) of value
+    /// width `N`. Panics only for the degenerate `N == 0` (which Arrow cannot model).
+    pub fn to_arrow_array(&self) -> arrow_array::FixedSizeBinaryArray {
+        let values = arrow_buffer::Buffer::from(self.data.as_slice());
+        let nulls = self.validity.as_ref().map(|bitmap| {
+            let buffer = arrow_buffer::Buffer::from(bitmap.as_bytes());
+            arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
+        });
+        arrow_array::FixedSizeBinaryArray::new(self.width as i32, values, nulls)
+    }
+
+    /// Builds a column from an Arrow [`FixedSizeBinaryArray`](arrow_array::FixedSizeBinaryArray),
+    /// validating each slot for the kind. Reads the array's **logical** window (so a *sliced* array
+    /// converts correctly); a null slot becomes the zero placeholder.
+    pub fn from_arrow_array(array: &arrow_array::FixedSizeBinaryArray) -> Result<Self, IoError> {
+        use arrow_array::Array;
+        let width = array.value_length().max(0) as usize;
+        let mut serie = Self::new(width);
+        for index in 0..array.len() {
+            if array.is_null(index) {
+                serie.push(None)?;
+            } else {
+                serie.push(Some(array.value(index)))?;
+            }
+        }
+        Ok(serie)
     }
 }
 

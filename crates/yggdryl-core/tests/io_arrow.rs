@@ -262,6 +262,52 @@ fn wide_type_from_arrow_without_metadata_falls_back_to_fixed_binary() {
     assert!(FieldType::is_binary(&field) && FieldType::is_fixed_width(&field));
 }
 
+// -------------------------------------------------------------------------------------
+// var ByteSerie <-> Arrow String/Binary array; fixed-size <-> FixedSizeBinaryArray
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn utf8_serie_arrow_round_trip() {
+    use yggdryl_core::io::var::Utf8Serie;
+    let col = Utf8Serie::from_strs(&[Some("a"), None, Some("cd"), Some("")]);
+    let array = col.to_arrow_array();
+    assert_eq!(array.len(), 4);
+    assert_eq!(array.null_count(), 1);
+    assert_eq!(array.value(0), "a");
+    assert_eq!(array.value(2), "cd");
+    assert_eq!(Utf8Serie::from_arrow_array(&array).unwrap(), col);
+
+    // A foreign, sliced StringArray reads its logical window.
+    let foreign = arrow_array::StringArray::from(vec![Some("x"), None, Some("yz"), Some("w")]);
+    let sliced = foreign.slice(1, 3); // [None, "yz", "w"]
+    let back = Utf8Serie::from_arrow_array(&sliced).unwrap();
+    assert_eq!(back.to_strs(), vec![None, Some("yz"), Some("w")]);
+}
+
+#[test]
+fn binary_serie_arrow_round_trip() {
+    use yggdryl_core::io::var::BinarySerie;
+    let col =
+        BinarySerie::from_byte_values(&[Some(&b"\x00\x01"[..]), None, Some(&b"\xff"[..])]).unwrap();
+    let array = col.to_arrow_array();
+    assert_eq!(array.len(), 3);
+    assert_eq!(array.value(0), b"\x00\x01");
+    assert_eq!(BinarySerie::from_arrow_array(&array).unwrap(), col);
+}
+
+#[test]
+fn fixed_size_binary_serie_arrow_round_trip() {
+    use yggdryl_core::io::fixed::FixedBinarySerie;
+    let col =
+        FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
+    let array = col.to_arrow_array();
+    assert_eq!(array.len(), 3);
+    assert_eq!(array.value_length(), 2);
+    assert_eq!(array.value(0), b"ab");
+    assert!(array.is_null(1));
+    assert_eq!(FixedBinarySerie::from_arrow_array(&array).unwrap(), col);
+}
+
 #[test]
 fn erased_field_arrow_round_trip() {
     let field = Field::new("price", &PrimitiveType::<f64>::new(), true);

@@ -46,6 +46,7 @@ nav:
   - Schema (DataType, Field): types.md
   - Typed data (fixed): fixed.md
   - Typed data (variable): var.md
+  - Typed data (nested): nested.md
   - Decimals: decimal.md
   - Temporal: temporal.md
   - Casting (Converter): converter.md

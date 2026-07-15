@@ -316,6 +316,12 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         self.null_count() > 0
     }
 
+    /// The raw little-endian coefficient bytes (`len * B::WIDTH`) — the flat-buffer view the erased
+    /// [`Column`](crate::io::nested::Column) reads to erase one coefficient to a cell value.
+    pub(crate) fn coeff_bytes(&self) -> &[u8] {
+        self.values.as_slice()
+    }
+
     /// The typed descriptor.
     pub fn data_type(&self) -> DecimalType<B> {
         DecimalType::new(self.precision, self.scale)
@@ -435,8 +441,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         let has_validity = header[10] != 0;
 
         let validity = if has_validity {
-            let mut bits = vec![0u8; len.div_ceil(8)];
-            source.read_exact(&mut bits)?;
+            let bits = source.read_exact_vec(len.div_ceil(8))?;
             Some(Bitmap::from_bytes(&bits, len))
         } else {
             None
@@ -446,8 +451,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
             len: len as u64,
             width: B::WIDTH,
         })?;
-        let mut values = vec![0u8; byte_len];
-        source.read_exact(&mut values)?;
+        let values = source.read_exact_vec(byte_len)?;
         Ok(Self {
             validity,
             values: ArrowBuffer::from_vec(values),
@@ -552,14 +556,42 @@ where
             .expect("DecimalType clamps precision/scale into Arrow's valid range")
     }
 
-    /// Builds a column from an Arrow decimal `PrimitiveArray` — the coefficients are **zero-copy**
-    /// (a shared `Arc`); precision/scale and the validity mask are read back from the array. The
-    /// bytes under null slots are carried through as-is (Arrow leaves them undefined; they are
-    /// invisible to [`get`](DecimalSerie::get) and to equality).
+    /// Builds a column from an Arrow decimal `PrimitiveArray` — precision/scale and the validity mask
+    /// are read back from the array.
+    ///
+    /// DESIGN: the coefficients are **zero-copy** (a shared `Arc`) on the fast path — a dense array
+    /// with no slice offset and canonical (zeroed) bytes under its nulls, which every
+    /// yggdryl-produced array is. A *foreign* array that is sliced, or that carries garbage under a
+    /// null slot (Arrow leaves those bytes undefined), is copied once so the logical window is
+    /// contiguous and the null slots are zeroed — keeping identity byte-canonical (equal columns
+    /// serialize equal), like [`Serie::from_arrow_array`](crate::io::fixed::Serie).
     pub fn from_arrow_array(array: &arrow_array::PrimitiveArray<B::Arrow>) -> Self {
         use arrow_array::Array;
         let len = array.len();
-        let values = array.values().inner().clone();
+        let width = B::WIDTH;
+        let data = array.to_data();
+        let base = data.offset() * width;
+        let full = data.buffers()[0].as_slice();
+        let has_garbage = array.nulls().is_some()
+            && (0..len).any(|index| {
+                array.is_null(index)
+                    && full[base + index * width..base + (index + 1) * width]
+                        .iter()
+                        .any(|&byte| byte != 0)
+            });
+        let values = if data.offset() == 0 && full.len() == len * width && !has_garbage {
+            array.values().inner().clone() // dense, canonical -> share the Arc
+        } else {
+            let mut bytes = full[base..base + len * width].to_vec();
+            if array.nulls().is_some() {
+                for index in 0..len {
+                    if array.is_null(index) {
+                        bytes[index * width..(index + 1) * width].fill(0);
+                    }
+                }
+            }
+            ArrowBuffer::from_vec(bytes)
+        };
         let validity = array.nulls().map(|_| {
             let mut bits = vec![0u8; len.div_ceil(8)];
             for index in 0..len {

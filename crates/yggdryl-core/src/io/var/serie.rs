@@ -309,8 +309,7 @@ impl<E: VarElement> ByteSerie<E> {
         source.read_exact(&mut flags)?;
 
         let validity = if flags[0] != 0 {
-            let mut bits = vec![0u8; len.div_ceil(8)];
-            source.read_exact(&mut bits)?;
+            let bits = source.read_exact_vec(len.div_ceil(8))?;
             Some(Bitmap::from_bytes(&bits, len))
         } else {
             None
@@ -332,8 +331,7 @@ impl<E: VarElement> ByteSerie<E> {
         }
 
         let data_len = read_u64(source)? as usize;
-        let mut data = vec![0u8; data_len];
-        source.read_exact(&mut data)?;
+        let data = source.read_exact_vec(data_len)?;
 
         // Validate the decoded offsets so every value slice is in bounds (a corrupt/hostile
         // frame must never make a later `get_bytes` index out of the data buffer): they must
@@ -394,6 +392,49 @@ impl<E: VarElement> ByteSerie<E> {
     /// erroring on a truncated or corrupt frame.
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
         Self::read_from(&mut Bytes::from_slice(bytes))
+    }
+}
+
+/// Arrow array interop (feature `arrow`): a var column ↔ a
+/// [`GenericByteArray`](arrow_array::GenericByteArray) — a `Utf8Serie` ↔ `StringArray`, a
+/// `BinarySerie` ↔ `BinaryArray`. The offsets share the same `i32` Arrow layout; the data buffer
+/// is copied (a var column stores its own `Vec<u8>`, so this is not zero-copy — Arrow's data
+/// buffer is opaque to the [`IOCursor`] codec the column is otherwise built on).
+#[cfg(feature = "arrow")]
+impl<E: VarElement> ByteSerie<E> {
+    /// This column as an Arrow [`GenericByteArray`](arrow_array::GenericByteArray) of the kind's
+    /// [`Arrow`](VarElement::Arrow) type — offsets and validity map straight across; the data is copied.
+    pub fn to_arrow_array(&self) -> arrow_array::GenericByteArray<E::Arrow> {
+        use arrow_buffer::{Buffer, OffsetBuffer, ScalarBuffer};
+        let offsets = OffsetBuffer::new(ScalarBuffer::from(self.offsets.clone()));
+        let values = Buffer::from(self.data.as_slice());
+        let nulls = self.validity.as_ref().map(|bitmap| {
+            let buffer = Buffer::from(bitmap.as_bytes());
+            arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
+        });
+        arrow_array::GenericByteArray::<E::Arrow>::new(offsets, values, nulls)
+    }
+
+    /// Builds a column from an Arrow [`GenericByteArray`](arrow_array::GenericByteArray), validating
+    /// each value for the kind. Reads the array's **logical** window (so a *sliced* array converts
+    /// correctly), and a `Utf8` array's guaranteed-valid bytes pass validation unchanged.
+    pub fn from_arrow_array(
+        array: &arrow_array::GenericByteArray<E::Arrow>,
+    ) -> Result<Self, IoError> {
+        use arrow_array::Array;
+        let len = array.len();
+        let offsets = array.value_offsets(); // `len + 1` logical offsets into `values()`
+        let data = array.values().as_slice();
+        let mut serie = Self::with_capacity(len);
+        for index in 0..len {
+            if array.is_null(index) {
+                serie.push_bytes(None)?;
+            } else {
+                let (start, end) = (offsets[index] as usize, offsets[index + 1] as usize);
+                serie.push_bytes(Some(&data[start..end]))?;
+            }
+        }
+        Ok(serie)
     }
 }
 
