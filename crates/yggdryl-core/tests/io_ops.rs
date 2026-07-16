@@ -207,10 +207,27 @@ fn non_numeric_operand_is_a_guided_error() {
         "got: {err}"
     );
 
-    // A numeric left with a utf8 right is a guided right-operand error.
+    // A numeric left with a NON-NUMERIC utf8 right is now COERCED per cell (PART A "absorb
+    // anything") — so a genuinely unparseable string is a guided parse error naming the value +
+    // target, not a blanket "right operand" rejection (a numeric string would parse fine).
     let c = boxed(Serie::from_values(&[1i32, 2]));
     let d = boxed(Utf8Serie::from_strs(&[Some("a"), Some("b")]));
     let err = c.add(d.as_ref()).unwrap_err().to_string();
+    assert!(
+        err.contains("cannot parse") && err.contains("i32") && err.contains('a'),
+        "got: {err}"
+    );
+
+    // A nested right operand has no scalar value to coerce -> a guided right-operand error.
+    let s = boxed(
+        yggdryl_core::io::nested::StructSerie::from_named(vec![(
+            "x",
+            boxed(Serie::from_values(&[1i32, 2])),
+        )])
+        .unwrap(),
+    );
+    let e = boxed(Serie::from_values(&[1i32, 2]));
+    let err = e.add(s.as_ref()).unwrap_err().to_string();
     assert!(err.contains("right operand"), "got: {err}");
 }
 
@@ -514,9 +531,22 @@ fn temporal_add_scalar_rejects_a_wrong_type_right_operand() {
     let scalar_err = date.add_scalar(&ts_leaf).unwrap_err().to_string();
     assert_eq!(scalar_err, serie_err);
 
-    // (b) A WIDE integer (u128) as the scalar right -> a guided error, never a silent value.
-    let u128_leaf = leaf(DataTypeId::U128, 16, vec![0u8; 16]);
-    assert!(date.add_scalar(&u128_leaf).is_err());
+    // (b) A WIDE integer (u128) as the scalar right is now COERCED (PART A) — its LE magnitude is
+    //     read CORRECTLY (range-checked into the backing i128), not the old silent byte-misread: an
+    //     in-range value offsets the day count, an out-of-range magnitude is a guided error.
+    let u128_five = leaf(DataTypeId::U128, 16, 5u128.to_le_bytes().to_vec());
+    assert_eq!(
+        date.add_scalar(&u128_five)
+            .unwrap()
+            .as_temporal::<Date32Kind>()
+            .unwrap()
+            .get(0)
+            .unwrap()
+            .days(),
+        15 // 10 + 5
+    );
+    let u128_huge = leaf(DataTypeId::U128, 16, u128::MAX.to_le_bytes().to_vec());
+    assert!(date.add_scalar(&u128_huge).is_err()); // magnitude exceeds the i128 bridge
 
     // (c) A small integer (i32) still works -> offsets the day count.
     let i32_leaf = leaf(DataTypeId::I32, 4, 5i32.to_le_bytes().to_vec());

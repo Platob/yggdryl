@@ -15,9 +15,11 @@
 //! any dependency on its nested children; they are inherent methods on `dyn AnySerie`, so a single
 //! dispatch on the column's `type_id` picks the path with no per-type trait impl.
 
+use core::str::FromStr;
+
 use crate::io::arith::ArithOp;
 use crate::io::fixed::{
-    f16, Date32Serie, Date64Serie, Duration32Serie, Duration64Serie, NativeType, Serie,
+    f16, Date32Serie, Date64Serie, Duration32Serie, Duration64Serie, Field, NativeType, Serie,
     TemporalBacking, TemporalSerie, Time32Serie, Time64Serie, Ts32Serie, Ts64Serie, Ts96Serie,
 };
 use crate::io::{
@@ -159,9 +161,21 @@ fn binary(
 }
 
 /// Casts an erased column into a typed `Serie<U>` (range-checked, nulls preserved) — the right
-/// operand of a binary op whose result type is `U` (the left's type). A guided error if `other` is
-/// not one of the twelve numeric leaf types, or a value does not fit `U`.
-fn cast_into<U: NumericCast>(other: &(dyn AnySerie + 'static)) -> Result<Serie<U>, IoError> {
+/// operand of a binary op whose result type is `U` (the left's type). Per the "absorb anything" aim
+/// it coerces a convertible operand of **any** leaf type into `U`, not just the twelve numeric ones:
+///
+/// - the **twelve numeric** leaves take the bulk [`Serie::cast`] (range-checked, one pass) — the
+///   fast path a numeric source keeps;
+/// - **utf8 / binary**, the **decimal** and **temporal** families, and the **wide integers**
+///   (`u96`/`u128`/`u256`/`i96`/`i256`) are coerced **element-wise** through the shared per-cell
+///   bridge [`any_scalar_into`] (a numeric-string parse, a decimal's `f64` value, a temporal's
+///   backing count, a wide magnitude) — nulls preserved.
+///
+/// Only a genuinely non-convertible operand errors, guided: a **nested** column (no scalar value to
+/// coerce), a non-numeric string, or an out-of-range magnitude.
+fn cast_into<U: NumericCast + FromStr>(
+    other: &(dyn AnySerie + 'static),
+) -> Result<Serie<U>, IoError> {
     macro_rules! cast {
         ($t:ty) => {
             other
@@ -171,7 +185,8 @@ fn cast_into<U: NumericCast>(other: &(dyn AnySerie + 'static)) -> Result<Serie<U
                 .map_err(cast_error)
         };
     }
-    match other.type_id() {
+    let id = other.type_id();
+    match id {
         DataTypeId::U8 => cast!(u8),
         DataTypeId::U16 => cast!(u16),
         DataTypeId::U32 => cast!(u32),
@@ -184,7 +199,20 @@ fn cast_into<U: NumericCast>(other: &(dyn AnySerie + 'static)) -> Result<Serie<U
         DataTypeId::F16 => cast!(f16),
         DataTypeId::F32 => cast!(f32),
         DataTypeId::F64 => cast!(f64),
-        other_id => Err(right_not_numeric(other_id, U::NAME)),
+        // A nested column has no scalar value to coerce into a number.
+        _ if id.is_nested() => Err(right_not_convertible(id, U::NAME)),
+        // Every other leaf family (utf8/binary, decimal, temporal, wide ints) is coerced per cell
+        // through the shared `any_scalar_into` bridge; a numeric source already took the bulk cast.
+        // DESIGN: per-cell (each cell's `value` is one erased scalar) is unavoidable for a string /
+        // decimal / temporal source, and this is not the hot path; the numeric branch stays bulk.
+        _ => {
+            let len = other.len();
+            let mut out: Vec<Option<U>> = Vec::with_capacity(len);
+            for index in 0..len {
+                out.push(any_scalar_into::<U>(&other.value(index))?);
+            }
+            Ok(Serie::from_options(&out))
+        }
     }
 }
 
@@ -231,14 +259,32 @@ fn scalar(
     }
 }
 
-/// Casts an erased scalar into a typed `U` value (range-checked), or `None` for a null scalar. A
-/// guided error if the scalar is a non-numeric leaf / nested value, or the value does not fit `U`.
-fn any_scalar_into<U: NumericCast>(value: &AnyScalar) -> Result<Option<U>, IoError> {
+/// Coerces an erased scalar into a typed `U` value (range-checked), or `None` for a null scalar —
+/// the shared per-cell bridge for both the scalar broadcast and the [`cast_into`] element-wise path.
+/// Per the "absorb anything" aim it accepts a convertible leaf of **any** family, not just the
+/// twelve numeric ones:
+///
+/// - the **twelve numeric** leaves: a width-guarded read + the exact [`Converter`] (fast, lossless
+///   for integers);
+/// - the **wide integers** (`u96`/`u128`/`u256`/`i96`/`i256`, not `NumericCast`): the LE magnitude
+///   range-checked into `i128`, then the shared `Converter` into `U`;
+/// - **utf8** (var + fixed): parse the numeric string (the [`Utf8Scalar::parse_to`] bridge);
+/// - **binary** (var + fixed): reinterpret the raw LE bytes (the [`BinaryScalar::read_to`] bridge);
+/// - **decimal**: its numeric value (`coeff × 10^-scale`) cast into `U` through `f64`;
+/// - **temporal**: its backing integer **count** cast into `U`.
+///
+/// A guided error if the scalar is a nested value, a genuinely non-numeric string, or a value out of
+/// `U`'s range.
+///
+/// [`Utf8Scalar::parse_to`]: crate::io::var::Utf8Scalar::parse_to
+/// [`BinaryScalar::read_to`]: crate::io::var::BinaryScalar::read_to
+fn any_scalar_into<U: NumericCast + FromStr>(value: &AnyScalar) -> Result<Option<U>, IoError> {
     let (field, bytes) = match value {
         AnyScalar::Null => return Ok(None),
         AnyScalar::Leaf { field, bytes } => (field, bytes),
-        other => return Err(scalar_not_numeric(other.type_id())),
+        other => return Err(scalar_not_convertible(other.type_id())),
     };
+    let id = FieldType::type_id(field);
     macro_rules! conv {
         ($t:ty) => {{
             // Width guard BEFORE `read_le`: a hand-built leaf (via the public `AnyScalar::leaf`) can
@@ -246,18 +292,14 @@ fn any_scalar_into<U: NumericCast>(value: &AnyScalar) -> Result<Option<U>, IoErr
             // `read_le`. Reject it with a guided error instead — no panic from any public op.
             let need = <$t as NativeType>::WIDTH;
             if bytes.len() != need {
-                return Err(scalar_width_mismatch(
-                    FieldType::type_id(field),
-                    bytes.len(),
-                    need,
-                ));
+                return Err(scalar_width_mismatch(id, bytes.len(), need));
             }
             <$t as Converter<U>>::cast_value(<$t as NativeType>::read_le(bytes))
                 .map(Some)
                 .map_err(cast_error)
         }};
     }
-    match FieldType::type_id(field) {
+    match id {
         DataTypeId::U8 => conv!(u8),
         DataTypeId::U16 => conv!(u16),
         DataTypeId::U32 => conv!(u32),
@@ -270,7 +312,134 @@ fn any_scalar_into<U: NumericCast>(value: &AnyScalar) -> Result<Option<U>, IoErr
         DataTypeId::F16 => conv!(f16),
         DataTypeId::F32 => conv!(f32),
         DataTypeId::F64 => conv!(f64),
-        other => Err(scalar_not_numeric(Some(other))),
+        DataTypeId::U96
+        | DataTypeId::U128
+        | DataTypeId::U256
+        | DataTypeId::I96
+        | DataTypeId::I256 => wide_bytes_into::<U>(id, bytes),
+        DataTypeId::Utf8 | DataTypeId::LargeUtf8 | DataTypeId::FixedUtf8 => {
+            utf8_bytes_into::<U>(bytes)
+        }
+        DataTypeId::Binary | DataTypeId::LargeBinary | DataTypeId::FixedBinary => {
+            binary_bytes_into::<U>(bytes)
+        }
+        DataTypeId::D32 | DataTypeId::D64 | DataTypeId::D128 | DataTypeId::D256 => {
+            decimal_bytes_into::<U>(field, bytes)
+        }
+        other if other.is_temporal() => temporal_bytes_into::<U>(bytes),
+        other => Err(scalar_not_convertible(Some(other))),
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// Per-family value bridges — each converts one non-numeric leaf's bytes into the result type `U`,
+// reusing the crate's existing conversion surface (`Converter`, the utf8/binary bridges).
+// -------------------------------------------------------------------------------------
+
+/// utf8 leaf → `U`: parse the trimmed numeric string — the [`Utf8Scalar::parse_to`] bridge, inlined
+/// so a bulk serie coercion does not allocate one scalar per cell.
+///
+/// DESIGN: routes through `U`'s own `FromStr`, so an integer string is **exact**
+/// (`"9223372036854775807"` → `i64` losslessly, unlike an `f64` bridge) and a fractional string
+/// (`"2.5"`) reaches a float target. A non-numeric string is a guided parse error.
+///
+/// [`Utf8Scalar::parse_to`]: crate::io::var::Utf8Scalar::parse_to
+fn utf8_bytes_into<U: NumericCast + FromStr>(bytes: &[u8]) -> Result<Option<U>, IoError> {
+    let text =
+        core::str::from_utf8(bytes).map_err(|_| not_parseable("<non-utf8 bytes>", U::NAME))?;
+    text.trim()
+        .parse::<U>()
+        .map(Some)
+        .map_err(|_| not_parseable(text, U::NAME))
+}
+
+/// binary leaf → `U`: reinterpret the raw little-endian bytes — the [`BinaryScalar::read_to`]
+/// bridge. Errors, guided, when the byte width is not `U`'s.
+///
+/// [`BinaryScalar::read_to`]: crate::io::var::BinaryScalar::read_to
+fn binary_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoError> {
+    if bytes.len() == U::WIDTH {
+        Ok(Some(U::read_le(bytes)))
+    } else {
+        Err(binary_width_mismatch(bytes.len(), U::WIDTH, U::NAME))
+    }
+}
+
+/// wide-integer leaf → `U`: read the wide little-endian (two's-complement for the signed widths)
+/// magnitude, range-check it into `i128`, then the shared `Converter` casts `i128` into `U`.
+///
+/// DESIGN: the wide byte-newtypes (`u96`/`u128`/`u256`/`i96`/`i256`) are not `NumericCast`, so this
+/// is their numeric bridge — routed through `i128`, the crate's integer intermediate. A magnitude
+/// beyond `i128` (already beyond every integer target's range) is a guided out-of-range error.
+fn wide_bytes_into<U: NumericCast>(id: DataTypeId, bytes: &[u8]) -> Result<Option<U>, IoError> {
+    let magnitude = wide_le_to_i128(bytes, id.is_signed_integer())
+        .ok_or_else(|| wide_out_of_range(id, U::NAME))?;
+    <i128 as Converter<U>>::cast_value(magnitude)
+        .map(Some)
+        .map_err(cast_error)
+}
+
+/// temporal leaf → `U`: the backing integer **count** (sign-extended from its little-endian bytes)
+/// cast into `U` through the shared `Converter` — so `i64.add(date32_col)` coerces the day count.
+fn temporal_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoError> {
+    let count = le_bytes_to_i128(bytes, true); // temporal counts are signed two's-complement
+    <i128 as Converter<U>>::cast_value(count)
+        .map(Some)
+        .map_err(cast_error)
+}
+
+/// decimal leaf → `U`: its numeric value (`coefficient × 10^-scale`, the scale read from the field's
+/// reserved metadata) cast into `U` through `f64`.
+///
+/// DESIGN: routed through `f64` (lossy beyond f64's 53-bit mantissa, exactly like `Decimal::to_f64`)
+/// so an integer target truncates toward zero and a float target keeps the value — one total path. A
+/// `d256` coefficient beyond `i128` is a guided out-of-range error, not a silent misread.
+fn decimal_bytes_into<U: NumericCast>(field: &Field, bytes: &[u8]) -> Result<Option<U>, IoError> {
+    let scale = field
+        .metadata()
+        .get(DataTypeId::SCALE_METADATA_KEY)
+        .and_then(|value| value.parse::<i8>().ok())
+        .unwrap_or(0);
+    let coeff = wide_le_to_i128(bytes, true)
+        .ok_or_else(|| wide_out_of_range(FieldType::type_id(field), U::NAME))?;
+    let value = coeff as f64 / 10f64.powi(scale as i32);
+    <f64 as Converter<U>>::cast_value(value)
+        .map(Some)
+        .map_err(cast_error)
+}
+
+/// Reads `bytes` (little-endian; `signed` two's-complement, else unsigned) as an `i128`, or `None`
+/// if the value does **not** fit `i128`'s range — the range-checked numeric bridge for a wide
+/// integer / a wide decimal coefficient. Sign/zero-extends a `≤ 16`-byte value; for a wider value
+/// it must be exactly the sign extension in the high bytes (and the low 16 bytes must carry the
+/// right sign), else the magnitude is out of range.
+fn wide_le_to_i128(bytes: &[u8], signed: bool) -> Option<i128> {
+    let n = bytes.len();
+    if n == 0 {
+        return Some(0);
+    }
+    let negative = signed && bytes[n - 1] & 0x80 != 0;
+    if n <= 16 {
+        let mut buf = if negative { [0xffu8; 16] } else { [0u8; 16] };
+        buf[..n].copy_from_slice(bytes);
+        // A full-width unsigned value with the top bit set exceeds i128::MAX.
+        if !signed && n == 16 && buf[15] & 0x80 != 0 {
+            return None;
+        }
+        Some(i128::from_le_bytes(buf))
+    } else {
+        // More than 16 bytes: every high byte must equal the sign extension, and the low 16 bytes'
+        // own sign bit must match, else the magnitude overflows i128.
+        let fill = if negative { 0xff } else { 0x00 };
+        if bytes[16..].iter().any(|&byte| byte != fill) {
+            return None;
+        }
+        let mut buf = [0u8; 16];
+        buf.copy_from_slice(&bytes[..16]);
+        if (buf[15] & 0x80 != 0) != negative {
+            return None;
+        }
+        Some(i128::from_le_bytes(buf))
     }
 }
 
@@ -383,10 +552,11 @@ fn temporal_scalar_backing<B: TemporalBacking>(
     op: ArithOp,
 ) -> Result<Box<dyn AnySerie>, IoError> {
     // Mirror the serie path `temporal_backing` exactly: the right operand is accepted only when it
-    // is the SAME temporal type (its raw counts read directly) or one of the twelve numeric leaf
-    // types routed through the range-checked integer path (`any_scalar_into::<i128>`, the scalar
-    // twin of `cast_into::<i128>`). A DIFFERENT temporal type or a WIDE integer (u96/u128/u256/
-    // i96/i256 — not `NumericCast`) returns a guided error, never a silently mis-read value.
+    // is the SAME temporal type (its raw counts read directly) or an INTEGER leaf routed through the
+    // range-checked integer path (`any_scalar_into::<i128>`, the scalar twin of `cast_into::<i128>`).
+    // That integer path now also coerces a WIDE integer (u96/u128/u256/i96/i256) correctly — its LE
+    // magnitude range-checked into i128 — so a wide offset applies in range and errors out of range,
+    // never a silent misread. A DIFFERENT temporal type (or a non-integer leaf) still errors, guided.
     let rhs: Option<i128> = match value {
         AnyScalar::Null => None, // a null scalar -> all-null result
         AnyScalar::Leaf { field, bytes } => {
@@ -399,9 +569,11 @@ fn temporal_scalar_backing<B: TemporalBacking>(
                 }
                 Some(le_bytes_to_i128(bytes, true))
             } else if id.is_integer() {
-                // An integer operand — cast into the backing count (i128), range-checked. A wide
-                // integer is `is_integer()` but not `NumericCast`, so this rejects it with a guided
-                // error, exactly as the serie path's `cast_into::<i128>` does.
+                // An integer operand — coerced into the backing count (i128), range-checked, exactly
+                // as the serie path's `cast_into::<i128>`. A wide integer (`u96`/`u128`/… — not
+                // `NumericCast`) is read correctly through the broadened bridge (its LE magnitude
+                // range-checked into i128), so an in-range wide offset applies and an out-of-range
+                // one is a guided error — never the old silent byte-misread.
                 any_scalar_into::<i128>(value)?
             } else {
                 return Err(temporal_right(B::NAME, Some(id)));
@@ -667,12 +839,13 @@ fn non_numeric_left(id: DataTypeId) -> IoError {
     }
 }
 
-fn right_not_numeric(id: DataTypeId, target: &str) -> IoError {
+fn right_not_convertible(id: DataTypeId, target: &str) -> IoError {
     IoError::Unsupported {
         what: format!(
             "cannot use a {} column as the right operand of an arithmetic op producing `{target}`; \
-             the right operand must be a numeric column (u8..i64, i128, f16/f32/f64) castable into \
-             the left's element type",
+             the right operand must be convertible into the left's element type — a numeric column, \
+             a numeric-string utf8 column, a binary column of {target}-width values, a decimal, a \
+             temporal, or a wide-integer column (a nested column has no scalar value to coerce)",
             id.name()
         ),
     }
@@ -687,12 +860,45 @@ fn cast_error(error: CastError) -> IoError {
     }
 }
 
-fn scalar_not_numeric(id: Option<DataTypeId>) -> IoError {
+fn scalar_not_convertible(id: Option<DataTypeId>) -> IoError {
     let got = id.map_or("null", DataTypeId::name);
     IoError::Unsupported {
         what: format!(
-            "cannot broadcast a {got} scalar in an arithmetic op; the scalar must be a numeric \
-             value castable into the column's element type (or null for an all-null result)"
+            "cannot broadcast a {got} scalar in an arithmetic op; the scalar must be convertible \
+             into the column's element type — a numeric value, a numeric string, a decimal, a \
+             temporal, or a wide integer (or null for an all-null result)"
+        ),
+    }
+}
+
+/// A utf8 operand cell could not be parsed as the result type — guided (naming the text + target).
+fn not_parseable(text: &str, target: &str) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot parse {text:?} as `{target}` for an arithmetic op; a utf8 operand must hold a \
+             number the target type can represent (an integer literal for an integer target, a \
+             decimal literal for a float target)"
+        ),
+    }
+}
+
+/// A binary operand cell's byte width does not match the result type's — guided.
+fn binary_width_mismatch(got: usize, need: usize, target: &str) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "a binary operand is {got} bytes, but the result type `{target}` reads exactly {need} \
+             little-endian bytes; a binary value is reinterpreted as the target type's raw bytes"
+        ),
+    }
+}
+
+/// A wide integer / a wide decimal coefficient whose magnitude exceeds the `i128` bridge — guided.
+fn wide_out_of_range(id: DataTypeId, target: &str) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "a {} value is out of range for `{target}`; its magnitude exceeds the i128 integer \
+             bridge the arithmetic coercion routes a wide operand through",
+            id.name()
         ),
     }
 }

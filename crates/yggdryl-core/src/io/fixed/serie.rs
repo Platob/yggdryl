@@ -837,103 +837,137 @@ impl<T: NumericCast> Serie<T> {
         self.arith_scalar_unchecked(value, ArithOp::Rem)
     }
 
-    /// The shared serie×serie dispatch: picks the per-element kernel for `op` once, then runs the
-    /// single-pass [`zip_with`](Serie::zip_with) loop. `pub(crate)` so the erased base ops route
-    /// through it after their check + cast.
+    /// The shared serie×serie dispatch. Auto-vectorization shape (see the CLAUDE.md rule): iterate
+    /// the two **contiguous value slices** ([`values`](Serie::values)) and compute the result
+    /// **densely and branch-free** into a pre-sized `Vec<T>` — integer add/sub/mul use `wrapping_*`
+    /// directly (a null slot's placeholder participates harmlessly), so the value loop is a straight
+    /// slice `zip` LLVM auto-vectorizes. Validity is handled **separately** as a whole-bitmap AND
+    /// ([`combined_validity`](Serie::combined_validity)), never a per-element `if null` inside the
+    /// loop. `pub(crate)` so the erased base ops route through it after their check + cast.
+    ///
+    /// DESIGN — div/rem stay branchless while preserving null-on-zero: the value loop still runs a
+    /// dense kernel (`div_checked(y).unwrap_or(x)` substitutes a harmless placeholder for a zero
+    /// divisor's slot instead of branching out), and the **zero divisor → null** decision is folded
+    /// into the validity combine (a cleared bit per zero divisor), so the semantics are unchanged
+    /// (integer div/rem by zero → null, no panic; `i128::MIN / -1` wraps via `wrapping_div`) while
+    /// the loop body carries no unpredictable branch. Floats divide IEEE (no null on div-by-zero).
     pub(crate) fn arith_unchecked(&self, other: &Serie<T>, op: ArithOp) -> Serie<T> {
         debug_assert_eq!(
             self.len, other.len,
             "`*_unchecked` op requires equal-length operands"
         );
+        let (a, b) = (self.values(), other.values());
+        let mut out: Vec<T> = Vec::with_capacity(self.len);
         match op {
-            ArithOp::Add => self.zip_with(other, |a, b| Some(a.add_wrapping(b))),
-            ArithOp::Sub => self.zip_with(other, |a, b| Some(a.sub_wrapping(b))),
-            ArithOp::Mul => self.zip_with(other, |a, b| Some(a.mul_wrapping(b))),
-            ArithOp::Div => self.zip_with(other, T::div_checked),
-            ArithOp::Rem => self.zip_with(other, T::rem_checked),
+            ArithOp::Add => out.extend(a.iter().zip(b).map(|(&x, &y)| x.add_wrapping(y))),
+            ArithOp::Sub => out.extend(a.iter().zip(b).map(|(&x, &y)| x.sub_wrapping(y))),
+            ArithOp::Mul => out.extend(a.iter().zip(b).map(|(&x, &y)| x.mul_wrapping(y))),
+            // The dense divisor substitution is `unwrap_or(x)`; the cell is nulled below when the
+            // divisor was zero, so its intermediate value is irrelevant.
+            ArithOp::Div => out.extend(
+                a.iter()
+                    .zip(b)
+                    .map(|(&x, &y)| x.div_checked(y).unwrap_or(x)),
+            ),
+            ArithOp::Rem => out.extend(
+                a.iter()
+                    .zip(b)
+                    .map(|(&x, &y)| x.rem_checked(y).unwrap_or(x)),
+            ),
         }
+        let validity = self.combined_validity(other, b, op);
+        self.finish_dense(out, validity)
     }
 
-    /// The shared serie×scalar dispatch — the broadcast twin of [`arith_unchecked`](Serie::arith_unchecked).
+    /// The shared serie×scalar dispatch — the broadcast twin of
+    /// [`arith_unchecked`](Serie::arith_unchecked). Same auto-vectorization shape: a branch-free
+    /// dense pass over the single contiguous value slice, with validity handled separately (self's
+    /// nulls carry through; a constant **integer** zero divisor nulls every cell).
     pub(crate) fn arith_scalar_unchecked(&self, value: T, op: ArithOp) -> Serie<T> {
+        let a = self.values();
+        let mut out: Vec<T> = Vec::with_capacity(self.len);
         match op {
-            ArithOp::Add => self.zip_scalar(value, |a, b| Some(a.add_wrapping(b))),
-            ArithOp::Sub => self.zip_scalar(value, |a, b| Some(a.sub_wrapping(b))),
-            ArithOp::Mul => self.zip_scalar(value, |a, b| Some(a.mul_wrapping(b))),
-            ArithOp::Div => self.zip_scalar(value, T::div_checked),
-            ArithOp::Rem => self.zip_scalar(value, T::rem_checked),
+            ArithOp::Add => out.extend(a.iter().map(|&x| x.add_wrapping(value))),
+            ArithOp::Sub => out.extend(a.iter().map(|&x| x.sub_wrapping(value))),
+            ArithOp::Mul => out.extend(a.iter().map(|&x| x.mul_wrapping(value))),
+            ArithOp::Div => out.extend(a.iter().map(|&x| x.div_checked(value).unwrap_or(x))),
+            ArithOp::Rem => out.extend(a.iter().map(|&x| x.rem_checked(value).unwrap_or(x))),
         }
-    }
-
-    /// Builds `op(self[i], other[i])` in **one pass** into a pre-sized value buffer + a lazily
-    /// materialized validity mask (only if a null appears): `op` returns `None` to write a null
-    /// (an integer div/rem by zero), and either input null propagates to a null. No per-element
-    /// allocation — the result buffer and mask are the only allocations, sized once up front.
-    fn zip_with(&self, other: &Serie<T>, op: impl Fn(T, T) -> Option<T>) -> Serie<T> {
-        let len = self.len;
-        let mut bytes = Vec::with_capacity(len * T::WIDTH);
-        let mut scratch = [0u8; MAX_WIDTH];
-        let mut validity: Option<Bitmap> = None;
-        for index in 0..len {
-            let result = match (self.get(index), other.get(index)) {
-                (Some(a), Some(b)) => op(a, b),
-                _ => None, // null propagation: either input null -> null
+        // A constant **integer** zero divisor makes every cell null; otherwise self's own nulls
+        // carry through unchanged (the value loop never introduces a new null for +/-/*).
+        let validity =
+            if matches!(op, ArithOp::Div | ArithOp::Rem) && !T::IS_FLOAT && value.to_i128() == 0 {
+                Some(Bitmap::from_bytes(
+                    &vec![0u8; self.len.div_ceil(8)],
+                    self.len,
+                )) // all-null
+            } else {
+                self.validity.clone()
             };
-            match result {
-                Some(value) => {
-                    value.write_le(&mut scratch);
-                    if let Some(bitmap) = &mut validity {
-                        bitmap.push(true);
-                    }
-                }
-                None => {
-                    T::default().write_le(&mut scratch); // canonical placeholder under the null
-                    validity
-                        .get_or_insert_with(|| Bitmap::all_present(index))
-                        .push(false);
+        self.finish_dense(out, validity)
+    }
+
+    /// The result validity for a serie×serie op: the **whole-bitmap AND** of the two operands'
+    /// validity (a null in either input → a null result), combined **word-at-a-time**, plus — for an
+    /// **integer** div/rem — a cleared bit wherever the `divisor` is zero (div/rem by zero → a null,
+    /// never a panic). Returns `None` when every cell is present (canonical: no mask materialized,
+    /// matching the [`from_options`](Serie::from_options) shape) so identity / the byte codec stay in
+    /// lock-step. The zero-divisor scan runs only for the integer div/rem path.
+    fn combined_validity(&self, other: &Serie<T>, divisor: &[T], op: ArithOp) -> Option<Bitmap> {
+        let len = self.len;
+        let zero_nulls = matches!(op, ArithOp::Div | ArithOp::Rem) && !T::IS_FLOAT;
+        // Hot path: neither operand has nulls and it is not an integer div/rem — fully present.
+        if self.validity.is_none() && other.validity.is_none() && !zero_nulls {
+            return None;
+        }
+        let mut bits = vec![0xffu8; len.div_ceil(8)];
+        if let Some(v) = &self.validity {
+            and_validity_bytes(&mut bits, v.as_bytes());
+        }
+        if let Some(v) = &other.validity {
+            and_validity_bytes(&mut bits, v.as_bytes());
+        }
+        if zero_nulls {
+            // Integer only (guarded), so `to_i128` is exact: clear the bit at each zero divisor.
+            for (index, &d) in divisor.iter().enumerate() {
+                if d.to_i128() == 0 {
+                    bits[index / 8] &= !(1u8 << (index % 8));
                 }
             }
-            bytes.extend_from_slice(&scratch[..T::WIDTH]);
+        }
+        // `from_bytes` clears the padding bits, so `null_count` is exact; drop an all-present mask.
+        let bitmap = Bitmap::from_bytes(&bits, len);
+        (bitmap.null_count() > 0).then_some(bitmap)
+    }
+
+    /// Builds the result column from a **dense** value vector + its combined validity: first
+    /// canonicalizes the value under every null slot back to the placeholder `T::default()` — so the
+    /// result is **byte-identical** to the per-element path (whose null slots hold the default), and
+    /// identity / serialization stay byte-canonical — then wraps the values in **one** buffer. The
+    /// `values` are `self.len` long and the result carries `self`'s field.
+    fn finish_dense(&self, mut values: Vec<T>, validity: Option<Bitmap>) -> Serie<T> {
+        if let Some(mask) = &validity {
+            for (index, slot) in values.iter_mut().enumerate() {
+                if !mask.get(index) {
+                    *slot = T::default();
+                }
+            }
         }
         Self {
             validity,
-            values: Buffer::from_byte_vec(bytes),
-            len,
+            values: Buffer::from_slice(&values),
+            len: self.len,
             field: self.field.clone(),
         }
     }
+}
 
-    /// The broadcast twin of [`zip_with`](Serie::zip_with): `op(self[i], value)` in one pass, null
-    /// elements staying null.
-    fn zip_scalar(&self, value: T, op: impl Fn(T, T) -> Option<T>) -> Serie<T> {
-        let len = self.len;
-        let mut bytes = Vec::with_capacity(len * T::WIDTH);
-        let mut scratch = [0u8; MAX_WIDTH];
-        let mut validity: Option<Bitmap> = None;
-        for index in 0..len {
-            let result = self.get(index).and_then(|a| op(a, value));
-            match result {
-                Some(out) => {
-                    out.write_le(&mut scratch);
-                    if let Some(bitmap) = &mut validity {
-                        bitmap.push(true);
-                    }
-                }
-                None => {
-                    T::default().write_le(&mut scratch);
-                    validity
-                        .get_or_insert_with(|| Bitmap::all_present(index))
-                        .push(false);
-                }
-            }
-            bytes.extend_from_slice(&scratch[..T::WIDTH]);
-        }
-        Self {
-            validity,
-            values: Buffer::from_byte_vec(bytes),
-            len,
-            field: self.field.clone(),
-        }
+/// ANDs the packed validity bytes `src` into `dst` (both LSB-first, equal bit length) — the
+/// **word-at-a-time** bitmap combine the vectorized ops use to merge two operands' validity without
+/// a per-element branch inside the value loop.
+fn and_validity_bytes(dst: &mut [u8], src: &[u8]) {
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d &= *s;
     }
 }
 

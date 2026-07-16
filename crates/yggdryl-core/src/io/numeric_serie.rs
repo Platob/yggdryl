@@ -76,16 +76,32 @@ impl<T: NumericCast> NumericSerie for Serie<T> {
         self.len() - self.null_count()
     }
 
+    // DESIGN — auto-vectorization (see the CLAUDE.md rule): a reduction folds over the column's
+    // **contiguous value slice** ([`values`](Serie::values)). For a **no-null** column that slice
+    // *is* the present values, so we fold the whole `&[T]` — a plain `map(..).sum()` / `reduce(..)`
+    // LLVM auto-vectorizes. A column **with nulls** keeps the null-aware
+    // [`iter_valid`](Serie::iter_valid) fold (its placeholders must be skipped); the fold order is
+    // identical either way, so the result is byte-identical to the previous implementation.
+
     fn sum_f64(&self) -> f64 {
-        self.iter_valid().map(NumericCast::to_f64).sum()
+        if self.has_nulls() {
+            return self.iter_valid().map(NumericCast::to_f64).sum();
+        }
+        self.values().iter().map(|&v| v.to_f64()).sum()
     }
 
     fn min_f64(&self) -> Option<f64> {
-        self.iter_valid().map(NumericCast::to_f64).reduce(f64::min)
+        if self.has_nulls() {
+            return self.iter_valid().map(NumericCast::to_f64).reduce(f64::min);
+        }
+        self.values().iter().map(|&v| v.to_f64()).reduce(f64::min)
     }
 
     fn max_f64(&self) -> Option<f64> {
-        self.iter_valid().map(NumericCast::to_f64).reduce(f64::max)
+        if self.has_nulls() {
+            return self.iter_valid().map(NumericCast::to_f64).reduce(f64::max);
+        }
+        self.values().iter().map(|&v| v.to_f64()).reduce(f64::max)
     }
 
     fn to_f64_values(&self) -> Vec<f64> {

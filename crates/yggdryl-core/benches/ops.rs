@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
 use yggdryl_core::io::fixed::{Field, Serie};
-use yggdryl_core::io::{boxed, AnyScalar, DataTypeId};
+use yggdryl_core::io::nested::{ListSerie, MapSerie, StructSerie};
+use yggdryl_core::io::{boxed, AnyScalar, AnySerie, DataTypeId};
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -138,5 +139,89 @@ fn main() {
     println!(
         "\n  Cross-type add pays one range-checked cast of the right operand into the left's type;\n  \
          the same-type add and the typed `*_unchecked` skip it (a single fused pass)."
+    );
+
+    // ---- nested ops: the erased add recurses to the leaf `*_unchecked` kernels -------------------
+    //
+    // A struct adds field-wise, a list element-wise (over the flattened child), a map value-wise —
+    // each recursing into the vectorized leaf kernel above, plus a per-row validity rebuild. Fewer
+    // iters: a nested op rebuilds the container (offsets / field schema) around the leaf work.
+    let nested_iters = 2_000;
+
+    // struct<x: i32, y: i32> over n rows (two numeric fields -> 2n element-ops per add).
+    let struct_a = boxed(
+        StructSerie::from_named(vec![
+            ("x", boxed(Serie::from_values(&a))),
+            ("y", boxed(Serie::from_values(&b))),
+        ])
+        .unwrap(),
+    );
+    let struct_b = boxed(
+        StructSerie::from_named(vec![
+            ("x", boxed(Serie::from_values(&b))),
+            ("y", boxed(Serie::from_values(&a))),
+        ])
+        .unwrap(),
+    );
+
+    // list<i32> and map<i64, i32>, both over the same n leaf elements (2 items / entries per row).
+    let offsets: Vec<i32> = (0..=n as i32).step_by(2).collect();
+    let keys: Vec<i64> = (0..n as i64).collect();
+    let list_a = boxed(
+        ListSerie::from_values(Serie::from_values(&a).named("item"), &offsets, None).unwrap(),
+    );
+    let list_b = boxed(
+        ListSerie::from_values(Serie::from_values(&b).named("item"), &offsets, None).unwrap(),
+    );
+    let map_a = boxed(
+        MapSerie::from_entries(
+            Serie::from_values(&keys).named("key"),
+            Serie::from_values(&a).named("value"),
+            &offsets,
+            None,
+            false,
+        )
+        .unwrap(),
+    );
+    let map_b = boxed(
+        MapSerie::from_entries(
+            Serie::from_values(&keys).named("key"),
+            Serie::from_values(&b).named("value"),
+            &offsets,
+            None,
+            false,
+        )
+        .unwrap(),
+    );
+
+    header(&format!(
+        "Nested arithmetic — the erased add recurses to the leaf kernels ({nested_iters} iters, {n} \
+         leaf elements/op)"
+    ));
+    row(
+        "dyn AnySerie::add (struct, 2 numeric fields)",
+        measure(n * 2, nested_iters, || {
+            let _ = struct_a.add(struct_b.as_ref()).unwrap();
+        }),
+    );
+    row(
+        "dyn AnySerie::add (list, element-wise)",
+        measure(n, nested_iters, || {
+            let _ = list_a.add(list_b.as_ref()).unwrap();
+        }),
+    );
+    row(
+        "dyn AnySerie::add (map, value-wise)",
+        measure(n, nested_iters, || {
+            let _ = map_a.add(map_b.as_ref()).unwrap();
+        }),
+    );
+
+    println!(
+        "\n  BEFORE/AFTER: the leaf `*_unchecked` kernels the nested ops bottom out in were per-element\n  \
+         closures returning `Option` (unvectorizable); they are now a branch-free dense pass over the\n  \
+         contiguous value slice with a word-at-a-time validity AND, so larger-N leaf throughput rises\n  \
+         (see the leaf rows above). A nested op adds its container rebuild (offsets / field schema +\n  \
+         a per-row validity pass) on top of that leaf work."
     );
 }
