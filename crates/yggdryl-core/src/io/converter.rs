@@ -101,6 +101,31 @@ pub trait NumericCast: NativeType {
     /// The value nearest `v` (rounding toward zero for integers), or `None` if `v` is non-finite
     /// or out of this type's range.
     fn from_f64(v: f64) -> Option<Self>;
+
+    // ---- element-wise arithmetic kernels (the vectorized-op fast path) ---------------------
+    //
+    // The five arithmetic operators as per-type element kernels, so a `Serie<T: NumericCast>` op
+    // loop stays one generic pass. Integers **wrap** (`wrapping_*`, like Arrow / numpy); floats use
+    // the normal IEEE op. Division / remainder return `Option` — `None` only when an **integer**
+    // divisor is zero (the caller writes a null), so the hot loop never panics; a float divides by
+    // zero to IEEE `±∞` / `NaN` (always `Some`).
+
+    /// `self + rhs` — wrapping for integers, IEEE for floats.
+    fn add_wrapping(self, rhs: Self) -> Self;
+
+    /// `self - rhs` — wrapping for integers, IEEE for floats.
+    fn sub_wrapping(self, rhs: Self) -> Self;
+
+    /// `self * rhs` — wrapping for integers, IEEE for floats.
+    fn mul_wrapping(self, rhs: Self) -> Self;
+
+    /// `self / rhs` — `None` when an **integer** `rhs` is zero (→ a null, no panic), else the
+    /// wrapping quotient; a float always divides (IEEE `±∞` / `NaN`).
+    fn div_checked(self, rhs: Self) -> Option<Self>;
+
+    /// `self % rhs` — `None` when an **integer** `rhs` is zero (→ a null, no panic), else the
+    /// wrapping remainder; a float always takes the IEEE remainder.
+    fn rem_checked(self, rhs: Self) -> Option<Self>;
 }
 
 macro_rules! int_numeric {
@@ -125,6 +150,23 @@ macro_rules! int_numeric {
                 // for `i128` the `as f64` bound is approximate, which only widens acceptance at the
                 // extreme edge — `try_from_i128` on the truncated value is the exact gate below.
                 (t >= <$t>::MIN as f64 && t <= <$t>::MAX as f64).then_some(t as $t)
+            }
+            fn add_wrapping(self, rhs: Self) -> Self {
+                self.wrapping_add(rhs)
+            }
+            fn sub_wrapping(self, rhs: Self) -> Self {
+                self.wrapping_sub(rhs)
+            }
+            fn mul_wrapping(self, rhs: Self) -> Self {
+                self.wrapping_mul(rhs)
+            }
+            fn div_checked(self, rhs: Self) -> Option<Self> {
+                // `wrapping_div` handles the lone signed `MIN / -1` overflow (wraps to `MIN`); the
+                // zero divisor is the only case that must not reach it, so gate on it here.
+                (rhs != 0).then(|| self.wrapping_div(rhs))
+            }
+            fn rem_checked(self, rhs: Self) -> Option<Self> {
+                (rhs != 0).then(|| self.wrapping_rem(rhs))
             }
         }
     };
@@ -155,6 +197,21 @@ macro_rules! float_numeric {
             fn from_f64(v: f64) -> Option<Self> {
                 Some(v as $t)
             }
+            fn add_wrapping(self, rhs: Self) -> Self {
+                self + rhs
+            }
+            fn sub_wrapping(self, rhs: Self) -> Self {
+                self - rhs
+            }
+            fn mul_wrapping(self, rhs: Self) -> Self {
+                self * rhs
+            }
+            fn div_checked(self, rhs: Self) -> Option<Self> {
+                Some(self / rhs) // IEEE: division by zero is ±∞ / NaN, never a panic
+            }
+            fn rem_checked(self, rhs: Self) -> Option<Self> {
+                Some(self % rhs)
+            }
         }
     };
 }
@@ -174,6 +231,22 @@ impl NumericCast for f16 {
     }
     fn from_f64(v: f64) -> Option<Self> {
         Some(f16::from_f64(v))
+    }
+    // f16 has no native arithmetic; compute in f64 and round back — the same f64 bridge the casts use.
+    fn add_wrapping(self, rhs: Self) -> Self {
+        f16::from_f64(self.to_f64() + rhs.to_f64())
+    }
+    fn sub_wrapping(self, rhs: Self) -> Self {
+        f16::from_f64(self.to_f64() - rhs.to_f64())
+    }
+    fn mul_wrapping(self, rhs: Self) -> Self {
+        f16::from_f64(self.to_f64() * rhs.to_f64())
+    }
+    fn div_checked(self, rhs: Self) -> Option<Self> {
+        Some(f16::from_f64(self.to_f64() / rhs.to_f64())) // IEEE (±∞ / NaN), never a panic
+    }
+    fn rem_checked(self, rhs: Self) -> Option<Self> {
+        Some(f16::from_f64(self.to_f64() % rhs.to_f64()))
     }
 }
 

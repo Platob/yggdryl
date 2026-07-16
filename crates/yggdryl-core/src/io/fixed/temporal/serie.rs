@@ -570,6 +570,43 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         }
     }
 
+    /// A **new** column at `(unit, tz)` from already-computed raw physical `counts` (each present or
+    /// a null) — the rebuild path of the vectorized [`dyn AnySerie::add`](crate::io::AnySerie) family
+    /// on a temporal column: the erased op runs the arithmetic through this column's **backing
+    /// integer** and hands the wrapped result counts back here. It writes each count's low
+    /// `B::WIDTH` little-endian bytes **directly** (no re-fit / range-check — the backing wrap is
+    /// already applied, so a result outside the value type's normal range still round-trips its
+    /// bytes), materializing the validity mask only if a null appears. One pass.
+    pub(crate) fn from_result_counts(unit: TimeUnit, tz: Tz, counts: &[Option<i128>]) -> Self {
+        let mut bytes = Vec::with_capacity(counts.len() * B::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        let mut validity: Option<Bitmap> = None;
+        for (index, count) in counts.iter().enumerate() {
+            match count {
+                Some(count) => {
+                    write_count_le(*count, B::WIDTH, &mut scratch);
+                    if let Some(bitmap) = &mut validity {
+                        bitmap.push(true);
+                    }
+                }
+                None => {
+                    write_count_le(0, B::WIDTH, &mut scratch); // zero placeholder under the null
+                    validity
+                        .get_or_insert_with(|| Bitmap::all_present(index))
+                        .push(false);
+                }
+            }
+            bytes.extend_from_slice(&scratch[..B::WIDTH]);
+        }
+        Self {
+            validity,
+            values: ArrowBuffer::from_vec(bytes),
+            len: counts.len(),
+            field: TemporalField::new("", unit, tz, false),
+            _backing: PhantomData,
+        }
+    }
+
     /// Writes the column: `[len: u64][unit tag: u8][tz name][flags: u8][validity?][values]`.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
         let has_validity = self.has_nulls();

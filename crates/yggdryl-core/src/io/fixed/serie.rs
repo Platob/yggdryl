@@ -3,9 +3,10 @@
 
 use super::{Buffer, Field, NativeType, PrimitiveType, Scalar, TypedField};
 use crate::io::any_serie::filter_len_mismatch;
+use crate::io::arith::ArithOp;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
-use crate::io::{AnyField, Bytes, IOBase, IOCursor, IoError, SerieType};
+use crate::io::{AnyField, Bytes, IOBase, IOCursor, IoError, NumericCast, SerieType};
 
 /// The largest fixed-width primitive is 32 bytes (`u256`/`i256`); a stack scratch of this size
 /// encodes one value with no allocation while building a column's raw bytes in one pass.
@@ -732,6 +733,207 @@ impl<T: NativeType> Serie<T> {
     /// [`IoError::CorruptLength`]) on a truncated or corrupt frame.
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
         Self::read_from(&mut Bytes::from_slice(bytes))
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// Vectorized element-wise arithmetic — the typed fast path (`T: NumericCast`).
+//
+// Two tiers, standard Rust convention: the `*_unchecked` methods here are the FAST path — they
+// assume the operands are already normalized (identical element type + width, equal length), run a
+// tight single-pass loop, and are infallible; the erased, checking+casting base ops
+// (`dyn AnySerie::add` …) delegate down to them after validating and casting the right operand into
+// this element type. Integer arithmetic **wraps**; integer div/rem by zero writes a **null** (never
+// a panic); floats follow IEEE. A result cell is null iff either input cell is null (or an integer
+// div/rem hit a zero divisor).
+// -------------------------------------------------------------------------------------
+
+impl<T: NumericCast> Serie<T> {
+    /// Element-wise `self + other`, assuming `other` has the **same element type and length** — the
+    /// infallible fast path under the checking [`dyn AnySerie::add`](crate::io::AnySerie). Integer
+    /// addition **wraps** (like Arrow / numpy); a result cell is null iff either input cell is null.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let a = Serie::from_values(&[1i32, 2, 3]);
+    /// let b = Serie::from_values(&[10i32, 20, 30]);
+    /// assert_eq!(a.add_unchecked(&b).to_options(), [Some(11), Some(22), Some(33)]);
+    ///
+    /// // Integer overflow wraps: 127 + 1 = -128 (i8).
+    /// let x = Serie::from_values(&[127i8]);
+    /// assert_eq!(x.add_unchecked(&Serie::from_values(&[1i8])).to_options(), [Some(-128)]);
+    /// ```
+    pub fn add_unchecked(&self, other: &Serie<T>) -> Serie<T> {
+        self.arith_unchecked(other, ArithOp::Add)
+    }
+
+    /// Element-wise `self - other` (same type + length assumed) — integer subtraction wraps; null
+    /// iff either input is null.
+    pub fn sub_unchecked(&self, other: &Serie<T>) -> Serie<T> {
+        self.arith_unchecked(other, ArithOp::Sub)
+    }
+
+    /// Element-wise `self * other` (same type + length assumed) — integer multiplication wraps; null
+    /// iff either input is null.
+    pub fn mul_unchecked(&self, other: &Serie<T>) -> Serie<T> {
+        self.arith_unchecked(other, ArithOp::Mul)
+    }
+
+    /// Element-wise `self / other` (same type + length assumed). Integer division by a **zero**
+    /// divisor writes a **null** (never a panic); a float divides to IEEE `±∞` / `NaN`. Null iff
+    /// either input is null (or an integer divisor was zero).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let a = Serie::from_values(&[6i32, 7, 8]);
+    /// let b = Serie::from_values(&[2i32, 0, 4]); // the 0 divisor -> a null cell
+    /// assert_eq!(a.div_unchecked(&b).to_options(), [Some(3), None, Some(2)]);
+    /// ```
+    pub fn div_unchecked(&self, other: &Serie<T>) -> Serie<T> {
+        self.arith_unchecked(other, ArithOp::Div)
+    }
+
+    /// Element-wise `self % other` (same type + length assumed). Integer remainder by a **zero**
+    /// divisor writes a **null** (never a panic); a float takes the IEEE remainder. Null iff either
+    /// input is null (or an integer divisor was zero).
+    pub fn rem_unchecked(&self, other: &Serie<T>) -> Serie<T> {
+        self.arith_unchecked(other, ArithOp::Rem)
+    }
+
+    /// Broadcasts `value` over every element as `self + value` (integer add wraps) — null elements
+    /// stay null. The scalar fast path under [`dyn AnySerie::add_scalar`](crate::io::AnySerie).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_options(&[Some(1i64), None, Some(3)]);
+    /// assert_eq!(col.add_scalar_unchecked(10).to_options(), [Some(11), None, Some(13)]);
+    /// ```
+    pub fn add_scalar_unchecked(&self, value: T) -> Serie<T> {
+        self.arith_scalar_unchecked(value, ArithOp::Add)
+    }
+
+    /// Broadcasts `value` as `self - value` (integer sub wraps) — null elements stay null.
+    pub fn sub_scalar_unchecked(&self, value: T) -> Serie<T> {
+        self.arith_scalar_unchecked(value, ArithOp::Sub)
+    }
+
+    /// Broadcasts `value` as `self * value` (integer mul wraps) — null elements stay null.
+    pub fn mul_scalar_unchecked(&self, value: T) -> Serie<T> {
+        self.arith_scalar_unchecked(value, ArithOp::Mul)
+    }
+
+    /// Broadcasts `value` as `self / value` — null elements stay null; a **zero** integer `value`
+    /// makes every present cell null (no panic), a float divides to IEEE `±∞` / `NaN`.
+    pub fn div_scalar_unchecked(&self, value: T) -> Serie<T> {
+        self.arith_scalar_unchecked(value, ArithOp::Div)
+    }
+
+    /// Broadcasts `value` as `self % value` — null elements stay null; a **zero** integer `value`
+    /// makes every present cell null (no panic).
+    pub fn rem_scalar_unchecked(&self, value: T) -> Serie<T> {
+        self.arith_scalar_unchecked(value, ArithOp::Rem)
+    }
+
+    /// The shared serie×serie dispatch: picks the per-element kernel for `op` once, then runs the
+    /// single-pass [`zip_with`](Serie::zip_with) loop. `pub(crate)` so the erased base ops route
+    /// through it after their check + cast.
+    pub(crate) fn arith_unchecked(&self, other: &Serie<T>, op: ArithOp) -> Serie<T> {
+        debug_assert_eq!(
+            self.len, other.len,
+            "`*_unchecked` op requires equal-length operands"
+        );
+        match op {
+            ArithOp::Add => self.zip_with(other, |a, b| Some(a.add_wrapping(b))),
+            ArithOp::Sub => self.zip_with(other, |a, b| Some(a.sub_wrapping(b))),
+            ArithOp::Mul => self.zip_with(other, |a, b| Some(a.mul_wrapping(b))),
+            ArithOp::Div => self.zip_with(other, T::div_checked),
+            ArithOp::Rem => self.zip_with(other, T::rem_checked),
+        }
+    }
+
+    /// The shared serie×scalar dispatch — the broadcast twin of [`arith_unchecked`](Serie::arith_unchecked).
+    pub(crate) fn arith_scalar_unchecked(&self, value: T, op: ArithOp) -> Serie<T> {
+        match op {
+            ArithOp::Add => self.zip_scalar(value, |a, b| Some(a.add_wrapping(b))),
+            ArithOp::Sub => self.zip_scalar(value, |a, b| Some(a.sub_wrapping(b))),
+            ArithOp::Mul => self.zip_scalar(value, |a, b| Some(a.mul_wrapping(b))),
+            ArithOp::Div => self.zip_scalar(value, T::div_checked),
+            ArithOp::Rem => self.zip_scalar(value, T::rem_checked),
+        }
+    }
+
+    /// Builds `op(self[i], other[i])` in **one pass** into a pre-sized value buffer + a lazily
+    /// materialized validity mask (only if a null appears): `op` returns `None` to write a null
+    /// (an integer div/rem by zero), and either input null propagates to a null. No per-element
+    /// allocation — the result buffer and mask are the only allocations, sized once up front.
+    fn zip_with(&self, other: &Serie<T>, op: impl Fn(T, T) -> Option<T>) -> Serie<T> {
+        let len = self.len;
+        let mut bytes = Vec::with_capacity(len * T::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        let mut validity: Option<Bitmap> = None;
+        for index in 0..len {
+            let result = match (self.get(index), other.get(index)) {
+                (Some(a), Some(b)) => op(a, b),
+                _ => None, // null propagation: either input null -> null
+            };
+            match result {
+                Some(value) => {
+                    value.write_le(&mut scratch);
+                    if let Some(bitmap) = &mut validity {
+                        bitmap.push(true);
+                    }
+                }
+                None => {
+                    T::default().write_le(&mut scratch); // canonical placeholder under the null
+                    validity
+                        .get_or_insert_with(|| Bitmap::all_present(index))
+                        .push(false);
+                }
+            }
+            bytes.extend_from_slice(&scratch[..T::WIDTH]);
+        }
+        Self {
+            validity,
+            values: Buffer::from_byte_vec(bytes),
+            len,
+            field: self.field.clone(),
+        }
+    }
+
+    /// The broadcast twin of [`zip_with`](Serie::zip_with): `op(self[i], value)` in one pass, null
+    /// elements staying null.
+    fn zip_scalar(&self, value: T, op: impl Fn(T, T) -> Option<T>) -> Serie<T> {
+        let len = self.len;
+        let mut bytes = Vec::with_capacity(len * T::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        let mut validity: Option<Bitmap> = None;
+        for index in 0..len {
+            let result = self.get(index).and_then(|a| op(a, value));
+            match result {
+                Some(out) => {
+                    out.write_le(&mut scratch);
+                    if let Some(bitmap) = &mut validity {
+                        bitmap.push(true);
+                    }
+                }
+                None => {
+                    T::default().write_le(&mut scratch);
+                    validity
+                        .get_or_insert_with(|| Bitmap::all_present(index))
+                        .push(false);
+                }
+            }
+            bytes.extend_from_slice(&scratch[..T::WIDTH]);
+        }
+        Self {
+            validity,
+            values: Buffer::from_byte_vec(bytes),
+            len,
+            field: self.field.clone(),
+        }
     }
 }
 

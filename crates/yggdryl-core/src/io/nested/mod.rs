@@ -12,6 +12,7 @@
 
 pub mod list;
 pub mod map;
+mod ops;
 mod reshape;
 pub mod struct_;
 

@@ -28,6 +28,7 @@
 mod any_field;
 mod any_scalar;
 mod any_serie;
+pub(crate) mod arith;
 mod authority;
 mod bitmap;
 mod buffer_type;

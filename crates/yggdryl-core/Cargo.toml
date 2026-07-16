@@ -59,6 +59,10 @@ name = "nested"
 harness = false
 
 [[bench]]
+name = "ops"
+harness = false
+
+[[bench]]
 name = "arrow"
 harness = false
 required-features = ["arrow"]
