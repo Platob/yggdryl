@@ -29,7 +29,7 @@ use yggdryl_core::io::nested::{
     MapSerie as CoreMapSerie, StructField as CoreStructField, StructSerie as CoreStructSerie,
 };
 use yggdryl_core::io::var::{Binary, Utf8};
-use yggdryl_core::io::{boxed, AnyField, AnySerie, DataTypeId, IoError, NamedSerie};
+use yggdryl_core::io::{boxed, AnyField, AnySerie, DataTypeId, IoError};
 
 use crate::deccolumn::{D128Serie, D256Serie, D32Serie, D64Serie};
 use crate::nullvalues::NullSerie;
@@ -43,6 +43,13 @@ use crate::varvalues::{BinarySerie, Utf8Serie};
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn io_err(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// Names a (self-describing) erased column in place — the one-line replacement for the removed
+/// `NamedSerie` carrier (the name goes straight into the column's own header).
+fn named_column(mut column: Box<dyn AnySerie>, name: &str) -> Box<dyn AnySerie> {
+    column.set_name(name);
+    column
 }
 
 /// Maps an Arrow error to a Python `ValueError`.
@@ -500,16 +507,16 @@ impl StructSerie {
 
     /// A struct column from `(name, column)` pairs — the self-describing builder mirroring the core's
     /// [`StructSerie::from_series`](yggdryl_core::io::nested::StructSerie::from_series): each `column`
-    /// is wrapped into a [`NamedSerie`](yggdryl_core::io::NamedSerie) carrier before storage. It is
-    /// functionally identical to the constructor; it names the core factory so the three languages
-    /// read alike. Raises `ValueError` if the columns differ in length.
+    /// is named in its own header before storage. It is functionally identical to the constructor; it
+    /// names the core factory so the three languages read alike. Raises `ValueError` if the columns
+    /// differ in length.
     #[staticmethod]
     fn from_series(columns: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut named = Vec::new();
         for pair in columns.iter()? {
             let pair = pair?;
             let (name, column): (String, Bound<'_, PyAny>) = pair.extract()?;
-            named.push(NamedSerie::new(extract_column(&column)?, &name));
+            named.push(named_column(extract_column(&column)?, &name));
         }
         CoreStructSerie::from_series(named)
             .map(|inner| Self { inner })
@@ -555,7 +562,7 @@ impl StructSerie {
     /// The child field at `index` as a `Field` / `StructField`; raises `IndexError` out of range.
     fn field(&self, py: Python<'_>, index: usize) -> PyResult<PyObject> {
         match self.inner.field(index) {
-            Some(field) => rewrap_field(field, py),
+            Some(field) => rewrap_field(&field, py),
             None => Err(PyIndexError::new_err(
                 "StructSerie field index out of range",
             )),
@@ -867,7 +874,7 @@ impl ListSerie {
         present: Option<Vec<bool>>,
         item_name: &str,
     ) -> PyResult<Self> {
-        let items = NamedSerie::new(extract_column(item)?, item_name);
+        let items = named_column(extract_column(item)?, item_name);
         CoreListSerie::from_values(items, &offsets, present.as_deref())
             .map(|inner| Self { inner })
             .map_err(io_err)
@@ -911,7 +918,7 @@ impl ListSerie {
     /// The element (item) field as a `Field` / `StructField` / `ListField` / `MapField`.
     #[getter]
     fn item_field(&self, py: Python<'_>) -> PyResult<PyObject> {
-        rewrap_field(self.inner.item_field(), py)
+        rewrap_field(&self.inner.item_field(), py)
     }
 
     /// The row at `index` as its element sub-`Serie`, or `None` if the row is null; raises
@@ -1240,8 +1247,8 @@ impl MapSerie {
         key_name: &str,
         value_name: &str,
     ) -> PyResult<Self> {
-        let keys = NamedSerie::new(extract_column(keys)?, key_name);
-        let values = NamedSerie::new(extract_column(values)?, value_name);
+        let keys = named_column(extract_column(keys)?, key_name);
+        let values = named_column(extract_column(values)?, value_name);
         CoreMapSerie::from_entries(keys, values, &offsets, present.as_deref(), keys_sorted)
             .map(|inner| Self { inner })
             .map_err(io_err)
@@ -1291,13 +1298,13 @@ impl MapSerie {
     /// The key field as a `Field` / `StructField` / `ListField` / `MapField`.
     #[getter]
     fn key_field(&self, py: Python<'_>) -> PyResult<PyObject> {
-        rewrap_field(self.inner.key_field(), py)
+        rewrap_field(&self.inner.key_field(), py)
     }
 
     /// The value field as a `Field` / `StructField` / `ListField` / `MapField`.
     #[getter]
     fn value_field(&self, py: Python<'_>) -> PyResult<PyObject> {
-        rewrap_field(self.inner.value_field(), py)
+        rewrap_field(&self.inner.value_field(), py)
     }
 
     /// The row offsets (`len + 1` entries into the flattened entries).

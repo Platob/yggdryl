@@ -13,7 +13,8 @@ use super::{
     TemporalType, TimeUnit, Tz,
 };
 use crate::io::bitmap::Bitmap;
-use crate::io::{Bytes, IOCursor, IoError, SerieType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
 
 /// The largest physical count is 12 bytes (`ts96`); a stack scratch of this size encodes one count
 /// with no allocation while building a column's raw bytes.
@@ -41,46 +42,62 @@ pub struct TemporalSerie<B: TemporalBacking> {
     validity: Option<Bitmap>,
     values: ArrowBuffer,
     len: usize,
-    unit: TimeUnit,
-    tz: Tz,
+    /// The column's own [`TemporalField`] descriptor — its name, declared nullability, metadata, and
+    /// the `(unit, tz)` dtype params. The `(unit, tz)` join the data in value identity and the byte
+    /// codec; the name / nullable / metadata are excluded.
+    field: TemporalField<B>,
     _backing: PhantomData<B>,
 }
 
 impl<B: TemporalBacking> TemporalSerie<B> {
     /// An empty column at `(unit, tz)` (clamped to what `B` admits).
     pub fn new(unit: TimeUnit, tz: Tz) -> Self {
-        let dt = TemporalType::<B>::new(unit, tz);
         Self {
             validity: None,
             values: ArrowBuffer::from_vec(Vec::<u8>::new()),
             len: 0,
-            unit: dt.unit(),
-            tz: dt.timezone(),
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         }
     }
 
     /// An empty column that can grow to `capacity` elements before its first reallocation.
     pub fn with_capacity(unit: TimeUnit, tz: Tz, capacity: usize) -> Self {
-        let dt = TemporalType::<B>::new(unit, tz);
         Self {
             validity: None,
             values: ArrowBuffer::from_vec(Vec::<u8>::with_capacity(capacity * B::WIDTH)),
             len: 0,
-            unit: dt.unit(),
-            tz: dt.timezone(),
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         }
     }
 
-    /// The resolution.
+    field_accessors!();
+
+    /// The resolution (from the held field).
     pub fn unit(&self) -> TimeUnit {
-        self.unit
+        self.field.unit()
     }
 
-    /// The timezone.
+    /// The timezone (from the held field).
     pub fn timezone(&self) -> Tz {
-        self.tz
+        self.field.timezone()
+    }
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata +
+    /// unit/tz) with **effective** nullability `self.nullable() || self.has_nulls()` folded in — a
+    /// lenient, Arrow-standard over-approximation.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.has_nulls());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](TemporalSerie::field) but **consumes** the column.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.has_nulls();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// Re-expresses `value`'s physical count into the column's `unit` and validates it fits this
@@ -107,7 +124,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
     pub fn push(&mut self, value: Option<B::Native>) -> Result<(), TemporalError> {
         match value {
             Some(value) => {
-                let count = Self::fit(value, self.unit, self.tz)?;
+                let count = Self::fit(value, self.unit(), self.timezone())?;
                 self.push_bytes(count);
                 if let Some(validity) = &mut self.validity {
                     validity.push(true);
@@ -154,13 +171,13 @@ impl<B: TemporalBacking> TemporalSerie<B> {
     /// The value at `index`, or `None` if null or out of range.
     pub fn get(&self, index: usize) -> Option<B::Native> {
         self.get_count(index)
-            .and_then(|count| B::Native::from_count(count, self.unit, self.tz).ok())
+            .and_then(|count| B::Native::from_count(count, self.unit(), self.timezone()).ok())
     }
 
     /// Element `index` as a [`TemporalScalar`] carrying the column's `(unit, tz)` — null if the
     /// element is null or out of range.
     pub fn get_scalar(&self, index: usize) -> TemporalScalar<B> {
-        TemporalScalar::from_parts(self.get_count(index), self.unit, self.tz)
+        TemporalScalar::from_parts(self.get_count(index), self.unit(), self.timezone())
     }
 
     /// Overwrites element `index` in place — `Some` re-expresses the value at the column's unit (a
@@ -171,7 +188,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
             return Err(TemporalError::OutOfRange { ty: B::NAME });
         }
         let count = match value {
-            Some(value) => Self::fit(value, self.unit, self.tz)?,
+            Some(value) => Self::fit(value, self.unit(), self.timezone())?,
             None => 0,
         };
         self.write_count_at(index, count);
@@ -229,12 +246,12 @@ impl<B: TemporalBacking> TemporalSerie<B> {
 
     /// The typed descriptor.
     pub fn data_type(&self) -> TemporalType<B> {
-        TemporalType::new(self.unit, self.tz)
+        TemporalType::new(self.unit(), self.timezone())
     }
 
     /// A [`TemporalField`] naming this column, nullability inferred from whether it holds nulls.
     pub fn to_field(&self, name: &str) -> TemporalField<B> {
-        TemporalField::new(name, self.unit, self.tz, self.has_nulls())
+        TemporalField::new(name, self.unit(), self.timezone(), self.has_nulls())
     }
 
     /// A column from present values (no nulls), each re-expressed at the column's unit. Builds the
@@ -256,8 +273,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
             validity: None,
             values: ArrowBuffer::from_vec(bytes),
             len: values.len(),
-            unit,
-            tz,
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         })
     }
@@ -295,8 +311,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
             validity,
             values: ArrowBuffer::from_vec(bytes),
             len: values.len(),
-            unit,
-            tz,
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         })
     }
@@ -339,8 +354,8 @@ impl<B: TemporalBacking> TemporalSerie<B> {
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
         let has_validity = self.has_nulls();
         sink.write_all(&(self.len as u64).to_le_bytes())?;
-        sink.write_all(&[unit_tag(self.unit)])?;
-        let name = self.tz.name();
+        sink.write_all(&[unit_tag(self.unit())])?;
+        let name = self.timezone().name();
         sink.write_all(&(name.len() as u16).to_le_bytes())?;
         sink.write_all(name.as_bytes())?;
         sink.write_all(&[u8::from(has_validity)])?;
@@ -403,8 +418,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
             validity,
             values: ArrowBuffer::from_vec(values),
             len,
-            unit,
-            tz,
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         })
     }
@@ -451,7 +465,12 @@ impl<B: TemporalBacking> SerieType for TemporalSerie<B> {
 // cross-unit instant equality (a `ts64[s]` and a `ts64[ms]` column never compare equal).
 impl<B: TemporalBacking> PartialEq for TemporalSerie<B> {
     fn eq(&self, other: &Self) -> bool {
-        if self.unit != other.unit || self.tz != other.tz || self.len != other.len {
+        // Identity is over the **dtype params** (unit/tz, read from the held field) + the data —
+        // never the field's name / nullable / metadata (schema intent).
+        if self.unit() != other.unit()
+            || self.timezone() != other.timezone()
+            || self.len != other.len
+        {
             return false;
         }
         (0..self.len).all(|i| self.get_count(i) == other.get_count(i))
@@ -460,8 +479,8 @@ impl<B: TemporalBacking> PartialEq for TemporalSerie<B> {
 impl<B: TemporalBacking> Eq for TemporalSerie<B> {}
 impl<B: TemporalBacking> core::hash::Hash for TemporalSerie<B> {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.unit.hash(state);
-        self.tz.hash(state);
+        self.unit().hash(state);
+        self.timezone().hash(state);
         self.len.hash(state);
         for index in 0..self.len {
             self.get_count(index).hash(state);
@@ -475,8 +494,7 @@ impl<B: TemporalBacking> Clone for TemporalSerie<B> {
             validity: self.validity.clone(),
             values: self.values.clone(), // Arc bump, not a payload copy
             len: self.len,
-            unit: self.unit,
-            tz: self.tz,
+            field: self.field.clone(),
             _backing: PhantomData,
         }
     }
@@ -486,8 +504,8 @@ impl<B: TemporalBacking> core::fmt::Debug for TemporalSerie<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TemporalSerie")
             .field("type", &B::NAME)
-            .field("unit", &self.unit)
-            .field("tz", &self.tz)
+            .field("unit", &self.unit())
+            .field("tz", &self.timezone())
             .field("len", &self.len)
             .field("null_count", &self.null_count())
             .finish()
@@ -538,7 +556,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         IoError::Unsupported {
             what: format!(
                 "Arrow has no {} temporal type; convert to second/millisecond/microsecond/nanosecond first",
-                self.unit.name()
+                self.unit().name()
             ),
         }
     }
@@ -546,7 +564,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
     /// The zero-copy native path — the counts *are* the Arrow array's values buffer.
     fn native_to_arrow(&self) -> Result<arrow_array::ArrayRef, IoError> {
         let data_type = B::TYPE_ID
-            .to_arrow_temporal(self.unit, self.tz)
+            .to_arrow_temporal(self.unit(), self.timezone())
             .ok_or_else(|| self.calendar_unit_error())?;
         let data = arrow_data::ArrayData::try_new(
             data_type,
@@ -567,7 +585,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         target_id: crate::io::DataTypeId,
     ) -> Result<arrow_array::ArrayRef, IoError> {
         let data_type = target_id
-            .to_arrow_temporal(self.unit, self.tz)
+            .to_arrow_temporal(self.unit(), self.timezone())
             .ok_or_else(|| self.calendar_unit_error())?;
         let src = self.values.as_slice();
         let mut wide = Vec::<i64>::with_capacity(self.len);
@@ -694,8 +712,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
                 validity,
                 values: data.buffers()[0].clone(), // dense, canonical -> share the Arc
                 len,
-                unit,
-                tz,
+                field: TemporalField::new("", unit, tz, false),
                 _backing: PhantomData,
             });
         }
@@ -725,8 +742,7 @@ impl<B: TemporalBacking> TemporalSerie<B> {
             validity,
             values: ArrowBuffer::from_vec(values),
             len,
-            unit,
-            tz,
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         })
     }

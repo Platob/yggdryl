@@ -2,6 +2,8 @@
 //! [`AnyScalar`](crate::io::AnyScalar). It is what [`StructSerie::row`](super::StructSerie::row) yields.
 
 use super::StructType;
+use crate::io::field_carrier::field_accessors;
+use crate::io::fixed::Field;
 use crate::io::{AnyField, AnyScalar, DataTypeId, ScalarType};
 
 /// A single **struct value** — a row: the struct's schema (its ordered child [`AnyField`]s), one
@@ -15,6 +17,9 @@ pub struct StructScalar {
     fields: Vec<AnyField>,
     values: Vec<AnyScalar>,
     null: bool,
+    /// The value's **own-header** field (`Struct` type_id) — its name, declared nullability, and
+    /// metadata. Excluded from value identity (the child schema + per-field values are the identity).
+    field: Field,
 }
 
 impl StructScalar {
@@ -24,6 +29,7 @@ impl StructScalar {
             fields,
             values,
             null: false,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         }
     }
 
@@ -33,7 +39,21 @@ impl StructScalar {
             fields,
             values,
             null: true,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         }
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this struct value contributes — a `Struct` field over its child
+    /// fields, with **effective** nullability `self.nullable() || self.is_null()` and held metadata.
+    ///
+    /// DESIGN: this is `into_field` (consuming) rather than a no-arg `field()` because
+    /// [`field`](StructScalar::field) is the by-index child-field accessor (a struct scalar is
+    /// unreconstructable without its child names), mirroring [`StructSerie`](super::StructSerie).
+    pub fn into_field(self) -> AnyField {
+        let nullable = self.nullable() || self.null;
+        AnyField::struct_(self.field.name(), self.fields, nullable)
     }
 
     /// The number of fields.

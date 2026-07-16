@@ -410,7 +410,10 @@ fn get_value_keys_sorted_and_edge_rows() {
 // -------------------------------------------------------------------------------------
 
 /// The zero-length key/value child columns a null / empty map column is built over.
-fn empty_entries() -> (yggdryl_core::io::NamedSerie, yggdryl_core::io::NamedSerie) {
+fn empty_entries() -> (
+    Box<dyn yggdryl_core::io::AnySerie>,
+    Box<dyn yggdryl_core::io::AnySerie>,
+) {
     (
         Utf8Serie::from_strs(&[]).named("key"),
         Serie::<i64>::from_values(&[]).named("value"),

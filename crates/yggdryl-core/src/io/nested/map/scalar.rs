@@ -3,6 +3,8 @@
 //! [`MapSerie::row_scalar`](super::MapSerie::row_scalar) yields.
 
 use super::MapType;
+use crate::io::field_carrier::field_accessors;
+use crate::io::fixed::Field;
 use crate::io::{AnyField, AnySerie, DataTypeId, ScalarType};
 
 /// A single **map value** — a row: the map's `key` and `value` fields, the row's `key -> value`
@@ -41,6 +43,9 @@ pub struct MapScalar {
     entries: Box<dyn AnySerie>,
     keys_sorted: bool,
     null: bool,
+    /// The value's **own-header** field (`Map` type_id) — its name, declared nullability, and
+    /// metadata. Excluded from value identity (the key/value fields + entries are the identity).
+    field: Field,
 }
 
 impl MapScalar {
@@ -58,6 +63,7 @@ impl MapScalar {
             entries,
             keys_sorted,
             null: false,
+            field: Field::of("", DataTypeId::Map, 0, false),
         }
     }
 
@@ -74,7 +80,28 @@ impl MapScalar {
             entries,
             keys_sorted,
             null: true,
+            field: Field::of("", DataTypeId::Map, 0, false),
         }
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this map value contributes — a `Map` field over its key/value fields,
+    /// with **effective** nullability `self.nullable() || self.is_null()` and the held metadata.
+    pub fn field(&self) -> AnyField {
+        AnyField::map_(
+            self.name(),
+            self.key.clone(),
+            self.value.clone(),
+            self.nullable() || self.is_null(),
+            self.keys_sorted,
+        )
+        .with_metadata_overlay(self.metadata())
+    }
+
+    /// Like [`field`](MapScalar::field) but **consumes** the value.
+    pub fn into_field(self) -> AnyField {
+        self.field()
     }
 
     /// Whether the map value is null.

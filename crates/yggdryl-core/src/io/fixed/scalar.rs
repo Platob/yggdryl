@@ -1,8 +1,9 @@
 //! [`Scalar`] — a single, nullable value of a fixed-width `T` — and the [`FixedScalar`]
 //! sub-trait of the root [`ScalarType`](crate::io::ScalarType).
 
-use super::{NativeType, PrimitiveType, Serie, TypedField};
-use crate::io::{Bytes, IOCursor, IoError, ScalarType};
+use super::{Field, NativeType, PrimitiveType, Serie, TypedField};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOCursor, IoError, ScalarType};
 
 /// The largest fixed-width primitive is 32 bytes (`u256`/`i256`); a stack scratch of this size
 /// (de)serializes one value with no allocation. Every [`NativeType`]'s `WIDTH` is guarded at
@@ -49,9 +50,12 @@ pub trait FixedScalar: ScalarType {
 /// sink.rewind();
 /// assert_eq!(Scalar::<i32>::read_from(&mut sink).unwrap(), value);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Scalar<T: NativeType> {
     value: Option<T>,
+    /// The value's own leaf [`Field`] descriptor — its name, declared nullability, and metadata.
+    /// Excluded from value identity and the byte codec (only the value participates).
+    field: Field,
 }
 
 /// Writes `value`'s canonical little-endian bytes into a stack scratch and returns the used
@@ -93,17 +97,20 @@ impl<T: NativeType> core::hash::Hash for Scalar<T> {
 impl<T: NativeType> Scalar<T> {
     /// A scalar from an optional value (`None` is null).
     pub fn new(value: Option<T>) -> Self {
-        Self { value }
+        Self {
+            value,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
+        }
     }
 
     /// A present (non-null) scalar.
     pub fn of(value: T) -> Self {
-        Self { value: Some(value) }
+        Self::new(Some(value))
     }
 
     /// The null scalar.
     pub fn null() -> Self {
-        Self { value: None }
+        Self::new(None)
     }
 
     /// The value, or `None` if null.
@@ -121,8 +128,27 @@ impl<T: NativeType> Scalar<T> {
         PrimitiveType::new()
     }
 
-    /// A [`TypedField`] naming a column of this scalar's type.
-    pub fn field(&self, name: &str, nullable: bool) -> TypedField<T> {
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata) with
+    /// **effective** nullability `self.nullable() || self.is_null()` folded in (the scalar analogue
+    /// of a serie's `nullable() || has_nulls()`).
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.is_null());
+        AnyField::leaf(field)
+    }
+
+    /// Like [`field`](Scalar::field) but **consumes** the scalar, moving the held field's name and
+    /// metadata into the result with no clone.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.is_null();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field)
+    }
+
+    /// A [`TypedField`] naming a column of this scalar's type with explicit nullability.
+    pub fn typed_field(&self, name: &str, nullable: bool) -> TypedField<T> {
         TypedField::new(name, nullable)
     }
 
@@ -137,7 +163,7 @@ impl<T: NativeType> Scalar<T> {
     /// assert_eq!(col.get(0), Some(7));
     /// ```
     pub fn to_serie(&self) -> Serie<T> {
-        Serie::from_scalar(*self)
+        Serie::from_scalar(self.clone())
     }
 
     /// The serialized byte width: one validity byte plus one value.
@@ -167,7 +193,7 @@ impl<T: NativeType> Scalar<T> {
         let frame = &mut frame[..Self::serialized_width()];
         source.read_exact(frame)?;
         let value = (frame[0] != 0).then(|| T::read_le(&frame[1..]));
-        Ok(Self { value })
+        Ok(Self::new(value))
     }
 
     /// This scalar's canonical bytes — the same one-validity-byte-then-little-endian-value frame

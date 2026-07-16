@@ -176,14 +176,13 @@ fn from_named_frame_is_byte_identical_to_explicit_field_inference() {
 
 #[test]
 fn from_series_names_columns_and_overlays_metadata() {
-    use yggdryl_core::io::{AnySerie, Headers, NamedSerie};
+    use yggdryl_core::io::{AnySerie, Headers};
 
     let ids = Serie::from_values(&[1i64, 2, 3]).named("id");
-    let names = NamedSerie::new(
-        boxed(Utf8Serie::from_strs(&[Some("a"), None, Some("c")])),
-        "name",
-    )
-    .with_metadata(Headers::new().with("origin", "test"));
+    // A self-describing child now carries its name + metadata in its own header (no `NamedSerie`).
+    let mut names = boxed(Utf8Serie::from_strs(&[Some("a"), None, Some("c")]));
+    names.set_name("name");
+    names.set_metadata(Headers::new().with("origin", "test"));
     let table = StructSerie::from_series(vec![ids, names]).unwrap();
 
     assert_eq!(table.num_columns(), 2);

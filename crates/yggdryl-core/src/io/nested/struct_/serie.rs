@@ -8,11 +8,13 @@ use core::any::Any;
 
 use super::scalar::StructScalar;
 use super::{StructField, StructType};
+use crate::io::any_serie::apply_field_header;
 use crate::io::bitmap::Bitmap;
+use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
+use crate::io::fixed::Field;
 use crate::io::nested::{empty_any_column, read_any_column};
 use crate::io::{
-    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, NamedSerie,
-    SerieType,
+    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, SerieType,
 };
 
 /// A **nullable struct column** — one child [`AnySerie`](crate::io::AnySerie) per field (all of the
@@ -33,20 +35,47 @@ use crate::io::{
 /// let ids: &Serie<i64> = table.column(0).unwrap().as_serie::<i64>().unwrap();
 /// assert_eq!(ids.get(0), Some(1));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct StructSerie {
-    fields: Vec<AnyField>,
     columns: Vec<Box<dyn AnySerie>>,
     validity: Option<Bitmap>,
     len: usize,
+    /// The struct column's **own-header** field (`Struct` type_id) — its name, declared nullability,
+    /// and metadata. Excluded from value identity and never written to the standalone frame; the
+    /// child schema (each child column's derived field) is the single source of truth for the
+    /// children. The struct's own name/metadata surface only through [`field`](StructSerie::field).
+    field: Field,
 }
 
+/// Value identity is the **derived child schema** (each child column's `field_self`, which carries
+/// its NAME — a struct is unreconstructable without child names) + the **child data** (`eq_any`) +
+/// the top-level validity, all pairwise. The struct's OWN name / nullability / metadata are schema
+/// intent, excluded. Kept in lock-step with the byte codec (the frame writes the derived child
+/// schema, never the own header).
+impl PartialEq for StructSerie {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len != other.len
+            || self.validity != other.validity
+            || self.columns.len() != other.columns.len()
+        {
+            return false;
+        }
+        self.columns
+            .iter()
+            .zip(&other.columns)
+            .all(|(a, b)| a.field_self() == b.field_self() && a.eq_any(b.as_ref()))
+    }
+}
+
+impl Eq for StructSerie {}
+
 impl StructSerie {
-    /// A struct column from self-describing [`NamedSerie`] columns — the schema is each column's
-    /// [`field`](NamedSerie::field) (its inferred type + name, with the carrier's metadata overlaid),
-    /// and the stored child columns are the unwrapped erased columns (the name/metadata never reach
-    /// the data). Errors [`Unsupported`](IoError::Unsupported) if the columns are not all the same
-    /// length.
+    /// A struct column from **self-describing** child columns (each an erased
+    /// [`AnySerie`](crate::io::AnySerie), typically named with [`named`](crate::io::AnySerie::named)) —
+    /// the schema is each column's own derived [`field_self`](crate::io::AnySerie::field_self) (its
+    /// inferred type + header name + metadata). The name/metadata live only in the child's header and
+    /// never reach the data frame. Errors [`Unsupported`](IoError::Unsupported) if the columns are not
+    /// all the same length.
     ///
     /// ```
     /// use yggdryl_core::io::fixed::Serie;
@@ -62,33 +91,34 @@ impl StructSerie {
     /// assert_eq!(table.num_columns(), 2);
     /// assert_eq!(table.field(1).unwrap().name(), "name");
     /// ```
-    pub fn from_series(columns: Vec<NamedSerie>) -> Result<Self, IoError> {
-        let len = columns.first().map_or(0, NamedSerie::len);
+    pub fn from_series(columns: Vec<Box<dyn AnySerie>>) -> Result<Self, IoError> {
+        let len = columns.first().map_or(0, |column| column.len());
         for column in &columns {
             if column.len() != len {
                 return Err(mismatch(column.name(), column.len(), len));
             }
         }
-        let fields = columns.iter().map(NamedSerie::field).collect();
-        let columns = columns.into_iter().map(NamedSerie::into_inner).collect();
         Ok(Self {
-            fields,
             columns,
             validity: None,
             len,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         })
     }
 
-    /// A struct column from named child columns — the schema is inferred from each column's type
-    /// (nullability inferred from whether it holds nulls). A thin wrapper over
-    /// [`from_series`](StructSerie::from_series): each `(name, column)` becomes a metadata-less
-    /// [`NamedSerie`], so the stored frame is byte-identical to naming each column directly. Errors
-    /// [`Unsupported`](IoError::Unsupported) if the columns are not all the same length.
+    /// A struct column from named child columns — a thin wrapper over
+    /// [`from_series`](StructSerie::from_series): each `(name, column)` names the (self-describing)
+    /// child column via [`set_name`](crate::io::AnySerie::set_name) before storing, so the schema is
+    /// the children's own derived fields. Errors [`Unsupported`](IoError::Unsupported) if the columns
+    /// are not all the same length.
     pub fn from_named(columns: Vec<(&str, Box<dyn AnySerie>)>) -> Result<Self, IoError> {
         Self::from_series(
             columns
                 .into_iter()
-                .map(|(name, column)| NamedSerie::new(column, name))
+                .map(|(name, mut column)| {
+                    column.set_name(name);
+                    column
+                })
                 .collect(),
         )
     }
@@ -98,7 +128,7 @@ impl StructSerie {
     /// lengths disagree.
     pub fn from_columns(
         fields: Vec<AnyField>,
-        columns: Vec<Box<dyn AnySerie>>,
+        mut columns: Vec<Box<dyn AnySerie>>,
         present: Option<&[bool]>,
     ) -> Result<Self, IoError> {
         if fields.len() != columns.len() {
@@ -116,6 +146,11 @@ impl StructSerie {
                 return Err(mismatch(field.name(), column.len(), len));
             }
         }
+        // The explicit schema names the (self-describing) child columns: stamp each column's header
+        // from its field so the derived child schema round-trips exactly.
+        for (field, column) in fields.iter().zip(&mut columns) {
+            apply_field_header(column, field);
+        }
         let validity = present.and_then(|flags| {
             let mut bitmap = Bitmap::all_present(len);
             for (index, &is_present) in flags.iter().take(len).enumerate() {
@@ -126,22 +161,29 @@ impl StructSerie {
             (bitmap.null_count() > 0).then_some(bitmap)
         });
         Ok(Self {
-            fields,
             columns,
             validity,
             len,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         })
     }
 
     /// An empty (zero-row) struct column of the given schema.
     pub fn empty(schema: &StructField) -> Self {
-        let fields = schema.fields().to_vec();
-        let columns = fields.iter().map(empty_any_column).collect();
+        let columns = schema
+            .fields()
+            .iter()
+            .map(|field| {
+                let mut column = empty_any_column(field);
+                apply_field_header(&mut column, field);
+                column
+            })
+            .collect();
         Self {
-            fields,
             columns,
             validity: None,
             len: 0,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         }
     }
 
@@ -182,14 +224,22 @@ impl StructSerie {
         self.columns.len()
     }
 
-    /// The child field descriptors, in order.
-    pub fn fields(&self) -> &[AnyField] {
-        &self.fields
+    field_accessors!();
+
+    /// The child field descriptors, in order — **derived on demand** from each child column's own
+    /// header (its [`field_self`](crate::io::AnySerie::field_self)); the columns are the single source
+    /// of truth, so there is no cached schema. Allocates the returned `Vec` (and each child field).
+    pub fn fields(&self) -> Vec<AnyField> {
+        self.columns
+            .iter()
+            .map(|column| column.field_self())
+            .collect()
     }
 
-    /// The child field at `index`, or `None` if out of range.
-    pub fn field(&self, index: usize) -> Option<&AnyField> {
-        self.fields.get(index)
+    /// The child field at `index`, **derived** from the child column's own header, or `None` if out
+    /// of range. Owned (there is no cached field to borrow).
+    pub fn field(&self, index: usize) -> Option<AnyField> {
+        self.columns.get(index).map(|column| column.field_self())
     }
 
     /// The child column at `index` (as an erased [`AnySerie`](crate::io::AnySerie), downcast with
@@ -201,19 +251,19 @@ impl StructSerie {
 
     /// The child column named `name` (first match), or `None`.
     pub fn column_named(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
-        let index = self.fields.iter().position(|f| f.name() == name)?;
+        let index = self.columns.iter().position(|c| c.name() == name)?;
         self.column(index)
     }
 
     /// The typed [`StructType`] descriptor (its child fields).
     pub fn data_type(&self) -> StructType {
-        StructType::new(self.fields.clone())
+        StructType::new(self.fields())
     }
 
     /// A [`StructField`] naming this struct column, its nullability inferred from whether it holds
     /// any null rows.
     pub fn to_field(&self, name: &str) -> StructField {
-        StructField::new(name, self.fields.clone(), self.has_nulls())
+        StructField::new(name, self.fields(), self.has_nulls())
     }
 
     /// The row at `index` as an erased [`AnyScalar::Struct`] — [`AnyScalar::Null`] if the row is null
@@ -229,13 +279,13 @@ impl StructSerie {
     /// but its per-field values are always populated. Out of range yields a null scalar.
     pub fn row_scalar(&self, index: usize) -> StructScalar {
         if index >= self.len {
-            return StructScalar::null(self.fields.clone(), Vec::new());
+            return StructScalar::null(self.fields(), Vec::new());
         }
         let values = self.cell_values(index);
         if self.validity.as_ref().is_some_and(|v| !v.get(index)) {
-            StructScalar::null(self.fields.clone(), values)
+            StructScalar::null(self.fields(), values)
         } else {
-            StructScalar::new(self.fields.clone(), values)
+            StructScalar::new(self.fields(), values)
         }
     }
 
@@ -269,10 +319,17 @@ impl StructSerie {
     pub fn slice(&self, offset: usize, len: usize) -> Self {
         let start = offset.min(self.len);
         let count = len.min(self.len - start);
+        // A freshly-sliced child column carries an empty header, so restore each child's own field
+        // (its name / nullable / metadata) onto the slice — a struct is unreconstructable without its
+        // child names, and the derived schema must survive a slice.
         let columns = self
             .columns
             .iter()
-            .map(|column| column.slice(start, count))
+            .map(|column| {
+                let mut sliced = column.slice(start, count);
+                apply_field_header(&mut sliced, &column.field_self());
+                sliced
+            })
             .collect();
         let validity = self.validity.as_ref().map(|mask| {
             let mut sliced = Bitmap::all_present(count);
@@ -284,10 +341,10 @@ impl StructSerie {
             sliced
         });
         Self {
-            fields: self.fields.clone(),
             columns,
             validity: normalize(validity),
             len: count,
+            field: self.field.clone(),
         }
     }
 
@@ -310,16 +367,12 @@ impl StructSerie {
     /// Writes the self-contained frame to a byte sink (shared by `serialize_bytes` and the
     /// [`AnySerie`](crate::io::AnySerie) impl, so a struct child serializes recursively).
     fn write_frame(&self, sink: &mut Bytes) -> Result<(), IoError> {
-        // Encode the schema (a struct field over `self.fields`) straight from the borrowed fields —
-        // no `StructField` / `self.fields.clone()` round-trip. Read back as the struct's `children`.
+        // Encode the schema (a struct field over the **derived** child fields). Its name / metadata
+        // are deliberately empty and its nullability is `has_nulls()` (not the own-header flag), so a
+        // struct equal-in-data but differing in its own name/metadata still serializes byte-identical.
+        let fields = self.fields();
         let mut schema = Vec::new();
-        AnyField::encode_struct(
-            "",
-            self.has_nulls(),
-            &Headers::new(),
-            &self.fields,
-            &mut schema,
-        );
+        AnyField::encode_struct("", self.has_nulls(), &Headers::new(), &fields, &mut schema);
         sink.write_all(&(schema.len() as u64).to_le_bytes())?;
         sink.write_all(&schema)?;
         sink.write_all(&(self.len as u64).to_le_bytes())?;
@@ -349,17 +402,20 @@ impl StructSerie {
         let validity = read_validity(source, len)?;
         let mut columns = Vec::with_capacity(fields.len());
         for field in &fields {
-            let column = read_any_column(field, source)?;
+            let mut column = read_any_column(field, source)?;
             if column.len() != len {
                 return Err(mismatch(field.name(), column.len(), len));
             }
+            // Restore each child column's header from the schema field, so the derived child schema
+            // round-trips exactly (a struct is unreconstructable without its child names).
+            apply_field_header(&mut column, field);
             columns.push(column);
         }
         Ok(Self {
-            fields,
             columns,
             validity: normalize(validity),
             len,
+            field: Field::of("", DataTypeId::Struct, 0, false),
         })
     }
 }
@@ -396,8 +452,11 @@ impl AnySerie for StructSerie {
         DataTypeId::Struct
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::from(self.to_field(name))
+        AnyField::struct_(name, self.fields(), self.nullable() || self.has_nulls())
+            .with_metadata_overlay(self.metadata())
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -488,7 +547,7 @@ impl StructSerie {
     /// (`Minute`…`Year`) has no Arrow array.
     pub fn to_arrow_array(&self) -> Result<arrow_array::StructArray, IoError> {
         let arrow_fields: Vec<arrow_schema::Field> =
-            self.fields.iter().map(AnyField::to_arrow).collect();
+            self.fields().iter().map(AnyField::to_arrow).collect();
         let nulls = self.validity.as_ref().map(|bitmap| {
             let buffer = arrow_buffer::Buffer::from(bitmap.as_bytes());
             arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
@@ -523,20 +582,19 @@ impl StructSerie {
                 ),
             });
         };
-        let mut fields = Vec::with_capacity(child_fields.len());
         let mut columns = Vec::with_capacity(child_fields.len());
         for (arrow_field, child) in child_fields.iter().zip(array.columns()) {
-            fields.push(AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?);
-            columns.push(crate::io::nested::from_arrow_any_column(
-                child.as_ref(),
-                arrow_field,
-            )?);
+            let field =
+                AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?;
+            let mut column = crate::io::nested::from_arrow_any_column(child.as_ref(), arrow_field)?;
+            apply_field_header(&mut column, &field);
+            columns.push(column);
         }
         Ok(Self {
-            fields,
             columns,
             validity: struct_validity_from_arrow(array),
             len: array.len(),
+            field: Field::of("", DataTypeId::Struct, 0, false),
         })
     }
 
@@ -554,7 +612,7 @@ impl StructSerie {
             });
         }
         let arrow_fields: Vec<arrow_schema::Field> =
-            self.fields.iter().map(AnyField::to_arrow).collect();
+            self.fields().iter().map(AnyField::to_arrow).collect();
         let schema = Arc::new(arrow_schema::Schema::new(arrow_fields));
         let columns: Vec<arrow_array::ArrayRef> = self
             .columns
@@ -573,20 +631,19 @@ impl StructSerie {
     /// become the struct's fields (no top-level nulls).
     pub fn from_record_batch(batch: &arrow_array::RecordBatch) -> Result<Self, IoError> {
         let schema = batch.schema();
-        let mut fields = Vec::with_capacity(schema.fields().len());
         let mut columns = Vec::with_capacity(schema.fields().len());
         for (arrow_field, array) in schema.fields().iter().zip(batch.columns()) {
-            fields.push(AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?);
-            columns.push(crate::io::nested::from_arrow_any_column(
-                array.as_ref(),
-                arrow_field,
-            )?);
+            let field =
+                AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?;
+            let mut column = crate::io::nested::from_arrow_any_column(array.as_ref(), arrow_field)?;
+            apply_field_header(&mut column, &field);
+            columns.push(column);
         }
         Ok(Self {
-            fields,
             columns,
             validity: None,
             len: batch.num_rows(),
+            field: Field::of("", DataTypeId::Struct, 0, false),
         })
     }
 }

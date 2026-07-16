@@ -7,8 +7,9 @@
 use core::marker::PhantomData;
 
 use super::time::{unit_from_tag, unit_tag};
-use super::{Temporal, TemporalBacking, TemporalNative, TemporalType, TimeUnit, Tz};
-use crate::io::{Bytes, IOCursor, IoError, ScalarType};
+use super::{Temporal, TemporalBacking, TemporalField, TemporalNative, TemporalType, TimeUnit, Tz};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOCursor, IoError, ScalarType};
 
 /// The largest temporal count is 12 bytes (`ts96`); a stack scratch of this size encodes one count
 /// with no allocation while writing the byte codec.
@@ -27,31 +28,22 @@ const MAX_WIDTH: usize = 12;
 /// ```
 pub struct TemporalScalar<B: TemporalBacking> {
     count: Option<i128>,
-    unit: TimeUnit,
-    tz: Tz,
+    /// The value's own [`TemporalField`] descriptor — its name, declared nullability, metadata, and
+    /// the `(unit, tz)` dtype params. The `(unit, tz)` join the count in identity; the name /
+    /// nullable / metadata are excluded.
+    field: TemporalField<B>,
     _backing: PhantomData<B>,
 }
 
 impl<B: TemporalBacking> TemporalScalar<B> {
     /// A present scalar from `value`, taking the value's own resolution and zone as the column's.
     pub fn of(value: B::Native) -> Self {
-        Self {
-            count: Some(value.to_count()),
-            unit: value.time_unit(),
-            tz: value.timezone(),
-            _backing: PhantomData,
-        }
+        Self::from_parts(Some(value.to_count()), value.time_unit(), value.timezone())
     }
 
     /// The null scalar of the given `(unit, tz)` (clamped to what `B` admits).
     pub fn null(unit: TimeUnit, tz: Tz) -> Self {
-        let dt = TemporalType::<B>::new(unit, tz);
-        Self {
-            count: None,
-            unit: dt.unit(),
-            tz: dt.timezone(),
-            _backing: PhantomData,
-        }
+        Self::from_parts(None, unit, tz)
     }
 
     /// A scalar from an already-fitted physical count at `(unit, tz)` — the column's bridge to a
@@ -59,8 +51,7 @@ impl<B: TemporalBacking> TemporalScalar<B> {
     pub(crate) fn from_parts(count: Option<i128>, unit: TimeUnit, tz: Tz) -> Self {
         Self {
             count,
-            unit,
-            tz,
+            field: TemporalField::new("", unit, tz, false),
             _backing: PhantomData,
         }
     }
@@ -68,7 +59,7 @@ impl<B: TemporalBacking> TemporalScalar<B> {
     /// The value, or `None` if null.
     pub fn value(&self) -> Option<B::Native> {
         self.count
-            .and_then(|count| B::Native::from_count(count, self.unit, self.tz).ok())
+            .and_then(|count| B::Native::from_count(count, self.unit(), self.timezone()).ok())
     }
 
     /// The raw physical count, or `None` if null.
@@ -81,26 +72,43 @@ impl<B: TemporalBacking> TemporalScalar<B> {
         self.count.is_none()
     }
 
-    /// The resolution.
+    /// The resolution (from the held field).
     pub fn unit(&self) -> TimeUnit {
-        self.unit
+        self.field.unit()
     }
 
-    /// The timezone.
+    /// The timezone (from the held field).
     pub fn timezone(&self) -> Tz {
-        self.tz
+        self.field.timezone()
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata +
+    /// unit/tz) with **effective** nullability `self.nullable() || self.is_null()`.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.is_null());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](TemporalScalar::field) but **consumes** the scalar.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.is_null();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// The typed descriptor.
     pub fn data_type(&self) -> TemporalType<B> {
-        TemporalType::new(self.unit, self.tz)
+        TemporalType::new(self.unit(), self.timezone())
     }
 
     /// Writes this scalar — `[validity: u8][unit tag: u8][tz name][count: LE]` (the count is zero
     /// when null) — advancing the sink's cursor. The timezone name is length-prefixed (`u16`).
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
-        sink.write_all(&[u8::from(self.count.is_some()), unit_tag(self.unit)])?;
-        let name = self.tz.name();
+        sink.write_all(&[u8::from(self.count.is_some()), unit_tag(self.unit())])?;
+        let name = self.timezone().name();
         sink.write_all(&(name.len() as u16).to_le_bytes())?;
         sink.write_all(name.as_bytes())?;
         let mut scratch = [0u8; MAX_WIDTH];
@@ -111,7 +119,7 @@ impl<B: TemporalBacking> TemporalScalar<B> {
 
     /// The serialized byte length of this scalar — `[validity][unit tag][tz name len + name][count]`.
     fn encoded_len(&self) -> usize {
-        2 + 2 + self.tz.name().len() + B::WIDTH
+        2 + 2 + self.timezone().name().len() + B::WIDTH
     }
 
     /// Reads a scalar written by [`write_to`](TemporalScalar::write_to), advancing the source cursor.
@@ -147,12 +155,7 @@ impl<B: TemporalBacking> TemporalScalar<B> {
         } else {
             None
         };
-        Ok(Self {
-            count,
-            unit,
-            tz,
-            _backing: PhantomData,
-        })
+        Ok(Self::from_parts(count, unit, tz))
     }
 
     /// This scalar's canonical bytes — the [`write_to`](TemporalScalar::write_to) frame as an owned
@@ -188,7 +191,7 @@ impl<B: TemporalBacking> ScalarType for TemporalScalar<B> {
     type Data = TemporalType<B>;
 
     fn data_type(&self) -> TemporalType<B> {
-        TemporalType::new(self.unit, self.tz)
+        TemporalType::new(self.unit(), self.timezone())
     }
 
     fn is_null(&self) -> bool {
@@ -206,7 +209,9 @@ impl<B: TemporalBacking> ScalarType for TemporalScalar<B> {
 impl<B: TemporalBacking> PartialEq for TemporalScalar<B> {
     fn eq(&self, other: &Self) -> bool {
         match (self.count, other.count) {
-            (Some(a), Some(b)) => a == b && self.unit == other.unit && self.tz == other.tz,
+            (Some(a), Some(b)) => {
+                a == b && self.unit() == other.unit() && self.timezone() == other.timezone()
+            }
             (None, None) => true,
             _ => false,
         }
@@ -219,8 +224,8 @@ impl<B: TemporalBacking> core::hash::Hash for TemporalScalar<B> {
             Some(count) => {
                 state.write_u8(1);
                 count.hash(state);
-                self.unit.hash(state);
-                self.tz.hash(state);
+                self.unit().hash(state);
+                self.timezone().hash(state);
             }
             None => state.write_u8(0),
         }
@@ -228,16 +233,19 @@ impl<B: TemporalBacking> core::hash::Hash for TemporalScalar<B> {
 }
 impl<B: TemporalBacking> Clone for TemporalScalar<B> {
     fn clone(&self) -> Self {
-        *self
+        Self {
+            count: self.count,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        }
     }
 }
-impl<B: TemporalBacking> Copy for TemporalScalar<B> {}
 impl<B: TemporalBacking> core::fmt::Debug for TemporalScalar<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TemporalScalar")
             .field("type", &B::NAME)
-            .field("unit", &self.unit)
-            .field("tz", &self.tz)
+            .field("unit", &self.unit())
+            .field("tz", &self.timezone())
             .field("value", &self.value().map(|v| v.to_string()))
             .finish()
     }

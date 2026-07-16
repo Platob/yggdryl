@@ -10,8 +10,10 @@
 //! scalars are always equal, and two null columns are equal iff they have the same length.
 
 use super::Field;
+use crate::io::field_carrier::field_accessors;
 use crate::io::{
-    Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
+    AnyField, Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType,
+    SerieType,
 };
 
 /// Reads a little-endian `u64` from a cursor.
@@ -110,6 +112,21 @@ impl NullField {
         self
     }
 
+    /// Sets the column name in place.
+    pub fn set_name(&mut self, name: &str) {
+        self.name.clear();
+        self.name.push_str(name);
+    }
+
+    /// A no-op: a null column is **always** nullable, so its nullability cannot be un-set (kept for
+    /// a uniform field-carrier surface with the other field descriptors).
+    pub fn set_nullable(&mut self, _nullable: bool) {}
+
+    /// Replaces the metadata in place (moved in, no clone).
+    pub fn set_metadata(&mut self, metadata: Headers) {
+        self.metadata = metadata;
+    }
+
     /// The typed descriptor.
     pub fn data_type(&self) -> NullType {
         NullType
@@ -163,43 +180,63 @@ impl FieldType for NullField {
 // -------------------------------------------------------------------------------------
 
 /// One **null** value — the null type has no other inhabitant, so every [`NullScalar`] is equal
-/// (and hashes the same) and its wire form is empty (`0` bytes).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct NullScalar;
+/// (and hashes the same) and its wire form is empty (`0` bytes). It carries a [`NullField`] header
+/// (name / metadata) that is **excluded** from value identity and the codec.
+#[derive(Debug, Clone)]
+pub struct NullScalar {
+    /// The value's own [`NullField`] descriptor — its name and metadata (a null value is always
+    /// nullable). Excluded from value identity and the byte codec.
+    field: NullField,
+}
 
 impl NullScalar {
     /// The null value.
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self::null()
     }
 
     /// The null value (the cross-family name; every [`NullScalar`] is null).
-    pub const fn null() -> Self {
-        Self
+    pub fn null() -> Self {
+        Self {
+            field: NullField::new(""),
+        }
     }
 
     /// Always `true` — the null type has only the null value.
-    pub const fn is_null(&self) -> bool {
+    pub fn is_null(&self) -> bool {
         true
     }
 
     /// Always `false`.
-    pub const fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         false
     }
 
     /// The typed descriptor.
-    pub const fn data_type(&self) -> NullType {
+    pub fn data_type(&self) -> NullType {
         NullType
     }
 
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata). A
+    /// null value is always nullable.
+    pub fn field(&self) -> AnyField {
+        AnyField::leaf(self.field.erase())
+    }
+
+    /// Like [`field`](NullScalar::field) but **consumes** the scalar.
+    pub fn into_field(self) -> AnyField {
+        AnyField::leaf(self.field.erase())
+    }
+
     /// A [`NullField`] naming a column of this scalar's type.
-    pub fn field(&self, name: &str) -> NullField {
+    pub fn typed_field(&self, name: &str) -> NullField {
         NullField::new(name)
     }
 
     /// This scalar broadcast to a length-1 [`NullSerie`].
-    pub const fn to_serie(&self) -> NullSerie {
+    pub fn to_serie(&self) -> NullSerie {
         NullSerie::with_len(1)
     }
 
@@ -215,7 +252,7 @@ impl NullScalar {
 
     /// Reads a scalar (a no-op — the null value carries nothing).
     pub fn read_from<R: IOCursor>(_source: &mut R) -> Result<Self, IoError> {
-        Ok(Self)
+        Ok(Self::null())
     }
 
     /// The value's canonical bytes — empty.
@@ -225,7 +262,24 @@ impl NullScalar {
 
     /// Reconstructs the null value (any input; there is only one value).
     pub fn deserialize_bytes(_bytes: &[u8]) -> Self {
-        Self
+        Self::null()
+    }
+}
+
+// Every null value is equal (and hashes the same) — the held [`NullField`]'s name / metadata are
+// schema intent, excluded from identity and the (empty) codec.
+impl PartialEq for NullScalar {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+impl Eq for NullScalar {}
+impl core::hash::Hash for NullScalar {
+    fn hash<H: core::hash::Hasher>(&self, _state: &mut H) {}
+}
+impl Default for NullScalar {
+    fn default() -> Self {
+        Self::null()
     }
 }
 
@@ -263,20 +317,39 @@ impl ScalarType for NullScalar {
 /// sink.rewind();
 /// assert_eq!(NullSerie::read_from(&mut sink).unwrap(), col);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct NullSerie {
     len: usize,
+    /// The column's own [`NullField`] descriptor — its name and metadata (a null column is always
+    /// nullable). Excluded from value identity and the byte codec (only the length participates).
+    field: NullField,
 }
 
 impl NullSerie {
     /// An empty null column.
-    pub const fn new() -> Self {
-        Self { len: 0 }
+    pub fn new() -> Self {
+        Self::with_len(0)
     }
 
     /// A null column of `len` nulls.
-    pub const fn with_len(len: usize) -> Self {
-        Self { len }
+    pub fn with_len(len: usize) -> Self {
+        Self {
+            len,
+            field: NullField::new(""),
+        }
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata). A
+    /// null column is always nullable.
+    pub fn field(&self) -> AnyField {
+        AnyField::leaf(self.field.erase())
+    }
+
+    /// Like [`field`](NullSerie::field) but **consumes** the column.
+    pub fn into_field(self) -> AnyField {
+        AnyField::leaf(self.field.erase())
     }
 
     /// A null column from a slice of [`NullScalar`]s — one null per scalar (every [`NullScalar`] is
@@ -289,7 +362,7 @@ impl NullSerie {
     /// assert_eq!(col.len(), 2);
     /// assert_eq!(col.null_count(), 2);
     /// ```
-    pub const fn from_scalars(scalars: &[NullScalar]) -> Self {
+    pub fn from_scalars(scalars: &[NullScalar]) -> Self {
         Self::with_len(scalars.len())
     }
 
@@ -334,8 +407,8 @@ impl NullSerie {
     }
 
     /// Element `index` as a [`NullScalar`] — always the null value.
-    pub const fn get_scalar(&self, _index: usize) -> NullScalar {
-        NullScalar
+    pub fn get_scalar(&self, _index: usize) -> NullScalar {
+        NullScalar::null()
     }
 
     /// Writes the column — just its length as a little-endian `u64`.
@@ -345,9 +418,7 @@ impl NullSerie {
 
     /// Reads a column written by [`write_to`](NullSerie::write_to).
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        Ok(Self {
-            len: read_u64(source)? as usize,
-        })
+        Ok(Self::with_len(read_u64(source)? as usize))
     }
 
     /// This column's canonical bytes — just its length as a little-endian `u64`, the same frame
@@ -383,7 +454,23 @@ impl NullSerie {
     #[cfg(feature = "arrow")]
     pub fn from_arrow_array(array: &arrow_array::NullArray) -> Self {
         use arrow_array::Array;
-        Self { len: array.len() }
+        Self::with_len(array.len())
+    }
+}
+
+/// Value identity is the **length only** — the held [`NullField`]'s name / metadata are schema
+/// intent, excluded from identity (two null columns of equal length are equal, however named). Kept
+/// in lock-step with the byte codec, which writes only the length.
+impl PartialEq for NullSerie {
+    fn eq(&self, other: &Self) -> bool {
+        self.len == other.len
+    }
+}
+impl Eq for NullSerie {}
+
+impl Default for NullSerie {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

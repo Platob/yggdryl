@@ -89,7 +89,7 @@ fn serie_yields_and_is_built_from_scalars() {
     for scalar in [Scalar::of(7i32), Scalar::null()] {
         let broadcast = scalar.to_serie();
         assert_eq!(broadcast.len(), 1);
-        assert_eq!(broadcast.as_scalar(), Some(scalar));
+        assert_eq!(broadcast.as_scalar(), Some(scalar.clone()));
         assert_eq!(Serie::from_scalar(scalar), broadcast);
     }
 }
@@ -121,7 +121,7 @@ fn values_expose_data_type_and_field() {
 
     let scalar = F64Scalar::of(1.0);
     assert_eq!(scalar.data_type().byte_width(), 8);
-    assert!(scalar.field("x", true).nullable());
+    assert!(scalar.typed_field("x", true).nullable());
 
     // Serie::to_field infers nullability from the column's actual nulls.
     let dense = Serie::from_values(&[1i32, 2, 3]);

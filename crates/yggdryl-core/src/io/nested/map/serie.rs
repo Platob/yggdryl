@@ -10,10 +10,11 @@ use core::any::Any;
 use super::scalar::MapScalar;
 use super::{MapField, MapType};
 use crate::io::bitmap::Bitmap;
+use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
+use crate::io::fixed::Field;
 use crate::io::nested::{StructField, StructSerie};
 use crate::io::{
-    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, NamedSerie,
-    SerieType,
+    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, SerieType,
 };
 
 /// A **nullable map column** — the optimized alias of `List<Struct<{key non-null, value}>>`. It holds
@@ -46,6 +47,10 @@ pub struct MapSerie {
     validity: Option<Bitmap>,
     len: usize,
     keys_sorted: bool,
+    /// The map column's **own-header** field (`Map` type_id) — its name, declared nullability, and
+    /// metadata. Excluded from value identity and never written to the standalone frame; the
+    /// key/value fields are derived from the entries struct's children.
+    field: Field,
 }
 
 // A manual `PartialEq` (not a derive): two map columns are equal iff same length, `keys_sorted`,
@@ -91,15 +96,15 @@ impl MapSerie {
     /// assert_eq!(map.row_scalar(1).len(), 0); // the empty row
     /// ```
     pub fn from_entries(
-        keys: NamedSerie,
-        values: NamedSerie,
+        keys: Box<dyn AnySerie>,
+        values: Box<dyn AnySerie>,
         offsets: &[i32],
         present: Option<&[bool]>,
         keys_sorted: bool,
     ) -> Result<Self, IoError> {
         // A map key is never null: reject a key column that carries nulls, so the entries struct is a
         // valid Arrow map child and the inferred key field is non-nullable.
-        let key_nulls = keys.inner().null_count();
+        let key_nulls = keys.null_count();
         if key_nulls > 0 {
             return Err(IoError::Unsupported {
                 what: format!(
@@ -120,6 +125,7 @@ impl MapSerie {
             validity,
             len,
             keys_sorted,
+            field: Field::of("", DataTypeId::Map, 0, false),
         })
     }
 
@@ -140,6 +146,7 @@ impl MapSerie {
             validity: None,
             len: 0,
             keys_sorted: schema.keys_sorted(),
+            field: Field::of("", DataTypeId::Map, 0, false),
         }
     }
 
@@ -196,15 +203,19 @@ impl MapSerie {
         &self.offsets
     }
 
-    /// The key field descriptor (inferred from the entries struct's first column).
-    pub fn key_field(&self) -> &AnyField {
+    field_accessors!();
+
+    /// The key field descriptor — **derived on demand** from the entries struct's first column's own
+    /// header. Owned (there is no cached field to borrow).
+    pub fn key_field(&self) -> AnyField {
         self.entries
             .field(0)
             .expect("a map's entries always has a key field")
     }
 
-    /// The value field descriptor (inferred from the entries struct's second column).
-    pub fn value_field(&self) -> &AnyField {
+    /// The value field descriptor — **derived on demand** from the entries struct's second column's
+    /// own header. Owned.
+    pub fn value_field(&self) -> AnyField {
         self.entries
             .field(1)
             .expect("a map's entries always has a value field")
@@ -247,8 +258,8 @@ impl MapSerie {
     /// its entries are always populated (the entries sub-range). Out of range yields a null scalar
     /// over empty entries.
     pub fn row_scalar(&self, index: usize) -> MapScalar {
-        let key = self.key_field().clone();
-        let value = self.value_field().clone();
+        let key = self.key_field();
+        let value = self.value_field();
         if index >= self.len {
             return MapScalar::null(
                 key,
@@ -293,11 +304,7 @@ impl MapSerie {
 
     /// The typed [`MapType`] descriptor (its key/value fields + keys_sorted flag).
     pub fn data_type(&self) -> MapType {
-        MapType::new(
-            self.key_field().clone(),
-            self.value_field().clone(),
-            self.keys_sorted,
-        )
+        MapType::new(self.key_field(), self.value_field(), self.keys_sorted)
     }
 
     /// A [`MapField`] naming this map column, its nullability inferred from whether it holds any null
@@ -305,8 +312,8 @@ impl MapSerie {
     pub fn to_field(&self, name: &str) -> MapField {
         MapField::new(
             name,
-            self.key_field().clone(),
-            self.value_field().clone(),
+            self.key_field(),
+            self.value_field(),
             self.has_nulls(),
             self.keys_sorted,
         )
@@ -343,6 +350,7 @@ impl MapSerie {
             validity: normalize(validity),
             len: count,
             keys_sorted: self.keys_sorted,
+            field: self.field.clone(),
         }
     }
 
@@ -368,16 +376,19 @@ impl MapSerie {
     /// header, top-level validity, and offsets are packed into **one** pre-sized buffer and written in
     /// a single call; then the entries struct column serializes itself.
     fn write_frame(&self, sink: &mut Bytes) -> Result<(), IoError> {
-        // Encode the schema (a map field over the key/value fields) straight from the borrowed fields
-        // — no `MapField` / clone round-trip. Read back to recover the `keys_sorted` flag.
+        // Encode the schema (a map field over the **derived** key/value fields). Its name / metadata
+        // are empty and its nullability is `has_nulls()` (not the own-header flag), so equal-in-data
+        // maps serialize byte-identical regardless of the map's own name/metadata.
+        let key = self.key_field();
+        let value = self.value_field();
         let mut schema = Vec::new();
         AnyField::encode_map(
             "",
             self.has_nulls(),
             &Headers::new(),
             self.keys_sorted,
-            self.key_field(),
-            self.value_field(),
+            &key,
+            &value,
             &mut schema,
         );
 
@@ -455,6 +466,7 @@ impl MapSerie {
             validity: normalize(validity),
             len,
             keys_sorted,
+            field: Field::of("", DataTypeId::Map, 0, false),
         })
     }
 }
@@ -491,8 +503,17 @@ impl AnySerie for MapSerie {
         DataTypeId::Map
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::from(self.to_field(name))
+        AnyField::map_(
+            name,
+            self.key_field(),
+            self.value_field(),
+            self.nullable() || self.has_nulls(),
+            self.keys_sorted,
+        )
+        .with_metadata_overlay(self.metadata())
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -713,6 +734,7 @@ impl MapSerie {
             validity,
             len,
             keys_sorted: *keys_sorted,
+            field: Field::of("", DataTypeId::Map, 0, false),
         })
     }
 }

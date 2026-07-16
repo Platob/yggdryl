@@ -11,7 +11,8 @@ use super::{
     Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalScalar, DecimalType,
 };
 use crate::io::bitmap::Bitmap;
-use crate::io::{Bytes, IOCursor, IoError, SerieType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
 
 /// The largest coefficient is 32 bytes (`d256`); a stack scratch of this size encodes one
 /// coefficient with no allocation while building a column's raw bytes.
@@ -39,46 +40,62 @@ pub struct DecimalSerie<B: DecimalBacking> {
     validity: Option<Bitmap>,
     values: ArrowBuffer,
     len: usize,
-    precision: u8,
-    scale: i8,
+    /// The column's own [`DecimalField`] descriptor — its name, declared nullability, metadata, and
+    /// the `(precision, scale)` dtype params. The `(precision, scale)` join the data in value
+    /// identity and the byte codec; the name / nullable / metadata are excluded.
+    field: DecimalField<B>,
     _backing: PhantomData<B>,
 }
 
 impl<B: DecimalBacking> DecimalSerie<B> {
     /// An empty column of precision `precision`, scale `scale` (clamped to the valid range).
     pub fn new(precision: u8, scale: i8) -> Self {
-        let dt = DecimalType::<B>::new(precision, scale);
         Self {
             validity: None,
             values: ArrowBuffer::from_vec(Vec::<u8>::new()),
             len: 0,
-            precision: dt.precision(),
-            scale: dt.scale(),
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         }
     }
 
     /// An empty column that can grow to `capacity` elements before its first reallocation.
     pub fn with_capacity(precision: u8, scale: i8, capacity: usize) -> Self {
-        let dt = DecimalType::<B>::new(precision, scale);
         Self {
             validity: None,
             values: ArrowBuffer::from_vec(Vec::<u8>::with_capacity(capacity * B::WIDTH)),
             len: 0,
-            precision: dt.precision(),
-            scale: dt.scale(),
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         }
     }
 
-    /// The precision.
+    field_accessors!();
+
+    /// The precision (from the held field).
     pub fn precision(&self) -> u8 {
-        self.precision
+        self.field.precision()
     }
 
-    /// The scale.
+    /// The scale (from the held field).
     pub fn scale(&self) -> i8 {
-        self.scale
+        self.field.scale()
+    }
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata +
+    /// precision/scale) with **effective** nullability `self.nullable() || self.has_nulls()` folded
+    /// in — a lenient, Arrow-standard over-approximation.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.has_nulls());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](DecimalSerie::field) but **consumes** the column.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.has_nulls();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// Appends one value (`None` is a null). Re-expresses a present value at the column's scale —
@@ -90,7 +107,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
     pub fn push(&mut self, value: Option<Decimal<B>>) -> Result<(), DecimalError> {
         match value {
             Some(value) => {
-                let coeff = Self::fit(value, self.precision, self.scale)?;
+                let coeff = Self::fit(value, self.precision(), self.scale())?;
                 self.push_bytes(coeff);
                 if let Some(validity) = &mut self.validity {
                     validity.push(true);
@@ -151,13 +168,13 @@ impl<B: DecimalBacking> DecimalSerie<B> {
     /// The value at `index` as a [`Decimal`], or `None` if null or out of range.
     pub fn get(&self, index: usize) -> Option<Decimal<B>> {
         self.get_coeff(index)
-            .map(|coeff| Decimal::from_coeff(coeff, self.scale))
+            .map(|coeff| Decimal::from_coeff(coeff, self.scale()))
     }
 
     /// Element `index` as a [`DecimalScalar`] carrying the column's `(precision, scale)` — null if
     /// the element is null or out of range.
     pub fn get_scalar(&self, index: usize) -> DecimalScalar<B> {
-        DecimalScalar::from_parts(self.get_coeff(index), self.precision, self.scale)
+        DecimalScalar::from_parts(self.get_coeff(index), self.precision(), self.scale())
     }
 
     // ---- in-place set: single element + bulk (from a Serie / scalars / native values) --------
@@ -174,7 +191,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
             });
         }
         let coeff = match value {
-            Some(value) => Self::fit(value, self.precision, self.scale)?,
+            Some(value) => Self::fit(value, self.precision(), self.scale())?,
             None => B::Coeff::ZERO,
         };
         self.write_coeff_at(index, coeff);
@@ -238,7 +255,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         let mut coeffs: Vec<Option<B::Coeff>> = Vec::with_capacity(count);
         for offset in 0..count {
             coeffs.push(match next(offset)? {
-                Some(value) => Some(Self::fit(value, self.precision, self.scale)?),
+                Some(value) => Some(Self::fit(value, self.precision(), self.scale())?),
                 None => None,
             });
         }
@@ -324,7 +341,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
 
     /// The typed descriptor.
     pub fn data_type(&self) -> DecimalType<B> {
-        DecimalType::new(self.precision, self.scale)
+        DecimalType::new(self.precision(), self.scale())
     }
 
     /// A column from present values (no nulls), each re-expressed at `(precision, scale)`. Builds
@@ -346,8 +363,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
             validity: None,
             values: ArrowBuffer::from_vec(bytes),
             len: values.len(),
-            precision,
-            scale,
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         })
     }
@@ -385,8 +401,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
             validity,
             values: ArrowBuffer::from_vec(bytes),
             len: values.len(),
-            precision,
-            scale,
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         })
     }
@@ -422,14 +437,14 @@ impl<B: DecimalBacking> DecimalSerie<B> {
 
     /// A [`DecimalField`] naming this column, nullability inferred from whether it holds nulls.
     pub fn to_field(&self, name: &str) -> DecimalField<B> {
-        DecimalField::new(name, self.precision, self.scale, self.has_nulls())
+        DecimalField::new(name, self.precision(), self.scale(), self.has_nulls())
     }
 
     /// Writes the column: `[len: u64][precision: u8][scale: i8][flags: u8][validity?][values]`.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
         let has_validity = self.has_nulls();
         sink.write_all(&(self.len as u64).to_le_bytes())?;
-        sink.write_all(&[self.precision, self.scale as u8, u8::from(has_validity)])?;
+        sink.write_all(&[self.precision(), self.scale() as u8, u8::from(has_validity)])?;
         if has_validity {
             sink.write_all(self.validity.as_ref().unwrap().as_bytes())?;
         }
@@ -485,8 +500,7 @@ impl<B: DecimalBacking> DecimalSerie<B> {
             validity,
             values: ArrowBuffer::from_vec(values),
             len,
-            precision,
-            scale,
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         })
     }
@@ -516,7 +530,12 @@ impl<B: DecimalBacking> SerieType for DecimalSerie<B> {
 // *present* coefficients also means the unspecified bytes under null slots never affect equality.
 impl<B: DecimalBacking> PartialEq for DecimalSerie<B> {
     fn eq(&self, other: &Self) -> bool {
-        if self.precision != other.precision || self.scale != other.scale || self.len != other.len {
+        // Identity is over the **dtype params** (precision/scale, read from the held field) + the
+        // data — never the field's name / nullable / metadata (schema intent).
+        if self.precision() != other.precision()
+            || self.scale() != other.scale()
+            || self.len != other.len
+        {
             return false;
         }
         (0..self.len).all(|i| self.get_coeff(i) == other.get_coeff(i))
@@ -530,8 +549,7 @@ impl<B: DecimalBacking> Clone for DecimalSerie<B> {
             validity: self.validity.clone(),
             values: self.values.clone(), // Arc bump, not a payload copy
             len: self.len,
-            precision: self.precision,
-            scale: self.scale,
+            field: self.field.clone(),
             _backing: PhantomData,
         }
     }
@@ -541,8 +559,8 @@ impl<B: DecimalBacking> core::fmt::Debug for DecimalSerie<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DecimalSerie")
             .field("type", &B::NAME)
-            .field("precision", &self.precision)
-            .field("scale", &self.scale)
+            .field("precision", &self.precision())
+            .field("scale", &self.scale())
             .field("len", &self.len)
             .field("null_count", &self.null_count())
             .finish()
@@ -581,7 +599,7 @@ where
             arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
         });
         arrow_array::PrimitiveArray::<B::Arrow>::new(values, nulls)
-            .with_precision_and_scale(self.precision, self.scale)
+            .with_precision_and_scale(self.precision(), self.scale())
             .expect("DecimalType clamps precision/scale into Arrow's valid range")
     }
 
@@ -634,8 +652,7 @@ where
             validity,
             values,
             len,
-            precision: array.precision(),
-            scale: array.scale(),
+            field: DecimalField::new("", array.precision(), array.scale(), false),
             _backing: PhantomData,
         }
     }

@@ -4,6 +4,7 @@
 use core::marker::PhantomData;
 
 use super::{NativeType, PrimitiveType};
+use crate::io::field_carrier::field_setters;
 use crate::io::{DataType, DataTypeId, FieldType, Headers};
 
 #[cfg(feature = "arrow")]
@@ -99,6 +100,8 @@ impl Field {
         self.metadata.insert(key, value);
         self
     }
+
+    field_setters!();
 
     /// The column name.
     pub fn name(&self) -> &str {

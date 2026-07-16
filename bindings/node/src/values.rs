@@ -363,7 +363,9 @@ macro_rules! napi_fixed {
             /// An explicit copy.
             #[napi]
             pub fn copy(&self) -> Self {
-                Self { inner: self.inner }
+                Self {
+                    inner: self.inner.clone(),
+                }
             }
 
             #[napi(js_name = "toString")]
@@ -415,7 +417,7 @@ macro_rules! napi_fixed {
             #[napi(factory)]
             pub fn from_scalar(scalar: &$Scalar) -> Self {
                 Self {
-                    inner: Serie::from_scalar(scalar.inner),
+                    inner: Serie::from_scalar(scalar.inner.clone()),
                 }
             }
 
@@ -426,7 +428,10 @@ macro_rules! napi_fixed {
             pub fn from_scalars(scalars: Vec<Option<&$Scalar>>) -> Self {
                 let scalars: Vec<Scalar<$t>> = scalars
                     .into_iter()
-                    .map(|slot| slot.map(|scalar| scalar.inner).unwrap_or_else(Scalar::<$t>::null))
+                    .map(|slot| {
+                        slot.map(|scalar| scalar.inner.clone())
+                            .unwrap_or_else(Scalar::<$t>::null)
+                    })
                     .collect();
                 Self {
                     inner: Serie::from_scalars(&scalars),

@@ -22,10 +22,17 @@ use yggdryl_core::io::nested::{
     MapSerie as CoreMapSerie, StructField as CoreStructField, StructSerie as CoreStructSerie,
 };
 use yggdryl_core::io::{
-    read_any_column, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, NamedSerie,
+    read_any_column, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType,
 };
 
 use crate::types::{DataType, Field};
+
+/// Names a (self-describing) erased column in place — the one-line replacement for the removed
+/// `NamedSerie` carrier (the name goes straight into the column's own header).
+fn named_column(mut column: Box<dyn AnySerie>, name: &str) -> Box<dyn AnySerie> {
+    column.set_name(name);
+    column
+}
 
 /// Maps any core error to a thrown JS `Error` (its guided text passes through unchanged).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
@@ -335,7 +342,7 @@ impl StructSerie {
     ) -> napi::Result<Either4<Field, StructField, ListField, MapField>> {
         self.inner
             .field(index as usize)
-            .map(from_any_field)
+            .map(|field| from_any_field(&field))
             .ok_or_else(|| to_error("StructSerie field index out of range"))
     }
 
@@ -550,7 +557,7 @@ impl ListSerie {
     ) -> napi::Result<Self> {
         let item = to_any_field(item_field);
         let column = read_child(&item, &item_bytes)?;
-        let items = NamedSerie::new(column, item.name());
+        let items = named_column(column, item.name());
         CoreListSerie::from_values(items, &offsets, present.as_deref())
             .map(|inner| Self { inner })
             .map_err(to_error)
@@ -826,8 +833,8 @@ impl MapSerie {
     ) -> napi::Result<Self> {
         let key = to_any_field(key_field);
         let value = to_any_field(value_field);
-        let keys = NamedSerie::new(read_child(&key, &key_bytes)?, key.name());
-        let values = NamedSerie::new(read_child(&value, &value_bytes)?, value.name());
+        let keys = named_column(read_child(&key, &key_bytes)?, key.name());
+        let values = named_column(read_child(&value, &value_bytes)?, value.name());
         CoreMapSerie::from_entries(
             keys,
             values,

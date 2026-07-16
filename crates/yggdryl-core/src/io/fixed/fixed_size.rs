@@ -15,9 +15,11 @@ use core::marker::PhantomData;
 
 use super::Field;
 use crate::io::bitmap::Bitmap;
+use crate::io::field_carrier::{field_accessors, field_setters};
 use crate::io::var::{VarScalar, VarSerie};
 use crate::io::{
-    Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
+    AnyField, Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType,
+    SerieType,
 };
 
 /// The kind of a fixed-size byte value — opaque binary or UTF-8 — the way
@@ -129,6 +131,8 @@ impl<K: FixedElement> FixedSizeField<K> {
         self
     }
 
+    field_setters!();
+
     /// The typed descriptor.
     pub fn data_type(&self) -> FixedSizeType<K> {
         FixedSizeType::new(self.width)
@@ -187,8 +191,11 @@ impl<K: FixedElement> FieldType for FixedSizeField<K> {
 
 /// One nullable fixed-size value of kind `K` — a present value is exactly [`width`] bytes.
 pub struct FixedSizeScalar<K> {
-    width: usize,
     value: Option<Box<[u8]>>,
+    /// The value's own [`FixedSizeField`] descriptor — its name, declared nullability, metadata, and
+    /// the fixed byte `width`. The `width` joins the bytes in identity; the name / nullable /
+    /// metadata are excluded.
+    field: FixedSizeField<K>,
     _kind: PhantomData<K>,
 }
 
@@ -203,8 +210,8 @@ impl<K: FixedElement> FixedSizeScalar<K> {
     /// inputs known-valid by construction (any bytes for binary, a `&str` for UTF-8).
     pub(crate) fn from_bytes_unchecked(bytes: &[u8]) -> Self {
         Self {
-            width: bytes.len(),
             value: Some(bytes.into()),
+            field: FixedSizeField::new("", bytes.len(), false),
             _kind: PhantomData,
         }
     }
@@ -212,15 +219,15 @@ impl<K: FixedElement> FixedSizeScalar<K> {
     /// The null scalar of the given byte width.
     pub fn null(width: usize) -> Self {
         Self {
-            width,
             value: None,
+            field: FixedSizeField::new("", width, false),
             _kind: PhantomData,
         }
     }
 
-    /// The fixed byte width `N`.
+    /// The fixed byte width `N` (from the held field).
     pub fn width(&self) -> usize {
-        self.width
+        self.field.byte_width()
     }
 
     /// The raw bytes, or `None` if null.
@@ -235,12 +242,29 @@ impl<K: FixedElement> FixedSizeScalar<K> {
 
     /// The typed descriptor.
     pub fn data_type(&self) -> FixedSizeType<K> {
-        FixedSizeType::new(self.width)
+        FixedSizeType::new(self.width())
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata + width)
+    /// with **effective** nullability `self.nullable() || self.is_null()`.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.is_null());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](FixedSizeScalar::field) but **consumes** the scalar.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.is_null();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// Writes this scalar: `[width:u64][validity:u8][bytes?]`.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
-        sink.write_all(&(self.width as u64).to_le_bytes())?;
+        sink.write_all(&(self.width() as u64).to_le_bytes())?;
         match &self.value {
             Some(bytes) => {
                 sink.write_all(&[1])?;
@@ -263,8 +287,8 @@ impl<K: FixedElement> FixedSizeScalar<K> {
         source.read_exact(&mut bytes)?;
         K::validate(&bytes)?;
         Ok(Self {
-            width,
             value: Some(bytes.into_boxed_slice()),
+            field: FixedSizeField::new("", width, false),
             _kind: PhantomData,
         })
     }
@@ -274,7 +298,7 @@ impl<K: FixedElement> ScalarType for FixedSizeScalar<K> {
     type Data = FixedSizeType<K>;
 
     fn data_type(&self) -> FixedSizeType<K> {
-        FixedSizeType::new(self.width)
+        FixedSizeType::new(self.width())
     }
 
     fn is_null(&self) -> bool {
@@ -295,10 +319,13 @@ impl<K: FixedElement> VarScalar for FixedSizeScalar<K> {
 /// A nullable column of fixed-size values of kind `K` — a flat `N`-byte-slot data buffer over
 /// an optional validity bitmap. Value `i` is `data[i * width .. (i + 1) * width]`.
 pub struct FixedSizeSerie<K> {
-    width: usize,
     data: Vec<u8>,
     validity: Option<Bitmap>,
     len: usize,
+    /// The column's own [`FixedSizeField`] descriptor — its name, declared nullability, metadata, and
+    /// the fixed byte `width`. The `width` joins the data in value identity and the byte codec; the
+    /// name / nullable / metadata are excluded.
+    field: FixedSizeField<K>,
     _kind: PhantomData<K>,
 }
 
@@ -306,17 +333,35 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     /// An empty column whose values are `width` bytes each.
     pub fn new(width: usize) -> Self {
         Self {
-            width,
             data: Vec::new(),
             validity: None,
             len: 0,
+            field: FixedSizeField::new("", width, false),
             _kind: PhantomData,
         }
     }
 
-    /// The fixed byte width `N`.
+    field_accessors!();
+
+    /// The fixed byte width `N` (from the held field).
     pub fn width(&self) -> usize {
-        self.width
+        self.field.byte_width()
+    }
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata + width)
+    /// with **effective** nullability `self.nullable() || self.has_nulls()` folded in — a lenient,
+    /// Arrow-standard over-approximation.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.has_nulls());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](FixedSizeSerie::field) but **consumes** the column.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.has_nulls();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// Appends one value (`None` is a null). Errors ([`IoError::CorruptLength`]) if a present
@@ -324,10 +369,10 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     pub fn push(&mut self, value: Option<&[u8]>) -> Result<(), IoError> {
         match value {
             Some(bytes) => {
-                if bytes.len() != self.width {
+                if bytes.len() != self.width() {
                     return Err(IoError::CorruptLength {
                         len: bytes.len() as u64,
-                        width: self.width,
+                        width: self.width(),
                     });
                 }
                 K::validate(bytes)?;
@@ -337,7 +382,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
                 }
             }
             None => {
-                self.data.resize(self.data.len() + self.width, 0); // zero placeholder slot
+                self.data.resize(self.data.len() + self.width(), 0); // zero placeholder slot
                 self.validity
                     .get_or_insert_with(|| Bitmap::all_present(self.len))
                     .push(false);
@@ -391,7 +436,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
                 return None;
             }
         }
-        Some(&self.data[index * self.width..(index + 1) * self.width])
+        Some(&self.data[index * self.width()..(index + 1) * self.width()])
     }
 
     /// The number of elements.
@@ -416,12 +461,12 @@ impl<K: FixedElement> FixedSizeSerie<K> {
 
     /// The typed descriptor.
     pub fn data_type(&self) -> FixedSizeType<K> {
-        FixedSizeType::new(self.width)
+        FixedSizeType::new(self.width())
     }
 
     /// A [`FixedSizeField`] naming this column, nullability inferred from whether it has nulls.
     pub fn to_field(&self, name: &str) -> FixedSizeField<K> {
-        FixedSizeField::new(name, self.width, self.has_nulls())
+        FixedSizeField::new(name, self.width(), self.has_nulls())
     }
 
     /// Element `index` as a [`FixedSizeScalar`] — null if the element is null or out of range.
@@ -429,7 +474,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         match self.get_bytes(index) {
             // The bytes entered through a checked path, so they are already valid for the kind.
             Some(bytes) => FixedSizeScalar::from_bytes_unchecked(bytes),
-            None => FixedSizeScalar::null(self.width),
+            None => FixedSizeScalar::null(self.width()),
         }
     }
 
@@ -446,13 +491,13 @@ impl<K: FixedElement> FixedSizeSerie<K> {
                 len: self.len,
             });
         }
-        let slot = index * self.width..(index + 1) * self.width;
+        let slot = index * self.width()..(index + 1) * self.width();
         match value {
             Some(bytes) => {
-                if bytes.len() != self.width {
+                if bytes.len() != self.width() {
                     return Err(IoError::CorruptLength {
                         len: bytes.len() as u64,
-                        width: self.width,
+                        width: self.width(),
                     });
                 }
                 K::validate(bytes)?;
@@ -528,7 +573,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         };
         let mut prefix = Vec::with_capacity(8 + 8 + 1 + validity_bytes.len());
         prefix.extend_from_slice(&(self.len as u64).to_le_bytes());
-        prefix.extend_from_slice(&(self.width as u64).to_le_bytes());
+        prefix.extend_from_slice(&(self.width() as u64).to_le_bytes());
         prefix.push(u8::from(has_validity));
         prefix.extend_from_slice(validity_bytes);
         sink.write_all(&prefix)?;
@@ -564,10 +609,10 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         }
 
         Ok(Self {
-            width,
             data,
             validity,
             len,
+            field: FixedSizeField::new("", width, false),
             _kind: PhantomData,
         })
     }
@@ -612,7 +657,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
             let buffer = arrow_buffer::Buffer::from(bitmap.as_bytes());
             arrow_buffer::NullBuffer::new(arrow_buffer::BooleanBuffer::new(buffer, 0, self.len))
         });
-        arrow_array::FixedSizeBinaryArray::new(self.width as i32, values, nulls)
+        arrow_array::FixedSizeBinaryArray::new(self.width() as i32, values, nulls)
     }
 
     /// Builds a column from an Arrow [`FixedSizeBinaryArray`](arrow_array::FixedSizeBinaryArray),
@@ -676,17 +721,35 @@ macro_rules! fixed_size_value_impls {
 }
 
 fixed_size_value_impls!(FixedSizeField, name, width, nullable, metadata);
-fixed_size_value_impls!(FixedSizeScalar, width, value);
+
+// A manual `Clone` / `PartialEq` / `Hash` for the scalar (not the macro): identity is over the
+// **dtype param** (width, from the held field) + the bytes — never the field's name / nullable /
+// metadata (schema intent). A null value's placeholder bytes are `None`, so nulls compare by width.
+impl<K: FixedElement> Clone for FixedSizeScalar<K> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            field: self.field.clone(),
+            _kind: PhantomData,
+        }
+    }
+}
+impl<K: FixedElement> PartialEq for FixedSizeScalar<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.width() == other.width() && self.value == other.value
+    }
+}
+impl<K: FixedElement> Eq for FixedSizeScalar<K> {}
 
 // A manual `Clone` for the column (the macro would work, but its `PartialEq` must be hand-written —
 // see below — so `Clone` lives here beside it).
 impl<K: FixedElement> Clone for FixedSizeSerie<K> {
     fn clone(&self) -> Self {
         Self {
-            width: self.width,
             data: self.data.clone(),
             validity: self.validity.clone(),
             len: self.len,
+            field: self.field.clone(),
             _kind: PhantomData,
         }
     }
@@ -703,7 +766,9 @@ impl<K: FixedElement> Clone for FixedSizeSerie<K> {
 // all-present column differ from the equivalent dense one).
 impl<K: FixedElement> PartialEq for FixedSizeSerie<K> {
     fn eq(&self, other: &Self) -> bool {
-        self.width == other.width
+        // Identity is over the **dtype param** (width, from the held field) + the data — never the
+        // field's name / nullable / metadata (schema intent).
+        self.width() == other.width()
             && self.len == other.len
             && (0..self.len).all(|index| self.get_bytes(index) == other.get_bytes(index))
     }
@@ -731,7 +796,7 @@ impl<K: FixedElement> core::hash::Hash for FixedSizeType<K> {
 
 impl<K: FixedElement> core::hash::Hash for FixedSizeScalar<K> {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.width.hash(state);
+        self.width().hash(state);
         self.value.hash(state);
     }
 }
@@ -755,7 +820,7 @@ impl<K: FixedElement> core::fmt::Debug for FixedSizeScalar<K> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("FixedSizeScalar")
             .field("type", &K::NAME)
-            .field("width", &self.width)
+            .field("width", &self.width())
             .field("null", &self.is_null())
             .finish()
     }
@@ -764,7 +829,7 @@ impl<K: FixedElement> core::fmt::Debug for FixedSizeSerie<K> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("FixedSizeSerie")
             .field("type", &K::NAME)
-            .field("width", &self.width)
+            .field("width", &self.width())
             .field("len", &self.len)
             .field("null_count", &self.null_count())
             .finish()

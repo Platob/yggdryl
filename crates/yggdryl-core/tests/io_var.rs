@@ -247,5 +247,5 @@ fn serie_field_infers_nullability() {
 
     let no_nulls = Utf8Serie::from_strs(&[Some("a"), Some("b")]);
     assert!(!no_nulls.to_field("c").nullable());
-    assert!(no_nulls.field("c", true).nullable()); // explicit override
+    assert!(no_nulls.typed_field("c", true).nullable()); // explicit override
 }

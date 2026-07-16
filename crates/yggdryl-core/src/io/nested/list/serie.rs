@@ -7,10 +7,12 @@ use core::any::Any;
 
 use super::scalar::ListScalar;
 use super::{ListField, ListType};
+use crate::io::any_serie::apply_field_header;
 use crate::io::bitmap::Bitmap;
+use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
+use crate::io::fixed::Field;
 use crate::io::{
-    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, NamedSerie,
-    SerieType,
+    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, SerieType,
 };
 
 /// A **nullable list column** — `i32` offsets over one flattened child [`AnySerie`](crate::io::AnySerie)
@@ -34,24 +36,27 @@ use crate::io::{
 /// ```
 #[derive(Debug, Clone)]
 pub struct ListSerie {
-    item: AnyField,
     values: Box<dyn AnySerie>,
     offsets: Vec<i32>,
     validity: Option<Bitmap>,
     len: usize,
+    /// The list column's **own-header** field (`List` type_id) — its name, declared nullability, and
+    /// metadata. Excluded from value identity and never written to the standalone frame; the item
+    /// field is derived from the flat child column.
+    field: Field,
 }
 
-// A manual `PartialEq` (not a derive): a derive over a bare `Box<dyn AnySerie>` field cannot resolve
-// the erased-column equality, so the flat child is compared through `eq_any` (equal type *and*
-// value). Two list columns are equal iff same item field, offsets, null positions, length, and
-// flattened child. Offsets and validity are canonicalized at construction, so equal logical columns
+// A manual `PartialEq` (not a derive): the flat child is compared through `eq_any` (equal type *and*
+// value), and its DERIVED item field ([`field_self`], which carries the item NAME — a list is
+// unreconstructable without it) pairwise. The list's OWN name / nullability / metadata are schema
+// intent, excluded. Offsets and validity are canonicalized at construction, so equal logical columns
 // compare equal (and serialize byte-equal).
 impl PartialEq for ListSerie {
     fn eq(&self, other: &Self) -> bool {
         self.len == other.len
-            && self.item == other.item
             && self.offsets == other.offsets
             && self.validity == other.validity
+            && self.values.field_self() == other.values.field_self()
             && self.values.eq_any(other.values.as_ref())
     }
 }
@@ -59,10 +64,12 @@ impl PartialEq for ListSerie {
 impl Eq for ListSerie {}
 
 impl ListSerie {
-    /// A list column from a self-describing [`NamedSerie`] flattened child, the row `offsets`, and an
-    /// optional per-row **present** mask (`present[i] == false` marks row `i` a null list). The
-    /// element (item) field is the child's [`field`](NamedSerie::field) (its inferred type + name);
-    /// the stored child is the unwrapped erased column.
+    /// A list column from a **self-describing** flattened child column (an erased
+    /// [`AnySerie`](crate::io::AnySerie), typically named with [`named`](crate::io::AnySerie::named)),
+    /// the row `offsets`, and an optional per-row **present** mask (`present[i] == false` marks row
+    /// `i` a null list). The element (item) field is the child's own derived
+    /// [`field_self`](crate::io::AnySerie::field_self) (its inferred type + header name); the child
+    /// is stored as-is.
     ///
     /// The `offsets` must have `len + 1` entries with `offsets[0] == 0`, be non-decreasing, and end
     /// at the child length (`offsets[len] == child.len()`); otherwise a guided
@@ -80,20 +87,18 @@ impl ListSerie {
     /// assert_eq!(list.row_scalar(1).len(), 0); // the empty row
     /// ```
     pub fn from_values(
-        items: NamedSerie,
+        items: Box<dyn AnySerie>,
         offsets: &[i32],
         present: Option<&[bool]>,
     ) -> Result<Self, IoError> {
-        let item = items.field();
-        let values = items.into_inner();
-        let len = validate_offsets(offsets, values.len())?;
+        let len = validate_offsets(offsets, items.len())?;
         let validity = validity_from_present(present, len);
         Ok(Self {
-            item,
-            values,
+            values: items,
             offsets: offsets.to_vec(),
             validity,
             len,
+            field: Field::of("", DataTypeId::List, 0, false),
         })
     }
 
@@ -101,13 +106,14 @@ impl ListSerie {
     /// the schema's element type.
     pub fn empty(schema: &ListField) -> Self {
         let item = schema.item().clone();
-        let values = crate::io::nested::empty_any_column(&item);
+        let mut values = crate::io::nested::empty_any_column(&item);
+        apply_field_header(&mut values, &item);
         Self {
-            item,
             values,
             offsets: vec![0],
             validity: None,
             len: 0,
+            field: Field::of("", DataTypeId::List, 0, false),
         }
     }
 
@@ -149,9 +155,13 @@ impl ListSerie {
         &self.offsets
     }
 
-    /// The element (item) field descriptor.
-    pub fn item_field(&self) -> &AnyField {
-        &self.item
+    field_accessors!();
+
+    /// The element (item) field descriptor — **derived on demand** from the flat child column's own
+    /// header (its [`field_self`](crate::io::AnySerie::field_self)); the child column is the single
+    /// source of truth. Owned (there is no cached item field to borrow).
+    pub fn item_field(&self) -> AnyField {
+        self.values.field_self()
     }
 
     /// The child sub-range `[start, end)` of row `index`, or `None` if out of range. Returns the
@@ -184,7 +194,7 @@ impl ListSerie {
     /// scalar over an empty child.
     pub fn row_scalar(&self, index: usize) -> ListScalar {
         if index >= self.len {
-            return ListScalar::null(self.item.clone(), self.values.slice(0, 0));
+            return ListScalar::null(self.item_field(), self.values.slice(0, 0));
         }
         let (start, end) = (
             self.offsets[index] as usize,
@@ -192,21 +202,21 @@ impl ListSerie {
         );
         let items = self.values.slice(start, end - start);
         if self.validity.as_ref().is_some_and(|v| !v.get(index)) {
-            ListScalar::null(self.item.clone(), items)
+            ListScalar::null(self.item_field(), items)
         } else {
-            ListScalar::new(self.item.clone(), items)
+            ListScalar::new(self.item_field(), items)
         }
     }
 
     /// The typed [`ListType`] descriptor (its element field).
     pub fn data_type(&self) -> ListType {
-        ListType::new(self.item.clone())
+        ListType::new(self.item_field())
     }
 
     /// A [`ListField`] naming this list column, its nullability inferred from whether it holds any
     /// null rows.
     pub fn to_field(&self, name: &str) -> ListField {
-        ListField::new(name, self.item.clone(), self.has_nulls())
+        ListField::new(name, self.item_field(), self.has_nulls())
     }
 
     /// A **new** list column holding rows `[offset, offset + len)` — the range is clamped to the
@@ -219,7 +229,11 @@ impl ListSerie {
         let count = len.min(self.len - start);
         let child_start = self.offsets[start] as usize;
         let child_end = self.offsets[start + count] as usize;
-        let values = self.values.slice(child_start, child_end - child_start);
+        // A freshly-sliced child carries an empty header; restore the item field (its name /
+        // metadata) so the derived item field survives the slice.
+        let item = self.item_field();
+        let mut values = self.values.slice(child_start, child_end - child_start);
+        apply_field_header(&mut values, &item);
         let base = self.offsets[start];
         let offsets: Vec<i32> = self.offsets[start..=start + count]
             .iter()
@@ -235,11 +249,11 @@ impl ListSerie {
             sliced
         });
         Self {
-            item: self.item.clone(),
             values,
             offsets,
             validity: normalize(validity),
             len: count,
+            field: self.field.clone(),
         }
     }
 
@@ -265,16 +279,12 @@ impl ListSerie {
     /// header, top-level validity, and offsets are packed into **one** pre-sized buffer and written
     /// in a single call; then the child column serializes itself.
     fn write_frame(&self, sink: &mut Bytes) -> Result<(), IoError> {
-        // Encode the schema (a list field over `self.item`) straight from the borrowed item — no
-        // `ListField` / `self.item.clone()` round-trip. Read back as the list's `item`.
+        // Encode the schema (a list field over the **derived** item field). Its name / metadata are
+        // empty and its nullability is `has_nulls()` (not the own-header flag), so equal-in-data lists
+        // serialize byte-identical regardless of the list's own name/metadata.
+        let item = self.item_field();
         let mut schema = Vec::new();
-        AnyField::encode_list(
-            "",
-            self.has_nulls(),
-            &Headers::new(),
-            &self.item,
-            &mut schema,
-        );
+        AnyField::encode_list("", self.has_nulls(), &Headers::new(), &item, &mut schema);
 
         let has_validity = self.has_nulls();
         let validity_bytes = if has_validity {
@@ -333,14 +343,16 @@ impl ListSerie {
             .collect();
         // The child column is self-describing; read it through the shared recursive dispatch so a
         // leaf, struct, or nested list child all round-trip.
-        let values = crate::io::nested::read_any_column(&item, source)?;
+        let mut values = crate::io::nested::read_any_column(&item, source)?;
         validate_offsets(&offsets, values.len())?;
+        // Restore the child's header from the item field so the derived item field round-trips.
+        apply_field_header(&mut values, &item);
         Ok(Self {
-            item,
             values,
             offsets,
             validity: normalize(validity),
             len,
+            field: Field::of("", DataTypeId::List, 0, false),
         })
     }
 }
@@ -377,8 +389,11 @@ impl AnySerie for ListSerie {
         DataTypeId::List
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::from(ListField::new(name, self.item.clone(), self.has_nulls()))
+        AnyField::list_(name, self.item_field(), self.nullable() || self.has_nulls())
+            .with_metadata_overlay(self.metadata())
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -505,7 +520,7 @@ impl ListSerie {
     /// Arrow cannot express (a temporal resolution `Minute`…`Year`) has no Arrow array.
     pub fn to_arrow_array(&self) -> Result<arrow_array::ListArray, IoError> {
         use std::sync::Arc;
-        let item_field = Arc::new(self.item.to_arrow());
+        let item_field = Arc::new(self.item_field().to_arrow());
         let offsets =
             arrow_buffer::OffsetBuffer::new(arrow_buffer::ScalarBuffer::from(self.offsets.clone()));
         let values = self.values.to_arrow_array()?;
@@ -557,16 +572,17 @@ impl ListSerie {
         let last = raw_offsets[len];
         // Window the full child to exactly the used range, then import it recursively.
         let child_window = list.values().slice(first as usize, (last - first) as usize);
-        let values =
+        let mut values =
             crate::io::nested::from_arrow_any_column(child_window.as_ref(), item_field.as_ref())?;
+        apply_field_header(&mut values, &item);
         let offsets: Vec<i32> = raw_offsets.iter().map(|&offset| offset - first).collect();
         let validity = list_validity_from_arrow(list);
         Ok(Self {
-            item,
             values,
             offsets,
             validity,
             len,
+            field: Field::of("", DataTypeId::List, 0, false),
         })
     }
 }

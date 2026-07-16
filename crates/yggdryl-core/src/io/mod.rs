@@ -35,6 +35,7 @@ mod category;
 mod converter;
 mod data_type;
 mod data_type_id;
+mod field_carrier;
 mod field_type;
 pub mod fixed;
 mod headers;
@@ -42,7 +43,6 @@ mod io_base;
 mod io_cursor;
 mod io_error;
 mod io_slice;
-mod named_serie;
 pub mod nested;
 mod percent;
 mod scalar_type;
@@ -62,7 +62,6 @@ pub use any_scalar::AnyScalar;
 #[cfg(feature = "arrow")]
 pub use any_serie::from_arrow_any_leaf;
 pub use any_serie::{boxed, read_any_leaf, AnySerie};
-pub use named_serie::NamedSerie;
 // The central recursive child dispatch spanning leaf + nested columns (a list/struct child can be a
 // leaf, a struct, or another list) — mirrors the leaf-only `read_any_leaf` / `from_arrow_any_leaf`.
 #[cfg(feature = "arrow")]

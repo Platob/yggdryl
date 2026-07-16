@@ -1,9 +1,10 @@
 //! [`Serie`] — a nullable column of fixed-width `T`: a validity bitmap over a values
 //! [`Buffer`] — and the [`FixedSerie`] sub-trait of the root [`SerieType`](crate::io::SerieType).
 
-use super::{Buffer, NativeType, PrimitiveType, Scalar, TypedField};
+use super::{Buffer, Field, NativeType, PrimitiveType, Scalar, TypedField};
 use crate::io::bitmap::Bitmap;
-use crate::io::{Bytes, IOBase, IOCursor, IoError, SerieType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOBase, IOCursor, IoError, SerieType};
 
 /// The largest fixed-width primitive is 32 bytes (`u256`/`i256`); a stack scratch of this size
 /// encodes one value with no allocation while building a column's raw bytes in one pass.
@@ -52,6 +53,10 @@ pub struct Serie<T: NativeType> {
     /// The contiguous values; `values.count() == len`.
     values: Buffer<T>,
     len: usize,
+    /// The column's own leaf [`Field`] descriptor — its name, declared nullability, and metadata.
+    /// Excluded from value identity and the byte codec (only its dtype params, fixed at `T`, and the
+    /// data participate). The single source of truth for the column's schema intent.
+    field: Field,
 }
 
 impl<T: NativeType> Serie<T> {
@@ -74,6 +79,7 @@ impl<T: NativeType> Serie<T> {
             validity: None,
             values: Buffer::from_slice(values),
             len: values.len(),
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 
@@ -110,6 +116,7 @@ impl<T: NativeType> Serie<T> {
             validity,
             values: Buffer::from_byte_vec(bytes),
             len,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 
@@ -119,6 +126,7 @@ impl<T: NativeType> Serie<T> {
             validity: None,
             values: Buffer::with_capacity(capacity),
             len: 0,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 
@@ -136,6 +144,7 @@ impl<T: NativeType> Serie<T> {
             validity,
             values: Buffer::from_byte_vec(values),
             len,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 
@@ -197,8 +206,30 @@ impl<T: NativeType> Serie<T> {
         PrimitiveType::new()
     }
 
-    /// A [`TypedField`] naming a column of this serie's type with explicit nullability.
-    pub fn field(&self, name: &str, nullable: bool) -> TypedField<T> {
+    field_accessors!();
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata) with
+    /// the **effective** nullability folded in.
+    ///
+    /// DESIGN: the surfaced nullability is `self.nullable() || self.has_nulls()` (declared OR the
+    /// column currently holds nulls) — a lenient, Arrow-standard over-approximation, so it is
+    /// always a safe field for the data (a null-bearing column is never described as non-nullable).
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.has_nulls());
+        AnyField::leaf(field)
+    }
+
+    /// Like [`field`](Serie::field) but **consumes** the column, moving the held field (its name and
+    /// metadata) into the result with no clone — the zero-copy hand-off.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.has_nulls();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field)
+    }
+
+    /// A [`TypedField`] naming a column of this serie's type with **explicit** nullability.
+    pub fn typed_field(&self, name: &str, nullable: bool) -> TypedField<T> {
         TypedField::new(name, nullable)
     }
 
@@ -441,6 +472,7 @@ impl<T: NativeType> Serie<T> {
             validity,
             values: Buffer::from_bytes(&value_bytes),
             len,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         })
     }
 
@@ -476,6 +508,7 @@ impl<T: NativeType> Default for Serie<T> {
             validity: None,
             values: Buffer::new(),
             len: 0,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 }
@@ -590,6 +623,7 @@ impl<T: super::ArrowNative> Serie<T> {
             validity,
             values,
             len,
+            field: Field::of("", T::TYPE_ID, T::WIDTH, false),
         }
     }
 }

@@ -141,7 +141,9 @@ macro_rules! napi_dec_col {
             /// An explicit copy.
             #[napi]
             pub fn copy(&self) -> Self {
-                Self { inner: self.inner }
+                Self {
+                    inner: self.inner.clone(),
+                }
             }
 
             #[napi(js_name = "toString")]
@@ -223,7 +225,7 @@ macro_rules! napi_dec_col {
                 let scalars: Vec<DecimalScalar<$B>> = scalars
                     .into_iter()
                     .map(|slot| {
-                        slot.map(|scalar| scalar.inner)
+                        slot.map(|scalar| scalar.inner.clone())
                             .unwrap_or_else(|| DecimalScalar::null(precision, scale))
                     })
                     .collect();

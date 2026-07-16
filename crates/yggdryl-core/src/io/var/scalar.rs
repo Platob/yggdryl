@@ -4,7 +4,8 @@
 use core::marker::PhantomData;
 
 use super::{ByteField, ByteType, VarElement};
-use crate::io::{Bytes, IOCursor, IoError, ScalarType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, FieldType, IOCursor, IoError, ScalarType};
 
 /// The **variable-length scalar** sub-trait — the sibling of
 /// [`FixedScalar`](crate::io::fixed::FixedScalar) for a value whose bytes are not a fixed width
@@ -34,6 +35,9 @@ pub trait VarScalar: ScalarType {
 /// ```
 pub struct ByteScalar<E: VarElement> {
     value: Option<Box<[u8]>>,
+    /// The value's own [`ByteField`] descriptor — its name, declared nullability, and metadata.
+    /// Excluded from value identity and the byte codec (only the bytes participate).
+    field: ByteField<E>,
     _element: PhantomData<E>,
 }
 
@@ -49,6 +53,7 @@ impl<E: VarElement> ByteScalar<E> {
     pub(crate) fn from_bytes_unchecked(bytes: &[u8]) -> Self {
         Self {
             value: Some(bytes.into()),
+            field: ByteField::new("", false),
             _element: PhantomData,
         }
     }
@@ -65,6 +70,7 @@ impl<E: VarElement> ByteScalar<E> {
     pub fn null() -> Self {
         Self {
             value: None,
+            field: ByteField::new("", false),
             _element: PhantomData,
         }
     }
@@ -84,8 +90,25 @@ impl<E: VarElement> ByteScalar<E> {
         ByteType::new()
     }
 
-    /// A [`ByteField`] naming a column of this scalar's type.
-    pub fn field(&self, name: &str, nullable: bool) -> ByteField<E> {
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata) with
+    /// **effective** nullability `self.nullable() || self.is_null()`.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.is_null());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](ByteScalar::field) but **consumes** the scalar.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.is_null();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
+    }
+
+    /// A [`ByteField`] naming a column of this scalar's type with explicit nullability.
+    pub fn typed_field(&self, name: &str, nullable: bool) -> ByteField<E> {
         ByteField::new(name, nullable)
     }
 
@@ -167,6 +190,7 @@ impl<E: VarElement> Clone for ByteScalar<E> {
     fn clone(&self) -> Self {
         Self {
             value: self.value.clone(),
+            field: self.field.clone(),
             _element: PhantomData,
         }
     }

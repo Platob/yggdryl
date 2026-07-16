@@ -117,7 +117,9 @@ impl NullScalar {
     /// An explicit copy.
     #[napi]
     pub fn copy(&self) -> Self {
-        Self { inner: self.inner }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 
     #[napi(js_name = "toString")]
@@ -155,7 +157,7 @@ impl NullSerie {
         let scalars: Vec<CoreNullScalar> = scalars
             .into_iter()
             .map(|slot| {
-                slot.map(|scalar| scalar.inner)
+                slot.map(|scalar| scalar.inner.clone())
                     .unwrap_or_else(CoreNullScalar::null)
             })
             .collect();

@@ -4,8 +4,9 @@
 
 use core::marker::PhantomData;
 
-use super::{Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalType};
-use crate::io::{Bytes, IOCursor, IoError, ScalarType};
+use super::{Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, IOCursor, IoError, ScalarType};
 
 /// A single, possibly-null decimal value of width `B`, precision `precision`, scale `scale`.
 ///
@@ -19,8 +20,10 @@ use crate::io::{Bytes, IOCursor, IoError, ScalarType};
 /// ```
 pub struct DecimalScalar<B: DecimalBacking> {
     value: Option<B::Coeff>,
-    precision: u8,
-    scale: i8,
+    /// The value's own [`DecimalField`] descriptor — its name, declared nullability, metadata, and
+    /// the `(precision, scale)` dtype params. The `(precision, scale)` (folded through `value()`)
+    /// join the coefficient in identity; the name / nullable / metadata are excluded.
+    field: DecimalField<B>,
     _backing: PhantomData<B>,
 }
 
@@ -30,12 +33,7 @@ impl<B: DecimalBacking> DecimalScalar<B> {
     pub fn of(value: Decimal<B>) -> Self {
         let scale = value.scale().max(0);
         let precision = (value.precision().max(scale as u32).max(1) as u8).min(B::MAX_PRECISION);
-        Self {
-            value: Some(value.raw_coeff()),
-            precision,
-            scale,
-            _backing: PhantomData,
-        }
+        Self::from_parts(Some(value.raw_coeff()), precision, scale)
     }
 
     /// A present scalar from `value`, re-expressed at `(precision, scale)` — a guided
@@ -55,22 +53,16 @@ impl<B: DecimalBacking> DecimalScalar<B> {
                 max: precision,
             });
         }
-        Ok(Self {
-            value: Some(rescaled.raw_coeff()),
+        Ok(Self::from_parts(
+            Some(rescaled.raw_coeff()),
             precision,
             scale,
-            _backing: PhantomData,
-        })
+        ))
     }
 
     /// The null scalar of the given `(precision, scale)`.
     pub fn null(precision: u8, scale: i8) -> Self {
-        Self {
-            value: None,
-            precision,
-            scale,
-            _backing: PhantomData,
-        }
+        Self::from_parts(None, precision, scale)
     }
 
     /// A scalar from an already-fitted coefficient at `(precision, scale)` — the column's bridge to
@@ -78,8 +70,7 @@ impl<B: DecimalBacking> DecimalScalar<B> {
     pub(crate) fn from_parts(value: Option<B::Coeff>, precision: u8, scale: i8) -> Self {
         Self {
             value,
-            precision,
-            scale,
+            field: DecimalField::new("", precision, scale, false),
             _backing: PhantomData,
         }
     }
@@ -87,7 +78,7 @@ impl<B: DecimalBacking> DecimalScalar<B> {
     /// The value, or `None` if null.
     pub fn value(&self) -> Option<Decimal<B>> {
         self.value
-            .map(|coeff| Decimal::from_coeff(coeff, self.scale))
+            .map(|coeff| Decimal::from_coeff(coeff, self.scale()))
     }
 
     /// Whether the scalar is null.
@@ -95,19 +86,36 @@ impl<B: DecimalBacking> DecimalScalar<B> {
         self.value.is_none()
     }
 
-    /// The precision.
+    /// The precision (from the held field).
     pub fn precision(&self) -> u8 {
-        self.precision
+        self.field.precision()
     }
 
-    /// The scale.
+    /// The scale (from the held field).
     pub fn scale(&self) -> i8 {
-        self.scale
+        self.field.scale()
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this scalar contributes — its **held field** (name + metadata +
+    /// precision/scale) with **effective** nullability `self.nullable() || self.is_null()`.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.is_null());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](DecimalScalar::field) but **consumes** the scalar.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.is_null();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
     }
 
     /// The typed descriptor.
     pub fn data_type(&self) -> DecimalType<B> {
-        DecimalType::new(self.precision, self.scale)
+        DecimalType::new(self.precision(), self.scale())
     }
 
     /// The serialized byte width: `[validity][precision][scale][coefficient]`.
@@ -121,8 +129,8 @@ impl<B: DecimalBacking> DecimalScalar<B> {
         let mut frame = [0u8; 3 + 32];
         let len = Self::serialized_len();
         frame[0] = u8::from(self.value.is_some());
-        frame[1] = self.precision;
-        frame[2] = self.scale as u8;
+        frame[1] = self.precision();
+        frame[2] = self.scale() as u8;
         if let Some(coeff) = self.value {
             coeff.write_le(&mut frame[3..]);
         }
@@ -138,12 +146,7 @@ impl<B: DecimalBacking> DecimalScalar<B> {
         let precision = frame[1];
         let scale = frame[2] as i8;
         let value = present.then(|| B::Coeff::read_le(&frame[3..]));
-        Ok(Self {
-            value,
-            precision,
-            scale,
-            _backing: PhantomData,
-        })
+        Ok(Self::from_parts(value, precision, scale))
     }
 
     /// This scalar's canonical bytes — the same `[validity][precision][scale][coefficient]` frame
@@ -175,7 +178,7 @@ impl<B: DecimalBacking> ScalarType for DecimalScalar<B> {
     type Data = DecimalType<B>;
 
     fn data_type(&self) -> DecimalType<B> {
-        DecimalType::new(self.precision, self.scale)
+        DecimalType::new(self.precision(), self.scale())
     }
 
     fn is_null(&self) -> bool {
@@ -208,16 +211,19 @@ impl<B: DecimalBacking> core::hash::Hash for DecimalScalar<B> {
 }
 impl<B: DecimalBacking> Clone for DecimalScalar<B> {
     fn clone(&self) -> Self {
-        *self
+        Self {
+            value: self.value,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        }
     }
 }
-impl<B: DecimalBacking> Copy for DecimalScalar<B> {}
 impl<B: DecimalBacking> core::fmt::Debug for DecimalScalar<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DecimalScalar")
             .field("type", &B::NAME)
-            .field("precision", &self.precision)
-            .field("scale", &self.scale)
+            .field("precision", &self.precision())
+            .field("scale", &self.scale())
             .field("value", &self.value().map(|v| v.to_string()))
             .finish()
     }

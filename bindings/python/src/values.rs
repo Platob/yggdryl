@@ -361,7 +361,7 @@ macro_rules! py_serie {
             #[staticmethod]
             fn from_scalar(scalar: &$Scalar) -> Self {
                 Self {
-                    inner: Serie::from_scalar(scalar.inner),
+                    inner: Serie::from_scalar(scalar.inner.clone()),
                 }
             }
 

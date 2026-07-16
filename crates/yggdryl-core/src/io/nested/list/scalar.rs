@@ -3,6 +3,8 @@
 //! yields.
 
 use super::ListType;
+use crate::io::field_carrier::field_accessors;
+use crate::io::fixed::Field;
 use crate::io::{AnyField, AnySerie, DataTypeId, ScalarType};
 
 /// A single **list value** — a row: the list's element (item) field, the row's elements as an erased
@@ -31,6 +33,9 @@ pub struct ListScalar {
     item: AnyField,
     items: Box<dyn AnySerie>,
     null: bool,
+    /// The value's **own-header** field (`List` type_id) — its name, declared nullability, and
+    /// metadata. Excluded from value identity (the item field + elements are the identity).
+    field: Field,
 }
 
 impl ListScalar {
@@ -40,6 +45,7 @@ impl ListScalar {
             item,
             items,
             null: false,
+            field: Field::of("", DataTypeId::List, 0, false),
         }
     }
 
@@ -49,7 +55,31 @@ impl ListScalar {
             item,
             items,
             null: true,
+            field: Field::of("", DataTypeId::List, 0, false),
         }
+    }
+
+    field_accessors!();
+
+    /// The erased [`AnyField`] this list value contributes — a `List` field over its item field,
+    /// with **effective** nullability `self.nullable() || self.is_null()` and the held metadata.
+    pub fn field(&self) -> AnyField {
+        AnyField::list_(
+            self.name(),
+            self.item.clone(),
+            self.nullable() || self.is_null(),
+        )
+        .with_metadata_overlay(self.metadata())
+    }
+
+    /// Like [`field`](ListScalar::field) but **consumes** the value.
+    pub fn into_field(self) -> AnyField {
+        AnyField::list_(
+            self.name(),
+            self.item.clone(),
+            self.nullable() || self.is_null(),
+        )
+        .with_metadata_overlay(self.metadata())
     }
 
     /// Whether the list value is null.

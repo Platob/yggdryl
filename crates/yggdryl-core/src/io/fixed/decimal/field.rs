@@ -5,6 +5,7 @@
 use core::marker::PhantomData;
 
 use super::{DecimalBacking, DecimalType};
+use crate::io::field_carrier::field_setters;
 use crate::io::fixed::Field;
 use crate::io::{DataTypeId, FieldType, Headers};
 
@@ -80,6 +81,8 @@ impl<B: DecimalBacking> DecimalField<B> {
         self.metadata.insert(key, value);
         self
     }
+
+    field_setters!();
 
     /// The typed descriptor.
     pub fn data_type(&self) -> DecimalType<B> {

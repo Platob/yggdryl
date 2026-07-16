@@ -7,7 +7,8 @@ use core::marker::PhantomData;
 use super::dtype::OFFSET_WIDTH;
 use super::{ByteField, ByteScalar, ByteType, VarElement};
 use crate::io::bitmap::Bitmap;
-use crate::io::{Bytes, IOCursor, IoError, SerieType};
+use crate::io::field_carrier::field_accessors;
+use crate::io::{AnyField, Bytes, FieldType, IOCursor, IoError, SerieType};
 
 /// The **variable-length column** sub-trait — the sibling of
 /// [`FixedSerie`](crate::io::fixed::FixedSerie) for a column of byte slices (strings, binary),
@@ -48,6 +49,9 @@ pub struct ByteSerie<E: VarElement> {
     /// `None` means "no nulls".
     validity: Option<Bitmap>,
     len: usize,
+    /// The column's own [`ByteField`] descriptor — its name, declared nullability, and metadata.
+    /// Excluded from value identity and the byte codec. The single source of truth for schema intent.
+    field: ByteField<E>,
     _element: PhantomData<E>,
 }
 
@@ -61,6 +65,7 @@ impl<E: VarElement> Clone for ByteSerie<E> {
             data: self.data.clone(),
             validity: self.validity.clone(),
             len: self.len,
+            field: self.field.clone(),
             _element: PhantomData,
         }
     }
@@ -81,6 +86,7 @@ impl<E: VarElement> ByteSerie<E> {
             data: Vec::new(),
             validity: None,
             len: 0,
+            field: ByteField::<E>::new("", false),
             _element: PhantomData,
         }
     }
@@ -184,8 +190,26 @@ impl<E: VarElement> ByteSerie<E> {
         ByteType::new()
     }
 
-    /// A [`ByteField`] naming a column of this serie's type with explicit nullability.
-    pub fn field(&self, name: &str, nullable: bool) -> ByteField<E> {
+    field_accessors!();
+
+    /// The erased [`AnyField`] this column contributes — its **held field** (name + metadata) with
+    /// **effective** nullability `self.nullable() || self.has_nulls()` (declared OR the column holds
+    /// nulls) — a lenient, Arrow-standard over-approximation.
+    pub fn field(&self) -> AnyField {
+        let mut field = self.field.clone();
+        field.set_nullable(self.nullable() || self.has_nulls());
+        AnyField::leaf(field.erase())
+    }
+
+    /// Like [`field`](ByteSerie::field) but **consumes** the column.
+    pub fn into_field(mut self) -> AnyField {
+        let nullable = self.nullable() || self.has_nulls();
+        self.field.set_nullable(nullable);
+        AnyField::leaf(self.field.erase())
+    }
+
+    /// A [`ByteField`] naming a column of this serie's type with **explicit** nullability.
+    pub fn typed_field(&self, name: &str, nullable: bool) -> ByteField<E> {
         ByteField::new(name, nullable)
     }
 
@@ -405,6 +429,7 @@ impl<E: VarElement> ByteSerie<E> {
             data,
             validity,
             len,
+            field: ByteField::<E>::new("", false),
             _element: PhantomData,
         })
     }
@@ -539,6 +564,7 @@ impl<E: VarElement> Default for ByteSerie<E> {
             data: Vec::new(),
             validity: None,
             len: 0,
+            field: ByteField::<E>::new("", false),
             _element: PhantomData,
         }
     }

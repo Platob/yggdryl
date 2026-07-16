@@ -5,6 +5,7 @@ use core::marker::PhantomData;
 
 use super::dtype::OFFSET_WIDTH;
 use super::{ByteType, VarElement};
+use crate::io::field_carrier::field_setters;
 use crate::io::fixed::Field;
 use crate::io::{DataTypeId, FieldType, Headers};
 
@@ -57,6 +58,8 @@ impl<E: VarElement> ByteField<E> {
         self.metadata.insert(key, value);
         self
     }
+
+    field_setters!();
 
     /// The typed data-type descriptor.
     pub fn data_type(&self) -> ByteType<E> {

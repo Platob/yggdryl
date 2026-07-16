@@ -81,15 +81,25 @@ fn allocation_budgets() {
         "Column shape reads must be zero-copy (got {shape})"
     );
 
-    // Reading a field descriptor by index is a borrow — no heap.
-    let field = allocs_over(iters, || {
-        let _ = table.field(0);
+    // Reading the column length / null count is integer work — no heap.
+    let shape2 = allocs_over(iters, || {
         let _ = table.len();
         let _ = table.null_count();
     });
     assert_eq!(
-        field, 0,
-        "StructSerie::field / len / null_count must be zero-copy (got {field})"
+        shape2, 0,
+        "StructSerie::len / null_count must be zero-copy (got {shape2})"
+    );
+
+    // A field descriptor is now **derived** on demand from the child column's own header (there is no
+    // cached schema — the columns are the single source of truth), so it allocates a small, bounded
+    // constant per call (the derived `AnyField`, not per row). It must stay bounded, never per-row.
+    let field = allocs_over(iters, || {
+        let _ = table.field(0);
+    });
+    assert!(
+        field <= 8 * iters,
+        "StructSerie::field derives a bounded field per call (got {field} over {iters})"
     );
 
     // ---- list / map navigation is zero-copy (borrow offsets + children) -----------------
@@ -103,7 +113,6 @@ fn allocation_budgets() {
     let list_nav = allocs_over(iters, || {
         let _ = list.offsets();
         let _ = list.values().len();
-        let _ = list.item_field();
         let _ = list.value_range(1);
         let _ = list.len();
         let _ = list.null_count();
@@ -111,6 +120,15 @@ fn allocation_budgets() {
     assert_eq!(
         list_nav, 0,
         "ListSerie navigation must be zero-copy (got {list_nav})"
+    );
+    // `item_field` is now derived from the child column's header (owned), so it allocates a bounded
+    // constant per call — never per row.
+    let item_field = allocs_over(iters, || {
+        let _ = list.item_field();
+    });
+    assert!(
+        item_field <= 8 * iters,
+        "ListSerie::item_field derives a bounded field per call (got {item_field})"
     );
 
     let map = MapSerie::from_entries(
@@ -126,13 +144,21 @@ fn allocation_budgets() {
         let _ = map.keys().len();
         let _ = map.values().len();
         let _ = map.entries().num_columns();
-        let _ = map.key_field();
-        let _ = map.value_field();
         let _ = map.value_range(0);
     });
     assert_eq!(
         map_nav, 0,
         "MapSerie navigation must be zero-copy (got {map_nav})"
+    );
+    // `key_field` / `value_field` are now derived from the entries struct's child headers (owned), so
+    // they allocate a bounded constant per call — never per row.
+    let map_fields = allocs_over(iters, || {
+        let _ = map.key_field();
+        let _ = map.value_field();
+    });
+    assert!(
+        map_fields <= 16 * iters,
+        "MapSerie key/value fields derive a bounded field per call (got {map_fields})"
     );
 
     // ---- MapSerie::get_value: the per-key scan is allocation-free (the optimization) ----

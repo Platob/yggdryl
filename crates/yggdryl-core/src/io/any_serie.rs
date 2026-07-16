@@ -17,6 +17,7 @@
 use core::any::Any;
 use core::fmt::Debug;
 
+use super::field_carrier::any_serie_field_forwarding;
 use super::fixed::{
     f16, Date32Serie, Date64Serie, Dec128, Dec256, Dec32, Dec64, DecimalBacking, DecimalField,
     DecimalSerie, Duration32Serie, Duration64Serie, Field, FixedBinarySerie, FixedElement,
@@ -24,7 +25,7 @@ use super::fixed::{
     TemporalSerie, Time32Serie, Time64Serie, Ts32Serie, Ts64Serie, Ts96Serie, I256, I96, U256, U96,
 };
 use super::var::{BinarySerie, ByteSerie, Utf8Serie, VarElement};
-use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, IoError, NamedSerie};
+use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, Headers, IoError};
 
 /// The width of one variable-length offset (`i32`).
 const OFFSET_WIDTH: usize = core::mem::size_of::<i32>();
@@ -88,8 +89,29 @@ pub trait AnySerie: Debug + Send + Sync {
     /// The column's element [`DataTypeId`].
     fn type_id(&self) -> DataTypeId;
 
-    /// The [`AnyField`] naming a column of this type `name` (nullability inferred from the nulls).
+    /// The column's declared name (from its stored header — empty by default).
+    fn name(&self) -> &str;
+
+    /// Overwrites the column's declared name in its stored header — used to name a child before
+    /// building a struct/list/map, and to restore a child's header when reading a nested frame.
+    fn set_name(&mut self, name: &str);
+
+    /// Overwrites the column's declared nullability in its stored header.
+    fn set_nullable(&mut self, nullable: bool);
+
+    /// Overwrites the column's metadata in its stored header (moved in, no clone).
+    fn set_metadata(&mut self, metadata: Headers);
+
+    /// The [`AnyField`] naming a column of this type `name`, using the column's stored header
+    /// (metadata + **effective** nullability, `declared || has_nulls`) but with the name overridden
+    /// by the passed `name`.
     fn field(&self, name: &str) -> AnyField;
+
+    /// The [`AnyField`] this column contributes from its stored header (its stored name) — the no-arg
+    /// counterpart of [`field`](AnySerie::field) that keeps the header name.
+    fn field_self(&self) -> AnyField {
+        self.field(self.name())
+    }
 
     /// The value at `index` as an erased [`AnyScalar`] — null if the element is null or out of range.
     fn value(&self, index: usize) -> AnyScalar;
@@ -137,16 +159,28 @@ pub trait AnySerie: Debug + Send + Sync {
         sink.as_slice().to_vec()
     }
 
-    /// Names this column, yielding a [`NamedSerie`] build-input carrier — the one-line shorthand so
-    /// `Serie::from_values(&[1i32, 2]).named("x")` reads in a single call. Consumes `self` (it is
-    /// boxed into the carrier). A `Box<dyn AnySerie>` is not `Sized`, so it uses
-    /// [`NamedSerie::new`] directly instead.
-    fn named(self, name: &str) -> NamedSerie
+    /// Names this (self-describing) column and erases it to a `Box<dyn AnySerie>` — the one-line
+    /// shorthand for building a struct / list / map child (`Serie::from_values(&[1i32, 2]).named("x")`).
+    /// It replaces the removed `NamedSerie` carrier: the name is written straight into the column's
+    /// own header, so the boxed column *is* the self-describing child the builders take.
+    fn named(self, name: &str) -> Box<dyn AnySerie>
     where
         Self: Sized + 'static,
     {
-        NamedSerie::new(Box::new(self), name)
+        let mut boxed: Box<dyn AnySerie> = Box::new(self);
+        boxed.set_name(name);
+        boxed
     }
+}
+
+/// Restores a child column's stored header (name / declared nullability / metadata) from the field
+/// that describes it — used when reading a nested frame or importing a nested Arrow array, so the
+/// child's derived [`field_self`](AnySerie::field_self) round-trips exactly (a nested column is
+/// unreconstructable without its child names).
+pub(crate) fn apply_field_header(column: &mut Box<dyn AnySerie>, field: &AnyField) {
+    column.set_name(field.name());
+    column.set_nullable(field.nullable());
+    column.set_metadata(field.metadata().clone());
 }
 
 impl dyn AnySerie {
@@ -246,8 +280,10 @@ impl<T: NativeType> AnySerie for Serie<T> {
         T::TYPE_ID
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(Field::of(name, T::TYPE_ID, T::WIDTH, self.has_nulls()))
+        self.field().with_name(name)
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -328,10 +364,10 @@ where
         B::TYPE_ID
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(
-            DecimalField::<B>::new(name, self.precision(), self.scale(), self.has_nulls()).erase(),
-        )
+        self.field().with_name(name)
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -379,8 +415,10 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
         E::TYPE_ID
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(Field::of(name, E::TYPE_ID, OFFSET_WIDTH, self.has_nulls()))
+        self.field().with_name(name)
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -438,8 +476,10 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
         K::TYPE_ID
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(Field::of(name, K::TYPE_ID, self.width(), self.has_nulls()))
+        self.field().with_name(name)
     }
 
     fn value(&self, index: usize) -> AnyScalar {
@@ -497,8 +537,10 @@ impl AnySerie for NullSerie {
         DataTypeId::Null
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(Field::of(name, DataTypeId::Null, 0, true))
+        self.field().with_name(name)
     }
 
     fn value(&self, _index: usize) -> AnyScalar {
@@ -537,10 +579,10 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
         B::TYPE_ID
     }
 
+    any_serie_field_forwarding!();
+
     fn field(&self, name: &str) -> AnyField {
-        AnyField::leaf(
-            TemporalField::<B>::new(name, self.unit(), self.timezone(), self.has_nulls()).erase(),
-        )
+        self.field().with_name(name)
     }
 
     fn value(&self, index: usize) -> AnyScalar {

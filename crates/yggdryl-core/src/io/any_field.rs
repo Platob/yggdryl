@@ -362,8 +362,7 @@ impl AnyField {
     /// [`is_reserved_metadata_key`](DataTypeId::is_reserved_metadata_key)) is inserted (a user entry
     /// **wins** over an existing same-named one), but the intrinsic type-recovery keys the field
     /// already carries are never clobbered. Empty `extra` (or one carrying only reserved keys) leaves
-    /// the field byte-identical, so it is a no-op on the carrier path
-    /// ([`NamedSerie`](crate::io::NamedSerie) with no metadata).
+    /// the field byte-identical, so it is a no-op for a column/value whose header carries no metadata.
     ///
     /// ```
     /// use yggdryl_core::io::fixed::Field;
