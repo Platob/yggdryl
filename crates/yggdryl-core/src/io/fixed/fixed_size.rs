@@ -14,7 +14,7 @@
 use core::marker::PhantomData;
 
 use super::Field;
-use crate::io::bitmap::Bitmap;
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{field_accessors, field_setters};
 use crate::io::var::{VarScalar, VarSerie};
 use crate::io::{
@@ -560,6 +560,94 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         for (offset, &value) in values.iter().enumerate() {
             self.set(start + offset, Some(value))?;
         }
+        Ok(())
+    }
+
+    // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
+
+    /// Validates one optional value for a grow: a present value must be exactly
+    /// [`width`](FixedSizeSerie::width) bytes and valid for the kind.
+    fn validate_slot(&self, value: Option<&[u8]>) -> Result<(), IoError> {
+        if let Some(bytes) = value {
+            if bytes.len() != self.width() {
+                return Err(IoError::CorruptLength {
+                    len: bytes.len() as u64,
+                    width: self.width(),
+                });
+            }
+            K::validate(bytes)?;
+        }
+        Ok(())
+    }
+
+    /// Appends a slice of **optional** values (each exactly `width` bytes, validated for the kind) —
+    /// the bulk grow twin of [`from_values`](FixedSizeSerie::from_values). The `N`-byte-slot data
+    /// buffer is an owned `Vec`, so the grow is an amortized-`O(1)` append (one `reserve` + `extend`,
+    /// not a per-element re-seal). Every value is validated **up front**, so a bad value leaves the
+    /// column unchanged; a null appends a zero placeholder slot and lazily materializes the mask.
+    pub fn extend_options(&mut self, values: &[Option<&[u8]>]) -> Result<(), IoError> {
+        for &value in values {
+            self.validate_slot(value)?;
+        }
+        let base = self.len;
+        self.data.reserve(values.len() * self.width());
+        for (offset, &value) in values.iter().enumerate() {
+            match value {
+                Some(bytes) => {
+                    self.data.extend_from_slice(bytes);
+                    if let Some(validity) = &mut self.validity {
+                        validity.push(true);
+                    }
+                }
+                None => {
+                    self.data.resize(self.data.len() + self.width(), 0); // zero placeholder slot
+                    self.validity
+                        .get_or_insert_with(|| Bitmap::all_present(base + offset))
+                        .push(false);
+                }
+            }
+        }
+        self.len += values.len();
+        Ok(())
+    }
+
+    /// Appends a slice of **present** values (each exactly `width` bytes) — the bulk grow twin of
+    /// [`set_values`](FixedSizeSerie::set_values).
+    pub fn extend_values(&mut self, values: &[&[u8]]) -> Result<(), IoError> {
+        self.extend_options(&values.iter().map(|&bytes| Some(bytes)).collect::<Vec<_>>())
+    }
+
+    /// Appends a slice of [`FixedSizeScalar`]s (each its bytes or a null) — the bulk grow twin of
+    /// [`from_scalars`](FixedSizeSerie::from_scalars).
+    pub fn extend_scalars(&mut self, scalars: &[FixedSizeScalar<K>]) -> Result<(), IoError> {
+        self.extend_options(
+            &scalars
+                .iter()
+                .map(FixedSizeScalar::value_bytes)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Appends **another whole column** to this one — the two columns concatenate. Validates the
+    /// source shares this column's fixed byte `width` (a guided
+    /// [`CorruptLength`](IoError::CorruptLength) otherwise), then memcpy's the whole `N`-byte-slot
+    /// data blob in one `extend` and carries the null positions over.
+    pub fn concat(&mut self, source: &FixedSizeSerie<K>) -> Result<(), IoError> {
+        if source.width() != self.width() {
+            return Err(IoError::CorruptLength {
+                len: source.width() as u64,
+                width: self.width(),
+            });
+        }
+        if source.len == 0 {
+            return Ok(());
+        }
+        let base = self.len;
+        self.data.extend_from_slice(&source.data); // memcpy the N-byte-slot data blob
+        extend_validity(&mut self.validity, base, source.len, |offset| {
+            source.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.len += source.len;
         Ok(())
     }
 

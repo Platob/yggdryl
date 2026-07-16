@@ -10,7 +10,7 @@ use arrow_buffer::Buffer as ArrowBuffer;
 use super::{
     Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalScalar, DecimalType,
 };
-use crate::io::bitmap::Bitmap;
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
 
@@ -311,6 +311,130 @@ impl<B: DecimalBacking> DecimalSerie<B> {
     pub fn set_values(&mut self, start: usize, values: &[Decimal<B>]) -> Result<(), DecimalError> {
         self.check_range(start, values.len())?;
         self.set_options_range(start, values.len(), |offset| Ok(Some(values[offset])))
+    }
+
+    // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
+
+    /// Appends `count` optional values in **one pass**: fits (re-expresses at this column's
+    /// scale/precision) every value first — so a bad value leaves the column unchanged — then
+    /// commits the coefficients with a **single** copy-on-write append of the values buffer, not one
+    /// re-seal per element (which would be O(n²) over a bulk grow). Shared by every `extend_*`.
+    fn extend_with(
+        &mut self,
+        count: usize,
+        mut next: impl FnMut(usize) -> Result<Option<Decimal<B>>, DecimalError>,
+    ) -> Result<(), DecimalError> {
+        if count == 0 {
+            return Ok(());
+        }
+        // Fit (validate) every value up front; on error the column is untouched.
+        let mut coeffs: Vec<Option<B::Coeff>> = Vec::with_capacity(count);
+        for offset in 0..count {
+            coeffs.push(match next(offset)? {
+                Some(value) => Some(Self::fit(value, self.precision(), self.scale())?),
+                None => None,
+            });
+        }
+        self.append_coeffs(&coeffs);
+        Ok(())
+    }
+
+    /// Commits pre-fitted `coeffs` (each present-or-null) with a **single** copy-on-write append of
+    /// the coefficient buffer, growing the validity mask in lock-step. The one place the immutable
+    /// buffer is re-sealed for a grow.
+    fn append_coeffs(&mut self, coeffs: &[Option<B::Coeff>]) {
+        let base = self.len;
+        let current = core::mem::take(&mut self.values);
+        let mut vec = match current.into_vec::<u8>() {
+            Ok(owned) => owned,
+            Err(shared) => shared.as_slice().to_vec(),
+        };
+        vec.reserve(coeffs.len() * B::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        for (offset, coeff) in coeffs.iter().enumerate() {
+            coeff.unwrap_or(B::Coeff::ZERO).write_le(&mut scratch); // zero placeholder under a null
+            vec.extend_from_slice(&scratch[..B::WIDTH]);
+            match coeff {
+                Some(_) => {
+                    if let Some(validity) = &mut self.validity {
+                        validity.push(true);
+                    }
+                }
+                None => {
+                    self.validity
+                        .get_or_insert_with(|| Bitmap::all_present(base + offset))
+                        .push(false);
+                }
+            }
+        }
+        self.values = ArrowBuffer::from_vec(vec);
+        self.len += coeffs.len();
+    }
+
+    /// Appends one present coefficient from its raw little-endian bytes at the column's scale (no
+    /// refit) — the erased single-row append path
+    /// ([`AnySerie::append_scalar`](crate::io::AnySerie::append_scalar)). Assumes `bytes.len() ==
+    /// B::WIDTH` and the bytes are already at this column's `(precision, scale)`.
+    pub(crate) fn append_coeff_bytes(&mut self, bytes: &[u8]) {
+        self.push_bytes(B::Coeff::read_le(bytes));
+        if let Some(validity) = &mut self.validity {
+            validity.push(true);
+        }
+        self.len += 1;
+    }
+
+    /// Appends a slice of **present** [`Decimal`] values (no nulls), each re-expressed at this
+    /// column's scale/precision — the bulk twin of [`set_values`](DecimalSerie::set_values) that
+    /// grows the column. One copy-on-write; a guided
+    /// [`InexactRescale`](DecimalError::InexactRescale) /
+    /// [`PrecisionExceeded`](DecimalError::PrecisionExceeded) if a value does not fit (the column is
+    /// left unchanged).
+    pub fn extend_values(&mut self, values: &[Decimal<B>]) -> Result<(), DecimalError> {
+        self.extend_with(values.len(), |offset| Ok(Some(values[offset])))
+    }
+
+    /// Appends a slice of **optional** values — the bulk twin of
+    /// [`from_options`](DecimalSerie::from_options). A null lazily materializes the validity mask.
+    pub fn extend_options(&mut self, values: &[Option<Decimal<B>>]) -> Result<(), DecimalError> {
+        self.extend_with(values.len(), |offset| Ok(values[offset]))
+    }
+
+    /// Appends a slice of [`DecimalScalar`]s (each its value re-expressed at this column's scale, or
+    /// a null) — the bulk twin of [`from_scalars`](DecimalSerie::from_scalars).
+    pub fn extend_scalars(&mut self, scalars: &[DecimalScalar<B>]) -> Result<(), DecimalError> {
+        self.extend_with(scalars.len(), |offset| Ok(scalars[offset].value()))
+    }
+
+    /// Appends **another whole column** of the same width to this one — the two columns concatenate.
+    /// When the source shares this column's `(precision, scale)` the coefficient bytes are appended
+    /// with a **single** copy-on-write (a raw memcpy, no per-element refit); otherwise each source
+    /// value is re-expressed at this column's scale/precision (a guided
+    /// [`InexactRescale`](DecimalError::InexactRescale) /
+    /// [`PrecisionExceeded`](DecimalError::PrecisionExceeded) if it does not fit). Null positions
+    /// carry over in the same pass.
+    pub fn concat(&mut self, source: &DecimalSerie<B>) -> Result<(), DecimalError> {
+        if source.len == 0 {
+            return Ok(());
+        }
+        if source.precision() == self.precision() && source.scale() == self.scale() {
+            // Fast path: identical descriptor — memcpy the raw coefficient bytes in one COW.
+            let base = self.len;
+            let current = core::mem::take(&mut self.values);
+            let mut vec = match current.into_vec::<u8>() {
+                Ok(owned) => owned,
+                Err(shared) => shared.as_slice().to_vec(),
+            };
+            vec.extend_from_slice(source.coeff_bytes());
+            self.values = ArrowBuffer::from_vec(vec);
+            extend_validity(&mut self.validity, base, source.len, |offset| {
+                source.validity.as_ref().is_none_or(|mask| mask.get(offset))
+            });
+            self.len += source.len;
+            Ok(())
+        } else {
+            // Re-express path: fit each source value at this column's (precision, scale).
+            self.extend_with(source.len, |offset| Ok(source.get(offset)))
+        }
     }
 
     /// The number of elements.

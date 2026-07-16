@@ -326,6 +326,67 @@ fn main() {
         }),
     );
 
+    // ---------------------------------------------------------------------------------
+    // Phase 3 grow mutators — bulk extend + concat. The `allocs/op` column is the story:
+    // a bulk grow is a SINGLE copy-on-write (allocations independent of the element count),
+    // so allocs/op trends to ~0 as N grows — not the O(1)-per-element of a push loop.
+    // ---------------------------------------------------------------------------------
+    let ext_values: Vec<i32> = (0..n as i32).collect();
+    let concat_src = Serie::from_values(&ext_values);
+    let struct_src = build_table(n);
+    let struct_row = struct_src.row(0);
+    let struct_row = struct_row.as_struct().unwrap();
+    let list_src = build_list(n);
+    let map_src = build_map(n, &keys);
+    println!("\nPhase 3 grow mutators — time & memory ({iters} iters, {n} appended)\n");
+    println!(
+        "  {:<40} {:>8}   {:>10}   {:>9}",
+        "op", "Mops/s", "allocs/op", "bytes/op"
+    );
+    println!("  {}", "-".repeat(76));
+    row(
+        "Serie::extend_values(1024) [per elem]",
+        measure(n, iters, || {
+            let mut col = Serie::from_values(&[0i32]);
+            col.extend_values(&ext_values);
+        }),
+    );
+    row(
+        "Serie::concat(1024) [per elem]",
+        measure(n, iters, || {
+            let mut col = Serie::from_values(&[0i32]);
+            col.concat(&concat_src);
+        }),
+    );
+    row(
+        "StructSerie::append_row (2 cols)",
+        measure(1, iters, || {
+            let mut t = build_table(2);
+            t.append_row(struct_row).unwrap();
+        }),
+    );
+    row(
+        "StructSerie::concat (n rows) [per row]",
+        measure(n, iters, || {
+            let mut t = build_table(n);
+            t.concat(&struct_src).unwrap();
+        }),
+    );
+    row(
+        "ListSerie::concat (n rows) [per row]",
+        measure(n, iters, || {
+            let mut l = build_list(n);
+            l.concat(&list_src).unwrap();
+        }),
+    );
+    row(
+        "MapSerie::concat (n rows) [per row]",
+        measure(n, iters, || {
+            let mut m = build_map(n, &keys);
+            m.concat(&map_src).unwrap();
+        }),
+    );
+
     #[cfg(feature = "arrow")]
     arrow_section(iters, n, &list, &map);
 }

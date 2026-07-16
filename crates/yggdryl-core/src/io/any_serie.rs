@@ -64,6 +64,39 @@ fn bare_leaf_bytes(probe: &AnyScalar, type_id: DataTypeId, byte_width: usize) ->
     }
 }
 
+/// The guided error for appending an erased value whose type does not match the target column (a
+/// [`Null`](AnyScalar::Null) is always accepted, so it never reaches this).
+pub(crate) fn append_type_mismatch(expected: DataTypeId, value: &AnyScalar) -> IoError {
+    let got = value.type_id().map_or("null", DataTypeId::name);
+    IoError::Unsupported {
+        what: format!(
+            "cannot append a {got} value to a {} column; a present value's type must match the \
+             column (a null is always accepted)",
+            expected.name()
+        ),
+    }
+}
+
+/// The guided error for concatenating an erased column of a different concrete type.
+pub(crate) fn concat_type_mismatch(expected: DataTypeId, other: &dyn AnySerie) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot concat a {} column onto a {} column; concat appends a whole column of the \
+             same type",
+            other.type_id().name(),
+            expected.name()
+        ),
+    }
+}
+
+/// Maps a family error (decimal / temporal) to an [`IoError`] with the same guided text, so the
+/// erased grow surface returns one error type.
+fn to_io<E: core::fmt::Display>(error: E) -> IoError {
+    IoError::Unsupported {
+        what: error.to_string(),
+    }
+}
+
 /// A **column of any type**, type-erased — the recursive carrier a struct column's heterogeneous
 /// children live in (`Box<dyn AnySerie>`). Implemented by every concrete `Serie`; each method
 /// delegates. Build one by boxing a `Serie` (`Box::new(serie) as Box<dyn AnySerie>`) or with the
@@ -135,6 +168,20 @@ pub trait AnySerie: Debug + Send + Sync {
     /// panic). Used to materialize a list row's item sub-column. The result is a fresh column (a
     /// null/OOB-safe copy, Arc-shared where cheap); the original is untouched.
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie>;
+
+    /// Appends one erased value (a null or a cell of this column's type) — the erased single-row grow
+    /// primitive that the nested [`append_row`](crate::io::nested::StructSerie::append_row) routes a
+    /// child through. A [`Null`](crate::io::AnyScalar::Null) is always accepted (lenient nullability);
+    /// a present value must match this column's type, else a guided
+    /// [`Unsupported`](IoError::Unsupported) error. Delegates to the wrapped `Serie`'s own `push`.
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError>;
+
+    /// Appends **another whole erased column** of the **same concrete type** to this one — the erased
+    /// bulk grow that the nested [`concat`](crate::io::nested::StructSerie::concat) routes each child
+    /// through, so a nested concat stays one copy-on-write per child. Errors
+    /// [`Unsupported`](IoError::Unsupported) if `other` is a different column type; delegates to the
+    /// wrapped `Serie`'s own `concat` (which reconciles any descriptor).
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError>;
 
     /// Writes this column to `sink` — delegates to the wrapped `Serie`'s own byte codec.
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError>;
@@ -435,6 +482,32 @@ impl<T: NativeType> AnySerie for Serie<T> {
         Box::new(Serie::from_options(&values))
     }
 
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => {
+                Serie::push(self, None);
+                Ok(())
+            }
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == T::TYPE_ID && bytes.len() == T::WIDTH =>
+            {
+                Serie::push(self, Some(T::read_le(bytes)));
+                Ok(())
+            }
+            other => Err(append_type_mismatch(T::TYPE_ID, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => {
+                Serie::concat(self, other);
+                Ok(())
+            }
+            None => Err(concat_type_mismatch(T::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         Serie::write_to(self, sink)
     }
@@ -501,6 +574,27 @@ where
         )
     }
 
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => DecimalSerie::push(self, None).map_err(to_io),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw coefficient at this column's scale (matching-schema append).
+                DecimalSerie::append_coeff_bytes(self, bytes);
+                Ok(())
+            }
+            other => Err(append_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => DecimalSerie::concat(self, other).map_err(to_io),
+            None => Err(concat_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         DecimalSerie::write_to(self, sink)
     }
@@ -560,6 +654,23 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
             ByteSerie::<E>::from_byte_values(&values)
                 .expect("a column's own values are already valid for its kind"),
         )
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => ByteSerie::push_bytes(self, None),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == E::TYPE_ID => {
+                ByteSerie::push_bytes(self, Some(bytes))
+            }
+            other => Err(append_type_mismatch(E::TYPE_ID, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => ByteSerie::concat(self, other),
+            None => Err(concat_type_mismatch(E::TYPE_ID, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
@@ -623,6 +734,23 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
         )
     }
 
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => FixedSizeSerie::push(self, None),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == K::TYPE_ID => {
+                FixedSizeSerie::push(self, Some(bytes))
+            }
+            other => Err(append_type_mismatch(K::TYPE_ID, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => FixedSizeSerie::concat(self, other),
+            None => Err(concat_type_mismatch(K::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         FixedSizeSerie::write_to(self, sink)
     }
@@ -661,6 +789,26 @@ impl AnySerie for NullSerie {
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         let (_, count) = clamp_range(NullSerie::len(self), offset, len);
         Box::new(NullSerie::with_len(count))
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => {
+                NullSerie::push(self);
+                Ok(())
+            }
+            other => Err(append_type_mismatch(DataTypeId::Null, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => {
+                NullSerie::concat(self, other);
+                Ok(())
+            }
+            None => Err(concat_type_mismatch(DataTypeId::Null, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
@@ -714,6 +862,27 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
             TemporalSerie::<B>::from_options(self.unit(), self.timezone(), &values)
                 .expect("a column's own values re-fit its own unit exactly"),
         )
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => TemporalSerie::push(self, None).map_err(to_io),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw count at this column's (unit, tz) (matching-schema append).
+                TemporalSerie::append_count_bytes(self, bytes);
+                Ok(())
+            }
+            other => Err(append_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => TemporalSerie::concat(self, other).map_err(to_io),
+            None => Err(concat_type_mismatch(B::TYPE_ID, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {

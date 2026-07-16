@@ -12,7 +12,7 @@ use super::{
     Temporal, TemporalBacking, TemporalError, TemporalField, TemporalNative, TemporalScalar,
     TemporalType, TimeUnit, Tz,
 };
-use crate::io::bitmap::Bitmap;
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
 
@@ -348,6 +348,125 @@ impl<B: TemporalBacking> TemporalSerie<B> {
                 .map(TemporalScalar::value)
                 .collect::<Vec<_>>(),
         )
+    }
+
+    // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
+
+    /// Appends `count` optional values in **one pass**: re-expresses (fits) every value at this
+    /// column's unit first — so a bad value leaves the column unchanged — then commits the counts
+    /// with a **single** copy-on-write append of the values buffer, not one re-seal per element
+    /// (which would be O(n²) over a bulk grow). Shared by every `extend_*`.
+    fn extend_with(
+        &mut self,
+        count: usize,
+        mut next: impl FnMut(usize) -> Result<Option<B::Native>, TemporalError>,
+    ) -> Result<(), TemporalError> {
+        if count == 0 {
+            return Ok(());
+        }
+        // Fit (validate) every value up front; on error the column is untouched.
+        let mut counts: Vec<Option<i128>> = Vec::with_capacity(count);
+        for offset in 0..count {
+            counts.push(match next(offset)? {
+                Some(value) => Some(Self::fit(value, self.unit(), self.timezone())?),
+                None => None,
+            });
+        }
+        self.append_counts(&counts);
+        Ok(())
+    }
+
+    /// Commits pre-fitted `counts` (each present-or-null) with a **single** copy-on-write append of
+    /// the counts buffer, growing the validity mask in lock-step. The one place the immutable buffer
+    /// is re-sealed for a grow.
+    fn append_counts(&mut self, counts: &[Option<i128>]) {
+        let base = self.len;
+        let current = core::mem::take(&mut self.values);
+        let mut vec = match current.into_vec::<u8>() {
+            Ok(owned) => owned,
+            Err(shared) => shared.as_slice().to_vec(),
+        };
+        vec.reserve(counts.len() * B::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        for (offset, count) in counts.iter().enumerate() {
+            write_count_le(count.unwrap_or(0), B::WIDTH, &mut scratch); // zero placeholder under a null
+            vec.extend_from_slice(&scratch[..B::WIDTH]);
+            match count {
+                Some(_) => {
+                    if let Some(validity) = &mut self.validity {
+                        validity.push(true);
+                    }
+                }
+                None => {
+                    self.validity
+                        .get_or_insert_with(|| Bitmap::all_present(base + offset))
+                        .push(false);
+                }
+            }
+        }
+        self.values = ArrowBuffer::from_vec(vec);
+        self.len += counts.len();
+    }
+
+    /// Appends one present value from its raw little-endian count bytes at the column's unit (no
+    /// re-expression) — the erased single-row append path
+    /// ([`AnySerie::append_scalar`](crate::io::AnySerie::append_scalar)). Assumes `bytes.len() ==
+    /// B::WIDTH` and the bytes are already a count at this column's `(unit, tz)`.
+    pub(crate) fn append_count_bytes(&mut self, bytes: &[u8]) {
+        self.push_bytes(read_count_le(bytes, B::WIDTH));
+        if let Some(validity) = &mut self.validity {
+            validity.push(true);
+        }
+        self.len += 1;
+    }
+
+    /// Appends a slice of **present** values (no nulls), each re-expressed at this column's unit —
+    /// the bulk grow twin of [`from_values`](TemporalSerie::from_values). One copy-on-write; a guided
+    /// [`TemporalError`] if a value does not fit (the column is left unchanged).
+    pub fn extend_values(&mut self, values: &[B::Native]) -> Result<(), TemporalError> {
+        self.extend_with(values.len(), |offset| Ok(Some(values[offset])))
+    }
+
+    /// Appends a slice of **optional** values — the bulk grow twin of
+    /// [`from_options`](TemporalSerie::from_options). A null lazily materializes the validity mask.
+    pub fn extend_options(&mut self, values: &[Option<B::Native>]) -> Result<(), TemporalError> {
+        self.extend_with(values.len(), |offset| Ok(values[offset]))
+    }
+
+    /// Appends a slice of [`TemporalScalar`]s (each its value re-expressed at this column's unit, or
+    /// a null) — the bulk grow twin of [`from_scalars`](TemporalSerie::from_scalars).
+    pub fn extend_scalars(&mut self, scalars: &[TemporalScalar<B>]) -> Result<(), TemporalError> {
+        self.extend_with(scalars.len(), |offset| Ok(scalars[offset].value()))
+    }
+
+    /// Appends **another whole column** of the same concept+width to this one — the two columns
+    /// concatenate. When the source shares this column's `(unit, tz)` the raw count bytes are
+    /// appended with a **single** copy-on-write (a memcpy, no per-element re-expression); otherwise
+    /// each source value is re-expressed at this column's unit (a guided [`TemporalError`] if it does
+    /// not fit). Null positions carry over in the same pass.
+    pub fn concat(&mut self, source: &TemporalSerie<B>) -> Result<(), TemporalError> {
+        if source.len == 0 {
+            return Ok(());
+        }
+        if source.unit() == self.unit() && source.timezone() == self.timezone() {
+            // Fast path: identical descriptor — memcpy the raw count bytes in one COW.
+            let base = self.len;
+            let current = core::mem::take(&mut self.values);
+            let mut vec = match current.into_vec::<u8>() {
+                Ok(owned) => owned,
+                Err(shared) => shared.as_slice().to_vec(),
+            };
+            vec.extend_from_slice(source.count_bytes());
+            self.values = ArrowBuffer::from_vec(vec);
+            extend_validity(&mut self.validity, base, source.len, |offset| {
+                source.validity.as_ref().is_none_or(|mask| mask.get(offset))
+            });
+            self.len += source.len;
+            Ok(())
+        } else {
+            // Re-express path: fit each source value at this column's (unit, tz).
+            self.extend_with(source.len, |offset| Ok(source.get(offset)))
+        }
     }
 
     /// Writes the column: `[len: u64][unit tag: u8][tz name][flags: u8][validity?][values]`.

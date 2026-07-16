@@ -2,7 +2,7 @@
 //! [`Buffer`] — and the [`FixedSerie`] sub-trait of the root [`SerieType`](crate::io::SerieType).
 
 use super::{Buffer, Field, NativeType, PrimitiveType, Scalar, TypedField};
-use crate::io::bitmap::Bitmap;
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOBase, IOCursor, IoError, SerieType};
 
@@ -431,6 +431,106 @@ impl<T: NativeType> Serie<T> {
         self.check_range(start, values.len())?;
         self.set_options_range(start, values.len(), |offset| Some(values[offset]));
         Ok(())
+    }
+
+    // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
+
+    /// Appends `count` optional values in **one pass**: builds the appended value bytes into one
+    /// pre-sized buffer and commits them with a **single** copy-on-write append of the values buffer
+    /// (not one re-seal per element — which would be O(n²) over a bulk grow), materializing the
+    /// validity mask only if a null appears. Shared by every `extend_*`.
+    fn extend_with(&mut self, count: usize, mut next: impl FnMut(usize) -> Option<T>) {
+        if count == 0 {
+            return; // an empty grow is a no-op (no COW, no mask churn)
+        }
+        let base = self.len;
+        let mut patch = Vec::with_capacity(count * T::WIDTH);
+        let mut scratch = [0u8; MAX_WIDTH];
+        for offset in 0..count {
+            let value = next(offset);
+            value.unwrap_or_default().write_le(&mut scratch); // placeholder bytes under a null
+            patch.extend_from_slice(&scratch[..T::WIDTH]);
+            match value {
+                Some(_) => {
+                    if let Some(validity) = &mut self.validity {
+                        validity.push(true);
+                    }
+                }
+                None => {
+                    self.validity
+                        .get_or_insert_with(|| Bitmap::all_present(base + offset))
+                        .push(false);
+                }
+            }
+        }
+        // One COW append of the values buffer for the whole contiguous range.
+        self.values.pwrite((base * T::WIDTH) as u64, &patch);
+        self.len += count;
+    }
+
+    /// Appends a slice of **present** native values (no nulls) — the bulk twin of
+    /// [`set_values`](Serie::set_values) that grows the column. One copy-on-write of the values
+    /// buffer; the validity mask is touched only if the column already carries nulls.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut col = Serie::from_values(&[1i32, 2]);
+    /// col.extend_values(&[3, 4, 5]);
+    /// assert_eq!(col.to_options(), [Some(1), Some(2), Some(3), Some(4), Some(5)]);
+    /// ```
+    pub fn extend_values(&mut self, values: &[T]) {
+        self.extend_with(values.len(), |offset| Some(values[offset]));
+    }
+
+    /// Appends a slice of **optional** values — the bulk twin of
+    /// [`from_options`](Serie::from_options). A null in the slice lazily materializes the validity
+    /// mask; the values commit in one copy-on-write.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut col = Serie::from_values(&[1i32]);
+    /// col.extend_options(&[Some(2), None, Some(4)]);
+    /// assert_eq!(col.to_options(), [Some(1), Some(2), None, Some(4)]);
+    /// assert_eq!(col.null_count(), 1);
+    /// ```
+    pub fn extend_options(&mut self, values: &[Option<T>]) {
+        self.extend_with(values.len(), |offset| values[offset]);
+    }
+
+    /// Appends a slice of [`Scalar`]s (each its value or a null) — the bulk twin of
+    /// [`from_scalars`](Serie::from_scalars), reusing the one-pass grow over each scalar's value.
+    pub fn extend_scalars(&mut self, scalars: &[Scalar<T>]) {
+        self.extend_with(scalars.len(), |offset| scalars[offset].value());
+    }
+
+    /// Appends **another whole column** of the same type to this one — the two columns concatenate.
+    /// The source's raw value bytes are appended with a **single** copy-on-write (a memcpy, not a
+    /// per-element re-encode) and its null positions are carried over in the same pass. Infallible:
+    /// a fixed-width column has no descriptor to reconcile (`T` is the same by construction).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut a = Serie::from_options(&[Some(1i32), None]);
+    /// let b = Serie::from_values(&[3, 4]);
+    /// a.concat(&b);
+    /// assert_eq!(a.to_options(), [Some(1), None, Some(3), Some(4)]);
+    /// ```
+    pub fn concat(&mut self, source: &Serie<T>) {
+        if source.len == 0 {
+            return;
+        }
+        let base = self.len;
+        // One COW append: the source's value bytes memcpy straight in (placeholder bytes under its
+        // nulls are canonical zeros, so the appended null slots stay canonical).
+        self.values
+            .pwrite((base * T::WIDTH) as u64, source.values.as_bytes());
+        extend_validity(&mut self.validity, base, source.len, |offset| {
+            source.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.len += source.len;
     }
 
     /// Writes this column to `sink` — `[len: u64][flags: u8][validity?][values]` — advancing

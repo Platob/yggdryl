@@ -8,8 +8,8 @@ use core::any::Any;
 
 use super::scalar::StructScalar;
 use super::{StructField, StructType};
-use crate::io::any_serie::apply_field_header;
-use crate::io::bitmap::Bitmap;
+use crate::io::any_serie::{append_type_mismatch, apply_field_header, concat_type_mismatch};
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
 use crate::io::nested::{empty_any_column, read_any_column};
@@ -356,6 +356,121 @@ impl StructSerie {
         }
     }
 
+    // ---- grow: append one row + append a null row + concat a whole column ----------------
+
+    /// Appends **one row** — one erased value per child column, in field order. Each `values[i]` must
+    /// match child column `i`'s type (a null is always accepted); the value count must equal the field
+    /// count. Types are validated **up front**, so a mismatch leaves the struct unchanged; then each
+    /// value is appended to its child through the erased [`append_scalar`](crate::io::AnySerie::append_scalar).
+    /// Errors [`Unsupported`](IoError::Unsupported) on a count or type mismatch.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::var::Utf8Serie;
+    /// use yggdryl_core::io::AnySerie;
+    /// use yggdryl_core::io::nested::StructSerie;
+    ///
+    /// let mut table = StructSerie::from_series(vec![
+    ///     Serie::from_values(&[1i64]).named("id"),
+    ///     Utf8Serie::from_strs(&[Some("a")]).named("name"),
+    /// ])
+    /// .unwrap();
+    /// let row = table.row(0); // reuse row 0's cell values as a new row
+    /// table.append_row(row.as_struct().unwrap()).unwrap();
+    /// assert_eq!(table.len(), 2);
+    /// ```
+    pub fn append_row(&mut self, values: &[AnyScalar]) -> Result<(), IoError> {
+        if values.len() != self.columns.len() {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "append_row expects one value per struct field ({} field(s)), got {} value(s)",
+                    self.columns.len(),
+                    values.len()
+                ),
+            });
+        }
+        // Validate each present value's type against its child column up front — a mismatch leaves
+        // the struct unchanged (no partial-row growth of the children).
+        for (column, value) in self.columns.iter().zip(values) {
+            if let Some(id) = value.type_id() {
+                if id != AnySerie::type_id(column.as_ref()) {
+                    return Err(append_type_mismatch(
+                        AnySerie::type_id(column.as_ref()),
+                        value,
+                    ));
+                }
+            }
+        }
+        for (column, value) in self.columns.iter_mut().zip(values) {
+            column.append_scalar(value)?;
+        }
+        // A present row extends the top-level validity only when the mask already exists.
+        if let Some(validity) = &mut self.validity {
+            validity.push(true);
+        }
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Appends **one null row** — a null is appended to every child column (keeping the child lengths
+    /// in lock-step, matching the `from_columns` present-mask semantics) and the top-level validity is
+    /// marked null at this row (materializing the mask). Infallible: appending a null to any child is
+    /// always valid.
+    pub fn append_null(&mut self) {
+        for column in &mut self.columns {
+            column
+                .append_scalar(&AnyScalar::Null)
+                .expect("appending a null to any column is always valid");
+        }
+        self.validity
+            .get_or_insert_with(|| Bitmap::all_present(self.len))
+            .push(false);
+        self.len += 1;
+    }
+
+    /// Appends **another whole struct column** of matching schema — the two concatenate row-wise. The
+    /// child count, and each child's name + type, are validated up front (a guided
+    /// [`Unsupported`](IoError::Unsupported) otherwise); then each child column is grown through its
+    /// own bulk [`concat`](crate::io::AnySerie::concat) (one copy-on-write per child), and the
+    /// top-level validity carries over in one pass.
+    pub fn concat(&mut self, other: &StructSerie) -> Result<(), IoError> {
+        if self.columns.len() != other.columns.len() {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot concat a struct with {} field(s) onto one with {} field(s); the \
+                     schemas must match",
+                    other.columns.len(),
+                    self.columns.len()
+                ),
+            });
+        }
+        for (a, b) in self.columns.iter().zip(&other.columns) {
+            if a.name() != b.name()
+                || AnySerie::type_id(a.as_ref()) != AnySerie::type_id(b.as_ref())
+            {
+                return Err(IoError::Unsupported {
+                    what: format!(
+                        "struct field {:?} ({}) does not match the appended {:?} ({}); concat needs \
+                         the same field names and types in order",
+                        a.name(),
+                        AnySerie::type_id(a.as_ref()).name(),
+                        b.name(),
+                        AnySerie::type_id(b.as_ref()).name()
+                    ),
+                });
+            }
+        }
+        let base = self.len;
+        for (a, b) in self.columns.iter_mut().zip(&other.columns) {
+            a.concat(b.as_ref())?;
+        }
+        extend_validity(&mut self.validity, base, other.len, |offset| {
+            other.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.len += other.len;
+        Ok(())
+    }
+
     // ---- serialization: the schema, then each child via its own `Serie` codec ----------
 
     /// This struct column's canonical bytes — a self-contained `[schema][len][validity?][children]`
@@ -489,6 +604,24 @@ impl AnySerie for StructSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(StructSerie::slice(self, offset, len))
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => {
+                self.append_null();
+                Ok(())
+            }
+            AnyScalar::Struct(values) => self.append_row(values),
+            other => Err(append_type_mismatch(DataTypeId::Struct, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => StructSerie::concat(self, other),
+            None => Err(concat_type_mismatch(DataTypeId::Struct, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {

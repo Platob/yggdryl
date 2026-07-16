@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 
 use super::dtype::OFFSET_WIDTH;
 use super::{ByteField, ByteScalar, ByteType, VarElement};
-use crate::io::bitmap::Bitmap;
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, FieldType, IOCursor, IoError, SerieType};
 
@@ -331,6 +331,116 @@ impl<E: VarElement> ByteSerie<E> {
         for (offset, &value) in values.iter().enumerate() {
             self.set_bytes(start + offset, Some(value))?;
         }
+        Ok(())
+    }
+
+    // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
+
+    /// Appends a slice of **optional** byte values (each validated for the kind) — the bulk grow twin
+    /// of [`from_byte_values`](ByteSerie::from_byte_values). Unlike a fixed-width column, a var
+    /// column's data / offsets are owned `Vec`s, so the grow is an amortized-`O(1)` append (one
+    /// `reserve` + `extend`, not a per-element buffer re-seal). Every value is validated **up front**,
+    /// so a bad value leaves the column unchanged; a null lazily materializes the validity mask.
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Serie;
+    ///
+    /// let mut col = Utf8Serie::from_strs(&[Some("a")]);
+    /// col.extend_options(&[Some(b"bc".as_slice()), None]).unwrap();
+    /// assert_eq!(col.get_str(1), Some("bc"));
+    /// assert_eq!(col.get_str(2), None);
+    /// ```
+    pub fn extend_options(&mut self, values: &[Option<&[u8]>]) -> Result<(), IoError> {
+        // Validate up front so a bad value leaves the column unchanged.
+        for value in values.iter().flatten() {
+            E::validate(value)?;
+        }
+        let base = self.len;
+        let extra: usize = values.iter().flatten().map(|bytes| bytes.len()).sum();
+        self.data.reserve(extra);
+        self.offsets.reserve(values.len());
+        for (offset, value) in values.iter().enumerate() {
+            match value {
+                Some(bytes) => {
+                    self.data.extend_from_slice(bytes);
+                    if let Some(validity) = &mut self.validity {
+                        validity.push(true);
+                    }
+                }
+                None => {
+                    self.validity
+                        .get_or_insert_with(|| Bitmap::all_present(base + offset))
+                        .push(false);
+                }
+            }
+            self.offsets.push(self.data.len() as i32);
+        }
+        self.len += values.len();
+        Ok(())
+    }
+
+    /// Appends a slice of **present** byte values (no nulls), each validated for the kind — the bulk
+    /// grow twin of [`set_byte_values`](ByteSerie::set_byte_values).
+    pub fn extend_values(&mut self, values: &[&[u8]]) -> Result<(), IoError> {
+        for value in values {
+            E::validate(value)?;
+        }
+        let extra: usize = values.iter().map(|bytes| bytes.len()).sum();
+        self.data.reserve(extra);
+        self.offsets.reserve(values.len());
+        for bytes in values {
+            self.data.extend_from_slice(bytes);
+            if let Some(validity) = &mut self.validity {
+                validity.push(true);
+            }
+            self.offsets.push(self.data.len() as i32);
+        }
+        self.len += values.len();
+        Ok(())
+    }
+
+    /// Appends a slice of [`ByteScalar`]s (each its bytes or a null) — the bulk grow twin of
+    /// [`from_scalars`](ByteSerie::from_scalars).
+    pub fn extend_scalars(&mut self, scalars: &[ByteScalar<E>]) -> Result<(), IoError> {
+        self.extend_options(
+            &scalars
+                .iter()
+                .map(ByteScalar::value_bytes)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Appends **another whole column** of the same kind to this one — the two columns concatenate.
+    /// The source's whole data blob is memcpy'd in one `extend`, its offsets are rebased onto this
+    /// column's data length, and its null positions carry over — all amortized `O(1)`. Errors
+    /// [`Unsupported`](IoError::Unsupported) if the combined data would overflow the `i32` offset
+    /// space (the column is left partially grown only up to the memcpy — callers should treat this as
+    /// a hard corruption guard; it needs a `LargeUtf8`/`LargeBinary` 64-bit-offset kind).
+    pub fn concat(&mut self, source: &ByteSerie<E>) -> Result<(), IoError> {
+        if source.len == 0 {
+            return Ok(());
+        }
+        let base = self.data.len();
+        let combined = base as i64 + source.data.len() as i64;
+        if combined > i32::MAX as i64 {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "concatenating these var columns would overflow the i32 offset space \
+                     ({combined} bytes exceeds i32::MAX); split the column (a 64-bit-offset \
+                     LargeUtf8/LargeBinary kind is reserved but not yet shipped)"
+                ),
+            });
+        }
+        let prev_len = self.len;
+        self.data.extend_from_slice(&source.data); // memcpy the whole value blob
+        self.offsets.reserve(source.len);
+        for &offset in &source.offsets[1..] {
+            self.offsets.push(base as i32 + offset);
+        }
+        extend_validity(&mut self.validity, prev_len, source.len, |offset| {
+            source.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.len += source.len;
         Ok(())
     }
 

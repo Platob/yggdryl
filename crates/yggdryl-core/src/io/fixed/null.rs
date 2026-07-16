@@ -376,6 +376,33 @@ impl NullSerie {
         self.len += count;
     }
 
+    // ---- grow: the mutator vocabulary. A null column has no value buffer, so every `extend_*`
+    // simply grows the length (one null per element); there is nothing to allocate or re-seal. ----
+
+    /// Grows the column by one null per element of `values` — every value of the null type is null,
+    /// so only the count matters (the family-uniform grow twin of the other series' `extend_values`).
+    pub fn extend_values(&mut self, values: &[()]) {
+        self.len += values.len();
+    }
+
+    /// Grows the column by one null per element of `values` (each is null regardless) — the uniform
+    /// grow twin of the other series' `extend_options`.
+    pub fn extend_options(&mut self, values: &[Option<()>]) {
+        self.len += values.len();
+    }
+
+    /// Grows the column by one null per [`NullScalar`] — the uniform grow twin of the other series'
+    /// `extend_scalars`.
+    pub fn extend_scalars(&mut self, scalars: &[NullScalar]) {
+        self.len += scalars.len();
+    }
+
+    /// Appends **another whole null column** to this one — the lengths add (a null column carries no
+    /// values, so concatenation is length-only). Infallible: there is no descriptor to reconcile.
+    pub fn concat(&mut self, source: &NullSerie) {
+        self.len += source.len;
+    }
+
     /// The number of elements.
     pub const fn len(&self) -> usize {
         self.len

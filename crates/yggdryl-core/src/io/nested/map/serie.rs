@@ -9,7 +9,8 @@ use core::any::Any;
 
 use super::scalar::MapScalar;
 use super::{MapField, MapType};
-use crate::io::bitmap::Bitmap;
+use crate::io::any_serie::{append_type_mismatch, concat_type_mismatch};
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
 use crate::io::nested::{StructField, StructSerie};
@@ -370,6 +371,101 @@ impl MapSerie {
         }
     }
 
+    // ---- grow: append one entries row + a null row + concat a whole column ----------------
+
+    /// Appends **one row** of `keys -> values` entries. The `keys` column must not contain nulls (a
+    /// map key is never null — a guided [`Unsupported`](IoError::Unsupported) otherwise), and its
+    /// key/value types must match this map's; the two columns are stamped with the entries' key/value
+    /// names and concatenated into the flattened entries struct (one copy-on-write per child), then a
+    /// new offset is pushed.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::var::Utf8Serie;
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    /// use yggdryl_core::io::nested::MapSerie;
+    ///
+    /// let keys = Utf8Serie::from_strs(&[Some("a")]).named("key");
+    /// let values = Serie::from_values(&[1i64]).named("value");
+    /// let mut map = MapSerie::from_entries(keys, values, &[0, 1], None, false).unwrap();
+    /// map.append_row(
+    ///     boxed(Utf8Serie::from_strs(&[Some("b"), Some("c")])),
+    ///     boxed(Serie::from_values(&[2i64, 3])),
+    /// )
+    /// .unwrap();
+    /// assert_eq!(map.len(), 2);
+    /// assert_eq!(map.row_scalar(1).len(), 2);
+    /// ```
+    pub fn append_row(
+        &mut self,
+        keys: Box<dyn AnySerie>,
+        values: Box<dyn AnySerie>,
+    ) -> Result<(), IoError> {
+        let key_nulls = keys.null_count();
+        if key_nulls > 0 {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "a map key column must not contain nulls, but the appended keys have \
+                     {key_nulls} null key(s); a map key is never null (Arrow's Map invariant)"
+                ),
+            });
+        }
+        // Stamp the row's key/value columns with the entries' child names so the struct concat's
+        // name+type schema check passes (the row is unnamed when built by the caller).
+        let (key_name, value_name) = (
+            self.keys().name().to_string(),
+            self.values().name().to_string(),
+        );
+        let mut keys = keys;
+        let mut values = values;
+        keys.set_name(&key_name);
+        values.set_name(&value_name);
+        let row_entries = StructSerie::from_series(vec![keys, values])?;
+        self.entries.concat(&row_entries)?;
+        self.offsets.push(self.entries.len() as i32);
+        if let Some(validity) = &mut self.validity {
+            validity.push(true);
+        }
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Appends **one null map row** — a zero-width entry (the offset does not advance, so the entries
+    /// are untouched) and the top-level validity is marked null at this row (materializing the mask).
+    /// Infallible.
+    pub fn append_null(&mut self) {
+        self.offsets.push(self.entries.len() as i32); // zero-width span
+        self.validity
+            .get_or_insert_with(|| Bitmap::all_present(self.len))
+            .push(false);
+        self.len += 1;
+    }
+
+    /// Appends **another whole map column** of matching key/value schema — the two concatenate
+    /// row-wise. The flattened entries struct is grown through [`StructSerie::concat`] (which
+    /// validates the key/value schema and grows each child in one copy-on-write), the appended offsets
+    /// are rebased onto this column's entries length, and the top-level validity carries over in one
+    /// pass. `keys_sorted` stays set only if **both** columns were sorted (per-row sortedness is
+    /// preserved, not global order).
+    pub fn concat(&mut self, other: &MapSerie) -> Result<(), IoError> {
+        if other.len == 0 {
+            self.keys_sorted = self.keys_sorted && other.keys_sorted;
+            return Ok(());
+        }
+        let base = self.offsets[self.len]; // current entries length as an i32 offset
+        self.entries.concat(&other.entries)?;
+        self.offsets.reserve(other.len);
+        for &offset in &other.offsets[1..] {
+            self.offsets.push(base + offset);
+        }
+        extend_validity(&mut self.validity, self.len, other.len, |offset| {
+            other.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.keys_sorted = self.keys_sorted && other.keys_sorted;
+        self.len += other.len;
+        Ok(())
+    }
+
     // ---- serialization: the map schema, then validity + offsets, then the entries struct -------
 
     /// This map column's canonical bytes — a self-contained
@@ -571,6 +667,40 @@ impl AnySerie for MapSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(MapSerie::slice(self, offset, len))
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => {
+                self.append_null();
+                Ok(())
+            }
+            AnyScalar::Map { entries, .. } => {
+                // The row's entries are always a two-column `StructSerie(key, value)`; concat them
+                // straight into this map's flattened entries and push a new offset.
+                let entries = entries
+                    .as_any()
+                    .downcast_ref::<StructSerie>()
+                    .ok_or_else(|| IoError::Unsupported {
+                        what: "a map value's entries must be a struct of [key, value]".to_string(),
+                    })?;
+                self.entries.concat(entries)?;
+                self.offsets.push(self.entries.len() as i32);
+                if let Some(validity) = &mut self.validity {
+                    validity.push(true);
+                }
+                self.len += 1;
+                Ok(())
+            }
+            other => Err(append_type_mismatch(DataTypeId::Map, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => MapSerie::concat(self, other),
+            None => Err(concat_type_mismatch(DataTypeId::Map, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {

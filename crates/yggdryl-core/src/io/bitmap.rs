@@ -78,3 +78,28 @@ impl Bitmap {
         Self { bits, len }
     }
 }
+
+/// Appends `added` presence bits to a column's optional validity mask that currently describes
+/// `current_len` present-or-null elements. `present(offset)` gives the presence of the `offset`-th
+/// appended element. The mask is materialized **lazily** — created only when an appended element is
+/// null (or it already exists) — so a fully-present append onto a null-free column leaves it
+/// mask-free (canonical, matching `from_options`). Shared by every leaf serie's `extend_*` / `concat`
+/// grow path, so the validity grows in lock-step with the values in one pass.
+pub(crate) fn extend_validity(
+    validity: &mut Option<Bitmap>,
+    current_len: usize,
+    added: usize,
+    mut present: impl FnMut(usize) -> bool,
+) {
+    for offset in 0..added {
+        if present(offset) {
+            if let Some(bitmap) = validity {
+                bitmap.push(true);
+            }
+        } else {
+            validity
+                .get_or_insert_with(|| Bitmap::all_present(current_len + offset))
+                .push(false);
+        }
+    }
+}

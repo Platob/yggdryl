@@ -7,8 +7,8 @@ use core::any::Any;
 
 use super::scalar::ListScalar;
 use super::{ListField, ListType};
-use crate::io::any_serie::apply_field_header;
-use crate::io::bitmap::Bitmap;
+use crate::io::any_serie::{append_type_mismatch, apply_field_header, concat_type_mismatch};
+use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
 use crate::io::{
@@ -265,6 +265,85 @@ impl ListSerie {
         }
     }
 
+    // ---- grow: append one sub-list row + a null row + concat a whole column ---------------
+
+    /// Appends **one row** — a sub-list of `items` (an erased column of the element type). The item
+    /// type is validated against the flat child (a guided [`Unsupported`](IoError::Unsupported)
+    /// otherwise); then the items are appended into the flattened child through its bulk
+    /// [`concat`](crate::io::AnySerie::concat) (one copy-on-write) and a new offset is pushed.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    /// use yggdryl_core::io::nested::ListSerie;
+    ///
+    /// let items = Serie::from_values(&[1i32, 2]).named("item");
+    /// let mut list = ListSerie::from_values(items, &[0, 2], None).unwrap();
+    /// list.append_row(boxed(Serie::from_values(&[3i32, 4, 5]))).unwrap();
+    /// assert_eq!(list.len(), 2);
+    /// assert_eq!(list.row_scalar(1).len(), 3);
+    /// ```
+    pub fn append_row(&mut self, items: Box<dyn AnySerie>) -> Result<(), IoError> {
+        if AnySerie::type_id(items.as_ref()) != AnySerie::type_id(self.values.as_ref()) {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot append a list row of {} items to a list<{}>; the item types must match",
+                    AnySerie::type_id(items.as_ref()).name(),
+                    AnySerie::type_id(self.values.as_ref()).name()
+                ),
+            });
+        }
+        self.values.concat(items.as_ref())?; // grow the flat child in one COW
+        self.offsets.push(self.values.len() as i32);
+        if let Some(validity) = &mut self.validity {
+            validity.push(true);
+        }
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Appends **one null list row** — a zero-width entry (the offset does not advance, so the flat
+    /// child is untouched) and the top-level validity is marked null at this row (materializing the
+    /// mask). Infallible.
+    pub fn append_null(&mut self) {
+        self.offsets.push(self.values.len() as i32); // zero-width span
+        self.validity
+            .get_or_insert_with(|| Bitmap::all_present(self.len))
+            .push(false);
+        self.len += 1;
+    }
+
+    /// Appends **another whole list column** of matching item type — the two concatenate row-wise. The
+    /// flattened child is grown through its own bulk [`concat`](crate::io::AnySerie::concat) (one
+    /// copy-on-write), the appended offsets are rebased onto this column's child length, and the
+    /// top-level validity carries over in one pass. Errors [`Unsupported`](IoError::Unsupported) if the
+    /// item types differ.
+    pub fn concat(&mut self, other: &ListSerie) -> Result<(), IoError> {
+        if AnySerie::type_id(self.values.as_ref()) != AnySerie::type_id(other.values.as_ref()) {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot concat a list<{}> onto a list<{}>; the item types must match",
+                    AnySerie::type_id(other.values.as_ref()).name(),
+                    AnySerie::type_id(self.values.as_ref()).name()
+                ),
+            });
+        }
+        if other.len == 0 {
+            return Ok(());
+        }
+        let base = self.offsets[self.len]; // current child length as an i32 offset
+        self.values.concat(other.values.as_ref())?;
+        self.offsets.reserve(other.len);
+        for &offset in &other.offsets[1..] {
+            self.offsets.push(base + offset);
+        }
+        extend_validity(&mut self.validity, self.len, other.len, |offset| {
+            other.validity.as_ref().is_none_or(|mask| mask.get(offset))
+        });
+        self.len += other.len;
+        Ok(())
+    }
+
     // ---- serialization: the list schema, then validity + offsets, then the child column --------
 
     /// This list column's canonical bytes — a self-contained
@@ -432,6 +511,24 @@ impl AnySerie for ListSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(ListSerie::slice(self, offset, len))
+    }
+
+    fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => {
+                self.append_null();
+                Ok(())
+            }
+            AnyScalar::List(items) => self.append_row(items.clone_box()),
+            other => Err(append_type_mismatch(DataTypeId::List, other)),
+        }
+    }
+
+    fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError> {
+        match other.as_any().downcast_ref::<Self>() {
+            Some(other) => ListSerie::concat(self, other),
+            None => Err(concat_type_mismatch(DataTypeId::List, other)),
+        }
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
