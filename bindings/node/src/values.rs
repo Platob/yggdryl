@@ -906,6 +906,40 @@ macro_rules! napi_fixed {
                 crate::ops::to_map_frame(&self.inner)
             }
 
+            // ---- Phase 9: random-access set + slice get --------------------------------------
+
+            /// Replaces the nested child column at `index` with the `Serie` `child` — a **leaf** column
+            /// is not nested, so the core surfaces a guided error (set a leaf cell with `set` / `setAt`
+            /// instead). `child` must be a `Serie` wrapper.
+            #[napi]
+            pub fn set_child_at(&mut self, env: Env, index: u32, child: JsUnknown) -> napi::Result<()> {
+                crate::ops::set_child_at_into(env, &mut self.inner, index, child)
+            }
+
+            /// Adds or replaces the nested child column named `name` with the `Serie` `child` — a leaf
+            /// column is not nested (guided error). `child` must be a `Serie` wrapper.
+            #[napi]
+            pub fn set_child_by(&mut self, env: Env, name: String, child: JsUnknown) -> napi::Result<()> {
+                crate::ops::set_child_by_into(env, &mut self.inner, name, child)
+            }
+
+            /// Overwrites the length-preserving range `[offset, offset + other.length)` with `other`'s
+            /// cells (its cells cast into this column's element type). Throws on an out-of-range offset
+            /// or an incompatible source cell. `other` must be a `Serie` wrapper.
+            #[napi]
+            pub fn set_slice(&mut self, env: Env, offset: u32, other: JsUnknown) -> napi::Result<()> {
+                crate::ops::set_slice_into(env, &mut self.inner, offset, other)
+            }
+
+            /// A fresh same-type column over rows `[start, start + length)` (the range clamped to the
+            /// column, never throws). The Node named mirror of Python's `serie[start:stop]` slice.
+            #[napi]
+            pub fn slice(&self, start: u32, length: u32) -> Self {
+                Self {
+                    inner: crate::ops::slice_into(&self.inner, start, length),
+                }
+            }
+
             $($serie_extra)*
         }
     };

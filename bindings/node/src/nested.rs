@@ -1192,6 +1192,32 @@ impl StructSerie {
         crate::ops::to_map_frame(&self.inner)
     }
 
+    // ---- Phase 9: random-access child + slice mutation --------------------------------------
+
+    /// Replaces the child column at `index` with the `Serie` `child` (the slot's schema **name** is
+    /// preserved; the child's length must equal the struct's row count). Throws past the last column
+    /// or on a length mismatch. `child` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_child_at(&mut self, env: Env, index: u32, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_at_into(env, &mut self.inner, index, child)
+    }
+
+    /// Dict-like add-or-replace of the child column named `name` with the `Serie` `child` (an existing
+    /// field is replaced in place; a new `name` is appended as a fresh field). The child's length must
+    /// equal the struct's row count. `child` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_child_by(&mut self, env: Env, name: String, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_by_into(env, &mut self.inner, name, child)
+    }
+
+    /// Overwrites whole struct rows in the range `[offset, offset + other.length)` — a nested column
+    /// cannot be range-overwritten (it would desync a child's offsets), so the core surfaces a guided
+    /// error naming `setChildAt` / `setChildBy` as the fix. `other` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_slice(&mut self, env: Env, offset: u32, other: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_slice_into(env, &mut self.inner, offset, other)
+    }
+
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
         format!(
@@ -1617,6 +1643,31 @@ impl ListSerie {
     #[napi]
     pub fn to_map(&self) -> napi::Result<Buffer> {
         crate::ops::to_map_frame(&self.inner)
+    }
+
+    // ---- Phase 9: random-access child + slice mutation --------------------------------------
+
+    /// Replaces the flattened item child column with the `Serie` `child` — index `0` only (its length
+    /// must equal the current flattened length); any other index is a guided error. `child` must be a
+    /// `Serie` wrapper.
+    #[napi]
+    pub fn set_child_at(&mut self, env: Env, index: u32, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_at_into(env, &mut self.inner, index, child)
+    }
+
+    /// Replaces the item child column with the `Serie` `child` — the name must be `"item"` (or the
+    /// item's own name); any other name is a guided error. `child` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_child_by(&mut self, env: Env, name: String, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_by_into(env, &mut self.inner, name, child)
+    }
+
+    /// Overwrites whole list rows in the range `[offset, offset + other.length)` — a nested column
+    /// cannot be range-overwritten (it would desync the child's offsets), so the core surfaces a
+    /// guided error naming `setChildAt` / `setChildBy` as the fix. `other` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_slice(&mut self, env: Env, offset: u32, other: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_slice_into(env, &mut self.inner, offset, other)
     }
 
     #[napi(js_name = "toString")]
@@ -2115,6 +2166,33 @@ impl MapSerie {
     #[napi]
     pub fn to_map(&self) -> napi::Result<Buffer> {
         crate::ops::to_map_frame(&self.inner)
+    }
+
+    // ---- Phase 9: random-access child + slice mutation --------------------------------------
+
+    /// Replaces an entries child column with the `Serie` `child` — index `0` replaces the keys column
+    /// (which must stay non-null), `1` replaces the values column (each length must equal the entries
+    /// length); any other index is a guided error. `child` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_child_at(&mut self, env: Env, index: u32, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_at_into(env, &mut self.inner, index, child)
+    }
+
+    /// Replaces an entries child column with the `Serie` `child` by name. The core matches
+    /// **key-first** (the key's own name, or `"key"`) before the value (the value's own name, or
+    /// `"value"`) — the exact precedence the Python binding mirrors; any other name is a guided error.
+    /// `child` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_child_by(&mut self, env: Env, name: String, child: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_child_by_into(env, &mut self.inner, name, child)
+    }
+
+    /// Overwrites whole map rows in the range `[offset, offset + other.length)` — a nested column
+    /// cannot be range-overwritten (it would desync the entries' offsets), so the core surfaces a
+    /// guided error naming `setChildAt` / `setChildBy` as the fix. `other` must be a `Serie` wrapper.
+    #[napi]
+    pub fn set_slice(&mut self, env: Env, offset: u32, other: JsUnknown) -> napi::Result<()> {
+        crate::ops::set_slice_into(env, &mut self.inner, offset, other)
     }
 
     #[napi(js_name = "toString")]

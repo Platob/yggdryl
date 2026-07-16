@@ -446,3 +446,84 @@ arith_into!(sub_into, sub, sub_scalar);
 arith_into!(mul_into, mul, mul_scalar);
 arith_into!(div_into, div, div_scalar);
 arith_into!(rem_into, rem, rem_scalar);
+
+// ---- Phase 9: random-access mutation — set_child_* / set_slice + the slice get ----------------
+//
+// Every wrapper's mutation method is a 1–3 line delegate to the erased `dyn AnySerie` core surface
+// (`set_child_at` / `set_child_by` / `set_slice`, all committed on the core). A child / source operand
+// crosses as a `Serie` **wrapper** (recognized exactly as [`serie_operand`] does for the arithmetic
+// ops), so a heterogeneous column reaches the core without passing an arbitrary one-of-many instance;
+// the core then dispatches, type-checks, and surfaces its own guided error (a leaf `set_child`, an
+// out-of-range index / offset, a length or type mismatch), thrown here unchanged.
+
+/// The erased column of a `Serie`-wrapper JS `value`, cloned out, or a **guided error** if `value` is
+/// not a `Serie` wrapper at all — the child of a `set_child_*`, or the source of a `set_slice`, must be
+/// a *column* (a scalar / native / plain object is a mistake). Reuses [`serie_operand`]'s full wrapper
+/// recognition (every leaf, decimal, temporal, null, and nested class), so any real column type flows
+/// to the core.
+fn require_serie(env: Env, value: &JsUnknown) -> napi::Result<Box<dyn AnySerie>> {
+    if matches!(value.get_type()?, ValueType::Object) {
+        if let Some(serie) = serie_operand(env, value)? {
+            return Ok(serie);
+        }
+    }
+    Err(to_error(
+        "expected a Serie column argument; pass a yggdryl Serie (a leaf, struct, list, or map column)",
+    ))
+}
+
+/// `serie.setChildAt(index, child)` — replaces the nested child column at `index` with the `Serie`
+/// `child` (delegating to the erased core `set_child_at`, which dispatches on the nested kind and
+/// guided-errors on a leaf column, an out-of-range index, or a length mismatch). `child` must be a
+/// `Serie`.
+pub(crate) fn set_child_at_into(
+    env: Env,
+    target: &mut (dyn AnySerie + 'static),
+    index: u32,
+    child: JsUnknown,
+) -> napi::Result<()> {
+    let child = require_serie(env, &child)?;
+    target
+        .set_child_at(index as usize, child.as_ref())
+        .map_err(to_error)
+}
+
+/// `serie.setChildBy(name, child)` — dict-like add-or-replace of the nested child column named `name`
+/// with the `Serie` `child` (delegating to the erased core `set_child_by`; a leaf column, or an
+/// unknown name, is a guided error). `child` must be a `Serie`.
+pub(crate) fn set_child_by_into(
+    env: Env,
+    target: &mut (dyn AnySerie + 'static),
+    name: String,
+    child: JsUnknown,
+) -> napi::Result<()> {
+    let child = require_serie(env, &child)?;
+    target.set_child_by(&name, child.as_ref()).map_err(to_error)
+}
+
+/// `serie.setSlice(offset, other)` — length-preserving overwrite of the range
+/// `[offset, offset + other.length)` with `other`'s cells (delegating to the erased core `set_slice`,
+/// which range-checks the offset and type-checks each source cell, guided-erroring on either; a nested
+/// `self` is itself a guided error). `other` must be a `Serie`.
+pub(crate) fn set_slice_into(
+    env: Env,
+    target: &mut (dyn AnySerie + 'static),
+    offset: u32,
+    other: JsUnknown,
+) -> napi::Result<()> {
+    let source = require_serie(env, &other)?;
+    target
+        .set_slice(offset as usize, source.as_ref())
+        .map_err(to_error)
+}
+
+/// `serie.slice(start, length)` → the **same-class** column over rows `[start, start + length)` (the
+/// range clamped to the column, never throws), delegating to the erased core `slice` and rewrapping the
+/// result as the LEFT wrapper's own concrete class (a leaf slice preserves the concrete `Serie` type).
+pub(crate) fn slice_into<T: Clone + 'static>(
+    col: &(dyn AnySerie + 'static),
+    start: u32,
+    length: u32,
+) -> T {
+    rewrap(col.slice(start as usize, length as usize))
+}
