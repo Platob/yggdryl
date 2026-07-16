@@ -125,6 +125,30 @@ pub(crate) fn set_cell_on_nested(kind: DataTypeId) -> IoError {
     }
 }
 
+/// The guided error for a [`filter`](AnySerie::filter) whose boolean mask length does not match the
+/// column — the mask must carry exactly one flag per row. Shared by every family's typed `filter`.
+pub(crate) fn filter_len_mismatch(mask_len: usize, column_len: usize) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "filter mask length {mask_len} does not match the column length {column_len}; the mask \
+             must carry exactly one boolean per row"
+        ),
+    }
+}
+
+/// The guided error for a [`fill_null`](AnySerie::fill_null) whose fill value's type does not match
+/// the target leaf column (a [`Null`](AnyScalar::Null) value is a no-op, so it never reaches this).
+pub(crate) fn fill_null_type_mismatch(expected: DataTypeId, value: &AnyScalar) -> IoError {
+    let got = value.type_id().map_or("null", DataTypeId::name);
+    IoError::Unsupported {
+        what: format!(
+            "cannot fill the nulls of a {} column with a {got} value; the fill value's type must \
+             match the column (or be null for a no-op)",
+            expected.name()
+        ),
+    }
+}
+
 /// Maps a [`PathError`] (a bad path string, or a segment that failed to resolve) to an [`IoError`]
 /// carrying its guided text, so the deep setter returns one error type while keeping the exact
 /// position/segment guidance [`get_by_path`](AnySerie::get_by_path) gives.
@@ -205,6 +229,28 @@ pub trait AnySerie: Debug + Send + Sync {
     /// panic). Used to materialize a list row's item sub-column. The result is a fresh column (a
     /// null/OOB-safe copy, Arc-shared where cheap); the original is untouched.
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie>;
+
+    /// A **new** erased column keeping the rows where `mask[i]` is `true` — the type-erased row
+    /// filter. `mask` must have exactly one boolean per row (a guided
+    /// [`Unsupported`](IoError::Unsupported) error otherwise). A selected row keeps its value *and*
+    /// its null-ness. For a **struct** column every child column is filtered by the same mask (plus
+    /// the struct's own row validity); for a **list** / **map** column whole *rows* are kept or
+    /// dropped — the selected rows' offset ranges are kept and the offsets rebuilt, so the flattened
+    /// child is never filtered element-wise (only whole rows drop out).
+    ///
+    /// DESIGN: `filter` has no `_unchecked` twin — its one precondition (the mask length) is the
+    /// cheap check it always does, so a fast path would save nothing.
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError>;
+
+    /// A **new** erased column with every null replaced by `value` — the type-erased null fill. On a
+    /// **leaf** column `value` must be a leaf of the column's own type (a guided
+    /// [`Unsupported`](IoError::Unsupported) error otherwise); a [`Null`](AnyScalar::Null) `value` is
+    /// a no-op clone. On a **struct** / **list** / **map** column the fill **recurses to the leaf
+    /// children**, replacing nulls in each leaf whose type matches `value` and leaving the rest
+    /// unchanged — so a nested fill never errors on a column whose leaves differ from `value` (a
+    /// heterogeneous struct fills only the matching columns). A filled leaf drops its validity mask
+    /// (it is now fully present); a nested column's own row-nulls are **not** filled (only leaf cells).
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError>;
 
     /// Appends one erased value (a null or a cell of this column's type) — the erased single-row grow
     /// primitive that the nested [`append_row`](crate::io::nested::StructSerie::append_row) routes a
@@ -768,6 +814,22 @@ impl<T: NativeType> AnySerie for Serie<T> {
         Box::new(Serie::from_options(&values))
     }
 
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(Serie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == T::TYPE_ID && bytes.len() == T::WIDTH =>
+            {
+                Ok(Box::new(Serie::fill_null(self, T::read_le(bytes))))
+            }
+            other => Err(fill_null_type_mismatch(T::TYPE_ID, other)),
+        }
+    }
+
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
         match value {
             AnyScalar::Null => {
@@ -872,6 +934,23 @@ where
         )
     }
 
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(DecimalSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw coefficient at this column's scale (matching-schema fill).
+                Ok(Box::new(self.fill_null_coeff_bytes(bytes)))
+            }
+            other => Err(fill_null_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
         match value {
             AnyScalar::Null => DecimalSerie::push(self, None).map_err(to_io),
@@ -967,6 +1046,20 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
         )
     }
 
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(ByteSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == E::TYPE_ID => {
+                Ok(Box::new(ByteSerie::fill_null_bytes(self, bytes)?))
+            }
+            other => Err(fill_null_type_mismatch(E::TYPE_ID, other)),
+        }
+    }
+
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
         match value {
             AnyScalar::Null => ByteSerie::push_bytes(self, None),
@@ -1055,6 +1148,20 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
         )
     }
 
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(FixedSizeSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == K::TYPE_ID => {
+                Ok(Box::new(FixedSizeSerie::fill_null_bytes(self, bytes)?))
+            }
+            other => Err(fill_null_type_mismatch(K::TYPE_ID, other)),
+        }
+    }
+
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
         match value {
             AnyScalar::Null => FixedSizeSerie::push(self, None),
@@ -1120,6 +1227,24 @@ impl AnySerie for NullSerie {
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         let (_, count) = clamp_range(NullSerie::len(self), offset, len);
         Box::new(NullSerie::with_len(count))
+    }
+
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        if mask.len() != NullSerie::len(self) {
+            return Err(filter_len_mismatch(mask.len(), NullSerie::len(self)));
+        }
+        // A null column is just its length; keeping the `true` rows keeps their (all-null) count.
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        Ok(Box::new(NullSerie::with_len(kept)))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            // A null column has no element type: filling with a null is the identity; a present value
+            // has no room in a null column.
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            other => Err(fill_null_type_mismatch(DataTypeId::Null, other)),
+        }
     }
 
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
@@ -1208,6 +1333,23 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
             TemporalSerie::<B>::from_options(self.unit(), self.timezone(), &values)
                 .expect("a column's own values re-fit its own unit exactly"),
         )
+    }
+
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(TemporalSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        match value {
+            AnyScalar::Null => Ok(Box::new(self.clone())),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw count at this column's (unit, tz) (matching-schema fill).
+                Ok(Box::new(self.fill_null_count_bytes(bytes)))
+            }
+            other => Err(fill_null_type_mismatch(B::TYPE_ID, other)),
+        }
     }
 
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {

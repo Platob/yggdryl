@@ -12,6 +12,7 @@
 
 pub mod list;
 pub mod map;
+mod reshape;
 pub mod struct_;
 
 pub use list::{ListField, ListScalar, ListSerie, ListType};
@@ -19,7 +20,8 @@ pub use map::{MapField, MapScalar, MapSerie, MapType};
 pub use struct_::{StructField, StructScalar, StructSerie, StructType};
 
 use crate::io::{
-    read_any_leaf, AnyField, AnySerie, Bytes, DataTypeId, FieldType, IoError, PathSegment,
+    read_any_leaf, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, IoError,
+    PathSegment,
 };
 
 /// Reads **one erased column** of the type named by `field` from `source` — the single recursive
@@ -97,6 +99,27 @@ pub(crate) fn child_serie_mut<'a>(
             }
         }
         _ => None, // a leaf column has no child columns
+    }
+}
+
+/// Fills the nulls of **one child column** for a nested [`fill_null`](crate::io::AnySerie::fill_null):
+/// recurses into the child iff it is nested *or* a leaf whose type matches `value` (so a matching
+/// leaf's nulls are replaced), else returns the child unchanged — a leaf of a different type is left
+/// alone, so a nested fill over a heterogeneous struct is **lenient** (it never errors, it just fills
+/// what matches). A [`Null`](crate::io::AnyScalar::Null) `value` is always a clone (filling with a
+/// null is the identity). Shared by [`StructSerie`] / [`ListSerie`]'s `fill_null`.
+pub(crate) fn fill_null_child(
+    child: &(dyn AnySerie + 'static),
+    value: &AnyScalar,
+) -> Result<Box<dyn AnySerie>, IoError> {
+    if value.is_null() {
+        return Ok(child.clone_box());
+    }
+    let child_id = child.type_id();
+    if child_id.is_nested() || value.type_id() == Some(child_id) {
+        child.fill_null(value)
+    } else {
+        Ok(child.clone_box())
     }
 }
 

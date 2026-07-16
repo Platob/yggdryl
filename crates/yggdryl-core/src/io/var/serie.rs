@@ -6,6 +6,7 @@ use core::marker::PhantomData;
 
 use super::dtype::OFFSET_WIDTH;
 use super::{ByteField, ByteScalar, ByteType, VarElement};
+use crate::io::any_serie::filter_len_mismatch;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, FieldType, IOCursor, IoError, SerieType};
@@ -475,6 +476,104 @@ impl<E: VarElement> ByteSerie<E> {
         });
         self.len += source.len;
         Ok(())
+    }
+
+    // ---- reshape: filter (keep selected rows) + fill_null (replace nulls) -----------------
+
+    /// A **new** column keeping only the elements where `mask[i]` is `true` — the row filter. Errors
+    /// ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// OPTIMIZED: a first cheap pass popcounts the kept rows *and* sums their data bytes, so the
+    /// rebuilt offsets and data buffers are **pre-sized**; a second pass copies each selected value's
+    /// bytes (zero-copy per element) and rebuilds the offsets, keeping the selected rows' null-ness.
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Serie;
+    ///
+    /// let col = Utf8Serie::from_strs(&[Some("a"), None, Some("cd"), Some("e")]);
+    /// let kept = col.filter(&[true, true, false, true]).unwrap();
+    /// assert_eq!(kept.to_strs(), [Some("a"), None, Some("e")]);
+    /// ```
+    pub fn filter(&self, mask: &[bool]) -> Result<ByteSerie<E>, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        // First pass: count kept rows and their total data bytes, so both result buffers pre-size.
+        let mut kept = 0usize;
+        let mut data_len = 0usize;
+        for (index, &keep) in mask.iter().enumerate() {
+            if keep {
+                kept += 1;
+                if let Some(bytes) = self.get_bytes(index) {
+                    data_len += bytes.len();
+                }
+            }
+        }
+        let mut offsets = Vec::with_capacity(kept + 1);
+        offsets.push(0i32);
+        let mut data = Vec::with_capacity(data_len);
+        let mut validity: Option<Bitmap> = None;
+        let mut out_len = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            match self.get_bytes(index) {
+                Some(bytes) => {
+                    data.extend_from_slice(bytes);
+                    if let Some(bitmap) = &mut validity {
+                        bitmap.push(true);
+                    }
+                }
+                None => {
+                    validity
+                        .get_or_insert_with(|| Bitmap::all_present(out_len))
+                        .push(false);
+                }
+            }
+            offsets.push(data.len() as i32);
+            out_len += 1;
+        }
+        Ok(Self {
+            offsets,
+            data,
+            validity,
+            len: kept,
+            field: self.field.clone(),
+            _element: PhantomData,
+        })
+    }
+
+    /// A **new** column with every null replaced by `value` (validated for the kind) — one pass. If
+    /// the column has no nulls it is cloned; otherwise the offsets and data are rebuilt with `value`
+    /// spliced into each null slot and the validity mask **dropped** (the result is fully present).
+    /// The var-family twin of [`Serie::fill_null`](crate::io::fixed::Serie::fill_null).
+    pub fn fill_null_bytes(&self, value: &[u8]) -> Result<ByteSerie<E>, IoError> {
+        E::validate(value)?;
+        if !self.has_nulls() {
+            return Ok(self.clone());
+        }
+        // A null slot is zero-width in `data`, so `self.data.len()` is exactly the present bytes; the
+        // fills add `null_count * value.len()` — both known up front, so `data` pre-sizes exactly.
+        let data_len = self.data.len() + self.null_count() * value.len();
+        let mut offsets = Vec::with_capacity(self.len + 1);
+        offsets.push(0i32);
+        let mut data = Vec::with_capacity(data_len);
+        for index in 0..self.len {
+            match self.get_bytes(index) {
+                Some(bytes) => data.extend_from_slice(bytes),
+                None => data.extend_from_slice(value),
+            }
+            offsets.push(data.len() as i32);
+        }
+        Ok(Self {
+            offsets,
+            data,
+            validity: None,
+            len: self.len,
+            field: self.field.clone(),
+            _element: PhantomData,
+        })
     }
 
     /// Writes the column to `sink`: `[len:u64][flags:u8][validity?][offsets:(len+1)×i32]`

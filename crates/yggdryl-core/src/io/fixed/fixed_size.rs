@@ -14,6 +14,7 @@
 use core::marker::PhantomData;
 
 use super::Field;
+use crate::io::any_serie::filter_len_mismatch;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{field_accessors, field_setters};
 use crate::io::var::{VarScalar, VarSerie};
@@ -660,6 +661,94 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         });
         self.len += source.len;
         Ok(())
+    }
+
+    // ---- reshape: filter (keep selected rows) + fill_null (replace nulls) -----------------
+
+    /// A **new** column keeping only the elements where `mask[i]` is `true` — the row filter over the
+    /// flat `N`-byte-slot data buffer (the fixed `width` is preserved). Errors
+    /// ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::FixedBinarySerie;
+    ///
+    /// let col = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
+    /// let kept = col.filter(&[true, false, true]).unwrap();
+    /// assert_eq!(kept.len(), 2);
+    /// assert_eq!(kept.get_bytes(0), Some(&b"ab"[..]));
+    /// assert_eq!(kept.get_bytes(1), Some(&b"cd"[..]));
+    /// ```
+    pub fn filter(&self, mask: &[bool]) -> Result<FixedSizeSerie<K>, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let width = self.width();
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let mut data = Vec::with_capacity(kept * width);
+        let mut validity: Option<Bitmap> = None;
+        let mut out_len = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            data.extend_from_slice(&self.data[index * width..(index + 1) * width]);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_len))
+                    .push(false);
+            }
+            out_len += 1;
+        }
+        Ok(Self {
+            data,
+            validity,
+            len: kept,
+            field: self.field.clone(),
+            _kind: PhantomData,
+        })
+    }
+
+    /// A **new** column with every null slot replaced by `fill` (validated for the kind; it must be
+    /// exactly [`width`](FixedSizeSerie::width) bytes) — one pass, the erased
+    /// [`fill_null`](crate::io::AnySerie::fill_null) path. If the column has no nulls it is cloned;
+    /// otherwise the data is copied, each null slot overwritten with `fill`, and the validity mask
+    /// **dropped** (fully present). Errors [`CorruptLength`](IoError::CorruptLength) on a wrong-width
+    /// value.
+    pub fn fill_null_bytes(&self, fill: &[u8]) -> Result<FixedSizeSerie<K>, IoError> {
+        let width = self.width();
+        if fill.len() != width {
+            return Err(IoError::CorruptLength {
+                len: fill.len() as u64,
+                width,
+            });
+        }
+        K::validate(fill)?;
+        if !self.has_nulls() {
+            return Ok(self.clone());
+        }
+        let mut data = self.data.clone();
+        if let Some(validity) = &self.validity {
+            for index in 0..self.len {
+                if !validity.get(index) {
+                    data[index * width..(index + 1) * width].copy_from_slice(fill);
+                }
+            }
+        }
+        Ok(Self {
+            data,
+            validity: None,
+            len: self.len,
+            field: self.field.clone(),
+            _kind: PhantomData,
+        })
     }
 
     /// Writes the column: `[len:u64][width:u64][flags:u8][validity?][data]`.

@@ -2,6 +2,7 @@
 //! [`Buffer`] — and the [`FixedSerie`] sub-trait of the root [`SerieType`](crate::io::SerieType).
 
 use super::{Buffer, Field, NativeType, PrimitiveType, Scalar, TypedField};
+use crate::io::any_serie::filter_len_mismatch;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOBase, IOCursor, IoError, SerieType};
@@ -575,6 +576,94 @@ impl<T: NativeType> Serie<T> {
             source.validity.as_ref().is_none_or(|mask| mask.get(offset))
         });
         self.len += source.len;
+    }
+
+    // ---- reshape: filter (keep selected rows) + fill_null (replace nulls) -----------------
+
+    /// A **new** column keeping only the elements where `mask[i]` is `true` — the bitmap-optimized
+    /// row filter. Errors ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// OPTIMIZED: popcounts the kept rows to **pre-size** the result value buffer, then copies the
+    /// selected value bytes (and their validity bits) in **one pass** — a selected null stays null,
+    /// and the mask is materialized only if a kept row is null. There is no `_unchecked` twin: the
+    /// mask length is the sole precondition and checking it is already cheap.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_options(&[Some(1i32), None, Some(3), Some(4)]);
+    /// let kept = col.filter(&[true, true, false, true]).unwrap();
+    /// assert_eq!(kept.to_options(), [Some(1), None, Some(4)]);
+    /// ```
+    pub fn filter(&self, mask: &[bool]) -> Result<Serie<T>, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let src = self.values.as_bytes();
+        let mut bytes = Vec::with_capacity(kept * T::WIDTH);
+        let mut validity: Option<Bitmap> = None;
+        let mut out_len = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            bytes.extend_from_slice(&src[index * T::WIDTH..(index + 1) * T::WIDTH]);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_len))
+                    .push(false);
+            }
+            out_len += 1;
+        }
+        Ok(Self {
+            validity,
+            values: Buffer::from_byte_vec(bytes),
+            len: kept,
+            field: self.field.clone(),
+        })
+    }
+
+    /// A **new** column with every null replaced by `value` — one pass, bounded allocation. If the
+    /// column has no nulls it is cloned; otherwise the values are copied, each null slot is
+    /// overwritten with `value`, and the validity mask is **dropped** (the result is fully present).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let filled = Serie::from_options(&[Some(1i32), None, Some(3)]).fill_null(0);
+    /// assert_eq!(filled.to_options(), [Some(1), Some(0), Some(3)]);
+    /// assert_eq!(filled.null_count(), 0);
+    /// ```
+    pub fn fill_null(&self, value: T) -> Serie<T> {
+        if !self.has_nulls() {
+            return self.clone();
+        }
+        let mut bytes = self.values.as_bytes().to_vec();
+        let mut scratch = [0u8; MAX_WIDTH];
+        value.write_le(&mut scratch);
+        if let Some(validity) = &self.validity {
+            for index in 0..self.len {
+                if !validity.get(index) {
+                    bytes[index * T::WIDTH..(index + 1) * T::WIDTH]
+                        .copy_from_slice(&scratch[..T::WIDTH]);
+                }
+            }
+        }
+        Self {
+            validity: None,
+            values: Buffer::from_byte_vec(bytes),
+            len: self.len,
+            field: self.field.clone(),
+        }
     }
 
     /// Writes this column to `sink` — `[len: u64][flags: u8][validity?][values]` — advancing

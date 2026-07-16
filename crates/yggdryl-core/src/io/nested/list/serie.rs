@@ -8,7 +8,8 @@ use core::any::Any;
 use super::scalar::ListScalar;
 use super::{ListField, ListType};
 use crate::io::any_serie::{
-    append_type_mismatch, apply_field_header, concat_type_mismatch, set_cell_on_nested,
+    append_type_mismatch, apply_field_header, concat_type_mismatch, filter_len_mismatch,
+    set_cell_on_nested,
 };
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
@@ -373,6 +374,82 @@ impl ListSerie {
         Ok(())
     }
 
+    // ---- reshape: filter (keep selected rows) + fill_null (replace leaf nulls) ------------
+
+    /// A **new** list column keeping only the **rows** where `mask[i]` is `true`. Whole rows are
+    /// kept or dropped: the selected rows' child element ranges are kept (never filtered
+    /// element-wise), the offsets are rebuilt over them, and the top-level row validity is filtered
+    /// too. Errors ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// DESIGN: the kept rows' spans are contiguous and in row order, so an **element-level** child
+    /// mask (one flag per child element, set for every element of a kept row) selects exactly the
+    /// kept rows' concatenated ranges — reusing the child's own optimized
+    /// [`filter`](crate::io::AnySerie::filter) in one call rather than a slice/concat per row.
+    pub fn filter(&self, mask: &[bool]) -> Result<ListSerie, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let child_len = self.values.len();
+        let mut child_mask = vec![false; child_len];
+        let mut new_offsets = Vec::with_capacity(kept + 1);
+        new_offsets.push(0i32);
+        let mut validity: Option<Bitmap> = None;
+        let mut running = 0i32;
+        let mut out_index = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            let start = self.offsets[index] as usize;
+            let end = self.offsets[index + 1] as usize;
+            for slot in &mut child_mask[start..end] {
+                *slot = true;
+            }
+            running += (end - start) as i32;
+            new_offsets.push(running);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_index))
+                    .push(false);
+            }
+            out_index += 1;
+        }
+        let mut values = self.values.filter(&child_mask)?;
+        apply_field_header(&mut values, &self.item_field());
+        Ok(Self {
+            values,
+            offsets: new_offsets,
+            validity: normalize(validity),
+            len: kept,
+            field: self.field.clone(),
+        })
+    }
+
+    /// A **new** list column with the nulls of the flattened child filled by `value` — the fill
+    /// recurses into the item child (see [`AnySerie::fill_null`](crate::io::AnySerie::fill_null)):
+    /// the child's element nulls are replaced if its type matches `value`, else it is left unchanged.
+    /// The child length is preserved, so the offsets and the top-level row-nulls carry over as-is.
+    pub fn fill_null(&self, value: &AnyScalar) -> Result<ListSerie, IoError> {
+        let mut values = crate::io::nested::fill_null_child(self.values.as_ref(), value)?;
+        apply_field_header(&mut values, &self.item_field());
+        Ok(Self {
+            values,
+            offsets: self.offsets.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            field: self.field.clone(),
+        })
+    }
+
     // ---- serialization: the list schema, then validity + offsets, then the child column --------
 
     /// This list column's canonical bytes — a self-contained
@@ -534,6 +611,14 @@ impl AnySerie for ListSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(ListSerie::slice(self, offset, len))
+    }
+
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(ListSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(ListSerie::fill_null(self, value)?))
     }
 
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {

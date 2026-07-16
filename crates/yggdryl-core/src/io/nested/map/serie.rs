@@ -9,7 +9,9 @@ use core::any::Any;
 
 use super::scalar::MapScalar;
 use super::{MapField, MapType};
-use crate::io::any_serie::{append_type_mismatch, concat_type_mismatch, set_cell_on_nested};
+use crate::io::any_serie::{
+    append_type_mismatch, concat_type_mismatch, filter_len_mismatch, set_cell_on_nested,
+};
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
@@ -508,6 +510,81 @@ impl MapSerie {
         Ok(())
     }
 
+    // ---- reshape: filter (keep selected rows) + fill_null (replace leaf nulls) ------------
+
+    /// A **new** map column keeping only the **rows** where `mask[i]` is `true`. Whole rows are kept
+    /// or dropped: the selected rows' entry ranges are kept (never filtered entry-wise), the offsets
+    /// are rebuilt over them, and the top-level row validity is filtered too; `keys_sorted` is
+    /// preserved (per-row order is untouched). Errors ([`Unsupported`](IoError::Unsupported)) if
+    /// `mask.len() != self.len()`.
+    pub fn filter(&self, mask: &[bool]) -> Result<MapSerie, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let entries_len = self.entries.len();
+        let mut entry_mask = vec![false; entries_len];
+        let mut new_offsets = Vec::with_capacity(kept + 1);
+        new_offsets.push(0i32);
+        let mut validity: Option<Bitmap> = None;
+        let mut running = 0i32;
+        let mut out_index = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            let start = self.offsets[index] as usize;
+            let end = self.offsets[index + 1] as usize;
+            for slot in &mut entry_mask[start..end] {
+                *slot = true;
+            }
+            running += (end - start) as i32;
+            new_offsets.push(running);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_index))
+                    .push(false);
+            }
+            out_index += 1;
+        }
+        // The entries are a two-column struct; filter them by the derived entry-level mask (keys stay
+        // non-null — filtering preserves each cell's null-ness, and keys have none).
+        let entries = self.entries.filter(&entry_mask)?;
+        Ok(Self {
+            entries,
+            offsets: new_offsets,
+            validity: normalize(validity),
+            len: kept,
+            keys_sorted: self.keys_sorted,
+            field: self.field.clone(),
+        })
+    }
+
+    /// A **new** map column with the nulls of the flattened **value** entries filled by `value` — the
+    /// fill recurses into the entries struct (see
+    /// [`AnySerie::fill_null`](crate::io::AnySerie::fill_null)), so a value column whose type matches
+    /// `value` has its nulls replaced (the non-null key column is untouched). The entries length is
+    /// preserved, so the offsets and top-level row-nulls carry over as-is.
+    pub fn fill_null(&self, value: &AnyScalar) -> Result<MapSerie, IoError> {
+        let entries = self.entries.fill_null(value)?;
+        Ok(Self {
+            entries,
+            offsets: self.offsets.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            keys_sorted: self.keys_sorted,
+            field: self.field.clone(),
+        })
+    }
+
     // ---- serialization: the map schema, then validity + offsets, then the entries struct -------
 
     /// This map column's canonical bytes — a self-contained
@@ -703,6 +780,14 @@ impl AnySerie for MapSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(MapSerie::slice(self, offset, len))
+    }
+
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(MapSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(MapSerie::fill_null(self, value)?))
     }
 
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {

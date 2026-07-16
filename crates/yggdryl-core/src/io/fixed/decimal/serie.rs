@@ -10,6 +10,7 @@ use arrow_buffer::Buffer as ArrowBuffer;
 use super::{
     Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalScalar, DecimalType,
 };
+use crate::io::any_serie::filter_len_mismatch;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
@@ -454,6 +455,87 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         } else {
             // Re-express path: fit each source value at this column's (precision, scale).
             self.extend_with(source.len, |offset| Ok(source.get(offset)))
+        }
+    }
+
+    // ---- reshape: filter (keep selected rows) + fill_null (replace nulls) -----------------
+
+    /// A **new** column keeping only the elements where `mask[i]` is `true` — the bitmap-optimized
+    /// row filter, over the raw coefficient bytes (the `(precision, scale)` is preserved). Errors
+    /// ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{D128, D128Serie};
+    ///
+    /// let a = D128::new(12345, 2).unwrap();
+    /// let b = D128::new(600, 2).unwrap();
+    /// let col = D128Serie::from_options(20, 2, &[Some(a), None, Some(b)]).unwrap();
+    /// let kept = col.filter(&[true, false, true]).unwrap();
+    /// assert_eq!(kept.len(), 2);
+    /// assert_eq!(kept.get(0), Some(a));
+    /// assert_eq!(kept.get(1), Some(b));
+    /// ```
+    pub fn filter(&self, mask: &[bool]) -> Result<DecimalSerie<B>, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let src = self.values.as_slice();
+        let mut bytes = Vec::with_capacity(kept * B::WIDTH);
+        let mut validity: Option<Bitmap> = None;
+        let mut out_len = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            bytes.extend_from_slice(&src[index * B::WIDTH..(index + 1) * B::WIDTH]);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_len))
+                    .push(false);
+            }
+            out_len += 1;
+        }
+        Ok(Self {
+            validity,
+            values: ArrowBuffer::from_vec(bytes),
+            len: kept,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        })
+    }
+
+    /// A **new** column with every null coefficient replaced by the raw little-endian bytes `fill`
+    /// (already at this column's scale, exactly `B::WIDTH` long) — one pass, the erased
+    /// [`fill_null`](crate::io::AnySerie::fill_null) path. If the column has no nulls it is cloned;
+    /// otherwise the coefficients are copied, each null slot overwritten with `fill`, and the
+    /// validity mask **dropped** (fully present).
+    pub(crate) fn fill_null_coeff_bytes(&self, fill: &[u8]) -> DecimalSerie<B> {
+        if !self.has_nulls() {
+            return self.clone();
+        }
+        let mut bytes = self.coeff_bytes().to_vec();
+        if let Some(validity) = &self.validity {
+            for index in 0..self.len {
+                if !validity.get(index) {
+                    bytes[index * B::WIDTH..(index + 1) * B::WIDTH].copy_from_slice(fill);
+                }
+            }
+        }
+        Self {
+            validity: None,
+            values: ArrowBuffer::from_vec(bytes),
+            len: self.len,
+            field: self.field.clone(),
+            _backing: PhantomData,
         }
     }
 

@@ -12,6 +12,7 @@ use super::{
     Temporal, TemporalBacking, TemporalError, TemporalField, TemporalNative, TemporalScalar,
     TemporalType, TimeUnit, Tz,
 };
+use crate::io::any_serie::filter_len_mismatch;
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, SerieType};
@@ -485,6 +486,87 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         } else {
             // Re-express path: fit each source value at this column's (unit, tz).
             self.extend_with(source.len, |offset| Ok(source.get(offset)))
+        }
+    }
+
+    // ---- reshape: filter (keep selected rows) + fill_null (replace nulls) -----------------
+
+    /// A **new** column keeping only the elements where `mask[i]` is `true` — the bitmap-optimized
+    /// row filter, over the raw physical count bytes (the `(unit, tz)` is preserved). Errors
+    /// ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Ts64Serie;
+    /// use yggdryl_core::io::fixed::temporal::{Ts64, TimeUnit, Tz};
+    ///
+    /// let a = Ts64::from_epoch(1_000, TimeUnit::Second, Tz::UTC).unwrap();
+    /// let b = Ts64::from_epoch(2_000, TimeUnit::Second, Tz::UTC).unwrap();
+    /// let col = Ts64Serie::from_options(TimeUnit::Second, Tz::UTC, &[Some(a), None, Some(b)]).unwrap();
+    /// let kept = col.filter(&[true, false, true]).unwrap();
+    /// assert_eq!(kept.len(), 2);
+    /// assert_eq!(kept.get(1), Some(b));
+    /// ```
+    pub fn filter(&self, mask: &[bool]) -> Result<TemporalSerie<B>, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let src = self.values.as_slice();
+        let mut bytes = Vec::with_capacity(kept * B::WIDTH);
+        let mut validity: Option<Bitmap> = None;
+        let mut out_len = 0;
+        for (index, &keep) in mask.iter().enumerate() {
+            if !keep {
+                continue;
+            }
+            bytes.extend_from_slice(&src[index * B::WIDTH..(index + 1) * B::WIDTH]);
+            if self
+                .validity
+                .as_ref()
+                .is_none_or(|bitmap| bitmap.get(index))
+            {
+                if let Some(bitmap) = &mut validity {
+                    bitmap.push(true);
+                }
+            } else {
+                validity
+                    .get_or_insert_with(|| Bitmap::all_present(out_len))
+                    .push(false);
+            }
+            out_len += 1;
+        }
+        Ok(Self {
+            validity,
+            values: ArrowBuffer::from_vec(bytes),
+            len: kept,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        })
+    }
+
+    /// A **new** column with every null count replaced by the raw little-endian bytes `fill` (already
+    /// a count at this column's `(unit, tz)`, exactly `B::WIDTH` long) — one pass, the erased
+    /// [`fill_null`](crate::io::AnySerie::fill_null) path. If the column has no nulls it is cloned;
+    /// otherwise the counts are copied, each null slot overwritten with `fill`, and the validity mask
+    /// **dropped** (fully present).
+    pub(crate) fn fill_null_count_bytes(&self, fill: &[u8]) -> TemporalSerie<B> {
+        if !self.has_nulls() {
+            return self.clone();
+        }
+        let mut bytes = self.count_bytes().to_vec();
+        if let Some(validity) = &self.validity {
+            for index in 0..self.len {
+                if !validity.get(index) {
+                    bytes[index * B::WIDTH..(index + 1) * B::WIDTH].copy_from_slice(fill);
+                }
+            }
+        }
+        Self {
+            validity: None,
+            values: ArrowBuffer::from_vec(bytes),
+            len: self.len,
+            field: self.field.clone(),
+            _backing: PhantomData,
         }
     }
 

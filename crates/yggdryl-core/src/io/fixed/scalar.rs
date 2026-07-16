@@ -152,6 +152,22 @@ impl<T: NativeType> Scalar<T> {
         TypedField::new(name, nullable)
     }
 
+    /// This scalar with its null replaced by `value` — `self` (cloned) if it is already present,
+    /// else a present scalar of `value`. The scalar twin of [`Serie::fill_null`](Serie::fill_null).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Scalar;
+    ///
+    /// assert_eq!(Scalar::<i32>::null().fill_null(7), Scalar::of(7));
+    /// assert_eq!(Scalar::of(1i32).fill_null(7), Scalar::of(1)); // present -> unchanged
+    /// ```
+    pub fn fill_null(&self, value: T) -> Scalar<T> {
+        match self.value {
+            Some(_) => self.clone(),
+            None => Scalar::of(value),
+        }
+    }
+
     /// This scalar **broadcast to a length-1 [`Serie`]** — the inverse of
     /// [`Serie::as_scalar`](Serie::as_scalar).
     ///

@@ -9,7 +9,8 @@ use core::any::Any;
 use super::scalar::StructScalar;
 use super::{StructField, StructType};
 use crate::io::any_serie::{
-    append_type_mismatch, apply_field_header, concat_type_mismatch, set_cell_on_nested,
+    append_type_mismatch, apply_field_header, concat_type_mismatch, filter_len_mismatch,
+    set_cell_on_nested,
 };
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
@@ -500,6 +501,64 @@ impl StructSerie {
         Ok(())
     }
 
+    // ---- reshape: filter (keep selected rows) + fill_null (replace leaf nulls) ------------
+
+    /// A **new** struct column keeping only the rows where `mask[i]` is `true` — every child column
+    /// is filtered by the same mask (so the children stay equal-length) and the struct's own row
+    /// validity is filtered too. Errors ([`Unsupported`](IoError::Unsupported)) if
+    /// `mask.len() != self.len()`.
+    pub fn filter(&self, mask: &[bool]) -> Result<StructSerie, IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        let mut columns = Vec::with_capacity(self.columns.len());
+        for child in &self.columns {
+            let mut filtered = child.filter(mask)?;
+            apply_field_header(&mut filtered, &child.field_self());
+            columns.push(filtered);
+        }
+        let validity = self.validity.as_ref().map(|bitmap| {
+            let mut out = Bitmap::all_present(kept);
+            let mut out_index = 0;
+            for (index, &keep) in mask.iter().enumerate() {
+                if keep {
+                    if !bitmap.get(index) {
+                        out.set(out_index, false);
+                    }
+                    out_index += 1;
+                }
+            }
+            out
+        });
+        Ok(Self {
+            columns,
+            validity: normalize(validity),
+            len: kept,
+            field: self.field.clone(),
+        })
+    }
+
+    /// A **new** struct column with the nulls of each matching-typed leaf child replaced by `value` —
+    /// the fill **recurses to the leaves** (see
+    /// [`AnySerie::fill_null`](crate::io::AnySerie::fill_null)): a leaf child whose type matches
+    /// `value` has its nulls replaced, a nested child recurses, and any other child (and the struct's
+    /// own row-nulls) is left unchanged, so it never errors on a heterogeneous struct.
+    pub fn fill_null(&self, value: &AnyScalar) -> Result<StructSerie, IoError> {
+        let mut columns = Vec::with_capacity(self.columns.len());
+        for child in &self.columns {
+            let mut filled = crate::io::nested::fill_null_child(child.as_ref(), value)?;
+            apply_field_header(&mut filled, &child.field_self());
+            columns.push(filled);
+        }
+        Ok(Self {
+            columns,
+            validity: self.validity.clone(),
+            len: self.len,
+            field: self.field.clone(),
+        })
+    }
+
     // ---- serialization: the schema, then each child via its own `Serie` codec ----------
 
     /// This struct column's canonical bytes — a self-contained `[schema][len][validity?][children]`
@@ -630,6 +689,14 @@ impl AnySerie for StructSerie {
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         Box::new(StructSerie::slice(self, offset, len))
+    }
+
+    fn filter(&self, mask: &[bool]) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(StructSerie::filter(self, mask)?))
+    }
+
+    fn fill_null(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
+        Ok(Box::new(StructSerie::fill_null(self, value)?))
     }
 
     fn append_scalar(&mut self, value: &AnyScalar) -> Result<(), IoError> {
