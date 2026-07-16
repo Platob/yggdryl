@@ -1,6 +1,6 @@
 # Arrow interop — temporal
 
-The nine columnar temporal types (see [Types → Temporal](../types/temporal.md)) each map to an Arrow
+The nine columnar temporal types (see [Types → Temporal](../fixed/temporal.md)) each map to an Arrow
 array. This page walks them **simple → complex**, in synced three-language tabs. Two conventions run
 throughout the bindings:
 

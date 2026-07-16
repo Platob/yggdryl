@@ -1,6 +1,6 @@
 # Arrow interop — primitives
 
-The fixed-width numeric family (see [Types → Fixed-width](../types/fixed.md)) splits into two Arrow
+The fixed-width numeric family (see [Types → Fixed-width](../fixed/index.md)) splits into two Arrow
 behaviours:
 
 - **The native subset — zero-copy.** `u8`…`i64` and `f16`/`f32`/`f64` have a real Arrow

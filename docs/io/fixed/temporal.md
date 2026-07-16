@@ -222,7 +222,7 @@ and a time lands on the epoch date (`to_timestamp`). Widths convert within a con
 
 ## The type system knows temporals
 
-Temporals are their own [`DataTypeCategory`](schema.md) — fixed-width, but **not** numeric — so
+Temporals are their own [`DataTypeCategory`](../schema.md) — fixed-width, but **not** numeric — so
 `is_temporal()` drills down like every other family, and the schema layer names them.
 
 === "Python"

@@ -4,7 +4,7 @@
 `FixedBinary` all collapse to the same `FixedSizeBinary(N)`, and `(precision, scale)` /
 `(unit, timezone)` are not expressible in a byte width. A naive `from_arrow` would have to *guess*.
 Instead the exact logical type is recorded in **field metadata** — Arrow's `Field::metadata`, which
-yggdryl models as the centralized [`Headers`](../guide/headers.md) map — and `from_arrow` prefers it
+yggdryl models as the centralized [`Headers`](../headers.md) map — and `from_arrow` prefers it
 to recover the precise type.
 
 ## The reserved keys

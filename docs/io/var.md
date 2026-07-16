@@ -1,6 +1,6 @@
 # Typed data — variable-length
 
-`io::var` is the sibling of [`io::fixed`](fixed.md) for types whose values are **not** a fixed
+`io::var` is the sibling of [`io::fixed`](fixed/index.md) for types whose values are **not** a fixed
 byte width. It ships the two byte families:
 
 - **`Utf8`** — UTF-8 text (every value is validated to be valid UTF-8).
@@ -17,7 +17,7 @@ Every var type is generic over a [`VarElement`] marker (`Utf8` / `Binary`), the 
 primitives are generic over a `NativeType`. So one implementation backs both kinds, and each
 gets a friendly alias:
 
-| root trait ([`io`](fixed.md)) | var sub-trait | concrete | `Utf8` alias | `Binary` alias |
+| root trait ([`io`](fixed/index.md)) | var sub-trait | concrete | `Utf8` alias | `Binary` alias |
 | --- | --- | --- | --- | --- |
 | `DataType` | `VarDataType` | `ByteType<E>` | `Utf8DataType` | `BinaryDataType` |
 | `FieldType` | `VarField` | `ByteField<E>` | `Utf8Field` | `BinaryField` |
@@ -25,15 +25,15 @@ gets a friendly alias:
 | `SerieType` | `VarSerie` | `ByteSerie<E>` | `Utf8Serie` | `BinarySerie` |
 
 The **root traits** (`DataType`, `ScalarType`, …) are shared with the fixed family and live at
-the [`io`](fixed.md) root; `io::var` only adds the `Var*` sub-traits and the concrete types.
+the [`io`](fixed/index.md) root; `io::var` only adds the `Var*` sub-traits and the concrete types.
 There is no `VarBuffer` — a variable column's storage is the offsets + data inside its
-`ByteSerie`; the raw data buffer, when needed on its own, is just [`Bytes`](../guide/io.md).
+`ByteSerie`; the raw data buffer, when needed on its own, is just [`Bytes`](bytes.md).
 
 ## Scalars — one nullable value
 
 `Utf8Scalar` / `BinaryScalar` hold one nullable value. A `Utf8` value is validated on every
 input path, so `as_str()` never re-checks and never allocates. Every scalar round-trips through
-the [`IOCursor`](../guide/io.md) byte codec.
+the [`IOCursor`](bytes.md) byte codec.
 
 ```rust
 use yggdryl_core::io::var::{BinaryScalar, Utf8Scalar};
@@ -175,7 +175,7 @@ allocation-free. See the [access benchmark](https://github.com/Platob/yggdryl/bl
 
 ## Category drill-down
 
-Like every descriptor, a var type reports a single [`DataTypeCategory`](fixed.md) and answers
+Like every descriptor, a var type reports a single [`DataTypeCategory`](fixed/index.md) and answers
 the `is_*` predicates by forwarding to it — so it classifies uniformly with the fixed types,
 with no `match`:
 

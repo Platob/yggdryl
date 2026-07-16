@@ -93,6 +93,64 @@ assert_eq!(same, col);
 A non-finite float (`NaN` / `±∞`) cannot become an integer (`CastError::NotFinite`); an
 out-of-range value is `CastError::OutOfRange`, naming the value and the target type.
 
+## Float → integer: the exact range rule
+
+The float → integer path first **rejects non-finite** inputs (`NaN` / `±∞` → `NotFinite`), then
+**truncates toward zero** (`3.9 → 3`, `-3.9 → -3`), then **range-checks against an exact bound**.
+The bound is deliberately *not* `T::MAX as f64`: for the wide types that conversion **rounds up**
+(`i64::MAX` → 2⁶³, `u64::MAX` → 2⁶⁴, `i128::MAX` → 2¹²⁷), so a naive `value <= MAX as f64` test
+would admit exactly that power and then saturate silently. yggdryl instead gates on the *first
+magnitude the type cannot hold* — a signed N-bit type accepts `[MIN, 2^(N-1))`, an unsigned one
+`[0, 2^N)`. Every bound is an exact power of two, representable in `f64`, so the check is exact and
+the accepted value round-trips. `NumericSerie::cast` (the whole-column form) applies the same rule
+element-for-element.
+
+=== "Python"
+
+    ```python
+    from yggdryl.types import I32Scalar, F64Scalar
+
+    assert F64Scalar(3.9).to_i32().value == 3        # truncates toward zero
+    assert F64Scalar(-3.9).to_i32().value == -3
+    # 2**31 is the first magnitude i32 cannot hold -> out of range (not a silent saturate).
+    try:
+        F64Scalar(2.0 ** 31).to_i32()
+    except (ValueError, OverflowError) as error:
+        assert "range" in str(error).lower()
+    ```
+
+=== "Node"
+
+    ```js
+    const { F64Scalar } = require('yggdryl').types
+
+    assert(new F64Scalar(3.9).toI32().value === 3)   // truncates toward zero
+    assert(new F64Scalar(-3.9).toI32().value === -3)
+    // 2**31 is the first magnitude i32 cannot hold -> guided range error.
+    assert.throws(() => new F64Scalar(2 ** 31).toI32(), /range/i)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::fixed::Scalar;
+
+    assert_eq!(Scalar::of(3.9f64).cast::<i32>().unwrap(), Scalar::of(3i32));   // truncates
+    assert_eq!(Scalar::of(-3.9f64).cast::<i32>().unwrap(), Scalar::of(-3i32));
+    assert!(Scalar::of(2f64.powi(31)).cast::<i32>().is_err());    // exact bound: 2^31 rejected
+    assert!(Scalar::of(f64::NAN).cast::<i32>().is_err());         // NotFinite
+    ```
+
+## `NumericCast` — the coercion capability
+
+The numeric conversions ride one **capability sub-trait**, `NumericCast`, implemented for every
+numeric primitive (`u8`…`i128`, `f16`/`f32`/`f64`). It spells the exact `i128` (integer) and `f64`
+(float) bridges the casts route through — and, since the same closed numeric space powers the
+vectorized arithmetic, it *also* carries the element kernels (`add_wrapping`, `div_checked`, …) that
+the [element-wise ops](ops.md) fast path dispatches to. So "castable" and "does arithmetic" are the
+**same** capability: a column has the numeric ops exactly when its element is `NumericCast`, checked
+once at compile time rather than per-op on the hot path.
+
 ## The universal UTF-8 and binary bridges
 
 Any value formats to a UTF-8 string and parses back; any value serializes to its canonical

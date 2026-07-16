@@ -1,6 +1,6 @@
 # Nested types (struct, list, map)
 
-`io::nested` is the third typed family, the sibling of [fixed](fixed.md) and
+`io::nested` is the third typed family, the sibling of [fixed](fixed/index.md) and
 [variable](var.md) — for **composite** types whose values are built from *other* columns. It ships
 all three Arrow nested shapes:
 
@@ -415,7 +415,7 @@ Rust or Python).
 Behind the `arrow` feature, `StructSerie` / `ListSerie` / `MapSerie` bridge to Arrow's `StructArray`
 (and `RecordBatch`), `ListArray`, and `MapArray` **recursively**, and the Python extension exports
 each to `pyarrow` zero-copy via the Arrow C Data Interface. **Arrow interop →
-[see Arrow interop → Nested](../arrow/nested.md)** for the full three-language reference (the
+[see Arrow interop → Nested](arrow/nested.md)** for the full three-language reference (the
 `StructArray` / `RecordBatch` / `ListArray` / `MapArray` conversions, the null-row rule, and the
 PyCapsule bridge). The mapping is centralized on [`DataTypeId`](schema.md), and Arrow types never
 appear in a public signature.
@@ -479,4 +479,4 @@ plus each child's `serializeBytes()` frame. Both round-trip byte-for-byte with t
 
 The Python extension additionally exports every nested column to `pyarrow` **zero-copy** through the
 Arrow PyCapsule protocol, and the Node extension interops through the shared byte codec — see
-[Arrow interop → Nested](../arrow/nested.md).
+[Arrow interop → Nested](arrow/nested.md).

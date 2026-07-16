@@ -1,7 +1,7 @@
 # Byte I/O
 
 yggdryl's core `io` module defines a small **byte-I/O trait family** and one in-memory
-implementor, [`Bytes`](#bytes). The traits (Rust core) fix the signatures; `Bytes` is the
+implementor, `Bytes`. The traits (Rust core) fix the signatures; `Bytes` is the
 concrete value the Python and Node bindings hold.
 
 - **`IOBase`** — random-access byte storage addressed by absolute offset: `pread` /

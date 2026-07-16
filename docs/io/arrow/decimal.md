@@ -1,6 +1,6 @@
 # Arrow interop — decimals
 
-The columnar decimal types (see [Types → Decimals](../types/decimal.md)) fix one
+The columnar decimal types (see [Types → Decimals](../fixed/decimal.md)) fix one
 `(precision, scale)` per column — Arrow's exact model — and store raw two's-complement
 coefficients. So a `DecimalSerie` converts **zero-copy** to and from Arrow's decimal arrays: the
 coefficient allocation is shared (an `Arc` bump), and the array carries the column's precision and

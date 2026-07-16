@@ -3,7 +3,7 @@
 The core `io` module is organized to **serialize all types**, split by value shape:
 
 - **`io::fixed`** — fixed-width primitives (`u8`, `i32`, `f64`, …), one byte width per value.
-- **`io::var`** — variable-length types ([strings and binary](var.md)); the sibling that builds
+- **`io::var`** — variable-length types ([strings and binary](../var.md)); the sibling that builds
   on the same foundation.
 
 !!! note "Python & Node"
@@ -12,19 +12,19 @@ The core `io` module is organized to **serialize all types**, split by value sha
     per primitive under `yggdryl.types` (`I32Scalar` / `I32Serie`, `U256Scalar` / `U256Serie`,
     `F64Scalar` / `F64Serie`, …); see [In Python and Node](#in-python-and-node) below for the
     three-language API. The **schema** layer they rest on — `DataType`, `Field`, and its
-    [`Headers`](../guide/headers.md) metadata — is mirrored too (see [Schema layer](schema.md)). The typed
+    [`Headers`](../headers.md) metadata — is mirrored too (see [Schema layer](../schema.md)). The typed
     `Buffer<T>` (`I32Buffer` … `F64Buffer`, a raw non-nullable values store) and numeric
-    [casting](../guide/converter.md) are mirrored as well.
+    [casting](../converter.md) are mirrored as well.
 
 Each fixed-width type `T` gets the same Arrow-style stack of value types, all generic over `T`
-and built on the byte-I/O [`Buffer`](../guide/io.md):
+and built on the byte-I/O [`Buffer`](../bytes.md):
 
 | Type | Role |
 | --- | --- |
 | `PrimitiveType<T>` / `DataType` | the typed / erased **type descriptor** (name + byte width) |
 | `TypedField<T>` / `Field` | a **named, nullable column** descriptor |
 | `Scalar<T>` | **one nullable value**, with an `IOCursor` byte codec |
-| `Buffer<T>` | contiguous **storage** + byte I/O — `U8Buffer` is [`Bytes`](../guide/io.md) |
+| `Buffer<T>` | contiguous **storage** + byte I/O — `U8Buffer` is [`Bytes`](../bytes.md) |
 | `Serie<T>` | a **nullable column** — a validity bitmap over a values `Buffer` |
 
 `Buffer<u8>` **is** the project's byte buffer: `U8Buffer`, aliased `Bytes`, the type the
@@ -35,9 +35,9 @@ Python/Node `yggdryl.io.Bytes` wraps. The typed columnar types `Scalar` / `Serie
 ## The generic trait hierarchy
 
 Each concrete type above sits under a **generic trait hierarchy**. The **root traits** are
-family-agnostic and live at the [`io`](../guide/io.md) root; each concrete family adds its own sub-trait
+family-agnostic and live at the [`io`](../bytes.md) root; each concrete family adds its own sub-trait
 that pre-implements the shared logic as default methods — `Fixed*` here, `Var*` in
-[`io::var`](var.md) — so a concrete type supplies only 2–3 primitives. The families depend
+[`io::var`](../var.md) — so a concrete type supplies only 2–3 primitives. The families depend
 **downward** on the roots, never sideways on each other.
 
 | root trait (`io`) | fixed sub-trait | var sub-trait (`io::var`) | concrete (fixed) |
@@ -117,7 +117,7 @@ fixed_dtype!(I32DataType, i32); // pub type I32DataType = PrimitiveType<i32>;
 `Buffer<T>` holds `T` values contiguously (little-endian). It has two length notions —
 `count()` (elements) and `len()` (bytes, the `IOBase` contract) — and the full byte-I/O
 family, so it doubles as raw serialized bytes. `Scalar<T>` is one nullable value that reads
-and writes through the [`IOCursor`](../guide/io.md) abstraction.
+and writes through the [`IOCursor`](../bytes.md) abstraction.
 
 ```rust
 use yggdryl_core::io::fixed::{Buffer, Scalar};
@@ -191,7 +191,7 @@ The **bulk** setters are the fast path: they commit the whole run in a **single*
 the values buffer, not one re-seal per element — a 33–67× throughput win over a `set` loop on the
 Arc-backed columns (`Serie<T>`, `DecimalSerie<B>`). The `Vec`-backed byte columns overwrite in
 place. See the [access benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/access.md);
-the variable-length case, whose `set` rewrites offsets, is covered in [Typed data — variable](var.md#in-place-set--the-offset-rewrite).
+the variable-length case, whose `set` rewrites offsets, is covered in [Typed data — variable](../var.md#in-place-set-the-offset-rewrite).
 
 ## A column is usable as a scalar
 
@@ -335,7 +335,7 @@ capability, the closest-fit fallback, and the three-language reference.
 
 Beside the compile-time-width primitives, `io::fixed` ships a **runtime-`N`** byte family
 (Arrow's `FixedSizeBinary(N)`) in the `binary` and `string` sub-modules: every value is exactly
-`N` bytes, `N` chosen at construction. Structurally it is the [variable-length family](var.md)
+`N` bytes, `N` chosen at construction. Structurally it is the [variable-length family](../var.md)
 without the offsets — a flat `N`-byte-slot data buffer over a validity bitmap — so it implements
 the root traits directly (over the shared `FixedSize*` generics) rather than `NativeType`. It is
 **both** fixed-width and binary/utf8 — the `DataTypeId` ranges classify it correctly on both
@@ -367,7 +367,7 @@ Arrow's `Null` is a type whose *every* value is null, at **zero** storage: `Null
 a `NullScalar`'s wire form is empty, and a `NullSerie` is just its length (no value buffer, no
 validity mask). Like the fixed-size byte family it has no `NativeType`, so it implements the root
 traits directly. It sits at the bottom of the type lattice — any type casts *to* and *from* it
-(see [casting](../guide/converter.md)). The `NullScalar` / `NullSerie` value types and the `DataType.null()`
+(see [casting](../converter.md)). The `NullScalar` / `NullSerie` value types and the `DataType.null()`
 descriptor are reachable in all three languages.
 
 === "Python"
@@ -417,7 +417,7 @@ descriptor are reachable in all three languages.
 
 ## Field metadata — safe, lossless Arrow round-trips
 
-Every field carries [`Headers`](../guide/headers.md) — the centralized, ordered, case-insensitive
+Every field carries [`Headers`](../headers.md) — the centralized, ordered, case-insensitive
 key/value map — as its metadata, mirroring Arrow's `Field::metadata`. Attach it with
 `with_metadata` / `with_metadata_entry`.
 

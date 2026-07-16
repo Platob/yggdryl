@@ -1,6 +1,6 @@
 # Arrow interop — nested (struct, list, map)
 
-Behind the `arrow` feature, the three nested columns (see [Types → Nested](../types/nested.md)) each
+Behind the `arrow` feature, the three nested columns (see [Types → Nested](../nested.md)) each
 bridge to their Arrow array, **recursively** — `StructSerie` ↔ `StructArray` (and `RecordBatch`),
 `ListSerie` ↔ `ListArray`, `MapSerie` ↔ `MapArray` — each leaf converting through one generic
 `ArrayData` (buffers + `DataType`) path, so numbers, decimals, temporal, fixed-size bytes, utf8, and
