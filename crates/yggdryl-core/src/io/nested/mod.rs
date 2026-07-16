@@ -4,17 +4,18 @@
 //! Arrow `List` `Field` / `ListArray`). Structural round-trips run always; the Arrow interop is gated
 //! on the `arrow` feature. Recursion, nullability, and byte-exact round-trips are the focus.
 //!
-//! Because a nested column's child can itself be any column — a leaf, a struct, or another list — the
-//! recursion is funneled through **one** central dispatch per direction:
+//! Because a nested column's child can itself be any column — a leaf, a struct, a list, or a map —
+//! the recursion is funneled through **one** central dispatch per direction:
 //! [`read_any_column`] (byte codec) and [`from_arrow_any_column`] (Arrow import). Each family's own
-//! reader/importer routes its children through these, so struct↔list nesting round-trips with no
-//! per-family child logic. [`Map`](crate::io::AnyField::Map) is reserved: the central dispatch
-//! returns a guided "not yet" error for it until the map family lands.
+//! reader/importer routes its children through these, so struct / list / map nesting round-trips with
+//! no per-family child logic.
 
 pub mod list;
+pub mod map;
 pub mod struct_;
 
 pub use list::{ListField, ListScalar, ListSerie, ListType};
+pub use map::{MapField, MapScalar, MapSerie, MapType};
 pub use struct_::{StructField, StructScalar, StructSerie, StructType};
 
 use crate::io::{read_any_leaf, AnyField, AnySerie, Bytes, FieldType, IoError};
@@ -23,15 +24,14 @@ use crate::io::{read_any_leaf, AnyField, AnySerie, Bytes, FieldType, IoError};
 /// dispatch every nested reader routes its children through. A leaf delegates to
 /// [`read_any_leaf`](crate::io::read_any_leaf); a struct to
 /// [`StructSerie`](crate::io::nested::StructSerie)'s frame reader; a list to
-/// [`ListSerie`](crate::io::nested::ListSerie)'s. A map is a guided "not yet" error (the map family
-/// is a later phase).
+/// [`ListSerie`](crate::io::nested::ListSerie)'s; a map to [`MapSerie`](crate::io::nested::MapSerie)'s.
 pub fn read_any_column(field: &AnyField, source: &mut Bytes) -> Result<Box<dyn AnySerie>, IoError> {
     if field.is_struct() {
         Ok(Box::new(struct_::StructSerie::read_frame(source)?))
     } else if field.is_list() {
         Ok(Box::new(list::ListSerie::read_frame(source)?))
     } else if field.is_map() {
-        Err(map_not_yet())
+        Ok(Box::new(map::MapSerie::read_frame(source)?))
     } else {
         read_any_leaf(field, source)
     }
@@ -51,12 +51,9 @@ pub(crate) fn empty_any_column(field: &AnyField) -> Box<dyn AnySerie> {
             &ListField::from_any_field(field.clone()).expect("a list field decodes to a ListField"),
         ))
     } else if field.is_map() {
-        // DESIGN: no `MapSerie` yet, so a map-typed child has no empty column form. Unreachable in
-        // this phase: a map column cannot be constructed, so a schema handed here never carries one
-        // through a real column path. The map family will add this arm.
-        unreachable!(
-            "map columns are not yet supported (no empty form); the map family is a later phase"
-        )
+        Box::new(map::MapSerie::empty(
+            &MapField::from_any_field(field.clone()).expect("a map field decodes to a MapField"),
+        ))
     } else {
         empty_leaf_column(field)
     }
@@ -85,20 +82,10 @@ fn empty_leaf_column(field: &AnyField) -> Box<dyn AnySerie> {
     read_any_leaf(field, &mut Bytes::from_slice(&empty)).expect("a zero-length leaf frame is valid")
 }
 
-/// The guided "map columns are not yet supported" error the central dispatch returns for a
-/// [`Map`](crate::io::AnyField::Map) field, in both the byte and Arrow directions.
-fn map_not_yet() -> IoError {
-    IoError::Unsupported {
-        what: "reading a map column is not yet supported; the map nested family lands in a later \
-               phase — use struct or list children for now"
-            .to_string(),
-    }
-}
-
 /// Imports **one erased column** from an Arrow array + its [`Field`](arrow_schema::Field) (feature
 /// `arrow`) — the single recursive dispatch every nested importer routes its children through. A
-/// struct / list recurses; every other type delegates to
-/// [`from_arrow_any_leaf`](crate::io::from_arrow_any_leaf). A map is a guided "not yet" error.
+/// struct / list / map recurses; every other type delegates to
+/// [`from_arrow_any_leaf`](crate::io::from_arrow_any_leaf).
 #[cfg(feature = "arrow")]
 pub fn from_arrow_any_column(
     array: &dyn arrow_array::Array,
@@ -124,7 +111,9 @@ pub fn from_arrow_any_column(
         arrow_schema::DataType::List(_) => {
             Ok(Box::new(list::ListSerie::from_arrow_array(array, field)?))
         }
-        arrow_schema::DataType::Map(_, _) => Err(map_not_yet()),
+        arrow_schema::DataType::Map(_, _) => {
+            Ok(Box::new(map::MapSerie::from_arrow_array(array, field)?))
+        }
         _ => crate::io::from_arrow_any_leaf(array, field),
     }
 }
