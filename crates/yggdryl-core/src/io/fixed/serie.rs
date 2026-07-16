@@ -244,6 +244,50 @@ impl<T: NativeType> Serie<T> {
         (0..self.len).map(|i| self.get(i)).collect()
     }
 
+    /// The raw contiguous values as a **zero-copy** slice — the analytics fast-path. Length is
+    /// [`len`](Serie::len); **null positions hold a placeholder** (`T::default()`), so pair this
+    /// with [`iter`](Serie::iter) / [`null_count`](Serie::null_count) when nulls matter, or use it
+    /// directly for a vectorized kernel that reads a separate null mask. Zero-copy over the value
+    /// buffer (see [`Buffer::as_slice`](crate::io::fixed::Buffer::as_slice); panics only on the
+    /// externally-misaligned Arrow-import path — use [`iter`](Serie::iter) there).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_values(&[10i32, 20, 30]);
+    /// assert_eq!(col.values(), &[10, 20, 30]);
+    /// ```
+    pub fn values(&self) -> &[T] {
+        self.values.as_slice()
+    }
+
+    /// Iterates the elements as `Option`s, in order — **allocation-free** (unlike
+    /// [`to_options`](Serie::to_options), which collects a `Vec`). A null yields `None`. Decodes
+    /// each element (so it is safe on the misaligned Arrow-import path, unlike
+    /// [`values`](Serie::values)).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    /// assert_eq!(col.iter().collect::<Vec<_>>(), [Some(1), None, Some(3)]);
+    /// ```
+    pub fn iter(&self) -> impl Iterator<Item = Option<T>> + '_ {
+        (0..self.len).map(move |index| self.get(index))
+    }
+
+    /// Iterates only the **present** (non-null) elements, in order — allocation-free.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    /// assert_eq!(col.iter_valid().collect::<Vec<_>>(), [1, 3]);
+    /// ```
+    pub fn iter_valid(&self) -> impl Iterator<Item = T> + '_ {
+        self.iter().flatten()
+    }
+
     /// The values as an **element-aligned** Arrow buffer — **zero-copy** (a shared `Arc`) when the
     /// backing bytes are already aligned to `T` (every yggdryl-produced column is), else realigned
     /// with one copy. The erased [`AnySerie`](crate::io::AnySerie) maps any primitive column to its

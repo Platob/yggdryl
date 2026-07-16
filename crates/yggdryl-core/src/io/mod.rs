@@ -46,6 +46,7 @@ mod io_slice;
 pub mod nested;
 mod node_path;
 mod node_ref;
+mod numeric_serie;
 mod percent;
 mod scalar_type;
 mod scheme;
@@ -95,6 +96,9 @@ pub use converter::{CastError, Converter, NumericCast};
 pub use data_type::{DataType, TypedDataType};
 pub use data_type_id::DataTypeId;
 pub use field_type::FieldType;
+// The numeric-analytics capability (count / sum / mean / min / max) — the stats / time-series seam,
+// available exactly on the numeric columns (a `Serie<T>` with `T: NumericCast`).
+pub use numeric_serie::NumericSerie;
 pub use scalar_type::ScalarType;
 pub use serie_type::SerieType;
 

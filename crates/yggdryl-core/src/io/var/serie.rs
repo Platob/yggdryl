@@ -171,6 +171,28 @@ impl<E: VarElement> ByteSerie<E> {
         Some(&self.data[start..end])
     }
 
+    /// Iterates each element's raw bytes as `Option<&[u8]>`, in order — **allocation-free** and
+    /// zero-copy per element (a null yields `None`). The var-family analogue of
+    /// [`Serie::iter`](crate::io::fixed::Serie::iter).
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Serie;
+    ///
+    /// let col = Utf8Serie::from_strs(&[Some("a"), None, Some("c")]);
+    /// let seen: Vec<Option<&[u8]>> = col.iter_bytes().collect();
+    /// assert_eq!(seen, [Some(&b"a"[..]), None, Some(&b"c"[..])]);
+    /// ```
+    pub fn iter_bytes(&self) -> impl Iterator<Item = Option<&[u8]>> + '_ {
+        (0..self.len).map(move |index| self.get_bytes(index))
+    }
+
+    /// Iterates only the **present** (non-null) elements' raw bytes, in order — allocation-free,
+    /// zero-copy per element. The var-family analogue of
+    /// [`Serie::iter_valid`](crate::io::fixed::Serie::iter_valid).
+    pub fn iter_valid_bytes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.iter_bytes().flatten()
+    }
+
     /// The number of elements.
     pub fn len(&self) -> usize {
         self.len
