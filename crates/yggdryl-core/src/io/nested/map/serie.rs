@@ -270,14 +270,17 @@ impl MapSerie {
     }
 
     /// The value mapped to `key` in row `row`, or `None` if the row is null / out of range or the key
-    /// is absent. A **linear scan** of the row's entries: each stored key is compared to `key` via
-    /// erased [`AnyScalar`] equality and the first matching value returned. Allocation-light — it
-    /// materializes only the compared key/value cells, no per-row buffers.
+    /// is absent. A **linear scan** of the row's entries: each stored key is compared to `key` via the
+    /// **allocation-free** [`AnySerie::cell_eq`](crate::io::AnySerie::cell_eq), and the first matching
+    /// value is returned. The scan materializes **no** per-key scalar — it compares the key column's
+    /// *borrowed* cell bytes (or a stack scratch for a fixed key) against the probe — so a lookup
+    /// allocates nothing beyond the single returned value cell. The first **positional** match wins,
+    /// so with duplicate keys the earliest value is returned.
     ///
     /// DESIGN: when [`keys_sorted`](MapSerie::keys_sorted) holds *and* the key type is totally
-    /// ordered, a binary search over the row's entries would be `O(log n)`; a linear scan is the safe
-    /// default because the erased [`AnyScalar`] carries only bit-canonical equality, not a total
-    /// order, so the sorted fast path is deferred until an ordered-key comparator lands.
+    /// ordered, a binary search over the row's entries would be `O(log n)`; the linear scan stays the
+    /// correct default (now allocation-free) because the erased key comparison is bit-canonical
+    /// equality only, not a total order — so the sorted fast path waits on an ordered-key comparator.
     pub fn get_value(&self, row: usize, key: &AnyScalar) -> Option<AnyScalar> {
         if row >= self.len || self.validity.as_ref().is_some_and(|v| !v.get(row)) {
             return None;
@@ -285,7 +288,7 @@ impl MapSerie {
         let (start, end) = (self.offsets[row] as usize, self.offsets[row + 1] as usize);
         let keys = self.keys();
         let values = self.values();
-        (start..end).find_map(|j| (keys.value(j) == *key).then(|| values.value(j)))
+        (start..end).find_map(|j| keys.cell_eq(j, key).then(|| values.value(j)))
     }
 
     /// The typed [`MapType`] descriptor (its key/value fields + keys_sorted flag).

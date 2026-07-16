@@ -4,9 +4,9 @@
 //! values.
 
 use yggdryl_core::io::fixed::{Field, Serie, U96};
-use yggdryl_core::io::nested::StructSerie;
+use yggdryl_core::io::nested::{ListSerie, MapSerie, StructSerie};
 use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::{boxed, read_any_leaf, AnyField, Bytes, DataTypeId};
+use yggdryl_core::io::{boxed, read_any_leaf, AnyField, AnySerie, Bytes, DataTypeId};
 
 // -------------------------------------------------------------------------------------
 // Serialization robustness (no arrow)
@@ -202,6 +202,190 @@ fn from_columns_present_mask_shorter_than_len_marks_only_given_rows() {
     assert_eq!(table.null_count(), 1);
     assert!(table.row(0).is_null());
     assert!(!table.row(1).is_null());
+}
+
+// -------------------------------------------------------------------------------------
+// Recursive scalars (ListScalar / MapScalar / StructScalar over nested contents)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn nested_row_scalars_are_equal_and_hashable() {
+    use std::collections::HashSet;
+
+    // A `list<list<i32>>` row scalar whose items are themselves a list column.
+    let inner = ListSerie::from_values(
+        Serie::from_values(&[1i32, 2, 3, 4]).named("item"),
+        &[0, 2, 3, 4],
+        None,
+    )
+    .unwrap(); // [1,2],[3],[4]
+    let outer = ListSerie::from_values(inner.named("item"), &[0, 2, 3], None).unwrap(); // [[1,2],[3]], [[4]]
+    let (l0, l0b, l1) = (
+        outer.row_scalar(0),
+        outer.row_scalar(0),
+        outer.row_scalar(1),
+    );
+    assert_eq!(l0, l0b);
+    assert_ne!(l0, l1);
+    assert_eq!(l0.items().type_id(), DataTypeId::List); // recursive elements
+    let set: HashSet<_> = [l0, l0b, l1].into_iter().collect();
+    assert_eq!(set.len(), 2);
+
+    // A `map<utf8, list<i32>>` row scalar carrying nested list values.
+    let vlists = ListSerie::from_values(
+        Serie::from_values(&[10i32, 20, 30]).named("item"),
+        &[0, 2, 3],
+        None,
+    )
+    .unwrap();
+    let map = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("a"), Some("b")]).named("key"),
+        vlists.named("value"),
+        &[0, 2],
+        None,
+        false,
+    )
+    .unwrap();
+    let (m0, m0b) = (map.row_scalar(0), map.row_scalar(0));
+    assert_eq!(m0, m0b);
+    assert_eq!(m0.value_field().type_id(), DataTypeId::List);
+    let mset: HashSet<_> = [m0, m0b].into_iter().collect();
+    assert_eq!(mset.len(), 1);
+
+    // A `struct<{tag: utf8, scores: list<i32>}>` row scalar carrying a nested list field.
+    let scores = ListSerie::from_values(
+        Serie::from_values(&[1i32, 2, 3]).named("item"),
+        &[0, 2, 3],
+        None,
+    )
+    .unwrap();
+    let table = StructSerie::from_series(vec![
+        Utf8Serie::from_strs(&[Some("p"), Some("q")]).named("tag"),
+        scores.named("scores"),
+    ])
+    .unwrap();
+    let (s0, s0b) = (table.row_scalar(0), table.row_scalar(0));
+    assert_eq!(s0, s0b);
+    assert_ne!(s0, table.row_scalar(1));
+    // The nested `scores` field of the row is itself a list cell.
+    assert_eq!(
+        s0.value_named("scores").unwrap().type_id(),
+        Some(DataTypeId::List)
+    );
+    let sset: HashSet<_> = [s0, s0b].into_iter().collect();
+    assert_eq!(sset.len(), 1);
+}
+
+#[test]
+fn map_scalar_equality_is_positional_and_allows_duplicate_keys() {
+    // Same logical pairs, different stored order -> NOT equal (identity is positional).
+    let ab = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("a"), Some("b")]).named("key"),
+        Serie::from_values(&[1i64, 2]).named("value"),
+        &[0, 2],
+        None,
+        false,
+    )
+    .unwrap();
+    let ba = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("b"), Some("a")]).named("key"),
+        Serie::from_values(&[2i64, 1]).named("value"),
+        &[0, 2],
+        None,
+        false,
+    )
+    .unwrap();
+    assert_ne!(ab.row_scalar(0), ba.row_scalar(0));
+
+    // Duplicate keys are allowed; the scalar just stores the entries positionally.
+    let dup = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("a"), Some("a")]).named("key"),
+        Serie::from_values(&[1i64, 2]).named("value"),
+        &[0, 2],
+        None,
+        false,
+    )
+    .unwrap();
+    let d0 = dup.row_scalar(0);
+    assert_eq!(d0.len(), 2);
+    assert_eq!(d0, dup.row_scalar(0));
+    // Positional lookup returns the FIRST value for the duplicate key.
+    let key_a = dup.keys().value(0);
+    assert_eq!(dup.get_value(0, &key_a), Some(dup.values().value(0)));
+}
+
+// -------------------------------------------------------------------------------------
+// Deep nesting: 3-deep struct-of-list-of-map and 4-deep list<map<utf8, struct<{a, b:list}>>>
+// -------------------------------------------------------------------------------------
+
+/// `struct<{ id: i64, rows: list< map<utf8, i64> > }>` — three nesting levels.
+fn struct_of_list_of_map() -> StructSerie {
+    let maps = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c")]).named("key"),
+        Serie::from_values(&[1i64, 2, 3]).named("value"),
+        &[0, 2, 2, 3], // 3 map rows: {a->1, b->2}, {} (empty), {c->3}
+        None,
+        false,
+    )
+    .unwrap();
+    let lists = ListSerie::from_values(maps.named("item"), &[0, 2, 3], None).unwrap(); // [m0,m1],[m2]
+    StructSerie::from_series(vec![
+        Serie::from_values(&[10i64, 20]).named("id"),
+        lists.named("rows"),
+    ])
+    .unwrap()
+}
+
+/// `list< map<utf8, struct<{ a: i32, b: list<i32> }>> >` — four nesting levels.
+fn deep_four_level() -> ListSerie {
+    // Innermost `b: list<i32>` — two struct rows, so `b` has two rows: [1,2], [3,4].
+    let b = ListSerie::from_values(
+        Serie::from_values(&[1i32, 2, 3, 4]).named("item"),
+        &[0, 2, 4],
+        None,
+    )
+    .unwrap();
+    let structs = StructSerie::from_series(vec![
+        Serie::from_values(&[10i32, 20]).named("a"),
+        b.named("b"),
+    ])
+    .unwrap();
+    let maps = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("x"), Some("y")]).named("key"),
+        structs.named("value"),
+        &[0, 2], // one map row with two entries
+        None,
+        false,
+    )
+    .unwrap();
+    ListSerie::from_values(maps.named("item"), &[0, 1], None).unwrap() // one outer row
+}
+
+#[test]
+fn struct_of_list_of_map_three_deep_byte_round_trips() {
+    let table = struct_of_list_of_map();
+    assert_eq!(table.len(), 2);
+    assert_eq!(
+        table.column_named("rows").unwrap().type_id(),
+        DataTypeId::List
+    );
+    let back = StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap();
+    assert_eq!(back, table);
+}
+
+#[test]
+fn four_level_deep_nesting_byte_round_trips() {
+    let outer = deep_four_level();
+    assert_eq!(outer.item_field().type_id(), DataTypeId::Map);
+    // Navigate the levels to prove the shape survived construction: list -> map -> struct.
+    let list_row = outer.row(0);
+    let items = list_row.as_list().unwrap(); // a map column
+    assert_eq!(items.type_id(), DataTypeId::Map);
+    let map_cell = items.value(0);
+    let (entries, _) = map_cell.as_map().unwrap(); // the map cell's key/value entries
+    assert_eq!(entries.type_id(), DataTypeId::Struct);
+    let back = ListSerie::deserialize_bytes(&outer.serialize_bytes()).unwrap();
+    assert_eq!(back, outer);
 }
 
 // -------------------------------------------------------------------------------------
@@ -560,5 +744,28 @@ mod arrow {
         let dates = column.as_temporal::<Date32Kind>().expect("Date32 column");
         assert_eq!(dates.len(), 2);
         assert_eq!(dates.get(0).unwrap().days(), 19_000);
+    }
+
+    #[test]
+    fn struct_of_list_of_map_three_deep_arrow_round_trips() {
+        // struct { id: i64, rows: list<map<utf8, i64>> } through both StructArray and RecordBatch.
+        let table = struct_of_list_of_map();
+        let field = table.to_field("s").to_arrow_field();
+        let array = table.to_arrow_array().unwrap();
+        assert_eq!(
+            StructSerie::from_arrow_array(&array, &field).unwrap(),
+            table
+        );
+        let batch = table.to_record_batch().unwrap();
+        assert_eq!(StructSerie::from_record_batch(&batch).unwrap(), table);
+    }
+
+    #[test]
+    fn four_level_deep_nesting_arrow_round_trips() {
+        // list<map<utf8, struct<{a: i32, b: list<i32>}>>> through the ListArray path.
+        let outer = deep_four_level();
+        let field = outer.to_field("l").to_arrow_field();
+        let array = outer.to_arrow_array().unwrap();
+        assert_eq!(ListSerie::from_arrow_array(&array, &field).unwrap(), outer);
     }
 }

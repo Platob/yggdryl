@@ -242,6 +242,171 @@ fn list_of_list_serialize_round_trip() {
 }
 
 // -------------------------------------------------------------------------------------
+// Recursion: nested-element rows, deeper slices, all-null / all-empty, empty-vs-null
+// -------------------------------------------------------------------------------------
+
+/// A 3-row `list<list<i32>>` over 5 inner lists over the flat leaves `[1..=6]`:
+/// inner = `[1,2],[3],[],[4,5],[6]` (offsets `[0,2,3,3,5,6]`); outer rows group those
+/// `[[1,2],[3]]`, `[[]]`, `[[4,5],[6]]` (offsets `[0,2,3,5]`).
+fn list_of_list() -> ListSerie {
+    let leaves = Serie::from_values(&[1i32, 2, 3, 4, 5, 6]).named("item");
+    let inner = ListSerie::from_values(leaves, &[0, 2, 3, 3, 5, 6], None).unwrap();
+    ListSerie::from_values(inner.named("item"), &[0, 2, 3, 5], None).unwrap()
+}
+
+#[test]
+fn row_access_on_a_list_of_list_yields_a_list_column() {
+    // A `list<list<i32>>` row is an `AnyScalar::List` whose items are *themselves* a list column.
+    let outer = list_of_list();
+    assert_eq!(outer.item_field().type_id(), DataTypeId::List);
+
+    let row0 = outer.row(0);
+    let items = row0.as_list().expect("row 0 is a present list");
+    assert_eq!(items.type_id(), DataTypeId::List); // the elements are a list column
+    assert_eq!(items.len(), 2); // [[1,2],[3]]
+    assert!(matches!(items.value(0), AnyScalar::List(_)));
+
+    // `row_scalar` sees the same recursive shape.
+    let r0 = outer.row_scalar(0);
+    assert_eq!(r0.len(), 2);
+    assert_eq!(r0.items().type_id(), DataTypeId::List);
+    // Row 1 is the single empty inner list `[[]]`: one element, itself an empty list.
+    let r1 = outer.row_scalar(1);
+    assert_eq!(r1.len(), 1);
+    assert_eq!(r1.items().value(0).as_list().unwrap().len(), 0);
+}
+
+#[test]
+fn slice_of_a_list_of_list_equals_the_logical_window() {
+    let outer = list_of_list();
+    // Row 1 alone is `[[]]` — a list containing one empty list.
+    let middle = outer.slice(1, 1);
+    assert_eq!(middle.len(), 1);
+    let expected = ListSerie::from_values(
+        ListSerie::from_values(Serie::<i32>::from_values(&[]).named("item"), &[0, 0], None)
+            .unwrap()
+            .named("item"),
+        &[0, 1],
+        None,
+    )
+    .unwrap();
+    assert_eq!(middle, expected);
+    // Rows [1, 3): `[[]]`, `[[4,5],[6]]`.
+    let tail = outer.slice(1, 2);
+    assert_eq!(tail.len(), 2);
+    assert_eq!(tail.values().len(), 3); // inner windowed to [], [4,5], [6]
+                                        // A round-trip of the slice stays byte-exact.
+    assert_eq!(
+        ListSerie::deserialize_bytes(&tail.serialize_bytes()).unwrap(),
+        tail
+    );
+}
+
+#[test]
+fn all_null_and_all_empty_list_columns_byte_round_trip() {
+    // Every row null: an empty child, offsets all 0, a present mask of all-false.
+    let all_null = ListSerie::from_values(
+        Serie::<i32>::from_values(&[]).named("item"),
+        &[0, 0, 0, 0],
+        Some(&[false, false, false]),
+    )
+    .unwrap();
+    assert_eq!(all_null.len(), 3);
+    assert_eq!(all_null.null_count(), 3);
+    assert!(all_null.row(0).is_null() && all_null.row(2).is_null());
+    assert_eq!(
+        ListSerie::deserialize_bytes(&all_null.serialize_bytes()).unwrap(),
+        all_null
+    );
+
+    // Every row a present zero-length list: same empty child, no nulls.
+    let all_empty = ListSerie::from_values(
+        Serie::<i32>::from_values(&[]).named("item"),
+        &[0, 0, 0, 0],
+        None,
+    )
+    .unwrap();
+    assert_eq!(all_empty.len(), 3);
+    assert_eq!(all_empty.null_count(), 0);
+    assert!(!all_empty.row(0).is_null());
+    assert!(all_empty.row_scalar(0).is_empty());
+    assert_eq!(
+        ListSerie::deserialize_bytes(&all_empty.serialize_bytes()).unwrap(),
+        all_empty
+    );
+
+    // An all-null column and an all-empty column of the same length are NOT equal.
+    assert_ne!(all_null, all_empty);
+}
+
+#[test]
+fn empty_vs_null_nested_list_element_are_distinct() {
+    // Inner list column: row 0 = empty (present), row 1 = null.
+    let inner = ListSerie::from_values(
+        Serie::<i32>::from_values(&[]).named("item"),
+        &[0, 0, 0],
+        Some(&[true, false]),
+    )
+    .unwrap();
+    // Outer wraps each inner row as its own single-element outer row.
+    let outer = ListSerie::from_values(inner.named("item"), &[0, 1, 2], None).unwrap();
+    let empty_elem = outer.row_scalar(0); // holds one *empty* inner list
+    let null_elem = outer.row_scalar(1); // holds one *null* inner list
+    assert_eq!(empty_elem.len(), 1);
+    assert_eq!(null_elem.len(), 1);
+    // The empty-element row and the null-element row are distinct values.
+    assert_ne!(empty_elem, null_elem);
+    assert_eq!(
+        ListSerie::deserialize_bytes(&outer.serialize_bytes()).unwrap(),
+        outer
+    );
+}
+
+#[test]
+fn list_deserialize_truncation_and_corruption_are_guided_errors_not_panics() {
+    let list = list_of_list();
+    let bytes = list.serialize_bytes();
+    // Every truncation either errors or decodes to something *other* than the full value.
+    for cut in 0..bytes.len() {
+        if let Ok(partial) = ListSerie::deserialize_bytes(&bytes[..cut]) {
+            assert_ne!(
+                partial, list,
+                "truncation at {cut} wrongly decoded the full value"
+            );
+        }
+    }
+    // Garbage and empty input never panic.
+    assert!(ListSerie::deserialize_bytes(&[0xff; 48]).is_err());
+    assert!(ListSerie::deserialize_bytes(&[]).is_err());
+    // Corrupting a byte inside the schema region errors (or at least diverges), never panics.
+    let schema_len = u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize;
+    let mut corrupt = bytes.clone();
+    corrupt[8] ^= 0xff; // the schema's leading tag byte
+    if let Ok(decoded) = ListSerie::deserialize_bytes(&corrupt) {
+        assert_ne!(decoded, list);
+    }
+    assert!(schema_len > 0);
+}
+
+#[test]
+fn list_hostile_offsets_are_guided_errors() {
+    let items = || Serie::from_values(&[1i32, 2, 3]).named("item");
+    // A leading negative offset is caught as "first offset must be 0".
+    let err = ListSerie::from_values(items(), &[-1, 2, 3], None).unwrap_err();
+    assert!(err.to_string().contains("first offset must be 0"), "{err}");
+    // A negative offset mid-run trips the non-decreasing guard.
+    let err = ListSerie::from_values(items(), &[0, -1, 3], None).unwrap_err();
+    assert!(err.to_string().contains("non-decreasing"), "{err}");
+    // A last offset past the child length is rejected (would over-read the child on a rebase).
+    let err = ListSerie::from_values(items(), &[0, 2, 99], None).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("must equal the flattened child length"),
+        "{err}"
+    );
+}
+
+// -------------------------------------------------------------------------------------
 // Arrow interop (feature `arrow`)
 // -------------------------------------------------------------------------------------
 
@@ -249,6 +414,7 @@ fn list_of_list_serialize_round_trip() {
 mod arrow {
     use super::*;
     use arrow_array::Array;
+    use yggdryl_core::io::nested::MapSerie;
 
     #[test]
     fn list_i32_arrow_round_trip() {
@@ -347,5 +513,82 @@ mod arrow {
         assert_eq!(back.row_scalar(0).len(), 2);
         assert_eq!(back.row_scalar(1).len(), 0);
         assert_eq!(back.row_scalar(2).len(), 2);
+    }
+
+    /// Exports and re-imports a nested list column through the Arrow `ListArray` path, asserting
+    /// byte-exact identity — the recursion nests the child through the central dispatch.
+    fn arrow_round_trip(list: &ListSerie) {
+        let field = list.to_field("l").to_arrow_field();
+        let array = list.to_arrow_array().unwrap();
+        let back = ListSerie::from_arrow_array(&array, &field).unwrap();
+        assert_eq!(&back, list, "list Arrow round-trip differed");
+    }
+
+    #[test]
+    fn list_of_list_arrow_round_trip() {
+        arrow_round_trip(&list_of_list());
+    }
+
+    #[test]
+    fn list_of_map_arrow_round_trip() {
+        // A list whose element is a map<utf8, i64>: two outer rows over three inner map rows.
+        let keys = Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c")]).named("key");
+        let values = Serie::from_options(&[Some(1i64), None, Some(3)]).named("value");
+        let inner = MapSerie::from_entries(keys, values, &[0, 2, 2, 3], None, false).unwrap();
+        let outer = ListSerie::from_values(inner.named("item"), &[0, 2, 3], None).unwrap();
+        assert_eq!(outer.item_field().type_id(), DataTypeId::Map);
+        arrow_round_trip(&outer);
+    }
+
+    #[test]
+    fn all_null_and_all_empty_list_arrow_round_trip() {
+        let all_null = ListSerie::from_values(
+            Serie::<i32>::from_values(&[]).named("item"),
+            &[0, 0, 0, 0],
+            Some(&[false, false, false]),
+        )
+        .unwrap();
+        let array = all_null.to_arrow_array().unwrap();
+        assert_eq!(array.null_count(), 3);
+        arrow_round_trip(&all_null);
+
+        let all_empty = ListSerie::from_values(
+            Serie::<i32>::from_values(&[]).named("item"),
+            &[0, 0, 0, 0],
+            None,
+        )
+        .unwrap();
+        assert_eq!(all_empty.to_arrow_array().unwrap().null_count(), 0);
+        arrow_round_trip(&all_empty);
+    }
+
+    #[test]
+    fn sliced_list_of_struct_import_reads_the_logical_window() {
+        // A multi-level (list-of-struct) Arrow array sliced at offset > 0 imports as the logical
+        // window: offsets rebased, the struct child windowed to exactly the sliced rows' elements.
+        let inner = StructSerie::from_series(vec![
+            Serie::from_values(&[1i32, 2, 3, 4, 5]).named("x"),
+            Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c"), Some("d"), Some("e")])
+                .named("y"),
+        ])
+        .unwrap();
+        // 4 rows over the 5 struct elements: [e0,e1],[e2],[e3,e4],[] (offsets [0,2,3,5,5]).
+        let list = ListSerie::from_values(inner.named("item"), &[0, 2, 3, 5, 5], None).unwrap();
+        let field = list.to_field("l").to_arrow_field();
+        let array = list.to_arrow_array().unwrap();
+        let sliced = Array::slice(&array, 1, 2); // logical rows [{x:3,y:c}], [{x:4,y:d},{x:5,y:e}]
+        let back = ListSerie::from_arrow_array(sliced.as_ref(), &field).unwrap();
+        let expected = ListSerie::from_values(
+            StructSerie::from_series(vec![
+                Serie::from_values(&[3i32, 4, 5]).named("x"),
+                Utf8Serie::from_strs(&[Some("c"), Some("d"), Some("e")]).named("y"),
+            ])
+            .unwrap()
+            .named("item"),
+            &[0, 1, 3],
+            None,
+        )
+        .unwrap();
+        assert_eq!(back, expected);
     }
 }

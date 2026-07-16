@@ -39,6 +39,27 @@ fn clamp_range(column_len: usize, offset: usize, len: usize) -> (usize, usize) {
     (start, count)
 }
 
+/// If `probe` is a **bare leaf** value of exactly `(type_id, byte_width)` — the shape an erased leaf
+/// column's [`value`](AnySerie::value) builds: an empty-named, non-nullable, metadata-free
+/// [`Field`] — returns its canonical bytes, so a caller can compare them to a cell's own bytes with
+/// no allocation; `None` otherwise. Behind the leaf [`cell_eq`](AnySerie::cell_eq) overrides, so a
+/// hot per-cell scan never materializes an owned cell scalar. It mirrors `value`'s field exactly
+/// (name `""`, non-null, empty metadata), so `cell_eq` stays cell-for-cell identical to the default.
+fn bare_leaf_bytes(probe: &AnyScalar, type_id: DataTypeId, byte_width: usize) -> Option<&[u8]> {
+    match probe {
+        AnyScalar::Leaf { field, bytes }
+            if FieldType::type_id(field) == type_id
+                && field.byte_width() == byte_width
+                && !field.nullable()
+                && field.name().is_empty()
+                && field.metadata().is_empty() =>
+        {
+            Some(bytes.as_slice())
+        }
+        _ => None,
+    }
+}
+
 /// A **column of any type**, type-erased — the recursive carrier a struct column's heterogeneous
 /// children live in (`Box<dyn AnySerie>`). Implemented by every concrete `Serie`; each method
 /// delegates. Build one by boxing a `Serie` (`Box::new(serie) as Box<dyn AnySerie>`) or with the
@@ -72,6 +93,17 @@ pub trait AnySerie: Debug + Send + Sync {
 
     /// The value at `index` as an erased [`AnyScalar`] — null if the element is null or out of range.
     fn value(&self, index: usize) -> AnyScalar;
+
+    /// Whether the cell at `index` equals the erased value `probe` — the **allocation-free**
+    /// counterpart of `self.value(index) == *probe`, for a hot per-cell scan (e.g.
+    /// [`MapSerie::get_value`](crate::io::nested::MapSerie::get_value), which compares every stored key
+    /// in a row against one probe key). The default materializes one owned cell scalar
+    /// (`self.value(index) == *probe`); the leaf primitive columns override it to compare **borrowed**
+    /// cell bytes against the probe with no per-call allocation. Any override MUST agree with the
+    /// default cell-for-cell.
+    fn cell_eq(&self, index: usize, probe: &AnyScalar) -> bool {
+        self.value(index) == *probe
+    }
 
     /// A **new** erased column holding the elements `[offset, offset + len)` — the range is clamped
     /// to the column (an out-of-range or overlong request yields the in-bounds sub-window, never a
@@ -232,6 +264,22 @@ impl<T: NativeType> AnySerie for Serie<T> {
         }
     }
 
+    fn cell_eq(&self, index: usize, probe: &AnyScalar) -> bool {
+        // The cell's canonical bytes go into a stack scratch (a fixed primitive is <= 32 bytes), so
+        // the compare against the probe's borrowed bytes allocates nothing.
+        match self.get(index) {
+            Some(value) => match bare_leaf_bytes(probe, T::TYPE_ID, T::WIDTH) {
+                Some(probe_bytes) => {
+                    let mut scratch = [0u8; 32];
+                    value.write_le(&mut scratch);
+                    &scratch[..T::WIDTH] == probe_bytes
+                }
+                None => false,
+            },
+            None => probe.is_null(),
+        }
+    }
+
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         let (start, count) = clamp_range(Serie::len(self), offset, len);
         let values: Vec<Option<T>> = (start..start + count)
@@ -345,6 +393,15 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
         }
     }
 
+    fn cell_eq(&self, index: usize, probe: &AnyScalar) -> bool {
+        // The cell's bytes are a borrow (`get_bytes`), so the compare against the probe allocates
+        // nothing.
+        match self.get_bytes(index) {
+            Some(cell) => bare_leaf_bytes(probe, E::TYPE_ID, OFFSET_WIDTH) == Some(cell),
+            None => probe.is_null(),
+        }
+    }
+
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
         let (start, count) = clamp_range(ByteSerie::len(self), offset, len);
         let values: Vec<Option<&[u8]>> = (start..start + count)
@@ -392,6 +449,15 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
                 bytes.to_vec(),
             ),
             None => AnyScalar::Null,
+        }
+    }
+
+    fn cell_eq(&self, index: usize, probe: &AnyScalar) -> bool {
+        // The cell's bytes are a borrow (`get_bytes`), so the compare against the probe allocates
+        // nothing.
+        match self.get_bytes(index) {
+            Some(cell) => bare_leaf_bytes(probe, K::TYPE_ID, self.width()) == Some(cell),
+            None => probe.is_null(),
         }
     }
 

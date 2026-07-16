@@ -8,7 +8,7 @@
 use yggdryl_core::io::fixed::{Field, PrimitiveType, Serie};
 use yggdryl_core::io::nested::{ListSerie, MapField, MapSerie, MapType, StructSerie};
 use yggdryl_core::io::var::Utf8Serie;
-use yggdryl_core::io::{AnyField, AnyScalar, AnySerie, DataType, DataTypeId, FieldType};
+use yggdryl_core::io::{boxed, AnyField, AnyScalar, AnySerie, DataType, DataTypeId, FieldType};
 
 // -------------------------------------------------------------------------------------
 // MapType / MapField — the descriptor and centralized schema
@@ -345,6 +345,237 @@ fn map_of_map_serialize_round_trip() {
 }
 
 // -------------------------------------------------------------------------------------
+// get_value: integer keys, duplicates, nested values, keys_sorted, and edge rows
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn get_value_integer_keys_duplicates_and_first_match_wins() {
+    // One row over four entries with a DUPLICATE key 10: {10->1, 20->2, 10->3, 30->4}.
+    let keys = Serie::from_values(&[10i32, 20, 10, 30]).named("key");
+    let values = Serie::from_values(&[1i64, 2, 3, 4]).named("value");
+    let map = MapSerie::from_entries(keys, values, &[0, 4], None, false).unwrap();
+    assert_eq!(map.key_field().type_id(), DataTypeId::I32);
+
+    let key_10 = map.keys().value(0);
+    let key_20 = map.keys().value(1);
+    let key_30 = map.keys().value(3);
+    // The duplicate key 10 returns the FIRST match (entry 0 -> value 1), never entry 2 -> value 3.
+    assert_eq!(map.get_value(0, &key_10), Some(map.values().value(0)));
+    assert_ne!(map.get_value(0, &key_10), Some(map.values().value(2)));
+    assert_eq!(map.get_value(0, &key_20), Some(map.values().value(1)));
+    assert_eq!(map.get_value(0, &key_30), Some(map.values().value(3)));
+    // An absent integer key -> None (a full alloc-free scan that finds nothing).
+    let absent = boxed(Serie::from_values(&[999i32])).value(0);
+    assert_eq!(map.get_value(0, &absent), None);
+}
+
+#[test]
+fn get_value_returns_a_nested_value_cell() {
+    // A map whose VALUE is a list<i32>: {"a" -> [1,2], "b" -> [3]}. get_value returns the list cell.
+    let keys = Utf8Serie::from_strs(&[Some("a"), Some("b")]).named("key");
+    let inner = ListSerie::from_values(
+        Serie::from_values(&[1i32, 2, 3]).named("item"),
+        &[0, 2, 3],
+        None,
+    )
+    .unwrap();
+    let map = MapSerie::from_entries(keys, inner.named("value"), &[0, 2], None, false).unwrap();
+    let key_a = map.keys().value(0);
+    let value = map.get_value(0, &key_a).expect("\"a\" is present");
+    assert_eq!(value.type_id(), Some(DataTypeId::List));
+    assert_eq!(value.as_list().unwrap().len(), 2); // [1, 2]
+    assert_eq!(value, map.values().value(0));
+}
+
+#[test]
+fn get_value_keys_sorted_and_edge_rows() {
+    // keys_sorted holds: the lookup still finds the value (the linear scan is the correct default).
+    let keys = Utf8Serie::from_strs(&[Some("a"), Some("b")]).named("key");
+    let values = Serie::from_values(&[1i64, 2]).named("value");
+    let sorted = MapSerie::from_entries(keys, values, &[0, 2], None, true).unwrap();
+    assert!(sorted.keys_sorted());
+    let key_b = sorted.keys().value(1);
+    assert_eq!(sorted.get_value(0, &key_b), Some(sorted.values().value(1)));
+
+    // A null row, an empty row, and out-of-range all yield None for any key.
+    let map = sample_map(); // rows: {a->1,b->2}, {} (empty), null, {c->3}
+    let key_a = map.keys().value(0);
+    assert_eq!(map.get_value(1, &key_a), None); // empty row
+    assert_eq!(map.get_value(2, &key_a), None); // null row
+    assert_eq!(map.get_value(9, &key_a), None); // out of range
+}
+
+// -------------------------------------------------------------------------------------
+// all-null / all-empty, empty-vs-null nested element, nested slice, robustness, offsets
+// -------------------------------------------------------------------------------------
+
+/// The zero-length key/value child columns a null / empty map column is built over.
+fn empty_entries() -> (yggdryl_core::io::NamedSerie, yggdryl_core::io::NamedSerie) {
+    (
+        Utf8Serie::from_strs(&[]).named("key"),
+        Serie::<i64>::from_values(&[]).named("value"),
+    )
+}
+
+#[test]
+fn all_null_and_all_empty_map_columns_byte_round_trip() {
+    // Every row null: empty entries, offsets all 0, a present mask of all-false.
+    let (k, v) = empty_entries();
+    let all_null =
+        MapSerie::from_entries(k, v, &[0, 0, 0, 0], Some(&[false, false, false]), false).unwrap();
+    assert_eq!(all_null.len(), 3);
+    assert_eq!(all_null.null_count(), 3);
+    assert!(all_null.row(0).is_null() && all_null.row(2).is_null());
+    assert_eq!(
+        MapSerie::deserialize_bytes(&all_null.serialize_bytes()).unwrap(),
+        all_null
+    );
+
+    // Every row a present zero-length map: same empty entries, no nulls.
+    let (k, v) = empty_entries();
+    let all_empty = MapSerie::from_entries(k, v, &[0, 0, 0, 0], None, false).unwrap();
+    assert_eq!(all_empty.null_count(), 0);
+    assert!(!all_empty.row(0).is_null());
+    assert!(all_empty.row_scalar(0).is_empty());
+    assert_eq!(
+        MapSerie::deserialize_bytes(&all_empty.serialize_bytes()).unwrap(),
+        all_empty
+    );
+
+    // An all-null column and an all-empty column of the same length are NOT equal.
+    assert_ne!(all_null, all_empty);
+}
+
+#[test]
+fn empty_vs_null_nested_map_element_are_distinct() {
+    // Inner map column: row 0 = empty (present), row 1 = null.
+    let (k, v) = empty_entries();
+    let inner = MapSerie::from_entries(k, v, &[0, 0, 0], Some(&[true, false]), false).unwrap();
+    // A list wraps each inner map row as its own single-element outer row.
+    let outer = ListSerie::from_values(inner.named("item"), &[0, 1, 2], None).unwrap();
+    let empty_elem = outer.row_scalar(0); // holds one *empty* inner map
+    let null_elem = outer.row_scalar(1); // holds one *null* inner map
+    assert_ne!(empty_elem, null_elem);
+    assert_eq!(
+        ListSerie::deserialize_bytes(&outer.serialize_bytes()).unwrap(),
+        outer
+    );
+}
+
+#[test]
+fn slice_of_a_map_of_list_equals_the_logical_window() {
+    // map<utf8, list<i32>>: 3 rows over 4 entries {a->[1,2]}, {b->[3]}, {c->[4,5], d->[6,7]}.
+    let keys = Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c"), Some("d")]).named("key");
+    let inner = ListSerie::from_values(
+        Serie::from_values(&[1i32, 2, 3, 4, 5, 6, 7]).named("item"),
+        &[0, 2, 3, 5, 7],
+        None,
+    )
+    .unwrap();
+    let map =
+        MapSerie::from_entries(keys, inner.named("value"), &[0, 1, 2, 4], None, false).unwrap();
+    assert_eq!(map.value_field().type_id(), DataTypeId::List);
+
+    let middle = map.slice(1, 2); // rows {b->[3]}, {c->[4,5], d->[6,7]}
+    assert_eq!(middle.len(), 2);
+    assert_eq!(middle.offsets(), &[0, 1, 3]); // rebased to 0
+    let expected = MapSerie::from_entries(
+        Utf8Serie::from_strs(&[Some("b"), Some("c"), Some("d")]).named("key"),
+        ListSerie::from_values(
+            Serie::from_values(&[3i32, 4, 5, 6, 7]).named("item"),
+            &[0, 1, 3, 5],
+            None,
+        )
+        .unwrap()
+        .named("value"),
+        &[0, 1, 3],
+        None,
+        false,
+    )
+    .unwrap();
+    assert_eq!(middle, expected);
+    assert_eq!(
+        MapSerie::deserialize_bytes(&middle.serialize_bytes()).unwrap(),
+        middle
+    );
+}
+
+#[test]
+fn map_deserialize_truncation_and_corruption_are_guided_errors_not_panics() {
+    let map = sample_map();
+    let bytes = map.serialize_bytes();
+    // Every truncation either errors or decodes to something *other* than the full value.
+    for cut in 0..bytes.len() {
+        if let Ok(partial) = MapSerie::deserialize_bytes(&bytes[..cut]) {
+            assert_ne!(
+                partial, map,
+                "truncation at {cut} wrongly decoded the full value"
+            );
+        }
+    }
+    assert!(MapSerie::deserialize_bytes(&[0xff; 48]).is_err());
+    assert!(MapSerie::deserialize_bytes(&[]).is_err());
+    // Corrupting the schema's leading tag byte errors (or at least diverges), never panics.
+    let mut corrupt = bytes.clone();
+    corrupt[8] ^= 0xff;
+    if let Ok(decoded) = MapSerie::deserialize_bytes(&corrupt) {
+        assert_ne!(decoded, map);
+    }
+}
+
+#[test]
+fn map_entries_struct_must_have_exactly_two_columns() {
+    // A hand-crafted map frame whose entries struct carries THREE columns is rejected by the byte
+    // codec (a map's entries is a struct of exactly [key, value]).
+    let map_schema = AnyField::from(MapField::new(
+        "",
+        utf8_key(false),
+        i64_value(true),
+        false,
+        false,
+    ))
+    .serialize_bytes();
+    let entries3 = StructSerie::from_named(vec![
+        ("key", boxed(Utf8Serie::from_strs(&[Some("a"), Some("b")]))),
+        ("value", boxed(Serie::from_values(&[1i64, 2]))),
+        ("extra", boxed(Serie::from_values(&[9i64, 8]))),
+    ])
+    .unwrap();
+    let entries_frame = entries3.serialize_bytes();
+
+    let mut frame = Vec::new();
+    frame.extend_from_slice(&(map_schema.len() as u64).to_le_bytes());
+    frame.extend_from_slice(&map_schema);
+    frame.extend_from_slice(&1u64.to_le_bytes()); // 1 map row
+    frame.push(0); // no top-level validity
+    frame.extend_from_slice(&0i32.to_le_bytes()); // offsets[0]
+    frame.extend_from_slice(&2i32.to_le_bytes()); // offsets[1] == entries length (2)
+    frame.extend_from_slice(&entries_frame);
+
+    let err = MapSerie::deserialize_bytes(&frame).unwrap_err();
+    assert!(err.to_string().contains("exactly [key, value]"), "{err}");
+}
+
+#[test]
+fn map_hostile_offsets_are_guided_errors() {
+    let keys = || Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c")]).named("key");
+    let values = || Serie::from_values(&[1i64, 2, 3]).named("value");
+    // A leading negative offset is caught as "first offset must be 0".
+    let err = MapSerie::from_entries(keys(), values(), &[-1, 2, 3], None, false).unwrap_err();
+    assert!(err.to_string().contains("first offset must be 0"), "{err}");
+    // A negative offset mid-run trips the non-decreasing guard.
+    let err = MapSerie::from_entries(keys(), values(), &[0, -1, 3], None, false).unwrap_err();
+    assert!(err.to_string().contains("non-decreasing"), "{err}");
+    // A last offset past the entries length is rejected.
+    let err = MapSerie::from_entries(keys(), values(), &[0, 2, 99], None, false).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("must equal the flattened entries length"),
+        "{err}"
+    );
+}
+
+// -------------------------------------------------------------------------------------
 // Arrow interop (feature `arrow`)
 // -------------------------------------------------------------------------------------
 
@@ -544,5 +775,136 @@ mod arrow {
         let list = ListSerie::from_values(empty.named("m"), &[0], None).unwrap();
         let list_array = list.to_arrow_array().unwrap();
         assert_eq!(list_array.len(), 0);
+    }
+
+    /// Exports and re-imports a nested map column through the Arrow `MapArray` path, asserting
+    /// byte-exact identity — the recursion nests the value child through the central dispatch.
+    fn arrow_round_trip(map: &MapSerie) {
+        let field = map.to_field("m").to_arrow_field();
+        let array = map.to_arrow_array().unwrap();
+        let back = MapSerie::from_arrow_array(&array, &field).unwrap();
+        assert_eq!(&back, map, "map Arrow round-trip differed");
+    }
+
+    #[test]
+    fn map_of_list_arrow_round_trip() {
+        // A map whose VALUE is a list<i32> (with an inner null): {"a" -> [1, null], "b" -> [3]}.
+        let keys = Utf8Serie::from_strs(&[Some("a"), Some("b")]).named("key");
+        let inner = ListSerie::from_values(
+            Serie::from_options(&[Some(1i32), None, Some(3)]).named("item"),
+            &[0, 2, 3],
+            None,
+        )
+        .unwrap();
+        let map = MapSerie::from_entries(keys, inner.named("value"), &[0, 2], None, false).unwrap();
+        assert_eq!(map.value_field().type_id(), DataTypeId::List);
+        arrow_round_trip(&map);
+    }
+
+    #[test]
+    fn map_of_map_arrow_round_trip() {
+        // A map whose VALUE is itself a map<utf8, i64>: {"outer" -> {"a"->0, "b"->1}}.
+        let inner = one_row_map(2);
+        let keys = Utf8Serie::from_strs(&[Some("outer")]).named("key");
+        let outer =
+            MapSerie::from_entries(keys, inner.named("value"), &[0, 1], None, false).unwrap();
+        assert_eq!(outer.value_field().type_id(), DataTypeId::Map);
+        arrow_round_trip(&outer);
+    }
+
+    #[test]
+    fn all_null_and_all_empty_map_arrow_round_trip() {
+        let (k, v) = empty_entries();
+        let all_null =
+            MapSerie::from_entries(k, v, &[0, 0, 0, 0], Some(&[false, false, false]), false)
+                .unwrap();
+        assert_eq!(all_null.to_arrow_array().unwrap().null_count(), 3);
+        arrow_round_trip(&all_null);
+
+        let (k, v) = empty_entries();
+        let all_empty = MapSerie::from_entries(k, v, &[0, 0, 0, 0], None, false).unwrap();
+        assert_eq!(all_empty.to_arrow_array().unwrap().null_count(), 0);
+        arrow_round_trip(&all_empty);
+    }
+
+    #[test]
+    fn sliced_map_of_list_import_reads_the_logical_window() {
+        // A multi-level (map-of-list) Arrow array sliced at offset > 0 imports as the logical window.
+        let keys = Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c"), Some("d")]).named("key");
+        let inner = ListSerie::from_values(
+            Serie::from_values(&[1i32, 2, 3, 4, 5, 6, 7]).named("item"),
+            &[0, 2, 3, 5, 7],
+            None,
+        )
+        .unwrap();
+        let map =
+            MapSerie::from_entries(keys, inner.named("value"), &[0, 1, 2, 4], None, false).unwrap();
+        let field = map.to_field("m").to_arrow_field();
+        let array = map.to_arrow_array().unwrap();
+        let sliced = Array::slice(&array, 1, 2); // {b->[3]}, {c->[4,5], d->[6,7]}
+        let back = MapSerie::from_arrow_array(sliced.as_ref(), &field).unwrap();
+        let expected = MapSerie::from_entries(
+            Utf8Serie::from_strs(&[Some("b"), Some("c"), Some("d")]).named("key"),
+            ListSerie::from_values(
+                Serie::from_values(&[3i32, 4, 5, 6, 7]).named("item"),
+                &[0, 1, 3, 5],
+                None,
+            )
+            .unwrap()
+            .named("value"),
+            &[0, 1, 3],
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(back, expected);
+    }
+
+    #[test]
+    fn entries_struct_field_with_three_fields_is_rejected() {
+        // A real 2-field MapArray, but a hostile FIELD whose Map entries struct type declares THREE
+        // children — the importer reads the entry fields from the field and rejects the arity.
+        use std::sync::Arc;
+        let keys = arrow_array::StringArray::from(vec!["a", "b", "c"]);
+        let values = arrow_array::Int64Array::from(vec![1i64, 2, 3]);
+        let key_field = Arc::new(arrow_schema::Field::new(
+            "key",
+            arrow_schema::DataType::Utf8,
+            false,
+        ));
+        let value_field = Arc::new(arrow_schema::Field::new(
+            "value",
+            arrow_schema::DataType::Int64,
+            true,
+        ));
+        let entries = arrow_array::StructArray::from(vec![
+            (key_field, Arc::new(keys) as arrow_array::ArrayRef),
+            (value_field, Arc::new(values) as arrow_array::ArrayRef),
+        ]);
+        let entries_field = Arc::new(arrow_schema::Field::new(
+            "entries",
+            entries.data_type().clone(),
+            false,
+        ));
+        let offsets =
+            arrow_buffer::OffsetBuffer::new(arrow_buffer::ScalarBuffer::from(vec![0i32, 2, 3]));
+        let array = arrow_array::MapArray::new(entries_field, offsets, entries, None, false);
+
+        let bad_entries = arrow_schema::Field::new(
+            "entries",
+            arrow_schema::DataType::Struct(arrow_schema::Fields::from(vec![
+                arrow_schema::Field::new("key", arrow_schema::DataType::Utf8, false),
+                arrow_schema::Field::new("value", arrow_schema::DataType::Int64, true),
+                arrow_schema::Field::new("extra", arrow_schema::DataType::Int64, true),
+            ])),
+            false,
+        );
+        let field = arrow_schema::Field::new(
+            "m",
+            arrow_schema::DataType::Map(Arc::new(bad_entries), false),
+            false,
+        );
+        let err = MapSerie::from_arrow_array(&array, &field).unwrap_err();
+        assert!(err.to_string().contains("exactly 2 fields"), "{err}");
     }
 }
