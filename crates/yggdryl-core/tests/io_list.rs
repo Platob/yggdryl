@@ -101,30 +101,30 @@ fn list_serie_builds_and_reports_shape() {
 fn list_serie_row_access_distinguishes_null_from_empty() {
     let list = sample_list();
     // Row 0 = [1, 2] (present).
-    assert!(matches!(list.row(0), AnyScalar::List(_)));
-    let r0 = list.row_scalar(0);
+    assert!(matches!(list.get(0), AnyScalar::List(_)));
+    let r0 = list.get_scalar(0);
     assert!(!r0.is_null());
     assert_eq!(r0.len(), 2);
     assert_eq!(r0.items().as_serie::<i32>().unwrap().get(0), Some(1));
     assert_eq!(r0.items().as_serie::<i32>().unwrap().get(1), Some(2));
 
     // Row 1 = [] — present but empty (NOT null).
-    assert!(matches!(list.row(1), AnyScalar::List(_)));
-    let r1 = list.row_scalar(1);
+    assert!(matches!(list.get(1), AnyScalar::List(_)));
+    let r1 = list.get_scalar(1);
     assert!(!r1.is_null());
     assert!(r1.is_empty());
     assert_eq!(r1.len(), 0);
 
     // Row 2 = null.
-    assert!(list.row(2).is_null());
-    assert!(list.row_scalar(2).is_null());
+    assert!(list.get(2).is_null());
+    assert!(list.get_scalar(2).is_null());
 
     // Row 3 = [3].
-    assert_eq!(list.row_scalar(3).len(), 1);
+    assert_eq!(list.get_scalar(3).len(), 1);
 
     // Out of range -> null.
-    assert!(list.row(9).is_null());
-    assert!(list.row_scalar(9).is_null());
+    assert!(list.get(9).is_null());
+    assert!(list.get_scalar(9).is_null());
 }
 
 #[test]
@@ -260,18 +260,18 @@ fn row_access_on_a_list_of_list_yields_a_list_column() {
     let outer = list_of_list();
     assert_eq!(outer.item_field().type_id(), DataTypeId::List);
 
-    let row0 = outer.row(0);
+    let row0 = outer.get(0);
     let items = row0.as_list().expect("row 0 is a present list");
     assert_eq!(items.type_id(), DataTypeId::List); // the elements are a list column
     assert_eq!(items.len(), 2); // [[1,2],[3]]
     assert!(matches!(items.value(0), AnyScalar::List(_)));
 
-    // `row_scalar` sees the same recursive shape.
-    let r0 = outer.row_scalar(0);
+    // `get_scalar` sees the same recursive shape.
+    let r0 = outer.get_scalar(0);
     assert_eq!(r0.len(), 2);
     assert_eq!(r0.items().type_id(), DataTypeId::List);
     // Row 1 is the single empty inner list `[[]]`: one element, itself an empty list.
-    let r1 = outer.row_scalar(1);
+    let r1 = outer.get_scalar(1);
     assert_eq!(r1.len(), 1);
     assert_eq!(r1.items().value(0).as_list().unwrap().len(), 0);
 }
@@ -313,7 +313,7 @@ fn all_null_and_all_empty_list_columns_byte_round_trip() {
     .unwrap();
     assert_eq!(all_null.len(), 3);
     assert_eq!(all_null.null_count(), 3);
-    assert!(all_null.row(0).is_null() && all_null.row(2).is_null());
+    assert!(all_null.get(0).is_null() && all_null.get(2).is_null());
     assert_eq!(
         ListSerie::deserialize_bytes(&all_null.serialize_bytes()).unwrap(),
         all_null
@@ -328,8 +328,8 @@ fn all_null_and_all_empty_list_columns_byte_round_trip() {
     .unwrap();
     assert_eq!(all_empty.len(), 3);
     assert_eq!(all_empty.null_count(), 0);
-    assert!(!all_empty.row(0).is_null());
-    assert!(all_empty.row_scalar(0).is_empty());
+    assert!(!all_empty.get(0).is_null());
+    assert!(all_empty.get_scalar(0).is_empty());
     assert_eq!(
         ListSerie::deserialize_bytes(&all_empty.serialize_bytes()).unwrap(),
         all_empty
@@ -350,8 +350,8 @@ fn empty_vs_null_nested_list_element_are_distinct() {
     .unwrap();
     // Outer wraps each inner row as its own single-element outer row.
     let outer = ListSerie::from_values(inner.named("item"), &[0, 1, 2], None).unwrap();
-    let empty_elem = outer.row_scalar(0); // holds one *empty* inner list
-    let null_elem = outer.row_scalar(1); // holds one *null* inner list
+    let empty_elem = outer.get_scalar(0); // holds one *empty* inner list
+    let null_elem = outer.get_scalar(1); // holds one *null* inner list
     assert_eq!(empty_elem.len(), 1);
     assert_eq!(null_elem.len(), 1);
     // The empty-element row and the null-element row are distinct values.
@@ -510,9 +510,9 @@ mod arrow {
         let field = arrow_schema::Field::new("l", array.data_type().clone(), false);
         let back = ListSerie::from_arrow_array(&array, &field).unwrap();
         assert_eq!(back.len(), 3);
-        assert_eq!(back.row_scalar(0).len(), 2);
-        assert_eq!(back.row_scalar(1).len(), 0);
-        assert_eq!(back.row_scalar(2).len(), 2);
+        assert_eq!(back.get_scalar(0).len(), 2);
+        assert_eq!(back.get_scalar(1).len(), 0);
+        assert_eq!(back.get_scalar(2).len(), 2);
     }
 
     /// Exports and re-imports a nested list column through the Arrow `ListArray` path, asserting

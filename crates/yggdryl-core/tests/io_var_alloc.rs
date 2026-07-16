@@ -63,7 +63,7 @@ fn allocation_budgets() {
     );
 
     // Arbitrary binary bytes, same story.
-    let bin = BinarySerie::from_byte_values(&[Some(&[0xff, 0x00][..]), Some(&[0x01][..])]).unwrap();
+    let bin = BinarySerie::from_options(&[Some(&[0xff, 0x00][..]), Some(&[0x01][..])]).unwrap();
     let get_bytes = allocs_over(iters, || {
         let _ = bin.get_bytes(0);
         let _ = bin.get_bytes(1);

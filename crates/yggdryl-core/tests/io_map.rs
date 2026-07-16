@@ -122,29 +122,29 @@ fn map_serie_builds_and_reports_shape() {
 fn map_serie_row_access_distinguishes_null_from_empty() {
     let map = sample_map();
     // Row 0 = {"a"->1, "b"->2} (present).
-    assert!(matches!(map.row(0), AnyScalar::Map { .. }));
-    let r0 = map.row_scalar(0);
+    assert!(matches!(map.get(0), AnyScalar::Map { .. }));
+    let r0 = map.get_scalar(0);
     assert!(!r0.is_null());
     assert_eq!(r0.len(), 2);
     assert_eq!(r0.entries().len(), 2);
 
     // Row 1 = {} — present but empty (NOT null).
-    assert!(matches!(map.row(1), AnyScalar::Map { .. }));
-    let r1 = map.row_scalar(1);
+    assert!(matches!(map.get(1), AnyScalar::Map { .. }));
+    let r1 = map.get_scalar(1);
     assert!(!r1.is_null());
     assert!(r1.is_empty());
     assert_eq!(r1.len(), 0);
 
     // Row 2 = null.
-    assert!(map.row(2).is_null());
-    assert!(map.row_scalar(2).is_null());
+    assert!(map.get(2).is_null());
+    assert!(map.get_scalar(2).is_null());
 
     // Row 3 = {"c"->3}.
-    assert_eq!(map.row_scalar(3).len(), 1);
+    assert_eq!(map.get_scalar(3).len(), 1);
 
     // Out of range -> null.
-    assert!(map.row(9).is_null());
-    assert!(map.row_scalar(9).is_null());
+    assert!(map.get(9).is_null());
+    assert!(map.get_scalar(9).is_null());
 }
 
 #[test]
@@ -428,7 +428,7 @@ fn all_null_and_all_empty_map_columns_byte_round_trip() {
         MapSerie::from_entries(k, v, &[0, 0, 0, 0], Some(&[false, false, false]), false).unwrap();
     assert_eq!(all_null.len(), 3);
     assert_eq!(all_null.null_count(), 3);
-    assert!(all_null.row(0).is_null() && all_null.row(2).is_null());
+    assert!(all_null.get(0).is_null() && all_null.get(2).is_null());
     assert_eq!(
         MapSerie::deserialize_bytes(&all_null.serialize_bytes()).unwrap(),
         all_null
@@ -438,8 +438,8 @@ fn all_null_and_all_empty_map_columns_byte_round_trip() {
     let (k, v) = empty_entries();
     let all_empty = MapSerie::from_entries(k, v, &[0, 0, 0, 0], None, false).unwrap();
     assert_eq!(all_empty.null_count(), 0);
-    assert!(!all_empty.row(0).is_null());
-    assert!(all_empty.row_scalar(0).is_empty());
+    assert!(!all_empty.get(0).is_null());
+    assert!(all_empty.get_scalar(0).is_empty());
     assert_eq!(
         MapSerie::deserialize_bytes(&all_empty.serialize_bytes()).unwrap(),
         all_empty
@@ -456,8 +456,8 @@ fn empty_vs_null_nested_map_element_are_distinct() {
     let inner = MapSerie::from_entries(k, v, &[0, 0, 0], Some(&[true, false]), false).unwrap();
     // A list wraps each inner map row as its own single-element outer row.
     let outer = ListSerie::from_values(inner.named("item"), &[0, 1, 2], None).unwrap();
-    let empty_elem = outer.row_scalar(0); // holds one *empty* inner map
-    let null_elem = outer.row_scalar(1); // holds one *null* inner map
+    let empty_elem = outer.get_scalar(0); // holds one *empty* inner map
+    let null_elem = outer.get_scalar(1); // holds one *null* inner map
     assert_ne!(empty_elem, null_elem);
     assert_eq!(
         ListSerie::deserialize_bytes(&outer.serialize_bytes()).unwrap(),
@@ -717,9 +717,9 @@ mod arrow {
         let field = arrow_schema::Field::new("m", array.data_type().clone(), false);
         let back = MapSerie::from_arrow_array(&array, &field).unwrap();
         assert_eq!(back.len(), 3);
-        assert_eq!(back.row_scalar(0).len(), 2);
-        assert_eq!(back.row_scalar(1).len(), 0);
-        assert_eq!(back.row_scalar(2).len(), 1);
+        assert_eq!(back.get_scalar(0).len(), 2);
+        assert_eq!(back.get_scalar(1).len(), 0);
+        assert_eq!(back.get_scalar(2).len(), 1);
         // The imported key field is non-nullable.
         assert!(!back.key_field().nullable());
     }

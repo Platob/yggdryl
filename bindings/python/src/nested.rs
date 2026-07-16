@@ -921,13 +921,13 @@ impl ListSerie {
         rewrap_field(&self.inner.item_field(), py)
     }
 
-    /// The row at `index` as its element sub-`Serie`, or `None` if the row is null; raises
-    /// `IndexError` out of range.
-    fn row(&self, py: Python<'_>, index: usize) -> PyResult<Option<PyObject>> {
+    /// The element at `index` as its element sub-`Serie`, or `None` if the row is null; raises
+    /// `IndexError` out of range. The single-element logical getter, matching the leaf `Serie.get`.
+    fn get(&self, py: Python<'_>, index: usize) -> PyResult<Option<PyObject>> {
         if index >= self.inner.len() {
-            return Err(PyIndexError::new_err("ListSerie row index out of range"));
+            return Err(PyIndexError::new_err("ListSerie index out of range"));
         }
-        let scalar = self.inner.row_scalar(index);
+        let scalar = self.inner.get_scalar(index);
         if scalar.is_null() {
             return Ok(None);
         }
@@ -1346,13 +1346,14 @@ impl MapSerie {
         }
     }
 
-    /// The row at `index` as its `key -> value` entries `StructSerie` (columns `[keys, values]`), or
-    /// `None` if the row is null; raises `IndexError` out of range.
-    fn row(&self, py: Python<'_>, index: usize) -> PyResult<Option<PyObject>> {
+    /// The element at `index` as its `key -> value` entries `StructSerie` (columns `[keys, values]`),
+    /// or `None` if the row is null; raises `IndexError` out of range. The single-element logical
+    /// getter, matching the leaf `Serie.get`.
+    fn get(&self, py: Python<'_>, index: usize) -> PyResult<Option<PyObject>> {
         if index >= self.inner.len() {
-            return Err(PyIndexError::new_err("MapSerie row index out of range"));
+            return Err(PyIndexError::new_err("MapSerie index out of range"));
         }
-        let scalar = self.inner.row_scalar(index);
+        let scalar = self.inner.get_scalar(index);
         if scalar.is_null() {
             return Ok(None);
         }

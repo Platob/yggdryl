@@ -70,7 +70,7 @@ fn var_serie_header_excluded_from_identity() {
 
 #[test]
 fn fixed_size_serie_header_excluded_from_identity() {
-    let plain = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
+    let plain = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None]).unwrap();
     let headed = plain.clone().with_name("z").with_metadata(meta());
     assert_eq!(plain, headed);
     assert_eq!(plain.serialize_bytes(), headed.serialize_bytes());

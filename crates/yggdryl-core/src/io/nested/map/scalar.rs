@@ -1,6 +1,6 @@
 //! [`MapScalar`] — one **map value**: a nullable row of a map column, its `key -> value` entries
 //! carried as an erased `StructSerie(key, value)` sub-[`Serie`](crate::io::AnySerie). It is what
-//! [`MapSerie::row_scalar`](super::MapSerie::row_scalar) yields.
+//! [`MapSerie::get_scalar`](super::MapSerie::get_scalar) yields.
 
 use super::MapType;
 use crate::io::field_carrier::field_accessors;
@@ -31,7 +31,7 @@ use crate::io::{AnyField, AnySerie, DataTypeId, ScalarType};
 /// let keys = Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c")]).named("key");
 /// let values = Serie::from_values(&[1i64, 2, 3]).named("value");
 /// let map = MapSerie::from_entries(keys, values, &[0, 2, 3], None, false).unwrap();
-/// let row = map.row_scalar(0);
+/// let row = map.get_scalar(0);
 /// assert!(!row.is_null());
 /// assert_eq!(row.len(), 2); // two entries: "a"->1, "b"->2
 /// assert!(!row.keys_sorted());

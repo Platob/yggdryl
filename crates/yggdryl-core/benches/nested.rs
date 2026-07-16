@@ -158,7 +158,7 @@ fn main() {
     row(
         "StructSerie::row",
         measure(1, iters, || {
-            let _ = table.row(n / 2);
+            let _ = table.get(n / 2);
         }),
     );
     row(
@@ -194,13 +194,13 @@ fn main() {
     row(
         "ListSerie::row (navigate)",
         measure(1, iters, || {
-            let _ = list.row(n / 2);
+            let _ = list.get(n / 2);
         }),
     );
     row(
-        "ListSerie::row_scalar (navigate)",
+        "ListSerie::get_scalar (navigate)",
         measure(1, iters, || {
-            let _ = list.row_scalar(n / 2);
+            let _ = list.get_scalar(n / 2);
         }),
     );
     row(
@@ -269,7 +269,7 @@ fn main() {
     row(
         "MapSerie::row (navigate)",
         measure(1, iters, || {
-            let _ = map.row(n / 2);
+            let _ = map.get(n / 2);
         }),
     );
     row(
@@ -334,7 +334,7 @@ fn main() {
     let ext_values: Vec<i32> = (0..n as i32).collect();
     let concat_src = Serie::from_values(&ext_values);
     let struct_src = build_table(n);
-    let struct_row = struct_src.row(0);
+    let struct_row = struct_src.get(0);
     let struct_row = struct_row.as_struct().unwrap();
     let list_src = build_list(n);
     let map_src = build_map(n, &keys);

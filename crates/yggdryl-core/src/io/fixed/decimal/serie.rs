@@ -151,7 +151,8 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         self.values = ArrowBuffer::from_vec(vec);
     }
 
-    /// The raw coefficient at `index`, or `None` if null or out of range.
+    /// The raw physical coefficient at `index`, or `None` if null or out of range — the physical
+    /// scaled integer, distinct from [`get`](DecimalSerie::get), the logical [`Decimal`] value.
     pub fn get_coeff(&self, index: usize) -> Option<B::Coeff> {
         if index >= self.len {
             return None;

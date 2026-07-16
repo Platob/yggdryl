@@ -80,13 +80,13 @@ fn any_serie_erases_every_leaf_family() {
     assert_eq!(utf8.type_id(), DataTypeId::Utf8);
     assert!(utf8.has_nulls());
 
-    let binary = boxed(BinarySerie::from_byte_values(&[Some(&b"x"[..])]).unwrap());
+    let binary = boxed(BinarySerie::from_options(&[Some(&b"x"[..])]).unwrap());
     assert_eq!(binary.type_id(), DataTypeId::Binary);
 
     let decimal = boxed(D128Serie::from_values(20, 2, &[D128::new(12345, 2).unwrap()]).unwrap());
     assert_eq!(decimal.type_id(), DataTypeId::D128);
 
-    let fsb = boxed(FixedBinarySerie::from_values(2, &[Some(&b"ab"[..])]).unwrap());
+    let fsb = boxed(FixedBinarySerie::from_options(2, &[Some(&b"ab"[..])]).unwrap());
     assert_eq!(fsb.type_id(), DataTypeId::FixedBinary);
 
     let null = boxed(NullSerie::with_len(4));
@@ -140,15 +140,15 @@ fn struct_serie_builds_from_named_columns() {
 #[test]
 fn struct_serie_row_access() {
     let table = sample_table();
-    let row = table.row_scalar(0);
+    let row = table.get_scalar(0);
     assert!(!row.is_null());
     assert_eq!(row.num_fields(), 3);
     assert_eq!(row.value_named("name").unwrap().bytes(), Some(&b"ann"[..]));
     // Row 2's `name` is null.
-    assert!(table.row_scalar(2).value_named("name").unwrap().is_null());
+    assert!(table.get_scalar(2).value_named("name").unwrap().is_null());
     // The erased row is an AnyScalar::Struct; out of range -> Null.
-    assert!(matches!(table.row(0), AnyScalar::Struct(_)));
-    assert!(table.row(9).is_null());
+    assert!(matches!(table.get(0), AnyScalar::Struct(_)));
+    assert!(table.get(9).is_null());
 }
 
 #[test]
@@ -226,8 +226,8 @@ fn struct_serie_nullable_rows_round_trip() {
     let table =
         StructSerie::from_columns(fields, vec![ids, names], Some(&[true, false, true])).unwrap();
     assert_eq!(table.null_count(), 1);
-    assert!(table.row(1).is_null());
-    assert!(!table.row(0).is_null());
+    assert!(table.get(1).is_null());
+    assert!(!table.get(0).is_null());
     let back = StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap();
     assert_eq!(back, table);
 }
@@ -359,7 +359,7 @@ mod arrow {
             .unwrap(),
         );
         let codes = boxed(
-            FixedBinarySerie::from_values(3, &[Some(&b"USD"[..]), Some(&b"EUR"[..])]).unwrap(),
+            FixedBinarySerie::from_options(3, &[Some(&b"USD"[..]), Some(&b"EUR"[..])]).unwrap(),
         );
         let table = StructSerie::from_named(vec![("amt", amounts), ("code", codes)]).unwrap();
 

@@ -91,7 +91,7 @@ fn fixed_size_set_overwrites_slot_in_place() {
     // value -> null, then bulk from another column.
     col.set(2, None).unwrap();
     assert_eq!(col.get_bytes(2), None);
-    let patch = FixedBinarySerie::from_values(4, &[Some(&[7u8; 4][..]), None]).unwrap();
+    let patch = FixedBinarySerie::from_options(4, &[Some(&[7u8; 4][..]), None]).unwrap();
     col.set_range(0, &patch).unwrap();
     assert_eq!(col.get_bytes(0), Some(&[7u8; 4][..]));
     assert_eq!(col.get_bytes(1), None);

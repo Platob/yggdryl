@@ -188,7 +188,7 @@ macro_rules! napi_var {
                         let owned: Vec<Option<Vec<u8>>> =
                             values.into_iter().map(|value| value.map($from)).collect();
                         let refs: Vec<Option<&[u8]>> = owned.iter().map(|o| o.as_deref()).collect();
-                        ByteSerie::<$E>::from_byte_values(&refs)
+                        ByteSerie::<$E>::from_options(&refs)
                             .map(|inner| Self { inner })
                             .map_err(to_error)
                     }

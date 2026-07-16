@@ -95,24 +95,24 @@ def test_list_serie_build_and_navigate():
     assert isinstance(child, I32Serie)
     assert child.get(3) == 40
     # Row access: each row is its element sub-Serie.
-    row0 = col.row(0)
+    row0 = col.get(0)
     assert isinstance(row0, I32Serie)
     assert [row0.get(i) for i in range(len(row0))] == [10, 20, 30]
-    assert len(col.row(1)) == 0  # the empty row
-    assert [col.row(2).get(i) for i in range(len(col.row(2)))] == [40]
+    assert len(col.get(1)) == 0  # the empty row
+    assert [col.get(2).get(i) for i in range(len(col.get(2)))] == [40]
 
 
 def test_list_serie_null_rows():
     col = ListSerie(I32Serie([1, 2, 3]), [0, 2, 2, 3], present=[True, False, True])
     assert col.null_count == 1
     assert col.has_nulls
-    assert col.row(1) is None  # a null list row
-    assert col.row(0) is not None
+    assert col.get(1) is None  # a null list row
+    assert col.get(0) is not None
 
 
 def test_list_serie_row_out_of_range_raises():
     with pytest.raises(IndexError):
-        _list_i32().row(5)
+        _list_i32().get(5)
 
 
 def test_list_serie_item_field_and_to_field():
@@ -150,7 +150,7 @@ def test_list_serie_nested_in_list():
     inner = ListSerie(I32Serie([1, 2, 3, 4]), [0, 2, 4])  # 2 rows
     outer = ListSerie(inner, [0, 1, 2])  # a List<List<i32>>: 2 rows, one inner list each
     assert len(outer) == 2
-    recovered = outer.row(0)
+    recovered = outer.get(0)
     assert isinstance(recovered, ListSerie)
     assert ListSerie.deserialize_bytes(outer.serialize_bytes()) == outer
 
@@ -218,7 +218,7 @@ def test_map_serie_get_value():
 
 def test_map_serie_row_and_fields():
     col = _map_utf8_i64()
-    row0 = col.row(0)
+    row0 = col.get(0)
     assert isinstance(row0, StructSerie)  # the row's [key, value] entries
     assert len(row0) == 2
     assert col.key_field.name == "key"
@@ -233,10 +233,10 @@ def test_map_serie_null_rows_and_out_of_range():
     values = I64Serie([1, 2])
     col = MapSerie(keys, values, [0, 1, 2], present=[True, False])
     assert col.null_count == 1
-    assert col.row(1) is None
+    assert col.get(1) is None
     assert col.get_value(1, Utf8Serie(["b"])) is None  # a null map row
     with pytest.raises(IndexError):
-        col.row(9)
+        col.get(9)
 
 
 def test_map_serie_rejects_null_key():

@@ -265,7 +265,7 @@ macro_rules! py_var {
                     Some(seq) => {
                         let owned = extract_var_options::<$E>(seq)?;
                         let refs: Vec<Option<&[u8]>> = owned.iter().map(|o| o.as_deref()).collect();
-                        ByteSerie::<$E>::from_byte_values(&refs)
+                        ByteSerie::<$E>::from_options(&refs)
                             .map(|inner| Self { inner })
                             .map_err(io_err)
                     }

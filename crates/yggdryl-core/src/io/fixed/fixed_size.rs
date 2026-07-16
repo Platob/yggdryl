@@ -392,8 +392,19 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         Ok(())
     }
 
-    /// A column from optional values, each validated to be exactly `width` bytes.
-    pub fn from_values(width: usize, values: &[Option<&[u8]>]) -> Result<Self, IoError> {
+    /// A column from **present** values (no nulls), each exactly `width` bytes and validated for the
+    /// kind — the present-only twin of [`from_options`](FixedSizeSerie::from_options) (mirrors
+    /// [`extend_values`](FixedSizeSerie::extend_values)). `from_values` = present, `from_options` =
+    /// nullable, uniform across every family.
+    pub fn from_values(width: usize, values: &[&[u8]]) -> Result<Self, IoError> {
+        let mut serie = Self::new(width);
+        serie.extend_values(values)?;
+        Ok(serie)
+    }
+
+    /// A column from **optional** values (a `None` is a null), each present value validated to be
+    /// exactly `width` bytes — the nullable twin of [`from_values`](FixedSizeSerie::from_values).
+    pub fn from_options(width: usize, values: &[Option<&[u8]>]) -> Result<Self, IoError> {
         let mut serie = Self::new(width);
         for &value in values {
             serie.push(value)?;
@@ -417,7 +428,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     /// assert_eq!(col.get_bytes(1), None);
     /// ```
     pub fn from_scalars(width: usize, scalars: &[FixedSizeScalar<K>]) -> Result<Self, IoError> {
-        Self::from_values(
+        Self::from_options(
             width,
             &scalars
                 .iter()
@@ -581,7 +592,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     }
 
     /// Appends a slice of **optional** values (each exactly `width` bytes, validated for the kind) —
-    /// the bulk grow twin of [`from_values`](FixedSizeSerie::from_values). The `N`-byte-slot data
+    /// the bulk grow twin of [`from_options`](FixedSizeSerie::from_options). The `N`-byte-slot data
     /// buffer is an owned `Vec`, so the grow is an amortized-`O(1)` append (one `reserve` + `extend`,
     /// not a per-element re-seal). Every value is validated **up front**, so a bad value leaves the
     /// column unchanged; a null appends a zero placeholder slot and lazily materializes the mask.
@@ -712,7 +723,7 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     /// ```
     /// use yggdryl_core::io::fixed::FixedBinarySerie;
     ///
-    /// let col = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
+    /// let col = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
     /// assert_eq!(FixedBinarySerie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
     /// ```
     pub fn serialize_bytes(&self) -> Vec<u8> {
@@ -933,12 +944,12 @@ mod tests {
         // Clearing the last null with `set` leaves a materialized all-present validity mask; the
         // column must still equal (and round-trip byte-equal to) the same values with no mask — the
         // identity is over present-or-null values, not the raw validity mask / placeholder bytes.
-        let mut cleared = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
+        let mut cleared = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None]).unwrap();
         cleared.set(1, Some(&b"cd"[..])).unwrap();
         assert_eq!(cleared.null_count(), 0);
 
         let dense =
-            FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), Some(&b"cd"[..])]).unwrap();
+            FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), Some(&b"cd"[..])]).unwrap();
         assert_eq!(cleared, dense);
         assert_eq!(
             FixedBinarySerie::deserialize_bytes(&cleared.serialize_bytes()).unwrap(),
@@ -946,13 +957,13 @@ mod tests {
         );
 
         // A genuine null still makes the columns differ (a null slot never reads placeholder bytes).
-        let with_null = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
+        let with_null = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None]).unwrap();
         assert_ne!(with_null, dense);
     }
 
     #[test]
     fn from_scalars_round_trips_a_column_through_its_own_scalars() {
-        let col = FixedBinarySerie::from_values(
+        let col = FixedBinarySerie::from_options(
             2,
             &[Some(&b"ab"[..]), None, Some(&b"cd"[..]), Some(&b"ef"[..])],
         )

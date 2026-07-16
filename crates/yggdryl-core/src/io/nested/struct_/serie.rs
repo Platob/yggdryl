@@ -279,9 +279,10 @@ impl StructSerie {
         StructField::new(name, self.fields(), self.has_nulls())
     }
 
-    /// The row at `index` as an erased [`AnyScalar::Struct`] — [`AnyScalar::Null`] if the row is null
-    /// or out of range.
-    pub fn row(&self, index: usize) -> AnyScalar {
+    /// The **logical value** at `index` as an erased [`AnyScalar::Struct`] — [`AnyScalar::Null`] if
+    /// the row is null or out of range. The single-element logical getter, uniform across every family
+    /// (the leaf `Serie::get`, the nested `get`); [`SerieType::get`] wraps it as an `Option`.
+    pub fn get(&self, index: usize) -> AnyScalar {
         if index >= self.len || self.validity.as_ref().is_some_and(|v| !v.get(index)) {
             return AnyScalar::Null;
         }
@@ -290,7 +291,7 @@ impl StructSerie {
 
     /// The row at `index` as a [`StructScalar`] — its `is_null` flag reflects the top-level validity,
     /// but its per-field values are always populated. Out of range yields a null scalar.
-    pub fn row_scalar(&self, index: usize) -> StructScalar {
+    pub fn get_scalar(&self, index: usize) -> StructScalar {
         if index >= self.len {
             return StructScalar::null(self.fields(), Vec::new());
         }
@@ -380,7 +381,7 @@ impl StructSerie {
     ///     Utf8Serie::from_strs(&[Some("a")]).named("name"),
     /// ])
     /// .unwrap();
-    /// let row = table.row(0); // reuse row 0's cell values as a new row
+    /// let row = table.get(0); // reuse row 0's cell values as a new row
     /// table.append_row(row.as_struct().unwrap()).unwrap();
     /// assert_eq!(table.len(), 2);
     /// ```
@@ -561,7 +562,7 @@ impl SerieType for StructSerie {
     }
 
     fn get(&self, index: usize) -> Option<AnyScalar> {
-        match self.row(index) {
+        match self.get(index) {
             AnyScalar::Null => None,
             value => Some(value),
         }
@@ -589,7 +590,7 @@ impl AnySerie for StructSerie {
     }
 
     fn value(&self, index: usize) -> AnyScalar {
-        self.row(index)
+        self.get(index)
     }
 
     fn num_children(&self) -> usize {

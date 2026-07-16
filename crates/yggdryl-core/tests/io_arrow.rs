@@ -288,7 +288,7 @@ fn utf8_serie_arrow_round_trip() {
 fn binary_serie_arrow_round_trip() {
     use yggdryl_core::io::var::BinarySerie;
     let col =
-        BinarySerie::from_byte_values(&[Some(&b"\x00\x01"[..]), None, Some(&b"\xff"[..])]).unwrap();
+        BinarySerie::from_options(&[Some(&b"\x00\x01"[..]), None, Some(&b"\xff"[..])]).unwrap();
     let array = col.to_arrow_array();
     assert_eq!(array.len(), 3);
     assert_eq!(array.value(0), b"\x00\x01");
@@ -299,7 +299,7 @@ fn binary_serie_arrow_round_trip() {
 fn fixed_size_binary_serie_arrow_round_trip() {
     use yggdryl_core::io::fixed::FixedBinarySerie;
     let col =
-        FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
+        FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
     let array = col.to_arrow_array();
     assert_eq!(array.len(), 3);
     assert_eq!(array.value_length(), 2);

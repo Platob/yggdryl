@@ -649,7 +649,7 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
             .map(|index| self.get_bytes(index))
             .collect();
         Box::new(
-            ByteSerie::<E>::from_byte_values(&values)
+            ByteSerie::<E>::from_options(&values)
                 .expect("a column's own values are already valid for its kind"),
         )
     }
@@ -727,7 +727,7 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
             .map(|index| self.get_bytes(index))
             .collect();
         Box::new(
-            FixedSizeSerie::<K>::from_values(self.width(), &values)
+            FixedSizeSerie::<K>::from_options(self.width(), &values)
                 .expect("a column's own values re-fit its own width and kind exactly"),
         )
     }

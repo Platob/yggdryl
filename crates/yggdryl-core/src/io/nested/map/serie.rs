@@ -35,7 +35,7 @@ use crate::io::{
 /// let values = Serie::from_values(&[1i64, 2, 3]).named("value");
 /// let map = MapSerie::from_entries(keys, values, &[0, 2, 3], None, false).unwrap();
 /// assert_eq!(map.len(), 2);
-/// assert_eq!(map.row_scalar(0).len(), 2);
+/// assert_eq!(map.get_scalar(0).len(), 2);
 /// // Per-row key lookup: the value mapped to the first key in row 0.
 /// let first_key = map.keys().value(0);
 /// assert_eq!(map.get_value(0, &first_key), Some(map.values().value(0)));
@@ -94,7 +94,7 @@ impl MapSerie {
     /// let values = Serie::from_values(&[1i64, 2, 3]).named("value");
     /// let map = MapSerie::from_entries(keys, values, &[0, 1, 1, 3], None, false).unwrap();
     /// assert_eq!(map.len(), 3);
-    /// assert_eq!(map.row_scalar(1).len(), 0); // the empty row
+    /// assert_eq!(map.get_scalar(1).len(), 0); // the empty row
     /// ```
     pub fn from_entries(
         keys: Box<dyn AnySerie>,
@@ -254,7 +254,7 @@ impl MapSerie {
     }
 
     /// The entries sub-range `[start, end)` of row `index`, or `None` if out of range. Returns the
-    /// range even for a null row (its logical span in the entries); use [`row`](MapSerie::row) to get
+    /// range even for a null row (its logical span in the entries); use [`get`](MapSerie::get) to get
     /// a null-aware value.
     pub fn value_range(&self, index: usize) -> Option<(usize, usize)> {
         (index < self.len).then(|| {
@@ -265,9 +265,11 @@ impl MapSerie {
         })
     }
 
-    /// The row at `index` as an erased [`AnyScalar::Map`] — [`AnyScalar::Null`] if the row is null or
-    /// out of range. The entries are the entries sub-column for the row.
-    pub fn row(&self, index: usize) -> AnyScalar {
+    /// The **logical value** at `index` as an erased [`AnyScalar::Map`] — [`AnyScalar::Null`] if the
+    /// row is null or out of range. The entries are the entries sub-column for the row. The
+    /// single-element logical getter, uniform across every family; [`SerieType::get`] wraps it as an
+    /// `Option`.
+    pub fn get(&self, index: usize) -> AnyScalar {
         if index >= self.len || self.validity.as_ref().is_some_and(|v| !v.get(index)) {
             return AnyScalar::Null;
         }
@@ -284,7 +286,7 @@ impl MapSerie {
     /// The row at `index` as a [`MapScalar`] — its `is_null` flag reflects the top-level validity, but
     /// its entries are always populated (the entries sub-range). Out of range yields a null scalar
     /// over empty entries.
-    pub fn row_scalar(&self, index: usize) -> MapScalar {
+    pub fn get_scalar(&self, index: usize) -> MapScalar {
         let key = self.key_field();
         let value = self.value_field();
         if index >= self.len {
@@ -404,7 +406,7 @@ impl MapSerie {
     /// )
     /// .unwrap();
     /// assert_eq!(map.len(), 2);
-    /// assert_eq!(map.row_scalar(1).len(), 2);
+    /// assert_eq!(map.get_scalar(1).len(), 2);
     /// ```
     pub fn append_row(
         &mut self,
@@ -607,7 +609,7 @@ impl SerieType for MapSerie {
     }
 
     fn get(&self, index: usize) -> Option<AnyScalar> {
-        match self.row(index) {
+        match self.get(index) {
             AnyScalar::Null => None,
             value => Some(value),
         }
@@ -641,7 +643,7 @@ impl AnySerie for MapSerie {
     }
 
     fn value(&self, index: usize) -> AnyScalar {
-        self.row(index)
+        self.get(index)
     }
 
     fn num_children(&self) -> usize {

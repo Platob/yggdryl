@@ -113,8 +113,19 @@ impl<E: VarElement> ByteSerie<E> {
         Ok(())
     }
 
-    /// A column from optional raw byte values, validated for the kind.
-    pub fn from_byte_values(values: &[Option<&[u8]>]) -> Result<Self, IoError> {
+    /// A column from **present** raw byte values (no nulls), each validated for the kind — the
+    /// present-only twin of [`from_options`](ByteSerie::from_options) (mirrors
+    /// [`extend_values`](ByteSerie::extend_values)). `from_values` = present, `from_options` = nullable,
+    /// uniform across every family.
+    pub fn from_values(values: &[&[u8]]) -> Result<Self, IoError> {
+        let mut serie = Self::with_capacity(values.len());
+        serie.extend_values(values)?;
+        Ok(serie)
+    }
+
+    /// A column from **optional** raw byte values (a `None` is a null), each validated for the kind —
+    /// the nullable twin of [`from_values`](ByteSerie::from_values).
+    pub fn from_options(values: &[Option<&[u8]>]) -> Result<Self, IoError> {
         let mut serie = Self::with_capacity(values.len());
         for &value in values {
             serie.push_bytes(value)?;
@@ -137,7 +148,7 @@ impl<E: VarElement> ByteSerie<E> {
     /// assert_eq!(col.get_str(2), Some("cd"));
     /// ```
     pub fn from_scalars(scalars: &[ByteScalar<E>]) -> Result<Self, IoError> {
-        Self::from_byte_values(
+        Self::from_options(
             &scalars
                 .iter()
                 .map(ByteScalar::value_bytes)
@@ -337,7 +348,7 @@ impl<E: VarElement> ByteSerie<E> {
     // ---- grow: append single + bulk (the mutator vocabulary) ----------------------------
 
     /// Appends a slice of **optional** byte values (each validated for the kind) — the bulk grow twin
-    /// of [`from_byte_values`](ByteSerie::from_byte_values). Unlike a fixed-width column, a var
+    /// of [`from_options`](ByteSerie::from_options). Unlike a fixed-width column, a var
     /// column's data / offsets are owned `Vec`s, so the grow is an amortized-`O(1)` append (one
     /// `reserve` + `extend`, not a per-element buffer re-seal). Every value is validated **up front**,
     /// so a bad value leaves the column unchanged; a null lazily materializes the validity mask.

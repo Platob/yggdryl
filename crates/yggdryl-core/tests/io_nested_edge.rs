@@ -119,8 +119,8 @@ fn null_struct_rows_are_equal_regardless_of_phantom_values() {
     let col = boxed(Serie::from_values(&[1i64, 2]));
     let table =
         StructSerie::from_columns(vec![col.field("id")], vec![col], Some(&[false, false])).unwrap();
-    let row0 = table.row_scalar(0);
-    let row1 = table.row_scalar(1);
+    let row0 = table.get_scalar(0);
+    let row1 = table.get_scalar(1);
     assert!(row0.is_null() && row1.is_null());
     assert_eq!(row0, row1);
     use std::collections::HashSet;
@@ -200,8 +200,8 @@ fn from_columns_present_mask_shorter_than_len_marks_only_given_rows() {
     // The mask covers only row 0; rows 1..3 stay present (the mask read is `.take(len)`-bounded).
     let table = StructSerie::from_columns(vec![field], vec![col], Some(&[false])).unwrap();
     assert_eq!(table.null_count(), 1);
-    assert!(table.row(0).is_null());
-    assert!(!table.row(1).is_null());
+    assert!(table.get(0).is_null());
+    assert!(!table.get(1).is_null());
 }
 
 // -------------------------------------------------------------------------------------
@@ -221,9 +221,9 @@ fn nested_row_scalars_are_equal_and_hashable() {
     .unwrap(); // [1,2],[3],[4]
     let outer = ListSerie::from_values(inner.named("item"), &[0, 2, 3], None).unwrap(); // [[1,2],[3]], [[4]]
     let (l0, l0b, l1) = (
-        outer.row_scalar(0),
-        outer.row_scalar(0),
-        outer.row_scalar(1),
+        outer.get_scalar(0),
+        outer.get_scalar(0),
+        outer.get_scalar(1),
     );
     assert_eq!(l0, l0b);
     assert_ne!(l0, l1);
@@ -246,7 +246,7 @@ fn nested_row_scalars_are_equal_and_hashable() {
         false,
     )
     .unwrap();
-    let (m0, m0b) = (map.row_scalar(0), map.row_scalar(0));
+    let (m0, m0b) = (map.get_scalar(0), map.get_scalar(0));
     assert_eq!(m0, m0b);
     assert_eq!(m0.value_field().type_id(), DataTypeId::List);
     let mset: HashSet<_> = [m0, m0b].into_iter().collect();
@@ -264,9 +264,9 @@ fn nested_row_scalars_are_equal_and_hashable() {
         scores.named("scores"),
     ])
     .unwrap();
-    let (s0, s0b) = (table.row_scalar(0), table.row_scalar(0));
+    let (s0, s0b) = (table.get_scalar(0), table.get_scalar(0));
     assert_eq!(s0, s0b);
-    assert_ne!(s0, table.row_scalar(1));
+    assert_ne!(s0, table.get_scalar(1));
     // The nested `scores` field of the row is itself a list cell.
     assert_eq!(
         s0.value_named("scores").unwrap().type_id(),
@@ -295,7 +295,7 @@ fn map_scalar_equality_is_positional_and_allows_duplicate_keys() {
         false,
     )
     .unwrap();
-    assert_ne!(ab.row_scalar(0), ba.row_scalar(0));
+    assert_ne!(ab.get_scalar(0), ba.get_scalar(0));
 
     // Duplicate keys are allowed; the scalar just stores the entries positionally.
     let dup = MapSerie::from_entries(
@@ -306,9 +306,9 @@ fn map_scalar_equality_is_positional_and_allows_duplicate_keys() {
         false,
     )
     .unwrap();
-    let d0 = dup.row_scalar(0);
+    let d0 = dup.get_scalar(0);
     assert_eq!(d0.len(), 2);
-    assert_eq!(d0, dup.row_scalar(0));
+    assert_eq!(d0, dup.get_scalar(0));
     // Positional lookup returns the FIRST value for the duplicate key.
     let key_a = dup.keys().value(0);
     assert_eq!(dup.get_value(0, &key_a), Some(dup.values().value(0)));
@@ -378,7 +378,7 @@ fn four_level_deep_nesting_byte_round_trips() {
     let outer = deep_four_level();
     assert_eq!(outer.item_field().type_id(), DataTypeId::Map);
     // Navigate the levels to prove the shape survived construction: list -> map -> struct.
-    let list_row = outer.row(0);
+    let list_row = outer.get(0);
     let items = list_row.as_list().unwrap(); // a map column
     assert_eq!(items.type_id(), DataTypeId::Map);
     let map_cell = items.value(0);
@@ -576,7 +576,7 @@ mod arrow {
             (
                 "bin",
                 boxed(
-                    BinarySerie::from_byte_values(&[Some(&b"\x00"[..]), Some(&b"\xff\xfe"[..])])
+                    BinarySerie::from_options(&[Some(&b"\x00"[..]), Some(&b"\xff\xfe"[..])])
                         .unwrap(),
                 ),
             ),
@@ -594,7 +594,7 @@ mod arrow {
             (
                 "fu8",
                 boxed(
-                    FixedUtf8Serie::from_values(2, &[Some(&b"ab"[..]), Some(&b"cd"[..])]).unwrap(),
+                    FixedUtf8Serie::from_options(2, &[Some(&b"ab"[..]), Some(&b"cd"[..])]).unwrap(),
                 ),
             ),
         ])

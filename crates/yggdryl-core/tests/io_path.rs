@@ -171,7 +171,7 @@ fn get_by_path_on_a_field_mirrors_the_serie() {
 #[test]
 fn get_by_path_on_a_scalar_drills_the_data_positionally() {
     let root = build_tree();
-    let row0 = root.row(0); // Struct([ List(struct{b}[10, 20]) ])
+    let row0 = root.get(0); // Struct([ List(struct{b}[10, 20]) ])
 
     // A value's children are its data, so the path is positional: field 0 -> element 0 -> field 0.
     let leaf = row0.get_by_path("[0][0][0]").unwrap();
@@ -331,7 +331,7 @@ fn append_row_grows_every_child_consistently_no_mut_child_footgun() {
     .unwrap();
     assert_eq!(table.len(), 2);
 
-    let row = table.row(0); // reuse row 0's cells as a new row
+    let row = table.get(0); // reuse row 0's cells as a new row
     table.append_row(row.as_struct().unwrap()).unwrap();
     table.append_null();
 

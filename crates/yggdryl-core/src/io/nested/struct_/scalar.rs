@@ -1,5 +1,5 @@
 //! [`StructScalar`] — one **struct value**: a nullable row of the struct's fields, each a type-erased
-//! [`AnyScalar`](crate::io::AnyScalar). It is what [`StructSerie::row`](super::StructSerie::row) yields.
+//! [`AnyScalar`](crate::io::AnyScalar). It is what [`StructSerie::get_scalar`](super::StructSerie::get_scalar) yields.
 
 use super::StructType;
 use crate::io::field_carrier::field_accessors;

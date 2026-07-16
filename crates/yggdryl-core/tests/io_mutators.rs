@@ -204,11 +204,11 @@ fn var_extend_validates_utf8_and_leaves_column_unchanged_on_error() {
 
 #[test]
 fn fixed_size_extend_scalars_and_width_checked_concat() {
-    let mut col = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..])]).unwrap();
+    let mut col = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..])]).unwrap();
     col.extend_options(&[Some(&b"cd"[..]), None]).unwrap();
     col.extend_scalars(&[FixedBinaryScalar::from_bytes(b"ef").unwrap()])
         .unwrap();
-    let scratch = FixedBinarySerie::from_values(
+    let scratch = FixedBinarySerie::from_options(
         2,
         &[Some(&b"ab"[..]), Some(&b"cd"[..]), None, Some(&b"ef"[..])],
     )
@@ -217,19 +217,19 @@ fn fixed_size_extend_scalars_and_width_checked_concat() {
     assert_eq!(col.serialize_bytes(), scratch.serialize_bytes());
 
     // A wrong-width present value is a guided CorruptLength (column unchanged).
-    let mut col = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..])]).unwrap();
+    let mut col = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..])]).unwrap();
     assert!(col.extend_values(&[&b"xyz"[..]]).is_err());
     assert_eq!(col.len(), 1);
 
     // concat of two same-width columns matches from-scratch; a width mismatch errors.
-    let mut a = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
-    let b = FixedBinarySerie::from_values(2, &[Some(&b"cd"[..])]).unwrap();
+    let mut a = FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None]).unwrap();
+    let b = FixedBinarySerie::from_options(2, &[Some(&b"cd"[..])]).unwrap();
     a.concat(&b).unwrap();
     assert_eq!(
         a,
-        FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap()
+        FixedBinarySerie::from_options(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap()
     );
-    let three = FixedBinarySerie::from_values(3, &[Some(&b"xyz"[..])]).unwrap();
+    let three = FixedBinarySerie::from_options(3, &[Some(&b"xyz"[..])]).unwrap();
     let err = a.concat(&three).unwrap_err();
     assert!(matches!(err, IoError::CorruptLength { .. }), "got {err:?}");
 }
@@ -302,17 +302,17 @@ fn table(ids: &[i64], names: &[Option<&str>]) -> StructSerie {
 fn struct_append_row_null_and_concat() {
     // append_row: reuse row 0's cell values as a fresh row.
     let mut t = table(&[1, 2, 3], &[Some("a"), Some("b"), Some("c")]);
-    let row0 = t.row(0);
+    let row0 = t.get(0);
     t.append_row(row0.as_struct().unwrap()).unwrap();
     assert_eq!(t.len(), 4);
-    assert_eq!(t.row(3), t.row(0));
+    assert_eq!(t.get(3), t.get(0));
 
     // append_null: a null struct row grows validity and every child.
     let mut t = table(&[1, 2], &[Some("a"), Some("b")]);
     t.append_null();
     assert_eq!(t.len(), 3);
     assert_eq!(t.null_count(), 1);
-    assert!(t.row(2).is_null());
+    assert!(t.get(2).is_null());
     assert!(t.column(0).unwrap().value(2).is_null());
     assert!(t.field(0).unwrap().nullable());
 
@@ -358,7 +358,7 @@ fn list_append_row_null_and_concat() {
     list.append_row(boxed(Serie::from_values(&[3i32, 4, 5])))
         .unwrap();
     assert_eq!(list.len(), 2);
-    assert_eq!(list.row_scalar(1).len(), 3);
+    assert_eq!(list.get_scalar(1).len(), 3);
 
     // append_null: a zero-width null row (the flat child is untouched).
     let mut list = list_of(&[1, 2], &[0, 2], None);
@@ -366,7 +366,7 @@ fn list_append_row_null_and_concat() {
     list.append_null();
     assert_eq!(list.len(), 2);
     assert_eq!(list.null_count(), 1);
-    assert!(list.row(1).is_null());
+    assert!(list.get(1).is_null());
     assert_eq!(
         list.values().len(),
         child_before,
@@ -417,7 +417,7 @@ fn map_append_row_null_and_concat() {
     )
     .unwrap();
     assert_eq!(map.len(), 2);
-    assert_eq!(map.row_scalar(1).len(), 2);
+    assert_eq!(map.get_scalar(1).len(), 2);
 
     // A null key in an appended row is rejected (map invariant).
     let mut map = map_of(&["a"], &[1], &[0, 1]);
@@ -434,7 +434,7 @@ fn map_append_row_null_and_concat() {
     map.append_null();
     assert_eq!(map.len(), 2);
     assert_eq!(map.null_count(), 1);
-    assert!(map.row(1).is_null());
+    assert!(map.get(1).is_null());
 
     // concat equals a from-scratch build.
     let mut a = map_of(&["a", "b"], &[1, 2], &[0, 1, 2]); // rows {a->1}, {b->2}

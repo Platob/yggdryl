@@ -29,7 +29,7 @@ use crate::io::{
 /// let items = Serie::from_values(&[10i32, 20, 30, 40]).named("item");
 /// let list = ListSerie::from_values(items, &[0, 3, 4], None).unwrap();
 /// assert_eq!(list.len(), 2);
-/// assert_eq!(list.row_scalar(0).len(), 3);
+/// assert_eq!(list.get_scalar(0).len(), 3);
 /// // The flat child is downcastable back to its concrete Serie.
 /// let items: &Serie<i32> = list.values().as_serie::<i32>().unwrap();
 /// assert_eq!(items.get(3), Some(40));
@@ -84,7 +84,7 @@ impl ListSerie {
     /// let items = Serie::from_values(&[1i32, 2, 3]).named("item");
     /// let list = ListSerie::from_values(items, &[0, 2, 2, 3], None).unwrap();
     /// assert_eq!(list.len(), 3);
-    /// assert_eq!(list.row_scalar(1).len(), 0); // the empty row
+    /// assert_eq!(list.get_scalar(1).len(), 0); // the empty row
     /// ```
     pub fn from_values(
         items: Box<dyn AnySerie>,
@@ -177,7 +177,7 @@ impl ListSerie {
     }
 
     /// The child sub-range `[start, end)` of row `index`, or `None` if out of range. Returns the
-    /// range even for a null row (its logical span in the child); use [`row`](ListSerie::row) to get
+    /// range even for a null row (its logical span in the child); use [`get`](ListSerie::get) to get
     /// a null-aware value.
     pub fn value_range(&self, index: usize) -> Option<(usize, usize)> {
         (index < self.len).then(|| {
@@ -188,9 +188,11 @@ impl ListSerie {
         })
     }
 
-    /// The row at `index` as an erased [`AnyScalar::List`] — [`AnyScalar::Null`] if the row is null
-    /// or out of range. The elements are the child sub-column for the row.
-    pub fn row(&self, index: usize) -> AnyScalar {
+    /// The **logical value** at `index` as an erased [`AnyScalar::List`] — [`AnyScalar::Null`] if the
+    /// row is null or out of range. The elements are the child sub-column for the row. The
+    /// single-element logical getter, uniform across every family; [`SerieType::get`] wraps it as an
+    /// `Option`.
+    pub fn get(&self, index: usize) -> AnyScalar {
         if index >= self.len || self.validity.as_ref().is_some_and(|v| !v.get(index)) {
             return AnyScalar::Null;
         }
@@ -204,7 +206,7 @@ impl ListSerie {
     /// The row at `index` as a [`ListScalar`] — its `is_null` flag reflects the top-level validity,
     /// but its elements are always populated (the child sub-range). Out of range yields a null
     /// scalar over an empty child.
-    pub fn row_scalar(&self, index: usize) -> ListScalar {
+    pub fn get_scalar(&self, index: usize) -> ListScalar {
         if index >= self.len {
             return ListScalar::null(self.item_field(), self.values.slice(0, 0));
         }
@@ -285,7 +287,7 @@ impl ListSerie {
     /// let mut list = ListSerie::from_values(items, &[0, 2], None).unwrap();
     /// list.append_row(boxed(Serie::from_values(&[3i32, 4, 5]))).unwrap();
     /// assert_eq!(list.len(), 2);
-    /// assert_eq!(list.row_scalar(1).len(), 3);
+    /// assert_eq!(list.get_scalar(1).len(), 3);
     /// ```
     pub fn append_row(&mut self, items: Box<dyn AnySerie>) -> Result<(), IoError> {
         if AnySerie::type_id(items.as_ref()) != AnySerie::type_id(self.values.as_ref()) {
@@ -461,7 +463,7 @@ impl SerieType for ListSerie {
     }
 
     fn get(&self, index: usize) -> Option<AnyScalar> {
-        match self.row(index) {
+        match self.get(index) {
             AnyScalar::Null => None,
             value => Some(value),
         }
@@ -489,7 +491,7 @@ impl AnySerie for ListSerie {
     }
 
     fn value(&self, index: usize) -> AnyScalar {
-        self.row(index)
+        self.get(index)
     }
 
     fn num_children(&self) -> usize {

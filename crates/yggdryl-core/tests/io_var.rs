@@ -165,7 +165,7 @@ fn no_nulls_means_no_validity_overhead_but_still_correct() {
 #[test]
 fn binary_serie_holds_arbitrary_bytes_and_round_trips() {
     let col =
-        BinarySerie::from_byte_values(&[Some(&[0xff, 0x00][..]), None, Some(&[0x01][..])]).unwrap();
+        BinarySerie::from_options(&[Some(&[0xff, 0x00][..]), None, Some(&[0x01][..])]).unwrap();
     assert_eq!(col.len(), 3);
     assert_eq!(col.null_count(), 1);
     assert_eq!(col.get_bytes(0), Some(&[0xff, 0x00][..]));
@@ -231,13 +231,13 @@ fn corrupt_offsets_are_a_guided_error_not_a_panic() {
 }
 
 #[test]
-fn from_byte_values_validates_utf8() {
+fn from_options_validates_utf8() {
     // A `Utf8` column rejects invalid bytes up front.
-    let err = Utf8Serie::from_byte_values(&[Some(&[0xff][..])]).unwrap_err();
+    let err = Utf8Serie::from_options(&[Some(&[0xff][..])]).unwrap_err();
     assert!(matches!(err, IoError::InvalidUtf8 { position: 0 }));
 
     // The same bytes are fine as `Binary`.
-    assert!(BinarySerie::from_byte_values(&[Some(&[0xff][..])]).is_ok());
+    assert!(BinarySerie::from_options(&[Some(&[0xff][..])]).is_ok());
 }
 
 #[test]

@@ -1,5 +1,5 @@
 //! [`ListScalar`] — one **list value**: a nullable row of a list column, its elements carried as an
-//! erased sub-[`Serie`](crate::io::AnySerie). It is what [`ListSerie::row_scalar`](super::ListSerie::row_scalar)
+//! erased sub-[`Serie`](crate::io::AnySerie). It is what [`ListSerie::get_scalar`](super::ListSerie::get_scalar)
 //! yields.
 
 use super::ListType;
@@ -23,7 +23,7 @@ use crate::io::{AnyField, AnySerie, DataTypeId, ScalarType};
 ///
 /// let items = Serie::from_values(&[1i32, 2, 3]).named("item");
 /// let list = ListSerie::from_values(items, &[0, 2, 3], None).unwrap();
-/// let row = list.row_scalar(0);
+/// let row = list.get_scalar(0);
 /// assert!(!row.is_null());
 /// assert_eq!(row.len(), 2);
 /// assert_eq!(row.items().value(0).bytes(), Some(&1i32.to_le_bytes()[..]));
