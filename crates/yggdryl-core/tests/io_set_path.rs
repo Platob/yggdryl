@@ -251,3 +251,64 @@ fn set_by_path_wrong_value_type_is_a_guided_error() {
     // The mismatched set left the column unchanged.
     assert_eq!(root.get_by_path("a").unwrap().value(1), i32_cell(2));
 }
+
+// -------------------------------------------------------------------------------------
+// The read-twins: get_scalar_by_path / get_at read exactly what set writes (same address).
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn get_scalar_by_path_reads_exactly_what_set_by_path_writes() {
+    let mut root = build_root();
+    // Shallow: struct field `a`, cell 1.
+    root.set_by_path("a[1]", &i32_cell(77)).unwrap();
+    assert_eq!(root.get_scalar_by_path("a[1]").unwrap(), i32_cell(77));
+    // Deep: through the list `b`, row 0, item cell 1 → the 20 flattened at global index 1.
+    root.set_by_path("b[0][1]", &i32_cell(222)).unwrap();
+    assert_eq!(root.get_scalar_by_path("b[0][1]").unwrap(), i32_cell(222));
+    // The scalar read-twin agrees with the serie read-twin's cell.
+    assert_eq!(
+        root.get_scalar_by_path("a[1]").unwrap(),
+        root.get_by_path("a").unwrap().value(1)
+    );
+}
+
+#[test]
+fn get_at_reads_exactly_what_set_at_writes() {
+    let mut root = build_root();
+    // struct field 0 (`a`), cell 2.
+    root.set_at(&[0, 2], &i32_cell(303)).unwrap();
+    assert_eq!(root.get_at(&[0, 2]).unwrap(), i32_cell(303));
+    // struct field 1 (`b`, a list) → item child (0) → cell 3 (the flattened 40).
+    root.set_at(&[1, 0, 3], &i32_cell(404)).unwrap();
+    assert_eq!(root.get_at(&[1, 0, 3]).unwrap(), i32_cell(404));
+    // get_at and get_scalar_by_path name the same location.
+    assert_eq!(
+        root.get_at(&[0, 2]).unwrap(),
+        root.get_scalar_by_path("a[2]").unwrap()
+    );
+}
+
+#[test]
+fn get_scalar_by_path_errors_mirror_the_setter() {
+    let root = build_root();
+    // Empty path — no cell addressed.
+    assert!(matches!(
+        root.get_scalar_by_path("").unwrap_err(),
+        IoError::Unsupported { .. }
+    ));
+    // Final name segment — a name is a column, not a cell.
+    assert!(matches!(
+        root.get_scalar_by_path("a").unwrap_err(),
+        IoError::Unsupported { .. }
+    ));
+    // Unknown child.
+    assert!(matches!(
+        root.get_scalar_by_path("nope[0]").unwrap_err(),
+        IoError::Unsupported { .. }
+    ));
+    // Cell index past the leaf end.
+    assert!(matches!(
+        root.get_scalar_by_path("a[9]").unwrap_err(),
+        IoError::IndexOutOfBounds { index: 9, len: 3 }
+    ));
+}

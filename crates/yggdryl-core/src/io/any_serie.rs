@@ -457,6 +457,56 @@ impl dyn AnySerie {
         set_by_segments(self, &segments, value)
     }
 
+    /// **Reads a single leaf cell** addressed by `path` — the read-twin of
+    /// [`set_by_path`](AnySerie::set_by_path). All but the last path segment navigate to a leaf
+    /// **column** exactly as [`get_by_path`](AnySerie::get_by_path) would; the final
+    /// [`Index`](crate::io::PathSegment::Index) is the **cell** position within that leaf, read via
+    /// [`value`](AnySerie::value).
+    ///
+    /// Where [`get_by_path`](AnySerie::get_by_path) returns the addressed sub-**column** (a `&dyn
+    /// AnySerie`, every segment a column hop), this returns the single [`AnyScalar`] **cell** a
+    /// trailing index addresses — the exact value [`set_by_path`](AnySerie::set_by_path) would write,
+    /// so `col.get_scalar_by_path(p)` and `col.set_by_path(p, v)` name the same location.
+    ///
+    /// # Errors
+    /// A guided [`Unsupported`](IoError::Unsupported) wrapping a
+    /// [`PathError`](crate::io::PathError) for a bad path string or a missing child; for the empty path
+    /// or a final **name** segment (a cell is addressed by index); or an
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) if the final cell index is past the leaf's end.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{Field, Serie};
+    /// use yggdryl_core::io::nested::StructSerie;
+    /// use yggdryl_core::io::{boxed, AnyScalar, AnySerie, DataTypeId};
+    ///
+    /// let mut root = boxed(StructSerie::from_series(vec![
+    ///     Serie::from_values(&[10i32, 20, 30]).named("a"),
+    /// ])
+    /// .unwrap());
+    /// let ninety_nine =
+    ///     AnyScalar::leaf(Field::of("", DataTypeId::I32, 4, false), 99i32.to_le_bytes().to_vec());
+    /// root.set_by_path("a[1]", &ninety_nine).unwrap();
+    /// // The read-twin returns exactly the written cell.
+    /// assert_eq!(root.get_scalar_by_path("a[1]").unwrap(), ninety_nine);
+    /// ```
+    pub fn get_scalar_by_path(&self, path: &str) -> Result<AnyScalar, IoError> {
+        let parsed = NodePath::parse(path).map_err(path_to_io)?;
+        get_scalar_by_segments(self, parsed.segments())
+    }
+
+    /// **Reads a single leaf cell** addressed by a pure-**coordinate** path — the index-only twin of
+    /// [`get_scalar_by_path`](AnySerie::get_scalar_by_path) and the read-twin of
+    /// [`set_at`](AnySerie::set_at). Each of `coords` is a positional child index; the leading
+    /// coordinates navigate to a leaf column and the **last** is the cell position within it, so
+    /// `col.get_at(c)` reads exactly what `col.set_at(c, v)` writes.
+    pub fn get_at(&self, coords: &[usize]) -> Result<AnyScalar, IoError> {
+        let segments: Vec<PathSegment> = coords
+            .iter()
+            .map(|&index| PathSegment::Index(index))
+            .collect();
+        get_scalar_by_segments(self, &segments)
+    }
+
     /// A transient `NodeRef` cursor rooted at this column — the crate-internal entry point for the
     /// graph-cursor drill-down. Reserved for later phases (only its own tests use it today).
     #[allow(dead_code)]
@@ -555,6 +605,62 @@ fn set_by_segments(
         }
     };
     container.set_cell(cell, value)
+}
+
+/// Walks `segments` from `root` through the **immutable** child accessors to reach a leaf column, then
+/// reads the cell the final [`Index`](PathSegment::Index) addresses via [`value`](AnySerie::value).
+/// Shared by [`get_scalar_by_path`](AnySerie::get_scalar_by_path) (parses a path) and
+/// [`get_at`](AnySerie::get_at) (pure coordinates) — the read-twin of [`set_by_segments`].
+fn get_scalar_by_segments(
+    root: &(dyn AnySerie + 'static),
+    segments: &[PathSegment],
+) -> Result<AnyScalar, IoError> {
+    let Some((last, interior)) = segments.split_last() else {
+        return Err(IoError::Unsupported {
+            what: "a deep cell read needs a non-empty path to a leaf cell (e.g. `a[1]` or \
+                   `[0].x[2]`); the empty path addresses the whole column, not a cell"
+                .to_string(),
+        });
+    };
+    let mut container = root;
+    for (depth, segment) in interior.iter().enumerate() {
+        let num_children = container.num_children();
+        container = match segment {
+            PathSegment::Name(name) => container.child_serie_by(name).ok_or_else(|| {
+                path_to_io(PathError::NoChildNamed {
+                    depth,
+                    name: name.clone(),
+                    num_children,
+                })
+            })?,
+            PathSegment::Index(index) => container.child_serie_at(*index).ok_or_else(|| {
+                path_to_io(PathError::ChildIndexOutOfRange {
+                    depth,
+                    index: *index,
+                    num_children,
+                })
+            })?,
+        };
+    }
+    let cell = match last {
+        PathSegment::Index(index) => *index,
+        PathSegment::Name(name) => {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "the final path segment must be a cell index (e.g. `[1]`), but got the name \
+                     {name:?}; a name addresses a child column, not a cell — append an index segment \
+                     to reach a cell"
+                ),
+            })
+        }
+    };
+    if cell >= container.len() {
+        return Err(IoError::IndexOutOfBounds {
+            index: cell,
+            len: container.len(),
+        });
+    }
+    Ok(container.value(cell))
 }
 
 /// Boxes a concrete `Serie` as an erased [`AnySerie`] column — the ergonomic constructor for a
