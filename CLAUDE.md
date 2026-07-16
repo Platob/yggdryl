@@ -121,6 +121,22 @@ Minimal example: `yggdryl_core::version()` → `yggdryl.version()` in **both** P
 - **At-most-one-copy discipline.** Prefer zero-copy hand-off; a bulk op ships an
   allocation-free *fill-into* counterpart; **no allocations in hot loops**. When a change
   claims a performance win, prove it (a benchmark on both time and memory).
+- **Two-tier ops — a fast `*_unchecked` under a checking + casting base.** Every vectorized
+  operation (arithmetic between series, a scalar broadcast, a filter, a fill) comes in two
+  tiers. The **base** (`add`, `sub`, `filter`, …) is the safe default a caller reaches for: it
+  **validates** (length match, compatible/numeric types, mask length) and **casts** the operands
+  to the result type (**the result follows the left operand — the right is cast into `self`'s
+  type**, range-checked with a guided error), propagates nulls, and returns a `Result`. It then
+  delegates to a **`*_unchecked`** twin (`add_unchecked`, …) — the tight, allocation-minimal,
+  **infallible** hot path that *assumes* normalized inputs (identical element type + width, equal
+  length; a scalar already the element type) and only `debug_assert!`s them. So the checks and
+  casts happen **once** at the boundary and the inner loop is branch-lean (integer arithmetic
+  **wraps**, like Arrow/NumPy; integer div/rem by zero yields a **null**, never a panic;
+  documented). Mirror **both** tiers in the core and expose the ergonomic base in both bindings
+  (Python operator dunders `__add__`/`__radd__`/… over a serie *or* a native scalar; Node named
+  `add`/`sub`/… methods). A nested op recurses to leaves (struct field-wise, list element-wise on
+  matching shape, map over values); a temporal op routes through its **backing integer** so
+  `date + date` and `timestamp − timestamp` fall out of the same path.
 - **Value types are hashable, serializable, and equatable — everywhere.** Whenever a public
   type carries a *value* (not just an identity), implement all three on it and mirror them in
   **both** bindings, so it works as a map/dict key, in a set, and over a wire in every
