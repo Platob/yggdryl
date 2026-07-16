@@ -17,6 +17,7 @@ const {
   I64Serie,
   Utf8Serie,
 } = yggdryl.types
+const { D64Serie } = yggdryl.decimal
 
 // ---- exposure --------------------------------------------------------------------------
 
@@ -206,4 +207,114 @@ test('struct serie holds a list child, built from column bytes within Node', () 
   const childList = ListSerie.deserializeBytes(struct.columnBytesNamed('scores'))
   assert.ok(childList.equals(listCol))
   assert.ok(StructSerie.deserializeBytes(struct.serializeBytes()).equals(struct))
+})
+
+// ---- ListSerie deep get/set -------------------------------------------------------------
+
+test('list serie getAt / setAt address the flattened item child (child 0)', () => {
+  const col = scores() // child [10,20,30,40], rows [10,20,30] / [40]
+  assert.equal(col.getAt([0, 0]), 10) // flattened item 0
+  assert.equal(col.getAt([0, 3]), 40)
+  assert.equal(col.getPath('[0][2]'), 30) // index-terminal path -> the cell
+  col.setAt([0, 0], 99)
+  assert.equal(col.getAt([0, 0]), 99)
+  assert.throws(() => col.getAt([0, 99]), /out of bounds/)
+})
+
+test('list serie get / childAt expose the row items and the flattened child', () => {
+  const col = scores()
+  assert.equal(col.numChildren(), 1)
+  const row0 = I32Serie.deserializeBytes(col.get(0)) // row 0 = [10,20,30]
+  assert.equal(row0.length, 3)
+  assert.equal(row0.get(2), 30)
+  const child = I32Serie.deserializeBytes(col.childAt(0)) // the flat child [10,20,30,40]
+  assert.equal(child.length, 4)
+  // A name-terminal path returns the item sub-column frame.
+  const byName = I32Serie.deserializeBytes(col.getPath('item'))
+  assert.equal(byName.length, 4)
+})
+
+test('list serie get returns null for a null list row', () => {
+  const child = new I32Serie([10, 20, 30])
+  const col = ListSerie.fromParts(
+    child.toField('item'),
+    child.serializeBytes(),
+    [0, 2, 2, 3],
+    [true, false, true],
+  ) // row 0 = [10,20], row 1 = null, row 2 = [30]
+  assert.equal(col.get(1), null)
+  const row0 = I32Serie.deserializeBytes(col.get(0))
+  assert.equal(row0.length, 2)
+})
+
+// ---- MapSerie deep get/set --------------------------------------------------------------
+
+test('map serie getAt / setAt address the key (child 0) and value (child 1) columns', () => {
+  const col = counts() // keys ['a','b','c'], values [1,2,3]
+  assert.equal(col.getAt([0, 0]), 'a') // keys cell 0
+  assert.equal(col.getAt([1, 2]), '3') // values cell 2 (i64 -> string)
+  assert.equal(col.getPath('[1][0]'), '1') // values cell 0 via an index-terminal path
+  col.setAt([1, 0], '99')
+  assert.equal(col.getAt([1, 0]), '99')
+  assert.throws(() => col.getAt([0, 9]), /out of bounds/)
+})
+
+test('map serie get / childNamed expose the row entries and the flattened children', () => {
+  const col = counts()
+  assert.equal(col.numChildren(), 2)
+  const row0 = StructSerie.deserializeBytes(col.get(0)) // {a->1, b->2} as a [keys, values] struct
+  assert.equal(row0.length, 2)
+  assert.equal(row0.numColumns, 2)
+  const keys = Utf8Serie.deserializeBytes(col.childNamed('key'))
+  assert.equal(keys.get(0), 'a')
+  const values = I64Serie.deserializeBytes(col.getPath('value')) // name-terminal -> value column
+  assert.equal(values.get(2), '3')
+})
+
+// ---- regression: confirmed Phase 5b defects on the list/map nested columns ---------------
+
+// FIX 1: a deep setAt into the i32 item leaf validates like column() — an out-of-range or
+// fractional value throws, never a silent ToInt32 wrap / truncation.
+test('list serie setAt rejects an out-of-range / fractional value into the i32 item leaf', () => {
+  const col = scores() // flattened item child is i32
+  assert.throws(() => col.setAt([0, 0], 5000000000), /out of range for i32/)
+  assert.throws(() => col.setAt([0, 0], 1.5), /whole number/)
+  assert.equal(col.getAt([0, 0]), 10) // unchanged
+})
+
+// FIX 5: a negative / fractional coordinate is a guided error on list and map columns too.
+test('list serie coords reject a negative or fractional coordinate', () => {
+  const col = scores()
+  assert.throws(() => col.getAt([-1, 0]), /non-negative integers/)
+  assert.throws(() => col.getAt([0, 0.5]), /non-negative integers/)
+})
+
+test('map serie coords reject a negative or fractional coordinate', () => {
+  const col = counts()
+  assert.throws(() => col.setAt([0, -1], 'x'), /non-negative integers/)
+  assert.throws(() => col.getCell([0.5, 0]), /non-negative integers/)
+})
+
+// FIX 6: slice() returns a fresh sub-range on list and map columns (the Node mirror of s[a:b]).
+test('list serie slice returns a sub-range', () => {
+  const col = scores() // 2 rows: [10,20,30] / [40]
+  const first = ListSerie.deserializeBytes(col.slice(0, 1))
+  assert.equal(first.length, 1)
+  const row0 = I32Serie.deserializeBytes(first.get(0))
+  assert.deepEqual([row0.get(0), row0.get(1), row0.get(2)], [10, 20, 30])
+})
+
+test('map serie slice returns a sub-range', () => {
+  const col = counts() // 2 rows
+  const first = MapSerie.deserializeBytes(col.slice(0, 1))
+  assert.equal(first.length, 1)
+  const tail = MapSerie.deserializeBytes(col.slice(1, 99)) // clamped, never throws
+  assert.equal(tail.length, 1)
+})
+
+// A decimal item LEAF has no native cross-language scalar form, so a deep get is a guided error.
+test('list serie deep get of a decimal item leaf is a guided error', () => {
+  const dec = new D64Serie(10, 2, ['1.00', '2.00'])
+  const col = ListSerie.fromParts(DataType.d64().field('item', true), dec.serializeBytes(), [0, 1, 2])
+  assert.throws(() => col.getAt([0, 0]), /not supported through deep indexing|getColumn/)
 })

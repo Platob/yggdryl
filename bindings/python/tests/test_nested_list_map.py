@@ -316,3 +316,97 @@ def test_arrow_c_schema_capsule_is_exposed():
     for col in (_list_i32(), _map_utf8_i64()):
         cap = col.__arrow_c_schema__()
         assert type(cap).__name__ == "PyCapsule"
+
+
+# ---- ListSerie / MapSerie deep navigation (a cell descends into the flattened child) --------
+
+
+def test_list_deep_cell_by_coords():
+    col = _list_i32()  # one item child, flattened [10, 20, 30, 40]
+    # coords are (child_index, cell_index): the single item child is index 0.
+    assert col[0, 2] == 30
+    assert col[0, 3] == 40
+
+
+def test_list_deep_cell_by_path():
+    col = _list_i32()
+    assert col["item[2]"] == 30  # "item" is the flattened child column
+    assert col["[0][3]"] == 40  # child 0, cell 3
+
+
+def test_list_deep_cell_write():
+    col = _list_i32()
+    col[0, 0] = 99  # overwrite the flattened child's cell 0
+    assert col[0, 0] == 99
+    assert col.values.get(0) == 99  # the flattened child column is updated in place
+
+
+def test_list_row_via_getitem_matches_get():
+    col = _list_i32()
+    for i in range(len(col)):
+        assert col[i] == col.get(i)
+
+
+def test_map_deep_cell_by_coords():
+    col = _map_utf8_i64()  # child 0 = keys (utf8), child 1 = values (i64)
+    assert col[0, 1] == "b"
+    assert col[1, 2] == "3"  # i64 crosses as a decimal string
+
+
+def test_map_deep_cell_by_path():
+    col = _map_utf8_i64()
+    assert col["key[0]"] == "a"
+    assert col["value[2]"] == "3"
+
+
+def test_map_deep_cell_write_value():
+    col = _map_utf8_i64()
+    col[1, 0] = "5"  # the value column's cell 0 (i64 via decimal string)
+    assert col[1, 0] == "5"
+    assert col.values.get(0) == "5"
+
+
+def test_map_row_via_getitem_matches_get():
+    col = _map_utf8_i64()
+    for i in range(len(col)):
+        assert col[i] == col.get(i)
+
+
+def test_list_map_named_navigation():
+    lst = _list_i32()
+    assert lst.num_children == 1
+    assert isinstance(lst.child_at(0), I32Serie)
+    assert lst.get_cell("item[3]") == 40
+
+    mp = _map_utf8_i64()
+    assert mp.num_children == 2
+    assert isinstance(mp.child_named("key"), Utf8Serie)
+    mp.set_cell((1, 0), "9")
+    assert mp.get_cell((1, 0)) == "9"
+
+
+# ---- Regression: deep set contracts on a list's flattened child -----------------------------
+
+
+def test_list_deep_set_writes_into_currently_null_cell():
+    # A list whose flattened child has a null cell; a deep set writes a real value into it — the
+    # null-cell-writable contract (the type comes from the child column, not the null cell).
+    col = ListSerie(I32Serie([10, None, 30, 40]), [0, 3, 3, 4])
+    assert col[0, 1] is None  # the flattened child's cell 1 is currently null
+    col[0, 1] = 99
+    assert col[0, 1] == 99
+    assert col.values.get(1) == 99  # the flattened child column is updated in place
+
+
+def test_list_deep_set_narrow_overflow_and_fraction_rejected():
+    # An out-of-range / fractional value into a narrow int leaf raises the guided error and leaves
+    # the flattened child unchanged.
+    from yggdryl.types import U8Serie
+
+    col = ListSerie(U8Serie([1, 2, 3, 4]), [0, 3, 3, 4])
+    with pytest.raises((OverflowError, ValueError)):
+        col[0, 0] = 300  # out of u8 range
+    assert col[0, 0] == 1  # unchanged
+    with pytest.raises((TypeError, ValueError, OverflowError)):
+        col[0, 0] = 2.5  # a fraction into an int leaf
+    assert col[0, 0] == 1  # still unchanged

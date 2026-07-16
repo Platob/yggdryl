@@ -17,12 +17,14 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, FromNapiValue, ToNapiValue};
+use napi::{Env, JsUnknown, NapiRaw, NapiValue, ValueType};
 use napi_derive::napi;
 
 use yggdryl_core::io::fixed::Buffer as CoreBuffer;
 use yggdryl_core::io::fixed::Field as CoreField;
 use yggdryl_core::io::fixed::{f16, NativeType, Scalar, Serie, I256, I96, U256, U96};
+use yggdryl_core::io::DataTypeId;
 
 use crate::types::{DataType, Field};
 use crate::varvalues::{BinaryScalar, Utf8Scalar};
@@ -129,6 +131,209 @@ fn f16_to_js(value: f16) -> f64 {
 }
 fn f16_from_js(value: f64) -> napi::Result<f16> {
     Ok(f16::from_f32(value as f32))
+}
+
+// ---- erased-value bridge primitives (shared with `varvalues` and `nested`) ------------------
+
+/// Wraps any marshaled Rust value (`u32` / `i32` / `f64` / `String` / `Buffer` / `Null`) into an
+/// erased JS value — the one place a heterogeneous leaf native crosses the boundary.
+pub(crate) fn to_unknown<V: ToNapiValue>(env: Env, value: V) -> napi::Result<JsUnknown> {
+    let raw = unsafe { V::to_napi_value(env.raw(), value)? };
+    unsafe { JsUnknown::from_raw(env.raw(), raw) }
+}
+
+/// Extracts a concrete Rust value (`u32` / `i32` / `f64` / `String` / `Buffer`) from an erased JS
+/// value — the inverse of [`to_unknown`], used when casting a JS value into a target leaf type.
+pub(crate) fn from_unknown<V: FromNapiValue>(env: Env, value: &JsUnknown) -> napi::Result<V> {
+    unsafe { V::from_napi_value(env.raw(), value.raw()) }
+}
+
+/// A JS value as an `i128` integer coefficient (or `None` for a JS `null` / `undefined`) — a finite,
+/// **whole** `number` in the *strict* `i128` range, a `boolean` (`0` / `1`), or a decimal `string`. A
+/// fractional / non-finite / out-of-range number, or any other type, is a guided error. This is the
+/// **single** integer validation the deep-set path ([`fixed_js_to_le_bytes`]) and the `column()`
+/// builder (nested's `build_int!`) share — so a deep `setAt` validates a JS `number` identically to
+/// `column(_, "iNN")` instead of the ECMAScript `ToInt32` / `ToUint32` truncate-and-wrap that reading
+/// it as an intermediate `u32` / `i32` would silently do.
+pub(crate) fn js_int_value(env: Env, value: &JsUnknown) -> napi::Result<Option<i128>> {
+    Ok(match value.get_type()? {
+        ValueType::Null | ValueType::Undefined => None,
+        ValueType::Boolean => Some(if from_unknown::<bool>(env, value)? {
+            1
+        } else {
+            0
+        }),
+        ValueType::Number => {
+            let number: f64 = from_unknown(env, value)?;
+            // `i128::MAX as f64` rounds UP to `2^127` (one past the true max), so guard the top with a
+            // strict `< 2^127` — else the saturating `as i128` silently clamps `2^127` to `i128::MAX`.
+            if number.is_finite()
+                && number.fract() == 0.0
+                && number >= i128::MIN as f64
+                && number < 2f64.powi(127)
+            {
+                Some(number as i128)
+            } else {
+                return Err(to_error(format!(
+                    "the value {number} is not a whole number in range for an integer column"
+                )));
+            }
+        }
+        ValueType::String => {
+            let text: String = from_unknown(env, value)?;
+            Some(
+                text.parse::<i128>()
+                    .map_err(|_| to_error(format!("the value {text:?} is not a valid integer")))?,
+            )
+        }
+        other => {
+            return Err(to_error(format!(
+                "expected an integer value for an integer column, got a {other:?} value"
+            )))
+        }
+    })
+}
+
+/// A JS value as a `u128` (or `None` for a JS `null` / `undefined`) — a finite, whole, non-negative
+/// `number` below `2^128`, a `boolean` (`0` / `1`), or a decimal `string` over the **full**
+/// `[0, u128::MAX]` range (so a value above `i128::MAX`, e.g. `"2e38"`, still builds — the
+/// `column(_, "u128")` fix that [`js_int_value`]'s `i128` range would otherwise halve). Anything else
+/// is a guided error.
+pub(crate) fn js_u128_value(env: Env, value: &JsUnknown) -> napi::Result<Option<u128>> {
+    Ok(match value.get_type()? {
+        ValueType::Null | ValueType::Undefined => None,
+        ValueType::Boolean => Some(if from_unknown::<bool>(env, value)? {
+            1
+        } else {
+            0
+        }),
+        ValueType::Number => {
+            let number: f64 = from_unknown(env, value)?;
+            if number.is_finite()
+                && number.fract() == 0.0
+                && number >= 0.0
+                && number < 2f64.powi(128)
+            {
+                Some(number as u128)
+            } else {
+                return Err(to_error(format!(
+                    "the value {number} is not a whole number in range for a u128 column"
+                )));
+            }
+        }
+        ValueType::String => {
+            let text: String = from_unknown(env, value)?;
+            Some(
+                text.parse::<u128>()
+                    .map_err(|_| to_error(format!("the value {text:?} is not a valid u128")))?,
+            )
+        }
+        other => {
+            return Err(to_error(format!(
+                "expected an integer value for a u128 column, got a {other:?} value"
+            )))
+        }
+    })
+}
+
+/// A fixed-width primitive leaf's canonical little-endian `bytes` (of type `id`) as its native JS
+/// value — a `number`, an exact decimal `string`, or a little-endian `Buffer` — **reusing** the same
+/// per-type marshaling the fixed `Scalar` / `Serie` wrappers use. `None` if `id` is not a fixed-width
+/// primitive (a decimal / temporal / fixed-size-byte leaf is handled by the caller's byte fallback).
+pub(crate) fn fixed_leaf_to_js(
+    env: Env,
+    id: DataTypeId,
+    bytes: &[u8],
+) -> napi::Result<Option<JsUnknown>> {
+    macro_rules! arm {
+        ($t:ty, $to:path) => {{
+            let native = <$t as NativeType>::read_le(bytes);
+            Some(to_unknown(env, $to(native))?)
+        }};
+    }
+    Ok(match id {
+        DataTypeId::U8 => arm!(u8, u8_to_js),
+        DataTypeId::U16 => arm!(u16, u16_to_js),
+        DataTypeId::U32 => arm!(u32, u32_to_js),
+        DataTypeId::U64 => arm!(u64, u64_to_js),
+        DataTypeId::U96 => arm!(U96, u96_to_js),
+        DataTypeId::U128 => arm!(u128, u128_to_js),
+        DataTypeId::U256 => arm!(U256, u256_to_js),
+        DataTypeId::I8 => arm!(i8, i8_to_js),
+        DataTypeId::I16 => arm!(i16, i16_to_js),
+        DataTypeId::I32 => arm!(i32, i32_to_js),
+        DataTypeId::I64 => arm!(i64, i64_to_js),
+        DataTypeId::I96 => arm!(I96, i96_to_js),
+        DataTypeId::I128 => arm!(i128, i128_to_js),
+        DataTypeId::I256 => arm!(I256, i256_to_js),
+        DataTypeId::F16 => arm!(f16, f16_to_js),
+        DataTypeId::F32 => arm!(f32, f32_to_js),
+        DataTypeId::F64 => arm!(f64, f64_to_js),
+        _ => None,
+    })
+}
+
+/// Casts a JS value into a fixed-width primitive `id`'s canonical little-endian bytes — **reusing**
+/// the same per-type marshaling (and its guided range errors). `None` if `id` is not a fixed-width
+/// primitive.
+pub(crate) fn fixed_js_to_le_bytes(
+    env: Env,
+    value: &JsUnknown,
+    id: DataTypeId,
+) -> napi::Result<Option<Vec<u8>>> {
+    // A small integer leaf (`u8`…`u32`, `i8`…`i32`): validate the JS value as an integer via the
+    // shared [`js_int_value`] (finite, whole, in `i128` range) and range-check into the target width
+    // — **never** the ECMAScript `ToInt32` / `ToUint32` truncate-and-wrap that reading it as the
+    // intermediate `u32` / `i32` would do. So a deep `setAt(_, 5_000_000_000)` into an `i32` leaf, or
+    // `setAt(_, 3.7)` into any int leaf, raises a guided error instead of silently storing a wrong
+    // value — matching `column()`'s int builder and the flat scalar setter's out-of-range message.
+    macro_rules! int_arm {
+        ($t:ty) => {{
+            let coeff = js_int_value(env, value)?
+                .ok_or_else(|| to_error("expected an integer value, got null"))?;
+            let native = <$t>::try_from(coeff).map_err(|_| {
+                to_error(format!(
+                    "{coeff} is out of range for {}",
+                    <$t as NativeType>::NAME
+                ))
+            })?;
+            let mut buf = [0u8; 32];
+            native.write_le(&mut buf);
+            Some(buf[..<$t as NativeType>::WIDTH].to_vec())
+        }};
+    }
+    // A wide / string / float leaf: read the JS value directly in its cross-language form (a decimal
+    // `string`, a little-endian `Buffer`, or a `number`) — the wide integers and the `u64` / `i64` /
+    // `u128` / `i128` strings already carry their full range, and the floats are total.
+    macro_rules! arm {
+        ($t:ty, $js:ty, $from:path) => {{
+            let js: $js = from_unknown(env, value)?;
+            let native: $t = $from(js)?;
+            let mut buf = [0u8; 32];
+            native.write_le(&mut buf);
+            Some(buf[..<$t as NativeType>::WIDTH].to_vec())
+        }};
+    }
+    Ok(match id {
+        DataTypeId::U8 => int_arm!(u8),
+        DataTypeId::U16 => int_arm!(u16),
+        DataTypeId::U32 => int_arm!(u32),
+        DataTypeId::U64 => arm!(u64, String, u64_from_js),
+        DataTypeId::U96 => arm!(U96, Buffer, u96_from_js),
+        DataTypeId::U128 => arm!(u128, String, u128_from_js),
+        DataTypeId::U256 => arm!(U256, Buffer, u256_from_js),
+        DataTypeId::I8 => int_arm!(i8),
+        DataTypeId::I16 => int_arm!(i16),
+        DataTypeId::I32 => int_arm!(i32),
+        DataTypeId::I64 => arm!(i64, String, i64_from_js),
+        DataTypeId::I96 => arm!(I96, Buffer, i96_from_js),
+        DataTypeId::I128 => arm!(i128, String, i128_from_js),
+        DataTypeId::I256 => arm!(I256, Buffer, i256_from_js),
+        DataTypeId::F16 => arm!(f16, f64, f16_from_js),
+        DataTypeId::F32 => arm!(f32, f64, f32_from_js),
+        DataTypeId::F64 => arm!(f64, f64, f64_from_js),
+        _ => None,
+    })
 }
 
 /// Generates the `Scalar` **and** `Serie` napi wrappers for one fixed-width element type.

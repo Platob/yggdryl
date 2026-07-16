@@ -48,6 +48,11 @@ impl DataType {
             byte_width: id.fixed_byte_width().unwrap_or(0) as u32,
         }
     }
+
+    /// This descriptor's [`DataTypeId`] — the crate-internal accessor the inference factory keys on.
+    pub(crate) fn type_id(&self) -> DataTypeId {
+        self.id
+    }
 }
 
 #[napi(namespace = "types")]

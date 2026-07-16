@@ -19,26 +19,31 @@ use std::hash::{Hash, Hasher};
 use arrow_array::ffi::{from_ffi, to_ffi, FFI_ArrowArray};
 use arrow_array::Array;
 use arrow_schema::ffi::FFI_ArrowSchema;
-use pyo3::exceptions::{PyIndexError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyCapsule};
+use pyo3::types::{PyBool, PyBytes, PyCapsule, PyDict, PyFloat, PyInt, PySlice, PyString, PyTuple};
 
-use yggdryl_core::io::fixed::{Dec128, Dec256, Dec32, Dec64, NullSerie as CoreNullSerie};
+use yggdryl_core::io::fixed::{
+    f16, Dec128, Dec256, Dec32, Dec64, Field as CoreField, NativeType, NullSerie as CoreNullSerie,
+    I256, I96, U256, U96,
+};
 use yggdryl_core::io::nested::{
     ListField as CoreListField, ListSerie as CoreListSerie, MapField as CoreMapField,
     MapSerie as CoreMapSerie, StructField as CoreStructField, StructSerie as CoreStructSerie,
 };
 use yggdryl_core::io::var::{Binary, Utf8};
-use yggdryl_core::io::{boxed, AnyField, AnySerie, DataTypeId, IoError};
+use yggdryl_core::io::{
+    boxed, AnyField, AnyScalar, AnySerie, DataTypeId, IoError, NodePath, PathError, PathSegment,
+};
 
 use crate::deccolumn::{D128Serie, D256Serie, D32Serie, D64Serie};
 use crate::nullvalues::NullSerie;
 use crate::types::{DataType, Field};
 use crate::values::{
     F16Serie, F32Serie, F64Serie, I128Serie, I16Serie, I256Serie, I32Serie, I64Serie, I8Serie,
-    I96Serie, U128Serie, U16Serie, U256Serie, U32Serie, U64Serie, U8Serie, U96Serie,
+    I96Serie, PyNative, U128Serie, U16Serie, U256Serie, U32Serie, U64Serie, U8Serie, U96Serie,
 };
-use crate::varvalues::{BinarySerie, Utf8Serie};
+use crate::varvalues::{BinarySerie, PyVarKind, Utf8Serie};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn io_err(error: IoError) -> PyErr {
@@ -239,6 +244,421 @@ fn rewrap_field(any: &AnyField, py: Python<'_>) -> PyResult<PyObject> {
             .clone();
         Ok(Field { inner }.into_py(py))
     }
+}
+
+// =====================================================================================
+// Deep navigation (get / set a cell or sub-column by coords or path) — every method is a
+// 1–3 line delegate to the core's `dyn AnySerie` surface (`get_at` / `get_scalar_by_path` /
+// `get_by_path` / `set_at` / `set_by_path`). The only binding-side logic is idiom dispatch (an
+// int vs a coords tuple vs a str path vs a slice) and marshaling an erased `AnyScalar` cell to /
+// from a native Python value, which reuses the leaf `Serie` wrappers' own conversions
+// (`PyNative` / `PyVarKind`) so a deep read/write is identical to a leaf-column read/write.
+// =====================================================================================
+
+/// The help text for a bad `__getitem__` key.
+const GET_KEY_HELP: &str = "a nested index must be an int (a row), a tuple of ints (deep-cell \
+    coordinates), a str path (\"a[1]\" reaches a cell, \"a.b\" a sub-column), or a slice";
+
+/// The help text for a bad `get_cell` / `set_cell` key (a cell only — no int row, no name-terminal
+/// column).
+const CELL_KEY_HELP: &str =
+    "a cell key must be a tuple of ints (coordinates) or a str path ending \
+    in an index (e.g. \"a[1]\")";
+
+/// Maps a [`PathError`] (a bad path string, or a missing child) to a Python `ValueError` carrying
+/// its guided text.
+fn path_err(error: PathError) -> PyErr {
+    PyValueError::new_err(error.to_string())
+}
+
+/// Maps a deep-navigation [`IoError`] to Python: an out-of-range cell is an `IndexError` (native
+/// sequence semantics), every other guided failure a `ValueError`. The core's text passes through
+/// unchanged in both.
+fn deep_err(error: IoError) -> PyErr {
+    match error {
+        IoError::IndexOutOfBounds { .. } => PyIndexError::new_err(error.to_string()),
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
+
+/// Marshals an erased [`AnyScalar`] cell to a native Python value — the read half of the keystone
+/// bridge, used where **only the scalar is in scope** (a deep-cell read: `get_at` /
+/// `get_scalar_by_path`). A null is `None`; a **leaf** is decoded from its canonical little-endian
+/// bytes by [`DataTypeId`], reusing the leaf `Serie` wrappers' own `PyNative` / `PyVarKind`
+/// conversion (no second marshaling); a **list** / **map** cell returns its inner sub-column as a
+/// live `Serie` wrapper (`rewrap_column`).
+///
+/// A whole **struct** cell is a guided error here: the erased struct scalar is *positional /
+/// name-free* (its per-field leaves carry an empty name — see
+/// [`AnyScalar::child_scalar_by`](yggdryl_core::io::AnyScalar::child_scalar_by)), so it has no
+/// field names to key a dict, and a deep cell carries no schema in scope to recover them from. The
+/// **row read** (`s[row]`) never reaches this arm — it goes through [`cell_to_py`], which has the
+/// struct column's schema and renders a struct as a `{field_name: cell}` dict (recursively).
+// DESIGN: struct-cell dict-ification is anchored on the row path (`cell_to_py`), which holds the
+// column schema; a bare deep-cell struct read keeps the guided error rather than emit a name-less
+// or index-keyed dict that would diverge from the named dict `s[row]` returns.
+fn any_scalar_to_py(scalar: &AnyScalar, py: Python<'_>) -> PyResult<PyObject> {
+    if scalar.is_null() {
+        return Ok(py.None());
+    }
+    if let Some(items) = scalar.as_list() {
+        return rewrap_column(items, py);
+    }
+    if let Some((entries, _)) = scalar.as_map() {
+        return rewrap_column(entries, py);
+    }
+    if scalar.as_struct().is_some() {
+        return Err(PyValueError::new_err(
+            "reading a whole struct cell as a native value is not supported through deep indexing; \
+             read the row as a dict with s[row], or index a leaf cell (e.g. s[field_index, row])",
+        ));
+    }
+    // A present leaf: decode its canonical little-endian bytes by type.
+    let type_id = scalar.type_id().expect("a non-null scalar reports a type");
+    let bytes = scalar.bytes().expect("a leaf carries canonical bytes");
+    leaf_bytes_to_py(type_id, bytes, py)
+}
+
+/// Renders the `row`-th cell of an erased `column` as a native Python value, **recursing** into a
+/// nested struct cell as a `{field_name: cell}` dict — the row-read counterpart of
+/// [`any_scalar_to_py`], which (unlike this) has the column's schema in scope, so it can name the
+/// struct's fields. A **null** cell (or a null struct row) is `None`; a **struct** cell is a dict
+/// keyed by the child columns' own header names (the erased struct scalar is name-free), each value
+/// recursing so a struct-in-struct nests as a dict; every **leaf** / **list** / **map** cell defers
+/// to [`any_scalar_to_py`] (a leaf → native value, a list/map → its element/entries sub-`Serie`).
+fn cell_to_py(column: &(dyn AnySerie + 'static), row: usize, py: Python<'_>) -> PyResult<PyObject> {
+    let scalar = column.value(row);
+    if scalar.is_null() {
+        return Ok(py.None());
+    }
+    if column.type_id() == DataTypeId::Struct {
+        let dict = PyDict::new_bound(py);
+        for child_index in 0..column.num_children() {
+            let child = column
+                .child_serie_at(child_index)
+                .expect("child index in range");
+            dict.set_item(child.name(), cell_to_py(child, row, py)?)?;
+        }
+        return Ok(dict.into_any().unbind());
+    }
+    any_scalar_to_py(&scalar, py)
+}
+
+/// Decodes a leaf cell's canonical little-endian `bytes` of type `type_id` to its native Python
+/// value, reusing the per-type marshaling the leaf `Serie` wrappers already expose. A type with no
+/// native cross-language form here (decimal / temporal / fixed-size) is a guided error naming the
+/// column-access fallback.
+fn leaf_bytes_to_py(type_id: DataTypeId, bytes: &[u8], py: Python<'_>) -> PyResult<PyObject> {
+    macro_rules! fixed {
+        ($t:ty) => {
+            <$t as NativeType>::read_le(bytes).to_py(py)
+        };
+    }
+    match type_id {
+        DataTypeId::U8 => fixed!(u8),
+        DataTypeId::U16 => fixed!(u16),
+        DataTypeId::U32 => fixed!(u32),
+        DataTypeId::U64 => fixed!(u64),
+        DataTypeId::U96 => fixed!(U96),
+        DataTypeId::U128 => fixed!(u128),
+        DataTypeId::U256 => fixed!(U256),
+        DataTypeId::I8 => fixed!(i8),
+        DataTypeId::I16 => fixed!(i16),
+        DataTypeId::I32 => fixed!(i32),
+        DataTypeId::I64 => fixed!(i64),
+        DataTypeId::I96 => fixed!(I96),
+        DataTypeId::I128 => fixed!(i128),
+        DataTypeId::I256 => fixed!(I256),
+        DataTypeId::F16 => fixed!(f16),
+        DataTypeId::F32 => fixed!(f32),
+        DataTypeId::F64 => fixed!(f64),
+        DataTypeId::Utf8 => Ok(<Utf8 as PyVarKind>::bytes_to_py(bytes, py)),
+        DataTypeId::Binary => Ok(<Binary as PyVarKind>::bytes_to_py(bytes, py)),
+        other => Err(PyValueError::new_err(format!(
+            "reading a {} cell as a native Python value is not supported through deep indexing; read \
+             the column with get_column(path) and index its concrete Serie",
+            other.name()
+        ))),
+    }
+}
+
+/// Marshals a native Python value into an erased leaf [`AnyScalar`] of type `target` (width `width`)
+/// — the write half of the keystone bridge, reusing the leaf `Serie` wrappers' own `PyNative` /
+/// `PyVarKind` extraction. A Python `None` (or absent value) is a null cell. A type with no native
+/// input form here is a guided error. The core `set_*` then re-validates and gives its own guided
+/// error on any residual mismatch.
+fn py_to_any_scalar(
+    value: Option<&Bound<'_, PyAny>>,
+    target: DataTypeId,
+    width: usize,
+) -> PyResult<AnyScalar> {
+    let value = match value {
+        Some(value) if !value.is_none() => value,
+        _ => return Ok(AnyScalar::null()),
+    };
+    macro_rules! fixed {
+        ($t:ty) => {{
+            let parsed = <$t as PyNative>::from_py(value)?;
+            let mut scratch = [0u8; 32];
+            parsed.write_le(&mut scratch);
+            let bytes = scratch[..<$t as NativeType>::WIDTH].to_vec();
+            AnyScalar::leaf(CoreField::of("", target, width, false), bytes)
+        }};
+    }
+    // A variable-length leaf field carries the offset width (4), matching `ByteSerie::value`.
+    let offset_width = std::mem::size_of::<i32>();
+    Ok(match target {
+        DataTypeId::U8 => fixed!(u8),
+        DataTypeId::U16 => fixed!(u16),
+        DataTypeId::U32 => fixed!(u32),
+        DataTypeId::U64 => fixed!(u64),
+        DataTypeId::U96 => fixed!(U96),
+        DataTypeId::U128 => fixed!(u128),
+        DataTypeId::U256 => fixed!(U256),
+        DataTypeId::I8 => fixed!(i8),
+        DataTypeId::I16 => fixed!(i16),
+        DataTypeId::I32 => fixed!(i32),
+        DataTypeId::I64 => fixed!(i64),
+        DataTypeId::I96 => fixed!(I96),
+        DataTypeId::I128 => fixed!(i128),
+        DataTypeId::I256 => fixed!(I256),
+        DataTypeId::F16 => fixed!(f16),
+        DataTypeId::F32 => fixed!(f32),
+        DataTypeId::F64 => fixed!(f64),
+        DataTypeId::Utf8 => AnyScalar::leaf(
+            CoreField::of("", target, offset_width, false),
+            <Utf8 as PyVarKind>::py_to_bytes(value)?,
+        ),
+        DataTypeId::Binary => AnyScalar::leaf(
+            CoreField::of("", target, offset_width, false),
+            <Binary as PyVarKind>::py_to_bytes(value)?,
+        ),
+        other => {
+            return Err(PyValueError::new_err(format!(
+            "setting a {} cell through deep indexing is not supported; set the column's concrete \
+                 Serie cell directly",
+            other.name()
+        )))
+        }
+    })
+}
+
+/// The `(type_id, byte_width)` of the leaf **column** addressed by the cell path `cell_path` (its
+/// parent), so a value set into a cell — even a currently-null one — casts to the leaf's actual
+/// type. Reuses the core's `get_by_path` navigation on the parent path.
+fn cell_target_type(
+    root: &(dyn AnySerie + 'static),
+    cell_path: &NodePath,
+) -> PyResult<(DataTypeId, usize)> {
+    let column = match cell_path.parent() {
+        Some(parent) => root.get_by_path(&parent.to_string()).map_err(path_err)?,
+        None => root,
+    };
+    let id = column.type_id();
+    Ok((id, id.fixed_byte_width().unwrap_or(0)))
+}
+
+/// Builds the erased cell value to write at `cell_path`: `None` → a null; otherwise the value cast
+/// to the addressed leaf column's type.
+fn build_cell_scalar(
+    root: &(dyn AnySerie + 'static),
+    cell_path: &NodePath,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<AnyScalar> {
+    if value.is_none() {
+        return Ok(AnyScalar::null());
+    }
+    let (target, width) = cell_target_type(root, cell_path)?;
+    py_to_any_scalar(Some(value), target, width)
+}
+
+/// Extracts a coordinate tuple (`s[i, j, …]`) into positional child/cell indices.
+fn extract_coords(tuple: &Bound<'_, PyTuple>) -> PyResult<Vec<usize>> {
+    let mut coords = Vec::with_capacity(tuple.len());
+    for item in tuple.iter() {
+        coords.push(item.extract::<usize>().map_err(|_| {
+            PyValueError::new_err("nested coordinates must be non-negative integers")
+        })?);
+    }
+    Ok(coords)
+}
+
+/// The deep cell at `coords` as a native Python value (`get_at` → the bridge).
+fn deep_cell_by_coords(
+    root: &(dyn AnySerie + 'static),
+    coords: &[usize],
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    let scalar = root.get_at(coords).map_err(deep_err)?;
+    any_scalar_to_py(&scalar, py)
+}
+
+/// The deep cell at an index-terminal `path` as a native Python value (`get_scalar_by_path` → the
+/// bridge). A name-terminal path (a column, not a cell) surfaces the core's guided error.
+fn cell_by_path(root: &(dyn AnySerie + 'static), path: &str, py: Python<'_>) -> PyResult<PyObject> {
+    let scalar = root.get_scalar_by_path(path).map_err(deep_err)?;
+    any_scalar_to_py(&scalar, py)
+}
+
+/// A str key: an index-terminal path reads a **cell** (native), a name-terminal path reads a
+/// **sub-column** (a live `Serie` wrapper).
+fn cell_or_column_by_path(
+    root: &(dyn AnySerie + 'static),
+    path: &str,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    let parsed = NodePath::parse(path).map_err(path_err)?;
+    match parsed.segments().last() {
+        Some(PathSegment::Index(_)) => cell_by_path(root, path, py),
+        _ => rewrap_column(root.get_by_path(path).map_err(path_err)?, py),
+    }
+}
+
+/// A `start:stop` slice → a fresh sub-column wrapper (`slice` → `rewrap_column`). Only a step of 1
+/// is supported.
+fn slice_to_wrapper(
+    root: &(dyn AnySerie + 'static),
+    slice: &Bound<'_, PySlice>,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    let indices = slice.indices(root.len() as isize)?;
+    if indices.step != 1 {
+        return Err(PyValueError::new_err("a nested slice step must be 1"));
+    }
+    let sub = root.slice(indices.start as usize, indices.slicelength);
+    rewrap_column(sub.as_ref(), py)
+}
+
+/// `get_cell(key)` — a cell key (coords tuple or index-terminal path) to a native value only.
+fn get_cell_by_key(
+    root: &(dyn AnySerie + 'static),
+    key: &Bound<'_, PyAny>,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    if let Ok(tuple) = key.downcast::<PyTuple>() {
+        return deep_cell_by_coords(root, &extract_coords(tuple)?, py);
+    }
+    if let Ok(path) = key.extract::<String>() {
+        return cell_by_path(root, &path, py);
+    }
+    Err(PyTypeError::new_err(CELL_KEY_HELP))
+}
+
+/// `set_cell(key, value)` / `__setitem__` — a cell key (coords tuple or index-terminal path) set to
+/// a value (a Python `None` writes a null).
+fn set_cell_by_key(
+    root: &mut (dyn AnySerie + 'static),
+    key: &Bound<'_, PyAny>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    if let Ok(tuple) = key.downcast::<PyTuple>() {
+        let coords = extract_coords(tuple)?;
+        let cell_path =
+            NodePath::from_segments(coords.iter().map(|&i| PathSegment::Index(i)).collect());
+        let scalar = build_cell_scalar(&*root, &cell_path, value)?;
+        return root.set_at(&coords, &scalar).map_err(deep_err);
+    }
+    if let Ok(path) = key.extract::<String>() {
+        let cell_path = NodePath::parse(&path).map_err(path_err)?;
+        if !matches!(cell_path.segments().last(), Some(PathSegment::Index(_))) {
+            return Err(PyValueError::new_err(
+                "a str cell assignment must address a leaf cell (an index-terminal path like \
+                 \"a[1]\"); a name-terminal path addresses a whole column, which has no in-place \
+                 assignment",
+            ));
+        }
+        let scalar = build_cell_scalar(&*root, &cell_path, value)?;
+        return root.set_by_path(&path, &scalar).map_err(deep_err);
+    }
+    Err(PyTypeError::new_err(CELL_KEY_HELP))
+}
+
+/// Emits the shared deep-navigation `#[pymethods]` for a nested column wrapper — `__getitem__` /
+/// `__setitem__` (dunders) plus the JS-parity named methods (`get_cell` / `set_cell` /
+/// `get_column` / `child_at` / `child_named` / `num_children`). Each is a 1–3 line delegate to the
+/// core `dyn AnySerie` surface; the per-family int-row read is the class's own `row` method.
+macro_rules! nested_navigation {
+    ($Serie:ident) => {
+        #[pymethods]
+        impl $Serie {
+            /// `s[key]` — an int reads a row, a tuple of ints a deep cell (native), a str path a
+            /// cell (index-terminal) or a sub-column (name-terminal), a slice a sub-column.
+            fn __getitem__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                let root = &self.inner as &dyn AnySerie;
+                if let Ok(tuple) = key.downcast::<PyTuple>() {
+                    return deep_cell_by_coords(root, &extract_coords(tuple)?, py);
+                }
+                if let Ok(path) = key.extract::<String>() {
+                    return cell_or_column_by_path(root, &path, py);
+                }
+                if let Ok(slice) = key.downcast::<PySlice>() {
+                    return slice_to_wrapper(root, slice, py);
+                }
+                if let Ok(index) = key.extract::<isize>() {
+                    return self.row(py, index);
+                }
+                Err(PyTypeError::new_err(GET_KEY_HELP))
+            }
+
+            /// `s[key] = value` — a tuple of ints or an index-terminal str path sets a leaf cell
+            /// (a Python `None` writes a null).
+            fn __setitem__(
+                &mut self,
+                key: &Bound<'_, PyAny>,
+                value: &Bound<'_, PyAny>,
+            ) -> PyResult<()> {
+                set_cell_by_key(&mut self.inner as &mut dyn AnySerie, key, value)
+            }
+
+            /// The deep cell at `key` (a coords tuple or an index-terminal str path) as a native
+            /// value — like `s[key]` but never a sub-column.
+            fn get_cell(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                get_cell_by_key(&self.inner as &dyn AnySerie, key, py)
+            }
+
+            /// Sets the deep cell at `key` (a coords tuple or an index-terminal str path) to
+            /// `value` (a Python `None` writes a null) — the named twin of `s[key] = value`.
+            fn set_cell(
+                &mut self,
+                key: &Bound<'_, PyAny>,
+                value: &Bound<'_, PyAny>,
+            ) -> PyResult<()> {
+                set_cell_by_key(&mut self.inner as &mut dyn AnySerie, key, value)
+            }
+
+            /// The sub-**column** addressed by `path` (a name-terminal path), as its concrete
+            /// `Serie` wrapper.
+            fn get_column(&self, py: Python<'_>, path: &str) -> PyResult<PyObject> {
+                let column = (&self.inner as &dyn AnySerie)
+                    .get_by_path(path)
+                    .map_err(path_err)?;
+                rewrap_column(column, py)
+            }
+
+            /// The child column at `index` (a struct field, a list item, a map key/value), as its
+            /// concrete `Serie`; raises `IndexError` out of range.
+            fn child_at(&self, py: Python<'_>, index: usize) -> PyResult<PyObject> {
+                match (&self.inner as &dyn AnySerie).child_serie_at(index) {
+                    Some(child) => rewrap_column(child, py),
+                    None => Err(PyIndexError::new_err("child column index out of range")),
+                }
+            }
+
+            /// The child column named `name`, as its concrete `Serie`, or `None`.
+            fn child_named(&self, py: Python<'_>, name: &str) -> PyResult<Option<PyObject>> {
+                match (&self.inner as &dyn AnySerie).child_serie_by(name) {
+                    Some(child) => rewrap_column(child, py).map(Some),
+                    None => Ok(None),
+                }
+            }
+
+            /// The number of child columns (schema fan-out).
+            #[getter]
+            fn num_children(&self) -> usize {
+                (&self.inner as &dyn AnySerie).num_children()
+            }
+        }
+    };
 }
 
 // ---- Arrow C Data Interface (PyCapsule) helpers, shared by every nested column ---------------
@@ -1465,8 +1885,270 @@ impl MapSerie {
     }
 }
 
-/// Adds the nested (`Struct` / `List` / `Map`) field + column classes to the `yggdryl.types`
-/// submodule.
+// ---- per-family int-row read (the `row` each `__getitem__` int branch calls) ----------------
+
+impl StructSerie {
+    /// The `index`-th struct row as a `{column_name: native-or-None}` dict — or `None` if the row is
+    /// a **null struct** (negative-index aware); raises `IndexError` out of range. A cell that is
+    /// itself a struct nests as a dict (see [`cell_to_py`]).
+    fn row(&self, py: Python<'_>, index: isize) -> PyResult<PyObject> {
+        let len = self.inner.len() as isize;
+        let resolved = if index < 0 { index + len } else { index };
+        if resolved < 0 || resolved >= len {
+            return Err(PyIndexError::new_err("StructSerie row index out of range"));
+        }
+        cell_to_py(&self.inner as &dyn AnySerie, resolved as usize, py)
+    }
+}
+
+impl ListSerie {
+    /// The `index`-th list row as its element sub-`Serie`, or `None` if the row is null
+    /// (negative-index aware) — the `s[i]` twin of `get`; raises `IndexError` out of range.
+    fn row(&self, py: Python<'_>, index: isize) -> PyResult<PyObject> {
+        let len = self.inner.len() as isize;
+        let resolved = if index < 0 { index + len } else { index };
+        if resolved < 0 || resolved >= len {
+            return Err(PyIndexError::new_err("ListSerie row index out of range"));
+        }
+        let scalar = self.inner.get_scalar(resolved as usize);
+        if scalar.is_null() {
+            return Ok(py.None());
+        }
+        rewrap_column(scalar.items(), py)
+    }
+}
+
+impl MapSerie {
+    /// The `index`-th map row as its `key -> value` entries `StructSerie`, or `None` if the row is
+    /// null (negative-index aware) — the `s[i]` twin of `get`; raises `IndexError` out of range.
+    fn row(&self, py: Python<'_>, index: isize) -> PyResult<PyObject> {
+        let len = self.inner.len() as isize;
+        let resolved = if index < 0 { index + len } else { index };
+        if resolved < 0 || resolved >= len {
+            return Err(PyIndexError::new_err("MapSerie row index out of range"));
+        }
+        let scalar = self.inner.get_scalar(resolved as usize);
+        if scalar.is_null() {
+            return Ok(py.None());
+        }
+        rewrap_column(scalar.entries(), py)
+    }
+}
+
+// The shared deep-navigation dunders + named methods, one block per family.
+nested_navigation!(StructSerie);
+nested_navigation!(ListSerie);
+nested_navigation!(MapSerie);
+
+#[pymethods]
+impl StructSerie {
+    /// `name in s` — whether the struct has a column named `name` (dict-like membership).
+    fn __contains__(&self, name: &Bound<'_, PyAny>) -> bool {
+        name.extract::<String>()
+            .is_ok_and(|name| self.inner.column_named(&name).is_some())
+    }
+}
+
+// =====================================================================================
+// Generic inference factory — `yggdryl.types.column(values, dtype=None)`. A thin inference over the
+// existing typed `Serie` constructors: it picks a leaf column type from the Python values (or an
+// explicit `dtype`), then builds the matching `Serie` and returns its wrapper.
+// =====================================================================================
+
+/// The leaf families a list of Python values may contain, tallied while scanning.
+#[derive(Default)]
+struct Inferred {
+    saw_int: bool,
+    saw_float: bool,
+    saw_str: bool,
+    saw_bytes: bool,
+    int_overflow: bool,
+    min: i128,
+    max: i128,
+}
+
+impl Inferred {
+    /// Folds one integer value into the running `[min, max]` (and marks an int was seen).
+    fn record_int(&mut self, value: i128) {
+        if self.saw_int {
+            self.min = self.min.min(value);
+            self.max = self.max.max(value);
+        } else {
+            self.min = value;
+            self.max = value;
+        }
+        self.saw_int = true;
+    }
+}
+
+/// The smallest **signed** integer type that holds `[min, max]` (widening to `i128` at the top).
+fn sized_signed_int(min: i128, max: i128) -> DataTypeId {
+    if min >= i8::MIN as i128 && max <= i8::MAX as i128 {
+        DataTypeId::I8
+    } else if min >= i16::MIN as i128 && max <= i16::MAX as i128 {
+        DataTypeId::I16
+    } else if min >= i32::MIN as i128 && max <= i32::MAX as i128 {
+        DataTypeId::I32
+    } else if min >= i64::MIN as i128 && max <= i64::MAX as i128 {
+        DataTypeId::I64
+    } else {
+        DataTypeId::I128
+    }
+}
+
+/// Scans `values` and infers one leaf column [`DataTypeId`]: all-int → the smallest signed int that
+/// holds them (`i64` when the list is empty / all-null); any float → `f64`; str → `utf8`; bytes →
+/// `binary`; a `None` is a nullable slot. A mix that shares no leaf type is a guided error naming
+/// the offending families.
+fn infer_column_id(values: &Bound<'_, PyAny>) -> PyResult<DataTypeId> {
+    let mut info = Inferred::default();
+    for item in values.iter()? {
+        let item = item?;
+        if item.is_none() {
+            continue;
+        }
+        // A Python `bool` is an `int` subclass; treat it as the integer 0 / 1.
+        if item.is_instance_of::<PyBool>() {
+            info.record_int(if item.extract::<bool>()? { 1 } else { 0 });
+        } else if item.is_instance_of::<PyInt>() {
+            match item.extract::<i128>() {
+                Ok(value) => info.record_int(value),
+                Err(_) => {
+                    info.saw_int = true;
+                    info.int_overflow = true;
+                }
+            }
+        } else if item.is_instance_of::<PyFloat>() {
+            info.saw_float = true;
+        } else if item.is_instance_of::<PyString>() {
+            info.saw_str = true;
+        } else if item.is_instance_of::<PyBytes>() {
+            info.saw_bytes = true;
+        } else {
+            return Err(PyValueError::new_err(
+                "column() cannot infer a type from this value; the supported element types are int, \
+                 float, str, bytes, and None — pass an explicit dtype= (a DataType or a name like \
+                 \"i64\") for anything else",
+            ));
+        }
+    }
+    resolve_inferred(&info)
+}
+
+/// Resolves the tallied families to one column type, or a guided ambiguity error.
+fn resolve_inferred(info: &Inferred) -> PyResult<DataTypeId> {
+    let numeric = info.saw_int || info.saw_float;
+    match (numeric, info.saw_str, info.saw_bytes) {
+        // All-null or empty: default to i64 (holds any small integer; nullable via the null slots).
+        (false, false, false) => Ok(DataTypeId::I64),
+        (true, false, false) => {
+            if info.saw_float {
+                Ok(DataTypeId::F64)
+            } else if info.int_overflow {
+                Err(PyValueError::new_err(
+                    "column() cannot fit these integer values in any built-in integer type (they \
+                     exceed i128); pass an explicit dtype= (e.g. \"utf8\") or split the data",
+                ))
+            } else {
+                Ok(sized_signed_int(info.min, info.max))
+            }
+        }
+        (false, true, false) => Ok(DataTypeId::Utf8),
+        (false, false, true) => Ok(DataTypeId::Binary),
+        _ => {
+            let mut families = Vec::new();
+            if info.saw_int {
+                families.push("int");
+            }
+            if info.saw_float {
+                families.push("float");
+            }
+            if info.saw_str {
+                families.push("str");
+            }
+            if info.saw_bytes {
+                families.push("bytes");
+            }
+            Err(PyValueError::new_err(format!(
+                "column() cannot infer a single column type for a mix of {} values; these do not \
+                 share a leaf type — pass an explicit dtype= (a DataType or a name like \"utf8\") to \
+                 disambiguate",
+                families.join(", ")
+            )))
+        }
+    }
+}
+
+/// Resolves an explicit `dtype` (a `DataType` object or a type-name string) to a [`DataTypeId`].
+fn resolve_dtype_id(dtype: &Bound<'_, PyAny>) -> PyResult<DataTypeId> {
+    let name: String = match dtype.extract::<String>() {
+        Ok(name) => name,
+        Err(_) => dtype.getattr("name")?.extract()?,
+    };
+    DataTypeId::from_name(&name)
+        .ok_or_else(|| PyValueError::new_err(format!("unknown data type name: {name:?}")))
+}
+
+/// Builds the `Serie` wrapper of type `id` from the Python `values` by delegating to that wrapper's
+/// own constructor. A type whose column needs extra parameters (decimal / temporal / fixed-size)
+/// has no plain-list constructor here, so it is a guided error.
+fn build_column(py: Python<'_>, id: DataTypeId, values: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    macro_rules! cls {
+        ($W:ty) => {
+            py.get_type_bound::<$W>()
+        };
+    }
+    let cls = match id {
+        DataTypeId::U8 => cls!(U8Serie),
+        DataTypeId::U16 => cls!(U16Serie),
+        DataTypeId::U32 => cls!(U32Serie),
+        DataTypeId::U64 => cls!(U64Serie),
+        DataTypeId::U96 => cls!(U96Serie),
+        DataTypeId::U128 => cls!(U128Serie),
+        DataTypeId::U256 => cls!(U256Serie),
+        DataTypeId::I8 => cls!(I8Serie),
+        DataTypeId::I16 => cls!(I16Serie),
+        DataTypeId::I32 => cls!(I32Serie),
+        DataTypeId::I64 => cls!(I64Serie),
+        DataTypeId::I96 => cls!(I96Serie),
+        DataTypeId::I128 => cls!(I128Serie),
+        DataTypeId::I256 => cls!(I256Serie),
+        DataTypeId::F16 => cls!(F16Serie),
+        DataTypeId::F32 => cls!(F32Serie),
+        DataTypeId::F64 => cls!(F64Serie),
+        DataTypeId::Utf8 => cls!(Utf8Serie),
+        DataTypeId::Binary => cls!(BinarySerie),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "column() cannot build a {} column from a plain list; construct its Serie directly \
+                 (a decimal / temporal / fixed-size column needs extra parameters like precision, \
+                 scale, a unit, or a width)",
+                other.name()
+            )))
+        }
+    };
+    Ok(cls.call1((values,))?.unbind())
+}
+
+/// Builds a column by inferring its leaf type from `values` (or using an explicit `dtype`), then
+/// delegating to the matching typed `Serie` constructor — the easy, native-list entry point:
+/// `yggdryl.types.column([1, 2, 3])` → an `I8Serie`, `column(["a", "b"])` → a `Utf8Serie`.
+#[pyfunction]
+#[pyo3(signature = (values, dtype = None))]
+fn column(
+    py: Python<'_>,
+    values: &Bound<'_, PyAny>,
+    dtype: Option<&Bound<'_, PyAny>>,
+) -> PyResult<PyObject> {
+    let id = match dtype {
+        Some(dtype) => resolve_dtype_id(dtype)?,
+        None => infer_column_id(values)?,
+    };
+    build_column(py, id, values)
+}
+
+/// Adds the nested (`Struct` / `List` / `Map`) field + column classes and the `column` inference
+/// factory to the `yggdryl.types` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<StructField>()?;
     module.add_class::<StructSerie>()?;
@@ -1474,5 +2156,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<ListSerie>()?;
     module.add_class::<MapField>()?;
     module.add_class::<MapSerie>()?;
+    module.add_function(wrap_pyfunction!(column, module)?)?;
     Ok(())
 }

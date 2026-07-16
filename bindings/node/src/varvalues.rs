@@ -12,16 +12,18 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use napi::bindgen_prelude::Buffer;
+use napi::{Env, JsUnknown};
 use napi_derive::napi;
 
 use yggdryl_core::io::fixed::f16;
 use yggdryl_core::io::fixed::Field as CoreField;
 use yggdryl_core::io::var::{Binary, ByteScalar, ByteSerie, Utf8, VarElement};
+use yggdryl_core::io::DataTypeId;
 
 use crate::types::{DataType, Field};
 use crate::values::{
-    F16Scalar, F32Scalar, F64Scalar, I128Scalar, I16Scalar, I32Scalar, I64Scalar, I8Scalar,
-    U16Scalar, U32Scalar, U64Scalar, U8Scalar,
+    from_unknown, to_unknown, F16Scalar, F32Scalar, F64Scalar, I128Scalar, I16Scalar, I32Scalar,
+    I64Scalar, I8Scalar, U16Scalar, U32Scalar, U64Scalar, U8Scalar,
 };
 
 /// Maps any core error to a thrown JS `Error` (its guided text passes through unchanged).
@@ -60,6 +62,43 @@ fn binary_to_js(bytes: &[u8]) -> Buffer {
 }
 fn binary_from_js(value: Buffer) -> Vec<u8> {
     value.to_vec()
+}
+
+// ---- erased-value bridge for the variable-length leaves (shared with `nested`) --------------
+
+/// A variable-length leaf's value `bytes` (of type `id`) as its native JS value — a `string` for a
+/// UTF-8 value, a `Buffer` for binary — **reusing** the same marshaling the var `Scalar` / `Serie`
+/// wrappers use. `None` if `id` is not a variable-length kind.
+pub(crate) fn var_leaf_to_js(
+    env: Env,
+    id: DataTypeId,
+    bytes: &[u8],
+) -> napi::Result<Option<JsUnknown>> {
+    Ok(match id {
+        DataTypeId::Utf8 | DataTypeId::LargeUtf8 => Some(to_unknown(env, utf8_to_js(bytes))?),
+        DataTypeId::Binary | DataTypeId::LargeBinary => Some(to_unknown(env, binary_to_js(bytes))?),
+        _ => None,
+    })
+}
+
+/// Casts a JS value into a variable-length leaf `id`'s value bytes — **reusing** the same marshaling.
+/// `None` if `id` is not a variable-length kind.
+pub(crate) fn var_js_to_bytes(
+    env: Env,
+    value: &JsUnknown,
+    id: DataTypeId,
+) -> napi::Result<Option<Vec<u8>>> {
+    Ok(match id {
+        DataTypeId::Utf8 | DataTypeId::LargeUtf8 => {
+            let text: String = from_unknown(env, value)?;
+            Some(utf8_from_js(text))
+        }
+        DataTypeId::Binary | DataTypeId::LargeBinary => {
+            let buffer: Buffer = from_unknown(env, value)?;
+            Some(binary_from_js(buffer))
+        }
+        _ => None,
+    })
 }
 
 /// Generates the `Scalar` **and** `Serie` napi wrappers for one variable-length kind.
