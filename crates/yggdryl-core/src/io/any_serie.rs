@@ -618,11 +618,159 @@ impl dyn AnySerie {
         get_scalar_by_segments(self, &segments)
     }
 
+    /// **Overwrites the contiguous range** `[offset, offset + source.len())` with `source`'s cells, in
+    /// place and **length-preservingly** (self's length is unchanged) — the erased range-set twin of
+    /// the slice-get [`slice`](AnySerie::slice). Errors
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) if the range runs past the end
+    /// (`offset + source.len() > self.len()`), leaving the column unchanged.
+    ///
+    /// On a **leaf** column each source cell is written into the matching self cell (nulls included). A
+    /// FAST PATH applies when `source` is the **same concrete leaf type** as self — a fixed-primitive
+    /// [`Serie<T>`](Serie) or a variable-length [`ByteSerie<E>`](ByteSerie) (utf8 / binary): the whole
+    /// range is committed through the typed [`set_range`](Serie::set_range) (one bulk copy-on-write for
+    /// a fixed column, an offset splice for a var column), not one cell at a time. Otherwise it falls
+    /// back to a correct per-cell [`set_cell`](AnySerie::set_cell) loop — which type-checks each cell
+    /// against self's leaf type and returns the same guided error `set_cell` gives for a genuinely
+    /// incompatible source cell (a different type, or a decimal at a different scale).
+    ///
+    /// A **nested** self (struct / list / map) is a guided error: overwriting whole rows in a range
+    /// would resize a list / map's flattened child (desyncing its offsets), so replace a child column
+    /// with [`set_child_at`](AnySerie::set_child_at) / [`set_child_by`](AnySerie::set_child_by), or
+    /// grow rows with `append_row` / `concat`, instead.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    ///
+    /// let mut col = boxed(Serie::from_values(&[0i64, 0, 0, 0, 0]));
+    /// let patch = boxed(Serie::from_options(&[Some(7i64), None]));
+    /// col.set_slice(1, patch.as_ref()).unwrap(); // overwrite rows 1..3
+    /// assert_eq!(
+    ///     col.as_serie::<i64>().unwrap().to_options(),
+    ///     [Some(0), Some(7), None, Some(0), Some(0)]
+    /// );
+    /// assert_eq!(col.len(), 5); // length preserved
+    /// ```
+    pub fn set_slice(&mut self, offset: usize, source: &dyn AnySerie) -> Result<(), IoError> {
+        // Bounds: the whole source must land inside self (length-preserving); leave self unchanged
+        // otherwise. A guard against `offset + len` overflowing usize keeps the check total.
+        let past_end = offset
+            .checked_add(source.len())
+            .is_none_or(|end| end > self.len());
+        if past_end {
+            return Err(IoError::IndexOutOfBounds {
+                index: offset.saturating_add(source.len()),
+                len: self.len(),
+            });
+        }
+        if source.is_empty() {
+            return Ok(()); // nothing to overwrite
+        }
+        // `Any` is in scope in this file, so `.type_id()` on `dyn AnySerie` would resolve to
+        // `Any::type_id`; call the trait method explicitly (the file's convention).
+        if AnySerie::type_id(self).is_nested() {
+            return Err(set_slice_on_nested(AnySerie::type_id(self)));
+        }
+        // DESIGN: fast path — a same-concrete-type leaf source commits the whole range through the
+        // typed `set_range` (one bulk COW for a fixed column, an offset splice for a var column). The
+        // fallback per-cell `set_cell` loop is correct for EVERY leaf family (decimal / temporal /
+        // fixed-size), type-checks each cell, and yields `set_cell`'s guided error on an incompatible
+        // source cell — so a genuinely mismatched source is rejected, never silently mis-written. The
+        // fallback is not zero-alloc (it reads one owned cell per element), but a bulk range-set of a
+        // *different* type is not the hot path; a same-type set (the common case) takes the fast path.
+        if AnySerie::type_id(self) == AnySerie::type_id(source)
+            && set_range_fast(self, offset, source)?
+        {
+            return Ok(());
+        }
+        for index in 0..source.len() {
+            let cell = source.value(index);
+            self.set_cell(offset + index, &cell)?;
+        }
+        Ok(())
+    }
+
     /// A transient `NodeRef` cursor rooted at this column — the crate-internal entry point for the
     /// graph-cursor drill-down. Reserved for later phases (only its own tests use it today).
     #[allow(dead_code)]
     pub(crate) fn root_ref(&self) -> super::node_ref::NodeRef<'_> {
         super::node_ref::NodeRef::new(self)
+    }
+}
+
+/// Attempts the [`set_slice`](AnySerie::set_slice) FAST PATH: when `source` is the same concrete
+/// fixed-primitive [`Serie<T>`](Serie) or variable-length [`ByteSerie<E>`](ByteSerie) as `target`,
+/// commits the whole range through the typed [`set_range`](Serie::set_range) and returns `true`;
+/// returns `false` for any other leaf family (decimal / temporal / fixed-size / null), which the
+/// caller then handles with the per-cell fallback. The caller has already checked
+/// `target.type_id() == source.type_id()`, so each downcast is infallible.
+fn set_range_fast(
+    target: &mut dyn AnySerie,
+    offset: usize,
+    source: &dyn AnySerie,
+) -> Result<bool, IoError> {
+    macro_rules! prim {
+        ($t:ty) => {{
+            let src = source
+                .as_any()
+                .downcast_ref::<Serie<$t>>()
+                .expect("matching type_id names a Serie<T>");
+            target
+                .as_any_mut()
+                .downcast_mut::<Serie<$t>>()
+                .expect("matching type_id names a Serie<T>")
+                .set_range(offset, src)?;
+            return Ok(true);
+        }};
+    }
+    macro_rules! var {
+        ($serie:ty) => {{
+            let src = source
+                .as_any()
+                .downcast_ref::<$serie>()
+                .expect("matching type_id names a ByteSerie<E>");
+            target
+                .as_any_mut()
+                .downcast_mut::<$serie>()
+                .expect("matching type_id names a ByteSerie<E>")
+                .set_range(offset, src)?;
+            return Ok(true);
+        }};
+    }
+    match AnySerie::type_id(target) {
+        DataTypeId::U8 => prim!(u8),
+        DataTypeId::U16 => prim!(u16),
+        DataTypeId::U32 => prim!(u32),
+        DataTypeId::U64 => prim!(u64),
+        DataTypeId::U96 => prim!(U96),
+        DataTypeId::U128 => prim!(u128),
+        DataTypeId::U256 => prim!(U256),
+        DataTypeId::I8 => prim!(i8),
+        DataTypeId::I16 => prim!(i16),
+        DataTypeId::I32 => prim!(i32),
+        DataTypeId::I64 => prim!(i64),
+        DataTypeId::I96 => prim!(I96),
+        DataTypeId::I128 => prim!(i128),
+        DataTypeId::I256 => prim!(I256),
+        DataTypeId::F16 => prim!(f16),
+        DataTypeId::F32 => prim!(f32),
+        DataTypeId::F64 => prim!(f64),
+        DataTypeId::Utf8 => var!(Utf8Serie),
+        DataTypeId::Binary => var!(BinarySerie),
+        _ => Ok(false),
+    }
+}
+
+/// The guided error for [`set_slice`](AnySerie::set_slice) on a **nested** column — a whole-row range
+/// overwrite would resize a list / map's flattened child, so it has no length-preserving in-place form.
+fn set_slice_on_nested(kind: DataTypeId) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot set_slice a nested {} column; overwriting whole rows in a range would resize a \
+             list / map's flattened child (desyncing its offsets) — replace a child column with \
+             set_child_at / set_child_by, or grow rows with append_row / concat instead",
+            kind.name()
+        ),
     }
 }
 

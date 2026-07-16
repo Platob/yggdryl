@@ -252,6 +252,33 @@ impl MapSerie {
         None
     }
 
+    /// **Replaces** the flattened **key** column (entries column 0) in place, preserving its schema
+    /// name. The new `child` must stay **non-null** (a map key is never null — Arrow's Map invariant)
+    /// and match the entries length. The crate primitive behind the erased
+    /// [`set_child_at`](crate::io::AnySerie::set_child_at) index `0` / [`set_child_by`](crate::io::AnySerie::set_child_by)
+    /// `"key"`. `pub(crate)`; a guided error if the new keys carry nulls, or a length mismatch (from the
+    /// entries struct) otherwise.
+    pub(crate) fn replace_keys(&mut self, child: Box<dyn AnySerie>) -> Result<(), IoError> {
+        let key_nulls = child.null_count();
+        if key_nulls > 0 {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot replace a map's key column with one carrying {key_nulls} null key(s); a \
+                     map key is never null (Arrow's Map invariant)"
+                ),
+            });
+        }
+        self.entries.replace_column(0, child)
+    }
+
+    /// **Replaces** the flattened **value** column (entries column 1) in place, preserving its schema
+    /// name. The new `child` must match the entries length. The crate primitive behind the erased
+    /// [`set_child_at`](crate::io::AnySerie::set_child_at) index `1` / [`set_child_by`](crate::io::AnySerie::set_child_by)
+    /// `"value"`. `pub(crate)`; a length mismatch (from the entries struct) otherwise.
+    pub(crate) fn replace_values(&mut self, child: Box<dyn AnySerie>) -> Result<(), IoError> {
+        self.entries.replace_column(1, child)
+    }
+
     /// The flattened `key -> value` entries as a two-column [`StructSerie`].
     pub fn entries(&self) -> &StructSerie {
         &self.entries

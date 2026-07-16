@@ -186,6 +186,33 @@ impl ListSerie {
         matches.then(move || self.values_mut())
     }
 
+    /// **Replaces** the flattened item child in place, **preserving the item's schema name**. The new
+    /// `child` must be the same length as the current flattened child (`offsets[last]`), so the offsets
+    /// still cover it exactly and `offsets[last] == child len` holds. The single crate primitive behind
+    /// the erased [`set_child_at`](crate::io::AnySerie::set_child_at) / [`set_child_by`](crate::io::AnySerie::set_child_by)
+    /// for a list.
+    ///
+    /// DESIGN: `pub(crate)`, not public — a raw child swap must keep `offsets[last] == child len`; the
+    /// erased setter clones its borrowed child before calling this. Guided length mismatch otherwise.
+    pub(crate) fn replace_item(&mut self, mut child: Box<dyn AnySerie>) -> Result<(), IoError> {
+        let flat_len = self.values.len();
+        if child.len() != flat_len {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot replace a list's item child with a column of length {}; the new item \
+                     child must match the current flattened length {flat_len} (offsets[last]), so \
+                     the offsets still cover it exactly",
+                    child.len()
+                ),
+            });
+        }
+        // Preserve the item's schema name so the derived item field keeps its name.
+        let name = self.values.name().to_string();
+        child.set_name(&name);
+        self.values = child;
+        Ok(())
+    }
+
     /// The row offsets (`len + 1` entries into the flattened child).
     pub fn offsets(&self) -> &[i32] {
         &self.offsets

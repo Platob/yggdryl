@@ -308,6 +308,68 @@ impl StructSerie {
         self.column_at_mut(index)
     }
 
+    /// **Replaces** the child column at `index` in place, **preserving the slot's schema name** (a
+    /// positional replace swaps the column's type + data, not its name, so the struct's derived field
+    /// keeps its name and only its type changes). The new `child` must be the same length as the
+    /// struct (its row count), so the equal-length invariant holds. The single crate primitive behind
+    /// the erased [`set_child_at`](crate::io::AnySerie::set_child_at) — and, for a map's entries, behind
+    /// [`MapSerie`](crate::io::nested::MapSerie)'s key/value replace.
+    ///
+    /// DESIGN: `pub(crate)`, not public — a raw child swap must keep every column the same length; the
+    /// erased setter clones its borrowed child before calling this, matching how `concat` takes a
+    /// borrow. Errors [`IndexOutOfBounds`](IoError::IndexOutOfBounds) past the last column, or a guided
+    /// length mismatch naming both lengths.
+    pub(crate) fn replace_column(
+        &mut self,
+        index: usize,
+        mut child: Box<dyn AnySerie>,
+    ) -> Result<(), IoError> {
+        if index >= self.columns.len() {
+            return Err(IoError::IndexOutOfBounds {
+                index,
+                len: self.columns.len(),
+            });
+        }
+        if child.len() != self.len {
+            return Err(mismatch(self.columns[index].name(), child.len(), self.len));
+        }
+        // Preserve the slot's schema name so the derived field keeps its name (only its type changes).
+        let name = self.columns[index].name().to_string();
+        child.set_name(&name);
+        self.columns[index] = child;
+        Ok(())
+    }
+
+    /// **Adds or replaces** the child column named `name` (dict-like): if a column already has that
+    /// name its data + type are replaced, else the (re)named `child` is appended as a new field — the
+    /// single crate primitive behind the erased [`set_child_by`](crate::io::AnySerie::set_child_by) for
+    /// a struct. The `child` is (re)named `name`. A replace, or an add to a struct that already has
+    /// rows, requires `child.len() == self.len()`; a **field-less** empty struct (no column to derive a
+    /// row count from) instead **adopts** the child's length. `pub(crate)`; guided length mismatch
+    /// naming both lengths otherwise.
+    pub(crate) fn set_or_add_column(
+        &mut self,
+        name: &str,
+        mut child: Box<dyn AnySerie>,
+    ) -> Result<(), IoError> {
+        child.set_name(name);
+        if let Some(index) = self.columns.iter().position(|c| c.name() == name) {
+            if child.len() != self.len {
+                return Err(mismatch(name, child.len(), self.len));
+            }
+            self.columns[index] = child;
+        } else {
+            if self.columns.is_empty() && self.len == 0 {
+                // A field-less empty struct has no row count of its own — adopt the child's.
+                self.len = child.len();
+            } else if child.len() != self.len {
+                return Err(mismatch(name, child.len(), self.len));
+            }
+            self.columns.push(child);
+        }
+        Ok(())
+    }
+
     /// The typed [`StructType`] descriptor (its child fields).
     pub fn data_type(&self) -> StructType {
         StructType::new(self.fields())

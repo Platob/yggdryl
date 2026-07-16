@@ -10,6 +10,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 use yggdryl_core::io::fixed::Serie;
+use yggdryl_core::io::nested::StructSerie;
+use yggdryl_core::io::var::Utf8Serie;
+use yggdryl_core::io::{boxed, AnySerie};
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);
@@ -106,5 +109,50 @@ fn filter_and_fill_null_are_single_pass_bounded_allocation() {
     assert!(
         clone_small <= 4 * iters,
         "Serie::fill_null no-null clone path is bounded (got {clone_small})"
+    );
+
+    // ---- set_child_at REPLACE clones only the one child, size-independent of the struct's data ----
+    // Two structs with the SAME row count and the SAME replaced column (col 0, i64), but a second
+    // column ("blob") whose byte size differs 4096x (short strings vs 4 KiB strings each). Replacing
+    // col 0 with the same replacement clones ONLY that one child and swaps the box — it never touches
+    // "blob" — so the allocation COUNT is identical whatever the struct's other data weighs, proving
+    // the replace is not proportional to the struct's data.
+    let rows = 8usize;
+    let ids: Vec<i64> = (0..rows as i64).collect();
+    let short: Vec<Option<&str>> = (0..rows).map(|_| Some("x")).collect();
+    let long_owned: Vec<String> = (0..rows).map(|_| "y".repeat(4096)).collect();
+    let long: Vec<Option<&str>> = long_owned.iter().map(|s| Some(s.as_str())).collect();
+
+    let mut small_struct: Box<dyn AnySerie> = boxed(
+        StructSerie::from_named(vec![
+            ("id", boxed(Serie::from_values(&ids))),
+            ("blob", boxed(Utf8Serie::from_strs(&short))),
+        ])
+        .unwrap(),
+    );
+    let mut large_struct: Box<dyn AnySerie> = boxed(
+        StructSerie::from_named(vec![
+            ("id", boxed(Serie::from_values(&ids))),
+            ("blob", boxed(Utf8Serie::from_strs(&long))),
+        ])
+        .unwrap(),
+    );
+    let replacement = boxed(Serie::from_values(&ids));
+
+    let replace_small = allocs_over(iters, || {
+        small_struct.set_child_at(0, replacement.as_ref()).unwrap();
+    });
+    let replace_large = allocs_over(iters, || {
+        large_struct.set_child_at(0, replacement.as_ref()).unwrap();
+    });
+    assert_eq!(
+        replace_small, replace_large,
+        "set_child_at REPLACE must clone only the one child (size-independent of the struct's other \
+         data), got {replace_small} vs {replace_large}"
+    );
+    assert!(
+        replace_small <= 8 * iters,
+        "set_child_at REPLACE allocates a small bounded constant per call (got {replace_small} over \
+         {iters})"
     );
 }
