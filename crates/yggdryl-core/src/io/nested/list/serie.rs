@@ -7,7 +7,9 @@ use core::any::Any;
 
 use super::scalar::ListScalar;
 use super::{ListField, ListType};
-use crate::io::any_serie::{append_type_mismatch, apply_field_header, concat_type_mismatch};
+use crate::io::any_serie::{
+    append_type_mismatch, apply_field_header, concat_type_mismatch, set_cell_on_nested,
+};
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
@@ -160,6 +162,27 @@ impl ListSerie {
     #[allow(dead_code)]
     pub(crate) fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
         self.values.as_mut()
+    }
+
+    /// The single item child **mutably** at `index` — the `&mut` mirror of the trait's
+    /// [`child_serie_at`](crate::io::AnySerie::child_serie_at) (only index `0` resolves), for the
+    /// deep-cell setter's mutable walk. `pub(crate)`; see [`values_mut`](ListSerie::values_mut).
+    pub(crate) fn child_serie_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        (index == 0).then(move || self.values_mut())
+    }
+
+    /// The single item child **mutably** by `name` — the `&mut` mirror of the trait's
+    /// [`child_serie_by`](crate::io::AnySerie::child_serie_by) (the child's own name or the canonical
+    /// `"item"`). `pub(crate)`, for the same reason.
+    pub(crate) fn child_serie_by_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        let matches = name == self.values().name() || name == "item";
+        matches.then(move || self.values_mut())
     }
 
     /// The row offsets (`len + 1` entries into the flattened child).
@@ -531,6 +554,12 @@ impl AnySerie for ListSerie {
         }
     }
 
+    fn set_cell(&mut self, _index: usize, _value: &AnyScalar) -> Result<(), IoError> {
+        // Overwriting a whole list cell would resize the flattened child (desyncing the offsets), so
+        // the deep set reaches a LEAF cell (navigate into the item child first).
+        Err(set_cell_on_nested(DataTypeId::List))
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         self.write_frame(sink)
     }
@@ -552,6 +581,10 @@ impl AnySerie for ListSerie {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }

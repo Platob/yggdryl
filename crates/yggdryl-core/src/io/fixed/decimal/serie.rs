@@ -384,6 +384,25 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         self.len += 1;
     }
 
+    /// Overwrites the present coefficient at `index` from its raw little-endian bytes at the column's
+    /// scale (no refit), **preserving the length** — the erased length-preserving cell set path
+    /// ([`AnySerie::set_cell`](crate::io::AnySerie::set_cell)). Assumes `bytes.len() == B::WIDTH` and
+    /// the bytes are already at this column's `(precision, scale)`. Errors
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) past the end.
+    pub(crate) fn set_coeff_bytes(&mut self, index: usize, bytes: &[u8]) -> Result<(), IoError> {
+        if index >= self.len {
+            return Err(IoError::IndexOutOfBounds {
+                index,
+                len: self.len,
+            });
+        }
+        self.write_coeff_at(index, B::Coeff::read_le(bytes));
+        if let Some(validity) = &mut self.validity {
+            validity.set(index, true);
+        }
+        Ok(())
+    }
+
     /// Appends a slice of **present** [`Decimal`] values (no nulls), each re-expressed at this
     /// column's scale/precision — the bulk twin of [`set_values`](DecimalSerie::set_values) that
     /// grows the column. One copy-on-write; a guided

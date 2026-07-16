@@ -97,6 +97,43 @@ fn to_io<E: core::fmt::Display>(error: E) -> IoError {
     }
 }
 
+/// The guided error for overwriting a leaf cell with an erased value whose type does not match the
+/// target leaf column (a [`Null`](AnyScalar::Null) is always accepted, so it never reaches this) —
+/// the length-preserving [`set_cell`](AnySerie::set_cell) twin of [`append_type_mismatch`].
+pub(crate) fn set_cell_type_mismatch(expected: DataTypeId, value: &AnyScalar) -> IoError {
+    let got = value.type_id().map_or("null", DataTypeId::name);
+    IoError::Unsupported {
+        what: format!(
+            "cannot set a {got} value into a {} cell; a present value's type must match the leaf \
+             column (a null is always accepted)",
+            expected.name()
+        ),
+    }
+}
+
+/// The guided error for calling [`set_cell`](AnySerie::set_cell) on a **nested** column — a whole
+/// struct / list / map cell has no length-preserving in-place overwrite, so the deep setter reaches
+/// only a leaf cell.
+pub(crate) fn set_cell_on_nested(kind: DataTypeId) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot overwrite a whole {} cell in place; a deep set targets a LEAF cell — extend the \
+             path with the field / index segments that reach a leaf column, and grow a nested column \
+             through append_row / concat instead",
+            kind.name()
+        ),
+    }
+}
+
+/// Maps a [`PathError`] (a bad path string, or a segment that failed to resolve) to an [`IoError`]
+/// carrying its guided text, so the deep setter returns one error type while keeping the exact
+/// position/segment guidance [`get_by_path`](AnySerie::get_by_path) gives.
+fn path_to_io(error: PathError) -> IoError {
+    IoError::Unsupported {
+        what: error.to_string(),
+    }
+}
+
 /// A **column of any type**, type-erased — the recursive carrier a struct column's heterogeneous
 /// children live in (`Box<dyn AnySerie>`). Implemented by every concrete `Serie`; each method
 /// delegates. Build one by boxing a `Serie` (`Box::new(serie) as Box<dyn AnySerie>`) or with the
@@ -183,6 +220,20 @@ pub trait AnySerie: Debug + Send + Sync {
     /// wrapped `Serie`'s own `concat` (which reconciles any descriptor).
     fn concat(&mut self, other: &dyn AnySerie) -> Result<(), IoError>;
 
+    /// Overwrites the cell at `index` with the erased `value`, **preserving the column length** — the
+    /// safe, length-preserving counterpart of [`append_scalar`](AnySerie::append_scalar) and the leaf
+    /// primitive the deep [`set_by_path`](AnySerie::set_by_path) writes through. A present value must
+    /// match this **leaf** column's type (a [`Null`](crate::io::AnyScalar::Null) is always accepted,
+    /// setting the cell null under lenient nullability); it delegates to the wrapped leaf `Serie`'s own
+    /// length-preserving `set` / `set_bytes`, so no length ever changes and a nested parent's
+    /// equal-length / offset invariants stay intact. A **nested** column (struct / list / map) errors
+    /// [`Unsupported`](IoError::Unsupported): a whole nested cell has no length-preserving in-place
+    /// overwrite (a list / map cell would resize the flattened child), so grow it through
+    /// [`append_row`](crate::io::nested::StructSerie::append_row) / `concat` instead. Errors
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) past the end, or
+    /// [`Unsupported`](IoError::Unsupported) on a type / width mismatch.
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError>;
+
     /// Writes this column to `sink` — delegates to the wrapped `Serie`'s own byte codec.
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError>;
 
@@ -200,6 +251,13 @@ pub trait AnySerie: Debug + Send + Sync {
 
     /// This column as `&dyn Any`, for the safe downcast helpers.
     fn as_any(&self) -> &dyn Any;
+
+    /// This column as `&mut dyn Any` — the crate-internal mutable downcast the deep-cell setter uses
+    /// to reach a nested column's child column in place while walking a path. Safe: the recovered
+    /// `&mut ConcreteSerie` exposes only its **public** (length-preserving) methods; the raw child
+    /// accessors (`column_at_mut`, `values_mut`, …) stay `pub(crate)`, so no `&mut` child leaks that
+    /// could desync a parent's length.
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// This column's canonical bytes (the wrapped `Serie`'s frame), as an owned `Vec`.
     fn serialize_bytes(&self) -> Vec<u8> {
@@ -253,8 +311,11 @@ pub trait AnySerie: Debug + Send + Sync {
     // equal len; list/map: `offsets[last] == child len`) or flipping a map key column to nullable —
     // corruption caught only on serialize / Arrow-export, if at all. Public mutation therefore stays
     // length-preserving: grow through the parent's `append_row` / `append_null` / `concat` (which
-    // grow every child together), and set cells through `set` / `set_scalar`. The crate's own
-    // internal routing uses the `pub(crate)` inherent accessors (`StructSerie::column_at_mut`, …).
+    // grow every child together), set one leaf cell through `set` / `set_scalar`, and overwrite a
+    // deep leaf cell through the length-preserving [`set_by_path`](AnySerie::set_by_path) /
+    // [`set_cell`](AnySerie::set_cell). The crate's own internal routing uses the `pub(crate)`
+    // inherent accessors (`StructSerie::column_at_mut`, `child_serie_by_mut`, …), reached only via
+    // the safe [`as_any_mut`](AnySerie::as_any_mut) mutable downcast.
 }
 
 /// Restores a child column's stored header (name / declared nullability / metadata) from the field
@@ -338,6 +399,64 @@ impl dyn AnySerie {
         resolve_serie(self, &parsed)
     }
 
+    /// **Overwrites a single leaf cell** addressed by `path`, in place and **length-preservingly** —
+    /// the safe deep-set symmetric with [`get_by_path`](AnySerie::get_by_path). All but the last path
+    /// segment navigate to a leaf **column** exactly as `get_by_path` would (each
+    /// [`Name`](crate::io::PathSegment::Name) follows the child column's name, each
+    /// [`Index`](crate::io::PathSegment::Index) the positional child), walking through the crate's
+    /// `pub(crate)` **mutable** child accessors; the final [`Index`](crate::io::PathSegment::Index) is
+    /// the **cell** position within that leaf column, overwritten via
+    /// [`set_cell`](AnySerie::set_cell). The `value` is type-checked against the leaf's element (a null
+    /// [`AnyScalar`](crate::io::AnyScalar) sets a null under lenient nullability).
+    ///
+    /// DESIGN: this is **overwrite-only** — every hop is a length-preserving overwrite of an existing
+    /// cell, so it can never change a column length and therefore never desync a struct's equal-length
+    /// or a list / map's `offsets[last] == child len` invariant (unlike a raw `&mut` child, which is
+    /// why none is exposed). To **grow** a nested column, use `append_row` / `append_null` / `concat`.
+    ///
+    /// # Errors
+    /// A guided [`Unsupported`](IoError::Unsupported) wrapping a
+    /// [`PathError`](crate::io::PathError) for a bad path string or a segment that names / indexes a
+    /// child the node does not have; for the empty path or a final **name** segment (a cell is
+    /// addressed by index); if the path resolves to a **non-leaf** (nested) column; or an
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) if the final cell index is past the leaf's end.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{Field, Serie};
+    /// use yggdryl_core::io::nested::StructSerie;
+    /// use yggdryl_core::io::{boxed, AnyScalar, AnySerie, DataTypeId};
+    ///
+    /// // struct<a: i32> of 3 rows; overwrite row 1 of child `a` with 99.
+    /// let mut root = boxed(StructSerie::from_series(vec![
+    ///     Serie::from_values(&[10i32, 20, 30]).named("a"),
+    /// ])
+    /// .unwrap());
+    /// let ninety_nine =
+    ///     AnyScalar::leaf(Field::of("", DataTypeId::I32, 4, false), 99i32.to_le_bytes().to_vec());
+    /// root.set_by_path("a[1]", &ninety_nine).unwrap();
+    /// // Read the leaf column back and check the cell changed; the length is unchanged.
+    /// let a = root.get_by_path("a").unwrap();
+    /// assert_eq!(a.value(1), ninety_nine);
+    /// assert_eq!(a.len(), 3);
+    /// ```
+    pub fn set_by_path(&mut self, path: &str, value: &AnyScalar) -> Result<(), IoError> {
+        let parsed = NodePath::parse(path).map_err(path_to_io)?;
+        set_by_segments(self, parsed.segments(), value)
+    }
+
+    /// **Overwrites a single leaf cell** addressed by a pure-**coordinate** path — the index-only twin
+    /// of [`set_by_path`](AnySerie::set_by_path). Each of `coords` is a positional child index; the
+    /// leading coordinates navigate to a leaf column (a struct field by position, a list's item child
+    /// with `0`, a map's key / value child with `0` / `1`) and the **last** is the cell position within
+    /// it. Same length-preserving, overwrite-only guarantee and same errors as `set_by_path`.
+    pub fn set_at(&mut self, coords: &[usize], value: &AnyScalar) -> Result<(), IoError> {
+        let segments: Vec<PathSegment> = coords
+            .iter()
+            .map(|&index| PathSegment::Index(index))
+            .collect();
+        set_by_segments(self, &segments, value)
+    }
+
     /// A transient `NodeRef` cursor rooted at this column — the crate-internal entry point for the
     /// graph-cursor drill-down. Reserved for later phases (only its own tests use it today).
     #[allow(dead_code)]
@@ -378,6 +497,66 @@ pub(crate) fn resolve_serie<'a>(
     Ok(current)
 }
 
+/// Walks `segments` from `root` through the **mutable** child accessors to reach a leaf column, then
+/// overwrites the cell the final [`Index`](PathSegment::Index) addresses via
+/// [`set_cell`](AnySerie::set_cell). Shared by [`set_by_path`](AnySerie::set_by_path) (parses a path)
+/// and [`set_at`](AnySerie::set_at) (pure coordinates). Every hop is length-preserving, so no column
+/// length changes and no nested invariant can desync.
+fn set_by_segments(
+    root: &mut (dyn AnySerie + 'static),
+    segments: &[PathSegment],
+    value: &AnyScalar,
+) -> Result<(), IoError> {
+    let Some((last, interior)) = segments.split_last() else {
+        return Err(IoError::Unsupported {
+            what: "a deep cell set needs a non-empty path to a leaf cell (e.g. `a[1]` or \
+                   `[0].x[2]`); the empty path addresses the whole column, not a cell"
+                .to_string(),
+        });
+    };
+    // Navigate the interior segments to the final container. Each step first probes existence with the
+    // *immutable* child accessor (so the guided error can read `num_children` without holding a `&mut`),
+    // then re-resolves mutably — the two are symmetric, so the mutable step cannot then miss.
+    let mut container: &mut (dyn AnySerie + 'static) = root;
+    for (depth, segment) in interior.iter().enumerate() {
+        let num_children = container.num_children();
+        let exists = match segment {
+            PathSegment::Name(name) => container.child_serie_by(name).is_some(),
+            PathSegment::Index(index) => container.child_serie_at(*index).is_some(),
+        };
+        if !exists {
+            return Err(path_to_io(match segment {
+                PathSegment::Name(name) => PathError::NoChildNamed {
+                    depth,
+                    name: name.clone(),
+                    num_children,
+                },
+                PathSegment::Index(index) => PathError::ChildIndexOutOfRange {
+                    depth,
+                    index: *index,
+                    num_children,
+                },
+            }));
+        }
+        container = crate::io::nested::child_serie_mut(container, segment)
+            .expect("existence verified by the immutable probe above");
+    }
+    // The final segment is the cell index within the leaf container.
+    let cell = match last {
+        PathSegment::Index(index) => *index,
+        PathSegment::Name(name) => {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "the final path segment must be a cell index (e.g. `[1]`), but got the name \
+                     {name:?}; a name addresses a child column, not a cell — append an index segment \
+                     to reach a cell"
+                ),
+            })
+        }
+    };
+    container.set_cell(cell, value)
+}
+
 /// Boxes a concrete `Serie` as an erased [`AnySerie`] column — the ergonomic constructor for a
 /// heterogeneous child, e.g. `boxed(Serie::from_values(&[1i32, 2]))`.
 pub fn boxed<S: AnySerie + 'static>(serie: S) -> Box<dyn AnySerie> {
@@ -409,6 +588,9 @@ macro_rules! eq_via_downcast {
                 .is_some_and(|other| self == other)
         }
         fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
             self
         }
         fn clone_box(&self) -> Box<dyn AnySerie> {
@@ -506,6 +688,18 @@ impl<T: NativeType> AnySerie for Serie<T> {
         }
     }
 
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => Serie::set(self, index, None),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == T::TYPE_ID && bytes.len() == T::WIDTH =>
+            {
+                Serie::set(self, index, Some(T::read_le(bytes)))
+            }
+            other => Err(set_cell_type_mismatch(T::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         Serie::write_to(self, sink)
     }
@@ -593,6 +787,19 @@ where
         }
     }
 
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => DecimalSerie::set(self, index, None).map_err(to_io),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw coefficient at this column's scale (matching-schema set).
+                DecimalSerie::set_coeff_bytes(self, index, bytes)
+            }
+            other => Err(set_cell_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         DecimalSerie::write_to(self, sink)
     }
@@ -668,6 +875,16 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
         match other.as_any().downcast_ref::<Self>() {
             Some(other) => ByteSerie::concat(self, other),
             None => Err(concat_type_mismatch(E::TYPE_ID, other)),
+        }
+    }
+
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => ByteSerie::set_bytes(self, index, None),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == E::TYPE_ID => {
+                ByteSerie::set_bytes(self, index, Some(bytes))
+            }
+            other => Err(set_cell_type_mismatch(E::TYPE_ID, other)),
         }
     }
 
@@ -749,6 +966,16 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
         }
     }
 
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => FixedSizeSerie::set(self, index, None),
+            AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == K::TYPE_ID => {
+                FixedSizeSerie::set(self, index, Some(bytes))
+            }
+            other => Err(set_cell_type_mismatch(K::TYPE_ID, other)),
+        }
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         FixedSizeSerie::write_to(self, sink)
     }
@@ -806,6 +1033,21 @@ impl AnySerie for NullSerie {
                 Ok(())
             }
             None => Err(concat_type_mismatch(DataTypeId::Null, other)),
+        }
+    }
+
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        // A null column holds a null at every existing slot; setting a null is a bounds-checked no-op,
+        // and a present value has no room in a null column.
+        if index >= NullSerie::len(self) {
+            return Err(IoError::IndexOutOfBounds {
+                index,
+                len: NullSerie::len(self),
+            });
+        }
+        match value {
+            AnyScalar::Null => Ok(()),
+            other => Err(set_cell_type_mismatch(DataTypeId::Null, other)),
         }
     }
 
@@ -880,6 +1122,19 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
         match other.as_any().downcast_ref::<Self>() {
             Some(other) => TemporalSerie::concat(self, other).map_err(to_io),
             None => Err(concat_type_mismatch(B::TYPE_ID, other)),
+        }
+    }
+
+    fn set_cell(&mut self, index: usize, value: &AnyScalar) -> Result<(), IoError> {
+        match value {
+            AnyScalar::Null => TemporalSerie::set(self, index, None).map_err(to_io),
+            AnyScalar::Leaf { field, bytes }
+                if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
+            {
+                // The bytes are the raw count at this column's (unit, tz) (matching-schema set).
+                TemporalSerie::set_count_bytes(self, index, bytes)
+            }
+            other => Err(set_cell_type_mismatch(B::TYPE_ID, other)),
         }
     }
 

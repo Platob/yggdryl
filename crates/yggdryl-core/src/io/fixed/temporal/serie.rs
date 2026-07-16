@@ -420,6 +420,25 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         self.len += 1;
     }
 
+    /// Overwrites the present value at `index` from its raw little-endian count bytes at the column's
+    /// unit (no re-expression), **preserving the length** — the erased length-preserving cell set path
+    /// ([`AnySerie::set_cell`](crate::io::AnySerie::set_cell)). Assumes `bytes.len() == B::WIDTH` and
+    /// the bytes are already a count at this column's `(unit, tz)`. Errors
+    /// [`IndexOutOfBounds`](IoError::IndexOutOfBounds) past the end.
+    pub(crate) fn set_count_bytes(&mut self, index: usize, bytes: &[u8]) -> Result<(), IoError> {
+        if index >= self.len {
+            return Err(IoError::IndexOutOfBounds {
+                index,
+                len: self.len,
+            });
+        }
+        self.write_count_at(index, read_count_le(bytes, B::WIDTH));
+        if let Some(validity) = &mut self.validity {
+            validity.set(index, true);
+        }
+        Ok(())
+    }
+
     /// Appends a slice of **present** values (no nulls), each re-expressed at this column's unit —
     /// the bulk grow twin of [`from_values`](TemporalSerie::from_values). One copy-on-write; a guided
     /// [`TemporalError`] if a value does not fit (the column is left unchanged).

@@ -9,7 +9,7 @@ use core::any::Any;
 
 use super::scalar::MapScalar;
 use super::{MapField, MapType};
-use crate::io::any_serie::{append_type_mismatch, concat_type_mismatch};
+use crate::io::any_serie::{append_type_mismatch, concat_type_mismatch, set_cell_on_nested};
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
@@ -218,6 +218,36 @@ impl MapSerie {
         self.entries
             .column_at_mut(1)
             .expect("a map's entries always has a value column")
+    }
+
+    /// The key (`0`) / value (`1`) child **mutably** at `index` — the `&mut` mirror of the trait's
+    /// [`child_serie_at`](crate::io::AnySerie::child_serie_at), for the deep-cell setter's mutable
+    /// walk. `pub(crate)`; see [`keys_mut`](MapSerie::keys_mut) for why no `&mut` child is public.
+    pub(crate) fn child_serie_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        match index {
+            0 => Some(self.keys_mut()),
+            1 => Some(self.values_mut()),
+            _ => None,
+        }
+    }
+
+    /// The key / value child **mutably** by `name` — the `&mut` mirror of the trait's
+    /// [`child_serie_by`](crate::io::AnySerie::child_serie_by) (the child's own name, or the canonical
+    /// `"key"` / `"value"`). `pub(crate)`, for the same reason.
+    pub(crate) fn child_serie_by_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        if name == self.keys().name() || name == "key" {
+            return Some(self.keys_mut());
+        }
+        if name == self.values().name() || name == "value" {
+            return Some(self.values_mut());
+        }
+        None
     }
 
     /// The flattened `key -> value` entries as a two-column [`StructSerie`].
@@ -709,6 +739,12 @@ impl AnySerie for MapSerie {
         }
     }
 
+    fn set_cell(&mut self, _index: usize, _value: &AnyScalar) -> Result<(), IoError> {
+        // Overwriting a whole map cell would resize the flattened entries (desyncing the offsets), so
+        // the deep set reaches a LEAF cell (navigate into the key / value child first).
+        Err(set_cell_on_nested(DataTypeId::Map))
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         self.write_frame(sink)
     }
@@ -730,6 +766,10 @@ impl AnySerie for MapSerie {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }

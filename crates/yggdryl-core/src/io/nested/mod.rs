@@ -18,7 +18,9 @@ pub use list::{ListField, ListScalar, ListSerie, ListType};
 pub use map::{MapField, MapScalar, MapSerie, MapType};
 pub use struct_::{StructField, StructScalar, StructSerie, StructType};
 
-use crate::io::{read_any_leaf, AnyField, AnySerie, Bytes, FieldType, IoError};
+use crate::io::{
+    read_any_leaf, AnyField, AnySerie, Bytes, DataTypeId, FieldType, IoError, PathSegment,
+};
 
 /// Reads **one erased column** of the type named by `field` from `source` — the single recursive
 /// dispatch every nested reader routes its children through. A leaf delegates to
@@ -52,6 +54,49 @@ pub(crate) fn read_any_column_at(
         Ok(Box::new(map::MapSerie::read_frame(source, depth)?))
     } else {
         read_any_leaf(field, source)
+    }
+}
+
+/// Resolves one path `segment` from a **nested** column `container` to its addressed child column
+/// **mutably** — the `&mut` mirror of the immutable [`child_serie_by`](crate::io::AnySerie::child_serie_by)
+/// / [`child_serie_at`](crate::io::AnySerie::child_serie_at), driving the deep-cell setter's interior
+/// walk ([`AnySerie::set_by_path`](crate::io::AnySerie::set_by_path)). A leaf column has no children,
+/// so it returns `None`.
+///
+/// This is the **one** place that names the concrete nested types for a `&mut` child: it reads the
+/// container's [`type_id`](crate::io::AnySerie::type_id) (an immutable probe that ends at once) to pick
+/// the family, then does a **single** [`as_any_mut`](crate::io::AnySerie::as_any_mut) downcast and calls
+/// that family's `pub(crate)` `child_serie_{by,at}_mut`. Kept crate-internal so no public `&mut` child
+/// leaks (a raw child would let safe code grow it and desync the parent's length invariant).
+pub(crate) fn child_serie_mut<'a>(
+    container: &'a mut (dyn AnySerie + 'static),
+    segment: &PathSegment,
+) -> Option<&'a mut (dyn AnySerie + 'static)> {
+    match container.type_id() {
+        DataTypeId::Struct => {
+            let column = container
+                .as_any_mut()
+                .downcast_mut::<struct_::StructSerie>()?;
+            match segment {
+                PathSegment::Name(name) => column.child_serie_by_mut(name),
+                PathSegment::Index(index) => column.child_serie_at_mut(*index),
+            }
+        }
+        DataTypeId::List => {
+            let column = container.as_any_mut().downcast_mut::<list::ListSerie>()?;
+            match segment {
+                PathSegment::Name(name) => column.child_serie_by_mut(name),
+                PathSegment::Index(index) => column.child_serie_at_mut(*index),
+            }
+        }
+        DataTypeId::Map => {
+            let column = container.as_any_mut().downcast_mut::<map::MapSerie>()?;
+            match segment {
+                PathSegment::Name(name) => column.child_serie_by_mut(name),
+                PathSegment::Index(index) => column.child_serie_at_mut(*index),
+            }
+        }
+        _ => None, // a leaf column has no child columns
     }
 }
 

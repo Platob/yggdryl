@@ -8,7 +8,9 @@ use core::any::Any;
 
 use super::scalar::StructScalar;
 use super::{StructField, StructType};
-use crate::io::any_serie::{append_type_mismatch, apply_field_header, concat_type_mismatch};
+use crate::io::any_serie::{
+    append_type_mismatch, apply_field_header, concat_type_mismatch, set_cell_on_nested,
+};
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
@@ -266,6 +268,27 @@ impl StructSerie {
     #[allow(dead_code)]
     pub(crate) fn column_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
         self.columns.get_mut(index).map(|column| column.as_mut())
+    }
+
+    /// The child column at `index` **mutably** — the `&mut` mirror of the trait's
+    /// [`child_serie_at`](crate::io::AnySerie::child_serie_at), for the deep-cell setter's mutable walk
+    /// ([`set_by_path`](crate::io::AnySerie::set_by_path)). `pub(crate)`; see
+    /// [`column_at_mut`](StructSerie::column_at_mut) for why no `&mut` child is public.
+    pub(crate) fn child_serie_at_mut(
+        &mut self,
+        index: usize,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        self.column_at_mut(index)
+    }
+
+    /// The child column named `name` (first match) **mutably** — the `&mut` mirror of the trait's
+    /// [`child_serie_by`](crate::io::AnySerie::child_serie_by). `pub(crate)`, for the same reason.
+    pub(crate) fn child_serie_by_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut (dyn AnySerie + 'static)> {
+        let index = self.columns.iter().position(|c| c.name() == name)?;
+        self.column_at_mut(index)
     }
 
     /// The typed [`StructType`] descriptor (its child fields).
@@ -627,6 +650,12 @@ impl AnySerie for StructSerie {
         }
     }
 
+    fn set_cell(&mut self, _index: usize, _value: &AnyScalar) -> Result<(), IoError> {
+        // A whole struct row has no length-preserving in-place overwrite through the erased setter —
+        // the deep set reaches a LEAF cell (navigate into a field first).
+        Err(set_cell_on_nested(DataTypeId::Struct))
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         self.write_frame(sink)
     }
@@ -648,6 +677,10 @@ impl AnySerie for StructSerie {
     }
 
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }
