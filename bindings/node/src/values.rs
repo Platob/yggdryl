@@ -24,7 +24,7 @@ use napi_derive::napi;
 use yggdryl_core::io::fixed::Buffer as CoreBuffer;
 use yggdryl_core::io::fixed::Field as CoreField;
 use yggdryl_core::io::fixed::{f16, NativeType, Scalar, Serie, I256, I96, U256, U96};
-use yggdryl_core::io::DataTypeId;
+use yggdryl_core::io::{DataTypeId, NumericSerie};
 
 use crate::types::{DataType, Field};
 use crate::varvalues::{BinaryScalar, Utf8Scalar};
@@ -447,6 +447,36 @@ macro_rules! napi_fixed {
                 #[napi]
                 pub fn to_f64(&self) -> napi::Result<F64Serie> {
                     self.inner.cast::<f64>().map(|inner| F64Serie { inner }).map_err(to_error)
+                }
+                /// The number of **present** (non-null) elements — distinct from `length` (which
+                /// counts every slot, nulls included) and from `nullCount` (`length - count`).
+                #[napi]
+                pub fn count(&self) -> u32 {
+                    self.inner.valid_count() as u32
+                }
+                /// The sum of the present elements as a `number` (`0.0` over an empty / all-null
+                /// column; a `NaN` element propagates, so the result is `NaN`).
+                #[napi]
+                pub fn sum(&self) -> f64 {
+                    self.inner.sum_f64()
+                }
+                /// The arithmetic mean of the present elements as a `number`, or `null` when the
+                /// column is empty / all-null. A `NaN` element propagates (the result is `NaN`).
+                #[napi]
+                pub fn mean(&self) -> Option<f64> {
+                    self.inner.mean_f64()
+                }
+                /// The minimum present element as a `number`, or `null` when the column is empty /
+                /// all-null. `NaN` elements are **skipped**.
+                #[napi]
+                pub fn min(&self) -> Option<f64> {
+                    self.inner.min_f64()
+                }
+                /// The maximum present element as a `number`, or `null` when the column is empty /
+                /// all-null. `NaN` elements are **skipped**.
+                #[napi]
+                pub fn max(&self) -> Option<f64> {
+                    self.inner.max_f64()
                 }
             });
     };

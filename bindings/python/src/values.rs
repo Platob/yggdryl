@@ -26,7 +26,7 @@ use pyo3::types::{PyBytes, PyList};
 
 use yggdryl_core::io::fixed::Field as CoreField;
 use yggdryl_core::io::fixed::{f16, NativeType, Scalar, Serie, I256, I96, U256, U96};
-use yggdryl_core::io::{CastError, IoError};
+use yggdryl_core::io::{CastError, IoError, NumericSerie};
 
 use crate::types::{DataType, Field};
 use crate::varvalues::{BinaryScalar, Utf8Scalar};
@@ -768,6 +768,31 @@ macro_rules! py_numeric_casts {
                     .cast::<f64>()
                     .map(|inner| F64Serie { inner })
                     .map_err(cast_err)
+            }
+            /// The number of **present** (non-null) elements — distinct from `__len__` (which
+            /// counts every slot, nulls included) and from `null_count` (`__len__ - count`).
+            fn count(&self) -> usize {
+                self.inner.valid_count()
+            }
+            /// The sum of the present elements as a `float` (`0.0` over an empty / all-null
+            /// column; a `NaN` element propagates, so the result is `nan`).
+            fn sum(&self) -> f64 {
+                self.inner.sum_f64()
+            }
+            /// The arithmetic mean of the present elements as a `float`, or `None` when the
+            /// column is empty / all-null. A `NaN` element propagates (the result is `nan`).
+            fn mean(&self) -> Option<f64> {
+                self.inner.mean_f64()
+            }
+            /// The minimum present element as a `float`, or `None` when the column is empty /
+            /// all-null. `NaN` elements are **skipped**.
+            fn min(&self) -> Option<f64> {
+                self.inner.min_f64()
+            }
+            /// The maximum present element as a `float`, or `None` when the column is empty /
+            /// all-null. `NaN` elements are **skipped**.
+            fn max(&self) -> Option<f64> {
+                self.inner.max_f64()
             }
         }
     };
