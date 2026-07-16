@@ -110,6 +110,13 @@ pub enum IoError {
         /// A guided description of the unsupported value and the fix.
         what: String,
     },
+    /// A deserialized schema or nested-column frame recurses past the maximum nesting depth — a
+    /// hostile or corrupt input engineered to overflow the stack. The decode is refused before it
+    /// can recurse that deep. Flatten the structure, or re-read from a trusted, intact source.
+    NestingTooDeep {
+        /// The maximum nesting depth the decoder allows.
+        max: usize,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -171,6 +178,12 @@ impl fmt::Display for IoError {
                  existing element — `push` to grow the column, or index within [0, {len})"
             ),
             Self::Unsupported { what } => write!(f, "{what}"),
+            Self::NestingTooDeep { max } => write!(
+                f,
+                "nesting too deep: the serialized schema/frame recurses past the maximum of {max} \
+                 levels; the input is corrupt or hostile — flatten the structure or re-read from a \
+                 trusted, intact source"
+            ),
         }
     }
 }

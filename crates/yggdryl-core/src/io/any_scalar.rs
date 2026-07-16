@@ -16,7 +16,7 @@ use super::{AnySerie, DataTypeId, FieldType, NodePath, PathError, PathSegment};
 /// elements* as an erased sub-column (`Box<dyn AnySerie>`) — a list scalar falls back on our
 /// [`Serie`](crate::io::AnySerie), so it needs no dependency on a dedicated list column type. A
 /// hashable value type — usable as a map/set key.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum AnyScalar {
     /// A null cell.
     Null,
@@ -41,10 +41,58 @@ pub enum AnyScalar {
     },
 }
 
-// A manual `Hash` (not a derive): a `Box<dyn AnySerie>` is not `Hash`, so the `List`/`Map` variants
-// hash over the sub-column's canonical bytes instead. This stays in lock-step with `PartialEq` — two
-// erased columns that compare equal (`eq_any`) are byte-canonical and so serialize to equal bytes, so
-// equal values hash equal. The other variants hash exactly as a derive would.
+// A hand-written `PartialEq`/`Eq` (not a derive): a `Leaf` cell's identity is its **value**, so it
+// compares over `(type_id, byte_width, metadata, bytes)` and deliberately **excludes** the field
+// NAME and declared NULLABLE — those are schema intent, not value identity, so two leaf cells of the
+// same value but different names (or nullability) are equal. Metadata IS load-bearing (a decimal /
+// temporal cell stashes precision/scale + unit/tz in the field's metadata — see
+// `DecimalSerie::value` / `TemporalSerie::value`), so it stays in identity. The nested variants
+// compare their child data (recursively name-excluding for a struct row; via `eq_any` for a
+// list/map sub-column).
+impl PartialEq for AnyScalar {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Null, Self::Null) => true,
+            (
+                Self::Leaf {
+                    field: fa,
+                    bytes: ba,
+                },
+                Self::Leaf {
+                    field: fb,
+                    bytes: bb,
+                },
+            ) => {
+                FieldType::type_id(fa) == FieldType::type_id(fb)
+                    && fa.byte_width() == fb.byte_width()
+                    && fa.metadata() == fb.metadata()
+                    && ba == bb
+            }
+            (Self::Struct(a), Self::Struct(b)) => a == b,
+            (Self::List(a), Self::List(b)) => a.eq_any(b.as_ref()),
+            (
+                Self::Map {
+                    entries: ea,
+                    keys_sorted: sa,
+                },
+                Self::Map {
+                    entries: eb,
+                    keys_sorted: sb,
+                },
+            ) => sa == sb && ea.eq_any(eb.as_ref()),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for AnyScalar {}
+
+// A manual `Hash` (not a derive): kept in lock-step with `PartialEq` above. A `Leaf` hashes over the
+// same value identity — `(type_id, byte_width, metadata, bytes)`, excluding name/nullable — so equal
+// leaf cells (same value, different name) hash equal. A `Box<dyn AnySerie>` is not `Hash`, so the
+// `List`/`Map` variants hash over the sub-column's canonical bytes instead: two erased columns that
+// compare equal (`eq_any`) are byte-canonical and so serialize to equal bytes, so equal values hash
+// equal.
 //
 // DESIGN: hashing a list/map cell allocates its sub-column's frame once. A list value is a whole
 // column, not a small scalar, so the "no per-op allocation" rule (which targets flat leaf values)
@@ -55,7 +103,11 @@ impl core::hash::Hash for AnyScalar {
         match self {
             Self::Null => {}
             Self::Leaf { field, bytes } => {
-                field.hash(state);
+                // Mirror `PartialEq`: exclude the name and declared nullability from the hash, keep
+                // the value-bearing (type_id, byte_width, metadata, bytes).
+                FieldType::type_id(field).hash(state);
+                field.byte_width().hash(state);
+                field.metadata().hash(state);
                 bytes.hash(state);
             }
             Self::Struct(values) => values.hash(state),
@@ -278,5 +330,58 @@ mod tests {
         let (entries, keys_sorted) = map.as_map().unwrap();
         assert_eq!(entries.len(), 2);
         assert!(keys_sorted);
+    }
+
+    #[test]
+    fn leaf_identity_excludes_name_and_nullable_but_keeps_metadata() {
+        use std::collections::HashSet;
+
+        // Two leaf cells of the SAME value but different field NAME (and nullability) are equal and
+        // hash equal — the name / declared-nullable are schema intent, excluded from value identity.
+        let x = AnyScalar::leaf(
+            Field::of("x", DataTypeId::I32, 4, false),
+            5i32.to_le_bytes().to_vec(),
+        );
+        let y = AnyScalar::leaf(
+            Field::of("y", DataTypeId::I32, 4, true),
+            5i32.to_le_bytes().to_vec(),
+        );
+        assert_eq!(x, y);
+
+        let hash = |value: &AnyScalar| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            value.hash(&mut hasher);
+            hasher.finish()
+        };
+        assert_eq!(hash(&x), hash(&y));
+
+        // A HashSet of the two equal-value cells keeps exactly ONE.
+        let set: HashSet<AnyScalar> = [x.clone(), y].into_iter().collect();
+        assert_eq!(set.len(), 1);
+
+        // But METADATA is load-bearing (precision / scale live there): a differing scale makes two
+        // otherwise-identical leaf cells differ.
+        let scaled = AnyScalar::leaf(
+            Field::of("x", DataTypeId::I32, 4, false)
+                .with_metadata_entry(DataTypeId::SCALE_METADATA_KEY, "2"),
+            5i32.to_le_bytes().to_vec(),
+        );
+        assert_ne!(x, scaled);
+        let set: HashSet<AnyScalar> = [x, scaled].into_iter().collect();
+        assert_eq!(set.len(), 2);
+
+        // A different VALUE (bytes) still differs.
+        let six = AnyScalar::leaf(
+            Field::of("x", DataTypeId::I32, 4, false),
+            6i32.to_le_bytes().to_vec(),
+        );
+        assert_ne!(
+            AnyScalar::leaf(
+                Field::of("x", DataTypeId::I32, 4, false),
+                5i32.to_le_bytes().to_vec()
+            ),
+            six
+        );
     }
 }

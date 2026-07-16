@@ -58,6 +58,14 @@ pub enum AnyField {
 }
 
 impl AnyField {
+    /// The maximum nesting depth the recursive field / nested-column decoders accept. A serialized
+    /// schema or nested-column frame nested deeper than this is refused with a guided
+    /// [`NestingTooDeep`](IoError::NestingTooDeep) rather than being allowed to overflow the stack —
+    /// so a hostile deeply-nested input cannot abort the process. Shared by
+    /// [`decode`](AnyField::decode) and the nested serie reader
+    /// ([`read_any_column`](crate::io::nested::read_any_column)).
+    pub(crate) const MAX_NESTING: usize = 128;
+
     /// A leaf field wrapping a flat [`Field`](crate::io::fixed::Field).
     pub fn leaf(field: Field) -> Self {
         Self::Leaf(field)
@@ -189,9 +197,26 @@ impl AnyField {
     }
 
     /// The child field named `name` (first match), or `None`. Mirrors
-    /// [`AnySerie::child_serie_by`](crate::io::AnySerie::child_serie_by).
+    /// [`AnySerie::child_serie_by`](crate::io::AnySerie::child_serie_by) — including its **canonical
+    /// name fallbacks**, so field and serie navigation agree: a map resolves `"key"` / `"value"` to
+    /// its `[key, value]` entries even when the entry fields carry other names, and a list resolves
+    /// `"item"` to its element field.
     pub fn child_field_by(&self, name: &str) -> Option<&AnyField> {
-        self.children().iter().find(|field| field.name() == name)
+        match self {
+            Self::Map { entries, .. } => {
+                if name == entries[0].name() || name == "key" {
+                    Some(&entries[0])
+                } else if name == entries[1].name() || name == "value" {
+                    Some(&entries[1])
+                } else {
+                    None
+                }
+            }
+            Self::List { item, .. } => (name == item.name() || name == "item").then_some(&**item),
+            Self::Leaf(_) | Self::Struct { .. } => {
+                self.children().iter().find(|field| field.name() == name)
+            }
+        }
     }
 
     /// Resolves `path` against this field's nested structure, returning the addressed **child field**
@@ -733,8 +758,21 @@ impl AnyField {
         Self::decode(bytes, &mut cursor)
     }
 
-    /// Decodes a field from `bytes` at `*cursor`, advancing it.
+    /// Decodes a field from `bytes` at `*cursor`, advancing it. The recursion is depth-capped at
+    /// [`MAX_NESTING`](AnyField::MAX_NESTING) so a hostile deeply-nested serialized schema returns a
+    /// guided [`NestingTooDeep`](IoError::NestingTooDeep) instead of overflowing the stack.
     pub(crate) fn decode(bytes: &[u8], cursor: &mut usize) -> Result<Self, IoError> {
+        Self::decode_at(bytes, cursor, 0)
+    }
+
+    /// Decodes a field at recursion `depth`, refusing input nested past
+    /// [`MAX_NESTING`](AnyField::MAX_NESTING).
+    fn decode_at(bytes: &[u8], cursor: &mut usize, depth: usize) -> Result<Self, IoError> {
+        if depth > Self::MAX_NESTING {
+            return Err(IoError::NestingTooDeep {
+                max: Self::MAX_NESTING,
+            });
+        }
         match read_byte(bytes, cursor)? {
             0 => {
                 let name = decode_str(bytes, cursor)?;
@@ -763,7 +801,7 @@ impl AnyField {
                 // pre-allocation (the loop then errors on the short read).
                 let mut children = Vec::with_capacity(count.min(bytes.len()));
                 for _ in 0..count {
-                    children.push(Self::decode(bytes, cursor)?);
+                    children.push(Self::decode_at(bytes, cursor, depth + 1)?);
                 }
                 Ok(Self::Struct {
                     name,
@@ -777,7 +815,7 @@ impl AnyField {
                 let nullable = read_byte(bytes, cursor)? != 0;
                 let metadata = Headers::deserialize_bytes(decode_bytes(bytes, cursor)?)
                     .map_err(|_| corrupt("headers"))?;
-                let item = Box::new(Self::decode(bytes, cursor)?);
+                let item = Box::new(Self::decode_at(bytes, cursor, depth + 1)?);
                 Ok(Self::List {
                     name,
                     nullable,
@@ -791,8 +829,8 @@ impl AnyField {
                 let metadata = Headers::deserialize_bytes(decode_bytes(bytes, cursor)?)
                     .map_err(|_| corrupt("headers"))?;
                 let keys_sorted = read_byte(bytes, cursor)? != 0;
-                let key = Self::decode(bytes, cursor)?;
-                let value = Self::decode(bytes, cursor)?;
+                let key = Self::decode_at(bytes, cursor, depth + 1)?;
+                let value = Self::decode_at(bytes, cursor, depth + 1)?;
                 Ok(Self::Map {
                     name,
                     nullable,
@@ -951,6 +989,42 @@ mod tests {
         // Everything but metadata is unchanged.
         assert_eq!(overlaid.name(), "x");
         assert_eq!(overlaid.type_id(), DataTypeId::I32);
+    }
+
+    #[test]
+    fn deeply_nested_field_decodes_to_a_guided_error_not_a_crash() {
+        // Hand-build a 10_000-deep `list<list<...<i32>>>` schema frame WITHOUT recursion, so the
+        // test itself never deep-recurses. Before the depth cap this overflowed the stack and
+        // aborted the process; now it must return a guided `NestingTooDeep`.
+        let empty_meta = Headers::new().serialize_bytes();
+        let mut bytes = Vec::new();
+        for _ in 0..10_000 {
+            bytes.push(2u8); // list tag
+            encode_str("", &mut bytes); // name ""
+            bytes.push(0u8); // nullable = false
+            encode_bytes(&empty_meta, &mut bytes); // empty metadata
+        }
+        // The innermost item is an i32 leaf.
+        bytes.push(0u8); // leaf tag
+        encode_str("", &mut bytes);
+        bytes.extend_from_slice(&DataTypeId::I32.as_u16().to_le_bytes());
+        bytes.extend_from_slice(&4u64.to_le_bytes()); // byte width
+        bytes.push(0u8); // nullable = false
+        encode_bytes(&empty_meta, &mut bytes);
+
+        let err = AnyField::deserialize_bytes(&bytes).unwrap_err();
+        assert!(
+            matches!(err, IoError::NestingTooDeep { max } if max == AnyField::MAX_NESTING),
+            "got {err:?}"
+        );
+        assert!(err.to_string().contains("nesting too deep"));
+
+        // A shallow schema (well under the cap) still round-trips fine.
+        let shallow = AnyField::list_("xs", leaf("item", DataTypeId::I32, 4, true), true);
+        assert_eq!(
+            AnyField::deserialize_bytes(&shallow.serialize_bytes()).unwrap(),
+            shallow
+        );
     }
 
     #[cfg(feature = "arrow")]

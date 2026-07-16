@@ -151,10 +151,14 @@ impl ListSerie {
     }
 
     /// The flattened child column **mutably** — the in-place counterpart of
-    /// [`values`](ListSerie::values), backing
-    /// [`AnySerie::child_serie_at_mut`](crate::io::AnySerie::child_serie_at_mut). Editing the child in
-    /// place must preserve its length (the offsets index into it) and type.
-    pub fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+    /// [`values`](ListSerie::values). Editing the child in place must preserve its length (the offsets
+    /// index into it) and type.
+    ///
+    /// DESIGN: `pub(crate)`, not public — a raw `&mut` child would let safe code grow the flat child
+    /// and desync `offsets[last] == child len`. Public mutation goes through the length-preserving
+    /// `append_row` / `append_null` / `concat`; this stays for the crate's own internal routing.
+    #[allow(dead_code)]
+    pub(crate) fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
         self.values.as_mut()
     }
 
@@ -358,7 +362,7 @@ impl ListSerie {
 
     /// Reconstructs a list column from [`serialize_bytes`](ListSerie::serialize_bytes) bytes.
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
-        Self::read_frame(&mut Bytes::from_slice(bytes))
+        Self::read_frame(&mut Bytes::from_slice(bytes), 0)
     }
 
     /// Writes the self-contained frame to a byte sink (shared by `serialize_bytes` and the
@@ -397,10 +401,11 @@ impl ListSerie {
         Ok(())
     }
 
-    /// Reads a frame written by [`write_frame`](ListSerie::write_frame). Crate-visible so the shared
-    /// recursive [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a list
-    /// child.
-    pub(crate) fn read_frame(source: &mut Bytes) -> Result<Self, IoError> {
+    /// Reads a frame written by [`write_frame`](ListSerie::write_frame) at recursion `depth`.
+    /// Crate-visible so the shared recursive
+    /// [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a list child;
+    /// `depth` bounds that recursion so a hostile chained frame cannot overflow the stack.
+    pub(crate) fn read_frame(source: &mut Bytes, depth: usize) -> Result<Self, IoError> {
         let schema_len = read_u64(source)? as usize;
         let schema_bytes = source.read_exact_vec(schema_len)?;
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
@@ -429,8 +434,8 @@ impl ListSerie {
             .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
         // The child column is self-describing; read it through the shared recursive dispatch so a
-        // leaf, struct, or nested list child all round-trip.
-        let mut values = crate::io::nested::read_any_column(&item, source)?;
+        // leaf, struct, or nested list child all round-trip. `depth + 1` bounds the recursion.
+        let mut values = crate::io::nested::read_any_column_at(&item, source, depth + 1)?;
         validate_offsets(&offsets, values.len())?;
         // Restore the child's header from the item field so the derived item field round-trips.
         apply_field_header(&mut values, &item);
@@ -496,17 +501,10 @@ impl AnySerie for ListSerie {
     }
 
     fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
-        // A list's single child is its item column, named by the flat child's own header (canonically
-        // "item").
-        (name == self.values().name()).then(|| self.values())
-    }
-
-    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
-        if index == 0 {
-            Some(self.values_mut())
-        } else {
-            None
-        }
+        // A list's single child is its item column, addressed by the flat child's own header name,
+        // falling back to the canonical `"item"` — so serie navigation agrees with the field side
+        // (`AnyField::List`'s `child_field_by`).
+        (name == self.values().name() || name == "item").then(|| self.values())
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

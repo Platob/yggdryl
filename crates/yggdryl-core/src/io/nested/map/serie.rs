@@ -196,7 +196,13 @@ impl MapSerie {
 
     /// The flattened key column **mutably** (entries column 0) — the in-place counterpart of
     /// [`keys`](MapSerie::keys). Editing in place must preserve its length and keep keys non-null.
-    pub fn keys_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+    ///
+    /// DESIGN: `pub(crate)`, not public — a raw `&mut` key child would let safe code grow the key
+    /// column (desyncing the entries) or flip it nullable (a map key is never null). Public mutation
+    /// goes through the length-preserving `append_row` / `append_null` / `concat`; this stays for the
+    /// crate's own internal routing.
+    #[allow(dead_code)]
+    pub(crate) fn keys_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
         self.entries
             .column_at_mut(0)
             .expect("a map's entries always has a key column")
@@ -204,7 +210,11 @@ impl MapSerie {
 
     /// The flattened value column **mutably** (entries column 1) — the in-place counterpart of
     /// [`values`](MapSerie::values). Editing in place must preserve its length and type.
-    pub fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+    ///
+    /// DESIGN: `pub(crate)`, not public (see [`keys_mut`](MapSerie::keys_mut)) — kept for the crate's
+    /// own internal routing.
+    #[allow(dead_code)]
+    pub(crate) fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
         self.entries
             .column_at_mut(1)
             .expect("a map's entries always has a value column")
@@ -480,7 +490,7 @@ impl MapSerie {
 
     /// Reconstructs a map column from [`serialize_bytes`](MapSerie::serialize_bytes) bytes.
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
-        Self::read_frame(&mut Bytes::from_slice(bytes))
+        Self::read_frame(&mut Bytes::from_slice(bytes), 0)
     }
 
     /// Writes the self-contained frame to a byte sink (shared by `serialize_bytes` and the
@@ -529,9 +539,11 @@ impl MapSerie {
         Ok(())
     }
 
-    /// Reads a frame written by [`write_frame`](MapSerie::write_frame). Crate-visible so the shared
-    /// recursive [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a map child.
-    pub(crate) fn read_frame(source: &mut Bytes) -> Result<Self, IoError> {
+    /// Reads a frame written by [`write_frame`](MapSerie::write_frame) at recursion `depth`.
+    /// Crate-visible so the shared recursive
+    /// [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a map child;
+    /// `depth` bounds that recursion so a hostile chained frame cannot overflow the stack.
+    pub(crate) fn read_frame(source: &mut Bytes, depth: usize) -> Result<Self, IoError> {
         let schema_len = read_u64(source)? as usize;
         let schema_bytes = source.read_exact_vec(schema_len)?;
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
@@ -561,8 +573,8 @@ impl MapSerie {
             .collect();
         // The entries are always a two-column struct column; read them through the struct frame reader
         // (which recurses each key/value child through the central `read_any_column` dispatch, so a
-        // map-of-list / map-of-struct / map-of-map all round-trip).
-        let entries = StructSerie::read_frame(source)?;
+        // map-of-list / map-of-struct / map-of-map all round-trip). `depth + 1` bounds the recursion.
+        let entries = StructSerie::read_frame(source, depth + 1)?;
         if entries.num_columns() != 2 {
             return Err(IoError::Unsupported {
                 what: format!(
@@ -655,14 +667,6 @@ impl AnySerie for MapSerie {
             return Some(values);
         }
         None
-    }
-
-    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
-        match index {
-            0 => Some(self.keys_mut()),
-            1 => Some(self.values_mut()),
-            _ => None,
-        }
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

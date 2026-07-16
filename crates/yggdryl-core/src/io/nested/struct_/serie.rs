@@ -12,7 +12,7 @@ use crate::io::any_serie::{append_type_mismatch, apply_field_header, concat_type
 use crate::io::bitmap::{extend_validity, Bitmap};
 use crate::io::field_carrier::{any_serie_field_forwarding, field_accessors};
 use crate::io::fixed::Field;
-use crate::io::nested::{empty_any_column, read_any_column};
+use crate::io::nested::{empty_any_column, read_any_column_at};
 use crate::io::{
     AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, SerieType,
 };
@@ -256,10 +256,15 @@ impl StructSerie {
     }
 
     /// The child column at `index` **mutably** (as an erased [`AnySerie`](crate::io::AnySerie)), or
-    /// `None` if out of range — the in-place counterpart of [`column`](StructSerie::column), backing
-    /// [`AnySerie::child_serie_at_mut`](crate::io::AnySerie::child_serie_at_mut). Editing a child in
-    /// place must preserve its length (the struct's rows) and type.
-    pub fn column_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+    /// `None` if out of range — the in-place counterpart of [`column`](StructSerie::column). Editing a
+    /// child in place must preserve its length (the struct's rows) and type.
+    ///
+    /// DESIGN: `pub(crate)`, not public — it hands out a raw `&mut` child, which safe code could use
+    /// to grow one column and desync the struct's equal-length invariant. Public mutation goes
+    /// through the length-preserving `append_row` / `append_null` / `concat`; this stays for the
+    /// crate's own internal routing (e.g. a map's `keys_mut` / `values_mut`).
+    #[allow(dead_code)]
+    pub(crate) fn column_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
         self.columns.get_mut(index).map(|column| column.as_mut())
     }
 
@@ -484,7 +489,7 @@ impl StructSerie {
 
     /// Reconstructs a struct column from [`serialize_bytes`](StructSerie::serialize_bytes) bytes.
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
-        Self::read_frame(&mut Bytes::from_slice(bytes))
+        Self::read_frame(&mut Bytes::from_slice(bytes), 0)
     }
 
     /// Writes the self-contained frame to a byte sink (shared by `serialize_bytes` and the
@@ -506,10 +511,11 @@ impl StructSerie {
         Ok(())
     }
 
-    /// Reads a frame written by [`write_frame`](StructSerie::write_frame). Crate-visible so the
-    /// shared recursive [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a
-    /// struct child.
-    pub(crate) fn read_frame(source: &mut Bytes) -> Result<Self, IoError> {
+    /// Reads a frame written by [`write_frame`](StructSerie::write_frame) at recursion `depth`.
+    /// Crate-visible so the shared recursive
+    /// [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a struct child;
+    /// `depth` bounds that recursion so a hostile chained frame cannot overflow the stack.
+    pub(crate) fn read_frame(source: &mut Bytes, depth: usize) -> Result<Self, IoError> {
         let schema_len = read_u64(source)? as usize;
         let schema_bytes = source.read_exact_vec(schema_len)?;
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
@@ -525,7 +531,7 @@ impl StructSerie {
         let validity = read_validity(source, len)?;
         let mut columns = Vec::with_capacity(fields.len());
         for field in &fields {
-            let mut column = read_any_column(field, source)?;
+            let mut column = read_any_column_at(field, source, depth + 1)?;
             if column.len() != len {
                 return Err(mismatch(field.name(), column.len(), len));
             }
@@ -596,10 +602,6 @@ impl AnySerie for StructSerie {
 
     fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
         self.column_named(name)
-    }
-
-    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
-        self.column_at_mut(index)
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

@@ -43,19 +43,19 @@ fn clamp_range(column_len: usize, offset: usize, len: usize) -> (usize, usize) {
     (start, count)
 }
 
-/// If `probe` is a **bare leaf** value of exactly `(type_id, byte_width)` — the shape an erased leaf
-/// column's [`value`](AnySerie::value) builds: an empty-named, non-nullable, metadata-free
-/// [`Field`] — returns its canonical bytes, so a caller can compare them to a cell's own bytes with
-/// no allocation; `None` otherwise. Behind the leaf [`cell_eq`](AnySerie::cell_eq) overrides, so a
-/// hot per-cell scan never materializes an owned cell scalar. It mirrors `value`'s field exactly
-/// (name `""`, non-null, empty metadata), so `cell_eq` stays cell-for-cell identical to the default.
+/// If `probe` is a **leaf** value matching `(type_id, byte_width)` with empty metadata, returns its
+/// canonical bytes, so a caller can compare them to a cell's own bytes with no allocation; `None`
+/// otherwise. Behind the leaf [`cell_eq`](AnySerie::cell_eq) overrides, so a hot per-cell scan never
+/// materializes an owned cell scalar. It matches the value-identity a leaf column's
+/// [`value`](AnySerie::value) builds — `(type_id, byte_width, metadata, bytes)`, **excluding** the
+/// name and declared nullability, exactly as [`AnyScalar`]'s `PartialEq` does — so `cell_eq` stays
+/// cell-for-cell identical to the default `self.value(index) == *probe` (a `value` cell carries no
+/// metadata, so a metadata-bearing probe never matches, matching the default).
 fn bare_leaf_bytes(probe: &AnyScalar, type_id: DataTypeId, byte_width: usize) -> Option<&[u8]> {
     match probe {
         AnyScalar::Leaf { field, bytes }
             if FieldType::type_id(field) == type_id
                 && field.byte_width() == byte_width
-                && !field.nullable()
-                && field.name().is_empty()
                 && field.metadata().is_empty() =>
         {
             Some(bytes.as_slice())
@@ -247,16 +247,14 @@ pub trait AnySerie: Debug + Send + Sync {
         None
     }
 
-    /// The child column at `index` **mutably**, or `None` if out of range (a leaf has no children) —
-    /// the in-place counterpart of [`child_serie_at`](AnySerie::child_serie_at).
-    ///
-    /// DESIGN: this hands out a raw `&mut` to a child; it does **not** revalidate the parent's
-    /// invariants, so a caller must preserve the child's length and type (e.g. renaming or editing
-    /// values in place is fine; changing the row count of a struct/list child is not).
-    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
-        let _ = index;
-        None
-    }
+    // DESIGN: there is intentionally **no** public `child_serie_at_mut`. Handing out a raw
+    // `&mut dyn AnySerie` child let safe code call `append_scalar` / `concat` on **one** child of a
+    // struct / list / map, silently desyncing the parent's length invariant (struct: all columns
+    // equal len; list/map: `offsets[last] == child len`) or flipping a map key column to nullable —
+    // corruption caught only on serialize / Arrow-export, if at all. Public mutation therefore stays
+    // length-preserving: grow through the parent's `append_row` / `append_null` / `concat` (which
+    // grow every child together), and set cells through `set` / `set_scalar`. The crate's own
+    // internal routing uses the `pub(crate)` inherent accessors (`StructSerie::column_at_mut`, …).
 }
 
 /// Restores a child column's stored header (name / declared nullability / metadata) from the field

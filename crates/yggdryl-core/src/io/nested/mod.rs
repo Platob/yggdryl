@@ -26,12 +26,30 @@ use crate::io::{read_any_leaf, AnyField, AnySerie, Bytes, FieldType, IoError};
 /// [`StructSerie`](crate::io::nested::StructSerie)'s frame reader; a list to
 /// [`ListSerie`](crate::io::nested::ListSerie)'s; a map to [`MapSerie`](crate::io::nested::MapSerie)'s.
 pub fn read_any_column(field: &AnyField, source: &mut Bytes) -> Result<Box<dyn AnySerie>, IoError> {
+    read_any_column_at(field, source, 0)
+}
+
+/// Reads one erased column at recursion `depth`, refusing a frame nested past
+/// [`AnyField::MAX_NESTING`](crate::io::AnyField) with a guided
+/// [`NestingTooDeep`](IoError::NestingTooDeep). This is the single point every nested child read
+/// funnels through, so a hostile frame whose per-level schemas each stay shallow (evading the schema
+/// decoder's own cap) but whose **data** chains arbitrarily deep still cannot overflow the stack.
+pub(crate) fn read_any_column_at(
+    field: &AnyField,
+    source: &mut Bytes,
+    depth: usize,
+) -> Result<Box<dyn AnySerie>, IoError> {
+    if depth > AnyField::MAX_NESTING {
+        return Err(IoError::NestingTooDeep {
+            max: AnyField::MAX_NESTING,
+        });
+    }
     if field.is_struct() {
-        Ok(Box::new(struct_::StructSerie::read_frame(source)?))
+        Ok(Box::new(struct_::StructSerie::read_frame(source, depth)?))
     } else if field.is_list() {
-        Ok(Box::new(list::ListSerie::read_frame(source)?))
+        Ok(Box::new(list::ListSerie::read_frame(source, depth)?))
     } else if field.is_map() {
-        Ok(Box::new(map::MapSerie::read_frame(source)?))
+        Ok(Box::new(map::MapSerie::read_frame(source, depth)?))
     } else {
         read_any_leaf(field, source)
     }
@@ -115,5 +133,50 @@ pub fn from_arrow_any_column(
             Ok(Box::new(map::MapSerie::from_arrow_array(array, field)?))
         }
         _ => crate::io::from_arrow_any_leaf(array, field),
+    }
+}
+
+#[cfg(test)]
+mod nesting_guard_tests {
+    use crate::io::nested::StructSerie;
+    use crate::io::{AnyField, Headers, IoError};
+
+    /// A single struct frame: a struct with one **struct** child `"c"` and zero rows, whose child
+    /// *data* is the next frame in the chain. Every frame's schema stays shallow (a struct wrapping
+    /// an empty struct field), so the schema decoder's own depth cap never fires — only the serie
+    /// `read_any_column` recursion guard does, which is exactly what this exercises.
+    fn one_chained_struct_frame() -> Vec<u8> {
+        let child = AnyField::struct_("c", Vec::new(), false);
+        let mut schema = Vec::new();
+        AnyField::encode_struct(
+            "",
+            false,
+            &Headers::new(),
+            std::slice::from_ref(&child),
+            &mut schema,
+        );
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&(schema.len() as u64).to_le_bytes());
+        frame.extend_from_slice(&schema);
+        frame.extend_from_slice(&0u64.to_le_bytes()); // len = 0 rows
+        frame.push(0u8); // validity flag = none
+        frame
+    }
+
+    #[test]
+    fn deeply_chained_struct_frame_reads_to_a_guided_error_not_a_crash() {
+        // Chain many more frames than the depth cap; the reader recurses one frame per nesting level
+        // (each schema shallow) and the `read_any_column` depth guard fires before the chain — or
+        // the stack — is exhausted. Before the fix this overflowed the stack and aborted.
+        let frame = one_chained_struct_frame();
+        let mut bytes = Vec::with_capacity(frame.len() * (AnyField::MAX_NESTING + 50));
+        for _ in 0..(AnyField::MAX_NESTING + 50) {
+            bytes.extend_from_slice(&frame);
+        }
+        let err = StructSerie::deserialize_bytes(&bytes).unwrap_err();
+        assert!(
+            matches!(err, IoError::NestingTooDeep { max } if max == AnyField::MAX_NESTING),
+            "got {err:?}"
+        );
     }
 }
