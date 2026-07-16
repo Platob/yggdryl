@@ -50,7 +50,7 @@ nav:
       - Schema (DataType, Field): types/schema.md
       - Fixed-width: types/fixed.md
       - Variable-length: types/var.md
-      - Nested (struct): types/nested.md
+      - Nested (struct, list, map): types/nested.md
       - Decimals: types/decimal.md
       - Temporal: types/temporal.md
   - Arrow interop:
