@@ -352,7 +352,11 @@ impl<E: VarElement> ByteSerie<E> {
             None
         };
 
-        // `len + 1` offsets, guarding the count (and its byte length) against corruption.
+        // `len + 1` offsets, guarding the count (and its byte length) against corruption. Read the
+        // raw offset bytes through the bounded `read_exact_vec` (a 64 KiB working buffer that grows
+        // only as bytes actually arrive) rather than pre-allocating `len + 1` i32s straight from the
+        // untrusted `len`: a merely-huge `len` (e.g. `1 << 40`) fits `usize` yet would otherwise
+        // request terabytes up front and abort the process before the (short) source is even read.
         let offset_count = len
             .checked_add(1)
             .filter(|n| n.checked_mul(OFFSET_WIDTH).is_some())
@@ -360,12 +364,11 @@ impl<E: VarElement> ByteSerie<E> {
                 len: len as u64,
                 width: OFFSET_WIDTH,
             })?;
-        let mut offsets = Vec::with_capacity(offset_count);
-        for _ in 0..offset_count {
-            let mut bytes = [0u8; OFFSET_WIDTH];
-            source.read_exact(&mut bytes)?;
-            offsets.push(i32::from_le_bytes(bytes));
-        }
+        let offset_bytes = source.read_exact_vec(offset_count * OFFSET_WIDTH)?;
+        let offsets: Vec<i32> = offset_bytes
+            .chunks_exact(OFFSET_WIDTH)
+            .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
 
         let data_len = read_u64(source)? as usize;
         let data = source.read_exact_vec(data_len)?;

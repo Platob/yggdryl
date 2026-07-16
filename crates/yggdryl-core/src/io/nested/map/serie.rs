@@ -128,7 +128,10 @@ impl MapSerie {
     pub fn empty(schema: &MapField) -> Self {
         let entries = StructSerie::empty(&StructField::new(
             "entries",
-            vec![schema.key().clone(), schema.value().clone()],
+            // A map key is never null (Arrow's Map invariant) — force the key field non-nullable
+            // even if the schema's key field is nullable, so the stored entries key field matches
+            // both Arrow export paths (the field descriptor and the array data type).
+            vec![schema.key().with_nullable(false), schema.value().clone()],
             false,
         ));
         Self {
@@ -691,7 +694,14 @@ impl MapSerie {
         let last = raw_offsets[len];
         // Window the full entries to exactly the used range, then import it recursively as a struct.
         let entries_window = map.entries().slice(first as usize, (last - first) as usize);
-        let entries = StructSerie::from_arrow_array(&entries_window, entries_field.as_ref())?;
+        // A map key is never null (Arrow's Map invariant); a foreign entries struct may declare the
+        // key field nullable, so force it non-null on import — otherwise the two Arrow export paths
+        // (the field descriptor forces it, the array data type would not) disagree and nesting the
+        // map in a list/struct panics in arrow-rs.
+        let entries = force_non_null_key(StructSerie::from_arrow_array(
+            &entries_window,
+            entries_field.as_ref(),
+        )?);
         let offsets: Vec<i32> = raw_offsets.iter().map(|&offset| offset - first).collect();
         let validity = map_validity_from_arrow(map);
         Ok(Self {
@@ -701,6 +711,32 @@ impl MapSerie {
             len,
             keys_sorted: *keys_sorted,
         })
+    }
+}
+
+/// Enforces the "a map key is never null" invariant on a freshly imported `entries` struct: if its
+/// key field (column 0) is nullable, rebuild the struct with a non-null key field so the field
+/// descriptor and the array data type agree on export. A no-op (no copy) when the key is already
+/// non-null, which every yggdryl-built entries struct is; the clone only happens for a foreign array
+/// that declared a nullable key.
+#[cfg(feature = "arrow")]
+fn force_non_null_key(entries: StructSerie) -> StructSerie {
+    match entries.field(0) {
+        Some(key) if key.nullable() => {
+            let mut fields = entries.fields().to_vec();
+            fields[0] = key.with_nullable(false);
+            let columns = (0..entries.num_columns())
+                .map(|index| {
+                    entries
+                        .column(index)
+                        .expect("index < num_columns")
+                        .clone_box()
+                })
+                .collect();
+            StructSerie::from_columns(fields, columns, None)
+                .expect("rebuilding entries with a non-null key preserves the column lengths")
+        }
+        _ => entries,
     }
 }
 

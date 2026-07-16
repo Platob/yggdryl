@@ -118,7 +118,9 @@ impl AnyField {
             nullable,
             metadata: Headers::new(),
             keys_sorted,
-            entries: Box::new([key, value]),
+            // A map key is never null (Arrow's Map invariant); force the key field non-nullable so
+            // the stored schema and every downstream Arrow array agree (see `with_nullable`).
+            entries: Box::new([key.with_nullable(false), value]),
         }
     }
 
@@ -242,6 +244,60 @@ impl AnyField {
             } => Self::Map {
                 name: name.to_string(),
                 nullable: *nullable,
+                metadata: metadata.clone(),
+                keys_sorted: *keys_sorted,
+                entries: entries.clone(),
+            },
+        }
+    }
+
+    /// A fresh field with its top-level nullability set to `nullable` — the one-line builder that
+    /// mirrors [`with_name`](AnyField::with_name). A leaf's flat
+    /// [`Field`](crate::io::fixed::Field) is rebuilt from its type/width/metadata; a nested field
+    /// keeps its children. Crate-internal: it is the single place the "a map key is never null"
+    /// invariant is enforced (see [`map_`](AnyField::map_) and the map serie).
+    pub(crate) fn with_nullable(&self, nullable: bool) -> Self {
+        match self {
+            Self::Leaf(field) => Self::Leaf(
+                Field::of(
+                    field.name(),
+                    FieldType::type_id(field),
+                    field.byte_width(),
+                    nullable,
+                )
+                .with_metadata(field.metadata().clone()),
+            ),
+            Self::Struct {
+                name,
+                metadata,
+                children,
+                ..
+            } => Self::Struct {
+                name: name.clone(),
+                nullable,
+                metadata: metadata.clone(),
+                children: children.clone(),
+            },
+            Self::List {
+                name,
+                metadata,
+                item,
+                ..
+            } => Self::List {
+                name: name.clone(),
+                nullable,
+                metadata: metadata.clone(),
+                item: item.clone(),
+            },
+            Self::Map {
+                name,
+                metadata,
+                keys_sorted,
+                entries,
+                ..
+            } => Self::Map {
+                name: name.clone(),
+                nullable,
                 metadata: metadata.clone(),
                 keys_sorted: *keys_sorted,
                 entries: entries.clone(),
@@ -436,8 +492,10 @@ impl AnyField {
                     nullable: field.is_nullable(),
                     metadata: Headers::from_arrow_metadata(field.metadata()),
                     keys_sorted: *keys_sorted,
+                    // A map key is never null (Arrow's Map invariant) — force it so a foreign schema
+                    // declaring a nullable key does not violate the invariant on import.
                     entries: Box::new([
-                        AnyField::from_arrow(&entry_fields[0])?,
+                        AnyField::from_arrow(&entry_fields[0])?.with_nullable(false),
                         AnyField::from_arrow(&entry_fields[1])?,
                     ]),
                 })

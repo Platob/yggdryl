@@ -17,7 +17,7 @@ use super::Field;
 use crate::io::bitmap::Bitmap;
 use crate::io::var::{VarScalar, VarSerie};
 use crate::io::{
-    DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
+    Bytes, DataType, DataTypeId, FieldType, Headers, IOCursor, IoError, ScalarType, SerieType,
 };
 
 /// The kind of a fixed-size byte value — opaque binary or UTF-8 — the way
@@ -571,6 +571,30 @@ impl<K: FixedElement> FixedSizeSerie<K> {
             _kind: PhantomData,
         })
     }
+
+    /// This column's canonical bytes — the same `[len][width][flags][validity?][data]` frame
+    /// [`write_to`](FixedSizeSerie::write_to) produces, returned as an owned `Vec`. The exact
+    /// inverse of [`deserialize_bytes`](FixedSizeSerie::deserialize_bytes).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::FixedBinarySerie;
+    ///
+    /// let col = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None, Some(&b"cd"[..])]).unwrap();
+    /// assert_eq!(FixedBinarySerie::deserialize_bytes(&col.serialize_bytes()).unwrap(), col);
+    /// ```
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        let mut sink = Bytes::new();
+        self.write_to(&mut sink)
+            .expect("writing to an in-memory buffer is infallible");
+        sink.as_slice().to_vec()
+    }
+
+    /// Reconstructs a column from the bytes produced by
+    /// [`serialize_bytes`](FixedSizeSerie::serialize_bytes), validating each slot for the kind and
+    /// erroring on a truncated or corrupt frame.
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
+        Self::read_from(&mut Bytes::from_slice(bytes))
+    }
 }
 
 /// Arrow array interop (feature `arrow`): a fixed-size byte column ↔
@@ -653,7 +677,38 @@ macro_rules! fixed_size_value_impls {
 
 fixed_size_value_impls!(FixedSizeField, name, width, nullable, metadata);
 fixed_size_value_impls!(FixedSizeScalar, width, value);
-fixed_size_value_impls!(FixedSizeSerie, width, data, validity, len);
+
+// A manual `Clone` for the column (the macro would work, but its `PartialEq` must be hand-written —
+// see below — so `Clone` lives here beside it).
+impl<K: FixedElement> Clone for FixedSizeSerie<K> {
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            data: self.data.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            _kind: PhantomData,
+        }
+    }
+}
+
+// Structural identity: same `(width, len)` and — at every index — the same present-or-null value.
+// Because [`get_bytes`](FixedSizeSerie::get_bytes) returns `None` for a null slot (never the zero
+// placeholder bytes), this covers null *positions* directly, so it is independent of whether the
+// validity mask is materialized (an absent mask and a `Some(all-present)` one, left behind after a
+// `set` clears the last null, denote the same value) and the placeholder bytes under a null never
+// affect equality — keeping identity in lock-step with the byte codec, whose
+// [`write_to`](FixedSizeSerie::write_to) zeroes null slots. Mirrors `DecimalSerie` / `TemporalSerie`
+// / `Serie` (a raw `data`/`validity` compare, as a derive would do, wrongly makes a `set`-cleared
+// all-present column differ from the equivalent dense one).
+impl<K: FixedElement> PartialEq for FixedSizeSerie<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.width == other.width
+            && self.len == other.len
+            && (0..self.len).all(|index| self.get_bytes(index) == other.get_bytes(index))
+    }
+}
+impl<K: FixedElement> Eq for FixedSizeSerie<K> {}
 
 impl<K: FixedElement> Copy for FixedSizeType<K> {}
 impl<K: FixedElement> Clone for FixedSizeType<K> {
@@ -719,6 +774,28 @@ impl<K: FixedElement> core::fmt::Debug for FixedSizeSerie<K> {
 #[cfg(test)]
 mod tests {
     use crate::io::fixed::{FixedBinaryScalar, FixedBinarySerie};
+
+    #[test]
+    fn equality_ignores_a_materialized_all_present_mask() {
+        // Clearing the last null with `set` leaves a materialized all-present validity mask; the
+        // column must still equal (and round-trip byte-equal to) the same values with no mask — the
+        // identity is over present-or-null values, not the raw validity mask / placeholder bytes.
+        let mut cleared = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
+        cleared.set(1, Some(&b"cd"[..])).unwrap();
+        assert_eq!(cleared.null_count(), 0);
+
+        let dense =
+            FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), Some(&b"cd"[..])]).unwrap();
+        assert_eq!(cleared, dense);
+        assert_eq!(
+            FixedBinarySerie::deserialize_bytes(&cleared.serialize_bytes()).unwrap(),
+            cleared
+        );
+
+        // A genuine null still makes the columns differ (a null slot never reads placeholder bytes).
+        let with_null = FixedBinarySerie::from_values(2, &[Some(&b"ab"[..]), None]).unwrap();
+        assert_ne!(with_null, dense);
+    }
 
     #[test]
     fn from_scalars_round_trips_a_column_through_its_own_scalars() {

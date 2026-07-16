@@ -97,6 +97,24 @@ fn hostile_column_length_errors_instead_of_allocating() {
 }
 
 #[test]
+fn hostile_var_column_length_errors_instead_of_allocating() {
+    // A variable-length (utf8) leaf frame declaring a giant length must error on the *bounded* read,
+    // not pre-allocate `len + 1` i32 offsets (~terabytes) straight from the untrusted length and
+    // abort the process. `validity = 0` so the reader skips the (already bounded) validity read and
+    // reaches the offsets buffer — the reachable-through-any-nested-frame path.
+    use yggdryl_core::io::IoError;
+    let field = AnyField::leaf(Field::of("s", DataTypeId::Utf8, 4, true));
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&(1u64 << 40).to_le_bytes()); // huge len
+    bytes.push(0); // no validity -> the offsets buffer is reached next
+    let err = read_any_leaf(&field, &mut Bytes::from_slice(&bytes)).unwrap_err();
+    assert!(matches!(
+        err,
+        IoError::UnexpectedEof { .. } | IoError::CorruptLength { .. }
+    ));
+}
+
+#[test]
 fn null_struct_rows_are_equal_regardless_of_phantom_values() {
     let col = boxed(Serie::from_values(&[1i64, 2]));
     let table =

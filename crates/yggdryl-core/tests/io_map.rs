@@ -489,4 +489,60 @@ mod arrow {
         // The imported key field is non-nullable.
         assert!(!back.key_field().nullable());
     }
+
+    #[test]
+    fn nullable_key_map_import_is_forced_non_null_and_nests_without_panic() {
+        // A foreign MapArray whose entries KEY field is declared nullable=true (violating Arrow's
+        // "a map key is never null" invariant). Import must force the key field non-null, and then
+        // nesting the map as a list element and exporting must NOT panic (the field descriptor and
+        // the map array's key nullability now agree — the invariant is restored on import).
+        use std::sync::Arc;
+        let keys = arrow_array::StringArray::from(vec!["a", "b", "c"]);
+        let values = arrow_array::Int64Array::from(vec![1i64, 2, 3]);
+        let key_field = Arc::new(arrow_schema::Field::new(
+            "key",
+            arrow_schema::DataType::Utf8,
+            true, // hostile: a nullable key
+        ));
+        let value_field = Arc::new(arrow_schema::Field::new(
+            "value",
+            arrow_schema::DataType::Int64,
+            true,
+        ));
+        let entries = arrow_array::StructArray::from(vec![
+            (key_field, Arc::new(keys) as arrow_array::ArrayRef),
+            (value_field, Arc::new(values) as arrow_array::ArrayRef),
+        ]);
+        let entries_field = Arc::new(arrow_schema::Field::new(
+            "entries",
+            entries.data_type().clone(),
+            false,
+        ));
+        let offsets =
+            arrow_buffer::OffsetBuffer::new(arrow_buffer::ScalarBuffer::from(vec![0i32, 2, 3]));
+        let array = arrow_array::MapArray::new(entries_field, offsets, entries, None, false);
+        let field = arrow_schema::Field::new("m", array.data_type().clone(), false);
+
+        let map = MapSerie::from_arrow_array(&array, &field).unwrap();
+        // The invariant is enforced on import.
+        assert!(!map.key_field().nullable());
+
+        // Nest the map as a single list row and export — must not panic.
+        let rows = map.len() as i32;
+        let list = ListSerie::from_values(map.named("m"), &[0, rows], None).unwrap();
+        let list_array = list.to_arrow_array().unwrap();
+        assert_eq!(list_array.len(), 1);
+    }
+
+    #[test]
+    fn empty_map_with_nullable_key_schema_nests_without_panic() {
+        // A MapField whose key field is declared nullable=true; the invariant is enforced so the
+        // empty map's stored key field is non-null, and nesting it in a list exports without panic.
+        let schema = MapField::new("m", utf8_key(true), i64_value(true), false, false);
+        let empty = MapSerie::empty(&schema);
+        assert!(!empty.key_field().nullable());
+        let list = ListSerie::from_values(empty.named("m"), &[0], None).unwrap();
+        let list_array = list.to_arrow_array().unwrap();
+        assert_eq!(list_array.len(), 0);
+    }
 }
