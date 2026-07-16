@@ -61,6 +61,34 @@ fn float_and_int_crossovers() {
 }
 
 #[test]
+fn inexact_float_to_int_gate_rejects_the_boundary_power_of_two() {
+    // REGRESSION: `<int>::MAX as f64` rounds UP for the wide types (`i64::MAX` -> 2^63,
+    // `u64::MAX` -> 2^64, `i128::MAX` -> 2^127), so the old `t <= MAX as f64` gate let those exact
+    // powers through and then `t as int` SATURATED to MAX with no error. Each must now be rejected.
+    assert!(matches!(
+        Scalar::of(2f64.powi(63)).cast::<i64>(),
+        Err(CastError::OutOfRange { .. })
+    ));
+    assert!(Serie::from_values(&[2f64.powi(63)]).cast::<i64>().is_err());
+    assert!(Scalar::of(2f64.powi(64)).cast::<u64>().is_err()); // 2^64 into u64
+    assert!(Scalar::of(2f64.powi(127)).cast::<i128>().is_err()); // 2^127 into i128
+
+    // In-range values still cast exactly (the correct behavior is unchanged).
+    let just_under = 2f64.powi(62); // well inside i64
+    assert_eq!(
+        Serie::from_values(&[just_under])
+            .cast::<i64>()
+            .unwrap()
+            .to_options(),
+        [Some(just_under as i64)]
+    );
+    assert_eq!(
+        Scalar::of(9.0e18f64).cast::<i64>().unwrap(), // < 2^63, fits
+        Scalar::of(9_000_000_000_000_000_000i64)
+    );
+}
+
+#[test]
 fn null_and_column_casts_preserve_nulls() {
     // A null casts to a null of the target.
     assert_eq!(Scalar::<i32>::null().cast::<f64>().unwrap(), Scalar::null());

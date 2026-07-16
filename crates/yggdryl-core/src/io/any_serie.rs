@@ -149,6 +149,71 @@ pub(crate) fn fill_null_type_mismatch(expected: DataTypeId, value: &AnyScalar) -
     }
 }
 
+/// Guards a matching-type-id **decimal** fill / set / append value against a SCALE mismatch. A leaf
+/// produced by [`DecimalSerie::value`](DecimalSerie) stashes its source scale under
+/// [`SCALE_METADATA_KEY`](DataTypeId::SCALE_METADATA_KEY); storing its raw coefficient at a
+/// *different* column scale silently mis-reads the value (a scale-0 `5` filled into a scale-2 column
+/// would read back as `0.05`), so a differing scale is rejected with a guided error. A hand-built
+/// raw leaf carries no such key and is accepted (the caller asserts compatibility).
+fn decimal_scale_guard(column_scale: i8, field: &Field) -> Result<(), IoError> {
+    if let Some(scale) = field.metadata().get(DataTypeId::SCALE_METADATA_KEY) {
+        if scale.parse::<i8>().ok() != Some(column_scale) {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot use a decimal value at scale {scale} with a column at scale \
+                     {column_scale}; a decimal value's scale must match the column — rescale the \
+                     value to scale {column_scale} first"
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Guards a matching-type-id **temporal** fill / set / append value against a `(unit, tz)` mismatch.
+/// A leaf produced by [`TemporalSerie::value`](TemporalSerie) stashes its source resolution under
+/// [`TIME_UNIT_METADATA_KEY`](DataTypeId::TIME_UNIT_METADATA_KEY) and its timezone under
+/// [`TIMEZONE_METADATA_KEY`](DataTypeId::TIMEZONE_METADATA_KEY); storing its raw count at a
+/// *different* unit or zone silently mis-reads the instant (a `ms` count read as `s`), so a
+/// differing axis is rejected with a guided error. A hand-built raw leaf carries no such key and is
+/// accepted (the caller asserts compatibility).
+fn temporal_meta_guard(column_unit: &str, column_tz: &str, field: &Field) -> Result<(), IoError> {
+    fn show(s: &str) -> &str {
+        if s.is_empty() {
+            "naive"
+        } else {
+            s
+        }
+    }
+    let meta = field.metadata();
+    if let Some(unit) = meta.get(DataTypeId::TIME_UNIT_METADATA_KEY) {
+        if unit != column_unit {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot use a temporal value whose unit is {unit} with a column whose unit is \
+                     {column_unit}; a temporal value's unit must match the column — convert the \
+                     value to {column_unit} first"
+                ),
+            });
+        }
+    }
+    if let Some(tz) = meta.get(DataTypeId::TIMEZONE_METADATA_KEY) {
+        if tz != column_tz {
+            return Err(IoError::Unsupported {
+                what: format!(
+                    "cannot use a temporal value whose timezone is {} with a column whose timezone \
+                     is {}; a temporal value's timezone must match the column — convert the value \
+                     to {} first",
+                    show(tz),
+                    show(column_tz),
+                    show(column_tz)
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Maps a [`PathError`] (a bad path string, or a segment that failed to resolve) to an [`IoError`]
 /// carrying its guided text, so the deep setter returns one error type while keeping the exact
 /// position/segment guidance [`get_by_path`](AnySerie::get_by_path) gives.
@@ -944,7 +1009,9 @@ where
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw coefficient at this column's scale (matching-schema fill).
+                // The bytes are the raw coefficient — reject a value carrying a DIFFERENT scale
+                // (it would be mis-read at this column's scale), then fill.
+                decimal_scale_guard(self.scale(), field)?;
                 Ok(Box::new(self.fill_null_coeff_bytes(bytes)))
             }
             other => Err(fill_null_type_mismatch(B::TYPE_ID, other)),
@@ -957,7 +1024,8 @@ where
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw coefficient at this column's scale (matching-schema append).
+                // Reject a value carrying a DIFFERENT scale (mis-read otherwise), then append.
+                decimal_scale_guard(self.scale(), field)?;
                 DecimalSerie::append_coeff_bytes(self, bytes);
                 Ok(())
             }
@@ -978,7 +1046,8 @@ where
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw coefficient at this column's scale (matching-schema set).
+                // Reject a value carrying a DIFFERENT scale (mis-read otherwise), then set.
+                decimal_scale_guard(self.scale(), field)?;
                 DecimalSerie::set_coeff_bytes(self, index, bytes)
             }
             other => Err(set_cell_type_mismatch(B::TYPE_ID, other)),
@@ -1345,7 +1414,9 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw count at this column's (unit, tz) (matching-schema fill).
+                // The bytes are the raw count — reject a value carrying a DIFFERENT (unit, tz)
+                // (it would be mis-read at this column's resolution/zone), then fill.
+                temporal_meta_guard(self.unit().name(), &self.timezone().name(), field)?;
                 Ok(Box::new(self.fill_null_count_bytes(bytes)))
             }
             other => Err(fill_null_type_mismatch(B::TYPE_ID, other)),
@@ -1358,7 +1429,8 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw count at this column's (unit, tz) (matching-schema append).
+                // Reject a value carrying a DIFFERENT (unit, tz) (mis-read otherwise), then append.
+                temporal_meta_guard(self.unit().name(), &self.timezone().name(), field)?;
                 TemporalSerie::append_count_bytes(self, bytes);
                 Ok(())
             }
@@ -1379,7 +1451,8 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
             AnyScalar::Leaf { field, bytes }
                 if FieldType::type_id(field) == B::TYPE_ID && bytes.len() == B::WIDTH =>
             {
-                // The bytes are the raw count at this column's (unit, tz) (matching-schema set).
+                // Reject a value carrying a DIFFERENT (unit, tz) (mis-read otherwise), then set.
+                temporal_meta_guard(self.unit().name(), &self.timezone().name(), field)?;
                 TemporalSerie::set_count_bytes(self, index, bytes)
             }
             other => Err(set_cell_type_mismatch(B::TYPE_ID, other)),

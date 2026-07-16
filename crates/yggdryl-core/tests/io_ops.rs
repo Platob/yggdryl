@@ -467,3 +467,76 @@ fn nested_result_round_trips_through_the_byte_codec() {
     let round = StructSerie::deserialize_bytes(&st.serialize_bytes()).unwrap();
     assert_eq!(&round, st);
 }
+
+// -------------------------------------------------------------------------------------
+// Regression — adversarial-pass fixes (cast gate, temporal scalar operand, width guard).
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn op_cast_promotion_rejects_an_out_of_range_float_right() {
+    // REGRESSION (FIX 1): the op casts the right into the left's type, range-checked. A float of
+    // exactly 2^63 does NOT fit i64 (the old gate saturated it to i64::MAX) — the op must error.
+    let left = boxed(Serie::from_values(&[0i64]));
+    let too_big = boxed(Serie::from_values(&[9223372036854775808.0_f64])); // 2^63
+    assert!(left.add(too_big.as_ref()).is_err());
+    // A right that fits promotes fine (correct behavior unchanged).
+    let ok = boxed(Serie::from_values(&[100.0_f64]));
+    assert_eq!(
+        left.add(ok.as_ref())
+            .unwrap()
+            .as_serie::<i64>()
+            .unwrap()
+            .to_options(),
+        [Some(100)]
+    );
+}
+
+#[test]
+fn temporal_add_scalar_rejects_a_wrong_type_right_operand() {
+    // REGRESSION (FIX 2+5): the temporal scalar broadcast used to accept any temporal type and even
+    // wide ints, then mis-read their raw bytes. It must mirror the serie path exactly.
+    let date = boxed(
+        Date32Serie::from_values(TimeUnit::Day, Tz::NAIVE, &[Date32::from_days(10)]).unwrap(),
+    );
+
+    // (a) A DIFFERENT temporal type (ts64) as the scalar right -> the SAME guided error the serie
+    //     path returns for date32.add(ts64_col).
+    let ts_col = boxed(
+        Ts64Serie::from_values(
+            TimeUnit::Second,
+            Tz::UTC,
+            &[Ts64::from_epoch(1, TimeUnit::Second, Tz::UTC).unwrap()],
+        )
+        .unwrap(),
+    );
+    let serie_err = date.add(ts_col.as_ref()).unwrap_err().to_string();
+    let ts_leaf = leaf(DataTypeId::Ts64, 8, 1i64.to_le_bytes().to_vec());
+    let scalar_err = date.add_scalar(&ts_leaf).unwrap_err().to_string();
+    assert_eq!(scalar_err, serie_err);
+
+    // (b) A WIDE integer (u128) as the scalar right -> a guided error, never a silent value.
+    let u128_leaf = leaf(DataTypeId::U128, 16, vec![0u8; 16]);
+    assert!(date.add_scalar(&u128_leaf).is_err());
+
+    // (c) A small integer (i32) still works -> offsets the day count.
+    let i32_leaf = leaf(DataTypeId::I32, 4, 5i32.to_le_bytes().to_vec());
+    let out = date.add_scalar(&i32_leaf).unwrap();
+    assert_eq!(out.type_id(), DataTypeId::Date32);
+    assert_eq!(
+        out.as_temporal::<Date32Kind>()
+            .unwrap()
+            .get(0)
+            .unwrap()
+            .days(),
+        15
+    );
+}
+
+#[test]
+fn add_scalar_with_a_width_mismatched_leaf_is_a_guided_error_not_a_panic() {
+    // REGRESSION (FIX 4): a leaf with the right type_id but a wrong byte length (constructible via
+    // the public `AnyScalar::leaf`) used to panic in `read_le`; it must now return a guided error.
+    let col = boxed(Serie::from_values(&[10i64, 20, 30]));
+    let malformed = AnyScalar::leaf(Field::of("", DataTypeId::F64, 8, false), vec![0u8; 2]);
+    assert!(col.add_scalar(&malformed).is_err());
+}

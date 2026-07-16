@@ -240,11 +240,22 @@ fn any_scalar_into<U: NumericCast>(value: &AnyScalar) -> Result<Option<U>, IoErr
         other => return Err(scalar_not_numeric(other.type_id())),
     };
     macro_rules! conv {
-        ($t:ty) => {
+        ($t:ty) => {{
+            // Width guard BEFORE `read_le`: a hand-built leaf (via the public `AnyScalar::leaf`) can
+            // carry the right type_id but a wrong-length byte payload, which would panic in
+            // `read_le`. Reject it with a guided error instead — no panic from any public op.
+            let need = <$t as NativeType>::WIDTH;
+            if bytes.len() != need {
+                return Err(scalar_width_mismatch(
+                    FieldType::type_id(field),
+                    bytes.len(),
+                    need,
+                ));
+            }
             <$t as Converter<U>>::cast_value(<$t as NativeType>::read_le(bytes))
                 .map(Some)
                 .map_err(cast_error)
-        };
+        }};
     }
     match FieldType::type_id(field) {
         DataTypeId::U8 => conv!(u8),
@@ -371,12 +382,27 @@ fn temporal_scalar_backing<B: TemporalBacking>(
     value: &AnyScalar,
     op: ArithOp,
 ) -> Result<Box<dyn AnySerie>, IoError> {
+    // Mirror the serie path `temporal_backing` exactly: the right operand is accepted only when it
+    // is the SAME temporal type (its raw counts read directly) or one of the twelve numeric leaf
+    // types routed through the range-checked integer path (`any_scalar_into::<i128>`, the scalar
+    // twin of `cast_into::<i128>`). A DIFFERENT temporal type or a WIDE integer (u96/u128/u256/
+    // i96/i256 — not `NumericCast`) returns a guided error, never a silently mis-read value.
     let rhs: Option<i128> = match value {
         AnyScalar::Null => None, // a null scalar -> all-null result
         AnyScalar::Leaf { field, bytes } => {
             let id = FieldType::type_id(field);
-            if id.is_integer() || id.is_temporal() {
-                Some(le_bytes_to_i128(bytes, id.is_signed() || id.is_temporal()))
+            if id == B::TYPE_ID {
+                // Same temporal type — read its raw physical counts directly (width-guarded, so a
+                // malformed leaf errors instead of mis-reading). Temporal counts are signed.
+                if bytes.len() != B::WIDTH {
+                    return Err(temporal_scalar_width(B::NAME, bytes.len(), B::WIDTH));
+                }
+                Some(le_bytes_to_i128(bytes, true))
+            } else if id.is_integer() {
+                // An integer operand — cast into the backing count (i128), range-checked. A wide
+                // integer is `is_integer()` but not `NumericCast`, so this rejects it with a guided
+                // error, exactly as the serie path's `cast_into::<i128>` does.
+                any_scalar_into::<i128>(value)?
             } else {
                 return Err(temporal_right(B::NAME, Some(id)));
             }
@@ -467,12 +493,14 @@ fn struct_binary(
         let rc = r.column(index).expect("index < num_columns");
         columns.push(binary(lc, rc, op)?);
     }
-    // Rebuild with the LEFT struct's schema (names + metadata, applied by `from_columns`) and row
-    // validity.
+    // Rebuild with the LEFT struct's schema (names + metadata) and row validity. Pass the LEFT's
+    // explicit row count so a **field-less** struct (no child column to derive the length from)
+    // keeps its rows instead of collapsing to length 0.
     let present = row_present(left);
-    Ok(boxed(StructSerie::from_columns(
+    Ok(boxed(StructSerie::from_columns_with_len(
         l.fields(),
         columns,
+        l.len(),
         present.as_deref(),
     )?))
 }
@@ -556,10 +584,12 @@ fn nested_scalar(
                     op,
                 )?);
             }
+            // Explicit row count so a field-less struct keeps its rows (see `struct_binary`).
             let present = row_present(left);
-            Ok(boxed(StructSerie::from_columns(
+            Ok(boxed(StructSerie::from_columns_with_len(
                 l.fields(),
                 columns,
+                l.len(),
                 present.as_deref(),
             )?))
         }
@@ -667,6 +697,26 @@ fn scalar_not_numeric(id: Option<DataTypeId>) -> IoError {
     }
 }
 
+fn scalar_width_mismatch(id: DataTypeId, got: usize, need: usize) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot broadcast a {} scalar of {got} bytes in an arithmetic op; a {} value's bytes \
+             must be exactly {need} long",
+            id.name(),
+            id.name()
+        ),
+    }
+}
+
+fn temporal_scalar_width(left: &str, got: usize, need: usize) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "cannot broadcast a {left} scalar of {got} bytes; a {left} value's raw counts must be \
+             exactly {need} bytes long"
+        ),
+    }
+}
+
 fn temporal_right(left: &str, right: Option<DataTypeId>) -> IoError {
     let got = right.map_or("null", DataTypeId::name);
     IoError::Unsupported {
@@ -709,5 +759,25 @@ fn map_keys() -> IoError {
         what: "cannot combine maps with different keys or shape; the two map columns must have \
                identical offsets and key columns for a value-wise op"
             .to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::io::nested::StructSerie;
+    use crate::io::{boxed, DataTypeId};
+
+    #[test]
+    fn field_less_struct_arithmetic_preserves_the_row_count() {
+        // REGRESSION (FIX 7): a struct with NO child columns but 3 rows. `from_columns` derives the
+        // length from the (absent) first column -> 0, so the op must carry the operands' explicit
+        // len instead. The result must keep the 3 rows.
+        let left = StructSerie::from_columns_with_len(vec![], vec![], 3, None).unwrap();
+        let right = StructSerie::from_columns_with_len(vec![], vec![], 3, None).unwrap();
+        assert_eq!(left.len(), 3);
+
+        let sum = boxed(left).add(boxed(right).as_ref()).unwrap();
+        assert_eq!(sum.type_id(), DataTypeId::Struct);
+        assert_eq!(sum.len(), 3);
     }
 }

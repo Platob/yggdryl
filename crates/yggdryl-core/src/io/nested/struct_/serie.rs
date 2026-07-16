@@ -131,7 +131,24 @@ impl StructSerie {
     /// lengths disagree.
     pub fn from_columns(
         fields: Vec<AnyField>,
+        columns: Vec<Box<dyn AnySerie>>,
+        present: Option<&[bool]>,
+    ) -> Result<Self, IoError> {
+        // Derive the row count from the first child, then delegate. A **field-less** struct has no
+        // child to derive from — build one directly with `from_columns_with_len` to keep its rows.
+        let len = columns.first().map_or(0, |column| column.len());
+        Self::from_columns_with_len(fields, columns, len, present)
+    }
+
+    /// Like [`from_columns`](StructSerie::from_columns) but with an **explicit row count**. Needed
+    /// for a **field-less** struct: with no child columns there is nothing to derive the length
+    /// from, so a zero-column struct of `len` rows would otherwise collapse to length 0 (dropping
+    /// the operands' rows in a struct arithmetic op). With child columns present, `len` must equal
+    /// their shared length. Errors if the field/column counts or any length disagree.
+    pub(crate) fn from_columns_with_len(
+        fields: Vec<AnyField>,
         mut columns: Vec<Box<dyn AnySerie>>,
+        len: usize,
         present: Option<&[bool]>,
     ) -> Result<Self, IoError> {
         if fields.len() != columns.len() {
@@ -143,7 +160,6 @@ impl StructSerie {
                 ),
             });
         }
-        let len = columns.first().map_or(0, |column| column.len());
         for (field, column) in fields.iter().zip(&columns) {
             if column.len() != len {
                 return Err(mismatch(field.name(), column.len(), len));

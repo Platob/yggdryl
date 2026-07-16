@@ -7,7 +7,8 @@
 //! no rule applies. Every result asserts its `len` / `null_count` and a serialize/deserialize
 //! round-trip.
 
-use yggdryl_core::io::fixed::{Field, Scalar, Serie};
+use yggdryl_core::io::fixed::temporal::{TimeUnit, Ts64, Tz};
+use yggdryl_core::io::fixed::{D128Serie, Field, Scalar, Serie, Ts64Serie, D128};
 use yggdryl_core::io::nested::{ListSerie, MapSerie, StructSerie};
 use yggdryl_core::io::var::Utf8Serie;
 use yggdryl_core::io::{boxed, AnyScalar, AnySerie, DataTypeId, IoError};
@@ -382,4 +383,81 @@ fn typed_serie_coercion_conveniences() {
     let list = Serie::from_values(&[1i32, 2, 3]).to_list();
     assert_eq!(list.len(), 3);
     assert_eq!(list.get_scalar(2).len(), 1);
+}
+
+// -------------------------------------------------------------------------------------
+// Regression — erased decimal / temporal fill_null must not ignore scale / (unit, tz).
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn erased_decimal_fill_null_rejects_a_mismatched_scale_value() {
+    // REGRESSION (FIX 1'+6): a D128 column at scale 2 with a null. A value produced by another
+    // column's `value()` carries the source scale in its leaf metadata, so a scale-0 coefficient
+    // (which would be mis-read as 1/100th the value) must be rejected with a guided error.
+    let col = boxed(
+        D128Serie::from_options(
+            20,
+            2,
+            &[
+                Some(D128::new(500, 2).unwrap()),
+                None,
+                Some(D128::new(700, 2).unwrap()),
+            ],
+        )
+        .unwrap(),
+    );
+
+    let scale0 = boxed(D128Serie::from_values(20, 0, &[D128::new(5, 0).unwrap()]).unwrap());
+    let bad_fill = scale0.value(0); // scale 0 — differs from the column's scale 2
+    assert!(col.fill_null(&bad_fill).is_err());
+
+    // A same-scale value() leaf fills correctly (matching-scale path is unchanged).
+    let scale2 = boxed(D128Serie::from_values(20, 2, &[D128::new(999, 2).unwrap()]).unwrap());
+    let good_fill = scale2.value(0);
+    let filled = col.fill_null(&good_fill).unwrap();
+    assert_eq!(filled.null_count(), 0);
+    assert_eq!(filled.value(1), good_fill); // the once-null cell now holds the (scale-2) fill value
+}
+
+#[test]
+fn erased_temporal_fill_null_rejects_a_mismatched_unit_value() {
+    // REGRESSION (FIX 1'+6): a Ts64[s] column with a null. A Ts64[ms] value (same type_id + width)
+    // carries unit=millisecond in its leaf metadata; storing its raw count at the column's second
+    // resolution would mis-read the instant, so it must be rejected with a guided error.
+    let col = boxed(
+        Ts64Serie::from_options(
+            TimeUnit::Second,
+            Tz::UTC,
+            &[
+                Some(Ts64::from_epoch(10, TimeUnit::Second, Tz::UTC).unwrap()),
+                None,
+            ],
+        )
+        .unwrap(),
+    );
+
+    let ms = boxed(
+        Ts64Serie::from_values(
+            TimeUnit::Millisecond,
+            Tz::UTC,
+            &[Ts64::from_epoch(20, TimeUnit::Millisecond, Tz::UTC).unwrap()],
+        )
+        .unwrap(),
+    );
+    let bad_fill = ms.value(0); // millisecond — differs from the column's second unit
+    assert!(col.fill_null(&bad_fill).is_err());
+
+    // A same-unit value() leaf fills correctly.
+    let s = boxed(
+        Ts64Serie::from_values(
+            TimeUnit::Second,
+            Tz::UTC,
+            &[Ts64::from_epoch(99, TimeUnit::Second, Tz::UTC).unwrap()],
+        )
+        .unwrap(),
+    );
+    let good_fill = s.value(0);
+    let filled = col.fill_null(&good_fill).unwrap();
+    assert_eq!(filled.null_count(), 0);
+    assert_eq!(filled.value(1), good_fill);
 }

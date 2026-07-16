@@ -146,10 +146,20 @@ macro_rules! int_numeric {
                     return None;
                 }
                 let t = v.trunc();
-                // The bounds land inside `f64`'s exact-integer range for every type up to `i64`;
-                // for `i128` the `as f64` bound is approximate, which only widens acceptance at the
-                // extreme edge — `try_from_i128` on the truncated value is the exact gate below.
-                (t >= <$t>::MIN as f64 && t <= <$t>::MAX as f64).then_some(t as $t)
+                // EXACT range gate. `<$t>::MAX as f64` rounds *up* for the wide types (`i64::MAX`
+                // → 2^63, `u64::MAX` → 2^64, `i128::MAX` → 2^127), so a `<= MAX as f64` test would
+                // let those exact powers through and then `t as $t` would SATURATE to `MAX` with no
+                // error. Gate on the first magnitude the type cannot hold instead: a signed N-bit
+                // type holds `[MIN, 2^(N-1))`, an unsigned one `[0, 2^N)` — every bound here is an
+                // exact power of two, representable in `f64`, so the value must round-trip.
+                let bits = <$t>::BITS as i32;
+                let min = <$t>::MIN as f64;
+                let upper = if min < 0.0 {
+                    2f64.powi(bits - 1) // signed: first unrepresentable positive is 2^(N-1)
+                } else {
+                    2f64.powi(bits) // unsigned: first unrepresentable is 2^N
+                };
+                (t >= min && t < upper).then_some(t as $t)
             }
             fn add_wrapping(self, rhs: Self) -> Self {
                 self.wrapping_add(rhs)
