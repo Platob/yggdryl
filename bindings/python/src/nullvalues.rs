@@ -298,6 +298,10 @@ impl NullSerie {
 // no element type, so `fill_null` accepts only `None` (the identity); it gets no arithmetic.
 crate::nested::reshape_methods!(NullSerie);
 
+// Phase 9 slice assignment (`serie[a:b] = other`) — the `set_slice` named twin is on the null column
+// via `reshape_methods!` above.
+crate::nested::slice_setitem!(NullSerie);
+
 /// Adds the null `Scalar` / `Serie` classes to the `yggdryl.types` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullScalar>()?;

@@ -420,6 +420,10 @@ crate::nested::reshape_methods!(D64Serie);
 crate::nested::reshape_methods!(D128Serie);
 crate::nested::reshape_methods!(D256Serie);
 
+// Phase 9 slice assignment (`serie[a:b] = other`) — the `set_slice` named twin is on every decimal
+// column via `reshape_methods!` above.
+crate::nested::slice_setitem!(D32Serie, D64Serie, D128Serie, D256Serie);
+
 /// Adds the columnar decimal `Scalar` / `Serie` classes to the `yggdryl.decimal` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<D32Scalar>()?;

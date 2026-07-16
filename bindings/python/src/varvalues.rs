@@ -461,6 +461,10 @@ py_var!(BinaryScalar, BinarySerie, Binary, "binary");
 crate::nested::reshape_methods!(Utf8Serie);
 crate::nested::reshape_methods!(BinarySerie);
 
+// Phase 9 slice assignment (`serie[a:b] = other`) — the `set_slice` named twin is on both columns
+// via `reshape_methods!` above.
+crate::nested::slice_setitem!(Utf8Serie, BinarySerie);
+
 /// The reverse of the fixed scalars' `to_utf8` bridge — parse this UTF-8 scalar's text into a
 /// numeric scalar (a null stays null; a bad parse is a guided `ValueError`).
 #[pymethods]

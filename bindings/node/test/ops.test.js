@@ -312,9 +312,16 @@ test('parity: nested broadcast marshals a whole int at i128 (fits an i128 leaf)'
   assert.throws(() => st.add(10n ** 40n), /128-bit range|does not fit|range/i)
 })
 
-test('parity: a non-castable Serie right operand surfaces the core guided error', () => {
+test('parity: a utf8 Serie operand coerces when numeric, guided-errors when not (cast-anything)', () => {
+  // Phase 9 cast-anything: a utf8 (or decimal / temporal / wide) right operand is now CAST into the
+  // LEFT numeric type by the core instead of a blanket "must be a numeric column" reject. A column of
+  // numeric strings coerces element-wise; only a genuinely non-numeric cell is a guided parse error.
+  assert.deepEqual(
+    new I64Serie(['1', '2']).add(new Utf8Serie(['10', '20'])).toOptions(),
+    ['11', '22'],
+  )
   assert.throws(
     () => new I64Serie(['1']).add(new Utf8Serie(['a'])),
-    /the right operand must be a numeric column/,
+    /cannot parse|utf8 operand|number/i,
   )
 })

@@ -516,6 +516,20 @@ crate::nested::reshape_methods!(Ts96Serie);
 crate::nested::reshape_methods!(Duration32Serie);
 crate::nested::reshape_methods!(Duration64Serie);
 
+// Phase 9 slice assignment (`serie[a:b] = other`) — the `set_slice` named twin is on every temporal
+// column via `reshape_methods!` above.
+crate::nested::slice_setitem!(
+    Date32Serie,
+    Date64Serie,
+    Time32Serie,
+    Time64Serie,
+    Ts32Serie,
+    Ts64Serie,
+    Ts96Serie,
+    Duration32Serie,
+    Duration64Serie,
+);
+
 // ---- native-language temporal column factories -----------------------------------------
 //
 // Each mirrors the temporal *value* types' native constructors (`from_pydate` / `from_pytime` /

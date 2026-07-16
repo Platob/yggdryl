@@ -503,6 +503,69 @@ pub(crate) fn to_map_column(
     rewrap_column(column.to_map().map_err(io_err)?.as_ref(), py)
 }
 
+/// Overwrites the rows `[offset, offset + other.len())` of `column` with `other` (a yggdryl `Serie`
+/// of a compatible leaf type), preserving the column length — the shared body of every column's
+/// `set_slice`. Delegates to the erased [`AnySerie::set_slice`](yggdryl_core::io::AnySerie); the
+/// core's guided error (a range past the end, an incompatible source type, or a nested column)
+/// surfaces as a `ValueError`.
+pub(crate) fn set_slice_column(
+    column: &mut (dyn AnySerie + 'static),
+    offset: usize,
+    other: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let source = extract_column(other)?;
+    column.set_slice(offset, source.as_ref()).map_err(io_err)
+}
+
+/// Overwrites `[start, stop)` of `root` with `source` for a `serie[a:b] = other` assignment — the
+/// shared slice-assignment body reused by the leaf [`leaf_setitem`] and the nested `__setitem__`.
+/// The slice step must be `1` and `source`'s length must equal the slice span `stop - start` (a
+/// length-preserving overwrite), both guided `ValueError`s; then delegates to the erased
+/// [`AnySerie::set_slice`](yggdryl_core::io::AnySerie).
+pub(crate) fn set_slice_by_pyslice(
+    root: &mut (dyn AnySerie + 'static),
+    slice: &Bound<'_, PySlice>,
+    source: &dyn AnySerie,
+) -> PyResult<()> {
+    let indices = slice.indices(root.len() as isize)?;
+    if indices.step != 1 {
+        return Err(PyValueError::new_err(
+            "a Serie slice assignment must have a step of 1 (serie[a:b] = other overwrites the \
+             contiguous range a..b)",
+        ));
+    }
+    let span = indices.slicelength;
+    if source.len() != span {
+        return Err(PyValueError::new_err(format!(
+            "cannot assign a Serie of length {} to a slice of length {}; a slice assignment is \
+             length-preserving — serie[a:b] = other needs len(other) == b - a",
+            source.len(),
+            span
+        )));
+    }
+    root.set_slice(indices.start as usize, source)
+        .map_err(io_err)
+}
+
+/// `serie[key] = value` for a NON-nested column — the leaf slice-assignment dispatch. The key must
+/// be a slice and `value` a yggdryl `Serie`; delegates to [`set_slice_by_pyslice`]. A non-slice key
+/// is a guided `TypeError` (a leaf column has no whole-item assignment — set a single cell with
+/// `set(i, value)`).
+pub(crate) fn leaf_setitem(
+    root: &mut (dyn AnySerie + 'static),
+    key: &Bound<'_, PyAny>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let Ok(slice) = key.downcast::<PySlice>() else {
+        return Err(PyTypeError::new_err(
+            "a Serie supports only slice assignment: serie[a:b] = other overwrites the range with \
+             another Serie (length-preserving, step 1); set a single cell with set(i, value)",
+        ));
+    };
+    let source = extract_column(value)?;
+    set_slice_by_pyslice(root, slice, source.as_ref())
+}
+
 /// Emits the element-wise arithmetic `#[pymethods]` (the operator dunders, their commutative
 /// reverses `__radd__` / `__rmul__`, and the named `add` / `sub` / `mul` / `div` / `rem` twins) for
 /// a Serie wrapper — each a 1-line delegate to [`arith_op`]. Shared by the twelve numeric leaf
@@ -668,10 +731,51 @@ macro_rules! reshape_methods {
             fn to_map(&self, py: Python<'_>) -> PyResult<PyObject> {
                 $crate::nested::to_map_column(&self.inner as &dyn yggdryl_core::io::AnySerie, py)
             }
+            /// Overwrites the rows `[offset, offset + len(other))` with `other` (a yggdryl `Serie`
+            /// of a compatible type), preserving the column length. Raises `ValueError` if the
+            /// range runs past the end, the source type is incompatible, or (a nested column)
+            /// whole-row overwrite is unsupported. The named twin of
+            /// `serie[offset : offset + len(other)] = other`.
+            fn set_slice(&mut self, offset: usize, other: &Bound<'_, PyAny>) -> PyResult<()> {
+                $crate::nested::set_slice_column(
+                    &mut self.inner as &mut dyn yggdryl_core::io::AnySerie,
+                    offset,
+                    other,
+                )
+            }
         }
     };
 }
 pub(crate) use reshape_methods;
+
+/// Emits the `__setitem__` **slice-assignment** dunder for a NON-nested column wrapper —
+/// `serie[a:b] = other` overwrites the contiguous range with another `Serie` (length-preserving,
+/// step 1), the dunder twin of the [`reshape_methods!`]-emitted `set_slice`. A non-slice key is a
+/// guided `TypeError`. The nested columns get their slice-assignment through [`nested_navigation!`]
+/// instead (their `__setitem__` also handles the child-set and the deep-cell set).
+macro_rules! slice_setitem {
+    ($($Serie:ident),+ $(,)?) => {
+        $(
+            #[pymethods]
+            impl $Serie {
+                /// `serie[a:b] = other` — overwrites the contiguous range with another `Serie`
+                /// (length-preserving, step 1). The dunder twin of `set_slice`.
+                fn __setitem__(
+                    &mut self,
+                    key: &Bound<'_, PyAny>,
+                    value: &Bound<'_, PyAny>,
+                ) -> PyResult<()> {
+                    $crate::nested::leaf_setitem(
+                        &mut self.inner as &mut dyn yggdryl_core::io::AnySerie,
+                        key,
+                        value,
+                    )
+                }
+            }
+        )+
+    };
+}
+pub(crate) use slice_setitem;
 
 /// A `Field` (leaf) or nested `StructField` / `ListField` / `MapField` Python object → an erased
 /// [`AnyField`].
@@ -735,6 +839,14 @@ const GET_KEY_HELP: &str = "a nested index must be an int (a row), a tuple of in
 const CELL_KEY_HELP: &str =
     "a cell key must be a tuple of ints (coordinates) or a str path ending \
     in an index (e.g. \"a[1]\")";
+
+/// The help text for a bad `__setitem__` key when the assigned value is a `Serie` (a child / range
+/// set): a slice overwrites a range, an int replaces a child column by position, a str adds or
+/// replaces a child column by name.
+const SET_CHILD_KEY_HELP: &str =
+    "when assigning a Serie, the key must be a slice (s[a:b] = other, a \
+    length-preserving range overwrite), an int (replace the child column at that position), or a \
+    str (add or replace the child column of that name)";
 
 /// Maps a [`PathError`] (a bad path string, or a missing child) to a Python `ValueError` carrying
 /// its guided text.
@@ -1071,14 +1183,51 @@ macro_rules! nested_navigation {
                 Err(PyTypeError::new_err(GET_KEY_HELP))
             }
 
-            /// `s[key] = value` — a tuple of ints or an index-terminal str path sets a leaf cell
+            /// `s[key] = value`. When `value` is a yggdryl `Serie` it is a **child / range set**: a
+            /// slice key overwrites the range (`s[a:b] = other`, length-preserving), an int key
+            /// replaces the child column at that position (`set_child_at`), and a str key adds or
+            /// replaces the child column of that name (`set_child_by`). Otherwise (`value` a scalar
+            /// or `None`) it is the **deep-cell set** — a coords tuple or an index-terminal str path
             /// (a Python `None` writes a null).
             fn __setitem__(
                 &mut self,
                 key: &Bound<'_, PyAny>,
                 value: &Bound<'_, PyAny>,
             ) -> PyResult<()> {
+                if let Ok(child) = extract_column(value) {
+                    let root = &mut self.inner as &mut dyn AnySerie;
+                    if let Ok(slice) = key.downcast::<PySlice>() {
+                        return set_slice_by_pyslice(root, slice, child.as_ref());
+                    }
+                    if let Ok(index) = key.extract::<usize>() {
+                        return root.set_child_at(index, child.as_ref()).map_err(io_err);
+                    }
+                    if let Ok(name) = key.extract::<String>() {
+                        return root.set_child_by(&name, child.as_ref()).map_err(io_err);
+                    }
+                    return Err(PyTypeError::new_err(SET_CHILD_KEY_HELP));
+                }
                 set_cell_by_key(&mut self.inner as &mut dyn AnySerie, key, value)
+            }
+
+            /// Replaces the child column at `index` (a struct field, a list item at 0, a map key at
+            /// 0 / value at 1) with `serie` (a yggdryl `Serie`); raises `ValueError` on a bad index,
+            /// a length mismatch, or a leaf column. The named twin of `s[index] = serie`.
+            fn set_child_at(&mut self, index: usize, serie: &Bound<'_, PyAny>) -> PyResult<()> {
+                let child = extract_column(serie)?;
+                (&mut self.inner as &mut dyn AnySerie)
+                    .set_child_at(index, child.as_ref())
+                    .map_err(io_err)
+            }
+
+            /// Adds or replaces the child column named `name` (a struct field, dict-like; a map
+            /// `"key"` / `"value"`; a list `"item"`) with `serie`; raises `ValueError` on a bad
+            /// name, a length mismatch, or a leaf column. The named twin of `s[name] = serie`.
+            fn set_child_by(&mut self, name: &str, serie: &Bound<'_, PyAny>) -> PyResult<()> {
+                let child = extract_column(serie)?;
+                (&mut self.inner as &mut dyn AnySerie)
+                    .set_child_by(name, child.as_ref())
+                    .map_err(io_err)
             }
 
             /// The deep cell at `key` (a coords tuple or an index-terminal str path) as a native

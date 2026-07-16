@@ -326,7 +326,11 @@ def test_parity_nested_broadcast_marshals_a_whole_int_at_i128():
 
 
 def test_parity_uncastable_serie_right_operand_is_core_guided():
-    # A real but non-castable Serie right operand reaches the core op and surfaces its guided
-    # "the right operand must be a numeric column" error — identical text in the Node binding.
-    with pytest.raises(ValueError, match="the right operand must be a numeric column"):
+    # The core now coerces ANY convertible Serie right operand (a numeric utf8 / decimal / temporal
+    # / wide-int column casts into the left type), so only a genuinely non-convertible value errors.
+    # A non-numeric utf8 operand surfaces the core's guided parse error — identical text in Node.
+    with pytest.raises(ValueError, match="cannot parse"):
         I64Serie([1]).add(Utf8Serie(["a"]))
+    # A struct column can never be a leaf-column operand — its own guided error.
+    with pytest.raises(ValueError, match="cannot use a struct column"):
+        I64Serie([1]).add(StructSerie([("x", I64Serie([1]))]))

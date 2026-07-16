@@ -602,6 +602,13 @@ crate::nested::reshape_methods!(F16Serie);
 crate::nested::reshape_methods!(F32Serie);
 crate::nested::reshape_methods!(F64Serie);
 
+// Phase 9 slice assignment (`serie[a:b] = other`) — on **every** fixed-width column (the wide
+// integers included). The named `set_slice` twin is emitted by `reshape_methods!` above.
+crate::nested::slice_setitem!(
+    U8Serie, U16Serie, U32Serie, U64Serie, U96Serie, U128Serie, U256Serie, I8Serie, I16Serie,
+    I32Serie, I64Serie, I96Serie, I128Serie, I256Serie, F16Serie, F32Serie, F64Serie,
+);
+
 /// Adds the numeric `to_<type>` casts to one castable `Scalar` **and** `Serie` (the
 /// [`NumericCast`](yggdryl_core::io::NumericCast) subset — `u8`…`u64`, `i8`…`i128`, the floats).
 /// Each cast is range-checked for an integer target (a guided `ValueError`) and precision-lossy

@@ -12,8 +12,10 @@
 //! `#[napi]` class (the full [`serie_operand`] list — not only the castable-numeric ones) with the
 //! derive-generated `napi_instanceof` check ([`ValidateNapiValue`]) — sound, unlike a bare
 //! `napi_unwrap` — and is passed straight to the erased op (so cross-type `i32.add(i64)` works,
-//! result following the LEFT, and a *non-castable* `Serie` like a `Utf8Serie` reaches the core and
-//! surfaces its guided "the right operand must be a numeric column …" error, matching Python).
+//! result following the LEFT, and a **cast-anything** `Serie` like a `Utf8Serie` / decimal / temporal
+//! column reaches the core and is coerced into the LEFT's element type — only a genuinely
+//! non-convertible cell, e.g. a non-numeric utf8, surfaces the core's guided parse error, matching
+//! Python).
 //! Anything else is coerced, **against the LEFT column's element type**, into a broadcast
 //! [`AnyScalar`] by [`arith_scalar`]. (Mirror note for Python parity: Python folds the same two paths
 //! into one `__add__`/`add`; there is **no** separate `addScalar` — the single `add` here is that
@@ -198,9 +200,10 @@ pub(crate) fn to_map_frame(col: &(dyn AnySerie + 'static)) -> napi::Result<Buffe
 /// escapes), or `None` if `value` is not a `Serie` wrapper at all (a scalar, a `Buffer`, or a plain
 /// object). It recognizes the **full** wrapper set — the same list its sibling [`carrier_scalar`]
 /// enumerates, plus the three nested columns — so a *real* `Serie` right operand always reaches the
-/// core op even when it is **not** castable-numeric (a `Utf8Serie` / decimal / wide / temporal
-/// column): the core then surfaces its own guided "the right operand must be a numeric column …"
-/// error, identical to the Python binding (which lets every `Serie` through to the same core op).
+/// core op even when it is **not** a plain fixed-numeric column (a `Utf8Serie` / decimal / wide /
+/// temporal column): the core then **coerces** it into the LEFT's element type (the Phase 9
+/// cast-anything ops), surfacing a guided parse error only for a genuinely non-convertible cell —
+/// identical to the Python binding (which lets every `Serie` through to the same core op).
 /// Each candidate is gated by the derive-generated instanceof check ([`ValidateNapiValue::validate`])
 /// **before** the (otherwise type-blind) `napi_unwrap`, so the downcast is sound.
 fn serie_operand(env: Env, value: &JsUnknown) -> napi::Result<Option<Box<dyn AnySerie>>> {
