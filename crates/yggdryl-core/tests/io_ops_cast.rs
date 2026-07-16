@@ -53,6 +53,36 @@ fn non_numeric_string_is_a_guided_error() {
 }
 
 #[test]
+fn mismatched_width_leaf_scalar_is_a_guided_error_not_a_silent_misread() {
+    // A hand-built leaf (via the public AnyScalar::leaf) whose byte payload disagrees with its
+    // type's canonical width must yield the guided width error consistently — the numeric arm always
+    // did; the temporal / decimal / wide arms used to silently misread the wrong-length payload.
+    let left = boxed(Serie::from_values(&[100i64, 200, 300]));
+
+    // Date32 is 4 bytes, but this leaf carries an 8-byte payload.
+    let bad_temporal = leaf(DataTypeId::Date32, 4, vec![5, 0, 0, 0, 1, 0, 0, 0]);
+    assert!(
+        left.add_scalar(&bad_temporal).is_err(),
+        "wide temporal payload accepted"
+    );
+    // U128 is 16 bytes, but this leaf carries only 4.
+    let bad_wide = leaf(DataTypeId::U128, 16, vec![7, 0, 0, 0]);
+    assert!(
+        left.add_scalar(&bad_wide).is_err(),
+        "short wide payload accepted"
+    );
+    // D128 is 16 bytes, but this leaf carries 8.
+    let bad_decimal = leaf(DataTypeId::D128, 16, vec![0u8; 8]);
+    assert!(
+        left.add_scalar(&bad_decimal).is_err(),
+        "short decimal payload accepted"
+    );
+
+    // The column is untouched by the rejected sets.
+    assert_eq!(left.value(0), boxed(Serie::from_values(&[100i64])).value(0));
+}
+
+#[test]
 fn decimal_right_operand_is_coerced() {
     // i64.add(d128[5.00, 3.00]) -> the decimal value (through f64) truncates into i64.
     let left = boxed(Serie::from_values(&[10i64, 20]));

@@ -326,7 +326,7 @@ fn any_scalar_into<U: NumericCast + FromStr>(value: &AnyScalar) -> Result<Option
         DataTypeId::D32 | DataTypeId::D64 | DataTypeId::D128 | DataTypeId::D256 => {
             decimal_bytes_into::<U>(field, bytes)
         }
-        other if other.is_temporal() => temporal_bytes_into::<U>(bytes),
+        other if other.is_temporal() => temporal_bytes_into::<U>(other, bytes),
         other => Err(scalar_not_convertible(Some(other))),
     }
 }
@@ -365,6 +365,18 @@ fn binary_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoError>
     }
 }
 
+/// Rejects a hand-built leaf (via the public [`AnyScalar::leaf`](crate::io::AnyScalar::leaf)) whose
+/// byte payload length disagrees with its type's canonical fixed width — the same defense the numeric
+/// `conv!` arm applies, so a malformed wide / temporal / decimal leaf scalar yields the guided width
+/// error instead of silently misreading a wrong-length payload into a wrong value. A type with no
+/// fixed width (utf8/binary handle their own length) is passed through.
+fn guard_leaf_width(id: DataTypeId, got: usize) -> Result<(), IoError> {
+    match id.fixed_byte_width() {
+        Some(need) if got != need => Err(scalar_width_mismatch(id, got, need)),
+        _ => Ok(()),
+    }
+}
+
 /// wide-integer leaf → `U`: read the wide little-endian (two's-complement for the signed widths)
 /// magnitude, range-check it into `i128`, then the shared `Converter` casts `i128` into `U`.
 ///
@@ -372,6 +384,7 @@ fn binary_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoError>
 /// is their numeric bridge — routed through `i128`, the crate's integer intermediate. A magnitude
 /// beyond `i128` (already beyond every integer target's range) is a guided out-of-range error.
 fn wide_bytes_into<U: NumericCast>(id: DataTypeId, bytes: &[u8]) -> Result<Option<U>, IoError> {
+    guard_leaf_width(id, bytes.len())?;
     let magnitude = wide_le_to_i128(bytes, id.is_signed_integer())
         .ok_or_else(|| wide_out_of_range(id, U::NAME))?;
     <i128 as Converter<U>>::cast_value(magnitude)
@@ -381,7 +394,8 @@ fn wide_bytes_into<U: NumericCast>(id: DataTypeId, bytes: &[u8]) -> Result<Optio
 
 /// temporal leaf → `U`: the backing integer **count** (sign-extended from its little-endian bytes)
 /// cast into `U` through the shared `Converter` — so `i64.add(date32_col)` coerces the day count.
-fn temporal_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoError> {
+fn temporal_bytes_into<U: NumericCast>(id: DataTypeId, bytes: &[u8]) -> Result<Option<U>, IoError> {
+    guard_leaf_width(id, bytes.len())?;
     let count = le_bytes_to_i128(bytes, true); // temporal counts are signed two's-complement
     <i128 as Converter<U>>::cast_value(count)
         .map(Some)
@@ -395,6 +409,7 @@ fn temporal_bytes_into<U: NumericCast>(bytes: &[u8]) -> Result<Option<U>, IoErro
 /// so an integer target truncates toward zero and a float target keeps the value — one total path. A
 /// `d256` coefficient beyond `i128` is a guided out-of-range error, not a silent misread.
 fn decimal_bytes_into<U: NumericCast>(field: &Field, bytes: &[u8]) -> Result<Option<U>, IoError> {
+    guard_leaf_width(FieldType::type_id(field), bytes.len())?;
     let scale = field
         .metadata()
         .get(DataTypeId::SCALE_METADATA_KEY)
