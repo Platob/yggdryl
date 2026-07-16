@@ -159,6 +159,67 @@ fn struct_serie_serialize_round_trip() {
 }
 
 #[test]
+fn from_named_frame_is_byte_identical_to_explicit_field_inference() {
+    // `from_named` now routes through `from_series` + metadata-less `NamedSerie`s. Its stored frame
+    // must stay byte-identical to the old inference path — building the same table via `from_columns`
+    // with each column's own inferred `field(name)` (the pre-refactor logic) and no present mask.
+    let from_named = sample_table();
+
+    let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
+    let ages = boxed(Serie::from_options(&[Some(30i32), None, Some(41)]));
+    let names = boxed(Utf8Serie::from_strs(&[Some("ann"), Some("bo"), None]));
+    let fields = vec![ids.field("id"), ages.field("age"), names.field("name")];
+    let from_columns = StructSerie::from_columns(fields, vec![ids, ages, names], None).unwrap();
+
+    assert_eq!(from_named.serialize_bytes(), from_columns.serialize_bytes());
+}
+
+#[test]
+fn from_series_names_columns_and_overlays_metadata() {
+    use yggdryl_core::io::{AnySerie, Headers, NamedSerie};
+
+    let ids = Serie::from_values(&[1i64, 2, 3]).named("id");
+    let names = NamedSerie::new(
+        boxed(Utf8Serie::from_strs(&[Some("a"), None, Some("c")])),
+        "name",
+    )
+    .with_metadata(Headers::new().with("origin", "test"));
+    let table = StructSerie::from_series(vec![ids, names]).unwrap();
+
+    assert_eq!(table.num_columns(), 2);
+    assert_eq!(table.field(0).unwrap().name(), "id");
+    // The carrier's metadata rides into the schema field, not the stored column bytes.
+    assert_eq!(
+        table.field(1).unwrap().metadata().get("origin"),
+        Some("test")
+    );
+    // Mismatched lengths are the same guided error as `from_named`.
+    let short = Serie::from_values(&[1i64]).named("a");
+    let long = Serie::from_values(&[1i64, 2]).named("b");
+    assert!(StructSerie::from_series(vec![short, long])
+        .unwrap_err()
+        .to_string()
+        .contains("length"));
+}
+
+#[test]
+fn struct_serie_slice_windows_rows_and_children() {
+    let table = sample_table(); // 3 rows: id/age/name
+    let middle = table.slice(1, 1);
+    assert_eq!(middle.len(), 1);
+    assert_eq!(middle.num_columns(), 3);
+    // Row 1's age is null and name is "bo" -> preserved in the slice.
+    assert!(middle.column_named("age").unwrap().value(0).is_null());
+    assert_eq!(
+        middle.column_named("name").unwrap().value(0).bytes(),
+        Some(&b"bo"[..])
+    );
+    // Out-of-range / overlong requests clamp rather than panic.
+    assert_eq!(table.slice(2, 100).len(), 1);
+    assert_eq!(table.slice(9, 1).len(), 0);
+}
+
+#[test]
 fn struct_serie_nullable_rows_round_trip() {
     let ids = boxed(Serie::from_values(&[1i64, 2, 3]));
     let names = boxed(Utf8Serie::from_strs(&[Some("a"), Some("b"), Some("c")]));

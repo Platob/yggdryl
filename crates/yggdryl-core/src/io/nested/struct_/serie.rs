@@ -11,7 +11,7 @@ use super::{StructField, StructType};
 use crate::io::bitmap::Bitmap;
 use crate::io::{
     read_any_leaf, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, Headers, IOCursor,
-    IoError, SerieType,
+    IoError, NamedSerie, SerieType,
 };
 
 /// A **nullable struct column** — one child [`AnySerie`](crate::io::AnySerie) per field (all of the
@@ -41,27 +41,55 @@ pub struct StructSerie {
 }
 
 impl StructSerie {
-    /// A struct column from named child columns — the schema is inferred from each column's type
-    /// (nullability inferred from whether it holds nulls). Errors
-    /// [`Unsupported`](IoError::Unsupported) if the columns are not all the same length.
-    pub fn from_named(columns: Vec<(&str, Box<dyn AnySerie>)>) -> Result<Self, IoError> {
-        let len = columns.first().map_or(0, |(_, column)| column.len());
-        for (name, column) in &columns {
+    /// A struct column from self-describing [`NamedSerie`] columns — the schema is each column's
+    /// [`field`](NamedSerie::field) (its inferred type + name, with the carrier's metadata overlaid),
+    /// and the stored child columns are the unwrapped erased columns (the name/metadata never reach
+    /// the data). Errors [`Unsupported`](IoError::Unsupported) if the columns are not all the same
+    /// length.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::var::Utf8Serie;
+    /// use yggdryl_core::io::AnySerie;
+    /// use yggdryl_core::io::nested::StructSerie;
+    ///
+    /// let table = StructSerie::from_series(vec![
+    ///     Serie::from_values(&[1i64, 2, 3]).named("id"),
+    ///     Utf8Serie::from_strs(&[Some("a"), None, Some("c")]).named("name"),
+    /// ])
+    /// .unwrap();
+    /// assert_eq!(table.num_columns(), 2);
+    /// assert_eq!(table.field(1).unwrap().name(), "name");
+    /// ```
+    pub fn from_series(columns: Vec<NamedSerie>) -> Result<Self, IoError> {
+        let len = columns.first().map_or(0, NamedSerie::len);
+        for column in &columns {
             if column.len() != len {
-                return Err(mismatch(name, column.len(), len));
+                return Err(mismatch(column.name(), column.len(), len));
             }
         }
-        let fields = columns
-            .iter()
-            .map(|(name, column)| column.field(name))
-            .collect();
-        let columns = columns.into_iter().map(|(_, column)| column).collect();
+        let fields = columns.iter().map(NamedSerie::field).collect();
+        let columns = columns.into_iter().map(NamedSerie::into_inner).collect();
         Ok(Self {
             fields,
             columns,
             validity: None,
             len,
         })
+    }
+
+    /// A struct column from named child columns — the schema is inferred from each column's type
+    /// (nullability inferred from whether it holds nulls). A thin wrapper over
+    /// [`from_series`](StructSerie::from_series): each `(name, column)` becomes a metadata-less
+    /// [`NamedSerie`], so the stored frame is byte-identical to naming each column directly. Errors
+    /// [`Unsupported`](IoError::Unsupported) if the columns are not all the same length.
+    pub fn from_named(columns: Vec<(&str, Box<dyn AnySerie>)>) -> Result<Self, IoError> {
+        Self::from_series(
+            columns
+                .into_iter()
+                .map(|(name, column)| NamedSerie::new(column, name))
+                .collect(),
+        )
     }
 
     /// A struct column from an explicit schema + one child column per field, with an optional per-row
@@ -218,6 +246,50 @@ impl StructSerie {
             .collect()
     }
 
+    /// A **new** struct column holding rows `[offset, offset + len)` — the range is clamped to the
+    /// column (an out-of-range or overlong request yields the in-bounds sub-window, never a panic).
+    /// Each child column and the top-level validity are sliced to the same window; the schema is
+    /// preserved. The result is a fresh column (the children copy their windows); the original is
+    /// untouched.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::AnySerie;
+    /// use yggdryl_core::io::nested::StructSerie;
+    ///
+    /// let table = StructSerie::from_series(vec![
+    ///     Serie::from_values(&[1i32, 2, 3, 4]).named("n"),
+    /// ])
+    /// .unwrap();
+    /// let middle = table.slice(1, 2);
+    /// assert_eq!(middle.len(), 2);
+    /// assert_eq!(middle.column(0).unwrap().value(0), table.column(0).unwrap().value(1));
+    /// ```
+    pub fn slice(&self, offset: usize, len: usize) -> Self {
+        let start = offset.min(self.len);
+        let count = len.min(self.len - start);
+        let columns = self
+            .columns
+            .iter()
+            .map(|column| column.slice(start, count))
+            .collect();
+        let validity = self.validity.as_ref().map(|mask| {
+            let mut sliced = Bitmap::all_present(count);
+            for index in 0..count {
+                if !mask.get(start + index) {
+                    sliced.set(index, false);
+                }
+            }
+            sliced
+        });
+        Self {
+            fields: self.fields.clone(),
+            columns,
+            validity: normalize(validity),
+            len: count,
+        }
+    }
+
     // ---- serialization: the schema, then each child via its own `Serie` codec ----------
 
     /// This struct column's canonical bytes — a self-contained `[schema][len][validity?][children]`
@@ -264,7 +336,7 @@ impl StructSerie {
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
         let fields = match schema {
             AnyField::Struct { children, .. } => children,
-            AnyField::Leaf(_) => {
+            AnyField::Leaf(_) | AnyField::List { .. } | AnyField::Map { .. } => {
                 return Err(IoError::Unsupported {
                     what: "serialized struct schema did not decode to a struct".to_string(),
                 })
@@ -327,6 +399,10 @@ impl AnySerie for StructSerie {
 
     fn value(&self, index: usize) -> AnyScalar {
         self.row(index)
+    }
+
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        Box::new(StructSerie::slice(self, offset, len))
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {

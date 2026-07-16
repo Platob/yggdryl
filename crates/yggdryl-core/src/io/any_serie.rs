@@ -24,10 +24,20 @@ use super::fixed::{
     TemporalSerie, Time32Serie, Time64Serie, Ts32Serie, Ts64Serie, Ts96Serie, I256, I96, U256, U96,
 };
 use super::var::{BinarySerie, ByteSerie, Utf8Serie, VarElement};
-use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, IoError};
+use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, IoError, NamedSerie};
 
 /// The width of one variable-length offset (`i32`).
 const OFFSET_WIDTH: usize = core::mem::size_of::<i32>();
+
+/// Clamps a `[offset, offset + len)` request to a column of `column_len` rows, returning the
+/// in-bounds `(start, count)` — `start` is capped at `column_len`, `count` at the rows remaining.
+/// So an out-of-range or overlong slice yields the largest valid sub-window (possibly empty) rather
+/// than panicking. Shared by every [`AnySerie::slice`] implementation.
+fn clamp_range(column_len: usize, offset: usize, len: usize) -> (usize, usize) {
+    let start = offset.min(column_len);
+    let count = len.min(column_len - start);
+    (start, count)
+}
 
 /// A **column of any type**, type-erased — the recursive carrier a struct column's heterogeneous
 /// children live in (`Box<dyn AnySerie>`). Implemented by every concrete `Serie`; each method
@@ -63,6 +73,12 @@ pub trait AnySerie: Debug + Send + Sync {
     /// The value at `index` as an erased [`AnyScalar`] — null if the element is null or out of range.
     fn value(&self, index: usize) -> AnyScalar;
 
+    /// A **new** erased column holding the elements `[offset, offset + len)` — the range is clamped
+    /// to the column (an out-of-range or overlong request yields the in-bounds sub-window, never a
+    /// panic). Used to materialize a list row's item sub-column. The result is a fresh column (a
+    /// null/OOB-safe copy, Arc-shared where cheap); the original is untouched.
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie>;
+
     /// Writes this column to `sink` — delegates to the wrapped `Serie`'s own byte codec.
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError>;
 
@@ -87,6 +103,17 @@ pub trait AnySerie: Debug + Send + Sync {
         self.write_to(&mut sink)
             .expect("writing to an in-memory buffer is infallible");
         sink.as_slice().to_vec()
+    }
+
+    /// Names this column, yielding a [`NamedSerie`] build-input carrier — the one-line shorthand so
+    /// `Serie::from_values(&[1i32, 2]).named("x")` reads in a single call. Consumes `self` (it is
+    /// boxed into the carrier). A `Box<dyn AnySerie>` is not `Sized`, so it uses
+    /// [`NamedSerie::new`] directly instead.
+    fn named(self, name: &str) -> NamedSerie
+    where
+        Self: Sized + 'static,
+    {
+        NamedSerie::new(Box::new(self), name)
     }
 }
 
@@ -205,6 +232,14 @@ impl<T: NativeType> AnySerie for Serie<T> {
         }
     }
 
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (start, count) = clamp_range(Serie::len(self), offset, len);
+        let values: Vec<Option<T>> = (start..start + count)
+            .map(|index| self.get(index))
+            .collect();
+        Box::new(Serie::from_options(&values))
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         Serie::write_to(self, sink)
     }
@@ -260,6 +295,17 @@ where
         AnyScalar::leaf(field, bytes)
     }
 
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (start, count) = clamp_range(DecimalSerie::len(self), offset, len);
+        let values: Vec<_> = (start..start + count)
+            .map(|index| self.get(index))
+            .collect();
+        Box::new(
+            DecimalSerie::<B>::from_options(self.precision(), self.scale(), &values)
+                .expect("a column's own values re-fit its own precision/scale exactly"),
+        )
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         DecimalSerie::write_to(self, sink)
     }
@@ -297,6 +343,17 @@ impl<E: VarElement> AnySerie for ByteSerie<E> {
             ),
             None => AnyScalar::Null,
         }
+    }
+
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (start, count) = clamp_range(ByteSerie::len(self), offset, len);
+        let values: Vec<Option<&[u8]>> = (start..start + count)
+            .map(|index| self.get_bytes(index))
+            .collect();
+        Box::new(
+            ByteSerie::<E>::from_byte_values(&values)
+                .expect("a column's own values are already valid for its kind"),
+        )
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
@@ -338,6 +395,17 @@ impl<K: FixedElement> AnySerie for FixedSizeSerie<K> {
         }
     }
 
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (start, count) = clamp_range(FixedSizeSerie::len(self), offset, len);
+        let values: Vec<Option<&[u8]>> = (start..start + count)
+            .map(|index| self.get_bytes(index))
+            .collect();
+        Box::new(
+            FixedSizeSerie::<K>::from_values(self.width(), &values)
+                .expect("a column's own values re-fit its own width and kind exactly"),
+        )
+    }
+
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
         FixedSizeSerie::write_to(self, sink)
     }
@@ -369,6 +437,11 @@ impl AnySerie for NullSerie {
 
     fn value(&self, _index: usize) -> AnyScalar {
         AnyScalar::Null
+    }
+
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (_, count) = clamp_range(NullSerie::len(self), offset, len);
+        Box::new(NullSerie::with_len(count))
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
@@ -411,6 +484,17 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
         let field = TemporalField::<B>::new("", self.unit(), self.timezone(), false).erase();
         let bytes = self.count_bytes()[index * B::WIDTH..(index + 1) * B::WIDTH].to_vec();
         AnyScalar::leaf(field, bytes)
+    }
+
+    fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {
+        let (start, count) = clamp_range(TemporalSerie::len(self), offset, len);
+        let values: Vec<_> = (start..start + count)
+            .map(|index| self.get(index))
+            .collect();
+        Box::new(
+            TemporalSerie::<B>::from_options(self.unit(), self.timezone(), &values)
+                .expect("a column's own values re-fit its own unit exactly"),
+        )
     }
 
     fn write_to(&self, sink: &mut Bytes) -> Result<(), IoError> {
@@ -663,5 +747,51 @@ mod temporal_tests {
         let table = StructSerie::from_named(vec![("t", boxed(col))]).unwrap();
         let back = StructSerie::deserialize_bytes(&table.serialize_bytes()).unwrap();
         assert_eq!(back, table);
+    }
+}
+
+#[cfg(test)]
+mod slice_tests {
+    use super::*;
+    use crate::io::fixed::Serie;
+    use crate::io::var::Utf8Serie;
+
+    #[test]
+    fn slice_of_a_primitive_column_is_its_sub_window() {
+        // The documented example: [1,2,3,4].slice(1, 2) == [2, 3].
+        let sliced = boxed(Serie::from_values(&[1i32, 2, 3, 4])).slice(1, 2);
+        let expected = boxed(Serie::from_values(&[2i32, 3]));
+        assert!(sliced.eq_any(expected.as_ref()));
+        assert_eq!(sliced.len(), 2);
+    }
+
+    #[test]
+    fn slice_clamps_out_of_range_and_preserves_nulls() {
+        let column = boxed(Serie::from_options(&[
+            Some(1i32),
+            None,
+            Some(3),
+            None,
+            Some(5),
+        ]));
+        // A window that runs past the end is clamped to the rows that remain.
+        let tail = column.slice(3, 100);
+        let expected = boxed(Serie::from_options(&[None, Some(5i32)]));
+        assert!(tail.eq_any(expected.as_ref()));
+        // A wholly out-of-range offset yields an empty column.
+        assert_eq!(column.slice(9, 4).len(), 0);
+    }
+
+    #[test]
+    fn slice_of_a_var_column_copies_the_window() {
+        let column = boxed(Utf8Serie::from_strs(&[
+            Some("a"),
+            None,
+            Some("cd"),
+            Some("e"),
+        ]));
+        let sliced = column.slice(1, 2);
+        let expected = boxed(Utf8Serie::from_strs(&[None, Some("cd")]));
+        assert!(sliced.eq_any(expected.as_ref()));
     }
 }

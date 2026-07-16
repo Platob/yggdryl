@@ -158,6 +158,29 @@ impl DataTypeId {
     /// for naive), so a zoned timestamp round-trips its zone.
     pub const TIMEZONE_METADATA_KEY: &'static str = "timezone";
 
+    /// Whether `key` is one of the **reserved discriminator** metadata keys — the intrinsic
+    /// type-recovery keys ([`METADATA_KEY`](DataTypeId::METADATA_KEY),
+    /// [`PRECISION_METADATA_KEY`](DataTypeId::PRECISION_METADATA_KEY),
+    /// [`SCALE_METADATA_KEY`](DataTypeId::SCALE_METADATA_KEY),
+    /// [`TIME_UNIT_METADATA_KEY`](DataTypeId::TIME_UNIT_METADATA_KEY),
+    /// [`TIMEZONE_METADATA_KEY`](DataTypeId::TIMEZONE_METADATA_KEY)) a field carries to round-trip its
+    /// exact logical type through a lossy Arrow mapping. A user metadata overlay must never clobber
+    /// these, so it skips any key this returns `true` for.
+    ///
+    /// ```
+    /// use yggdryl_core::io::DataTypeId;
+    /// assert!(DataTypeId::is_reserved_metadata_key(DataTypeId::METADATA_KEY));
+    /// assert!(DataTypeId::is_reserved_metadata_key("precision"));
+    /// assert!(!DataTypeId::is_reserved_metadata_key("origin"));
+    /// ```
+    pub fn is_reserved_metadata_key(key: &str) -> bool {
+        key == Self::METADATA_KEY
+            || key == Self::PRECISION_METADATA_KEY
+            || key == Self::SCALE_METADATA_KEY
+            || key == Self::TIME_UNIT_METADATA_KEY
+            || key == Self::TIMEZONE_METADATA_KEY
+    }
+
     /// The raw `u16` discriminant.
     pub const fn as_u16(self) -> u16 {
         self as u16

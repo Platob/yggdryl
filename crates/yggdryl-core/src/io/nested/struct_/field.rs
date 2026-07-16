@@ -112,7 +112,9 @@ impl StructField {
                 children,
             } => (name, *nullable, metadata, children),
             // A `StructField` is always a struct-shaped `AnyField` by construction.
-            AnyField::Leaf(_) => unreachable!("StructField always wraps AnyField::Struct"),
+            AnyField::Leaf(_) | AnyField::List { .. } | AnyField::Map { .. } => {
+                unreachable!("StructField always wraps AnyField::Struct")
+            }
         }
     }
 
