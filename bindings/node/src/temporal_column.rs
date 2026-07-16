@@ -17,6 +17,7 @@
 //! interop.
 
 use napi::bindgen_prelude::{BigInt, Buffer, Date};
+use napi::{Env, JsUnknown};
 use napi_derive::napi;
 
 use yggdryl_core::io::fixed::temporal as core;
@@ -279,6 +280,48 @@ macro_rules! napi_temporal_col {
                     self.inner.timezone().name(),
                     self.inner.null_count()
                 )
+            }
+
+            // ---- Phase 8: reshape + row-selection (no arithmetic on a temporal column) -------
+
+            /// A same-`(unit, tz)` column of the rows `mask` keeps (`true` keeps row `i`); throws if
+            /// `mask`'s length is not this column's length.
+            #[napi]
+            pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+                Ok(Self {
+                    inner: crate::ops::filter_into(&self.inner, mask)?,
+                })
+            }
+
+            /// A same-column with every null replaced by `value` (a JS `null` / `undefined` is a
+            /// no-op clone). A temporal has no native JS scalar form, so a real fill value is passed
+            /// as a length-1 `Serie` **carrier** of the same `(unit, tz)` — its `value(0)` is used,
+            /// and a unit / tz mismatch (or a plain JS native) is a guided error.
+            #[napi]
+            pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+                Ok(Self {
+                    inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+                })
+            }
+
+            /// This column as a one-field [`StructSerie`](crate::nested::StructSerie) named `name`
+            /// (default `"value"`).
+            #[napi]
+            pub fn to_struct(&self, name: Option<String>) -> crate::nested::StructSerie {
+                crate::ops::to_struct_wrapper(&self.inner, name)
+            }
+
+            /// This column as a list-of-singletons [`ListSerie`](crate::nested::ListSerie).
+            #[napi]
+            pub fn to_list(&self) -> crate::nested::ListSerie {
+                crate::ops::to_list_wrapper(&self.inner)
+            }
+
+            /// This column reshaped toward a map, as its `serializeBytes()` frame (unchanged for a
+            /// temporal column; reconstruct with the resulting class's `deserializeBytes`).
+            #[napi]
+            pub fn to_map(&self) -> napi::Result<Buffer> {
+                crate::ops::to_map_frame(&self.inner)
             }
         }
     };

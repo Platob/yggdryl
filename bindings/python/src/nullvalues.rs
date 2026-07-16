@@ -294,6 +294,10 @@ impl NullSerie {
     }
 }
 
+// Phase 8 reshape (`filter` / `fill_null` / `to_list` / `to_struct` / `to_map`). A null column has
+// no element type, so `fill_null` accepts only `None` (the identity); it gets no arithmetic.
+crate::nested::reshape_methods!(NullSerie);
+
 /// Adds the null `Scalar` / `Serie` classes to the `yggdryl.types` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NullScalar>()?;

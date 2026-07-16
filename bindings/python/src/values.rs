@@ -582,6 +582,26 @@ py_fixed!(F16Scalar, F16Serie, f16, "f16");
 py_fixed!(F32Scalar, F32Serie, f32, "f32");
 py_fixed!(F64Scalar, F64Serie, f64, "f64");
 
+// Phase 8 reshape (`filter` / `fill_null` / `to_list` / `to_struct` / `to_map`) — on **every**
+// fixed-width column, the wide integers included (they get no arithmetic, only reshape).
+crate::nested::reshape_methods!(U8Serie);
+crate::nested::reshape_methods!(U16Serie);
+crate::nested::reshape_methods!(U32Serie);
+crate::nested::reshape_methods!(U64Serie);
+crate::nested::reshape_methods!(U96Serie);
+crate::nested::reshape_methods!(U128Serie);
+crate::nested::reshape_methods!(U256Serie);
+crate::nested::reshape_methods!(I8Serie);
+crate::nested::reshape_methods!(I16Serie);
+crate::nested::reshape_methods!(I32Serie);
+crate::nested::reshape_methods!(I64Serie);
+crate::nested::reshape_methods!(I96Serie);
+crate::nested::reshape_methods!(I128Serie);
+crate::nested::reshape_methods!(I256Serie);
+crate::nested::reshape_methods!(F16Serie);
+crate::nested::reshape_methods!(F32Serie);
+crate::nested::reshape_methods!(F64Serie);
+
 /// Adds the numeric `to_<type>` casts to one castable `Scalar` **and** `Serie` (the
 /// [`NumericCast`](yggdryl_core::io::NumericCast) subset — `u8`…`u64`, `i8`…`i128`, the floats).
 /// Each cast is range-checked for an integer target (a guided `ValueError`) and precision-lossy
@@ -810,6 +830,22 @@ py_numeric_casts!(I128Scalar, I128Serie, i128);
 py_numeric_casts!(F16Scalar, F16Serie, f16);
 py_numeric_casts!(F32Scalar, F32Serie, f32);
 py_numeric_casts!(F64Scalar, F64Serie, f64);
+
+// Phase 8 element-wise arithmetic (`+ - * / %` operators + `add`/`sub`/`mul`/`div`/`rem`) — on the
+// twelve numeric leaf columns (the `py_numeric_casts!` scope), mirroring the core `dyn AnySerie`
+// ops. The wide integers / decimals / temporals get no arithmetic (they would only ever error).
+crate::nested::arith_methods!(U8Serie);
+crate::nested::arith_methods!(U16Serie);
+crate::nested::arith_methods!(U32Serie);
+crate::nested::arith_methods!(U64Serie);
+crate::nested::arith_methods!(I8Serie);
+crate::nested::arith_methods!(I16Serie);
+crate::nested::arith_methods!(I32Serie);
+crate::nested::arith_methods!(I64Serie);
+crate::nested::arith_methods!(I128Serie);
+crate::nested::arith_methods!(F16Serie);
+crate::nested::arith_methods!(F32Serie);
+crate::nested::arith_methods!(F64Serie);
 
 /// Adds every fixed-width `Scalar` / `Serie` class to the `yggdryl.types` submodule.
 macro_rules! register_all {

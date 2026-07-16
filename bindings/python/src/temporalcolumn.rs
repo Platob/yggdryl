@@ -503,6 +503,19 @@ py_temporal_col!(
     "duration64"
 );
 
+// Phase 8 reshape (`filter` / `fill_null` / `to_list` / `to_struct` / `to_map`). A temporal column's
+// `fill_null` takes a single-element temporal Serie carrier so the core can guard a (unit, tz)
+// mismatch; temporals get no arithmetic (out of the twelve-numeric scope).
+crate::nested::reshape_methods!(Date32Serie);
+crate::nested::reshape_methods!(Date64Serie);
+crate::nested::reshape_methods!(Time32Serie);
+crate::nested::reshape_methods!(Time64Serie);
+crate::nested::reshape_methods!(Ts32Serie);
+crate::nested::reshape_methods!(Ts64Serie);
+crate::nested::reshape_methods!(Ts96Serie);
+crate::nested::reshape_methods!(Duration32Serie);
+crate::nested::reshape_methods!(Duration64Serie);
+
 // ---- native-language temporal column factories -----------------------------------------
 //
 // Each mirrors the temporal *value* types' native constructors (`from_pydate` / `from_pytime` /

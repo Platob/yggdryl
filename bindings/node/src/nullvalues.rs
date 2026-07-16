@@ -6,6 +6,7 @@
 //! same length. A `NullSerie` grows via `push` / `extend`.
 
 use napi::bindgen_prelude::{Buffer, Null};
+use napi::{Env, JsUnknown};
 use napi_derive::napi;
 
 use yggdryl_core::io::fixed::{
@@ -259,6 +260,46 @@ impl NullSerie {
         Self {
             inner: self.inner.clone(),
         }
+    }
+
+    // ---- Phase 8: reshape + row-selection (no arithmetic on a null column) ---------------
+
+    /// A null column of the rows `mask` keeps (`true` keeps row `i`); throws if `mask`'s length is
+    /// not this column's length.
+    #[napi]
+    pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::filter_into(&self.inner, mask)?,
+        })
+    }
+
+    /// A null column, unchanged — every element is already null, so filling with a `null` /
+    /// `undefined` is a no-op; a present `value` has no room in a null column and throws.
+    #[napi]
+    pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+        })
+    }
+
+    /// This column as a one-field [`StructSerie`](crate::nested::StructSerie) named `name` (default
+    /// `"value"`).
+    #[napi]
+    pub fn to_struct(&self, name: Option<String>) -> crate::nested::StructSerie {
+        crate::ops::to_struct_wrapper(&self.inner, name)
+    }
+
+    /// This column as a list-of-singletons [`ListSerie`](crate::nested::ListSerie).
+    #[napi]
+    pub fn to_list(&self) -> crate::nested::ListSerie {
+        crate::ops::to_list_wrapper(&self.inner)
+    }
+
+    /// This column reshaped toward a map, as its `serializeBytes()` frame (unchanged for a null
+    /// column; reconstruct with the resulting class's `deserializeBytes`).
+    #[napi]
+    pub fn to_map(&self) -> napi::Result<Buffer> {
+        crate::ops::to_map_frame(&self.inner)
     }
 
     #[napi(js_name = "toString")]

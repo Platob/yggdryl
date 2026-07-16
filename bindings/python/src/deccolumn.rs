@@ -412,6 +412,14 @@ py_dec_col!(D64Scalar, D64Serie, Dec64, "d64");
 py_dec_col!(D128Scalar, D128Serie, Dec128, "d128");
 py_dec_col!(D256Scalar, D256Serie, Dec256, "d256");
 
+// Phase 8 reshape (`filter` / `fill_null` / `to_list` / `to_struct` / `to_map`). A decimal column's
+// `fill_null` takes a single-element decimal Serie carrier so the core can guard a scale mismatch;
+// decimals get no arithmetic (out of the twelve-numeric scope).
+crate::nested::reshape_methods!(D32Serie);
+crate::nested::reshape_methods!(D64Serie);
+crate::nested::reshape_methods!(D128Serie);
+crate::nested::reshape_methods!(D256Serie);
+
 /// Adds the columnar decimal `Scalar` / `Serie` classes to the `yggdryl.decimal` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<D32Scalar>()?;

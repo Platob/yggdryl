@@ -478,6 +478,57 @@ macro_rules! napi_fixed {
                 pub fn max(&self) -> Option<f64> {
                     self.inner.max_f64()
                 }
+
+                // ---- Phase 8: element-wise arithmetic (numeric leaf columns) -----------------
+                //
+                // `other` is EITHER a `Serie` wrapper (any of the twelve numeric or three nested
+                // classes — cross-type works, the right is cast into this column's type and the
+                // result follows this LEFT column) OR a JS numeric scalar broadcast over every
+                // element (`number` / numeric `string` / `boolean` / `bigint`). One `add` folds both
+                // paths (the Python parity: `__add__`/`add` — there is no separate `addScalar`).
+
+                /// `self + other` — element-wise with a `Serie`, or a broadcast scalar. Integer
+                /// addition wraps; a result cell is null iff an input cell is null.
+                #[napi]
+                pub fn add(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+                    Ok(Self {
+                        inner: crate::ops::add_into(env, &self.inner, other)?,
+                    })
+                }
+
+                /// `self - other` — see [`add`](Self::add) for the operand + casting rules.
+                #[napi]
+                pub fn sub(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+                    Ok(Self {
+                        inner: crate::ops::sub_into(env, &self.inner, other)?,
+                    })
+                }
+
+                /// `self * other` — see [`add`](Self::add) for the operand + casting rules.
+                #[napi]
+                pub fn mul(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+                    Ok(Self {
+                        inner: crate::ops::mul_into(env, &self.inner, other)?,
+                    })
+                }
+
+                /// `self / other` — see [`add`](Self::add). Integer division by a **zero** divisor
+                /// writes a null cell (never throws); a float divides to IEEE `±∞` / `NaN`.
+                #[napi]
+                pub fn div(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+                    Ok(Self {
+                        inner: crate::ops::div_into(env, &self.inner, other)?,
+                    })
+                }
+
+                /// `self % other` — see [`add`](Self::add). Integer remainder by a **zero** divisor
+                /// writes a null cell (never throws).
+                #[napi]
+                pub fn rem(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+                    Ok(Self {
+                        inner: crate::ops::rem_into(env, &self.inner, other)?,
+                    })
+                }
             });
     };
     // Wide (non-`NumericCast`) types — the standard surface only.
@@ -810,6 +861,49 @@ macro_rules! napi_fixed {
                     self.inner.len(),
                     self.inner.null_count()
                 )
+            }
+
+            // ---- Phase 8: reshape + row-selection (on every fixed-width column) --------------
+
+            /// A same-type column of the rows `mask` keeps (`true` keeps row `i`); throws if `mask`'s
+            /// length is not this column's length.
+            #[napi]
+            pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+                Ok(Self {
+                    inner: crate::ops::filter_into(&self.inner, mask)?,
+                })
+            }
+
+            /// A same-type column with every null replaced by `value` (a JS `null` / `undefined` is a
+            /// no-op clone). The value casts into this column's element type (its own guided error on a
+            /// mismatch / overflow).
+            #[napi]
+            pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+                Ok(Self {
+                    inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+                })
+            }
+
+            /// This column as a one-field [`StructSerie`](crate::nested::StructSerie) named `name`
+            /// (default `"value"`) — row `i` becomes `{name: value_i}`.
+            #[napi]
+            pub fn to_struct(&self, name: Option<String>) -> crate::nested::StructSerie {
+                crate::ops::to_struct_wrapper(&self.inner, name)
+            }
+
+            /// This column as a list-of-singletons [`ListSerie`](crate::nested::ListSerie) — row `i`
+            /// becomes `[value_i]`.
+            #[napi]
+            pub fn to_list(&self) -> crate::nested::ListSerie {
+                crate::ops::to_list_wrapper(&self.inner)
+            }
+
+            /// This column reshaped toward a map, as its `serializeBytes()` frame. A leaf column has no
+            /// map coercion, so the frame is this column unchanged — reconstruct with the resulting
+            /// class's `deserializeBytes` (`MapSerie` only when a map actually results).
+            #[napi]
+            pub fn to_map(&self) -> napi::Result<Buffer> {
+                crate::ops::to_map_frame(&self.inner)
             }
 
             $($serie_extra)*

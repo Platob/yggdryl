@@ -24,8 +24,11 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyCapsule, PyDict, PyFloat, PyInt, PySlice, PyString, PyTuple};
 
 use yggdryl_core::io::fixed::{
-    f16, Dec128, Dec256, Dec32, Dec64, Field as CoreField, NativeType, NullSerie as CoreNullSerie,
-    I256, I96, U256, U96,
+    f16, Date32Serie as CoreDate32Serie, Date64Serie as CoreDate64Serie, Dec128, Dec256, Dec32,
+    Dec64, Duration32Serie as CoreDuration32Serie, Duration64Serie as CoreDuration64Serie,
+    Field as CoreField, NativeType, NullSerie as CoreNullSerie, Time32Serie as CoreTime32Serie,
+    Time64Serie as CoreTime64Serie, Ts32Serie as CoreTs32Serie, Ts64Serie as CoreTs64Serie,
+    Ts96Serie as CoreTs96Serie, I256, I96, U256, U96,
 };
 use yggdryl_core::io::nested::{
     ListField as CoreListField, ListSerie as CoreListSerie, MapField as CoreMapField,
@@ -38,6 +41,10 @@ use yggdryl_core::io::{
 
 use crate::deccolumn::{D128Serie, D256Serie, D32Serie, D64Serie};
 use crate::nullvalues::NullSerie;
+use crate::temporalcolumn::{
+    Date32Serie, Date64Serie, Duration32Serie, Duration64Serie, Time32Serie, Time64Serie,
+    Ts32Serie, Ts64Serie, Ts96Serie,
+};
 use crate::types::{DataType, Field};
 use crate::values::{
     F16Serie, F32Serie, F64Serie, I128Serie, I16Serie, I256Serie, I32Serie, I64Serie, I8Serie,
@@ -98,6 +105,15 @@ fn extract_column(obj: &Bound<'_, PyAny>) -> PyResult<Box<dyn AnySerie>> {
         D64Serie,
         D128Serie,
         D256Serie,
+        Date32Serie,
+        Date64Serie,
+        Time32Serie,
+        Time64Serie,
+        Ts32Serie,
+        Ts64Serie,
+        Ts96Serie,
+        Duration32Serie,
+        Duration64Serie,
         Utf8Serie,
         BinarySerie,
         NullSerie,
@@ -106,8 +122,8 @@ fn extract_column(obj: &Bound<'_, PyAny>) -> PyResult<Box<dyn AnySerie>> {
         MapSerie,
     );
     Err(PyValueError::new_err(
-        "expected a yggdryl column (a Serie: U8Serie … Utf8Serie, D32Serie …, NullSerie, \
-         StructSerie, ListSerie, or MapSerie)",
+        "expected a yggdryl column (a Serie: U8Serie … Utf8Serie, D32Serie …, Date32Serie …, \
+         NullSerie, StructSerie, ListSerie, or MapSerie)",
     ))
 }
 
@@ -125,6 +141,14 @@ fn rewrap_column(any: &(dyn AnySerie + 'static), py: Python<'_>) -> PyResult<PyO
         ($B:ty, $W:ident) => {
             $W {
                 inner: any.as_decimal::<$B>().expect("type_id matched").clone(),
+            }
+            .into_py(py)
+        };
+    }
+    macro_rules! temporal {
+        ($C:ty, $W:ident) => {
+            $W {
+                inner: any.downcast_ref::<$C>().expect("type_id matched").clone(),
             }
             .into_py(py)
         };
@@ -151,6 +175,15 @@ fn rewrap_column(any: &(dyn AnySerie + 'static), py: Python<'_>) -> PyResult<PyO
         DataTypeId::D64 => decimal!(Dec64, D64Serie),
         DataTypeId::D128 => decimal!(Dec128, D128Serie),
         DataTypeId::D256 => decimal!(Dec256, D256Serie),
+        DataTypeId::Date32 => temporal!(CoreDate32Serie, Date32Serie),
+        DataTypeId::Date64 => temporal!(CoreDate64Serie, Date64Serie),
+        DataTypeId::Time32 => temporal!(CoreTime32Serie, Time32Serie),
+        DataTypeId::Time64 => temporal!(CoreTime64Serie, Time64Serie),
+        DataTypeId::Ts32 => temporal!(CoreTs32Serie, Ts32Serie),
+        DataTypeId::Ts64 => temporal!(CoreTs64Serie, Ts64Serie),
+        DataTypeId::Ts96 => temporal!(CoreTs96Serie, Ts96Serie),
+        DataTypeId::Duration32 => temporal!(CoreDuration32Serie, Duration32Serie),
+        DataTypeId::Duration64 => temporal!(CoreDuration64Serie, Duration64Serie),
         DataTypeId::Utf8 => Utf8Serie {
             inner: any
                 .as_bytes_serie::<Utf8>()
@@ -201,6 +234,444 @@ fn rewrap_column(any: &(dyn AnySerie + 'static), py: Python<'_>) -> PyResult<PyO
         }
     })
 }
+
+// =====================================================================================
+// Phase 8 — vectorized element-wise arithmetic + reshape coercions on any column. Every method is a
+// 1–3 line delegate to the core's `dyn AnySerie` surface (`add`/…/`rem` + `*_scalar`, `filter`,
+// `fill_null`, `to_struct`/`to_list`/`to_map`); the only binding-side logic is idiom dispatch (a
+// yggdryl Serie vs a Python scalar on the right) and the native ↔ `AnyScalar` bridge already built
+// for deep indexing. The shared helpers here are called from the leaf / decimal / temporal / var /
+// null / nested wrappers via the [`arith_methods!`] / [`reshape_methods!`] macros, so the capability
+// reads identically on every column type.
+// =====================================================================================
+
+/// The five element-wise arithmetic ops the binding exposes — the dispatch key for [`arith_op`].
+pub(crate) enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+}
+
+/// Applies element-wise `left <op> other`, where `other` is either a yggdryl `Serie` (the
+/// serie×serie path — result type follows the LEFT operand) or a broadcast Python scalar
+/// (int / float / `None` → the serie×scalar path). Delegates to the core `dyn AnySerie` ops and
+/// re-wraps the result as its concrete Python `Serie`; every core error surfaces as a `ValueError`.
+pub(crate) fn arith_op(
+    left: &(dyn AnySerie + 'static),
+    other: &Bound<'_, PyAny>,
+    op: BinOp,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    let result = match extract_column(other) {
+        Ok(right) => {
+            let right = right.as_ref();
+            match op {
+                BinOp::Add => left.add(right),
+                BinOp::Sub => left.sub(right),
+                BinOp::Mul => left.mul(right),
+                BinOp::Div => left.div(right),
+                BinOp::Rem => left.rem(right),
+            }
+        }
+        Err(_) => {
+            let value = arith_scalar(other, left)?;
+            match op {
+                BinOp::Add => left.add_scalar(&value),
+                BinOp::Sub => left.sub_scalar(&value),
+                BinOp::Mul => left.mul_scalar(&value),
+                BinOp::Div => left.div_scalar(&value),
+                BinOp::Rem => left.rem_scalar(&value),
+            }
+        }
+    };
+    rewrap_column(result.map_err(io_err)?.as_ref(), py)
+}
+
+/// Builds the broadcast [`AnyScalar`] for the serie×scalar arithmetic path, **coerced to the LEFT
+/// column's element type** — the single rule shared verbatim with the Node binding
+/// (`bindings/node/src/ops.rs::arith_scalar`), so both bindings accept exactly the same operands and
+/// reject the same ones for every one of these cases:
+/// - a Python `None` → the null scalar (an all-null result);
+/// - an **integer** leaf column (`u8`…`i64`, `i128`) → a **whole** integer (a Python `int` / `bool`
+///   or an integer-valued numeric `str`); a fractional value (`2.5`, `"2.5"`, a `float` like `2.0`)
+///   is a guided error (wholeness required), range-checked into the column type by the core;
+/// - a **float** leaf column (`f16` / `f32` / `f64`) → any `int` / `float` / numeric `str` → `f64`;
+/// - a **nested** column (struct / list / map) → an inferred whole `i128` / fractional `f64`, which
+///   the core broadcasts + casts into each leaf child (see [`nested_broadcast_scalar`]).
+fn arith_scalar(value: &Bound<'_, PyAny>, left: &(dyn AnySerie + 'static)) -> PyResult<AnyScalar> {
+    if value.is_none() {
+        return Ok(AnyScalar::null());
+    }
+    let id = left.type_id();
+    if id.is_nested() {
+        return nested_broadcast_scalar(value);
+    }
+    if id.is_integer() {
+        return Ok(leaf_i128(arith_int_i128(value)?));
+    }
+    if id.is_floating() {
+        return Ok(leaf_f64(arith_f64(value)?));
+    }
+    // Any other leaf column reaching the arith path (none today) marshals at its exact element type.
+    let width = id.fixed_byte_width().unwrap_or(0);
+    py_to_any_scalar(Some(value), id, width)
+}
+
+/// An `i128` value as a leaf [`AnyScalar`] (the widest signed integer scalar; the core casts it into
+/// the target column's element type, range-checked) — the Python mirror of Node's `leaf_i128`.
+fn leaf_i128(value: i128) -> AnyScalar {
+    AnyScalar::leaf(
+        CoreField::of("", DataTypeId::I128, 16, false),
+        value.to_le_bytes().to_vec(),
+    )
+}
+
+/// An `f64` value as a leaf [`AnyScalar`] — the Python mirror of Node's `leaf_f64`.
+fn leaf_f64(value: f64) -> AnyScalar {
+    AnyScalar::leaf(
+        CoreField::of("", DataTypeId::F64, 8, false),
+        value.to_le_bytes().to_vec(),
+    )
+}
+
+/// A Python arithmetic operand coerced to a **whole** `i128` for an integer leaf column — a Python
+/// `int` / `bool`, or an integer-valued numeric `str`. A Python `float` (even a whole `2.0`), a
+/// non-integer string, or any other value is a guided error (the wholeness rule) — mirroring Node's
+/// [`js_int_value`]-based `int_operand`, so `i32 + 2` / `i32 + "5"` succeed and `i32 + 2.5` /
+/// `i32 + "2.5"` / `i32 + 2.0` error identically in both bindings.
+fn arith_int_i128(value: &Bound<'_, PyAny>) -> PyResult<i128> {
+    // A `float` is never a whole integer operand (the Node mirror rejects any `number` whose
+    // `fract() != 0.0`; a Python `float` is a distinct type from `int`, so reject it outright).
+    if value.is_instance_of::<PyFloat>() {
+        let number: f64 = value.extract()?;
+        return Err(PyValueError::new_err(format!(
+            "the value {number} is not a whole number in range for an integer column"
+        )));
+    }
+    if value.is_instance_of::<PyString>() {
+        let text: String = value.extract()?;
+        return text.parse::<i128>().map_err(|_| {
+            PyValueError::new_err(format!("the value {text:?} is not a valid integer"))
+        });
+    }
+    if value.is_instance_of::<PyBool>() || value.is_instance_of::<PyInt>() {
+        return value.extract::<i128>().map_err(|_| {
+            PyValueError::new_err(
+                "the integer operand exceeds the 128-bit range of an arithmetic scalar",
+            )
+        });
+    }
+    Err(PyValueError::new_err(
+        "cannot use this value as an integer arithmetic operand; expected an int, an integer \
+         string, or a Serie",
+    ))
+}
+
+/// A Python arithmetic operand coerced to `f64` for a float leaf column — a Python `int` / `float` /
+/// `bool`, or a numeric `str`. Anything else is a guided error. Mirrors Node's `float_operand`.
+fn arith_f64(value: &Bound<'_, PyAny>) -> PyResult<f64> {
+    if value.is_instance_of::<PyString>() {
+        let text: String = value.extract()?;
+        return text.parse::<f64>().map_err(|_| {
+            PyValueError::new_err(format!(
+                "cannot use {text:?} as an arithmetic operand; expected a number, a numeric string, \
+                 or a Serie"
+            ))
+        });
+    }
+    value.extract::<f64>().map_err(|_| {
+        PyValueError::new_err(
+            "cannot use this value as a float arithmetic operand; expected a number, a numeric \
+             string, or a Serie",
+        )
+    })
+}
+
+/// The **nested-column broadcast** inference (the Python mirror of Node's `nested_broadcast_scalar`):
+/// a Python `int` / `bool` or an integer `str` → an `i128` value; a `float` or a decimal `str` → an
+/// `f64` value. The core then broadcasts + casts it into each leaf child of the struct / list / map.
+/// A value beyond the `i128` range, or a non-numeric operand, is a guided error.
+fn nested_broadcast_scalar(value: &Bound<'_, PyAny>) -> PyResult<AnyScalar> {
+    if value.is_instance_of::<PyBool>() || value.is_instance_of::<PyInt>() {
+        return value.extract::<i128>().map(leaf_i128).map_err(|_| {
+            PyValueError::new_err(
+                "the integer operand exceeds the 128-bit range of an arithmetic scalar",
+            )
+        });
+    }
+    if value.is_instance_of::<PyFloat>() {
+        return Ok(leaf_f64(value.extract::<f64>()?));
+    }
+    if value.is_instance_of::<PyString>() {
+        let text: String = value.extract()?;
+        if let Ok(parsed) = text.parse::<i128>() {
+            return Ok(leaf_i128(parsed));
+        }
+        if let Ok(parsed) = text.parse::<f64>() {
+            return Ok(leaf_f64(parsed));
+        }
+        return Err(PyValueError::new_err(format!(
+            "cannot use {text:?} as an arithmetic operand; expected a number, a numeric string, or \
+             a Serie"
+        )));
+    }
+    Err(PyValueError::new_err(
+        "a scalar operand on a nested column must be an int, a float, or a numeric string to \
+         broadcast into its leaf children (or a matching nested column for a field-wise op)",
+    ))
+}
+
+/// Keeps the rows of `column` where `mask` is `True` (the mask length must equal the column length,
+/// or the core guides the error) as a fresh column of the same concrete type. Delegates to the
+/// erased [`AnySerie::filter`](yggdryl_core::io::AnySerie::filter).
+pub(crate) fn filter_column(
+    column: &(dyn AnySerie + 'static),
+    mask: &[bool],
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    rewrap_column(column.filter(mask).map_err(io_err)?.as_ref(), py)
+}
+
+/// Replaces every null in `column` with `value` — a Python native (marshaled at the column's leaf
+/// type), a single-element yggdryl `Serie` whose **first cell** is the fill value (the path a
+/// decimal / temporal column takes, so its scale / unit is checked by the core), or `None` (a no-op
+/// that returns the column unchanged). Delegates to the erased
+/// [`AnySerie::fill_null`](yggdryl_core::io::AnySerie::fill_null).
+pub(crate) fn fill_null_column(
+    column: &(dyn AnySerie + 'static),
+    value: Option<&Bound<'_, PyAny>>,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    let scalar = fill_scalar(value, column)?;
+    rewrap_column(column.fill_null(&scalar).map_err(io_err)?.as_ref(), py)
+}
+
+/// Builds the fill [`AnyScalar`] for [`fill_null_column`] (see it for the accepted forms).
+fn fill_scalar(
+    value: Option<&Bound<'_, PyAny>>,
+    column: &(dyn AnySerie + 'static),
+) -> PyResult<AnyScalar> {
+    let value = match value {
+        Some(value) if !value.is_none() => value,
+        _ => return Ok(AnyScalar::null()),
+    };
+    // A yggdryl `Serie` carries the fill value in its first cell — the path decimal / temporal
+    // columns take, since that cell's field carries the source's scale / unit for the core to guard
+    // against a mismatch. Precedent: a length-1 `Serie` is the scalar carrier in `MapSerie.get_value`.
+    if let Ok(carrier) = extract_column(value) {
+        if carrier.is_empty() {
+            return Err(PyValueError::new_err(
+                "a Serie fill value must have at least one element (its first element is the fill \
+                 value)",
+            ));
+        }
+        return Ok(carrier.value(0));
+    }
+    let id = column.type_id();
+    let width = id.fixed_byte_width().unwrap_or(0);
+    py_to_any_scalar(Some(value), id, width)
+}
+
+/// This column **as a one-field struct** named `name` (already a struct → unchanged). Delegates to
+/// the erased [`AnySerie::to_struct`](yggdryl_core::io::AnySerie).
+pub(crate) fn to_struct_column(
+    column: &(dyn AnySerie + 'static),
+    name: &str,
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    rewrap_column(column.to_struct(name).as_ref(), py)
+}
+
+/// This column **as a list of singletons** (already a list → unchanged). Delegates to the erased
+/// [`AnySerie::to_list`](yggdryl_core::io::AnySerie).
+pub(crate) fn to_list_column(
+    column: &(dyn AnySerie + 'static),
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    rewrap_column(column.to_list().as_ref(), py)
+}
+
+/// This column **as a map** when a logical rule applies (a 2-column struct → a map; already a map →
+/// unchanged; any other shape → itself). Delegates to the erased
+/// [`AnySerie::to_map`](yggdryl_core::io::AnySerie).
+pub(crate) fn to_map_column(
+    column: &(dyn AnySerie + 'static),
+    py: Python<'_>,
+) -> PyResult<PyObject> {
+    rewrap_column(column.to_map().map_err(io_err)?.as_ref(), py)
+}
+
+/// Emits the element-wise arithmetic `#[pymethods]` (the operator dunders, their commutative
+/// reverses `__radd__` / `__rmul__`, and the named `add` / `sub` / `mul` / `div` / `rem` twins) for
+/// a Serie wrapper — each a 1-line delegate to [`arith_op`]. Shared by the twelve numeric leaf
+/// columns and the three nested columns.
+macro_rules! arith_methods {
+    ($Serie:ident) => {
+        #[pymethods]
+        impl $Serie {
+            fn __add__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Add,
+                    py,
+                )
+            }
+            fn __sub__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Sub,
+                    py,
+                )
+            }
+            fn __mul__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Mul,
+                    py,
+                )
+            }
+            fn __truediv__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Div,
+                    py,
+                )
+            }
+            fn __mod__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Rem,
+                    py,
+                )
+            }
+            /// Commutative reverse-add, so `1 + serie` works.
+            fn __radd__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Add,
+                    py,
+                )
+            }
+            /// Commutative reverse-mul, so `2 * serie` works.
+            fn __rmul__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Mul,
+                    py,
+                )
+            }
+            /// Element-wise `self + other` (a Serie or a broadcast scalar) — the named `__add__`.
+            fn add(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Add,
+                    py,
+                )
+            }
+            /// Element-wise `self - other` — the named `__sub__`.
+            fn sub(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Sub,
+                    py,
+                )
+            }
+            /// Element-wise `self * other` — the named `__mul__`.
+            fn mul(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Mul,
+                    py,
+                )
+            }
+            /// Element-wise `self / other` (integer div-by-zero → a null cell) — the named `__truediv__`.
+            fn div(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Div,
+                    py,
+                )
+            }
+            /// Element-wise `self % other` (integer rem-by-zero → a null cell) — the named `__mod__`.
+            fn rem(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+                $crate::nested::arith_op(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    other,
+                    $crate::nested::BinOp::Rem,
+                    py,
+                )
+            }
+        }
+    };
+}
+pub(crate) use arith_methods;
+
+/// Emits the reshape `#[pymethods]` (`filter`, `fill_null`, `to_list`, `to_struct`, `to_map`) for a
+/// Serie wrapper — each a 1-line delegate to the shared helpers. Present on **every** column type.
+macro_rules! reshape_methods {
+    ($Serie:ident) => {
+        #[pymethods]
+        impl $Serie {
+            /// Keeps the rows where `mask` is `True` (the mask length must equal the column length),
+            /// as a fresh column of the same type.
+            fn filter(&self, py: Python<'_>, mask: Vec<bool>) -> PyResult<PyObject> {
+                $crate::nested::filter_column(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    &mask,
+                    py,
+                )
+            }
+            /// A copy with every null replaced by `value` — a Python native, a single-element Serie
+            /// carrying the fill value (a decimal / temporal column needs a matching scale / unit),
+            /// or `None` (a no-op).
+            #[pyo3(signature = (value = None))]
+            fn fill_null(
+                &self,
+                py: Python<'_>,
+                value: Option<&Bound<'_, PyAny>>,
+            ) -> PyResult<PyObject> {
+                $crate::nested::fill_null_column(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    value,
+                    py,
+                )
+            }
+            /// This column as a list of singletons — row `i` becomes `[value_i]` (a list column is
+            /// returned unchanged).
+            fn to_list(&self, py: Python<'_>) -> PyResult<PyObject> {
+                $crate::nested::to_list_column(&self.inner as &dyn yggdryl_core::io::AnySerie, py)
+            }
+            /// This column as a one-field struct named `name` (a struct column is returned unchanged).
+            #[pyo3(signature = (name = "value"))]
+            fn to_struct(&self, py: Python<'_>, name: &str) -> PyResult<PyObject> {
+                $crate::nested::to_struct_column(
+                    &self.inner as &dyn yggdryl_core::io::AnySerie,
+                    name,
+                    py,
+                )
+            }
+            /// This column as a map when a logical rule applies (a 2-column struct → a map; a map is
+            /// unchanged; any other shape → itself).
+            fn to_map(&self, py: Python<'_>) -> PyResult<PyObject> {
+                $crate::nested::to_map_column(&self.inner as &dyn yggdryl_core::io::AnySerie, py)
+            }
+        }
+    };
+}
+pub(crate) use reshape_methods;
 
 /// A `Field` (leaf) or nested `StructField` / `ListField` / `MapField` Python object → an erased
 /// [`AnyField`].
@@ -1939,6 +2410,15 @@ impl MapSerie {
 nested_navigation!(StructSerie);
 nested_navigation!(ListSerie);
 nested_navigation!(MapSerie);
+
+// Phase 8 — element-wise arithmetic (nested recursion: struct field-wise, list element-wise, map
+// value-wise) and reshape, one block per nested family.
+arith_methods!(StructSerie);
+arith_methods!(ListSerie);
+arith_methods!(MapSerie);
+reshape_methods!(StructSerie);
+reshape_methods!(ListSerie);
+reshape_methods!(MapSerie);
 
 #[pymethods]
 impl StructSerie {

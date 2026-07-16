@@ -396,3 +396,30 @@ def test_column_ambiguous_mix_raises_guided():
 def test_column_unsupported_element_raises():
     with pytest.raises(ValueError):
         column([{"a": 1}])  # a dict element has no inferrable leaf type
+
+
+# ---- Phase 8 ops on a struct column --------------------------------------------------------
+
+
+def test_struct_add_is_field_wise():
+    a = StructSerie([("id", I64Serie([1, 2])), ("n", I64Serie([10, 20]))])
+    b = StructSerie([("id", I64Serie([3, 4])), ("n", I64Serie([30, 40]))])
+    out = a + b
+    assert isinstance(out, StructSerie)
+    assert out.column_named("id").to_options() == ["4", "6"]
+    assert out.column_named("n").to_options() == ["40", "60"]
+
+
+def test_struct_filter_keeps_true_rows():
+    table = _table()
+    kept = table.filter([True, False, True])
+    assert isinstance(kept, StructSerie)
+    assert len(kept) == 2
+    assert kept.column_named("id").to_options() == ["1", "3"]
+
+
+def test_struct_to_map_from_two_columns():
+    st = StructSerie([("id", I64Serie([1, 2])), ("name", Utf8Serie(["a", "b"]))])
+    as_map = st.to_map()
+    assert as_map.data_type.name == "map"
+    assert len(as_map) == 2

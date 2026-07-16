@@ -18,6 +18,7 @@ pub mod decimal;
 pub mod headers;
 pub mod nested;
 pub mod nullvalues;
+pub mod ops;
 pub mod temporal;
 pub mod temporal_column;
 pub mod types;

@@ -175,7 +175,7 @@ fn leaf_bytes_to_js(env: Env, type_id: DataTypeId, bytes: &[u8]) -> napi::Result
 /// `width`), **reusing** the leaf wrappers' own marshaling. A type with no native input form here is
 /// a guided error; the core `set_*` then re-validates. (A JS `null` never reaches here — the caller
 /// builds the null cell.)
-fn js_to_any_scalar(
+pub(crate) fn js_to_any_scalar(
     env: Env,
     value: &JsUnknown,
     target: DataTypeId,
@@ -1107,6 +1107,91 @@ impl StructSerie {
             .into()
     }
 
+    // ---- Phase 8: arithmetic + reshape + row-selection --------------------------------------
+
+    /// `self + other` — element-wise with another `Serie` (a struct recurses field-wise; the result
+    /// follows this LEFT column), or a broadcast of a numeric scalar over every leaf cell. `other` is
+    /// a `Serie` wrapper or a JS numeric scalar — the same operand union as the numeric `Serie.add`.
+    #[napi]
+    pub fn add(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::add_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self - other` — see [`add`](Self::add).
+    #[napi]
+    pub fn sub(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::sub_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self * other` — see [`add`](Self::add).
+    #[napi]
+    pub fn mul(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::mul_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self / other` — see [`add`](Self::add). Integer division by a **zero** divisor writes a null.
+    #[napi]
+    pub fn div(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::div_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self % other` — see [`add`](Self::add). Integer remainder by a **zero** divisor writes a null.
+    #[napi]
+    pub fn rem(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::rem_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// A same-type column of the rows `mask` keeps (`true` keeps row `i`) — whole struct rows are
+    /// kept or dropped, and every child column is filtered by the same mask. Throws if `mask`'s
+    /// length is not this column's length.
+    #[napi]
+    pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::filter_into(&self.inner, mask)?,
+        })
+    }
+
+    /// A same-type column with each leaf null replaced by `value` (recurses to the leaves whose type
+    /// matches `value`; the struct rows' own nulls are untouched). A JS `null` / `undefined` is a
+    /// no-op clone.
+    #[napi]
+    pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+        })
+    }
+
+    /// This struct column, unchanged (a struct is already a struct) — `name` is accepted for parity
+    /// with the leaf reshape but ignored. Returns a [`StructSerie`].
+    #[napi]
+    pub fn to_struct(&self, name: Option<String>) -> StructSerie {
+        crate::ops::to_struct_wrapper(&self.inner, name)
+    }
+
+    /// This column as a list-of-singletons [`ListSerie`] — row `i` becomes `[row_i]`.
+    #[napi]
+    pub fn to_list(&self) -> ListSerie {
+        crate::ops::to_list_wrapper(&self.inner)
+    }
+
+    /// This column reshaped toward a map, as its `serializeBytes()` frame — a **2-column** struct
+    /// becomes a `MapSerie` (column 0 = key, column 1 = value; reconstruct with
+    /// `MapSerie.deserializeBytes`); any other shape is this struct unchanged.
+    #[napi]
+    pub fn to_map(&self) -> napi::Result<Buffer> {
+        crate::ops::to_map_frame(&self.inner)
+    }
+
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
         format!(
@@ -1450,6 +1535,88 @@ impl ListSerie {
             .slice(start as usize, length as usize)
             .serialize_bytes()
             .into()
+    }
+
+    // ---- Phase 8: arithmetic + reshape + row-selection --------------------------------------
+
+    /// `self + other` — element-wise with another `Serie` (a list op requires identical offsets and
+    /// ops the flattened child; the result follows this LEFT column), or a broadcast of a numeric
+    /// scalar over every element. See the numeric `Serie.add` for the operand union.
+    #[napi]
+    pub fn add(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::add_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self - other` — see [`add`](Self::add).
+    #[napi]
+    pub fn sub(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::sub_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self * other` — see [`add`](Self::add).
+    #[napi]
+    pub fn mul(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::mul_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self / other` — see [`add`](Self::add). Integer division by a **zero** divisor writes a null.
+    #[napi]
+    pub fn div(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::div_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self % other` — see [`add`](Self::add). Integer remainder by a **zero** divisor writes a null.
+    #[napi]
+    pub fn rem(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::rem_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// A same-type column of the rows `mask` keeps (`true` keeps row `i`) — whole list rows are kept
+    /// or dropped (their offset ranges rebuilt). Throws if `mask`'s length is not this column's length.
+    #[napi]
+    pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::filter_into(&self.inner, mask)?,
+        })
+    }
+
+    /// A same-type column with each leaf null replaced by `value` (recurses to the item child's
+    /// leaves whose type matches `value`; the list rows' own nulls are untouched). A JS `null` /
+    /// `undefined` is a no-op clone.
+    #[napi]
+    pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+        })
+    }
+
+    /// This column as a one-field [`StructSerie`] named `name` (default `"value"`).
+    #[napi]
+    pub fn to_struct(&self, name: Option<String>) -> StructSerie {
+        crate::ops::to_struct_wrapper(&self.inner, name)
+    }
+
+    /// This list column, unchanged (a list is already a list). Returns a [`ListSerie`].
+    #[napi]
+    pub fn to_list(&self) -> ListSerie {
+        crate::ops::to_list_wrapper(&self.inner)
+    }
+
+    /// This column reshaped toward a map, as its `serializeBytes()` frame (a list has no map
+    /// coercion, so the frame is this list unchanged — reconstruct with `ListSerie.deserializeBytes`).
+    #[napi]
+    pub fn to_map(&self) -> napi::Result<Buffer> {
+        crate::ops::to_map_frame(&self.inner)
     }
 
     #[napi(js_name = "toString")]
@@ -1866,6 +2033,88 @@ impl MapSerie {
             .slice(start as usize, length as usize)
             .serialize_bytes()
             .into()
+    }
+
+    // ---- Phase 8: arithmetic + reshape + row-selection --------------------------------------
+
+    /// `self + other` — element-wise with another `Serie` (a map op requires identical keys + offsets
+    /// and ops the value child; the result follows this LEFT column), or a broadcast of a numeric
+    /// scalar over every value. See the numeric `Serie.add` for the operand union.
+    #[napi]
+    pub fn add(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::add_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self - other` — see [`add`](Self::add).
+    #[napi]
+    pub fn sub(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::sub_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self * other` — see [`add`](Self::add).
+    #[napi]
+    pub fn mul(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::mul_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self / other` — see [`add`](Self::add). Integer division by a **zero** divisor writes a null.
+    #[napi]
+    pub fn div(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::div_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// `self % other` — see [`add`](Self::add). Integer remainder by a **zero** divisor writes a null.
+    #[napi]
+    pub fn rem(&self, env: Env, other: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::rem_into(env, &self.inner, other)?,
+        })
+    }
+
+    /// A same-type column of the rows `mask` keeps (`true` keeps row `i`) — whole map rows are kept
+    /// or dropped (their offset ranges rebuilt). Throws if `mask`'s length is not this column's length.
+    #[napi]
+    pub fn filter(&self, mask: Vec<bool>) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::filter_into(&self.inner, mask)?,
+        })
+    }
+
+    /// A same-type column with each leaf null replaced by `value` (recurses to the entries' leaves
+    /// whose type matches `value`; the map rows' own nulls are untouched). A JS `null` / `undefined`
+    /// is a no-op clone.
+    #[napi]
+    pub fn fill_null(&self, env: Env, value: JsUnknown) -> napi::Result<Self> {
+        Ok(Self {
+            inner: crate::ops::fill_null_into(env, &self.inner, value)?,
+        })
+    }
+
+    /// This column as a one-field [`StructSerie`] named `name` (default `"value"`).
+    #[napi]
+    pub fn to_struct(&self, name: Option<String>) -> StructSerie {
+        crate::ops::to_struct_wrapper(&self.inner, name)
+    }
+
+    /// This column as a list-of-singletons [`ListSerie`] — row `i` becomes `[row_i]`.
+    #[napi]
+    pub fn to_list(&self) -> ListSerie {
+        crate::ops::to_list_wrapper(&self.inner)
+    }
+
+    /// This map column, unchanged (a map is already a map), as its `serializeBytes()` frame —
+    /// reconstruct with `MapSerie.deserializeBytes`.
+    #[napi]
+    pub fn to_map(&self) -> napi::Result<Buffer> {
+        crate::ops::to_map_frame(&self.inner)
     }
 
     #[napi(js_name = "toString")]

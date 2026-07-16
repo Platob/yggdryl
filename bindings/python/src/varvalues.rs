@@ -456,6 +456,11 @@ macro_rules! py_var {
 py_var!(Utf8Scalar, Utf8Serie, Utf8, "utf8");
 py_var!(BinaryScalar, BinarySerie, Binary, "binary");
 
+// Phase 8 reshape (`filter` / `fill_null` / `to_list` / `to_struct` / `to_map`) — a var column fills
+// with a native `str` / `bytes`; it gets no arithmetic (out of the twelve-numeric scope).
+crate::nested::reshape_methods!(Utf8Serie);
+crate::nested::reshape_methods!(BinarySerie);
+
 /// The reverse of the fixed scalars' `to_utf8` bridge — parse this UTF-8 scalar's text into a
 /// numeric scalar (a null stays null; a bad parse is a guided `ValueError`).
 #[pymethods]
