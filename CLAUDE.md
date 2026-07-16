@@ -121,12 +121,30 @@ Minimal example: `yggdryl_core::version()` → `yggdryl.version()` in **both** P
 - **At-most-one-copy discipline.** Prefer zero-copy hand-off; a bulk op ships an
   allocation-free *fill-into* counterpart; **no allocations in hot loops**. When a change
   claims a performance win, prove it (a benchmark on both time and memory).
+- **Auto-vectorization — write the numeric hot loops so the compiler emits SIMD.** The
+  arithmetic kernels and reductions run on **stable** Rust (no `portable_simd`/nightly, no SIMD
+  dependency), so vectorization comes from **LLVM auto-vectorizing a clean loop**. Structure the
+  hot path for it: iterate a **contiguous `&[T]`** (the values [`Buffer`], not per-index `get`),
+  compute the values **densely and branch-free** over the whole slice (integer arithmetic
+  `wrapping_*`; a null slot's placeholder participates harmlessly), and handle **validity
+  separately** as a word-at-a-time bitmap combine (`self.validity AND other.validity`) — never a
+  per-element `if null` inside the value loop (a branch there defeats the vectorizer). The
+  `*_unchecked` tier is where this lives; keep it a single straight `for i in 0..n` (or an
+  iterator `zip`) over equal-length slices with the result written into a pre-sized buffer. Prove
+  it: a benchmark showing the speedup, and — where it's load-bearing — a note that the loop
+  vectorizes (inspect the asm / that removing the inner branch moved the needle). Reductions
+  (`sum`/`min`/`max`) fold over the same contiguous slice.
 - **Two-tier ops — a fast `*_unchecked` under a checking + casting base.** Every vectorized
   operation (arithmetic between series, a scalar broadcast, a filter, a fill) comes in two
   tiers. The **base** (`add`, `sub`, `filter`, …) is the safe default a caller reaches for: it
-  **validates** (length match, compatible/numeric types, mask length) and **casts** the operands
-  to the result type (**the result follows the left operand — the right is cast into `self`'s
-  type**, range-checked with a guided error), propagates nulls, and returns a `Result`. It then
+  **validates** (length match, mask length) and **casts** the operands to the result type
+  (**the result follows the left operand — the right is cast into `self`'s type**). Per the
+  "absorb anything" aim it **tries every available conversion** — the whole `Converter` surface,
+  numeric *and* the utf8/binary/decimal/temporal bridges — so a convertible operand of *any* type
+  (a numeric-string column, a `bool`, a decimal, a wide integer) is coerced in rather than
+  rejected; it errors **only** when a value genuinely cannot convert (a non-numeric string into a
+  number, an out-of-range magnitude) — always with a guided message. It propagates nulls and
+  returns a `Result`. It then
   delegates to a **`*_unchecked`** twin (`add_unchecked`, …) — the tight, allocation-minimal,
   **infallible** hot path that *assumes* normalized inputs (identical element type + width, equal
   length; a scalar already the element type) and only `debug_assert!`s them. So the checks and
