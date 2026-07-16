@@ -28,7 +28,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyCapsule, PyList};
 
 use yggdryl_core::io::fixed::temporal::{
-    self as core, TemporalBacking, TemporalNative, TemporalSerie,
+    self as core, Temporal, TemporalBacking, TemporalNative, TemporalSerie,
 };
 use yggdryl_core::io::{DataTypeId, IoError};
 
@@ -87,7 +87,7 @@ fn arrow_field_of<B: TemporalBacking>(
 /// value type it parses ISO strings into / rebuilds from a count, and `$Value` the temporal *value*
 /// wrapper `get_scalar` hands back.
 macro_rules! py_temporal_col {
-    ($Serie:ident, $CoreSerie:ty, $CoreValue:ty, $Value:ident, $id:expr, $lit:literal) => {
+    ($Serie:ident, $CoreSerie:ty, $CoreValue:ty, $Value:ident, $id:expr, $default_unit:expr, $lit:literal) => {
         #[doc = concat!("A nullable column of `", $lit, "` values at one `(unit, tz)`.")]
         #[pyclass(module = "yggdryl.temporal")]
         #[derive(Clone)]
@@ -148,6 +148,33 @@ macro_rules! py_temporal_col {
                         None => None,
                     });
                 }
+                <$CoreSerie>::from_options(unit, tz, &options)
+                    .map(|inner| Self { inner })
+                    .map_err(temporal_err)
+            }
+
+            /// A column from a list of this column's temporal **value** type (the type `get_scalar`
+            /// hands back — e.g. a `Ts64` for `Ts64Serie`), or `None` for a null element. The
+            /// column `(unit, tz)` is taken from the first present value (each value carries its own
+            /// resolution and zone), so it is the exact inverse of `get_scalar` over the whole
+            /// column; an all-null / empty list falls back to the concept's default unit, naive.
+            #[staticmethod]
+            fn from_scalars(values: &Bound<'_, PyAny>) -> PyResult<Self> {
+                let mut options: Vec<Option<$CoreValue>> = Vec::new();
+                for item in values.iter()? {
+                    let item = item?;
+                    options.push(if item.is_none() {
+                        None
+                    } else {
+                        Some(item.extract::<$Value>()?.inner)
+                    });
+                }
+                let (unit, tz) = options
+                    .iter()
+                    .flatten()
+                    .next()
+                    .map(|value| (value.time_unit(), value.timezone()))
+                    .unwrap_or(($default_unit, core::Tz::NAIVE));
                 <$CoreSerie>::from_options(unit, tz, &options)
                     .map(|inner| Self { inner })
                     .map_err(temporal_err)
@@ -400,6 +427,7 @@ py_temporal_col!(
     core::Date32,
     Date32,
     DataTypeId::Date32,
+    core::TimeUnit::Day,
     "date32"
 );
 py_temporal_col!(
@@ -408,6 +436,7 @@ py_temporal_col!(
     core::Date64,
     Date64,
     DataTypeId::Date64,
+    core::TimeUnit::Millisecond,
     "date64"
 );
 py_temporal_col!(
@@ -416,6 +445,7 @@ py_temporal_col!(
     core::Time32,
     Time32,
     DataTypeId::Time32,
+    core::TimeUnit::Second,
     "time32"
 );
 py_temporal_col!(
@@ -424,6 +454,7 @@ py_temporal_col!(
     core::Time64,
     Time64,
     DataTypeId::Time64,
+    core::TimeUnit::Nanosecond,
     "time64"
 );
 py_temporal_col!(
@@ -432,6 +463,7 @@ py_temporal_col!(
     core::Ts32,
     Ts32,
     DataTypeId::Ts32,
+    core::TimeUnit::Second,
     "ts32"
 );
 py_temporal_col!(
@@ -440,6 +472,7 @@ py_temporal_col!(
     core::Ts64,
     Ts64,
     DataTypeId::Ts64,
+    core::TimeUnit::Microsecond,
     "ts64"
 );
 py_temporal_col!(
@@ -448,6 +481,7 @@ py_temporal_col!(
     core::Ts96,
     Ts96,
     DataTypeId::Ts96,
+    core::TimeUnit::Nanosecond,
     "ts96"
 );
 py_temporal_col!(
@@ -456,6 +490,7 @@ py_temporal_col!(
     core::Duration32,
     Duration32,
     DataTypeId::Duration32,
+    core::TimeUnit::Second,
     "duration32"
 );
 py_temporal_col!(
@@ -464,8 +499,195 @@ py_temporal_col!(
     core::Duration64,
     Duration64,
     DataTypeId::Duration64,
+    core::TimeUnit::Microsecond,
     "duration64"
 );
+
+// ---- native-language temporal column factories -----------------------------------------
+//
+// Each mirrors the temporal *value* types' native constructors (`from_pydate` / `from_pytime` /
+// `from_pydatetime` / `from_timedelta`), one factory per concept: it converts every present element
+// to the concept's value type through that same native path, then builds the column with
+// `from_options` (a `None` element is a null). A width that has no native value constructor of its
+// own (`Date64`, `Time32`, `Ts32`, `Ts96`, `Duration32`) routes through the width that does and
+// narrows/widens with the value type's own conversion.
+
+/// Iterates a Python list, converting each present item with `convert` (a `None` item → a `None`
+/// element). `None` for the whole argument yields an empty column.
+fn collect_temporal<T>(
+    values: Option<&Bound<'_, PyAny>>,
+    convert: impl Fn(&Bound<'_, PyAny>) -> PyResult<T>,
+) -> PyResult<Vec<Option<T>>> {
+    let mut out = Vec::new();
+    if let Some(seq) = values {
+        for item in seq.iter()? {
+            let item = item?;
+            out.push(if item.is_none() {
+                None
+            } else {
+                Some(convert(&item)?)
+            });
+        }
+    }
+    Ok(out)
+}
+
+#[pymethods]
+impl Date32Serie {
+    /// A `date32` column from a list of native `datetime.date`-or-`None` (via [`Date32.from_pydate`]).
+    #[staticmethod]
+    #[pyo3(signature = (values = None))]
+    fn from_dates(values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let options = collect_temporal(values, |item| Ok(Date32::from_pydate(item)?.inner))?;
+        core::Date32Serie::from_options(core::TimeUnit::Day, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Date64Serie {
+    /// A `date64` column from a list of native `datetime.date`-or-`None` (via `Date32.from_pydate`,
+    /// widened to `date64`).
+    #[staticmethod]
+    #[pyo3(signature = (values = None))]
+    fn from_dates(values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let options = collect_temporal(values, |item| {
+            Ok(Date32::from_pydate(item)?.inner.to_date64())
+        })?;
+        core::Date64Serie::from_options(core::TimeUnit::Millisecond, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Time32Serie {
+    /// A `time32` column at `unit` (default seconds) from a list of native `datetime.time`-or-`None`
+    /// (via `Time64.from_pytime`, narrowed to `time32` at `unit`).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "s", values = None))]
+    fn from_times(unit: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let options = collect_temporal(values, |item| {
+            Time64::from_pytime(item)?
+                .inner
+                .to_time32(time_unit)
+                .map_err(temporal_err)
+        })?;
+        core::Time32Serie::from_options(time_unit, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Time64Serie {
+    /// A `time64` column at `unit` (default microseconds) from a list of native
+    /// `datetime.time`-or-`None` (via [`Time64.from_pytime`]).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "us", values = None))]
+    fn from_times(unit: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let options = collect_temporal(values, |item| Ok(Time64::from_pytime(item)?.inner))?;
+        core::Time64Serie::from_options(time_unit, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Ts32Serie {
+    /// A `ts32` column at `(unit, tz)` (default seconds / naive) from a list of native
+    /// `datetime.datetime`-or-`None` (via `Ts64.from_pydatetime`, narrowed to `ts32`).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "s", tz = "naive", values = None))]
+    fn from_datetimes(unit: &str, tz: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let zone = parse_tz(tz)?;
+        let options = collect_temporal(values, |item| {
+            Ts64::from_pydatetime(item, unit)?
+                .inner
+                .to_ts32()
+                .map_err(temporal_err)
+        })?;
+        core::Ts32Serie::from_options(time_unit, zone, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Ts64Serie {
+    /// A `ts64` column at `(unit, tz)` (default microseconds / naive) from a list of native
+    /// `datetime.datetime`-or-`None` (via [`Ts64.from_pydatetime`]).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "us", tz = "naive", values = None))]
+    fn from_datetimes(unit: &str, tz: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let zone = parse_tz(tz)?;
+        let options =
+            collect_temporal(values, |item| Ok(Ts64::from_pydatetime(item, unit)?.inner))?;
+        core::Ts64Serie::from_options(time_unit, zone, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Ts96Serie {
+    /// A `ts96` column at `(unit, tz)` (default nanoseconds / naive) from a list of native
+    /// `datetime.datetime`-or-`None` (via `Ts64.from_pydatetime`, widened to `ts96`).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "ns", tz = "naive", values = None))]
+    fn from_datetimes(unit: &str, tz: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let zone = parse_tz(tz)?;
+        let options = collect_temporal(values, |item| {
+            Ok(Ts64::from_pydatetime(item, unit)?.inner.to_ts96())
+        })?;
+        core::Ts96Serie::from_options(time_unit, zone, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Duration32Serie {
+    /// A `duration32` column at `unit` (default seconds) from a list of native
+    /// `datetime.timedelta`-or-`None` (via `Duration64.from_timedelta`, re-expressed and narrowed).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "s", values = None))]
+    fn from_timedeltas(unit: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let options = collect_temporal(values, |item| {
+            Duration64::from_timedelta(item)?
+                .inner
+                .to_unit(time_unit)
+                .map_err(temporal_err)?
+                .to_duration32()
+                .map_err(temporal_err)
+        })?;
+        core::Duration32Serie::from_options(time_unit, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
+
+#[pymethods]
+impl Duration64Serie {
+    /// A `duration64` column at `unit` (default microseconds) from a list of native
+    /// `datetime.timedelta`-or-`None` (via [`Duration64.from_timedelta`]).
+    #[staticmethod]
+    #[pyo3(signature = (unit = "us", values = None))]
+    fn from_timedeltas(unit: &str, values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let time_unit = parse_unit(unit)?;
+        let options = collect_temporal(values, |item| Ok(Duration64::from_timedelta(item)?.inner))?;
+        core::Duration64Serie::from_options(time_unit, core::Tz::NAIVE, &options)
+            .map(|inner| Self { inner })
+            .map_err(temporal_err)
+    }
+}
 
 /// Adds the temporal `Serie` column classes to the `yggdryl.temporal` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

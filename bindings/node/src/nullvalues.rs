@@ -148,6 +148,22 @@ impl NullSerie {
         }
     }
 
+    /// A null column from an array of [`getScalar`](NullSerie::get_scalar)-shaped scalars (each a
+    /// null; a `null` / `undefined` item is likewise a null). Its length is the array length.
+    #[napi(factory)]
+    pub fn from_scalars(scalars: Vec<Option<&NullScalar>>) -> Self {
+        let scalars: Vec<CoreNullScalar> = scalars
+            .into_iter()
+            .map(|slot| {
+                slot.map(|scalar| scalar.inner)
+                    .unwrap_or_else(CoreNullScalar::null)
+            })
+            .collect();
+        Self {
+            inner: CoreNullSerie::from_scalars(&scalars),
+        }
+    }
+
     /// Appends one null, growing the column by one.
     #[napi]
     pub fn push(&mut self) {

@@ -365,6 +365,24 @@ macro_rules! py_serie {
                 }
             }
 
+            /// A column from a list of this type's scalars — each item is a `$Scalar` (or `None`, a
+            /// null element). The inverse of `get_scalar` over the whole column.
+            #[staticmethod]
+            fn from_scalars(scalars: &Bound<'_, PyAny>) -> PyResult<Self> {
+                let mut inners = Vec::new();
+                for item in scalars.iter()? {
+                    let item = item?;
+                    inners.push(if item.is_none() {
+                        Scalar::null()
+                    } else {
+                        item.extract::<$Scalar>()?.inner
+                    });
+                }
+                Ok(Self {
+                    inner: Serie::from_scalars(&inners),
+                })
+            }
+
             /// Appends one element (`None` is a null).
             #[pyo3(signature = (value = None))]
             fn push(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {

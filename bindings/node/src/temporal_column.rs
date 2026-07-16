@@ -16,7 +16,7 @@
 //! consumer); the codec (`serializeBytes` / `deserializeBytes`) plus the structural surface are the
 //! interop.
 
-use napi::bindgen_prelude::{BigInt, Buffer};
+use napi::bindgen_prelude::{BigInt, Buffer, Date};
 use napi_derive::napi;
 
 use yggdryl_core::io::fixed::temporal as core;
@@ -106,6 +106,29 @@ macro_rules! napi_temporal_col {
                     );
                 }
                 <$CoreSerie>::from_values(unit, tz, &values)
+                    .map(|inner| Self { inner })
+                    .map_err(to_error)
+            }
+
+            /// A column at `(unit, tz)` from an array of [`getScalar`](Self::get_scalar)-shaped
+            /// **value** wrappers — a `null` / `undefined` item is a null. Each present value is
+            /// re-expressed at the column's unit. Round-trips a column through its own scalars.
+            #[napi(factory)]
+            pub fn from_scalars(
+                unit: String,
+                tz: Option<String>,
+                scalars: Vec<Option<&$Value>>,
+            ) -> napi::Result<Self> {
+                let unit = parse_unit(&unit)?;
+                let tz = parse_tz(&tz.unwrap_or_default())?;
+                let scalars: Vec<core::TemporalScalar<_>> = scalars
+                    .into_iter()
+                    .map(|slot| match slot {
+                        Some(value) => core::TemporalScalar::of(value.inner),
+                        None => core::TemporalScalar::null(unit, tz),
+                    })
+                    .collect();
+                <$CoreSerie>::from_scalars(unit, tz, &scalars)
                     .map(|inner| Self { inner })
                     .map_err(to_error)
             }
@@ -333,3 +356,95 @@ napi_temporal_col!(
     Duration64,
     "duration64"
 );
+
+// ---- JS Date bridge (a JS Date is milliseconds since the epoch, UTC) -------------------
+//
+// The timestamp columns get a native `fromDates` factory mirroring the `Ts64.fromEpochMillis`
+// value bridge. JS has no native date-only / time-only / span type, so `Date32*` / `Time*` /
+// `Duration*` columns keep their ISO-string constructor and `fromEpochs` factory instead.
+
+/// A JS `Date` (a millisecond instant since the epoch, UTC) re-expressed at `(unit, tz)` as a
+/// [`Ts64`](core::Ts64) — the millis bridge shared by the timestamp-column `fromDates` factories
+/// (mirroring the `Ts64.fromEpochMillis` value constructor). Truncates to a coarser `unit`.
+fn date_to_ts64(date: Date, unit: core::TimeUnit, tz: core::Tz) -> napi::Result<core::Ts64> {
+    let millis = date.value_of()?;
+    core::Ts64::from_epoch(millis as i128, core::TimeUnit::Millisecond, tz)
+        .map_err(to_error)?
+        .to_unit(unit)
+        .map_err(to_error)
+}
+
+#[napi(namespace = "temporal")]
+impl Ts32Serie {
+    /// A column at `(unit, tz)` from JS `Date`s — each a millisecond instant, re-expressed at the
+    /// column's `unit` (a `null` element is a null). Mirrors the `Ts64.fromEpochMillis` bridge.
+    #[napi(factory)]
+    pub fn from_dates(
+        unit: String,
+        tz: Option<String>,
+        values: Vec<Option<Date>>,
+    ) -> napi::Result<Self> {
+        let unit = parse_unit(&unit)?;
+        let tz = parse_tz(&tz.unwrap_or_default())?;
+        let mut options = Vec::with_capacity(values.len());
+        for value in values {
+            options.push(match value {
+                Some(date) => Some(date_to_ts64(date, unit, tz)?.to_ts32().map_err(to_error)?),
+                None => None,
+            });
+        }
+        yggdryl_core::io::fixed::Ts32Serie::from_options(unit, tz, &options)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+}
+
+#[napi(namespace = "temporal")]
+impl Ts64Serie {
+    /// A column at `(unit, tz)` from JS `Date`s — each a millisecond instant, re-expressed at the
+    /// column's `unit` (a `null` element is a null). Mirrors the `Ts64.fromEpochMillis` bridge.
+    #[napi(factory)]
+    pub fn from_dates(
+        unit: String,
+        tz: Option<String>,
+        values: Vec<Option<Date>>,
+    ) -> napi::Result<Self> {
+        let unit = parse_unit(&unit)?;
+        let tz = parse_tz(&tz.unwrap_or_default())?;
+        let mut options = Vec::with_capacity(values.len());
+        for value in values {
+            options.push(match value {
+                Some(date) => Some(date_to_ts64(date, unit, tz)?),
+                None => None,
+            });
+        }
+        yggdryl_core::io::fixed::Ts64Serie::from_options(unit, tz, &options)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+}
+
+#[napi(namespace = "temporal")]
+impl Ts96Serie {
+    /// A column at `(unit, tz)` from JS `Date`s — each a millisecond instant, re-expressed at the
+    /// column's `unit` (a `null` element is a null). Mirrors the `Ts64.fromEpochMillis` bridge.
+    #[napi(factory)]
+    pub fn from_dates(
+        unit: String,
+        tz: Option<String>,
+        values: Vec<Option<Date>>,
+    ) -> napi::Result<Self> {
+        let unit = parse_unit(&unit)?;
+        let tz = parse_tz(&tz.unwrap_or_default())?;
+        let mut options = Vec::with_capacity(values.len());
+        for value in values {
+            options.push(match value {
+                Some(date) => Some(date_to_ts64(date, unit, tz)?.to_ts96()),
+                None => None,
+            });
+        }
+        yggdryl_core::io::fixed::Ts96Serie::from_options(unit, tz, &options)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+}

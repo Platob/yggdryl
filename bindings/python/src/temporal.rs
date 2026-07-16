@@ -764,7 +764,7 @@ impl Date32 {
     }
     /// A date from a native Python `datetime.date` (or `datetime.datetime`).
     #[staticmethod]
-    fn from_pydate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    pub(crate) fn from_pydate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         core::Date32::from_ymd(
             value.getattr("year")?.extract()?,
             value.getattr("month")?.extract()?,
@@ -789,7 +789,7 @@ impl Time64 {
     }
     /// A time from a native Python `datetime.time`.
     #[staticmethod]
-    fn from_pytime(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    pub(crate) fn from_pytime(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let micros: u32 = value.getattr("microsecond")?.extract()?;
         core::Time64::from_hms_nano(
             value.getattr("hour")?.extract()?,
@@ -830,7 +830,7 @@ impl Ts64 {
     /// microseconds); a `tzinfo` becomes a fixed-offset zone, else naive.
     #[staticmethod]
     #[pyo3(signature = (value, unit = "us"))]
-    fn from_pydatetime(value: &Bound<'_, PyAny>, unit: &str) -> PyResult<Self> {
+    pub(crate) fn from_pydatetime(value: &Bound<'_, PyAny>, unit: &str) -> PyResult<Self> {
         let micros: u32 = value.getattr("microsecond")?.extract()?;
         let offset = value.call_method0("utcoffset")?;
         let tz = if offset.is_none() {
@@ -871,7 +871,7 @@ impl Duration64 {
     }
     /// A span from a native Python `datetime.timedelta` (microsecond resolution).
     #[staticmethod]
-    fn from_timedelta(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    pub(crate) fn from_timedelta(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let days: i64 = value.getattr("days")?.extract()?;
         let seconds: i64 = value.getattr("seconds")?.extract()?;
         let micros: i64 = value.getattr("microseconds")?.extract()?;

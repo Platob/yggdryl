@@ -228,6 +228,36 @@ macro_rules! py_dec_col {
                     .map_err(dec_err)
             }
 
+            /// A column from a list of this type's scalars — each item is a `$Scalar` (or `None`, a
+            /// null element). The column `(precision, scale)` is taken from the first present scalar
+            /// (defaulting to `(MAX_PRECISION, 0)` when the list has no value); each value is
+            /// re-expressed at that scale. The inverse of `get_scalar` over the whole column.
+            #[staticmethod]
+            fn from_scalars(scalars: &Bound<'_, PyAny>) -> PyResult<Self> {
+                let mut items: Vec<Option<DecimalScalar<$B>>> = Vec::new();
+                for item in scalars.iter()? {
+                    let item = item?;
+                    items.push(if item.is_none() {
+                        None
+                    } else {
+                        Some(item.extract::<$Scalar>()?.inner)
+                    });
+                }
+                let (precision, scale) = items
+                    .iter()
+                    .flatten()
+                    .next()
+                    .map(|scalar| (scalar.precision(), scalar.scale()))
+                    .unwrap_or((<$B as DecimalBacking>::MAX_PRECISION, 0));
+                let inners: Vec<DecimalScalar<$B>> = items
+                    .into_iter()
+                    .map(|item| item.unwrap_or_else(|| DecimalScalar::null(precision, scale)))
+                    .collect();
+                DecimalSerie::from_scalars(precision, scale, &inners)
+                    .map(|inner| Self { inner })
+                    .map_err(dec_err)
+            }
+
             /// Appends one element (a decimal string, or `None` for a null).
             #[pyo3(signature = (value = None))]
             fn push(&mut self, value: Option<&str>) -> PyResult<()> {

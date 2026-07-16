@@ -211,6 +211,27 @@ macro_rules! napi_dec_col {
                     .map_err(to_error)
             }
 
+            /// A column of `(precision, scale)` from an array of
+            /// [`getScalar`](Self::get_scalar)-shaped scalars — a `null` / `undefined` item is the
+            /// null scalar. Each value is re-expressed at the column's scale.
+            #[napi(factory)]
+            pub fn from_scalars(
+                precision: u8,
+                scale: i8,
+                scalars: Vec<Option<&$Scalar>>,
+            ) -> napi::Result<Self> {
+                let scalars: Vec<DecimalScalar<$B>> = scalars
+                    .into_iter()
+                    .map(|slot| {
+                        slot.map(|scalar| scalar.inner)
+                            .unwrap_or_else(|| DecimalScalar::null(precision, scale))
+                    })
+                    .collect();
+                DecimalSerie::from_scalars(precision, scale, &scalars)
+                    .map(|inner| Self { inner })
+                    .map_err(to_error)
+            }
+
             /// Appends one element (a decimal string, or `null` for a null).
             #[napi]
             pub fn push(&mut self, value: Option<String>) -> napi::Result<()> {

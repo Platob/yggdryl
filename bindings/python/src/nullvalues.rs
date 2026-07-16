@@ -153,6 +153,25 @@ impl NullSerie {
         }
     }
 
+    /// A column from a list of null scalars — each item is a `NullScalar` (or `None`); both mean a
+    /// null element, so the result is a null run of the list's length. The inverse of `get_scalar`
+    /// over the whole column.
+    #[staticmethod]
+    fn from_scalars(scalars: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut inners = Vec::new();
+        for item in scalars.iter()? {
+            let item = item?;
+            inners.push(if item.is_none() {
+                CoreNullScalar::null()
+            } else {
+                item.extract::<NullScalar>()?.inner
+            });
+        }
+        Ok(Self {
+            inner: CoreNullSerie::from_scalars(&inners),
+        })
+    }
+
     /// Appends one null, growing the column by one.
     fn push(&mut self) {
         self.inner.push();

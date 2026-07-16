@@ -419,6 +419,20 @@ macro_rules! napi_fixed {
                 }
             }
 
+            /// A column from an array of [`getScalar`](Self::get_scalar)-shaped scalars — a
+            /// `null` / `undefined` item is the null scalar. Round-trips a column through its own
+            /// scalars.
+            #[napi(factory)]
+            pub fn from_scalars(scalars: Vec<Option<&$Scalar>>) -> Self {
+                let scalars: Vec<Scalar<$t>> = scalars
+                    .into_iter()
+                    .map(|slot| slot.map(|scalar| scalar.inner).unwrap_or_else(Scalar::<$t>::null))
+                    .collect();
+                Self {
+                    inner: Serie::from_scalars(&scalars),
+                }
+            }
+
             /// Appends one element (`null` / `undefined` is a null).
             #[napi]
             pub fn push(&mut self, value: Option<$js>) -> napi::Result<()> {

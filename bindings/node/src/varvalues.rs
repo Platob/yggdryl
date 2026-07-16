@@ -195,6 +195,23 @@ macro_rules! napi_var {
                 }
             }
 
+            /// A column from an array of [`getScalar`](Self::get_scalar)-shaped scalars — a
+            /// `null` / `undefined` item is the null scalar. Round-trips a column through its own
+            /// scalars.
+            #[napi(factory)]
+            pub fn from_scalars(scalars: Vec<Option<&$Scalar>>) -> napi::Result<Self> {
+                let scalars: Vec<ByteScalar<$E>> = scalars
+                    .into_iter()
+                    .map(|slot| {
+                        slot.map(|scalar| scalar.inner.clone())
+                            .unwrap_or_else(ByteScalar::<$E>::null)
+                    })
+                    .collect();
+                ByteSerie::<$E>::from_scalars(&scalars)
+                    .map(|inner| Self { inner })
+                    .map_err(to_error)
+            }
+
             /// Appends one element (`null` / `undefined` is a null).
             #[napi]
             pub fn push(&mut self, value: Option<$js>) -> napi::Result<()> {
