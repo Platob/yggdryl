@@ -4,6 +4,24 @@ yggdryl is an **Apache Arrow-backed** Rust library with **Python (PyO3/maturin)*
 **Node (napi-rs)** extensions. This is a minimal foundation; features are implemented in
 the Rust core first and mirrored, thinly, in both bindings.
 
+## Project aim — absorb anything, type it once, optimize everything after
+
+yggdryl aims to **ingest as many data types as possible** and to **absorb loosely-typed /
+unstructured input at the edge**, assigning each value its **exact internal type in the first
+layers** (the `io` type system — `DataTypeId` and the typed `fixed` / `var` / `nested` /
+`decimal` / `temporal` families). Once data has crossed that boundary it is **correctly and
+precisely typed**, so everything downstream — storage, the byte codec, Arrow interop, compute,
+the bindings — operates over a **closed, known type space** and can be **fully optimized**:
+zero-copy hand-off, no per-op re-inspection, no defensive re-parsing in the hot path. The
+widening / normalization / type-inference happens **once, at ingestion**, never afterwards.
+So: prefer **adding a modeled type** (or a lossless / documented closest-fit mapping — see the
+`to_arrow` rules below) over leaving data opaque, accept input in **every reasonable native
+form** (a value, a scalar, a native-language type, a string, raw bytes, an Arrow array) and
+converge it to the one internal representation, and give every type the **full factory surface**
+(`from_values` / `from_options` / `from_scalars` / native-language constructors) so callers can
+feed data however they hold it. Breadth of ingestion at the top; a single precise type
+underneath; speed everywhere after.
+
 ## Layout
 
 - `crates/yggdryl-core` — the Rust core, the **single source of truth**. Physical layer:

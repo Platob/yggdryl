@@ -116,6 +116,29 @@ impl<E: VarElement> ByteSerie<E> {
         Ok(serie)
     }
 
+    /// A column from a slice of [`ByteScalar`]s — each scalar contributing its bytes (or a null).
+    /// The bulk analogue of the in-place [`set_scalars`](ByteSerie::set_scalars), and the inverse of
+    /// collecting a column's [`get_scalar`](ByteSerie::get_scalar)s.
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::{Utf8Scalar, Utf8Serie};
+    ///
+    /// let col =
+    ///     Utf8Serie::from_scalars(&[Utf8Scalar::of("a"), Utf8Scalar::null(), Utf8Scalar::of("cd")])
+    ///         .unwrap();
+    /// assert_eq!(col.get_str(0), Some("a"));
+    /// assert_eq!(col.get_str(1), None);
+    /// assert_eq!(col.get_str(2), Some("cd"));
+    /// ```
+    pub fn from_scalars(scalars: &[ByteScalar<E>]) -> Result<Self, IoError> {
+        Self::from_byte_values(
+            &scalars
+                .iter()
+                .map(ByteScalar::value_bytes)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     /// The raw bytes of element `index` — zero-copy — or `None` if null or out of range.
     pub fn get_bytes(&self, index: usize) -> Option<&[u8]> {
         if index >= self.len {
@@ -552,5 +575,15 @@ mod tests {
         let a = Utf8Serie::from_strs(&[Some(""), Some("x")]);
         let b = Utf8Serie::from_strs(&[None, Some("x")]);
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let col = Utf8Serie::from_strs(&[Some("a"), None, Some("cd"), Some("")]);
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(Utf8Serie::from_scalars(&scalars).unwrap(), col);
+
+        // The empty slice yields the empty column.
+        assert_eq!(Utf8Serie::from_scalars(&[]).unwrap(), Utf8Serie::new());
     }
 }

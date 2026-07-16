@@ -279,6 +279,20 @@ impl NullSerie {
         Self { len }
     }
 
+    /// A null column from a slice of [`NullScalar`]s — one null per scalar (every [`NullScalar`] is
+    /// null, so only the count matters). The null-family analogue of the other series' `from_scalars`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{NullScalar, NullSerie};
+    ///
+    /// let col = NullSerie::from_scalars(&[NullScalar::null(), NullScalar::null()]);
+    /// assert_eq!(col.len(), 2);
+    /// assert_eq!(col.null_count(), 2);
+    /// ```
+    pub const fn from_scalars(scalars: &[NullScalar]) -> Self {
+        Self::with_len(scalars.len())
+    }
+
     /// Appends one null, growing the column by one.
     pub fn push(&mut self) {
         self.len += 1;
@@ -387,5 +401,20 @@ impl SerieType for NullSerie {
 
     fn get(&self, _index: usize) -> Option<()> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NullSerie;
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let col = NullSerie::with_len(4);
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(NullSerie::from_scalars(&scalars), col);
+
+        // The empty slice yields the empty null column.
+        assert_eq!(NullSerie::from_scalars(&[]), NullSerie::new());
     }
 }

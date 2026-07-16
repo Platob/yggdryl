@@ -356,6 +356,31 @@ impl<K: FixedElement> FixedSizeSerie<K> {
         Ok(serie)
     }
 
+    /// A column of `width`-byte values from a slice of [`FixedSizeScalar`]s — each scalar
+    /// contributing its bytes (which must be exactly `width` long, and valid for the kind), a null
+    /// scalar a null. The bulk analogue of the in-place [`set_scalars`](FixedSizeSerie::set_scalars).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{FixedBinaryScalar, FixedBinarySerie};
+    ///
+    /// let col = FixedBinarySerie::from_scalars(
+    ///     2,
+    ///     &[FixedBinaryScalar::from_bytes(b"ab").unwrap(), FixedBinaryScalar::null(2)],
+    /// )
+    /// .unwrap();
+    /// assert_eq!(col.get_bytes(0), Some("ab".as_bytes()));
+    /// assert_eq!(col.get_bytes(1), None);
+    /// ```
+    pub fn from_scalars(width: usize, scalars: &[FixedSizeScalar<K>]) -> Result<Self, IoError> {
+        Self::from_values(
+            width,
+            &scalars
+                .iter()
+                .map(FixedSizeScalar::value_bytes)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     /// The raw bytes of element `index` — zero-copy — or `None` if null or out of range.
     pub fn get_bytes(&self, index: usize) -> Option<&[u8]> {
         if index >= self.len {
@@ -688,5 +713,29 @@ impl<K: FixedElement> core::fmt::Debug for FixedSizeSerie<K> {
             .field("len", &self.len)
             .field("null_count", &self.null_count())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::io::fixed::{FixedBinaryScalar, FixedBinarySerie};
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let col = FixedBinarySerie::from_values(
+            2,
+            &[Some(&b"ab"[..]), None, Some(&b"cd"[..]), Some(&b"ef"[..])],
+        )
+        .unwrap();
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(FixedBinarySerie::from_scalars(2, &scalars).unwrap(), col);
+
+        // A null scalar becomes a null element; the empty slice yields the empty column.
+        let with_null = FixedBinarySerie::from_scalars(2, &[FixedBinaryScalar::null(2)]).unwrap();
+        assert_eq!(with_null.get_bytes(0), None);
+        assert_eq!(
+            FixedBinarySerie::from_scalars(2, &[]).unwrap(),
+            FixedBinarySerie::new(2)
+        );
     }
 }

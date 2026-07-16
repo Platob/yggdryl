@@ -269,6 +269,21 @@ impl<T: NativeType> Serie<T> {
         Self::from_options(&[scalar.value()])
     }
 
+    /// A column from a slice of [`Scalar`]s — the plural of [`from_scalar`](Serie::from_scalar),
+    /// each scalar contributing its value (or a null). The inverse of collecting a column's
+    /// [`get_scalar`](Serie::get_scalar)s, and the bulk analogue of the in-place
+    /// [`set_scalars`](Serie::set_scalars).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{Scalar, Serie};
+    ///
+    /// let col = Serie::from_scalars(&[Scalar::of(1i32), Scalar::null(), Scalar::of(3)]);
+    /// assert_eq!(col.to_options(), [Some(1), None, Some(3)]);
+    /// ```
+    pub fn from_scalars(scalars: &[Scalar<T>]) -> Self {
+        Self::from_options(&scalars.iter().map(Scalar::value).collect::<Vec<_>>())
+    }
+
     // ---- in-place set: single element + bulk (from a Serie / scalars / native values) --------
 
     /// Overwrites element `index` in place — `Some` writes a value, `None` a null (lazily
@@ -601,5 +616,15 @@ mod tests {
         // A genuine null must still make the columns differ.
         let with_null = Serie::from_options(&[Some(1i32), None, Some(3)]);
         assert_ne!(with_null, dense);
+    }
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let col = Serie::from_options(&[Some(1i32), None, Some(3), Some(4)]);
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(Serie::from_scalars(&scalars), col);
+
+        // The empty slice yields the empty column.
+        assert_eq!(Serie::<i32>::from_scalars(&[]), Serie::new());
     }
 }

@@ -116,6 +116,18 @@ impl StructSerie {
         }
     }
 
+    // DESIGN: no `from_scalars(&[StructScalar])`. Unlike a leaf column — whose `from_scalars` is a
+    // thin map over each scalar's value into the family's `from_options` — a struct column is built
+    // from *child columns* (`from_columns` / `from_named`), or reconstructed whole via
+    // `deserialize_bytes` / `from_arrow_array` / `from_record_batch`, not transposed from row scalars.
+    // A row-scalar factory would be a ROW→COLUMN transpose: rebuild each child column from the k-th
+    // `AnyScalar` of every row. That needs an "erased column from `AnyScalar` cells" primitive, which
+    // does not exist — the only ways to make a `Box<dyn AnySerie>` are boxing a concrete `Serie`, the
+    // byte-frame [`read_any_leaf`](crate::io::read_any_leaf), or the Arrow importer. Building one
+    // would duplicate the whole per-family `DataTypeId` dispatch (decode each cell's canonical bytes
+    // back to a typed value across every leaf type, plus recurse for nested children) — substantial
+    // new machinery, not a thin delegation, so it is intentionally omitted here.
+
     /// The number of rows.
     pub fn len(&self) -> usize {
         self.len

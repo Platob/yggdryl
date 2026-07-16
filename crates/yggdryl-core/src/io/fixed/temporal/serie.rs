@@ -301,6 +301,40 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         })
     }
 
+    /// A column at `(unit, tz)` from a slice of [`TemporalScalar`]s — each present scalar's value is
+    /// re-expressed at the column's unit (see [`fit`](TemporalSerie::fit); a guided
+    /// [`TemporalError`] if it does not fit), a null scalar a null. The bulk factory mirroring
+    /// [`from_options`](TemporalSerie::from_options) over each scalar's value.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{Ts64Scalar, Ts64Serie};
+    /// use yggdryl_core::io::fixed::temporal::{Ts64, TimeUnit, Tz};
+    ///
+    /// let a = Ts64::from_epoch(1_000, TimeUnit::Second, Tz::UTC).unwrap();
+    /// let col = Ts64Serie::from_scalars(
+    ///     TimeUnit::Second,
+    ///     Tz::UTC,
+    ///     &[Ts64Scalar::of(a), Ts64Scalar::null(TimeUnit::Second, Tz::UTC)],
+    /// )
+    /// .unwrap();
+    /// assert_eq!(col.get(0).unwrap().epoch_value(), 1_000);
+    /// assert_eq!(col.get(1), None);
+    /// ```
+    pub fn from_scalars(
+        unit: TimeUnit,
+        tz: Tz,
+        scalars: &[TemporalScalar<B>],
+    ) -> Result<Self, TemporalError> {
+        Self::from_options(
+            unit,
+            tz,
+            &scalars
+                .iter()
+                .map(TemporalScalar::value)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     /// Writes the column: `[len: u64][unit tag: u8][tz name][flags: u8][validity?][values]`.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
         let has_validity = self.has_nulls();
@@ -760,6 +794,25 @@ mod tests {
         let with_null =
             Ts64Serie::from_options(TimeUnit::Second, Tz::UTC, &[Some(a), None]).unwrap();
         assert_ne!(with_null, dense);
+    }
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let a = Ts64::from_epoch(1_000, TimeUnit::Second, Tz::UTC).unwrap();
+        let b = Ts64::from_epoch(2_000, TimeUnit::Second, Tz::UTC).unwrap();
+        let col =
+            Ts64Serie::from_options(TimeUnit::Second, Tz::UTC, &[Some(a), None, Some(b)]).unwrap();
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(
+            Ts64Serie::from_scalars(TimeUnit::Second, Tz::UTC, &scalars).unwrap(),
+            col
+        );
+
+        // The empty slice yields the empty column at the given (unit, tz).
+        assert_eq!(
+            Ts64Serie::from_scalars(TimeUnit::Second, Tz::UTC, &[]).unwrap(),
+            Ts64Serie::new(TimeUnit::Second, Tz::UTC)
+        );
     }
 
     #[test]

@@ -391,6 +391,35 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         })
     }
 
+    /// A column from a slice of [`DecimalScalar`]s at `(precision, scale)` — each scalar's value is
+    /// re-expressed at the column's scale (a guided [`InexactRescale`](DecimalError::InexactRescale) /
+    /// [`PrecisionExceeded`](DecimalError::PrecisionExceeded) if it does not fit), a null scalar a
+    /// null. The bulk analogue of the in-place [`set_scalars`](DecimalSerie::set_scalars).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{D128, D128Scalar, D128Serie};
+    ///
+    /// let col = D128Serie::from_scalars(
+    ///     20,
+    ///     2,
+    ///     &[D128Scalar::of(D128::new(12345, 2).unwrap()), D128Scalar::null(20, 2)],
+    /// )
+    /// .unwrap();
+    /// assert_eq!(col.get(0).unwrap().to_string(), "123.45");
+    /// assert_eq!(col.get(1), None);
+    /// ```
+    pub fn from_scalars(
+        precision: u8,
+        scale: i8,
+        scalars: &[DecimalScalar<B>],
+    ) -> Result<Self, DecimalError> {
+        Self::from_options(
+            precision,
+            scale,
+            &scalars.iter().map(DecimalScalar::value).collect::<Vec<_>>(),
+        )
+    }
+
     /// A [`DecimalField`] naming this column, nullability inferred from whether it holds nulls.
     pub fn to_field(&self, name: &str) -> DecimalField<B> {
         DecimalField::new(name, self.precision, self.scale, self.has_nulls())
@@ -636,5 +665,20 @@ mod tests {
         // A genuine null still makes the columns differ.
         let with_null = D128Serie::from_options(20, 2, &[Some(a), None]).unwrap();
         assert_ne!(with_null, dense);
+    }
+
+    #[test]
+    fn from_scalars_round_trips_a_column_through_its_own_scalars() {
+        let a = D128::new(12345, 2).unwrap();
+        let b = D128::new(600, 2).unwrap();
+        let col = D128Serie::from_options(20, 2, &[Some(a), None, Some(b)]).unwrap();
+        let scalars: Vec<_> = (0..col.len()).map(|i| col.get_scalar(i)).collect();
+        assert_eq!(D128Serie::from_scalars(20, 2, &scalars).unwrap(), col);
+
+        // The empty slice yields the empty column of the given (precision, scale).
+        assert_eq!(
+            D128Serie::from_scalars(20, 2, &[]).unwrap(),
+            D128Serie::new(20, 2)
+        );
     }
 }
