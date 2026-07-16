@@ -63,6 +63,11 @@ pub use any_scalar::AnyScalar;
 pub use any_serie::from_arrow_any_leaf;
 pub use any_serie::{boxed, read_any_leaf, AnySerie};
 pub use named_serie::NamedSerie;
+// The central recursive child dispatch spanning leaf + nested columns (a list/struct child can be a
+// leaf, a struct, or another list) — mirrors the leaf-only `read_any_leaf` / `from_arrow_any_leaf`.
+#[cfg(feature = "arrow")]
+pub use nested::from_arrow_any_column;
+pub use nested::read_any_column;
 
 pub use authority::Authority;
 pub use fixed::Bytes;

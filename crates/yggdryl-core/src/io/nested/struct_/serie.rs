@@ -9,9 +9,10 @@ use core::any::Any;
 use super::scalar::StructScalar;
 use super::{StructField, StructType};
 use crate::io::bitmap::Bitmap;
+use crate::io::nested::{empty_any_column, read_any_column};
 use crate::io::{
-    read_any_leaf, AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, FieldType, Headers, IOCursor,
-    IoError, NamedSerie, SerieType,
+    AnyField, AnyScalar, AnySerie, Bytes, DataTypeId, Headers, IOCursor, IoError, NamedSerie,
+    SerieType,
 };
 
 /// A **nullable struct column** — one child [`AnySerie`](crate::io::AnySerie) per field (all of the
@@ -135,7 +136,7 @@ impl StructSerie {
     /// An empty (zero-row) struct column of the given schema.
     pub fn empty(schema: &StructField) -> Self {
         let fields = schema.fields().to_vec();
-        let columns = fields.iter().map(empty_column_for).collect();
+        let columns = fields.iter().map(empty_any_column).collect();
         Self {
             fields,
             columns,
@@ -329,8 +330,10 @@ impl StructSerie {
         Ok(())
     }
 
-    /// Reads a frame written by [`write_frame`](StructSerie::write_frame).
-    fn read_frame(source: &mut Bytes) -> Result<Self, IoError> {
+    /// Reads a frame written by [`write_frame`](StructSerie::write_frame). Crate-visible so the
+    /// shared recursive [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a
+    /// struct child.
+    pub(crate) fn read_frame(source: &mut Bytes) -> Result<Self, IoError> {
         let schema_len = read_u64(source)? as usize;
         let schema_bytes = source.read_exact_vec(schema_len)?;
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
@@ -346,7 +349,7 @@ impl StructSerie {
         let validity = read_validity(source, len)?;
         let mut columns = Vec::with_capacity(fields.len());
         for field in &fields {
-            let column = read_child(field, source)?;
+            let column = read_any_column(field, source)?;
             if column.len() != len {
                 return Err(mismatch(field.name(), column.len(), len));
             }
@@ -427,46 +430,6 @@ impl AnySerie for StructSerie {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-/// An empty child column matching a field's type (leaf or nested).
-fn empty_column_for(field: &AnyField) -> Box<dyn AnySerie> {
-    if field.is_struct() {
-        return Box::new(StructSerie::empty(
-            &StructField::from_any_field(field.clone())
-                .expect("a struct field decodes to a StructField"),
-        ));
-    }
-    // A leaf column: reconstruct via its Serie codec from a zero-length frame.
-    let empty = if FieldType::type_id(field).is_null() {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes
-    } else if FieldType::type_id(field).is_variable_length() {
-        // `[len=0][no validity][offset 0][data_len 0]`
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.push(0);
-        bytes.extend_from_slice(&0i32.to_le_bytes());
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes
-    } else {
-        // `[len=0][no validity]`
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.push(0);
-        bytes
-    };
-    read_any_leaf(field, &mut Bytes::from_slice(&empty)).expect("a zero-length leaf frame is valid")
-}
-
-/// Reads one child column — recursing into a struct or delegating to the leaf reader.
-fn read_child(field: &AnyField, source: &mut Bytes) -> Result<Box<dyn AnySerie>, IoError> {
-    if field.is_struct() {
-        Ok(Box::new(StructSerie::read_frame(source)?))
-    } else {
-        read_any_leaf(field, source)
     }
 }
 
@@ -564,7 +527,10 @@ impl StructSerie {
         let mut columns = Vec::with_capacity(child_fields.len());
         for (arrow_field, child) in child_fields.iter().zip(array.columns()) {
             fields.push(AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?);
-            columns.push(from_arrow_child(child.as_ref(), arrow_field)?);
+            columns.push(crate::io::nested::from_arrow_any_column(
+                child.as_ref(),
+                arrow_field,
+            )?);
         }
         Ok(Self {
             fields,
@@ -611,7 +577,10 @@ impl StructSerie {
         let mut columns = Vec::with_capacity(schema.fields().len());
         for (arrow_field, array) in schema.fields().iter().zip(batch.columns()) {
             fields.push(AnyField::from_arrow(arrow_field).ok_or_else(|| not_modeled(arrow_field))?);
-            columns.push(from_arrow_child(array.as_ref(), arrow_field)?);
+            columns.push(crate::io::nested::from_arrow_any_column(
+                array.as_ref(),
+                arrow_field,
+            )?);
         }
         Ok(Self {
             fields,
@@ -619,26 +588,6 @@ impl StructSerie {
             validity: None,
             len: batch.num_rows(),
         })
-    }
-}
-
-/// Imports one Arrow child array — recursing into a struct or delegating to the leaf importer.
-#[cfg(feature = "arrow")]
-fn from_arrow_child(
-    array: &dyn arrow_array::Array,
-    field: &arrow_schema::Field,
-) -> Result<Box<dyn AnySerie>, IoError> {
-    if matches!(field.data_type(), arrow_schema::DataType::Struct(_)) {
-        let struct_array = array
-            .as_any()
-            .downcast_ref::<arrow_array::StructArray>()
-            .ok_or_else(|| not_modeled(field))?;
-        Ok(Box::new(StructSerie::from_arrow_array(
-            struct_array,
-            field,
-        )?))
-    } else {
-        crate::io::from_arrow_any_leaf(array, field)
     }
 }
 
