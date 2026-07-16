@@ -6,7 +6,9 @@
 //! type through Arrow, so it works as a map key.
 
 use super::fixed::Field;
-use super::{DataTypeCategory, DataTypeId, FieldType, Headers, IoError};
+use super::{
+    DataTypeCategory, DataTypeId, FieldType, Headers, IoError, NodePath, PathError, PathSegment,
+};
 
 /// A **named, nullable column descriptor of any type** — the recursive, erased field. A `Leaf` wraps
 /// the flat [`Field`](crate::io::fixed::Field) (every fixed / variable leaf column); the nested
@@ -171,6 +173,76 @@ impl AnyField {
             Self::List { item, .. } => std::slice::from_ref(&**item),
             Self::Map { entries, .. } => &entries[..],
         }
+    }
+
+    /// The number of **child fields** — a struct's fields, a list's one item field, a map's two
+    /// (`key`, `value`) fields, or `0` for a leaf. Mirrors
+    /// [`AnySerie::num_children`](crate::io::AnySerie::num_children).
+    pub fn num_children(&self) -> usize {
+        self.children().len()
+    }
+
+    /// The child field at `index`, or `None` if out of range (a leaf has none). Mirrors
+    /// [`AnySerie::child_serie_at`](crate::io::AnySerie::child_serie_at).
+    pub fn child_field_at(&self, index: usize) -> Option<&AnyField> {
+        self.children().get(index)
+    }
+
+    /// The child field named `name` (first match), or `None`. Mirrors
+    /// [`AnySerie::child_serie_by`](crate::io::AnySerie::child_serie_by).
+    pub fn child_field_by(&self, name: &str) -> Option<&AnyField> {
+        self.children().iter().find(|field| field.name() == name)
+    }
+
+    /// Resolves `path` against this field's nested structure, returning the addressed **child field**
+    /// — the schema-structure walk symmetric with
+    /// [`AnySerie::get_by_path`](crate::io::AnySerie::get_by_path). Each
+    /// [`Name`](crate::io::PathSegment::Name) segment follows [`child_field_by`](AnyField::child_field_by),
+    /// each [`Index`](crate::io::PathSegment::Index) segment follows
+    /// [`child_field_at`](AnyField::child_field_at); the empty path returns this field.
+    ///
+    /// # Errors
+    /// A [`PathError`] from [`NodePath::parse`](crate::io::NodePath::parse), or a
+    /// [`PathError::NoChildNamed`] / [`PathError::ChildIndexOutOfRange`] naming the depth and the
+    /// missing segment.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Field;
+    /// use yggdryl_core::io::{AnyField, DataTypeId, FieldType};
+    ///
+    /// // struct<a: list<struct<{b: i32}>>>
+    /// let b = AnyField::struct_("item", vec![AnyField::leaf(Field::of("b", DataTypeId::I32, 4, false))], false);
+    /// let list = AnyField::list_("a", b, false);
+    /// let root = AnyField::struct_("root", vec![list], false);
+    ///
+    /// let leaf = root.get_by_path("a[0].b").unwrap();
+    /// assert_eq!(leaf.name(), "b");
+    /// assert_eq!(FieldType::type_id(leaf), DataTypeId::I32);
+    /// ```
+    pub fn get_by_path(&self, path: &str) -> Result<&AnyField, PathError> {
+        let parsed = NodePath::parse(path)?;
+        let mut current = self;
+        for (depth, segment) in parsed.segments().iter().enumerate() {
+            current = match segment {
+                PathSegment::Name(name) => {
+                    current
+                        .child_field_by(name)
+                        .ok_or_else(|| PathError::NoChildNamed {
+                            depth,
+                            name: name.clone(),
+                            num_children: current.num_children(),
+                        })?
+                }
+                PathSegment::Index(index) => current.child_field_at(*index).ok_or_else(|| {
+                    PathError::ChildIndexOutOfRange {
+                        depth,
+                        index: *index,
+                        num_children: current.num_children(),
+                    }
+                })?,
+            };
+        }
+        Ok(current)
     }
 
     /// Whether this field describes a struct column.

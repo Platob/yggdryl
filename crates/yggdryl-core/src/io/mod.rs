@@ -44,6 +44,8 @@ mod io_cursor;
 mod io_error;
 mod io_slice;
 pub mod nested;
+mod node_path;
+mod node_ref;
 mod percent;
 mod scalar_type;
 mod scheme;
@@ -71,10 +73,13 @@ pub use nested::read_any_column;
 pub use authority::Authority;
 pub use fixed::Bytes;
 pub use headers::Headers;
+// The parsed path value type and its guided errors — the addressing form the `get_by_path` resolvers
+// on `AnySerie` / `AnyField` / `AnyScalar` walk.
 pub use io_base::IOBase;
 pub use io_cursor::IOCursor;
 pub use io_error::IoError;
 pub use io_slice::IOSlice;
+pub use node_path::{NodePath, PathError, PathSegment};
 pub use scheme::default_port;
 pub use uri::Uri;
 pub use uri_error::UriError;

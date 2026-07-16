@@ -5,7 +5,7 @@
 //! the `io` root.
 
 use super::fixed::Field;
-use super::{AnySerie, DataTypeId, FieldType};
+use super::{AnySerie, DataTypeId, FieldType, NodePath, PathError, PathSegment};
 
 /// One **type-erased value** — the cell of an erased [`AnySerie`](crate::io::AnySerie).
 ///
@@ -156,6 +156,96 @@ impl AnyScalar {
             } => Some((entries.as_ref(), *keys_sorted)),
             _ => None,
         }
+    }
+
+    // ---- unified child access (symmetric with `AnySerie` / `AnyField`, one level of drill-down) --
+
+    /// The number of **child values** one level down: a struct's per-field values, a list's elements,
+    /// or a map's entries. A leaf / null value has none.
+    ///
+    /// DESIGN: a *value*'s children are its **data** one level in (elements / entries / field
+    /// values), whereas a [column](crate::io::AnySerie)'s or [field](crate::io::AnyField)'s children
+    /// are its **schema** structure (the item / key / value *types*). So a list value has one child
+    /// per element (not one "item" child), and a map value one child per entry — the drill-down axis
+    /// a caller walks a *value* along.
+    pub fn num_children(&self) -> usize {
+        match self {
+            Self::Null | Self::Leaf { .. } => 0,
+            Self::Struct(values) => values.len(),
+            Self::List(items) => items.len(),
+            Self::Map { entries, .. } => entries.len(),
+        }
+    }
+
+    /// The child value at `index`, or `None` if out of range (a leaf / null has none) — a struct's
+    /// `index`-th field value, a list's `index`-th element, or a map's `index`-th entry (a
+    /// `struct{key, value}` value). Owned, because a list/map child is the erased sub-column's cell.
+    pub fn child_scalar_at(&self, index: usize) -> Option<AnyScalar> {
+        match self {
+            Self::Null | Self::Leaf { .. } => None,
+            Self::Struct(values) => values.get(index).cloned(),
+            Self::List(items) => (index < items.len()).then(|| items.value(index)),
+            Self::Map { entries, .. } => (index < entries.len()).then(|| entries.value(index)),
+        }
+    }
+
+    /// The child value named `name`, or `None`. Only a [`Struct`](AnyScalar::Struct) value whose
+    /// field values carry their schema name (a **named-leaf** child) resolves by name.
+    ///
+    /// DESIGN: the erased struct value is a *positional* `Vec<AnyScalar>` (Phase 1 keeps it
+    /// name-free), so a struct value built by [`AnySerie::value`](crate::io::AnySerie::value) — whose
+    /// leaf cells carry an empty name — resolves only by **index**; name resolution succeeds only for
+    /// a value whose leaf children were constructed with their names. A list's elements and a map's
+    /// entries are inherently unnamed, so they never resolve by name (use an index). Callers drilling
+    /// a value therefore favour index segments; the serie/field surfaces carry the names.
+    pub fn child_scalar_by(&self, name: &str) -> Option<AnyScalar> {
+        match self {
+            Self::Struct(values) => values.iter().find_map(|value| match value {
+                Self::Leaf { field, .. } if field.name() == name => Some(value.clone()),
+                _ => None,
+            }),
+            Self::Null | Self::Leaf { .. } | Self::List(_) | Self::Map { .. } => None,
+        }
+    }
+
+    /// Resolves `path` against this value's nested data, returning the addressed **child value** — the
+    /// data-drill-down symmetric with [`AnySerie::get_by_path`](crate::io::AnySerie::get_by_path). Each
+    /// [`Name`](crate::io::PathSegment::Name) segment follows [`child_scalar_by`](AnyScalar::child_scalar_by),
+    /// each [`Index`](crate::io::PathSegment::Index) segment follows
+    /// [`child_scalar_at`](AnyScalar::child_scalar_at); the empty path returns a clone of this value.
+    ///
+    /// Because a value's children are its data (see [`num_children`](AnyScalar::num_children)), a path
+    /// into a value indexes **elements / entries / field values** — e.g. `[0][2]` is "element 0 of
+    /// field 0" — not the schema `[item]` a serie/field path walks.
+    ///
+    /// # Errors
+    /// A [`PathError`] from [`NodePath::parse`](crate::io::NodePath::parse), or a
+    /// [`PathError::NoChildNamed`] / [`PathError::ChildIndexOutOfRange`] naming the depth and the
+    /// missing segment.
+    pub fn get_by_path(&self, path: &str) -> Result<AnyScalar, PathError> {
+        let parsed = NodePath::parse(path)?;
+        let mut current = self.clone();
+        for (depth, segment) in parsed.segments().iter().enumerate() {
+            current = match segment {
+                PathSegment::Name(name) => {
+                    current
+                        .child_scalar_by(name)
+                        .ok_or_else(|| PathError::NoChildNamed {
+                            depth,
+                            name: name.clone(),
+                            num_children: current.num_children(),
+                        })?
+                }
+                PathSegment::Index(index) => current.child_scalar_at(*index).ok_or_else(|| {
+                    PathError::ChildIndexOutOfRange {
+                        depth,
+                        index: *index,
+                        num_children: current.num_children(),
+                    }
+                })?,
+            };
+        }
+        Ok(current)
     }
 }
 

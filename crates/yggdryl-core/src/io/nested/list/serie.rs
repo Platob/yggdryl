@@ -150,6 +150,14 @@ impl ListSerie {
         self.values.as_ref()
     }
 
+    /// The flattened child column **mutably** — the in-place counterpart of
+    /// [`values`](ListSerie::values), backing
+    /// [`AnySerie::child_serie_at_mut`](crate::io::AnySerie::child_serie_at_mut). Editing the child in
+    /// place must preserve its length (the offsets index into it) and type.
+    pub fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+        self.values.as_mut()
+    }
+
     /// The row offsets (`len + 1` entries into the flattened child).
     pub fn offsets(&self) -> &[i32] {
         &self.offsets
@@ -398,6 +406,28 @@ impl AnySerie for ListSerie {
 
     fn value(&self, index: usize) -> AnyScalar {
         self.row(index)
+    }
+
+    fn num_children(&self) -> usize {
+        1
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<&(dyn AnySerie + 'static)> {
+        (index == 0).then(|| self.values())
+    }
+
+    fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
+        // A list's single child is its item column, named by the flat child's own header (canonically
+        // "item").
+        (name == self.values().name()).then(|| self.values())
+    }
+
+    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+        if index == 0 {
+            Some(self.values_mut())
+        } else {
+            None
+        }
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

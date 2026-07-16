@@ -193,6 +193,22 @@ impl MapSerie {
             .expect("a map's entries always has a value column")
     }
 
+    /// The flattened key column **mutably** (entries column 0) — the in-place counterpart of
+    /// [`keys`](MapSerie::keys). Editing in place must preserve its length and keep keys non-null.
+    pub fn keys_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+        self.entries
+            .column_at_mut(0)
+            .expect("a map's entries always has a key column")
+    }
+
+    /// The flattened value column **mutably** (entries column 1) — the in-place counterpart of
+    /// [`values`](MapSerie::values). Editing in place must preserve its length and type.
+    pub fn values_mut(&mut self) -> &mut (dyn AnySerie + 'static) {
+        self.entries
+            .column_at_mut(1)
+            .expect("a map's entries always has a value column")
+    }
+
     /// The flattened `key -> value` entries as a two-column [`StructSerie`].
     pub fn entries(&self) -> &StructSerie {
         &self.entries
@@ -518,6 +534,39 @@ impl AnySerie for MapSerie {
 
     fn value(&self, index: usize) -> AnyScalar {
         self.row(index)
+    }
+
+    fn num_children(&self) -> usize {
+        2
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<&(dyn AnySerie + 'static)> {
+        match index {
+            0 => Some(self.keys()),
+            1 => Some(self.values()),
+            _ => None,
+        }
+    }
+
+    fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
+        // Match the entries' own child names, falling back to the canonical `"key"` / `"value"`.
+        let keys = self.keys();
+        if name == keys.name() || name == "key" {
+            return Some(keys);
+        }
+        let values = self.values();
+        if name == values.name() || name == "value" {
+            return Some(values);
+        }
+        None
+    }
+
+    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+        match index {
+            0 => Some(self.keys_mut()),
+            1 => Some(self.values_mut()),
+            _ => None,
+        }
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

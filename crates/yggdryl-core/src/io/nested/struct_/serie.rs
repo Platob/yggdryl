@@ -255,6 +255,14 @@ impl StructSerie {
         self.column(index)
     }
 
+    /// The child column at `index` **mutably** (as an erased [`AnySerie`](crate::io::AnySerie)), or
+    /// `None` if out of range — the in-place counterpart of [`column`](StructSerie::column), backing
+    /// [`AnySerie::child_serie_at_mut`](crate::io::AnySerie::child_serie_at_mut). Editing a child in
+    /// place must preserve its length (the struct's rows) and type.
+    pub fn column_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+        self.columns.get_mut(index).map(|column| column.as_mut())
+    }
+
     /// The typed [`StructType`] descriptor (its child fields).
     pub fn data_type(&self) -> StructType {
         StructType::new(self.fields())
@@ -461,6 +469,22 @@ impl AnySerie for StructSerie {
 
     fn value(&self, index: usize) -> AnyScalar {
         self.row(index)
+    }
+
+    fn num_children(&self) -> usize {
+        self.num_columns()
+    }
+
+    fn child_serie_at(&self, index: usize) -> Option<&(dyn AnySerie + 'static)> {
+        self.column(index)
+    }
+
+    fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
+        self.column_named(name)
+    }
+
+    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+        self.column_at_mut(index)
     }
 
     fn slice(&self, offset: usize, len: usize) -> Box<dyn AnySerie> {

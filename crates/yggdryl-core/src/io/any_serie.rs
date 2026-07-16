@@ -25,7 +25,10 @@ use super::fixed::{
     TemporalSerie, Time32Serie, Time64Serie, Ts32Serie, Ts64Serie, Ts96Serie, I256, I96, U256, U96,
 };
 use super::var::{BinarySerie, ByteSerie, Utf8Serie, VarElement};
-use super::{AnyField, AnyScalar, Bytes, DataTypeId, FieldType, Headers, IoError};
+use super::{
+    AnyField, AnyScalar, Bytes, DataTypeId, FieldType, Headers, IoError, NodePath, PathError,
+    PathSegment,
+};
 
 /// The width of one variable-length offset (`i32`).
 const OFFSET_WIDTH: usize = core::mem::size_of::<i32>();
@@ -171,6 +174,42 @@ pub trait AnySerie: Debug + Send + Sync {
         boxed.set_name(name);
         boxed
     }
+
+    // ---- unified child access (leaf-safe defaults; only the nested columns override) -----------
+
+    /// The number of **child columns** — a struct's fields, a list's one item child, a map's two
+    /// (`key`, `value`) children. A leaf column has none, so the default is `0` and only the nested
+    /// columns override it. This is the *schema-structure* fan-out, matching
+    /// [`AnyField::num_children`](crate::io::AnyField::num_children).
+    fn num_children(&self) -> usize {
+        0
+    }
+
+    /// The child column at `index`, or `None` if out of range (a leaf has no children). See
+    /// [`num_children`](AnySerie::num_children) for the ordering.
+    fn child_serie_at(&self, index: usize) -> Option<&(dyn AnySerie + 'static)> {
+        let _ = index; // a leaf has no children — only the nested columns override
+        None
+    }
+
+    /// The child column named `name`, or `None` (a leaf has no children). A struct matches a field
+    /// name, a list matches its item name, a map matches its key/value child names (or the canonical
+    /// `"key"` / `"value"`).
+    fn child_serie_by(&self, name: &str) -> Option<&(dyn AnySerie + 'static)> {
+        let _ = name;
+        None
+    }
+
+    /// The child column at `index` **mutably**, or `None` if out of range (a leaf has no children) —
+    /// the in-place counterpart of [`child_serie_at`](AnySerie::child_serie_at).
+    ///
+    /// DESIGN: this hands out a raw `&mut` to a child; it does **not** revalidate the parent's
+    /// invariants, so a caller must preserve the child's length and type (e.g. renaming or editing
+    /// values in place is fine; changing the row count of a struct/list child is not).
+    fn child_serie_at_mut(&mut self, index: usize) -> Option<&mut (dyn AnySerie + 'static)> {
+        let _ = index;
+        None
+    }
 }
 
 /// Restores a child column's stored header (name / declared nullability / metadata) from the field
@@ -220,6 +259,78 @@ impl dyn AnySerie {
     pub fn as_temporal<B: TemporalBacking>(&self) -> Option<&TemporalSerie<B>> {
         self.downcast_ref::<TemporalSerie<B>>()
     }
+
+    /// Resolves `path` against this column's nested structure, returning the addressed **child
+    /// column** — the schema-structure walk symmetric with
+    /// [`AnyField::get_by_path`](crate::io::AnyField::get_by_path). Each
+    /// [`Name`](crate::io::PathSegment::Name) segment follows [`child_serie_by`](AnySerie::child_serie_by),
+    /// each [`Index`](crate::io::PathSegment::Index) segment follows
+    /// [`child_serie_at`](AnySerie::child_serie_at); the empty path returns this column. The returned
+    /// borrow is tied to `&self` (a transient view, not a stored value).
+    ///
+    /// # Errors
+    /// A [`PathError`] from [`NodePath::parse`](crate::io::NodePath::parse), or a
+    /// [`PathError::NoChildNamed`] / [`PathError::ChildIndexOutOfRange`] naming the depth and the
+    /// missing segment.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::nested::{ListSerie, StructSerie};
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    ///
+    /// // struct<a: list<struct<{b: i32}>>>
+    /// let b = Serie::from_values(&[10i32, 20, 30]).named("b");
+    /// let inner = boxed(StructSerie::from_series(vec![b]).unwrap());
+    /// let list = ListSerie::from_values(inner, &[0, 2, 3], None).unwrap();
+    /// let root = StructSerie::from_named(vec![("a", boxed(list))]).unwrap();
+    ///
+    /// let b = (&root as &dyn AnySerie).get_by_path("a[0].b").unwrap();
+    /// assert_eq!(b.name(), "b");
+    /// assert_eq!(b.len(), 3);
+    /// ```
+    pub fn get_by_path(&self, path: &str) -> Result<&(dyn AnySerie + 'static), PathError> {
+        let parsed = NodePath::parse(path)?;
+        resolve_serie(self, &parsed)
+    }
+
+    /// A transient `NodeRef` cursor rooted at this column — the crate-internal entry point for the
+    /// graph-cursor drill-down. Reserved for later phases (only its own tests use it today).
+    #[allow(dead_code)]
+    pub(crate) fn root_ref(&self) -> super::node_ref::NodeRef<'_> {
+        super::node_ref::NodeRef::new(self)
+    }
+}
+
+/// Walks `path` from `root` through the unified child accessors, returning the addressed child
+/// column. Shared by [`get_by_path`](AnySerie::get_by_path) (guided errors) and the `NodeRef`
+/// cursor's parent re-resolution.
+pub(crate) fn resolve_serie<'a>(
+    root: &'a (dyn AnySerie + 'static),
+    path: &NodePath,
+) -> Result<&'a (dyn AnySerie + 'static), PathError> {
+    let mut current = root;
+    for (depth, segment) in path.segments().iter().enumerate() {
+        current =
+            match segment {
+                PathSegment::Name(name) => {
+                    current
+                        .child_serie_by(name)
+                        .ok_or_else(|| PathError::NoChildNamed {
+                            depth,
+                            name: name.clone(),
+                            num_children: current.num_children(),
+                        })?
+                }
+                PathSegment::Index(index) => current.child_serie_at(*index).ok_or_else(|| {
+                    PathError::ChildIndexOutOfRange {
+                        depth,
+                        index: *index,
+                        num_children: current.num_children(),
+                    }
+                })?,
+            };
+    }
+    Ok(current)
 }
 
 /// Boxes a concrete `Serie` as an erased [`AnySerie`] column — the ergonomic constructor for a
