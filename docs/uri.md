@@ -375,8 +375,9 @@ the receiver. Setting a host/port/user/password creates an authority if the URI 
 
 ## Joining and combining
 
-Three combinators build new values from existing ones — all return a copy, so they chain
-and never mutate the receiver:
+These combinators build new values from existing ones — all return a copy, so they chain
+and never mutate the receiver. They run easy → complex: join or walk the path, overlay whole
+components, then clone.
 
 - **`joinpath(segment)`** — joins a segment onto the path, *lexically* (like `pathlib`, no
   `.`/`..` resolution). It gets the seam right: exactly one `/` between base and segment (a
@@ -384,6 +385,12 @@ and never mutate the receiver:
   an empty segment is a no-op, and under an authority the result stays rooted so a relative
   segment can't fuse into the host. The segment is percent-encoded like `set_path`; the
   query and fragment are left untouched.
+- **`parent()` / `parents()`** — the **inverse of `joinpath`**: `parent()` returns this value
+  with its last path segment stripped (only the path changes — scheme, authority, query, and
+  fragment are kept), or nothing at a **root** (no segment left to strip), so
+  `base.joinpath("x").parent()` addresses `base` again. `parents()` walks the ancestor chain
+  nearest-first, up to that root. Python returns `parent()` as `Uri | None` and `parents()` as
+  a **list**; Node as `Uri | null` and an **array**; Rust as an `Option` and an **iterator**.
 - **`merge_with(other)`** — overlays `other` onto this value: each component `other` sets (a
   present scheme/authority/query/fragment, or a non-empty path) wins, otherwise this value's
   is kept. A mechanical component merge with no re-parsing — ideal for applying a small patch
@@ -396,13 +403,23 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
 === "Python"
 
     ```python
-    from yggdryl.uri import Uri, Authority
+    from yggdryl.uri import Uri, Url, Authority
 
     # joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
     base = Uri.parse("https://api.example.com/v1")
     assert str(base.joinpath("users").joinpath("42")) == "https://api.example.com/v1/users/42"
     assert Uri.from_path("/v1/").joinpath("users").path == "/v1/users"   # not doubled
     assert str(base.joinpath("/reset")) == "https://api.example.com/reset"
+
+    # parent / parents: the inverse of joinpath — walk back up the path.
+    assert base.joinpath("x").parent() == base            # strips the joined segment
+    file = Uri.parse("https://h/a/b/c.txt?q=1")
+    assert file.parent().path == "/a/b"                   # scheme/query kept
+    assert str(file.parent()) == "https://h/a/b?q=1"
+    assert [p.path for p in file.parents()] == ["/a/b", "/a", ""]  # nearest-first, up to the root
+    assert Uri.parse("https://h").parent() is None        # a root has no parent
+    # Url mirrors it, keeping the scheme.
+    assert Url.parse("https://h/a/b/c.txt").parent() == Url.parse("https://h/a/b")
 
     # merge_with: apply only the fields the patch sets.
     prod = Uri.parse("https://prod.example.com/v1?trace=1")
@@ -418,13 +435,23 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
 === "Node"
 
     ```js
-    const { Uri, Authority } = require('yggdryl').uri
+    const { Uri, Url, Authority } = require('yggdryl').uri
 
     // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
     const base = Uri.parse('https://api.example.com/v1')
     console.assert(base.joinpath('users').joinpath('42').toString() === 'https://api.example.com/v1/users/42')
     console.assert(Uri.fromPath('/v1/').joinpath('users').path === '/v1/users')   // not doubled
     console.assert(base.joinpath('/reset').toString() === 'https://api.example.com/reset')
+
+    // parent / parents: the inverse of joinpath — walk back up the path.
+    console.assert(base.joinpath('x').parent().equals(base))       // strips the joined segment
+    const file = Uri.parse('https://h/a/b/c.txt?q=1')
+    console.assert(file.parent().path === '/a/b')                  // scheme/query kept
+    console.assert(file.parent().toString() === 'https://h/a/b?q=1')
+    console.assert(JSON.stringify(file.parents().map(p => p.path)) === '["/a/b","/a",""]')  // nearest-first
+    console.assert(Uri.parse('https://h').parent() === null)       // a root has no parent
+    // Url mirrors it, keeping the scheme.
+    console.assert(Url.parse('https://h/a/b/c.txt').parent().equals(Url.parse('https://h/a/b')))
 
     // mergeWith: apply only the fields the patch sets.
     const prod = Uri.parse('https://prod.example.com/v1?trace=1')
@@ -440,13 +467,24 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
 === "Rust"
 
     ```rust
-    use yggdryl_core::uri::{Authority, Uri};
+    use yggdryl_core::uri::{Authority, Uri, Url};
 
     // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
     let base = Uri::parse_str("https://api.example.com/v1").unwrap();
     assert_eq!(base.joinpath("users").joinpath("42").to_string(), "https://api.example.com/v1/users/42");
     assert_eq!(Uri::from_path("/v1/").joinpath("users").path(), "/v1/users");   // not doubled
     assert_eq!(base.joinpath("/reset").to_string(), "https://api.example.com/reset");
+
+    // parent / parents: the inverse of joinpath — walk back up the path.
+    assert_eq!(base.joinpath("x").parent().unwrap(), base);        // strips the joined segment
+    let file = Uri::parse_str("https://h/a/b/c.txt?q=1").unwrap();
+    assert_eq!(file.parent().unwrap().path(), "/a/b");            // scheme/query kept
+    assert_eq!(file.parent().unwrap().to_string(), "https://h/a/b?q=1");
+    let ancestors: Vec<String> = file.parents().map(|p| p.path().to_string()).collect();
+    assert_eq!(ancestors, vec!["/a/b", "/a", ""]);               // nearest-first, up to the root
+    assert!(Uri::parse_str("https://h").unwrap().parent().is_none()); // a root has no parent
+    // Url mirrors it, keeping the scheme.
+    assert_eq!(Url::parse_str("https://h/a/b/c.txt").unwrap().parent().unwrap().to_string(), "https://h/a/b");
 
     // merge_with: apply only the fields the patch sets.
     let prod = Uri::parse_str("https://prod.example.com/v1?trace=1").unwrap();

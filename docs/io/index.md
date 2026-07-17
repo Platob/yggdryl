@@ -10,7 +10,7 @@ both extensions.
 | `Serializable` | the root byte-codec trait — `serialize_bytes()` / `deserialize_bytes()` are exact inverses; every value type implements it when possible |
 | [`Headers`](../headers.md) | the project's **one** metadata map — now a root module beside `uri`; HTTP headers, schema metadata, and source annotations all live here |
 | `IOMode` | how a source may be accessed — an int enum: `Read = 1`, `Write = 2`, `ReadWrite = 3`, `Append = 4`, `Overwrite = 5` |
-| `IOKind` | what a source is — an int enum: `Missing = 0`, `File = 1`, `Directory = 2`, `Heap = 3` |
+| `IOKind` | what a source is — an int enum: `Unknown = 0` (the default), `Missing = 1`, `File = 2`, `Directory = 3`, `Heap = 4` |
 | `IoError` / `Whence` | the guided error family and the seek anchor (`Start` / `Current` / `End`) |
 
 ## IOMode and IOKind — int enums with parsers
@@ -30,6 +30,7 @@ on the runtime type.
     assert IOMode.Append.is_writable() and not IOMode.Read.is_writable()
 
     assert IOKind.parse("dir") == IOKind.Directory
+    assert IOKind.Unknown == 0 and IOKind.Unknown.exists()  # exists, type undetermined
     assert not IOKind.Missing.exists()
     ```
 
@@ -45,6 +46,7 @@ on the runtime type.
     console.assert(ioModeIsWritable(IOMode.Append))
 
     console.assert(parseIoKind('dir') === IOKind.Directory)
+    console.assert(IOKind.Unknown === 0 && ioKindExists(IOKind.Unknown)) // exists, undetermined
     console.assert(!ioKindExists(IOKind.Missing))
     ```
 
@@ -59,7 +61,8 @@ on the runtime type.
     assert!(IOMode::Append.is_writable());
 
     assert_eq!(IOKind::parse_str("dir").unwrap(), IOKind::Directory);
-    assert!(!IOKind::Missing.exists());
+    assert_eq!(IOKind::default(), IOKind::Unknown); // Unknown = 0, exists but undetermined
+    assert!(IOKind::Unknown.exists() && !IOKind::Missing.exists());
     ```
 
 An unknown name or value is a guided error naming every accepted token.
