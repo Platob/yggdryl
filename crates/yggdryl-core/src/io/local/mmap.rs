@@ -611,42 +611,42 @@ mod sys {
 }
 
 impl crate::io::Path for Mmap {
-    type Node = super::LocalPath;
+    type Node = super::LocalIO;
     type Children = super::LocalChildren;
     type Walk = super::LocalWalk;
 
     fn name(&self) -> String {
-        crate::io::Path::name(&super::LocalPath::from_path(&self.path))
+        crate::io::Path::name(&super::LocalIO::from_path(&self.path))
     }
 
-    fn parent(&self) -> Option<super::LocalPath> {
-        crate::io::Path::parent(&super::LocalPath::from_path(&self.path))
+    fn parent(&self) -> Option<super::LocalIO> {
+        crate::io::Path::parent(&super::LocalIO::from_path(&self.path))
     }
 
-    fn join_str(&self, segment: &str) -> super::LocalPath {
-        super::LocalPath::from_path(&self.path).join_str(segment)
+    fn join_str(&self, segment: &str) -> super::LocalIO {
+        super::LocalIO::from_path(&self.path).join_str(segment)
     }
 
     fn ls(&self) -> Result<super::LocalChildren, IoError> {
-        crate::io::Path::ls(&super::LocalPath::from_path(&self.path)) // a file streams nothing
+        crate::io::Path::ls(&super::LocalIO::from_path(&self.path)) // a file streams nothing
     }
 
     fn ls_recursive(&self) -> Result<super::LocalWalk, IoError> {
-        crate::io::Path::ls_recursive(&super::LocalPath::from_path(&self.path))
+        crate::io::Path::ls_recursive(&super::LocalIO::from_path(&self.path))
     }
 
     /// DESIGN: removing an OPEN mapping is OS-dependent (Windows refuses to delete a mapped
     /// file, Unix unlinks it) — the error, when any, is the OS's own guided `FileIo`. Drop or
     /// close the mapping first for portable removal.
     fn rm(&self) -> Result<(), IoError> {
-        crate::io::Path::rm(&super::LocalPath::from_path(&self.path))
+        crate::io::Path::rm(&super::LocalIO::from_path(&self.path))
     }
 
     fn rmfile(&self) -> Result<(), IoError> {
-        crate::io::Path::rmfile(&super::LocalPath::from_path(&self.path))
+        crate::io::Path::rmfile(&super::LocalIO::from_path(&self.path))
     }
 
     fn rmdir(&self) -> Result<(), IoError> {
-        crate::io::Path::rmdir(&super::LocalPath::from_path(&self.path))
+        crate::io::Path::rmdir(&super::LocalIO::from_path(&self.path))
     }
 }

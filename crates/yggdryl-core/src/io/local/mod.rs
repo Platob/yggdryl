@@ -2,24 +2,18 @@
 //! contract ([`IOBase`](crate::io::memory::IOBase)) and the filesystem-graph contract
 //! ([`Path`](crate::io::Path)), addressed by [`Uri`](crate::uri::Uri)s.
 //!
-//! - [`LocalPath`] — the **lazy** node: constructing one never touches the disk; reads on a
-//!   missing path are empty, a **write auto-creates** the missing parent folders and the
-//!   file. Opens per operation — for repeated access it sub-instantiates the optimized
-//!   concrete types below.
-//! - [`LocalFile`] — an auto-created, **memory-mapped** file (backed by [`Mmap`]): the
-//!   optimized handle for repeated byte access.
-//! - [`LocalFolder`] — an auto-created directory: navigation, streamed discovery, CRUD.
-//! - [`Mmap`] — the raw memory-mapped file the family builds on.
+//! - [`LocalIO`] — the family's **single access point**: one lazy handle that decides per
+//!   call how to serve reads and writes (ad-hoc positioned reads before any write; after the
+//!   first auto-creating write, a kept memory-mapped backing at memory speed), and carries
+//!   the whole graph surface (streamed `ls`, CRUD, `mkdir`).
+//! - [`Mmap`] — the raw memory-mapped file `LocalIO` builds on (usable directly when a
+//!   pre-existing file and explicit control are wanted).
 
-mod file;
-mod folder;
+mod io;
 mod mmap;
-mod path;
 
-pub use file::LocalFile;
-pub use folder::LocalFolder;
+pub use io::{LocalChildren, LocalIO, LocalWalk};
 pub use mmap::Mmap;
-pub use path::{LocalChildren, LocalPath, LocalWalk};
 
 use std::fs::File;
 use std::path::{Path as StdPath, PathBuf};
@@ -93,31 +87,5 @@ pub(crate) fn read_at(file: &File, offset: u64, buf: &mut [u8]) -> std::io::Resu
             }
         }
         Ok(done)
-    }
-}
-
-/// Positioned write of all of `data` at `offset` — extends the file (zero-filling any gap)
-/// as the OS does for writes past the end.
-pub(crate) fn write_at_all(file: &File, offset: u64, data: &[u8]) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::FileExt;
-        file.write_all_at(data, offset)
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::FileExt;
-        let mut done = 0;
-        while done < data.len() {
-            let n = file.seek_write(&data[done..], offset + done as u64)?;
-            if n == 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::WriteZero,
-                    "positioned write made no progress",
-                ));
-            }
-            done += n;
-        }
-        Ok(())
     }
 }

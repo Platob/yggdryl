@@ -13,43 +13,46 @@ whatever exists, `rmfile` / `rmdir` are shape-checked with guided errors). Exist
 probe: `kind` / `is_file` / `is_dir` / `exists` ask the backing each call. A future object
 store or archive family implements the same trait and every caller works unchanged.
 
-## Lazy `LocalPath` → concrete `LocalFile` / `LocalFolder`
+## `LocalIO` — one access point, lazy and self-optimizing
 
-Per the auto-create rule, a `LocalPath` is a **lazy handle**: constructing one never touches
-the disk, reads on a missing node are empty, and a **write auto-creates** the missing parent
-folders and the file — no `mkdir`/`touch` pre-flighting, ever. It opens per operation; for
-repeated access it **sub-instantiates** the optimized concrete types: `file()` auto-creates
-and memory-maps a `LocalFile`, `folder()` auto-creates a `LocalFolder` (`mkdir -p`).
+Per the one-access-point rule, the local family has a **single handle**: `LocalIO`, a lazy
+node over any path (file, folder, or nothing yet) that decides per call how to serve I/O:
+
+- **Constructing / probing / navigating touches nothing** — `kind` / `exists` / `is_file` /
+  `is_dir` ask the disk per call.
+- **Reads pick their own path** — before any write, one ad-hoc positioned OS read (missing or
+  directory nodes read as empty); after the handle has written, reads come from its kept
+  **memory-mapped backing** at memory speed.
+- **Writes auto-create and self-optimize** — the first write creates the missing parent
+  folders and the file, maps it, and keeps the mapping (zero-allocation I/O, `Heap`-style
+  amortized growth). No `mkdir`, no `touch`, no separate file object; `mkdir()` exists for
+  when a folder itself is the goal, and `close()` releases the mapping (truncating to the
+  logical length) while leaving the handle usable.
 
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::local::LocalPath;
+    use yggdryl_core::io::local::LocalIO;
     use yggdryl_core::io::memory::IOBase;
     use yggdryl_core::io::Path;
 
-    let root = LocalPath::from_path(std::env::temp_dir().join("example"));
+    let root = LocalIO::from_path(std::env::temp_dir().join("example"));
     let mut note = root.join_str("deep/nested/note.txt"); // lazy — nothing exists yet
     assert!(!note.exists());
 
-    note.pwrite_utf8(0, "hello");                 // auto-creates deep/, nested/, the file
-    assert!(note.is_file());
-    assert_eq!(note.parent().unwrap().name(), "nested");
+    note.pwrite_utf8(0, "hello");        // auto-creates deep/, nested/, the file — and maps it
+    assert!(note.is_file() && note.is_mapped());
+    assert_eq!(note.pread_utf8(0, 5).unwrap(), "hello"); // memory-speed from here on
 
-    // Streamed discovery + shape-checked CRUD.
-    for entry in root.ls_recursive().unwrap() {
-        let node = entry.unwrap();
-        println!("{} ({})", node.name(), node.kind());
+    for entry in root.ls_recursive().unwrap() {          // streamed discovery
+        println!("{}", entry.unwrap().name());
     }
-    let fast = note.file().unwrap();              // sub-instantiate: memory-mapped access
-    assert_eq!(fast.pread_utf8(0, 5).unwrap(), "hello");
-    drop(fast);
-    root.rmdir().unwrap();                        // recursive cleanup
+    note.close();                                        // release the mapping
+    root.rmdir().unwrap();                               // recursive cleanup
     ```
 
 The bindings mirror the family under `yggdryl.local` / `require('yggdryl').local` with the
-generic entries (`LocalPath(path_or_uri)`, `ls(recursive=…)` dispatching to the streamed
-core iterators).
+generic entries (`LocalIO(path_or_uri)`, `ls(recursive=…)` over the streamed core iterators).
 
 ## `Mmap` — the memory-mapped file
 

@@ -6,15 +6,14 @@ use crate::io::memory::IOBase;
 /// A node in a filesystem graph — the **uniform cross-filesystem abstraction** layered over
 /// [`IOBase`]: the same navigation (parent / children), streamed discovery (`ls` /
 /// `ls_recursive`), and CRUD (`rm` / `rmfile` / `rmdir`) surface, whatever the backing —
-/// today the local filesystem ([`LocalPath`](crate::io::local::LocalPath) /
-/// [`LocalFile`](crate::io::local::LocalFile) / [`LocalFolder`](crate::io::local::LocalFolder)
-/// / [`Mmap`](crate::io::local::Mmap)); an object store or archive family implements the same
-/// trait and every caller works unchanged.
+/// today the local filesystem ([`LocalIO`](crate::io::local::LocalIO), the family's single
+/// access point, and the raw [`Mmap`](crate::io::local::Mmap)); an object store or archive
+/// family implements the same trait and every caller works unchanged.
 ///
 /// # The model
 ///
 /// - **One node type per family.** [`Node`](Path::Node) is the family's uniform path type
-///   (`LocalPath` for the local family): `parent()` and every discovered child is a `Node`,
+///   (`LocalIO` for the local family): `parent()` and every discovered child is a `Node`,
 ///   so graphs stay homogeneous whatever concrete type you started from.
 /// - **Discovery is streamed.** [`ls`](Path::ls) (one level) and
 ///   [`ls_recursive`](Path::ls_recursive) (the whole subtree) return **iterators** — children
@@ -28,11 +27,11 @@ use crate::io::memory::IOBase;
 ///   ask the backing each call.
 ///
 /// ```
-/// use yggdryl_core::io::local::LocalPath;
+/// use yggdryl_core::io::local::LocalIO;
 /// use yggdryl_core::io::memory::IOBase;
 /// use yggdryl_core::io::Path;
 ///
-/// let root = LocalPath::from_path(std::env::temp_dir().join("yggdryl_path_doc"));
+/// let root = LocalIO::from_path(std::env::temp_dir().join("yggdryl_path_doc"));
 /// let mut note = root.join_str("a/b/note.txt"); // lazy: nothing touched yet
 /// assert!(!note.exists());
 ///
