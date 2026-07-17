@@ -18,48 +18,57 @@ cargo test  -p yggdryl-core --test io_memory_heap_alloc   # deterministic memory
 
 ## Rust core (release, counting global allocator)
 
+After the `Heap` fast-path round (defaults measured through a minimal primitives-only source
+in the same run — the baseline any new source starts from):
+
 | op | Mops/s | allocs/op | bytes/op |
 |---|--:|--:|--:|
-| `pread_byte` | 18312 | 0.00 | 0.0 |
-| `pread_i32` | ~200000 | 0.00 | 0.0 |
-| `pread_i64` | ~200000 | 0.00 | 0.0 |
-| `pread_bit` | 25000 | 0.00 | 0.0 |
-| `pread_into` (4 KiB, reused buffer) | 7.3 | **0.00** | **0.0** |
-| `pread_vec` (4 KiB, fresh `Vec`) | 4.3 | 1.00 | 4096.0 |
-| cursor `write byte+i32+i64` | 154 | 0.00 | 0.0 |
-| `slice` (1 KiB window) | 10.4 | 1.00 | 1024.0 |
-| `from_slice` (4 KiB ingest) | 6.6 | 1.00 | 4096.0 |
-| `pwrite_i32_array` (1024 elems) | 5180 | **0.00** | 0.0 |
-| `pread_i32_array` (1024 elems) | 6060 | **0.00** | 0.0 |
-| `pwrite_i32_repeat` (1024 elems) | **15370** | **0.00** | 0.0 |
-| repeat via full `Vec` (compare) | 4407 | — | 4.0 |
-| `pread_utf8` (short text) | 12.0 | 1.00 | 23.0 |
+| `pread_byte` / `pread_bit` | 4000–200000 | 0.00 | 0.0 |
+| `pread_i32` / `pread_i64` (direct slice) | ~200000 | 0.00 | 0.0 |
+| `pwrite_i32` / `pwrite_i64` (in place, inlined) | **~50000** | 0.00 | 0.0 |
+| cursor `write byte+i32+i64` | 145 | 0.00 | 0.0 |
+| `pread_into` (4 KiB, reused buffer) | 5.7 | **0.00** | **0.0** |
+| `pread_vec` (4 KiB, fresh `Vec`) | 4.6 | 1.00 | 4096.0 |
+| **append** 4 KiB (reserved heap, single-write grow) | 7.4 | 1.00 | 4096.0 |
+| overwrite 4 KiB (in place) | 17.2 | 0.00 | 0.0 |
+| `pwrite_i32_array` (1024) — **Heap override** | **16762** | 0.00 | 0.0 |
+| `pwrite_i32_array` (1024) — trait default (min src) | 7126 | 0.00 | 0.0 |
+| `pread_i32_array` (1024) — **Heap override** | **17325** | 0.00 | 0.0 |
+| `pread_i32_array` (1024) — trait default (min src) | 5915 | 0.00 | 0.0 |
+| `pwrite_i64_array` / `pread_i64_array` (1024) | 6900 / 4900 | 0.00 | 0.0 |
+| `pwrite_i32_repeat` (1024, doubling fill) | 8526 | 0.00 | 0.0 |
+| repeat via full `Vec` (compare) | 4840 | — | 4.0 |
+| `pwrite_byte_repeat` (8 KiB, memset) | **63825** | 0.00 | 0.0 |
+| `slice` (1 KiB window) | 8.7 | 1.00 | 1024.0 |
+| `from_slice` (4 KiB ingest) | 7.3 | 1.00 | 4096.0 |
+| `pread_utf8` (short text) | 8.4 | 1.00 | 23.0 |
 
 ## What the numbers show
 
-- **Typed accessors are zero-copy.** `pread_byte` / `pread_bit` / `pread_i32` / `pread_i64` read
-  through a small stack array and allocate **nothing** — the deterministic `io_memory_heap_alloc`
-  test pins each at `0` allocations.
-- **Bulk arrays are vectorized and allocation-free.** `pread_i32_array` / `pwrite_i32_array`
-  stage through a fixed 256-element stack chunk and convert in a dense, branch-free loop LLVM
-  auto-vectorizes — 5–6 **G**elem/s with **0** heap allocations, asserted across multi-chunk
-  transfers (1000 elements) in the alloc test.
-- **Repeated-value fills never build the array.** `pwrite_i32_repeat` fills one stack chunk once
-  and writes it repeatedly: **~3.5×** the throughput of materializing the full `Vec` first
-  (15370 vs 4407 Mops/s), with 0 allocations at any count.
-- **`pread_into` reuses the caller's buffer.** Across an entire transfer loop it makes **0
-  allocations** and moves **0 heap bytes**, versus `pread_vec`'s one 4 KiB allocation **per
-  call** — and it is also faster (7.3 vs 4.3 Mops/s on a 4 KiB page). Prefer `pread_into` in a
-  hot transfer loop; `pread_vec` only when a fresh owned `Vec` is genuinely wanted.
-- **UTF-8 reads own exactly their `String`.** `pread_utf8` costs the one returned allocation;
-  `pwrite_utf8` into a sized sink allocates nothing (both asserted).
-- **The owned-copy operations cost exactly one allocation.** `slice` and `from_slice` own their
-  bytes, so they show a single allocation sized to the payload — nothing throwaway.
-- **The heap itself is lightweight.** It stores no address (every heap reports the lazy-built,
-  once-parsed synthetic `mem://heap`; an accessor call costs exactly the 2 small string clones
-  of the cached value — asserted) and initializes with a directly-embedded **empty** headers
-  map (an empty `Headers` allocates nothing, so constructing a heap and reading untouched
-  metadata is allocation-free — asserted).
-- **`with_capacity` amortizes growth.** Filling a `Heap::with_capacity(N)` to `N` bytes stays at
-  one allocation (the reservation) regardless of how many writes it takes — asserted in the
-  alloc test, and available on **any** source via the trait-level `IOBase::with_capacity`.
+- **Heap overrides beat the trait defaults 2–3× on bulk ops** (measured in the same run
+  through a minimal primitives-only source running the defaults): the defaults stage every
+  typed/bulk op through a stack chunk + the byte primitives (two copies); `Heap` owns
+  contiguous bytes, so its overrides convert **directly off the stored bytes in one pass** —
+  `pwrite_i32_array` 16.8 vs 7.1 Gelem/s, `pread_i32_array` 17.3 vs 5.9 Gelem/s. Every
+  override keeps the default's exact semantics, including identical error values.
+- **The single-write hot path is fully inlined.** `pwrite_i32`/`pwrite_i64` restructured to
+  "in-place check first, growth out of line" — ~50 Gops/s (a ~40× jump over routing through
+  the growth-capable path; the same restructure recovered the cursor stream too).
+- **Appends never write the grown region twice.** The old grow path `resize`-zeroed the region
+  and then overwrote it; the append fast-path zero-fills only a *gap* and extends with the
+  data in one pass — append throughput up ~1.6× (7.4 vs the pre-fix 4.7 Mpages/s equivalent).
+- **Typed accessors are zero-copy.** Reads go straight through `data.get(..)` +
+  `from_le_bytes`; the deterministic `io_memory_heap_alloc` test pins each at `0` allocations.
+- **Fills are memset-class.** `pwrite_byte_repeat` is a plain `fill` (64 Gops/s ≈ memory
+  bandwidth); the typed repeats use a **doubling `copy_within`** fill (log₂(n) bulk copies),
+  and no repeat ever materializes the full array.
+- **`pread_into` reuses the caller's buffer.** Zero allocations across a transfer loop versus
+  `pread_vec`'s per-call allocation — prefer it in hot loops.
+- **The owned-copy operations cost exactly one allocation.** `slice`, `from_slice`, and
+  `pread_utf8` own their result — a single allocation sized to the payload.
+- **The heap itself is lightweight.** No stored address (the lazy static `mem://heap` clone
+  costs exactly 2 small string allocations — asserted) and a directly-embedded empty headers
+  map (allocation-free until used — asserted).
+- **`with_capacity` amortizes growth.** Filling a reserved heap stays at one allocation (the
+  reservation) — asserted, and available on any source via the trait-level
+  `IOBase::with_capacity`.

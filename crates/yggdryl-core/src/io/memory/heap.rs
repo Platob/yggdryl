@@ -186,15 +186,92 @@ impl Heap {
     cursor_methods!();
 }
 
+impl Heap {
+    /// The exact [`IoError::UnexpectedEof`] the default trait helpers would report for a read
+    /// of `requested` bytes at `offset` — kept identical so the fast overrides below never
+    /// change an error a caller sees.
+    fn eof(&self, offset: u64, requested: usize) -> IoError {
+        let start = (offset as usize).min(self.data.len());
+        let got = (self.data.len() - start).min(requested);
+        IoError::UnexpectedEof {
+            offset: offset + got as u64,
+            requested,
+            available: got,
+        }
+    }
+
+    /// Grows the buffer so `start..end` is addressable, **writing the grown region only
+    /// once**: the gap before `start` (if any) is zero-filled, but the region a caller is
+    /// about to overwrite is *not* pre-zeroed. Kept out of line so the hot in-place write
+    /// paths stay tiny and inline; returns `true` when `start..end` was already in place.
+    #[inline]
+    fn grow_for_write(&mut self, start: usize, end: usize) -> bool {
+        if end <= self.data.len() {
+            return true; // pure in-place overwrite
+        }
+        self.grow_slow(start, end);
+        false
+    }
+
+    /// The cold growth half of [`grow_for_write`](Heap::grow_for_write).
+    fn grow_slow(&mut self, start: usize, end: usize) {
+        self.data.reserve(end - self.data.len());
+        if start > self.data.len() {
+            // A gap between the old end and the write: zero-fill exactly the gap.
+            self.data.resize(start, 0);
+        }
+        // The tail is extended by the caller in one pass. Using `resize` here would zero-fill
+        // bytes the caller immediately overwrites (a measured 2-3x penalty on appends).
+    }
+
+    /// The growing half of the byte-write primitive: zero-fills any gap, overwrites the
+    /// existing overlap, and **extends** with the rest — the grown region is written exactly
+    /// once (never zero-filled first).
+    fn pwrite_grow(&mut self, start: usize, end: usize, data: &[u8]) -> usize {
+        if data.is_empty() {
+            return 0; // an empty write never grows the buffer
+        }
+        self.data.reserve(end - self.data.len());
+        if start > self.data.len() {
+            self.data.resize(start, 0); // zero-fill exactly the gap
+        }
+        let overlap = self.data.len() - start;
+        self.data[start..].copy_from_slice(&data[..overlap]);
+        self.data.extend_from_slice(&data[overlap..]);
+        data.len()
+    }
+
+    /// Fills `start..end` (already sized) with the little-endian bytes of one repeated value
+    /// by writing the first element and then **doubling** the filled region with
+    /// `copy_within` — `log2(n)` bulk memcpys instead of `n` scalar stores.
+    #[inline]
+    fn fill_repeat(&mut self, start: usize, end: usize, pattern: &[u8]) {
+        let total = end - start;
+        if total == 0 {
+            return;
+        }
+        self.data[start..start + pattern.len()].copy_from_slice(pattern);
+        let mut filled = pattern.len();
+        while filled < total {
+            let take = filled.min(total - filled);
+            self.data.copy_within(start..start + take, start + filled);
+            filled += take;
+        }
+    }
+}
+
 impl IOBase for Heap {
+    #[inline]
     fn byte_size(&self) -> u64 {
         self.data.len() as u64
     }
 
+    #[inline]
     fn capacity(&self) -> u64 {
         self.data.capacity() as u64
     }
 
+    #[inline]
     fn reserve(&mut self, additional: u64) {
         self.data.reserve(additional as usize);
     }
@@ -202,22 +279,27 @@ impl IOBase for Heap {
     // `uri()` is deliberately NOT overridden: a heap stores no address, so every heap reports
     // the trait's stable synthetic `mem://heap`.
 
+    #[inline]
     fn headers(&self) -> &Headers {
         &self.headers
     }
 
+    #[inline]
     fn headers_mut(&mut self) -> &mut Headers {
         &mut self.headers
     }
 
+    #[inline]
     fn mode(&self) -> IOMode {
         self.mode
     }
 
+    #[inline]
     fn kind(&self) -> IOKind {
         IOKind::Heap
     }
 
+    #[inline]
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         let start = offset as usize;
         if start >= self.data.len() {
@@ -228,21 +310,147 @@ impl IOBase for Heap {
         n
     }
 
+    #[inline]
     fn pwrite_byte_array(&mut self, offset: u64, data: &[u8]) -> usize {
-        if data.is_empty() {
-            return 0;
-        }
         let start = offset as usize;
+        // Hot path first: a pure in-place overwrite is one bounds check + one copy.
+        if let Some(end) = start.checked_add(data.len()) {
+            if end <= self.data.len() {
+                self.data[start..end].copy_from_slice(data);
+                return data.len();
+            }
+            return self.pwrite_grow(start, end, data);
+        }
         // An offset so large the write would overflow the address space is a no-op (0 bytes
         // written) — `pwrite_all` then reports the shortfall as a guided error.
-        let Some(end) = start.checked_add(data.len()) else {
-            return 0;
-        };
-        if end > self.data.len() {
-            self.data.resize(end, 0); // grow, zero-filling any gap
+        0
+    }
+
+    // ---- Heap fast paths over the trait defaults ---------------------------------------
+    // The defaults stage every typed/bulk op through the byte primitives (a stack chunk +
+    // a second copy); the heap owns contiguous bytes, so it converts in a single pass. Each
+    // override keeps the default's exact semantics — same results, same error values —
+    // and the benchmark compares them against the defaults through a minimal source.
+
+    #[inline]
+    fn pread_byte(&self, offset: u64) -> Result<u8, IoError> {
+        self.data
+            .get(offset as usize)
+            .copied()
+            .ok_or_else(|| self.eof(offset, 1))
+    }
+
+    #[inline]
+    fn pread_i32(&self, offset: u64) -> Result<i32, IoError> {
+        let start = offset as usize;
+        match self.data.get(start..start.saturating_add(4)) {
+            Some(raw) => Ok(i32::from_le_bytes(raw.try_into().expect("4-byte slice"))),
+            None => Err(self.eof(offset, 4)),
         }
-        self.data[start..end].copy_from_slice(data);
-        data.len()
+    }
+
+    #[inline]
+    fn pread_i64(&self, offset: u64) -> Result<i64, IoError> {
+        let start = offset as usize;
+        match self.data.get(start..start.saturating_add(8)) {
+            Some(raw) => Ok(i64::from_le_bytes(raw.try_into().expect("8-byte slice"))),
+            None => Err(self.eof(offset, 8)),
+        }
+    }
+
+    fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let need = dst.len() * 4;
+        let Some(src) = self.data.get(start..start.saturating_add(need)) else {
+            return Err(self.eof(offset, need));
+        };
+        // One dense, branch-free conversion pass straight off the stored bytes.
+        for (value, raw) in dst.iter_mut().zip(src.chunks_exact(4)) {
+            *value = i32::from_le_bytes(raw.try_into().expect("chunks_exact yields 4"));
+        }
+        Ok(())
+    }
+
+    fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let need = dst.len() * 8;
+        let Some(src) = self.data.get(start..start.saturating_add(need)) else {
+            return Err(self.eof(offset, need));
+        };
+        for (value, raw) in dst.iter_mut().zip(src.chunks_exact(8)) {
+            *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
+        }
+        Ok(())
+    }
+
+    fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let Some(end) = start.checked_add(src.len() * 4) else {
+            return Err(self.eof(offset, src.len() * 4));
+        };
+        if !self.grow_for_write(start, end) {
+            self.data.resize(end, 0); // rare grow: sized once, then densely overwritten
+        }
+        for (raw, value) in self.data[start..end].chunks_exact_mut(4).zip(src) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        Ok(())
+    }
+
+    fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let Some(end) = start.checked_add(src.len() * 8) else {
+            return Err(self.eof(offset, src.len() * 8));
+        };
+        if !self.grow_for_write(start, end) {
+            self.data.resize(end, 0);
+        }
+        for (raw, value) in self.data[start..end].chunks_exact_mut(8).zip(src) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        Ok(())
+    }
+
+    fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> Result<(), IoError> {
+        let start = offset as usize;
+        let Some(end) = start.checked_add(count) else {
+            return Err(self.eof(offset, count));
+        };
+        let old_len = self.data.len();
+        if !self.grow_for_write(start, end) {
+            // The grown tail is filled directly with `value` — one pass, a plain memset.
+            self.data.resize(end, value);
+        }
+        // Fill only the pre-existing overlap; the grown tail already holds `value`.
+        let overlap_end = end.min(old_len);
+        if overlap_end > start {
+            self.data[start..overlap_end].fill(value);
+        }
+        Ok(())
+    }
+
+    fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> Result<(), IoError> {
+        let start = offset as usize;
+        let Some(end) = start.checked_add(count * 4) else {
+            return Err(self.eof(offset, count * 4));
+        };
+        if !self.grow_for_write(start, end) {
+            self.data.resize(end, 0);
+        }
+        self.fill_repeat(start, end, &value.to_le_bytes());
+        Ok(())
+    }
+
+    fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> Result<(), IoError> {
+        let start = offset as usize;
+        let Some(end) = start.checked_add(count * 8) else {
+            return Err(self.eof(offset, count * 8));
+        };
+        if !self.grow_for_write(start, end) {
+            self.data.resize(end, 0);
+        }
+        self.fill_repeat(start, end, &value.to_le_bytes());
+        Ok(())
     }
 }
 

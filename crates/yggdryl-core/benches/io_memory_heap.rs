@@ -1,14 +1,17 @@
 //! Time **and** memory benchmark for the in-heap [`Heap`](yggdryl_core::io::memory::Heap) source and
 //! the byte I/O trait surface: the byte-array primitives, the typed `byte` / `bit` / `i32` /
-//! `i64` accessors, the allocation-reusing `pread_into` transfer versus the owning `pread_vec`,
-//! cursor streaming, and slicing.
+//! `i64` accessors, the bulk arrays and repeated-value fills, the append-vs-overwrite write
+//! paths, the allocation-reusing `pread_into` transfer versus the owning `pread_vec`, cursor
+//! streaming, and slicing. A **minimal** primitives-only source runs the trait *defaults* in
+//! the same process, so `Heap`'s fast-path overrides are compared against the baseline any
+//! new source starts from.
 //!
 //! Dependency-free (`harness = false`, a plain `main`). A counting global allocator makes every
 //! measurement report **allocations/op** and **bytes/op** next to throughput — allocation counts
 //! are build-independent and deterministic, so they validate the zero-alloc-accessor and
 //! buffer-reuse rules directly. Runs in well under a second.
 //!
-//! Run with `cargo bench -p yggdryl-core --bench heap` (build release for real throughput
+//! Run with `cargo bench -p yggdryl-core --bench io_memory_heap` (release for real throughput
 //! numbers; the allocation numbers are the same in debug and release).
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -194,4 +197,121 @@ fn main() {
             let _ = text.pread_utf8(0, text_len).unwrap();
         }),
     );
+
+    // ---------------------------------------------------------------------------------
+    // Write paths: append (grow at the end) vs overwrite (in place)
+    // ---------------------------------------------------------------------------------
+
+    // Appending a 4 KiB page to a pre-reserved heap (1 alloc = the with_capacity reservation).
+    row(
+        "append 4 KiB (reserved heap)",
+        measure(1, iters, || {
+            let mut sink = Heap::with_capacity(page.len());
+            let _ = sink.pwrite_byte_array(0, &page);
+        }),
+    );
+    // Overwriting the same 4 KiB in place — no growth at all.
+    let mut sink = Heap::from_slice(&page);
+    row(
+        "overwrite 4 KiB (in place)",
+        measure(1, iters, || {
+            let _ = sink.pwrite_byte_array(0, &page);
+        }),
+    );
+    // Typed positioned writes, in place.
+    row(
+        "pwrite_i32 (in place)",
+        measure(1, iters, || {
+            sink.pwrite_i32(64, -1).unwrap();
+        }),
+    );
+    row(
+        "pwrite_i64 (in place)",
+        measure(1, iters, || {
+            sink.pwrite_i64(128, -1).unwrap();
+        }),
+    );
+
+    // ---------------------------------------------------------------------------------
+    // Wide bulk + byte fill
+    // ---------------------------------------------------------------------------------
+
+    let wide_values = vec![7i64; 1024];
+    let mut wide_back = vec![0i64; 1024];
+    let mut wide_sink = Heap::with_capacity(8192);
+    wide_sink.pwrite_i64_array(0, &wide_values).unwrap();
+    row(
+        "pwrite_i64_array (1024 elems)",
+        measure(1024, iters, || {
+            wide_sink.pwrite_i64_array(0, &wide_values).unwrap();
+        }),
+    );
+    row(
+        "pread_i64_array (1024 elems)",
+        measure(1024, iters, || {
+            wide_sink.pread_i64_array(0, &mut wide_back).unwrap();
+        }),
+    );
+    let mut fill8 = Heap::with_capacity(8192);
+    fill8.pwrite_byte_repeat(0, 0, 8192).unwrap();
+    row(
+        "pwrite_byte_repeat (8 KiB)",
+        measure(8192, iters, || {
+            fill8.pwrite_byte_repeat(0, 0xAB, 8192).unwrap();
+        }),
+    );
+
+    // ---------------------------------------------------------------------------------
+    // Default trait paths vs Heap — a minimal source implements ONLY the required methods,
+    // so every bulk/typed op runs the IOBase default; Heap may override with faster paths.
+    // ---------------------------------------------------------------------------------
+
+    let mut min_sink = Minimal(Heap::with_capacity(4096));
+    min_sink.pwrite_i32_array(0, &bulk_values).unwrap();
+    let mut min_back = vec![0i32; 1024];
+    row(
+        "default pwrite_i32_array (min src)",
+        measure(1024, iters, || {
+            min_sink.pwrite_i32_array(0, &bulk_values).unwrap();
+        }),
+    );
+    row(
+        "default pread_i32_array (min src)",
+        measure(1024, iters, || {
+            min_sink.pread_i32_array(0, &mut min_back).unwrap();
+        }),
+    );
+    row(
+        "default pwrite_byte_repeat (min)",
+        measure(4096, iters, || {
+            min_sink.pwrite_byte_repeat(0, 0xAB, 4096).unwrap();
+        }),
+    );
+}
+
+/// A **minimal** source: implements only the required `IOBase` methods (delegating storage to a
+/// wrapped `Heap`), so every typed/bulk operation exercises the trait's **default**
+/// implementations — the baseline any new source starts from, against which `Heap`'s own
+/// overrides are compared.
+struct Minimal(Heap);
+
+impl IOBase for Minimal {
+    fn byte_size(&self) -> u64 {
+        self.0.byte_size()
+    }
+    fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
+        self.0.pread_byte_array(offset, buf)
+    }
+    fn pwrite_byte_array(&mut self, offset: u64, data: &[u8]) -> usize {
+        self.0.pwrite_byte_array(offset, data)
+    }
+    fn headers(&self) -> &yggdryl_core::headers::Headers {
+        self.0.headers()
+    }
+    fn headers_mut(&mut self) -> &mut yggdryl_core::headers::Headers {
+        self.0.headers_mut()
+    }
+    fn kind(&self) -> yggdryl_core::io::IOKind {
+        self.0.kind()
+    }
 }
