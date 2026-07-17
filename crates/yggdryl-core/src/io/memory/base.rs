@@ -5,16 +5,13 @@ use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
 use crate::uri::Uri;
 
-/// The default address of an unaddressed in-memory source — the stable synthetic `mem://heap`
-/// (deterministic; the real allocation address is deliberately not leaked). **Lazy-built**:
-/// parsed once on first use into a process-wide static, then cloned per call — an accessor
-/// costs a couple of small string clones, never a re-parse.
-pub(crate) fn mem_heap_uri() -> Uri {
-    static MEM_HEAP: std::sync::OnceLock<Uri> = std::sync::OnceLock::new();
-    MEM_HEAP
-        .get_or_init(|| Uri::parse_str("mem://heap").expect("the static mem://heap URI parses"))
-        .clone()
-}
+/// The **static default URI** of an in-memory source — the stable synthetic `mem://heap`
+/// (deterministic; the real allocation address is deliberately not leaked). Parsed once into
+/// this process-wide static; an accessor clones it (a couple of small string clones), never
+/// re-parses.
+pub(crate) static DEFAULT_URI: std::sync::LazyLock<Uri> = std::sync::LazyLock::new(|| {
+    Uri::parse_str("mem://heap").expect("the static mem://heap URI parses")
+});
 
 /// The element count bulk operations stage per stack chunk — sized so the largest staged
 /// chunk (`i64`: 256 × 8 = 2 KiB) stays comfortably on the stack while the per-chunk convert
@@ -109,7 +106,7 @@ pub trait IOBase {
     /// assert_eq!(Heap::new().uri().scheme(), Some("mem"));
     /// ```
     fn uri(&self) -> Uri {
-        mem_heap_uri()
+        DEFAULT_URI.clone()
     }
 
     /// The metadata attached to this source — the project-wide [`Headers`] map (HTTP headers,
