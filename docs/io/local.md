@@ -1,17 +1,34 @@
 # The local filesystem
 
-`io::local` is the **local-filesystem family**: every type implements the byte contract
-([`IOBase`](memory.md)) *and* the filesystem-graph contract (`Path`), addressed by
+`io::local` is the **local-filesystem family**: every type implements the one
+[`IOBase`](memory.md) contract — bytes, address, *and* the filesystem graph — addressed by
 [`Uri`](../uri.md)s.
 
-## The `Path` trait — one graph contract
+## The graph surface
 
-`io::Path` is the uniform cross-filesystem abstraction: navigation (`name` / `parent` /
-`join_str`), **streamed** discovery (`ls` one level, `ls_recursive` the subtree — iterators,
-never a pre-collected tree; `children` is the collected convenience), and CRUD (`rm` removes
-whatever exists, `rmfile` / `rmdir` are shape-checked with guided errors). Existence is a
-probe: `kind` / `is_file` / `is_dir` / `exists` ask the backing each call. A future object
-store or archive family implements the same trait and every caller works unchanged.
+There is no separate path type or trait: **`IOBase` itself is the central access path**.
+Every source is a node of one IO graph — navigation (`name` / `parent`), **streamed**
+discovery (`ls` one level, `ls_recursive` the subtree — iterators of the **same source
+type**, never a pre-collected tree; `children` is the collected convenience), and CRUD
+(`rm` removes whatever exists, `rmfile` / `rmdir` are shape-checked with guided errors).
+A leaf source streams nothing: an in-memory `Heap` (or a cursor / window view) *refuses*
+removal with a guided "no removable backing" error, while a raw `Mmap` — being a real file —
+lets `rm` / `rmfile` unlink it (and `rmdir` returns the guided "use rmfile" error). Existence
+is a probe: `kind` / `is_file` / `is_dir` / `exists` ask the backing each call. A future
+object store (s3, azure, …) implements the same surface and every caller works unchanged.
+
+## A directory is a memory tree
+
+A **container** node serves the *byte* contract too — generically, through `IOBase`'s
+`tree_*` pattern, written once for every filesystem family:
+
+- `byte_size` on a directory is the **lazy, streamed sum** of its subtree (recomputed live
+  per call — nothing collected, nothing cached).
+- `pread` / `pwrite` route across the directory's **name-sorted child blocks** as one
+  contiguous byte region (listing order is OS-dependent; names are not). Reads recurse
+  through child directories; a write inside a block is **capped at that block's end** (a
+  middle block never grows — the layout would shift), and bytes past the end grow the
+  **last** block. An empty directory refuses full writes with a guided error naming the fix.
 
 ## `LocalIO` — one access point, lazy and self-optimizing
 
@@ -34,7 +51,6 @@ node over any path (file, folder, or nothing yet) that decides per call how to s
     ```rust
     use yggdryl_core::io::local::LocalIO;
     use yggdryl_core::io::memory::IOBase;
-    use yggdryl_core::io::Path;
 
     let root = LocalIO::from_path(std::env::temp_dir().join("example"));
     let mut note = root.join_str("deep/nested/note.txt"); // lazy — nothing exists yet
@@ -43,11 +59,13 @@ node over any path (file, folder, or nothing yet) that decides per call how to s
     note.pwrite_utf8(0, "hello");        // auto-creates deep/, nested/, the file — and maps it
     assert!(note.is_file() && note.is_mapped());
     assert_eq!(note.pread_utf8(0, 5).unwrap(), "hello"); // memory-speed from here on
+    note.close();                                        // release the mapping
 
     for entry in root.ls_recursive().unwrap() {          // streamed discovery
         println!("{}", entry.unwrap().name());
     }
-    note.close();                                        // release the mapping
+    assert_eq!(root.byte_size(), 5);                     // a directory is a memory tree…
+    assert_eq!(root.pread_utf8(0, 5).unwrap(), "hello"); // …and reads as one byte region
     root.rmdir().unwrap();                               // recursive cleanup
     ```
 
@@ -69,6 +87,9 @@ node over any path (file, folder, or nothing yet) that decides per call how to s
     names = [entry.name for entry in root.ls(recursive=True)]
     assert "note.txt" in names
     note.close()                              # release the mapping — the handle stays usable
+
+    assert root.byte_size() == 5              # a directory is a memory tree…
+    assert root.pread_utf8(0, 5) == "hello"   # …and reads as one byte region
     root.rmdir()                              # recursive cleanup
     ```
 
@@ -90,6 +111,9 @@ node over any path (file, folder, or nothing yet) that decides per call how to s
     const names = [...root.ls(true)].map((entry) => entry.name);
     console.assert(names.includes('note.txt'));
     note.close();                                      // release the mapping — the handle stays usable
+
+    console.assert(root.byteSize() === 5);             // a directory is a memory tree…
+    console.assert(root.preadUtf8(0, 5) === 'hello');  // …and reads as one byte region
     root.rmdir();                                      // recursive cleanup
     ```
 

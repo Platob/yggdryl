@@ -3,19 +3,22 @@
 `memory` is yggdryl's **abstract byte / memory-access layer** — the `IOBase` contract that defines
 positioned access to a byte region, independent of *where the bytes live*, plus the concrete pieces
 built over it. A **source** implements `IOBase`, so everything above reads and writes through one
-contract. The in-heap source is [`Heap`](#heap); the local-filesystem family (`LocalIO`, the single
-access point, over the raw `Mmap`) lives on the [local page](local.md) and implements the same
-contract, plus the [`Path`](local.md#the-path-trait-one-graph-contract) graph trait.
+contract. `IOBase` is also the **central access path**: it carries the addressing `uri`, the
+[graph surface](local.md#the-graph-surface) (`ls` streaming children of the same type, `rm`
+CRUD), and the [memory-tree](local.md#a-directory-is-a-memory-tree) container reads — the
+in-memory sources here are leaves. The in-heap source is [`Heap`](#heap); the
+local-filesystem family (`LocalIO`, the single access point, over the raw `Mmap`) lives on
+the [local page](local.md) and implements the same contract.
 
 ## The contract
 
 | Type | What it is |
 |---|---|
-| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives; the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …); [bulk vectorized arrays, repeated-value fills, and UTF-8 text](#bulk-repeated-and-text-io); the buffer-reusing `pread_into` transfer; `byte_size` / `bit_size`; the full `Vec`-like capacity family — `capacity` / `spare_capacity`, `reserve` / `reserve_exact` and the **checked** `try_reserve` / `try_reserve_exact` (a guided error instead of an abort), the absolute-target `ensure_capacity` / `try_ensure_capacity`, `shrink_to_fit` / `shrink_to`, and a pre-allocating `with_capacity(capacity)` builder — with amortized (auto-scaling) growth on appends; an addressing [`uri`](#addressing) plus [`headers` metadata, an access `mode`, and a `kind`](#metadata-mode-and-kind); and the [`cursor()` / `window()`](#cursors-and-windows) builders |
+| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives; the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …); [bulk vectorized arrays, repeated-value fills, and UTF-8 text](#bulk-repeated-and-text-io); the buffer-reusing `pread_into` transfer; `byte_size` / `bit_size`; the full `Vec`-like capacity family — `capacity` / `spare_capacity`, `reserve` / `reserve_exact` and the **checked** `try_reserve` / `try_reserve_exact` (a guided error instead of an abort), the absolute-target `ensure_capacity` / `try_ensure_capacity`, `shrink_to_fit` / `shrink_to`, and a pre-allocating `with_capacity(capacity)` builder — with amortized (auto-scaling) growth on appends; an addressing [`uri`](#addressing) plus [`headers` metadata, an access `mode`, and a `kind`](#metadata-mode-and-kind); the [`cursor()` / `window()`](#cursors-and-windows) builders; and the **graph surface** — `ls` / `ls_recursive` streaming children of the same source type (`children` collected), `name` / `parent`, `rm` / `rmfile` / `rmdir`, and the `tree_*` [memory-tree](local.md#a-directory-is-a-memory-tree) container methods |
 | `IOCursor<T>` | a concrete **cursor** wrapping any source: `read` / `write` advance a position, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64` / `read_utf8`, and the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
 | `IOSlice<T>` | a concrete bounded **window** wrapping any source, addressed from its own `0` |
 | `Whence` | the seek anchor: `Start` / `Current` / `End` |
-| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds` / `InvalidUtf8` / `UnknownName` / `CapacityOverflow`) |
+| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds` / `InvalidUtf8` / `UnknownName` / `CapacityOverflow` / `FileIo`) |
 
 Bit addressing is **LSB-first** (bit `i` is bit `i % 8` of byte `i / 8`, least-significant first),
 and integers are **little-endian**, matching Arrow. The two byte-array primitives are infallible

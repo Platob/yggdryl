@@ -1,6 +1,7 @@
-//! `local` — the **local-filesystem family**: every type here implements both the byte
-//! contract ([`IOBase`](crate::io::memory::IOBase)) and the filesystem-graph contract
-//! ([`Path`](crate::io::Path)), addressed by [`Uri`](crate::uri::Uri)s.
+//! `local` — the **local-filesystem family**: every type here implements the one
+//! [`IOBase`](crate::io::memory::IOBase) contract — bytes, address, *and* the filesystem
+//! graph (`ls` / `rm` and, for a directory, the memory-tree byte surface) — addressed by
+//! [`Uri`](crate::uri::Uri)s.
 //!
 //! - [`LocalIO`] — the family's **single access point**: one lazy handle that decides per
 //!   call how to serve reads and writes (ad-hoc positioned reads before any write; after the

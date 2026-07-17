@@ -27,11 +27,10 @@ crates/yggdryl-core/src/             # the core (no external dependencies)
     error.rs  whence.rs              #   IoError, Whence (io-wide)
     serializable.rs                  #   the Serializable trait
     mode.rs  kind.rs                 #   IOMode, IOKind
-    path.rs                          #   the Path trait — uniform cross-filesystem IO graph
     memory/                          #   byte-access: traits at the module root…
-      base.rs cursor.rs slice.rs     #     IOBase + the IOCursor/IOSlice wrappers
+      base.rs cursor.rs slice.rs     #     IOBase (bytes + the graph surface) + wrappers
       heap.rs                        #     …the in-heap source
-    local/                           #   the local-filesystem family (all implement Path)
+    local/                           #   the local-filesystem family
       io.rs                          #     LocalIO — the single access point (lazy, self-optimizing)
       mmap.rs                        #     the raw memory-mapped file LocalIO builds on
   headers.rs                         # Headers — the one metadata map (root module)
@@ -128,16 +127,28 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   branch-free loops over contiguous slices** so LLVM auto-vectorizes them on stable Rust (no
   SIMD dependency) — and a fill never materializes the full array. New sources inherit these
   from `IOBase`'s default methods; override only with something measurably faster.
+- **`IOBase` is the central access path — bytes, address, and graph in one contract.** There
+  is no separate path/graph trait: `IOBase` itself carries the graph surface — `ls` /
+  `ls_recursive` **stream children of the same source type** (`Children` / `Walk` associated
+  types; a leaf source declares `NoChildren`), `name` / `parent` navigate, `children` is the
+  collected convenience, and `rm` / `rmfile` / `rmdir` remove (leaf default: a guided
+  refusal). Discovery is **streamed** (iterators, never a pre-collected tree).
+- **A container node is a memory tree.** A directory (or an object-store prefix) serves the
+  *byte* contract too, through the generic `tree_*` defaults on `IOBase` — `tree_byte_size`
+  (the lazy, streamed, uncached subtree sum), `tree_pread_byte_array` /
+  `tree_pwrite_byte_array` (reads/writes routed across **name-sorted child blocks** as one
+  contiguous region; child containers recurse; a middle block never grows — only the last
+  block absorbs bytes past the end). The pattern is written **once** on `IOBase`; every
+  filesystem family (local today, s3/azure/network later) wires its `byte_size`/`pread`/
+  `pwrite` container branches to these same defaults so behavior is identical everywhere.
 - **One access point per filesystem — lazy, auto-creating, self-optimizing.** Each
-  filesystem family exposes exactly **one** handle type implementing `io::Path` (`LocalIO`
-  for local): a **lazy** node over any path — constructing/probing/navigating touches
-  nothing, reads on a missing node are empty, and the handle **decides per call** how to
-  serve I/O (ad-hoc positioned reads before any write; the first **write auto-creates** the
-  missing parent folders + the file, memory-maps it, and keeps the mapping so later access
-  runs at memory speed with zero allocations). Never split the surface into separate
-  file/folder/path types — `mkdir` covers the folder-as-goal case and `close()` releases the
-  optimized backing. Discovery is **streamed** (`ls` / `ls_recursive` return iterators, never
-  a pre-collected tree).
+  filesystem family exposes exactly **one** handle type (`LocalIO` for local): a **lazy**
+  node over any path — constructing/probing/navigating touches nothing, reads on a missing
+  node are empty, and the handle **decides per call** how to serve I/O (ad-hoc positioned
+  reads before any write; the first **write auto-creates** the missing parent folders + the
+  file, memory-maps it, and keeps the mapping so later access runs at memory speed with zero
+  allocations). Never split the surface into separate file/folder/path types — `mkdir`
+  covers the folder-as-goal case and `close()` releases the optimized backing.
 - **No lifetime parameters on public types** — the bindings must hold every one.
 - **Coherent layering — the contract at the module root, implementations below.** Cross-cutting
   value types and traits (`IoError`, `Whence`, `Headers`, `IOMode`, `IOKind`, `Serializable`)

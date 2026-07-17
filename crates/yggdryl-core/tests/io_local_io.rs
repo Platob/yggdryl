@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use yggdryl_core::io::local::LocalIO;
 use yggdryl_core::io::memory::{Heap, IOBase};
-use yggdryl_core::io::{IOKind, Path};
+use yggdryl_core::io::IOKind;
 
 /// A unique temp directory per test, removed on drop.
 struct TempDir(PathBuf);
@@ -225,14 +225,114 @@ fn mkdir_and_directory_write_refusal() {
     dir.mkdir().unwrap(); // mkdir -p
     assert!(dir.is_dir());
 
-    // A directory refuses a byte stream with a guided fix.
+    // An EMPTY directory (no blocks) refuses a byte stream with a guided, binding-neutral fix.
     let mut as_writer = dir.clone();
     let err = as_writer.pwrite_all(0, b"x").unwrap_err();
-    assert!(err.to_string().contains("join_str a file name"));
-    // The primitive writes nothing.
+    let msg = err.to_string();
+    assert!(msg.contains("join a file name") && !msg.contains("join_str"));
+    // The primitive writes nothing into an empty tree.
     assert_eq!(as_writer.pwrite_byte_array(0, b"x"), 0);
-    // Reads on a directory are empty.
+    // Reads on an empty directory are empty.
     assert_eq!(dir.pread_vec(0, 8), b"");
+}
+
+#[test]
+fn empty_write_never_touches_a_missing_file() {
+    let tmp = TempDir::new("touch");
+    let mut node = tmp.root().join_str("ghost.bin");
+    // A zero-length pwrite_all is a no-op — it must not auto-create the file.
+    node.pwrite_all(0, b"").unwrap();
+    assert!(!node.exists());
+    assert!(!node.is_mapped());
+}
+
+// -------------------------------------------------------------------------------------
+// A directory is a memory tree
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn directory_reads_as_one_memory_tree() {
+    let tmp = TempDir::new("tree");
+    let root = tmp.root();
+    root.join_str("a.bin").pwrite_utf8(0, "AAAA");
+    root.join_str("b.bin").pwrite_utf8(0, "BB");
+    root.join_str("sub/c.bin").pwrite_utf8(0, "CCC");
+
+    // byte_size is the lazy streamed sum of the subtree — recomputed live, nothing cached.
+    assert_eq!(root.byte_size(), 9);
+    // Blocks are name-sorted (a.bin | b.bin | sub) — one contiguous region.
+    assert_eq!(root.pread_utf8(0, 9).unwrap(), "AAAABBCCC");
+    // A read across block boundaries stitches transparently.
+    assert_eq!(root.pread_utf8(3, 4).unwrap(), "ABBC");
+    // The cursor stream works on the tree too.
+    let mut cur = tmp.root();
+    assert_eq!(cur.read_utf8(6).unwrap(), "AAAABB");
+    // Growth is visible immediately (full laziness): add a file, the tree grows.
+    root.join_str("d.bin").pwrite_utf8(0, "!");
+    assert_eq!(root.byte_size(), 10);
+    assert_eq!(root.pread_utf8(0, 10).unwrap(), "AAAABB!CCC"); // d.bin sorts before sub
+}
+
+#[test]
+fn directory_writes_route_across_blocks() {
+    let tmp = TempDir::new("treew");
+    let mut root = tmp.root();
+    root.join_str("a.bin").pwrite_utf8(0, "AAAA");
+    root.join_str("b.bin").pwrite_utf8(0, "BB");
+
+    // A write inside one block stays inside it.
+    root.pwrite_all(1, b"XX").unwrap();
+    assert_eq!(root.join_str("a.bin").pread_utf8(0, 4).unwrap(), "AXXA");
+    // A write across the boundary splits between blocks — the middle block never grows.
+    root.pwrite_all(3, b"12").unwrap();
+    assert_eq!(root.join_str("a.bin").pread_utf8(0, 4).unwrap(), "AXX1");
+    assert_eq!(root.join_str("b.bin").pread_utf8(0, 2).unwrap(), "2B");
+    // Bytes past the end grow the LAST block.
+    root.pwrite_all(6, b"ZZ").unwrap();
+    assert_eq!(root.join_str("b.bin").pread_utf8(0, 4).unwrap(), "2BZZ");
+    assert_eq!(root.byte_size(), 8);
+}
+
+/// Creates a directory symlink, returning `false` when the OS refuses (unprivileged
+/// Windows) so the test can skip rather than fail.
+#[cfg(unix)]
+fn symlink_dir(target: &std::path::Path, link: &std::path::Path) -> bool {
+    std::os::unix::fs::symlink(target, link).is_ok()
+}
+#[cfg(windows)]
+fn symlink_dir(target: &std::path::Path, link: &std::path::Path) -> bool {
+    std::os::windows::fs::symlink_dir(target, link).is_ok()
+}
+
+#[test]
+fn memory_tree_does_not_recurse_into_directory_symlinks() {
+    let tmp = TempDir::new("cycle");
+    let root = tmp.root();
+    root.join_str("a.bin").pwrite_utf8(0, "AAAA");
+    // A directory symlink pointing back at the root would make a naive tree recurse forever.
+    if !symlink_dir(&tmp.0, tmp.0.join("loop").as_path()) {
+        return; // unprivileged environment — the guard is still compiled and covered elsewhere
+    }
+    // The symlinked directory is excluded from the block layout, so this terminates and the
+    // size is just the real file's.
+    assert_eq!(root.byte_size(), 4);
+    assert_eq!(root.pread_utf8(0, 4).unwrap(), "AAAA");
+    // Discovery still lists the symlink (only the tree layout skips it).
+    let names: Vec<String> = root.ls().unwrap().map(|e| e.unwrap().name()).collect();
+    assert!(names.contains(&"loop".to_string()));
+}
+
+#[test]
+fn wrapper_over_a_spaced_path_names_it_decoded() {
+    // The default IOBase::name() percent-decodes the address segment, so a cursor over a
+    // LocalIO whose path contains a space reports "my file.txt", never "my%20file.txt".
+    let tmp = TempDir::new("nm");
+    let mut node = tmp.root().join_str("my file.txt");
+    node.pwrite_utf8(0, "x");
+    node.close();
+    assert!(node.uri().to_string().contains("%20"));
+    let cur = tmp.root().join_str("my file.txt").cursor();
+    assert_eq!(cur.name(), "my file.txt");
 }
 
 // -------------------------------------------------------------------------------------

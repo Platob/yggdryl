@@ -6,15 +6,16 @@ const assert = require('node:assert/strict')
 const yggdryl = require('../..')
 const io = yggdryl.io
 const { Headers } = yggdryl.headers
-const { Heap, Whence, Cursor, Slice } = yggdryl.memory
+const { Heap, Whence, Cursor, Slice, NoChildren } = yggdryl.memory
 const { Uri } = yggdryl.uri
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
 // -------------------------------------------------------------------------------------
 
-test('the memory namespace exposes Heap and Whence', () => {
+test('the memory namespace exposes Heap, Whence, and NoChildren', () => {
   assert.equal(typeof Heap, 'function')
+  assert.equal(typeof NoChildren, 'function')
   assert.equal(Whence.Start, 0)
   assert.equal(Whence.Current, 1)
   assert.equal(Whence.End, 2)
@@ -710,5 +711,60 @@ test('Cursor and Slice predicates forward the wrapped source, not a re-derivatio
   assert.equal(win.isFile(), false)
   assert.equal(win.isDir(), false)
   assert.equal(win.exists(), true)
+})
+
+// -------------------------------------------------------------------------------------
+// The graph surface — Heap / Cursor / Slice are leaf nodes
+// -------------------------------------------------------------------------------------
+
+test('a heap is a leaf node: empty name, null parent, empty streamed ls, empty children', () => {
+  const h = new Heap(Buffer.from('x'))
+  assert.equal(h.name, '') // mem://heap has no path segment to take a name from
+  assert.equal(h.parent(), null) // a leaf has no parent
+
+  // ls() is a real (always-empty) iterable — streamed, never a pre-collected array.
+  const entries = h.ls()
+  assert.ok(entries instanceof NoChildren)
+  assert.ok(!Array.isArray(entries))
+  assert.ok(Symbol.iterator in entries)
+  const iterator = entries[Symbol.iterator]()
+  assert.equal(typeof iterator.next, 'function')
+  assert.equal(iterator.next().done, true) // a leaf streams nothing
+  assert.deepEqual([...h.ls()], [])
+  assert.deepEqual([...h.ls(true)], []) // recursive changes nothing on a leaf
+  assert.equal(h.ls().toString(), 'NoChildren(<empty>)')
+
+  // children() is the collected convenience — an empty array, not an iterable.
+  assert.deepEqual(h.children(), [])
+})
+
+test('removing a heap is the guided refusal naming the fix', () => {
+  const h = new Heap()
+  assert.throws(() => h.rm(), /rm needs a removable backing/)
+  assert.throws(() => h.rm(), /this source has none/)
+  assert.throws(() => h.rm(), /LocalIO/) // the fix: address a filesystem node instead
+  assert.throws(() => h.rmfile(), /rmfile needs a removable backing/)
+  assert.throws(() => h.rmdir(), /rmdir needs a removable backing/)
+})
+
+test('Cursor and Slice carry the same leaf graph surface', () => {
+  const cur = new Cursor(Buffer.from('abc'))
+  assert.equal(cur.name, '')
+  assert.equal(cur.parent(), null)
+  assert.ok(cur.ls() instanceof NoChildren)
+  assert.deepEqual([...cur.ls()], [])
+  assert.deepEqual([...cur.ls(true)], [])
+  assert.deepEqual(cur.children(), [])
+  assert.throws(() => cur.rm(), /removable backing/)
+  assert.throws(() => cur.rmfile(), /LocalIO/)
+
+  const win = Slice.over(new Heap(Buffer.from('abc')), 0, 2)
+  assert.equal(win.name, '')
+  assert.equal(win.parent(), null)
+  assert.ok(win.ls() instanceof NoChildren)
+  assert.deepEqual([...win.ls()], [])
+  assert.deepEqual(win.children(), [])
+  assert.throws(() => win.rmdir(), /removable backing/)
+  assert.throws(() => win.rm(), /LocalIO/)
 })
 

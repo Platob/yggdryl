@@ -7,6 +7,13 @@
 //! and `Whence`-relative seeks — with no logic in the binding. (The memory-mapped file source
 //! moved with the core to the `yggdryl.local` namespace — see [`crate::io::local`].)
 //!
+//! `IOBase` is the **central access path**, so every class here also carries its graph
+//! surface — as a **leaf** node: `name` (empty — the synthetic `mem://heap` address has no
+//! path), `parent()` (`null`), the always-empty streamed `ls(recursive?)` (the shared
+//! [`NoChildren`] iterable) with the collected `children()` (an empty array), and the
+//! `rm()` / `rmfile()` / `rmdir()` trio throwing the core's guided refusal (an in-memory
+//! source has no removable backing).
+//!
 //! Numeric idioms: byte offset and length **parameters** are JS `number`s typed as `u32`, so a
 //! single heap addresses up to 4 GiB in memory. **Returned** sizes, capacity, the cursor
 //! position, and seek results cross as `i64` (a JS number, exact to 2^53) so a value past
@@ -19,7 +26,7 @@
 //! text accessors. Every failing typed read, seek, slice, or UTF-8 decode surfaces as a thrown
 //! `Error` carrying the core's guided text unchanged.
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, Generator, ToNapiValue, Unknown};
 use napi_derive::napi;
 
 use crate::headers::Headers;
@@ -87,6 +94,66 @@ impl From<Whence> for core::Whence {
             Whence::Current => core::Whence::Current,
             Whence::End => core::Whence::End,
         }
+    }
+}
+
+/// The yield type of an always-empty stream. The module exists so the generated `.d.ts`
+/// yield type is TypeScript's `never` — napi-rs derives the type name from the **last path
+/// segment** of `Generator::Yield`, and `never` is the honest typing for an iterator that
+/// produces no item, ever (the Rust type is uninhabited, so the conversion is unreachable).
+mod never {
+    /// The uninhabited yield of [`NoChildren`](super::NoChildren) — nothing is ever produced.
+    #[allow(non_camel_case_types)]
+    pub enum never {}
+}
+
+impl ToNapiValue for never::never {
+    unsafe fn to_napi_value(
+        _env: napi::sys::napi_env,
+        val: never::never,
+    ) -> napi::Result<napi::sys::napi_value> {
+        match val {}
+    }
+}
+
+/// The always-empty child stream of a **leaf** source — what `ls(recursive?)` returns on
+/// [`Heap`], [`Cursor`], [`Slice`], and the raw [`Mmap`](crate::io::local::Mmap): a real JS
+/// iterable (`[Symbol.iterator]`, so `for..of` and spread work directly, exactly like the
+/// streaming [`LocalEntries`](crate::io::local::LocalEntries)) that yields nothing. Mirrors
+/// `yggdryl_core::io::memory::NoChildren` — the graph stays streamed even where it is empty.
+#[napi(iterator, namespace = "memory")]
+pub struct NoChildren {}
+
+#[napi(namespace = "memory")]
+impl Generator for NoChildren {
+    type Yield = never::never;
+    type Next = Unknown;
+    type Return = Unknown;
+
+    fn next(&mut self, _value: Option<Unknown>) -> Option<Self::Yield> {
+        None
+    }
+}
+
+impl NoChildren {
+    /// Drives the core leaf `ls` / `ls_recursive` (a leaf's stream is empty by contract)
+    /// and wraps it — the shared front door every leaf class's `ls(recursive?)` delegates to.
+    pub(crate) fn over<T: IOBase>(source: &T, recursive: Option<bool>) -> napi::Result<NoChildren> {
+        if recursive.unwrap_or(false) {
+            let _ = source.ls_recursive().map_err(to_error)?;
+        } else {
+            let _ = source.ls().map_err(to_error)?;
+        }
+        Ok(NoChildren {})
+    }
+}
+
+#[napi(namespace = "memory")]
+impl NoChildren {
+    /// A short debug string — always `NoChildren(<empty>)` (mirrors `LocalEntries.toString`).
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        "NoChildren(<empty>)".to_string()
     }
 }
 
@@ -598,6 +665,58 @@ impl Heap {
         self.inner.exists()
     }
 
+    // ---- the graph surface (a heap is a leaf node) -------------------------------------
+
+    /// The node's own name — always the empty string: the synthetic `mem://heap` address
+    /// has no path segment to take a name from.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node — always `null`: a heap is a leaf of the IO graph.
+    #[napi]
+    pub fn parent(&self) -> Option<Heap> {
+        self.inner.parent().map(|inner| Heap { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] iterable: a heap is
+    /// a **leaf** and streams nothing (`recursive` is accepted for the uniform
+    /// `ls(recursive?)` shape and changes nothing on a leaf).
+    #[napi]
+    pub fn ls(&self, recursive: Option<bool>) -> napi::Result<NoChildren> {
+        NoChildren::over(&self.inner, recursive)
+    }
+
+    /// The direct children, collected — always an empty array (a heap is a leaf).
+    #[napi]
+    pub fn children(&self) -> napi::Result<Vec<Heap>> {
+        self.inner
+            .children()
+            .map(|nodes| nodes.into_iter().map(|inner| Heap { inner }).collect())
+            .map_err(to_error)
+    }
+
+    /// Removing a heap — always the guided refusal: an in-memory source has no removable
+    /// backing; address a filesystem node (e.g. `LocalIO`) instead.
+    #[napi]
+    pub fn rm(&self) -> napi::Result<()> {
+        self.inner.rm().map_err(to_error)
+    }
+
+    /// Removing a heap **as a file** — always the guided refusal (no removable backing).
+    #[napi]
+    pub fn rmfile(&self) -> napi::Result<()> {
+        self.inner.rmfile().map_err(to_error)
+    }
+
+    /// Removing a heap **as a directory** — always the guided refusal (no removable
+    /// backing).
+    #[napi]
+    pub fn rmdir(&self) -> napi::Result<()> {
+        self.inner.rmdir().map_err(to_error)
+    }
+
     // ---- cursor / window views ---------------------------------------------------------
 
     /// An independent [`Cursor`] over a copy of this heap, positioned at the start.
@@ -943,6 +1062,56 @@ impl Cursor {
         self.inner.exists()
     }
 
+    // ---- the graph surface (a cursor view is a leaf node) ------------------------------
+
+    /// The node's own name — always the empty string (the wrapped heap's `mem://heap`
+    /// address has no path segment).
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node — always `null`: a cursor view is a leaf of the IO graph.
+    #[napi]
+    pub fn parent(&self) -> Option<Cursor> {
+        self.inner.parent().map(|inner| Cursor { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] iterable (a leaf
+    /// streams nothing; `recursive` changes nothing on a leaf).
+    #[napi]
+    pub fn ls(&self, recursive: Option<bool>) -> napi::Result<NoChildren> {
+        NoChildren::over(&self.inner, recursive)
+    }
+
+    /// The direct children, collected — always an empty array (a cursor view is a leaf).
+    #[napi]
+    pub fn children(&self) -> napi::Result<Vec<Cursor>> {
+        self.inner
+            .children()
+            .map(|nodes| nodes.into_iter().map(|inner| Cursor { inner }).collect())
+            .map_err(to_error)
+    }
+
+    /// Removing a cursor view — always the guided refusal: an in-memory source has no
+    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead.
+    #[napi]
+    pub fn rm(&self) -> napi::Result<()> {
+        self.inner.rm().map_err(to_error)
+    }
+
+    /// Removing a cursor view **as a file** — always the guided refusal.
+    #[napi]
+    pub fn rmfile(&self) -> napi::Result<()> {
+        self.inner.rmfile().map_err(to_error)
+    }
+
+    /// Removing a cursor view **as a directory** — always the guided refusal.
+    #[napi]
+    pub fn rmdir(&self) -> napi::Result<()> {
+        self.inner.rmdir().map_err(to_error)
+    }
+
     /// A copy of the wrapped [`Heap`] source (the position is not carried).
     #[napi]
     pub fn inner(&self) -> Heap {
@@ -1090,6 +1259,56 @@ impl Slice {
     #[napi]
     pub fn exists(&self) -> bool {
         self.inner.exists()
+    }
+
+    // ---- the graph surface (a slice window is a leaf node) -----------------------------
+
+    /// The node's own name — always the empty string (the wrapped heap's `mem://heap`
+    /// address has no path segment).
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node — always `null`: a slice window is a leaf of the IO graph.
+    #[napi]
+    pub fn parent(&self) -> Option<Slice> {
+        self.inner.parent().map(|inner| Slice { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] iterable (a leaf
+    /// streams nothing; `recursive` changes nothing on a leaf).
+    #[napi]
+    pub fn ls(&self, recursive: Option<bool>) -> napi::Result<NoChildren> {
+        NoChildren::over(&self.inner, recursive)
+    }
+
+    /// The direct children, collected — always an empty array (a slice window is a leaf).
+    #[napi]
+    pub fn children(&self) -> napi::Result<Vec<Slice>> {
+        self.inner
+            .children()
+            .map(|nodes| nodes.into_iter().map(|inner| Slice { inner }).collect())
+            .map_err(to_error)
+    }
+
+    /// Removing a slice window — always the guided refusal: an in-memory source has no
+    /// removable backing; address a filesystem node (e.g. `LocalIO`) instead.
+    #[napi]
+    pub fn rm(&self) -> napi::Result<()> {
+        self.inner.rm().map_err(to_error)
+    }
+
+    /// Removing a slice window **as a file** — always the guided refusal.
+    #[napi]
+    pub fn rmfile(&self) -> napi::Result<()> {
+        self.inner.rmfile().map_err(to_error)
+    }
+
+    /// Removing a slice window **as a directory** — always the guided refusal.
+    #[napi]
+    pub fn rmdir(&self) -> napi::Result<()> {
+        self.inner.rmdir().map_err(to_error)
     }
 
     /// A copy of the wrapped [`Heap`] source (the whole source, not just the window).

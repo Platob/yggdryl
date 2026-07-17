@@ -5,8 +5,11 @@ size/capacity, the positioned ``pread_*`` / ``pwrite_*`` primitives and typed ac
 (including UTF-8 text, the bulk ``i32``/``i64`` arrays, and repeated fills), the cursor
 stream, seeks from every anchor, bounded slices, the source metadata (``headers`` /
 ``mode`` / ``kind`` and the ``is_file`` / ``is_dir`` / ``exists`` predicates), the byte
-codec + pickle, and the value dunders (``bytes()`` / ``==`` / ``copy`` / unhashability).
-The on-disk sources moved to ``yggdryl.local`` (see ``tests/io/test_local.py``).
+codec + pickle, the value dunders (``bytes()`` / ``==`` / ``copy`` / unhashability), and
+the leaf graph surface (``name`` / ``parent`` / the empty ``ls`` stream / ``children`` /
+the guided ``rm`` family — ``IOBase`` is the central access path, and the in-memory
+sources are leaves of the IO graph). The on-disk sources moved to ``yggdryl.local`` (see
+``tests/io/test_local.py``).
 """
 
 import copy
@@ -17,12 +20,12 @@ import pytest
 import yggdryl.memory
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
-from yggdryl.memory import Cursor, Heap, Slice, Whence
+from yggdryl.memory import Cursor, Heap, NoChildren, Slice, Whence
 from yggdryl.uri import Uri
 
 
 def test_module_surface():
-    for cls in (Heap, Whence, Cursor, Slice):
+    for cls in (Heap, Whence, Cursor, Slice, NoChildren):
         assert cls.__module__ == "yggdryl.memory"
         assert hasattr(yggdryl.memory, cls.__name__)
 
@@ -714,3 +717,62 @@ def test_cursor_and_slice_predicates_derive_from_kind():
     assert win.is_file() is False
     assert win.is_dir() is False
     assert win.exists() is True
+
+
+# -------------------------------------------------------------------------------------
+# Leaf graph surface: name / parent / ls / children / rm family
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_is_a_leaf_of_the_io_graph():
+    h = Heap()
+    assert h.name == ""  # mem://heap has no path segment to name
+    assert h.parent() is None
+    assert h.children() == []  # the collected convenience is the empty list
+
+
+def test_heap_ls_streams_an_empty_iterator_not_a_list():
+    h = Heap(b"x")
+    entries = h.ls()
+    assert isinstance(entries, NoChildren)
+    assert not isinstance(entries, list)  # a stream, never a pre-collected tree
+    assert iter(entries) is entries  # the Python iterator protocol
+    assert list(entries) == []  # ...that yields nothing: a heap is a leaf
+    with pytest.raises(StopIteration):
+        next(entries)  # exhausted forever
+    assert list(h.ls(recursive=True)) == []  # the subtree of a leaf is empty too
+    assert repr(h.ls()) == "NoChildren(<empty>)"
+
+
+def test_heap_rm_family_is_a_guided_refusal():
+    h = Heap(b"x")
+    with pytest.raises(ValueError, match="removable backing"):
+        h.rm()  # nothing on disk backs a heap...
+    with pytest.raises(ValueError, match="LocalIO"):
+        h.rm()  # ...and the fix names a filesystem node instead
+    with pytest.raises(ValueError, match="rmfile needs a removable backing"):
+        h.rmfile()
+    with pytest.raises(ValueError, match="rmdir needs a removable backing"):
+        h.rmdir()
+
+
+def test_cursor_and_slice_are_leaves_too():
+    h = Heap(b"hello world")
+
+    cur = Cursor.over(h)
+    assert cur.name == ""
+    assert cur.parent() is None
+    entries = cur.ls()
+    assert iter(entries) is entries and list(entries) == []
+    assert cur.children() == []
+    with pytest.raises(ValueError, match="removable backing"):
+        cur.rm()
+
+    win = Slice(h, 0, 5)
+    assert win.name == ""
+    assert win.parent() is None
+    walk = win.ls(recursive=True)
+    assert iter(walk) is walk and list(walk) == []
+    assert win.children() == []
+    with pytest.raises(ValueError, match="removable backing"):
+        win.rmdir()

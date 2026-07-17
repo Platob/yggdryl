@@ -18,6 +18,23 @@ pub(crate) static DEFAULT_URI: std::sync::LazyLock<Uri> = std::sync::LazyLock::n
 /// loop is long enough for LLVM to vectorize.
 const BULK_CHUNK: usize = 256;
 
+/// The always-empty child stream of a **leaf** source — what a source with no children of
+/// its own (a [`Heap`](super::Heap), a wrapper view, a raw mapped file) declares for
+/// [`IOBase::Children`] / [`IOBase::Walk`] and returns from [`ls`](IOBase::ls).
+pub type NoChildren<T> = std::iter::Empty<Result<T, IoError>>;
+
+/// The guided error for a removal on a source with no removable backing.
+fn unremovable(uri: &Uri, method: &str) -> IoError {
+    IoError::FileIo {
+        op: "remove",
+        path: uri.to_string(),
+        detail: format!(
+            "{method} needs a removable backing; this source has none — address a \
+             filesystem node (e.g. LocalIO) instead"
+        ),
+    }
+}
+
 /// Random-access byte storage addressed by absolute offset — no cursor. This is the base
 /// every I/O **source** shares: [`IOCursor`](super::IOCursor) adds a moving position on top, and
 /// [`IOSlice`](super::IOSlice) adds bounded sub-views.
@@ -42,7 +59,21 @@ const BULK_CHUNK: usize = 256;
 /// type, so the storage underneath stays an implementation detail. Bit addressing is **LSB-first**
 /// (bit `i` is bit `i % 8` of byte `i / 8`, least-significant first), matching Arrow validity
 /// bitmaps.
-pub trait IOBase {
+///
+/// # The graph surface — every source is a node
+///
+/// `IOBase` is also the **central access path**: like [`uri`](IOBase::uri) addresses a
+/// source, the graph methods place it in an IO graph. [`ls`](IOBase::ls) /
+/// [`ls_recursive`](IOBase::ls_recursive) stream children **of the same type** (a leaf
+/// source streams nothing — [`NoChildren`]), [`name`](IOBase::name) /
+/// [`parent`](IOBase::parent) navigate, and [`rm`](IOBase::rm) / [`rmfile`](IOBase::rmfile)
+/// / [`rmdir`](IOBase::rmdir) remove. A **container** node (a directory, an object-store
+/// prefix) serves byte I/O as a **memory tree** over its children via the generic
+/// [`tree_byte_size`](IOBase::tree_byte_size) /
+/// [`tree_pread_byte_array`](IOBase::tree_pread_byte_array) /
+/// [`tree_pwrite_byte_array`](IOBase::tree_pwrite_byte_array) — written once here so every
+/// filesystem family (local today; s3 / azure later) inherits the same behavior.
+pub trait IOBase: Sized {
     /// The total length in bytes.
     fn byte_size(&self) -> u64;
 
@@ -246,6 +277,186 @@ pub trait IOBase {
     /// (a live [`Heap`](super::Heap) always exists).
     fn exists(&self) -> bool {
         self.is_file() || self.is_dir()
+    }
+
+    // ---------------------------------------------------------------------------------
+    // The graph surface — every source is a node in an IO graph
+    // ---------------------------------------------------------------------------------
+
+    /// The streamed one-level child iterator of [`ls`](IOBase::ls) — items are the **same
+    /// source type**, so graphs stay homogeneous whatever node you start from. A leaf
+    /// source declares [`NoChildren`].
+    type Children: Iterator<Item = Result<Self, IoError>>;
+
+    /// The streamed recursive walker of [`ls_recursive`](IOBase::ls_recursive) — same item
+    /// type as [`Children`](IOBase::Children).
+    type Walk: Iterator<Item = Result<Self, IoError>>;
+
+    /// The node's own name — by default the last segment of its address's path (empty when
+    /// the address has none, e.g. the synthetic `mem://heap`); a filesystem node overrides
+    /// it with its real file name. The segment is **percent-decoded** so a wrapper over a
+    /// spaced path reports `my file.txt`, never the encoded `my%20file.txt`.
+    fn name(&self) -> String {
+        let uri = self.uri();
+        let segment = uri
+            .path()
+            .rsplit('/')
+            .find(|segment| !segment.is_empty())
+            .unwrap_or("");
+        crate::uri::percent::decode(segment).into_owned()
+    }
+
+    /// The parent node, or `None` — the default for a leaf source or a root.
+    fn parent(&self) -> Option<Self> {
+        None
+    }
+
+    /// Streams this node's **direct children**, lazily — each item is produced as the
+    /// caller pulls, never a pre-collected tree. A leaf source (or a missing / file node)
+    /// streams nothing; a real listing failure is a guided [`IoError::FileIo`].
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// assert_eq!(Heap::new().ls().unwrap().count(), 0); // a heap is a leaf
+    /// ```
+    fn ls(&self) -> Result<Self::Children, IoError>;
+
+    /// Streams the node's **entire subtree** (depth-first), lazily — the recursive
+    /// counterpart of [`ls`](IOBase::ls); the bindings expose both through one generic
+    /// `ls(recursive=…)` entry point.
+    fn ls_recursive(&self) -> Result<Self::Walk, IoError>;
+
+    /// The direct children, collected — the convenience over the streamed
+    /// [`ls`](IOBase::ls).
+    fn children(&self) -> Result<Vec<Self>, IoError> {
+        self.ls()?.collect()
+    }
+
+    /// Removes **whatever exists** at this node — a file is unlinked, a directory removed
+    /// with its subtree, a missing node is a no-op. The default is the guided refusal of a
+    /// source with no removable backing; filesystem families override it.
+    fn rm(&self) -> Result<(), IoError> {
+        Err(unremovable(&self.uri(), "rm"))
+    }
+
+    /// Removes this node **as a file** — a guided error when it is a directory (use
+    /// [`rmdir`](IOBase::rmdir)), a no-op when missing. Default: the guided refusal.
+    fn rmfile(&self) -> Result<(), IoError> {
+        Err(unremovable(&self.uri(), "rmfile"))
+    }
+
+    /// Removes this node **as a directory**, recursively — a guided error when it is a
+    /// file (use [`rmfile`](IOBase::rmfile)), a no-op when missing. Default: the guided
+    /// refusal.
+    fn rmdir(&self) -> Result<(), IoError> {
+        Err(unremovable(&self.uri(), "rmdir"))
+    }
+
+    // ---------------------------------------------------------------------------------
+    // The memory tree — a container node served as one contiguous byte region
+    // ---------------------------------------------------------------------------------
+
+    /// The **memory-tree size** of a container node: the lazy, streamed sum of every child
+    /// block's [`byte_size`](IOBase::byte_size) (a child container recurses through its own
+    /// `byte_size`). Nothing is collected and nothing is cached — the size is recomputed
+    /// per call from the live tree. Written once here so every filesystem family serves
+    /// container sizes identically.
+    ///
+    /// DESIGN: an **erroring** child (one whose listing yields `Err`) is skipped, so a tree
+    /// with an unreadable entry reports the size of the readable remainder rather than
+    /// failing. Cycle safety (a directory symlink pointing at an ancestor) is the family's
+    /// concern: it belongs to [`blocks`](IOBase::blocks), which a family overrides to keep
+    /// the layout acyclic (the local family drops symlinked directories there).
+    fn tree_byte_size(&self) -> u64 {
+        match self.ls() {
+            Ok(children) => children
+                .filter_map(Result::ok)
+                .map(|child| child.byte_size())
+                .sum(),
+            Err(_) => 0,
+        }
+    }
+
+    /// The node's direct children as **name-sorted blocks** — the deterministic order the
+    /// memory-tree byte layout uses (listing order is OS-dependent; names are not). One
+    /// level is collected and sorted per call, never the whole tree.
+    fn blocks(&self) -> Vec<Self> {
+        let mut blocks: Vec<Self> = match self.ls() {
+            Ok(children) => children.filter_map(Result::ok).collect(),
+            Err(_) => Vec::new(),
+        };
+        blocks.sort_by_key(|block| block.name());
+        blocks
+    }
+
+    /// **Memory-tree read**: serves [`pread_byte_array`](IOBase::pread_byte_array) for a
+    /// container node by reading across its name-sorted child [`blocks`](IOBase::blocks)
+    /// as one contiguous byte region — a child container recurses through its own
+    /// `pread_byte_array`, so the whole subtree reads as one lazily-computed buffer.
+    /// Blocks before `offset` are skipped by size alone; nothing is materialized.
+    fn tree_pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
+        let mut done = 0usize;
+        let mut block_start = 0u64;
+        for block in self.blocks() {
+            if done == buf.len() {
+                break;
+            }
+            let block_end = block_start + block.byte_size();
+            let read_at = offset + done as u64;
+            // Only read where the target lands inside this block. `read_at < block_start`
+            // means an earlier block short-read and left a hole — the region is no longer
+            // contiguous, so stop (never underflow `read_at - block_start`).
+            if read_at < block_start {
+                break;
+            }
+            if read_at < block_end {
+                done += block.pread_byte_array(read_at - block_start, &mut buf[done..]);
+            }
+            block_start = block_end;
+        }
+        done
+    }
+
+    /// **Memory-tree write**: routes [`pwrite_byte_array`](IOBase::pwrite_byte_array) for a
+    /// container node across its name-sorted child [`blocks`](IOBase::blocks). A write
+    /// inside a block stays **capped at that block's end** (a middle block never grows —
+    /// the layout would shift); bytes past the last block grow the **last** block. A
+    /// container with no blocks writes nothing (the full writes report the guided fix).
+    fn tree_pwrite_byte_array(&mut self, offset: u64, data: &[u8]) -> usize {
+        let mut blocks = self.blocks();
+        let Some(last) = blocks.len().checked_sub(1) else {
+            return 0;
+        };
+        let mut done = 0usize;
+        let mut block_start = 0u64;
+        for (i, block) in blocks.iter_mut().enumerate() {
+            if done == data.len() {
+                break;
+            }
+            let block_end = block_start + block.byte_size();
+            let write_at = offset + done as u64;
+            // A hole from an earlier short write breaks contiguity — stop before underflow.
+            if write_at < block_start {
+                break;
+            }
+            if write_at < block_end || i == last {
+                let chunk_end = if i == last {
+                    data.len()
+                } else {
+                    // `write_at <= block_end` here (write_at < block_end), so the cap is safe.
+                    done + ((block_end - write_at) as usize).min(data.len() - done)
+                };
+                let written =
+                    block.pwrite_byte_array(write_at - block_start, &data[done..chunk_end]);
+                done += written;
+                if done < chunk_end {
+                    break; // the block refused (e.g. read-only) — stop, report the shortfall
+                }
+            }
+            block_start = block_end;
+        }
+        done
     }
 
     /// **Positioned read** (primitive). Copies up to `buf.len()` bytes starting at `offset` into

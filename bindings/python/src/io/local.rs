@@ -4,13 +4,23 @@
 //! Mirrors `yggdryl_core::io::local`. A [`LocalIO`] is one **lazy** handle over any path
 //! (file, folder, or nothing yet) that decides per call how to serve reads and writes:
 //! probing and navigating touch nothing, reads before any write open the file ad hoc (a
-//! missing or directory node reads as empty), and the first write auto-creates the missing
-//! parent folders and the file, memory-maps it, and keeps the mapping so later access runs
-//! at memory speed. The same handle carries the whole filesystem graph — `name` / `parent` /
+//! missing node reads as empty), and the first write auto-creates the missing parent
+//! folders and the file, memory-maps it, and keeps the mapping so later access runs at
+//! memory speed. The same handle carries the whole filesystem graph — `name` / `parent` /
 //! `join` (and the `/` operator), streamed `ls` / collected `children` discovery, `mkdir`,
-//! and the shape-checked `rm` / `rmfile` / `rmdir`. An [`Mmap`] is the raw mapping `LocalIO`
-//! builds on, usable directly when a pre-existing file and explicit open/create control are
-//! wanted.
+//! and the shape-checked `rm` / `rmfile` / `rmdir` (`IOBase` is the central access path; the
+//! graph is part of the one byte contract). An [`Mmap`] is the raw mapping `LocalIO` builds
+//! on, usable directly when a pre-existing file and explicit open/create control are wanted
+//! — a **leaf** of the graph whose `rm` / `rmfile` really unlink.
+//!
+//! A **directory node is a memory tree**: `byte_size()` is the lazy streamed sum of its
+//! subtree, and `pread_*` / `pwrite_*` serve the directory's name-sorted child file blocks
+//! as one contiguous byte region (a middle block never grows; bytes past the end grow the
+//! last block). DESIGN: the core's generic `tree_byte_size` / `blocks` /
+//! `tree_pread_byte_array` / `tree_pwrite_byte_array` helpers are deliberately **not**
+//! mirrored as named methods — they are the internal write-once pattern behind that
+//! behavior, and the binding reaches it through the ordinary byte surface on a directory
+//! node.
 //!
 //! Every method is one or two lines over `yggdryl_core`; a failing operation raises a guided
 //! `ValueError` carrying the core error text unchanged.
@@ -25,12 +35,11 @@ use pyo3::types::PyBytes;
 
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
-use crate::io::memory::Whence;
+use crate::io::memory::{NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::uri::Uri;
 use yggdryl_core::io::local;
 use yggdryl_core::io::memory::{IOBase, IoError};
-use yggdryl_core::io::Path;
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
@@ -39,8 +48,9 @@ fn ioerr(error: IoError) -> PyErr {
 
 /// The one local-filesystem handle — a **lazy** node over any path (file, folder, or nothing
 /// yet) that **decides per call how to serve reads and writes**: constructing, probing, and
-/// navigating touch nothing; before any write a read opens the file ad hoc (a missing or
-/// directory node reads as empty); the **first write auto-creates** the missing parent
+/// navigating touch nothing; before any write a read opens the file ad hoc (a missing node
+/// reads as empty, a directory reads as its **memory tree** — the name-sorted child file
+/// blocks served as one contiguous byte region); the **first write auto-creates** the missing parent
 /// folders and the file, memory-maps it, and keeps the mapping so later access runs at
 /// memory speed. [`close`](LocalIO::close) — or the end of a `with LocalIO(path) as node:`
 /// block — releases the mapped backing (truncating the file to its logical length) and the
@@ -145,7 +155,9 @@ impl LocalIO {
     // ---- size + capacity ---------------------------------------------------------------
 
     /// The **logical** length in bytes — the mapped backing's length once mapped, the
-    /// on-disk file length while lazy, `0` for a missing or directory node.
+    /// on-disk file length while lazy, `0` for a missing node. A **directory** reports its
+    /// memory-tree size: the lazy, streamed sum of its whole subtree (recomputed live per
+    /// call, nothing cached).
     fn byte_size(&self) -> u64 {
         self.inner.byte_size()
     }
@@ -219,8 +231,9 @@ impl LocalIO {
         self.inner.shrink_to(min_capacity);
     }
 
-    /// Whether the node holds no bytes (`byte_size() == 0` — also `True` for a missing or
-    /// directory node).
+    /// Whether the node holds no bytes (`byte_size() == 0`) — `True` for a missing node, and
+    /// for a directory whose memory tree is empty (a populated directory reports its subtree
+    /// sum, so it is **not** empty).
     fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -233,8 +246,10 @@ impl LocalIO {
     // ---- positioned byte-array ---------------------------------------------------------
 
     /// **Positioned read.** Returns up to `length` bytes starting at `offset` as `bytes` —
-    /// short near the end, empty at or past it (and empty on a missing or directory node).
-    /// Never moves the cursor. Reads **directly** into the `bytes` allocation (one copy).
+    /// short near the end, empty at or past it (and empty on a missing node). A
+    /// **directory** reads as its memory tree: the name-sorted child file blocks stitched
+    /// into one contiguous region (child directories recurse). Never moves the cursor.
+    /// Reads **directly** into the `bytes` allocation (one copy).
     fn pread_byte_array<'py>(
         &self,
         py: Python<'py>,
@@ -254,7 +269,10 @@ impl LocalIO {
 
     /// **Positioned write.** Copies `data` (bytes / bytearray) in at `offset`, auto-creating
     /// parents + the file on the first write and zero-filling any gap; returns the number of
-    /// bytes written (`0` on a read-only handle or a directory node).
+    /// bytes written (`0` on a read-only handle). A **directory** routes the write across
+    /// its memory-tree blocks: a write inside a block stays capped at that block's end (a
+    /// middle block never grows), bytes past the end grow the **last** block, and an empty
+    /// directory writes nothing (the full/typed writes report the guided fix).
     fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
         self.inner.pwrite_byte_array(offset, &data)
     }
@@ -675,6 +693,8 @@ impl LocalIO {
 /// (`yggdryl_core::io::local::LocalChildren`) or the depth-first subtree walk
 /// (`yggdryl_core::io::local::LocalWalk`); both are owned iterators, so the binding holds
 /// them directly (the one-level iterator boxed — its OS `ReadDir` state dwarfs the walk's).
+/// A **leaf** node ([`Mmap`]) instead streams the shared always-empty
+/// [`yggdryl.memory.NoChildren`](crate::io::memory::NoChildren), the core's `NoChildren`.
 enum Entries {
     Children(Box<local::LocalChildren>),
     Walk(local::LocalWalk),
@@ -724,7 +744,10 @@ impl LocalEntries {
 /// [`open_readonly`](Mmap::open_readonly) / [`create`](Mmap::create); a write past the end
 /// grows the file (amortized, page-aligned), and [`close`](Mmap::close) — or the end of a
 /// `with` block, or garbage collection — unmaps the view and truncates the on-disk file back
-/// to its exact logical length.
+/// to its exact logical length. On the IO graph a mapping is a **leaf**: [`name`](Mmap::name)
+/// is its file name, [`ls`](Mmap::ls) / [`children`](Mmap::children) stream/collect nothing,
+/// [`parent`](Mmap::parent) is `None`, and [`rm`](Mmap::rm) / [`rmfile`](Mmap::rmfile)
+/// really unlink the file ([`rmdir`](Mmap::rmdir) is the guided file error).
 ///
 /// Unlike [`Heap`](crate::io::memory::Heap), an `Mmap` is a **live OS resource, not a
 /// value**: two independent mappings of one file would alias, so it is deliberately not
@@ -1303,6 +1326,64 @@ impl Mmap {
     /// (`True`).
     fn exists(&self) -> PyResult<bool> {
         Ok(self.io()?.exists())
+    }
+
+    // ---- graph: navigation + discovery + CRUD (a mapping is a leaf) ---------------------
+
+    /// The node's own name — the mapped **file name** (the last path segment).
+    #[getter]
+    fn name(&self) -> PyResult<String> {
+        Ok(self.io()?.name())
+    }
+
+    /// The parent node, or `None` — a raw mapping is a **leaf** of the IO graph (navigate
+    /// with [`LocalIO`] when the surrounding tree matters).
+    fn parent(&self) -> PyResult<Option<Mmap>> {
+        Ok(self.io()?.parent().map(|inner| Mmap { inner: Some(inner) }))
+    }
+
+    /// Streams this node's children — always the shared **empty**
+    /// [`yggdryl.memory.NoChildren`](crate::io::memory::NoChildren) stream (a raw mapping is a
+    /// leaf: it streams nothing, with or without `recursive=True`), still satisfying the
+    /// iterator protocol like [`LocalIO.ls`](LocalIO::ls).
+    #[pyo3(signature = (recursive = false))]
+    fn ls(&self, recursive: bool) -> PyResult<NoChildren> {
+        let io = self.io()?;
+        let _ = if recursive {
+            io.ls_recursive()
+        } else {
+            io.ls()
+        }
+        .map_err(ioerr)?;
+        Ok(NoChildren {})
+    }
+
+    /// The direct children, collected — always the empty list (a leaf has none).
+    fn children(&self) -> PyResult<Vec<Mmap>> {
+        let nodes = self.io()?.children().map_err(ioerr)?;
+        Ok(nodes
+            .into_iter()
+            .map(|inner| Mmap { inner: Some(inner) })
+            .collect())
+    }
+
+    /// Removes the mapped file — [`rmfile`](Mmap::rmfile). Removing an **open** mapping is
+    /// OS-dependent (Windows refuses to delete a mapped file, Unix unlinks it); close the
+    /// writing mapping first for portable removal.
+    fn rm(&self) -> PyResult<()> {
+        self.io()?.rm().map_err(ioerr)
+    }
+
+    /// Removes the mapped file from disk — really unlinks it; a no-op when it is already
+    /// missing. Raises the OS's guided `ValueError` when the file cannot be removed.
+    fn rmfile(&self) -> PyResult<()> {
+        self.io()?.rmfile().map_err(ioerr)
+    }
+
+    /// A mapping is never a directory — raises the guided `ValueError` naming the fix (use
+    /// [`rmfile`](Mmap::rmfile)).
+    fn rmdir(&self) -> PyResult<()> {
+        self.io()?.rmdir().map_err(ioerr)
     }
 
     // DESIGN: no `cursor()` / `window()` / `slice()` here — the binding's `Cursor` / `Slice`

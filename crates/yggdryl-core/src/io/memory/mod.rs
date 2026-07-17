@@ -17,9 +17,11 @@
 //!
 //! The seek anchor [`Whence`] and the guided [`IoError`] live at the [`io`](crate::io) root and
 //! are re-exported here for convenience. The concrete in-memory source is [`Heap`] (an owned
-//! byte `Vec` + built-in cursor + capacity); the local-filesystem sources (`Mmap`,
-//! `LocalPath` / `LocalFile` / `LocalFolder`) live in [`local`](crate::io::local) and
-//! implement the same contract.
+//! byte `Vec` + built-in cursor + capacity); the local-filesystem family (`LocalIO` over the
+//! raw `Mmap`) lives in [`local`](crate::io::local) and implements the same contract.
+//! `IOBase` also carries the **graph surface** (`ls` streaming children of the same type,
+//! `rm` CRUD, the memory-tree container reads); the in-memory sources are **leaves**
+//! ([`NoChildren`]).
 
 mod base;
 mod cursor;
@@ -30,7 +32,7 @@ pub(crate) use cursor::cursor_methods;
 
 pub use crate::io::{IoError, Whence};
 
-pub use base::IOBase;
+pub use base::{IOBase, NoChildren};
 pub use cursor::IOCursor;
 pub use heap::Heap;
 pub use slice::IOSlice;

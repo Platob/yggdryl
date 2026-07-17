@@ -352,6 +352,31 @@ fn wrappers_forward_the_existence_predicates() {
     assert!(win.exists() && !win.is_file() && !win.is_dir());
 }
 
+#[test]
+fn leaf_sources_carry_the_graph_surface() {
+    // IOBase is the central access path: every source is a node of the IO graph. A heap
+    // (and the wrapper views) are LEAVES — they stream no children and have no parent.
+    let heap = Heap::from_slice(b"x");
+    assert_eq!(heap.ls().unwrap().count(), 0);
+    assert_eq!(heap.ls_recursive().unwrap().count(), 0);
+    assert!(heap.children().unwrap().is_empty());
+    assert!(heap.parent().is_none());
+    assert_eq!(heap.name(), ""); // mem://heap has no path segment to name
+    assert_eq!(heap.tree_byte_size(), 0); // a leaf's tree is empty
+
+    // Removal has no backing here — a guided refusal names the fix.
+    let err = heap.rm().unwrap_err().to_string();
+    assert!(err.contains("removable backing") && err.contains("LocalIO"));
+    assert!(heap.rmfile().unwrap_err().to_string().contains("rmfile"));
+    assert!(heap.rmdir().unwrap_err().to_string().contains("rmdir"));
+
+    // The wrappers are leaf byte views too.
+    let cur = Heap::new().cursor();
+    assert_eq!(cur.ls().unwrap().count(), 0);
+    let win = Heap::from_slice(b"hello").window(1, 3).unwrap();
+    assert_eq!(win.ls().unwrap().count(), 0);
+}
+
 // -------------------------------------------------------------------------------------
 // IOSlice<T> wrapper — a bounded window over any source
 // -------------------------------------------------------------------------------------

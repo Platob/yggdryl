@@ -309,6 +309,15 @@ fn main() {
 struct Minimal(Heap);
 
 impl IOBase for Minimal {
+    type Children = yggdryl_core::io::memory::NoChildren<Minimal>;
+    type Walk = yggdryl_core::io::memory::NoChildren<Minimal>;
+
+    fn ls(&self) -> Result<Self::Children, yggdryl_core::io::IoError> {
+        Ok(std::iter::empty())
+    }
+    fn ls_recursive(&self) -> Result<Self::Walk, yggdryl_core::io::IoError> {
+        Ok(std::iter::empty())
+    }
     fn byte_size(&self) -> u64 {
         self.0.byte_size()
     }

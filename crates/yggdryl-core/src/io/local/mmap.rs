@@ -399,6 +399,49 @@ impl IOBase for Mmap {
         IOKind::File
     }
 
+    // A raw mapped file is a **leaf** node of the IO graph — the tree surface lives on
+    // `LocalIO`, the family's access point.
+    type Children = crate::io::memory::NoChildren<Mmap>;
+    type Walk = crate::io::memory::NoChildren<Mmap>;
+
+    fn ls(&self) -> Result<Self::Children, IoError> {
+        Ok(std::iter::empty())
+    }
+
+    fn ls_recursive(&self) -> Result<Self::Walk, IoError> {
+        Ok(std::iter::empty())
+    }
+
+    fn name(&self) -> String {
+        self.path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// DESIGN: removing an OPEN mapping is OS-dependent (Windows refuses to delete a mapped
+    /// file, Unix unlinks it) — the error, when any, is the OS's own guided `FileIo`. Drop
+    /// or close the mapping first for portable removal.
+    fn rm(&self) -> Result<(), IoError> {
+        self.rmfile()
+    }
+
+    fn rmfile(&self) -> Result<(), IoError> {
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(_) if !self.path.exists() => Ok(()), // already gone — removing is idempotent
+            Err(e) => Err(file_err("remove", &self.path, &e)),
+        }
+    }
+
+    fn rmdir(&self) -> Result<(), IoError> {
+        Err(IoError::FileIo {
+            op: "remove",
+            path: self.path.to_string_lossy().into_owned(),
+            detail: "the node is a file; use rmfile instead of rmdir".to_string(),
+        })
+    }
+
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         // The null check is defensive belt-and-braces: `remap` guarantees `len > 0` implies
         // a live view, but a read must never be able to dereference null regardless.
@@ -619,46 +662,5 @@ mod sys {
         } else {
             Err(Error::last_os_error())
         }
-    }
-}
-
-impl crate::io::Path for Mmap {
-    type Node = super::LocalIO;
-    type Children = super::LocalChildren;
-    type Walk = super::LocalWalk;
-
-    fn name(&self) -> String {
-        crate::io::Path::name(&super::LocalIO::from_path(&self.path))
-    }
-
-    fn parent(&self) -> Option<super::LocalIO> {
-        crate::io::Path::parent(&super::LocalIO::from_path(&self.path))
-    }
-
-    fn join_str(&self, segment: &str) -> super::LocalIO {
-        super::LocalIO::from_path(&self.path).join_str(segment)
-    }
-
-    fn ls(&self) -> Result<super::LocalChildren, IoError> {
-        crate::io::Path::ls(&super::LocalIO::from_path(&self.path)) // a file streams nothing
-    }
-
-    fn ls_recursive(&self) -> Result<super::LocalWalk, IoError> {
-        crate::io::Path::ls_recursive(&super::LocalIO::from_path(&self.path))
-    }
-
-    /// DESIGN: removing an OPEN mapping is OS-dependent (Windows refuses to delete a mapped
-    /// file, Unix unlinks it) — the error, when any, is the OS's own guided `FileIo`. Drop or
-    /// close the mapping first for portable removal.
-    fn rm(&self) -> Result<(), IoError> {
-        crate::io::Path::rm(&super::LocalIO::from_path(&self.path))
-    }
-
-    fn rmfile(&self) -> Result<(), IoError> {
-        crate::io::Path::rmfile(&super::LocalIO::from_path(&self.path))
-    }
-
-    fn rmdir(&self) -> Result<(), IoError> {
-        crate::io::Path::rmdir(&super::LocalIO::from_path(&self.path))
     }
 }

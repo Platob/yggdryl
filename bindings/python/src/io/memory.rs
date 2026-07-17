@@ -14,6 +14,16 @@
 //! `yggdryl.local` submodule (`LocalIO` and the raw `Mmap` — the mapping moved there with the
 //! core's `io::local` family).
 //!
+//! `IOBase` is the **central access path**, so every source is also a node of the IO graph.
+//! The in-memory types are **leaves**: `name` is empty (`mem://heap` has no path segment),
+//! `parent()` is `None`, `ls()` streams the always-empty [`NoChildren`], `children()`
+//! collects nothing, and the `rm` / `rmfile` / `rmdir` family raises the core's guided
+//! no-removable-backing refusal. DESIGN: the core's generic memory-tree helpers
+//! (`tree_byte_size` / `blocks` / `tree_pread_byte_array` / `tree_pwrite_byte_array`) are
+//! deliberately **not** mirrored as named methods — they are the internal write-once pattern
+//! behind container-node byte access, which the binding reaches through the ordinary byte
+//! surface on a directory node (`yggdryl.local.LocalIO`).
+//!
 //! Every method is one or two lines over `yggdryl_core`; a read with a hard length requirement
 //! that runs off the end (a typed read, a slice past the end, a seek before the start) raises a
 //! guided `ValueError` carrying the core error text unchanged.
@@ -538,6 +548,56 @@ impl Heap {
         self.inner.exists()
     }
 
+    // ---- graph: navigation + discovery + CRUD (a heap is a leaf) -------------------------
+
+    /// The node's own name — the last segment of its address's path, so empty for a heap
+    /// (the synthetic `mem://heap` has no path segment to name).
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node, or `None` — a heap is a **leaf** of the IO graph.
+    fn parent(&self) -> Option<Heap> {
+        self.inner.parent().map(|inner| Heap { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] stream (a heap is
+    /// a leaf: it streams nothing, with or without `recursive=True`), still satisfying the
+    /// iterator protocol like `yggdryl.local.LocalIO.ls`.
+    #[pyo3(signature = (recursive = false))]
+    fn ls(&self, recursive: bool) -> PyResult<NoChildren> {
+        let _ = if recursive {
+            self.inner.ls_recursive()
+        } else {
+            self.inner.ls()
+        }
+        .map_err(ioerr)?;
+        Ok(NoChildren {})
+    }
+
+    /// The direct children, collected — always the empty list (a leaf has none).
+    fn children(&self) -> PyResult<Vec<Heap>> {
+        let nodes = self.inner.children().map_err(ioerr)?;
+        Ok(nodes.into_iter().map(|inner| Heap { inner }).collect())
+    }
+
+    /// A heap has no removable backing — raises the guided `ValueError` naming the fix
+    /// (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
+    fn rm(&self) -> PyResult<()> {
+        self.inner.rm().map_err(ioerr)
+    }
+
+    /// A heap has no removable backing — the same guided refusal as [`rm`](Heap::rm).
+    fn rmfile(&self) -> PyResult<()> {
+        self.inner.rmfile().map_err(ioerr)
+    }
+
+    /// A heap has no removable backing — the same guided refusal as [`rm`](Heap::rm).
+    fn rmdir(&self) -> PyResult<()> {
+        self.inner.rmdir().map_err(ioerr)
+    }
+
     // ---- cursor / window views ---------------------------------------------------------
 
     /// A [`Cursor`] over an **independent copy** of this heap (the binding clones since it
@@ -881,6 +941,57 @@ impl Cursor {
         self.inner.exists()
     }
 
+    // ---- graph: navigation + discovery + CRUD (a cursor view is a leaf) -----------------
+
+    /// The node's own name — the last segment of the wrapped source's address path, so
+    /// empty over a heap (`mem://heap` has no path segment to name).
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node, or `None` — a cursor view is a **leaf** of the IO graph.
+    fn parent(&self) -> Option<Cursor> {
+        self.inner.parent().map(|inner| Cursor { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] stream (a cursor
+    /// view is a leaf: it streams nothing, with or without `recursive=True`).
+    #[pyo3(signature = (recursive = false))]
+    fn ls(&self, recursive: bool) -> PyResult<NoChildren> {
+        let _ = if recursive {
+            self.inner.ls_recursive()
+        } else {
+            self.inner.ls()
+        }
+        .map_err(ioerr)?;
+        Ok(NoChildren {})
+    }
+
+    /// The direct children, collected — always the empty list (a leaf has none).
+    fn children(&self) -> PyResult<Vec<Cursor>> {
+        let nodes = self.inner.children().map_err(ioerr)?;
+        Ok(nodes.into_iter().map(|inner| Cursor { inner }).collect())
+    }
+
+    /// A cursor view has no removable backing — raises the guided `ValueError` naming the
+    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
+    fn rm(&self) -> PyResult<()> {
+        self.inner.rm().map_err(ioerr)
+    }
+
+    /// A cursor view has no removable backing — the same guided refusal as
+    /// [`rm`](Cursor::rm).
+    fn rmfile(&self) -> PyResult<()> {
+        self.inner.rmfile().map_err(ioerr)
+    }
+
+    /// A cursor view has no removable backing — the same guided refusal as
+    /// [`rm`](Cursor::rm).
+    fn rmdir(&self) -> PyResult<()> {
+        self.inner.rmdir().map_err(ioerr)
+    }
+
     /// An independent copy of the wrapped [`Heap`] source (the cursor position is discarded).
     fn inner(&self) -> Heap {
         Heap {
@@ -1049,6 +1160,57 @@ impl Slice {
         self.inner.exists()
     }
 
+    // ---- graph: navigation + discovery + CRUD (a window view is a leaf) -----------------
+
+    /// The node's own name — the last segment of the wrapped source's address path, so
+    /// empty over a heap (`mem://heap` has no path segment to name).
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    /// The parent node, or `None` — a window view is a **leaf** of the IO graph.
+    fn parent(&self) -> Option<Slice> {
+        self.inner.parent().map(|inner| Slice { inner })
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] stream (a window
+    /// view is a leaf: it streams nothing, with or without `recursive=True`).
+    #[pyo3(signature = (recursive = false))]
+    fn ls(&self, recursive: bool) -> PyResult<NoChildren> {
+        let _ = if recursive {
+            self.inner.ls_recursive()
+        } else {
+            self.inner.ls()
+        }
+        .map_err(ioerr)?;
+        Ok(NoChildren {})
+    }
+
+    /// The direct children, collected — always the empty list (a leaf has none).
+    fn children(&self) -> PyResult<Vec<Slice>> {
+        let nodes = self.inner.children().map_err(ioerr)?;
+        Ok(nodes.into_iter().map(|inner| Slice { inner }).collect())
+    }
+
+    /// A window view has no removable backing — raises the guided `ValueError` naming the
+    /// fix (address a filesystem node, e.g. `yggdryl.local.LocalIO`, instead).
+    fn rm(&self) -> PyResult<()> {
+        self.inner.rm().map_err(ioerr)
+    }
+
+    /// A window view has no removable backing — the same guided refusal as
+    /// [`rm`](Slice::rm).
+    fn rmfile(&self) -> PyResult<()> {
+        self.inner.rmfile().map_err(ioerr)
+    }
+
+    /// A window view has no removable backing — the same guided refusal as
+    /// [`rm`](Slice::rm).
+    fn rmdir(&self) -> PyResult<()> {
+        self.inner.rmdir().map_err(ioerr)
+    }
+
     /// An independent copy of the wrapped [`Heap`] source (the window bounds are discarded).
     fn inner(&self) -> Heap {
         Heap {
@@ -1081,11 +1243,38 @@ impl Slice {
     }
 }
 
+/// The **always-empty** streaming iterator every **leaf** source returns from `ls` — a
+/// [`Heap`], [`Cursor`], or [`Slice`], and the raw [`yggdryl.local.Mmap`](crate::io::local::Mmap)
+/// mapping, is a leaf of the IO graph (the core's `NoChildren` stream), so there is never
+/// an entry to yield, but the stream still satisfies the Python iterator protocol like
+/// `yggdryl.local.LocalEntries` does: `__iter__` returns the iterator itself and `__next__`
+/// raises `StopIteration`.
+#[pyclass(module = "yggdryl.memory")]
+pub struct NoChildren {}
+
+#[pymethods]
+impl NoChildren {
+    /// The iterator protocol — `iter(entries) is entries`, like every Python iterator.
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Always exhausted — a leaf streams no children, so this raises `StopIteration`.
+    fn __next__(&mut self) -> Option<Py<PyAny>> {
+        None
+    }
+
+    fn __repr__(&self) -> String {
+        "NoChildren(<empty>)".to_string()
+    }
+}
+
 /// Populates the `memory` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Heap>()?;
     module.add_class::<Whence>()?;
     module.add_class::<Cursor>()?;
     module.add_class::<Slice>()?;
+    module.add_class::<NoChildren>()?;
     Ok(())
 }

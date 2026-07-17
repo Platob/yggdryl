@@ -7,7 +7,7 @@ use std::path::{Path as StdPath, PathBuf};
 use super::{file_err, read_at, uri_to_path, Mmap};
 use crate::headers::Headers;
 use crate::io::memory::{cursor_methods, IOBase, IoError, Whence};
-use crate::io::{IOKind, IOMode, Path};
+use crate::io::{IOKind, IOMode};
 use crate::uri::Uri;
 
 /// The one local-filesystem handle — a **lazy** node over any path (file, folder, or nothing
@@ -23,9 +23,16 @@ use crate::uri::Uri;
 ///   folders and the file, memory-maps it, and keeps the mapping — every later read/write on
 ///   this handle runs at memory speed with `Heap`-style amortized growth. No `mkdir`, no
 ///   `touch`, no separate "file object".
-/// - **The graph is the same handle.** [`Path`](crate::io::Path) navigation, streamed
-///   discovery (`ls` / `ls_recursive`), and CRUD (`rm` / `rmfile` / `rmdir`) all live here;
-///   [`mkdir`](LocalIO::mkdir) auto-creates a directory tree when a folder itself is the goal.
+/// - **The graph is the same handle.** [`IOBase`](crate::io::memory::IOBase)'s graph surface —
+///   navigation, streamed discovery (`ls` / `ls_recursive`), and CRUD (`rm` / `rmfile` /
+///   `rmdir`) — all live here; [`mkdir`](LocalIO::mkdir) auto-creates a directory tree when a
+///   folder itself is the goal.
+/// - **A directory is a memory tree.** A directory node serves the *byte* contract too: its
+///   [`byte_size`](IOBase::byte_size) is the lazy streamed sum of its subtree, and
+///   `pread` / `pwrite` route across its **name-sorted child blocks** as one contiguous
+///   region (the generic `tree_*` pattern on `IOBase` — object-store families inherit the
+///   same behavior). Reads recurse through child directories; writes stay capped inside
+///   each block (only the last block grows).
 ///
 /// [`close`](LocalIO::close) releases the mapped backing eagerly (truncating the file to its
 /// logical length); [`clone`](Clone::clone) yields a fresh **lazy** handle to the same path
@@ -35,7 +42,6 @@ use crate::uri::Uri;
 /// ```
 /// use yggdryl_core::io::local::LocalIO;
 /// use yggdryl_core::io::memory::IOBase;
-/// use yggdryl_core::io::Path;
 ///
 /// let root = LocalIO::from_path(std::env::temp_dir().join("yggdryl_localio_doc"));
 /// let mut note = root.join_str("deep/nested/note.txt");
@@ -44,6 +50,7 @@ use crate::uri::Uri;
 /// note.pwrite_utf8(0, "hello"); // auto-creates deep/, nested/, the file — and maps it
 /// assert!(note.is_file());
 /// assert_eq!(note.pread_utf8(0, 5).unwrap(), "hello"); // now served from the mapping
+/// note.close(); // release the mapping (Windows cannot delete mapped files)
 ///
 /// let names: Vec<String> = root
 ///     .ls_recursive()
@@ -52,7 +59,10 @@ use crate::uri::Uri;
 ///     .collect();
 /// assert!(names.contains(&"note.txt".to_string()));
 ///
-/// note.close(); // release the mapping before removing the tree (Windows)
+/// // A directory is a memory tree: the root reads as one contiguous byte region.
+/// assert_eq!(root.byte_size(), 5);
+/// assert_eq!(root.pread_utf8(0, 5).unwrap(), "hello");
+///
 /// root.rmdir().unwrap();
 /// assert!(!root.exists());
 /// ```
@@ -88,6 +98,12 @@ impl LocalIO {
     /// The underlying filesystem path.
     pub fn as_std_path(&self) -> &StdPath {
         &self.path
+    }
+
+    /// The child node at `segment` (which may be a multi-segment relative path like
+    /// `"a/b/c.txt"`) — **lazy**: nothing is touched or created.
+    pub fn join_str(&self, segment: &str) -> LocalIO {
+        LocalIO::from_path(self.path.join(segment))
     }
 
     /// Auto-creates the directory tree at this path (like `mkdir -p`) — the explicit form
@@ -188,11 +204,12 @@ impl IOBase for LocalIO {
     fn byte_size(&self) -> u64 {
         match &self.map {
             Some(map) => map.byte_size(),
-            None => fs::metadata(&self.path)
-                .ok()
-                .filter(|m| m.is_file())
-                .map(|m| m.len())
-                .unwrap_or(0),
+            None => match fs::metadata(&self.path) {
+                Ok(meta) if meta.is_file() => meta.len(),
+                // A directory is a memory tree: its size is the lazy sum of its subtree.
+                Ok(meta) if meta.is_dir() => self.tree_byte_size(),
+                _ => 0,
+            },
         }
     }
 
@@ -280,11 +297,13 @@ impl IOBase for LocalIO {
 
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         // The handle decides: mapped backing when it has one (memory speed), one ad-hoc
-        // positioned OS read otherwise; a missing or directory node reads as empty.
+        // positioned OS read for a file, the memory tree for a directory; a missing node
+        // reads as empty.
         match &self.map {
             Some(map) => map.pread_byte_array(offset, buf),
             None => match self.open_read() {
                 Some(file) => read_at(&file, offset, buf).unwrap_or(0),
+                None if self.is_dir() => self.tree_pread_byte_array(offset, buf),
                 None => 0,
             },
         }
@@ -294,10 +313,14 @@ impl IOBase for LocalIO {
         if data.is_empty() || !self.mode.is_writable() {
             return 0;
         }
+        // A directory routes the write across its memory-tree blocks.
+        if self.map.is_none() && self.is_dir() {
+            return self.tree_pwrite_byte_array(offset, data);
+        }
         // The first write self-optimizes: auto-create parents + file, map, keep the mapping.
         match self.ensure_map() {
             Ok(map) => map.pwrite_byte_array(offset, data),
-            Err(_) => 0, // e.g. the node is a directory — the full writes report the fix
+            Err(_) => 0, // the full writes report the fix
         }
     }
 
@@ -305,14 +328,130 @@ impl IOBase for LocalIO {
         if !self.mode.is_writable() {
             return Err(self.read_only_err());
         }
+        // An empty write is a no-op — never a reason to auto-create the file (`touch`).
+        if data.is_empty() {
+            return Ok(());
+        }
         if self.map.is_none() && self.is_dir() {
+            let written = self.tree_pwrite_byte_array(offset, data);
+            if written == data.len() {
+                return Ok(());
+            }
             return Err(IoError::FileIo {
                 op: "write",
                 path: self.path.to_string_lossy().into_owned(),
-                detail: "the node is a directory; join_str a file name and write there".to_string(),
+                detail: format!(
+                    "the directory tree absorbed {written} of {} bytes (an empty tree has \
+                     no blocks, and only its last block can grow); join a file name onto \
+                     this directory and write there",
+                    data.len()
+                ),
             });
         }
         self.ensure_map()?.pwrite_all(offset, data)
+    }
+
+    // ---- the graph surface: LocalIO nodes form the local filesystem tree ----
+
+    type Children = LocalChildren;
+    type Walk = LocalWalk;
+
+    fn name(&self) -> String {
+        self.path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    fn parent(&self) -> Option<LocalIO> {
+        self.path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(LocalIO::from_path)
+    }
+
+    fn ls(&self) -> Result<LocalChildren, IoError> {
+        match fs::read_dir(&self.path) {
+            Ok(read_dir) => Ok(LocalChildren {
+                read_dir: Some((self.path.clone(), read_dir)),
+            }),
+            Err(_) if !self.is_dir() => Ok(LocalChildren { read_dir: None }),
+            Err(e) => Err(file_err("list", &self.path, &e)),
+        }
+    }
+
+    /// The name-sorted memory-tree blocks, **excluding symlinked directories** — so the
+    /// tree recursion (`byte_size` / `pread` / `pwrite` over a directory) is acyclic: a
+    /// directory symlink pointing at an ancestor can never make it recurse forever. A
+    /// symlink to a regular file stays a normal block; the discovery surface (`ls` /
+    /// `ls_recursive`) is unaffected — it still lists everything.
+    fn blocks(&self) -> Vec<LocalIO> {
+        let mut blocks: Vec<LocalIO> = match self.ls() {
+            Ok(children) => children
+                .filter_map(Result::ok)
+                .filter(|child| {
+                    match fs::symlink_metadata(&child.path) {
+                        // A symlink whose target is a directory would recurse — skip it.
+                        Ok(meta) if meta.file_type().is_symlink() => !fs::metadata(&child.path)
+                            .map(|t| t.is_dir())
+                            .unwrap_or(false),
+                        _ => true,
+                    }
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        blocks.sort_by_key(IOBase::name);
+        blocks
+    }
+
+    fn ls_recursive(&self) -> Result<LocalWalk, IoError> {
+        match fs::read_dir(&self.path) {
+            Ok(read_dir) => Ok(LocalWalk {
+                stack: vec![(self.path.clone(), read_dir)],
+                pending: None,
+            }),
+            Err(_) if !self.is_dir() => Ok(LocalWalk {
+                stack: Vec::new(),
+                pending: None,
+            }),
+            Err(e) => Err(file_err("list", &self.path, &e)),
+        }
+    }
+
+    fn rm(&self) -> Result<(), IoError> {
+        match self.kind() {
+            IOKind::Directory => {
+                fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e))
+            }
+            IOKind::Missing => Ok(()), // already gone — removing is idempotent
+            _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
+        }
+    }
+
+    fn rmfile(&self) -> Result<(), IoError> {
+        match self.kind() {
+            IOKind::Directory => Err(IoError::FileIo {
+                op: "remove",
+                path: self.path.to_string_lossy().into_owned(),
+                detail: "the node is a directory; use rmdir (recursive) instead of rmfile"
+                    .to_string(),
+            }),
+            IOKind::Missing => Ok(()),
+            _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
+        }
+    }
+
+    fn rmdir(&self) -> Result<(), IoError> {
+        match self.kind() {
+            IOKind::File => Err(IoError::FileIo {
+                op: "remove",
+                path: self.path.to_string_lossy().into_owned(),
+                detail: "the node is a file; use rmfile instead of rmdir".to_string(),
+            }),
+            IOKind::Missing => Ok(()),
+            _ => fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
+        }
     }
 }
 
@@ -374,89 +513,6 @@ impl Iterator for LocalWalk {
                     self.stack.pop();
                 }
             }
-        }
-    }
-}
-
-impl Path for LocalIO {
-    type Node = LocalIO;
-    type Children = LocalChildren;
-    type Walk = LocalWalk;
-
-    fn name(&self) -> String {
-        self.path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
-
-    fn parent(&self) -> Option<LocalIO> {
-        self.path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .map(LocalIO::from_path)
-    }
-
-    fn join_str(&self, segment: &str) -> LocalIO {
-        LocalIO::from_path(self.path.join(segment))
-    }
-
-    fn ls(&self) -> Result<LocalChildren, IoError> {
-        match fs::read_dir(&self.path) {
-            Ok(read_dir) => Ok(LocalChildren {
-                read_dir: Some((self.path.clone(), read_dir)),
-            }),
-            Err(_) if !self.is_dir() => Ok(LocalChildren { read_dir: None }),
-            Err(e) => Err(file_err("list", &self.path, &e)),
-        }
-    }
-
-    fn ls_recursive(&self) -> Result<LocalWalk, IoError> {
-        match fs::read_dir(&self.path) {
-            Ok(read_dir) => Ok(LocalWalk {
-                stack: vec![(self.path.clone(), read_dir)],
-                pending: None,
-            }),
-            Err(_) if !self.is_dir() => Ok(LocalWalk {
-                stack: Vec::new(),
-                pending: None,
-            }),
-            Err(e) => Err(file_err("list", &self.path, &e)),
-        }
-    }
-
-    fn rm(&self) -> Result<(), IoError> {
-        match self.kind() {
-            IOKind::Directory => {
-                fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e))
-            }
-            IOKind::Missing => Ok(()), // already gone — removing is idempotent
-            _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
-        }
-    }
-
-    fn rmfile(&self) -> Result<(), IoError> {
-        match self.kind() {
-            IOKind::Directory => Err(IoError::FileIo {
-                op: "remove",
-                path: self.path.to_string_lossy().into_owned(),
-                detail: "the node is a directory; use rmdir (recursive) instead of rmfile"
-                    .to_string(),
-            }),
-            IOKind::Missing => Ok(()),
-            _ => fs::remove_file(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
-        }
-    }
-
-    fn rmdir(&self) -> Result<(), IoError> {
-        match self.kind() {
-            IOKind::File => Err(IoError::FileIo {
-                op: "remove",
-                path: self.path.to_string_lossy().into_owned(),
-                detail: "the node is a file; use rmfile instead of rmdir".to_string(),
-            }),
-            IOKind::Missing => Ok(()),
-            _ => fs::remove_dir_all(&self.path).map_err(|e| file_err("remove", &self.path, &e)),
         }
     }
 }

@@ -288,4 +288,16 @@ impl<T: IOBase> IOBase for IOCursor<T> {
         // neither file nor directory) instead of re-deriving from `kind` alone.
         self.inner.exists()
     }
+
+    // A wrapper is a **leaf byte view**: the graph surface lives on the wrapped source.
+    type Children = super::NoChildren<Self>;
+    type Walk = super::NoChildren<Self>;
+
+    fn ls(&self) -> Result<Self::Children, crate::io::IoError> {
+        Ok(std::iter::empty())
+    }
+
+    fn ls_recursive(&self) -> Result<Self::Walk, crate::io::IoError> {
+        Ok(std::iter::empty())
+    }
 }

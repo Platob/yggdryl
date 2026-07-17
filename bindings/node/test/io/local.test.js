@@ -10,7 +10,7 @@ const yggdryl = require('../..')
 const io = yggdryl.io
 const { Headers } = yggdryl.headers
 const { LocalEntries, LocalIO, Mmap } = yggdryl.local
-const { Whence } = yggdryl.memory
+const { NoChildren, Whence } = yggdryl.memory
 const { Uri } = yggdryl.uri
 
 /** A unique temp directory per test; the test closes its handles, then removes it. */
@@ -59,6 +59,20 @@ test('LocalIO is lazy: constructing + probing + reading touches nothing on disk'
 
   // Probing created nothing — the ancestry is still absent.
   assert.ok(!fs.existsSync(nodePath.join(dir, 'deep')))
+  rmTree(dir)
+})
+
+test('an empty write is a no-op: a missing LocalIO is not auto-created', () => {
+  const dir = tmpDir()
+  const note = new LocalIO(nodePath.join(dir, 'empty', 'note.txt'))
+
+  // A zero-length write never touches the disk — no `touch`, no parent folders.
+  assert.equal(note.pwriteByteArray(0, Buffer.alloc(0)), 0)
+  assert.equal(note.pwriteUtf8(0, ''), 0)
+  assert.equal(note.write(Buffer.alloc(0)), 0) // the cursor write too
+  assert.equal(note.exists(), false)
+  assert.equal(note.isMapped, false)
+  assert.ok(!fs.existsSync(nodePath.join(dir, 'empty')))
   rmTree(dir)
 })
 
@@ -294,15 +308,84 @@ test('ls() streams direct children; ls(true) streams the subtree; children() col
 // LocalIO — folders, CRUD, and guided refusals
 // -------------------------------------------------------------------------------------
 
-test('mkdir creates the tree; a directory refuses a byte stream with the guided fix', () => {
+test('mkdir creates the tree; an empty directory refuses a byte stream with the guided fix', () => {
   const dir = tmpDir()
   const d = new LocalIO(dir).join('a/b/c')
   d.mkdir() // mkdir -p
   assert.ok(d.isDir())
 
-  assert.throws(() => d.pwriteByte(0, 1), /the node is a directory; join_str a file name/)
+  // An EMPTY directory tree has no blocks to route the write into — the pwriteAll-backed
+  // writes throw the guided fix, and the primitive absorbs nothing.
+  assert.throws(() => d.pwriteByte(0, 1), /join a file name onto this directory and write there/)
+  assert.throws(() => d.pwriteByte(0, 1), /an empty tree has no blocks/)
+  assert.throws(() => d.pwriteI32(0, 7), /join a file name onto this directory/)
   assert.equal(d.pwriteByteArray(0, Buffer.from('x')), 0) // the primitive writes nothing
-  assert.deepEqual(d.preadByteArray(0, 8), Buffer.alloc(0)) // reads on a directory are empty
+  assert.deepEqual(d.preadByteArray(0, 8), Buffer.alloc(0)) // reads on an empty directory are empty
+  rmTree(dir)
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO — a directory is a memory tree
+// -------------------------------------------------------------------------------------
+
+test('a directory reads as one memory tree over its name-sorted blocks', () => {
+  const dir = tmpDir()
+  const root = new LocalIO(dir)
+  for (const [rel, text] of [
+    ['a.bin', 'AAAA'],
+    ['b.bin', 'BB'],
+    ['sub/c.bin', 'CCC'],
+  ]) {
+    const node = root.join(rel)
+    node.pwriteUtf8(0, text)
+    node.close() // release each mapping (its capacity padding would inflate the tree)
+  }
+
+  // byteSize is the lazy streamed sum of the subtree — recomputed live, nothing cached.
+  assert.equal(root.byteSize(), 9)
+  // Blocks are name-sorted (a.bin | b.bin | sub) — one contiguous region; a child
+  // directory (sub) recurses through its own tree.
+  assert.equal(root.preadUtf8(0, 9), 'AAAABBCCC')
+  // A read across block boundaries stitches transparently.
+  assert.equal(root.preadUtf8(3, 4), 'ABBC')
+  assert.deepEqual(root.preadByteArray(2, 5), Buffer.from('AABBC'))
+
+  // The cursor stream works on the tree too.
+  const cur = new LocalIO(dir)
+  assert.equal(cur.readUtf8(6), 'AAAABB')
+
+  // Growth is visible immediately (full laziness): add a file, the tree grows.
+  const added = root.join('d.bin')
+  added.pwriteUtf8(0, '!')
+  added.close()
+  assert.equal(root.byteSize(), 10)
+  assert.equal(root.preadUtf8(0, 10), 'AAAABB!CCC') // d.bin sorts before sub
+  rmTree(dir)
+})
+
+test('directory writes route across blocks; a middle block never grows, the last one does', () => {
+  const dir = tmpDir()
+  const root = new LocalIO(dir)
+  for (const [rel, text] of [
+    ['a.bin', 'AAAA'],
+    ['b.bin', 'BB'],
+  ]) {
+    const node = root.join(rel)
+    node.pwriteUtf8(0, text)
+    node.close()
+  }
+
+  // A write inside one block stays inside it.
+  assert.equal(root.pwriteByteArray(1, Buffer.from('XX')), 2)
+  assert.equal(root.join('a.bin').preadUtf8(0, 4), 'AXXA')
+  // A write across the boundary splits between blocks — the middle block never grows.
+  assert.equal(root.pwriteByteArray(3, Buffer.from('12')), 2)
+  assert.equal(root.join('a.bin').preadUtf8(0, 4), 'AXX1')
+  assert.equal(root.join('b.bin').preadUtf8(0, 2), '2B')
+  // Bytes past the end grow the LAST block.
+  assert.equal(root.pwriteByteArray(6, Buffer.from('ZZ')), 2)
+  assert.equal(root.join('b.bin').preadUtf8(0, 4), '2BZZ')
+  assert.equal(root.byteSize(), 8)
   rmTree(dir)
 })
 
@@ -659,6 +742,35 @@ test('Mmap metadata: kind is File, uri round-trips the path, headers/setMode', (
 
   m.close()
   fs.rmSync(file)
+})
+
+test('Mmap graph: the file name, leaf ls/children, guided rmdir, and a real rmfile unlink', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+
+  // name is the mapped file's name; a raw mapping is a leaf of the IO graph.
+  assert.equal(m.name, nodePath.basename(file))
+  assert.equal(m.parent(), null)
+  assert.ok(m.ls() instanceof NoChildren) // the shared always-empty iterable
+  assert.deepEqual([...m.ls()], [])
+  assert.deepEqual([...m.ls(true)], [])
+  assert.deepEqual(m.children(), [])
+
+  // rmdir on a file is the guided mismatch error.
+  assert.throws(() => m.rmdir(), /the node is a file; use rmfile instead of rmdir/)
+
+  // The graph goes through the closed-guard like every other method.
+  m.close()
+  assert.throws(() => m.name, /the mapping is closed/)
+  assert.throws(() => m.rmfile(), /the mapping is closed/)
+
+  // After the first mapping closed, a fresh mapping over the (still empty) file holds no
+  // view — so rm/rmfile really unlink, even on Windows, and are idempotent when missing.
+  const again = Mmap.create(file)
+  again.rm() // rm on a mapping is the file itself — delegates to rmfile
+  assert.ok(!fs.existsSync(file))
+  again.rmfile() // idempotent on missing
+  again.close()
 })
 
 test('Mmap.flush persists the mapped bytes to disk without closing', () => {

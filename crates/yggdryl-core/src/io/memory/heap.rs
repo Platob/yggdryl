@@ -340,6 +340,18 @@ impl IOBase for Heap {
         true // a live in-memory buffer always exists (it is neither file nor directory)
     }
 
+    // A heap is a **leaf** node of the IO graph: it streams no children.
+    type Children = super::NoChildren<Heap>;
+    type Walk = super::NoChildren<Heap>;
+
+    fn ls(&self) -> Result<Self::Children, IoError> {
+        Ok(std::iter::empty())
+    }
+
+    fn ls_recursive(&self) -> Result<Self::Walk, IoError> {
+        Ok(std::iter::empty())
+    }
+
     #[inline]
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         let start = offset as usize;

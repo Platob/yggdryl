@@ -3,18 +3,33 @@
 //!
 //! Mirrors `yggdryl_core::io::local`. [`LocalIO`] is one **lazy** handle over any path (file,
 //! folder, or nothing yet) that decides per call how to serve I/O: constructing / probing /
-//! navigating touches nothing, a read before any write opens the file ad hoc (a missing or
-//! directory node reads as empty), and the first write auto-creates the missing parent
+//! navigating touches nothing, a read before any write opens the file ad hoc (a missing
+//! node reads as empty), and the first write auto-creates the missing parent
 //! folders + the file, memory-maps it, and keeps the mapping (`isMapped`) so later access
 //! runs at memory speed. `close()` releases the mapping and the handle **stays usable** —
-//! back to its lazy state. The same handle carries the filesystem graph: `name` /
+//! back to its lazy state. The same handle carries the filesystem graph — the `IOBase`
+//! graph surface, mirrored from the core: `name` /
 //! `parent()` / `join`, the **streamed** `ls(recursive?)` (a [`LocalEntries`] iterable) with
 //! the collected `children()` convenience, and the shape-checked `rm()` / `rmfile()` /
 //! `rmdir()` plus `mkdir()`.
 //!
+//! A `LocalIO` **directory node is a memory tree**: its `byteSize()` is the lazy streamed
+//! sum of its subtree, and the ordinary byte surface (`pread*` / `pwrite*`) reads and
+//! writes across its **name-sorted child file blocks** as one contiguous region (child
+//! directories recurse; a middle block never grows — only the last block absorbs bytes
+//! past the end, and a write into an **empty** directory throws the guided fix naming
+//! `join a file name onto this directory`). DESIGN: the core's generic `tree_byte_size` /
+//! `blocks` / `tree_pread_byte_array` / `tree_pwrite_byte_array` helpers are deliberately
+//! **not** mirrored as named methods — they are the internal pattern behind that routing,
+//! and the binding reaches the behavior through the ordinary byte surface on a directory
+//! node.
+//!
 //! [`Mmap`] is the raw memory-mapped file `LocalIO` builds on (usable directly when a
 //! pre-existing file and explicit control are wanted); it moved here from `yggdryl.memory`
-//! with the core. Every method on both classes is a thin one- or two-line delegation to
+//! with the core. It is a **leaf** of the IO graph — `name` is its file name, `ls()` /
+//! `children()` stream and collect nothing, and `rm()` / `rmfile()` really unlink the
+//! mapped file (`rmdir()` gives the guided file error). Every method on both classes is a
+//! thin one- or two-line delegation to
 //! `yggdryl_core` with no logic in the binding; the numeric idioms (byte-offset and length
 //! **parameters** as `u32`, **returned** sizes / capacities / positions as `i64` — a JS
 //! number, exact to 2^53 — and bit offsets as `i64` in both directions) match the
@@ -26,12 +41,12 @@ use napi_derive::napi;
 
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
-use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, Whence};
+use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, NoChildren, Whence};
 use crate::io::mode::IOMode;
 use crate::uri::Uri;
 use yggdryl_core::io::local as core;
 use yggdryl_core::io::memory::IOBase;
-use yggdryl_core::io::{IoError, Path};
+use yggdryl_core::io::IoError;
 
 /// The one local-filesystem handle — a **lazy** node over any path (file, folder, or nothing
 /// yet) that decides itself, per call, how to serve reads and writes. Mirrors
@@ -40,13 +55,18 @@ use yggdryl_core::io::{IoError, Path};
 /// - **Constructing / probing / navigating touches nothing.** `kind` / `exists()` /
 ///   `isFile()` / `isDir()` ask the disk per call; `join` / `parent()` are pure path math.
 /// - **Reads pick their own path.** Before any write, a read opens the file ad hoc with one
-///   positioned OS read (a missing or directory node reads as empty). After the handle has
-///   written, reads are served from its memory-mapped backing.
+///   positioned OS read (a missing node reads as empty; a directory reads as its memory
+///   tree — see below). After the handle has written, reads are served from its
+///   memory-mapped backing.
 /// - **Writes auto-create and self-optimize.** The first write creates the missing parent
 ///   folders and the file, memory-maps it, and keeps the mapping (`isMapped` turns `true`).
 /// - **The graph is the same handle.** Navigation, streamed discovery (`ls`, a
 ///   [`LocalEntries`] iterable) with the collected `children()`, and CRUD (`rm` / `rmfile` /
 ///   `rmdir` / `mkdir`) all live here.
+/// - **A directory is a memory tree.** A directory node serves the *byte* contract too:
+///   `byteSize()` is the lazy streamed sum of its subtree, and `pread*` / `pwrite*` route
+///   across its name-sorted child file blocks as one contiguous region (child directories
+///   recurse; a middle block never grows — only the last block absorbs bytes past the end).
 ///
 /// `close()` releases the mapped backing eagerly (truncating the file to its logical
 /// length) — unlike [`Mmap.close`](Mmap::close) the handle is **still usable** afterwards:
@@ -138,9 +158,10 @@ impl LocalIO {
 
     // ---- size + capacity ---------------------------------------------------------------
 
-    /// The length in bytes (the mapped logical length, or the on-disk file size before any
-    /// write; `0` for a missing or directory node) — an `i64` (a JS number, exact to 2^53)
-    /// so a size past `u32::MAX` never wraps.
+    /// The length in bytes — the mapped logical length once mapped, the on-disk file size
+    /// before any write, `0` for a missing node; a **directory** reports its memory-tree
+    /// size, the lazy streamed sum of its whole subtree (recomputed live per call). An
+    /// `i64` (a JS number, exact to 2^53) so a size past `u32::MAX` never wraps.
     #[napi]
     pub fn byte_size(&self) -> i64 {
         self.inner.byte_size() as i64
@@ -236,15 +257,20 @@ impl LocalIO {
     // ---- byte-array primitives ---------------------------------------------------------
 
     /// Reads up to `length` bytes at `offset` into a fresh `Buffer` — short (or empty) near
-    /// the end; a missing or directory node reads as empty. Never moves the cursor.
+    /// the end, empty on a missing node. A **directory** reads as its memory tree: the
+    /// name-sorted child file blocks stitched into one contiguous region (child directories
+    /// recurse). Never moves the cursor.
     #[napi]
     pub fn pread_byte_array(&self, offset: u32, length: u32) -> Buffer {
         self.inner.pread_vec(offset as u64, length as usize).into()
     }
 
-    /// Writes `data` at `offset`, auto-creating parents + the file and keeping the mapped
-    /// backing; returns the number of bytes written (`0` on a directory node or a read-only
-    /// handle). Never moves the cursor.
+    /// Writes `data` at `offset`, auto-creating parents + the file on the first write and
+    /// keeping the mapped backing; returns the number of bytes written (`0` on a read-only
+    /// handle). A **directory** routes the write across its memory-tree blocks: a write
+    /// inside a block stays capped at that block's end (a middle block never grows), bytes
+    /// past the end grow the **last** block, and an empty directory writes nothing (the
+    /// full/typed writes report the guided fix). Never moves the cursor.
     #[napi]
     pub fn pwrite_byte_array(&mut self, offset: u32, data: Buffer) -> u32 {
         self.inner.pwrite_byte_array(offset as u64, data.as_ref()) as u32
@@ -259,7 +285,8 @@ impl LocalIO {
     }
 
     /// Writes the single byte `value` at `offset`, growing the file as needed — or throws
-    /// the guided `Error` on a directory or read-only handle.
+    /// the guided `Error` on a read-only handle (or an empty directory, which has no block
+    /// to grow into).
     #[napi]
     pub fn pwrite_byte(&mut self, offset: u32, value: u8) -> napi::Result<()> {
         self.inner
@@ -330,8 +357,8 @@ impl LocalIO {
     }
 
     /// Writes `text`'s UTF-8 bytes at `offset` (auto-creating + growing as needed); returns
-    /// the number of **bytes** written (not characters — `0` on a directory or read-only
-    /// handle).
+    /// the number of **bytes** written (not characters — `0` on a read-only handle or an
+    /// empty directory).
     #[napi]
     pub fn pwrite_utf8(&mut self, offset: u32, text: String) -> u32 {
         self.inner.pwrite_utf8(offset as u64, &text) as u32
@@ -570,7 +597,7 @@ impl LocalIO {
         self.inner.kind().into()
     }
 
-    // ---- the filesystem graph (Path) ---------------------------------------------------
+    // ---- the filesystem graph (the IOBase graph surface) -------------------------------
 
     /// The last path segment — the node's own name (empty for a root).
     #[napi(getter)]
@@ -1322,6 +1349,69 @@ impl Mmap {
     #[napi(getter)]
     pub fn kind(&self) -> napi::Result<IOKind> {
         Ok(self.inner()?.kind().into())
+    }
+
+    // ---- the graph surface (a mapping is a leaf with a removable file) -----------------
+
+    /// The node's own name — the mapped **file's name** (the last path segment).
+    #[napi(getter)]
+    pub fn name(&self) -> napi::Result<String> {
+        Ok(self.inner()?.name())
+    }
+
+    /// The parent node — always `null`: a raw mapping is a leaf of the IO graph (navigate
+    /// with [`LocalIO`] when the tree itself is wanted).
+    #[napi]
+    pub fn parent(&self) -> napi::Result<Option<Mmap>> {
+        Ok(self
+            .inner()?
+            .parent()
+            .map(|inner| Mmap { inner: Some(inner) }))
+    }
+
+    /// Streams this node's children — always the empty [`NoChildren`] iterable: a mapped
+    /// file is a **leaf** and streams nothing (`recursive` is accepted for the uniform
+    /// `ls(recursive?)` shape and changes nothing on a leaf).
+    #[napi]
+    pub fn ls(&self, recursive: Option<bool>) -> napi::Result<NoChildren> {
+        NoChildren::over(self.inner()?, recursive)
+    }
+
+    /// The direct children, collected — always an empty array (a mapped file is a leaf).
+    #[napi]
+    pub fn children(&self) -> napi::Result<Vec<Mmap>> {
+        self.inner()?
+            .children()
+            .map(|nodes| {
+                nodes
+                    .into_iter()
+                    .map(|inner| Mmap { inner: Some(inner) })
+                    .collect()
+            })
+            .map_err(to_error)
+    }
+
+    /// Removes **whatever exists** at this node — for a mapping that is the file itself
+    /// (delegates to `rmfile`); a missing file is a no-op. On Windows a file with a live
+    /// mapped view cannot be deleted — `close()` this mapping's view first.
+    #[napi]
+    pub fn rm(&self) -> napi::Result<()> {
+        self.inner()?.rm().map_err(to_error)
+    }
+
+    /// Removes this node **as a file** — really unlinks the mapped file (idempotent when
+    /// already missing). On Windows a file with a live mapped view cannot be deleted —
+    /// `close()` this mapping's view first.
+    #[napi]
+    pub fn rmfile(&self) -> napi::Result<()> {
+        self.inner()?.rmfile().map_err(to_error)
+    }
+
+    /// Removes this node **as a directory** — always the guided `Error` "the node is a
+    /// file; use rmfile instead of rmdir": a mapping is by construction a file.
+    #[napi]
+    pub fn rmdir(&self) -> napi::Result<()> {
+        self.inner()?.rmdir().map_err(to_error)
     }
 
     // ---- predicates (isFile / isDir / exists) ------------------------------------------

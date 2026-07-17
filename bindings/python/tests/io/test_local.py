@@ -5,11 +5,14 @@ Mirrors ``crates/yggdryl-core/tests/io_local_io.rs`` on the Python surface: the 
 self-optimizing writes (``is_mapped``), the ``close()`` release-but-stay-usable lifecycle,
 fresh-lazy copies, the ``is_file`` / ``is_dir`` / ``exists`` predicates, graph navigation
 (``name`` / ``parent`` / ``join`` and the ``/`` operator), streamed ``ls`` / collected
-``children`` discovery, ``mkdir`` plus the directory-write refusal, and the shape-checked ``rm`` /
+``children`` discovery, ``mkdir`` plus the empty-directory write refusal, the
+directory-as-**memory-tree** byte surface (the lazy streamed ``byte_size``, reads stitched
+across name-sorted child blocks, writes routed into them), and the shape-checked ``rm`` /
 ``rmfile`` / ``rmdir``. The ``Mmap`` sections (moved here from ``tests/io/test_memory.py``
 with the core's ``io::local`` family) drive the byte surface over a real file: open/create
 dispatch (str path or ``Uri``), persistence with exact truncation, read-only mappings,
-capacity over a file, and the ``close()`` / context-manager lifecycle.
+capacity over a file, the ``close()`` / context-manager lifecycle, and the graph leaf
+surface (``name`` / ``parent`` / the empty ``ls`` stream / the really-unlinking ``rmfile``).
 
 Every handle is closed before the temp tree is removed — Windows cannot delete a mapped
 file.
@@ -27,7 +30,7 @@ import yggdryl.local
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.local import LocalEntries, LocalIO, Mmap
-from yggdryl.memory import Whence
+from yggdryl.memory import NoChildren, Whence
 from yggdryl.uri import Uri
 
 
@@ -99,6 +102,18 @@ def test_localio_first_write_auto_creates_parents_and_maps(root):
     assert note.capacity() >= 4096  # page-backed capacity while mapped
     note.flush()  # persists without closing
     note.close()
+
+
+def test_localio_empty_write_does_not_create_the_file(root):
+    # A zero-length write is a no-op — never a reason to auto-create the file (like touch).
+    note = root / "empty/never/created.txt"
+    assert note.pwrite_byte_array(0, b"") == 0  # the primitive writes nothing...
+    assert not note.exists()  # ...and creates nothing on disk
+    assert not note.is_mapped
+    assert note.write(b"") == 0  # the cursor write is a no-op too
+    assert note.pwrite_utf8(0, "") == 0
+    assert not note.exists()
+    assert not (root / "empty").exists()  # no parent folders materialized either
 
 
 def test_localio_close_releases_mapping_handle_stays_usable(root):
@@ -284,10 +299,66 @@ def test_localio_mkdir_and_directory_write_guided(root):
     assert (root / "a/b").is_dir()
 
     # A directory refuses a byte stream with a guided fix.
-    with pytest.raises(ValueError, match="join_str a file name"):
+    with pytest.raises(ValueError, match="join a file name onto this directory and write there"):
         d.pwrite_i32(0, 1)
     assert d.pwrite_byte_array(0, b"x") == 0  # the primitive writes nothing
     assert d.pread_byte_array(0, 8) == b""  # reads on a directory are empty
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: a directory is a memory tree
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_directory_reads_as_one_memory_tree(root):
+    for rel, text in (("a.bin", "AAAA"), ("b.bin", "BB"), ("sub/c.bin", "CCC")):
+        w = root / rel
+        w.pwrite_utf8(0, text)
+        w.close()  # release each mapping — the tree reads live from disk
+
+    # byte_size is the lazy streamed sum of the subtree — recomputed live, nothing cached.
+    assert root.byte_size() == 9
+    assert len(root) == 9
+    # Blocks are name-sorted (a.bin | b.bin | sub) — one contiguous region.
+    assert root.pread_utf8(0, 9) == "AAAABBCCC"
+    # A read across block boundaries stitches transparently.
+    assert root.pread_utf8(3, 4) == "ABBC"
+    assert root.pread_byte_array(2, 5) == b"AABBC"
+    # Growth is visible immediately (full laziness): add a file, the tree grows.
+    d = root / "d.bin"
+    d.pwrite_utf8(0, "!")
+    d.close()
+    assert root.byte_size() == 10
+    assert root.pread_utf8(0, 10) == "AAAABB!CCC"  # d.bin sorts before sub
+
+
+def test_localio_directory_writes_route_across_blocks(root):
+    for rel, text in (("a.bin", "AAAA"), ("b.bin", "BB")):
+        w = root / rel
+        w.pwrite_utf8(0, text)
+        w.close()
+
+    # A write inside one block stays inside it.
+    assert root.pwrite_utf8(1, "XX") == 2
+    assert (root / "a.bin").pread_utf8(0, 4) == "AXXA"
+    # A write across the boundary splits between blocks — the middle block never grows.
+    assert root.pwrite_utf8(3, "12") == 2
+    assert (root / "a.bin").pread_utf8(0, 4) == "AXX1"
+    assert (root / "b.bin").pread_utf8(0, 2) == "2B"
+    # Bytes past the end grow the LAST block.
+    assert root.pwrite_utf8(6, "ZZ") == 2
+    assert (root / "b.bin").pread_utf8(0, 4) == "2BZZ"
+    assert root.byte_size() == 8
+
+
+def test_localio_empty_directory_full_write_is_guided(root):
+    hollow = root / "hollow"
+    hollow.mkdir()
+    # An empty tree has no blocks: a full (pwrite_all-backed) write names the fix...
+    with pytest.raises(ValueError, match="join a file name onto this directory and write there"):
+        hollow.pwrite_byte(0, 1)
+    # ...and the primitive writes nothing.
+    assert hollow.pwrite_byte_array(0, b"x") == 0
 
 
 # -------------------------------------------------------------------------------------
@@ -784,6 +855,55 @@ def test_mmap_is_a_live_resource_not_a_value(tmp_path):
         pickle.dumps(m)  # a mapping does not pickle
     other.close()
     m.close()
+
+
+# -------------------------------------------------------------------------------------
+# Mmap: the graph surface (a mapping is a leaf whose rm / rmfile really unlink)
+# -------------------------------------------------------------------------------------
+
+
+def test_mmap_graph_leaf_name_parent_ls_children(tmp_path):
+    m = Mmap.create(str(tmp_path / "leaf.bin"))
+    assert m.name == "leaf.bin"  # the node's name is its file name
+    assert m.parent() is None  # a raw mapping is a leaf of the IO graph
+    entries = m.ls()
+    assert isinstance(entries, NoChildren)  # the shared always-empty leaf iterator
+    assert not isinstance(entries, list)
+    assert iter(entries) is entries  # the iterator protocol, like LocalIO.ls
+    assert list(entries) == []  # ...but a leaf streams nothing
+    with pytest.raises(StopIteration):
+        next(entries)
+    assert list(m.ls(recursive=True)) == []
+    assert repr(m.ls()) == "NoChildren(<empty>)"
+    assert m.children() == []
+    m.close()
+    with pytest.raises(ValueError, match="closed"):
+        m.name  # noqa: B018 - the graph goes through the closed-guard too
+    with pytest.raises(ValueError, match="closed"):
+        m.rmfile()
+
+
+def test_mmap_rmdir_is_the_guided_file_error(tmp_path):
+    m = Mmap.create(str(tmp_path / "file.bin"))
+    with pytest.raises(ValueError, match="use rmfile instead of rmdir"):
+        m.rmdir()  # a mapping is never a directory
+    m.close()
+
+
+def test_mmap_rmfile_really_unlinks_after_the_writer_closed(tmp_path):
+    p = tmp_path / "unlink.bin"
+    w = Mmap.create(str(p))
+    w.pwrite_utf8(0, "data")
+    w.close()  # release the writing mapping first — portable removal (Windows)
+    assert p.exists()
+
+    m = Mmap.open(str(p))
+    m.rmfile()  # really unlinks the on-disk file
+    assert not p.exists()
+    m.rmfile()  # idempotent when already missing
+    m.rm()  # rm is rmfile for a mapping — idempotent too
+    m.close()
+    assert not p.exists()
 
 
 # -------------------------------------------------------------------------------------

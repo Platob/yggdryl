@@ -64,6 +64,31 @@ fn non_file_scheme_is_rejected() {
     assert!(err.to_string().contains("unsupported scheme"));
 }
 
+#[test]
+fn mmap_is_a_leaf_node_of_the_graph_that_really_unlinks() {
+    let tmp = TempPath::new("graph");
+    let mut map = Mmap::create_uri(&tmp.uri()).unwrap();
+    map.pwrite_utf8(0, "hi");
+
+    // A raw file is a LEAF: it streams no children and has no parent.
+    assert_eq!(map.ls().unwrap().count(), 0);
+    assert_eq!(map.ls_recursive().unwrap().count(), 0);
+    assert!(map.parent().is_none());
+    assert_eq!(map.name(), tmp.0.file_name().unwrap().to_string_lossy());
+
+    // Unlike an in-memory leaf, a file has a removable backing — but as a file it refuses
+    // rmdir with the guided fix.
+    assert!(map.rmdir().unwrap_err().to_string().contains("use rmfile"));
+    // Drop the mapping before removal (Windows cannot delete a mapped file).
+    drop(map);
+    let handle = Mmap::open_uri(&tmp.uri()).unwrap();
+    drop(handle); // no live view over the (now non-empty) file
+    let fresh = Mmap::open_uri(&tmp.uri()).unwrap();
+    fresh.rmfile().unwrap();
+    assert!(!tmp.0.exists());
+    fresh.rmfile().unwrap(); // idempotent on missing
+}
+
 // -------------------------------------------------------------------------------------
 // The shared IOBase surface over a file
 // -------------------------------------------------------------------------------------
