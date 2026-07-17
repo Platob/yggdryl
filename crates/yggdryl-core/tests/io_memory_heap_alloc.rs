@@ -180,8 +180,8 @@ fn allocation_budgets() {
         "pwrite_utf8 into a sized sink must not allocate"
     );
 
-    // Lightweight metadata: a heap stores its headers lazily, so constructing a heap and
-    // reading untouched metadata allocates NOTHING (the shared empty map is borrowed).
+    // Lightweight metadata: a heap initializes with an EMPTY headers map directly (an empty
+    // map allocates nothing), so constructing a heap and reading untouched metadata is free.
     let lazy_headers = allocs_over(iters, || {
         let h = Heap::new();
         assert!(h.headers().is_empty());

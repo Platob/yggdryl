@@ -57,9 +57,9 @@ cargo test  -p yggdryl-core --test io_memory_heap_alloc   # deterministic memory
   bytes, so they show a single allocation sized to the payload — nothing throwaway.
 - **The heap itself is lightweight.** It stores no address (every heap reports the lazy-built,
   once-parsed synthetic `mem://heap`; an accessor call costs exactly the 2 small string clones
-  of the cached value — asserted) and its metadata is lazy (`None` until the first
-  `headers_mut()`; reading untouched headers borrows a shared static and allocates **nothing**
-  — asserted).
+  of the cached value — asserted) and initializes with a directly-embedded **empty** headers
+  map (an empty `Headers` allocates nothing, so constructing a heap and reading untouched
+  metadata is allocation-free — asserted).
 - **`with_capacity` amortizes growth.** Filling a `Heap::with_capacity(N)` to `N` bytes stays at
   one allocation (the reservation) regardless of how many writes it takes — asserted in the
   alloc test, and available on **any** source via the trait-level `IOBase::with_capacity`.

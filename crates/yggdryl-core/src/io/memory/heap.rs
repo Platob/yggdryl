@@ -42,19 +42,14 @@ use crate::io::{IOKind, IOMode};
 /// h.read_exact(&mut head).unwrap();
 /// assert_eq!(&head, b"hello");
 /// ```
-/// The shared empty metadata map an untouched heap reports — `headers()` borrows this static
-/// until the first `headers_mut()` materializes a real map, so a metadata-free heap carries a
-/// single lazy pointer instead of an inline map.
-static EMPTY_HEADERS: Headers = Headers::new();
-
 #[derive(Clone, Debug)]
 pub struct Heap {
     data: Vec<u8>,
     /// The built-in cursor — bytes from the start; may sit past the end after a seek.
     position: u64,
-    /// The source's metadata map — **lazy**: `None` (one pointer-sized word) until the first
-    /// `headers_mut()` touches it.
-    headers: Option<Box<Headers>>,
+    /// The source's metadata map — initialized **empty** (an empty `Headers` allocates
+    /// nothing, so an untouched heap stays allocation-free).
+    headers: Headers,
     /// How this source may be accessed (`ReadWrite` by default — it is in-memory).
     mode: IOMode,
 }
@@ -64,7 +59,7 @@ impl Default for Heap {
         Self {
             data: Vec::new(),
             position: 0,
-            headers: None,
+            headers: Headers::new(),
             mode: IOMode::ReadWrite,
         }
     }
@@ -145,14 +140,9 @@ impl Heap {
     }
 
     /// Sets the whole [`Headers`] metadata map in place (use
-    /// [`headers_mut`](IOBase::headers_mut) for entry-level edits). Setting an empty map
-    /// releases the lazy storage back to the shared empty.
+    /// [`headers_mut`](IOBase::headers_mut) for entry-level edits).
     pub fn set_headers(&mut self, headers: Headers) {
-        self.headers = if headers.is_empty() {
-            None
-        } else {
-            Some(Box::new(headers))
-        };
+        self.headers = headers;
     }
 
     /// Returns this heap with its [`Headers`] metadata replaced.
@@ -213,13 +203,11 @@ impl IOBase for Heap {
     // the trait's stable synthetic `mem://heap`.
 
     fn headers(&self) -> &Headers {
-        // Untouched metadata borrows the shared empty map — no per-heap storage.
-        self.headers.as_deref().unwrap_or(&EMPTY_HEADERS)
+        &self.headers
     }
 
     fn headers_mut(&mut self) -> &mut Headers {
-        // First mutable touch materializes the map (one boxed allocation).
-        self.headers.get_or_insert_with(Default::default)
+        &mut self.headers
     }
 
     fn mode(&self) -> IOMode {
