@@ -40,10 +40,8 @@ mod field_carrier;
 mod field_type;
 pub mod fixed;
 mod headers;
-mod io_base;
-mod io_cursor;
 mod io_error;
-mod io_slice;
+pub mod memory;
 pub mod nested;
 mod node_path;
 mod node_ref;
@@ -56,7 +54,6 @@ mod uri;
 mod uri_error;
 mod url;
 pub mod var;
-mod whence;
 
 // The family-agnostic, recursive **erased** primitives — an erased column (`AnySerie`, held as a
 // `Box<dyn AnySerie>`), its recursive erased field (`AnyField`), and its erased cell (`AnyScalar`) —
@@ -77,16 +74,15 @@ pub use fixed::Bytes;
 pub use headers::Headers;
 // The parsed path value type and its guided errors — the addressing form the `get_by_path` resolvers
 // on `AnySerie` / `AnyField` / `AnyScalar` walk.
-pub use io_base::IOBase;
-pub use io_cursor::IOCursor;
 pub use io_error::IoError;
-pub use io_slice::IOSlice;
+// The generic byte / memory-access traits — re-exported at the `io` root so `io::IOBase` etc.
+// stay the canonical paths (their home is now the `io::memory` submodule).
+pub use memory::{IOBase, IOCursor, IOSlice, Whence};
 pub use node_path::{NodePath, PathError, PathSegment};
 pub use scheme::default_port;
 pub use uri::Uri;
 pub use uri_error::UriError;
 pub use url::Url;
-pub use whence::Whence;
 
 // The family-agnostic typed contracts, shared by `fixed` and `var`. Each family adds its own
 // `Fixed*` / `Var*` sub-traits and concrete implementors; these roots are the single place the

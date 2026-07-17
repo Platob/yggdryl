@@ -1,6 +1,6 @@
 //! [`IOBase`] — positioned (random-access) byte read/write, the base of the I/O trait family.
 
-use super::IoError;
+use crate::io::IoError;
 
 /// Random-access byte storage addressed by absolute offset — no cursor. This is the base
 /// every I/O object shares: [`IOCursor`](super::IOCursor) adds a moving position on top, and

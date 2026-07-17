@@ -1,6 +1,7 @@
 //! [`IOSlice`] — bounded sub-views of an [`IOBase`].
 
-use super::{IOBase, IoError};
+use super::IOBase;
+use crate::io::IoError;
 
 /// An [`IOBase`] that can hand out a **bounded window** of itself — a sub-range addressed
 /// from its own offset `0`, as an independent, owned value (no borrow of the parent, so the

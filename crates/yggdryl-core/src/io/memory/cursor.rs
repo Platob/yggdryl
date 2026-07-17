@@ -1,6 +1,7 @@
 //! [`IOCursor`] — a moving read/write position layered over [`IOBase`].
 
-use super::{IOBase, IoError, Whence};
+use super::{IOBase, Whence};
+use crate::io::IoError;
 
 /// An [`IOBase`] with a **cursor**: a current position that [`read`](IOCursor::read) /
 /// [`write`](IOCursor::write) advance, and [`seek`](IOCursor::seek) moves by a signed offset

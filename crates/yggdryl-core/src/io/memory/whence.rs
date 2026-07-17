@@ -1,6 +1,6 @@
 //! [`Whence`] — the reference point a [`seek`](super::IOCursor::seek) is measured from.
 
-use super::IoError;
+use crate::io::IoError;
 
 /// Where a seek offset is measured from — the POSIX `lseek` `whence`: the **start** of the
 /// data (`SEEK_SET`), the **current** cursor position (`SEEK_CUR`), or the **end**
