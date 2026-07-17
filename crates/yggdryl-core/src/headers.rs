@@ -76,9 +76,11 @@ impl Headers {
 
     // ---- construction -------------------------------------------------------------------
 
-    /// An empty header map (no allocation).
-    pub fn new() -> Self {
-        Self::default()
+    /// An empty header map (no allocation — `const`, so it can back a `static` empty map).
+    pub const fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// An empty map with room for `capacity` entries before its first reallocation.

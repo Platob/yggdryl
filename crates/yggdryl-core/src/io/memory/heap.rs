@@ -1,32 +1,33 @@
 //! [`Heap`] — the **in-heap** source for the memory-access traits: an owned byte `Vec` with a
-//! built-in read/write cursor, `Vec`-like capacity, and an addressing [`Uri`]. It is the
-//! reference implementor of [`IOBase`] — the "memory" side of the layer; a memory-mapped source
-//! plugs in against the same trait.
+//! built-in read/write cursor and `Vec`-like capacity. It is the reference implementor of
+//! [`IOBase`] — the "memory" side of the layer; a memory-mapped source plugs in against the
+//! same trait.
 
-use super::base::mem_heap_uri;
 use super::cursor::cursor_methods;
 use super::{IOBase, IoError, Whence};
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
-use crate::uri::Uri;
 
-/// An in-heap byte buffer with a **built-in cursor**, amortized capacity, and an addressing
-/// [`Uri`] — the concrete in-memory implementor of [`IOBase`]. Its stream methods (`read` /
-/// `write` / `seek` / the typed `read_byte` / `read_i32` / …) are the same ones an
-/// [`IOCursor`](super::IOCursor) adds to any source; `Heap` carries them inherently so a heap is
-/// usable as a cursor without wrapping. You can still wrap it — [`cursor`](IOBase::cursor) /
-/// [`window`](IOBase::window) give an independent [`IOCursor`](super::IOCursor) /
-/// [`IOSlice`](super::IOSlice) over any source, including a heap.
+/// An in-heap byte buffer with a **built-in cursor** and amortized capacity — the concrete
+/// in-memory implementor of [`IOBase`]. Its stream methods (`read` / `write` / `seek` / the
+/// typed `read_byte` / `read_i32` / …) are the same ones an [`IOCursor`](super::IOCursor) adds
+/// to any source; `Heap` carries them inherently so a heap is usable as a cursor without
+/// wrapping. You can still wrap it — [`cursor`](IOBase::cursor) / [`window`](IOBase::window)
+/// give an independent [`IOCursor`](super::IOCursor) / [`IOSlice`](super::IOSlice) over any
+/// source, including a heap.
 ///
 /// It grows like a [`Vec`]: [`with_capacity`](Heap::with_capacity) pre-allocates,
 /// [`capacity`](IOBase::capacity) reports the current allocation, and
-/// [`reserve`](IOBase::reserve) amortizes future writes. Its [`uri`](IOBase::uri) addresses it
-/// (the stable synthetic `mem://heap` until one is set with [`with_uri`](Heap::with_uri) / [`set_uri`](Heap::set_uri)).
+/// [`reserve`](IOBase::reserve) amortizes future writes.
 ///
-/// DESIGN: equality is over the **stored bytes only** — the cursor position and the address
-/// [`Uri`] are transient/metadata, so two heaps holding the same bytes compare equal regardless
-/// of where their cursors sit or how they are addressed. `Heap` is a mutable buffer (like
-/// `bytearray`), so it is intentionally **not** `Hash`.
+/// DESIGN: a heap stores **no address** — its [`uri`](IOBase::uri) is always the trait's
+/// stable synthetic `mem://heap` (an anonymous in-memory buffer has no other identity; a
+/// source with a real address, like a future file source, stores and reports its own).
+///
+/// DESIGN: equality is over the **stored bytes only** — the cursor position, [`Headers`], and
+/// [`IOMode`] are transient/metadata, so two heaps holding the same bytes compare equal
+/// regardless of cursor or metadata. `Heap` is a mutable buffer (like `bytearray`), so it is
+/// intentionally **not** `Hash`.
 ///
 /// ```
 /// use yggdryl_core::io::memory::{Heap, IOBase};
@@ -41,15 +42,19 @@ use crate::uri::Uri;
 /// h.read_exact(&mut head).unwrap();
 /// assert_eq!(&head, b"hello");
 /// ```
+/// The shared empty metadata map an untouched heap reports — `headers()` borrows this static
+/// until the first `headers_mut()` materializes a real map, so a metadata-free heap carries a
+/// single lazy pointer instead of an inline map.
+static EMPTY_HEADERS: Headers = Headers::new();
+
 #[derive(Clone, Debug)]
 pub struct Heap {
     data: Vec<u8>,
     /// The built-in cursor — bytes from the start; may sit past the end after a seek.
     position: u64,
-    /// The address of this source (the synthetic `mem://heap` until one is set).
-    uri: Uri,
-    /// The source's metadata map (empty by default).
-    headers: Headers,
+    /// The source's metadata map — **lazy**: `None` (one pointer-sized word) until the first
+    /// `headers_mut()` touches it.
+    headers: Option<Box<Headers>>,
     /// How this source may be accessed (`ReadWrite` by default — it is in-memory).
     mode: IOMode,
 }
@@ -59,15 +64,14 @@ impl Default for Heap {
         Self {
             data: Vec::new(),
             position: 0,
-            uri: Uri::default(),
-            headers: Headers::new(),
+            headers: None,
             mode: IOMode::ReadWrite,
         }
     }
 }
 
 impl Heap {
-    /// An empty buffer with the cursor at `0`, no allocation, and the default address.
+    /// An empty buffer with the cursor at `0` and no allocation.
     pub fn new() -> Self {
         Self::default()
     }
@@ -115,29 +119,10 @@ impl Heap {
         self.data
     }
 
-    /// An explicit copy of this heap — the cross-language name for a clone (bytes, cursor, and
-    /// address all copied).
+    /// An explicit copy of this heap — the cross-language name for a clone (bytes, cursor,
+    /// headers, and mode all copied).
     pub fn copy(&self) -> Self {
         self.clone()
-    }
-
-    /// Sets the addressing [`Uri`] in place.
-    pub fn set_uri(&mut self, uri: Uri) {
-        self.uri = uri;
-    }
-
-    /// Returns this heap with its addressing [`Uri`] set.
-    ///
-    /// ```
-    /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::uri::Uri;
-    ///
-    /// let h = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://buf/1").unwrap());
-    /// assert_eq!(h.uri().host(), Some("buf"));
-    /// ```
-    pub fn with_uri(mut self, uri: Uri) -> Self {
-        self.uri = uri;
-        self
     }
 
     /// Sets the access [`IOMode`] in place.
@@ -160,9 +145,14 @@ impl Heap {
     }
 
     /// Sets the whole [`Headers`] metadata map in place (use
-    /// [`headers_mut`](IOBase::headers_mut) for entry-level edits).
+    /// [`headers_mut`](IOBase::headers_mut) for entry-level edits). Setting an empty map
+    /// releases the lazy storage back to the shared empty.
     pub fn set_headers(&mut self, headers: Headers) {
-        self.headers = headers;
+        self.headers = if headers.is_empty() {
+            None
+        } else {
+            Some(Box::new(headers))
+        };
     }
 
     /// Returns this heap with its [`Headers`] metadata replaced.
@@ -175,7 +165,7 @@ impl Heap {
     /// assert_eq!(h.headers().content_type(), Some("text/plain"));
     /// ```
     pub fn with_headers(mut self, headers: Headers) -> Self {
-        self.headers = headers;
+        self.set_headers(headers);
         self
     }
 
@@ -219,21 +209,17 @@ impl IOBase for Heap {
         self.data.reserve(additional as usize);
     }
 
-    fn uri(&self) -> Uri {
-        // An unset address reports the stable synthetic `mem://heap` default.
-        if self.uri == Uri::default() {
-            mem_heap_uri()
-        } else {
-            self.uri.clone()
-        }
-    }
+    // `uri()` is deliberately NOT overridden: a heap stores no address, so every heap reports
+    // the trait's stable synthetic `mem://heap`.
 
     fn headers(&self) -> &Headers {
-        &self.headers
+        // Untouched metadata borrows the shared empty map — no per-heap storage.
+        self.headers.as_deref().unwrap_or(&EMPTY_HEADERS)
     }
 
     fn headers_mut(&mut self) -> &mut Headers {
-        &mut self.headers
+        // First mutable touch materializes the map (one boxed allocation).
+        self.headers.get_or_insert_with(Default::default)
     }
 
     fn mode(&self) -> IOMode {
@@ -284,7 +270,7 @@ impl PartialEq for Heap {
 impl Eq for Heap {}
 
 /// The value form of a heap is its stored bytes — the same identity its equality uses (the
-/// cursor, address, headers, and mode are transient metadata and are not serialized).
+/// cursor, headers, and mode are transient metadata and are not serialized).
 impl crate::io::Serializable for Heap {
     type Error = IoError;
 

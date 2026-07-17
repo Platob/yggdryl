@@ -278,44 +278,31 @@ def test_heap_is_unhashable_like_bytearray():
 
 
 # -------------------------------------------------------------------------------------
-# Heap address (uri) + copy(uri=...)
+# Heap address (uri)
 # -------------------------------------------------------------------------------------
 
 
-def test_heap_uri_default_and_set():
+def test_heap_uri_is_always_the_synthetic_mem_heap():
+    # A heap stores no address: every heap reports the stable synthetic mem://heap.
     h = Heap(b"x")
     assert isinstance(h.uri, Uri)
-    assert str(h.uri) == "mem://heap"  # stable synthetic in-memory address by default
-
-    addr = Uri.parse("mem://buf/1")
-    h.set_uri(addr)
-    assert h.uri == addr
-    assert h.uri.host == "buf"
-
-
-def test_heap_with_uri_is_a_copy():
-    h = Heap(b"x")
-    addr = Uri.parse("mem://scratch/a")
-    named = h.with_uri(addr)
-    assert named.uri == addr
-    assert str(h.uri) == "mem://heap"  # original address untouched (still the default)
-    assert named == h  # equality is over the bytes; the address is metadata
+    assert str(h.uri) == "mem://heap"
+    assert h.uri.scheme == "mem"
+    assert h.uri.host == "heap"
+    assert str(Heap().uri) == "mem://heap"
+    # There is deliberately no setter (an anonymous in-memory buffer has no other identity).
+    assert not hasattr(h, "set_uri")
+    assert not hasattr(h, "with_uri")
 
 
-def test_heap_copy_with_uri_override():
-    h = Heap(b"data").with_uri(Uri.parse("mem://a/1"))
-    plain = h.copy()  # no-arg copy keeps the address
-    assert plain.uri == Uri.parse("mem://a/1")
+def test_heap_copy_is_a_plain_clone():
+    h = Heap(b"data")
+    plain = h.copy()
+    assert plain == h
     assert plain.to_bytes() == b"data"
-
-    readdressed = h.copy(uri=Uri.parse("mem://b/2"))
-    assert readdressed.uri == Uri.parse("mem://b/2")
-    assert readdressed.to_bytes() == b"data"
-    assert h.uri == Uri.parse("mem://a/1")  # original untouched
-
-    # copy.copy / copy.deepcopy stay plain clones (keep the address).
-    assert copy.copy(h).uri == Uri.parse("mem://a/1")
-    assert copy.deepcopy(h).uri == Uri.parse("mem://a/1")
+    # copy.copy / copy.deepcopy behave identically.
+    assert copy.copy(h) == h
+    assert copy.deepcopy(h) == h
 
 
 # -------------------------------------------------------------------------------------
@@ -406,10 +393,9 @@ def test_cursor_typed_and_positioned_and_eof():
 
 
 def test_cursor_inner_and_uri_delegate():
-    addr = Uri.parse("mem://c/1")
-    h = Heap(b"payload").with_uri(addr)
+    h = Heap(b"payload")
     cur = Cursor.over(h)
-    assert cur.uri == addr  # delegates to the wrapped source's address
+    assert str(cur.uri) == "mem://heap"  # delegates to the wrapped source's address
     inner = cur.inner()
     assert isinstance(inner, Heap)
     assert inner.to_bytes() == b"payload"
@@ -462,10 +448,9 @@ def test_slice_typed_reads_within_window():
 
 
 def test_slice_inner_and_uri_delegate():
-    addr = Uri.parse("mem://s/1")
-    h = Heap(b"hello world").with_uri(addr)
+    h = Heap(b"hello world")
     win = Slice(h, 0, 5)
-    assert win.uri == addr  # delegates to the wrapped source's address
+    assert str(win.uri) == "mem://heap"  # delegates to the wrapped source's address
     inner = win.inner()
     assert isinstance(inner, Heap)
     assert inner.to_bytes() == b"hello world"  # inner() is the whole source
@@ -656,10 +641,11 @@ def test_heap_serialize_deserialize_round_trip():
 
 
 def test_heap_pickle_round_trip_is_content_only():
-    h = Heap(b"payload").with_uri(Uri.parse("mem://a/1"))
+    h = Heap(b"payload").with_mode(IOMode.Read)
     h.set_position(3)
     back = pickle.loads(pickle.dumps(h))
     assert back == h  # equality is over the stored bytes only
     assert back.to_bytes() == b"payload"
     assert back.position == 0  # the cursor is transient
-    assert str(back.uri) == "mem://heap"  # the address is metadata, not value
+    assert back.mode == IOMode.ReadWrite  # metadata is not serialized
+    assert str(back.uri) == "mem://heap"  # every heap reports the synthetic address

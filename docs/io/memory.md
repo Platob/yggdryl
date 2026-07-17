@@ -121,47 +121,42 @@ constructor accepts a bytes value (or nothing) and infers what to build.
 
 ## Addressing
 
-Every source carries an addressing [`Uri`](../uri.md) — `uri()` on any `IOBase`. An unaddressed
-in-memory source reports the **`mem` scheme**'s stable synthetic address `mem://heap`
-(deterministic — the real allocation address is deliberately not leaked); a `Heap` can be given
-a real one (`with_uri` / `set_uri`), and the `cursor()` / `window()` wrappers delegate to their
-inner source's. The address is metadata: it is **not** part of a heap's value equality (two
-heaps with the same bytes are equal regardless of address).
+Every source carries an addressing [`Uri`](../uri.md) — `uri()` on any `IOBase`. An in-memory
+source stores **no address**: every `Heap` reports the **`mem` scheme**'s stable synthetic
+address `mem://heap` (deterministic — an anonymous buffer has no other identity, and the real
+allocation address is deliberately not leaked). The address is **lazy-built**: parsed once into
+a process-wide static and cloned per call, never re-parsed. A source with a real address (a
+future file/network source) reports its own; the `cursor()` / `window()` wrappers delegate to
+their inner source's.
 
 === "Python"
 
     ```python
     from yggdryl.memory import Heap
-    from yggdryl.uri import Uri
 
-    assert str(Heap().uri) == "mem://heap"          # the synthetic default
-    h = Heap(b"data").with_uri(Uri.parse("mem://scratch/a"))
-    assert h.uri.host == "scratch"
-    assert h == Heap(b"data")           # address is not part of equality
+    h = Heap(b"data")
+    assert str(h.uri) == "mem://heap"     # every heap: the synthetic address
+    assert h.uri.scheme == "mem" and h.uri.host == "heap"
     ```
 
 === "Node"
 
     ```js
     const { Heap } = require('yggdryl').memory
-    const { Uri } = require('yggdryl').uri
 
-    console.assert(new Heap().uri.toString() === 'mem://heap')  // the synthetic default
-    const h = new Heap(Buffer.from('data')).withUri(Uri.parse('mem://scratch/a'))
-    console.assert(h.uri.host === 'scratch')
-    console.assert(h.equals(new Heap(Buffer.from('data'))))
+    const h = new Heap(Buffer.from('data'))
+    console.assert(h.uri.toString() === 'mem://heap')  // every heap: the synthetic address
+    console.assert(h.uri.scheme === 'mem' && h.uri.host === 'heap')
     ```
 
 === "Rust"
 
     ```rust
     use yggdryl_core::io::memory::{Heap, IOBase};
-    use yggdryl_core::uri::Uri;
 
-    assert_eq!(Heap::new().uri().to_string(), "mem://heap"); // the synthetic default
-    let h = Heap::from_slice(b"data").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
-    assert_eq!(h.uri().host(), Some("scratch"));
-    assert_eq!(h, Heap::from_slice(b"data")); // address is not part of equality
+    let h = Heap::from_slice(b"data");
+    assert_eq!(h.uri().to_string(), "mem://heap"); // every heap: the synthetic address
+    assert_eq!(h.uri().scheme(), Some("mem"));
     ```
 
 ## Metadata, mode, and kind

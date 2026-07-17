@@ -275,37 +275,24 @@ test('toString reports the length', () => {
 // Heap address (uri)
 // -------------------------------------------------------------------------------------
 
-test('uri defaults to the synthetic mem://heap; setUri / withUri attach an address', () => {
+test('uri is always the synthetic mem://heap (a heap stores no address)', () => {
   const h = new Heap(Buffer.from('x'))
   assert.ok(h.uri instanceof Uri)
-  assert.equal(h.uri.toString(), 'mem://heap') // stable synthetic default
-
-  // withUri returns a copy with the address set; the original is untouched.
-  const named = h.withUri(Uri.parse('mem://buf/1'))
-  assert.equal(named.uri.host, 'buf')
-  assert.equal(named.uri.toString(), 'mem://buf/1')
-  assert.equal(h.uri.toString(), 'mem://heap') // original untouched (still the default)
-
-  // setUri mutates in place.
-  h.setUri(Uri.parse('mem://scratch/a'))
-  assert.equal(h.uri.host, 'scratch')
+  assert.equal(h.uri.toString(), 'mem://heap') // stable synthetic address
+  assert.equal(h.uri.scheme, 'mem')
+  assert.equal(h.uri.host, 'heap')
+  assert.equal(new Heap().uri.toString(), 'mem://heap')
+  // There is deliberately no setter (an anonymous in-memory buffer has no other identity).
+  assert.equal(h.setUri, undefined)
+  assert.equal(h.withUri, undefined)
 })
 
-test('copy(uri) overrides the address; no-arg copy is a plain clone', () => {
-  const h = new Heap(Buffer.from('orig')).withUri(Uri.parse('mem://a/1'))
-
-  // No-arg copy keeps the address and is independent.
+test('copy is a plain clone (bytes, cursor, headers, mode)', () => {
+  const h = new Heap(Buffer.from('orig'))
   const clone = h.copy()
   assert.ok(clone.equals(h))
-  assert.equal(clone.uri.toString(), 'mem://a/1')
   clone.pwriteByte(0, 0x5a)
   assert.deepEqual(h.toBytes(), Buffer.from('orig')) // original untouched
-
-  // copy(uri) overrides the address, keeping the bytes.
-  const readdressed = h.copy(Uri.parse('mem://b/2'))
-  assert.deepEqual(readdressed.toBytes(), Buffer.from('orig'))
-  assert.equal(readdressed.uri.toString(), 'mem://b/2')
-  assert.equal(h.uri.toString(), 'mem://a/1') // original untouched
 })
 
 // -------------------------------------------------------------------------------------
@@ -439,10 +426,10 @@ test('Slice.over: bounded reads/writes clamp to the window; OOB throws', () => {
 // -------------------------------------------------------------------------------------
 
 test('Cursor and Slice delegate uri to the wrapped source', () => {
-  const named = new Heap(Buffer.from('data')).withUri(Uri.parse('mem://buf/7'))
-  assert.equal(named.cursor().uri.toString(), 'mem://buf/7')
-  assert.equal(named.window(0, 2).uri.toString(), 'mem://buf/7')
-  assert.equal(Slice.over(named, 1, 2).uri.host, 'buf')
+  const h = new Heap(Buffer.from('data'))
+  assert.equal(h.cursor().uri.toString(), 'mem://heap')
+  assert.equal(h.window(0, 2).uri.toString(), 'mem://heap')
+  assert.equal(Slice.over(h, 1, 2).uri.host, 'heap')
 })
 
 // -------------------------------------------------------------------------------------
@@ -649,7 +636,7 @@ test('pwriteI32Repeat / pwriteI64Repeat fill typed runs past the staging chunk',
 // -------------------------------------------------------------------------------------
 
 test('serializeBytes / deserializeBytes round-trip the stored bytes (metadata excluded)', () => {
-  const h = new Heap(Buffer.from('hello')).withUri(Uri.parse('mem://a/1'))
+  const h = new Heap(Buffer.from('hello')).withMode(io.IOMode.Read)
   h.setPosition(3)
 
   const frame = h.serializeBytes()
@@ -659,7 +646,7 @@ test('serializeBytes / deserializeBytes round-trip the stored bytes (metadata ex
   assert.ok(back instanceof Heap)
   assert.ok(back.equals(h)) // same identity equals uses
   assert.equal(back.position, 0) // cursor is transient — not carried
-  assert.equal(back.uri.toString(), 'mem://heap') // address is metadata — not carried
+  assert.equal(back.mode, io.IOMode.ReadWrite) // metadata is not serialized
 
   const empty = Heap.deserializeBytes(Buffer.alloc(0))
   assert.ok(empty.isEmpty())

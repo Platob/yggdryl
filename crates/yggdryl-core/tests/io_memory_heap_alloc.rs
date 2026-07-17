@@ -179,4 +179,28 @@ fn allocation_budgets() {
         utf8_write, 0,
         "pwrite_utf8 into a sized sink must not allocate"
     );
+
+    // Lightweight metadata: a heap stores its headers lazily, so constructing a heap and
+    // reading untouched metadata allocates NOTHING (the shared empty map is borrowed).
+    let lazy_headers = allocs_over(iters, || {
+        let h = Heap::new();
+        assert!(h.headers().is_empty());
+        assert!(!h.headers().contains("anything"));
+    });
+    assert_eq!(
+        lazy_headers, 0,
+        "untouched heap metadata must allocate nothing (got {lazy_headers})"
+    );
+
+    // Lazy-built address: `uri()` clones the once-parsed static — exactly the two small
+    // string allocations of the clone ("mem" + "heap"), never a re-parse.
+    let h = Heap::new();
+    let lazy_uri = allocs_over(iters, || {
+        let _ = h.uri();
+    });
+    assert_eq!(
+        lazy_uri,
+        2 * iters,
+        "uri() must clone the cached mem://heap (2 small strings), not re-parse (got {lazy_uri})"
+    );
 }

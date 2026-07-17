@@ -455,25 +455,12 @@ impl Heap {
 
     // ---- address (uri) -----------------------------------------------------------------
 
-    /// The [`Uri`] that addresses this heap (the stable synthetic `mem://heap` until one is set).
+    /// The [`Uri`] that addresses this heap — always the stable synthetic `mem://heap` (a
+    /// heap stores no address; an anonymous in-memory buffer has no other identity).
     #[napi(getter)]
     pub fn uri(&self) -> Uri {
         Uri {
             inner: self.inner.uri(),
-        }
-    }
-
-    /// Sets the addressing `Uri` in place.
-    #[napi]
-    pub fn set_uri(&mut self, uri: &Uri) {
-        self.inner.set_uri(uri.inner.clone());
-    }
-
-    /// Returns a copy of this heap with its addressing `Uri` set.
-    #[napi]
-    pub fn with_uri(&self, uri: &Uri) -> Heap {
-        Heap {
-            inner: self.inner.clone().with_uri(uri.inner.clone()),
         }
     }
 
@@ -556,15 +543,12 @@ impl Heap {
         self.inner.as_slice().to_vec().into()
     }
 
-    /// An explicit copy of this heap (bytes and cursor), optionally overriding the addressing
-    /// `Uri` — like `copy(uri=…)`. With no argument it is a plain clone.
+    /// An explicit copy of this heap — bytes, cursor, headers, and mode all copied.
     #[napi]
-    pub fn copy(&self, uri: Option<&Uri>) -> Heap {
-        let mut inner = self.inner.clone();
-        if let Some(uri) = uri {
-            inner.set_uri(uri.inner.clone());
+    pub fn copy(&self) -> Heap {
+        Heap {
+            inner: self.inner.clone(),
         }
-        Heap { inner }
     }
 
     /// Content equality — equal iff the stored bytes are equal, regardless of cursor position.

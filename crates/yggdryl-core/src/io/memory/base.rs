@@ -6,9 +6,14 @@ use crate::io::{IOKind, IOMode};
 use crate::uri::Uri;
 
 /// The default address of an unaddressed in-memory source — the stable synthetic `mem://heap`
-/// (deterministic; the real allocation address is deliberately not leaked).
+/// (deterministic; the real allocation address is deliberately not leaked). **Lazy-built**:
+/// parsed once on first use into a process-wide static, then cloned per call — an accessor
+/// costs a couple of small string clones, never a re-parse.
 pub(crate) fn mem_heap_uri() -> Uri {
-    Uri::parse_str("mem://heap").expect("the static mem://heap URI parses")
+    static MEM_HEAP: std::sync::OnceLock<Uri> = std::sync::OnceLock::new();
+    MEM_HEAP
+        .get_or_init(|| Uri::parse_str("mem://heap").expect("the static mem://heap URI parses"))
+        .clone()
 }
 
 /// The element count bulk operations stage per stack chunk — sized so the largest staged
@@ -91,20 +96,17 @@ pub trait IOBase {
 
     /// The [`Uri`] that **addresses** this source — every source is locatable. The default is
     /// the stable synthetic in-memory address `mem://heap` (the `mem` scheme addresses
-    /// in-memory sources; deterministic, so tests and logs can rely on it). A source with a
-    /// real address (a set [`Heap`](super::Heap) URI, a future file/network source) overrides
-    /// it to return its own.
+    /// in-memory sources; deterministic, so tests and logs can rely on it) — an anonymous
+    /// in-memory source ([`Heap`](super::Heap)) stores no address and keeps this default. A
+    /// source with a real address (a future file/network source) overrides it to return its
+    /// own.
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::uri::Uri;
     ///
-    /// // An unaddressed in-memory source reports the synthetic mem:// address…
+    /// // An in-memory source reports the synthetic mem:// address.
     /// assert_eq!(Heap::new().uri().to_string(), "mem://heap");
     /// assert_eq!(Heap::new().uri().scheme(), Some("mem"));
-    /// // …and a real one can be attached.
-    /// let named = Heap::new().with_uri(Uri::parse_str("mem://scratch/a").unwrap());
-    /// assert_eq!(named.uri().host(), Some("scratch"));
     /// ```
     fn uri(&self) -> Uri {
         mem_heap_uri()

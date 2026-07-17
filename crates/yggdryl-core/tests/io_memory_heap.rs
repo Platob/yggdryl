@@ -298,20 +298,18 @@ fn from_vec_is_zero_copy_into_vec_roundtrips() {
 // -------------------------------------------------------------------------------------
 
 #[test]
-fn uri_default_is_mem_heap_and_settable() {
-    // An unaddressed heap reports the stable synthetic mem:// address (deterministic).
+fn uri_is_always_the_synthetic_mem_heap() {
+    // A heap stores no address: every heap reports the stable synthetic mem:// address
+    // (deterministic), regardless of contents or state.
     assert_eq!(Heap::new().uri().to_string(), "mem://heap");
     assert_eq!(Heap::new().uri().scheme(), Some("mem"));
     assert_eq!(Heap::new().uri().host(), Some("heap"));
-    let named = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
-    assert_eq!(named.uri().host(), Some("scratch"));
-
-    let mut h = Heap::new();
-    h.set_uri(Uri::parse_str("mem://b/1").unwrap());
-    assert_eq!(h.uri().host(), Some("b"));
-
-    // The address is metadata, not part of value equality (like the cursor).
-    assert_eq!(named, Heap::from_slice(b"x"));
+    assert_eq!(Heap::from_slice(b"x").uri().to_string(), "mem://heap");
+    // It parses as a real Uri.
+    assert_eq!(
+        Uri::parse_str("mem://heap").unwrap().to_string(),
+        Heap::new().uri().to_string()
+    );
 }
 
 // -------------------------------------------------------------------------------------
@@ -339,10 +337,9 @@ fn cursor_wrapper_over_a_source() {
 
 #[test]
 fn cursor_wrapper_delegates_uri() {
-    let cur = Heap::from_slice(b"x")
-        .with_uri(Uri::parse_str("mem://h/1").unwrap())
-        .cursor();
-    assert_eq!(cur.uri().host(), Some("h"));
+    // The wrapper reports its inner source's address — for a heap, the synthetic default.
+    let cur = Heap::from_slice(b"x").cursor();
+    assert_eq!(cur.uri().to_string(), "mem://heap");
 }
 
 // -------------------------------------------------------------------------------------
@@ -559,12 +556,12 @@ fn mode_and_kind_accessors() {
 #[test]
 fn heap_serializable_is_its_bytes() {
     use yggdryl_core::io::Serializable;
-    let h = Heap::from_slice(b"payload").with_uri(Uri::parse_str("mem://x/1").unwrap());
+    let h = Heap::from_slice(b"payload").with_mode(yggdryl_core::io::IOMode::Read);
     let bytes = Serializable::serialize_bytes(&h);
     assert_eq!(bytes, b"payload");
     let back = <Heap as Serializable>::deserialize_bytes(&bytes).unwrap();
     assert_eq!(back, h); // equality is content-only, so the round-trip is exact
-    assert_eq!(back.uri().to_string(), "mem://heap"); // metadata is not serialized
+    assert_eq!(back.mode(), yggdryl_core::io::IOMode::ReadWrite); // metadata is not serialized
 }
 
 // -------------------------------------------------------------------------------------

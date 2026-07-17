@@ -412,23 +412,12 @@ impl Heap {
 
     // ---- address (uri) -----------------------------------------------------------------
 
-    /// The [`Uri`] that **addresses** this heap — the stable synthetic `mem://heap` until one is set.
+    /// The [`Uri`] that **addresses** this heap — always the stable synthetic `mem://heap`
+    /// (a heap stores no address; an anonymous in-memory buffer has no other identity).
     #[getter]
     fn uri(&self) -> Uri {
         Uri {
             inner: self.inner.uri(),
-        }
-    }
-
-    /// Sets the addressing [`Uri`] in place.
-    fn set_uri(&mut self, uri: &Uri) {
-        self.inner.set_uri(uri.inner.clone());
-    }
-
-    /// Returns a copy of this heap with its addressing [`Uri`] set.
-    fn with_uri(&self, uri: &Uri) -> Heap {
-        Heap {
-            inner: self.inner.clone().with_uri(uri.inner.clone()),
         }
     }
 
@@ -541,15 +530,10 @@ impl Heap {
         Ok((ctor, (state,)))
     }
 
-    /// An explicit copy of this buffer (equivalent to `copy.copy(heap)`); pass `uri` to
-    /// override the copy's address (defaults to `None` = keep this heap's).
-    #[pyo3(signature = (uri = None))]
-    fn copy(&self, uri: Option<&Uri>) -> Self {
-        let mut inner = self.inner.clone();
-        if let Some(uri) = uri {
-            inner.set_uri(uri.inner.clone());
-        }
-        Self { inner }
+    /// An explicit copy of this buffer (equivalent to `copy.copy(heap)`) — bytes, cursor,
+    /// headers, and mode all copied.
+    fn copy(&self) -> Self {
+        self.clone()
     }
 
     fn __copy__(&self) -> Self {
