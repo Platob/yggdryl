@@ -168,6 +168,17 @@ impl<T: NativeType> Scalar<T> {
         }
     }
 
+    /// A **fully independent** deep copy — provided for a uniform cross-family API alongside the
+    /// columns' `deep_copy`.
+    ///
+    /// DESIGN: a scalar holds a single `Copy` value (plus its small field), so its
+    /// [`clone`](Clone) (`copy` in the bindings) is already a cheap, fully independent copy — a
+    /// scalar copy is **not** a heavy operation and shares no `Arc` (unlike the `Arc`-backed
+    /// columns, whose `clone` is shallow). So `deep_copy` equals `clone` here.
+    pub fn deep_copy(&self) -> Self {
+        self.clone()
+    }
+
     /// This scalar **broadcast to a length-1 [`Serie`]** — the inverse of
     /// [`Serie::as_scalar`](Serie::as_scalar).
     ///

@@ -354,8 +354,22 @@ pub trait AnySerie: Debug + Send + Sync {
     #[cfg(feature = "arrow")]
     fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError>;
 
-    /// A boxed clone (value semantics for `Box<dyn AnySerie>`).
+    /// A boxed clone (value semantics for `Box<dyn AnySerie>`) — **shallow**: the `Arc`-backed
+    /// families (fixed primitive / decimal / temporal) share their buffer `Arc` with `self` (a
+    /// cheap refcount bump), split only on a copy-on-write mutation; the `Vec`-backed families copy.
     fn clone_box(&self) -> Box<dyn AnySerie>;
+
+    /// A **fully independent** deep copy — every payload buffer is copied, so the result shares
+    /// **no** `Arc` with `self` and a later in-place mutation of either never touches the other's
+    /// allocation. Use it to pre-pay the copy before a run of in-place ops that should never COW.
+    ///
+    /// The default is [`clone_box`](AnySerie::clone_box), which is *already* an independent copy for
+    /// the `Vec`-backed leaves (utf8/binary, fixed-size, null); the **`Arc`-backed** leaves (fixed
+    /// primitive / decimal / temporal) and the **nested** containers (struct / list / map, which
+    /// recurse into their children) override it to force a real payload copy.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        self.clone_box()
+    }
 
     /// Content equality against another erased column (equal type *and* value).
     fn eq_any(&self, other: &dyn AnySerie) -> bool;
@@ -690,11 +704,162 @@ impl dyn AnySerie {
         Ok(())
     }
 
+    /// **Overwrites every null cell with `value` in place** and drops the leaf validity mask — the
+    /// erased, copy-on-write twin of the return-new [`fill_null`](AnySerie::fill_null). Mutates
+    /// self's own buffer (never clones it): **no payload copy when owned, one COW when shared**. A
+    /// [`Null`](AnyScalar::Null) `value` is a no-op (filling nulls with null keeps them). Supported on
+    /// the **fixed-primitive** and **utf8 / binary** leaf columns (the families with an in-place fill
+    /// twin); a present `value` must match the leaf's type, else a guided
+    /// [`Unsupported`](IoError::Unsupported). A **decimal / temporal / fixed-size / null / nested**
+    /// column is a guided error — use the return-new [`fill_null`](AnySerie::fill_null).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{Field, Serie};
+    /// use yggdryl_core::io::{boxed, AnyScalar, AnySerie, DataTypeId};
+    ///
+    /// let mut col = boxed(Serie::from_options(&[Some(1i32), None, Some(3)]));
+    /// let zero = AnyScalar::leaf(Field::of("", DataTypeId::I32, 4, false), 0i32.to_le_bytes().to_vec());
+    /// col.fill_null_mut(&zero).unwrap();
+    /// assert_eq!(col.as_serie::<i32>().unwrap().to_options(), [Some(1), Some(0), Some(3)]);
+    /// ```
+    pub fn fill_null_mut(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        macro_rules! prim {
+            ($t:ty) => {{
+                let serie = self
+                    .as_any_mut()
+                    .downcast_mut::<Serie<$t>>()
+                    .expect("type_id names this concrete Serie");
+                match value {
+                    AnyScalar::Null => Ok(()), // filling nulls with a null is a no-op
+                    AnyScalar::Leaf { field, bytes }
+                        if FieldType::type_id(field) == <$t as NativeType>::TYPE_ID
+                            && bytes.len() == <$t as NativeType>::WIDTH =>
+                    {
+                        serie.fill_null_mut(<$t as NativeType>::read_le(bytes));
+                        Ok(())
+                    }
+                    other => Err(fill_null_type_mismatch(<$t as NativeType>::TYPE_ID, other)),
+                }
+            }};
+        }
+        macro_rules! var {
+            ($serie:ty, $id:expr) => {{
+                let serie = self
+                    .as_any_mut()
+                    .downcast_mut::<$serie>()
+                    .expect("type_id names this concrete ByteSerie");
+                match value {
+                    AnyScalar::Null => Ok(()),
+                    AnyScalar::Leaf { field, bytes } if FieldType::type_id(field) == $id => {
+                        serie.fill_null_mut(bytes)
+                    }
+                    other => Err(fill_null_type_mismatch($id, other)),
+                }
+            }};
+        }
+        match AnySerie::type_id(self) {
+            DataTypeId::U8 => prim!(u8),
+            DataTypeId::U16 => prim!(u16),
+            DataTypeId::U32 => prim!(u32),
+            DataTypeId::U64 => prim!(u64),
+            DataTypeId::U96 => prim!(U96),
+            DataTypeId::U128 => prim!(u128),
+            DataTypeId::U256 => prim!(U256),
+            DataTypeId::I8 => prim!(i8),
+            DataTypeId::I16 => prim!(i16),
+            DataTypeId::I32 => prim!(i32),
+            DataTypeId::I64 => prim!(i64),
+            DataTypeId::I96 => prim!(I96),
+            DataTypeId::I128 => prim!(i128),
+            DataTypeId::I256 => prim!(I256),
+            DataTypeId::F16 => prim!(f16),
+            DataTypeId::F32 => prim!(f32),
+            DataTypeId::F64 => prim!(f64),
+            DataTypeId::Utf8 => var!(Utf8Serie, DataTypeId::Utf8),
+            DataTypeId::Binary => var!(BinarySerie, DataTypeId::Binary),
+            other => Err(inplace_reshape_unsupported(
+                other,
+                "fill_null_mut",
+                "fill_null",
+            )),
+        }
+    }
+
+    /// **In-place row filter / compaction** — keeps only the rows where `mask[i]` is `true`, in place
+    /// and shrinking the length; the erased twin of the return-new [`filter`](AnySerie::filter).
+    /// Mutates self's own buffer (never clones it): **no payload copy when owned, one COW when
+    /// shared** (fixed families), or an owned-`Vec` rebuild (var families). Errors
+    /// [`Unsupported`](IoError::Unsupported) if `mask.len() != self.len()`. Supported on the
+    /// **fixed-primitive** and **utf8 / binary** leaf columns; a **decimal / temporal / fixed-size /
+    /// null / nested** column is a guided error — use the return-new [`filter`](AnySerie::filter)
+    /// (a nested filter drops whole rows / rebuilds offsets, which has no in-place twin).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    ///
+    /// let mut col = boxed(Serie::from_values(&[1i64, 2, 3, 4]));
+    /// col.retain(&[true, false, true, true]).unwrap();
+    /// assert_eq!(col.as_serie::<i64>().unwrap().to_options(), [Some(1), Some(3), Some(4)]);
+    /// ```
+    pub fn retain(&mut self, mask: &[bool]) -> Result<(), IoError> {
+        macro_rules! prim {
+            ($t:ty) => {
+                self.as_any_mut()
+                    .downcast_mut::<Serie<$t>>()
+                    .expect("type_id names this concrete Serie")
+                    .retain(mask)
+            };
+        }
+        macro_rules! var {
+            ($serie:ty) => {
+                self.as_any_mut()
+                    .downcast_mut::<$serie>()
+                    .expect("type_id names this concrete ByteSerie")
+                    .retain(mask)
+            };
+        }
+        match AnySerie::type_id(self) {
+            DataTypeId::U8 => prim!(u8),
+            DataTypeId::U16 => prim!(u16),
+            DataTypeId::U32 => prim!(u32),
+            DataTypeId::U64 => prim!(u64),
+            DataTypeId::U96 => prim!(U96),
+            DataTypeId::U128 => prim!(u128),
+            DataTypeId::U256 => prim!(U256),
+            DataTypeId::I8 => prim!(i8),
+            DataTypeId::I16 => prim!(i16),
+            DataTypeId::I32 => prim!(i32),
+            DataTypeId::I64 => prim!(i64),
+            DataTypeId::I96 => prim!(I96),
+            DataTypeId::I128 => prim!(i128),
+            DataTypeId::I256 => prim!(I256),
+            DataTypeId::F16 => prim!(f16),
+            DataTypeId::F32 => prim!(f32),
+            DataTypeId::F64 => prim!(f64),
+            DataTypeId::Utf8 => var!(Utf8Serie),
+            DataTypeId::Binary => var!(BinarySerie),
+            other => Err(inplace_reshape_unsupported(other, "retain", "filter")),
+        }
+    }
+
     /// A transient `NodeRef` cursor rooted at this column — the crate-internal entry point for the
     /// graph-cursor drill-down. Reserved for later phases (only its own tests use it today).
     #[allow(dead_code)]
     pub(crate) fn root_ref(&self) -> super::node_ref::NodeRef<'_> {
         super::node_ref::NodeRef::new(self)
+    }
+}
+
+/// The guided error for an in-place reshape (`fill_null_mut` / `retain`) on a column family without
+/// an in-place twin (decimal / temporal / fixed-size / null / nested) — names the return-new form.
+fn inplace_reshape_unsupported(id: DataTypeId, op: &str, return_new: &str) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "in-place {op} is only supported on a fixed-primitive or utf8/binary leaf column; a {} \
+             column has no in-place twin — use the return-new `{return_new}` instead",
+            id.name()
+        ),
     }
 }
 
@@ -1098,6 +1263,12 @@ impl<T: NativeType> AnySerie for Serie<T> {
         Ok(arrow_array::make_array(data))
     }
 
+    // A fixed primitive column is `Arc`-backed, so `clone_box` shares the buffer — override
+    // `deep_copy` to force an independent payload copy.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(Serie::deep_copy(self))
+    }
+
     eq_via_downcast!();
 }
 
@@ -1209,6 +1380,11 @@ where
     #[cfg(feature = "arrow")]
     fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
         Ok(std::sync::Arc::new(DecimalSerie::to_arrow_array(self)))
+    }
+
+    // A decimal column is `Arc`-backed — override `deep_copy` to force an independent payload copy.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(DecimalSerie::deep_copy(self))
     }
 
     eq_via_downcast!();
@@ -1614,6 +1790,11 @@ impl<B: TemporalBacking> AnySerie for TemporalSerie<B> {
     #[cfg(feature = "arrow")]
     fn to_arrow_array(&self) -> Result<arrow_array::ArrayRef, IoError> {
         TemporalSerie::to_arrow_array(self)
+    }
+
+    // A temporal column is `Arc`-backed — override `deep_copy` to force an independent payload copy.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(TemporalSerie::deep_copy(self))
     }
 
     eq_via_downcast!();

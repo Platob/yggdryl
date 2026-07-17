@@ -589,6 +589,56 @@ impl<E: VarElement> ByteSerie<E> {
         })
     }
 
+    /// **Overwrites every null slot with `value` in place** and drops the validity mask — the
+    /// length-preserving twin of [`fill_null_bytes`](ByteSerie::fill_null_bytes). Validates `value`
+    /// for the kind first (a bad value leaves the column unchanged); a no-null column is left
+    /// untouched. The end state equals `*self = self.fill_null_bytes(value)`.
+    ///
+    /// DESIGN: a var column stores owned `Vec`s (`offsets` / `data`), and a null slot is zero-width,
+    /// so filling it **changes the data length** and shifts trailing offsets — there is no in-place
+    /// buffer mutation to reuse (unlike the `Arc`-backed fixed families' copy-on-write); it rebuilds
+    /// the two `Vec`s in one pass and adopts them, mutating `self` without a fresh column allocation
+    /// beyond those buffers.
+    pub fn fill_null_mut(&mut self, value: &[u8]) -> Result<(), IoError> {
+        E::validate(value)?; // validate even with no nulls, so the error is consistent
+        if self.has_nulls() {
+            *self = self.fill_null_bytes(value)?;
+        }
+        Ok(())
+    }
+
+    /// **In-place row filter / compaction** — keeps only the elements where `mask[i]` is `true`,
+    /// shrinking the length. The length-shrinking twin of [`filter`](ByteSerie::filter) (which
+    /// returns a new column). Errors ([`Unsupported`](IoError::Unsupported)) if
+    /// `mask.len() != self.len()` (self left unchanged). The end state equals
+    /// `*self = self.filter(mask)`.
+    ///
+    /// DESIGN: like [`fill_null_mut`](ByteSerie::fill_null_mut), a var column's compaction rewrites
+    /// its owned `offsets` / `data` `Vec`s (dropping the removed values re-lays the data blob), so it
+    /// reuses the single-pass, pre-sized [`filter`](ByteSerie::filter) rebuild and adopts its parts —
+    /// there is no zero-copy in-place form to gain from (the `Arc`-backed fixed `retain` has one).
+    pub fn retain(&mut self, mask: &[bool]) -> Result<(), IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        if mask.iter().all(|&keep| keep) {
+            return Ok(()); // nothing dropped — leave the column untouched
+        }
+        *self = self.filter(mask)?;
+        Ok(())
+    }
+
+    /// A **fully independent** deep copy of the column.
+    ///
+    /// DESIGN: a var column is `Vec`-backed (owned `offsets` / `data` / validity), so its
+    /// [`clone`](Clone) (`copy` in the bindings) is **already** an independent payload copy —
+    /// `deep_copy` equals `clone` here. The shallow-vs-deep distinction is meaningful only for the
+    /// `Arc`-backed fixed / decimal / temporal families, where `clone` shares the buffer `Arc` and
+    /// `deep_copy` forces a payload copy; this method exists for a uniform cross-family API.
+    pub fn deep_copy(&self) -> Self {
+        self.clone()
+    }
+
     /// Writes the column to `sink`: `[len:u64][flags:u8][validity?][offsets:(len+1)×i32]`
     /// `[data_len:u64][data]`.
     ///

@@ -612,6 +612,21 @@ impl MapSerie {
         })
     }
 
+    /// A **fully independent** deep copy — the flattened `key`/`value` entries struct is deep-copied
+    /// ([`StructSerie::deep_copy`](crate::io::nested::StructSerie::deep_copy)), so no `Arc`-backed
+    /// leaf buffer is shared with `self`. Contrast the shallow [`clone`](Clone), which `Arc`-shares
+    /// the child buffers.
+    pub fn deep_copy(&self) -> MapSerie {
+        Self {
+            entries: self.entries.deep_copy(),
+            offsets: self.offsets.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            keys_sorted: self.keys_sorted,
+            field: self.field.clone(),
+        }
+    }
+
     // ---- serialization: the map schema, then validity + offsets, then the entries struct -------
 
     /// This map column's canonical bytes — a self-contained
@@ -868,6 +883,11 @@ impl AnySerie for MapSerie {
 
     fn clone_box(&self) -> Box<dyn AnySerie> {
         Box::new(self.clone())
+    }
+
+    // Recurse: deep-copy the entries struct so no `Arc`-backed leaf buffer is shared.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(MapSerie::deep_copy(self))
     }
 
     fn eq_any(&self, other: &dyn AnySerie) -> bool {

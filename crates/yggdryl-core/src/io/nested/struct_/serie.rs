@@ -637,6 +637,19 @@ impl StructSerie {
         })
     }
 
+    /// A **fully independent** deep copy — every child column is deep-copied
+    /// ([`AnySerie::deep_copy`](crate::io::AnySerie::deep_copy)), so no `Arc`-backed leaf buffer is
+    /// shared with `self`. The recursive analogue of the leaves' `deep_copy`; contrast the shallow
+    /// [`clone`](Clone), which `Arc`-shares the leaf buffers.
+    pub fn deep_copy(&self) -> StructSerie {
+        Self {
+            columns: self.columns.iter().map(|child| child.deep_copy()).collect(),
+            validity: self.validity.clone(),
+            len: self.len,
+            field: self.field.clone(),
+        }
+    }
+
     // ---- serialization: the schema, then each child via its own `Serie` codec ----------
 
     /// This struct column's canonical bytes — a self-contained `[schema][len][validity?][children]`
@@ -812,6 +825,11 @@ impl AnySerie for StructSerie {
 
     fn clone_box(&self) -> Box<dyn AnySerie> {
         Box::new(self.clone())
+    }
+
+    // Recurse: deep-copy every child so no `Arc`-backed leaf buffer is shared.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(StructSerie::deep_copy(self))
     }
 
     fn eq_any(&self, other: &dyn AnySerie) -> bool {

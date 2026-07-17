@@ -108,6 +108,38 @@ fn main() {
         }),
     );
 
+    // In-place COW twins: `add_assign` on a uniquely-owned column mutates the buffer where it lives
+    // (allocation-free) and is at least as fast as the return-new `add_unchecked` (no result buffer
+    // to allocate + fill). A shared column pays one copy-on-write, matching the return-new cost.
+    {
+        let mut owned = Serie::from_values(&a);
+        row(
+            "Serie::add_assign (typed, in-place OWNED — 0 alloc)",
+            measure(n, iters, || {
+                owned.add_assign(&b32);
+            }),
+        );
+    }
+    {
+        let mut shared = Serie::from_values(&a);
+        row(
+            "Serie::add_assign (typed, in-place SHARED — 1 COW)",
+            measure(n, iters, || {
+                let _keep = shared.clone(); // hold a shallow clone alive → shared buffer
+                shared.add_assign(&b32);
+            }),
+        );
+    }
+    {
+        let mut owned = Serie::from_values(&a);
+        row(
+            "Serie::add_scalar_assign (typed, in-place OWNED)",
+            measure(n, iters, || {
+                owned.add_scalar_assign(7);
+            }),
+        );
+    }
+
     // The erased base op — same type (no cast) vs cross-type (the range-checked cast into the left).
     row(
         "dyn AnySerie::add (erased, same T)",

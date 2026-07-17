@@ -111,6 +111,178 @@ impl dyn AnySerie {
     pub fn rem_scalar(&self, value: &AnyScalar) -> Result<Box<dyn AnySerie>, IoError> {
         scalar(self, value, ArithOp::Rem)
     }
+
+    // ---- in-place arithmetic twins — mutate self's buffer through copy-on-write -----------------
+    //
+    // The erased mirror of the [`Serie::add_assign`](crate::io::fixed::Serie) twins: `other` is cast
+    // into self's element type (the cast-anything path, the only place an allocation may happen),
+    // then self is mutated IN PLACE through the copy-on-write [`Buffer::with_values_mut`] — self is
+    // **never** cloned, so an owned column copies no payload and a shared one pays exactly one COW.
+    // The **result follows the LEFT** (self keeps its type). Scoped to the **numeric leaf** columns
+    // (the in-place COW families); temporal / decimal / nested columns have no zero-copy in-place
+    // form, so route through the return-new [`add`](AnySerie::add) (a guided error names this).
+
+    /// In-place `self += other` — casts `other` into self's element type, then mutates self through
+    /// copy-on-write. See the [module note](self) for the two-tier / result-follows-left rules.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    /// use yggdryl_core::io::{boxed, AnySerie};
+    ///
+    /// let mut a = boxed(Serie::from_values(&[1i64, 2, 3]));
+    /// let b = boxed(Serie::from_values(&[10i32, 20, 30])); // i32, cast into the left's i64
+    /// a.add_assign(b.as_ref()).unwrap();
+    /// assert_eq!(a.as_serie::<i64>().unwrap().to_options(), [Some(11), Some(22), Some(33)]);
+    /// ```
+    pub fn add_assign(&mut self, other: &(dyn AnySerie + 'static)) -> Result<(), IoError> {
+        binary_assign(self, other, ArithOp::Add)
+    }
+
+    /// In-place `self -= other` — see [`add_assign`](AnySerie::add_assign).
+    pub fn sub_assign(&mut self, other: &(dyn AnySerie + 'static)) -> Result<(), IoError> {
+        binary_assign(self, other, ArithOp::Sub)
+    }
+
+    /// In-place `self *= other` — see [`add_assign`](AnySerie::add_assign).
+    pub fn mul_assign(&mut self, other: &(dyn AnySerie + 'static)) -> Result<(), IoError> {
+        binary_assign(self, other, ArithOp::Mul)
+    }
+
+    /// In-place `self /= other` — see [`add_assign`](AnySerie::add_assign). Integer division by a
+    /// **zero** divisor writes a null cell (never a panic).
+    pub fn div_assign(&mut self, other: &(dyn AnySerie + 'static)) -> Result<(), IoError> {
+        binary_assign(self, other, ArithOp::Div)
+    }
+
+    /// In-place `self %= other` — see [`add_assign`](AnySerie::add_assign). Integer remainder by a
+    /// **zero** divisor writes a null cell (never a panic).
+    pub fn rem_assign(&mut self, other: &(dyn AnySerie + 'static)) -> Result<(), IoError> {
+        binary_assign(self, other, ArithOp::Rem)
+    }
+
+    /// In-place `self += value` (broadcast) — casts `value` into self's element type, then mutates
+    /// self through copy-on-write. A **null** scalar makes every cell null.
+    pub fn add_scalar_assign(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        scalar_assign(self, value, ArithOp::Add)
+    }
+
+    /// In-place `self -= value` (broadcast) — see [`add_scalar_assign`](AnySerie::add_scalar_assign).
+    pub fn sub_scalar_assign(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        scalar_assign(self, value, ArithOp::Sub)
+    }
+
+    /// In-place `self *= value` (broadcast) — see [`add_scalar_assign`](AnySerie::add_scalar_assign).
+    pub fn mul_scalar_assign(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        scalar_assign(self, value, ArithOp::Mul)
+    }
+
+    /// In-place `self /= value` (broadcast) — see [`add_scalar_assign`](AnySerie::add_scalar_assign).
+    /// A **zero** integer `value` makes every present cell null (no panic).
+    pub fn div_scalar_assign(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        scalar_assign(self, value, ArithOp::Div)
+    }
+
+    /// In-place `self %= value` (broadcast) — see [`add_scalar_assign`](AnySerie::add_scalar_assign).
+    /// A **zero** integer `value` makes every present cell null (no panic).
+    pub fn rem_scalar_assign(&mut self, value: &AnyScalar) -> Result<(), IoError> {
+        scalar_assign(self, value, ArithOp::Rem)
+    }
+}
+
+// -------------------------------------------------------------------------------------
+// in-place serie × serie / serie × scalar — numeric leaves, mutated through copy-on-write
+// -------------------------------------------------------------------------------------
+
+/// The in-place serie×serie dispatch: length-check, cast `right` into the left's element type, then
+/// mutate the left leaf IN PLACE (copy-on-write). Numeric leaves only — a temporal / decimal /
+/// nested left is a guided error (no zero-copy in-place form; use the return-new `add`).
+fn binary_assign(
+    left: &mut (dyn AnySerie + 'static),
+    right: &(dyn AnySerie + 'static),
+    op: ArithOp,
+) -> Result<(), IoError> {
+    if left.len() != right.len() {
+        return Err(length_mismatch(left.len(), right.len()));
+    }
+    macro_rules! num {
+        ($t:ty) => {{
+            // Cast the right operand into the left's type first (may allocate — the only allocation);
+            // then mutate the left leaf in place, never cloning it.
+            let r = cast_into::<$t>(right)?;
+            left.as_any_mut()
+                .downcast_mut::<Serie<$t>>()
+                .expect("type_id names this concrete Serie")
+                .arith_assign_unchecked(&r, op);
+            Ok(())
+        }};
+    }
+    match left.type_id() {
+        DataTypeId::U8 => num!(u8),
+        DataTypeId::U16 => num!(u16),
+        DataTypeId::U32 => num!(u32),
+        DataTypeId::U64 => num!(u64),
+        DataTypeId::I8 => num!(i8),
+        DataTypeId::I16 => num!(i16),
+        DataTypeId::I32 => num!(i32),
+        DataTypeId::I64 => num!(i64),
+        DataTypeId::I128 => num!(i128),
+        DataTypeId::F16 => num!(f16),
+        DataTypeId::F32 => num!(f32),
+        DataTypeId::F64 => num!(f64),
+        other => Err(inplace_unsupported_left(other)),
+    }
+}
+
+/// The in-place serie×scalar dispatch — the broadcast twin of [`binary_assign`].
+fn scalar_assign(
+    left: &mut (dyn AnySerie + 'static),
+    value: &AnyScalar,
+    op: ArithOp,
+) -> Result<(), IoError> {
+    macro_rules! num {
+        ($t:ty) => {{
+            // Coerce the scalar into the left's type BEFORE the mutable downcast (it reads nothing
+            // from `left`), then mutate in place. A null scalar nulls every cell.
+            let coerced = any_scalar_into::<$t>(value)?;
+            let serie = left
+                .as_any_mut()
+                .downcast_mut::<Serie<$t>>()
+                .expect("type_id names this concrete Serie");
+            match coerced {
+                Some(v) => serie.arith_scalar_assign_unchecked(v, op),
+                None => serie.set_all_null(), // null scalar -> all-null, in place
+            }
+            Ok(())
+        }};
+    }
+    match left.type_id() {
+        DataTypeId::U8 => num!(u8),
+        DataTypeId::U16 => num!(u16),
+        DataTypeId::U32 => num!(u32),
+        DataTypeId::U64 => num!(u64),
+        DataTypeId::I8 => num!(i8),
+        DataTypeId::I16 => num!(i16),
+        DataTypeId::I32 => num!(i32),
+        DataTypeId::I64 => num!(i64),
+        DataTypeId::I128 => num!(i128),
+        DataTypeId::F16 => num!(f16),
+        DataTypeId::F32 => num!(f32),
+        DataTypeId::F64 => num!(f64),
+        other => Err(inplace_unsupported_left(other)),
+    }
+}
+
+/// The guided error for an in-place arithmetic op whose left column has no copy-on-write in-place
+/// twin (temporal / decimal / nested / non-numeric) — directs the caller to the return-new form.
+fn inplace_unsupported_left(id: DataTypeId) -> IoError {
+    IoError::Unsupported {
+        what: format!(
+            "in-place arithmetic (add_assign / sub_assign / …) is only supported on a numeric leaf \
+             column (u8..i64, i128, f16/f32/f64); a {} column has no zero-copy in-place twin — use \
+             the return-new `add` / `sub` / … (which also covers temporal and nested columns)",
+            id.name()
+        ),
+    }
 }
 
 // -------------------------------------------------------------------------------------

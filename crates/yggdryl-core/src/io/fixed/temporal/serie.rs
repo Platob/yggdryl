@@ -771,6 +771,23 @@ impl<B: TemporalBacking> Clone for TemporalSerie<B> {
     }
 }
 
+impl<B: TemporalBacking> TemporalSerie<B> {
+    /// A **fully independent** deep copy — the physical counts are copied into a fresh owned buffer,
+    /// sharing **no** `Arc` with `self`. Contrast the shallow [`clone`](Clone) (`copy` in the
+    /// bindings), an `Arc` bump that *shares* the counts buffer until a copy-on-write mutation splits
+    /// it. Meaningful because a temporal column is `Arc`-backed (like the fixed / decimal families).
+    pub fn deep_copy(&self) -> Self {
+        Self {
+            validity: self.validity.clone(),
+            // Copy the physical counts into a fresh, independently-owned buffer (no shared `Arc`).
+            values: ArrowBuffer::from(self.values.as_slice()),
+            len: self.len,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        }
+    }
+}
+
 impl<B: TemporalBacking> core::fmt::Debug for TemporalSerie<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TemporalSerie")

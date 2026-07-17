@@ -667,6 +667,132 @@ impl<T: NativeType> Serie<T> {
         }
     }
 
+    /// **Overwrites every null slot with `value` in place** and drops the validity mask — the
+    /// length-preserving copy-on-write twin of [`fill_null`](Serie::fill_null). Mutates self's own
+    /// buffer through [`Buffer::with_values_mut`] (**no payload copy when owned, one COW when
+    /// shared**); a no-null column is left untouched (no COW). The end state equals
+    /// `*self = self.fill_null(value)`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut col = Serie::from_options(&[Some(1i32), None, Some(3)]);
+    /// col.fill_null_mut(0);
+    /// assert_eq!(col.to_options(), [Some(1), Some(0), Some(3)]);
+    /// assert_eq!(col.null_count(), 0);
+    /// ```
+    /// Sets **every** cell null in place (zeroing the values and materializing an all-null validity
+    /// mask) — the in-place effect of broadcasting a null scalar in an arithmetic op. Preserves the
+    /// column's field. One copy-on-write of the values buffer.
+    pub(crate) fn set_all_null(&mut self) {
+        let len = self.len;
+        self.values.with_values_mut(|slots| {
+            for slot in slots.iter_mut() {
+                *slot = T::default();
+            }
+        });
+        self.validity = Some(Bitmap::from_bytes(&vec![0u8; len.div_ceil(8)], len));
+    }
+
+    pub fn fill_null_mut(&mut self, value: T) {
+        if !self.has_nulls() {
+            return; // already fully present — nothing to overwrite, no COW
+        }
+        // Drop the mask up front (the result is fully present); keep it to find the null slots.
+        let validity = self.validity.take();
+        self.values.with_values_mut(|slots| {
+            if let Some(mask) = &validity {
+                for (index, slot) in slots.iter_mut().enumerate() {
+                    if !mask.get(index) {
+                        *slot = value;
+                    }
+                }
+            }
+        });
+    }
+
+    /// **In-place row filter / compaction** — keeps only the elements where `mask[i]` is `true`,
+    /// packing them to the front and shrinking the length. The copy-on-write, length-shrinking twin
+    /// of [`filter`](Serie::filter) (which returns a new column). Errors
+    /// ([`Unsupported`](IoError::Unsupported)) if `mask.len() != self.len()` (self left unchanged).
+    ///
+    /// The values compact through [`Buffer::with_values_mut`] (a forward move, output index never
+    /// past input, so it is in-place safe) then the buffer is truncated — **no payload copy when the
+    /// buffer is owned, one COW when shared**; the validity mask is recompacted only if the column
+    /// carries nulls. The end state equals `*self = self.filter(mask)`.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut col = Serie::from_options(&[Some(1i32), None, Some(3), Some(4)]);
+    /// col.retain(&[true, true, false, true]).unwrap();
+    /// assert_eq!(col.to_options(), [Some(1), None, Some(4)]);
+    /// ```
+    pub fn retain(&mut self, mask: &[bool]) -> Result<(), IoError> {
+        if mask.len() != self.len {
+            return Err(filter_len_mismatch(mask.len(), self.len));
+        }
+        let kept = mask.iter().filter(|&&keep| keep).count();
+        if kept == self.len {
+            return Ok(()); // nothing dropped — no COW, no reshape
+        }
+        // Compact the values to the front in place (out <= in, so a forward move never clobbers an
+        // unread element), then narrow the buffer to the kept count.
+        self.values.with_values_mut(|slots| {
+            let mut out = 0;
+            for (index, &keep) in mask.iter().enumerate() {
+                if keep {
+                    slots[out] = slots[index];
+                    out += 1;
+                }
+            }
+        });
+        self.values.truncate(kept);
+        // Recompact the validity the same way — only materialized when the column had nulls.
+        if let Some(mask_bits) = &self.validity {
+            let mut bits = vec![0u8; kept.div_ceil(8)];
+            let mut out = 0;
+            for (index, &keep) in mask.iter().enumerate() {
+                if keep {
+                    if mask_bits.get(index) {
+                        bits[out / 8] |= 1 << (out % 8);
+                    }
+                    out += 1;
+                }
+            }
+            let bitmap = Bitmap::from_bytes(&bits, kept);
+            self.validity = (bitmap.null_count() > 0).then_some(bitmap);
+        }
+        self.len = kept;
+        Ok(())
+    }
+
+    /// A **fully independent** deep copy — the payload is copied into a fresh owned buffer, so the
+    /// result shares **no** `Arc` with `self` and a later in-place mutation of either never touches
+    /// the other's allocation. Contrast the shallow [`clone`](Clone) (`copy` in the bindings), an
+    /// `Arc` bump that *shares* the buffer until a copy-on-write mutation splits it — so use
+    /// `deep_copy` when you specifically want to pre-pay the copy (e.g. before a long run of in-place
+    /// ops on the copy that should never COW).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let a = Serie::from_values(&[1i32, 2, 3]);
+    /// let mut b = a.deep_copy(); // independent payload
+    /// b.add_scalar_assign(10);
+    /// assert_eq!(a.to_options(), [Some(1), Some(2), Some(3)]); // a untouched
+    /// assert_eq!(b.to_options(), [Some(11), Some(12), Some(13)]);
+    /// ```
+    pub fn deep_copy(&self) -> Self {
+        Self {
+            validity: self.validity.clone(),
+            // Copy the bytes into a fresh, independently-owned buffer (no shared `Arc`).
+            values: Buffer::from_bytes(self.values.as_bytes()),
+            len: self.len,
+            field: self.field.clone(),
+        }
+    }
+
     /// Writes this column to `sink` — `[len: u64][flags: u8][validity?][values]` — advancing
     /// its cursor. The validity mask is written only when the column has nulls.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
@@ -837,6 +963,91 @@ impl<T: NumericCast> Serie<T> {
         self.arith_scalar_unchecked(value, ArithOp::Rem)
     }
 
+    // ---- in-place arithmetic twins — mutate self through copy-on-write (no fresh result) --------
+    //
+    // Each is the in-place twin of the return-new `*_unchecked` above: same element type + length
+    // assumed (`debug_assert`ed), running the **same** dense SIMD kernel and validity combine into
+    // self's own buffer through the copy-on-write [`Buffer::with_values_mut`] — **no payload copy
+    // when self's buffer is uniquely owned, one COW when it is shared** — so a hot loop of ops never
+    // allocates a fresh result per step. The net result is byte-identical to `self = self.op(other)`.
+
+    /// Element-wise `self += other` in place (same type + length assumed) — the COW-backed twin of
+    /// [`add_unchecked`](Serie::add_unchecked). Integer addition wraps; a cell becomes null iff
+    /// either input cell is null.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut a = Serie::from_values(&[1i32, 2, 3]);
+    /// a.add_assign(&Serie::from_values(&[10, 20, 30]));
+    /// assert_eq!(a.to_options(), [Some(11), Some(22), Some(33)]);
+    /// ```
+    pub fn add_assign(&mut self, other: &Serie<T>) {
+        self.arith_assign_unchecked(other, ArithOp::Add);
+    }
+
+    /// Element-wise `self -= other` in place — the twin of [`sub_unchecked`](Serie::sub_unchecked).
+    pub fn sub_assign(&mut self, other: &Serie<T>) {
+        self.arith_assign_unchecked(other, ArithOp::Sub);
+    }
+
+    /// Element-wise `self *= other` in place — the twin of [`mul_unchecked`](Serie::mul_unchecked).
+    pub fn mul_assign(&mut self, other: &Serie<T>) {
+        self.arith_assign_unchecked(other, ArithOp::Mul);
+    }
+
+    /// Element-wise `self /= other` in place — the twin of [`div_unchecked`](Serie::div_unchecked).
+    /// Integer division by a **zero** divisor writes a null cell (never a panic).
+    pub fn div_assign(&mut self, other: &Serie<T>) {
+        self.arith_assign_unchecked(other, ArithOp::Div);
+    }
+
+    /// Element-wise `self %= other` in place — the twin of [`rem_unchecked`](Serie::rem_unchecked).
+    /// Integer remainder by a **zero** divisor writes a null cell (never a panic).
+    pub fn rem_assign(&mut self, other: &Serie<T>) {
+        self.arith_assign_unchecked(other, ArithOp::Rem);
+    }
+
+    /// Broadcasts `value` as `self += value` in place — the twin of
+    /// [`add_scalar_unchecked`](Serie::add_scalar_unchecked). Null elements stay null.
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Serie;
+    ///
+    /// let mut col = Serie::from_options(&[Some(1i64), None, Some(3)]);
+    /// col.add_scalar_assign(10);
+    /// assert_eq!(col.to_options(), [Some(11), None, Some(13)]);
+    /// ```
+    pub fn add_scalar_assign(&mut self, value: T) {
+        self.arith_scalar_assign_unchecked(value, ArithOp::Add);
+    }
+
+    /// Broadcasts `value` as `self -= value` in place — the twin of
+    /// [`sub_scalar_unchecked`](Serie::sub_scalar_unchecked).
+    pub fn sub_scalar_assign(&mut self, value: T) {
+        self.arith_scalar_assign_unchecked(value, ArithOp::Sub);
+    }
+
+    /// Broadcasts `value` as `self *= value` in place — the twin of
+    /// [`mul_scalar_unchecked`](Serie::mul_scalar_unchecked).
+    pub fn mul_scalar_assign(&mut self, value: T) {
+        self.arith_scalar_assign_unchecked(value, ArithOp::Mul);
+    }
+
+    /// Broadcasts `value` as `self /= value` in place — the twin of
+    /// [`div_scalar_unchecked`](Serie::div_scalar_unchecked). A **zero** integer `value` makes every
+    /// present cell null (no panic).
+    pub fn div_scalar_assign(&mut self, value: T) {
+        self.arith_scalar_assign_unchecked(value, ArithOp::Div);
+    }
+
+    /// Broadcasts `value` as `self %= value` in place — the twin of
+    /// [`rem_scalar_unchecked`](Serie::rem_scalar_unchecked). A **zero** integer `value` makes every
+    /// present cell null (no panic).
+    pub fn rem_scalar_assign(&mut self, value: T) {
+        self.arith_scalar_assign_unchecked(value, ArithOp::Rem);
+    }
+
     /// The shared serie×serie dispatch. Auto-vectorization shape (see the CLAUDE.md rule): iterate
     /// the two **contiguous value slices** ([`values`](Serie::values)) and compute the result
     /// **densely and branch-free** into a pre-sized `Vec<T>` — integer add/sub/mul use `wrapping_*`
@@ -856,27 +1067,35 @@ impl<T: NumericCast> Serie<T> {
             self.len, other.len,
             "`*_unchecked` op requires equal-length operands"
         );
-        let (a, b) = (self.values(), other.values());
-        let mut out: Vec<T> = Vec::with_capacity(self.len);
-        match op {
-            ArithOp::Add => out.extend(a.iter().zip(b).map(|(&x, &y)| x.add_wrapping(y))),
-            ArithOp::Sub => out.extend(a.iter().zip(b).map(|(&x, &y)| x.sub_wrapping(y))),
-            ArithOp::Mul => out.extend(a.iter().zip(b).map(|(&x, &y)| x.mul_wrapping(y))),
-            // The dense divisor substitution is `unwrap_or(x)`; the cell is nulled below when the
-            // divisor was zero, so its intermediate value is irrelevant.
-            ArithOp::Div => out.extend(
-                a.iter()
-                    .zip(b)
-                    .map(|(&x, &y)| x.div_checked(y).unwrap_or(x)),
-            ),
-            ArithOp::Rem => out.extend(
-                a.iter()
-                    .zip(b)
-                    .map(|(&x, &y)| x.rem_checked(y).unwrap_or(x)),
-            ),
-        }
-        let validity = self.combined_validity(other, b, op);
-        self.finish_dense(out, validity)
+        // The return-new form is one shallow clone (the values `Arc` is bumped, not copied) then the
+        // in-place twin, which copies the now-shared buffer exactly ONCE (copy-on-write) and computes
+        // over it — so a single kernel feeds both forms and the result is byte-identical to before.
+        let mut result = self.clone();
+        result.arith_assign_unchecked(other, op);
+        result
+    }
+
+    /// In-place `self = self op other` (same type + length assumed) — the copy-on-write twin of
+    /// [`arith_unchecked`](Serie::arith_unchecked) and the shared engine both forms run. Runs the
+    /// SAME dense branch-free value kernel ([`arith_dense_kernel`]) directly into self's buffer via
+    /// [`Buffer::with_values_mut`] (no payload copy when owned, one COW when shared) and the SAME
+    /// whole-bitmap validity combine ([`combined_validity`](Serie::combined_validity)); the value
+    /// under every result-null slot is canonicalized back to `T::default()`, so the bytes stay
+    /// canonical and identity / serialization stay in lock-step.
+    pub(crate) fn arith_assign_unchecked(&mut self, other: &Serie<T>, op: ArithOp) {
+        debug_assert_eq!(
+            self.len, other.len,
+            "`*_assign` op requires equal-length operands"
+        );
+        // Combine validity BEFORE mutating the values (it reads self's + other's masks and, for an
+        // integer div/rem, scans other's values for zero divisors).
+        let validity = self.combined_validity(other, other.values(), op);
+        let rhs = other.values();
+        self.values.with_values_mut(|slots| {
+            arith_dense_kernel(op, slots, rhs);
+            canonicalize_nulls(slots, validity.as_ref());
+        });
+        self.validity = validity;
     }
 
     /// The shared serie×scalar dispatch — the broadcast twin of
@@ -884,27 +1103,39 @@ impl<T: NumericCast> Serie<T> {
     /// dense pass over the single contiguous value slice, with validity handled separately (self's
     /// nulls carry through; a constant **integer** zero divisor nulls every cell).
     pub(crate) fn arith_scalar_unchecked(&self, value: T, op: ArithOp) -> Serie<T> {
-        let a = self.values();
-        let mut out: Vec<T> = Vec::with_capacity(self.len);
-        match op {
-            ArithOp::Add => out.extend(a.iter().map(|&x| x.add_wrapping(value))),
-            ArithOp::Sub => out.extend(a.iter().map(|&x| x.sub_wrapping(value))),
-            ArithOp::Mul => out.extend(a.iter().map(|&x| x.mul_wrapping(value))),
-            ArithOp::Div => out.extend(a.iter().map(|&x| x.div_checked(value).unwrap_or(x))),
-            ArithOp::Rem => out.extend(a.iter().map(|&x| x.rem_checked(value).unwrap_or(x))),
+        // Shallow clone (values `Arc` bump) then the in-place twin: one COW, one shared kernel.
+        let mut result = self.clone();
+        result.arith_scalar_assign_unchecked(value, op);
+        result
+    }
+
+    /// In-place `self = self op value` (broadcast) — the copy-on-write twin of
+    /// [`arith_scalar_unchecked`](Serie::arith_scalar_unchecked); the shared engine both run. Same
+    /// dense branch-free kernel ([`scalar_dense_kernel`]) into self's buffer via
+    /// [`Buffer::with_values_mut`], validity from [`scalar_validity`](Serie::scalar_validity).
+    pub(crate) fn arith_scalar_assign_unchecked(&mut self, value: T, op: ArithOp) {
+        let validity = self.scalar_validity(value, op);
+        self.values.with_values_mut(|slots| {
+            scalar_dense_kernel(op, slots, value);
+            canonicalize_nulls(slots, validity.as_ref());
+        });
+        self.validity = validity;
+    }
+
+    /// The result validity of a serie×scalar broadcast: a constant **integer** zero divisor
+    /// (`div`/`rem`) makes every cell null; otherwise self's own nulls carry through unchanged (the
+    /// value loop never introduces a new null for `+`/`-`/`*`). Shared by the return-new and
+    /// in-place scalar forms so both agree.
+    fn scalar_validity(&self, value: T, op: ArithOp) -> Option<Bitmap> {
+        if matches!(op, ArithOp::Div | ArithOp::Rem) && !T::IS_FLOAT && value.to_i128() == 0 {
+            // all-null
+            Some(Bitmap::from_bytes(
+                &vec![0u8; self.len.div_ceil(8)],
+                self.len,
+            ))
+        } else {
+            self.validity.clone()
         }
-        // A constant **integer** zero divisor makes every cell null; otherwise self's own nulls
-        // carry through unchanged (the value loop never introduces a new null for +/-/*).
-        let validity =
-            if matches!(op, ArithOp::Div | ArithOp::Rem) && !T::IS_FLOAT && value.to_i128() == 0 {
-                Some(Bitmap::from_bytes(
-                    &vec![0u8; self.len.div_ceil(8)],
-                    self.len,
-                )) // all-null
-            } else {
-                self.validity.clone()
-            };
-        self.finish_dense(out, validity)
     }
 
     /// The result validity for a serie×serie op: the **whole-bitmap AND** of the two operands'
@@ -939,25 +1170,90 @@ impl<T: NumericCast> Serie<T> {
         let bitmap = Bitmap::from_bytes(&bits, len);
         (bitmap.null_count() > 0).then_some(bitmap)
     }
+}
 
-    /// Builds the result column from a **dense** value vector + its combined validity: first
-    /// canonicalizes the value under every null slot back to the placeholder `T::default()` — so the
-    /// result is **byte-identical** to the per-element path (whose null slots hold the default), and
-    /// identity / serialization stay byte-canonical — then wraps the values in **one** buffer. The
-    /// `values` are `self.len` long and the result carries `self`'s field.
-    fn finish_dense(&self, mut values: Vec<T>, validity: Option<Bitmap>) -> Serie<T> {
-        if let Some(mask) = &validity {
-            for (index, slot) in values.iter_mut().enumerate() {
-                if !mask.get(index) {
-                    *slot = T::default();
-                }
+/// The branch-free dense **serie×serie** value kernel shared by the return-new
+/// [`arith_unchecked`](Serie::arith_unchecked) (via its in-place twin) and the in-place
+/// [`arith_assign_unchecked`](Serie::arith_assign_unchecked): writes `lhs[i] op rhs[i]` into `lhs`
+/// for every `i`, the operator matched **once outside** the loop so each arm is a monomorphic slice
+/// zip LLVM auto-vectorizes. Integer add/sub/mul wrap; div/rem substitute a harmless placeholder
+/// (the current `lhs[i]`) at a zero divisor — that slot is nulled by the validity combine, so the
+/// loop body carries no data-dependent branch.
+fn arith_dense_kernel<T: NumericCast>(op: ArithOp, lhs: &mut [T], rhs: &[T]) {
+    match op {
+        ArithOp::Add => {
+            for (x, &y) in lhs.iter_mut().zip(rhs) {
+                *x = x.add_wrapping(y);
             }
         }
-        Self {
-            validity,
-            values: Buffer::from_slice(&values),
-            len: self.len,
-            field: self.field.clone(),
+        ArithOp::Sub => {
+            for (x, &y) in lhs.iter_mut().zip(rhs) {
+                *x = x.sub_wrapping(y);
+            }
+        }
+        ArithOp::Mul => {
+            for (x, &y) in lhs.iter_mut().zip(rhs) {
+                *x = x.mul_wrapping(y);
+            }
+        }
+        ArithOp::Div => {
+            for (x, &y) in lhs.iter_mut().zip(rhs) {
+                let v = *x;
+                *x = v.div_checked(y).unwrap_or(v);
+            }
+        }
+        ArithOp::Rem => {
+            for (x, &y) in lhs.iter_mut().zip(rhs) {
+                let v = *x;
+                *x = v.rem_checked(y).unwrap_or(v);
+            }
+        }
+    }
+}
+
+/// The branch-free dense **serie×scalar** broadcast kernel — the [`arith_dense_kernel`] twin over a
+/// single constant `value`, shared by the return-new and in-place scalar forms.
+fn scalar_dense_kernel<T: NumericCast>(op: ArithOp, lhs: &mut [T], value: T) {
+    match op {
+        ArithOp::Add => {
+            for x in lhs.iter_mut() {
+                *x = x.add_wrapping(value);
+            }
+        }
+        ArithOp::Sub => {
+            for x in lhs.iter_mut() {
+                *x = x.sub_wrapping(value);
+            }
+        }
+        ArithOp::Mul => {
+            for x in lhs.iter_mut() {
+                *x = x.mul_wrapping(value);
+            }
+        }
+        ArithOp::Div => {
+            for x in lhs.iter_mut() {
+                let v = *x;
+                *x = v.div_checked(value).unwrap_or(v);
+            }
+        }
+        ArithOp::Rem => {
+            for x in lhs.iter_mut() {
+                let v = *x;
+                *x = v.rem_checked(value).unwrap_or(v);
+            }
+        }
+    }
+}
+
+/// Canonicalizes the value under every result-null slot back to the placeholder `T::default()`, so a
+/// dense-kernel result is **byte-identical** to the per-element path (whose null slots hold the
+/// default) and identity / serialization stay byte-canonical. Shared by both `*_assign` forms.
+fn canonicalize_nulls<T: NativeType>(slots: &mut [T], validity: Option<&Bitmap>) {
+    if let Some(mask) = validity {
+        for (index, slot) in slots.iter_mut().enumerate() {
+            if !mask.get(index) {
+                *slot = T::default();
+            }
         }
     }
 }

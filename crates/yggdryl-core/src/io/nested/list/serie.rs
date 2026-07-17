@@ -477,6 +477,19 @@ impl ListSerie {
         })
     }
 
+    /// A **fully independent** deep copy — the flattened item child is deep-copied
+    /// ([`AnySerie::deep_copy`](crate::io::AnySerie::deep_copy)), so no `Arc`-backed leaf buffer is
+    /// shared with `self`. Contrast the shallow [`clone`](Clone), which `Arc`-shares the child buffers.
+    pub fn deep_copy(&self) -> ListSerie {
+        Self {
+            values: self.values.deep_copy(),
+            offsets: self.offsets.clone(),
+            validity: self.validity.clone(),
+            len: self.len,
+            field: self.field.clone(),
+        }
+    }
+
     // ---- serialization: the list schema, then validity + offsets, then the child column --------
 
     /// This list column's canonical bytes — a self-contained
@@ -683,6 +696,11 @@ impl AnySerie for ListSerie {
 
     fn clone_box(&self) -> Box<dyn AnySerie> {
         Box::new(self.clone())
+    }
+
+    // Recurse: deep-copy the item child so no `Arc`-backed leaf buffer is shared.
+    fn deep_copy(&self) -> Box<dyn AnySerie> {
+        Box::new(ListSerie::deep_copy(self))
     }
 
     fn eq_any(&self, other: &dyn AnySerie) -> bool {

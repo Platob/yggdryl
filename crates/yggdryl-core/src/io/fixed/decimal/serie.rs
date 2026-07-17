@@ -795,6 +795,24 @@ impl<B: DecimalBacking> Clone for DecimalSerie<B> {
     }
 }
 
+impl<B: DecimalBacking> DecimalSerie<B> {
+    /// A **fully independent** deep copy — the coefficient payload is copied into a fresh owned
+    /// buffer, sharing **no** `Arc` with `self`. Contrast the shallow [`clone`](Clone) (`copy` in the
+    /// bindings), an `Arc` bump that *shares* the coefficient buffer until a copy-on-write mutation
+    /// splits it. Meaningful because a decimal column is `Arc`-backed (like the fixed / temporal
+    /// families).
+    pub fn deep_copy(&self) -> Self {
+        Self {
+            validity: self.validity.clone(),
+            // Copy the coefficient bytes into a fresh, independently-owned buffer (no shared `Arc`).
+            values: ArrowBuffer::from(self.values.as_slice()),
+            len: self.len,
+            field: self.field.clone(),
+            _backing: PhantomData,
+        }
+    }
+}
+
 impl<B: DecimalBacking> core::fmt::Debug for DecimalSerie<B> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DecimalSerie")

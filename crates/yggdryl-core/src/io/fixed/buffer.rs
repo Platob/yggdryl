@@ -217,6 +217,74 @@ impl<T: NativeType> Buffer<T> {
         value.write_le(&mut scratch);
         self.pwrite(end, &scratch[..T::WIDTH]);
     }
+
+    /// **Mutates the elements in place through copy-on-write** — the in-place primitive the column
+    /// `*_assign` / `fill_null_mut` / `retain` ops build on. Applies `f` to the whole element slice:
+    ///
+    /// - when the buffer is **uniquely owned** (sole `Arc` holder, unoffset, element-aligned, and
+    ///   our own allocation) it mutates the **existing allocation** — the **payload is never copied**
+    ///   (only a couple of tiny `Arc` headers are re-created as Arrow re-wraps the reused allocation);
+    /// - when it is **shared** (e.g. after a shallow [`clone`](Buffer::clone), which is an `Arc`
+    ///   bump) — or externally sourced — it first copies the bytes into a fresh allocation (**one**
+    ///   copy-on-write) and mutates that, leaving every other holder untouched (value semantics).
+    ///
+    /// So a hot loop of in-place ops on an owned column copies **no payload** per step (a bounded,
+    /// size-independent header cost), and the first op after a shallow copy pays exactly one COW.
+    ///
+    /// # Panics
+    /// Like [`as_slice`](Buffer::as_slice), a zero-copy `&mut [T]` requires **element-aligned**
+    /// storage; every safe-path buffer is (asserted with a guided message).
+    pub(crate) fn with_values_mut(&mut self, f: impl FnOnce(&mut [T])) {
+        let byte_len = self.count() * T::WIDTH;
+        // Take the allocation out to try the **no-payload-copy** owned path. `Buffer::into_mutable`
+        // reuses the existing allocation — with NO payload copy — exactly when this is the sole
+        // owner (`Arc::try_unwrap`: one strong ref, no weaks), unoffset, aligned, and **our own**
+        // (`MutableBuffer::from_bytes` refuses an externally-sourced allocation — e.g. one imported
+        // zero-copy from pyarrow via `from_arrow_buffer`, which may be foreign / read-only memory).
+        // DESIGN: we deliberately delegate all three checks to Arrow rather than approximate them
+        // with `strong_count`/`ptr_offset` (which miss the weak-ref and external-allocation cases and
+        // would let an in-place write hit foreign memory). When `into_mutable` declines, we
+        // copy-on-write into a fresh owned buffer, leaving every other holder untouched.
+        let taken = mem::replace(&mut self.bytes, ArrowBuffer::from_vec(Vec::<u8>::new()));
+        match taken.into_mutable() {
+            Ok(mut mutable) => {
+                Self::apply_aligned(&mut mutable.as_slice_mut()[..byte_len], f);
+                self.bytes = mutable.into();
+            }
+            Err(shared) => {
+                let mut vec = shared.as_slice().to_vec();
+                Self::apply_aligned(&mut vec[..byte_len], f);
+                self.bytes = ArrowBuffer::from_vec(vec);
+            }
+        }
+    }
+
+    /// Reinterprets `bytes` as a `&mut [T]` (whole elements, element-aligned) and runs `f` — the
+    /// shared aligned-view step of both [`with_values_mut`](Buffer::with_values_mut) branches.
+    fn apply_aligned(bytes: &mut [u8], f: impl FnOnce(&mut [T])) {
+        // For `T: NativeType` (an Arrow-native POD) every bit pattern is valid, so the reinterpret
+        // is sound; only alignment can fail, and that is asserted (matching `as_slice`).
+        let (prefix, elements, _partial) = unsafe { bytes.align_to_mut::<T>() };
+        assert!(
+            prefix.is_empty(),
+            "Buffer<{}> storage is not element-aligned; rebuild it via from_vec/from_slice",
+            T::NAME
+        );
+        f(elements);
+    }
+
+    /// **Shrinks** the buffer to its first `count` elements — a zero-copy view narrowing (an `Arc`
+    /// reslice reusing the allocation), the in-place [`retain`](super::Serie::retain) compaction
+    /// commits with it after packing the kept elements to the front. A no-op when `count` already
+    /// covers the whole buffer.
+    pub(crate) fn truncate(&mut self, count: usize) {
+        let new_len = count * T::WIDTH;
+        if new_len < self.bytes.len() {
+            // `slice_with_length` shares the `Arc`; reassigning drops the old handle, so the
+            // (sole) owner keeps a length-`new_len` view over the same allocation — no copy.
+            self.bytes = self.bytes.slice_with_length(0, new_len);
+        }
+    }
 }
 
 impl<T: NativeType> IOBase for Buffer<T> {
