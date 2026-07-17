@@ -491,6 +491,29 @@ fn many_threads_write_disjoint_files() {
 }
 
 #[test]
+fn uri_is_a_file_url_over_an_absolute_path() {
+    let tmp = TempDir::new("fileuri");
+    let node = tmp.root().join_str("sub/data.bin");
+    let uri = node.uri();
+    // A local node reports a file:// URL.
+    assert_eq!(uri.scheme(), Some("file"));
+    assert!(uri.to_string().starts_with("file:///"));
+    assert!(uri.to_string().ends_with("data.bin"));
+    // The mime type is inferred from the path (the node need not exist).
+    assert_eq!(node.uri().name().unwrap(), "data.bin");
+
+    // A relative path is made absolute at construction, so the handle carries a full path.
+    let rel = LocalIO::from_path("relative/scratch.bin");
+    assert!(rel.as_std_path().is_absolute());
+    assert!(rel.uri().to_string().starts_with("file:///"));
+    assert!(rel.uri().to_string().ends_with("relative/scratch.bin"));
+
+    // The file:// URL round-trips back to the same handle.
+    let back = LocalIO::from_uri(&node.uri()).unwrap();
+    assert_eq!(back, node);
+}
+
+#[test]
 fn tmpfile_and_tmpfolder_builders() {
     // A named tmpfile is lazy (nothing on disk), created on first write, and reads back.
     let mut f = LocalIO::tmpfile(Some("yggdryl_test_tmpfile.bin"));

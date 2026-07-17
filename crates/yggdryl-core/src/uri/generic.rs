@@ -5,7 +5,7 @@ use core::fmt::Write as _;
 use std::borrow::Cow;
 
 use super::HashWrite;
-use super::{percent, Authority, UriError, Url};
+use super::{percent, Authority, UriError, UriParts, Url};
 
 /// A generic URI split into its RFC 3986 components, doubling as a filesystem-path
 /// abstraction. Any component may be absent; a bare path (no scheme, no authority) is a
@@ -123,6 +123,28 @@ impl Uri {
     pub fn from_path(path: &str) -> Uri {
         let mut uri = Uri::default();
         uri.set_path(path); // the one place path normalization + encoding lives
+        uri
+    }
+
+    /// A `file://` URL from an **absolute** filesystem path — the addressing form a local
+    /// source reports. The path is POSIX-slash-normalized and percent-encoded (as
+    /// [`from_path`](Uri::from_path)), rooted with a leading slash (a Windows drive path
+    /// `C:/x` becomes `/C:/x`), and given the `file` scheme with an empty host, so it renders
+    /// `file:///C:/x` (Windows) or `file:///home/x` (POSIX).
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// assert_eq!(Uri::from_file_path("/home/x/a.txt").to_string(), "file:///home/x/a.txt");
+    /// assert_eq!(Uri::from_file_path(r"C:\Users\x").to_string(), "file:///C:/Users/x");
+    /// ```
+    pub fn from_file_path(path: &str) -> Uri {
+        let mut uri = Uri::from_path(path); // encodes + POSIX-normalizes the path
+        if !uri.path.starts_with('/') {
+            uri.path.insert(0, '/'); // root a drive/relative-looking path for a file URL
+        }
+        uri.scheme = Some("file".to_string());
+        uri.authority = Some(Authority::from_host("")); // empty host -> file://…
         uri
     }
 
@@ -303,6 +325,60 @@ impl Uri {
     /// ```
     pub fn parents(&self) -> impl Iterator<Item = Uri> {
         std::iter::successors(self.parent(), Uri::parent)
+    }
+
+    /// The RFC 3986 top-level components bundled into one owned [`UriParts`] — the
+    /// destructuring counterpart of the individual [`scheme`](Uri::scheme) /
+    /// [`authority`](Uri::authority) / [`path`](Uri::path) / [`query`](Uri::query) /
+    /// [`fragment`](Uri::fragment) accessors.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let parts = Uri::parse_str("https://h/a?q=1").unwrap().parts();
+    /// assert_eq!(parts.scheme.as_deref(), Some("https"));
+    /// assert_eq!(parts.path, "/a");
+    /// assert_eq!(parts.to_string(), "https://h/a?q=1"); // re-renders the URI
+    /// ```
+    pub fn parts(&self) -> UriParts {
+        UriParts {
+            scheme: self.scheme.clone(),
+            authority: self.authority.as_ref().map(Authority::to_string),
+            path: self.path.clone(),
+            query: self.query.clone(),
+            fragment: self.fragment.clone(),
+        }
+    }
+
+    /// The **media type** of the resource this URI addresses, inferred from its path
+    /// extensions ([`MediaType::from_extensions`](crate::mediatype::MediaType::from_extensions)):
+    /// `archive.tar.gz` → `application/x-tar, application/gzip`. Empty when no extension is
+    /// recognized. See [`mime_type`](Uri::mime_type) for the single primary type.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let m = Uri::from_path("/data/archive.tar.gz").media_type();
+    /// assert_eq!(m.essences(), vec!["application/x-tar", "application/gzip"]);
+    /// ```
+    pub fn media_type(&self) -> crate::mediatype::MediaType {
+        crate::mediatype::MediaType::from_extensions(self.extensions())
+    }
+
+    /// The **primary mime type** inferred from this URI's file name — its last extension via
+    /// the default catalog, else the `application/octet-stream` fallback (never `None`, so a
+    /// caller always has a type).
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// assert_eq!(Uri::from_path("/x/report.pdf").mime_type().essence(), "application/pdf");
+    /// assert_eq!(Uri::from_path("/x/mystery").mime_type().essence(), "application/octet-stream");
+    /// ```
+    pub fn mime_type(&self) -> crate::mimetype::MimeType {
+        self.name()
+            .and_then(crate::mimetype::MimeType::from_name)
+            .unwrap_or_else(crate::mimetype::MimeType::octet_stream)
     }
 
     /// The last extension of the filename (without the dot), or `None` for a name with no

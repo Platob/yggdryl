@@ -451,6 +451,23 @@ impl Url {
     pub fn parents(&self) -> impl Iterator<Item = Url> {
         std::iter::successors(self.parent(), Url::parent)
     }
+
+    /// The RFC 3986 top-level components bundled into one [`UriParts`] — see [`Uri::parts`].
+    /// A URL always carries a scheme, so `parts().scheme` is always `Some`.
+    pub fn parts(&self) -> crate::uri::UriParts {
+        self.inner.parts()
+    }
+
+    /// The **media type** inferred from this URL's path extensions — see [`Uri::media_type`].
+    pub fn media_type(&self) -> crate::mediatype::MediaType {
+        self.inner.media_type()
+    }
+
+    /// The **primary mime type** inferred from this URL's file name (else octet-stream) — see
+    /// [`Uri::mime_type`].
+    pub fn mime_type(&self) -> crate::mimetype::MimeType {
+        self.inner.mime_type()
+    }
 }
 
 impl fmt::Display for Url {

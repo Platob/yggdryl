@@ -31,6 +31,19 @@ pub(crate) fn file_err(op: &'static str, path: &StdPath, error: &std::io::Error)
     }
 }
 
+/// Makes `path` absolute against the current working directory when it is relative, so a
+/// [`LocalIO`](io::LocalIO) always carries a full absolute path. An already-absolute path is
+/// returned unchanged; if the cwd is unreadable the input is kept as a last resort.
+pub(crate) fn absolutize(path: &StdPath) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+}
+
 /// Resolves a [`Uri`] to a filesystem path: a `file://` URL or a plain-path URI (no scheme).
 /// A `file:///C:/x` path keeps its drive letter (the leading slash is stripped on Windows).
 pub(crate) fn uri_to_path(uri: &Uri) -> Result<PathBuf, IoError> {

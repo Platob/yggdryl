@@ -4,7 +4,7 @@
 use std::fs::{self, File};
 use std::path::{Path as StdPath, PathBuf};
 
-use super::{file_err, read_at, uri_to_path, Mmap};
+use super::{absolutize, file_err, read_at, uri_to_path, Mmap};
 use crate::headers::Headers;
 use crate::io::memory::{cursor_methods, IOBase, IoError, Whence};
 use crate::io::{IOKind, IOMode};
@@ -79,10 +79,12 @@ pub struct LocalIO {
 }
 
 impl LocalIO {
-    /// A lazy handle for `path` — nothing is touched or created.
+    /// A lazy handle for `path` — nothing is touched or created. A **relative** path is made
+    /// absolute against the current working directory, so the handle always carries a full
+    /// absolute path (and reports a `file://` [`uri`](IOBase::uri)).
     pub fn from_path(path: impl AsRef<StdPath>) -> LocalIO {
         LocalIO {
-            path: path.as_ref().to_path_buf(),
+            path: absolutize(path.as_ref()),
             headers: Headers::new(),
             mode: IOMode::ReadWrite,
             map: None,
@@ -335,7 +337,8 @@ impl IOBase for LocalIO {
     }
 
     fn uri(&self) -> Uri {
-        Uri::from_path(&self.path.to_string_lossy())
+        // A local node reports a `file://` URL over its absolute path.
+        Uri::from_file_path(&self.path.to_string_lossy())
     }
 
     #[inline]

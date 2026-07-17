@@ -11,6 +11,13 @@ pub mod io;
 /// The project's one metadata map (ordered, case-insensitive, multi-value byte headers).
 pub mod headers;
 
+/// One media type (`type/subtype`) with its extensions + magic bytes, and the registry that
+/// resolves it from a mime string, file name, extension, or magic bytes.
+pub mod mimetype;
+
+/// An ordered list of [`mimetype::MimeType`]s — the layered type description of a resource.
+pub mod mediatype;
+
 /// The URI / URL family (RFC 3986) that addresses io sources, parsed from scratch.
 pub mod uri;
 

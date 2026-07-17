@@ -414,7 +414,8 @@ impl IOBase for Mmap {
     }
 
     fn uri(&self) -> Uri {
-        Uri::from_path(&self.path.to_string_lossy())
+        // A mapped file reports a `file://` URL over its absolute path (the local family).
+        Uri::from_file_path(&super::absolutize(&self.path).to_string_lossy())
     }
 
     #[inline]

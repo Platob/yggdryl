@@ -12,6 +12,7 @@
 mod authority;
 mod error;
 mod generic;
+mod parts;
 pub(crate) mod percent;
 mod scheme;
 mod url;
@@ -19,6 +20,7 @@ mod url;
 pub use authority::Authority;
 pub use error::UriError;
 pub use generic::Uri;
+pub use parts::UriParts;
 pub use scheme::default_port;
 pub use url::Url;
 
