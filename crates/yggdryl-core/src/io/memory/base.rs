@@ -225,6 +225,29 @@ pub trait IOBase {
     /// [`IOKind::Missing`] when nothing exists at its address).
     fn kind(&self) -> IOKind;
 
+    /// Whether this source is a regular **file** — derived from [`kind`](IOBase::kind).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// assert!(!Heap::new().is_file()); // a heap is IOKind::Heap, not a file
+    /// ```
+    fn is_file(&self) -> bool {
+        self.kind() == IOKind::File
+    }
+
+    /// Whether this source is a **directory** — derived from [`kind`](IOBase::kind).
+    fn is_dir(&self) -> bool {
+        self.kind() == IOKind::Directory
+    }
+
+    /// Whether something **exists** at this source's address — by default
+    /// `is_file() || is_dir()` (the filesystem reading); an in-memory source overrides it
+    /// (a live [`Heap`](super::Heap) always exists).
+    fn exists(&self) -> bool {
+        self.is_file() || self.is_dir()
+    }
+
     /// **Positioned read** (primitive). Copies up to `buf.len()` bytes starting at `offset` into
     /// `buf`, returning the number copied — `0` at or past the end, a short count near it. Never
     /// moves a cursor.

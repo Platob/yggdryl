@@ -19,7 +19,7 @@ name = "io_memory_heap"
 harness = false
 
 [[bench]]
-name = "io_memory_mmap"
+name = "io_local_mmap"
 harness = false
 
 [[bench]]

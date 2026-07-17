@@ -1,4 +1,4 @@
-# `io::memory::Mmap` — benchmark & optimization history
+# `io::local::Mmap` — benchmark & optimization history
 
 Time **and** memory for the memory-mapped file source
 ([`Mmap`](../../../../crates/yggdryl-core/src/io/memory/mmap.rs)) — the on-disk implementor of
@@ -8,8 +8,8 @@ harness is dependency-free with the same counting allocator as the heap bench.
 ## Run
 
 ```bash
-cargo bench -p yggdryl-core --bench io_memory_mmap
-cargo test  -p yggdryl-core --test io_memory_mmap     # functional suite (temp files)
+cargo bench -p yggdryl-core --bench io_local_mmap
+cargo test  -p yggdryl-core --test io_local_mmap     # functional suite (temp files)
 ```
 
 ## Rust core (release, counting global allocator, Windows NVMe)

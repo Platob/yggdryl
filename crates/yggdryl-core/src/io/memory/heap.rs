@@ -336,6 +336,11 @@ impl IOBase for Heap {
     }
 
     #[inline]
+    fn exists(&self) -> bool {
+        true // a live in-memory buffer always exists (it is neither file nor directory)
+    }
+
+    #[inline]
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         let start = offset as usize;
         if start >= self.data.len() {

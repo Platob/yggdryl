@@ -28,6 +28,7 @@ use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
 use crate::uri::Uri;
+use yggdryl_core::io::local;
 use yggdryl_core::io::memory as core;
 use yggdryl_core::io::memory::IOBase;
 use yggdryl_core::io::Serializable;
@@ -1074,22 +1075,22 @@ fn closed_err() -> napi::Error {
 #[napi(namespace = "memory")]
 pub struct Mmap {
     /// `None` once `close()` has run — every later use throws the guided closed error.
-    inner: Option<core::Mmap>,
+    inner: Option<local::Mmap>,
 }
 
 impl Mmap {
     /// The live mapping, or the guided closed error after `close()`.
-    fn inner(&self) -> napi::Result<&core::Mmap> {
+    fn inner(&self) -> napi::Result<&local::Mmap> {
         self.inner.as_ref().ok_or_else(closed_err)
     }
 
     /// The live mapping, mutably, or the guided closed error after `close()`.
-    fn inner_mut(&mut self) -> napi::Result<&mut core::Mmap> {
+    fn inner_mut(&mut self) -> napi::Result<&mut local::Mmap> {
         self.inner.as_mut().ok_or_else(closed_err)
     }
 
     /// Wraps a freshly opened core mapping (an open failure throws its guided text).
-    fn from_core(inner: Result<core::Mmap, core::IoError>) -> napi::Result<Mmap> {
+    fn from_core(inner: Result<local::Mmap, core::IoError>) -> napi::Result<Mmap> {
         Ok(Mmap {
             inner: Some(inner.map_err(to_error)?),
         })
@@ -1106,8 +1107,8 @@ impl Mmap {
     #[napi(factory)]
     pub fn open(source: Either<String, &Uri>) -> napi::Result<Mmap> {
         Self::from_core(match source {
-            Either::A(path) => core::Mmap::open_path(&path),
-            Either::B(uri) => core::Mmap::open_uri(&uri.inner),
+            Either::A(path) => local::Mmap::open_path(&path),
+            Either::B(uri) => local::Mmap::open_uri(&uri.inner),
         })
     }
 
@@ -1117,8 +1118,8 @@ impl Mmap {
     #[napi(factory)]
     pub fn open_readonly(source: Either<String, &Uri>) -> napi::Result<Mmap> {
         Self::from_core(match source {
-            Either::A(path) => core::Mmap::open_path_readonly(&path),
-            Either::B(uri) => core::Mmap::open_uri_readonly(&uri.inner),
+            Either::A(path) => local::Mmap::open_path_readonly(&path),
+            Either::B(uri) => local::Mmap::open_uri_readonly(&uri.inner),
         })
     }
 
@@ -1127,8 +1128,8 @@ impl Mmap {
     #[napi(factory)]
     pub fn create(source: Either<String, &Uri>) -> napi::Result<Mmap> {
         Self::from_core(match source {
-            Either::A(path) => core::Mmap::create_path(&path),
-            Either::B(uri) => core::Mmap::create_uri(&uri.inner),
+            Either::A(path) => local::Mmap::create_path(&path),
+            Either::B(uri) => local::Mmap::create_uri(&uri.inner),
         })
     }
 

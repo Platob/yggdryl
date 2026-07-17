@@ -1,4 +1,4 @@
-//! Functional tests for the memory-mapped [`Mmap`](yggdryl_core::io::memory::Mmap) source:
+//! Functional tests for the memory-mapped [`Mmap`](yggdryl_core::io::local::Mmap) source:
 //! uri-addressed open/create, the shared `IOBase` surface (typed + bulk + utf8 access, the
 //! cursor stream, wrappers), **auto-resizing** writes with amortized growth, persistence
 //! (capacity padding truncated on drop), read-only mappings, and the guided file errors.
@@ -6,7 +6,8 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use yggdryl_core::io::memory::{IOBase, IoError, Mmap};
+use yggdryl_core::io::local::Mmap;
+use yggdryl_core::io::memory::{IOBase, IoError};
 use yggdryl_core::io::{IOKind, IOMode};
 use yggdryl_core::uri::Uri;
 

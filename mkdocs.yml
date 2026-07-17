@@ -44,4 +44,5 @@ nav:
   - The io root: io/index.md
   - Headers: headers.md
   - Memory access: io/memory.md
+  - Local filesystem: io/local.md
   - URIs and URLs: uri.md

@@ -1,18 +1,19 @@
 //! Time **and** memory benchmark for the memory-mapped
-//! [`Mmap`](yggdryl_core::io::memory::Mmap) source: open/create, page-sized mapped reads and
+//! [`Mmap`](yggdryl_core::io::local::Mmap) source: open/create, page-sized mapped reads and
 //! writes through the shared `IOBase` surface, auto-resizing append streams, and flush.
 //!
 //! Dependency-free (`harness = false`, plain `main`) with the same counting allocator as the
 //! heap bench — the allocs/op column shows that mapped I/O itself allocates nothing (the OS
 //! pages back the mapping); only open/grow bookkeeping allocates.
 //!
-//! Run with `cargo bench -p yggdryl-core --bench io_memory_mmap`.
+//! Run with `cargo bench -p yggdryl-core --bench io_local_mmap`.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
-use yggdryl_core::io::memory::{IOBase, Mmap};
+use yggdryl_core::io::local::Mmap;
+use yggdryl_core::io::memory::IOBase;
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);

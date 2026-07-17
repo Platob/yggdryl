@@ -80,7 +80,7 @@ pub enum IoError {
         capacity: u64,
     },
     /// A file-backed operation (open / map / grow / flush on an
-    /// [`Mmap`](crate::io::memory::Mmap)) failed at the OS level. The message names the
+    /// [`Mmap`](crate::io::local::Mmap)) failed at the OS level. The message names the
     /// operation, the path, and the OS detail — check that the path exists, is accessible,
     /// and the disk has room.
     FileIo {

@@ -19,13 +19,16 @@
 mod error;
 mod kind;
 mod mode;
+mod path;
 mod serializable;
 mod whence;
 
+pub mod local;
 pub mod memory;
 
 pub use error::IoError;
 pub use kind::IOKind;
 pub use mode::IOMode;
+pub use path::Path;
 pub use serializable::Serializable;
 pub use whence::Whence;

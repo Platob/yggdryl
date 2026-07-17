@@ -1,5 +1,5 @@
 //! [`Mmap`] — the **memory-mapped file** source: a file on disk exposed through the same
-//! [`IOBase`] contract as the in-heap [`Heap`](super::Heap), addressed by a
+//! [`IOBase`] contract as the in-heap [`Heap`](crate::io::memory::Heap), addressed by a
 //! [`Uri`](crate::uri::Uri), with optimized page-backed read/write access and **auto-resizing**
 //! writes (a write past the end grows the file and remaps, with the same amortized-doubling
 //! capacity strategy as `Heap`).
@@ -8,12 +8,13 @@
 //! `CreateFileMappingW`/`MapViewOfFile` on Windows) through `std`'s raw handles — no external
 //! crate.
 
+use super::{file_err, uri_to_path};
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use super::cursor::cursor_methods;
-use super::{IOBase, IoError, Whence};
 use crate::headers::Headers;
+use crate::io::memory::cursor_methods;
+use crate::io::memory::{IOBase, IoError, Whence};
 use crate::io::{IOKind, IOMode};
 use crate::uri::Uri;
 
@@ -50,7 +51,8 @@ const MIN_MAP: u64 = 4096;
 /// (two independent mappings of one file would alias), not a value.
 ///
 /// ```
-/// use yggdryl_core::io::memory::{IOBase, Mmap};
+/// use yggdryl_core::io::local::Mmap;
+/// use yggdryl_core::io::memory::IOBase;
 /// use yggdryl_core::io::IOKind;
 ///
 /// let path = std::env::temp_dir().join("yggdryl_mmap_doc.bin");
@@ -461,47 +463,6 @@ fn readonly_err(path: &Path) -> IoError {
     }
 }
 
-/// Builds the guided [`IoError::FileIo`] from an OS error.
-fn file_err(op: &'static str, path: &Path, error: &std::io::Error) -> IoError {
-    IoError::FileIo {
-        op,
-        path: path.to_string_lossy().into_owned(),
-        detail: error.to_string(),
-    }
-}
-
-/// Resolves a [`Uri`] to a filesystem path: a `file://` URL or a plain-path URI (no scheme).
-/// A `file:///C:/x` path keeps its drive letter (the leading slash is stripped on Windows).
-fn uri_to_path(uri: &Uri) -> Result<PathBuf, IoError> {
-    match uri.scheme() {
-        None | Some("file") => {}
-        Some(other) => {
-            return Err(IoError::FileIo {
-                op: "open",
-                path: uri.to_string(),
-                detail: format!(
-                    "unsupported scheme {other:?}: a mapping needs a file:// URL or a plain \
-                     path URI"
-                ),
-            });
-        }
-    }
-    let path = uri.path();
-    // `file:///C:/x` parses to the path `/C:/x` — strip the leading slash before a drive.
-    let path = match path.as_bytes() {
-        [b'/', drive, b':', ..] if drive.is_ascii_alphabetic() => &path[1..],
-        _ => path,
-    };
-    if path.is_empty() {
-        return Err(IoError::FileIo {
-            op: "open",
-            path: uri.to_string(),
-            detail: "the URI has an empty path; give it a file path to map".to_string(),
-        });
-    }
-    Ok(PathBuf::from(path))
-}
-
 // -------------------------------------------------------------------------------------
 // OS mapping primitives — the only platform-specific code in the crate. Dependency-free:
 // both platforms link these symbols through the system libraries std already links.
@@ -646,5 +607,46 @@ mod sys {
         } else {
             Err(Error::last_os_error())
         }
+    }
+}
+
+impl crate::io::Path for Mmap {
+    type Node = super::LocalPath;
+    type Children = super::LocalChildren;
+    type Walk = super::LocalWalk;
+
+    fn name(&self) -> String {
+        crate::io::Path::name(&super::LocalPath::from_path(&self.path))
+    }
+
+    fn parent(&self) -> Option<super::LocalPath> {
+        crate::io::Path::parent(&super::LocalPath::from_path(&self.path))
+    }
+
+    fn join_str(&self, segment: &str) -> super::LocalPath {
+        super::LocalPath::from_path(&self.path).join_str(segment)
+    }
+
+    fn ls(&self) -> Result<super::LocalChildren, IoError> {
+        crate::io::Path::ls(&super::LocalPath::from_path(&self.path)) // a file streams nothing
+    }
+
+    fn ls_recursive(&self) -> Result<super::LocalWalk, IoError> {
+        crate::io::Path::ls_recursive(&super::LocalPath::from_path(&self.path))
+    }
+
+    /// DESIGN: removing an OPEN mapping is OS-dependent (Windows refuses to delete a mapped
+    /// file, Unix unlinks it) — the error, when any, is the OS's own guided `FileIo`. Drop or
+    /// close the mapping first for portable removal.
+    fn rm(&self) -> Result<(), IoError> {
+        crate::io::Path::rm(&super::LocalPath::from_path(&self.path))
+    }
+
+    fn rmfile(&self) -> Result<(), IoError> {
+        crate::io::Path::rmfile(&super::LocalPath::from_path(&self.path))
+    }
+
+    fn rmdir(&self) -> Result<(), IoError> {
+        crate::io::Path::rmdir(&super::LocalPath::from_path(&self.path))
     }
 }

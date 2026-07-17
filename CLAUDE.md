@@ -27,9 +27,13 @@ crates/yggdryl-core/src/             # the core (no external dependencies)
     error.rs  whence.rs              #   IoError, Whence (io-wide)
     serializable.rs                  #   the Serializable trait
     mode.rs  kind.rs                 #   IOMode, IOKind
+    path.rs                          #   the Path trait — uniform cross-filesystem IO graph
     memory/                          #   byte-access: traits at the module root…
       base.rs cursor.rs slice.rs     #     IOBase + the IOCursor/IOSlice wrappers
-      heap.rs  mmap.rs               #     …concrete sources below (in-heap Heap, mapped-file Mmap)
+      heap.rs                        #     …the in-heap source
+    local/                           #   the local-filesystem family (all implement Path)
+      mmap.rs                        #     the raw memory-mapped file
+      path.rs file.rs folder.rs      #     lazy LocalPath -> concrete LocalFile / LocalFolder
   headers.rs                         # Headers — the one metadata map (root module)
   uri/                               # addressing (root module): Uri/Url/Authority + scheme/percent
 ```
@@ -120,6 +124,16 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   branch-free loops over contiguous slices** so LLVM auto-vectorizes them on stable Rust (no
   SIMD dependency) — and a fill never materializes the full array. New sources inherit these
   from `IOBase`'s default methods; override only with something measurably faster.
+- **Paths auto-create lazily, with mapped least-allocation access.** Every `Path`
+  implementation is a **lazy handle**: constructing one never touches the filesystem; a
+  **write** auto-creates the missing parent folders and the file itself (`create_dir_all` +
+  create-on-open), and reads on a missing path are simply empty — so callers never pre-flight
+  `mkdir`/`touch`. The lazy path type (`LocalPath`) opens per operation for one-off access;
+  for repeated access it **sub-instantiates** the optimized concrete types (`file()` →
+  `LocalFile`, memory-mapped, zero-alloc I/O; `folder()` → `LocalFolder`) which auto-create
+  on construction. Discovery is **streamed** (`ls` / `ls_recursive` return iterators, never a
+  pre-collected tree), and every new filesystem family implements the same `io::Path` trait so
+  the graph surface is uniform.
 - **No lifetime parameters on public types** — the bindings must hold every one.
 - **Coherent layering — the contract at the module root, implementations below.** Cross-cutting
   value types and traits (`IoError`, `Whence`, `Headers`, `IOMode`, `IOKind`, `Serializable`)

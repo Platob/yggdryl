@@ -2,7 +2,7 @@
 //! anchor.
 //!
 //! Mirrors `yggdryl_core::io::memory`'s [`Heap`](yggdryl_core::io::memory::Heap) and
-//! [`Mmap`](yggdryl_core::io::memory::Mmap) sources and the
+//! [`Mmap`](yggdryl_core::io::local::Mmap) sources and the
 //! [`Whence`](yggdryl_core::io::memory::Whence) enum. A [`Heap`] is an owned byte buffer with a
 //! read/write cursor and `Vec`-like capacity — the concrete in-memory implementor of the
 //! byte-access traits (positioned `pread_*` / `pwrite_*` including UTF-8 text and the bulk
@@ -30,6 +30,7 @@ use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
 use crate::uri::Uri;
+use yggdryl_core::io::local;
 use yggdryl_core::io::memory::{self, IOBase, IoError};
 use yggdryl_core::io::Serializable;
 
@@ -1046,7 +1047,7 @@ impl Slice {
 #[pyclass(module = "yggdryl.memory")]
 pub struct Mmap {
     /// `None` once closed — every access goes through [`Mmap::io`] / [`Mmap::io_mut`].
-    pub(crate) inner: Option<memory::Mmap>,
+    pub(crate) inner: Option<local::Mmap>,
 }
 
 /// The guided error for any access to a closed mapping.
@@ -1056,12 +1057,12 @@ fn closed_err() -> PyErr {
 
 impl Mmap {
     /// The live mapping, or the guided closed `ValueError`.
-    fn io(&self) -> PyResult<&memory::Mmap> {
+    fn io(&self) -> PyResult<&local::Mmap> {
         self.inner.as_ref().ok_or_else(closed_err)
     }
 
     /// The live mapping mutably, or the guided closed `ValueError`.
-    fn io_mut(&mut self) -> PyResult<&mut memory::Mmap> {
+    fn io_mut(&mut self) -> PyResult<&mut local::Mmap> {
         self.inner.as_mut().ok_or_else(closed_err)
     }
 }
@@ -1072,8 +1073,8 @@ impl Mmap {
 fn mmap_from(
     source: &Bound<'_, PyAny>,
     verb: &'static str,
-    from_path: fn(&str) -> Result<memory::Mmap, IoError>,
-    from_uri: fn(&yggdryl_core::uri::Uri) -> Result<memory::Mmap, IoError>,
+    from_path: fn(&str) -> Result<local::Mmap, IoError>,
+    from_uri: fn(&yggdryl_core::uri::Uri) -> Result<local::Mmap, IoError>,
 ) -> PyResult<Mmap> {
     if let Ok(path) = source.extract::<String>() {
         from_path(&path)
@@ -1108,8 +1109,8 @@ impl Mmap {
         mmap_from(
             source,
             "open",
-            |path| memory::Mmap::open_path(path),
-            memory::Mmap::open_uri,
+            |path| local::Mmap::open_path(path),
+            local::Mmap::open_uri,
         )
     }
 
@@ -1121,8 +1122,8 @@ impl Mmap {
         mmap_from(
             source,
             "open",
-            |path| memory::Mmap::open_path_readonly(path),
-            memory::Mmap::open_uri_readonly,
+            |path| local::Mmap::open_path_readonly(path),
+            local::Mmap::open_uri_readonly,
         )
     }
 
@@ -1134,8 +1135,8 @@ impl Mmap {
         mmap_from(
             source,
             "create",
-            |path| memory::Mmap::create_path(path),
-            memory::Mmap::create_uri,
+            |path| local::Mmap::create_path(path),
+            local::Mmap::create_uri,
         )
     }
 
