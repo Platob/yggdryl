@@ -19,6 +19,10 @@ name = "io_memory_heap"
 harness = false
 
 [[bench]]
+name = "io_memory_mmap"
+harness = false
+
+[[bench]]
 name = "uri"
 harness = false
 

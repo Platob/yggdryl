@@ -29,7 +29,7 @@ crates/yggdryl-core/src/             # the core (no external dependencies)
     mode.rs  kind.rs                 #   IOMode, IOKind
     memory/                          #   byte-access: traits at the module root…
       base.rs cursor.rs slice.rs     #     IOBase + the IOCursor/IOSlice wrappers
-      heap.rs                        #     …concrete sources below (Heap; a future Mmap)
+      heap.rs  mmap.rs               #     …concrete sources below (in-heap Heap, mapped-file Mmap)
   headers.rs                         # Headers — the one metadata map (root module)
   uri/                               # addressing (root module): Uri/Url/Authority + scheme/percent
 ```
@@ -124,7 +124,7 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
 - **Coherent layering — the contract at the module root, implementations below.** Cross-cutting
   value types and traits (`IoError`, `Whence`, `Headers`, `IOMode`, `IOKind`, `Serializable`)
   live at the `io` root; the byte contract (`IOBase` + wrappers) at the `memory` root; each
-  concrete **source** (`Heap`, a future `Mmap`) is one file below, implementing the trait's few
+  concrete **source** (`Heap`, `Mmap`) is one file below, implementing the trait's few
   required methods and inheriting the rest. A source depends **downward**, never sideways on a
   sibling source.
 - **Ergonomic updates — `copy(**fields)` + `set_*` + `with_*`.** Every mutable public value

@@ -79,6 +79,18 @@ pub enum IoError {
         /// The capacity at the time of the request.
         capacity: u64,
     },
+    /// A file-backed operation (open / map / grow / flush on an
+    /// [`Mmap`](crate::io::memory::Mmap)) failed at the OS level. The message names the
+    /// operation, the path, and the OS detail — check that the path exists, is accessible,
+    /// and the disk has room.
+    FileIo {
+        /// The operation that failed (`"open"`, `"map"`, `"grow"`, `"flush"`, `"write"`).
+        op: &'static str,
+        /// The file path involved.
+        path: String,
+        /// The OS-level error detail.
+        detail: String,
+    },
     /// A name/value handed to a parser ([`IOMode::parse_str`](crate::io::IOMode::parse_str) /
     /// [`IOKind::from_u8`](crate::io::IOKind::from_u8), …) matched none of the accepted
     /// tokens. Pass one of the expected values.
@@ -135,6 +147,10 @@ impl fmt::Display for IoError {
             } => write!(
                 f,
                 "cannot reserve {additional} more bytes (current capacity {capacity}): the                  size overflows or the allocator refused; reserve less, shrink the source, or                  free memory first"
+            ),
+            Self::FileIo { op, path, detail } => write!(
+                f,
+                "cannot {op} {path:?}: {detail}; check that the path exists, is accessible,                  and the disk has room"
             ),
             Self::UnknownName {
                 kind,

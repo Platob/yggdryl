@@ -16,12 +16,14 @@
 //! - [`IOSlice`] — a concrete bounded **window** over any source, addressed from its own `0`.
 //!
 //! The seek anchor [`Whence`] and the guided [`IoError`] live at the [`io`](crate::io) root and
-//! are re-exported here for convenience. The concrete in-heap source is [`Heap`] (an owned byte
-//! `Vec` + built-in cursor + capacity + address).
+//! are re-exported here for convenience. Two concrete sources implement the contract: the
+//! in-heap [`Heap`] (an owned byte `Vec` + built-in cursor + capacity) and the memory-mapped
+//! [`Mmap`] (a file on disk, addressed by a `Uri`, auto-resizing on writes).
 
 mod base;
 mod cursor;
 mod heap;
+mod mmap;
 mod slice;
 
 pub use crate::io::{IoError, Whence};
@@ -29,4 +31,5 @@ pub use crate::io::{IoError, Whence};
 pub use base::IOBase;
 pub use cursor::IOCursor;
 pub use heap::Heap;
+pub use mmap::Mmap;
 pub use slice::IOSlice;

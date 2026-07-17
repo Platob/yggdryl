@@ -3,8 +3,8 @@
 `memory` is yggdryl's **abstract byte / memory-access layer** — the `IOBase` contract that defines
 positioned access to a byte region, independent of *where the bytes live*, plus the concrete pieces
 built over it. A **source** implements `IOBase`, so everything above reads and writes through one
-contract. The in-heap source is [`Heap`](#heap); a memory-mapped source (and others) plug in
-against the same contract.
+contract. Two sources implement it: the in-heap [`Heap`](#heap) and the memory-mapped
+[`Mmap`](#mmap--the-memory-mapped-file); further sources plug in against the same contract.
 
 ## The contract
 
@@ -121,6 +121,42 @@ constructor accepts a bytes value (or nothing) and infers what to build.
     let window = h.slice(1, 4).unwrap();
     assert_eq!(window.byte_size(), 4);
     ```
+
+## `Mmap` — the memory-mapped file
+
+The on-disk source: a file exposed through the **same contract** as `Heap` — every typed,
+bulk, utf8, cursor, and capacity method works identically over the mapping. It is opened from
+a [`Uri`](../uri.md) (`file://…` or a plain path), reports `IOKind.File` and its own address
+back, and **auto-resizes**: a write past the end grows the file with the same amortized
+doubling as `Heap` (`O(log n)` remaps), and the capacity padding is truncated back to the
+logical length on close. Read-only mappings (`open_readonly`) physically cannot be written —
+the full writes report a guided error naming the fix. Mapped I/O allocates nothing (the OS
+pages back the mapping — see the
+[`io_memory_mmap` benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/memory/mmap.md)).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{IOBase, Mmap};
+    use yggdryl_core::uri::Uri;
+
+    let path = std::env::temp_dir().join("example.bin");
+    let uri = Uri::from_path(&path.to_string_lossy());
+
+    let mut map = Mmap::create_uri(&uri).unwrap();   // create-or-open, read-write
+    map.write_utf8("hello mapped world");            // the same cursor stream as Heap
+    map.pwrite_i32_array(32, &[1, -2, 3]).unwrap();  // the same bulk ops
+    assert_eq!(map.pread_utf8(6, 6).unwrap(), "mapped");
+    map.flush().unwrap();                            // msync + fsync
+    drop(map);                                       // truncates capacity padding
+
+    let ro = Mmap::open_uri_readonly(&uri).unwrap(); // physically unwritable
+    assert!(ro.pwrite_all(0, b"x").is_err());        // guided error names the fix
+    std::fs::remove_file(&path).ok();
+    ```
+
+The byte surface is identical to `Heap`'s, so the Python/Node examples above apply verbatim
+once the bindings expose `Mmap` (`open` / `openReadonly` / `create` from a path or `Uri`).
 
 ## Addressing
 
