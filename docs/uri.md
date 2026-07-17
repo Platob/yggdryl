@@ -472,8 +472,11 @@ second argument) for the raw stored form. Components are stored encoded generall
 `parse` trusts its already-encoded input.
 
 - **Read** — `query_param(key)` (first value), `query_param_all(key)` (every value of a
-  repeated key), `query_params()` (all `(key, value)` pairs — the map view),
-  `has_query_param(key)`.
+  repeated key), `query_params()` (the **grouped map** in first-appearance key order — each key
+  mapped to **all** its values, so a repeated key like `?a=1&a=3` round-trips as one entry rather
+  than colliding: a `dict[str, tuple[str, …]]` in Python, an ordered `Map<string, string[]>` in
+  Node), `has_query_param(key)`. In the Rust core the grouped view is `query_params_grouped()`
+  (`Vec<(&str, Vec<&str>)>`); `query_params()` there returns the raw ordered `(key, value)` pairs.
 - **Create / update** — `set_query_param(key, value)` updates the first occurrence in place,
   drops later duplicates, or appends when absent (creating the query if there was none);
   `with_query_param` is the chainable builder form.
@@ -493,7 +496,7 @@ second argument) for the raw stored form. Components are stored encoded generall
     uri = Uri.parse("http://h/p?a=1&b=2&a=3")
     assert uri.query_param("a") == "1"                      # first occurrence wins
     assert uri.query_param_all("a") == ["1", "3"]           # every value, in order
-    assert dict(uri.query_params()) == {"a": "3", "b": "2"} # map view (last dup wins)
+    assert uri.query_params() == {"a": ("1", "3"), "b": ("2",)}  # grouped: key -> tuple of values
 
     uri.set_query_param("a", "9")                           # update (later dupes dropped)
     uri.set_query_param("c", "7")                           # create (appended)
@@ -513,7 +516,9 @@ second argument) for the raw stored form. Components are stored encoded generall
     const uri = Uri.parse('http://h/p?a=1&b=2&a=3')
     console.assert(uri.queryParam('a') === '1')                      // first occurrence wins
     console.assert(JSON.stringify(uri.queryParamAll('a')) === '["1","3"]')
-    console.assert(Object.fromEntries(uri.queryParams()).b === '2')  // map view
+    // grouped: an ordered Map<string, string[]> (key -> all its values, first-appearance order)
+    const qp = uri.queryParams()
+    console.assert(JSON.stringify([...qp]) === '[["a",["1","3"]],["b",["2"]]]')
 
     uri.setQueryParam('a', '9')                                      // update
     uri.setQueryParam('c', '7')                                      // create (appended)
@@ -530,7 +535,11 @@ second argument) for the raw stored form. Components are stored encoded generall
     let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     assert_eq!(uri.query_param("a"), Some("1"));            // first occurrence wins
     assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);   // every value, in order
-    assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2"), ("a", "3")]);
+    assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2"), ("a", "3")]); // raw pairs
+    assert_eq!( // grouped: key -> all values (what the bindings' query_params returns)
+        uri.query_params_grouped(),
+        vec![("a", vec!["1", "3"]), ("b", vec!["2"])],
+    );
 
     uri.set_query_param("a", "9");                          // update (later dupes dropped)
     uri.set_query_param("c", "7");                          // create (appended)
@@ -590,7 +599,7 @@ Percent-encoding — values are stored encoded and decoded on read:
     assert uri.query == "q=a%20b%26c"                    # stored percent-encoded
     assert uri.query_param("q") == "a b&c"               # decoded by default
     assert uri.query_param("q", encoded=True) == "a%20b%26c"   # raw stored form
-    assert dict(uri.query_params()) == {"q": "a b&c"}    # decoded map view
+    assert uri.query_params() == {"q": ("a%20b%26c",)}   # grouped map: stored (encoded) tuples
     ```
 
 === "Node"

@@ -4,7 +4,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { Heap, Whence } = yggdryl.memory
+const { Heap, Whence, Cursor, Slice } = yggdryl.memory
+const { Uri } = yggdryl.uri
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
@@ -266,4 +267,178 @@ test('copy is an independent clone', () => {
 test('toString reports the length', () => {
   assert.equal(new Heap(Buffer.from('hello')).toString(), 'Heap(len=5)')
   assert.equal(new Heap().toString(), 'Heap(len=0)')
+})
+
+// -------------------------------------------------------------------------------------
+// Heap address (uri)
+// -------------------------------------------------------------------------------------
+
+test('uri defaults to the empty Uri; setUri / withUri attach an address', () => {
+  const h = new Heap(Buffer.from('x'))
+  assert.ok(h.uri instanceof Uri)
+  assert.equal(h.uri.toString(), '') // empty by default
+
+  // withUri returns a copy with the address set; the original is untouched.
+  const named = h.withUri(Uri.parse('mem://buf/1'))
+  assert.equal(named.uri.host, 'buf')
+  assert.equal(named.uri.toString(), 'mem://buf/1')
+  assert.equal(h.uri.toString(), '') // original untouched
+
+  // setUri mutates in place.
+  h.setUri(Uri.parse('mem://scratch/a'))
+  assert.equal(h.uri.host, 'scratch')
+})
+
+test('copy(uri) overrides the address; no-arg copy is a plain clone', () => {
+  const h = new Heap(Buffer.from('orig')).withUri(Uri.parse('mem://a/1'))
+
+  // No-arg copy keeps the address and is independent.
+  const clone = h.copy()
+  assert.ok(clone.equals(h))
+  assert.equal(clone.uri.toString(), 'mem://a/1')
+  clone.pwriteByte(0, 0x5a)
+  assert.deepEqual(h.toBytes(), Buffer.from('orig')) // original untouched
+
+  // copy(uri) overrides the address, keeping the bytes.
+  const readdressed = h.copy(Uri.parse('mem://b/2'))
+  assert.deepEqual(readdressed.toBytes(), Buffer.from('orig'))
+  assert.equal(readdressed.uri.toString(), 'mem://b/2')
+  assert.equal(h.uri.toString(), 'mem://a/1') // original untouched
+})
+
+// -------------------------------------------------------------------------------------
+// Heap.cursor() / Heap.window()
+// -------------------------------------------------------------------------------------
+
+test('heap.cursor() yields an independent Cursor over a copy', () => {
+  const h = new Heap(Buffer.from('hello world'))
+  const cur = h.cursor()
+  assert.ok(cur instanceof Cursor)
+  assert.equal(cur.byteSize(), 11)
+  assert.deepEqual(cur.read(5), Buffer.from('hello'))
+  assert.equal(cur.position, 5)
+
+  // The cursor is over a copy — writing through it does not affect the source heap.
+  cur.setPosition(0)
+  assert.equal(cur.write(Buffer.from('HELLO')), 5)
+  assert.deepEqual(cur.toBytes(), Buffer.from('HELLO world'))
+  assert.deepEqual(h.toBytes(), Buffer.from('hello world')) // original untouched
+})
+
+test('heap.window() yields a bounded Slice; OOB throws; writes clamp; copy is independent', () => {
+  const h = new Heap(Buffer.from('hello world'))
+  const win = h.window(6, 5)
+  assert.ok(win instanceof Slice)
+  assert.equal(win.byteSize(), 5)
+  assert.equal(win.offset, 6)
+  assert.deepEqual(win.toBytes(), Buffer.from('world'))
+  assert.equal(win.preadByte(0), 'w'.charCodeAt(0))
+
+  // Out of bounds throws a guided error.
+  assert.throws(() => h.window(6, 6), /runs past the end/) // 6 + 6 > 11
+  assert.throws(() => h.window(6, 6), /11/)
+
+  // A write past the window's end is clamped to the window length.
+  assert.equal(win.pwriteByteArray(0, Buffer.from('ABCDEFGH')), 5) // only 5 fit
+  assert.deepEqual(win.toBytes(), Buffer.from('ABCDE'))
+  assert.deepEqual(h.toBytes(), Buffer.from('hello world')) // window is over a copy
+})
+
+// -------------------------------------------------------------------------------------
+// Cursor class (direct)
+// -------------------------------------------------------------------------------------
+
+test('Cursor: construction, stream + typed round-trips, seek, readToEnd', () => {
+  const cur = new Cursor(Buffer.from('abc'))
+  assert.equal(cur.byteSize(), 3)
+  assert.equal(cur.bitSize(), 24)
+  assert.equal(cur.readByte(), 0x61)
+  assert.equal(cur.position, 1)
+
+  // Typed writes advance the position; rewind + typed reads round-trip.
+  const c2 = new Cursor()
+  c2.writeI32(-7)
+  c2.writeI64(Math.pow(2, 40)) // below 2^53
+  assert.equal(c2.position, 12)
+  c2.rewind()
+  assert.equal(c2.readI32(), -7)
+  assert.equal(c2.readI64(), Math.pow(2, 40))
+
+  // Positioned typed + bit accessors.
+  c2.pwriteByte(0, 0xff)
+  assert.equal(c2.preadByte(0), 0xff)
+  assert.equal(c2.preadBit(0), true)
+  assert.equal(c2.preadBit(3), true)
+
+  // seek + readToEnd.
+  const c3 = new Cursor(Buffer.from('hello world'))
+  assert.equal(c3.seek(Whence.Start, 6), 6)
+  assert.deepEqual(c3.readToEnd(), Buffer.from('world'))
+
+  // Read past the end throws.
+  assert.throws(() => new Cursor().readByte(), /unexpected end of data/)
+
+  // inner() / toBytes() expose a copy of the wrapped heap.
+  assert.ok(c3.inner() instanceof Heap)
+  assert.deepEqual(c3.inner().toBytes(), Buffer.from('hello world'))
+  assert.deepEqual(c3.toBytes(), Buffer.from('hello world'))
+  assert.match(c3.toString(), /^Cursor\(pos=11, len=11\)$/)
+})
+
+test('Cursor.over wraps an existing Heap in a cursor over a copy', () => {
+  const h = new Heap(Buffer.from('hello world'))
+  const cur = Cursor.over(h)
+  assert.ok(cur instanceof Cursor)
+  assert.equal(cur.byteSize(), 11)
+  assert.equal(cur.position, 0)
+  assert.deepEqual(cur.read(5), Buffer.from('hello'))
+
+  // The cursor is over a copy — writing through it leaves the source heap untouched.
+  cur.rewind()
+  cur.write(Buffer.from('HELLO'))
+  assert.deepEqual(cur.toBytes(), Buffer.from('HELLO world'))
+  assert.deepEqual(h.toBytes(), Buffer.from('hello world'))
+})
+
+// -------------------------------------------------------------------------------------
+// Slice class (direct)
+// -------------------------------------------------------------------------------------
+
+test('Slice.over: bounded reads/writes clamp to the window; OOB throws', () => {
+  const h = new Heap(Buffer.from('hello world'))
+  const win = Slice.over(h, 0, 5)
+  assert.ok(win instanceof Slice)
+  assert.equal(win.byteSize(), 5)
+  assert.equal(win.offset, 0)
+  assert.deepEqual(win.preadByteArray(0, 5), Buffer.from('hello'))
+  assert.deepEqual(win.preadByteArray(3, 10), Buffer.from('lo')) // short near the window end
+  assert.equal(win.preadByte(0), 0x68) // 'h'
+
+  // Out-of-bounds window throws.
+  assert.throws(() => Slice.over(h, 6, 6), /runs past the end/)
+
+  // Clamped write.
+  assert.equal(win.pwriteByteArray(3, Buffer.from('ABCDEF')), 2) // only 2 fit before the end
+  assert.deepEqual(win.toBytes(), Buffer.from('helAB'))
+
+  // Typed positioned reads over a window.
+  const nums = new Heap()
+  nums.pwriteI32(0, 123456)
+  nums.pwriteI64(4, 7890123456)
+  const numWin = Slice.over(nums, 0, 12)
+  assert.equal(numWin.preadI32(0), 123456)
+  assert.equal(numWin.preadI64(4), 7890123456)
+  assert.ok(numWin.inner() instanceof Heap)
+  assert.match(numWin.toString(), /^Slice\(offset=0, len=12\)$/)
+})
+
+// -------------------------------------------------------------------------------------
+// uri delegation through the views
+// -------------------------------------------------------------------------------------
+
+test('Cursor and Slice delegate uri to the wrapped source', () => {
+  const named = new Heap(Buffer.from('data')).withUri(Uri.parse('mem://buf/7'))
+  assert.equal(named.cursor().uri.toString(), 'mem://buf/7')
+  assert.equal(named.window(0, 2).uri.toString(), 'mem://buf/7')
+  assert.equal(Slice.over(named, 1, 2).uri.host, 'buf')
 })

@@ -1,17 +1,18 @@
 # The memory layer
 
-`memory` is yggdryl's **abstract byte / memory-access layer** — the traits that define
-positioned and cursor access to a byte region, independent of *where the bytes live*. A concrete
-**source** implements them, so everything above reads and writes through one contract. The in-heap
-source is [`Heap`](#heap); a memory-mapped source (and others) plug in against the same traits.
+`memory` is yggdryl's **abstract byte / memory-access layer** — the `IOBase` contract that defines
+positioned access to a byte region, independent of *where the bytes live*, plus the concrete pieces
+built over it. A **source** implements `IOBase`, so everything above reads and writes through one
+contract. The in-heap source is [`Heap`](#heap); a memory-mapped source (and others) plug in
+against the same contract.
 
 ## The contract
 
-| Trait / type | What it adds |
+| Type | What it is |
 |---|---|
-| `IOBase` | positioned access — the `pread_byte_array` / `pwrite_byte_array` primitives, the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …), the buffer-reusing `pread_into` transfer, `byte_size` / `bit_size`, and `Vec`-like `capacity` / `reserve` |
-| `IOCursor` | a moving position over an `IOBase`: `read` / `write` advance it, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64`, plus the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
-| `IOSlice` | a bounded sub-range window over an `IOBase`, addressed from its own `0` |
+| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives, the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …), the buffer-reusing `pread_into` transfer, `byte_size` / `bit_size`, `Vec`-like `capacity` / `reserve`, an addressing [`uri`](#addressing), and the [`cursor()` / `window()`](#cursors-and-windows) builders |
+| `IOCursor<T>` | a concrete **cursor** wrapping any source: `read` / `write` advance a position, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64`, and the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
+| `IOSlice<T>` | a concrete bounded **window** wrapping any source, addressed from its own `0` |
 | `Whence` | the seek anchor: `Start` / `Current` / `End` |
 | `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds`) |
 
@@ -93,7 +94,7 @@ constructor accepts a bytes value (or nothing) and infers what to build.
 === "Rust"
 
     ```rust
-    use yggdryl_core::memory::{Heap, IOBase, IOCursor, IOSlice, Whence};
+    use yggdryl_core::memory::{Heap, IOBase, Whence};
 
     let mut h = Heap::with_capacity(32);
     h.write_byte(0x01).unwrap();
@@ -114,6 +115,99 @@ constructor accepts a bytes value (or nothing) and infers what to build.
     // A bounded window, addressed from its own 0.
     let window = h.slice(1, 4).unwrap();
     assert_eq!(window.byte_size(), 4);
+    ```
+
+## Addressing
+
+Every source carries an addressing [`Uri`](uri.md) — `uri()` on any `IOBase`. A raw scratch buffer
+reports the empty URI; a `Heap` can be given one (`with_uri` / `set_uri`), and the `cursor()` /
+`window()` wrappers delegate to their inner source's. The address is metadata: it is **not** part of
+a heap's value equality (two heaps with the same bytes are equal regardless of address).
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+    from yggdryl.uri import Uri
+
+    h = Heap(b"data").with_uri(Uri.parse("mem://scratch/a"))
+    assert h.uri.host == "scratch"
+    assert h == Heap(b"data")           # address is not part of equality
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+    const { Uri } = require('yggdryl').uri
+
+    const h = new Heap(Buffer.from('data')).withUri(Uri.parse('mem://scratch/a'))
+    console.assert(h.uri.host === 'scratch')
+    console.assert(h.equals(new Heap(Buffer.from('data'))))
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::memory::{Heap, IOBase};
+    use yggdryl_core::uri::Uri;
+
+    let h = Heap::from_slice(b"data").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
+    assert_eq!(h.uri().host(), Some("scratch"));
+    assert_eq!(h, Heap::from_slice(b"data")); // address is not part of equality
+    ```
+
+## Cursors and windows
+
+`Heap` has a built-in cursor and a materialized `slice` (a copy), but the cursor and window are also
+**standalone wrappers over any source**: `cursor()` returns an [`IOCursor<T>`](#the-contract) (a
+moving position), and `window(offset, len)` returns an [`IOSlice<T>`](#the-contract) (a bounded view
+addressed from its own `0`). Both are themselves `IOBase`, so they compose — a window of a window, a
+cursor over a window. In the bindings these are the `Cursor` and `Slice` classes.
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    cur = Heap(b"").cursor()      # a cursor over a fresh source
+    cur.write_i32(-7)
+    cur.rewind()
+    assert cur.read_i32() == -7
+
+    win = Heap(b"hello world").window(6, 5)  # a bounded view, no copy of the tail
+    assert bytes(win) == b"world"
+    assert len(win) == 5
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const cur = new Heap(Buffer.alloc(0)).cursor()
+    cur.writeI32(-7)
+    cur.rewind()
+    console.assert(cur.readI32() === -7)
+
+    const win = new Heap(Buffer.from('hello world')).window(6, 5)
+    console.assert(win.toBytes().toString() === 'world')
+    console.assert(win.byteSize() === 5)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::memory::{Heap, IOBase};
+
+    let mut cur = Heap::new().cursor();            // IOCursor<Heap>
+    cur.write_i32(-7).unwrap();
+    cur.rewind();
+    assert_eq!(cur.read_i32().unwrap(), -7);
+
+    let win = Heap::from_slice(b"hello world").window(6, 5).unwrap(); // IOSlice<Heap>
+    assert_eq!(win.pread_vec(0, 5), b"world");
+    assert_eq!(win.byte_size(), 5);
     ```
 
 ## Zero-copy transfers

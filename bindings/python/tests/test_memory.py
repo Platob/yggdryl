@@ -11,11 +11,12 @@ import copy
 import pytest
 
 import yggdryl.memory
-from yggdryl.memory import Heap, Whence
+from yggdryl.memory import Cursor, Heap, Slice, Whence
+from yggdryl.uri import Uri
 
 
 def test_module_surface():
-    for cls in (Heap, Whence):
+    for cls in (Heap, Whence, Cursor, Slice):
         assert cls.__module__ == "yggdryl.memory"
         assert hasattr(yggdryl.memory, cls.__name__)
 
@@ -269,3 +270,185 @@ def test_heap_is_unhashable_like_bytearray():
         {Heap(b"x")}  # noqa: B018 - mutable buffer must be unhashable
     with pytest.raises(TypeError):
         hash(Heap(b"x"))
+
+
+# -------------------------------------------------------------------------------------
+# Heap address (uri) + copy(uri=...)
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_uri_default_and_set():
+    h = Heap(b"x")
+    assert isinstance(h.uri, Uri)
+    assert h.uri == Uri.parse("")  # empty/opaque by default
+
+    addr = Uri.parse("mem://buf/1")
+    h.set_uri(addr)
+    assert h.uri == addr
+    assert h.uri.host == "buf"
+
+
+def test_heap_with_uri_is_a_copy():
+    h = Heap(b"x")
+    addr = Uri.parse("mem://scratch/a")
+    named = h.with_uri(addr)
+    assert named.uri == addr
+    assert h.uri == Uri.parse("")  # original address untouched
+    assert named == h  # equality is over the bytes; the address is metadata
+
+
+def test_heap_copy_with_uri_override():
+    h = Heap(b"data").with_uri(Uri.parse("mem://a/1"))
+    plain = h.copy()  # no-arg copy keeps the address
+    assert plain.uri == Uri.parse("mem://a/1")
+    assert plain.to_bytes() == b"data"
+
+    readdressed = h.copy(uri=Uri.parse("mem://b/2"))
+    assert readdressed.uri == Uri.parse("mem://b/2")
+    assert readdressed.to_bytes() == b"data"
+    assert h.uri == Uri.parse("mem://a/1")  # original untouched
+
+    # copy.copy / copy.deepcopy stay plain clones (keep the address).
+    assert copy.copy(h).uri == Uri.parse("mem://a/1")
+    assert copy.deepcopy(h).uri == Uri.parse("mem://a/1")
+
+
+# -------------------------------------------------------------------------------------
+# Heap.cursor() / Heap.window() view builders
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_cursor_round_trip():
+    h = Heap()
+    cur = h.cursor()
+    assert isinstance(cur, Cursor)
+    cur.write_i32(-7)
+    cur.write_i64(1 << 40)
+    cur.rewind()
+    assert cur.read_i32() == -7
+    assert cur.read_i64() == 1 << 40
+    # The cursor works over an independent copy — the original heap is untouched.
+    assert h.byte_size() == 0
+
+
+def test_heap_window_view_and_bounds():
+    h = Heap(b"hello world")
+    win = h.window(6, 5)
+    assert isinstance(win, Slice)
+    assert win.byte_size() == 5
+    assert win.offset == 6
+    assert win.to_bytes() == b"world"
+    with pytest.raises(ValueError, match="runs past the end"):
+        h.window(6, 6)  # 6 + 6 > 11
+
+
+def test_heap_window_clamped_write():
+    h = Heap(b"hello world")
+    win = h.window(6, 5)  # "world"
+    # A write past the window's end is clamped away (fixed-length window).
+    assert win.pwrite_byte_array(3, b"ABCDEF") == 2  # only 2 bytes fit (positions 3,4)
+    assert win.to_bytes() == b"worAB"
+
+
+# -------------------------------------------------------------------------------------
+# Cursor class directly
+# -------------------------------------------------------------------------------------
+
+
+def test_cursor_construct_and_stream():
+    cur = Cursor(b"hello world")
+    assert isinstance(cur, Cursor)
+    assert len(cur) == 11
+    assert cur.byte_size() == 11
+    assert cur.bit_size() == 88
+    assert cur.position == 0
+    assert cur.read(5) == b"hello"
+    assert cur.position == 5
+    assert cur.seek(Whence.Start, 6) == 6
+    assert cur.read_to_end() == b"world"
+
+    empty = Cursor()  # no data -> empty heap
+    assert empty.byte_size() == 0
+    assert empty.write(b"abc") == 3
+    assert bytes(empty) == b"abc"
+
+
+def test_cursor_over_is_independent_copy():
+    h = Heap(b"src")
+    cur = Cursor.over(h)
+    cur.write_byte(ord("X"))  # position 0
+    assert bytes(cur) == b"Xrc"
+    assert h.to_bytes() == b"src"  # the source copy is untouched
+
+
+def test_cursor_typed_and_positioned_and_eof():
+    cur = Cursor()
+    cur.write_byte(0x7F)
+    cur.write_i32(-7)
+    assert cur.position == 5
+    # Positioned accessors reach any offset without moving the cursor.
+    assert cur.pread_byte(0) == 0x7F
+    assert cur.pread_i32(1) == -7
+    assert cur.position == 5
+    cur.pwrite_byte(0, 0x01)
+    assert cur.pread_byte(0) == 0x01
+    # A failed typed read leaves the cursor put.
+    cur.rewind()
+    cur.set_position(5)
+    with pytest.raises(ValueError):
+        cur.read_i32()  # past the end
+    assert cur.position == 5
+
+
+def test_cursor_inner_and_uri_delegate():
+    addr = Uri.parse("mem://c/1")
+    h = Heap(b"payload").with_uri(addr)
+    cur = Cursor.over(h)
+    assert cur.uri == addr  # delegates to the wrapped source's address
+    inner = cur.inner()
+    assert isinstance(inner, Heap)
+    assert inner.to_bytes() == b"payload"
+    assert "position=0" in repr(cur)
+
+
+# -------------------------------------------------------------------------------------
+# Slice class directly
+# -------------------------------------------------------------------------------------
+
+
+def test_slice_construct_and_read():
+    h = Heap(b"hello world")
+    win = Slice(h, 6, 5)
+    assert isinstance(win, Slice)
+    assert len(win) == 5
+    assert win.byte_size() == 5
+    assert win.offset == 6
+    assert win.pread_byte_array(0, 5) == b"world"
+    assert win.pread_byte_array(0, 99) == b"world"  # clamped to the window
+    assert win.pread_byte(0) == ord("w")
+    assert bytes(win) == b"world"
+    with pytest.raises(ValueError):
+        Slice(h, 6, 6)  # out of bounds
+
+
+def test_slice_typed_reads_within_window():
+    h = Heap()
+    h.pwrite_i32(0, 111)
+    h.pwrite_i32(4, -222)
+    h.pwrite_i64(8, 1 << 40)
+    win = Slice(h, 4, 12)  # covers the -222 i32 and the i64
+    assert win.pread_i32(0) == -222
+    assert win.pread_i64(4) == 1 << 40
+    with pytest.raises(ValueError):
+        win.pread_i64(8)  # only 4 bytes remain in the window
+
+
+def test_slice_inner_and_uri_delegate():
+    addr = Uri.parse("mem://s/1")
+    h = Heap(b"hello world").with_uri(addr)
+    win = Slice(h, 0, 5)
+    assert win.uri == addr  # delegates to the wrapped source's address
+    inner = win.inner()
+    assert isinstance(inner, Heap)
+    assert inner.to_bytes() == b"hello world"  # inner() is the whole source
+    assert "offset=0" in repr(win)

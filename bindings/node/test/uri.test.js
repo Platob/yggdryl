@@ -290,8 +290,7 @@ test('query parameter map access and CRUD', () => {
   assert.equal(uri.queryParam('a'), '1') // first occurrence wins
   assert.equal(uri.queryParam('missing'), null)
   assert.deepEqual(uri.queryParamAll('a'), ['1', '3'])
-  assert.deepEqual(uri.queryParams(), [['a', '1'], ['b', '2'], ['a', '3']])
-  assert.deepEqual(Object.fromEntries(uri.queryParams()), { a: '3', b: '2' }) // map view
+  assert.deepEqual(uri.queryParams(), new Map([['a', ['1', '3']], ['b', ['2']]])) // grouped by key
   assert.ok(uri.hasQueryParam('b'))
   assert.ok(!uri.hasQueryParam('z'))
 
@@ -350,8 +349,109 @@ test('query parameter percent-encoding', () => {
   }
 
   const u = Uri.parse('http://h/p').withQueryParam('n', 'a b').withQueryParam('t', 'x&y')
-  assert.deepEqual(Object.fromEntries(u.queryParams()), { n: 'a b', t: 'x&y' }) // decoded
-  assert.deepEqual(Object.fromEntries(u.queryParams(true)), { n: 'a%20b', t: 'x%26y' })
+  assert.deepEqual(u.queryParams(), new Map([['n', ['a%20b']], ['t', ['x%26y']]])) // stored form
 
   assert.equal(Uri.parse('http://h').withPath('/a b').path, '/a%20b') // component encoded
+})
+
+// -------------------------------------------------------------------------------------
+// queryParams grouped object
+// -------------------------------------------------------------------------------------
+
+test('queryParams returns an ordered Map, preserving first-appearance key order', () => {
+  const uri = Uri.parse('http://h/p?b=1&a=2&b=3&c=4&a=5')
+  const params = uri.queryParams()
+  assert.ok(params instanceof Map)
+  // Each key maps to the array of its values, in encounter order.
+  assert.deepEqual(params, new Map([['b', ['1', '3']], ['a', ['2', '5']], ['c', ['4']]]))
+  // First-appearance key order is preserved (b, then a, then c).
+  assert.deepEqual([...params.keys()], ['b', 'a', 'c'])
+  assert.deepEqual(params.get('a'), ['2', '5'])
+
+  // Numeric-looking keys keep first-appearance order — a plain object would reorder to 1,2.
+  assert.deepEqual([...Uri.parse('http://h/p?2=a&1=b').queryParams().keys()], ['2', '1'])
+
+  // A single-valued key still yields a one-element array.
+  assert.deepEqual(Uri.parse('http://h/p?x=1').queryParams(), new Map([['x', ['1']]]))
+  // No query -> empty Map.
+  assert.deepEqual(Uri.parse('http://h/p').queryParams(), new Map())
+
+  // Url mirrors it (ordered Map, first-appearance order), numeric keys unreordered too.
+  const url = Url.parse('https://h/p?z=1&y=2&z=3')
+  assert.deepEqual(url.queryParams(), new Map([['z', ['1', '3']], ['y', ['2']]]))
+  assert.deepEqual([...Url.parse('https://h/p?2=a&1=b').queryParams().keys()], ['2', '1'])
+})
+
+// -------------------------------------------------------------------------------------
+// copy(options) — clone with per-field overrides
+// -------------------------------------------------------------------------------------
+
+test('Uri.copy overrides only the given components; no-arg copy equals a clone', () => {
+  const base = Uri.parse('https://user:pw@example.com:8080/a?q=1#frag')
+
+  // No-arg copy is a plain, independent clone.
+  const clone = base.copy()
+  assert.ok(clone.equals(base))
+  clone.setPath('/other')
+  assert.equal(base.path, '/a') // original untouched
+
+  // Overriding one field leaves the others unchanged.
+  const rehosted = base.copy({ host: 'other.com' })
+  assert.equal(rehosted.host, 'other.com')
+  assert.equal(rehosted.scheme, 'https') // kept
+  assert.equal(rehosted.port, 8080) // kept
+  assert.equal(rehosted.path, '/a') // kept
+  assert.equal(base.host, 'example.com') // original untouched
+
+  // Several overrides at once.
+  const patched = base.copy({ scheme: 'http', port: 9090, path: '/z', query: 'k=v', fragment: 'top' })
+  assert.equal(patched.toString(), 'http://user:pw@example.com:9090/z?k=v#top')
+
+  // user / password overrides.
+  const reauthed = base.copy({ user: 'svc', password: 'sec' })
+  assert.equal(reauthed.user, 'svc')
+  assert.equal(reauthed.password, 'sec')
+})
+
+test('Url.copy overrides only the given components; no-arg copy equals a clone', () => {
+  const base = Url.parse('https://example.com:8080/a?q=1')
+  assert.ok(base.copy().equals(base)) // no-arg == clone
+
+  const patched = base.copy({ scheme: 'http', host: 'h2', port: 443, path: '/b' })
+  assert.equal(patched.toString(), 'http://h2:443/b?q=1')
+  assert.equal(base.toString(), 'https://example.com:8080/a?q=1') // original untouched
+})
+
+test('Authority.copy overrides only the given fields; no-arg copy equals a clone', () => {
+  const base = new Authority('example.com', 'user', 'pw', 8080)
+  assert.ok(base.copy().equals(base)) // no-arg == clone
+
+  const rehosted = base.copy({ host: 'replica', port: 5432 })
+  assert.equal(rehosted.host, 'replica')
+  assert.equal(rehosted.port, 5432)
+  assert.equal(rehosted.user, 'user') // kept
+  assert.equal(rehosted.password, 'pw') // kept
+  assert.equal(base.host, 'example.com') // original untouched
+
+  assert.equal(base.copy({ user: 'svc' }).toString(), 'svc:pw@example.com:8080')
+})
+
+// -------------------------------------------------------------------------------------
+// Url.authority / hasAuthority / host totals
+// -------------------------------------------------------------------------------------
+
+test('Url.authority is an Authority; hasAuthority / host are total', () => {
+  const url = Url.parse('https://user:pw@example.com:8080/p')
+  assert.ok(url.authority instanceof Authority)
+  assert.equal(url.authority.host, 'example.com')
+  assert.equal(url.authority.port, 8080)
+  assert.equal(url.hasAuthority, true)
+  assert.equal(url.host, 'example.com')
+
+  // A scheme-only URL: authority is an empty Authority, host is '' (total), hasAuthority false.
+  const mailto = Url.parse('mailto:a@b.com')
+  assert.ok(mailto.authority instanceof Authority)
+  assert.equal(mailto.hasAuthority, false)
+  assert.equal(mailto.host, '')
+  assert.equal(mailto.authority.host, '')
 })

@@ -15,6 +15,7 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
+use crate::uri::Uri;
 use yggdryl_core::memory as core;
 use yggdryl_core::memory::IOBase;
 
@@ -296,18 +297,66 @@ impl Heap {
             .map_err(to_error)
     }
 
+    // ---- address (uri) -----------------------------------------------------------------
+
+    /// The [`Uri`] that addresses this heap (empty by default).
+    #[napi(getter)]
+    pub fn uri(&self) -> Uri {
+        Uri {
+            inner: self.inner.uri(),
+        }
+    }
+
+    /// Sets the addressing `Uri` in place.
+    #[napi]
+    pub fn set_uri(&mut self, uri: &Uri) {
+        self.inner.set_uri(uri.inner.clone());
+    }
+
+    /// Returns a copy of this heap with its addressing `Uri` set.
+    #[napi]
+    pub fn with_uri(&self, uri: &Uri) -> Heap {
+        Heap {
+            inner: self.inner.clone().with_uri(uri.inner.clone()),
+        }
+    }
+
+    // ---- cursor / window views ---------------------------------------------------------
+
+    /// An independent [`Cursor`] over a copy of this heap, positioned at the start.
+    #[napi]
+    pub fn cursor(&self) -> Cursor {
+        Cursor {
+            inner: self.inner.clone().cursor(),
+        }
+    }
+
+    /// A bounded [`Slice`] view `[offset, offset + length)` over a copy of this heap (addressed
+    /// from its own `0`), or throws a guided `Error` if it runs past the end.
+    #[napi]
+    pub fn window(&self, offset: u32, length: u32) -> napi::Result<Slice> {
+        self.inner
+            .clone()
+            .window(offset as u64, length as u64)
+            .map(|inner| Slice { inner })
+            .map_err(to_error)
+    }
+
     /// A copy of the stored bytes as a `Buffer` (the cursor is not included).
     #[napi]
     pub fn to_bytes(&self) -> Buffer {
         self.inner.as_slice().to_vec().into()
     }
 
-    /// An explicit copy of this heap (bytes and cursor).
+    /// An explicit copy of this heap (bytes and cursor), optionally overriding the addressing
+    /// `Uri` — like `copy(uri=…)`. With no argument it is a plain clone.
     #[napi]
-    pub fn copy(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
+    pub fn copy(&self, uri: Option<&Uri>) -> Heap {
+        let mut inner = self.inner.clone();
+        if let Some(uri) = uri {
+            inner.set_uri(uri.inner.clone());
         }
+        Heap { inner }
     }
 
     /// Content equality — equal iff the stored bytes are equal, regardless of cursor position.
@@ -320,5 +369,329 @@ impl Heap {
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
         format!("Heap(len={})", self.inner.byte_size())
+    }
+}
+
+/// A moving read/write position over an in-heap byte source — the concrete cursor that
+/// `read`/`write`/`seek` advance. Mirrors `yggdryl_core::memory::IOCursor<Heap>`: it owns a
+/// copy of the source and a position, and is itself a byte source (its positioned `pread_*` /
+/// `pwrite_*` and `uri` delegate to the wrapped heap).
+#[napi(namespace = "memory")]
+pub struct Cursor {
+    pub(crate) inner: core::IOCursor<core::Heap>,
+}
+
+#[napi(namespace = "memory")]
+impl Cursor {
+    /// Builds a cursor over a **copy** of `data`'s bytes when given, else an empty heap, with the
+    /// position at `0`.
+    #[napi(constructor)]
+    pub fn new(data: Option<Buffer>) -> Self {
+        let heap = match data {
+            Some(buffer) => core::Heap::from_slice(buffer.as_ref()),
+            None => core::Heap::new(),
+        };
+        Self {
+            inner: heap.cursor(),
+        }
+    }
+
+    /// Wraps an **existing** [`Heap`] (a copy of it) in a cursor positioned at the start — the
+    /// factory counterpart to the `new(data?)` constructor.
+    #[napi(factory)]
+    pub fn over(heap: &Heap) -> Cursor {
+        Cursor {
+            inner: heap.inner.clone().cursor(),
+        }
+    }
+
+    // ---- position / seek ---------------------------------------------------------------
+
+    /// The current position (bytes from the start). May sit past the end after a seek.
+    #[napi(getter)]
+    pub fn position(&self) -> u32 {
+        self.inner.position() as u32
+    }
+
+    /// Moves the position to an absolute `position` (past the end is allowed).
+    #[napi]
+    pub fn set_position(&mut self, position: u32) {
+        self.inner.set_position(position as u64);
+    }
+
+    /// Seeks to `whence + offset` and returns the new position; seeking before the start throws.
+    #[napi]
+    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<u32> {
+        self.inner
+            .seek(whence.into(), offset)
+            .map(|position| position as u32)
+            .map_err(to_error)
+    }
+
+    /// Resets the position to the start.
+    #[napi]
+    pub fn rewind(&mut self) {
+        self.inner.rewind();
+    }
+
+    // ---- stream read / write -----------------------------------------------------------
+
+    /// Reads up to `length` bytes from the current position into a fresh `Buffer`, advancing the
+    /// position by the number read (short near the end).
+    #[napi]
+    pub fn read(&mut self, length: u32) -> Buffer {
+        self.inner.read_vec(length as usize).into()
+    }
+
+    /// Writes `data` at the current position, advancing the position by the number written
+    /// (growing the storage as needed); returns that count.
+    #[napi]
+    pub fn write(&mut self, data: Buffer) -> u32 {
+        self.inner.write(data.as_ref()) as u32
+    }
+
+    /// Reads the next byte at the position, advancing it by 1, or throws at the end.
+    #[napi]
+    pub fn read_byte(&mut self) -> napi::Result<u8> {
+        self.inner.read_byte().map_err(to_error)
+    }
+
+    /// Writes the byte `value` at the position, advancing it by 1.
+    #[napi]
+    pub fn write_byte(&mut self, value: u8) -> napi::Result<()> {
+        self.inner.write_byte(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i32` (4 bytes) at the position, advancing it by 4, or throws.
+    #[napi]
+    pub fn read_i32(&mut self) -> napi::Result<i32> {
+        self.inner.read_i32().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i32` (4 bytes) at the position, advancing it by 4.
+    #[napi]
+    pub fn write_i32(&mut self, value: i32) -> napi::Result<()> {
+        self.inner.write_i32(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i64` (8 bytes) at the position, advancing it by 8, or throws.
+    #[napi]
+    pub fn read_i64(&mut self) -> napi::Result<i64> {
+        self.inner.read_i64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i64` (8 bytes) at the position, advancing it by 8.
+    #[napi]
+    pub fn write_i64(&mut self, value: i64) -> napi::Result<()> {
+        self.inner.write_i64(value).map_err(to_error)
+    }
+
+    /// Reads from the current position **to the end** into a fresh `Buffer`, advancing the
+    /// position to the end.
+    #[napi]
+    pub fn read_to_end(&mut self) -> Buffer {
+        self.inner.read_to_end().into()
+    }
+
+    // ---- IOBase: size + positioned typed accessors -------------------------------------
+
+    /// The total length in bytes of the wrapped source.
+    #[napi]
+    pub fn byte_size(&self) -> u32 {
+        self.inner.byte_size() as u32
+    }
+
+    /// The total length in bits — `byteSize * 8` (an `i64`, matching `Heap.bitSize`).
+    #[napi]
+    pub fn bit_size(&self) -> i64 {
+        self.inner.bit_size() as i64
+    }
+
+    /// Reads the single byte at absolute `offset`, or throws if it is past the end.
+    #[napi]
+    pub fn pread_byte(&self, offset: u32) -> napi::Result<u8> {
+        self.inner.pread_byte(offset as u64).map_err(to_error)
+    }
+
+    /// Writes the single byte `value` at absolute `offset`, growing the storage as needed.
+    #[napi]
+    pub fn pwrite_byte(&mut self, offset: u32, value: u8) -> napi::Result<()> {
+        self.inner
+            .pwrite_byte(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads the bit at absolute **bit** `offset` (LSB-first), or throws if its byte is past the end.
+    #[napi]
+    pub fn pread_bit(&self, offset: u32) -> napi::Result<bool> {
+        self.inner.pread_bit(offset as u64).map_err(to_error)
+    }
+
+    /// Sets or clears the bit at absolute **bit** `offset` (LSB-first), growing the storage as needed.
+    #[napi]
+    pub fn pwrite_bit(&mut self, offset: u32, value: bool) -> napi::Result<()> {
+        self.inner
+            .pwrite_bit(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i32` (4 bytes) at absolute `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i32(&self, offset: u32) -> napi::Result<i32> {
+        self.inner.pread_i32(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i32` (4 bytes) at absolute `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i32(&mut self, offset: u32, value: i32) -> napi::Result<()> {
+        self.inner
+            .pwrite_i32(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i64` (8 bytes) at absolute `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i64(&self, offset: u32) -> napi::Result<i64> {
+        self.inner.pread_i64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i64` (8 bytes) at absolute `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i64(&mut self, offset: u32, value: i64) -> napi::Result<()> {
+        self.inner
+            .pwrite_i64(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    // ---- source access -----------------------------------------------------------------
+
+    /// The [`Uri`] addressing the wrapped source.
+    #[napi(getter)]
+    pub fn uri(&self) -> Uri {
+        Uri {
+            inner: self.inner.uri(),
+        }
+    }
+
+    /// A copy of the wrapped [`Heap`] source (the position is not carried).
+    #[napi]
+    pub fn inner(&self) -> Heap {
+        Heap {
+            inner: self.inner.inner().clone(),
+        }
+    }
+
+    /// A copy of the wrapped source's stored bytes as a `Buffer`.
+    #[napi]
+    pub fn to_bytes(&self) -> Buffer {
+        self.inner.inner().as_slice().to_vec().into()
+    }
+
+    /// A short debug string of the form `Cursor(pos=P, len=N)`.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "Cursor(pos={}, len={})",
+            self.inner.position(),
+            self.inner.byte_size()
+        )
+    }
+}
+
+/// A bounded, fixed-length window over an in-heap byte source, addressed from its own `0`.
+/// Mirrors `yggdryl_core::memory::IOSlice<Heap>`: it owns a copy of the source and presents the
+/// range `[offset, offset + length)`. A write past the window's end is clamped (it can never
+/// grow the source beyond the window).
+#[napi(namespace = "memory")]
+pub struct Slice {
+    pub(crate) inner: core::IOSlice<core::Heap>,
+}
+
+#[napi(namespace = "memory")]
+impl Slice {
+    /// The window `[offset, offset + length)` over a **copy** of `heap`, or throws a guided
+    /// `Error` if it runs past the source's end.
+    #[napi(factory)]
+    pub fn over(heap: &Heap, offset: u32, length: u32) -> napi::Result<Slice> {
+        core::IOSlice::new(heap.inner.clone(), offset as u64, length as u64)
+            .map(|inner| Slice { inner })
+            .map_err(to_error)
+    }
+
+    /// The window length in bytes.
+    #[napi]
+    pub fn byte_size(&self) -> u32 {
+        self.inner.byte_size() as u32
+    }
+
+    /// The window's start offset within the source.
+    #[napi(getter)]
+    pub fn offset(&self) -> u32 {
+        self.inner.offset() as u32
+    }
+
+    /// Reads up to `length` bytes at `offset` **within the window** into a fresh `Buffer` (short
+    /// or empty near the window's end). Never moves any cursor.
+    #[napi]
+    pub fn pread_byte_array(&self, offset: u32, length: u32) -> Buffer {
+        self.inner.pread_vec(offset as u64, length as usize).into()
+    }
+
+    /// Reads the single byte at `offset` within the window, or throws if it is past the window's end.
+    #[napi]
+    pub fn pread_byte(&self, offset: u32) -> napi::Result<u8> {
+        self.inner.pread_byte(offset as u64).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i32` (4 bytes) at `offset` within the window, or throws.
+    #[napi]
+    pub fn pread_i32(&self, offset: u32) -> napi::Result<i32> {
+        self.inner.pread_i32(offset as u64).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i64` (8 bytes) at `offset` within the window, or throws.
+    #[napi]
+    pub fn pread_i64(&self, offset: u32) -> napi::Result<i64> {
+        self.inner.pread_i64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `data` at `offset` within the window, **clamped** to the window's end; returns the
+    /// number of bytes actually written (short if it would overflow the window).
+    #[napi]
+    pub fn pwrite_byte_array(&mut self, offset: u32, data: Buffer) -> u32 {
+        self.inner.pwrite_byte_array(offset as u64, data.as_ref()) as u32
+    }
+
+    /// The [`Uri`] addressing the wrapped source.
+    #[napi(getter)]
+    pub fn uri(&self) -> Uri {
+        Uri {
+            inner: self.inner.uri(),
+        }
+    }
+
+    /// A copy of the wrapped [`Heap`] source (the whole source, not just the window).
+    #[napi]
+    pub fn inner(&self) -> Heap {
+        Heap {
+            inner: self.inner.inner().clone(),
+        }
+    }
+
+    /// A copy of the window's bytes (addressed from its own `0`) as a `Buffer`.
+    #[napi]
+    pub fn to_bytes(&self) -> Buffer {
+        let length = self.inner.byte_size() as usize;
+        self.inner.pread_vec(0, length).into()
+    }
+
+    /// A short debug string of the form `Slice(offset=O, len=N)`.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        format!(
+            "Slice(offset={}, len={})",
+            self.inner.offset(),
+            self.inner.byte_size()
+        )
     }
 }

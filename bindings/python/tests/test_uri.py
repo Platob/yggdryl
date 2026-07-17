@@ -305,8 +305,9 @@ def test_query_param_crud():
     assert uri.query_param("a") == "1"  # first occurrence wins
     assert uri.query_param("missing") is None
     assert uri.query_param_all("a") == ["1", "3"]
-    assert uri.query_params() == [("a", "1"), ("b", "2"), ("a", "3")]
-    assert dict(uri.query_params()) == {"a": "3", "b": "2"}  # map view (last dup wins)
+    # query_params groups every value of a key into a tuple, first-appearance order preserved.
+    assert uri.query_params() == {"a": ("1", "3"), "b": ("2",)}
+    assert list(uri.query_params()) == ["a", "b"]  # key order preserved
     assert uri.has_query_param("b")
     assert not uri.has_query_param("z")
 
@@ -364,7 +365,71 @@ def test_query_param_encoding():
         assert u.query_param("k") == value                     # set -> get round-trips
 
     u = Uri.parse("http://h/p").with_query_param("n", "a b").with_query_param("t", "x&y")
-    assert dict(u.query_params()) == {"n": "a b", "t": "x&y"}           # decoded map view
-    assert dict(u.query_params(encoded=True)) == {"n": "a%20b", "t": "x%26y"}
+    # query_params groups by key in stored (encoded) form; per-key decoding stays on query_param.
+    assert u.query_params() == {"n": ("a%20b",), "t": ("x%26y",)}
+    assert u.query_param("n") == "a b" and u.query_param("t") == "x&y"  # decoded per key
 
     assert Uri.parse("http://h").with_path("/a b").path == "/a%20b"     # component encoded
+
+
+def test_query_params_grouped_dict():
+    # Repeated keys collapse into one entry whose tuple holds every value, order preserved.
+    uri = Uri.parse("http://h/p?a=1&b=2&a=3&c=4&a=5")
+    grouped = uri.query_params()
+    assert grouped == {"a": ("1", "3", "5"), "b": ("2",), "c": ("4",)}
+    assert isinstance(grouped["a"], tuple)
+    assert list(grouped) == ["a", "b", "c"]  # first-appearance order
+    # No query -> empty dict.
+    assert Uri.parse("http://h/p").query_params() == {}
+    # Url mirrors it method-for-method.
+    url = Url.parse("https://h/p?x=1&x=2&y=3")
+    assert url.query_params() == {"x": ("1", "2"), "y": ("3",)}
+
+
+def test_copy_with_field_overrides():
+    # Uri.copy overrides only the named components; the rest are kept.
+    base = Uri.parse("https://user:pw@h:8080/a?q=1#f")
+    assert base.copy() == base  # no-arg copy is a plain clone
+    swapped = base.copy(host="other", port=443, path="/b")
+    assert swapped.host == "other"
+    assert swapped.port == 443
+    assert swapped.path == "/b"
+    assert swapped.scheme == "https"  # untouched
+    assert swapped.user == "user"  # untouched
+    assert swapped.query == "q=1"  # untouched
+    assert base.host == "h"  # original unchanged
+
+    # Url.copy mirrors it.
+    url = Url.parse("https://h/a?q=1")
+    assert url.copy() == url
+    assert url.copy(scheme="http", fragment="top").scheme == "http"
+    assert url.copy(fragment="top").fragment == "top"
+    assert url.host == "h"  # original unchanged
+
+    # Authority.copy overrides user/password/host/port.
+    auth = Authority("h", user="u", password="p", port=80)
+    assert auth.copy() == auth
+    moved = auth.copy(host="db", port=5432)
+    assert str(moved) == "u:p@db:5432"
+    assert auth.host == "h"  # original unchanged
+    # Overriding userinfo.
+    assert auth.copy(user="svc").user == "svc"
+
+
+def test_url_authority_totals():
+    # A URL with an authority exposes it as an Authority value with a matching host.
+    url = Url.parse("https://user@example.com:8443/p")
+    assert url.has_authority
+    auth = url.authority
+    assert isinstance(auth, Authority)
+    assert auth.host == "example.com"
+    assert auth.port == 8443
+    assert url.host == "example.com"
+
+    # A URL with no authority reports a total empty Authority / empty host (never None).
+    mailto = Url.parse("mailto:person@example.com")
+    assert not mailto.has_authority
+    empty = mailto.authority
+    assert isinstance(empty, Authority)
+    assert empty.host == ""
+    assert mailto.host == ""

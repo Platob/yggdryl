@@ -27,7 +27,7 @@ use std::hash::{Hash, Hasher};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyDict, PyTuple};
 
 use yggdryl_core::uri::{self, UriError};
 
@@ -133,9 +133,32 @@ impl Authority {
         self.inner.set_port(port);
     }
 
-    /// An explicit copy of this authority.
-    fn copy(&self) -> Self {
-        self.clone()
+    /// A copy of this authority with any provided fields overridden — the clone-with-overrides
+    /// front door. Each argument defaults to `None` = **keep** the current value (so a bare
+    /// `auth.copy()` is a plain clone); a provided value overrides via the matching `set_*`. To
+    /// **clear** a field, use its `with_*` / `set_*` method (which take `None`) instead.
+    #[pyo3(signature = (user = None, password = None, host = None, port = None))]
+    fn copy(
+        &self,
+        user: Option<&str>,
+        password: Option<&str>,
+        host: Option<&str>,
+        port: Option<u16>,
+    ) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(user) = user {
+            inner.set_user(Some(user));
+        }
+        if let Some(password) = password {
+            inner.set_password(Some(password));
+        }
+        if let Some(host) = host {
+            inner.set_host(host);
+        }
+        if let Some(port) = port {
+            inner.set_port(Some(port));
+        }
+        Self { inner }
     }
 
     fn __copy__(&self) -> Self {
@@ -500,9 +523,50 @@ impl Uri {
 
     // ---- combinators (copy / joinpath / merge) -------------------------------------
 
-    /// An explicit copy of this URI (equivalent to `copy.copy(uri)`).
-    fn copy(&self) -> Self {
-        self.clone()
+    /// A copy of this URI with any provided components overridden — the clone-with-overrides
+    /// front door. Each argument defaults to `None` = **keep** the current value (so a bare
+    /// `uri.copy()` is a plain clone); a provided value overrides via the matching `set_*`. To
+    /// **clear** a component (drop the scheme, query, …), use its `with_*` / `set_*` method
+    /// instead.
+    #[pyo3(signature = (scheme = None, host = None, port = None, path = None, query = None, fragment = None, user = None, password = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn copy(
+        &self,
+        scheme: Option<&str>,
+        host: Option<&str>,
+        port: Option<u16>,
+        path: Option<&str>,
+        query: Option<&str>,
+        fragment: Option<&str>,
+        user: Option<&str>,
+        password: Option<&str>,
+    ) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(scheme) = scheme {
+            inner.set_scheme(scheme);
+        }
+        if let Some(host) = host {
+            inner.set_host(host);
+        }
+        if let Some(port) = port {
+            inner.set_port(port);
+        }
+        if let Some(path) = path {
+            inner.set_path(path);
+        }
+        if let Some(query) = query {
+            inner.set_query(query);
+        }
+        if let Some(fragment) = fragment {
+            inner.set_fragment(fragment);
+        }
+        if let Some(user) = user {
+            inner.set_user(user);
+        }
+        if let Some(password) = password {
+            inner.set_password(password);
+        }
+        Self { inner }
     }
 
     fn __copy__(&self) -> Self {
@@ -563,23 +627,16 @@ impl Uri {
         }
     }
 
-    /// All query parameters as ordered `(key, value)` pairs, decoded by default
-    /// (`encoded=True` for stored) — `dict(uri.query_params())` builds a map.
-    #[pyo3(signature = (encoded = false))]
-    fn query_params(&self, encoded: bool) -> Vec<(String, String)> {
-        if encoded {
-            self.inner
-                .query_params()
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect()
-        } else {
-            self.inner
-                .query_params_decoded()
-                .into_iter()
-                .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                .collect()
+    /// All query parameters grouped by key as `dict[str, tuple[str, ...]]`: each key maps to a
+    /// tuple of **all** its values (a repeated key collapses into one entry), in
+    /// first-appearance order and stored (percent-encoded) form. Per-key decoding stays on
+    /// `query_param` / `query_param_all`.
+    fn query_params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new_bound(py);
+        for (key, values) in self.inner.query_params_grouped() {
+            dict.set_item(key, PyTuple::new_bound(py, values))?;
         }
+        Ok(dict)
     }
 
     /// Whether query parameter `key` is present.
@@ -959,9 +1016,49 @@ impl Url {
 
     // ---- combinators (copy / joinpath / merge) -------------------------------------
 
-    /// An explicit copy of this URL (equivalent to `copy.copy(url)`).
-    fn copy(&self) -> Self {
-        self.clone()
+    /// A copy of this URL with any provided components overridden — the clone-with-overrides
+    /// front door. Each argument defaults to `None` = **keep** the current value (so a bare
+    /// `url.copy()` is a plain clone); a provided value overrides via the matching `set_*`. To
+    /// **clear** a component (query, fragment, …), use its `with_*` / `set_*` method instead.
+    #[pyo3(signature = (scheme = None, host = None, port = None, path = None, query = None, fragment = None, user = None, password = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn copy(
+        &self,
+        scheme: Option<&str>,
+        host: Option<&str>,
+        port: Option<u16>,
+        path: Option<&str>,
+        query: Option<&str>,
+        fragment: Option<&str>,
+        user: Option<&str>,
+        password: Option<&str>,
+    ) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(scheme) = scheme {
+            inner.set_scheme(scheme);
+        }
+        if let Some(host) = host {
+            inner.set_host(host);
+        }
+        if let Some(port) = port {
+            inner.set_port(port);
+        }
+        if let Some(path) = path {
+            inner.set_path(path);
+        }
+        if let Some(query) = query {
+            inner.set_query(query);
+        }
+        if let Some(fragment) = fragment {
+            inner.set_fragment(fragment);
+        }
+        if let Some(user) = user {
+            inner.set_user(user);
+        }
+        if let Some(password) = password {
+            inner.set_password(password);
+        }
+        Self { inner }
     }
 
     fn __copy__(&self) -> Self {
@@ -1022,23 +1119,16 @@ impl Url {
         }
     }
 
-    /// All query parameters as ordered `(key, value)` pairs, decoded by default
-    /// (`encoded=True` for stored) — `dict(url.query_params())` builds a map.
-    #[pyo3(signature = (encoded = false))]
-    fn query_params(&self, encoded: bool) -> Vec<(String, String)> {
-        if encoded {
-            self.inner
-                .query_params()
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect()
-        } else {
-            self.inner
-                .query_params_decoded()
-                .into_iter()
-                .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                .collect()
+    /// All query parameters grouped by key as `dict[str, tuple[str, ...]]`: each key maps to a
+    /// tuple of **all** its values (a repeated key collapses into one entry), in
+    /// first-appearance order and stored (percent-encoded) form. Per-key decoding stays on
+    /// `query_param` / `query_param_all`.
+    fn query_params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new_bound(py);
+        for (key, values) in self.inner.query_params_grouped() {
+            dict.set_item(key, PyTuple::new_bound(py, values))?;
         }
+        Ok(dict)
     }
 
     /// Whether query parameter `key` is present.

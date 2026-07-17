@@ -18,6 +18,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use napi::bindgen_prelude::Buffer;
+use napi::{Env, JsFunction, JsObject, JsUnknown};
 use napi_derive::napi;
 
 use yggdryl_core::uri as core;
@@ -40,6 +41,31 @@ fn java_hash<T: Hash>(value: &T) -> i32 {
 #[napi(js_name = "defaultPort", namespace = "uri")]
 pub fn default_port(scheme: String) -> Option<u16> {
     core::default_port(&scheme)
+}
+
+/// Per-field overrides for `Authority.copy`. Each present field replaces that component of the
+/// copy; an absent (undefined) field keeps the current one.
+#[napi(object)]
+pub struct AuthorityCopyOptions {
+    pub user: Option<String>,
+    pub password: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+}
+
+/// Per-field overrides for `Uri.copy` / `Url.copy`. Each present field replaces that component
+/// of the copy (creating an authority where one is needed); an absent (undefined) field keeps
+/// the current one.
+#[napi(object)]
+pub struct UriCopyOptions {
+    pub scheme: Option<String>,
+    pub user: Option<String>,
+    pub password: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub path: Option<String>,
+    pub query: Option<String>,
+    pub fragment: Option<String>,
 }
 
 /// The `[user[:password]@]host[:port]` authority component of a URI.
@@ -136,12 +162,27 @@ impl Authority {
         self.inner.set_port(port);
     }
 
-    /// An explicit copy of this authority.
+    /// An explicit copy of this authority, optionally overriding fields via
+    /// `copy({ user, password, host, port })` — each present option replaces that field, an
+    /// absent one is kept. With no argument it is a plain clone.
     #[napi]
-    pub fn copy(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
+    pub fn copy(&self, options: Option<AuthorityCopyOptions>) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(options) = options {
+            if let Some(user) = options.user {
+                inner = inner.with_user(Some(&user));
+            }
+            if let Some(password) = options.password {
+                inner = inner.with_password(Some(&password));
+            }
+            if let Some(host) = options.host {
+                inner = inner.with_host(&host);
+            }
+            if let Some(port) = options.port {
+                inner = inner.with_port(Some(port));
+            }
         }
+        Self { inner }
     }
 
     /// Returns a copy with the userinfo user set (pass `null` to clear it).
@@ -508,12 +549,40 @@ impl Uri {
 
     // ---- combinators (copy / joinpath / merge) -----------------------------------------
 
-    /// An explicit copy of this URI.
+    /// An explicit copy of this URI, optionally overriding components via `copy({ scheme, user,
+    /// password, host, port, path, query, fragment })` — each present option replaces that
+    /// component (creating an authority where needed), an absent one is kept. With no argument it
+    /// is a plain clone.
     #[napi]
-    pub fn copy(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
+    pub fn copy(&self, options: Option<UriCopyOptions>) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(options) = options {
+            if let Some(scheme) = options.scheme {
+                inner = inner.with_scheme(&scheme);
+            }
+            if let Some(user) = options.user {
+                inner = inner.with_user(&user);
+            }
+            if let Some(password) = options.password {
+                inner = inner.with_password(&password);
+            }
+            if let Some(host) = options.host {
+                inner = inner.with_host(&host);
+            }
+            if let Some(port) = options.port {
+                inner = inner.with_port(port);
+            }
+            if let Some(path) = options.path {
+                inner = inner.with_path(&path);
+            }
+            if let Some(query) = options.query {
+                inner = inner.with_query(&query);
+            }
+            if let Some(fragment) = options.fragment {
+                inner = inner.with_fragment(&fragment);
+            }
         }
+        Self { inner }
     }
 
     /// Returns a copy with `path` joined lexically onto the path (one `/` at the seam, an
@@ -567,23 +636,28 @@ impl Uri {
         }
     }
 
-    /// All query parameters as ordered `[key, value]` pairs, decoded by default (`true` for
-    /// stored) — `Object.fromEntries(uri.queryParams())` builds a map.
-    #[napi]
-    pub fn query_params(&self, encoded: Option<bool>) -> Vec<Vec<String>> {
-        if encoded.unwrap_or(false) {
-            self.inner
-                .query_params()
-                .into_iter()
-                .map(|(key, value)| vec![key.to_string(), value.to_string()])
-                .collect()
-        } else {
-            self.inner
-                .query_params_decoded()
-                .into_iter()
-                .map(|(key, value)| vec![key.into_owned(), value.into_owned()])
-                .collect()
+    /// All query parameters **grouped by key** as an ordered `Map` from each key to the array of
+    /// its values, in **first-appearance** key order — e.g. `?a=1&b=2&a=3` →
+    /// `Map { "a" => ["1", "3"], "b" => ["2"] }`. A `Map` (not a plain object) is used so that
+    /// numeric-looking keys keep insertion order instead of being reordered numerically. Values
+    /// are the stored (percent-encoded) form; use `queryParam` / `queryParamAll` to decode.
+    #[napi(ts_return_type = "Map<string, string[]>")]
+    pub fn query_params(&self, env: Env) -> napi::Result<JsObject> {
+        let map_ctor = env.get_global()?.get_named_property::<JsFunction>("Map")?;
+        let map = map_ctor.new_instance::<JsUnknown>(&[])?;
+        let set_fn = map.get_named_property::<JsFunction>("set")?;
+        for (key, values) in self.inner.query_params_grouped() {
+            let js_key = env.create_string(key)?;
+            let mut js_values = env.create_array_with_length(values.len())?;
+            for (index, value) in values.iter().enumerate() {
+                js_values.set_element(index as u32, env.create_string(value)?)?;
+            }
+            set_fn.call(
+                Some(&map),
+                &[js_key.into_unknown(), js_values.into_unknown()],
+            )?;
         }
+        Ok(map)
     }
 
     /// Whether query parameter `key` is present.
@@ -978,12 +1052,39 @@ impl Url {
 
     // ---- combinators (copy / joinpath / merge) -----------------------------------------
 
-    /// An explicit copy of this URL.
+    /// An explicit copy of this URL, optionally overriding components via `copy({ scheme, user,
+    /// password, host, port, path, query, fragment })` — each present option replaces that
+    /// component, an absent one is kept. With no argument it is a plain clone.
     #[napi]
-    pub fn copy(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
+    pub fn copy(&self, options: Option<UriCopyOptions>) -> Self {
+        let mut inner = self.inner.clone();
+        if let Some(options) = options {
+            if let Some(scheme) = options.scheme {
+                inner = inner.with_scheme(&scheme);
+            }
+            if let Some(user) = options.user {
+                inner = inner.with_user(&user);
+            }
+            if let Some(password) = options.password {
+                inner = inner.with_password(&password);
+            }
+            if let Some(host) = options.host {
+                inner = inner.with_host(&host);
+            }
+            if let Some(port) = options.port {
+                inner = inner.with_port(port);
+            }
+            if let Some(path) = options.path {
+                inner = inner.with_path(&path);
+            }
+            if let Some(query) = options.query {
+                inner = inner.with_query(&query);
+            }
+            if let Some(fragment) = options.fragment {
+                inner = inner.with_fragment(&fragment);
+            }
         }
+        Self { inner }
     }
 
     /// Returns a copy with `path` joined lexically onto the path — see [`Uri.joinpath`]. The
@@ -1037,23 +1138,28 @@ impl Url {
         }
     }
 
-    /// All query parameters as ordered `[key, value]` pairs, decoded by default (`true` for
-    /// stored) — `Object.fromEntries(url.queryParams())` builds a map.
-    #[napi]
-    pub fn query_params(&self, encoded: Option<bool>) -> Vec<Vec<String>> {
-        if encoded.unwrap_or(false) {
-            self.inner
-                .query_params()
-                .into_iter()
-                .map(|(key, value)| vec![key.to_string(), value.to_string()])
-                .collect()
-        } else {
-            self.inner
-                .query_params_decoded()
-                .into_iter()
-                .map(|(key, value)| vec![key.into_owned(), value.into_owned()])
-                .collect()
+    /// All query parameters **grouped by key** as an ordered `Map` from each key to the array of
+    /// its values, in **first-appearance** key order — e.g. `?a=1&b=2&a=3` →
+    /// `Map { "a" => ["1", "3"], "b" => ["2"] }`. A `Map` (not a plain object) is used so that
+    /// numeric-looking keys keep insertion order instead of being reordered numerically. Values
+    /// are the stored (percent-encoded) form; use `queryParam` / `queryParamAll` to decode.
+    #[napi(ts_return_type = "Map<string, string[]>")]
+    pub fn query_params(&self, env: Env) -> napi::Result<JsObject> {
+        let map_ctor = env.get_global()?.get_named_property::<JsFunction>("Map")?;
+        let map = map_ctor.new_instance::<JsUnknown>(&[])?;
+        let set_fn = map.get_named_property::<JsFunction>("set")?;
+        for (key, values) in self.inner.query_params_grouped() {
+            let js_key = env.create_string(key)?;
+            let mut js_values = env.create_array_with_length(values.len())?;
+            for (index, value) in values.iter().enumerate() {
+                js_values.set_element(index as u32, env.create_string(value)?)?;
+            }
+            set_fn.call(
+                Some(&map),
+                &[js_key.into_unknown(), js_values.into_unknown()],
+            )?;
         }
+        Ok(map)
     }
 
     /// Whether query parameter `key` is present.
