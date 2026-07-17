@@ -121,6 +121,21 @@ Minimal example: `yggdryl_core::version()` → `yggdryl.version()` in **both** P
 - **At-most-one-copy discipline.** Prefer zero-copy hand-off; a bulk op ships an
   allocation-free *fill-into* counterpart; **no allocations in hot loops**. When a change
   claims a performance win, prove it (a benchmark on both time and memory).
+- **In-place mutation — COW-backed `*_mut` / `*_assign` twins; copy is shallow by default.** The
+  physical buffers are `Arc`-shared and **copy-on-write**, so `clone` / `copy` is a cheap `Arc`
+  bump — **never** a payload copy — and a mutation copies the buffer **once, on write, only if it
+  is shared**. A heavy independent payload copy happens **only** on an explicit deep copy
+  (`deep_copy()` in the core, `copy(deep=true)` in the bindings); plain `copy()` / `copy(deep=false)`
+  stays shallow. So a transform must **not** clone the payload — a value type is passed by `&` and
+  mutated through the COW path. Every transform a caller might apply without keeping the original
+  ships an **in-place mutating twin** next to its return-new form: the arithmetic `add_assign` /
+  `sub_assign` / … (and the scalar broadcast), `fill_null_mut`, `retain` (in-place filter /
+  compact), and the setters (`set` / `set_slice` / `set_child`, already in place). The `*_mut` twin
+  mutates `self`'s buffer through copy-on-write — **zero allocation when the buffer is uniquely
+  owned, one COW when shared** — so a hot loop of ops never allocates a fresh result per step.
+  Prove it with a counting-allocator test (owned → 0 allocs, shared → exactly 1). Mirror the twins
+  in **both** bindings (Python in-place dunders `__iadd__` / `__isub__` / … + `fill_null_mut` /
+  `retain` / `copy(deep=)`; Node camelCase `addAssign` / … + `copy(deep)`).
 - **Auto-vectorization — write the numeric hot loops so the compiler emits SIMD.** The
   arithmetic kernels and reductions run on **stable** Rust (no `portable_simd`/nightly, no SIMD
   dependency), so vectorization comes from **LLVM auto-vectorizing a clean loop**. Structure the
