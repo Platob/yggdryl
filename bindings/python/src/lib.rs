@@ -3,13 +3,12 @@
 //! The core is the source of truth; each item here is one or two lines over `yggdryl_core`.
 //! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.memory` submodule
 //! (the in-heap `Heap` byte source and the `Whence` seek anchor, mirroring
-//! `yggdryl_core::memory`) and the `yggdryl.uri` submodule (RFC 3986 URIs, absolute URLs, and
-//! authorities, mirroring `yggdryl_core::uri`).
+//! `yggdryl_core::io::memory`) and the `yggdryl.uri` submodule (RFC 3986 URIs, absolute URLs, and
+//! authorities, mirroring `yggdryl_core::io::uri`).
 
 use pyo3::prelude::*;
 
-mod memory;
-mod uri;
+mod io;
 
 /// The library version string — delegates to [`yggdryl_core::version`].
 #[pyfunction]
@@ -38,7 +37,7 @@ fn add_submodule(
 #[pymodule]
 fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
-    add_submodule(py, module, "memory", memory::register)?;
-    add_submodule(py, module, "uri", uri::register)?;
+    add_submodule(py, module, "memory", io::memory::register)?;
+    add_submodule(py, module, "uri", io::uri::register)?;
     Ok(())
 }

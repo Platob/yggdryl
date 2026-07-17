@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use yggdryl_core::uri::{Uri, Url};
+use yggdryl_core::io::uri::{Uri, Url};
 
 #[test]
 fn read_first_all_pairs_contains() {

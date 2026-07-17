@@ -3,134 +3,143 @@
 yggdryl is a Rust library with **Python (PyO3/maturin)** and **Node (napi-rs)** extensions.
 Features are implemented in the Rust core first and mirrored, thinly, in both bindings.
 
-## Current scope — one abstract byte/memory-access layer, many sources
+## Scope — one abstract byte/memory-access layer, many sources
 
-The core is a **minimal, dependency-free** foundation focused on **byte / memory access**: a
-single abstract I/O contract (`memory` — the `IOBase` / `IOCursor` / `IOSlice` / `Whence` traits
-and `IoError`) that many concrete **sources** implement. Today the in-heap [`Heap`] is the one
-source; a memory-mapped backing and other sources (network, compressed, …) plug in against the
-**same traits**. Alongside it is the `uri` family (`Uri` / `Url` / `Authority`) that **addresses**
-those sources. Everything reads and writes through the one contract, so a new source is written
-once and works everywhere.
+The core is the **`io` layer**: a single abstract byte-access contract (`io::memory::IOBase`,
+with the concrete `IOCursor` / `IOSlice` wrappers and the in-heap `Heap` source), the `io::uri`
+family (`Uri` / `Url` / `Authority`) that **addresses** sources, and the cross-cutting value
+types at the `io` root (`Headers`, `IOMode`, `IOKind`, `IoError`, `Whence`, the `Serializable`
+trait). Everything reads and writes through the one contract, so a new source (memory-mapped,
+file, network, compressed, …) is written once and works everywhere.
 
-The aim scales up from here: **absorb bytes from as many sources as possible behind this single
-contract now**, then grow **typed data serialization** on top later — a precise internal type
+From here the library scales up: absorb bytes from as many sources as possible behind this
+single contract, then grow **typed data serialization** on top — a precise internal type
 system, columns, and Arrow interop over these bytes — so ingestion is broad at the edge, the
-representation is exact underneath, and everything downstream is fast. That fuller typed layer
-was prototyped and now lives in **git history**; it is the north-star to rebuild toward, not the
-present surface. `arrow` is **not** a current dependency.
+representation is exact underneath, and everything downstream is fast. `arrow` is **not** a
+current dependency.
 
-## Layout
+## Layout — one tree, mirrored everywhere
 
-- `crates/yggdryl-core` — the Rust core, the **single source of truth**. Currently the `memory`
-  (abstract byte-access traits + the `Heap` source) and `uri` modules, at the crate root; **no
-  external dependencies**.
-- `bindings/python` — PyO3 extension, Python module `yggdryl` (built with **maturin**).
-- `bindings/node` — napi-rs extension, npm package `yggdryl` (built with **napi**).
-- `docs/` + `mkdocs.yml` — the MkDocs (Material) site published to
-  `https://platob.github.io/yggdryl/`. `benchmarks/` — time+memory bench reports.
-- `.github/workflows/` — `ci.yml` (fmt/clippy/test + strict docs build), `docs.yml`
-  (publishes the site to GitHub Pages), `release.yml` (version-bump-gated publish to
-  crates.io / PyPI / npm).
+```text
+crates/yggdryl-core/src/io/          # the core io layer (no external dependencies)
+  mod.rs                             # io root: cross-cutting contract + value types
+  error.rs  whence.rs                # IoError, Whence (io-wide)
+  serializable.rs                    # the Serializable trait
+  headers.rs  mode.rs  kind.rs       # Headers, IOMode, IOKind
+  memory/                            # byte-access: traits at the module root…
+    base.rs cursor.rs slice.rs       #   IOBase + the IOCursor/IOSlice wrappers
+    heap.rs                          #   …concrete sources below (Heap; a future Mmap)
+  uri/                               # addressing: Uri/Url/Authority + scheme/percent/error
+```
 
-**Mirror the core's module layout in the bindings and their tests/benches.** The core is organised
-into modules (`memory`, `uri`); each binding's `src/`, test suite, and benchmarks are split the
-same way (a `memory` unit and a `uri` unit), so a reader finds the same shape in all three
-languages. Minimal example: `yggdryl_core::version()` → `yggdryl.version()` in **both** bindings.
+**The same folder tree is mirrored in code, tests, and benchmarks — in the core and in both
+extensions.** This is a hard rule: a reader must find the same shape everywhere.
+
+- *Core tests/benches* (flat by cargo's design) mirror by **path-derived names**:
+  `src/io/memory/heap.rs` → `tests/io_memory_heap.rs` (+ `_alloc`) → `benches/io_memory_heap.rs`
+  → `benchmarks/yggdryl-core/io/memory/heap.md`.
+- *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,uri.rs,mod.rs}`,
+  `bindings/python/tests/io/test_memory.py`, `bindings/node/test/io/memory.test.js`, and the
+  same under `benchmarks/` / `benchmark/`.
+- *Public namespaces* mirror the **leaf modules identically in both bindings** —
+  `yggdryl.memory`, `yggdryl.uri`, and `yggdryl.io` for the io-root types — adapting only to
+  platform nesting limits (napi namespaces are single-level, so both bindings stay flat and
+  therefore identical).
+- `docs/` pages mirror too (`docs/io/memory.md`, `docs/io/uri.md`), each with synced
+  `=== "Python"` / `=== "Node"` / `=== "Rust"` tabs, listed in `mkdocs.yml` nav.
+
+Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + strict docs),
+`docs.yml` (GitHub Pages), `release.yml` (version-bump-gated publish to crates.io/PyPI/npm).
 
 ## Adding a feature — the three languages move together
 
 1. **Core first.** Implement in `yggdryl-core` with a `///` doc comment, a runnable
    **doctest**, and a unit test. All logic lives here.
-2. **Thin bindings.** Mirror it in **both** extensions — each method is 1–2 lines
-   delegating to `yggdryl_core`, **no logic in the binding**. Adapt only to idioms: Python
-   dunders / keyword defaults; Node camelCase / `Option<T>` defaults. Error text passes
-   through unchanged — the core `Display` becomes a Python `ValueError` and a Node thrown
-   `Error`, reading identically.
+2. **Thin bindings.** Mirror it in **both** extensions — each method is 1–2 lines delegating
+   to `yggdryl_core`, **no logic in the binding**. Adapt only to idioms: Python dunders /
+   keyword defaults; Node camelCase / `Option<T>` defaults. Error text passes through
+   unchanged — the core `Display` becomes a Python `ValueError` and a Node thrown `Error`,
+   reading identically.
 
-   **Make the Python type behave like a native Python value — implement every idiomatic
-   dunder the concept supports**, not just the minimum. A value type gets `__eq__`, `__hash__`
-   (only if immutable/hashable — a mutable one leaves `__hash__` unset so it is unhashable like
-   `dict`/`bytearray`), `__repr__`, `__str__` (when there's a canonical string), and `__reduce__`
-   so it **pickles** (reconstruct via the class ctor + args, or the `deserialize_bytes` codec —
-   see `uri::Uri`). Beyond that, implement the relevant *protocols*: a container is `__len__` +
-   `__bool__`; a map is also `__contains__` / `__getitem__` / `__setitem__` / `__delitem__` /
-   `__iter__` (like `dict`); a sequence/buffer is `__getitem__` (int **and** slice) + `__iter__`
-   + `__bytes__`; anything with a `copy()` also gets `__copy__` / `__deepcopy__`. The Node side
-   has no dunders — mirror the same capability as named methods (`equals`, `toString`,
-   `get`/`set`/`has`, `toBytes`, …).
+   **Implement the most Python dunders the concept supports — always.** A value type gets
+   `__eq__`, `__hash__` (only if immutable — a mutable one leaves `__hash__` unset, like
+   `bytearray`), `__repr__`, `__str__` (when there's a canonical string), `__reduce__` so it
+   pickles, and `__copy__` / `__deepcopy__` alongside `copy()`. Then every relevant
+   *protocol*: a container is `__len__` + `__bool__`; anything map-like is `__contains__` /
+   `__getitem__` / `__setitem__` / `__delitem__` / `__iter__` (like `dict` — including a type
+   that *contains* a map, e.g. `Uri` over its params); a sequence/buffer is `__getitem__`
+   (int **and** slice) + `__iter__` + `__bytes__`; an int-like enum is `__int__` + `__index__`.
+   When in doubt, add the dunder. The Node side has no dunders — mirror the same capability as
+   named methods (`equals`, `toString`, `get`/`set`/`has`/`delete`, `toBytes`, …).
 3. **Test in all three.** Add a test on each surface; the three suites are the executable
-   proof the APIs match method-for-method. A binding-visible change updates **both**
-   bindings and their tests in the **same commit**.
-4. **Document & measure.** Add or extend a `docs/<feature>.md` page with synced
-   `=== "Python"` / `=== "Node"` / `=== "Rust"` tabs and list it in `mkdocs.yml` nav —
-   `mkdocs build --strict` must stay green. For a performance-sensitive type, add a
-   time+memory benchmark and a deterministic allocation check (see `benches/heap.rs`,
-   `tests/memory_heap_alloc.rs`, and the report under `benchmarks/yggdryl-core/`).
+   proof the APIs match method-for-method. A binding-visible change updates **both** bindings
+   and their tests in the **same commit**.
+4. **Document & measure.** Add or extend the mirrored `docs/io/<module>.md` page (synced
+   three-language tabs; `mkdocs build --strict` stays green). For a performance-sensitive
+   type, add a time+memory benchmark and a deterministic allocation check (see
+   `benches/io_memory_heap.rs`, `tests/io_memory_heap_alloc.rs`, and the report under
+   `benchmarks/yggdryl-core/`).
 
 ## Coding rules
 
-- **Explicit type names in the Rust core; generic, type-inferring entry points in the bindings.**
-  A core builder / typed accessor **names the concrete type it works over** —
-  `parse_str`, `pread_i32` / `pwrite_i32`, `pread_byte` / `pread_byte_array`, `read_u64`,
-  `from_bytes` — never an overloaded bare `parse` / `read` that hides which representation it
-  takes. The bindings then expose **one generic method per concept** (`parse`, `read`, `from`)
-  that **infers the input's runtime type** (Python / Node duck typing) and **redirects to the
-  matching explicit core builder** — so a caller writes `Uri.parse(x)` / `heap.read(x)` and the
-  binding dispatches (`str` → `parse_str`, `bytes` → `deserialize_bytes`, an integer width → the
-  typed reader). Explicit and unambiguous underneath; ergonomic and generic on top.
-- **No lifetime parameters on public types** — the bindings must be able to hold every one.
-- **Coherent layering — the contract at the module root, sources below.** The family-agnostic
-  contract (the `IOBase` / `IOCursor` / `IOSlice` traits, `Whence`, `IoError`) lives at the
-  `memory` root; each concrete **source** (`Heap`, a future `Mmap`) is one file implementing those
-  traits and adding only its own inherent methods (constructors, capacity). A source depends
-  **downward** on the root traits and never sideways on a sibling source. Prefer default trait
-  methods so a new source implements the few primitives and inherits the rest.
-- **Value types are hashable, serializable, and equatable — everywhere.** Whenever a public
-  type carries a *value* (not just an identity), implement all three on it and mirror them in
-  **both** bindings, so it works as a map/dict key, in a set, and over a wire in every language:
-  - *Rust core:* `PartialEq`/`Eq`, `Hash`, and a byte codec `serialize_bytes` /
-    `deserialize_bytes` (the exact inverse).
-  - *Python:* `__eq__`, `__hash__`, `__reduce__` (pickle), and the same byte codec.
-  - *Node:* `equals`, `hashCode`, `serializeBytes` / `deserializeBytes`.
-
-  Keep **one identity: equal iff canonical bytes equal, and equal values hash equal.** Build the
-  canonical form **once into a pre-sized buffer** (`String::with_capacity(encoded_len())`) and
-  **stream it into the hasher** with a zero-alloc `fmt::Write` adapter, so equality and hashing
-  add no per-op allocation (see `uri::Uri` / `uri::HashWrite`).
-- **Ergonomic immutable updates — `copy(**fields)` + `set_*` + `with_*`.** Whenever a public
-  value type is worth mutating, give it the full trio, so a caller can update it however reads
-  best:
-  - a **`copy`** (the cross-language name for a clone) that, **where the idiom allows, takes an
-    optional argument per settable field each defaulting to the current value** — so `copy()` is a
-    plain clone and `copy(host="h", port=443)` is a clone-with-overrides in one call (Python
-    keyword args, Node an options object). This is the ergonomic front door; implement it wherever
-    a field can be defaulted to its current value.
-  - an in-place **`set_<field>`** for every settable field (mutates `self`), and
-  - a returns-fresh **`with_<field>`** wrapper over it, so updates chain
-    (`base.with_host("h").with_port(443)`).
-
-  In the Rust core, `copy` stays a plain clone (Rust has no keyword defaults) and the
-  clone-with-overrides is expressed by chaining `with_*`; the **bindings** add the
-  `copy(**fields)` front door over that. Where combining two whole values reads naturally, add a
-  **`merge_with(other)`** overlay and any domain combinator (`joinpath` for a path). Mirror the
-  trio thinly in **both** bindings (see `uri::Uri` / `uri::Authority`).
-- **At-most-one-copy discipline.** Prefer zero-copy hand-off; a bulk op ships an allocation-free
-  *fill-into* / *read-into* counterpart (`pread_into`, `pread_vec`); **no allocations in hot
-  loops**. Maintain capacity like `Vec` (`with_capacity` / `capacity` / `reserve`) so a growing
-  source amortises its allocations. When a change claims a performance win, **prove it** — a
-  benchmark on both time and memory, plus a deterministic allocation test.
-- **One file per public type.** A reader should not tell two types apart by the *shape* of the
-  code — mirror the nearest neighbour's structure, naming, error style, and doc style.
-- **Minimize `Option`.** Reach for `Option<T>` only when *absence is a real, distinct state a
-  caller must handle* (a genuinely nullable value, a lookup that can miss). Prefer a total
-  function with a sensible default, an **empty** collection/string over `Option<Vec<_>>` /
-  `Option<String>`, two named methods over an `Option<bool>` flag, and a **guided `Result`** when
-  absence is really an error the user should be told how to fix. Each `Option` in a public
-  signature must justify its existence.
-- **Guided errors.** Every error a user can hit names how to fix it (the expected range *and* the
-  offending value, or the next step) — never an opaque message. Same text across Rust, Python,
-  and Node.
+- **Explicit type names in the Rust core; generic, type-inferring entry points in the
+  bindings.** A core builder / typed accessor **names the concrete type it works over** —
+  `parse_str`, `pread_i32` / `pwrite_i32`, `pread_byte_array`, `pread_utf8`, `IOMode::parse_str`
+  — never an overloaded bare `parse` / `read` that hides which representation it takes. The
+  bindings then expose **one generic method per concept** (`parse`, `read`, `copy`) that
+  **infers the input's runtime type** and redirects to the matching explicit core builder.
+- **Serializable, hashable, equatable — whenever possible.** Every public type that can carry
+  a value implements the `io::Serializable` trait (`serialize_bytes` → `Vec<u8>` /
+  `deserialize_bytes` — the exact inverse) plus `PartialEq`/`Eq` and `Hash` (skip `Hash` only
+  for genuinely mutable buffers, which stay equatable by content). Mirror all three in **both**
+  bindings — Python `__eq__` / `__hash__` / `__reduce__` (pickle) + the byte codec; Node
+  `equals` / `hashCode` / `serializeBytes` / `deserializeBytes` — so every value works as a
+  map key, in a set, and over a wire in every language. Keep **one identity: equal iff
+  canonical bytes equal, and equal values hash equal**; build the canonical form once into a
+  pre-sized buffer and stream it into the hasher (see `io::uri::Uri` / `HashWrite`).
+- **Centralize metadata in `io::Headers`.** There is exactly **one** metadata/annotation map
+  type in the project: `Headers` (ordered, case-insensitive, multi-value, byte-capable). HTTP
+  headers, schema/field metadata, source annotations — all of it is a `Headers`; never
+  introduce a second map type or an ad-hoc `HashMap<String, String>` in a public signature.
+  Every `IOBase` carries one (`headers()` / `headers_mut()`).
+- **Least reallocation, fewest copies — in every action.** Prefer zero-copy hand-off; never
+  clone what a borrow can serve; pre-size every buffer you build (`with_capacity` /
+  `encoded_len`); a bulk op ships an allocation-free *fill-into* / *read-into* counterpart
+  (`pread_into`, `pread_i32_array`); bulk kernels stage through **fixed stack chunks**, not
+  per-call heap buffers; **no allocations in hot loops**. Constructors take capacity when the
+  caller knows it (`with_capacity` on every growable type, including via the `IOBase` trait).
+  When a change claims a performance win, **prove it** — a benchmark on both time and memory,
+  plus a deterministic allocation test.
+- **Bulk operations are vectorized.** Typed bulk reads/writes (`pread_i32_array` /
+  `pwrite_i64_array`, …) and repeated-value fills (`pwrite_i32_repeat`, …) run as **dense,
+  branch-free loops over contiguous slices** so LLVM auto-vectorizes them on stable Rust (no
+  SIMD dependency) — and a fill never materializes the full array. New sources inherit these
+  from `IOBase`'s default methods; override only with something measurably faster.
+- **No lifetime parameters on public types** — the bindings must hold every one.
+- **Coherent layering — the contract at the module root, implementations below.** Cross-cutting
+  value types and traits (`IoError`, `Whence`, `Headers`, `IOMode`, `IOKind`, `Serializable`)
+  live at the `io` root; the byte contract (`IOBase` + wrappers) at the `memory` root; each
+  concrete **source** (`Heap`, a future `Mmap`) is one file below, implementing the trait's few
+  required methods and inheriting the rest. A source depends **downward**, never sideways on a
+  sibling source.
+- **Ergonomic updates — `copy(**fields)` + `set_*` + `with_*`.** Every mutable public value
+  type gets the trio: a `copy` that (where the idiom allows) takes an optional argument per
+  settable field defaulting to the current value (Python kwargs / Node options object — the
+  clone-with-overrides front door); an in-place `set_<field>`; a chainable `with_<field>`.
+  Where combining whole values reads naturally, add `merge_with(other)` and domain combinators
+  (`joinpath`). In the Rust core `copy` stays a plain clone and overrides chain via `with_*`.
+- **One file per public type.** Mirror the nearest neighbour's structure, naming, error style,
+  and doc style.
+- **Minimize `Option`.** Only when absence is a real, distinct state a caller must handle.
+  Prefer a total method with a sensible default (`Url::host()` → `""`), an empty collection
+  over `Option<Vec<_>>`, two named methods over an `Option<bool>` flag, and a guided `Result`
+  when absence is an error. Each `Option` in a public signature must justify itself.
+- **Guided errors.** Every error names how to fix it (the expected range/tokens *and* the
+  offending value, or the next step). Same text across Rust, Python, and Node.
+- **Naming: `query` is the raw string; `params` is the map.** On `Uri`/`Url`, `query()` /
+  `set_query()` address the raw query **string**, while `param` / `params` / `set_param` /
+  `has_param` / … address the parsed key-value **map**. Apply the same split anywhere a raw
+  form and a parsed map coexist.
 - Mark underdetermined decisions with a `// DESIGN:` comment.
 
 ## Toolchain (this environment is Windows)
@@ -153,6 +162,6 @@ All must pass. Work on a **branch**; commit/push only when asked.
 
 **Releasing** is by version bump: `release.yml` runs on every push to `main`, and whenever
 `[workspace.package].version` has **no matching `v<version>` tag** it publishes to
-crates.io / PyPI / npm and creates the `v<version>` tag + GitHub Release. So bump the
-version **only** when you intend to release; keep it pinned during ordinary changes so the
+crates.io / PyPI / npm and creates the `v<version>` tag + GitHub Release. So bump the version
+**only** when you intend to release; keep it pinned during ordinary changes so the
 auto-publish never fires mid-change.

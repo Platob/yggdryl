@@ -41,5 +41,5 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Memory access: memory.md
-  - URIs and URLs: uri.md
+  - Memory access: io/memory.md
+  - URIs and URLs: io/uri.md

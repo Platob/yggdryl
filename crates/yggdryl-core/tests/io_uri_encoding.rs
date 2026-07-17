@@ -3,7 +3,7 @@
 //! with special characters, the literal `%`, Unicode, `parse` staying verbatim, and
 //! malformed escapes.
 
-use yggdryl_core::uri::Uri;
+use yggdryl_core::io::uri::Uri;
 
 #[test]
 fn query_param_value_is_encoded_on_store_and_decoded_on_read() {

@@ -7,7 +7,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use yggdryl_core::uri::{Uri, UriError};
+use yggdryl_core::io::uri::{Uri, UriError};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();

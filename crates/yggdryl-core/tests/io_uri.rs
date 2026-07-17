@@ -5,7 +5,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl_core::uri::{Authority, Uri, UriError, Url};
+use yggdryl_core::io::uri::{Authority, Uri, UriError, Url};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();

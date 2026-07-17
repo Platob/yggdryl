@@ -1,14 +1,12 @@
-//! yggdryl core — the Apache Arrow-backed foundation.
+//! yggdryl core — a dependency-free byte / memory-access foundation.
 //!
-//! Minimal example: a single [`version`] function, wired through to the Python and Node
-//! extensions (`yggdryl.version()` in both). New features are added here first, in the
-//! Rust core, then mirrored thinly in each binding.
+//! Everything lives under the [`io`] layer: the abstract byte-access contract
+//! ([`io::memory::IOBase`]) with its sources, the addressing [`io::uri`] family, and the
+//! cross-cutting value types at the [`io`] root. New features are added here first, in the
+//! Rust core, then mirrored thinly in the Python and Node extensions.
 
-/// The abstract byte / memory-access layer (positioned + cursor IO traits).
-pub mod memory;
-
-/// The URI / URL family (RFC 3986), parsed from scratch.
-pub mod uri;
+/// The io layer: byte / memory access, addressing, and the shared value types.
+pub mod io;
 
 /// The crate version string (from `Cargo.toml`), e.g. `"0.1.1"`.
 ///
