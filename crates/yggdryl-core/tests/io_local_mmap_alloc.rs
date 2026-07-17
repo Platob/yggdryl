@@ -130,6 +130,19 @@ fn allocation_budgets() {
             mapped_node, 0,
             "mapped LocalIO I/O must be zero-alloc (got {mapped_node})"
         );
+
+        // The bulk typed arrays delegate to the map (direct contiguous conversion) — the
+        // delegation must add no allocation of its own.
+        let bulk_values = vec![7i32; 1000];
+        let mut bulk_back = vec![0i32; 1000];
+        let bulk_node = allocs_over(iters, || {
+            node.pwrite_i32_array(0, &bulk_values).unwrap();
+            node.pread_i32_array(0, &mut bulk_back).unwrap();
+        });
+        assert_eq!(
+            bulk_node, 0,
+            "mapped LocalIO bulk arrays must delegate zero-alloc (got {bulk_node})"
+        );
         node.close();
     }
 

@@ -722,65 +722,25 @@ pub trait IOBase: Sized {
     /// assert_eq!(values, [1, -2, 3]);
     /// ```
     fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
-        let mut bytes = [0u8; BULK_CHUNK * 4];
-        let mut position = offset;
-        for chunk in dst.chunks_mut(BULK_CHUNK) {
-            let staged = &mut bytes[..chunk.len() * 4];
-            self.pread_exact(position, staged)?;
-            for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(4)) {
-                *value = i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
-            }
-            position += staged.len() as u64;
-        }
-        Ok(())
+        stage_pread_i32_array(self, offset, dst)
     }
 
     /// **Bulk typed write.** Writes all of `src` as little-endian `i32`s at `offset` (growing
     /// as needed). Stages through a fixed stack chunk — zero heap allocation, vectorizable.
     fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
-        let mut bytes = [0u8; BULK_CHUNK * 4];
-        let mut position = offset;
-        for chunk in src.chunks(BULK_CHUNK) {
-            let staged = &mut bytes[..chunk.len() * 4];
-            for (raw, value) in staged.chunks_exact_mut(4).zip(chunk) {
-                raw.copy_from_slice(&value.to_le_bytes());
-            }
-            self.pwrite_all(position, staged)?;
-            position += staged.len() as u64;
-        }
-        Ok(())
+        stage_pwrite_i32_array(self, offset, src)
     }
 
     /// **Bulk typed read** of little-endian `i64`s — the wide counterpart of
     /// [`pread_i32_array`](IOBase::pread_i32_array).
     fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
-        let mut bytes = [0u8; BULK_CHUNK * 8];
-        let mut position = offset;
-        for chunk in dst.chunks_mut(BULK_CHUNK) {
-            let staged = &mut bytes[..chunk.len() * 8];
-            self.pread_exact(position, staged)?;
-            for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(8)) {
-                *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
-            }
-            position += staged.len() as u64;
-        }
-        Ok(())
+        stage_pread_i64_array(self, offset, dst)
     }
 
     /// **Bulk typed write** of little-endian `i64`s — the wide counterpart of
     /// [`pwrite_i32_array`](IOBase::pwrite_i32_array).
     fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
-        let mut bytes = [0u8; BULK_CHUNK * 8];
-        let mut position = offset;
-        for chunk in src.chunks(BULK_CHUNK) {
-            let staged = &mut bytes[..chunk.len() * 8];
-            for (raw, value) in staged.chunks_exact_mut(8).zip(chunk) {
-                raw.copy_from_slice(&value.to_le_bytes());
-            }
-            self.pwrite_all(position, staged)?;
-            position += staged.len() as u64;
-        }
-        Ok(())
+        stage_pwrite_i64_array(self, offset, src)
     }
 
     /// **Repeated-value fill.** Writes `count` copies of the byte `value` starting at `offset`
@@ -795,16 +755,7 @@ pub trait IOBase: Sized {
     /// assert_eq!(data.as_slice(), &[0xAB; 5]);
     /// ```
     fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> Result<(), IoError> {
-        let chunk = [value; BULK_CHUNK * 4];
-        let mut position = offset;
-        let mut remaining = count;
-        while remaining > 0 {
-            let take = remaining.min(chunk.len());
-            self.pwrite_all(position, &chunk[..take])?;
-            position += take as u64;
-            remaining -= take;
-        }
-        Ok(())
+        stage_pwrite_byte_repeat(self, offset, value, count)
     }
 
     /// **Repeated-value fill** of `count` little-endian `i32` copies of `value` at `offset` —
@@ -820,37 +771,13 @@ pub trait IOBase: Sized {
     /// assert_eq!(values, [-1, -1, -1]);
     /// ```
     fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> Result<(), IoError> {
-        let mut chunk = [0u8; BULK_CHUNK * 4];
-        for raw in chunk.chunks_exact_mut(4) {
-            raw.copy_from_slice(&value.to_le_bytes());
-        }
-        let mut position = offset;
-        let mut remaining = count;
-        while remaining > 0 {
-            let take = remaining.min(BULK_CHUNK);
-            self.pwrite_all(position, &chunk[..take * 4])?;
-            position += (take * 4) as u64;
-            remaining -= take;
-        }
-        Ok(())
+        stage_pwrite_i32_repeat(self, offset, value, count)
     }
 
     /// **Repeated-value fill** of `count` little-endian `i64` copies of `value` at `offset` —
     /// the wide counterpart of [`pwrite_i32_repeat`](IOBase::pwrite_i32_repeat).
     fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> Result<(), IoError> {
-        let mut chunk = [0u8; BULK_CHUNK * 8];
-        for raw in chunk.chunks_exact_mut(8) {
-            raw.copy_from_slice(&value.to_le_bytes());
-        }
-        let mut position = offset;
-        let mut remaining = count;
-        while remaining > 0 {
-            let take = remaining.min(BULK_CHUNK);
-            self.pwrite_all(position, &chunk[..take * 8])?;
-            position += (take * 8) as u64;
-            remaining -= take;
-        }
-        Ok(())
+        stage_pwrite_i64_repeat(self, offset, value, count)
     }
 
     /// Wraps this source in an [`IOCursor`] positioned at the start — the standard way to add a
@@ -886,4 +813,146 @@ pub trait IOBase: Sized {
     {
         IOSlice::new(self, offset, len)
     }
+}
+
+// -------------------------------------------------------------------------------------
+// Stack-staged bulk kernels, as free functions — the single source of truth for the trait
+// defaults. A source with a faster **contiguous** backing (`Heap` over its `Vec`, `Mmap`
+// over its mapping) overrides the trait methods with a direct conversion; a source that
+// **composes** another (`LocalIO`'s non-mapped branch, over its ad-hoc / memory-tree byte
+// methods) reuses these staged kernels verbatim rather than duplicating them. Each stages
+// through one fixed stack chunk (zero heap allocation) and converts in a dense, branch-free
+// loop the compiler vectorizes.
+// -------------------------------------------------------------------------------------
+
+pub(crate) fn stage_pread_i32_array<S: IOBase>(
+    src: &S,
+    offset: u64,
+    dst: &mut [i32],
+) -> Result<(), IoError> {
+    let mut bytes = [0u8; BULK_CHUNK * 4];
+    let mut position = offset;
+    for chunk in dst.chunks_mut(BULK_CHUNK) {
+        let staged = &mut bytes[..chunk.len() * 4];
+        src.pread_exact(position, staged)?;
+        for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(4)) {
+            *value = i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+        }
+        position += staged.len() as u64;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pwrite_i32_array<S: IOBase>(
+    dst: &mut S,
+    offset: u64,
+    src: &[i32],
+) -> Result<(), IoError> {
+    let mut bytes = [0u8; BULK_CHUNK * 4];
+    let mut position = offset;
+    for chunk in src.chunks(BULK_CHUNK) {
+        let staged = &mut bytes[..chunk.len() * 4];
+        for (raw, value) in staged.chunks_exact_mut(4).zip(chunk) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        dst.pwrite_all(position, staged)?;
+        position += staged.len() as u64;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pread_i64_array<S: IOBase>(
+    src: &S,
+    offset: u64,
+    dst: &mut [i64],
+) -> Result<(), IoError> {
+    let mut bytes = [0u8; BULK_CHUNK * 8];
+    let mut position = offset;
+    for chunk in dst.chunks_mut(BULK_CHUNK) {
+        let staged = &mut bytes[..chunk.len() * 8];
+        src.pread_exact(position, staged)?;
+        for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(8)) {
+            *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
+        }
+        position += staged.len() as u64;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pwrite_i64_array<S: IOBase>(
+    dst: &mut S,
+    offset: u64,
+    src: &[i64],
+) -> Result<(), IoError> {
+    let mut bytes = [0u8; BULK_CHUNK * 8];
+    let mut position = offset;
+    for chunk in src.chunks(BULK_CHUNK) {
+        let staged = &mut bytes[..chunk.len() * 8];
+        for (raw, value) in staged.chunks_exact_mut(8).zip(chunk) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        dst.pwrite_all(position, staged)?;
+        position += staged.len() as u64;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pwrite_byte_repeat<S: IOBase>(
+    dst: &mut S,
+    offset: u64,
+    value: u8,
+    count: usize,
+) -> Result<(), IoError> {
+    let chunk = [value; BULK_CHUNK * 4];
+    let mut position = offset;
+    let mut remaining = count;
+    while remaining > 0 {
+        let take = remaining.min(chunk.len());
+        dst.pwrite_all(position, &chunk[..take])?;
+        position += take as u64;
+        remaining -= take;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pwrite_i32_repeat<S: IOBase>(
+    dst: &mut S,
+    offset: u64,
+    value: i32,
+    count: usize,
+) -> Result<(), IoError> {
+    let mut chunk = [0u8; BULK_CHUNK * 4];
+    for raw in chunk.chunks_exact_mut(4) {
+        raw.copy_from_slice(&value.to_le_bytes());
+    }
+    let mut position = offset;
+    let mut remaining = count;
+    while remaining > 0 {
+        let take = remaining.min(BULK_CHUNK);
+        dst.pwrite_all(position, &chunk[..take * 4])?;
+        position += (take * 4) as u64;
+        remaining -= take;
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_pwrite_i64_repeat<S: IOBase>(
+    dst: &mut S,
+    offset: u64,
+    value: i64,
+    count: usize,
+) -> Result<(), IoError> {
+    let mut chunk = [0u8; BULK_CHUNK * 8];
+    for raw in chunk.chunks_exact_mut(8) {
+        raw.copy_from_slice(&value.to_le_bytes());
+    }
+    let mut position = offset;
+    let mut remaining = count;
+    while remaining > 0 {
+        let take = remaining.min(BULK_CHUNK);
+        dst.pwrite_all(position, &chunk[..take * 8])?;
+        position += (take * 8) as u64;
+        remaining -= take;
+    }
+    Ok(())
 }

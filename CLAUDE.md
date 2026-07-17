@@ -43,8 +43,8 @@ extensions.** This is a hard rule: a reader must find the same shape everywhere.
 - *Core tests/benches* (flat by cargo's design) mirror by **path-derived names**:
   `src/io/memory/heap.rs` → `tests/io_memory_heap.rs` (+ `_alloc`) → `benches/io_memory_heap.rs`
   → `benchmarks/yggdryl-core/io/memory/heap.md`; `src/io/local/` → `tests/io_local_io.rs` +
-  `tests/io_local_mmap.rs` (+ `_alloc`) → `benches/io_local_mmap.rs` →
-  `benchmarks/yggdryl-core/io/local/mmap.md`; `src/uri/` → `tests/uri*.rs` →
+  `tests/io_local_mmap.rs` (+ `_alloc`) → `benches/io_local_io.rs` + `benches/io_local_mmap.rs`
+  → `benchmarks/yggdryl-core/io/local/{io.md,mmap.md}`; `src/uri/` → `tests/uri*.rs` →
   `benches/uri.rs` → `benchmarks/yggdryl-core/uri.md`; `src/headers.rs` → `tests/headers.rs`.
 - *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,local.rs,mod.rs,…}` +
   `bindings/*/src/{headers.rs,uri.rs}`,

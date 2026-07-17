@@ -28,6 +28,10 @@ mod cursor;
 mod heap;
 mod slice;
 
+pub(crate) use base::{
+    stage_pread_i32_array, stage_pread_i64_array, stage_pwrite_byte_repeat, stage_pwrite_i32_array,
+    stage_pwrite_i32_repeat, stage_pwrite_i64_array, stage_pwrite_i64_repeat,
+};
 pub(crate) use cursor::cursor_methods;
 
 pub use crate::io::{IoError, Whence};

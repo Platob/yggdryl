@@ -128,6 +128,81 @@ fn typed_bulk_and_utf8_roundtrip() {
 }
 
 #[test]
+fn direct_bulk_overrides_match_the_staged_semantics() {
+    // The `Mmap` bulk methods are direct contiguous conversions off the mapping (not the
+    // stack-staged default); this pins their edge behavior to the trait contract.
+    let tmp = TempPath::new("bulk");
+    let mut map = Mmap::create_uri(&tmp.uri()).unwrap();
+
+    // A bulk write grows the mapping; the readback matches exactly, at an offset.
+    let values: Vec<i32> = (-500..500).collect();
+    map.pwrite_i32_array(40, &values).unwrap();
+    let mut back = vec![0i32; 1000];
+    map.pread_i32_array(40, &mut back).unwrap();
+    assert_eq!(back, values);
+    assert_eq!(map.byte_size(), 40 + 4000);
+
+    // i64 + the repeats take the same direct path.
+    map.pwrite_i64_array(0, &[1, -2, 3, -4, 5]).unwrap();
+    let mut wide = [0i64; 5];
+    map.pread_i64_array(0, &mut wide).unwrap();
+    assert_eq!(wide, [1, -2, 3, -4, 5]);
+    map.pwrite_i32_repeat(0, -7, 8).unwrap();
+    let mut sevens = [0i32; 8];
+    map.pread_i32_array(0, &mut sevens).unwrap();
+    assert!(sevens.iter().all(|&v| v == -7));
+
+    // A bulk read past the end is a guided short-read, not a panic or partial fill.
+    let mut over = vec![0i32; map.byte_size() as usize]; // far more than exists
+    let err = map.pread_i32_array(0, &mut over).unwrap_err();
+    assert!(matches!(err, IoError::UnexpectedEof { .. }));
+
+    // A read-only mapping refuses every bulk write with the guided fix (writes nothing).
+    drop(map);
+    let mut ro = Mmap::open_uri_readonly(&tmp.uri()).unwrap();
+    let err = ro.pwrite_i32_array(0, &[1, 2, 3]).unwrap_err();
+    assert!(err.to_string().contains("read-only"));
+    assert!(ro
+        .pwrite_byte_repeat(0, 0, 4)
+        .unwrap_err()
+        .to_string()
+        .contains("read-only"));
+}
+
+#[test]
+fn many_threads_read_one_shared_mapping() {
+    // A mapping is Send + Sync for concurrent READS (`&self`): N threads hammer one shared
+    // Arc-wrapped mapping and every read is correct, no data race, no lock.
+    use std::sync::Arc;
+
+    let tmp = TempPath::new("shared");
+    let mut map = Mmap::create_uri(&tmp.uri()).unwrap();
+    let values: Vec<i32> = (0..1000).collect();
+    map.pwrite_i32_array(0, &values).unwrap();
+    let shared = Arc::new(map);
+
+    let sum: i64 = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let m = Arc::clone(&shared);
+                s.spawn(move || {
+                    let mut acc = 0i64;
+                    for _ in 0..10_000 {
+                        for k in 0..1000u64 {
+                            acc += m.pread_i32(k * 4).unwrap() as i64;
+                        }
+                    }
+                    acc
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).sum()
+    });
+    // Each thread summed 0..1000 (= 499_500) ten thousand times; eight threads.
+    assert_eq!(sum, 499_500 * 10_000 * 8);
+}
+
+#[test]
 fn cursor_stream_and_wrappers() {
     let tmp = TempPath::new("cursor");
     let mut map = Mmap::create_uri(&tmp.uri()).unwrap();

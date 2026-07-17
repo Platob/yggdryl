@@ -23,6 +23,10 @@ name = "io_local_mmap"
 harness = false
 
 [[bench]]
+name = "io_local_io"
+harness = false
+
+[[bench]]
 name = "uri"
 harness = false
 

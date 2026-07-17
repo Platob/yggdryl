@@ -323,6 +323,93 @@ fn memory_tree_does_not_recurse_into_directory_symlinks() {
 }
 
 #[test]
+fn bulk_typed_access_delegates_to_the_map_and_stays_correct() {
+    let tmp = TempDir::new("bulk");
+    let values: Vec<i32> = (-512..512).collect();
+
+    // A bulk write to a fresh (unmapped, missing) file self-optimizes: it maps then writes
+    // directly, and the readback through the mapped handle matches exactly.
+    let mut node = tmp.root().join_str("data.bin");
+    node.pwrite_i32_array(0, &values).unwrap();
+    assert!(node.is_mapped());
+    let mut back = vec![0i32; 1024];
+    node.pread_i32_array(0, &mut back).unwrap();
+    assert_eq!(back, values);
+    node.pwrite_i64_repeat(4096, -1, 64).unwrap();
+    let mut wide = [0i64; 64];
+    node.pread_i64_array(4096, &mut wide).unwrap();
+    assert!(wide.iter().all(|&v| v == -1));
+    node.close();
+
+    // A bulk read through a fresh, never-written handle stages over the ad-hoc read path.
+    let reader = tmp.root().join_str("data.bin");
+    assert!(!reader.is_mapped());
+    let mut adhoc = vec![0i32; 1024];
+    reader.pread_i32_array(0, &mut adhoc).unwrap();
+    assert_eq!(adhoc, values);
+
+    // A read-only handle refuses a bulk write with the guided fix, mapping nothing.
+    let mut ro = tmp.root().join_str("nope.bin");
+    ro.set_mode(yggdryl_core::io::IOMode::Read);
+    assert!(ro
+        .pwrite_i32_array(0, &[1, 2, 3])
+        .unwrap_err()
+        .to_string()
+        .contains("read-only"));
+    assert!(!ro.exists());
+}
+
+#[test]
+fn bulk_typed_write_on_a_directory_routes_through_the_tree() {
+    let tmp = TempDir::new("bulktree");
+    let mut root = tmp.root();
+    // Two equal blocks so a bulk i32 write lands across the boundary.
+    root.join_str("a.bin").pwrite_byte_repeat(0, 0, 8).unwrap();
+    root.join_str("b.bin").pwrite_byte_repeat(0, 0, 8).unwrap();
+
+    // A bulk typed write on the directory routes through the memory tree (not ensure_map).
+    root.pwrite_i32_array(0, &[1, 2, 3, 4]).unwrap();
+    assert!(!root.is_mapped()); // a directory never maps
+    let mut back = [0i32; 4];
+    root.pread_i32_array(0, &mut back).unwrap();
+    assert_eq!(back, [1, 2, 3, 4]);
+    // The bytes really landed in the two child blocks (a.bin holds the first two i32s).
+    let mut a = [0i32; 2];
+    root.join_str("a.bin").pread_i32_array(0, &mut a).unwrap();
+    assert_eq!(a, [1, 2]);
+}
+
+#[test]
+fn many_threads_write_disjoint_files() {
+    // Independent LocalIO handles to disjoint files write concurrently with no contention —
+    // each mapping is its own exclusive resource.
+    let tmp = TempDir::new("conc");
+    let root_path = tmp.0.clone();
+    std::fs::create_dir_all(&root_path).unwrap();
+
+    std::thread::scope(|s| {
+        for t in 0..8u32 {
+            let path = root_path.join(format!("t{t}.bin"));
+            s.spawn(move || {
+                let mut node = LocalIO::from_path(&path);
+                let values: Vec<i32> = (0..1000).map(|k| k * 10 + t as i32).collect();
+                node.pwrite_i32_array(0, &values).unwrap();
+                node.close();
+            });
+        }
+    });
+
+    // Every file has exactly its thread's data.
+    for t in 0..8u32 {
+        let node = LocalIO::from_path(root_path.join(format!("t{t}.bin")));
+        let mut back = vec![0i32; 1000];
+        node.pread_i32_array(0, &mut back).unwrap();
+        let expected: Vec<i32> = (0..1000).map(|k| k * 10 + t as i32).collect();
+        assert_eq!(back, expected);
+    }
+}
+
+#[test]
 fn wrapper_over_a_spaced_path_names_it_decoded() {
     // The default IOBase::name() percent-decodes the address segment, so a cursor over a
     // LocalIO whose path contains a space reports "my file.txt", never "my%20file.txt".

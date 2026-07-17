@@ -351,6 +351,74 @@ impl IOBase for LocalIO {
         self.ensure_map()?.pwrite_all(offset, data)
     }
 
+    // ---- bulk typed access: once self-optimized (mapped), delegate straight to the map so
+    // its direct contiguous conversion is reached; before that, reuse the shared staged
+    // kernels over the byte methods (ad-hoc reads / the memory tree). ----
+
+    fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
+        match &self.map {
+            Some(map) => map.pread_i32_array(offset, dst),
+            None => crate::io::memory::stage_pread_i32_array(self, offset, dst),
+        }
+    }
+
+    fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
+        match &self.map {
+            Some(map) => map.pread_i64_array(offset, dst),
+            None => crate::io::memory::stage_pread_i64_array(self, offset, dst),
+        }
+    }
+
+    fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
+        if self.map.is_none() && !self.is_dir() && self.mode.is_writable() {
+            self.ensure_map()?; // a bulk write to a file self-optimizes, like the byte write
+        }
+        match &mut self.map {
+            Some(map) => map.pwrite_i32_array(offset, src),
+            None => crate::io::memory::stage_pwrite_i32_array(self, offset, src),
+        }
+    }
+
+    fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
+        if self.map.is_none() && !self.is_dir() && self.mode.is_writable() {
+            self.ensure_map()?;
+        }
+        match &mut self.map {
+            Some(map) => map.pwrite_i64_array(offset, src),
+            None => crate::io::memory::stage_pwrite_i64_array(self, offset, src),
+        }
+    }
+
+    fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> Result<(), IoError> {
+        if self.map.is_none() && !self.is_dir() && self.mode.is_writable() {
+            self.ensure_map()?;
+        }
+        match &mut self.map {
+            Some(map) => map.pwrite_byte_repeat(offset, value, count),
+            None => crate::io::memory::stage_pwrite_byte_repeat(self, offset, value, count),
+        }
+    }
+
+    fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> Result<(), IoError> {
+        if self.map.is_none() && !self.is_dir() && self.mode.is_writable() {
+            self.ensure_map()?;
+        }
+        match &mut self.map {
+            Some(map) => map.pwrite_i32_repeat(offset, value, count),
+            None => crate::io::memory::stage_pwrite_i32_repeat(self, offset, value, count),
+        }
+    }
+
+    fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> Result<(), IoError> {
+        if self.map.is_none() && !self.is_dir() && self.mode.is_writable() {
+            self.ensure_map()?;
+        }
+        match &mut self.map {
+            Some(map) => map.pwrite_i64_repeat(offset, value, count),
+            None => crate::io::memory::stage_pwrite_i64_repeat(self, offset, value, count),
+        }
+    }
+
     // ---- the graph surface: LocalIO nodes form the local filesystem tree ----
 
     type Children = LocalChildren;

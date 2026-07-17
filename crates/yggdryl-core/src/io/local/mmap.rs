@@ -198,6 +198,44 @@ impl Mmap {
         self.mode = mode;
     }
 
+    /// The guided short-read/short-write error a bulk typed op returns when the mapping
+    /// cannot satisfy `requested` bytes at `offset` — the same shape the trait default
+    /// raises, so the message reads identically however a source implements it.
+    #[inline]
+    fn bulk_eof(&self, offset: u64, requested: usize) -> IoError {
+        IoError::UnexpectedEof {
+            offset,
+            requested,
+            available: self.len.saturating_sub(offset) as usize,
+        }
+    }
+
+    /// The live logical bytes as a read-only slice (empty when unmapped) — the zero-copy
+    /// backing the bulk typed reads convert straight off, no staging buffer.
+    #[inline]
+    fn mapped(&self) -> &[u8] {
+        if self.ptr.is_null() || self.len == 0 {
+            return &[];
+        }
+        // SAFETY: 0..len is inside the live mapping; an `&self` method never remaps.
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len as usize) }
+    }
+
+    /// Grows the mapping to cover `end` bytes and returns the writable slice `0..end` — the
+    /// zero-copy target the bulk typed writes convert straight into (callers set `len`).
+    #[inline]
+    fn grown_to(&mut self, end: u64) -> Result<&mut [u8], IoError> {
+        if end > self.map_len as u64 {
+            self.grow_capacity(end)?;
+        }
+        let end = end as usize;
+        if end == 0 {
+            return Ok(&mut []);
+        }
+        // SAFETY: 0..end <= map_len after the grow; `&mut self` is exclusive.
+        Ok(unsafe { std::slice::from_raw_parts_mut(self.ptr, end) })
+    }
+
     // ---- mapping machinery ---------------------------------------------------------------
 
     /// Unmaps the current view (if any).
@@ -504,6 +542,114 @@ impl IOBase for Mmap {
                 available: written,
             })
         }
+    }
+
+    // ---- bulk typed access: override the stack-staged defaults with a direct, vectorizable
+    // conversion straight off the contiguous mapping (no staging buffer), exactly as `Heap`
+    // does over its `Vec`. ----
+
+    fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let need = dst.len() * 4;
+        let Some(src) = self.mapped().get(start..start.saturating_add(need)) else {
+            return Err(self.bulk_eof(offset, need));
+        };
+        for (value, raw) in dst.iter_mut().zip(src.chunks_exact(4)) {
+            *value = i32::from_le_bytes(raw.try_into().expect("chunks_exact yields 4"));
+        }
+        Ok(())
+    }
+
+    fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
+        let start = offset as usize;
+        let need = dst.len() * 8;
+        let Some(src) = self.mapped().get(start..start.saturating_add(need)) else {
+            return Err(self.bulk_eof(offset, need));
+        };
+        for (value, raw) in dst.iter_mut().zip(src.chunks_exact(8)) {
+            *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
+        }
+        Ok(())
+    }
+
+    fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let start = offset as usize;
+        let Some(end) = offset.checked_add((src.len() * 4) as u64) else {
+            return Err(self.bulk_eof(offset, src.len() * 4));
+        };
+        let dst = self.grown_to(end)?;
+        for (raw, value) in dst[start..end as usize].chunks_exact_mut(4).zip(src) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        self.len = self.len.max(end);
+        Ok(())
+    }
+
+    fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let start = offset as usize;
+        let Some(end) = offset.checked_add((src.len() * 8) as u64) else {
+            return Err(self.bulk_eof(offset, src.len() * 8));
+        };
+        let dst = self.grown_to(end)?;
+        for (raw, value) in dst[start..end as usize].chunks_exact_mut(8).zip(src) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        self.len = self.len.max(end);
+        Ok(())
+    }
+
+    fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let start = offset as usize;
+        let Some(end) = offset.checked_add(count as u64) else {
+            return Err(self.bulk_eof(offset, count));
+        };
+        let dst = self.grown_to(end)?;
+        dst[start..end as usize].fill(value); // a plain memset over the mapping
+        self.len = self.len.max(end);
+        Ok(())
+    }
+
+    fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let start = offset as usize;
+        let Some(end) = offset.checked_add((count * 4) as u64) else {
+            return Err(self.bulk_eof(offset, count * 4));
+        };
+        let dst = self.grown_to(end)?;
+        let le = value.to_le_bytes();
+        for cell in dst[start..end as usize].chunks_exact_mut(4) {
+            cell.copy_from_slice(&le);
+        }
+        self.len = self.len.max(end);
+        Ok(())
+    }
+
+    fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(readonly_err(&self.path));
+        }
+        let start = offset as usize;
+        let Some(end) = offset.checked_add((count * 8) as u64) else {
+            return Err(self.bulk_eof(offset, count * 8));
+        };
+        let dst = self.grown_to(end)?;
+        let le = value.to_le_bytes();
+        for cell in dst[start..end as usize].chunks_exact_mut(8) {
+            cell.copy_from_slice(&le);
+        }
+        self.len = self.len.max(end);
+        Ok(())
     }
 }
 
