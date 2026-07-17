@@ -649,3 +649,42 @@ def test_heap_pickle_round_trip_is_content_only():
     assert back.position == 0  # the cursor is transient
     assert back.mode == IOMode.ReadWrite  # metadata is not serialized
     assert str(back.uri) == "mem://heap"  # every heap reports the synthetic address
+
+
+# -------------------------------------------------------------------------------------
+# Capacity family: checked reserves, ensure, shrink, spare
+# -------------------------------------------------------------------------------------
+
+
+def test_capacity_family_checked_and_scaling():
+    h = Heap.with_capacity(64)
+    assert h.spare_capacity() >= 64
+    h.pwrite_byte_array(0, b"\x00" * 16)
+    assert h.spare_capacity() == h.capacity() - 16
+
+    h.reserve_exact(100)
+    assert h.capacity() >= 116
+
+    # Checked reserves: a hostile size raises the guided error, never aborts the process.
+    h.try_reserve(1024)
+    h.try_reserve_exact(2048)
+    with pytest.raises(ValueError, match="reserve less"):
+        h.try_reserve(2**63)
+    with pytest.raises(ValueError, match="reserve less"):
+        h.try_ensure_capacity(2**63)
+    # Still fully usable afterwards.
+    h.pwrite_utf8(0, "alive")
+    assert h.pread_utf8(0, 5) == "alive"
+
+    # ensure_capacity targets a total and never shrinks.
+    h.ensure_capacity(8192)
+    assert h.capacity() >= 8192
+    cap = h.capacity()
+    h.ensure_capacity(16)
+    assert h.capacity() == cap
+
+    # shrink releases spare room (contents untouched).
+    h.shrink_to(64)
+    h.shrink_to_fit()
+    assert h.capacity() <= cap
+    assert h.pread_utf8(0, 5) == "alive"

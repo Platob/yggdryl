@@ -651,3 +651,39 @@ test('serializeBytes / deserializeBytes round-trip the stored bytes (metadata ex
   const empty = Heap.deserializeBytes(Buffer.alloc(0))
   assert.ok(empty.isEmpty())
 })
+
+// -------------------------------------------------------------------------------------
+// Capacity family: checked reserves, ensure, shrink, spare
+// -------------------------------------------------------------------------------------
+
+test('capacity family: checked reserves, ensure, shrink, spare', () => {
+  const h = Heap.withCapacity(64)
+  assert.ok(h.spareCapacity() >= 64)
+  h.pwriteByteArray(0, Buffer.alloc(16))
+  assert.equal(h.spareCapacity(), h.capacity() - 16)
+
+  h.reserveExact(100)
+  assert.ok(h.capacity() >= 116)
+
+  // Checked reserves: a hostile size throws the guided error, never aborts the process.
+  h.tryReserve(1024)
+  h.tryReserveExact(2048)
+  assert.throws(() => h.tryReserve(Number.MAX_SAFE_INTEGER), /reserve less/)
+  assert.throws(() => h.tryEnsureCapacity(Number.MAX_SAFE_INTEGER), /reserve less/)
+  // Still fully usable afterwards.
+  h.pwriteUtf8(0, 'alive')
+  assert.equal(h.preadUtf8(0, 5), 'alive')
+
+  // ensureCapacity targets a total and never shrinks.
+  h.ensureCapacity(8192)
+  assert.ok(h.capacity() >= 8192)
+  const cap = h.capacity()
+  h.ensureCapacity(16)
+  assert.equal(h.capacity(), cap)
+
+  // shrink releases spare room (contents untouched).
+  h.shrinkTo(64)
+  h.shrinkToFit()
+  assert.ok(h.capacity() <= cap)
+  assert.equal(h.preadUtf8(0, 5), 'alive')
+})

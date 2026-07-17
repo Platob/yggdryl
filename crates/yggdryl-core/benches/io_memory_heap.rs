@@ -210,6 +210,19 @@ fn main() {
             let _ = sink.pwrite_byte_array(0, &page);
         }),
     );
+    // Auto-scaling: appending 64 x 1 KiB chunks with NO reservation (amortized doubling —
+    // the allocs/op column shows the O(log n) reallocation cost spread over 64 chunks).
+    row(
+        "append 64x1 KiB (auto-scale)",
+        measure(64, iters, || {
+            let mut sink = Heap::new();
+            let chunk = [0u8; 1024];
+            for _ in 0..64 {
+                let end = sink.byte_size();
+                let _ = sink.pwrite_byte_array(end, &chunk);
+            }
+        }),
+    );
     // Overwriting the same 4 KiB in place — no growth at all.
     let mut sink = Heap::from_slice(&page);
     row(

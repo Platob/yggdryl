@@ -69,6 +69,11 @@ in the same run — the baseline any new source starts from):
 - **The heap itself is lightweight.** No stored address (the lazy static `mem://heap` clone
   costs exactly 2 small string allocations — asserted) and a directly-embedded empty headers
   map (allocation-free until used — asserted).
+- **Growth auto-scales and is fully checkable.** Un-reserved chunked appends amortize (64 x
+  1 KiB appends = ~0.11 reallocations per chunk, O(log n) — asserted `<= 8` total in the alloc
+  test), and the checked `try_reserve` / `try_reserve_exact` / `try_ensure_capacity` twins turn
+  an overflowing or refused reservation into a guided error instead of a process abort — a
+  failed try_reserve allocates nothing (asserted).
 - **`with_capacity` amortizes growth.** Filling a reserved heap stays at one allocation (the
   reservation) — asserted, and available on any source via the trait-level
   `IOBase::with_capacity`.

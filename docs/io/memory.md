@@ -10,18 +10,21 @@ against the same contract.
 
 | Type | What it is |
 |---|---|
-| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives; the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …); [bulk vectorized arrays, repeated-value fills, and UTF-8 text](#bulk-repeated-and-text-io); the buffer-reusing `pread_into` transfer; `byte_size` / `bit_size`; `Vec`-like `capacity` / `reserve` and a pre-allocating `with_capacity(capacity)` builder; an addressing [`uri`](#addressing) plus [`headers` metadata, an access `mode`, and a `kind`](#metadata-mode-and-kind); and the [`cursor()` / `window()`](#cursors-and-windows) builders |
+| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives; the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …); [bulk vectorized arrays, repeated-value fills, and UTF-8 text](#bulk-repeated-and-text-io); the buffer-reusing `pread_into` transfer; `byte_size` / `bit_size`; the full `Vec`-like capacity family — `capacity` / `spare_capacity`, `reserve` / `reserve_exact` and the **checked** `try_reserve` / `try_reserve_exact` (a guided error instead of an abort), the absolute-target `ensure_capacity` / `try_ensure_capacity`, `shrink_to_fit` / `shrink_to`, and a pre-allocating `with_capacity(capacity)` builder — with amortized (auto-scaling) growth on appends; an addressing [`uri`](#addressing) plus [`headers` metadata, an access `mode`, and a `kind`](#metadata-mode-and-kind); and the [`cursor()` / `window()`](#cursors-and-windows) builders |
 | `IOCursor<T>` | a concrete **cursor** wrapping any source: `read` / `write` advance a position, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64` / `read_utf8`, and the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
 | `IOSlice<T>` | a concrete bounded **window** wrapping any source, addressed from its own `0` |
 | `Whence` | the seek anchor: `Start` / `Current` / `End` |
-| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds` / `InvalidUtf8` / `UnknownName`) |
+| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds` / `InvalidUtf8` / `UnknownName` / `CapacityOverflow`) |
 
 Bit addressing is **LSB-first** (bit `i` is bit `i % 8` of byte `i / 8`, least-significant first),
 and integers are **little-endian**, matching Arrow. The two byte-array primitives are infallible
 (a read past the end returns fewer bytes; a write past the end grows the source, zero-filling any
 gap); the typed and *exact* helpers built on them return a guided error at the end of the data.
-When the size is known up front, build with `with_capacity(capacity)` so the first writes never
-reallocate.
+When the size is known up front, build with `with_capacity(capacity)` (or `ensure_capacity` on
+a live source) so the first writes never reallocate; when it is not, appends auto-scale with
+amortized doubling — 64 chunked appends cost only ~7 reallocations (asserted). For sizes that
+may be hostile or miscomputed, use the **checked** `try_reserve` family: a guided error instead
+of a process abort.
 
 ## `Heap`
 

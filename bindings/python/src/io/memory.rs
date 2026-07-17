@@ -122,6 +122,50 @@ impl Heap {
         self.inner.reserve(additional);
     }
 
+    /// The spare room already allocated — `capacity() - byte_size()`, the bytes that can be
+    /// appended before the next reallocation.
+    fn spare_capacity(&self) -> u64 {
+        self.inner.spare_capacity()
+    }
+
+    /// Reserves capacity for **exactly** `additional` more bytes — no amortized
+    /// over-allocation, for a caller that knows the final size.
+    fn reserve_exact(&mut self, additional: u64) {
+        self.inner.reserve_exact(additional);
+    }
+
+    /// **Checked** reservation: where `reserve` would abort the process on overflow or
+    /// allocator failure, this raises a guided `ValueError` instead.
+    fn try_reserve(&mut self, additional: u64) -> PyResult<()> {
+        self.inner.try_reserve(additional).map_err(ioerr)
+    }
+
+    /// **Checked exact** reservation — `try_reserve` without the amortized over-allocation.
+    fn try_reserve_exact(&mut self, additional: u64) -> PyResult<()> {
+        self.inner.try_reserve_exact(additional).map_err(ioerr)
+    }
+
+    /// Ensures the **total** capacity is at least `total` bytes (the absolute-target form of
+    /// `reserve`); a no-op when already satisfied, never shrinks.
+    fn ensure_capacity(&mut self, total: u64) {
+        self.inner.ensure_capacity(total);
+    }
+
+    /// **Checked** `ensure_capacity` — raises a guided `ValueError` instead of aborting.
+    fn try_ensure_capacity(&mut self, total: u64) -> PyResult<()> {
+        self.inner.try_ensure_capacity(total).map_err(ioerr)
+    }
+
+    /// Releases spare capacity back to the allocator, shrinking toward `byte_size()`.
+    fn shrink_to_fit(&mut self) {
+        self.inner.shrink_to_fit();
+    }
+
+    /// Shrinks the allocation toward `min_capacity` (never below `byte_size()`).
+    fn shrink_to(&mut self, min_capacity: u64) {
+        self.inner.shrink_to(min_capacity);
+    }
+
     /// Whether the buffer holds no bytes (`byte_size() == 0`).
     fn is_empty(&self) -> bool {
         self.inner.is_empty()

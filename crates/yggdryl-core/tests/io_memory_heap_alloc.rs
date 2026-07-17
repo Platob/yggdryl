@@ -192,6 +192,32 @@ fn allocation_budgets() {
         "untouched heap metadata must allocate nothing (got {lazy_headers})"
     );
 
+    // Auto-scaling appends amortize: appending 64 x 1 KiB chunks with NO reservation costs
+    // only O(log n) reallocations (Vec doubling through the single-write append path) — far
+    // fewer than one per chunk.
+    let growth = allocs_over(1, || {
+        let mut h = Heap::new();
+        let chunk = [0u8; 1024];
+        for _ in 0..64 {
+            let end = h.byte_size();
+            h.pwrite_byte_array(end, &chunk);
+        }
+    });
+    assert!(
+        growth <= 8,
+        "64 chunked appends must cost O(log n) reallocations, got {growth}"
+    );
+
+    // A checked reservation that fails leaves the heap untouched and allocates nothing.
+    let mut checked = Heap::with_capacity(64);
+    let failed_reserve = allocs_over(iters, || {
+        assert!(checked.try_reserve(u64::MAX).is_err());
+    });
+    assert_eq!(
+        failed_reserve, 0,
+        "a failed try_reserve must not allocate (got {failed_reserve})"
+    );
+
     // Lazy-built address: `uri()` clones the once-parsed static — exactly the two small
     // string allocations of the clone ("mem" + "heap"), never a re-parse.
     let h = Heap::new();

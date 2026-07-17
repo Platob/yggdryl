@@ -76,6 +76,10 @@ impl<T: IOBase> IOBase for IOSlice<T> {
         self.len
     }
 
+    // DESIGN: the capacity family (`reserve*` / `try_reserve*` / `shrink_*`) keeps the trait's
+    // no-op defaults here — a window is FIXED-length and must never grow or shrink the source
+    // it wraps, so a reservation through a window is deliberately inert.
+
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         if offset >= self.len {
             return 0;

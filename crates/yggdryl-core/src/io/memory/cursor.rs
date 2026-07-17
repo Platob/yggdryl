@@ -235,6 +235,26 @@ impl<T: IOBase> IOBase for IOCursor<T> {
         self.inner.reserve(additional);
     }
 
+    fn reserve_exact(&mut self, additional: u64) {
+        self.inner.reserve_exact(additional);
+    }
+
+    fn try_reserve(&mut self, additional: u64) -> Result<(), IoError> {
+        self.inner.try_reserve(additional)
+    }
+
+    fn try_reserve_exact(&mut self, additional: u64) -> Result<(), IoError> {
+        self.inner.try_reserve_exact(additional)
+    }
+
+    fn shrink_to_fit(&mut self) {
+        self.inner.shrink_to_fit();
+    }
+
+    fn shrink_to(&mut self, min_capacity: u64) {
+        self.inner.shrink_to(min_capacity);
+    }
+
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
         self.inner.pread_byte_array(offset, buf)
     }

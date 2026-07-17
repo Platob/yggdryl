@@ -608,3 +608,90 @@ fn hostile_lengths_never_preallocate() {
     assert_eq!(&scratch, b"iny");
     assert_eq!(src.pread_utf8(0, usize::MAX).unwrap(), "tiny");
 }
+
+// -------------------------------------------------------------------------------------
+// Capacity family: checked reserves, exact reserves, ensure, shrink, spare
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn spare_capacity_tracks_room_before_reallocation() {
+    let mut h = Heap::with_capacity(64);
+    let cap = h.capacity();
+    assert_eq!(h.spare_capacity(), cap);
+    h.pwrite_byte_array(0, &[0; 16]);
+    assert_eq!(h.spare_capacity(), cap - 16);
+    // Fixed windows have no spare room at all.
+    let win = Heap::from_slice(b"abcd").window(0, 4).unwrap();
+    assert_eq!(win.spare_capacity(), 0);
+}
+
+#[test]
+fn try_reserve_is_checked_never_aborts() {
+    let mut h = Heap::new();
+    h.try_reserve(1024).unwrap();
+    assert!(h.capacity() >= 1024);
+    // A hostile size is a guided error, not a process abort.
+    let err = h.try_reserve(u64::MAX).unwrap_err();
+    assert!(matches!(err, IoError::CapacityOverflow { .. }));
+    assert!(err.to_string().contains("reserve less"));
+    // The heap is still fully usable afterwards.
+    h.pwrite_byte_array(0, b"still alive");
+    assert_eq!(h.pread_vec(0, 11), b"still alive");
+    // The exact twin behaves identically.
+    h.try_reserve_exact(2048).unwrap();
+    assert!(h.capacity() >= 2048);
+    assert!(h.try_reserve_exact(u64::MAX).is_err());
+}
+
+#[test]
+fn ensure_capacity_targets_a_total_and_never_shrinks() {
+    let mut h = Heap::new();
+    h.ensure_capacity(4096);
+    assert!(h.capacity() >= 4096);
+    let cap = h.capacity();
+    h.ensure_capacity(16); // already satisfied
+    assert_eq!(h.capacity(), cap);
+    // Checked form: recoverable on a hostile total.
+    assert!(h.try_ensure_capacity(8192).is_ok());
+    assert!(h.try_ensure_capacity(u64::MAX).is_err());
+}
+
+#[test]
+fn shrink_releases_spare_capacity() {
+    let mut h = Heap::with_capacity(4096);
+    h.pwrite_byte_array(0, &[7; 32]);
+    h.shrink_to(64);
+    assert!(h.capacity() >= 32 && h.capacity() <= 4096);
+    let after_to = h.capacity();
+    h.shrink_to_fit();
+    assert!(h.capacity() >= 32 && h.capacity() <= after_to);
+    assert_eq!(h.pread_vec(0, 32), vec![7u8; 32]); // contents untouched
+}
+
+#[test]
+fn capacity_family_delegates_through_the_cursor_wrapper() {
+    let mut cur = Heap::new().cursor();
+    cur.try_reserve(512).unwrap();
+    assert!(cur.capacity() >= 512);
+    assert!(cur.try_reserve(u64::MAX).is_err()); // the wrapper stays checked
+    cur.shrink_to_fit();
+    // A fixed window stays inert (deliberately — it may not grow its source).
+    let mut win = Heap::from_slice(b"abcd").window(0, 4).unwrap();
+    win.try_reserve(1024).unwrap(); // trait default: Ok, reserves nothing
+    assert_eq!(win.capacity(), 4);
+}
+
+#[test]
+fn auto_scaling_appends_amortize_growth() {
+    // Appending chunk after chunk with NO reservation still costs only O(log n) reallocations
+    // (Vec's amortized doubling through the single-write append path).
+    let mut h = Heap::new();
+    let chunk = [0xA5u8; 1024];
+    for i in 0..64u64 {
+        let end = h.byte_size();
+        h.pwrite_byte_array(end, &chunk);
+        assert_eq!(h.byte_size(), (i + 1) * 1024);
+    }
+    assert!(h.as_slice().iter().all(|&b| b == 0xA5));
+    assert!(h.capacity() >= 64 * 1024);
+}

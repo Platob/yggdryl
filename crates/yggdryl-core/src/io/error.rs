@@ -68,6 +68,17 @@ pub enum IoError {
         /// The byte index (within the read range) at which decoding failed.
         position: usize,
     },
+    /// A **checked** capacity reservation ([`try_reserve`](crate::io::memory::IOBase::try_reserve) /
+    /// [`try_reserve_exact`](crate::io::memory::IOBase::try_reserve_exact)) could not be
+    /// satisfied — the new size would overflow, or the allocator refused the request. Reserve
+    /// less, shrink the source, or free memory first. (The unchecked `reserve` aborts the
+    /// process in this situation; the `try_*` twins return this error instead.)
+    CapacityOverflow {
+        /// How many additional bytes were requested.
+        additional: u64,
+        /// The capacity at the time of the request.
+        capacity: u64,
+    },
     /// A name/value handed to a parser ([`IOMode::parse_str`](crate::io::IOMode::parse_str) /
     /// [`IOKind::from_u8`](crate::io::IOKind::from_u8), …) matched none of the accepted
     /// tokens. Pass one of the expected values.
@@ -117,6 +128,13 @@ impl fmt::Display for IoError {
                 f,
                 "invalid UTF-8 at byte {position}: read the raw bytes with pread_byte_array \
                  instead, or adjust the offset/length to span whole characters"
+            ),
+            Self::CapacityOverflow {
+                additional,
+                capacity,
+            } => write!(
+                f,
+                "cannot reserve {additional} more bytes (current capacity {capacity}): the                  size overflows or the allocator refused; reserve less, shrink the source, or                  free memory first"
             ),
             Self::UnknownName {
                 kind,

@@ -157,6 +157,61 @@ impl Heap {
         self.inner.reserve(additional as u64);
     }
 
+    /// The spare room already allocated — `capacity - byteSize`, the bytes that can be
+    /// appended before the next reallocation. An `i64` (JS number) like `capacity`.
+    #[napi]
+    pub fn spare_capacity(&self) -> i64 {
+        self.inner.spare_capacity() as i64
+    }
+
+    /// Reserves capacity for **exactly** `additional` more bytes — no amortized
+    /// over-allocation, for a caller that knows the final size.
+    #[napi]
+    pub fn reserve_exact(&mut self, additional: u32) {
+        self.inner.reserve_exact(additional as u64);
+    }
+
+    /// **Checked** reservation: where `reserve` would abort the process on overflow or
+    /// allocator failure, this throws a guided `Error` instead.
+    #[napi]
+    pub fn try_reserve(&mut self, additional: i64) -> napi::Result<()> {
+        let additional = u64::try_from(additional).unwrap_or(u64::MAX);
+        self.inner.try_reserve(additional).map_err(to_error)
+    }
+
+    /// **Checked exact** reservation — `tryReserve` without the amortized over-allocation.
+    #[napi]
+    pub fn try_reserve_exact(&mut self, additional: i64) -> napi::Result<()> {
+        let additional = u64::try_from(additional).unwrap_or(u64::MAX);
+        self.inner.try_reserve_exact(additional).map_err(to_error)
+    }
+
+    /// Ensures the **total** capacity is at least `total` bytes (the absolute-target form of
+    /// `reserve`); a no-op when already satisfied, never shrinks.
+    #[napi]
+    pub fn ensure_capacity(&mut self, total: u32) {
+        self.inner.ensure_capacity(total as u64);
+    }
+
+    /// **Checked** `ensureCapacity` — throws a guided `Error` instead of aborting.
+    #[napi]
+    pub fn try_ensure_capacity(&mut self, total: i64) -> napi::Result<()> {
+        let total = u64::try_from(total).unwrap_or(u64::MAX);
+        self.inner.try_ensure_capacity(total).map_err(to_error)
+    }
+
+    /// Releases spare capacity back to the allocator, shrinking toward `byteSize`.
+    #[napi]
+    pub fn shrink_to_fit(&mut self) {
+        self.inner.shrink_to_fit();
+    }
+
+    /// Shrinks the allocation toward `minCapacity` (never below `byteSize`).
+    #[napi]
+    pub fn shrink_to(&mut self, min_capacity: u32) {
+        self.inner.shrink_to(min_capacity as u64);
+    }
+
     // ---- byte-array primitives ---------------------------------------------------------
 
     /// Reads up to `length` bytes at `offset` into a fresh `Buffer` — short (or empty) near the

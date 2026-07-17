@@ -276,6 +276,42 @@ impl IOBase for Heap {
         self.data.reserve(additional as usize);
     }
 
+    fn reserve_exact(&mut self, additional: u64) {
+        self.data.reserve_exact(additional as usize);
+    }
+
+    fn try_reserve(&mut self, additional: u64) -> Result<(), IoError> {
+        // Checked: a request past `usize` or one the allocator refuses is a guided error,
+        // never an abort. (`u64 -> usize` is lossless on 64-bit; on 32-bit an oversized
+        // request fails the same way through the `usize::MAX` clamp.)
+        let want = usize::try_from(additional).unwrap_or(usize::MAX);
+        self.data
+            .try_reserve(want)
+            .map_err(|_| IoError::CapacityOverflow {
+                additional,
+                capacity: self.data.capacity() as u64,
+            })
+    }
+
+    fn try_reserve_exact(&mut self, additional: u64) -> Result<(), IoError> {
+        let want = usize::try_from(additional).unwrap_or(usize::MAX);
+        self.data
+            .try_reserve_exact(want)
+            .map_err(|_| IoError::CapacityOverflow {
+                additional,
+                capacity: self.data.capacity() as u64,
+            })
+    }
+
+    fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+    }
+
+    fn shrink_to(&mut self, min_capacity: u64) {
+        self.data
+            .shrink_to(usize::try_from(min_capacity).unwrap_or(usize::MAX));
+    }
+
     // `uri()` is deliberately NOT overridden: a heap stores no address, so every heap reports
     // the trait's stable synthetic `mem://heap`.
 

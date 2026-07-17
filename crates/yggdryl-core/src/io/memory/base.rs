@@ -70,6 +70,104 @@ pub trait IOBase {
         let _ = additional;
     }
 
+    /// The spare room already allocated — `capacity() - byte_size()`, the bytes that can be
+    /// appended before the next reallocation. The planning counterpart of
+    /// [`reserve`](IOBase::reserve).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut h = Heap::with_capacity(64);
+    /// h.pwrite_byte_array(0, &[0; 16]);
+    /// assert!(h.spare_capacity() >= 48);
+    /// ```
+    fn spare_capacity(&self) -> u64 {
+        self.capacity().saturating_sub(self.byte_size())
+    }
+
+    /// Reserves capacity for **exactly** `additional` more bytes — like [`Vec::reserve_exact`]:
+    /// no amortized over-allocation, for a caller that knows the final size and wants no spare
+    /// tail. The default is a no-op (a fixed source cannot grow).
+    fn reserve_exact(&mut self, additional: u64) {
+        let _ = additional;
+    }
+
+    /// **Checked** reservation of at least `additional` more bytes — like [`Vec::try_reserve`]:
+    /// where [`reserve`](IOBase::reserve) would **abort the process** on overflow or allocator
+    /// failure, this returns the guided [`IoError::CapacityOverflow`] instead, so a hostile or
+    /// miscomputed size is a recoverable error. The default is `Ok` (a fixed source reserves
+    /// nothing); a growable source overrides it with a real checked reservation.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase, IoError};
+    ///
+    /// let mut h = Heap::new();
+    /// h.try_reserve(1024).unwrap();               // fine — and now pre-allocated
+    /// assert!(h.capacity() >= 1024);
+    /// let err = h.try_reserve(u64::MAX).unwrap_err(); // recoverable, never an abort
+    /// assert!(matches!(err, IoError::CapacityOverflow { .. }));
+    /// ```
+    fn try_reserve(&mut self, additional: u64) -> Result<(), IoError> {
+        let _ = additional;
+        Ok(())
+    }
+
+    /// **Checked exact** reservation — [`try_reserve`](IOBase::try_reserve) without the
+    /// amortized over-allocation, like [`Vec::try_reserve_exact`]. The default is `Ok`.
+    fn try_reserve_exact(&mut self, additional: u64) -> Result<(), IoError> {
+        let _ = additional;
+        Ok(())
+    }
+
+    /// Ensures the **total** capacity is at least `total` bytes — the absolute-target form of
+    /// [`reserve`](IOBase::reserve), for a pipeline that knows how much data is coming. A
+    /// no-op when the capacity already suffices; never shrinks.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut h = Heap::new();
+    /// h.ensure_capacity(4096);
+    /// assert!(h.capacity() >= 4096);
+    /// h.ensure_capacity(16); // already satisfied — no-op, never shrinks
+    /// assert!(h.capacity() >= 4096);
+    /// ```
+    fn ensure_capacity(&mut self, total: u64) {
+        if total > self.capacity() {
+            self.reserve(total.saturating_sub(self.byte_size()));
+        }
+    }
+
+    /// **Checked** [`ensure_capacity`](IOBase::ensure_capacity) — errors with
+    /// [`IoError::CapacityOverflow`] instead of aborting when `total` cannot be allocated.
+    fn try_ensure_capacity(&mut self, total: u64) -> Result<(), IoError> {
+        if total > self.capacity() {
+            self.try_reserve(total.saturating_sub(self.byte_size()))?;
+        }
+        Ok(())
+    }
+
+    /// Releases spare capacity back to the allocator, shrinking the allocation toward
+    /// [`byte_size`](IOBase::byte_size) — like [`Vec::shrink_to_fit`]. The default is a no-op
+    /// (a fixed source has nothing to release).
+    fn shrink_to_fit(&mut self) {}
+
+    /// Shrinks the allocation toward `min_capacity` (never below
+    /// [`byte_size`](IOBase::byte_size)) — like [`Vec::shrink_to`], keeping a known working
+    /// headroom while releasing the rest. The default is a no-op.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut h = Heap::with_capacity(4096);
+    /// h.pwrite_byte_array(0, &[0; 8]);
+    /// h.shrink_to(64);
+    /// assert!(h.capacity() >= 8 && h.capacity() <= 4096);
+    /// ```
+    fn shrink_to(&mut self, min_capacity: u64) {
+        let _ = min_capacity;
+    }
+
     /// Builds a source **pre-allocated** for `capacity` bytes — the fast path when the size is
     /// known up front, so the first writes never reallocate. Works on any source that is
     /// `Default` (an empty value plus one [`reserve`](IOBase::reserve)); a source with a cheaper
