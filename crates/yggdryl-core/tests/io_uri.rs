@@ -194,6 +194,24 @@ fn ipv6_host_without_port() {
     assert_eq!(uri.port(), None);
 }
 
+#[test]
+fn ipv6_host_with_trailing_junk_is_rejected() {
+    // Bytes after the closing `]` that are not a `:port` were silently dropped, producing a
+    // non-round-tripping `Uri` (`http://[::1]junk/p` -> `http://[::1]/p`). They must now error.
+    assert!(matches!(
+        Uri::parse("http://[::1]junk/p"),
+        Err(UriError::InvalidPort { .. })
+    ));
+    // A valid `:port` after the bracket still parses, and a bare bracketed host still parses.
+    assert_eq!(
+        Uri::parse("http://[::1]:8080/p").unwrap().port(),
+        Some(8080)
+    );
+    let bare = Uri::parse("http://[::1]/p").unwrap();
+    assert_eq!(bare.host(), Some("[::1]"));
+    assert_eq!(bare.port(), None);
+}
+
 // -------------------------------------------------------------------------------------
 // Byte round-trip (serialize/deserialize inverse)
 // -------------------------------------------------------------------------------------

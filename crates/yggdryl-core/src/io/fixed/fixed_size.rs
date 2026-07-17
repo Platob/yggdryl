@@ -37,13 +37,6 @@ pub trait FixedElement: Send + Sync + 'static {
     fn validate(bytes: &[u8]) -> Result<(), IoError>;
 }
 
-/// Reads a little-endian `u64` from a cursor.
-fn read_u64<R: IOCursor>(source: &mut R) -> Result<u64, IoError> {
-    let mut bytes = [0u8; 8];
-    source.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
-}
-
 // -------------------------------------------------------------------------------------
 // Descriptor
 // -------------------------------------------------------------------------------------
@@ -278,14 +271,15 @@ impl<K: FixedElement> FixedSizeScalar<K> {
     /// Reads a scalar written by [`write_to`](FixedSizeScalar::write_to), validating a present
     /// value for the kind.
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        let width = read_u64(source)? as usize;
+        let width = source.read_u64()? as usize;
         let mut validity = [0u8; 1];
         source.read_exact(&mut validity)?;
         if validity[0] == 0 {
             return Ok(Self::null(width));
         }
-        let mut bytes = vec![0u8; width];
-        source.read_exact(&mut bytes)?;
+        // Bounded read: `width` is an untrusted frame value, so grow only as bytes arrive rather
+        // than allocating the declared size up front (a hostile length errors, never aborts).
+        let bytes = source.read_exact_vec(width)?;
         K::validate(&bytes)?;
         Ok(Self {
             value: Some(bytes.into_boxed_slice()),
@@ -771,8 +765,8 @@ impl<K: FixedElement> FixedSizeSerie<K> {
     /// Reads a column written by [`write_to`](FixedSizeSerie::write_to). Validates the decoded
     /// data for the kind and refuses a corrupt (overflowing) `len * width`.
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        let len = read_u64(source)? as usize;
-        let width = read_u64(source)? as usize;
+        let len = source.read_u64()? as usize;
+        let width = source.read_u64()? as usize;
         let mut flags = [0u8; 1];
         source.read_exact(&mut flags)?;
 

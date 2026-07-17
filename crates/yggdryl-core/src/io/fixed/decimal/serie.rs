@@ -632,6 +632,20 @@ impl<B: DecimalBacking> DecimalSerie<B> {
         })
     }
 
+    /// This column **viewed as a single [`DecimalScalar`]** (carrying the column's `(precision,
+    /// scale)`), if it holds exactly one element — the inverse of
+    /// [`DecimalScalar::to_serie`](DecimalScalar::to_serie).
+    pub fn as_scalar(&self) -> Option<DecimalScalar<B>> {
+        (self.len == 1).then(|| self.get_scalar(0))
+    }
+
+    /// A length-1 column broadcasting `scalar` at its own `(precision, scale)` — the singular of
+    /// [`from_scalars`](DecimalSerie::from_scalars); the inverse of
+    /// [`as_scalar`](DecimalSerie::as_scalar).
+    pub fn from_scalar(scalar: DecimalScalar<B>) -> Result<Self, DecimalError> {
+        Self::from_options(scalar.precision(), scalar.scale(), &[scalar.value()])
+    }
+
     /// A column from a slice of [`DecimalScalar`]s at `(precision, scale)` — each scalar's value is
     /// re-expressed at the column's scale (a guided [`InexactRescale`](DecimalError::InexactRescale) /
     /// [`PrecisionExceeded`](DecimalError::PrecisionExceeded) if it does not fit), a null scalar a

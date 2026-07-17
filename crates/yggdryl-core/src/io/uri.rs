@@ -1074,7 +1074,20 @@ fn parse_authority(auth: &str) -> Result<Authority, UriError> {
         match rest.split_once(']') {
             Some((inner, tail)) => {
                 let host = format!("[{inner}]");
-                let port = tail.strip_prefix(':').filter(|p| !p.is_empty());
+                // After the closing `]` only a `:port` may follow. A non-empty tail that is not a
+                // `:`-prefixed port (`[::1]junk`) would otherwise be silently dropped into a
+                // non-round-tripping `Uri`, so reject it with a guided error — mirroring the reg-name
+                // branch below, which rejects its own malformed inputs for the same reason. An empty
+                // port (`[::1]:`) normalizes to `None`, exactly as `host:` does there.
+                let port = if tail.is_empty() {
+                    None
+                } else if let Some(port) = tail.strip_prefix(':') {
+                    (!port.is_empty()).then_some(port)
+                } else {
+                    return Err(UriError::InvalidPort {
+                        port: tail.to_string(),
+                    });
+                };
                 return Ok(Authority::new(user, password, &host, parse_port(port)?));
             }
             // No closing bracket — treat the whole thing as the host, no port.

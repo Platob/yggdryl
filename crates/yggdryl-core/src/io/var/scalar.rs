@@ -3,7 +3,7 @@
 
 use core::marker::PhantomData;
 
-use super::{ByteField, ByteType, VarElement};
+use super::{ByteField, ByteSerie, ByteType, VarElement};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, FieldType, IOCursor, IoError, ScalarType};
 
@@ -112,6 +112,23 @@ impl<E: VarElement> ByteScalar<E> {
         ByteField::new(name, nullable)
     }
 
+    /// This scalar **broadcast to a length-1 [`ByteSerie`]** — the inverse of
+    /// [`ByteSerie::as_scalar`](ByteSerie::as_scalar). Mirrors the fixed family's
+    /// [`Scalar::to_serie`](crate::io::fixed::Scalar::to_serie); it is fallible only because a var
+    /// column validates its bytes for the kind on build (a present scalar's bytes are already valid,
+    /// so it never fails in practice).
+    ///
+    /// ```
+    /// use yggdryl_core::io::var::Utf8Scalar;
+    ///
+    /// let col = Utf8Scalar::of("hi").to_serie().unwrap();
+    /// assert_eq!(col.len(), 1);
+    /// assert_eq!(col.get_str(0), Some("hi"));
+    /// ```
+    pub fn to_serie(&self) -> Result<ByteSerie<E>, IoError> {
+        ByteSerie::from_scalar(self.clone())
+    }
+
     /// Writes this scalar to `sink`: a validity byte, then (if present) a `u64` length and the
     /// bytes.
     pub fn write_to<W: IOCursor>(&self, sink: &mut W) -> Result<(), IoError> {
@@ -132,10 +149,10 @@ impl<E: VarElement> ByteScalar<E> {
         if validity[0] == 0 {
             return Ok(Self::null());
         }
-        let mut len = [0u8; 8];
-        source.read_exact(&mut len)?;
-        let mut bytes = vec![0u8; u64::from_le_bytes(len) as usize];
-        source.read_exact(&mut bytes)?;
+        // Bounded read: `len` is an untrusted frame value, so grow only as bytes arrive rather than
+        // allocating the declared size up front (a hostile length errors cleanly, never aborts).
+        let len = source.read_u64()? as usize;
+        let bytes = source.read_exact_vec(len)?;
         Self::from_bytes(&bytes)
     }
 

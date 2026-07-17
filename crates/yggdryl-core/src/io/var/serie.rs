@@ -134,6 +134,19 @@ impl<E: VarElement> ByteSerie<E> {
         Ok(serie)
     }
 
+    /// This column **viewed as a single [`ByteScalar`]**, if it holds exactly one element — so a
+    /// length-1 column is usable wherever a scalar is expected (the inverse of
+    /// [`ByteScalar::to_serie`](ByteScalar::to_serie)).
+    pub fn as_scalar(&self) -> Option<ByteScalar<E>> {
+        (self.len == 1).then(|| self.get_scalar(0))
+    }
+
+    /// A length-1 column broadcasting `scalar` — the singular of
+    /// [`from_scalars`](ByteSerie::from_scalars); the inverse of [`as_scalar`](ByteSerie::as_scalar).
+    pub fn from_scalar(scalar: ByteScalar<E>) -> Result<Self, IoError> {
+        Self::from_options(&[scalar.value_bytes()])
+    }
+
     /// A column from a slice of [`ByteScalar`]s — each scalar contributing its bytes (or a null).
     /// The bulk analogue of the in-place [`set_scalars`](ByteSerie::set_scalars), and the inverse of
     /// collecting a column's [`get_scalar`](ByteSerie::get_scalar)s.
@@ -607,7 +620,7 @@ impl<E: VarElement> ByteSerie<E> {
     /// Reads a column written by [`write_to`](ByteSerie::write_to). Validates the decoded data
     /// for the kind, and refuses a corrupt (overflowing) length.
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        let len = read_u64(source)? as usize;
+        let len = source.read_u64()? as usize;
         let mut flags = [0u8; 1];
         source.read_exact(&mut flags)?;
 
@@ -636,7 +649,7 @@ impl<E: VarElement> ByteSerie<E> {
             .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
 
-        let data_len = read_u64(source)? as usize;
+        let data_len = source.read_u64()? as usize;
         let data = source.read_exact_vec(data_len)?;
 
         // Validate the decoded offsets so every value slice is in bounds (a corrupt/hostile
@@ -743,13 +756,6 @@ impl<E: VarElement> ByteSerie<E> {
         }
         Ok(serie)
     }
-}
-
-/// Reads a little-endian `u64`.
-fn read_u64<R: IOCursor>(source: &mut R) -> Result<u64, IoError> {
-    let mut bytes = [0u8; 8];
-    source.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
 }
 
 impl<E: VarElement> SerieType for ByteSerie<E> {

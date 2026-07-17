@@ -493,3 +493,27 @@ fn duration_flexible_parse_str() {
     // Junk is a guided parse error.
     assert!(Duration64::parse_str("not a duration").is_err());
 }
+
+#[test]
+fn temporal_scalar_serie_singular_broadcast_round_trips() {
+    // The temporal-family mirror of the fixed `Scalar::to_serie` / `Serie::as_scalar` / `from_scalar`
+    // trio — the scalar carries its own (unit, tz), so the singular case needs no external params.
+    use yggdryl_core::io::fixed::{Ts64Scalar, Ts64Serie};
+
+    let value = Ts64::from_epoch(1_000, TimeUnit::Second, Tz::UTC).unwrap();
+    let scalar = Ts64Scalar::of(value);
+    let col = scalar.to_serie().unwrap();
+    assert_eq!(col.len(), 1);
+    assert_eq!(col.get(0).unwrap().epoch_value(), 1_000);
+
+    // as_scalar returns the single element back; None for a multi-element column.
+    assert_eq!(col.as_scalar(), Some(scalar.clone()));
+    let two = Ts64Serie::from_options(TimeUnit::Second, Tz::UTC, &[Some(value), None]).unwrap();
+    assert_eq!(two.as_scalar(), None);
+
+    // from_scalar is the inverse of as_scalar; a null scalar broadcasts to a null column.
+    assert_eq!(Ts64Serie::from_scalar(scalar).unwrap(), col);
+    let null_col = Ts64Serie::from_scalar(Ts64Scalar::null(TimeUnit::Second, Tz::UTC)).unwrap();
+    assert_eq!(null_col.len(), 1);
+    assert_eq!(null_col.get(0), None);
+}

@@ -7,7 +7,10 @@
 use core::marker::PhantomData;
 
 use super::time::{unit_from_tag, unit_tag};
-use super::{Temporal, TemporalBacking, TemporalField, TemporalNative, TemporalType, TimeUnit, Tz};
+use super::{
+    Temporal, TemporalBacking, TemporalError, TemporalField, TemporalNative, TemporalSerie,
+    TemporalType, TimeUnit, Tz,
+};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, ScalarType};
 
@@ -102,6 +105,25 @@ impl<B: TemporalBacking> TemporalScalar<B> {
     /// The typed descriptor.
     pub fn data_type(&self) -> TemporalType<B> {
         TemporalType::new(self.unit(), self.timezone())
+    }
+
+    /// This scalar **broadcast to a length-1 [`TemporalSerie`]** at its own `(unit, tz)` — the
+    /// inverse of [`TemporalSerie::as_scalar`](TemporalSerie::as_scalar). Mirrors the fixed family's
+    /// [`Scalar::to_serie`](crate::io::fixed::Scalar::to_serie); fallible only because the column
+    /// re-expresses each value at its unit (the scalar's value already fits its own `(unit, tz)`, so
+    /// it never fails in practice).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::Ts64Scalar;
+    /// use yggdryl_core::io::fixed::temporal::{Ts64, TimeUnit, Tz};
+    ///
+    /// let s = Ts64Scalar::of(Ts64::from_epoch(1_000, TimeUnit::Second, Tz::UTC).unwrap());
+    /// let col = s.to_serie().unwrap();
+    /// assert_eq!(col.len(), 1);
+    /// assert_eq!(col.get(0).unwrap().epoch_value(), 1_000);
+    /// ```
+    pub fn to_serie(&self) -> Result<TemporalSerie<B>, TemporalError> {
+        TemporalSerie::from_scalar(self.clone())
     }
 
     /// Writes this scalar — `[validity: u8][unit tag: u8][tz name][count: LE]` (the count is zero

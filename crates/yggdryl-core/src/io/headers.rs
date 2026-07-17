@@ -294,12 +294,12 @@ impl Headers {
     /// Reads a map written by [`write_to`](Headers::write_to) from `source`. Errors
     /// ([`IoError::UnexpectedEof`]) if the frame is truncated.
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        let count = read_u32(source)? as usize;
+        let count = source.read_u32()? as usize;
         let mut headers = Self::with_capacity(count);
         for _ in 0..count {
-            let name_len = read_u32(source)? as usize;
+            let name_len = source.read_u32()? as usize;
             let name = read_bytes(source, name_len)?;
-            let value_len = read_u32(source)? as usize;
+            let value_len = source.read_u32()? as usize;
             let value = read_bytes(source, value_len)?;
             headers.entries.push(Entry {
                 name: name.into_boxed_slice(),
@@ -366,18 +366,11 @@ impl Headers {
     }
 }
 
-/// Reads a little-endian `u32` from a cursor.
-fn read_u32<R: IOCursor>(source: &mut R) -> Result<u32, IoError> {
-    let mut buf = [0u8; 4];
-    source.read_exact(&mut buf)?;
-    Ok(u32::from_le_bytes(buf))
-}
-
-/// Reads exactly `len` bytes from a cursor into a fresh `Vec`.
+/// Reads exactly `len` bytes from a cursor into a fresh `Vec` — through the **bounded**
+/// [`read_exact_vec`](IOCursor::read_exact_vec) so a corrupt/hostile declared length errors cleanly
+/// instead of allocating it up front (matches the Serie/Scalar readers).
 fn read_bytes<R: IOCursor>(source: &mut R, len: usize) -> Result<Vec<u8>, IoError> {
-    let mut buf = vec![0u8; len];
-    source.read_exact(&mut buf)?;
-    Ok(buf)
+    source.read_exact_vec(len)
 }
 
 /// Drops a single trailing `\r` (for `\r\n` line endings).

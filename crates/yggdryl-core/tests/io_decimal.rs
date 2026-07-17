@@ -377,6 +377,111 @@ fn decimal_serie_push_validates_scale_and_precision() {
 }
 
 // -------------------------------------------------------------------------------------
+// Value type — canonical normalized form (identity == bytes == hash, all classes)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn normalized_is_one_canonical_form_per_numeric_value() {
+    // Each group holds numerically-equal decimals written at DIFFERENT scales. Every member must
+    // compare equal, serialize to identical canonical bytes, and hash into a single HashSet slot —
+    // so PartialEq / Hash / serialize_bytes (all built over `normalized()`) can never disagree.
+    let groups: [&[D128]; 3] = [
+        &[
+            D128::new(0, 0).unwrap(),
+            D128::new(0, 1).unwrap(),
+            D128::new(0, -3).unwrap(),
+        ],
+        &[D128::new(10, 0).unwrap(), D128::new(1, -1).unwrap()],
+        &[
+            D128::new(100, 2).unwrap(),
+            D128::new(1, 0).unwrap(),
+            D128::new(10, 1).unwrap(),
+        ],
+    ];
+    for group in groups {
+        let first = group[0];
+        let bytes = first.serialize_bytes();
+        let mut set = HashSet::new();
+        for &value in group {
+            assert_eq!(value, first);
+            assert_eq!(
+                value.serialize_bytes(),
+                bytes,
+                "equal values must serialize to identical canonical bytes"
+            );
+            set.insert(value);
+        }
+        assert_eq!(set.len(), 1, "equal values must hash into one slot");
+        // The canonical bytes deserialize back to an equal value.
+        assert_eq!(D128::deserialize_bytes(&bytes).unwrap(), first);
+    }
+}
+
+#[test]
+fn arithmetic_zero_and_negative_scale_are_canonical() {
+    // `2.5 - 2.5` produces a coefficient-0 value at scale 1 (non-canonical); it must collapse to the
+    // canonical zero for equality, bytes, and hashing — reachable purely through arithmetic.
+    let zero_scaled = D128::new(25, 1).unwrap() - D128::new(25, 1).unwrap();
+    let zero = D128::new(0, 0).unwrap();
+    assert_eq!(zero_scaled, zero);
+    assert_eq!(zero_scaled.serialize_bytes(), zero.serialize_bytes());
+    let mut set = HashSet::new();
+    set.insert(zero);
+    assert!(
+        set.contains(&zero_scaled),
+        "a HashSet must find the equal zero member built at a different scale"
+    );
+
+    // `10` at scale 0 normalizes to `(1, -1)` — a NEGATIVE scale. serialize writes it as `i8 -> u8`;
+    // deserialize must recover the negative scale and an equal, correctly-displaying value.
+    let ten = D128::new(10, 0).unwrap();
+    let bytes = ten.serialize_bytes();
+    assert_eq!(
+        bytes[0],
+        (-1i8) as u8,
+        "scale byte is the normalized negative scale"
+    );
+    let back = D128::deserialize_bytes(&bytes).unwrap();
+    assert_eq!(back, ten);
+    assert_eq!(back.to_string(), "10");
+    assert_eq!(
+        back.serialize_bytes(),
+        bytes,
+        "already canonical -> byte-stable"
+    );
+}
+
+#[test]
+fn decimal_serie_scale_is_declared_not_value_normalized() {
+    // The columnar scale is the column's declared scale, independent of any value's normalized
+    // scale (`6.00` normalizes to `(6, 0)` as a value, but the column stays scale 2) — so the
+    // canonical-form change to the value type leaves the columnar Arrow `(precision, scale)` intact.
+    let col = D128Serie::from_options(20, 2, &[Some(D128::new(600, 2).unwrap())]).unwrap();
+    assert_eq!(col.scale(), 2);
+    assert_eq!(col.get(0).unwrap().to_string(), "6.00");
+}
+
+#[test]
+fn decimal_scalar_serie_singular_broadcast_round_trips() {
+    // Scalar::to_serie -> a length-1 column carrying the scalar's own (precision, scale).
+    let scalar = D128Scalar::of(D128::new(12345, 2).unwrap()); // 123.45
+    let col = scalar.to_serie().unwrap();
+    assert_eq!(col.len(), 1);
+    assert_eq!(col.get(0).unwrap().to_string(), "123.45");
+
+    // Serie::as_scalar -> the single element back; None for a multi-element column.
+    assert_eq!(col.as_scalar(), Some(scalar.clone()));
+    let two = D128Serie::from_options(20, 2, &[Some(D128::new(1, 0).unwrap()), None]).unwrap();
+    assert_eq!(two.as_scalar(), None);
+
+    // Serie::from_scalar is the inverse of as_scalar; a null scalar broadcasts to a null column.
+    assert_eq!(D128Serie::from_scalar(scalar).unwrap(), col);
+    let null_col = D128Serie::from_scalar(D128Scalar::null(20, 2)).unwrap();
+    assert_eq!(null_col.len(), 1);
+    assert_eq!(null_col.get(0), None);
+}
+
+// -------------------------------------------------------------------------------------
 // Arrow interop (feature `arrow`) — zero-copy columns + schema round-trips
 // -------------------------------------------------------------------------------------
 

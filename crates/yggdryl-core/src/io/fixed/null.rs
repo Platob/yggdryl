@@ -16,13 +16,6 @@ use crate::io::{
     SerieType,
 };
 
-/// Reads a little-endian `u64` from a cursor.
-fn read_u64<R: IOCursor>(source: &mut R) -> Result<u64, IoError> {
-    let mut bytes = [0u8; 8];
-    source.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
-}
-
 // -------------------------------------------------------------------------------------
 // Descriptor
 // -------------------------------------------------------------------------------------
@@ -445,7 +438,7 @@ impl NullSerie {
 
     /// Reads a column written by [`write_to`](NullSerie::write_to).
     pub fn read_from<R: IOCursor>(source: &mut R) -> Result<Self, IoError> {
-        Ok(Self::with_len(read_u64(source)? as usize))
+        Ok(Self::with_len(source.read_u64()? as usize))
     }
 
     /// This column's canonical bytes — just its length as a little-endian `u64`, the same frame

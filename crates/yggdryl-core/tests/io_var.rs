@@ -249,3 +249,39 @@ fn serie_field_infers_nullability() {
     assert!(!no_nulls.to_field("c").nullable());
     assert!(no_nulls.typed_field("c", true).nullable()); // explicit override
 }
+
+#[test]
+fn hostile_scalar_frame_errors_without_crashing() {
+    // A validity byte of 1 followed by a u64 length of u64::MAX and no data: the previous reader
+    // allocated the declared size up front and aborted the process. The bounded read must return a
+    // guided error instead of crashing/panicking.
+    let hostile = [1u8, 255, 255, 255, 255, 255, 255, 255, 255];
+    assert!(matches!(
+        Utf8Scalar::deserialize_bytes(&hostile),
+        Err(IoError::UnexpectedEof { .. })
+    ));
+    assert!(matches!(
+        BinaryScalar::deserialize_bytes(&hostile),
+        Err(IoError::UnexpectedEof { .. })
+    ));
+}
+
+#[test]
+fn byte_scalar_serie_singular_broadcast_round_trips() {
+    // The var-family mirror of the fixed `Scalar::to_serie` / `Serie::as_scalar` / `from_scalar` trio.
+    let scalar = Utf8Scalar::of("hi");
+    let col = scalar.to_serie().unwrap();
+    assert_eq!(col.len(), 1);
+    assert_eq!(col.get_str(0), Some("hi"));
+
+    // as_scalar returns the single element back; None for a multi-element column.
+    assert_eq!(col.as_scalar(), Some(scalar.clone()));
+    let two = Utf8Serie::from_strs(&[Some("a"), Some("b")]);
+    assert_eq!(two.as_scalar(), None);
+
+    // from_scalar is the inverse of as_scalar; a null scalar broadcasts to a null column.
+    assert_eq!(Utf8Serie::from_scalar(scalar).unwrap(), col);
+    let null_col = Utf8Serie::from_scalar(Utf8Scalar::null()).unwrap();
+    assert_eq!(null_col.len(), 1);
+    assert_eq!(null_col.get_str(0), None);
+}

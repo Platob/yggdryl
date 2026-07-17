@@ -115,3 +115,21 @@ fn fixed_size_maps_to_arrow_fixed_size_binary() {
     // Arrow has no fixed-size UTF-8, so it maps to FixedSizeBinary(N) too.
     assert_eq!(FixedUtf8Type::new(4).to_arrow(), A::FixedSizeBinary(4));
 }
+
+#[test]
+fn hostile_scalar_frame_errors_without_crashing() {
+    // Frame is `[width: u64][validity: u8][bytes]`. A width of u64::MAX with a present validity byte
+    // and no data made the previous reader allocate `width` bytes up front and abort. The bounded
+    // read must return a guided error instead of crashing/panicking.
+    let hostile = [255u8, 255, 255, 255, 255, 255, 255, 255, 1];
+    let mut src = Bytes::from_slice(&hostile);
+    assert!(matches!(
+        FixedBinaryScalar::read_from(&mut src),
+        Err(IoError::UnexpectedEof { .. })
+    ));
+    let mut src = Bytes::from_slice(&hostile);
+    assert!(matches!(
+        FixedUtf8Scalar::read_from(&mut src),
+        Err(IoError::UnexpectedEof { .. })
+    ));
+}

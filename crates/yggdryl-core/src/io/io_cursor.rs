@@ -149,4 +149,21 @@ pub trait IOCursor: IOBase {
         self.set_position(self.len());
         out
     }
+
+    /// Reads a little-endian `u64` (8 bytes) from the cursor, advancing it, or errors with
+    /// [`IoError::UnexpectedEof`]. The fixed-width integer read shared by every length-prefixed
+    /// binary codec (the `Serie` / `Scalar` frames).
+    fn read_u64(&mut self) -> Result<u64, IoError> {
+        let mut bytes = [0u8; 8];
+        self.read_exact(&mut bytes)?;
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    /// Reads a little-endian `u32` (4 bytes) from the cursor, advancing it, or errors with
+    /// [`IoError::UnexpectedEof`]. The narrow counterpart of [`read_u64`](IOCursor::read_u64).
+    fn read_u32(&mut self) -> Result<u32, IoError> {
+        let mut bytes = [0u8; 4];
+        self.read_exact(&mut bytes)?;
+        Ok(u32::from_le_bytes(bytes))
+    }
 }

@@ -4,7 +4,9 @@
 
 use core::marker::PhantomData;
 
-use super::{Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalType};
+use super::{
+    Decimal, DecimalBacking, DecimalCoeff, DecimalError, DecimalField, DecimalSerie, DecimalType,
+};
 use crate::io::field_carrier::field_accessors;
 use crate::io::{AnyField, Bytes, IOCursor, IoError, ScalarType};
 
@@ -116,6 +118,23 @@ impl<B: DecimalBacking> DecimalScalar<B> {
     /// The typed descriptor.
     pub fn data_type(&self) -> DecimalType<B> {
         DecimalType::new(self.precision(), self.scale())
+    }
+
+    /// This scalar **broadcast to a length-1 [`DecimalSerie`]** at its own `(precision, scale)` —
+    /// the inverse of [`DecimalSerie::as_scalar`](DecimalSerie::as_scalar). Mirrors the fixed
+    /// family's [`Scalar::to_serie`](crate::io::fixed::Scalar::to_serie); fallible only because the
+    /// column re-expresses each value at its scale (the scalar's value already fits its own
+    /// `(precision, scale)`, so it never fails in practice).
+    ///
+    /// ```
+    /// use yggdryl_core::io::fixed::{D64, D64Scalar};
+    ///
+    /// let col = D64Scalar::of(D64::new(12345, 2).unwrap()).to_serie().unwrap(); // 123.45
+    /// assert_eq!(col.len(), 1);
+    /// assert_eq!(col.get(0).unwrap().to_string(), "123.45");
+    /// ```
+    pub fn to_serie(&self) -> Result<DecimalSerie<B>, DecimalError> {
+        DecimalSerie::from_scalar(self.clone())
     }
 
     /// The serialized byte width: `[validity][precision][scale][coefficient]`.

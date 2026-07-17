@@ -618,7 +618,6 @@ impl DataTypeId {
     /// Returns `None` for a non-temporal id, or for a `unit` Arrow cannot represent (`Minute`…`Year`,
     /// whose [`TimeUnit::to_arrow`](crate::io::fixed::temporal::TimeUnit) is `None`) on the
     /// unit-bearing types.
-    #[cfg(feature = "arrow")]
     pub fn to_arrow_temporal(self, unit: TimeUnit, tz: Tz) -> Option<arrow_schema::DataType> {
         use arrow_schema::DataType as A;
         let zone = |tz: Tz| {
@@ -650,7 +649,6 @@ impl DataTypeId {
     /// the `ts96` `FixedSizeBinary` form, whose axes ride the field metadata) — the inverse the
     /// erased [`Field`](crate::io::fixed::Field) and `TemporalSerie` use to recover a temporal
     /// column's resolution / zone.
-    #[cfg(feature = "arrow")]
     pub fn arrow_temporal_params(data_type: &arrow_schema::DataType) -> Option<(TimeUnit, Tz)> {
         use arrow_schema::DataType as A;
         Some(match data_type {

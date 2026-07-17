@@ -317,6 +317,20 @@ impl<B: TemporalBacking> TemporalSerie<B> {
         })
     }
 
+    /// This column **viewed as a single [`TemporalScalar`]** (carrying the column's `(unit, tz)`),
+    /// if it holds exactly one element — the inverse of
+    /// [`TemporalScalar::to_serie`](TemporalScalar::to_serie).
+    pub fn as_scalar(&self) -> Option<TemporalScalar<B>> {
+        (self.len == 1).then(|| self.get_scalar(0))
+    }
+
+    /// A length-1 column broadcasting `scalar` at its own `(unit, tz)` — the singular of
+    /// [`from_scalars`](TemporalSerie::from_scalars); the inverse of
+    /// [`as_scalar`](TemporalSerie::as_scalar).
+    pub fn from_scalar(scalar: TemporalScalar<B>) -> Result<Self, TemporalError> {
+        Self::from_options(scalar.unit(), scalar.timezone(), &[scalar.value()])
+    }
+
     /// A column at `(unit, tz)` from a slice of [`TemporalScalar`]s — each present scalar's value is
     /// re-expressed at the column's unit (see [`fit`](TemporalSerie::fit); a guided
     /// [`TemporalError`] if it does not fit), a null scalar a null. The bulk factory mirroring

@@ -170,22 +170,36 @@ impl<B: DecimalBacking> Decimal<B> {
 
     // ---- normalization & rescaling ---------------------------------------------------------
 
-    /// The **normalized** form — the same value with trailing fractional zeros stripped (`2.50` →
-    /// `2.5`, `0` → scale `0`). This is the canonical form used for equality, hashing, and the
-    /// byte codec, so equal values share it exactly.
+    /// The **canonical** form — one `(coefficient, scale)` per numeric-equivalence class, so equal
+    /// values share it exactly. Zero collapses to `(0, 0)`; otherwise **every** trailing zero of the
+    /// coefficient is stripped, the scale decremented per zero **regardless of its sign** (`2.50` →
+    /// `2.5`, `100` at scale `2` → `1` at scale `0`, `10` at scale `0` → `1` at scale `-1`, `250` at
+    /// scale `2` → `25` at scale `1`) — leaving a coefficient not divisible by ten. This is the form
+    /// used for equality, hashing, and the byte codec, so `PartialEq`/`Hash`/`serialize_bytes` can
+    /// never disagree for two numerically-equal values (e.g. `10` written as `(10, 0)` or `(1, -1)`).
     pub fn normalized(&self) -> Self {
+        if self.coeff == B::Coeff::ZERO {
+            return Self::from_coeff(B::Coeff::ZERO, 0); // canonical zero — one form at any scale
+        }
         let ten = B::Coeff::from_i128(10).expect("10 fits every width");
         let mut coeff = self.coeff;
         let mut scale = self.scale;
-        while scale > 0 && coeff != B::Coeff::ZERO {
-            match coeff.checked_rem(ten) {
-                Some(r) if r == B::Coeff::ZERO => {
-                    coeff = coeff
-                        .checked_div(ten)
-                        .expect("division by ten never overflows");
-                    scale -= 1;
+        // Strip trailing decimal zeros until the coefficient is not divisible by ten. The scale may
+        // go negative; `checked_sub` guards the (unreachable in practice) `i8::MIN` floor so the
+        // function stays total instead of overflowing — see the extreme corner below.
+        while coeff.checked_rem(ten) == Some(B::Coeff::ZERO) {
+            let stripped = coeff
+                .checked_div(ten)
+                .expect("division by ten never overflows");
+            // DESIGN: at `scale == i8::MIN` (only reachable for an enormous coefficient built with a
+            // near-floor scale, e.g. `10^70` at scale `-120`) stop stripping rather than underflow;
+            // the residual trailing zero is a documented, practically-unreachable corner.
+            match scale.checked_sub(1) {
+                Some(next) => {
+                    coeff = stripped;
+                    scale = next;
                 }
-                _ => break,
+                None => break,
             }
         }
         Self::from_coeff(coeff, scale)

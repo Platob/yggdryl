@@ -54,7 +54,7 @@ pub trait DataType {
         self.type_id().is_signed_integer()
     }
 
-    /// Whether the type is a signed number (signed integer or float).
+    /// Whether the type is a signed number (signed integer or float, or decimal).
     fn is_signed(&self) -> bool {
         self.type_id().is_signed()
     }

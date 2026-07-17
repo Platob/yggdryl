@@ -535,7 +535,7 @@ impl ListSerie {
     /// [`read_any_column`](crate::io::nested::read_any_column) dispatch can read a list child;
     /// `depth` bounds that recursion so a hostile chained frame cannot overflow the stack.
     pub(crate) fn read_frame(source: &mut Bytes, depth: usize) -> Result<Self, IoError> {
-        let schema_len = read_u64(source)? as usize;
+        let schema_len = source.read_u64()? as usize;
         let schema_bytes = source.read_exact_vec(schema_len)?;
         let schema = AnyField::deserialize_bytes(&schema_bytes)?;
         let item = match schema {
@@ -546,7 +546,7 @@ impl ListSerie {
                 })
             }
         };
-        let len = read_u64(source)? as usize;
+        let len = source.read_u64()? as usize;
         let validity = read_validity(source, len)?;
         // `len + 1` i32 offsets. Guard the size against a corrupt/hostile length before reading.
         let offset_count = len.checked_add(1).ok_or(IoError::CorruptLength {
@@ -771,13 +771,6 @@ fn read_validity<R: IOCursor>(source: &mut R, len: usize) -> Result<Option<Bitma
 /// Drops an all-present mask to `None` so equality/serialization stay canonical.
 fn normalize(validity: Option<Bitmap>) -> Option<Bitmap> {
     validity.filter(|bitmap| bitmap.null_count() > 0)
-}
-
-/// Reads a little-endian `u64`.
-fn read_u64<R: IOCursor>(source: &mut R) -> Result<u64, IoError> {
-    let mut bytes = [0u8; 8];
-    source.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
 }
 
 // -------------------------------------------------------------------------------------
