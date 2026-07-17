@@ -98,6 +98,30 @@ impl LocalIO {
         }
     }
 
+    /// A **lazy** handle to a temporary **file** in the system temp directory. `name` sets the
+    /// file name; the default (`None`) is a process-unique name ending in `.tmp`. Like any
+    /// `LocalIO` it is lazy — the file is created on the **first write** — so this only picks
+    /// the path.
+    #[staticmethod]
+    #[pyo3(signature = (name = None))]
+    fn tmpfile(name: Option<&str>) -> LocalIO {
+        LocalIO {
+            inner: local::LocalIO::tmpfile(name),
+        }
+    }
+
+    /// A **lazy** handle to a temporary **folder** in the system temp directory. `name` sets
+    /// the folder name; the default (`None`) is a process-unique name. Lazy — call
+    /// [`mkdir`](LocalIO::mkdir) to create it, or just write a child (which auto-creates this
+    /// folder as a parent).
+    #[staticmethod]
+    #[pyo3(signature = (name = None))]
+    fn tmpfolder(name: Option<&str>) -> LocalIO {
+        LocalIO {
+            inner: local::LocalIO::tmpfolder(name),
+        }
+    }
+
     // ---- lifecycle: close / is_mapped / flush / mkdir / path ---------------------------
 
     /// Releases the mapped backing eagerly (truncating the file to its logical length) —
@@ -595,6 +619,16 @@ impl LocalIO {
     /// The parent node as a fresh lazy handle, or `None` at a root.
     fn parent(&self) -> Option<LocalIO> {
         self.inner.parent().map(|inner| LocalIO { inner })
+    }
+
+    /// This node's **ancestors** as a list of fresh lazy handles, nearest first — the repeated
+    /// [`parent`](LocalIO::parent) chain up to the filesystem root (empty at a root). The
+    /// node-graph counterpart of [`Uri.parents`](crate::uri::Uri::parents).
+    fn parents(&self) -> Vec<LocalIO> {
+        self.inner
+            .parents()
+            .map(|inner| LocalIO { inner })
+            .collect()
     }
 
     /// The child node at `segment` (which may be a multi-segment relative path like

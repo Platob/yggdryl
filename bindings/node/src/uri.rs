@@ -415,6 +415,22 @@ impl Uri {
         self.inner.extensions()
     }
 
+    /// The **parent URI** — this URI with its last path segment removed — or `null` at a root
+    /// (no path segment left to strip). The inverse of `joinpath`:
+    /// `base.joinpath('x').parent()` addresses `base` again. Only the path changes; scheme /
+    /// authority / query / fragment are kept. The one justified null is a root's absent parent.
+    #[napi]
+    pub fn parent(&self) -> Option<Uri> {
+        self.inner.parent().map(|inner| Uri { inner })
+    }
+
+    /// This URI's **ancestors**, nearest-first — the collected `parent()` chain up to the
+    /// root, ending when no path segment remains. The collected counterpart of `parent()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<Uri> {
+        self.inner.parents().map(|inner| Uri { inner }).collect()
+    }
+
     // ---- builder mutators (return a new `Uri`) -----------------------------------------
 
     /// Returns a copy of this URI with the scheme set.
@@ -910,6 +926,21 @@ impl Url {
     #[napi(getter)]
     pub fn extensions(&self) -> Vec<String> {
         self.inner.extensions()
+    }
+
+    /// The **parent URL** — this URL with its last path segment removed — or `null` at a root;
+    /// see `Uri.parent`. The scheme is preserved, so the result is still absolute. The one
+    /// justified null is a root's absent parent.
+    #[napi]
+    pub fn parent(&self) -> Option<Url> {
+        self.inner.parent().map(|inner| Url { inner })
+    }
+
+    /// This URL's **ancestors**, nearest-first — the collected `parent()` chain; see
+    /// `Uri.parents`. The collected counterpart of `parent()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<Url> {
+        self.inner.parents().map(|inner| Url { inner }).collect()
     }
 
     // ---- builder mutators (return a new `Url`) -----------------------------------------

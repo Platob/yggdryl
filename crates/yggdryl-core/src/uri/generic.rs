@@ -121,13 +121,9 @@ impl Uri {
     /// assert_eq!(Uri::from_path("/a/b/c").path(), "/a/b/c");
     /// ```
     pub fn from_path(path: &str) -> Uri {
-        Uri {
-            path: percent::encode_owned(
-                normalize_slashes(path).into_owned(),
-                percent::is_path_safe,
-            ),
-            ..Uri::default()
-        }
+        let mut uri = Uri::default();
+        uri.set_path(path); // the one place path normalization + encoding lives
+        uri
     }
 
     /// The scheme, if any.
@@ -263,10 +259,7 @@ impl Uri {
     /// ```
     pub fn stem(&self) -> Option<&str> {
         let name = self.name()?;
-        match name.rfind('.') {
-            Some(i) if i > 0 => Some(&name[..i]),
-            _ => Some(name),
-        }
+        Some(ext_dot(name).map_or(name, |i| &name[..i]))
     }
 
     /// The **parent URI** — this URI with its last path segment removed — or `None` at a
@@ -323,10 +316,9 @@ impl Uri {
     /// ```
     pub fn extension(&self) -> Option<&str> {
         let name = self.name()?;
-        match name.rfind('.') {
-            Some(i) if i > 0 && i + 1 < name.len() => Some(&name[i + 1..]),
-            _ => None,
-        }
+        ext_dot(name)
+            .filter(|&i| i + 1 < name.len())
+            .map(|i| &name[i + 1..])
     }
 
     /// Every extension of a multi-dot filename, outermost-last
@@ -1035,6 +1027,13 @@ impl core::hash::Hash for Uri {
 // -------------------------------------------------------------------------------------
 // RFC 3986 parsing helpers
 // -------------------------------------------------------------------------------------
+
+/// The index of the **extension-separator** dot in a filename — the last `.` that is not a
+/// leading dot (a leading dot marks a hidden file, `.bashrc`, not an extension). The one
+/// place the hidden-dotfile rule shared by [`Uri::stem`] and [`Uri::extension`] lives.
+fn ext_dot(name: &str) -> Option<usize> {
+    name.rfind('.').filter(|&i| i > 0)
+}
 
 /// Rewrites every back-slash to a forward slash (DESIGN: POSIX slash-based paths). Returns
 /// the input **borrowed** when it holds no back-slash — the common POSIX case — so a clean

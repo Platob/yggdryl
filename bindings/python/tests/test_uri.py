@@ -227,6 +227,43 @@ def test_joinpath_combines_paths_correctly():
     assert Url.parse("https://h/v1").joinpath("x").scheme == "https"
 
 
+def test_parent_is_the_inverse_of_joinpath():
+    base = Uri.parse("https://h/a/b?q=1#f")
+    # parent strips the last path segment; scheme/authority/query/fragment are kept.
+    assert str(base.parent()) == "https://h/a?q=1#f"
+    # parent(joinpath(x)) addresses the base again (for a rooted / authority-backed path).
+    assert base.joinpath("c").parent() == base
+    # Chains up to the empty-path root, then None.
+    up = Uri.from_path("/a/b/c.txt")
+    assert up.parent().path == "/a/b"
+    assert up.parent().parent().path == "/a"
+    assert up.parent().parent().parent().path == ""
+    # A root (no path segment left) has no parent.
+    assert Uri.parse("https://h").parent() is None
+    assert Uri.from_path("").parent() is None
+
+
+def test_parents_lists_ancestors_nearest_first():
+    up = Uri.from_path("/a/b/c.txt")
+    assert [p.path for p in up.parents()] == ["/a/b", "/a", ""]
+    assert isinstance(up.parents(), list)  # a bounded walk collected as a list
+    # A root has no ancestors.
+    assert Uri.parse("https://h").parents() == []
+
+
+def test_url_parent_and_parents_mirror_uri():
+    url = Url.parse("https://h/a/b/c.txt")
+    assert str(url.parent()) == "https://h/a/b"
+    assert url.parent().scheme == "https"  # still an absolute URL
+    assert isinstance(url.parent(), Url)
+    assert [str(p) for p in url.parents()] == [
+        "https://h/a/b",
+        "https://h/a",
+        "https://h",
+    ]
+    assert Url.parse("https://h").parent() is None
+
+
 def test_merge_with_overlays_present_components():
     base = Uri.parse("https://prod.example.com/v1?trace=1")
     # A patch with only an authority swaps the host, keeping scheme/path/query.

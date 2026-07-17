@@ -273,6 +273,42 @@ test('joinpath combines paths correctly', () => {
   assert.equal(Url.parse('https://h/v1').joinpath('x').scheme, 'https')
 })
 
+test('parent() is the inverse of joinpath; parents() lists ancestors nearest-first', () => {
+  const base = Uri.parse('https://h/a/b/c.txt?q=1#frag')
+
+  // parent() strips the last path segment; scheme/authority/query/fragment are kept.
+  const parent = base.parent()
+  assert.ok(parent instanceof Uri)
+  assert.equal(parent.toString(), 'https://h/a/b?q=1#frag')
+  assert.equal(parent.path, '/a/b')
+
+  // parent() is the inverse of joinpath (for a rooted/authority-backed path).
+  assert.ok(base.joinpath('x').parent().equals(base))
+
+  // parents() walks the whole ancestry, nearest-first, down to the empty-path root.
+  const paths = Uri.fromPath('/a/b/c.txt').parents().map((p) => p.path)
+  assert.deepEqual(paths, ['/a/b', '/a', ''])
+
+  // A root (no path segment left) has no parent — the one justified null; parents() is empty.
+  assert.equal(Uri.parse('https://h').parent(), null)
+  assert.deepEqual(Uri.parse('https://h').parents(), [])
+})
+
+test('Url.parent() / parents() mirror Uri, preserving the scheme', () => {
+  const url = Url.parse('https://h/a/b/c.txt')
+  const parent = url.parent()
+  assert.ok(parent instanceof Url)
+  assert.equal(parent.scheme, 'https') // still absolute
+  assert.equal(parent.toString(), 'https://h/a/b')
+
+  const parents = url.parents()
+  assert.ok(parents.every((p) => p instanceof Url))
+  assert.deepEqual(parents.map((p) => p.path), ['/a/b', '/a', ''])
+
+  assert.equal(Url.parse('https://h').parent(), null)
+  assert.deepEqual(Url.parse('https://h').parents(), [])
+})
+
 test('mergeWith overlays present components', () => {
   const base = Uri.parse('https://prod.example.com/v1?trace=1')
   // A patch with only an authority swaps the host, keeping scheme/path/query.

@@ -571,6 +571,13 @@ impl Heap {
         self.inner.parent().map(|inner| Heap { inner })
     }
 
+    /// This node's **ancestors** as a list, nearest first — the repeated
+    /// [`parent`](Heap::parent) chain up to the `mem://heap` root (empty for a bare root). The
+    /// node-graph counterpart of [`Uri.parents`](crate::uri::Uri::parents).
+    fn parents(&self) -> Vec<Heap> {
+        self.inner.parents().map(|inner| Heap { inner }).collect()
+    }
+
     /// The child node at `segment` — a **new, independent in-memory buffer** whose address is
     /// composed by joining `segment` onto this heap's URI (`Uri.joinpath`), so
     /// `child.parent()` addresses this node again. `segment` may be multi-segment (`"a/b/c"`),

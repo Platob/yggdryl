@@ -259,6 +259,85 @@ test('navigation: name / parent() / join are pure path math; uri ends with the n
   rmTree(dir)
 })
 
+test('parents() walks the ancestors nearest-first; pure path math, nothing touched', () => {
+  const dir = tmpDir()
+  const node = new LocalIO(dir).join('a/b/c.bin')
+
+  const parents = node.parents()
+  assert.ok(parents.every((p) => p instanceof LocalIO))
+  assert.ok(parents.length >= 3)
+  // Nearest-first: the immediate parent is `b`, then `a`, then the base dir itself.
+  assert.equal(parents[0].name, 'b')
+  assert.equal(parents[1].name, 'a')
+  assert.equal(parents[2].name, nodePath.basename(dir))
+
+  // The walk is pure path math — no node in the chain was created.
+  assert.ok(!node.exists())
+  assert.ok(!parents[0].exists())
+
+  // It bottoms out at a filesystem root whose own parent is null (parents chain terminates).
+  assert.equal(parents[parents.length - 1].parent(), null)
+  rmTree(dir)
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO — temp-dir builders (lazy, path-only)
+// -------------------------------------------------------------------------------------
+
+test('LocalIO.tmpfile: lazy + unique unnamed, created + mapped on the first write', () => {
+  // Unnamed: a process-unique path ending in `.tmp`; lazy, nothing on disk yet.
+  const a = LocalIO.tmpfile()
+  assert.ok(a instanceof LocalIO)
+  assert.equal(a.exists(), false) // only picks the path
+  assert.ok(a.path.endsWith('.tmp'))
+  assert.ok(nodePath.basename(a.path).startsWith('yggdryl-'))
+
+  // Each unnamed call is unique.
+  const b = LocalIO.tmpfile()
+  assert.ok(!a.equals(b))
+
+  // A named temp file uses the given name, in the same system temp dir.
+  const named = LocalIO.tmpfile('yggdryl-node-named.tmp')
+  assert.equal(named.name, 'yggdryl-node-named.tmp')
+  assert.equal(nodePath.dirname(named.path), nodePath.dirname(a.path))
+
+  // The first write auto-creates + maps it (like any lazy LocalIO).
+  assert.equal(a.pwriteUtf8(0, 'temp data'), 9)
+  assert.ok(a.isFile())
+  assert.equal(a.isMapped, true)
+  assert.equal(a.preadUtf8(0, 9), 'temp data')
+
+  a.close()
+  a.rmfile() // clean the one artifact actually written
+  assert.ok(!a.exists())
+})
+
+test('LocalIO.tmpfolder: lazy folder; writing a child auto-creates it', () => {
+  const work = LocalIO.tmpfolder(`yggdryl-node-work-${process.pid}-${Date.now()}`)
+  assert.ok(work instanceof LocalIO)
+  assert.equal(work.exists(), false) // lazy — nothing created yet
+
+  // Writing a child auto-creates the folder as a parent.
+  const child = work.join('a/b/c.bin')
+  assert.equal(child.pwriteUtf8(0, 'inside'), 6)
+  assert.ok(work.isDir())
+  assert.equal(child.preadUtf8(0, 6), 'inside')
+
+  // A joined node under the temp folder walks its ancestors nearest-first.
+  const names = child.parents().map((p) => p.name)
+  assert.deepEqual(names.slice(0, 3), ['b', 'a', work.name])
+
+  child.close() // release the mapping so Windows can remove the tree
+  work.rmdir()
+  assert.ok(!work.exists())
+
+  // An unnamed tmpfolder is process-unique and lazy too, in the same temp dir.
+  const anon = LocalIO.tmpfolder()
+  assert.ok(anon instanceof LocalIO)
+  assert.equal(anon.exists(), false)
+  assert.equal(nodePath.dirname(anon.path), nodePath.dirname(work.path))
+})
+
 test('join writes + reads back; parent() is the auto-created directory; nested join round-trips through a fresh handle', () => {
   const dir = tmpDir()
   const root = new LocalIO(dir)

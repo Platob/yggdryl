@@ -686,6 +686,14 @@ impl Heap {
         self.inner.parent().map(|inner| Heap { inner })
     }
 
+    /// This node's **ancestors**, nearest-first — the collected `parent()` chain: an addressed
+    /// heap (`mem://heap/a/b/c`) walks back up to the bare `mem://heap` root; a bare root
+    /// yields an empty array. The collected counterpart of `parent()`, mirroring `children()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<Heap> {
+        self.inner.parents().map(|inner| Heap { inner }).collect()
+    }
+
     /// The child node at `segment` — a **new, independent in-memory buffer** whose address is
     /// composed by joining `segment` onto this heap's URI (`Uri.joinpath`), so
     /// `child.parent()` addresses this node again. `segment` may be multi-segment (`"a/b/c"`),
@@ -1098,6 +1106,13 @@ impl Cursor {
         self.inner.parent().map(|inner| Cursor { inner })
     }
 
+    /// This node's ancestors — always an empty array (a cursor view is a leaf). The collected
+    /// counterpart of `parent()`, mirroring `children()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<Cursor> {
+        self.inner.parents().map(|inner| Cursor { inner }).collect()
+    }
+
     /// Streams this node's children — always the empty [`NoChildren`] iterable (a leaf
     /// streams nothing; `recursive` changes nothing on a leaf).
     #[napi]
@@ -1295,6 +1310,13 @@ impl Slice {
     #[napi]
     pub fn parent(&self) -> Option<Slice> {
         self.inner.parent().map(|inner| Slice { inner })
+    }
+
+    /// This node's ancestors — always an empty array (a slice window is a leaf). The collected
+    /// counterpart of `parent()`, mirroring `children()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<Slice> {
+        self.inner.parents().map(|inner| Slice { inner }).collect()
     }
 
     /// Streams this node's children — always the empty [`NoChildren`] iterable (a leaf

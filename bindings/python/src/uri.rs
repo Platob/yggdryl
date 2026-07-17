@@ -599,6 +599,19 @@ impl Uri {
         }
     }
 
+    /// The **parent URI** — this URI with its last path segment removed — or `None` at a root
+    /// (no path segment left to strip). The inverse of [`joinpath`](Uri::joinpath); only the
+    /// path changes (scheme / authority / query / fragment are kept).
+    fn parent(&self) -> Option<Uri> {
+        self.inner.parent().map(|inner| Uri { inner })
+    }
+
+    /// This URI's **ancestors** as a list, nearest first: [`parent`](Uri::parent), then its
+    /// parent, and so on up to the root (empty at a root).
+    fn parents(&self) -> Vec<Uri> {
+        self.inner.parents().map(|inner| Uri { inner }).collect()
+    }
+
     /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URI's
     /// is kept.
     fn merge_with(&self, other: &Self) -> Self {
@@ -1118,6 +1131,18 @@ impl Url {
         Self {
             inner: self.inner.joinpath(path),
         }
+    }
+
+    /// The **parent URL** — this URL with its last path segment removed — or `None` at a root;
+    /// see [`Uri.parent`](Uri::parent). The scheme is preserved, so the result is still an
+    /// absolute URL.
+    fn parent(&self) -> Option<Url> {
+        self.inner.parent().map(|inner| Url { inner })
+    }
+
+    /// This URL's **ancestors** as a list, nearest first — see [`Uri.parents`](Uri::parents).
+    fn parents(&self) -> Vec<Url> {
+        self.inner.parents().map(|inner| Url { inner }).collect()
     }
 
     /// Returns a copy overlaid by `other`: each component `other` sets wins, else this URL's

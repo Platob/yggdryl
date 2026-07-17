@@ -42,6 +42,8 @@ in the same run — the baseline any new source starts from):
 | `slice` (1 KiB window) | 8.7 | 1.00 | 1024.0 |
 | `from_slice` (4 KiB ingest) | 7.3 | 1.00 | 4096.0 |
 | `pread_utf8` (short text) | 8.4 | 1.00 | 23.0 |
+| `join` (compose child address, Uri::joinpath) | 1.0 | 8.00 | 246.0 |
+| `parent` (navigate up, Uri::parent) | 1.3 | 8.00 | 251.0 |
 
 ## What the numbers show
 
@@ -77,3 +79,8 @@ in the same run — the baseline any new source starts from):
 - **`with_capacity` amortizes growth.** Filling a reserved heap stays at one allocation (the
   reservation) — asserted, and available on any source via the trait-level
   `IOBase::with_capacity`.
+- **Graph navigation is address algebra.** `join` composes a child address through
+  `Uri::joinpath` and `parent` strips a segment through `Uri::parent` — the few allocations
+  are the URI's (clone + one path string), no I/O; the child heap is an independent buffer. The
+  same `join` / `parent` / `parents` surface works identically over a `LocalIO` filesystem node
+  (see [`io/local/io.md`](../local/io.md)).

@@ -34,15 +34,7 @@ impl<T: IOBase> IOSlice<T> {
     /// Wraps `inner` as the window `[offset, offset + len)`. Errors with
     /// [`IoError::SliceOutOfBounds`] if the window runs past the source's end.
     pub fn new(inner: T, offset: u64, len: u64) -> Result<Self, IoError> {
-        let available = inner.byte_size();
-        offset
-            .checked_add(len)
-            .filter(|&end| end <= available)
-            .ok_or(IoError::SliceOutOfBounds {
-                offset,
-                len,
-                available,
-            })?;
+        super::base::checked_window(offset, len, inner.byte_size())?;
         Ok(Self { inner, offset, len })
     }
 

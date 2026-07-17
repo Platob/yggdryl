@@ -10,7 +10,13 @@ import pytest
 import yggdryl.io
 from yggdryl.io import IOKind
 
-ALL_KINDS = [IOKind.Missing, IOKind.File, IOKind.Directory, IOKind.Heap]
+ALL_KINDS = [
+    IOKind.Unknown,
+    IOKind.Missing,
+    IOKind.File,
+    IOKind.Directory,
+    IOKind.Heap,
+]
 
 
 def test_module_surface():
@@ -19,12 +25,13 @@ def test_module_surface():
 
 
 def test_wire_stable_values():
-    assert IOKind.Missing == 0
-    assert IOKind.File == 1
-    assert IOKind.Directory == 2
-    assert IOKind.Heap == 3
-    assert int(IOKind.Directory) == 2
-    assert [k.to_u8() for k in ALL_KINDS] == [0, 1, 2, 3]
+    assert IOKind.Unknown == 0  # the default (zero) value
+    assert IOKind.Missing == 1
+    assert IOKind.File == 2
+    assert IOKind.Directory == 3
+    assert IOKind.Heap == 4
+    assert int(IOKind.Directory) == 3
+    assert [k.to_u8() for k in ALL_KINDS] == [0, 1, 2, 3, 4]
 
 
 def test_parse_dispatches_on_type():
@@ -33,9 +40,11 @@ def test_parse_dispatches_on_type():
     assert IOKind.parse("DIR") == IOKind.Directory
     assert IOKind.parse("directory") == IOKind.Directory
     assert IOKind.parse("missing") == IOKind.Missing
+    assert IOKind.parse("unknown") == IOKind.Unknown
     # int -> the core from_u8.
-    assert IOKind.parse(0) == IOKind.Missing
-    assert IOKind.parse(2) == IOKind.Directory
+    assert IOKind.parse(0) == IOKind.Unknown
+    assert IOKind.parse(1) == IOKind.Missing
+    assert IOKind.parse(3) == IOKind.Directory
 
 
 def test_parse_round_trips_names_and_values():
@@ -51,7 +60,7 @@ def test_parse_errors_are_guided():
     assert "directory" in str(excinfo.value)  # the accepted tokens are listed
 
     with pytest.raises(ValueError, match="IOKind"):
-        IOKind.parse(9)  # outside 0..=3
+        IOKind.parse(5)  # outside 0..=4
     with pytest.raises(ValueError, match="IOKind"):
         IOKind.parse(None)  # neither str nor int
 
@@ -64,10 +73,14 @@ def test_parse_out_of_range_int_has_exact_core_text():
             IOKind.parse(bad)
         message = str(excinfo.value)
         assert f'unknown IOKind "{bad}"' in message
-        assert "expected one of 0 (missing), 1 (file), 2 (directory), 3 (heap)" in message
+        assert (
+            "expected one of 0 (unknown), 1 (missing), 2 (file), 3 (directory), 4 (heap)"
+            in message
+        )
 
 
 def test_exists():
+    assert IOKind.Unknown.exists()  # exists, but of an undetermined kind
     assert not IOKind.Missing.exists()
     assert IOKind.File.exists()
     assert IOKind.Directory.exists()
@@ -77,10 +90,16 @@ def test_exists():
 def test_names_and_str():
     assert IOKind.Directory.name() == "directory"
     assert str(IOKind.Missing) == "missing"
-    assert [str(k) for k in ALL_KINDS] == ["missing", "file", "directory", "heap"]
+    assert [str(k) for k in ALL_KINDS] == [
+        "unknown",
+        "missing",
+        "file",
+        "directory",
+        "heap",
+    ]
 
 
 def test_hashable_and_frozen():
     assert {IOKind.Heap, IOKind.Heap, IOKind.File} == {IOKind.Heap, IOKind.File}
     lookup = {IOKind.Heap: "h"}
-    assert lookup[IOKind.parse(3)] == "h"  # equal values hash equal
+    assert lookup[IOKind.parse(4)] == "h"  # equal values hash equal

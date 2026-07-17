@@ -191,14 +191,7 @@ impl Heap {
     /// assert!(data.slice(6, 6).is_err()); // 6 + 6 > 11
     /// ```
     pub fn slice(&self, offset: u64, len: u64) -> Result<Self, IoError> {
-        let available = self.data.len() as u64;
-        let end = offset.checked_add(len).filter(|&e| e <= available).ok_or(
-            IoError::SliceOutOfBounds {
-                offset,
-                len,
-                available,
-            },
-        )?;
+        let end = super::base::checked_window(offset, len, self.data.len() as u64)?;
         Ok(Self::from_slice(&self.data[offset as usize..end as usize]))
     }
 

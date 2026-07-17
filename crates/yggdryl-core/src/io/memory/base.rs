@@ -29,6 +29,21 @@ const BULK_CHUNK: usize = 256;
 /// [`IOBase::Children`] / [`IOBase::Walk`] and returns from [`ls`](IOBase::ls).
 pub type NoChildren<T> = std::iter::Empty<Result<T, IoError>>;
 
+/// Validates a window `[offset, offset + len)` against `available` bytes, returning the
+/// (overflow-checked) end offset — the single source of truth for the window bounds check
+/// shared by [`Heap::slice`](super::Heap::slice) and [`IOSlice::new`](super::IOSlice::new),
+/// so both raise the identical [`IoError::SliceOutOfBounds`].
+pub(crate) fn checked_window(offset: u64, len: u64, available: u64) -> Result<u64, IoError> {
+    offset
+        .checked_add(len)
+        .filter(|&end| end <= available)
+        .ok_or(IoError::SliceOutOfBounds {
+            offset,
+            len,
+            available,
+        })
+}
+
 /// The guided error for a removal on a source with no removable backing.
 fn unremovable(uri: &Uri, method: &str) -> IoError {
     IoError::FileIo {

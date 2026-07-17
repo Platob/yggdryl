@@ -801,3 +801,17 @@ test('a spaced join segment percent-encodes in the composed address', () => {
   assert.equal(new Heap().join('my dir/f').uri.toString(), 'mem://heap/my%20dir/f')
 })
 
+test('parents() lists a heap node ancestors nearest-first; leaves and roots are empty', () => {
+  const node = new Heap().join('a/b/c')
+  const uris = node.parents().map((p) => p.uri.toString())
+  assert.deepEqual(uris, ['mem://heap/a/b', 'mem://heap/a', 'mem://heap'])
+  assert.ok(node.parents().every((p) => p instanceof Heap))
+
+  // The bare mem://heap root has no ancestors — the collected `parent()` chain is empty.
+  assert.deepEqual(new Heap().parents(), [])
+
+  // Cursor and Slice are leaves — parent() is null, so parents() is always empty.
+  assert.deepEqual(new Cursor(Buffer.from('x')).parents(), [])
+  assert.deepEqual(Slice.over(new Heap(Buffer.from('abc')), 0, 2).parents(), [])
+})
+

@@ -219,6 +219,20 @@ def test_localio_navigation_name_parent_join(root):
     assert str(node.uri).endswith("c.txt")
 
 
+def test_localio_parents_walk_the_ancestor_chain(root):
+    node = root / "a/b/c.bin"
+    parents = node.parents()
+    assert isinstance(parents, list)  # a bounded ancestor walk collected as a list
+    assert all(isinstance(p, LocalIO) for p in parents)
+    # Nearest first: the chain walks up through the temp tree, all lazy (nothing touched).
+    assert parents[0] == root / "a/b"
+    assert parents[1] == root / "a"
+    assert parents[2] == root
+    # ...and continues up to the filesystem root, whose own parent() is None.
+    assert parents[-1].parent() is None
+    assert not node.exists()  # parents() is pure addressing — nothing created
+
+
 def test_localio_uri_and_path(root):
     node = root / "meta.bin"
     assert isinstance(node.uri, Uri)
@@ -550,6 +564,52 @@ def test_localio_is_a_live_handle_not_a_value(root):
     ):
         assert not hasattr(node, absent)
     assert repr(node) == f"LocalIO({node.path}, <0 bytes>)"
+
+
+# -------------------------------------------------------------------------------------
+# LocalIO: temp-dir builders (tmpfile / tmpfolder)
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_tmpfile_is_lazy_created_on_write_and_unique():
+    scratch = LocalIO.tmpfile()  # a unique handle in the system temp dir, nothing on disk
+    try:
+        assert isinstance(scratch, LocalIO)
+        assert not scratch.exists()  # lazy — only the path is picked
+        assert not scratch.is_mapped
+        assert scratch.name.endswith(".tmp")  # the default unnamed file ends in .tmp
+        assert os.path.dirname(scratch.path) == tempfile.gettempdir()
+
+        assert scratch.pwrite_utf8(0, "temp data") == 9  # first write creates + maps it
+        assert scratch.is_file()
+        assert scratch.pread_utf8(0, 9) == "temp data"
+        scratch.close()
+
+        # Two unnamed tmpfiles pick distinct unique paths (never touched on disk here).
+        assert LocalIO.tmpfile().path != LocalIO.tmpfile().path
+    finally:
+        scratch.close()
+        gc.collect()
+        scratch.rmfile()
+
+
+def test_localio_tmpfolder_named_auto_creates_on_child_write():
+    work = LocalIO.tmpfolder("yggdryl-py-tmpfolder-test")
+    child = work / "out.bin"
+    try:
+        assert isinstance(work, LocalIO)
+        assert not work.exists()  # lazy — nothing created yet
+        assert os.path.dirname(work.path) == tempfile.gettempdir()
+
+        assert child.pwrite_byte_array(0, b"x") == 1  # writing the child auto-creates work
+        assert work.is_dir()
+        assert child.is_file()
+        assert child.pread_byte_array(0, 1) == b"x"
+        child.close()
+    finally:
+        child.close()
+        gc.collect()
+        work.rmdir()  # removes the folder + its subtree (idempotent when missing)
 
 
 # -------------------------------------------------------------------------------------

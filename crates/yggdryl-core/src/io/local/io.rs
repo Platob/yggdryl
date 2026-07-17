@@ -159,9 +159,9 @@ impl LocalIO {
     /// graph-uniform [`join`](IOBase::join), which it delegates to (composing the child's
     /// address through the URI). Nothing is touched or created.
     pub fn join_str(&self, segment: &str) -> LocalIO {
-        // `join` is infallible for a local node (the fallback guarantees `Ok`); unwrap it.
+        // `join` is infallible for a local node (its own fallback guarantees `Ok`).
         self.join(segment)
-            .unwrap_or_else(|_| LocalIO::from_path(self.path.join(segment)))
+            .expect("join is infallible for a local node")
     }
 
     /// Auto-creates the directory tree at this path (like `mkdir -p`) — the explicit form

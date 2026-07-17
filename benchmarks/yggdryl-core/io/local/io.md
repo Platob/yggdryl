@@ -27,6 +27,7 @@ cargo test  -p yggdryl-core --test io_local_mmap_alloc  # deterministic zero-all
 | `Mmap` `pwrite_i32_array` (1024, direct) | 18484 | 0.00 | 0.0 |
 | **`LocalIO` `pwrite_i32_array` (1024, mapped)** | **17686** | **0.00** | 0.0 |
 | **`LocalIO` `pread_i32_array` (1024, mapped)** | **19579** | **0.00** | 0.0 |
+| `join` (lazy child, Uri::joinpath) | 1.55 | 5.0 | 379 |
 | tree `byte_size` (16 blocks, lazy sum) | 0.004 | 87.0 | 7409 |
 | tree `pread` whole (16×256, stitched) | 0.003 | 153.0 | 17415 |
 

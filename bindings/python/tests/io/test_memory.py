@@ -822,3 +822,14 @@ def test_heap_join_percent_encodes_a_spaced_segment():
     # ...while name percent-decodes the retained leaf segment.
     assert Heap().join("my dir/f").name == "f"
     assert str(Heap().join("my dir").parent().uri) == "mem://heap"
+
+
+def test_heap_parents_lists_ancestor_addresses_nearest_first():
+    node = Heap().join("a/b/c")
+    parents = node.parents()
+    assert isinstance(parents, list)  # a bounded ancestor walk collected as a list
+    assert all(isinstance(p, Heap) for p in parents)
+    # Nearest first, up to the mem://heap root — the repeated parent() chain.
+    assert [str(p.uri) for p in parents] == ["mem://heap/a/b", "mem://heap/a", "mem://heap"]
+    # A bare root has no ancestors.
+    assert Heap().parents() == []

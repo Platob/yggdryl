@@ -96,6 +96,32 @@ impl LocalIO {
         }
     }
 
+    // ---- temp-dir builders (lazy, path-only) -------------------------------------------
+
+    /// A **lazy** handle to a temporary **file** in the system temp directory. `name` sets the
+    /// file name; the default (omitted) is a process-unique name ending in `.tmp`. Like any
+    /// `LocalIO` it is lazy — the file is created on the **first write** — so this only picks
+    /// the path.
+    // `ts_return_type` pins the class name: napi's factory codegen miscases the `IO` acronym
+    // to `LocalIo`, but the class (via `js_name`) is `LocalIO` — without this the `.d.ts` would
+    // reference a non-existent `LocalIo` type.
+    #[napi(factory, ts_return_type = "LocalIO")]
+    pub fn tmpfile(name: Option<String>) -> LocalIO {
+        LocalIO {
+            inner: core::LocalIO::tmpfile(name.as_deref()),
+        }
+    }
+
+    /// A **lazy** handle to a temporary **folder** in the system temp directory. `name` sets
+    /// the folder name; the default (omitted) is a process-unique name. Lazy — call `mkdir()`
+    /// to create it, or just write a child (which auto-creates this folder as a parent).
+    #[napi(factory, ts_return_type = "LocalIO")]
+    pub fn tmpfolder(name: Option<String>) -> LocalIO {
+        LocalIO {
+            inner: core::LocalIO::tmpfolder(name.as_deref()),
+        }
+    }
+
     // ---- lifecycle: path / mkdir / flush / close ---------------------------------------
 
     /// The underlying filesystem path.
@@ -610,6 +636,17 @@ impl LocalIO {
     #[napi]
     pub fn parent(&self) -> Option<LocalIO> {
         self.inner.parent().map(|inner| LocalIO { inner })
+    }
+
+    /// This node's **ancestors**, nearest-first — the collected `parent()` chain up to the
+    /// filesystem root; each a fresh **lazy** handle (pure path math, nothing is touched). The
+    /// collected counterpart of `parent()`, mirroring `children()`.
+    #[napi]
+    pub fn parents(&self) -> Vec<LocalIO> {
+        self.inner
+            .parents()
+            .map(|inner| LocalIO { inner })
+            .collect()
     }
 
     /// The child node at `segment` (which may be a multi-segment relative path like
@@ -1367,6 +1404,18 @@ impl Mmap {
             .inner()?
             .parent()
             .map(|inner| Mmap { inner: Some(inner) }))
+    }
+
+    /// This node's ancestors — always an empty array (a raw mapping is a leaf; navigate with
+    /// [`LocalIO`] when the tree itself is wanted). The collected counterpart of `parent()`,
+    /// mirroring `children()`.
+    #[napi]
+    pub fn parents(&self) -> napi::Result<Vec<Mmap>> {
+        Ok(self
+            .inner()?
+            .parents()
+            .map(|inner| Mmap { inner: Some(inner) })
+            .collect())
     }
 
     /// Streams this node's children — always the empty [`NoChildren`] iterable: a mapped
