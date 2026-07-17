@@ -391,3 +391,33 @@ fn extension_agrees_with_extensions() {
     }
     assert!(Uri::from_path("/x/a.b.").extensions().is_empty());
 }
+
+// -------------------------------------------------------------------------------------
+// Authority byte codec (Serializable parity with Uri/Url)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn authority_byte_codec_roundtrips() {
+    use yggdryl_core::io::Serializable;
+
+    for auth in [
+        Authority::new(Some("user"), Some("pw"), "host", Some(99)),
+        Authority::from_host("example.com"),
+        Authority::new(None, None, "[::1]", Some(8080)),
+        Authority::new(Some("u"), None, "h", None),
+    ] {
+        let bytes = auth.serialize_bytes();
+        assert_eq!(bytes, auth.to_string().into_bytes()); // canonical string bytes
+        assert_eq!(Authority::deserialize_bytes(&bytes).unwrap(), auth);
+        // The Serializable trait rides the same codec.
+        let generic: Authority = Serializable::deserialize_bytes(&bytes).unwrap();
+        assert_eq!(generic, auth);
+    }
+
+    // Guided failures: non-UTF-8 bytes, and a malformed authority.
+    assert!(matches!(
+        Authority::deserialize_bytes(&[0xff, 0xfe]),
+        Err(UriError::NonUtf8 { .. })
+    ));
+    assert!(Authority::deserialize_bytes(b"host:99999").is_err()); // port out of range
+}

@@ -6,8 +6,8 @@ every feature is added to the core first, then mirrored, method-for-method, in b
 
 The core is the **`io` layer**: the abstract [memory-access contract](io/memory.md) (`IOBase`
 with the `Cursor`/`Slice` wrappers and the in-heap `Heap` source) and the [URI/URL
-family](io/uri.md) (`Uri` / `Url` / `Authority`) that addresses those sources — plus the shared
-value types at the `io` root. Both bindings mirror it in full; more sources plug in against the
+family](io/uri.md) (`Uri` / `Url` / `Authority`) that addresses those sources — plus the [shared value
+types at the `io` root](io/index.md) (`Serializable`, `Headers`, `IOMode`, `IOKind`). Both bindings mirror it in full; more sources plug in against the
 same contract as the library grows.
 
 ## Install

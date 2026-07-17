@@ -6,22 +6,60 @@
 //! accessors of `IOBase`, the cursor stream of `IOCursor`, bounded `IOSlice` windows, and
 //! `Whence`-relative seeks — with no logic in the binding.
 //!
-//! Numeric idioms: offsets, lengths, sizes, capacity, cursor position, and bit offsets are JS
-//! `number`s typed as `u32`, so a single heap addresses up to 4 GiB in memory. A byte value is a
-//! `u8`, an `i32` value an `i32`, and an `i64` value a JS `number` — accurate only up to
-//! ±2^53, so keep 64-bit values below that. Byte arrays cross as `Buffer`. Every failing typed
-//! read, seek, or slice surfaces as a thrown `Error` carrying the core's guided text unchanged.
+//! Numeric idioms: byte offset and length **parameters** are JS `number`s typed as `u32`, so a
+//! single heap addresses up to 4 GiB in memory. **Returned** sizes, capacity, the cursor
+//! position, and seek results cross as `i64` (a JS number, exact to 2^53) so a value past
+//! `u32::MAX` never wraps; **bit** offsets are `i64` in both directions, because a heap past
+//! 512 MiB already has bit indexes above 2^32. A byte value is a `u8`, an `i32` value an
+//! `i32`, and an `i64` value a JS `number` — accurate only up to ±2^53, so keep 64-bit values
+//! below that. Byte arrays cross as `Buffer`; bulk typed arrays
+//! (`preadI32Array` / `pwriteI64Array` / …) as `Array<number>`. Every source also carries its
+//! metadata (`headers` — returned as a copy, `mode`, `kind`, from the `io` namespace) and UTF-8
+//! text accessors. Every failing typed read, seek, slice, or UTF-8 decode surfaces as a thrown
+//! `Error` carrying the core's guided text unchanged.
 
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
+use crate::io::headers::Headers;
+use crate::io::kind::IOKind;
+use crate::io::mode::IOMode;
 use crate::io::uri::Uri;
 use yggdryl_core::io::memory as core;
 use yggdryl_core::io::memory::IOBase;
+use yggdryl_core::io::Serializable;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(error.to_string())
+}
+
+/// Validates a JS **bit** offset: bit offsets cross as `i64` (a JS number, exact to 2^53) so
+/// bits past 2^32 — every bit of a heap beyond 512 MiB — stay addressable; a negative offset
+/// is rejected with a guided error naming the offending value.
+fn to_bit_offset(offset: i64) -> napi::Result<u64> {
+    u64::try_from(offset).map_err(|_| {
+        to_error(format!(
+            "invalid bit offset {offset}: expected a non-negative bit offset (LSB-first, bit 0 \
+             is the least-significant bit of byte 0)"
+        ))
+    })
+}
+
+/// Pre-checks a bulk typed read against the bytes available **before** allocating the result
+/// array, so a hostile `count` fails fast with the core's guided EOF text instead of first
+/// materializing a giant allocation.
+fn check_bulk_read(byte_size: u64, offset: u32, count: u32, width: u32) -> napi::Result<()> {
+    let available = byte_size.saturating_sub(offset as u64);
+    let requested = count as u64 * width as u64;
+    if requested > available {
+        return Err(to_error(core::IoError::UnexpectedEof {
+            offset: offset as u64 + available,
+            requested: requested as usize,
+            available: available as usize,
+        }));
+    }
+    Ok(())
 }
 
 /// Where a seek offset is measured from — the POSIX `lseek` `whence`: the **start** of the data
@@ -82,10 +120,11 @@ impl Heap {
 
     // ---- size + capacity ---------------------------------------------------------------
 
-    /// The total length in bytes.
+    /// The total length in bytes — an `i64` (a JS number, exact to 2^53) so a size past
+    /// `u32::MAX` never wraps.
     #[napi]
-    pub fn byte_size(&self) -> u32 {
-        self.inner.byte_size() as u32
+    pub fn byte_size(&self) -> i64 {
+        self.inner.byte_size() as i64
     }
 
     /// The total length in bits — `byteSize * 8`. Returned as an `i64` (a JS number, exact to
@@ -103,10 +142,12 @@ impl Heap {
         self.inner.is_empty()
     }
 
-    /// The number of bytes the storage can hold before it must reallocate — like `Vec::capacity`.
+    /// The number of bytes the storage can hold before it must reallocate — like
+    /// `Vec::capacity`. An `i64` (a JS number, exact to 2^53): `Vec` growth doubles, so the
+    /// allocation can legitimately exceed `u32::MAX`.
     #[napi]
-    pub fn capacity(&self) -> u32 {
-        self.inner.capacity() as u32
+    pub fn capacity(&self) -> i64 {
+        self.inner.capacity() as i64
     }
 
     /// Reserves capacity for at least `additional` more bytes past the current `byteSize`,
@@ -149,18 +190,22 @@ impl Heap {
     }
 
     /// Reads the bit at absolute **bit** `offset` (LSB-first: bit `offset % 8` of byte
-    /// `offset / 8`), or throws if its byte is past the end.
+    /// `offset / 8`), or throws if its byte is past the end. The offset is an `i64` (exact to
+    /// 2^53) so every bit of a heap beyond 512 MiB stays addressable; a negative offset throws.
     #[napi]
-    pub fn pread_bit(&self, offset: u32) -> napi::Result<bool> {
-        self.inner.pread_bit(offset as u64).map_err(to_error)
+    pub fn pread_bit(&self, offset: i64) -> napi::Result<bool> {
+        self.inner
+            .pread_bit(to_bit_offset(offset)?)
+            .map_err(to_error)
     }
 
     /// Sets or clears the bit at absolute **bit** `offset` (LSB-first), read-modify-writing its
-    /// byte and growing the storage (zero-filled) if the bit is past the end.
+    /// byte and growing the storage (zero-filled) if the bit is past the end. The offset is an
+    /// `i64` (exact to 2^53); a negative offset throws.
     #[napi]
-    pub fn pwrite_bit(&mut self, offset: u32, value: bool) -> napi::Result<()> {
+    pub fn pwrite_bit(&mut self, offset: i64, value: bool) -> napi::Result<()> {
         self.inner
-            .pwrite_bit(offset as u64, value)
+            .pwrite_bit(to_bit_offset(offset)?, value)
             .map_err(to_error)
     }
 
@@ -194,12 +239,108 @@ impl Heap {
             .map_err(to_error)
     }
 
+    // ---- utf8 text ---------------------------------------------------------------------
+
+    /// Reads up to `length` **bytes** at `offset` and decodes them as UTF-8 text (clamped near
+    /// the end), or throws a guided `Error` on invalid UTF-8 — including a multi-byte
+    /// character cut by the range.
+    #[napi]
+    pub fn pread_utf8(&self, offset: u32, length: u32) -> napi::Result<String> {
+        self.inner
+            .pread_utf8(offset as u64, length as usize)
+            .map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at `offset` (growing as needed); returns the number of
+    /// **bytes** written (not characters).
+    #[napi]
+    pub fn pwrite_utf8(&mut self, offset: u32, text: String) -> u32 {
+        self.inner.pwrite_utf8(offset as u64, &text) as u32
+    }
+
+    // ---- bulk typed arrays -------------------------------------------------------------
+
+    /// **Bulk typed read** of `count` little-endian `i32`s at `offset` into a fresh array, or
+    /// throws if fewer bytes remain — checked **before** the result array is allocated, so a
+    /// hostile `count` fails fast instead of allocating.
+    #[napi]
+    pub fn pread_i32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i32>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 4)?;
+        let mut values = vec![0i32; count as usize];
+        self.inner
+            .pread_i32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i32`s at `offset`, growing
+    /// as needed.
+    #[napi]
+    pub fn pwrite_i32_array(&mut self, offset: u32, values: Vec<i32>) -> napi::Result<()> {
+        self.inner
+            .pwrite_i32_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i64`s at `offset` into a fresh array, or
+    /// throws if fewer bytes remain — checked **before** the result array is allocated, so a
+    /// hostile `count` fails fast instead of allocating. Each JS `number` is exact only up to
+    /// ±2^53.
+    #[napi]
+    pub fn pread_i64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i64>> {
+        check_bulk_read(self.inner.byte_size(), offset, count, 8)?;
+        let mut values = vec![0i64; count as usize];
+        self.inner
+            .pread_i64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i64`s at `offset`, growing
+    /// as needed. Keep each value below ±2^53 so the JS `number`s stay exact.
+    #[napi]
+    pub fn pwrite_i64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
+        self.inner
+            .pwrite_i64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    // ---- repeated-value fills ----------------------------------------------------------
+
+    /// **Repeated-value fill.** Writes `count` copies of the byte `value` starting at `offset`
+    /// (growing as needed) — the byte-level `memset`; no full array is ever materialized.
+    #[napi]
+    pub fn pwrite_byte_repeat(&mut self, offset: u32, value: u8, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_byte_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i32` copies of `value` at `offset` —
+    /// no full array is ever materialized.
+    #[napi]
+    pub fn pwrite_i32_repeat(&mut self, offset: u32, value: i32, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_i32_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i64` copies of `value` at `offset` —
+    /// no full array is ever materialized. Keep `value` below ±2^53 so it stays exact.
+    #[napi]
+    pub fn pwrite_i64_repeat(&mut self, offset: u32, value: i64, count: u32) -> napi::Result<()> {
+        self.inner
+            .pwrite_i64_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
     // ---- cursor: position / seek -------------------------------------------------------
 
-    /// The current cursor position (bytes from the start). May sit past the end after a seek.
+    /// The current cursor position (bytes from the start) — an `i64` (exact to 2^53), so a
+    /// position past `u32::MAX` (a seek can land anywhere) never wraps. May sit past the end.
     #[napi(getter)]
-    pub fn position(&self) -> u32 {
-        self.inner.position() as u32
+    pub fn position(&self) -> i64 {
+        self.inner.position() as i64
     }
 
     /// Moves the cursor to an absolute `position` (past the end is allowed).
@@ -208,13 +349,13 @@ impl Heap {
         self.inner.set_position(position as u64);
     }
 
-    /// Seeks to `whence + offset` and returns the new position. A position past the end is
-    /// allowed; seeking before the start throws a guided `Error`.
+    /// Seeks to `whence + offset` and returns the new position (an `i64`, exact to 2^53). A
+    /// position past the end is allowed; seeking before the start throws a guided `Error`.
     #[napi]
-    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<u32> {
+    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<i64> {
         self.inner
             .seek(whence.into(), offset)
-            .map(|position| position as u32)
+            .map(|position| position as i64)
             .map_err(to_error)
     }
 
@@ -285,6 +426,21 @@ impl Heap {
         self.inner.read_to_end().into()
     }
 
+    /// Reads up to `length` **bytes** from the cursor and decodes them as UTF-8 text (clamped
+    /// near the end), advancing the cursor by the bytes read, or throws on invalid UTF-8
+    /// (leaving the cursor put).
+    #[napi]
+    pub fn read_utf8(&mut self, length: u32) -> napi::Result<String> {
+        self.inner.read_utf8(length as usize).map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at the cursor, advancing it; returns the number of
+    /// **bytes** written (not characters).
+    #[napi]
+    pub fn write_utf8(&mut self, text: String) -> u32 {
+        self.inner.write_utf8(&text) as u32
+    }
+
     // ---- slice + value semantics -------------------------------------------------------
 
     /// The window `[offset, offset + length)` as an independent `Heap` owning a copy of the range
@@ -299,7 +455,7 @@ impl Heap {
 
     // ---- address (uri) -----------------------------------------------------------------
 
-    /// The [`Uri`] that addresses this heap (empty by default).
+    /// The [`Uri`] that addresses this heap (the stable synthetic `mem://heap` until one is set).
     #[napi(getter)]
     pub fn uri(&self) -> Uri {
         Uri {
@@ -319,6 +475,58 @@ impl Heap {
         Heap {
             inner: self.inner.clone().with_uri(uri.inner.clone()),
         }
+    }
+
+    // ---- metadata (headers / mode / kind) ----------------------------------------------
+
+    /// The metadata [`Headers`] attached to this heap — **a copy**: edits to the returned map
+    /// do not write back. Call `setHeaders` (or `withHeaders`) to store an updated map.
+    #[napi(getter)]
+    pub fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// Replaces the whole [`Headers`] metadata map in place.
+    #[napi]
+    pub fn set_headers(&mut self, headers: &Headers) {
+        self.inner.set_headers(headers.inner.clone());
+    }
+
+    /// Returns a copy of this heap with its [`Headers`] metadata replaced.
+    #[napi]
+    pub fn with_headers(&self, headers: &Headers) -> Heap {
+        Heap {
+            inner: self.inner.clone().with_headers(headers.inner.clone()),
+        }
+    }
+
+    /// How this heap may be accessed — see [`IOMode`] (`ReadWrite` by default; it is
+    /// in-memory).
+    #[napi(getter)]
+    pub fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// Sets the access [`IOMode`] in place.
+    #[napi]
+    pub fn set_mode(&mut self, mode: IOMode) {
+        self.inner.set_mode(mode.into());
+    }
+
+    /// Returns a copy of this heap with its access [`IOMode`] set.
+    #[napi]
+    pub fn with_mode(&self, mode: IOMode) -> Heap {
+        Heap {
+            inner: self.inner.clone().with_mode(mode.into()),
+        }
+    }
+
+    /// What this source is — always [`IOKind.Heap`] for an in-memory heap.
+    #[napi(getter)]
+    pub fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     // ---- cursor / window views ---------------------------------------------------------
@@ -365,6 +573,21 @@ impl Heap {
         self.inner == other.inner
     }
 
+    /// The heap's value form: a copy of the stored bytes — the same identity `equals` uses
+    /// (the cursor, address, headers, and mode are transient metadata and are not serialized).
+    #[napi]
+    pub fn serialize_bytes(&self) -> Buffer {
+        Serializable::serialize_bytes(&self.inner).into()
+    }
+
+    /// Reconstructs a heap from bytes produced by `serializeBytes` — the exact inverse.
+    #[napi(factory)]
+    pub fn deserialize_bytes(data: Buffer) -> napi::Result<Heap> {
+        <core::Heap as Serializable>::deserialize_bytes(data.as_ref())
+            .map(|inner| Heap { inner })
+            .map_err(to_error)
+    }
+
     /// A short debug string of the form `Heap(len=N)`.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
@@ -407,10 +630,11 @@ impl Cursor {
 
     // ---- position / seek ---------------------------------------------------------------
 
-    /// The current position (bytes from the start). May sit past the end after a seek.
+    /// The current position (bytes from the start) — an `i64` (exact to 2^53), so a position
+    /// past `u32::MAX` never wraps. May sit past the end after a seek.
     #[napi(getter)]
-    pub fn position(&self) -> u32 {
-        self.inner.position() as u32
+    pub fn position(&self) -> i64 {
+        self.inner.position() as i64
     }
 
     /// Moves the position to an absolute `position` (past the end is allowed).
@@ -419,12 +643,13 @@ impl Cursor {
         self.inner.set_position(position as u64);
     }
 
-    /// Seeks to `whence + offset` and returns the new position; seeking before the start throws.
+    /// Seeks to `whence + offset` and returns the new position (an `i64`, exact to 2^53);
+    /// seeking before the start throws.
     #[napi]
-    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<u32> {
+    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<i64> {
         self.inner
             .seek(whence.into(), offset)
-            .map(|position| position as u32)
+            .map(|position| position as i64)
             .map_err(to_error)
     }
 
@@ -493,12 +718,28 @@ impl Cursor {
         self.inner.read_to_end().into()
     }
 
+    /// Reads up to `length` **bytes** from the position and decodes them as UTF-8 text
+    /// (clamped near the end), advancing the position by the bytes read, or throws on invalid
+    /// UTF-8 (leaving the position put).
+    #[napi]
+    pub fn read_utf8(&mut self, length: u32) -> napi::Result<String> {
+        self.inner.read_utf8(length as usize).map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at the position, advancing it; returns the number of
+    /// **bytes** written (not characters).
+    #[napi]
+    pub fn write_utf8(&mut self, text: String) -> u32 {
+        self.inner.write_utf8(&text) as u32
+    }
+
     // ---- IOBase: size + positioned typed accessors -------------------------------------
 
-    /// The total length in bytes of the wrapped source.
+    /// The total length in bytes of the wrapped source — an `i64` (exact to 2^53), matching
+    /// `Heap.byteSize`.
     #[napi]
-    pub fn byte_size(&self) -> u32 {
-        self.inner.byte_size() as u32
+    pub fn byte_size(&self) -> i64 {
+        self.inner.byte_size() as i64
     }
 
     /// The total length in bits — `byteSize * 8` (an `i64`, matching `Heap.bitSize`).
@@ -521,17 +762,21 @@ impl Cursor {
             .map_err(to_error)
     }
 
-    /// Reads the bit at absolute **bit** `offset` (LSB-first), or throws if its byte is past the end.
+    /// Reads the bit at absolute **bit** `offset` (LSB-first), or throws if its byte is past the
+    /// end. The offset is an `i64` (exact to 2^53); a negative offset throws.
     #[napi]
-    pub fn pread_bit(&self, offset: u32) -> napi::Result<bool> {
-        self.inner.pread_bit(offset as u64).map_err(to_error)
+    pub fn pread_bit(&self, offset: i64) -> napi::Result<bool> {
+        self.inner
+            .pread_bit(to_bit_offset(offset)?)
+            .map_err(to_error)
     }
 
-    /// Sets or clears the bit at absolute **bit** `offset` (LSB-first), growing the storage as needed.
+    /// Sets or clears the bit at absolute **bit** `offset` (LSB-first), growing the storage as
+    /// needed. The offset is an `i64` (exact to 2^53); a negative offset throws.
     #[napi]
-    pub fn pwrite_bit(&mut self, offset: u32, value: bool) -> napi::Result<()> {
+    pub fn pwrite_bit(&mut self, offset: i64, value: bool) -> napi::Result<()> {
         self.inner
-            .pwrite_bit(offset as u64, value)
+            .pwrite_bit(to_bit_offset(offset)?, value)
             .map_err(to_error)
     }
 
@@ -563,6 +808,23 @@ impl Cursor {
             .map_err(to_error)
     }
 
+    /// Reads up to `length` **bytes** at absolute `offset` and decodes them as UTF-8 text
+    /// (clamped near the end), or throws a guided `Error` on invalid UTF-8. Never moves the
+    /// position.
+    #[napi]
+    pub fn pread_utf8(&self, offset: u32, length: u32) -> napi::Result<String> {
+        self.inner
+            .pread_utf8(offset as u64, length as usize)
+            .map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at absolute `offset` (growing as needed); returns the
+    /// number of **bytes** written (not characters). Never moves the position.
+    #[napi]
+    pub fn pwrite_utf8(&mut self, offset: u32, text: String) -> u32 {
+        self.inner.pwrite_utf8(offset as u64, &text) as u32
+    }
+
     // ---- source access -----------------------------------------------------------------
 
     /// The [`Uri`] addressing the wrapped source.
@@ -571,6 +833,26 @@ impl Cursor {
         Uri {
             inner: self.inner.uri(),
         }
+    }
+
+    /// The wrapped source's metadata [`Headers`] — **a copy** (delegates to the source).
+    #[napi(getter)]
+    pub fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// The wrapped source's access [`IOMode`] (delegates to the source).
+    #[napi(getter)]
+    pub fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// The wrapped source's [`IOKind`] (delegates to the source).
+    #[napi(getter)]
+    pub fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     /// A copy of the wrapped [`Heap`] source (the position is not carried).
@@ -618,10 +900,10 @@ impl Slice {
             .map_err(to_error)
     }
 
-    /// The window length in bytes.
+    /// The window length in bytes — an `i64` (exact to 2^53), matching `Heap.byteSize`.
     #[napi]
-    pub fn byte_size(&self) -> u32 {
-        self.inner.byte_size() as u32
+    pub fn byte_size(&self) -> i64 {
+        self.inner.byte_size() as i64
     }
 
     /// The window's start offset within the source.
@@ -655,6 +937,16 @@ impl Slice {
         self.inner.pread_i64(offset as u64).map_err(to_error)
     }
 
+    /// Reads up to `length` **bytes** at `offset` within the window and decodes them as UTF-8
+    /// text (clamped to the window's end), or throws a guided `Error` on invalid UTF-8. The
+    /// window is fixed-length, so there is deliberately no `pwriteUtf8` — a slice cannot grow.
+    #[napi]
+    pub fn pread_utf8(&self, offset: u32, length: u32) -> napi::Result<String> {
+        self.inner
+            .pread_utf8(offset as u64, length as usize)
+            .map_err(to_error)
+    }
+
     /// Writes `data` at `offset` within the window, **clamped** to the window's end; returns the
     /// number of bytes actually written (short if it would overflow the window).
     #[napi]
@@ -668,6 +960,26 @@ impl Slice {
         Uri {
             inner: self.inner.uri(),
         }
+    }
+
+    /// The wrapped source's metadata [`Headers`] — **a copy** (delegates to the source).
+    #[napi(getter)]
+    pub fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// The wrapped source's access [`IOMode`] (delegates to the source).
+    #[napi(getter)]
+    pub fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// The wrapped source's [`IOKind`] (delegates to the source).
+    #[napi(getter)]
+    pub fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     /// A copy of the wrapped [`Heap`] source (the whole source, not just the window).

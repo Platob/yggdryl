@@ -20,7 +20,7 @@ use crate::io::{Headers, IOKind, IOMode};
 /// It grows like a [`Vec`]: [`with_capacity`](Heap::with_capacity) pre-allocates,
 /// [`capacity`](IOBase::capacity) reports the current allocation, and
 /// [`reserve`](IOBase::reserve) amortizes future writes. Its [`uri`](IOBase::uri) addresses it
-/// (empty by default; set with [`with_uri`](Heap::with_uri) / [`set_uri`](Heap::set_uri)).
+/// (the stable synthetic `mem://heap` until one is set with [`with_uri`](Heap::with_uri) / [`set_uri`](Heap::set_uri)).
 ///
 /// DESIGN: equality is over the **stored bytes only** — the cursor position and the address
 /// [`Uri`] are transient/metadata, so two heaps holding the same bytes compare equal regardless
@@ -258,7 +258,11 @@ impl IOBase for Heap {
             return 0;
         }
         let start = offset as usize;
-        let end = start + data.len();
+        // An offset so large the write would overflow the address space is a no-op (0 bytes
+        // written) — `pwrite_all` then reports the shortfall as a guided error.
+        let Some(end) = start.checked_add(data.len()) else {
+            return 0;
+        };
         if end > self.data.len() {
             self.data.resize(end, 0); // grow, zero-filling any gap
         }

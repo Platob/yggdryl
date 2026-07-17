@@ -4,6 +4,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('../..')
+const io = yggdryl.io
+const { Headers } = yggdryl.io
 const { Heap, Whence, Cursor, Slice } = yggdryl.memory
 const { Uri } = yggdryl.uri
 
@@ -441,4 +443,224 @@ test('Cursor and Slice delegate uri to the wrapped source', () => {
   assert.equal(named.cursor().uri.toString(), 'mem://buf/7')
   assert.equal(named.window(0, 2).uri.toString(), 'mem://buf/7')
   assert.equal(Slice.over(named, 1, 2).uri.host, 'buf')
+})
+
+// -------------------------------------------------------------------------------------
+// Heap metadata: headers / mode / kind
+// -------------------------------------------------------------------------------------
+
+test('heap headers: empty by default; the getter returns a copy; setHeaders writes back', () => {
+  const h = new Heap()
+  assert.ok(h.headers instanceof Headers)
+  assert.ok(h.headers.isEmpty())
+
+  // The getter is a copy — editing it does not write back.
+  const copy = h.headers
+  copy.insert('X-Edit', '1')
+  assert.ok(!h.headers.contains('X-Edit'))
+
+  // setHeaders stores the updated map.
+  h.setHeaders(copy)
+  assert.equal(h.headers.get('x-edit'), '1')
+})
+
+test('withHeaders returns a copy with the map replaced; the original is untouched', () => {
+  const h = new Heap(Buffer.from('x'))
+  const tagged = h.withHeaders(new Headers().with('Content-Type', 'text/plain'))
+  assert.equal(tagged.headers.contentType(), 'text/plain')
+  assert.ok(h.headers.isEmpty()) // original untouched
+  assert.ok(tagged.equals(h), 'headers are metadata — equality is over the bytes')
+})
+
+test('heap mode defaults to ReadWrite; setMode / withMode; kind is Heap', () => {
+  const h = new Heap()
+  assert.equal(h.mode, io.IOMode.ReadWrite)
+  assert.equal(h.kind, io.IOKind.Heap)
+
+  h.setMode(io.IOMode.Read)
+  assert.equal(h.mode, io.IOMode.Read)
+
+  const appendOnly = new Heap().withMode(io.IOMode.Append)
+  assert.equal(appendOnly.mode, io.IOMode.Append)
+  assert.equal(new Heap().mode, io.IOMode.ReadWrite) // withMode did not mutate a default
+})
+
+test('Cursor and Slice delegate headers / mode / kind to the wrapped source', () => {
+  const src = new Heap(Buffer.from('data'))
+    .withMode(io.IOMode.Read)
+    .withHeaders(new Headers().with('Content-Type', 'text/plain'))
+
+  const cur = src.cursor()
+  assert.equal(cur.mode, io.IOMode.Read)
+  assert.equal(cur.kind, io.IOKind.Heap)
+  assert.equal(cur.headers.contentType(), 'text/plain')
+
+  const win = src.window(0, 2)
+  assert.equal(win.mode, io.IOMode.Read)
+  assert.equal(win.kind, io.IOKind.Heap)
+  assert.equal(win.headers.contentType(), 'text/plain')
+
+  assert.equal(Slice.over(src, 1, 2).mode, io.IOMode.Read)
+})
+
+// -------------------------------------------------------------------------------------
+// UTF-8 text accessors
+// -------------------------------------------------------------------------------------
+
+test('positioned preadUtf8 / pwriteUtf8 round-trip; a cut multi-byte char throws', () => {
+  const h = new Heap()
+  assert.equal(h.pwriteUtf8(0, 'héllo'), 6) // é is 2 bytes — byte count, not chars
+  assert.equal(h.preadUtf8(0, 6), 'héllo')
+  assert.equal(h.preadUtf8(0, 100), 'héllo') // clamped near the end, like preadByteArray
+  assert.equal(h.preadUtf8(0, 1), 'h')
+
+  const cut = new Heap()
+  cut.pwriteUtf8(0, 'é')
+  assert.throws(() => cut.preadUtf8(0, 1), /invalid UTF-8/) // cuts the 2-byte char in half
+  assert.throws(() => cut.preadUtf8(0, 1), /pread_byte_array/) // the guided fix
+})
+
+test('heap stream readUtf8 / writeUtf8 advance the cursor', () => {
+  const h = new Heap()
+  assert.equal(h.writeUtf8('héllo'), 6)
+  assert.equal(h.position, 6)
+  h.rewind()
+  assert.equal(h.readUtf8(6), 'héllo')
+  assert.equal(h.position, 6)
+})
+
+test('Cursor readUtf8 / writeUtf8 mirror the heap stream forms', () => {
+  const cur = new Cursor()
+  assert.equal(cur.writeUtf8('wörld'), 6)
+  cur.rewind()
+  assert.equal(cur.readUtf8(6), 'wörld')
+  assert.equal(cur.position, 6)
+
+  const bad = new Cursor()
+  bad.writeUtf8('é')
+  bad.rewind()
+  assert.throws(() => bad.readUtf8(1), /invalid UTF-8/)
+  assert.equal(bad.position, 0, 'a failed decode leaves the cursor put')
+})
+
+test('Cursor positioned preadUtf8 / pwriteUtf8 never move the position', () => {
+  const cur = new Cursor(Buffer.from('xxxx'))
+  cur.setPosition(2)
+  assert.equal(cur.pwriteUtf8(0, 'héllo'), 6)
+  assert.equal(cur.preadUtf8(0, 6), 'héllo')
+  assert.equal(cur.position, 2, 'positioned utf8 accessors leave the position put')
+  assert.throws(() => cur.preadUtf8(1, 1), /invalid UTF-8/) // cuts é in half
+})
+
+test('Slice preadUtf8 decodes within the window (clamped); no pwriteUtf8 exists', () => {
+  const h = new Heap()
+  h.pwriteUtf8(0, 'say héllo') // 10 bytes; é spans bytes 5-6
+  const win = h.window(4, 5) // "héll" — h + é(2 bytes) + l + l
+  assert.equal(win.preadUtf8(0, 100), 'héll') // clamped to the 5-byte window
+  assert.throws(() => win.preadUtf8(1, 1), /invalid UTF-8/) // cuts é in half
+
+  // The window is fixed-length, so it deliberately has no pwriteUtf8 (matching Python).
+  assert.equal(win.pwriteUtf8, undefined)
+})
+
+// -------------------------------------------------------------------------------------
+// Bit offsets are i64 (bits past 2^32 stay addressable; negatives throw)
+// -------------------------------------------------------------------------------------
+
+test('negative bit offsets throw a guided error naming the offending value', () => {
+  const h = new Heap(Buffer.from([0b0000_0001]))
+  assert.equal(h.preadBit(0), true) // non-negative still works
+  assert.throws(() => h.preadBit(-1), /invalid bit offset -1/)
+  assert.throws(() => h.preadBit(-1), /non-negative/) // the guided fix
+  assert.throws(() => h.pwriteBit(-5, true), /invalid bit offset -5/)
+
+  const cur = new Cursor(Buffer.from([0xff]))
+  assert.equal(cur.preadBit(7), true)
+  assert.throws(() => cur.preadBit(-1), /invalid bit offset -1/)
+  assert.throws(() => cur.pwriteBit(-1, true), /invalid bit offset -1/)
+})
+
+// -------------------------------------------------------------------------------------
+// Bulk typed arrays (1000 elements crosses the 256-element staging chunk)
+// -------------------------------------------------------------------------------------
+
+test('preadI32Array / pwriteI32Array round-trip 1000 values; short data throws', () => {
+  const values = Array.from({ length: 1000 }, (_, i) => (i % 2 ? -1 : 1) * i * 1000)
+  const h = new Heap()
+  h.pwriteI32Array(0, values)
+  assert.equal(h.byteSize(), 4000)
+  assert.deepEqual(h.preadI32Array(0, 1000), values)
+  assert.equal(h.preadI32(4), -1000) // little-endian, element-addressable
+
+  assert.throws(() => h.preadI32Array(3999, 2), /unexpected end of data/)
+  assert.deepEqual(new Heap().preadI32Array(0, 0), []) // empty read is fine
+})
+
+test('preadI64Array / pwriteI64Array round-trip 1000 values below 2^53', () => {
+  const values = Array.from({ length: 1000 }, (_, i) => i * 2 ** 40 + i) // max ~2^50
+  const h = new Heap()
+  h.pwriteI64Array(0, values)
+  assert.equal(h.byteSize(), 8000)
+  assert.deepEqual(h.preadI64Array(0, 1000), values)
+  assert.equal(h.preadI64(8), 2 ** 40 + 1)
+
+  assert.throws(() => h.preadI64Array(0, 1001), /unexpected end of data/)
+})
+
+test('bulk reads reject a hostile count fast, before allocating', () => {
+  const h = new Heap(Buffer.from('tiny'))
+  const start = process.hrtime.bigint()
+  assert.throws(() => h.preadI32Array(0, 2_000_000_000), /unexpected end of data/)
+  assert.throws(() => h.preadI32Array(0, 2_000_000_000), /8000000000 bytes/) // count * 4 named
+  assert.throws(() => h.preadI64Array(0, 2_000_000_000), /unexpected end of data/)
+  const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6
+  assert.ok(elapsedMs < 1000, `the guard must fail fast, took ${elapsedMs}ms`)
+})
+
+// -------------------------------------------------------------------------------------
+// Repeated-value fills
+// -------------------------------------------------------------------------------------
+
+test('pwriteByteRepeat fills without materializing the array (gap zero-filled)', () => {
+  const h = new Heap()
+  h.pwriteByteRepeat(2, 0xab, 5)
+  assert.deepEqual(h.toBytes(), Buffer.from([0, 0, 0xab, 0xab, 0xab, 0xab, 0xab]))
+
+  const big = new Heap()
+  big.pwriteByteRepeat(0, 0x77, 5000) // crosses the staging chunk
+  assert.equal(big.byteSize(), 5000)
+  assert.equal(big.preadByte(4999), 0x77)
+})
+
+test('pwriteI32Repeat / pwriteI64Repeat fill typed runs past the staging chunk', () => {
+  const r32 = new Heap()
+  r32.pwriteI32Repeat(0, -1, 300) // 300 > the 256-element chunk
+  assert.equal(r32.byteSize(), 1200)
+  assert.ok(r32.preadI32Array(0, 300).every((v) => v === -1))
+
+  const r64 = new Heap()
+  r64.pwriteI64Repeat(0, 2 ** 40 + 7, 300)
+  assert.equal(r64.byteSize(), 2400)
+  assert.ok(r64.preadI64Array(0, 300).every((v) => v === 2 ** 40 + 7))
+})
+
+// -------------------------------------------------------------------------------------
+// Heap byte codec (Serializable)
+// -------------------------------------------------------------------------------------
+
+test('serializeBytes / deserializeBytes round-trip the stored bytes (metadata excluded)', () => {
+  const h = new Heap(Buffer.from('hello')).withUri(Uri.parse('mem://a/1'))
+  h.setPosition(3)
+
+  const frame = h.serializeBytes()
+  assert.deepEqual(frame, Buffer.from('hello')) // the value form IS the stored bytes
+
+  const back = Heap.deserializeBytes(frame)
+  assert.ok(back instanceof Heap)
+  assert.ok(back.equals(h)) // same identity equals uses
+  assert.equal(back.position, 0) // cursor is transient — not carried
+  assert.equal(back.uri.toString(), 'mem://heap') // address is metadata — not carried
+
+  const empty = Heap.deserializeBytes(Buffer.alloc(0))
+  assert.ok(empty.isEmpty())
 })

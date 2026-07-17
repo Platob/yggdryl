@@ -3,9 +3,12 @@
 //! Mirrors `yggdryl_core::io::memory`'s [`Heap`](yggdryl_core::io::memory::Heap) source and
 //! [`Whence`](yggdryl_core::io::memory::Whence) enum. A [`Heap`] is an owned byte buffer with a
 //! read/write cursor and `Vec`-like capacity — the concrete in-memory implementor of the
-//! byte-access traits (positioned `pread_*` / `pwrite_*`, the cursor stream, and bounded
-//! [`slice`](Heap::slice) windows). It behaves like a `bytearray`: a mutable value that
-//! compares by its stored bytes and is deliberately **unhashable**.
+//! byte-access traits (positioned `pread_*` / `pwrite_*` including UTF-8 text and the bulk
+//! `i32`/`i64` arrays and repeated fills, the cursor stream, bounded [`slice`](Heap::slice)
+//! windows, and the source metadata: an addressing `Uri`, a `Headers` map, an `IOMode`, and
+//! an `IOKind`). It behaves like a `bytearray`: a mutable value that compares by its stored
+//! bytes, round-trips through `serialize_bytes` / `deserialize_bytes` (and pickle), and is
+//! deliberately **unhashable**.
 //!
 //! Every method is one or two lines over `yggdryl_core`; a read with a hard length requirement
 //! that runs off the end (a typed read, a slice past the end, a seek before the start) raises a
@@ -19,8 +22,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::io::headers::Headers;
+use crate::io::kind::IOKind;
+use crate::io::mode::IOMode;
 use crate::io::uri::Uri;
 use yggdryl_core::io::memory::{self, IOBase, IoError};
+use yggdryl_core::io::Serializable;
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
@@ -128,14 +135,23 @@ impl Heap {
     // ---- positioned byte-array ---------------------------------------------------------
 
     /// **Positioned read.** Returns up to `length` bytes starting at `offset` as `bytes` —
-    /// short near the end, empty at or past it. Never moves the cursor.
+    /// short near the end, empty at or past it. Never moves the cursor. Reads **directly**
+    /// into the `bytes` allocation (one copy).
     fn pread_byte_array<'py>(
         &self,
         py: Python<'py>,
         offset: u64,
         length: usize,
-    ) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.pread_vec(offset, length))
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let n = self
+            .inner
+            .byte_size()
+            .saturating_sub(offset)
+            .min(length as u64) as usize;
+        PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(offset, dst);
+            Ok(())
+        })
     }
 
     /// **Positioned write.** Copies `data` (bytes / bytearray) in at `offset`, growing the
@@ -188,6 +204,96 @@ impl Heap {
         self.inner.pwrite_i64(offset, value).map_err(ioerr)
     }
 
+    /// Reads up to `length` **bytes** at `offset` and decodes them as UTF-8 text (clamped
+    /// near the end), raising a guided `ValueError` on invalid UTF-8 — including a
+    /// multi-byte character cut by the range.
+    fn pread_utf8(&self, offset: u64, length: usize) -> PyResult<String> {
+        self.inner.pread_utf8(offset, length).map_err(ioerr)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at `offset` (growing as needed); returns the number of
+    /// **bytes** written.
+    fn pwrite_utf8(&mut self, offset: u64, text: &str) -> usize {
+        self.inner.pwrite_utf8(offset, text)
+    }
+
+    // ---- bulk typed arrays + repeated fills ----------------------------------------------
+
+    /// **Bulk typed read.** Returns `count` little-endian `i32`s starting at `offset` as a
+    /// list, raising `ValueError` if fewer bytes remain — checked **before** the result is
+    /// allocated, so a hostile `count` fails fast instead of allocating.
+    fn pread_i32_array(&self, offset: u64, count: usize) -> PyResult<Vec<i32>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if count.saturating_mul(4) as u64 > available {
+            return Err(ioerr(IoError::UnexpectedEof {
+                offset: offset + available,
+                requested: count.saturating_mul(4),
+                available: available as usize,
+            }));
+        }
+        let mut values = vec![0i32; count];
+        self.inner
+            .pread_i32_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write.** Writes all of `values` as little-endian `i32`s at `offset`,
+    /// growing as needed.
+    fn pwrite_i32_array(&mut self, offset: u64, values: Vec<i32>) -> PyResult<()> {
+        self.inner.pwrite_i32_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i64`s — the wide counterpart of
+    /// [`pread_i32_array`](Heap::pread_i32_array), with the same fail-fast bounds check
+    /// before the result is allocated.
+    fn pread_i64_array(&self, offset: u64, count: usize) -> PyResult<Vec<i64>> {
+        let available = self.inner.byte_size().saturating_sub(offset);
+        if count.saturating_mul(8) as u64 > available {
+            return Err(ioerr(IoError::UnexpectedEof {
+                offset: offset + available,
+                requested: count.saturating_mul(8),
+                available: available as usize,
+            }));
+        }
+        let mut values = vec![0i64; count];
+        self.inner
+            .pread_i64_array(offset, &mut values)
+            .map_err(ioerr)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of little-endian `i64`s — the wide counterpart of
+    /// [`pwrite_i32_array`](Heap::pwrite_i32_array).
+    fn pwrite_i64_array(&mut self, offset: u64, values: Vec<i64>) -> PyResult<()> {
+        self.inner.pwrite_i64_array(offset, &values).map_err(ioerr)
+    }
+
+    /// **Repeated-value fill.** Writes `count` copies of the byte `value` at `offset`
+    /// (growing as needed) without ever materializing the full array — the `memset` of the
+    /// family.
+    fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_byte_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i32` copies of `value` at `offset` —
+    /// no full array is built.
+    fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_i32_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i64` copies of `value` at `offset` —
+    /// the wide counterpart of [`pwrite_i32_repeat`](Heap::pwrite_i32_repeat).
+    fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> PyResult<()> {
+        self.inner
+            .pwrite_i64_repeat(offset, value, count)
+            .map_err(ioerr)
+    }
+
     // ---- cursor ------------------------------------------------------------------------
 
     /// The current cursor position (bytes from the start). May sit past the end after a seek.
@@ -214,8 +320,19 @@ impl Heap {
 
     /// **Cursor read.** Returns up to `length` bytes from the current position (short near the
     /// end), advancing the cursor by the number read.
-    fn read<'py>(&mut self, py: Python<'py>, length: usize) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.read_vec(length))
+    fn read<'py>(&mut self, py: Python<'py>, length: usize) -> PyResult<Bound<'py, PyBytes>> {
+        let position = self.inner.position();
+        let n = self
+            .inner
+            .byte_size()
+            .saturating_sub(position)
+            .min(length as u64) as usize;
+        let bytes = PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(position, dst);
+            Ok(())
+        })?;
+        self.inner.set_position(position + n as u64);
+        Ok(bytes)
     }
 
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
@@ -256,10 +373,30 @@ impl Heap {
         self.inner.write_i64(value).map_err(ioerr)
     }
 
+    /// Reads up to `length` **bytes** from the cursor and decodes them as UTF-8 text (clamped
+    /// near the end), advancing the cursor by the bytes read, raising a guided `ValueError`
+    /// on invalid UTF-8 (leaving the cursor put).
+    fn read_utf8(&mut self, length: usize) -> PyResult<String> {
+        self.inner.read_utf8(length).map_err(ioerr)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at the cursor, advancing it; returns the number of
+    /// **bytes** written.
+    fn write_utf8(&mut self, text: &str) -> usize {
+        self.inner.write_utf8(text)
+    }
+
     /// Reads from the current position **to the end** as `bytes`, advancing the cursor to the
     /// end.
-    fn read_to_end<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.read_to_end())
+    fn read_to_end<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let position = self.inner.position();
+        let n = self.inner.byte_size().saturating_sub(position) as usize;
+        let bytes = PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(position, dst);
+            Ok(())
+        })?;
+        self.inner.set_position(self.inner.byte_size());
+        Ok(bytes)
     }
 
     // ---- slice -------------------------------------------------------------------------
@@ -275,7 +412,7 @@ impl Heap {
 
     // ---- address (uri) -----------------------------------------------------------------
 
-    /// The [`Uri`] that **addresses** this heap — the empty (opaque) URI by default.
+    /// The [`Uri`] that **addresses** this heap — the stable synthetic `mem://heap` until one is set.
     #[getter]
     fn uri(&self) -> Uri {
         Uri {
@@ -293,6 +430,55 @@ impl Heap {
         Heap {
             inner: self.inner.clone().with_uri(uri.inner.clone()),
         }
+    }
+
+    // ---- metadata (headers / mode / kind) ------------------------------------------------
+
+    /// The [`Headers`] metadata attached to this heap — returned as an owned **copy** (the
+    /// binding cannot borrow into the Rust value); mutate the copy and write it back with
+    /// [`set_headers`](Heap::set_headers).
+    #[getter]
+    fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// Replaces the whole [`Headers`] metadata map in place.
+    fn set_headers(&mut self, headers: &Headers) {
+        self.inner.set_headers(headers.inner.clone());
+    }
+
+    /// Returns a copy of this heap with its [`Headers`] metadata replaced.
+    fn with_headers(&self, headers: &Headers) -> Heap {
+        Heap {
+            inner: self.inner.clone().with_headers(headers.inner.clone()),
+        }
+    }
+
+    /// How this heap may be accessed — [`IOMode.ReadWrite`](IOMode::ReadWrite) by default
+    /// (it is in-memory).
+    #[getter]
+    fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// Sets the access [`IOMode`] in place.
+    fn set_mode(&mut self, mode: IOMode) {
+        self.inner.set_mode(mode.into());
+    }
+
+    /// Returns a copy of this heap with its access [`IOMode`] set.
+    fn with_mode(&self, mode: IOMode) -> Heap {
+        Heap {
+            inner: self.inner.clone().with_mode(mode.into()),
+        }
+    }
+
+    /// What this source **is** — always [`IOKind.Heap`](IOKind::Heap).
+    #[getter]
+    fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     // ---- cursor / window views ---------------------------------------------------------
@@ -326,6 +512,33 @@ impl Heap {
     /// The stored bytes as a `bytes` copy (so `bytes(heap)` works).
     fn __bytes__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, self.inner.as_slice())
+    }
+
+    /// The heap's value form — its stored bytes (the cursor, address, headers, and mode are
+    /// transient metadata and are not serialized), matching the identity `__eq__` uses.
+    fn serialize_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.serialize_bytes())
+    }
+
+    /// Reconstructs a heap from bytes produced by [`serialize_bytes`](Heap::serialize_bytes)
+    /// — the exact inverse (cursor at `0`, default address/metadata).
+    #[staticmethod]
+    fn deserialize_bytes(data: &[u8]) -> PyResult<Heap> {
+        memory::Heap::deserialize_bytes(data)
+            .map(|inner| Heap { inner })
+            .map_err(ioerr)
+    }
+
+    /// Pickles through the byte codec (`deserialize_bytes(serialize_bytes())`).
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
+        let ctor = py
+            .get_type_bound::<Heap>()
+            .getattr("deserialize_bytes")?
+            .unbind();
+        let state = PyBytes::new_bound(py, &self.inner.serialize_bytes())
+            .into_any()
+            .unbind();
+        Ok((ctor, (state,)))
     }
 
     /// An explicit copy of this buffer (equivalent to `copy.copy(heap)`); pass `uri` to
@@ -417,8 +630,19 @@ impl Cursor {
 
     /// **Cursor read.** Returns up to `length` bytes from the current position (short near the
     /// end), advancing the cursor by the number read.
-    fn read<'py>(&mut self, py: Python<'py>, length: usize) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.read_vec(length))
+    fn read<'py>(&mut self, py: Python<'py>, length: usize) -> PyResult<Bound<'py, PyBytes>> {
+        let position = self.inner.position();
+        let n = self
+            .inner
+            .byte_size()
+            .saturating_sub(position)
+            .min(length as u64) as usize;
+        let bytes = PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(position, dst);
+            Ok(())
+        })?;
+        self.inner.set_position(position + n as u64);
+        Ok(bytes)
     }
 
     /// **Cursor write.** Writes `data` (bytes / bytearray) at the current position, advancing
@@ -459,10 +683,30 @@ impl Cursor {
         self.inner.write_i64(value).map_err(ioerr)
     }
 
+    /// Reads up to `length` **bytes** from the cursor and decodes them as UTF-8 text (clamped
+    /// near the end), advancing the cursor by the bytes read, raising a guided `ValueError`
+    /// on invalid UTF-8 (leaving the cursor put).
+    fn read_utf8(&mut self, length: usize) -> PyResult<String> {
+        self.inner.read_utf8(length).map_err(ioerr)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at the cursor, advancing it; returns the number of
+    /// **bytes** written.
+    fn write_utf8(&mut self, text: &str) -> usize {
+        self.inner.write_utf8(text)
+    }
+
     /// Reads from the current position **to the end** as `bytes`, advancing the cursor to the
     /// end.
-    fn read_to_end<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.read_to_end())
+    fn read_to_end<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let position = self.inner.position();
+        let n = self.inner.byte_size().saturating_sub(position) as usize;
+        let bytes = PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(position, dst);
+            Ok(())
+        })?;
+        self.inner.set_position(self.inner.byte_size());
+        Ok(bytes)
     }
 
     // ---- positioned (delegates to the wrapped source) ----------------------------------
@@ -526,6 +770,18 @@ impl Cursor {
         self.inner.pwrite_i64(offset, value).map_err(ioerr)
     }
 
+    /// Reads up to `length` **bytes** at `offset` and decodes them as UTF-8 text (clamped
+    /// near the end), raising a guided `ValueError` on invalid UTF-8. Never moves the cursor.
+    fn pread_utf8(&self, offset: u64, length: usize) -> PyResult<String> {
+        self.inner.pread_utf8(offset, length).map_err(ioerr)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at `offset` (growing as needed); returns the number of
+    /// **bytes** written. Never moves the cursor.
+    fn pwrite_utf8(&mut self, offset: u64, text: &str) -> usize {
+        self.inner.pwrite_utf8(offset, text)
+    }
+
     // ---- address + source ---------------------------------------------------------------
 
     /// The [`Uri`] that **addresses** the wrapped source.
@@ -534,6 +790,27 @@ impl Cursor {
         Uri {
             inner: self.inner.uri(),
         }
+    }
+
+    /// The wrapped source's [`Headers`] metadata — an owned **copy** (delegates to the
+    /// source; edit the source and re-wrap to change it).
+    #[getter]
+    fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// How the wrapped source may be accessed (delegates to the source).
+    #[getter]
+    fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// What the wrapped source **is** (delegates to the source).
+    #[getter]
+    fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     /// An independent copy of the wrapped [`Heap`] source (the cursor position is discarded).
@@ -584,6 +861,14 @@ impl Slice {
             .map_err(ioerr)
     }
 
+    /// A [`Slice`] over an **independent copy** of `heap` — the same as the constructor, as a
+    /// factory (the spelling shared with [`Cursor.over`](Cursor::over)). Raises `ValueError`
+    /// if the window runs past the source's end.
+    #[staticmethod]
+    fn over(heap: &Heap, offset: u64, length: u64) -> PyResult<Self> {
+        Self::new(heap, offset, length)
+    }
+
     /// The window length in bytes.
     fn byte_size(&self) -> u64 {
         self.inner.byte_size()
@@ -601,14 +886,23 @@ impl Slice {
     }
 
     /// **Positioned read.** Returns up to `length` bytes starting at `offset` **within the
-    /// window** as `bytes` — short near the window's end, empty at or past it.
+    /// window** as `bytes` — short near the window's end, empty at or past it. Reads
+    /// **directly** into the `bytes` allocation (one copy).
     fn pread_byte_array<'py>(
         &self,
         py: Python<'py>,
         offset: u64,
         length: usize,
-    ) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.inner.pread_vec(offset, length))
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let n = self
+            .inner
+            .byte_size()
+            .saturating_sub(offset)
+            .min(length as u64) as usize;
+        PyBytes::new_bound_with(py, n, |dst| {
+            self.inner.pread_byte_array(offset, dst);
+            Ok(())
+        })
     }
 
     /// Reads the single byte at `offset` within the window, raising `ValueError` if it is past
@@ -629,6 +923,13 @@ impl Slice {
         self.inner.pread_i64(offset).map_err(ioerr)
     }
 
+    /// Reads up to `length` **bytes** at `offset` **within the window** and decodes them as
+    /// UTF-8 text (clamped to the window's end), raising a guided `ValueError` on invalid
+    /// UTF-8 — including a multi-byte character cut by the window.
+    fn pread_utf8(&self, offset: u64, length: usize) -> PyResult<String> {
+        self.inner.pread_utf8(offset, length).map_err(ioerr)
+    }
+
     /// **Positioned write**, clamped to the window. Copies `data` (bytes / bytearray) in at
     /// `offset`, writing only as far as the window's end; returns the number of bytes written.
     fn pwrite_byte_array(&mut self, offset: u64, data: Vec<u8>) -> usize {
@@ -641,6 +942,27 @@ impl Slice {
         Uri {
             inner: self.inner.uri(),
         }
+    }
+
+    /// The wrapped source's [`Headers`] metadata — an owned **copy** (delegates to the
+    /// source).
+    #[getter]
+    fn headers(&self) -> Headers {
+        Headers {
+            inner: self.inner.headers().clone(),
+        }
+    }
+
+    /// How the wrapped source may be accessed (delegates to the source).
+    #[getter]
+    fn mode(&self) -> IOMode {
+        self.inner.mode().into()
+    }
+
+    /// What the wrapped source **is** (delegates to the source).
+    #[getter]
+    fn kind(&self) -> IOKind {
+        self.inner.kind().into()
     }
 
     /// An independent copy of the wrapped [`Heap`] source (the window bounds are discarded).

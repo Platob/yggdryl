@@ -685,7 +685,8 @@ that need a real scheme use a multi-letter one.
 Both `Uri` and `Url` round-trip through bytes — `serialize_bytes()` is the canonical
 string's UTF-8, and `deserialize_bytes(bytes)` is its exact inverse. Equality and hashing
 follow the same canonical string, so two values are equal iff their bytes are equal.
-(`Authority` compares and hashes by its canonical string too, but has no byte codec — it
+(`Authority` compares and hashes by its canonical string too, and serializes to those
+same canonical bytes — it
 pickles through its four components in Python.)
 
 === "Python"

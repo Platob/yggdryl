@@ -36,6 +36,22 @@ fn java_hash<T: Hash>(value: &T) -> i32 {
     (hash as u32 ^ (hash >> 32) as u32) as i32
 }
 
+/// Validates bulk query-parameter pairs from JS: every pair must be exactly `[key, value]` —
+/// a short or long array is rejected with a guided error (matching the Python binding, which
+/// raises on malformed pairs) instead of being silently coerced.
+fn to_param_refs(params: &[Vec<String>]) -> napi::Result<Vec<(&str, &str)>> {
+    params
+        .iter()
+        .map(|pair| match pair.as_slice() {
+            [key, value] => Ok((key.as_str(), value.as_str())),
+            other => Err(to_error(format!(
+                "each params pair must be [key, value]; got a pair of {} elements",
+                other.len()
+            ))),
+        })
+        .collect()
+}
+
 /// The IANA-registered default port for a well-known scheme (case-insensitive), or `null` if
 /// the scheme has no registered default. Mirrors [`yggdryl_core::io::uri::default_port`].
 #[napi(js_name = "defaultPort", namespace = "uri")]
@@ -228,7 +244,17 @@ impl Authority {
     /// The canonical authority string as UTF-8 bytes.
     #[napi]
     pub fn serialize_bytes(&self) -> Buffer {
-        self.inner.to_string().into_bytes().into()
+        self.inner.serialize_bytes().into()
+    }
+
+    /// Decodes an authority from the UTF-8 bytes produced by `serializeBytes` — the exact
+    /// inverse, throwing a guided `Error` on non-UTF-8 bytes or any authority parse failure
+    /// (e.g. an out-of-range port).
+    #[napi(factory)]
+    pub fn deserialize_bytes(data: Buffer) -> napi::Result<Authority> {
+        core::Authority::deserialize_bytes(data.as_ref())
+            .map(|inner| Authority { inner })
+            .map_err(to_error)
     }
 
     /// Content equality (equal iff `serializeBytes` are equal).
@@ -667,7 +693,7 @@ impl Uri {
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
-    /// or appended if absent). The value is stored verbatim.
+    /// or appended if absent). The key and value are percent-encoded for storage.
     #[napi]
     pub fn set_param(&mut self, key: String, value: String) {
         self.inner.set_param(&key, &value);
@@ -696,36 +722,21 @@ impl Uri {
     }
 
     /// Bulk-updates query parameters from `[key, value]` pairs in one pass (last value wins
-    /// per key). Pass `Object.entries(obj)` to apply an object.
+    /// per key). Pass `Object.entries(obj)` to apply an object. A pair that is not exactly
+    /// `[key, value]` throws a guided `Error`.
     #[napi]
-    pub fn set_params(&mut self, params: Vec<Vec<String>>) {
-        let refs: Vec<(&str, &str)> = params
-            .iter()
-            .map(|pair| {
-                (
-                    pair.first().map(String::as_str).unwrap_or(""),
-                    pair.get(1).map(String::as_str).unwrap_or(""),
-                )
-            })
-            .collect();
-        self.inner.set_params(&refs);
+    pub fn set_params(&mut self, params: Vec<Vec<String>>) -> napi::Result<()> {
+        self.inner.set_params(&to_param_refs(&params)?);
+        Ok(())
     }
 
-    /// Returns a copy with the bulk update applied.
+    /// Returns a copy with the bulk update applied. A pair that is not exactly `[key, value]`
+    /// throws a guided `Error`.
     #[napi]
-    pub fn with_params(&self, params: Vec<Vec<String>>) -> Self {
-        let refs: Vec<(&str, &str)> = params
-            .iter()
-            .map(|pair| {
-                (
-                    pair.first().map(String::as_str).unwrap_or(""),
-                    pair.get(1).map(String::as_str).unwrap_or(""),
-                )
-            })
-            .collect();
-        Self {
-            inner: self.inner.clone().with_params(&refs),
-        }
+    pub fn with_params(&self, params: Vec<Vec<String>>) -> napi::Result<Uri> {
+        Ok(Self {
+            inner: self.inner.clone().with_params(&to_param_refs(&params)?),
+        })
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.
@@ -776,6 +787,15 @@ impl Url {
     #[napi(factory)]
     pub fn parse(s: String) -> napi::Result<Self> {
         core::Url::parse_str(&s)
+            .map(|inner| Self { inner })
+            .map_err(to_error)
+    }
+
+    /// Builds a `Url` from a [`Uri`], throwing a guided `Error` if the URI has no scheme —
+    /// the factory counterpart of `Uri.toUrl`.
+    #[napi(factory)]
+    pub fn from_uri(uri: &Uri) -> napi::Result<Self> {
+        core::Url::try_from(uri.inner.clone())
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -1169,7 +1189,7 @@ impl Url {
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
-    /// or appended if absent). The value is stored verbatim.
+    /// or appended if absent). The key and value are percent-encoded for storage.
     #[napi]
     pub fn set_param(&mut self, key: String, value: String) {
         self.inner.set_param(&key, &value);
@@ -1198,36 +1218,21 @@ impl Url {
     }
 
     /// Bulk-updates query parameters from `[key, value]` pairs in one pass (last value wins
-    /// per key). Pass `Object.entries(obj)` to apply an object.
+    /// per key). Pass `Object.entries(obj)` to apply an object. A pair that is not exactly
+    /// `[key, value]` throws a guided `Error`.
     #[napi]
-    pub fn set_params(&mut self, params: Vec<Vec<String>>) {
-        let refs: Vec<(&str, &str)> = params
-            .iter()
-            .map(|pair| {
-                (
-                    pair.first().map(String::as_str).unwrap_or(""),
-                    pair.get(1).map(String::as_str).unwrap_or(""),
-                )
-            })
-            .collect();
-        self.inner.set_params(&refs);
+    pub fn set_params(&mut self, params: Vec<Vec<String>>) -> napi::Result<()> {
+        self.inner.set_params(&to_param_refs(&params)?);
+        Ok(())
     }
 
-    /// Returns a copy with the bulk update applied.
+    /// Returns a copy with the bulk update applied. A pair that is not exactly `[key, value]`
+    /// throws a guided `Error`.
     #[napi]
-    pub fn with_params(&self, params: Vec<Vec<String>>) -> Self {
-        let refs: Vec<(&str, &str)> = params
-            .iter()
-            .map(|pair| {
-                (
-                    pair.first().map(String::as_str).unwrap_or(""),
-                    pair.get(1).map(String::as_str).unwrap_or(""),
-                )
-            })
-            .collect();
-        Self {
-            inner: self.inner.clone().with_params(&refs),
-        }
+    pub fn with_params(&self, params: Vec<Vec<String>>) -> napi::Result<Url> {
+        Ok(Self {
+            inner: self.inner.clone().with_params(&to_param_refs(&params)?),
+        })
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.

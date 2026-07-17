@@ -181,25 +181,39 @@ pub trait IOBase {
     }
 
     /// **Full positioned write** of *all* of `data` at `offset` — the counterpart of
-    /// [`pread_exact`](IOBase::pread_exact). Infallible for in-memory storage (the write always
-    /// grows to fit), but returns `Result` so the trait reads uniformly and a fallible backend
-    /// can honour it.
+    /// [`pread_exact`](IOBase::pread_exact). Errors with [`IoError::UnexpectedEof`] (naming the
+    /// shortfall) when the sink could not take every byte — a bounded window
+    /// ([`IOSlice`](super::IOSlice)) clamps at its edge, and even a growable source refuses an
+    /// offset so large the write would overflow the address space. For an ordinary in-heap write
+    /// this always succeeds (the storage grows to fit).
     fn pwrite_all(&mut self, offset: u64, data: &[u8]) -> Result<(), IoError> {
-        self.pwrite_byte_array(offset, data);
-        Ok(())
+        let written = self.pwrite_byte_array(offset, data);
+        if written == data.len() {
+            Ok(())
+        } else {
+            Err(IoError::UnexpectedEof {
+                offset: offset + written as u64,
+                requested: data.len(),
+                available: written,
+            })
+        }
     }
 
     /// Reads up to `len` bytes at `offset` into a fresh `Vec` (short near the end) — the owning
-    /// read for callers that do not bring their own buffer. One allocation, pre-sized.
+    /// read for callers that do not bring their own buffer. One allocation, **pre-sized to what
+    /// is actually available** (never to the raw request), so a hostile or corrupt `len` cannot
+    /// trigger a runaway allocation.
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
     ///
     /// let data = Heap::from_slice(b"hello world");
     /// assert_eq!(data.pread_vec(6, 100), b"world"); // clamped to what remains
+    /// assert_eq!(data.pread_vec(6, usize::MAX), b"world"); // no giant up-front allocation
     /// ```
     fn pread_vec(&self, offset: u64, len: usize) -> Vec<u8> {
-        let mut buf = vec![0u8; len];
+        let available = self.byte_size().saturating_sub(offset).min(len as u64) as usize;
+        let mut buf = vec![0u8; available];
         let read = self.pread_byte_array(offset, &mut buf);
         buf.truncate(read);
         buf
@@ -225,8 +239,11 @@ pub trait IOBase {
     /// assert_eq!(scratch.capacity(), cap);
     /// ```
     fn pread_into(&self, offset: u64, len: usize, dst: &mut Vec<u8>) -> usize {
+        // Size to what is actually available (never the raw request), so a hostile `len`
+        // cannot force a runaway grow; reuses `dst`'s capacity when it already fits.
+        let available = self.byte_size().saturating_sub(offset).min(len as u64) as usize;
         dst.clear();
-        dst.resize(len, 0); // reuses `dst`'s capacity when it already fits; one grow otherwise
+        dst.resize(available, 0);
         let read = self.pread_byte_array(offset, dst);
         dst.truncate(read);
         read

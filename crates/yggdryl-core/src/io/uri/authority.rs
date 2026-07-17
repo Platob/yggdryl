@@ -3,7 +3,7 @@
 use core::fmt;
 use core::fmt::Write as _;
 
-use super::HashWrite;
+use super::{HashWrite, UriError};
 
 /// The authority component of a URI: `[ userinfo "@" ] host [ ":" port ]`, where
 /// `userinfo` is `user [ ":" password ]`.
@@ -213,6 +213,45 @@ impl Authority {
         let mut buffer = String::with_capacity(self.encoded_len());
         let _ = write!(buffer, "{self}");
         buffer
+    }
+
+    // ---- byte codec ------------------------------------------------------------------
+
+    /// The canonical `[user[:password]@]host[:port]` string as UTF-8 bytes — one pre-sized
+    /// allocation; [`deserialize_bytes`](Authority::deserialize_bytes) is the exact inverse.
+    pub fn serialize_bytes(&self) -> Vec<u8> {
+        self.to_canonical().into_bytes()
+    }
+
+    /// Decodes an authority from the UTF-8 bytes produced by
+    /// [`serialize_bytes`](Authority::serialize_bytes).
+    ///
+    /// # Errors
+    /// [`UriError::NonUtf8`] if the bytes are not UTF-8, or any authority parse error
+    /// (e.g. an invalid port).
+    ///
+    /// ```
+    /// use yggdryl_core::io::uri::Authority;
+    ///
+    /// let auth = Authority::new(Some("user"), Some("pw"), "host", Some(99));
+    /// assert_eq!(Authority::deserialize_bytes(&auth.serialize_bytes()).unwrap(), auth);
+    /// ```
+    pub fn deserialize_bytes(bytes: &[u8]) -> Result<Authority, UriError> {
+        let text =
+            core::str::from_utf8(bytes).map_err(|_| UriError::NonUtf8 { len: bytes.len() })?;
+        super::generic::parse_authority(text)
+    }
+}
+
+impl crate::io::Serializable for Authority {
+    type Error = UriError;
+
+    fn serialize_bytes(&self) -> Vec<u8> {
+        Authority::serialize_bytes(self)
+    }
+
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, UriError> {
+        Authority::deserialize_bytes(bytes)
     }
 }
 

@@ -101,6 +101,21 @@ test('byte codec round-trips and is the exact inverse', () => {
   assert.throws(() => Uri.deserializeBytes(Buffer.from([0xff, 0xfe])), /not valid UTF-8/)
 })
 
+test('Authority byte codec round-trips and is the exact inverse', () => {
+  const auth = new Authority('example.com', 'user', 'pw', 8080)
+  const raw = auth.serializeBytes()
+  assert.ok(Buffer.isBuffer(raw))
+  assert.equal(raw.toString('utf8'), 'user:pw@example.com:8080') // the canonical string
+  assert.ok(Authority.deserializeBytes(raw).equals(auth))
+
+  // A bare host round-trips too.
+  const bare = Authority.fromHost('[::1]')
+  assert.ok(Authority.deserializeBytes(bare.serializeBytes()).equals(bare))
+
+  // Non-UTF-8 bytes are rejected with a guided error.
+  assert.throws(() => Authority.deserializeBytes(Buffer.from([0xff, 0xfe])), /not valid UTF-8/)
+})
+
 test('value semantics: equality and hashing agree with the bytes', () => {
   const a = Uri.parse('sc://h/p')
   const b = Uri.parse('sc://h/p')
@@ -154,6 +169,21 @@ test('Uri <-> Url interchange', () => {
   assert.ok(uri instanceof Uri)
   assert.equal(uri.scheme, 'sc')
   assert.equal(uri.toString(), 'sc://h/p')
+})
+
+test('Url.fromUri is the factory counterpart of Uri.toUrl', () => {
+  const uri = Uri.parse('https://h/p?q=1')
+  const url = Url.fromUri(uri)
+  assert.ok(url instanceof Url)
+  assert.ok(url.equals(uri.toUrl())) // same conversion, factory-shaped
+  assert.equal(url.toString(), 'https://h/p?q=1')
+
+  // The Url is built from a copy — mutating the source Uri afterwards changes nothing.
+  uri.setPath('/other')
+  assert.equal(url.path, '/p')
+
+  // A scheme-less Uri is rejected with the same guided error as toUrl.
+  assert.throws(() => Url.fromUri(Uri.parse('/relative')), /requires a scheme/)
 })
 
 test('Url byte codec and value semantics', () => {
@@ -334,6 +364,24 @@ test('bulk query update and normalize', () => {
 
   const built = Uri.parse('http://h/p?b=2').withParams([['a', '1']]).withNormalizedParams()
   assert.equal(built.toString(), 'http://h/p?a=1&b=2')
+})
+
+test('setParams / withParams reject malformed pairs with a guided error', () => {
+  const uri = Uri.parse('http://h/p?a=1')
+  assert.throws(() => uri.setParams([['a']]), /each params pair must be \[key, value\]/)
+  assert.throws(() => uri.setParams([['a']]), /1 elements/)
+  assert.throws(() => uri.setParams([['a', 'b', 'c']]), /3 elements/)
+  assert.throws(() => uri.withParams([[]]), /0 elements/)
+  assert.equal(uri.query, 'a=1', 'a rejected bulk update must not partially apply')
+
+  // Url mirrors the validation.
+  const url = Url.parse('https://h/p')
+  assert.throws(() => url.setParams([['k', 'v', 'extra']]), /3 elements/)
+  assert.throws(() => url.withParams([['only-key']]), /each params pair must be \[key, value\]/)
+
+  // Well-formed pairs still work everywhere.
+  url.setParams([['k', 'v']])
+  assert.equal(url.param('k'), 'v')
 })
 
 test('query parameter percent-encoding', () => {

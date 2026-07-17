@@ -1084,7 +1084,7 @@ fn split_scheme(s: &str) -> Result<(Option<String>, &str), UriError> {
 
 /// Parses an authority `[ userinfo "@" ] host [ ":" port ]`, with `userinfo` split into
 /// `user [ ":" password ]` and an IPv6 literal host kept bracketed.
-fn parse_authority(auth: &str) -> Result<Authority, UriError> {
+pub(crate) fn parse_authority(auth: &str) -> Result<Authority, UriError> {
     let (userinfo, hostport) = match auth.split_once('@') {
         Some((ui, hp)) => (Some(ui), hp),
         None => (None, auth),

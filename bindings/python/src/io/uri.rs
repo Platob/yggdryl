@@ -5,10 +5,10 @@
 //! perfectly good `Uri`); a [`Url`] is an **absolute** URI (one that carries a scheme); an
 //! [`Authority`] is the `[user[:password]@]host[:port]` component.
 //!
-//! Each has value semantics (equal iff their canonical strings are equal), and `Uri` /
-//! `Url` round-trip through bytes (`serialize_bytes` /
-//! `deserialize_bytes`, and pickle via `__reduce__`; `Authority` carries no byte codec in
-//! the core, so it pickles through its four components instead).
+//! Each has value semantics (equal iff their canonical strings are equal), and all three
+//! round-trip through bytes (`serialize_bytes` / `deserialize_bytes` — for `Authority` the
+//! canonical `[user[:password]@]host[:port]` string bytes) and pickle via `__reduce__`
+//! (`Authority` pickles through its four components).
 //!
 //! Paths are POSIX slash-normalized: a Windows drive path (`C:\Users\a.txt`), a UNC path
 //! (`\\server\share`), or any back-slashed input has every `\` rewritten to `/` on the way
@@ -207,6 +207,20 @@ impl Authority {
         }
     }
 
+    /// The canonical `[user[:password]@]host[:port]` string as UTF-8 bytes.
+    fn serialize_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.serialize_bytes())
+    }
+
+    /// Reconstructs an authority from the bytes produced by `serialize_bytes` (the exact
+    /// inverse), raising a guided `ValueError` on non-UTF-8 bytes or a parse failure.
+    #[staticmethod]
+    fn deserialize_bytes(bytes: &[u8]) -> PyResult<Self> {
+        uri::Authority::deserialize_bytes(bytes)
+            .map(|inner| Self { inner })
+            .map_err(uri_err)
+    }
+
     fn __eq__(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
@@ -217,7 +231,7 @@ impl Authority {
         hasher.finish()
     }
 
-    /// Pickles through the four components (the core `Authority` has no byte codec).
+    /// Pickles through the four components (kept even now that the core has a byte codec).
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, AuthorityParts)> {
         let ctor = py.get_type_bound::<Authority>().into_any().unbind();
         Ok((
@@ -674,7 +688,7 @@ impl Uri {
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
-    /// or appended if absent). The value is stored verbatim.
+    /// or appended if absent). The key and value are percent-encoded for storage.
     fn set_param(&mut self, key: &str, value: &str) {
         self.inner.set_param(key, value);
     }
@@ -1195,7 +1209,7 @@ impl Url {
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
-    /// or appended if absent). The value is stored verbatim.
+    /// or appended if absent). The key and value are percent-encoded for storage.
     fn set_param(&mut self, key: &str, value: &str) {
         self.inner.set_param(key, value);
     }

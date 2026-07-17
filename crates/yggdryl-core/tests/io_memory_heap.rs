@@ -566,3 +566,48 @@ fn heap_serializable_is_its_bytes() {
     assert_eq!(back, h); // equality is content-only, so the round-trip is exact
     assert_eq!(back.uri().to_string(), "mem://heap"); // metadata is not serialized
 }
+
+// -------------------------------------------------------------------------------------
+// Review regressions: clamped-window write errors, overflow guard, hostile lengths
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn window_full_and_typed_writes_error_at_the_edge() {
+    // The raw primitive clamps (documented); the FULL and TYPED writes must report the
+    // shortfall instead of silently succeeding.
+    let mut win = Heap::from_slice(b"hello world").window(6, 5).unwrap();
+    assert!(matches!(
+        win.pwrite_all(3, b"ABCDEF").unwrap_err(),
+        IoError::UnexpectedEof { .. }
+    ));
+    assert!(win.pwrite_i32(3, -1).is_err()); // 4 bytes into 2 of room
+    assert!(win.pwrite_i64(0, 1).is_err()); // 8 bytes into a 5-byte window
+                                            // Within the window they still succeed.
+    win.pwrite_all(0, b"WORLD").unwrap();
+    assert_eq!(win.pread_vec(0, 5), b"WORLD");
+}
+
+#[test]
+fn heap_write_overflowing_the_address_space_is_a_guided_error() {
+    let mut h = Heap::new();
+    // The primitive is a no-op (0 written)…
+    assert_eq!(h.pwrite_byte_array(u64::MAX - 1, b"xy"), 0);
+    // …and the full write reports the shortfall instead of wrapping or panicking.
+    assert!(matches!(
+        h.pwrite_all(u64::MAX - 1, b"xy").unwrap_err(),
+        IoError::UnexpectedEof { .. }
+    ));
+    assert!(h.is_empty());
+}
+
+#[test]
+fn hostile_lengths_never_preallocate() {
+    // pread_vec / pread_into / pread_utf8 size to what is AVAILABLE, not the raw request, so
+    // a hostile length cannot trigger a runaway allocation (usize::MAX would abort if it did).
+    let src = Heap::from_slice(b"tiny");
+    assert_eq!(src.pread_vec(0, usize::MAX), b"tiny");
+    let mut scratch = Vec::new();
+    assert_eq!(src.pread_into(1, usize::MAX, &mut scratch), 3);
+    assert_eq!(&scratch, b"iny");
+    assert_eq!(src.pread_utf8(0, usize::MAX).unwrap(), "tiny");
+}

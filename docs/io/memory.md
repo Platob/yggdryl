@@ -10,16 +10,18 @@ against the same contract.
 
 | Type | What it is |
 |---|---|
-| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives, the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …), the buffer-reusing `pread_into` transfer, `byte_size` / `bit_size`, `Vec`-like `capacity` / `reserve`, an addressing [`uri`](#addressing), and the [`cursor()` / `window()`](#cursors-and-windows) builders |
-| `IOCursor<T>` | a concrete **cursor** wrapping any source: `read` / `write` advance a position, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64`, and the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
+| `IOBase` | the **source contract** — the `pread_byte_array` / `pwrite_byte_array` primitives; the typed `byte` / `bit` / `i32` / `i64` accessors (`pread_i32`, `pwrite_byte`, …); [bulk vectorized arrays, repeated-value fills, and UTF-8 text](#bulk-repeated-and-text-io); the buffer-reusing `pread_into` transfer; `byte_size` / `bit_size`; `Vec`-like `capacity` / `reserve` and a pre-allocating `with_capacity(capacity)` builder; an addressing [`uri`](#addressing) plus [`headers` metadata, an access `mode`, and a `kind`](#metadata-mode-and-kind); and the [`cursor()` / `window()`](#cursors-and-windows) builders |
+| `IOCursor<T>` | a concrete **cursor** wrapping any source: `read` / `write` advance a position, `seek` moves it relative to a [`Whence`] anchor, typed `read_byte` / `read_i32` / `read_i64` / `read_utf8`, and the bounded bulk readers (`read_to_end`, `read_exact_vec`) |
 | `IOSlice<T>` | a concrete bounded **window** wrapping any source, addressed from its own `0` |
 | `Whence` | the seek anchor: `Start` / `Current` / `End` |
-| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds`) |
+| `IoError` | the guided failures the byte-access methods return (`UnexpectedEof` / `InvalidSeek` / `SliceOutOfBounds` / `InvalidUtf8` / `UnknownName`) |
 
 Bit addressing is **LSB-first** (bit `i` is bit `i % 8` of byte `i / 8`, least-significant first),
 and integers are **little-endian**, matching Arrow. The two byte-array primitives are infallible
 (a read past the end returns fewer bytes; a write past the end grows the source, zero-filling any
 gap); the typed and *exact* helpers built on them return a guided error at the end of the data.
+When the size is known up front, build with `with_capacity(capacity)` so the first writes never
+reallocate.
 
 ## `Heap`
 
@@ -119,10 +121,12 @@ constructor accepts a bytes value (or nothing) and infers what to build.
 
 ## Addressing
 
-Every source carries an addressing [`Uri`](uri.md) — `uri()` on any `IOBase`. A raw scratch buffer
-reports the empty URI; a `Heap` can be given one (`with_uri` / `set_uri`), and the `cursor()` /
-`window()` wrappers delegate to their inner source's. The address is metadata: it is **not** part of
-a heap's value equality (two heaps with the same bytes are equal regardless of address).
+Every source carries an addressing [`Uri`](uri.md) — `uri()` on any `IOBase`. An unaddressed
+in-memory source reports the **`mem` scheme**'s stable synthetic address `mem://heap`
+(deterministic — the real allocation address is deliberately not leaked); a `Heap` can be given
+a real one (`with_uri` / `set_uri`), and the `cursor()` / `window()` wrappers delegate to their
+inner source's. The address is metadata: it is **not** part of a heap's value equality (two
+heaps with the same bytes are equal regardless of address).
 
 === "Python"
 
@@ -130,6 +134,7 @@ a heap's value equality (two heaps with the same bytes are equal regardless of a
     from yggdryl.memory import Heap
     from yggdryl.uri import Uri
 
+    assert str(Heap().uri) == "mem://heap"          # the synthetic default
     h = Heap(b"data").with_uri(Uri.parse("mem://scratch/a"))
     assert h.uri.host == "scratch"
     assert h == Heap(b"data")           # address is not part of equality
@@ -141,6 +146,7 @@ a heap's value equality (two heaps with the same bytes are equal regardless of a
     const { Heap } = require('yggdryl').memory
     const { Uri } = require('yggdryl').uri
 
+    console.assert(new Heap().uri.toString() === 'mem://heap')  // the synthetic default
     const h = new Heap(Buffer.from('data')).withUri(Uri.parse('mem://scratch/a'))
     console.assert(h.uri.host === 'scratch')
     console.assert(h.equals(new Heap(Buffer.from('data'))))
@@ -152,10 +158,138 @@ a heap's value equality (two heaps with the same bytes are equal regardless of a
     use yggdryl_core::io::memory::{Heap, IOBase};
     use yggdryl_core::io::uri::Uri;
 
+    assert_eq!(Heap::new().uri().to_string(), "mem://heap"); // the synthetic default
     let h = Heap::from_slice(b"data").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
     assert_eq!(h.uri().host(), Some("scratch"));
     assert_eq!(h, Heap::from_slice(b"data")); // address is not part of equality
     ```
+
+## Metadata, mode, and kind
+
+Beyond its address, every source reports three more facets — all delegated by the wrappers:
+
+- **`headers()` / `headers_mut()`** — the source's metadata, as the project-wide
+  [`Headers`](index.md#headers--the-one-metadata-map) map (there is exactly one metadata type).
+  In the bindings `heap.headers` returns a **copy**; write back with `set_headers` /
+  `with_headers`.
+- **`mode()`** — how the source may be accessed, an [`IOMode`](index.md#iomode-and-iokind--int-enums-with-parsers)
+  (`ReadWrite` by default for in-memory sources; settable on `Heap`).
+- **`kind()`** — what the source *is*, an [`IOKind`](index.md#iomode-and-iokind--int-enums-with-parsers)
+  (`Heap` reports `IOKind::Heap`; a file source reports `File` / `Directory` / `Missing`).
+
+Like the address, all three are metadata — excluded from a heap's value equality.
+
+=== "Python"
+
+    ```python
+    from yggdryl.io import Headers, IOKind, IOMode
+    from yggdryl.memory import Heap
+
+    h = Heap(b"x")
+    meta = h.headers                 # a copy — mutate then write back
+    meta.insert("Content-Type", "text/plain")
+    h.set_headers(meta)
+    assert h.headers.content_type() == "text/plain"
+
+    assert h.mode == IOMode.ReadWrite and h.kind == IOKind.Heap
+    ro = h.with_mode(IOMode.Read)
+    assert ro.mode == IOMode.Read
+    ```
+
+=== "Node"
+
+    ```js
+    const { Headers, IOMode, IOKind } = require('yggdryl').io
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap(Buffer.from('x'))
+    const meta = h.headers                    // a copy — mutate then write back
+    meta.insert('Content-Type', 'text/plain')
+    h.setHeaders(meta)
+    console.assert(h.headers.contentType() === 'text/plain')
+
+    console.assert(h.mode === IOMode.ReadWrite && h.kind === IOKind.Heap)
+    console.assert(h.withMode(IOMode.Read).mode === IOMode.Read)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+    use yggdryl_core::io::{IOKind, IOMode};
+
+    let mut h = Heap::from_slice(b"x");
+    h.headers_mut().insert("Content-Type", "text/plain"); // direct mutable access
+    assert_eq!(h.headers().content_type(), Some("text/plain"));
+
+    assert_eq!(h.mode(), IOMode::ReadWrite);
+    assert_eq!(h.kind(), IOKind::Heap);
+    assert_eq!(h.with_mode(IOMode::Read).mode(), IOMode::Read);
+    ```
+
+## Bulk, repeated, and text IO
+
+The typed accessors scale up to **vectorized bulk** forms that stage through fixed stack chunks
+(zero heap allocation; the dense conversion loops auto-vectorize on stable Rust), a
+**repeated-value fill** that never materializes the full array, and **UTF-8 text** built on the
+byte layer (invalid bytes are a guided error).
+
+=== "Python"
+
+    ```python
+    from yggdryl.memory import Heap
+
+    h = Heap()
+    h.pwrite_i32_array(0, [1, -2, 3])            # bulk write
+    assert h.pread_i32_array(0, 3) == [1, -2, 3] # bulk read
+
+    h.pwrite_i32_repeat(12, -1, 1000)            # fill: no 1000-element list is built
+    assert h.pread_i32(12 + 999 * 4) == -1
+
+    text = Heap()
+    text.pwrite_utf8(0, "héllo")
+    assert text.pread_utf8(0, 6) == "héllo"      # é is 2 bytes
+    ```
+
+=== "Node"
+
+    ```js
+    const { Heap } = require('yggdryl').memory
+
+    const h = new Heap()
+    h.pwriteI32Array(0, [1, -2, 3])                        // bulk write
+    console.assert(h.preadI32Array(0, 3).join() === '1,-2,3')
+
+    h.pwriteI32Repeat(12, -1, 1000)                        // fill: no array is built
+    console.assert(h.preadI32(12 + 999 * 4) === -1)
+
+    const text = new Heap()
+    text.pwriteUtf8(0, 'héllo')
+    console.assert(text.preadUtf8(0, 6) === 'héllo')       // é is 2 bytes
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::memory::{Heap, IOBase};
+
+    let mut h = Heap::new();
+    h.pwrite_i32_array(0, &[1, -2, 3]).unwrap();           // bulk write
+    let mut back = [0i32; 3];
+    h.pread_i32_array(0, &mut back).unwrap();              // bulk read
+    assert_eq!(back, [1, -2, 3]);
+
+    h.pwrite_i32_repeat(12, -1, 1000).unwrap();            // fill: no array is built
+    assert_eq!(h.pread_i32(12 + 999 * 4).unwrap(), -1);
+
+    let mut text = Heap::new();
+    text.pwrite_utf8(0, "héllo");
+    assert_eq!(text.pread_utf8(0, 6).unwrap(), "héllo");   // é is 2 bytes
+    ```
+
+The [`io_memory_heap` benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/memory/heap.md)
+pins the claims: bulk arrays run allocation-free at multi-Gelem/s, and `pwrite_i32_repeat` is
+~3.5× the build-a-full-array path.
 
 ## Cursors and windows
 
@@ -175,7 +309,7 @@ cursor over a window. In the bindings these are the `Cursor` and `Slice` classes
     cur.rewind()
     assert cur.read_i32() == -7
 
-    win = Heap(b"hello world").window(6, 5)  # a bounded view, no copy of the tail
+    win = Heap(b"hello world").window(6, 5)  # a bounded window over its own copy of the source
     assert bytes(win) == b"world"
     assert len(win) == 5
     ```

@@ -92,10 +92,20 @@ def test_bytes_and_pickle_round_trip():
     assert Url.deserialize_bytes(url.serialize_bytes()) == url
     assert pickle.loads(pickle.dumps(url)) == url
 
-    # Authority pickles through its components (no core byte codec).
+    # Authority pickles through its components.
     auth = Authority("h", user="u", password="p", port=42)
     assert pickle.loads(pickle.dumps(auth)) == auth
     assert Authority.from_host("h").host == "h"
+
+
+def test_authority_byte_codec_round_trip():
+    auth = Authority("host", user="user", password="pw", port=99)
+    data = auth.serialize_bytes()
+    assert data == b"user:pw@host:99"  # the canonical string as UTF-8 bytes
+    assert Authority.deserialize_bytes(data) == auth
+    assert Authority.deserialize_bytes(b"h") == Authority.from_host("h")
+    with pytest.raises(ValueError):
+        Authority.deserialize_bytes(b"\xff\xfe")  # non-UTF-8 bytes
 
 
 def test_value_semantics_eq_hash():

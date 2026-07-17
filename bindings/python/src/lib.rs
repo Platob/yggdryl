@@ -1,10 +1,11 @@
 //! Python extension for yggdryl — a thin PyO3 wrapper that delegates to `yggdryl-core`.
 //!
 //! The core is the source of truth; each item here is one or two lines over `yggdryl_core`.
-//! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.memory` submodule
-//! (the in-heap `Heap` byte source and the `Whence` seek anchor, mirroring
-//! `yggdryl_core::io::memory`) and the `yggdryl.uri` submodule (RFC 3986 URIs, absolute URLs, and
-//! authorities, mirroring `yggdryl_core::io::uri`).
+//! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.io` submodule
+//! (the io-root value types `Headers` / `IOMode` / `IOKind`, mirroring `yggdryl_core::io`),
+//! the `yggdryl.memory` submodule (the in-heap `Heap` byte source and the `Whence` seek anchor,
+//! mirroring `yggdryl_core::io::memory`) and the `yggdryl.uri` submodule (RFC 3986 URIs,
+//! absolute URLs, and authorities, mirroring `yggdryl_core::io::uri`).
 
 use pyo3::prelude::*;
 
@@ -37,6 +38,7 @@ fn add_submodule(
 #[pymodule]
 fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
+    add_submodule(py, module, "io", io::register)?;
     add_submodule(py, module, "memory", io::memory::register)?;
     add_submodule(py, module, "uri", io::uri::register)?;
     Ok(())

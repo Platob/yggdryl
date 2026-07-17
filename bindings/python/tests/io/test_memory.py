@@ -1,16 +1,20 @@
 """Tests for the ``yggdryl.memory`` in-heap ``Heap`` source and ``Whence`` seek anchor.
 
 Mirrors ``crates/yggdryl-core/tests/memory_heap.rs`` on the Python surface: construction,
-size/capacity, the positioned ``pread_*`` / ``pwrite_*`` primitives and typed accessors,
-the cursor stream, seeks from every anchor, bounded slices, and the value dunders
+size/capacity, the positioned ``pread_*`` / ``pwrite_*`` primitives and typed accessors
+(including UTF-8 text, the bulk ``i32``/``i64`` arrays, and repeated fills), the cursor
+stream, seeks from every anchor, bounded slices, the source metadata (``headers`` /
+``mode`` / ``kind``), the byte codec + pickle, and the value dunders
 (``bytes()`` / ``==`` / ``copy`` / unhashability).
 """
 
 import copy
+import pickle
 
 import pytest
 
 import yggdryl.memory
+from yggdryl.io import Headers, IOKind, IOMode
 from yggdryl.memory import Cursor, Heap, Slice, Whence
 from yggdryl.uri import Uri
 
@@ -416,6 +420,19 @@ def test_cursor_inner_and_uri_delegate():
 # -------------------------------------------------------------------------------------
 
 
+def test_slice_over_matches_constructor():
+    h = Heap(b"hello world")
+    win = Slice.over(h, 6, 5)
+    assert isinstance(win, Slice)
+    assert win.byte_size() == 5
+    assert win.offset == 6
+    assert win.to_bytes() == b"world"
+    win.pwrite_byte_array(0, b"W")  # over() wraps an independent copy
+    assert h.to_bytes() == b"hello world"
+    with pytest.raises(ValueError, match="runs past the end"):
+        Slice.over(h, 6, 6)  # same bounds check as the constructor
+
+
 def test_slice_construct_and_read():
     h = Heap(b"hello world")
     win = Slice(h, 6, 5)
@@ -452,3 +469,196 @@ def test_slice_inner_and_uri_delegate():
     assert isinstance(inner, Heap)
     assert inner.to_bytes() == b"hello world"  # inner() is the whole source
     assert "offset=0" in repr(win)
+
+
+# -------------------------------------------------------------------------------------
+# Heap metadata: headers / mode / kind
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_headers_getter_returns_a_copy():
+    h = Heap(b"x")
+    assert isinstance(h.headers, Headers)
+    assert len(h.headers) == 0
+
+    grabbed = h.headers
+    grabbed.insert("a", "1")  # mutating the returned copy...
+    assert len(h.headers) == 0  # ...does not touch the heap until written back
+    h.set_headers(grabbed)
+    assert h.headers.get("a") == "1"
+
+
+def test_heap_with_headers_is_a_copy():
+    meta = Headers().with_("Content-Type", "text/plain")
+    h = Heap(b"x")
+    tagged = h.with_headers(meta)
+    assert tagged.headers.content_type() == "text/plain"
+    assert len(h.headers) == 0  # the original is untouched
+    assert tagged == h  # equality is over the bytes; headers are metadata
+
+
+def test_heap_mode_default_set_and_with():
+    h = Heap(b"x")
+    assert h.mode == IOMode.ReadWrite  # in-memory default
+    h.set_mode(IOMode.Read)
+    assert h.mode == IOMode.Read
+
+    readonly = Heap(b"x").with_mode(IOMode.Append)
+    assert readonly.mode == IOMode.Append
+    assert Heap(b"x").mode == IOMode.ReadWrite  # with_mode never mutated a fresh heap
+
+
+def test_heap_kind_is_heap():
+    assert Heap().kind == IOKind.Heap
+    assert Heap(b"x").kind == IOKind.Heap
+
+
+def test_cursor_and_slice_metadata_delegate():
+    meta = Headers().with_("a", "1")
+    h = Heap(b"hello world").with_headers(meta).with_mode(IOMode.Read)
+
+    cur = Cursor.over(h)
+    assert cur.headers.get("a") == "1"
+    assert cur.mode == IOMode.Read
+    assert cur.kind == IOKind.Heap
+
+    win = Slice(h, 0, 5)
+    assert win.headers.get("a") == "1"
+    assert win.mode == IOMode.Read
+    assert win.kind == IOKind.Heap
+
+
+# -------------------------------------------------------------------------------------
+# UTF-8 text: positioned + cursor-style
+# -------------------------------------------------------------------------------------
+
+
+def test_pread_pwrite_utf8_round_trip_and_invalid():
+    h = Heap()
+    assert h.pwrite_utf8(0, "héllo") == 6  # é is 2 bytes
+    assert h.pread_utf8(0, 6) == "héllo"
+    assert h.pread_utf8(0, 100) == "héllo"  # clamped near the end
+    with pytest.raises(ValueError, match="invalid UTF-8"):
+        h.pread_utf8(0, 2)  # cuts the 2-byte é in half
+
+
+def test_heap_cursor_style_utf8_advances_by_bytes():
+    h = Heap()
+    assert h.write_utf8("héllo") == 6
+    assert h.position == 6
+    h.rewind()
+    assert h.read_utf8(6) == "héllo"
+    assert h.position == 6
+    h.set_position(1)
+    with pytest.raises(ValueError, match="invalid UTF-8"):
+        h.read_utf8(1)  # lands inside é
+    assert h.position == 1  # a failed read leaves the cursor put
+
+
+def test_cursor_class_utf8():
+    cur = Cursor()
+    assert cur.write_utf8("héllo") == 6
+    cur.rewind()
+    assert cur.read_utf8(6) == "héllo"
+    # Positioned UTF-8 reaches any offset without moving the cursor.
+    assert cur.pread_utf8(1, 2) == "é"
+    assert cur.position == 6
+    assert cur.pwrite_utf8(0, "H") == 1
+    assert cur.pread_utf8(0, 1) == "H"
+
+
+def test_slice_pread_utf8_within_window():
+    h = Heap()
+    h.pwrite_utf8(0, "hello world")
+    win = Slice(h, 6, 5)
+    assert win.pread_utf8(0, 5) == "world"
+    assert win.pread_utf8(0, 100) == "world"  # clamped to the window
+
+
+# -------------------------------------------------------------------------------------
+# Bulk typed arrays (i32 / i64)
+# -------------------------------------------------------------------------------------
+
+
+def test_bulk_i32_array_round_trip_across_chunks():
+    values = list(range(-500, 500))  # 1000 elements crosses the 256-element chunk
+    h = Heap()
+    h.pwrite_i32_array(0, values)
+    assert h.byte_size() == 4000
+    assert h.pread_i32_array(0, 1000) == values
+    assert h.pread_i32(0) == -500  # little-endian, element-addressable
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        h.pread_i32_array(0, 1001)  # one element too many
+
+
+def test_bulk_i64_array_round_trip_across_chunks():
+    values = [(1 << 40) + i for i in range(1000)]
+    h = Heap()
+    h.pwrite_i64_array(8, values)  # offset 8 zero-fills the gap
+    assert h.byte_size() == 8 + 8000
+    assert h.pread_i64_array(8, 1000) == values
+    assert h.pread_i64(0) == 0  # the zero-filled gap
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        h.pread_i64_array(8, 1001)
+
+
+def test_bulk_read_hostile_count_fails_fast_without_allocating():
+    tiny = Heap(b"tiny")
+    # The bounds are checked BEFORE the result list is allocated, so a hostile count
+    # raises immediately instead of attempting a multi-GiB allocation.
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        tiny.pread_i32_array(0, 2_000_000_000)
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        tiny.pread_i64_array(0, 2_000_000_000)
+    with pytest.raises(ValueError, match="unexpected end of data"):
+        tiny.pread_i32_array(99, 1)  # offset past the end: 0 bytes available
+
+
+# -------------------------------------------------------------------------------------
+# Repeated-value fills
+# -------------------------------------------------------------------------------------
+
+
+def test_pwrite_byte_repeat():
+    h = Heap()
+    h.pwrite_byte_repeat(2, 0xAB, 5)
+    assert h.to_bytes() == b"\x00\x00" + b"\xab" * 5
+    h.pwrite_byte_repeat(0, 0x00, 0)  # zero count is a no-op
+    assert h.byte_size() == 7
+
+
+def test_pwrite_i32_and_i64_repeat_cross_chunks():
+    h = Heap()
+    h.pwrite_i32_repeat(0, -1, 1000)  # crosses the 256-element stack chunk
+    assert h.byte_size() == 4000
+    assert h.pread_i32_array(0, 1000) == [-1] * 1000
+
+    wide = Heap()
+    wide.pwrite_i64_repeat(0, 1 << 40, 1000)
+    assert wide.byte_size() == 8000
+    assert wide.pread_i64_array(0, 1000) == [1 << 40] * 1000
+
+
+# -------------------------------------------------------------------------------------
+# Heap byte codec + pickle
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_serialize_deserialize_round_trip():
+    h = Heap(b"payload")
+    data = h.serialize_bytes()
+    assert data == b"payload"  # the value form is the stored bytes
+    back = Heap.deserialize_bytes(data)
+    assert isinstance(back, Heap)
+    assert back == h
+    assert Heap.deserialize_bytes(b"") == Heap()
+
+
+def test_heap_pickle_round_trip_is_content_only():
+    h = Heap(b"payload").with_uri(Uri.parse("mem://a/1"))
+    h.set_position(3)
+    back = pickle.loads(pickle.dumps(h))
+    assert back == h  # equality is over the stored bytes only
+    assert back.to_bytes() == b"payload"
+    assert back.position == 0  # the cursor is transient
+    assert str(back.uri) == "mem://heap"  # the address is metadata, not value
