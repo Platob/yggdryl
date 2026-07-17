@@ -2,12 +2,22 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const nodePath = require('node:path')
 
 const yggdryl = require('../..')
 const io = yggdryl.io
 const { Headers } = yggdryl.headers
-const { Heap, Whence, Cursor, Slice } = yggdryl.memory
+const { Heap, Whence, Cursor, Slice, Mmap } = yggdryl.memory
 const { Uri } = yggdryl.uri
+
+let mmapSeq = 0
+/** A unique temp-file path per test (deleted by the test after `close()`). */
+function tmpFile() {
+  mmapSeq += 1
+  return nodePath.join(os.tmpdir(), `yggdryl-node-mmap-${process.pid}-${mmapSeq}.bin`)
+}
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
@@ -686,4 +696,291 @@ test('capacity family: checked reserves, ensure, shrink, spare', () => {
   h.shrinkToFit()
   assert.ok(h.capacity() <= cap)
   assert.equal(h.preadUtf8(0, 5), 'alive')
+})
+
+// -------------------------------------------------------------------------------------
+// Mmap — the memory-mapped file source
+// -------------------------------------------------------------------------------------
+
+test('Mmap.create: typed, bulk, repeat, and utf8 round-trips over a file', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  assert.ok(m instanceof Mmap)
+  assert.ok(m.isEmpty())
+  assert.equal(m.byteSize(), 0)
+
+  // Typed positioned accessors (little-endian, growing + zero-filling like Heap).
+  m.pwriteI32(0, -42)
+  m.pwriteI64(4, 2 ** 40) // below 2^53
+  m.pwriteByte(12, 0xab)
+  assert.equal(m.preadI32(0), -42)
+  assert.equal(m.preadI64(4), 2 ** 40)
+  assert.equal(m.preadByte(12), 0xab)
+  assert.equal(m.bitSize(), m.byteSize() * 8)
+
+  // Bit accessors are LSB-first with i64 offsets; negatives throw the guided error.
+  m.pwriteBit(111, true) // byte 13, bit 7
+  assert.equal(m.preadBit(111), true)
+  assert.equal(m.preadBit(110), false)
+  assert.throws(() => m.preadBit(-1), /invalid bit offset -1/)
+
+  // Byte-array primitives: short reads near the end, growing writes.
+  assert.equal(m.pwriteByteArray(14, Buffer.from('xy')), 2)
+  assert.deepEqual(m.preadByteArray(14, 100), Buffer.from('xy')) // clamped at the end
+  assert.deepEqual(m.preadByteArray(999, 4), Buffer.alloc(0)) // past the end
+
+  // Bulk typed arrays (300 elements crosses the 256-element staging chunk).
+  const i32s = Array.from({ length: 300 }, (_, i) => (i % 2 ? -1 : 1) * i * 1000)
+  m.pwriteI32Array(16, i32s)
+  assert.deepEqual(m.preadI32Array(16, 300), i32s)
+  const i64s = Array.from({ length: 10 }, (_, i) => i * 2 ** 40 + i)
+  m.pwriteI64Array(1216, i64s)
+  assert.deepEqual(m.preadI64Array(1216, 10), i64s)
+  assert.throws(() => m.preadI32Array(0, 2_000_000_000), /unexpected end of data/) // hostile
+  assert.throws(() => m.preadI64Array(0, 2_000_000_000), /unexpected end of data/) // count guard
+
+  // Repeated-value fills.
+  m.pwriteByteRepeat(1296, 0x77, 300)
+  assert.equal(m.preadByte(1595), 0x77)
+  m.pwriteI32Repeat(1596, -1, 300)
+  assert.ok(m.preadI32Array(1596, 300).every((v) => v === -1))
+  m.pwriteI64Repeat(2796, 2 ** 40 + 7, 10)
+  assert.equal(m.preadI64(2868), 2 ** 40 + 7)
+
+  // Positioned UTF-8 (byte counts, clamped decode, cut-char throws).
+  assert.equal(m.pwriteUtf8(2876, 'héllo'), 6)
+  assert.equal(m.preadUtf8(2876, 6), 'héllo')
+  assert.throws(() => m.preadUtf8(2877, 1), /invalid UTF-8/) // cuts é in half
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap cursor stream: read/write/typed/seek/readToEnd over a file', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+
+  assert.equal(m.write(Buffer.from('hello ')), 6)
+  m.writeByte(0x7f)
+  m.writeI32(-7)
+  m.writeI64(2 ** 40)
+  assert.equal(m.writeUtf8('wörld'), 6)
+  assert.equal(m.position, 6 + 1 + 4 + 8 + 6)
+
+  m.rewind()
+  assert.equal(m.position, 0)
+  assert.deepEqual(m.read(6), Buffer.from('hello '))
+  assert.equal(m.readByte(), 0x7f)
+  assert.equal(m.readI32(), -7)
+  assert.equal(m.readI64(), 2 ** 40)
+  assert.equal(m.readUtf8(6), 'wörld')
+
+  // Seek from every anchor; readToEnd drains to the end.
+  assert.equal(m.seek(Whence.Start, 19), 19)
+  assert.equal(m.seek(Whence.Current, -1), 18)
+  assert.equal(m.seek(Whence.End, -6), m.byteSize() - 6)
+  assert.deepEqual(m.readToEnd(), Buffer.from('wörld'))
+  assert.equal(m.position, m.byteSize())
+  assert.deepEqual(m.read(5), Buffer.alloc(0)) // at the end
+  assert.throws(() => m.seek(Whence.Start, -1), /invalid seek/)
+
+  // setPosition past the end zero-fills on the next write, like Heap.
+  const size = m.byteSize()
+  m.setPosition(size + 2)
+  m.write(Buffer.from('Z'))
+  assert.equal(m.preadByte(size), 0)
+  assert.equal(m.preadByte(size + 2), 0x5a)
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.open generic dispatch: a string path and a uri.Uri open the same file', () => {
+  const file = tmpFile()
+  fs.writeFileSync(file, 'hello world')
+
+  const byPath = Mmap.open(file) // string → open_path
+  assert.equal(byPath.byteSize(), 11)
+  assert.equal(byPath.preadUtf8(0, 5), 'hello')
+  byPath.close()
+
+  const byUri = Mmap.open(Uri.fromPath(file)) // Uri → open_uri
+  assert.equal(byUri.byteSize(), 11)
+  assert.equal(byUri.preadUtf8(6, 5), 'world')
+  byUri.close()
+
+  fs.rmSync(file)
+})
+
+test('Mmap persistence: close() truncates the padding; reopen sees the exact bytes', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('hello mapped world') // 18 bytes; capacity grows past it
+  assert.ok(m.capacity() >= 18)
+  m.close() // unmap + truncate the capacity padding
+
+  assert.equal(fs.statSync(file).size, 18) // the on-disk file is exactly the logical length
+
+  const back = Mmap.open(file)
+  assert.equal(back.byteSize(), 18)
+  assert.equal(back.preadUtf8(0, 18), 'hello mapped world')
+  back.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.open on a missing file throws the guided error naming the path', () => {
+  const file = tmpFile()
+  assert.throws(() => Mmap.open(file), /check that the path exists/)
+  assert.throws(() => Mmap.open(file), /cannot open/)
+  assert.throws(() => Mmap.openReadonly(file), /check that the path exists/)
+})
+
+test('Mmap.openReadonly: reads work, writes are inert, tryReserve throws, mode is Read', () => {
+  const file = tmpFile()
+  fs.writeFileSync(file, 'readonly data')
+
+  const m = Mmap.openReadonly(file)
+  assert.equal(m.mode, io.IOMode.Read)
+  assert.equal(m.preadUtf8(0, 8), 'readonly')
+  assert.deepEqual(m.preadByteArray(9, 4), Buffer.from('data'))
+
+  // The write primitives write nothing (count 0); the full writes name the fix.
+  assert.equal(m.pwriteByteArray(0, Buffer.from('X')), 0)
+  assert.equal(m.pwriteUtf8(0, 'X'), 0)
+  assert.throws(() => m.pwriteByte(0, 1), /read-only/)
+  assert.throws(() => m.pwriteI32(0, 1), /open_uri \/ create_uri/) // the guided fix
+  assert.throws(() => m.tryReserve(1024), /read-only/)
+  assert.deepEqual(m.preadByteArray(0, 8), Buffer.from('readonly')) // bytes untouched
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap capacity family over a file: reserve/ensure/spare/shrink', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('abc')
+
+  m.tryReserve(1024)
+  assert.ok(m.capacity() >= 1027)
+  assert.equal(m.spareCapacity(), m.capacity() - 3)
+  m.tryReserveExact(2048)
+  m.reserve(100)
+  m.reserveExact(100)
+
+  m.ensureCapacity(8192)
+  assert.ok(m.capacity() >= 8192)
+  const cap = m.capacity()
+  m.tryEnsureCapacity(16) // already satisfied — a no-op
+  assert.equal(m.capacity(), cap)
+
+  // shrink releases the padding down to the logical length; the bytes survive.
+  m.shrinkTo(64)
+  m.shrinkToFit()
+  assert.equal(m.capacity(), 3)
+  assert.equal(m.preadUtf8(0, 3), 'abc')
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap auto-grows on appends (amortized) and zero-fills write gaps', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+
+  const chunk = Buffer.alloc(1000, 0x61)
+  for (let i = 0; i < 10; i += 1) assert.equal(m.write(chunk), 1000)
+  assert.equal(m.byteSize(), 10000)
+  assert.ok(m.capacity() >= 10000)
+  assert.equal(m.preadByte(9999), 0x61)
+
+  // A positioned write past the end grows and zero-fills the gap.
+  m.pwriteByte(10005, 0xff)
+  assert.equal(m.byteSize(), 10006)
+  assert.equal(m.preadByte(10002), 0)
+  assert.equal(m.preadByte(10005), 0xff)
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap metadata: kind is File, uri round-trips the path, headers/setMode', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+
+  assert.equal(m.kind, io.IOKind.File)
+  assert.equal(m.path, file)
+
+  // The uri is the file path as a POSIX-slash URI — and reopens the same mapping.
+  assert.ok(m.uri instanceof Uri)
+  assert.equal(m.uri.path, file.replaceAll('\\', '/'))
+  assert.ok(m.uri.equals(Uri.fromPath(file)))
+
+  // headers: the getter returns a copy; setHeaders writes back (no withHeaders — no copy).
+  assert.ok(m.headers instanceof Headers)
+  assert.ok(m.headers.isEmpty())
+  const headers = m.headers
+  headers.insert('Content-Type', 'application/octet-stream')
+  assert.ok(m.headers.isEmpty()) // the getter was a copy
+  m.setHeaders(headers)
+  assert.equal(m.headers.contentType(), 'application/octet-stream')
+  assert.equal(m.withHeaders, undefined) // a live mapping cannot be copied
+
+  // mode: ReadWrite from create; setMode relabels in place (no withMode — no copy).
+  assert.equal(m.mode, io.IOMode.ReadWrite)
+  m.setMode(io.IOMode.Read)
+  assert.equal(m.mode, io.IOMode.Read)
+  assert.equal(m.withMode, undefined)
+
+  // DESIGN mirror: no value surface and no Heap-monomorphic views on a live OS resource.
+  assert.equal(m.equals, undefined)
+  assert.equal(m.copy, undefined)
+  assert.equal(m.serializeBytes, undefined)
+  assert.equal(m.cursor, undefined)
+  assert.equal(m.window, undefined)
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.flush persists the mapped bytes to disk without closing', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('flushed')
+  m.flush() // msync/FlushViewOfFile + fsync — must not throw
+
+  // The bytes are on disk while the mapping is still open (the file keeps its
+  // capacity padding until close(), so compare only the logical length).
+  const onDisk = fs.readFileSync(file).subarray(0, m.byteSize())
+  assert.deepEqual(onDisk, Buffer.from('flushed'))
+
+  m.close()
+  fs.rmSync(file)
+})
+
+test('Mmap.close is deterministic and idempotent; use-after-close throws the guided error', () => {
+  const file = tmpFile()
+  const m = Mmap.create(file)
+  m.writeUtf8('bye')
+
+  // toString names the path and logical size while open.
+  assert.ok(m.toString().includes(file))
+  assert.ok(m.toString().includes('3 bytes'))
+
+  m.close()
+  m.close() // idempotent
+
+  // Every method throws the guided closed error; toString stays total for coercion.
+  assert.equal(m.closed, true)
+  assert.throws(() => m.byteSize(), /the mapping is closed; reopen it/)
+  assert.throws(() => m.preadByte(0), /closed/)
+  assert.throws(() => m.pwriteUtf8(0, 'x'), /closed/)
+  assert.throws(() => m.flush(), /closed/)
+  assert.throws(() => m.position, /closed/)
+  assert.equal(m.toString(), 'Mmap(closed)')
+
+  // Closed means unmapped — on Windows a mapped file cannot be deleted, so this
+  // succeeding is itself the proof the mapping was released deterministically.
+  fs.rmSync(file)
+  assert.ok(!fs.existsSync(file))
 })

@@ -210,23 +210,63 @@ impl Mmap {
 
     /// (Re)maps the file at exactly `new_cap` bytes, growing/shrinking the on-disk file to
     /// match (writable mappings only — a read-only mapping maps the file as it is). The
-    /// logical `len` is untouched.
+    /// logical `len` is untouched on success.
+    ///
+    /// Failure-safety: a failed grow/map can never leave a dangling state where `len > 0`
+    /// but no view exists — the file is extended **before** the old view is dropped
+    /// (growing a mapped file is legal on every platform), and any later failure restores
+    /// a view over the file's current extent (or clamps `len` to `0` as the last resort).
     fn remap(&mut self, new_cap: usize) -> Result<(), IoError> {
-        self.unmap();
-        if self.mode.is_writable() {
+        let growing = new_cap >= self.map_len;
+        if self.mode.is_writable() && growing && new_cap != self.map_len {
+            // Extend first: if this fails, the OLD view is still fully intact.
             self.file
                 .set_len(new_cap as u64)
                 .map_err(|error| file_err("grow", &self.path, &error))?;
+        }
+        self.unmap();
+        if self.mode.is_writable() && !growing {
+            // Shrinking needs the view gone first (Windows refuses to truncate a mapped
+            // file); on failure, restore a view so the existing bytes stay readable.
+            if let Err(error) = self.file.set_len(new_cap as u64) {
+                self.restore_view();
+                return Err(file_err("grow", &self.path, &error));
+            }
         }
         if new_cap == 0 {
             return Ok(());
         }
         let writable = self.mode.is_writable();
         // SAFETY: the file is open with matching access and is `new_cap` bytes long.
-        self.ptr = unsafe { sys::map(&self.file, new_cap, writable) }
-            .map_err(|error| file_err("map", &self.path, &error))?;
-        self.map_len = new_cap;
-        Ok(())
+        match unsafe { sys::map(&self.file, new_cap, writable) } {
+            Ok(ptr) => {
+                self.ptr = ptr;
+                self.map_len = new_cap;
+                Ok(())
+            }
+            Err(error) => {
+                self.restore_view();
+                Err(file_err("map", &self.path, &error))
+            }
+        }
+    }
+
+    /// Best-effort recovery after a failed remap: maps whatever extent the file currently
+    /// has so the existing bytes stay readable; if even that fails, clamps the logical
+    /// length to `0` so no read can ever touch a missing view.
+    fn restore_view(&mut self) {
+        let current = self.file.metadata().map(|m| m.len()).unwrap_or(0) as usize;
+        if current > 0 {
+            // SAFETY: mapping the file's own current extent with matching access.
+            if let Ok(ptr) = unsafe { sys::map(&self.file, current, self.mode.is_writable()) } {
+                self.ptr = ptr;
+                self.map_len = current;
+                self.len = self.len.min(current as u64);
+                return;
+            }
+        }
+        self.len = 0;
+        self.map_len = 0; // ptr is already null from the unmap
     }
 
     /// Ensures the mapped capacity covers `needed` bytes, growing **amortized** (doubling,
@@ -358,7 +398,9 @@ impl IOBase for Mmap {
     }
 
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
-        if offset >= self.len {
+        // The null check is defensive belt-and-braces: `remap` guarantees `len > 0` implies
+        // a live view, but a read must never be able to dereference null regardless.
+        if offset >= self.len || self.ptr.is_null() {
             return 0;
         }
         let start = offset as usize;

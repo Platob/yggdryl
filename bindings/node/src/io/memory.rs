@@ -1,10 +1,13 @@
-//! The `yggdryl.memory` namespace — the in-heap byte source and its seek anchor.
+//! The `yggdryl.memory` namespace — the in-heap and memory-mapped byte sources and their
+//! seek anchor.
 //!
-//! Mirrors `yggdryl_core::io::memory`'s concrete source [`Heap`] (an owned byte buffer with a
-//! read/write cursor and `Vec`-like capacity) and the [`Whence`] seek anchor. Every method is a
-//! thin one- or two-line delegation to `yggdryl_core` — the positioned primitives and typed
-//! accessors of `IOBase`, the cursor stream of `IOCursor`, bounded `IOSlice` windows, and
-//! `Whence`-relative seeks — with no logic in the binding.
+//! Mirrors `yggdryl_core::io::memory`'s concrete sources [`Heap`] (an owned byte buffer with a
+//! read/write cursor and `Vec`-like capacity) and [`Mmap`] (the same surface memory-mapped over
+//! a file), plus the [`Whence`] seek anchor. Every method is a thin one- or two-line delegation
+//! to `yggdryl_core` — the positioned primitives and typed accessors of `IOBase`, the cursor
+//! stream of `IOCursor`, bounded `IOSlice` windows, and `Whence`-relative seeks — with no logic
+//! in the binding. The file-backed [`Mmap`] adds one binding-level method, `close()`, because
+//! JavaScript has no deterministic drop (see its docs).
 //!
 //! Numeric idioms: byte offset and length **parameters** are JS `number`s typed as `u32`, so a
 //! single heap addresses up to 4 GiB in memory. **Returned** sizes, capacity, the cursor
@@ -18,7 +21,7 @@
 //! text accessors. Every failing typed read, seek, slice, or UTF-8 decode surfaces as a thrown
 //! `Error` carrying the core's guided text unchanged.
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, Either};
 use napi_derive::napi;
 
 use crate::headers::Headers;
@@ -1044,5 +1047,588 @@ impl Slice {
             self.inner.offset(),
             self.inner.byte_size()
         )
+    }
+}
+
+/// The guided error for a method called on a mapping after `close()`.
+fn closed_err() -> napi::Error {
+    to_error("the mapping is closed; reopen it with Mmap.open / Mmap.openReadonly / Mmap.create")
+}
+
+/// A **memory-mapped file** — the on-disk source behind the byte-access contract, sharing
+/// [`Heap`]'s full surface (positioned + typed + bulk access, the built-in cursor stream,
+/// capacity management, metadata) over a file instead of an owned buffer.
+///
+/// A mapping is opened by path or [`Uri`] through the factories (`Mmap.open` /
+/// `Mmap.openReadonly` / `Mmap.create` — there is no plain constructor). `byteSize` is the
+/// **logical** length; `capacity` is the mapped (file) extent, which grows **amortized**
+/// (doubling, page-aligned) when a write lands past the end — the same allocation curve as
+/// [`Heap`]. `close()` unmaps deterministically and truncates the on-disk file back to the
+/// logical length; JavaScript has no deterministic drop, and on Windows a mapped file cannot
+/// be deleted while a view is open, so call it as soon as the mapping is done.
+///
+/// Unlike [`Heap`], a mapping is a **live OS resource, not a value**: two independent mappings
+/// of one file would alias, so it is deliberately not clonable, equatable, or serializable —
+/// there is no `equals`, `copy`, `serializeBytes`, `withHeaders`, or `withMode` (use the
+/// in-place `setHeaders` / `setMode`).
+#[napi(namespace = "memory")]
+pub struct Mmap {
+    /// `None` once `close()` has run — every later use throws the guided closed error.
+    inner: Option<core::Mmap>,
+}
+
+impl Mmap {
+    /// The live mapping, or the guided closed error after `close()`.
+    fn inner(&self) -> napi::Result<&core::Mmap> {
+        self.inner.as_ref().ok_or_else(closed_err)
+    }
+
+    /// The live mapping, mutably, or the guided closed error after `close()`.
+    fn inner_mut(&mut self) -> napi::Result<&mut core::Mmap> {
+        self.inner.as_mut().ok_or_else(closed_err)
+    }
+
+    /// Wraps a freshly opened core mapping (an open failure throws its guided text).
+    fn from_core(inner: Result<core::Mmap, core::IoError>) -> napi::Result<Mmap> {
+        Ok(Mmap {
+            inner: Some(inner.map_err(to_error)?),
+        })
+    }
+}
+
+#[napi(namespace = "memory")]
+impl Mmap {
+    // ---- factories (the generic, type-inferring entries) -------------------------------
+
+    /// Opens an **existing** file read-write — the generic entry: a **string** dispatches to
+    /// the core `open_path`, a [`Uri`] (`file://…` or a plain path) to `open_uri`. Throws a
+    /// guided `Error` naming the path if it is missing or inaccessible.
+    #[napi(factory)]
+    pub fn open(source: Either<String, &Uri>) -> napi::Result<Mmap> {
+        Self::from_core(match source {
+            Either::A(path) => core::Mmap::open_path(&path),
+            Either::B(uri) => core::Mmap::open_uri(&uri.inner),
+        })
+    }
+
+    /// Opens an **existing** file **read-only** (same string / [`Uri`] dispatch as `open`):
+    /// reads work, the write primitives write nothing (count `0`), and full writes throw a
+    /// guided `Error` naming the fix.
+    #[napi(factory)]
+    pub fn open_readonly(source: Either<String, &Uri>) -> napi::Result<Mmap> {
+        Self::from_core(match source {
+            Either::A(path) => core::Mmap::open_path_readonly(&path),
+            Either::B(uri) => core::Mmap::open_uri_readonly(&uri.inner),
+        })
+    }
+
+    /// Opens the file read-write, **creating it empty** if it does not exist — existing
+    /// contents are kept, never truncated on open (same string / [`Uri`] dispatch as `open`).
+    #[napi(factory)]
+    pub fn create(source: Either<String, &Uri>) -> napi::Result<Mmap> {
+        Self::from_core(match source {
+            Either::A(path) => core::Mmap::create_path(&path),
+            Either::B(uri) => core::Mmap::create_uri(&uri.inner),
+        })
+    }
+
+    // ---- lifecycle: path / flush / close -----------------------------------------------
+
+    /// The file path this mapping is backed by.
+    #[napi(getter)]
+    pub fn path(&self) -> napi::Result<String> {
+        Ok(self.inner()?.path().to_string_lossy().into_owned())
+    }
+
+    /// Flushes the mapped bytes (and file metadata) to disk — `msync` / `FlushViewOfFile`
+    /// plus an fsync. Throws a guided `Error` on OS failure.
+    #[napi]
+    pub fn flush(&self) -> napi::Result<()> {
+        self.inner()?.flush().map_err(to_error)
+    }
+
+    /// **Closes** the mapping deterministically: unmaps the view and truncates the on-disk
+    /// file back to the logical length (releasing the capacity padding) — exactly what
+    /// garbage collection would eventually do, but at a moment the caller controls (on
+    /// Windows a mapped file cannot be deleted while a view is open). Idempotent; after
+    /// `close` every other method throws the guided closed error.
+    // DESIGN: `close()` exists only on the binding — the core `Mmap` unmaps on drop, but JS
+    // has no deterministic drop (a napi object frees on GC), so the binding holds the core
+    // value in an `Option` and `close()` takes it, dropping (= unmapping + truncating) it
+    // eagerly.
+    #[napi]
+    pub fn close(&mut self) {
+        self.inner = None;
+    }
+
+    /// Whether [`close`](Mmap::close) has released the mapping (the file-object idiom;
+    /// mirrors the Python binding's `closed`).
+    #[napi(getter)]
+    pub fn closed(&self) -> bool {
+        self.inner.is_none()
+    }
+
+    // ---- size + capacity ---------------------------------------------------------------
+
+    /// The **logical** length in bytes — an `i64` (a JS number, exact to 2^53) so a size past
+    /// `u32::MAX` never wraps.
+    #[napi]
+    pub fn byte_size(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.byte_size() as i64)
+    }
+
+    /// The total length in bits — `byteSize * 8`, an `i64` (a JS number, exact to 2^53) like
+    /// `Heap.bitSize`, because a file past 512 MiB already has bit indexes above `u32::MAX`.
+    #[napi]
+    pub fn bit_size(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.bit_size() as i64)
+    }
+
+    /// Whether the file is empty (`byteSize == 0`).
+    #[napi]
+    pub fn is_empty(&self) -> napi::Result<bool> {
+        Ok(self.inner()?.is_empty())
+    }
+
+    /// The mapped (file) extent in bytes — the room before the next remap, like
+    /// `Vec::capacity`. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn capacity(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.capacity() as i64)
+    }
+
+    /// The spare room already mapped — `capacity - byteSize`, the bytes that can be appended
+    /// before the next remap. An `i64` (JS number) like `capacity`.
+    #[napi]
+    pub fn spare_capacity(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.spare_capacity() as i64)
+    }
+
+    /// Reserves capacity for at least `additional` more bytes past the current `byteSize`,
+    /// amortizing later remaps. Best-effort on a file — prefer `tryReserve` to see failures.
+    #[napi]
+    pub fn reserve(&mut self, additional: u32) -> napi::Result<()> {
+        self.inner_mut()?.reserve(additional as u64);
+        Ok(())
+    }
+
+    /// Reserves capacity for **exactly** `additional` more bytes — no amortized
+    /// over-allocation, for a caller that knows the final size.
+    #[napi]
+    pub fn reserve_exact(&mut self, additional: u32) -> napi::Result<()> {
+        self.inner_mut()?.reserve_exact(additional as u64);
+        Ok(())
+    }
+
+    /// **Checked** reservation: throws a guided `Error` when the file cannot grow (or the
+    /// mapping is read-only) instead of silently leaving the capacity unchanged.
+    #[napi]
+    pub fn try_reserve(&mut self, additional: i64) -> napi::Result<()> {
+        let additional = u64::try_from(additional).unwrap_or(u64::MAX);
+        self.inner_mut()?.try_reserve(additional).map_err(to_error)
+    }
+
+    /// **Checked exact** reservation — `tryReserve` without the amortized over-allocation.
+    #[napi]
+    pub fn try_reserve_exact(&mut self, additional: i64) -> napi::Result<()> {
+        let additional = u64::try_from(additional).unwrap_or(u64::MAX);
+        self.inner_mut()?
+            .try_reserve_exact(additional)
+            .map_err(to_error)
+    }
+
+    /// Ensures the **total** capacity is at least `total` bytes (the absolute-target form of
+    /// `reserve`); a no-op when already satisfied, never shrinks.
+    #[napi]
+    pub fn ensure_capacity(&mut self, total: u32) -> napi::Result<()> {
+        self.inner_mut()?.ensure_capacity(total as u64);
+        Ok(())
+    }
+
+    /// **Checked** `ensureCapacity` — throws a guided `Error` when the file cannot grow.
+    #[napi]
+    pub fn try_ensure_capacity(&mut self, total: i64) -> napi::Result<()> {
+        let total = u64::try_from(total).unwrap_or(u64::MAX);
+        self.inner_mut()?
+            .try_ensure_capacity(total)
+            .map_err(to_error)
+    }
+
+    /// Truncates the on-disk file back toward `byteSize`, releasing the capacity padding.
+    #[napi]
+    pub fn shrink_to_fit(&mut self) -> napi::Result<()> {
+        self.inner_mut()?.shrink_to_fit();
+        Ok(())
+    }
+
+    /// Shrinks the mapped extent toward `minCapacity` (never below `byteSize`).
+    #[napi]
+    pub fn shrink_to(&mut self, min_capacity: u32) -> napi::Result<()> {
+        self.inner_mut()?.shrink_to(min_capacity as u64);
+        Ok(())
+    }
+
+    // ---- byte-array primitives ---------------------------------------------------------
+
+    /// Reads up to `length` bytes at `offset` into a fresh `Buffer` — short (or empty) near
+    /// the end. Never moves the cursor.
+    #[napi]
+    pub fn pread_byte_array(&self, offset: u32, length: u32) -> napi::Result<Buffer> {
+        Ok(self
+            .inner()?
+            .pread_vec(offset as u64, length as usize)
+            .into())
+    }
+
+    /// Writes `data` at `offset`, growing the file (and zero-filling any gap) as needed;
+    /// returns the number of bytes written (`data.length` — or `0` on a read-only mapping).
+    /// Never moves the cursor.
+    #[napi]
+    pub fn pwrite_byte_array(&mut self, offset: u32, data: Buffer) -> napi::Result<u32> {
+        Ok(self
+            .inner_mut()?
+            .pwrite_byte_array(offset as u64, data.as_ref()) as u32)
+    }
+
+    // ---- typed positioned accessors: byte / bit / i32 / i64 ----------------------------
+
+    /// Reads the single byte at `offset`, or throws if it is past the end.
+    #[napi]
+    pub fn pread_byte(&self, offset: u32) -> napi::Result<u8> {
+        self.inner()?.pread_byte(offset as u64).map_err(to_error)
+    }
+
+    /// Writes the single byte `value` at `offset`, growing the file as needed.
+    #[napi]
+    pub fn pwrite_byte(&mut self, offset: u32, value: u8) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_byte(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads the bit at absolute **bit** `offset` (LSB-first: bit `offset % 8` of byte
+    /// `offset / 8`), or throws if its byte is past the end. The offset is an `i64` (exact to
+    /// 2^53) so every bit of a file beyond 512 MiB stays addressable; a negative offset throws.
+    #[napi]
+    pub fn pread_bit(&self, offset: i64) -> napi::Result<bool> {
+        self.inner()?
+            .pread_bit(to_bit_offset(offset)?)
+            .map_err(to_error)
+    }
+
+    /// Sets or clears the bit at absolute **bit** `offset` (LSB-first), read-modify-writing
+    /// its byte and growing the file (zero-filled) if the bit is past the end. The offset is
+    /// an `i64` (exact to 2^53); a negative offset throws.
+    #[napi]
+    pub fn pwrite_bit(&mut self, offset: i64, value: bool) -> napi::Result<()> {
+        let offset = to_bit_offset(offset)?;
+        self.inner_mut()?
+            .pwrite_bit(offset, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i32` (4 bytes) at `offset`, or throws if fewer bytes remain.
+    #[napi]
+    pub fn pread_i32(&self, offset: u32) -> napi::Result<i32> {
+        self.inner()?.pread_i32(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i32` (4 bytes) at `offset`, growing as needed.
+    #[napi]
+    pub fn pwrite_i32(&mut self, offset: u32, value: i32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i32(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    /// Reads a little-endian `i64` (8 bytes) at `offset`, or throws if fewer bytes remain.
+    /// The returned JS `number` is exact only up to ±2^53.
+    #[napi]
+    pub fn pread_i64(&self, offset: u32) -> napi::Result<i64> {
+        self.inner()?.pread_i64(offset as u64).map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i64` (8 bytes) at `offset`, growing as needed.
+    /// Keep `value` below ±2^53 so the JS `number` stays exact.
+    #[napi]
+    pub fn pwrite_i64(&mut self, offset: u32, value: i64) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i64(offset as u64, value)
+            .map_err(to_error)
+    }
+
+    // ---- utf8 text ---------------------------------------------------------------------
+
+    /// Reads up to `length` **bytes** at `offset` and decodes them as UTF-8 text (clamped
+    /// near the end), or throws a guided `Error` on invalid UTF-8 — including a multi-byte
+    /// character cut by the range.
+    #[napi]
+    pub fn pread_utf8(&self, offset: u32, length: u32) -> napi::Result<String> {
+        self.inner()?
+            .pread_utf8(offset as u64, length as usize)
+            .map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at `offset` (growing as needed); returns the number of
+    /// **bytes** written (not characters — `0` on a read-only mapping).
+    #[napi]
+    pub fn pwrite_utf8(&mut self, offset: u32, text: String) -> napi::Result<u32> {
+        Ok(self.inner_mut()?.pwrite_utf8(offset as u64, &text) as u32)
+    }
+
+    // ---- bulk typed arrays -------------------------------------------------------------
+
+    /// **Bulk typed read** of `count` little-endian `i32`s at `offset` into a fresh array, or
+    /// throws if fewer bytes remain — checked **before** the result array is allocated, so a
+    /// hostile `count` fails fast instead of allocating.
+    #[napi]
+    pub fn pread_i32_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i32>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 4)?;
+        let mut values = vec![0i32; count as usize];
+        self.inner()?
+            .pread_i32_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i32`s at `offset`, growing
+    /// as needed.
+    #[napi]
+    pub fn pwrite_i32_array(&mut self, offset: u32, values: Vec<i32>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i32_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    /// **Bulk typed read** of `count` little-endian `i64`s at `offset` into a fresh array, or
+    /// throws if fewer bytes remain — checked **before** the result array is allocated, so a
+    /// hostile `count` fails fast instead of allocating. Each JS `number` is exact only up to
+    /// ±2^53.
+    #[napi]
+    pub fn pread_i64_array(&self, offset: u32, count: u32) -> napi::Result<Vec<i64>> {
+        check_bulk_read(self.inner()?.byte_size(), offset, count, 8)?;
+        let mut values = vec![0i64; count as usize];
+        self.inner()?
+            .pread_i64_array(offset as u64, &mut values)
+            .map_err(to_error)?;
+        Ok(values)
+    }
+
+    /// **Bulk typed write** of all of `values` as little-endian `i64`s at `offset`, growing
+    /// as needed. Keep each value below ±2^53 so the JS `number`s stay exact.
+    #[napi]
+    pub fn pwrite_i64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    // ---- repeated-value fills ----------------------------------------------------------
+
+    /// **Repeated-value fill.** Writes `count` copies of the byte `value` starting at
+    /// `offset` (growing as needed) — the byte-level `memset`; no full array is ever
+    /// materialized.
+    #[napi]
+    pub fn pwrite_byte_repeat(&mut self, offset: u32, value: u8, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_byte_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i32` copies of `value` at `offset` —
+    /// no full array is ever materialized.
+    #[napi]
+    pub fn pwrite_i32_repeat(&mut self, offset: u32, value: i32, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i32_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i64` copies of `value` at `offset` —
+    /// no full array is ever materialized. Keep `value` below ±2^53 so it stays exact.
+    #[napi]
+    pub fn pwrite_i64_repeat(&mut self, offset: u32, value: i64, count: u32) -> napi::Result<()> {
+        self.inner_mut()?
+            .pwrite_i64_repeat(offset as u64, value, count as usize)
+            .map_err(to_error)
+    }
+
+    // ---- cursor: position / seek -------------------------------------------------------
+
+    /// The current cursor position (bytes from the start) — an `i64` (exact to 2^53), so a
+    /// position past `u32::MAX` (a seek can land anywhere) never wraps. May sit past the end.
+    #[napi(getter)]
+    pub fn position(&self) -> napi::Result<i64> {
+        Ok(self.inner()?.position() as i64)
+    }
+
+    /// Moves the cursor to an absolute `position` (past the end is allowed).
+    #[napi]
+    pub fn set_position(&mut self, position: u32) -> napi::Result<()> {
+        self.inner_mut()?.set_position(position as u64);
+        Ok(())
+    }
+
+    /// Seeks to `whence + offset` and returns the new position (an `i64`, exact to 2^53). A
+    /// position past the end is allowed; seeking before the start throws a guided `Error`.
+    #[napi]
+    pub fn seek(&mut self, whence: Whence, offset: i64) -> napi::Result<i64> {
+        self.inner_mut()?
+            .seek(whence.into(), offset)
+            .map(|position| position as i64)
+            .map_err(to_error)
+    }
+
+    /// Resets the cursor to the start.
+    #[napi]
+    pub fn rewind(&mut self) -> napi::Result<()> {
+        self.inner_mut()?.rewind();
+        Ok(())
+    }
+
+    // ---- cursor: stream read / write ---------------------------------------------------
+
+    /// Reads up to `length` bytes from the current position into a fresh `Buffer`, advancing
+    /// the cursor by the number read (short near the end).
+    #[napi]
+    pub fn read(&mut self, length: u32) -> napi::Result<Buffer> {
+        Ok(self.inner_mut()?.read_vec(length as usize).into())
+    }
+
+    /// Writes `data` at the current position, advancing the cursor by the number written
+    /// (growing the file as needed); returns that count (`data.length` — or `0` on a
+    /// read-only mapping).
+    #[napi]
+    pub fn write(&mut self, data: Buffer) -> napi::Result<u32> {
+        Ok(self.inner_mut()?.write(data.as_ref()) as u32)
+    }
+
+    /// Reads the next byte at the cursor, advancing it by 1, or throws at the end.
+    #[napi]
+    pub fn read_byte(&mut self) -> napi::Result<u8> {
+        self.inner_mut()?.read_byte().map_err(to_error)
+    }
+
+    /// Writes the byte `value` at the cursor, advancing it by 1.
+    #[napi]
+    pub fn write_byte(&mut self, value: u8) -> napi::Result<()> {
+        self.inner_mut()?.write_byte(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i32` (4 bytes) at the cursor, advancing it by 4, or throws.
+    #[napi]
+    pub fn read_i32(&mut self) -> napi::Result<i32> {
+        self.inner_mut()?.read_i32().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i32` (4 bytes) at the cursor, advancing it by 4.
+    #[napi]
+    pub fn write_i32(&mut self, value: i32) -> napi::Result<()> {
+        self.inner_mut()?.write_i32(value).map_err(to_error)
+    }
+
+    /// Reads a little-endian `i64` (8 bytes) at the cursor, advancing it by 8, or throws.
+    /// The returned JS `number` is exact only up to ±2^53.
+    #[napi]
+    pub fn read_i64(&mut self) -> napi::Result<i64> {
+        self.inner_mut()?.read_i64().map_err(to_error)
+    }
+
+    /// Writes `value` as a little-endian `i64` (8 bytes) at the cursor, advancing it by 8.
+    /// Keep `value` below ±2^53 so the JS `number` stays exact.
+    #[napi]
+    pub fn write_i64(&mut self, value: i64) -> napi::Result<()> {
+        self.inner_mut()?.write_i64(value).map_err(to_error)
+    }
+
+    /// Reads from the current position **to the end** into a fresh `Buffer`, advancing the
+    /// cursor to the end.
+    #[napi]
+    pub fn read_to_end(&mut self) -> napi::Result<Buffer> {
+        Ok(self.inner_mut()?.read_to_end().into())
+    }
+
+    /// Reads up to `length` **bytes** from the cursor and decodes them as UTF-8 text (clamped
+    /// near the end), advancing the cursor by the bytes read, or throws on invalid UTF-8
+    /// (leaving the cursor put).
+    #[napi]
+    pub fn read_utf8(&mut self, length: u32) -> napi::Result<String> {
+        self.inner_mut()?
+            .read_utf8(length as usize)
+            .map_err(to_error)
+    }
+
+    /// Writes `text`'s UTF-8 bytes at the cursor, advancing it; returns the number of
+    /// **bytes** written (not characters — `0` on a read-only mapping).
+    #[napi]
+    pub fn write_utf8(&mut self, text: String) -> napi::Result<u32> {
+        Ok(self.inner_mut()?.write_utf8(&text) as u32)
+    }
+
+    // ---- address (uri) -----------------------------------------------------------------
+
+    /// The [`Uri`] that addresses this mapping — its file path as a scheme-less, POSIX-slash
+    /// URI (the exact input `Mmap.open` accepts back).
+    #[napi(getter)]
+    pub fn uri(&self) -> napi::Result<Uri> {
+        Ok(Uri {
+            inner: self.inner()?.uri(),
+        })
+    }
+
+    // ---- metadata (headers / mode / kind) ----------------------------------------------
+
+    /// The metadata [`Headers`] attached to this mapping — **a copy**: edits to the returned
+    /// map do not write back. Call `setHeaders` to store an updated map.
+    #[napi(getter)]
+    pub fn headers(&self) -> napi::Result<Headers> {
+        Ok(Headers {
+            inner: self.inner()?.headers().clone(),
+        })
+    }
+
+    /// Replaces the whole [`Headers`] metadata map in place. (There is no `withHeaders` — a
+    /// live mapping cannot be copied.)
+    #[napi]
+    pub fn set_headers(&mut self, headers: &Headers) -> napi::Result<()> {
+        *self.inner_mut()?.headers_mut() = headers.inner.clone();
+        Ok(())
+    }
+
+    /// How this mapping may be accessed — see [`IOMode`] (`ReadWrite` from `open` / `create`,
+    /// `Read` from `openReadonly`).
+    #[napi(getter)]
+    pub fn mode(&self) -> napi::Result<IOMode> {
+        Ok(self.inner()?.mode().into())
+    }
+
+    /// Sets the access [`IOMode`] label in place — the physical protection is fixed at open
+    /// (use `openReadonly` for a truly unwritable mapping). (There is no `withMode` — a live
+    /// mapping cannot be copied.)
+    #[napi]
+    pub fn set_mode(&mut self, mode: IOMode) -> napi::Result<()> {
+        self.inner_mut()?.set_mode(mode.into());
+        Ok(())
+    }
+
+    /// What this source is — always [`IOKind.File`] for a memory-mapped file.
+    #[napi(getter)]
+    pub fn kind(&self) -> napi::Result<IOKind> {
+        Ok(self.inner()?.kind().into())
+    }
+
+    // DESIGN: no `cursor()` / `window()` — the binding `Cursor` and `Slice` classes are
+    // monomorphic over `Heap` (each owns a *copy* of its source), and a live mapping cannot
+    // be copied. The built-in cursor stream above covers streaming; revisit if the binding
+    // views ever become generic over sources.
+
+    /// A short debug string of the form `Mmap(<path>, <N bytes>)` — or `Mmap(closed)` after
+    /// `close()`, so string coercion never throws.
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        match &self.inner {
+            Some(map) => format!("Mmap({}, {} bytes)", map.path().display(), map.byte_size()),
+            None => "Mmap(closed)".to_string(),
+        }
     }
 }

@@ -155,8 +155,12 @@ pages back the mapping — see the
     std::fs::remove_file(&path).ok();
     ```
 
-The byte surface is identical to `Heap`'s, so the Python/Node examples above apply verbatim
-once the bindings expose `Mmap` (`open` / `openReadonly` / `create` from a path or `Uri`).
+The byte surface is identical to `Heap`'s, so the Python/Node examples above apply verbatim —
+both bindings expose `Mmap` with generic type-inferring factories (`Mmap.open(path_or_uri)` /
+`open_readonly` / `create`, dispatching `str`/`string` → the path constructors and a `Uri` →
+the uri ones), plus a deterministic **`close()`** (idempotent; a Python context manager —
+`with Mmap.create(p) as m:` — and a `closed` getter on both), since a live mapping should not
+wait for the garbage collector to unmap and truncate.
 
 ## Addressing
 
