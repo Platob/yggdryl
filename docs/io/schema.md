@@ -7,7 +7,9 @@ single, shared key/value holder (there is no separate `Metadata` type). It is mi
 method-for-method, in the Rust core and the **Python** and **Node** extensions.
 
 The value/column layer that carries the actual data — `Scalar` / `Serie` / `Buffer` over the
-[fixed](fixed/index.md) and [variable](var.md) families — is currently Rust-core only.
+[fixed](fixed/index.md) and [variable](var.md) families, plus the [decimal](fixed/decimal.md) and
+[temporal](fixed/temporal.md) types — is mirrored in both bindings too, one class per type
+(`I32Serie`, `Utf8Serie`, `D64Serie`, `Ts64Serie`, …).
 
 ## DataType
 

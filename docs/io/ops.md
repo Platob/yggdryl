@@ -117,6 +117,23 @@ columns recurse to their leaves (a struct is combined field-wise, a list element
 matching offsets); temporal columns route through their backing integer, so `date + date` and
 `timestamp - timestamp` fall out of the same path.
 
+### Performance — auto-vectorized kernels
+
+The fast `*_unchecked` tier is shaped so **LLVM auto-vectorizes it on stable Rust** — no
+`portable_simd`, no nightly, no explicit SIMD intrinsics or dependency. The value loop is a
+**dense, branch-free pass** over the two contiguous value slices: integer `add` / `sub` / `mul`
+compute with `wrapping_*` directly (a null slot's placeholder participates harmlessly), so the
+body is a straight slice `zip` the vectorizer can widen. **Validity is combined separately**, as a
+whole-bitmap word-at-a-time AND of the two operands' masks — never a per-element `if null` inside
+the value loop (a branch there would defeat the vectorizer). Even `div` / `rem` stay branchless: a
+zero divisor substitutes a harmless placeholder in the value loop and the **zero → null** decision
+is folded into the validity combine (so integer division by zero is still a null cell, never a
+panic). The reductions (`sum` / `min` / `max`) likewise fold the contiguous value slice on the
+**no-null fast path** — a plain `map(..).sum()` / `reduce(..)` over the whole `&[T]` — and only a
+column that actually has nulls falls back to the null-aware fold. Benchmarks put the typed
+`add_unchecked` fast path at roughly **8×** the former per-element, `Option`-returning closure it
+replaced.
+
 ## Reshape
 
 - **`filter(mask)`** — keep the rows where `mask[i]` is true (bitmap-optimized; the mask length
@@ -130,7 +147,7 @@ matching offsets); temporal columns route through their backing integer, so `dat
 === "Python"
 
     ```python
-    from yggdryl.types import I64Serie
+    from yggdryl.types import I32Serie, I64Serie, StructSerie
 
     col = I64Serie([10, 20, 30, 40])
     assert col.filter([True, False, True, False]).to_options() == [10, 30]
@@ -139,28 +156,56 @@ matching offsets); temporal columns route through their backing integer, so `dat
     assert holes.fill_null(0).to_options() == [1, 0, 3]
 
     wrapped = col.to_struct("v")   # StructSerie with one field "v"
+
+    listed = col.to_list()         # ListSerie: each row becomes a singleton list [value]
+    assert listed.values.to_options() == [10, 20, 30, 40]
+
+    kv = StructSerie([("k", I32Serie([1, 2])), ("v", I32Serie([10, 20]))])
+    assert len(kv.to_map()) == 2                            # a 2-column struct -> a MapSerie
+    assert col.to_map().to_options() == [10, 20, 30, 40]   # any other column returns itself
     ```
 
 === "Node"
 
     ```js
-    const { I64Serie } = require('yggdryl').types
+    const { StructField, StructSerie, MapSerie, I32Serie, I64Serie } = require('yggdryl').types
 
     const col = I64Serie.fromValues([10n, 20n, 30n, 40n])
     col.filter([true, false, true, false])        // -> [10, 30]
     I64Serie.fromOptions([1n, null, 3n]).fillNull(0)
     col.toStruct('v')
+
+    const listed = col.toList()                   // a ListSerie of singletons (offsets 0,1,..,n)
+
+    // a 2-column struct -> a MapSerie frame (deserialize to read it); a leaf toMap returns itself.
+    const k = new I32Serie([1, 2])
+    const v = new I32Serie([10, 20])
+    const schema = new StructField('kv', [k.toField('key'), v.toField('value')], false)
+    const kv = StructSerie.fromColumns(schema, [k.serializeBytes(), v.serializeBytes()])
+    const map = MapSerie.deserializeBytes(kv.toMap())
     ```
 
 === "Rust"
 
     ```rust
     use yggdryl_core::io::fixed::Serie;
-    use yggdryl_core::io::{boxed, AnySerie};
+    use yggdryl_core::io::nested::StructSerie;
+    use yggdryl_core::io::{boxed, AnySerie, DataTypeId};
 
     let col = boxed(Serie::from_values(&[10i64, 20, 30, 40]));
     let kept = col.filter(&[true, false, true, false]).unwrap();
     assert_eq!(kept.len(), 2);
+
+    let listed = col.to_list();                 // Box<dyn AnySerie>, a List of singletons
+    assert_eq!(listed.len(), 4);
+
+    let kv = boxed(StructSerie::from_named(vec![
+        ("k", boxed(Serie::from_values(&[1i32, 2]))),
+        ("v", boxed(Serie::from_values(&[10i32, 20]))),
+    ])
+    .unwrap());
+    let map = kv.to_map().unwrap();             // a 2-column struct -> a Map (else itself)
+    assert_eq!(map.type_id(), DataTypeId::Map);
     ```
 
 ## Type inference
