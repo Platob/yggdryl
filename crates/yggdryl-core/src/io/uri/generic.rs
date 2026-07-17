@@ -4,7 +4,8 @@ use core::fmt;
 use core::fmt::Write as _;
 use std::borrow::Cow;
 
-use super::{percent, Authority, HashWrite, UriError, Url};
+use super::{percent, Authority, UriError, Url};
+use crate::io::HashWrite;
 
 /// A generic URI split into its RFC 3986 components, doubling as a filesystem-path
 /// abstraction. Any component may be absent; a bare path (no scheme, no authority) is a

@@ -3,7 +3,7 @@
 use core::fmt;
 use core::fmt::Write as _;
 
-use super::HashWrite;
+use crate::io::HashWrite;
 
 /// The authority component of a URI: `[ userinfo "@" ] host [ ":" port ]`, where
 /// `userinfo` is `user [ ":" password ]`.

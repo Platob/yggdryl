@@ -29,7 +29,6 @@ mod any_field;
 mod any_scalar;
 mod any_serie;
 pub(crate) mod arith;
-mod authority;
 mod bitmap;
 mod buffer_type;
 mod category;
@@ -46,13 +45,9 @@ pub mod nested;
 mod node_path;
 mod node_ref;
 mod numeric_serie;
-mod percent;
 mod scalar_type;
-mod scheme;
 mod serie_type;
-mod uri;
-mod uri_error;
-mod url;
+pub mod uri;
 pub mod var;
 
 // The family-agnostic, recursive **erased** primitives — an erased column (`AnySerie`, held as a
@@ -69,7 +64,6 @@ pub use any_serie::{boxed, read_any_leaf, AnySerie};
 pub use nested::from_arrow_any_column;
 pub use nested::read_any_column;
 
-pub use authority::Authority;
 pub use fixed::Bytes;
 pub use headers::Headers;
 // The parsed path value type and its guided errors — the addressing form the `get_by_path` resolvers
@@ -79,10 +73,9 @@ pub use io_error::IoError;
 // stay the canonical paths (their home is now the `io::memory` submodule).
 pub use memory::{IOBase, IOCursor, IOSlice, Whence};
 pub use node_path::{NodePath, PathError, PathSegment};
-pub use scheme::default_port;
-pub use uri::Uri;
-pub use uri_error::UriError;
-pub use url::Url;
+// The URI / URL family — re-exported at the `io` root so `io::Uri` etc. stay the canonical paths
+// (their home is now the `io::uri` submodule).
+pub use uri::{default_port, Authority, Uri, UriError, Url};
 
 // The family-agnostic typed contracts, shared by `fixed` and `var`. Each family adds its own
 // `Fixed*` / `Var*` sub-traits and concrete implementors; these roots are the single place the
