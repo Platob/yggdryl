@@ -19,7 +19,7 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 
 #[test]
 fn full_url_every_accessor() {
-    let uri = Uri::parse("scheme://user:pass@host:1234/a/b.txt?q=1#frag").unwrap();
+    let uri = Uri::parse_str("scheme://user:pass@host:1234/a/b.txt?q=1#frag").unwrap();
     assert_eq!(uri.scheme(), Some("scheme"));
     assert_eq!(uri.user(), Some("user"));
     assert_eq!(uri.password(), Some("pass"));
@@ -44,7 +44,7 @@ fn full_url_every_accessor() {
 
 #[test]
 fn scheme_less_posix_path() {
-    let uri = Uri::parse("/a/b/c").unwrap();
+    let uri = Uri::parse_str("/a/b/c").unwrap();
     assert_eq!(uri.scheme(), None);
     assert_eq!(uri.authority(), None);
     assert_eq!(uri.path(), "/a/b/c");
@@ -57,7 +57,7 @@ fn scheme_less_posix_path() {
 
 #[test]
 fn windows_drive_path_normalizes_to_posix() {
-    let uri = Uri::parse(r"C:\Users\x\a.tar.gz").unwrap();
+    let uri = Uri::parse_str(r"C:\Users\x\a.tar.gz").unwrap();
     assert_eq!(uri.scheme(), None);
     assert_eq!(uri.path(), "C:/Users/x/a.tar.gz");
     assert_eq!(uri.name(), Some("a.tar.gz"));
@@ -69,7 +69,7 @@ fn windows_drive_path_normalizes_to_posix() {
 #[test]
 fn drive_path_with_forward_slash_is_still_a_path() {
     // A single-letter "scheme" before a slash is a drive letter, not a URI scheme.
-    let uri = Uri::parse("C:/Users/x").unwrap();
+    let uri = Uri::parse_str("C:/Users/x").unwrap();
     assert_eq!(uri.scheme(), None);
     assert_eq!(uri.path(), "C:/Users/x");
 }
@@ -77,14 +77,14 @@ fn drive_path_with_forward_slash_is_still_a_path() {
 #[test]
 fn single_letter_scheme_needs_no_trailing_slash() {
     // DESIGN tradeoff: `x:/…` is a drive letter, but `x:foo` (no slash) is scheme `x`.
-    let uri = Uri::parse("x:foo").unwrap();
+    let uri = Uri::parse_str("x:foo").unwrap();
     assert_eq!(uri.scheme(), Some("x"));
     assert_eq!(uri.path(), "foo");
 }
 
 #[test]
 fn unc_path_normalizes() {
-    let uri = Uri::parse(r"\\server\share\f").unwrap();
+    let uri = Uri::parse_str(r"\\server\share\f").unwrap();
     assert_eq!(uri.scheme(), None);
     assert_eq!(uri.path(), "//server/share/f");
     assert_eq!(uri.name(), Some("f"));
@@ -92,7 +92,7 @@ fn unc_path_normalizes() {
 
 #[test]
 fn relative_backslash_path_normalizes() {
-    let uri = Uri::parse(r"a\b\c").unwrap();
+    let uri = Uri::parse_str(r"a\b\c").unwrap();
     assert_eq!(uri.path(), "a/b/c");
 }
 
@@ -102,7 +102,7 @@ fn relative_backslash_path_normalizes() {
 
 #[test]
 fn directory_path_has_no_name() {
-    let uri = Uri::parse("/a/b/").unwrap();
+    let uri = Uri::parse_str("/a/b/").unwrap();
     assert_eq!(uri.name(), None);
     assert_eq!(uri.stem(), None);
     assert_eq!(uri.extension(), None);
@@ -134,13 +134,13 @@ fn multi_dot_file_extensions() {
 
 #[test]
 fn query_only_and_fragment_only() {
-    let q = Uri::parse("?q=1").unwrap();
+    let q = Uri::parse_str("?q=1").unwrap();
     assert_eq!(q.path(), "");
     assert_eq!(q.query(), Some("q=1"));
     assert_eq!(q.fragment(), None);
     assert_eq!(q.name(), None);
 
-    let f = Uri::parse("#frag").unwrap();
+    let f = Uri::parse_str("#frag").unwrap();
     assert_eq!(f.path(), "");
     assert_eq!(f.fragment(), Some("frag"));
     assert_eq!(f.query(), None);
@@ -152,7 +152,7 @@ fn query_only_and_fragment_only() {
 
 #[test]
 fn out_of_range_port_is_guided_error() {
-    let err = Uri::parse("http://host:99999/").unwrap_err();
+    let err = Uri::parse_str("http://host:99999/").unwrap_err();
     assert!(matches!(err, UriError::InvalidPort { .. }));
     assert!(err.to_string().contains("99999"));
     assert!(err.to_string().contains("0..=65535"));
@@ -161,27 +161,27 @@ fn out_of_range_port_is_guided_error() {
 #[test]
 fn non_numeric_port_is_guided_error() {
     assert!(matches!(
-        Uri::parse("http://host:abc/"),
+        Uri::parse_str("http://host:abc/"),
         Err(UriError::InvalidPort { .. })
     ));
 }
 
 #[test]
 fn empty_scheme_is_guided_error() {
-    assert_eq!(Uri::parse("://host"), Err(UriError::EmptyScheme));
+    assert_eq!(Uri::parse_str("://host"), Err(UriError::EmptyScheme));
 }
 
 #[test]
 fn invalid_scheme_is_guided_error() {
     assert!(matches!(
-        Uri::parse("ht tp://host"),
+        Uri::parse_str("ht tp://host"),
         Err(UriError::InvalidScheme { .. })
     ));
 }
 
 #[test]
 fn ipv6_host_is_bracketed_with_port() {
-    let uri = Uri::parse("http://[::1]:8080/p").unwrap();
+    let uri = Uri::parse_str("http://[::1]:8080/p").unwrap();
     assert_eq!(uri.host(), Some("[::1]"));
     assert_eq!(uri.port(), Some(8080));
     assert_eq!(uri.path(), "/p");
@@ -189,7 +189,7 @@ fn ipv6_host_is_bracketed_with_port() {
 
 #[test]
 fn ipv6_host_without_port() {
-    let uri = Uri::parse("http://[2001:db8::1]/p").unwrap();
+    let uri = Uri::parse_str("http://[2001:db8::1]/p").unwrap();
     assert_eq!(uri.host(), Some("[2001:db8::1]"));
     assert_eq!(uri.port(), None);
 }
@@ -199,15 +199,15 @@ fn ipv6_host_with_trailing_junk_is_rejected() {
     // Bytes after the closing `]` that are not a `:port` were silently dropped, producing a
     // non-round-tripping `Uri` (`http://[::1]junk/p` -> `http://[::1]/p`). They must now error.
     assert!(matches!(
-        Uri::parse("http://[::1]junk/p"),
+        Uri::parse_str("http://[::1]junk/p"),
         Err(UriError::InvalidPort { .. })
     ));
     // A valid `:port` after the bracket still parses, and a bare bracketed host still parses.
     assert_eq!(
-        Uri::parse("http://[::1]:8080/p").unwrap().port(),
+        Uri::parse_str("http://[::1]:8080/p").unwrap().port(),
         Some(8080)
     );
-    let bare = Uri::parse("http://[::1]/p").unwrap();
+    let bare = Uri::parse_str("http://[::1]/p").unwrap();
     assert_eq!(bare.host(), Some("[::1]"));
     assert_eq!(bare.port(), None);
 }
@@ -227,7 +227,7 @@ fn byte_round_trip() {
         "#frag",
         "http://[::1]:8080/p",
     ] {
-        let uri = Uri::parse(s).unwrap();
+        let uri = Uri::parse_str(s).unwrap();
         let bytes = uri.serialize_bytes();
         assert_eq!(bytes, s.as_bytes());
         assert_eq!(Uri::deserialize_bytes(&bytes).unwrap(), uri);
@@ -248,9 +248,9 @@ fn deserialize_non_utf8_is_guided_error() {
 
 #[test]
 fn value_semantics_equal_iff_canonical_equal() {
-    let a = Uri::parse("sc://h/p?q#f").unwrap();
+    let a = Uri::parse_str("sc://h/p?q#f").unwrap();
     let b = Uri::deserialize_bytes(&a.serialize_bytes()).unwrap();
-    let c = Uri::parse("sc://h/other").unwrap();
+    let c = Uri::parse_str("sc://h/other").unwrap();
 
     assert_eq!(a, b);
     assert_eq!(hash_of(&a), hash_of(&b));
@@ -305,7 +305,7 @@ fn setters_create_authority() {
 
 #[test]
 fn scheme_less_uri_is_not_a_url() {
-    let uri = Uri::parse("/relative/path").unwrap();
+    let uri = Uri::parse_str("/relative/path").unwrap();
     assert!(matches!(
         Url::try_from(uri.clone()),
         Err(UriError::MissingScheme { .. })
@@ -315,7 +315,7 @@ fn scheme_less_uri_is_not_a_url() {
 
 #[test]
 fn full_url_round_trips_through_uri() {
-    let url = Url::parse("https://user@example.com:8443/a/b.json?x=1#top").unwrap();
+    let url = Url::parse_str("https://user@example.com:8443/a/b.json?x=1#top").unwrap();
     assert_eq!(url.scheme(), "https");
     assert_eq!(url.name(), Some("b.json"));
     assert_eq!(url.extension(), Some("json"));
@@ -334,7 +334,7 @@ fn full_url_round_trips_through_uri() {
 #[test]
 fn url_with_no_authority_is_valid() {
     // DESIGN: a Url requires only a scheme; the authority is optional.
-    let url = Url::parse("mailto:person@example.com").unwrap();
+    let url = Url::parse_str("mailto:person@example.com").unwrap();
     assert_eq!(url.scheme(), "mailto");
     assert_eq!(url.host(), None);
     assert_eq!(url.path(), "person@example.com");
@@ -346,13 +346,13 @@ fn url_with_no_authority_is_valid() {
 fn malformed_multi_colon_authority_is_rejected() {
     for bad in ["//a::", "//:a:", "//::", "//host:8080:9090"] {
         assert!(
-            matches!(Uri::parse(bad), Err(UriError::InvalidPort { .. })),
+            matches!(Uri::parse_str(bad), Err(UriError::InvalidPort { .. })),
             "expected InvalidPort for {bad:?}, got {:?}",
-            Uri::parse(bad)
+            Uri::parse_str(bad)
         );
     }
     // A single trailing colon (empty port) is still fine and round-trips as no port.
-    let u = Uri::parse("//a:").unwrap();
+    let u = Uri::parse_str("//a:").unwrap();
     assert_eq!(u.host(), Some("a"));
     assert_eq!(u.port(), None);
     assert_eq!(Uri::deserialize_bytes(&u.serialize_bytes()).unwrap(), u);

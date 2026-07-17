@@ -7,7 +7,7 @@ use yggdryl_core::uri::Uri;
 
 #[test]
 fn query_param_value_is_encoded_on_store_and_decoded_on_read() {
-    let mut uri = Uri::parse("http://h/p").unwrap();
+    let mut uri = Uri::parse_str("http://h/p").unwrap();
     uri.set_query_param("q", "a b&c=d#e");
     // Stored percent-encoded so the value cannot break the surrounding query.
     assert_eq!(uri.query(), Some("q=a%20b%26c%3Dd%23e"));
@@ -19,7 +19,7 @@ fn query_param_value_is_encoded_on_store_and_decoded_on_read() {
 #[test]
 fn set_get_round_trips_through_decode() {
     for value in ["plain", "a b", "100%", "x&y=z", "café", "π=3.14", ""] {
-        let uri = Uri::parse("http://h/p")
+        let uri = Uri::parse_str("http://h/p")
             .unwrap()
             .with_query_param("k", value);
         assert_eq!(
@@ -32,7 +32,7 @@ fn set_get_round_trips_through_decode() {
 
 #[test]
 fn key_with_special_chars_is_encoded_and_looked_up_decoded() {
-    let uri = Uri::parse("http://h/p")
+    let uri = Uri::parse_str("http://h/p")
         .unwrap()
         .with_query_param("a b", "1");
     assert_eq!(uri.query(), Some("a%20b=1"));
@@ -43,7 +43,7 @@ fn key_with_special_chars_is_encoded_and_looked_up_decoded() {
 
 #[test]
 fn percent_literal_round_trips() {
-    let uri = Uri::parse("http://h/p")
+    let uri = Uri::parse_str("http://h/p")
         .unwrap()
         .with_query_param("p", "100%");
     assert_eq!(uri.query(), Some("p=100%25"));
@@ -53,7 +53,7 @@ fn percent_literal_round_trips() {
 #[test]
 fn parse_keeps_input_verbatim() {
     // Parsing trusts the already-encoded URI string — it does not re-encode.
-    let uri = Uri::parse("http://h/p?q=a%20b").unwrap();
+    let uri = Uri::parse_str("http://h/p?q=a%20b").unwrap();
     assert_eq!(uri.query_param("q"), Some("a%20b")); // as given
     assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b"));
     assert_eq!(uri.serialize_bytes(), b"http://h/p?q=a%20b"); // byte-exact round-trip
@@ -61,7 +61,7 @@ fn parse_keeps_input_verbatim() {
 
 #[test]
 fn component_setters_encode() {
-    let uri = Uri::parse("http://h")
+    let uri = Uri::parse_str("http://h")
         .unwrap()
         .with_path("/a b/c")
         .with_fragment("sec tion")
@@ -74,7 +74,7 @@ fn component_setters_encode() {
 
 #[test]
 fn bulk_update_encodes_each_value() {
-    let uri = Uri::parse("http://h/p")
+    let uri = Uri::parse_str("http://h/p")
         .unwrap()
         .with_query_params(&[("a", "1 2"), ("b", "x&y")]);
     assert_eq!(uri.query(), Some("a=1%202&b=x%26y"));
@@ -84,7 +84,7 @@ fn bulk_update_encodes_each_value() {
 
 #[test]
 fn decoded_map_view() {
-    let uri = Uri::parse("http://h/p")
+    let uri = Uri::parse_str("http://h/p")
         .unwrap()
         .with_query_param("name", "a b")
         .with_query_param("tag", "x&y");
@@ -97,6 +97,6 @@ fn decoded_map_view() {
 #[test]
 fn malformed_escape_is_left_verbatim_on_decode() {
     // A malformed `%XX` (not two hex digits) is not decoded, only valid ones are.
-    let uri = Uri::parse("http://h/p?q=50%ZZ%20ok").unwrap();
+    let uri = Uri::parse_str("http://h/p?q=50%ZZ%20ok").unwrap();
     assert_eq!(uri.query_param_decoded("q").as_deref(), Some("50%ZZ ok"));
 }

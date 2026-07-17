@@ -51,7 +51,7 @@ fn default_port_is_none_for_unknown_or_portless_schemes() {
 
 #[test]
 fn port_or_default_falls_back_to_the_scheme_default() {
-    let implicit = Uri::parse("https://example.com/path").unwrap();
+    let implicit = Uri::parse_str("https://example.com/path").unwrap();
     assert_eq!(implicit.port(), None); // nothing was written
     assert_eq!(implicit.default_port(), Some(443));
     assert_eq!(implicit.port_or_default(), Some(443));
@@ -59,7 +59,7 @@ fn port_or_default_falls_back_to_the_scheme_default() {
 
 #[test]
 fn explicit_port_wins_over_the_default() {
-    let explicit = Uri::parse("https://example.com:8443/path").unwrap();
+    let explicit = Uri::parse_str("https://example.com:8443/path").unwrap();
     assert_eq!(explicit.port(), Some(8443));
     assert_eq!(explicit.default_port(), Some(443)); // the scheme's default, unchanged
     assert_eq!(explicit.port_or_default(), Some(8443)); // but the explicit one is effective
@@ -68,17 +68,17 @@ fn explicit_port_wins_over_the_default() {
 #[test]
 fn port_or_default_is_none_without_a_scheme_or_default() {
     // Scheme-less: no way to know a default.
-    let relative = Uri::parse("//host/path").unwrap();
+    let relative = Uri::parse_str("//host/path").unwrap();
     assert_eq!(relative.default_port(), None);
     assert_eq!(relative.port_or_default(), None);
 
     // Scheme with no registered default and no explicit port.
-    let s3 = Uri::parse("s3://bucket/key").unwrap();
+    let s3 = Uri::parse_str("s3://bucket/key").unwrap();
     assert_eq!(s3.default_port(), None);
     assert_eq!(s3.port_or_default(), None);
 
     // ...but an explicit port is still returned even when the scheme has no default.
-    let s3_port = Uri::parse("s3://bucket:9000/key").unwrap();
+    let s3_port = Uri::parse_str("s3://bucket:9000/key").unwrap();
     assert_eq!(s3_port.port_or_default(), Some(9000));
 }
 
@@ -88,7 +88,7 @@ fn port_or_default_is_none_without_a_scheme_or_default() {
 
 #[test]
 fn default_port_does_not_change_the_canonical_form() {
-    let uri = Uri::parse("https://example.com/path").unwrap();
+    let uri = Uri::parse_str("https://example.com/path").unwrap();
     // The effective port is 443, but it was never written into the URI.
     assert_eq!(uri.port_or_default(), Some(443));
     assert_eq!(uri.to_string(), "https://example.com/path"); // no ":443" appears
@@ -97,7 +97,7 @@ fn default_port_does_not_change_the_canonical_form() {
 
     // An implicit-port URI and the same URI written with its default port stay DISTINCT —
     // filling the default in on parse would have collapsed them.
-    let explicit = Uri::parse("https://example.com:443/path").unwrap();
+    let explicit = Uri::parse_str("https://example.com:443/path").unwrap();
     assert_ne!(uri, explicit);
     assert_eq!(uri.port_or_default(), explicit.port_or_default()); // yet dial the same port
 }
@@ -108,7 +108,7 @@ fn default_port_does_not_change_the_canonical_form() {
 
 #[test]
 fn ipv6_host_is_detected_and_unbracketed() {
-    let uri = Uri::parse("http://[2001:db8::1]:8080/p").unwrap();
+    let uri = Uri::parse_str("http://[2001:db8::1]:8080/p").unwrap();
     assert!(uri.host_is_ipv6());
     assert_eq!(uri.host(), Some("[2001:db8::1]")); // stored bracketed
     assert_eq!(uri.host_unbracketed(), Some("2001:db8::1")); // bare address to dial
@@ -117,7 +117,7 @@ fn ipv6_host_is_detected_and_unbracketed() {
 
 #[test]
 fn ipv6_loopback_default_port_and_unbracket() {
-    let uri = Uri::parse("https://[::1]/status").unwrap();
+    let uri = Uri::parse_str("https://[::1]/status").unwrap();
     assert!(uri.host_is_ipv6());
     assert_eq!(uri.host_unbracketed(), Some("::1"));
     assert_eq!(uri.port_or_default(), Some(443)); // scheme default, host is IPv6
@@ -126,7 +126,7 @@ fn ipv6_loopback_default_port_and_unbracket() {
 #[test]
 fn reg_name_and_ipv4_hosts_are_not_ipv6_and_pass_through_unbracketed() {
     for host in ["example.com", "192.168.0.1", "localhost"] {
-        let uri = Uri::parse(&format!("http://{host}/p")).unwrap();
+        let uri = Uri::parse_str(&format!("http://{host}/p")).unwrap();
         assert!(!uri.host_is_ipv6(), "host {host:?}");
         assert_eq!(uri.host_unbracketed(), Some(host), "host {host:?}");
     }
@@ -136,14 +136,14 @@ fn reg_name_and_ipv4_hosts_are_not_ipv6_and_pass_through_unbracketed() {
 fn unterminated_ipv6_bracket_is_not_treated_as_ipv6() {
     // The parser keeps `"[::1"` verbatim as a plain host; the accessors must agree and not
     // strip a non-existent closing bracket.
-    let uri = Uri::parse("http://[::1/p").unwrap();
+    let uri = Uri::parse_str("http://[::1/p").unwrap();
     assert!(!uri.host_is_ipv6());
     assert_eq!(uri.host_unbracketed(), Some("[::1"));
 }
 
 #[test]
 fn host_accessors_are_none_without_an_authority() {
-    let uri = Uri::parse("mailto:person@example.com").unwrap();
+    let uri = Uri::parse_str("mailto:person@example.com").unwrap();
     assert!(!uri.host_is_ipv6());
     assert_eq!(uri.host_unbracketed(), None);
 }
@@ -169,13 +169,13 @@ fn authority_ipv6_accessors() {
 
 #[test]
 fn url_mirrors_the_endpoint_helpers() {
-    let url = Url::parse("wss://[::1]/socket").unwrap();
+    let url = Url::parse_str("wss://[::1]/socket").unwrap();
     assert_eq!(url.default_port(), Some(443));
     assert_eq!(url.port_or_default(), Some(443));
     assert!(url.host_is_ipv6());
     assert_eq!(url.host_unbracketed(), Some("::1"));
 
-    let pg = Url::parse("postgres://svc@db:6000/app").unwrap();
+    let pg = Url::parse_str("postgres://svc@db:6000/app").unwrap();
     assert_eq!(pg.default_port(), Some(5432));
     assert_eq!(pg.port_or_default(), Some(6000)); // explicit wins
     assert!(!pg.host_is_ipv6());

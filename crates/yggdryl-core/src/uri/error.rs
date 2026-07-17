@@ -13,7 +13,7 @@ use core::fmt;
 /// use yggdryl_core::uri::{Uri, UriError};
 ///
 /// // A port outside `0..=65535` names the offending value.
-/// let err = Uri::parse("http://h:99999/").unwrap_err();
+/// let err = Uri::parse_str("http://h:99999/").unwrap_err();
 /// assert!(matches!(err, UriError::InvalidPort { .. }));
 /// assert!(err.to_string().contains("99999"));
 /// ```

@@ -15,10 +15,14 @@ path = "src/lib.rs"
 
 # Dependency-free time+memory benchmarks (their own counting allocator, plain `main`).
 [[bench]]
+name = "heap"
+harness = false
+
+[[bench]]
 name = "uri"
 harness = false
 
 [dependencies]
 # Dependency-free: the reset core is just the abstract memory-access traits (with an in-heap
-# `Bytes` backing) and the RFC 3986 URI/URL family — both built on `std` alone. Concrete
-# backings (heap `Buffer`, mmap) and the typed data layer are (re)built here as needed.
+# `Heap` source) and the RFC 3986 URI/URL family — both built on `std` alone. Other sources
+# (mmap, …) and the typed data layer are (re)built here against the same `memory` traits.

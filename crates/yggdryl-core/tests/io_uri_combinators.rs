@@ -13,7 +13,7 @@ use yggdryl_core::uri::{Authority, Uri, Url};
 
 #[test]
 fn joinpath_basic_append() {
-    let base = Uri::parse("https://api.example.com/v1").unwrap();
+    let base = Uri::parse_str("https://api.example.com/v1").unwrap();
     assert_eq!(
         base.joinpath("users").to_string(),
         "https://api.example.com/v1/users"
@@ -48,7 +48,7 @@ fn joinpath_multi_segment_in_one_call() {
 
 #[test]
 fn joinpath_absolute_segment_resets_the_path() {
-    let base = Uri::parse("https://h/a/b?x=1#f").unwrap();
+    let base = Uri::parse_str("https://h/a/b?x=1#f").unwrap();
     // A leading-slash segment replaces the path; query and fragment are kept.
     assert_eq!(base.joinpath("/c").to_string(), "https://h/c?x=1#f");
     assert_eq!(base.joinpath("/c/d").path(), "/c/d");
@@ -56,11 +56,14 @@ fn joinpath_absolute_segment_resets_the_path() {
 
 #[test]
 fn joinpath_empty_segment_is_a_no_op() {
-    let base = Uri::parse("https://h/a").unwrap();
+    let base = Uri::parse_str("https://h/a").unwrap();
     assert_eq!(base.joinpath(""), base);
     // Even on an authority with an empty path, joining nothing adds no slash.
     assert_eq!(
-        Uri::parse("https://h").unwrap().joinpath("").to_string(),
+        Uri::parse_str("https://h")
+            .unwrap()
+            .joinpath("")
+            .to_string(),
         "https://h"
     );
 }
@@ -68,13 +71,22 @@ fn joinpath_empty_segment_is_a_no_op() {
 #[test]
 fn joinpath_stays_rooted_under_an_authority() {
     // A relative segment onto an empty path must not fuse into the host.
-    assert_eq!(Uri::parse("https://h").unwrap().joinpath("p").path(), "/p");
     assert_eq!(
-        Uri::parse("https://h").unwrap().joinpath("p").to_string(),
+        Uri::parse_str("https://h").unwrap().joinpath("p").path(),
+        "/p"
+    );
+    assert_eq!(
+        Uri::parse_str("https://h")
+            .unwrap()
+            .joinpath("p")
+            .to_string(),
         "https://h/p"
     );
     // The root path joins cleanly too.
-    assert_eq!(Uri::parse("https://h/").unwrap().joinpath("p").path(), "/p");
+    assert_eq!(
+        Uri::parse_str("https://h/").unwrap().joinpath("p").path(),
+        "/p"
+    );
 }
 
 #[test]
@@ -84,7 +96,7 @@ fn joinpath_relative_without_authority_stays_relative() {
     assert_eq!(Uri::default().joinpath("a").joinpath("b").path(), "a/b");
     // A query-only URI has an empty path; joining keeps the query.
     assert_eq!(
-        Uri::parse("?q=1").unwrap().joinpath("a").to_string(),
+        Uri::parse_str("?q=1").unwrap().joinpath("a").to_string(),
         "a?q=1"
     );
 }
@@ -99,7 +111,7 @@ fn joinpath_encodes_and_normalizes_like_set_path() {
 
 #[test]
 fn joinpath_on_windows_drive_path() {
-    let base = Uri::parse(r"C:\Users").unwrap();
+    let base = Uri::parse_str(r"C:\Users").unwrap();
     assert_eq!(base.joinpath("docs").path(), "C:/Users/docs");
     assert_eq!(
         base.joinpath(r"docs\notes.txt").path(),
@@ -109,18 +121,18 @@ fn joinpath_on_windows_drive_path() {
 
 #[test]
 fn joinpath_result_round_trips_and_has_value_semantics() {
-    let joined = Uri::parse("https://h/v1").unwrap().joinpath("users/42");
+    let joined = Uri::parse_str("https://h/v1").unwrap().joinpath("users/42");
     assert_eq!(
         Uri::deserialize_bytes(&joined.serialize_bytes()).unwrap(),
         joined
     );
     // Equal to the same URI written out directly.
-    assert_eq!(joined, Uri::parse("https://h/v1/users/42").unwrap());
+    assert_eq!(joined, Uri::parse_str("https://h/v1/users/42").unwrap());
 }
 
 #[test]
 fn url_joinpath_keeps_the_scheme() {
-    let url = Url::parse("https://api.example.com/v1").unwrap();
+    let url = Url::parse_str("https://api.example.com/v1").unwrap();
     let joined = url.joinpath("users/42");
     assert_eq!(joined.scheme(), "https");
     assert_eq!(joined.to_string(), "https://api.example.com/v1/users/42");
@@ -132,10 +144,10 @@ fn url_joinpath_keeps_the_scheme() {
 
 #[test]
 fn merge_with_overlays_only_present_components() {
-    let base = Uri::parse("https://prod.example.com/v1?trace=1").unwrap();
+    let base = Uri::parse_str("https://prod.example.com/v1?trace=1").unwrap();
 
     // A patch carrying only an authority swaps the host, keeping scheme/path/query.
-    let host_patch = Uri::parse("//staging.example.com").unwrap();
+    let host_patch = Uri::parse_str("//staging.example.com").unwrap();
     assert_eq!(
         base.merge_with(&host_patch).to_string(),
         "https://staging.example.com/v1?trace=1"
@@ -151,20 +163,20 @@ fn merge_with_overlays_only_present_components() {
 
 #[test]
 fn merge_with_default_is_an_identity_copy() {
-    let base = Uri::parse("https://h/a?q#f").unwrap();
+    let base = Uri::parse_str("https://h/a?q#f").unwrap();
     assert_eq!(base.merge_with(&Uri::default()), base);
 }
 
 #[test]
 fn merge_with_other_wins_on_every_set_field() {
-    let base = Uri::parse("http://a/x?u=1#top").unwrap();
-    let other = Uri::parse("https://b/y?v=2#bottom").unwrap();
+    let base = Uri::parse_str("http://a/x?u=1#top").unwrap();
+    let other = Uri::parse_str("https://b/y?v=2#bottom").unwrap();
     assert_eq!(base.merge_with(&other), other); // fully-populated patch replaces everything
 }
 
 #[test]
 fn merge_with_keeps_base_query_when_patch_has_none() {
-    let base = Uri::parse("https://h/a?keep=1").unwrap();
+    let base = Uri::parse_str("https://h/a?keep=1").unwrap();
     let patch = Uri::from_path("/b"); // no query
     let merged = base.merge_with(&patch);
     assert_eq!(merged.query(), Some("keep=1"));
@@ -188,8 +200,8 @@ fn authority_merge_with_is_component_level() {
 
 #[test]
 fn url_merge_with_stays_absolute() {
-    let base = Url::parse("https://prod/v1").unwrap();
-    let merged = base.merge_with(&Url::parse("https://staging/v2").unwrap());
+    let base = Url::parse_str("https://prod/v1").unwrap();
+    let merged = base.merge_with(&Url::parse_str("https://staging/v2").unwrap());
     assert_eq!(merged.scheme(), "https");
     assert_eq!(merged.to_string(), "https://staging/v2");
 }
@@ -200,7 +212,7 @@ fn url_merge_with_stays_absolute() {
 
 #[test]
 fn copy_is_an_independent_equal_value() {
-    let base = Uri::parse("https://h/a?q#f").unwrap();
+    let base = Uri::parse_str("https://h/a?q#f").unwrap();
     let mut dup = base.copy();
     assert_eq!(dup, base);
     // Mutating the copy leaves the original untouched.
@@ -209,8 +221,8 @@ fn copy_is_an_independent_equal_value() {
     assert_eq!(dup.path(), "/b");
 
     assert_eq!(
-        Url::parse("sc://h").unwrap().copy(),
-        Url::parse("sc://h").unwrap()
+        Url::parse_str("sc://h").unwrap().copy(),
+        Url::parse_str("sc://h").unwrap()
     );
     assert_eq!(Authority::from_host("h").copy(), Authority::from_host("h"));
 }
@@ -237,7 +249,7 @@ fn with_authority_attaches_a_built_authority() {
 
 #[test]
 fn with_authority_none_drops_the_authority() {
-    let uri = Uri::parse("https://user@h:8080/p")
+    let uri = Uri::parse_str("https://user@h:8080/p")
         .unwrap()
         .with_authority(None);
     assert_eq!(uri.authority(), None);

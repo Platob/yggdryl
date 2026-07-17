@@ -223,7 +223,7 @@ impl Uri {
     /// throwing a guided `Error` on a malformed scheme or an out-of-range port.
     #[napi(factory)]
     pub fn parse(s: String) -> napi::Result<Self> {
-        core::Uri::parse(&s)
+        core::Uri::parse_str(&s)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -701,7 +701,7 @@ impl Url {
     /// any other parse failure).
     #[napi(factory)]
     pub fn parse(s: String) -> napi::Result<Self> {
-        core::Url::parse(&s)
+        core::Url::parse_str(&s)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }

@@ -111,7 +111,7 @@ fn main() {
         "Uri::parse (URL corpus)",
         measure(URLS.len(), iters, || {
             for &s in URLS {
-                let _ = Uri::parse(s).unwrap();
+                let _ = Uri::parse_str(s).unwrap();
             }
         }),
     );
@@ -125,7 +125,7 @@ fn main() {
         }),
     );
 
-    let uris: Vec<Uri> = URLS.iter().map(|s| Uri::parse(s).unwrap()).collect();
+    let uris: Vec<Uri> = URLS.iter().map(|s| Uri::parse_str(s).unwrap()).collect();
 
     row(
         "serialize_bytes",
@@ -236,7 +236,7 @@ fn main() {
 
     // Query-parameter map access + CRUD. Reads borrow (0 allocs); the map view and a write
     // each allocate once.
-    let q = Uri::parse("http://h/p?a=1&b=2&c=3&d=4&a=9").unwrap();
+    let q = Uri::parse_str("http://h/p?a=1&b=2&c=3&d=4&a=9").unwrap();
     row(
         "query_param (read, first)",
         measure(1, iters, || {

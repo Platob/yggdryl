@@ -16,13 +16,13 @@ use super::{Authority, Uri, UriError};
 /// ```
 /// use yggdryl_core::uri::Url;
 ///
-/// let url = Url::parse("https://example.com/a/b.txt").unwrap();
+/// let url = Url::parse_str("https://example.com/a/b.txt").unwrap();
 /// assert_eq!(url.scheme(), "https");
 /// assert_eq!(url.host(), Some("example.com"));
 /// assert_eq!(url.name(), Some("b.txt"));
 ///
 /// // A scheme-less input is not an absolute URL.
-/// assert!(Url::parse("/relative/path").is_err());
+/// assert!(Url::parse_str("/relative/path").is_err());
 /// ```
 #[derive(Debug, Clone)]
 pub struct Url {
@@ -33,15 +33,15 @@ impl Url {
     /// Parses `s` into an absolute URL.
     ///
     /// # Errors
-    /// [`UriError::MissingScheme`] if `s` has no scheme, plus any [`Uri::parse`] error.
+    /// [`UriError::MissingScheme`] if `s` has no scheme, plus any [`Uri::parse_str`] error.
     ///
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// assert_eq!(Url::parse("sc://h/p").unwrap().scheme(), "sc");
+    /// assert_eq!(Url::parse_str("sc://h/p").unwrap().scheme(), "sc");
     /// ```
-    pub fn parse(s: &str) -> Result<Url, UriError> {
-        Url::try_from(Uri::parse(s)?)
+    pub fn parse_str(s: &str) -> Result<Url, UriError> {
+        Url::try_from(Uri::parse_str(s)?)
     }
 
     /// The scheme (always present).
@@ -93,8 +93,8 @@ impl Url {
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// assert_eq!(Url::parse("wss://h/s").unwrap().default_port(), Some(443));
-    /// assert_eq!(Url::parse("s3://bucket/key").unwrap().default_port(), None);
+    /// assert_eq!(Url::parse_str("wss://h/s").unwrap().default_port(), Some(443));
+    /// assert_eq!(Url::parse_str("s3://bucket/key").unwrap().default_port(), None);
     /// ```
     pub fn default_port(&self) -> Option<u16> {
         self.inner.default_port()
@@ -106,8 +106,8 @@ impl Url {
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// assert_eq!(Url::parse("https://h/p").unwrap().port_or_default(), Some(443));
-    /// assert_eq!(Url::parse("http://h:8080/p").unwrap().port_or_default(), Some(8080));
+    /// assert_eq!(Url::parse_str("https://h/p").unwrap().port_or_default(), Some(443));
+    /// assert_eq!(Url::parse_str("http://h:8080/p").unwrap().port_or_default(), Some(8080));
     /// ```
     pub fn port_or_default(&self) -> Option<u16> {
         self.inner.port_or_default()
@@ -346,12 +346,12 @@ impl Url {
     ///
     /// # Errors
     /// [`UriError::NonUtf8`] if the bytes are not UTF-8, [`UriError::MissingScheme`] if the
-    /// decoded URI is not absolute, or any [`Uri::parse`] error.
+    /// decoded URI is not absolute, or any [`Uri::parse_str`] error.
     ///
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// let url = Url::parse("sc://h/p").unwrap();
+    /// let url = Url::parse_str("sc://h/p").unwrap();
     /// assert_eq!(Url::deserialize_bytes(&url.serialize_bytes()).unwrap(), url);
     /// ```
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Url, UriError> {
@@ -368,7 +368,7 @@ impl Url {
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// let uri = Url::parse("sc://h").unwrap().into_uri();
+    /// let uri = Url::parse_str("sc://h").unwrap().into_uri();
     /// assert_eq!(uri.scheme(), Some("sc"));
     /// ```
     pub fn into_uri(self) -> Uri {
@@ -388,7 +388,7 @@ impl Url {
     /// ```
     /// use yggdryl_core::uri::Url;
     ///
-    /// let base = Url::parse("https://api.example.com/v1").unwrap();
+    /// let base = Url::parse_str("https://api.example.com/v1").unwrap();
     /// assert_eq!(base.joinpath("users/42").to_string(), "https://api.example.com/v1/users/42");
     /// ```
     pub fn joinpath(&self, path: &str) -> Url {

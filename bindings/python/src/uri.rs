@@ -231,7 +231,7 @@ impl Uri {
     /// guided `ValueError` on a malformed scheme or an out-of-range port.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        uri::Uri::parse(s)
+        uri::Uri::parse_str(s)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }
@@ -689,7 +689,7 @@ impl Url {
     /// (or on any [`Uri.parse`](Uri::parse) failure).
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        uri::Url::parse(s)
+        uri::Url::parse_str(s)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }

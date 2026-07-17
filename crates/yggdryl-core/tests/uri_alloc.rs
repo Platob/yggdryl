@@ -54,7 +54,7 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 #[test]
 fn allocation_budgets() {
     let iters = 1000;
-    let uri = Uri::parse("https://user:pw@example.com:8080/a/b/c.tar.gz?q=1#frag").unwrap();
+    let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b/c.tar.gz?q=1#frag").unwrap();
 
     // Zero-copy accessors borrow from the `Uri` — they must allocate nothing at all.
     let borrow = allocs_over(iters, || {
@@ -81,7 +81,7 @@ fn allocation_budgets() {
     // The effective-endpoint accessors are derived on read: `default_port` / `port_or_default`
     // are a table scan returning a `u16`, `host_is_ipv6` a `bool`, and `host_unbracketed` a
     // borrow — none may allocate.
-    let ipv6 = Uri::parse("https://[2001:db8::1]/status").unwrap();
+    let ipv6 = Uri::parse_str("https://[2001:db8::1]/status").unwrap();
     let endpoint = allocs_over(iters, || {
         let _ = (
             uri.default_port(),
@@ -168,7 +168,7 @@ fn allocation_budgets() {
         "mailto:person@example.com",
         "a:b", // scheme "a" + path "b" — renders "a:b", same as the bare path "a:b"
     ] {
-        let uri = Uri::parse(s).unwrap();
+        let uri = Uri::parse_str(s).unwrap();
         assert_eq!(
             hash_of(&uri),
             hash_of(&uri.to_string()),
@@ -178,7 +178,7 @@ fn allocation_budgets() {
 
     // Query-parameter access. `query_param` / `has_query_param` borrow into the query and
     // return a `&str` / `bool` — zero allocation.
-    let q = Uri::parse("http://h/p?a=1&b=2&c=3&a=4").unwrap();
+    let q = Uri::parse_str("http://h/p?a=1&b=2&c=3&a=4").unwrap();
     let read = allocs_over(iters, || {
         let _ = q.query_param("c");
         let _ = q.has_query_param("b");
@@ -215,7 +215,7 @@ fn allocation_budgets() {
     );
 
     // A write rebuilds the query in exactly one allocation.
-    let mut set = Uri::parse("http://h/p?a=1&b=2").unwrap();
+    let mut set = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let writes = allocs_over(iters, || {
         set.set_query_param("a", "1");
     });
@@ -225,7 +225,7 @@ fn allocation_budgets() {
     );
 
     // Removing an absent key is a no-op — no rebuild, no allocation.
-    let mut noop = Uri::parse("http://h/p?a=1&b=2").unwrap();
+    let mut noop = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let removes_absent = allocs_over(iters, || {
         let _ = noop.remove_query_param("zzz");
     });
@@ -237,7 +237,7 @@ fn allocation_budgets() {
     // A bulk update rebuilds once with a small **constant** allocation count (the dedup Vec,
     // the bookkeeping Vec, and the output) — independent of the number of params, unlike
     // calling `set_query_param` in a loop (one full rebuild each).
-    let mut bulk = Uri::parse("http://h/p?a=1&b=2").unwrap();
+    let mut bulk = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let bulk_allocs = allocs_over(iters, || {
         bulk.set_query_params(&[("a", "9"), ("c", "7"), ("d", "0")]);
     });
@@ -249,7 +249,7 @@ fn allocation_budgets() {
 
     // Normalizing a small query rebuilds in two allocations (the token list + the output;
     // the sort is in-place for a small slice).
-    let mut norm = Uri::parse("http://h/p?c=3&a=1&b=2").unwrap();
+    let mut norm = Uri::parse_str("http://h/p?c=3&a=1&b=2").unwrap();
     let norm_allocs = allocs_over(iters, || {
         norm.normalize_query();
     });

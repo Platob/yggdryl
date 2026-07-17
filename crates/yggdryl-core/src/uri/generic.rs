@@ -25,7 +25,7 @@ use super::{percent, Authority, UriError, Url};
 /// ```
 /// use yggdryl_core::uri::Uri;
 ///
-/// let uri = Uri::parse("https://user:pw@example.com:8080/a/b.txt?q=1#frag").unwrap();
+/// let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b.txt?q=1#frag").unwrap();
 /// assert_eq!(uri.scheme(), Some("https"));
 /// assert_eq!(uri.host(), Some("example.com"));
 /// assert_eq!(uri.port(), Some(8080));
@@ -36,7 +36,7 @@ use super::{percent, Authority, UriError, Url};
 /// assert_eq!(uri.fragment(), Some("frag"));
 ///
 /// // A Windows drive path is normalized to POSIX slashes, with no scheme.
-/// let path = Uri::parse(r"C:\Users\x\a.tar.gz").unwrap();
+/// let path = Uri::parse_str(r"C:\Users\x\a.tar.gz").unwrap();
 /// assert_eq!(path.scheme(), None);
 /// assert_eq!(path.path(), "C:/Users/x/a.tar.gz");
 /// assert_eq!(path.extensions(), vec!["tar", "gz"]);
@@ -65,10 +65,10 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse("mailto:a@b.com").unwrap().scheme(), Some("mailto"));
-    /// assert_eq!(Uri::parse("/a/b/c").unwrap().path(), "/a/b/c");
+    /// assert_eq!(Uri::parse_str("mailto:a@b.com").unwrap().scheme(), Some("mailto"));
+    /// assert_eq!(Uri::parse_str("/a/b/c").unwrap().path(), "/a/b/c");
     /// ```
-    pub fn parse(s: &str) -> Result<Uri, UriError> {
+    pub fn parse_str(s: &str) -> Result<Uri, UriError> {
         // DESIGN: filesystem paths are detected up front and normalized to POSIX slashes.
         // A drive path (`X:\` / `X:/`) or UNC path (`\\…`) is unambiguous; any other
         // scheme-less, back-slashed string is a Windows relative path.
@@ -162,8 +162,8 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert!(Uri::parse("http://[::1]:8080/p").unwrap().host_is_ipv6());
-    /// assert!(!Uri::parse("http://example.com/p").unwrap().host_is_ipv6());
+    /// assert!(Uri::parse_str("http://[::1]:8080/p").unwrap().host_is_ipv6());
+    /// assert!(!Uri::parse_str("http://example.com/p").unwrap().host_is_ipv6());
     /// ```
     pub fn host_is_ipv6(&self) -> bool {
         self.authority.as_ref().is_some_and(Authority::host_is_ipv6)
@@ -175,8 +175,8 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse("http://[::1]:80/p").unwrap().host_unbracketed(), Some("::1"));
-    /// assert_eq!(Uri::parse("http://h/p").unwrap().host_unbracketed(), Some("h"));
+    /// assert_eq!(Uri::parse_str("http://[::1]:80/p").unwrap().host_unbracketed(), Some("::1"));
+    /// assert_eq!(Uri::parse_str("http://h/p").unwrap().host_unbracketed(), Some("h"));
     /// ```
     pub fn host_unbracketed(&self) -> Option<&str> {
         self.authority.as_ref().map(Authority::host_unbracketed)
@@ -196,8 +196,8 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse("https://h/p").unwrap().default_port(), Some(443));
-    /// assert_eq!(Uri::parse("/just/a/path").unwrap().default_port(), None); // no scheme
+    /// assert_eq!(Uri::parse_str("https://h/p").unwrap().default_port(), Some(443));
+    /// assert_eq!(Uri::parse_str("/just/a/path").unwrap().default_port(), None); // no scheme
     /// ```
     pub fn default_port(&self) -> Option<u16> {
         self.scheme.as_deref().and_then(super::default_port)
@@ -211,9 +211,9 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse("https://h/p").unwrap().port_or_default(), Some(443)); // default
-    /// assert_eq!(Uri::parse("https://h:8443/p").unwrap().port_or_default(), Some(8443)); // explicit
-    /// assert_eq!(Uri::parse("//h/p").unwrap().port_or_default(), None); // scheme-less
+    /// assert_eq!(Uri::parse_str("https://h/p").unwrap().port_or_default(), Some(443)); // default
+    /// assert_eq!(Uri::parse_str("https://h:8443/p").unwrap().port_or_default(), Some(8443)); // explicit
+    /// assert_eq!(Uri::parse_str("//h/p").unwrap().port_or_default(), None); // scheme-less
     /// ```
     pub fn port_or_default(&self) -> Option<u16> {
         self.port().or_else(|| self.default_port())
@@ -441,7 +441,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let base = Uri::parse("https://h/a").unwrap();
+    /// let base = Uri::parse_str("https://h/a").unwrap();
     /// assert_eq!(base.copy(), base);
     /// ```
     pub fn copy(&self) -> Uri {
@@ -459,15 +459,15 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let base = Uri::parse("https://api.example.com/v1").unwrap();
+    /// let base = Uri::parse_str("https://api.example.com/v1").unwrap();
     /// assert_eq!(base.joinpath("users").to_string(), "https://api.example.com/v1/users");
     /// // A trailing slash on the base is not doubled; multi-segment input is fine.
     /// assert_eq!(base.joinpath("users/").joinpath("42").path(), "/v1/users/42");
     /// // An absolute segment resets the path; the query/fragment are untouched.
-    /// let q = Uri::parse("https://h/a?x=1#f").unwrap();
+    /// let q = Uri::parse_str("https://h/a?x=1#f").unwrap();
     /// assert_eq!(q.joinpath("/b").to_string(), "https://h/b?x=1#f");
     /// // With an authority, a relative segment onto an empty path stays rooted.
-    /// assert_eq!(Uri::parse("https://h").unwrap().joinpath("p").path(), "/p");
+    /// assert_eq!(Uri::parse_str("https://h").unwrap().joinpath("p").path(), "/p");
     /// ```
     pub fn joinpath(&self, path: &str) -> Uri {
         let normalized = normalize_slashes(path);
@@ -511,9 +511,9 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let base = Uri::parse("https://prod.example.com/v1?trace=1").unwrap();
+    /// let base = Uri::parse_str("https://prod.example.com/v1?trace=1").unwrap();
     /// // A patch that only carries an authority swaps the host, keeping scheme/path/query.
-    /// let patch = Uri::parse("//staging.example.com").unwrap();
+    /// let patch = Uri::parse_str("//staging.example.com").unwrap();
     /// assert_eq!(base.merge_with(&patch).to_string(), "https://staging.example.com/v1?trace=1");
     /// ```
     pub fn merge_with(&self, other: &Uri) -> Uri {
@@ -537,7 +537,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("sc://h/p?q#f").unwrap();
+    /// let uri = Uri::parse_str("sc://h/p?q#f").unwrap();
     /// assert_eq!(uri.serialize_bytes(), b"sc://h/p?q#f");
     /// ```
     pub fn serialize_bytes(&self) -> Vec<u8> {
@@ -548,18 +548,18 @@ impl Uri {
     /// — the exact inverse.
     ///
     /// # Errors
-    /// [`UriError::NonUtf8`] if the bytes are not UTF-8, or any [`parse`](Uri::parse) error.
+    /// [`UriError::NonUtf8`] if the bytes are not UTF-8, or any [`parse_str`](Uri::parse_str) error.
     ///
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("sc://h/p").unwrap();
+    /// let uri = Uri::parse_str("sc://h/p").unwrap();
     /// assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
     /// ```
     pub fn deserialize_bytes(bytes: &[u8]) -> Result<Uri, UriError> {
         let text =
             core::str::from_utf8(bytes).map_err(|_| UriError::NonUtf8 { len: bytes.len() })?;
-        Uri::parse(text)
+        Uri::parse_str(text)
     }
 
     /// Converts into a [`Url`], failing if this URI has no scheme.
@@ -570,8 +570,8 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert!(Uri::parse("https://h/").unwrap().into_url().is_ok());
-    /// assert!(Uri::parse("/relative").unwrap().into_url().is_err());
+    /// assert!(Uri::parse_str("https://h/").unwrap().into_url().is_ok());
+    /// assert!(Uri::parse_str("/relative").unwrap().into_url().is_err());
     /// ```
     pub fn into_url(self) -> Result<Url, UriError> {
         Url::try_from(self)
@@ -585,7 +585,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// assert_eq!(Uri::parse("sc://h").unwrap().to_url().unwrap().scheme(), "sc");
+    /// assert_eq!(Uri::parse_str("sc://h").unwrap().to_url().unwrap().scheme(), "sc");
     /// ```
     pub fn to_url(&self) -> Result<Url, UriError> {
         Url::try_from(self.clone())
@@ -601,7 +601,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(uri.query_param("a"), Some("1")); // first occurrence wins
     /// assert_eq!(uri.query_param("b"), Some("2"));
     /// assert_eq!(uri.query_param("z"), None);
@@ -619,7 +619,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);
     /// assert!(uri.query_param_all("z").is_empty());
     /// ```
@@ -647,7 +647,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("http://h/p?a=1&b=2").unwrap();
+    /// let uri = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     /// assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2")]);
     /// ```
     pub fn query_params(&self) -> Vec<(&str, &str)> {
@@ -667,7 +667,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("http://h/p?q=a%20b%26c").unwrap();
+    /// let uri = Uri::parse_str("http://h/p?q=a%20b%26c").unwrap();
     /// assert_eq!(uri.query_param("q").as_deref(), Some("a%20b%26c")); // stored (encoded)
     /// assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b&c")); // decoded
     /// ```
@@ -698,7 +698,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let uri = Uri::parse("http://h/p?a=1").unwrap();
+    /// let uri = Uri::parse_str("http://h/p?a=1").unwrap();
     /// assert!(uri.has_query_param("a"));
     /// assert!(!uri.has_query_param("b"));
     /// ```
@@ -719,7 +719,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// uri.set_query_param("a", "9");
     /// assert_eq!(uri.query(), Some("a=9&b=2")); // first updated, duplicate dropped
     /// uri.set_query_param("c", "a b&c");
@@ -762,7 +762,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert!(uri.remove_query_param("a"));
     /// assert_eq!(uri.query(), Some("b=2"));
     /// assert!(!uri.remove_query_param("z")); // absent -> no-op
@@ -801,7 +801,7 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// uri.set_query_params(&[("a", "9"), ("c", "7")]);
     /// assert_eq!(uri.query(), Some("a=9&b=2&c=7")); // a updated (dup dropped), c appended
     /// ```
@@ -859,11 +859,11 @@ impl Uri {
     /// ```
     /// use yggdryl_core::uri::Uri;
     ///
-    /// let mut uri = Uri::parse("http://h/p?c=3&a=1&b=2&a=0").unwrap();
+    /// let mut uri = Uri::parse_str("http://h/p?c=3&a=1&b=2&a=0").unwrap();
     /// uri.normalize_query();
     /// assert_eq!(uri.query(), Some("a=1&a=0&b=2&c=3")); // sorted; 'a' order kept
     ///
-    /// let mut messy = Uri::parse("http://h/p?b=2&&a=1&").unwrap();
+    /// let mut messy = Uri::parse_str("http://h/p?b=2&&a=1&").unwrap();
     /// messy.normalize_query();
     /// assert_eq!(messy.query(), Some("a=1&b=2")); // empties cleaned, sorted
     /// ```
