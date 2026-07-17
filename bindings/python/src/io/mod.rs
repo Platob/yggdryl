@@ -1,11 +1,14 @@
 //! The `io` layer of the Python binding — mirrors `yggdryl_core::io`'s folder tree: one
-//! file per core module (`kind`, `mode`, `memory`). The io-root value types
-//! (`Headers`, `IOMode`, `IOKind`) register on the `yggdryl.io` submodule; `memory` and `uri`
-//! register their own Python submodules.
+//! file per core module (`kind`, `mode`, `memory`, `local`). The io-root value types
+//! (`Headers`, `IOMode`, `IOKind`) register on the `yggdryl.io` submodule; `memory` (the
+//! in-heap sources), `local` (the local-filesystem `LocalIO` access point and the raw
+//! `Mmap`, moved here from `memory` with the core's `io::local` family), and `uri` register
+//! their own Python submodules.
 
 use pyo3::prelude::*;
 
 pub mod kind;
+pub mod local;
 pub mod memory;
 pub mod mode;
 

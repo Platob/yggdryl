@@ -12,7 +12,7 @@
 mod authority;
 mod error;
 mod generic;
-mod percent;
+pub(crate) mod percent;
 mod scheme;
 mod url;
 

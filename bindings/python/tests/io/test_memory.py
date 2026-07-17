@@ -1,18 +1,15 @@
-"""Tests for the ``yggdryl.memory`` ``Heap`` / ``Mmap`` sources and ``Whence`` seek anchor.
+"""Tests for the ``yggdryl.memory`` ``Heap`` source and ``Whence`` seek anchor.
 
 Mirrors ``crates/yggdryl-core/tests/memory_heap.rs`` on the Python surface: construction,
 size/capacity, the positioned ``pread_*`` / ``pwrite_*`` primitives and typed accessors
 (including UTF-8 text, the bulk ``i32``/``i64`` arrays, and repeated fills), the cursor
 stream, seeks from every anchor, bounded slices, the source metadata (``headers`` /
-``mode`` / ``kind``), the byte codec + pickle, and the value dunders
-(``bytes()`` / ``==`` / ``copy`` / unhashability). The ``Mmap`` section drives the same
-surface over a real file: open/create dispatch (str path or ``Uri``), persistence with
-exact truncation, read-only mappings, capacity over a file, and the ``close()`` /
-context-manager lifecycle.
+``mode`` / ``kind`` and the ``is_file`` / ``is_dir`` / ``exists`` predicates), the byte
+codec + pickle, and the value dunders (``bytes()`` / ``==`` / ``copy`` / unhashability).
+The on-disk sources moved to ``yggdryl.local`` (see ``tests/io/test_local.py``).
 """
 
 import copy
-import gc
 import pickle
 
 import pytest
@@ -20,12 +17,12 @@ import pytest
 import yggdryl.memory
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
-from yggdryl.memory import Cursor, Heap, Mmap, Slice, Whence
+from yggdryl.memory import Cursor, Heap, Slice, Whence
 from yggdryl.uri import Uri
 
 
 def test_module_surface():
-    for cls in (Heap, Whence, Cursor, Slice, Mmap):
+    for cls in (Heap, Whence, Cursor, Slice):
         assert cls.__module__ == "yggdryl.memory"
         assert hasattr(yggdryl.memory, cls.__name__)
 
@@ -695,393 +692,25 @@ def test_capacity_family_checked_and_scaling():
 
 
 # -------------------------------------------------------------------------------------
-# Mmap: constructors + generic open dispatch
+# Predicates: is_file / is_dir / exists
 # -------------------------------------------------------------------------------------
 
 
-def test_mmap_has_no_plain_constructor():
-    # The explicit lifecycle verbs open/open_readonly/create are the only entry points.
-    with pytest.raises(TypeError):
-        Mmap()
-
-
-def test_mmap_generic_open_dispatch_str_and_uri(tmp_path):
-    p = tmp_path / "dispatch.bin"
-    m = Mmap.create(str(p))  # str -> create_path
-    assert m.pwrite_utf8(0, "hi") == 2
-    m.close()
-
-    by_str = Mmap.open(str(p))  # str -> open_path
-    assert by_str.pread_utf8(0, 2) == "hi"
-    by_str.close()
-
-    uri = Uri.from_path(str(p))
-    by_uri = Mmap.open(uri)  # Uri -> open_uri
-    assert by_uri.pread_utf8(0, 2) == "hi"
-    by_uri.close()
-
-    ro = Mmap.open_readonly(uri)  # Uri -> open_uri_readonly
-    assert ro.mode == IOMode.Read
-    assert ro.pread_utf8(0, 2) == "hi"
-    ro.close()
-
-    made = Mmap.create(Uri.from_path(str(tmp_path / "made.bin")))  # Uri -> create_uri
-    assert made.is_empty()
-    made.close()
-
-
-def test_mmap_open_dispatch_rejects_other_types_guided(tmp_path):
-    with pytest.raises(TypeError, match="expected a str filesystem path"):
-        Mmap.open(123)
-    with pytest.raises(TypeError, match="str\\(path\\)"):
-        Mmap.create(tmp_path / "x.bin")  # a pathlib.Path must be passed as str(path)
-
-
-def test_mmap_open_missing_path_is_guided(tmp_path):
-    missing = str(tmp_path / "missing.bin")
-    with pytest.raises(ValueError, match="check that the path exists"):
-        Mmap.open(missing)
-    with pytest.raises(ValueError, match="check that the path exists"):
-        Mmap.open_readonly(missing)
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: write/read round-trips (typed + bulk + utf8 + cursor stream)
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_typed_positioned_round_trip(tmp_path):
-    m = Mmap.create(str(tmp_path / "typed.bin"))
-    m.pwrite_byte(0, 0xAB)
-    m.pwrite_i32(1, -42)
-    m.pwrite_i64(5, 1 << 40)
-    assert m.pread_byte(0) == 0xAB
-    assert m.pread_i32(1) == -42
-    assert m.pread_i64(5) == 1 << 40
-    assert m.byte_size() == 13
-    m.pwrite_bit(104, True)  # bit 0 of byte 13 -- grows the file by one byte
-    assert m.pread_bit(104)
-    assert not m.pread_bit(105)
-    assert m.byte_size() == 14
-    with pytest.raises(ValueError, match="unexpected end of data"):
-        m.pread_i64(m.byte_size())
-    m.close()
-
-
-def test_mmap_pread_pwrite_byte_array_and_gap_zero_fill(tmp_path):
-    m = Mmap.create(str(tmp_path / "bytes.bin"))
-    assert m.pwrite_byte_array(0, b"abc") == 3
-    assert m.pwrite_byte_array(5, b"Z") == 1  # past the end: the gap is zero-filled
-    assert m.pread_byte_array(0, 99) == b"abc\x00\x00Z"  # clamped to what remains
-    assert m.pread_byte_array(6, 4) == b""  # at the end
-    m.close()
-
-
-def test_mmap_bulk_arrays_repeats_and_utf8(tmp_path):
-    m = Mmap.create(str(tmp_path / "bulk.bin"))
-    values = list(range(-500, 500))  # 1000 elements crosses the 256-element chunk
-    m.pwrite_i32_array(0, values)
-    assert m.pread_i32_array(0, 1000) == values
-    wide = [(1 << 40) + i for i in range(300)]
-    m.pwrite_i64_array(4000, wide)
-    assert m.pread_i64_array(4000, 300) == wide
-
-    m.pwrite_byte_repeat(6400, 0xAB, 5)
-    assert m.pread_byte_array(6400, 5) == b"\xab" * 5
-    m.pwrite_i32_repeat(6405, -1, 10)
-    assert m.pread_i32_array(6405, 10) == [-1] * 10
-    m.pwrite_i64_repeat(6445, 7, 4)
-    assert m.pread_i64_array(6445, 4) == [7] * 4
-
-    assert m.pwrite_utf8(0, "héllo") == 6  # é is 2 bytes
-    assert m.pread_utf8(0, 6) == "héllo"
-    with pytest.raises(ValueError, match="invalid UTF-8"):
-        m.pread_utf8(0, 2)  # cuts the 2-byte é in half
-
-    # The bulk-read bounds are checked before the result list is allocated.
-    with pytest.raises(ValueError, match="unexpected end of data"):
-        m.pread_i32_array(0, 2_000_000_000)
-    with pytest.raises(ValueError, match="unexpected end of data"):
-        m.pread_i64_array(0, 2_000_000_000)
-    m.close()
-
-
-def test_mmap_cursor_stream(tmp_path):
-    m = Mmap.create(str(tmp_path / "stream.bin"))
-    assert m.position == 0
-    assert m.write(b"hello") == 5
-    assert m.write_utf8(" wörld") == 7
-    m.write_byte(0x21)
-    m.write_i32(-7)
-    m.write_i64(1 << 40)
-    assert m.position == 5 + 7 + 1 + 4 + 8
-
-    m.rewind()
-    assert m.position == 0
-    assert m.read(5) == b"hello"
-    assert m.read_utf8(7) == " wörld"
-    assert m.read_byte() == 0x21
-    assert m.read_i32() == -7
-    assert m.read_i64() == 1 << 40
-
-    assert m.seek(Whence.Start, 6) == 6
-    assert m.seek(Whence.Current, -1) == 5
-    assert m.seek(Whence.End, -5) == m.byte_size() - 5
-    with pytest.raises(ValueError, match="invalid seek"):
-        m.seek(Whence.Start, -1)
-
-    payload = (
-        "hello wörld".encode()
-        + b"\x21"
-        + (-7).to_bytes(4, "little", signed=True)
-        + (1 << 40).to_bytes(8, "little")
-    )
-    m.rewind()
-    assert m.read_to_end() == payload
-    assert m.position == m.byte_size()
-    assert m.read(5) == b""  # at the end
-
-    m.set_position(6)
-    assert m.read(5) == payload[6:11]
-    pos = m.position
-    m.set_position(m.byte_size())
-    with pytest.raises(ValueError):
-        m.read_i32()  # past the end
-    assert m.position == m.byte_size()  # a failed read must not advance
-    m.set_position(pos)
-    m.close()
-
-
-def test_mmap_auto_grow_appends_and_size_dunders(tmp_path):
-    m = Mmap.create(str(tmp_path / "grow.bin"))
-    assert m.byte_size() == 0
-    assert m.is_empty()
-    assert len(m) == 0
-    assert not m  # __bool__ over an empty file
-    for i in range(100):
-        m.pwrite_i64(i * 8, i)  # every append past the end auto-grows the file
-    assert m.byte_size() == 800
-    assert len(m) == 800
-    assert m.bit_size() == 6400
-    assert not m.is_empty()
-    assert m
-    assert m.pread_i64_array(0, 100) == list(range(100))
-    m.pwrite_byte(1000, 0xFF)  # far past the end: the gap arrives zero-filled
-    assert m.byte_size() == 1001
-    assert m.pread_byte(900) == 0
-    m.close()
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: persistence (truncate-on-close) + reopen
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_persists_with_exact_logical_length(tmp_path):
-    p = tmp_path / "persist.bin"
-    m = Mmap.create(str(p))
-    m.pwrite_utf8(0, "hello mapped world")
-    assert m.byte_size() == 18
-    assert m.capacity() >= 4096  # page-backed capacity padding while open
-    del m  # drop unmaps and truncates the padding away
-    gc.collect()
-
-    assert p.stat().st_size == 18  # the on-disk file keeps only the logical length
-    back = Mmap.open(str(p))
-    assert back.byte_size() == 18
-    assert back.pread_utf8(0, 5) == "hello"
-    assert back.pread_utf8(6, 6) == "mapped"
-    back.close()
-
-
-def test_mmap_create_keeps_existing_contents(tmp_path):
-    p = tmp_path / "keep.bin"
-    first = Mmap.create(str(p))
-    first.pwrite_utf8(0, "keep me")
-    first.close()
-
-    again = Mmap.create(str(p))  # create never truncates an existing file on open
-    assert again.pread_utf8(0, 7) == "keep me"
-    again.close()
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: read-only mappings
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_open_readonly_reads_work_writes_are_guided(tmp_path):
-    p = tmp_path / "ro.bin"
-    m = Mmap.create(str(p))
-    m.pwrite_i32(0, 99)
-    m.close()
-
-    ro = Mmap.open_readonly(str(p))
-    assert ro.mode == IOMode.Read
-    assert ro.pread_i32(0) == 99
-    assert ro.pread_byte_array(0, 4) == (99).to_bytes(4, "little")
-    assert ro.pwrite_byte_array(0, b"XX") == 0  # the write primitives write nothing
-    assert ro.pread_i32(0) == 99
-    with pytest.raises(ValueError, match="read-only"):
-        ro.pwrite_i32(0, 1)  # the full/typed writes name the fix
-    with pytest.raises(ValueError, match="read-only"):
-        ro.try_reserve(64)
-    with pytest.raises(ValueError, match="read-only"):
-        ro.try_reserve_exact(64)
-    ro.close()
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: capacity family over a file
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_capacity_family_over_a_file(tmp_path):
-    m = Mmap.create(str(tmp_path / "cap.bin"))
-    m.pwrite_byte_array(0, b"\x01" * 16)
-    assert m.capacity() >= 4096  # never below one page while mapped
-    m.try_reserve(8192)
-    assert m.capacity() >= 16 + 8192
-    assert m.spare_capacity() == m.capacity() - 16
-    m.try_reserve_exact(32)  # already satisfied
-    m.reserve(1)
-    m.reserve_exact(1)
-    m.ensure_capacity(10_000)
-    m.try_ensure_capacity(10_000)
-    assert m.capacity() >= 10_000
-
-    # An overflowing request raises the guided capacity error before touching the mapping.
-    with pytest.raises(ValueError, match="reserve less"):
-        m.try_reserve(2**64 - 1)
-    assert m.pread_byte_array(0, 4) == b"\x01" * 4  # still fully usable
-
-    m.shrink_to(64)
-    m.shrink_to_fit()  # remaps to exactly the logical length
-    assert m.capacity() == 16
-    assert m.byte_size() == 16
-    assert m.spare_capacity() == 0
-    assert m.pread_byte_array(0, 16) == b"\x01" * 16  # contents survive the remaps
-    m.close()
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: metadata (path / uri / kind / mode / headers) + flush + repr
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_metadata_and_flush(tmp_path):
-    p = tmp_path / "meta.bin"
-    m = Mmap.create(str(p))
-    assert m.kind == IOKind.File
-    assert m.mode == IOMode.ReadWrite
-    m.set_mode(IOMode.Read)  # a label only; the physical protection is fixed at open
-    assert m.mode == IOMode.Read
-    m.set_mode(IOMode.ReadWrite)
-
-    assert m.path == str(p)
-    assert isinstance(m.uri, Uri)
-    # The uri reports the file path back (from_path rewrites back-slashes).
-    assert str(m.uri) == str(p).replace("\\", "/")
-
-    assert isinstance(m.headers, Headers)
-    assert len(m.headers) == 0
-    grabbed = m.headers
-    grabbed.insert("a", "1")  # mutating the returned copy...
-    assert len(m.headers) == 0  # ...does not touch the mapping until written back
-    m.set_headers(grabbed)
-    assert m.headers.get("a") == "1"
-    # There is deliberately no with_headers/with_mode: they would need a copy, and a
-    # live mapping cannot be copied.
-    assert not hasattr(m, "with_headers")
-    assert not hasattr(m, "with_mode")
-
-    m.pwrite_utf8(0, "flushed")
-    m.flush()  # persists the mapped bytes without closing
-    assert m.pread_utf8(0, 7) == "flushed"
-
-    assert repr(m) == f"Mmap({p}, <7 bytes>)"
-    m.close()
-
-
-def test_mmap_is_a_live_resource_not_a_value(tmp_path):
-    m = Mmap.create(str(tmp_path / "resource.bin"))
-    # A live OS resource is deliberately not a value: no equality/copy/codec/pickle and
-    # no monomorphic Cursor/Slice builders (they are Heap-only in the binding).
-    for absent in (
-        "copy",
-        "__copy__",
-        "__deepcopy__",
-        "serialize_bytes",
-        "deserialize_bytes",
-        "with_capacity",
-        "cursor",
-        "window",
-        "slice",
-    ):
-        assert not hasattr(m, absent)
-    assert m == m  # default identity equality only
-    other = Mmap.open(str(tmp_path / "resource.bin"))
-    assert m != other
-    with pytest.raises(TypeError):
-        pickle.dumps(m)  # a mapping does not pickle
-    other.close()
-    m.close()
-
-
-# -------------------------------------------------------------------------------------
-# Mmap: close() + context manager
-# -------------------------------------------------------------------------------------
-
-
-def test_mmap_close_is_idempotent_and_guards_every_access(tmp_path):
-    p = tmp_path / "close.bin"
-    m = Mmap.create(str(p))
-    m.pwrite_utf8(0, "abc")
-    assert not m.closed
-    m.close()
-    assert m.closed
-    m.close()  # double-close is a no-op
-    assert m.closed
-
-    with pytest.raises(ValueError, match="closed"):
-        m.byte_size()
-    with pytest.raises(ValueError, match="closed"):
-        m.pread_byte(0)
-    with pytest.raises(ValueError, match="closed"):
-        m.pwrite_utf8(0, "x")
-    with pytest.raises(ValueError, match="closed"):
-        m.read_to_end()
-    with pytest.raises(ValueError, match="closed"):
-        m.flush()
-    with pytest.raises(ValueError, match="closed"):
-        m.path
-    assert repr(m) == "Mmap(<closed>)"  # repr never raises
-
-    assert p.stat().st_size == 3  # close truncated the file to its logical length
-    # The guided error names the fix: reopen.
-    reopened = Mmap.open(str(p))
-    assert reopened.pread_utf8(0, 3) == "abc"
-    reopened.close()
-
-
-def test_mmap_context_manager_closes_and_persists(tmp_path):
-    p = tmp_path / "ctx.bin"
-    with Mmap.create(str(p)) as m:
-        assert m.write(b"managed") == 7
-        assert m.capacity() >= 4096  # padded while open...
-    assert m.closed  # __exit__ closed it
-    assert p.stat().st_size == 7  # ...but on disk only the logical length remains
-
-    with Mmap.open(str(p)) as back:
-        assert back.read_to_end() == b"managed"
-    assert back.closed
-
-
-def test_mmap_context_manager_closes_on_exception(tmp_path):
-    p = tmp_path / "ctx_err.bin"
-    with pytest.raises(RuntimeError, match="boom"):
-        with Mmap.create(str(p)) as m:
-            m.write(b"partial")
-            raise RuntimeError("boom")  # __exit__ must close and re-raise
-    assert m.closed
-    assert p.stat().st_size == 7
+def test_heap_predicates_a_live_heap_always_exists():
+    h = Heap(b"x")
+    assert h.exists() is True  # a live in-memory buffer always exists...
+    assert h.is_file() is False  # ...although it is neither file...
+    assert h.is_dir() is False  # ...nor directory
+    assert Heap().exists() is True  # even when empty
+
+
+def test_cursor_and_slice_predicates_derive_from_kind():
+    h = Heap(b"hello world")
+    cur = Cursor.over(h)
+    assert cur.is_file() is False
+    assert cur.is_dir() is False
+    assert cur.exists() is True  # the wrapper forwards the live heap's own notion
+    win = Slice(h, 0, 5)
+    assert win.is_file() is False
+    assert win.is_dir() is False
+    assert win.exists() is True

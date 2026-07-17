@@ -109,6 +109,11 @@ impl LocalIO {
     /// after which the handle is **still usable**: it simply returns to its lazy state.
     /// Idempotent. Call before removing a file this handle has written (Windows cannot
     /// delete a mapped file).
+    ///
+    /// While a handle holds its mapping, the on-disk file carries the mapping's **capacity
+    /// padding** (amortized-growth headroom), so *other* handles to the same path observe
+    /// the padded length until this one closes (or drops) and truncates back to the logical
+    /// length. One writer at a time is the intended model.
     pub fn close(&mut self) {
         self.map = None;
     }
@@ -128,6 +133,16 @@ impl LocalIO {
         File::open(&self.path)
             .ok()
             .filter(|f| f.metadata().map(|m| m.is_file()).unwrap_or(false))
+    }
+
+    /// The guided error for a write-shaped call on a read-only handle.
+    fn read_only_err(&self) -> IoError {
+        IoError::FileIo {
+            op: "write",
+            path: self.path.to_string_lossy().into_owned(),
+            detail: "the handle is read-only (IOMode::Read); set_mode(ReadWrite) to write"
+                .to_string(),
+        }
     }
 
     /// Materializes the mapped backing (auto-creating missing parents + the file) — the
@@ -196,11 +211,25 @@ impl IOBase for LocalIO {
         }
     }
 
+    fn reserve_exact(&mut self, additional: u64) {
+        if self.mode.is_writable() {
+            if let Ok(map) = self.ensure_map() {
+                map.reserve_exact(additional);
+            }
+        }
+    }
+
     fn try_reserve(&mut self, additional: u64) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(self.read_only_err());
+        }
         self.ensure_map()?.try_reserve(additional)
     }
 
     fn try_reserve_exact(&mut self, additional: u64) -> Result<(), IoError> {
+        if !self.mode.is_writable() {
+            return Err(self.read_only_err());
+        }
         self.ensure_map()?.try_reserve_exact(additional)
     }
 
@@ -223,6 +252,9 @@ impl IOBase for LocalIO {
         match fs::metadata(&self.path) {
             Ok(meta) if meta.is_dir() => IOKind::Directory,
             Ok(_) => IOKind::File,
+            // DESIGN: `metadata` follows symlinks, so a dangling link errors — probe the
+            // link itself so the node stays a removable File instead of a phantom Missing.
+            Err(_) if fs::symlink_metadata(&self.path).is_ok() => IOKind::File,
             Err(_) => IOKind::Missing,
         }
     }
@@ -271,12 +303,7 @@ impl IOBase for LocalIO {
 
     fn pwrite_all(&mut self, offset: u64, data: &[u8]) -> Result<(), IoError> {
         if !self.mode.is_writable() {
-            return Err(IoError::FileIo {
-                op: "write",
-                path: self.path.to_string_lossy().into_owned(),
-                detail: "the handle is read-only (IOMode::Read); set_mode(ReadWrite) to write"
-                    .to_string(),
-            });
+            return Err(self.read_only_err());
         }
         if self.map.is_none() && self.is_dir() {
             return Err(IoError::FileIo {
@@ -292,45 +319,56 @@ impl IOBase for LocalIO {
 /// The streamed one-level child iterator of a [`LocalIO`] — lazy: entries are produced as
 /// the caller pulls. A file or missing node streams nothing.
 pub struct LocalChildren {
-    read_dir: Option<fs::ReadDir>,
+    read_dir: Option<(PathBuf, fs::ReadDir)>,
 }
 
 impl Iterator for LocalChildren {
     type Item = Result<LocalIO, IoError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entry = self.read_dir.as_mut()?.next()?;
-        Some(
-            entry
-                .map(|e| LocalIO::from_path(e.path()))
-                .map_err(|e| file_err("list", StdPath::new(""), &e)),
-        )
+        let (path, read_dir) = self.read_dir.as_mut()?;
+        let entry = read_dir.next()?;
+        Some(match entry {
+            Ok(e) => Ok(LocalIO::from_path(e.path())),
+            Err(e) => Err(file_err("list", path, &e)),
+        })
     }
 }
 
-/// The streamed depth-first recursive walker of a [`LocalIO`] subtree.
+/// The streamed depth-first recursive walker of a [`LocalIO`] subtree. Directory symlinks
+/// are yielded but not descended into (a link cycle must not walk forever), and a subtree
+/// that cannot be opened yields its guided error right after the directory's own entry.
 pub struct LocalWalk {
-    stack: Vec<fs::ReadDir>,
+    stack: Vec<(PathBuf, fs::ReadDir)>,
+    pending: Option<IoError>,
 }
 
 impl Iterator for LocalWalk {
     type Item = Result<LocalIO, IoError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(err) = self.pending.take() {
+            return Some(Err(err));
+        }
         loop {
-            let read_dir = self.stack.last_mut()?;
+            let (dir_path, read_dir) = self.stack.last_mut()?;
             match read_dir.next() {
                 Some(Ok(entry)) => {
                     let path = entry.path();
-                    if path.is_dir() {
-                        if let Ok(inner) = fs::read_dir(&path) {
-                            self.stack.push(inner);
+                    // `file_type` does not follow symlinks: descend only into real
+                    // directories so a link cycle cannot make the walk endless.
+                    let is_real_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                    if is_real_dir {
+                        match fs::read_dir(&path) {
+                            Ok(inner) => self.stack.push((path.clone(), inner)),
+                            Err(e) => self.pending = Some(file_err("list", &path, &e)),
                         }
                     }
                     return Some(Ok(LocalIO::from_path(path)));
                 }
                 Some(Err(e)) => {
-                    return Some(Err(file_err("list", StdPath::new(""), &e)));
+                    let err = file_err("list", dir_path, &e);
+                    return Some(Err(err));
                 }
                 None => {
                     self.stack.pop();
@@ -366,7 +404,7 @@ impl Path for LocalIO {
     fn ls(&self) -> Result<LocalChildren, IoError> {
         match fs::read_dir(&self.path) {
             Ok(read_dir) => Ok(LocalChildren {
-                read_dir: Some(read_dir),
+                read_dir: Some((self.path.clone(), read_dir)),
             }),
             Err(_) if !self.is_dir() => Ok(LocalChildren { read_dir: None }),
             Err(e) => Err(file_err("list", &self.path, &e)),
@@ -376,9 +414,13 @@ impl Path for LocalIO {
     fn ls_recursive(&self) -> Result<LocalWalk, IoError> {
         match fs::read_dir(&self.path) {
             Ok(read_dir) => Ok(LocalWalk {
-                stack: vec![read_dir],
+                stack: vec![(self.path.clone(), read_dir)],
+                pending: None,
             }),
-            Err(_) if !self.is_dir() => Ok(LocalWalk { stack: Vec::new() }),
+            Err(_) if !self.is_dir() => Ok(LocalWalk {
+                stack: Vec::new(),
+                pending: None,
+            }),
             Err(e) => Err(file_err("list", &self.path, &e)),
         }
     }

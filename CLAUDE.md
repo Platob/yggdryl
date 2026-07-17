@@ -43,18 +43,22 @@ extensions.** This is a hard rule: a reader must find the same shape everywhere.
 
 - *Core tests/benches* (flat by cargo's design) mirror by **path-derived names**:
   `src/io/memory/heap.rs` → `tests/io_memory_heap.rs` (+ `_alloc`) → `benches/io_memory_heap.rs`
-  → `benchmarks/yggdryl-core/io/memory/heap.md`; `src/uri/` → `tests/uri*.rs` →
+  → `benchmarks/yggdryl-core/io/memory/heap.md`; `src/io/local/` → `tests/io_local_io.rs` +
+  `tests/io_local_mmap.rs` (+ `_alloc`) → `benches/io_local_mmap.rs` →
+  `benchmarks/yggdryl-core/io/local/mmap.md`; `src/uri/` → `tests/uri*.rs` →
   `benches/uri.rs` → `benchmarks/yggdryl-core/uri.md`; `src/headers.rs` → `tests/headers.rs`.
-- *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,mod.rs,…}` +
-  `bindings/*/src/{headers.rs,uri.rs}`, `bindings/python/tests/{io/test_memory.py,test_uri.py,test_headers.py}`,
-  `bindings/node/test/{io/memory.test.js,uri.test.js}`, and the same under `benchmarks/` /
-  `benchmark/`.
+- *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,local.rs,mod.rs,…}` +
+  `bindings/*/src/{headers.rs,uri.rs}`,
+  `bindings/python/tests/{io/test_memory.py,io/test_local.py,test_uri.py,test_headers.py}`,
+  `bindings/node/test/{io/memory.test.js,io/local.test.js,uri.test.js}`, and the same under
+  `benchmarks/` / `benchmark/`.
 - *Public namespaces* mirror the **leaf modules identically in both bindings** —
-  `yggdryl.memory`, `yggdryl.uri`, `yggdryl.headers`, and `yggdryl.io` for the io-root types —
-  adapting only to
+  `yggdryl.memory`, `yggdryl.local`, `yggdryl.uri`, `yggdryl.headers`, and `yggdryl.io` for the
+  io-root types — adapting only to
   platform nesting limits (napi namespaces are single-level, so both bindings stay flat and
   therefore identical).
-- `docs/` pages mirror too (`docs/io/memory.md`, `docs/uri.md`, `docs/headers.md`), each with synced
+- `docs/` pages mirror too (`docs/io/memory.md`, `docs/io/local.md`, `docs/uri.md`,
+  `docs/headers.md`), each with synced
   `=== "Python"` / `=== "Node"` / `=== "Rust"` tabs, listed in `mkdocs.yml` nav.
 
 Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + strict docs),

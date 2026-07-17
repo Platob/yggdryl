@@ -342,6 +342,16 @@ fn cursor_wrapper_delegates_uri() {
     assert_eq!(cur.uri().to_string(), "mem://heap");
 }
 
+#[test]
+fn wrappers_forward_the_existence_predicates() {
+    // A live heap exists (its own override), and the wrappers forward that notion instead
+    // of re-deriving it from `kind` alone.
+    let cur = Heap::new().cursor();
+    assert!(cur.exists() && !cur.is_file() && !cur.is_dir());
+    let win = Heap::from_slice(b"hello").window(1, 3).unwrap();
+    assert!(win.exists() && !win.is_file() && !win.is_dir());
+}
+
 // -------------------------------------------------------------------------------------
 // IOSlice<T> wrapper — a bounded window over any source
 // -------------------------------------------------------------------------------------

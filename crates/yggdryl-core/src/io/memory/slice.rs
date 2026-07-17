@@ -119,4 +119,10 @@ impl<T: IOBase> IOBase for IOSlice<T> {
     fn kind(&self) -> crate::io::IOKind {
         self.inner.kind()
     }
+
+    fn exists(&self) -> bool {
+        // Forward the source's own notion (e.g. a live `Heap` exists although its kind is
+        // neither file nor directory) instead of re-deriving from `kind` alone.
+        self.inner.exists()
+    }
 }

@@ -439,6 +439,18 @@ impl IOBase for Mmap {
         if !self.mode.is_writable() {
             return Err(readonly_err(&self.path));
         }
+        if data.is_empty() {
+            return Ok(());
+        }
+        // Grow explicitly first so a failed grow/remap surfaces its guided OS detail
+        // instead of collapsing into a generic short-write error.
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or(IoError::CapacityOverflow {
+                additional: data.len() as u64,
+                capacity: self.map_len as u64,
+            })?;
+        self.grow_capacity(end)?;
         let written = self.pwrite_byte_array(offset, data);
         if written == data.len() {
             Ok(())

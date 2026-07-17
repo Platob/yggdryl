@@ -3,9 +3,9 @@
 `memory` is yggdryl's **abstract byte / memory-access layer** — the `IOBase` contract that defines
 positioned access to a byte region, independent of *where the bytes live*, plus the concrete pieces
 built over it. A **source** implements `IOBase`, so everything above reads and writes through one
-contract. The in-heap source is [`Heap`](#heap); the local-filesystem family (`Mmap`, `LocalPath`,
-`LocalFile`, `LocalFolder`) lives on the [local page](local.md) and implements the same
-contract, plus the [`Path`](local.md#the-path-trait--one-graph-contract) graph trait.
+contract. The in-heap source is [`Heap`](#heap); the local-filesystem family (`LocalIO`, the single
+access point, over the raw `Mmap`) lives on the [local page](local.md) and implements the same
+contract, plus the [`Path`](local.md#the-path-trait-one-graph-contract) graph trait.
 
 ## The contract
 
@@ -171,9 +171,9 @@ Beyond its address, every source reports three more facets — all delegated by 
   [`Headers`](../headers.md) map (there is exactly one metadata type).
   In the bindings `heap.headers` returns a **copy**; write back with `set_headers` /
   `with_headers`.
-- **`mode()`** — how the source may be accessed, an [`IOMode`](index.md#iomode-and-iokind--int-enums-with-parsers)
+- **`mode()`** — how the source may be accessed, an [`IOMode`](index.md#iomode-and-iokind-int-enums-with-parsers)
   (`ReadWrite` by default for in-memory sources; settable on `Heap`).
-- **`kind()`** — what the source *is*, an [`IOKind`](index.md#iomode-and-iokind--int-enums-with-parsers)
+- **`kind()`** — what the source *is*, an [`IOKind`](index.md#iomode-and-iokind-int-enums-with-parsers)
   (`Heap` reports `IOKind::Heap`; a file source reports `File` / `Directory` / `Missing`).
 
 Like the address, all three are metadata — excluded from a heap's value equality.

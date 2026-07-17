@@ -13,8 +13,8 @@
     "index.d.ts"
   ],
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release && node scripts/fix-dts.js",
+    "build:debug": "napi build --platform && node scripts/fix-dts.js",
     "test": "node --test"
   },
   "devDependencies": {

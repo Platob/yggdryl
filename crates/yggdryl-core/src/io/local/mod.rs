@@ -46,7 +46,10 @@ pub(crate) fn uri_to_path(uri: &Uri) -> Result<PathBuf, IoError> {
             });
         }
     }
-    let path = uri.path();
+    // A `Uri` stores its path percent-ENCODED (`Uri::from_path` escapes spaces and every
+    // other non-pchar byte); the filesystem wants the decoded form back.
+    let decoded = crate::uri::percent::decode(uri.path());
+    let path = decoded.as_ref();
     let path = match path.as_bytes() {
         [b'/', drive, b':', ..] if drive.is_ascii_alphabetic() => &path[1..],
         _ => path,

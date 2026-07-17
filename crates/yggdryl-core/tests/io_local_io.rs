@@ -96,6 +96,51 @@ fn lazy_then_write_auto_creates_and_self_optimizes() {
 }
 
 #[test]
+fn uri_round_trips_a_path_with_spaces() {
+    let tmp = TempDir::new("uri_space");
+    let mut written = tmp.root().join_str("with space/no te.bin");
+    written.pwrite_utf8(0, "hi");
+    written.close();
+
+    // uri() percent-encodes the space; from_uri must decode it back to the same file.
+    let uri = written.uri();
+    assert!(uri.to_string().contains("%20"));
+    let back = LocalIO::from_uri(&uri).unwrap();
+    assert_eq!(back, written);
+    assert!(back.is_file());
+    assert_eq!(back.pread_utf8(0, 2).unwrap(), "hi");
+}
+
+#[test]
+fn read_only_mode_gates_every_write_shaped_call() {
+    let tmp = TempDir::new("ro");
+    let mut h = tmp.root().join_str("never.bin");
+    h.set_mode(yggdryl_core::io::IOMode::Read);
+
+    // The checked reservations refuse with the same guided text as pwrite_all — and,
+    // crucially, nothing is created on disk.
+    let err = h.try_reserve(100).unwrap_err().to_string();
+    assert!(err.contains("read-only") && err.contains("set_mode"));
+    let err = h.try_reserve_exact(100).unwrap_err().to_string();
+    assert!(err.contains("read-only") && err.contains("set_mode"));
+    h.reserve(100);
+    h.reserve_exact(100);
+    assert_eq!(h.pwrite_byte_array(0, b"x"), 0);
+    assert!(!h.exists());
+    assert!(!tmp.root().exists()); // not even the parent folder appeared
+}
+
+#[test]
+fn reserve_exact_materializes_real_capacity() {
+    let tmp = TempDir::new("resx");
+    let mut h = tmp.root().join_str("cap.bin");
+    h.reserve_exact(4096);
+    assert!(h.capacity() >= 4096); // not the trait's silent no-op
+    assert!(h.is_mapped());
+    h.close();
+}
+
+#[test]
 fn reads_before_any_write_are_ad_hoc() {
     let tmp = TempDir::new("adhoc");
     // Produce a file through one handle…

@@ -51,8 +51,57 @@ node over any path (file, folder, or nothing yet) that decides per call how to s
     root.rmdir().unwrap();                               // recursive cleanup
     ```
 
-The bindings mirror the family under `yggdryl.local` / `require('yggdryl').local` with the
-generic entries (`LocalIO(path_or_uri)`, `ls(recursive=…)` over the streamed core iterators).
+=== "Python"
+
+    ```python
+    import tempfile
+
+    from yggdryl.local import LocalIO
+
+    root = LocalIO(tempfile.mkdtemp())
+    note = root / "deep/nested/note.txt"      # lazy — nothing exists yet
+    assert not note.exists()
+
+    note.pwrite_utf8(0, "hello")              # auto-creates deep/, nested/, the file — and maps it
+    assert note.is_file() and note.is_mapped
+    assert note.pread_utf8(0, 5) == "hello"   # memory-speed from here on
+
+    names = [entry.name for entry in root.ls(recursive=True)]
+    assert "note.txt" in names
+    note.close()                              # release the mapping — the handle stays usable
+    root.rmdir()                              # recursive cleanup
+    ```
+
+=== "Node"
+
+    ```javascript
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { local } = require('yggdryl');
+
+    const root = new local.LocalIO(fs.mkdtempSync(`${os.tmpdir()}/example-`));
+    const note = root.join('deep/nested/note.txt');    // lazy — nothing exists yet
+    console.assert(!note.exists());
+
+    note.pwriteUtf8(0, 'hello');                       // auto-creates deep/, nested/, the file — and maps it
+    console.assert(note.isFile() && note.isMapped);
+    console.assert(note.preadUtf8(0, 5) === 'hello');  // memory-speed from here on
+
+    const names = [...root.ls(true)].map((entry) => entry.name);
+    console.assert(names.includes('note.txt'));
+    note.close();                                      // release the mapping — the handle stays usable
+    root.rmdir();                                      // recursive cleanup
+    ```
+
+Both bindings mirror the whole surface — the generic `LocalIO(path_or_uri)` constructor, the
+byte contract of the [memory page](memory.md) (minus the `Heap`-only `cursor()` / `window()`
+builders and `with_capacity` — a handle's size comes from the file), the probing predicates
+(`is_file` / `is_dir` / `exists`), navigation (`name`, `parent()`, `join` — plus Python's
+`node / "a/b.txt"` operator), the one generic `ls(recursive=…)` entry **streaming** the core
+iterators (`children()` is the collected convenience), the shape-checked `rm()` / `rmfile()` /
+`rmdir()`, and
+`mkdir()` / `flush()` / `close()` / `is_mapped`. A `copy()` is a fresh lazy handle to the same
+path; handles compare equal by path.
 
 ## `Mmap` — the memory-mapped file
 
@@ -62,14 +111,16 @@ a [`Uri`](../uri.md) (`file://…` or a plain path), reports `IOKind.File` and i
 back, and **auto-resizes**: a write past the end grows the file with the same amortized
 doubling as `Heap` (`O(log n)` remaps), and the capacity padding is truncated back to the
 logical length on close. Read-only mappings (`open_readonly`) physically cannot be written —
-the full writes report a guided error naming the fix. Mapped I/O allocates nothing (the OS
-pages back the mapping — see the
-[`io_memory_mmap` benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/memory/mmap.md)).
+the full writes report a guided error naming the fix. Mapped I/O allocates nothing — the OS
+pages back the mapping; asserted deterministically by the `io_local_mmap_alloc` test and
+measured in the
+[`io_local_mmap` benchmark](https://github.com/Platob/yggdryl/blob/main/benchmarks/yggdryl-core/io/local/mmap.md).
 
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::memory::{IOBase, Mmap};
+    use yggdryl_core::io::local::Mmap;
+    use yggdryl_core::io::memory::IOBase;
     use yggdryl_core::uri::Uri;
 
     let path = std::env::temp_dir().join("example.bin");
@@ -82,15 +133,14 @@ pages back the mapping — see the
     map.flush().unwrap();                            // msync + fsync
     drop(map);                                       // truncates capacity padding
 
-    let ro = Mmap::open_uri_readonly(&uri).unwrap(); // physically unwritable
-    assert!(ro.pwrite_all(0, b"x").is_err());        // guided error names the fix
+    let mut ro = Mmap::open_uri_readonly(&uri).unwrap(); // physically unwritable
+    assert!(ro.pwrite_all(0, b"x").is_err());            // guided error names the fix
     std::fs::remove_file(&path).ok();
     ```
 
-The byte surface is identical to `Heap`'s, so the Python/Node examples above apply verbatim —
-both bindings expose `Mmap` with generic type-inferring factories (`Mmap.open(path_or_uri)` /
-`open_readonly` / `create`, dispatching `str`/`string` → the path constructors and a `Uri` →
-the uri ones), plus a deterministic **`close()`** (idempotent; a Python context manager —
-`with Mmap.create(p) as m:` — and a `closed` getter on both), since a live mapping should not
-wait for the garbage collector to unmap and truncate.
-
+The byte surface is identical to `Heap`'s ([memory page](memory.md)). Both bindings expose
+`Mmap` in the same `local` namespace as `LocalIO`, with generic type-inferring factories
+(`Mmap.open(path_or_uri)` / `open_readonly` / `create`, dispatching `str`/`string` → the path
+constructors and a `Uri` → the uri ones), plus a deterministic **`close()`** (idempotent; a
+Python context manager — `with Mmap.create(p) as m:` — and a `closed` getter on both), since
+a live mapping should not wait for the garbage collector to unmap and truncate.
