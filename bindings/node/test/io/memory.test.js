@@ -768,3 +768,36 @@ test('Cursor and Slice carry the same leaf graph surface', () => {
   assert.throws(() => win.rm(), /LocalIO/)
 })
 
+// -------------------------------------------------------------------------------------
+// Heap.join — a heap is a leaf for discovery but still addressable (join composes an
+// address; parent navigates back). The named mirror of Python's `__truediv__`.
+// -------------------------------------------------------------------------------------
+
+test('join composes a child address; the child is an independent buffer; parent navigates back', () => {
+  const root = new Heap()
+  const child = root.join('logs/app.bin')
+  assert.ok(child instanceof Heap)
+  assert.equal(child.uri.toString(), 'mem://heap/logs/app.bin')
+  assert.equal(child.name, 'app.bin') // the last address segment, percent-decoded
+
+  // The child is an independent, writable buffer — the parent heap stays empty.
+  assert.equal(child.pwriteUtf8(0, 'log line'), 8)
+  assert.equal(child.preadUtf8(0, 8), 'log line')
+  assert.equal(root.byteSize(), 0) // writing the child never touched the root
+  assert.equal(child.uri.toString(), 'mem://heap/logs/app.bin') // address survives the write
+
+  // parent() navigates back up the composed address.
+  const logs = child.parent()
+  assert.ok(logs instanceof Heap)
+  assert.equal(logs.uri.toString(), 'mem://heap/logs')
+  assert.equal(logs.parent().uri.toString(), 'mem://heap') // grandparent is the root
+
+  // The bare mem://heap root has no parent (a joined child's chain bottoms out at null).
+  assert.equal(new Heap().parent(), null)
+  assert.equal(logs.parent().parent(), null)
+})
+
+test('a spaced join segment percent-encodes in the composed address', () => {
+  assert.equal(new Heap().join('my dir/f').uri.toString(), 'mem://heap/my%20dir/f')
+})
+

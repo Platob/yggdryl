@@ -275,6 +275,25 @@ fn main() {
     );
 
     // ---------------------------------------------------------------------------------
+    // Graph navigation — `join` composes a child address (Uri::joinpath), `parent` the
+    // inverse. Address algebra over an in-memory heap: allocations are the URI's, no I/O.
+    // ---------------------------------------------------------------------------------
+
+    let node = Heap::new().join("logs/2026/app.bin").unwrap();
+    row(
+        "join (compose child address)",
+        measure(1, iters, || {
+            let _ = Heap::new().join("logs/2026/app.bin").unwrap();
+        }),
+    );
+    row(
+        "parent (navigate up)",
+        measure(1, iters, || {
+            let _ = node.parent();
+        }),
+    );
+
+    // ---------------------------------------------------------------------------------
     // Default trait paths vs Heap — a minimal source implements ONLY the required methods,
     // so every bulk/typed op runs the IOBase default; Heap may override with faster paths.
     // ---------------------------------------------------------------------------------

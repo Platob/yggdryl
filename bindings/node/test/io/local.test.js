@@ -259,6 +259,36 @@ test('navigation: name / parent() / join are pure path math; uri ends with the n
   rmTree(dir)
 })
 
+test('join writes + reads back; parent() is the auto-created directory; nested join round-trips through a fresh handle', () => {
+  const dir = tmpDir()
+  const root = new LocalIO(dir)
+
+  // A joined child auto-creates its parents on the first write and reads back.
+  const day1 = root.join('logs/day1.bin')
+  assert.ok(day1 instanceof LocalIO)
+  assert.equal(day1.name, 'day1.bin')
+  assert.equal(day1.pwriteUtf8(0, 'monday'), 6)
+  assert.equal(day1.preadUtf8(0, 6), 'monday')
+
+  // Its parent addresses the (now auto-created) logs directory — join's inverse.
+  const logs = day1.parent()
+  assert.ok(logs instanceof LocalIO)
+  assert.equal(logs.name, 'logs')
+  assert.ok(logs.isDir()) // the first write created it
+
+  day1.close() // release the mapping so Windows can remove the tree
+
+  // A nested multi-segment join reads back through a fresh, never-written handle.
+  const deep = root.join('a/b/c/deep.bin')
+  deep.pwriteUtf8(0, 'buried')
+  deep.close()
+  const fresh = new LocalIO(dir).join('a/b/c/deep.bin')
+  assert.equal(fresh.preadUtf8(0, 6), 'buried')
+  assert.equal(fresh.isMapped, false) // served ad hoc, no mapping
+
+  rmTree(dir)
+})
+
 test('ls() streams direct children; ls(true) streams the subtree; children() collects', () => {
   const dir = tmpDir()
   const root = new LocalIO(dir)

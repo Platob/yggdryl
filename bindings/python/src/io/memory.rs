@@ -15,10 +15,14 @@
 //! core's `io::local` family).
 //!
 //! `IOBase` is the **central access path**, so every source is also a node of the IO graph.
-//! The in-memory types are **leaves**: `name` is empty (`mem://heap` has no path segment),
-//! `parent()` is `None`, `ls()` streams the always-empty [`NoChildren`], `children()`
-//! collects nothing, and the `rm` / `rmfile` / `rmdir` family raises the core's guided
-//! no-removable-backing refusal. DESIGN: the core's generic memory-tree helpers
+//! The in-memory types are **discovery leaves**: `ls()` streams the always-empty
+//! [`NoChildren`], `children()` collects nothing, and the `rm` / `rmfile` / `rmdir` family
+//! raises the core's guided no-removable-backing refusal. A [`Heap`] is still **addressable**,
+//! though: [`join`](Heap::join) (and the `/` operator) composes a child address over an
+//! independent buffer and [`parent`](Heap::parent) navigates back, so `name` / `parent` follow
+//! the URI (`mem://heap` alone names nothing and has no parent; `mem://heap/logs/app.bin`
+//! names `app.bin` and parents `mem://heap/logs`). The `Cursor` / `Slice` byte views are full
+//! leaves — no path segment, `parent()` is `None`. DESIGN: the core's generic memory-tree helpers
 //! (`tree_byte_size` / `blocks` / `tree_pread_byte_array` / `tree_pwrite_byte_array`) are
 //! deliberately **not** mirrored as named methods — they are the internal write-once pattern
 //! behind container-node byte access, which the binding reaches through the ordinary byte
@@ -470,8 +474,9 @@ impl Heap {
 
     // ---- address (uri) -----------------------------------------------------------------
 
-    /// The [`Uri`] that **addresses** this heap — always the stable synthetic `mem://heap`
-    /// (a heap stores no address; an anonymous in-memory buffer has no other identity).
+    /// The [`Uri`] that **addresses** this heap — the stable synthetic `mem://heap` for an
+    /// anonymous buffer (which stores no address), or the composed address a heap built by
+    /// [`join`](Heap::join) carries (`mem://heap/logs/app.bin`).
     #[getter]
     fn uri(&self) -> Uri {
         Uri {
@@ -550,16 +555,38 @@ impl Heap {
 
     // ---- graph: navigation + discovery + CRUD (a heap is a leaf) -------------------------
 
-    /// The node's own name — the last segment of its address's path, so empty for a heap
-    /// (the synthetic `mem://heap` has no path segment to name).
+    /// The node's own name — the last (percent-decoded) segment of its address's path: empty
+    /// for an anonymous heap (the synthetic `mem://heap` has no path segment), the joined leaf
+    /// name for an addressed one (`mem://heap/logs/app.bin` → `app.bin`).
     #[getter]
     fn name(&self) -> String {
         self.inner.name()
     }
 
-    /// The parent node, or `None` — a heap is a **leaf** of the IO graph.
+    /// The parent node, or `None` — the inverse of [`join`](Heap::join): an addressed heap
+    /// (`mem://heap/logs/app.bin`) reports its directory address (`mem://heap/logs`), a bare
+    /// `mem://heap` root reports `None`. (A heap is a **leaf** for *discovery* — it streams no
+    /// children — but it is still addressable, so navigation composes through the URI.)
     fn parent(&self) -> Option<Heap> {
         self.inner.parent().map(|inner| Heap { inner })
+    }
+
+    /// The child node at `segment` — a **new, independent in-memory buffer** whose address is
+    /// composed by joining `segment` onto this heap's URI (`Uri.joinpath`), so
+    /// `child.parent()` addresses this node again. `segment` may be multi-segment (`"a/b/c"`),
+    /// and a spaced segment percent-encodes in the address (`"my dir/f"` →
+    /// `mem://heap/my%20dir/f`). Pure address algebra — the child owns no bytes yet, and
+    /// writing it never touches this heap.
+    fn join(&self, segment: &str) -> PyResult<Heap> {
+        self.inner
+            .join(segment)
+            .map(|inner| Heap { inner })
+            .map_err(ioerr)
+    }
+
+    /// `heap / "logs/app.bin"` — the operator spelling of [`join`](Heap::join).
+    fn __truediv__(&self, segment: &str) -> PyResult<Heap> {
+        self.join(segment)
     }
 
     /// Streams this node's children — always the empty [`NoChildren`] stream (a heap is

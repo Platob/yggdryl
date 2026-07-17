@@ -22,6 +22,39 @@ fn joinpath_basic_append() {
     assert_eq!(base.joinpath("users").joinpath("42").path(), "/v1/users/42");
 }
 
+// -------------------------------------------------------------------------------------
+// parent / parents — the inverse of joinpath
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn parent_is_the_inverse_of_joinpath() {
+    let base = Uri::parse_str("https://h/a/b?q=1#f").unwrap();
+    // parent strips the last segment, keeping scheme/authority/query/fragment.
+    assert_eq!(base.joinpath("c").parent().unwrap(), base);
+    assert_eq!(base.parent().unwrap().to_string(), "https://h/a?q=1#f");
+    // Walking up to the root, then None.
+    assert_eq!(base.parent().unwrap().parent().unwrap().path(), "");
+    assert!(Uri::parse_str("https://h").unwrap().parent().is_none());
+    // A retained special-char segment is not double-encoded.
+    let spaced = Uri::from_path("/my dir/my file");
+    assert_eq!(spaced.path(), "/my%20dir/my%20file");
+    assert_eq!(spaced.parent().unwrap().path(), "/my%20dir");
+}
+
+#[test]
+fn parents_iterates_ancestors_nearest_first() {
+    let u = Uri::from_path("/a/b/c.txt");
+    let paths: Vec<String> = u.parents().map(|p| p.path().to_string()).collect();
+    assert_eq!(paths, vec!["/a/b", "/a", ""]);
+    // A root has no ancestors.
+    assert_eq!(Uri::parse_str("https://h").unwrap().parents().count(), 0);
+
+    // Url mirrors it, keeping the scheme.
+    let url = Url::parse_str("https://h/x/y/z").unwrap();
+    let urls: Vec<String> = url.parents().map(|p| p.to_string()).collect();
+    assert_eq!(urls, vec!["https://h/x/y", "https://h/x", "https://h"]);
+}
+
 #[test]
 fn joinpath_never_doubles_the_separator() {
     // Trailing slash on the base + a plain segment collapse to exactly one slash.

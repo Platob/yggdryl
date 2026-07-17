@@ -204,6 +204,12 @@ fn main() {
         block.close();
     }
     row(
+        "join (lazy child, Uri::joinpath)",
+        measure(1, iters, || {
+            let _ = tree.join("logs/2026/day.bin").unwrap();
+        }),
+    );
+    row(
         "tree byte_size (16 blocks, lazy sum)",
         measure(1, iters, || {
             let _ = tree.byte_size();

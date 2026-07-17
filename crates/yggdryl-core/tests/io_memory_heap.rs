@@ -394,6 +394,50 @@ fn heap_join_composes_addresses_over_an_in_memory_buffer() {
 }
 
 #[test]
+fn join_edge_cases_and_identities() {
+    use yggdryl_core::io::Serializable;
+
+    let root = Heap::new();
+
+    // An empty segment is a no-op: the child addresses the same place.
+    assert_eq!(root.join("").unwrap().uri(), root.uri());
+    // An absolute segment re-roots (the URI join algebra), keeping the scheme/host.
+    let child = root.join("a/b").unwrap();
+    assert_eq!(
+        child.join("/reset").unwrap().uri().to_string(),
+        "mem://heap/reset"
+    );
+    // A trailing slash on the base is not doubled.
+    assert_eq!(
+        root.join("dir/")
+            .unwrap()
+            .join("f")
+            .unwrap()
+            .uri()
+            .to_string(),
+        "mem://heap/dir/f"
+    );
+
+    // A joined heap is equal-by-bytes regardless of address (address is transient metadata),
+    // and its serialized form is its bytes only.
+    let mut a = root.join("x").unwrap();
+    let mut b = root.join("y").unwrap();
+    a.pwrite_utf8(0, "same");
+    b.pwrite_utf8(0, "same");
+    assert_eq!(a, b); // different addresses, same bytes -> equal
+    assert_eq!(a.serialize_bytes(), b"same");
+
+    // Clone preserves the address.
+    let clone = a.clone();
+    assert_eq!(clone.uri(), a.uri());
+
+    // A wrapper (cursor) has no child path space: join is a guided error.
+    let cur = Heap::from_slice(b"z").cursor();
+    let err = cur.join("child").unwrap_err().to_string();
+    assert!(err.contains("no child path space") && err.contains("LocalIO"));
+}
+
+#[test]
 fn leaf_sources_carry_the_graph_surface() {
     // IOBase is the central access path: every source is a node of the IO graph. A heap
     // (and the wrapper views) are LEAVES — they stream no children and have no parent.

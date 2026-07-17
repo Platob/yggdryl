@@ -8,11 +8,14 @@
 //! moved with the core to the `yggdryl.local` namespace — see [`crate::io::local`].)
 //!
 //! `IOBase` is the **central access path**, so every class here also carries its graph
-//! surface — as a **leaf** node: `name` (empty — the synthetic `mem://heap` address has no
-//! path), `parent()` (`null`), the always-empty streamed `ls(recursive?)` (the shared
-//! [`NoChildren`] iterable) with the collected `children()` (an empty array), and the
-//! `rm()` / `rmfile()` / `rmdir()` trio throwing the core's guided refusal (an in-memory
-//! source has no removable backing).
+//! surface — as a **leaf** node for *discovery*: `name`, the always-empty streamed
+//! `ls(recursive?)` (the shared [`NoChildren`] iterable) with the collected `children()`
+//! (an empty array), and the `rm()` / `rmfile()` / `rmdir()` trio throwing the core's
+//! guided refusal (an in-memory source has no removable backing). A [`Heap`] is still
+//! **addressable**, though: `join(segment)` composes a child address (a new independent
+//! buffer at `mem://heap/<segment>`) and `parent()` navigates back, so the same uniform
+//! graph API works over an in-memory buffer as over a filesystem node (the [`Cursor`] and
+//! [`Slice`] views stay pure leaves — `parent()` is `null`).
 //!
 //! Numeric idioms: byte offset and length **parameters** are JS `number`s typed as `u32`, so a
 //! single heap addresses up to 4 GiB in memory. **Returned** sizes, capacity, the cursor
@@ -674,10 +677,28 @@ impl Heap {
         self.inner.name()
     }
 
-    /// The parent node — always `null`: a heap is a leaf of the IO graph.
+    /// The parent node, or `null` — the inverse of `join`: an addressed heap
+    /// (`mem://heap/logs/app.bin`) reports its directory address (`mem://heap/logs`), a bare
+    /// `mem://heap` root reports `null`. (A heap is a **leaf** for *discovery* — it streams
+    /// no children — but it is still addressable, so navigation composes through the URI.)
     #[napi]
     pub fn parent(&self) -> Option<Heap> {
         self.inner.parent().map(|inner| Heap { inner })
+    }
+
+    /// The child node at `segment` — a **new, independent in-memory buffer** whose address is
+    /// composed by joining `segment` onto this heap's URI (`Uri.joinpath`), so
+    /// `child.parent()` addresses this node again. `segment` may be multi-segment (`"a/b/c"`),
+    /// and a spaced segment percent-encodes in the address (`"my dir/f"` →
+    /// `mem://heap/my%20dir/f`). Pure address algebra — the child owns no bytes yet, and
+    /// writing it never touches this heap. The named mirror of Python's `__truediv__` (JS has
+    /// no `/` operator); throws the core's guided `Error` on a non-navigable source.
+    #[napi]
+    pub fn join(&self, segment: String) -> napi::Result<Heap> {
+        self.inner
+            .join(&segment)
+            .map(|inner| Heap { inner })
+            .map_err(to_error)
     }
 
     /// Streams this node's children — always the empty [`NoChildren`] iterable: a heap is

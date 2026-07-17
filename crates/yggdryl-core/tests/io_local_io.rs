@@ -222,8 +222,48 @@ fn join_composes_addresses_and_reads_writes_the_child() {
     let reread = root.join("a").unwrap().join("b/c/note.txt").unwrap();
     assert_eq!(reread.pread_utf8(0, 4).unwrap(), "deep");
 
-    // `join_str` is the infallible inherent form of the same operation.
+    // `join_str` is the infallible inherent form of the same operation, and it agrees with
+    // `join` down to path identity (both resolve through the URI, so they compare equal).
     assert_eq!(root.join_str("logs/day1.bin").uri(), child.uri());
+    assert_eq!(
+        root.join_str("logs/day1.bin"),
+        root.join("logs/day1.bin").unwrap()
+    );
+}
+
+#[test]
+fn join_edge_cases_read_write_spaced_paths() {
+    let tmp = TempDir::new("joinedge");
+    let root = tmp.root();
+
+    // An empty segment addresses the same node.
+    assert_eq!(root.join("").unwrap().uri(), root.uri());
+
+    // A spaced multi-segment child writes and reads back exactly (percent round-trip).
+    let mut spaced = root.join("my dir/my file.bin").unwrap();
+    assert!(spaced.uri().to_string().contains("%20"));
+    spaced.pwrite_utf8(0, "spaced write");
+    spaced.close();
+    let reread = root.join("my dir").unwrap().join("my file.bin").unwrap();
+    assert_eq!(reread.pread_utf8(0, 12).unwrap(), "spaced write");
+    assert_eq!(reread.name(), "my file.bin");
+
+    // A chain of joins builds a deep path; the leaf reads back through a from-scratch handle.
+    let mut deep = root
+        .join("a")
+        .unwrap()
+        .join("b")
+        .unwrap()
+        .join("c.bin")
+        .unwrap();
+    deep.pwrite_i64(0, 1 << 40).unwrap();
+    deep.close();
+    assert_eq!(
+        LocalIO::from_path(tmp.0.join("a/b/c.bin"))
+            .pread_i64(0)
+            .unwrap(),
+        1 << 40
+    );
 }
 
 #[test]
@@ -448,6 +488,51 @@ fn many_threads_write_disjoint_files() {
         let expected: Vec<i32> = (0..1000).map(|k| k * 10 + t as i32).collect();
         assert_eq!(back, expected);
     }
+}
+
+#[test]
+fn tmpfile_and_tmpfolder_builders() {
+    // A named tmpfile is lazy (nothing on disk), created on first write, and reads back.
+    let mut f = LocalIO::tmpfile(Some("yggdryl_test_tmpfile.bin"));
+    assert!(f.as_std_path().starts_with(std::env::temp_dir()));
+    f.rmfile().ok(); // clean any leftover from a previous run
+    assert!(!f.exists());
+    f.pwrite_utf8(0, "scratch");
+    assert!(f.is_file());
+    assert_eq!(f.pread_utf8(0, 7).unwrap(), "scratch");
+    f.close();
+    f.rmfile().unwrap();
+
+    // Two unnamed tmpfiles get distinct (unique) paths.
+    let a = LocalIO::tmpfile(None);
+    let b = LocalIO::tmpfile(None);
+    assert_ne!(a.as_std_path(), b.as_std_path());
+    assert!(a.name().ends_with(".tmp"));
+
+    // A tmpfolder is lazy; writing a child auto-creates it, then rmdir cleans up.
+    let work = LocalIO::tmpfolder(Some("yggdryl_test_tmpfolder"));
+    work.rmdir().ok();
+    assert!(!work.exists());
+    let mut child = work.join_str("out.bin");
+    child.pwrite_byte_array(0, b"x");
+    assert!(work.is_dir());
+    child.close();
+    work.rmdir().unwrap();
+    assert!(!work.exists());
+}
+
+#[test]
+fn parents_iterates_the_ancestor_chain() {
+    let tmp = TempDir::new("parents");
+    let leaf = tmp.root().join("a/b/c/leaf.bin").unwrap();
+    // parents() yields the ancestor nodes nearest-first; each is the next parent().
+    let names: Vec<String> = leaf.parents().map(|p| p.name()).take(3).collect();
+    assert_eq!(names, vec!["c", "b", "a"]);
+    // It agrees with a manual parent() walk.
+    assert_eq!(
+        leaf.parents().next().unwrap().uri(),
+        leaf.parent().unwrap().uri()
+    );
 }
 
 #[test]

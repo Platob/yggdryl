@@ -227,6 +227,36 @@ def test_localio_uri_and_path(root):
     assert node.path.endswith("meta.bin")
 
 
+def test_localio_join_composes_addresses_and_reads_writes_the_child(root):
+    # join composes the child's address over the parent's URI (Uri.joinpath) and is lazy —
+    # nothing exists on disk until the child is written.
+    child = root.join("logs/day1.bin")
+    assert isinstance(child, LocalIO)
+    assert str(child.uri).endswith("logs/day1.bin")
+    assert child.name == "day1.bin"
+    assert not child.exists()
+
+    # Writing the joined child auto-creates its parents + file and reads back exactly.
+    assert child.pwrite_utf8(0, "hello join") == 10
+    assert child.is_file()
+    assert child.pread_utf8(0, 10) == "hello join"
+    child.close()
+
+    # The child's parent() addresses the joined directory again — the inverse of join.
+    logs = child.parent()
+    assert logs == root.join("logs")
+    assert logs.is_dir()
+
+    # The "/" operator matches join, and a nested multi-segment join reads back through a
+    # fresh handle (no shared state).
+    deep = root / "a/b/c/note.txt"
+    assert deep.pwrite_utf8(0, "deep") == 4
+    deep.close()
+    reread = root.join("a").join("b/c/note.txt")
+    assert reread.pread_utf8(0, 4) == "deep"
+    reread.close()
+
+
 def test_localio_uri_percent_round_trips_a_path_with_a_space(root):
     node = root / "with space.bin"
     node.pwrite_utf8(0, "spaced")

@@ -278,11 +278,17 @@ pub trait IOBase: Sized {
         self.kind() == IOKind::Directory
     }
 
-    /// Whether something **exists** at this source's address — by default
-    /// `is_file() || is_dir()` (the filesystem reading); an in-memory source overrides it
-    /// (a live [`Heap`](super::Heap) always exists).
+    /// Whether this source's kind is [`Unknown`](IOKind::Unknown) — it exists, but of a type
+    /// that is not file / directory / heap.
+    fn is_unknown(&self) -> bool {
+        self.kind() == IOKind::Unknown
+    }
+
+    /// Whether something **exists** at this source's address — anything except
+    /// [`Missing`](IOKind::Missing) (so a `File`, `Directory`, live `Heap`, or `Unknown` node
+    /// all exist). Leverages [`IOKind::exists`](IOKind::exists).
     fn exists(&self) -> bool {
-        self.is_file() || self.is_dir()
+        self.kind().exists()
     }
 
     // ---------------------------------------------------------------------------------
@@ -315,6 +321,21 @@ pub trait IOBase: Sized {
     /// The parent node, or `None` — the default for a leaf source or a root.
     fn parent(&self) -> Option<Self> {
         None
+    }
+
+    /// An iterator over this node's **ancestors**, nearest first — the repeated
+    /// [`parent`](IOBase::parent) chain up to the root. The node-graph counterpart of
+    /// [`Uri::parents`](crate::uri::Uri::parents).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let node = Heap::new().join("a/b/c.bin").unwrap();
+    /// let uris: Vec<String> = node.parents().map(|p| p.uri().to_string()).collect();
+    /// assert_eq!(uris, vec!["mem://heap/a/b", "mem://heap/a", "mem://heap"]);
+    /// ```
+    fn parents(&self) -> impl Iterator<Item = Self> {
+        std::iter::successors(self.parent(), Self::parent)
     }
 
     /// The child node at `segment` — a **new node of the same kind**, addressed by joining

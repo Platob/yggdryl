@@ -269,6 +269,49 @@ impl Uri {
         }
     }
 
+    /// The **parent URI** — this URI with its last path segment removed — or `None` at a
+    /// root (no path segment left to strip). The inverse of [`joinpath`](Uri::joinpath):
+    /// `base.joinpath("x").parent()` addresses `base` again (for a rooted or authority-backed
+    /// path). Only the path changes; scheme / authority / query / fragment are kept.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let u = Uri::parse_str("https://h/a/b/c.txt?q=1").unwrap();
+    /// assert_eq!(u.parent().unwrap().to_string(), "https://h/a/b?q=1");
+    /// assert_eq!(u.parent().unwrap().parent().unwrap().path(), "/a");
+    /// assert!(Uri::parse_str("https://h").unwrap().parent().is_none());
+    /// ```
+    pub fn parent(&self) -> Option<Uri> {
+        let trimmed = self.path.trim_end_matches('/');
+        if trimmed.is_empty() {
+            return None; // a root (no path) has no parent
+        }
+        // `path` is stored percent-encoded; a slice of it is still valid encoding, so assign
+        // it directly (never re-encode through `set_path`, which would double-encode).
+        let parent_path = match trimmed.rfind('/') {
+            Some(cut) => &trimmed[..cut], // keep the leading portion (may be "")
+            None => "",                   // a single segment: parent is the empty-path root
+        };
+        let mut out = self.clone();
+        out.path = parent_path.to_string();
+        Some(out)
+    }
+
+    /// An iterator over this URI's **ancestors**, nearest first: [`parent`](Uri::parent),
+    /// then its parent, and so on up to the root, ending when no path segment remains.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let u = Uri::from_path("/a/b/c.txt");
+    /// let paths: Vec<String> = u.parents().map(|p| p.path().to_string()).collect();
+    /// assert_eq!(paths, vec!["/a/b", "/a", ""]);
+    /// ```
+    pub fn parents(&self) -> impl Iterator<Item = Uri> {
+        std::iter::successors(self.parent(), Uri::parent)
+    }
+
     /// The last extension of the filename (without the dot), or `None` for a name with no
     /// extension, a trailing dot, or a hidden dotfile (`.bashrc`).
     ///

@@ -6,13 +6,14 @@ use super::IoError;
 
 /// The kind of an I/O source — an **int enum** (`#[repr(u8)]`, stable numeric values) naming
 /// what the source physically is: [`Missing`](IOKind::Missing) (nothing at the address),
-/// [`File`](IOKind::File), [`Directory`](IOKind::Directory), or the in-memory
-/// [`Heap`](IOKind::Heap). Every [`IOBase`] source reports one via
-/// [`kind`](crate::io::memory::IOBase::kind).
+/// [`File`](IOKind::File), [`Directory`](IOKind::Directory), the in-memory
+/// [`Heap`](IOKind::Heap), or [`Unknown`](IOKind::Unknown) (something exists but its type is
+/// not one of the above — a special file, an object-store entry of an unrecognized type).
+/// Every [`IOBase`] source reports one via [`kind`](crate::io::memory::IOBase::kind).
 ///
-/// The numeric values are wire-stable: `Missing = 0`, `File = 1`, `Directory = 2`, `Heap = 3`
-/// — see [`to_u8`](IOKind::to_u8) / [`from_u8`](IOKind::from_u8) and the
-/// [`parse_str`](IOKind::parse_str) name parser.
+/// The numeric values are wire-stable: `Unknown = 0` (the **default**), `Missing = 1`,
+/// `File = 2`, `Directory = 3`, `Heap = 4` — see [`to_u8`](IOKind::to_u8) /
+/// [`from_u8`](IOKind::from_u8) and the [`parse_str`](IOKind::parse_str) name parser.
 ///
 /// [`IOBase`]: crate::io::memory::IOBase
 ///
@@ -20,21 +21,28 @@ use super::IoError;
 /// use yggdryl_core::io::IOKind;
 ///
 /// assert_eq!(IOKind::parse_str("heap").unwrap(), IOKind::Heap);
-/// assert_eq!(IOKind::Heap.to_u8(), 3);
-/// assert_eq!(IOKind::from_u8(2).unwrap(), IOKind::Directory);
+/// assert_eq!(IOKind::Heap.to_u8(), 4);
+/// assert_eq!(IOKind::from_u8(3).unwrap(), IOKind::Directory);
 /// assert_eq!(IOKind::Missing.to_string(), "missing");
+/// assert_eq!(IOKind::default(), IOKind::Unknown); // the zero value
+/// assert!(IOKind::Unknown.exists()); // exists, but of an undetermined kind
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum IOKind {
-    /// Nothing exists at the source's address. Value `0`.
-    Missing = 0,
-    /// A regular file. Value `1`.
-    File = 1,
-    /// A directory. Value `2`.
-    Directory = 2,
-    /// An in-memory heap buffer. Value `3`.
-    Heap = 3,
+    /// Something exists at the address but its type is not `File` / `Directory` / `Heap` — a
+    /// special file (socket, device), a symlink left unclassified, or an object-store entry
+    /// of an unrecognized type. The **default** (zero) value. Value `0`.
+    #[default]
+    Unknown = 0,
+    /// Nothing exists at the source's address. Value `1`.
+    Missing = 1,
+    /// A regular file. Value `2`.
+    File = 2,
+    /// A directory. Value `3`.
+    Directory = 3,
+    /// An in-memory heap buffer. Value `4`.
+    Heap = 4,
 }
 
 impl IOKind {
@@ -60,11 +68,13 @@ impl IOKind {
             Ok(IOKind::Directory)
         } else if matches("heap") {
             Ok(IOKind::Heap)
+        } else if matches("unknown") {
+            Ok(IOKind::Unknown)
         } else {
             Err(IoError::UnknownName {
                 kind: "IOKind",
                 input: s.to_string(),
-                expected: "missing, file, directory/dir, heap",
+                expected: "missing, file, directory/dir, heap, unknown",
             })
         }
     }
@@ -77,26 +87,28 @@ impl IOKind {
             IOKind::File => "file",
             IOKind::Directory => "directory",
             IOKind::Heap => "heap",
+            IOKind::Unknown => "unknown",
         }
     }
 
-    /// The stable numeric value (`Missing = 0`, … `Heap = 3`).
+    /// The stable numeric value (`Unknown = 0`, `Missing = 1`, … `Heap = 4`).
     pub fn to_u8(self) -> u8 {
         self as u8
     }
 
     /// The kind for a stable numeric value, or [`IoError::UnknownName`] for a value outside
-    /// `0..=3` — a **checked** match, never a transmute.
+    /// `0..=4` — a **checked** match, never a transmute.
     pub fn from_u8(value: u8) -> Result<IOKind, IoError> {
         match value {
-            0 => Ok(IOKind::Missing),
-            1 => Ok(IOKind::File),
-            2 => Ok(IOKind::Directory),
-            3 => Ok(IOKind::Heap),
+            0 => Ok(IOKind::Unknown),
+            1 => Ok(IOKind::Missing),
+            2 => Ok(IOKind::File),
+            3 => Ok(IOKind::Directory),
+            4 => Ok(IOKind::Heap),
             _ => Err(IoError::UnknownName {
                 kind: "IOKind",
                 input: value.to_string(),
-                expected: "0 (missing), 1 (file), 2 (directory), 3 (heap)",
+                expected: "0 (unknown), 1 (missing), 2 (file), 3 (directory), 4 (heap)",
             }),
         }
     }

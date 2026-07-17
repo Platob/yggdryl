@@ -360,10 +360,8 @@ impl IOBase for Heap {
         IOKind::Heap
     }
 
-    #[inline]
-    fn exists(&self) -> bool {
-        true // a live in-memory buffer always exists (it is neither file nor directory)
-    }
+    // `exists()` is not overridden: the default is `kind().exists()`, and `Heap` (never
+    // `Missing`) always exists — a live in-memory buffer that is neither file nor directory.
 
     // A heap is a **leaf** node of the IO graph: it streams no children. But it *is*
     // addressable — `join` composes a child address, `parent` navigates back — so the same
@@ -377,19 +375,9 @@ impl IOBase for Heap {
     }
 
     fn parent(&self) -> Option<Heap> {
-        let uri = self.uri();
-        let trimmed = uri.path().trim_end_matches('/');
-        if trimmed.is_empty() {
-            return None; // the root `mem://heap` has no parent
-        }
-        let parent_path = match trimmed.rfind('/') {
-            Some(cut) => &trimmed[..cut], // keep the leading portion (may be "")
-            None => "",                   // a single segment: parent is the empty-path root
-        };
-        // `path()` is percent-encoded; decode before `with_path` re-encodes, so a retained
-        // segment with special bytes is not double-encoded. Own it before consuming `uri`.
-        let decoded = crate::uri::percent::decode(parent_path).into_owned();
-        Some(Heap::at_uri(uri.with_path(&decoded)))
+        // Navigate the address up one segment (the inverse of `join`), then re-address a
+        // fresh buffer there — leveraging `Uri::parent`.
+        self.uri().parent().map(Heap::at_uri)
     }
 
     fn ls(&self) -> Result<Self::Children, IoError> {

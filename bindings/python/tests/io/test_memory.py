@@ -776,3 +776,49 @@ def test_cursor_and_slice_are_leaves_too():
     assert win.children() == []
     with pytest.raises(ValueError, match="removable backing"):
         win.rmdir()
+
+
+# -------------------------------------------------------------------------------------
+# Heap graph addressing: join / the "/" operator / parent (compose over the URI)
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_join_composes_addresses_over_an_independent_buffer():
+    # The uniform graph join/parent work over an in-memory heap as pure address algebra:
+    # the child is an independent buffer, but its address composes through the URI.
+    root = Heap()
+    assert str(root.uri) == "mem://heap"
+    assert root.parent() is None  # the mem://heap root has no parent
+
+    child = root.join("logs/app.bin")
+    assert isinstance(child, Heap)
+    assert str(child.uri) == "mem://heap/logs/app.bin"
+    assert child.name == "app.bin"
+
+    # The child is a real, independent buffer — writing/reading it never touches the root.
+    assert child.pwrite_utf8(0, "entry") == 5
+    assert child.pread_utf8(0, 5) == "entry"
+    assert child.byte_size() == 5
+    assert root.byte_size() == 0  # addresses compose; bytes do not
+
+    # parent() navigates back up the URI — the exact inverse of join.
+    assert str(child.parent().uri) == "mem://heap/logs"
+    assert str(child.parent().parent().uri) == "mem://heap"
+    assert child.parent().parent().parent() is None
+
+
+def test_heap_truediv_operator_matches_join():
+    root = Heap(b"seed")  # the "/" operator is the operator spelling of join
+    assert str((root / "logs/app.bin").uri) == str(root.join("logs/app.bin").uri)
+    assert (root / "a/b/c").name == "c"
+    # The addressed child is still an independent, empty buffer (the seed stays put).
+    assert (root / "app.bin").byte_size() == 0
+    assert root.to_bytes() == b"seed"
+
+
+def test_heap_join_percent_encodes_a_spaced_segment():
+    # A spaced segment is percent-encoded in the composed address...
+    assert str(Heap().join("my dir/f").uri) == "mem://heap/my%20dir/f"
+    # ...while name percent-decodes the retained leaf segment.
+    assert Heap().join("my dir/f").name == "f"
+    assert str(Heap().join("my dir").parent().uri) == "mem://heap"

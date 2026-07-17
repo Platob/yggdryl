@@ -95,6 +95,60 @@ impl LocalIO {
         Ok(Self::from_path(uri_to_path(uri)?))
     }
 
+    /// A **lazy** handle to a temporary **file** in the system temp directory. `name` sets the
+    /// file name; the default (`None`) is a process-unique name. Like any `LocalIO` it is
+    /// lazy — the file is created on the **first write** — so this only picks the path.
+    ///
+    /// ```
+    /// use yggdryl_core::io::local::LocalIO;
+    /// use yggdryl_core::io::memory::IOBase;
+    ///
+    /// let mut scratch = LocalIO::tmpfile(None); // unique name, nothing on disk yet
+    /// assert!(!scratch.exists());
+    /// scratch.pwrite_utf8(0, "temp data"); // now created + mapped
+    /// assert_eq!(scratch.pread_utf8(0, 9).unwrap(), "temp data");
+    /// scratch.close();
+    /// scratch.rmfile().unwrap();
+    /// ```
+    pub fn tmpfile(name: Option<&str>) -> LocalIO {
+        let name = name
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{}.tmp", Self::unique_tmp_name()));
+        LocalIO::from_path(std::env::temp_dir().join(name))
+    }
+
+    /// A **lazy** handle to a temporary **folder** in the system temp directory. `name` sets
+    /// the folder name; the default (`None`) is a process-unique name. Lazy — call
+    /// [`mkdir`](LocalIO::mkdir) to create it, or just write a child (which auto-creates this
+    /// folder as a parent).
+    ///
+    /// ```
+    /// use yggdryl_core::io::local::LocalIO;
+    /// use yggdryl_core::io::memory::IOBase;
+    ///
+    /// let work = LocalIO::tmpfolder(None);
+    /// let mut file = work.join_str("out.bin"); // writing the child auto-creates `work`
+    /// file.pwrite_byte_array(0, b"x");
+    /// assert!(work.is_dir());
+    /// file.close();
+    /// work.rmdir().unwrap();
+    /// ```
+    pub fn tmpfolder(name: Option<&str>) -> LocalIO {
+        let name = name
+            .map(str::to_string)
+            .unwrap_or_else(Self::unique_tmp_name);
+        LocalIO::from_path(std::env::temp_dir().join(name))
+    }
+
+    /// A process-unique base name (`yggdryl-<pid>-<counter>`) for the temp builders — no
+    /// randomness needed: the pid plus a monotonic counter is unique within and across runs.
+    fn unique_tmp_name() -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        format!("yggdryl-{}-{}", std::process::id(), n)
+    }
+
     /// The underlying filesystem path.
     pub fn as_std_path(&self) -> &StdPath {
         &self.path

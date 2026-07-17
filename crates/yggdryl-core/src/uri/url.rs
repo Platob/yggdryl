@@ -433,6 +433,24 @@ impl Url {
             inner: self.inner.merge_with(&other.inner),
         }
     }
+
+    /// The **parent URL** — this URL with its last path segment removed — or `None` at a
+    /// root; see [`Uri::parent`]. The scheme is preserved, so the result is still absolute.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Url;
+    ///
+    /// let u = Url::parse_str("https://h/a/b/c.txt").unwrap();
+    /// assert_eq!(u.parent().unwrap().to_string(), "https://h/a/b");
+    /// ```
+    pub fn parent(&self) -> Option<Url> {
+        self.inner.parent().map(|inner| Url { inner })
+    }
+
+    /// An iterator over this URL's **ancestors**, nearest first — see [`Uri::parents`].
+    pub fn parents(&self) -> impl Iterator<Item = Url> {
+        std::iter::successors(self.parent(), Url::parent)
+    }
 }
 
 impl fmt::Display for Url {
