@@ -4,6 +4,8 @@
 use core::fmt;
 
 use crate::io::{IoError, Serializable};
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 
 /// One `name: value` entry — both stored as owned byte strings.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -73,6 +75,11 @@ impl Headers {
     pub const COOKIE: &'static str = "Cookie";
     /// The `Set-Cookie` header name.
     pub const SET_COOKIE: &'static str = "Set-Cookie";
+    /// The `Last-Modified` header name (RFC HTTP-date form).
+    pub const LAST_MODIFIED: &'static str = "Last-Modified";
+    /// The modification-time header this map uses for the **epoch-microseconds** form —
+    /// [`mtime`](Headers::mtime) / [`set_mtime`](Headers::set_mtime).
+    pub const MTIME: &'static str = "X-Mtime-Us";
 
     // ---- construction -------------------------------------------------------------------
 
@@ -225,6 +232,21 @@ impl Headers {
         self.get(Self::CONTENT_TYPE)
     }
 
+    /// Sets the `Content-Type` header (replace semantics).
+    pub fn set_content_type(&mut self, value: &str) {
+        self.insert(Self::CONTENT_TYPE, value);
+    }
+
+    /// The `Content-Encoding` value, if present and UTF-8 (e.g. `"gzip"`).
+    pub fn content_encoding(&self) -> Option<&str> {
+        self.get(Self::CONTENT_ENCODING)
+    }
+
+    /// Sets the `Content-Encoding` header (replace semantics).
+    pub fn set_content_encoding(&mut self, value: &str) {
+        self.insert(Self::CONTENT_ENCODING, value);
+    }
+
     /// The `Content-Length` value parsed as a `u64`, if present and numeric.
     ///
     /// ```
@@ -236,6 +258,89 @@ impl Headers {
     /// ```
     pub fn content_length(&self) -> Option<u64> {
         self.get(Self::CONTENT_LENGTH)?.trim().parse().ok()
+    }
+
+    // ---- media type: the one place Content-Type / Content-Encoding are interpreted ------
+
+    /// The **primary [`MimeType`]** of `Content-Type`, if present and valid — the single most
+    /// specific type this map declares. `None` when there is no (valid) `Content-Type`.
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut headers = Headers::new();
+    /// headers.set_content_type("application/json; charset=utf-8");
+    /// assert_eq!(headers.mime_type().unwrap().essence(), "application/json");
+    /// ```
+    pub fn mime_type(&self) -> Option<MimeType> {
+        // Content-Type may be a comma list (set from a MediaType) — the primary is the first.
+        let content_type = self.content_type()?;
+        let primary = content_type.split(',').next().unwrap_or(content_type);
+        MimeType::parse_str(primary).ok()
+    }
+
+    /// Sets `Content-Type` to `mime`'s essence — the centralized mime mutator.
+    pub fn set_mime_type(&mut self, mime: &MimeType) {
+        self.set_content_type(mime.essence());
+    }
+
+    /// The full **[`MediaType`]** this map declares: the `Content-Type` (a comma-list is kept
+    /// as multiple entries), extended by the `Content-Encoding` layers resolved to their
+    /// mime types (`gzip` → `application/gzip`). `None` when there is no `Content-Type`.
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut headers = Headers::new();
+    /// headers.set_content_type("application/x-tar");
+    /// headers.set_content_encoding("gzip");
+    /// assert_eq!(headers.media_type().unwrap().essences(),
+    ///            vec!["application/x-tar", "application/gzip"]);
+    /// ```
+    pub fn media_type(&self) -> Option<MediaType> {
+        let mut media = MediaType::parse_str(self.content_type()?).ok()?;
+        if let Some(encoding) = self.content_encoding() {
+            // Each comma-separated encoding token maps to its mime type when known.
+            for token in encoding.split(',') {
+                if let Some(mime) = MimeType::from_extension(token.trim())
+                    .or_else(|| MimeType::parse_str(&format!("application/{}", token.trim())).ok())
+                {
+                    media.push(mime);
+                }
+            }
+        }
+        Some(media)
+    }
+
+    /// Sets `Content-Type` to `media`'s comma-joined essences — the centralized media mutator
+    /// (the inverse of [`media_type`](Headers::media_type)'s `Content-Type` half).
+    pub fn set_media_type(&mut self, media: &MediaType) {
+        self.set_content_type(&media.to_string());
+    }
+
+    // ---- modification time (epoch microseconds) -----------------------------------------
+
+    /// The modification time as **total epoch microseconds** (signed — before 1970 is
+    /// negative), from the [`MTIME`](Headers::MTIME) header, if present and an integer.
+    ///
+    /// ```
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut headers = Headers::new();
+    /// headers.set_mtime(1_600_000_000_000_000);
+    /// assert_eq!(headers.mtime(), Some(1_600_000_000_000_000));
+    /// ```
+    pub fn mtime(&self) -> Option<i64> {
+        self.get(Self::MTIME)?.trim().parse().ok()
+    }
+
+    /// Sets the modification time to `micros` total epoch microseconds — written as a compact
+    /// decimal into the [`MTIME`](Headers::MTIME) header (one small allocation via `itoa`-free
+    /// integer formatting).
+    pub fn set_mtime(&mut self, micros: i64) {
+        let mut buf = [0u8; 20]; // enough for i64::MIN's decimal digits + sign
+        let text = write_i64(&mut buf, micros);
+        self.insert_bytes(Self::MTIME.as_bytes(), text);
     }
 
     // ---- HTTP text form -----------------------------------------------------------------
@@ -361,6 +466,28 @@ impl Serializable for Headers {
     fn deserialize_bytes(bytes: &[u8]) -> Result<Self, IoError> {
         Headers::deserialize_bytes(bytes)
     }
+}
+
+/// Formats `value` as decimal into `buf` and returns the written slice — an allocation-free
+/// integer render (no `format!`/`String`), for the hot `set_mtime` path.
+fn write_i64(buf: &mut [u8; 20], value: i64) -> &[u8] {
+    let mut i = buf.len();
+    let negative = value < 0;
+    // Work on the magnitude via i128 so i64::MIN does not overflow on negation.
+    let mut mag = (value as i128).unsigned_abs();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (mag % 10) as u8;
+        mag /= 10;
+        if mag == 0 {
+            break;
+        }
+    }
+    if negative {
+        i -= 1;
+        buf[i] = b'-';
+    }
+    &buf[i..]
 }
 
 /// Reads a little-endian `u32` at `*offset`, advancing it, or reports the shortfall.

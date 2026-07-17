@@ -3,6 +3,8 @@
 use super::{IOCursor, IOSlice, IoError};
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use crate::uri::Uri;
 
 /// The **static default URI** of an in-memory source — the stable synthetic `mem://heap`
@@ -304,6 +306,59 @@ pub trait IOBase: Sized {
     /// all exist). Leverages [`IOKind::exists`](IOKind::exists).
     fn exists(&self) -> bool {
         self.kind().exists()
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Media type — one resolution: declared headers, else inferred from the address,
+    // else the octet-stream fallback. Never `None` (a source always has an answer).
+    // ---------------------------------------------------------------------------------
+
+    /// The **primary [`MimeType`]** of this source: the `Content-Type`
+    /// [`headers`](IOBase::headers) declare, else inferred from the
+    /// [`uri`](IOBase::uri)'s file name, else the `application/octet-stream` fallback — always
+    /// an answer.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    /// use yggdryl_core::headers::Headers;
+    ///
+    /// let mut h = Heap::new();
+    /// assert!(h.mime_type().is_octet_stream()); // no headers, no address extension
+    /// h.headers_mut().set_content_type("application/json");
+    /// assert_eq!(h.mime_type().essence(), "application/json"); // headers win
+    /// ```
+    fn mime_type(&self) -> MimeType {
+        self.headers()
+            .mime_type()
+            .unwrap_or_else(|| self.uri().mime_type())
+    }
+
+    /// The full **[`MediaType`]** of this source: the media the `Content-Type` /
+    /// `Content-Encoding` [`headers`](IOBase::headers) declare, else inferred from the
+    /// [`uri`](IOBase::uri)'s extensions, else the single `application/octet-stream` fallback.
+    fn media_type(&self) -> MediaType {
+        if let Some(media) = self.headers().media_type() {
+            return media;
+        }
+        let from_uri = self.uri().media_type();
+        if from_uri.is_empty() {
+            MediaType::of(MimeType::octet_stream())
+        } else {
+            from_uri
+        }
+    }
+
+    /// Resolves the media type **and stores it** in the source's headers when `Content-Type`
+    /// is not already set — memoizing the inference so later reads come straight from
+    /// [`headers`](IOBase::headers). Returns the effective [`MimeType`]. The "store optimally"
+    /// entry point: it writes only when the header is absent.
+    fn ensure_content_type(&mut self) -> MimeType {
+        if let Some(declared) = self.headers().mime_type() {
+            return declared;
+        }
+        let inferred = self.uri().mime_type();
+        self.headers_mut().set_mime_type(&inferred);
+        inferred
     }
 
     // ---------------------------------------------------------------------------------

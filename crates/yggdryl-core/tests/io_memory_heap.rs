@@ -438,6 +438,31 @@ fn join_edge_cases_and_identities() {
 }
 
 #[test]
+fn media_type_inference_headers_then_uri_then_octet_stream() {
+    // A bare heap: no headers, no address extension -> the octet-stream fallback (never None).
+    let mut h = Heap::new();
+    assert!(h.mime_type().is_octet_stream());
+    assert_eq!(h.media_type().essences(), vec!["application/octet-stream"]);
+
+    // A heap addressed by a name with an extension infers from the address.
+    let logs = Heap::new().join("data/records.json").unwrap();
+    assert_eq!(logs.mime_type().essence(), "application/json");
+
+    // Declared headers win over the address.
+    let mut named = Heap::new().join("thing.json").unwrap();
+    named.headers_mut().set_content_type("text/csv");
+    assert_eq!(named.mime_type().essence(), "text/csv");
+
+    // ensure_content_type memoizes the inference into the headers (only when absent).
+    let inferred = h.ensure_content_type();
+    assert!(inferred.is_octet_stream());
+    assert_eq!(h.headers().content_type(), Some("application/octet-stream")); // stored
+                                                                              // A second call reads the stored header (and does not overwrite a set value).
+    h.headers_mut().set_content_type("application/json");
+    assert_eq!(h.ensure_content_type().essence(), "application/json");
+}
+
+#[test]
 fn leaf_sources_carry_the_graph_surface() {
     // IOBase is the central access path: every source is a node of the IO graph. A heap
     // (and the wrapper views) are LEAVES — they stream no children and have no parent.

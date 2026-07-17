@@ -133,3 +133,59 @@ fn serializable_trait_and_value_semantics() {
     let other = Headers::new().with("A", "1").with("b", "2");
     assert_ne!(headers, other);
 }
+
+// -------------------------------------------------------------------------------------
+// Media type + mtime (the centralized Content-Type / Content-Encoding accessors)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn media_type_centralizes_content_type_and_encoding() {
+    use yggdryl_core::mediatype::MediaType;
+    use yggdryl_core::mimetype::MimeType;
+
+    let mut headers = Headers::new();
+    // No Content-Type -> no media type declared.
+    assert!(headers.mime_type().is_none());
+    assert!(headers.media_type().is_none());
+
+    // set_mime_type / mime_type round-trip through Content-Type (parameters dropped on read).
+    headers.set_content_type("application/json; charset=utf-8");
+    assert_eq!(headers.mime_type().unwrap().essence(), "application/json");
+    assert_eq!(
+        headers.content_type(),
+        Some("application/json; charset=utf-8")
+    );
+
+    // media_type folds Content-Encoding into the layered stack.
+    headers.set_content_type("application/x-tar");
+    headers.set_content_encoding("gzip");
+    assert_eq!(headers.content_encoding(), Some("gzip"));
+    assert_eq!(
+        headers.media_type().unwrap().essences(),
+        vec!["application/x-tar", "application/gzip"]
+    );
+
+    // set_media_type writes the comma-joined essences back to Content-Type.
+    let media = MediaType::of(MimeType::parse_str("text/html").unwrap())
+        .with(MimeType::from_extension("gz").unwrap());
+    headers.set_media_type(&media);
+    assert_eq!(headers.content_type(), Some("text/html, application/gzip"));
+    assert_eq!(headers.mime_type().unwrap().essence(), "text/html"); // primary
+}
+
+#[test]
+fn mtime_epoch_micros_round_trips_including_negatives() {
+    let mut headers = Headers::new();
+    assert!(headers.mtime().is_none());
+
+    for micros in [0i64, 1, 1_600_000_000_000_000, i64::MAX, -1, i64::MIN] {
+        headers.set_mtime(micros);
+        assert_eq!(headers.mtime(), Some(micros), "mtime {micros}");
+    }
+    // The stored form is a compact decimal under the MTIME header.
+    headers.set_mtime(-42);
+    assert_eq!(headers.get(Headers::MTIME), Some("-42"));
+    // set_mtime replaces (single value), never appends.
+    headers.set_mtime(7);
+    assert_eq!(headers.get_all(Headers::MTIME), vec!["7"]);
+}
