@@ -1,12 +1,13 @@
 # yggdryl
 
-An **Apache Arrow-backed** Rust library with **Python** and **Node.js** extensions. All
-logic lives in the Rust core (`yggdryl-core`); the bindings are thin wrappers, so the three
-languages behave identically — every feature is added to the core first, then mirrored,
-method-for-method, in both extensions.
+A Rust library with **Python** and **Node.js** extensions. All logic lives in the Rust core
+(`yggdryl-core`); the bindings are thin wrappers, so the three languages behave identically —
+every feature is added to the core first, then mirrored, method-for-method, in both extensions.
 
-Today the surface is the version string plus the [URI value types](io/uri.md) (`Uri` / `Url` /
-`Authority`) in the core's `io` module; more is added here as the core grows.
+The core is currently a **minimal foundation**: the abstract [memory-access layer](memory.md)
+(the byte-I/O traits + an in-heap `Bytes` backing) and the [URI/URL family](uri.md) (`Uri` /
+`Url` / `Authority`). The bindings expose the version string and the URI family; more is added
+here as the core grows.
 
 ## Install
 
@@ -61,7 +62,7 @@ Node extensions both wire through to the Rust core.
 
 RFC 3986 URIs, absolute URLs, and authorities — parsed from scratch, doubling as
 POSIX-normalized filesystem paths, with value semantics (equal, hashable, and
-byte-serializable) across all three languages. See [URIs and URLs](io/uri.md).
+byte-serializable) across all three languages. See [URIs and URLs](uri.md).
 
 === "Python"
 
@@ -86,7 +87,7 @@ byte-serializable) across all three languages. See [URIs and URLs](io/uri.md).
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let uri = Uri::parse("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag").unwrap();
     assert_eq!(uri.host(), Some("example.com"));

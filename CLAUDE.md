@@ -1,8 +1,17 @@
 # yggdryl — contributor & agent instructions
 
-yggdryl is an **Apache Arrow-backed** Rust library with **Python (PyO3/maturin)** and
-**Node (napi-rs)** extensions. This is a minimal foundation; features are implemented in
-the Rust core first and mirrored, thinly, in both bindings.
+yggdryl is a Rust library with **Python (PyO3/maturin)** and **Node (napi-rs)** extensions.
+Features are implemented in the Rust core first and mirrored, thinly, in both bindings.
+
+> **Current state (reset).** The core was reset to a **minimal, dependency-free foundation**:
+> the abstract memory-access layer (`memory` — the `IOBase` / `IOCursor` / `IOSlice` / `Whence`
+> traits, `IoError`, and an in-heap `Bytes` backing) and the `uri` family (`Uri` / `Url` /
+> `Authority`). The bindings expose `version()` + `uri`. Everything else described below (the
+> typed `io` data layer, the `fixed` / `var` / `nested` / `decimal` / `temporal` families, ops,
+> Arrow interop) is the **design north-star to rebuild toward**, not the present surface — the
+> prior, fuller implementation lives in git history if a pattern needs reference. `arrow-buffer`
+> is **not** a current dependency; the concrete byte backings (heap `Buffer`, mmap) are rebuilt
+> against the `memory` traits.
 
 ## Project aim — absorb anything, type it once, optimize everything after
 
@@ -24,8 +33,9 @@ underneath; speed everywhere after.
 
 ## Layout
 
-- `crates/yggdryl-core` — the Rust core, the **single source of truth**. Physical layer:
-  `arrow-buffer`.
+- `crates/yggdryl-core` — the Rust core, the **single source of truth**. Currently the `memory`
+  (abstract byte-access traits + heap `Bytes`) and `uri` modules, at the crate root; **no external
+  dependencies**.
 - `bindings/python` — PyO3 extension, Python module `yggdryl` (built with **maturin**).
 - `bindings/node` — napi-rs extension, npm package `yggdryl` (built with **napi**).
 - `docs/` + `mkdocs.yml` — the MkDocs (Material) site published to

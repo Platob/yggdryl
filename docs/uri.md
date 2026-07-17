@@ -60,7 +60,7 @@ guided error) when the URI has no scheme; the reverse is infallible.
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::{Uri, Url};
+    use yggdryl_core::uri::{Uri, Url};
 
     let absolute = Uri::parse("https://example.com/a/b.txt").unwrap();
     assert_eq!(absolute.scheme(), Some("https"));
@@ -153,7 +153,7 @@ extension, no dot), and `extensions` (every extension of a multi-dot name, outer
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let uri = Uri::parse("https://user:pw@host.com:8080/a/b.tar.gz?q=1#frag").unwrap();
     assert_eq!(uri.scheme(), Some("https"));
@@ -243,7 +243,7 @@ Because the fallback is read-only, `https://h/` and `https://h:443/` stay **dist
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::{default_port, Uri, Url};
+    use yggdryl_core::uri::{default_port, Uri, Url};
 
     // A scheme's default fills in when no port was written.
     let uri = Uri::parse("https://example.com/p").unwrap();
@@ -294,7 +294,7 @@ takes `(user, password, host, port)`.
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Authority;
+    use yggdryl_core::uri::Authority;
 
     // Core order is (user, password, host, port).
     let a = Authority::new(Some("svc"), Some("secret"), "example.com", Some(5432));
@@ -355,7 +355,7 @@ the receiver. Setting a host/port/user/password creates an authority if the URI 
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     // Builder: each `with_*` consumes and returns the Uri.
     let built = Uri::from_path("/v1/data")
@@ -440,7 +440,7 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::{Authority, Uri};
+    use yggdryl_core::uri::{Authority, Uri};
 
     // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
     let base = Uri::parse("https://api.example.com/v1").unwrap();
@@ -525,7 +525,7 @@ second argument) for the raw stored form. Components are stored encoded generall
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
     assert_eq!(uri.query_param("a"), Some("1"));            // first occurrence wins
@@ -570,7 +570,7 @@ Bulk update then normalize:
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let mut uri = Uri::parse("http://h/p?c=3&a=1&b=2").unwrap();
     uri.set_query_params(&[("a", "9"), ("d", "4")]);   // bulk: a updated, d appended
@@ -607,7 +607,7 @@ Percent-encoding — values are stored encoded and decoded on read:
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let uri = Uri::parse("http://h/p").unwrap().with_query_param("q", "a b&c");
     assert_eq!(uri.query(), Some("q=a%20b%26c"));                     // stored encoded
@@ -654,7 +654,7 @@ that need a real scheme use a multi-letter one.
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::Uri;
+    use yggdryl_core::uri::Uri;
 
     let drive = Uri::parse(r"C:\Users\x\archive.tar.gz").unwrap();
     assert_eq!(drive.scheme(), None);               // drive letter, not a scheme
@@ -719,7 +719,7 @@ pickles through its four components in Python.)
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::{Uri, Url};
+    use yggdryl_core::uri::{Uri, Url};
 
     let uri = Uri::parse("sc://host/path?q#f").unwrap();
     assert_eq!(uri.serialize_bytes(), b"sc://host/path?q#f");
@@ -775,7 +775,7 @@ Python, a thrown `Error` in Node).
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::{Uri, Url};
+    use yggdryl_core::uri::{Uri, Url};
 
     assert!(Uri::parse("https://host:99999/").is_err());   // port out of range
     assert!(Url::parse("/no/scheme").is_err());            // not absolute

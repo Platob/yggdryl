@@ -41,25 +41,5 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - The io layer:
-      - Overview: io/index.md
-      - URIs and URLs: io/uri.md
-      - Byte I/O: io/bytes.md
-      - Headers: io/headers.md
-      - Schema (DataType, Field): io/schema.md
-      - Navigation: io/navigation.md
-      - Numerics & operations: io/ops.md
-      - Casting: io/converter.md
-  - Type families:
-      - Fixed-width: io/fixed/index.md
-      - Decimals: io/fixed/decimal.md
-      - Temporal: io/fixed/temporal.md
-      - Variable-length: io/var.md
-      - Nested (struct, list, map): io/nested.md
-  - Arrow interop:
-      - Overview: io/arrow/index.md
-      - Primitives: io/arrow/primitives.md
-      - Decimals: io/arrow/decimal.md
-      - Temporal: io/arrow/temporal.md
-      - Nested: io/arrow/nested.md
-      - Metadata & round-tripping: io/arrow/metadata.md
+  - Memory access: memory.md
+  - URIs and URLs: uri.md
