@@ -1,29 +1,12 @@
 //! Python extension for yggdryl — a thin PyO3 wrapper that delegates to `yggdryl-core`.
 //!
 //! The core is the source of truth; each item here is one or two lines over `yggdryl_core`.
-//! The top-level `yggdryl.version()` is the minimal example; richer surfaces live in
-//! submodules that mirror the core's modules — `yggdryl.uri` (RFC 3986 URIs, absolute URLs,
-//! and authorities), `yggdryl.io` (the byte-I/O `Bytes` buffer + `Whence`, and the `Headers`
-//! metadata/header map), `yggdryl.types` (the typed-data schema layer: `DataType` / `Field`, plus
-//! the fixed-width value/column types `U8Scalar`/`U8Serie` … `F64Scalar`/`F64Serie`), and
-//! `yggdryl.decimal` (the fixed-width scaled decimals `D32`/`D64`/`D128`/`D256`), all mirroring
-//! `yggdryl_core::io`.
+//! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.uri` submodule
+//! (RFC 3986 URIs, absolute URLs, and authorities), mirroring `yggdryl_core::uri`.
 
 use pyo3::prelude::*;
 
-mod buffers;
-mod bytes;
-mod deccolumn;
-mod decimal;
-mod headers;
-mod nested;
-mod nullvalues;
-mod temporal;
-mod temporalcolumn;
-mod types;
 mod uri;
-mod values;
-mod varvalues;
 
 /// The library version string — delegates to [`yggdryl_core::version`].
 #[pyfunction]
@@ -53,25 +36,5 @@ fn add_submodule(
 fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
     add_submodule(py, module, "uri", uri::register)?;
-    add_submodule(py, module, "io", |io| {
-        bytes::register(io)?;
-        headers::register(io)
-    })?;
-    add_submodule(py, module, "types", |types| {
-        types::register(types)?;
-        values::register(types)?;
-        varvalues::register(types)?;
-        nullvalues::register(types)?;
-        nested::register(types)?;
-        buffers::register(types)
-    })?;
-    add_submodule(py, module, "decimal", |decimal| {
-        decimal::register(decimal)?;
-        deccolumn::register(decimal)
-    })?;
-    add_submodule(py, module, "temporal", |temporal| {
-        temporal::register(temporal)?;
-        temporalcolumn::register(temporal)
-    })?;
     Ok(())
 }

@@ -1,11 +1,11 @@
 //! The **effective endpoint** helpers layered over the RFC 3986 split: scheme default-port
 //! fallback ([`Uri::port_or_default`] / [`Uri::default_port`] and the free
-//! [`default_port`](yggdryl_core::io::default_port)) and IPv6 host unbracketing
+//! [`default_port`](yggdryl_core::uri::default_port)) and IPv6 host unbracketing
 //! ([`Uri::host_is_ipv6`] / [`Uri::host_unbracketed`]). Together they answer "what host and
 //! port would this URI actually dial?" — all derived on read, so the stored URI, its
 //! canonical bytes, and its value semantics are untouched.
 
-use yggdryl_core::io::{default_port, Authority, Uri, Url};
+use yggdryl_core::uri::{default_port, Authority, Uri, Url};
 
 // -------------------------------------------------------------------------------------
 // The scheme -> default-port table

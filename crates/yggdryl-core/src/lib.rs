@@ -4,8 +4,11 @@
 //! extensions (`yggdryl.version()` in both). New features are added here first, in the
 //! Rust core, then mirrored thinly in each binding.
 
-/// The Arrow-backed physical I/O layer (raw byte/buffer primitives).
-pub mod io;
+/// The abstract byte / memory-access layer (positioned + cursor IO traits).
+pub mod memory;
+
+/// The URI / URL family (RFC 3986), parsed from scratch.
+pub mod uri;
 
 /// The crate version string (from `Cargo.toml`), e.g. `"0.1.1"`.
 ///

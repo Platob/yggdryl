@@ -1,6 +1,6 @@
 //! The `yggdryl.uri` namespace — RFC 3986 URIs, absolute URLs, and their authority.
 //!
-//! Mirrors `yggdryl_core::io`'s root URI types: [`Uri`] (a generic URI, doubling as a
+//! Mirrors `yggdryl_core::uri`'s root URI types: [`Uri`] (a generic URI, doubling as a
 //! POSIX-normalized filesystem path), [`Url`] (a URI guaranteed to carry a scheme), and
 //! [`Authority`] (the `[user[:password]@]host[:port]` component). Each is a thin value
 //! wrapper with the usual value-type surface — a byte codec (`serializeBytes` /
@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use yggdryl_core::io;
+use yggdryl_core::uri as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
@@ -36,10 +36,10 @@ fn java_hash<T: Hash>(value: &T) -> i32 {
 }
 
 /// The IANA-registered default port for a well-known scheme (case-insensitive), or `null` if
-/// the scheme has no registered default. Mirrors [`yggdryl_core::io::default_port`].
+/// the scheme has no registered default. Mirrors [`yggdryl_core::uri::default_port`].
 #[napi(js_name = "defaultPort", namespace = "uri")]
 pub fn default_port(scheme: String) -> Option<u16> {
-    io::default_port(&scheme)
+    core::default_port(&scheme)
 }
 
 /// The `[user[:password]@]host[:port]` authority component of a URI.
@@ -48,7 +48,7 @@ pub fn default_port(scheme: String) -> Option<u16> {
 /// `host` keeps the brackets of an IPv6 literal (`"[::1]"`).
 #[napi(namespace = "uri")]
 pub struct Authority {
-    pub(crate) inner: io::Authority,
+    pub(crate) inner: core::Authority,
 }
 
 #[napi(namespace = "uri")]
@@ -62,7 +62,7 @@ impl Authority {
         port: Option<u16>,
     ) -> Self {
         Self {
-            inner: io::Authority::new(user.as_deref(), password.as_deref(), &host, port),
+            inner: core::Authority::new(user.as_deref(), password.as_deref(), &host, port),
         }
     }
 
@@ -70,7 +70,7 @@ impl Authority {
     #[napi(factory)]
     pub fn from_host(host: String) -> Self {
         Self {
-            inner: io::Authority::from_host(&host),
+            inner: core::Authority::from_host(&host),
         }
     }
 
@@ -214,7 +214,7 @@ impl Authority {
 /// perfectly good `Uri`.
 #[napi(namespace = "uri")]
 pub struct Uri {
-    pub(crate) inner: io::Uri,
+    pub(crate) inner: core::Uri,
 }
 
 #[napi(namespace = "uri")]
@@ -223,7 +223,7 @@ impl Uri {
     /// throwing a guided `Error` on a malformed scheme or an out-of-range port.
     #[napi(factory)]
     pub fn parse(s: String) -> napi::Result<Self> {
-        io::Uri::parse(&s)
+        core::Uri::parse(&s)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -233,7 +233,7 @@ impl Uri {
     #[napi(factory)]
     pub fn from_path(path: String) -> Self {
         Self {
-            inner: io::Uri::from_path(&path),
+            inner: core::Uri::from_path(&path),
         }
     }
 
@@ -492,7 +492,7 @@ impl Uri {
     /// Decodes a URI from the UTF-8 bytes produced by `serializeBytes` — the exact inverse.
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
-        io::Uri::deserialize_bytes(bytes.as_ref())
+        core::Uri::deserialize_bytes(bytes.as_ref())
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -692,7 +692,7 @@ impl Uri {
 /// authority — only the scheme is required, which is why `scheme` is never `null`.
 #[napi(namespace = "uri")]
 pub struct Url {
-    pub(crate) inner: io::Url,
+    pub(crate) inner: core::Url,
 }
 
 #[napi(namespace = "uri")]
@@ -701,7 +701,7 @@ impl Url {
     /// any other parse failure).
     #[napi(factory)]
     pub fn parse(s: String) -> napi::Result<Self> {
-        io::Url::parse(&s)
+        core::Url::parse(&s)
             .map(|inner| Self { inner })
             .map_err(to_error)
     }
@@ -955,7 +955,7 @@ impl Url {
     /// `Error` if the decoded URI is not absolute (or on any parse failure).
     #[napi(factory)]
     pub fn deserialize_bytes(bytes: Buffer) -> napi::Result<Self> {
-        io::Url::deserialize_bytes(bytes.as_ref())
+        core::Url::deserialize_bytes(bytes.as_ref())
             .map(|inner| Self { inner })
             .map_err(to_error)
     }

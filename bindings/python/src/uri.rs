@@ -1,6 +1,6 @@
 //! The `yggdryl.uri` submodule — RFC 3986 URIs, absolute URLs, and authorities.
 //!
-//! Mirrors `yggdryl_core::io`'s root-level `Uri` / `Url` / `Authority`. A [`Uri`] is a generic
+//! Mirrors `yggdryl_core::uri`'s root-level `Uri` / `Url` / `Authority`. A [`Uri`] is a generic
 //! URI split into its components (any of which may be absent — a bare filesystem path is a
 //! perfectly good `Uri`); a [`Url`] is an **absolute** URI (one that carries a scheme); an
 //! [`Authority`] is the `[user[:password]@]host[:port]` component.
@@ -29,7 +29,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::io::{self, UriError};
+use yggdryl_core::uri::{self, UriError};
 
 /// Maps a [`UriError`] to a Python `ValueError` carrying its guided text.
 fn uri_err(error: UriError) -> PyErr {
@@ -37,10 +37,10 @@ fn uri_err(error: UriError) -> PyErr {
 }
 
 /// The IANA-registered default port for a well-known scheme (case-insensitive), or `None` if
-/// the scheme has no registered default. Mirrors [`yggdryl_core::io::default_port`].
+/// the scheme has no registered default. Mirrors [`yggdryl_core::uri::default_port`].
 #[pyfunction]
 fn default_port(scheme: &str) -> Option<u16> {
-    io::default_port(scheme)
+    uri::default_port(scheme)
 }
 
 /// The constructor arguments an [`Authority`] pickles through: `(host, user, password, port)`.
@@ -50,7 +50,7 @@ type AuthorityParts = (String, Option<String>, Option<String>, Option<u16>);
 #[pyclass(module = "yggdryl.uri")]
 #[derive(Clone)]
 pub struct Authority {
-    pub(crate) inner: io::Authority,
+    pub(crate) inner: uri::Authority,
 }
 
 #[pymethods]
@@ -60,7 +60,7 @@ impl Authority {
     #[pyo3(signature = (host, user = None, password = None, port = None))]
     fn new(host: &str, user: Option<&str>, password: Option<&str>, port: Option<u16>) -> Self {
         Self {
-            inner: io::Authority::new(user, password, host, port),
+            inner: uri::Authority::new(user, password, host, port),
         }
     }
 
@@ -68,7 +68,7 @@ impl Authority {
     #[staticmethod]
     fn from_host(host: &str) -> Self {
         Self {
-            inner: io::Authority::from_host(host),
+            inner: uri::Authority::from_host(host),
         }
     }
 
@@ -222,7 +222,7 @@ impl Authority {
 #[pyclass(module = "yggdryl.uri")]
 #[derive(Clone)]
 pub struct Uri {
-    pub(crate) inner: io::Uri,
+    pub(crate) inner: uri::Uri,
 }
 
 #[pymethods]
@@ -231,7 +231,7 @@ impl Uri {
     /// guided `ValueError` on a malformed scheme or an out-of-range port.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        io::Uri::parse(s)
+        uri::Uri::parse(s)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }
@@ -241,7 +241,7 @@ impl Uri {
     #[staticmethod]
     fn from_path(path: &str) -> Self {
         Self {
-            inner: io::Uri::from_path(path),
+            inner: uri::Uri::from_path(path),
         }
     }
 
@@ -480,7 +480,7 @@ impl Uri {
     /// raising a guided `ValueError` on non-UTF-8 bytes or a parse failure.
     #[staticmethod]
     fn deserialize_bytes(bytes: &[u8]) -> PyResult<Self> {
-        io::Uri::deserialize_bytes(bytes)
+        uri::Uri::deserialize_bytes(bytes)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }
@@ -680,7 +680,7 @@ impl Uri {
 #[pyclass(module = "yggdryl.uri")]
 #[derive(Clone)]
 pub struct Url {
-    pub(crate) inner: io::Url,
+    pub(crate) inner: uri::Url,
 }
 
 #[pymethods]
@@ -689,7 +689,7 @@ impl Url {
     /// (or on any [`Uri.parse`](Uri::parse) failure).
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        io::Url::parse(s)
+        uri::Url::parse(s)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }
@@ -932,7 +932,7 @@ impl Url {
     /// `ValueError` on non-UTF-8 bytes, a missing scheme, or a parse failure.
     #[staticmethod]
     fn deserialize_bytes(bytes: &[u8]) -> PyResult<Self> {
-        io::Url::deserialize_bytes(bytes)
+        uri::Url::deserialize_bytes(bytes)
             .map(|inner| Self { inner })
             .map_err(uri_err)
     }
