@@ -1376,6 +1376,15 @@ impl Mmap {
         Ok(self.io()?.parent().map(|inner| Mmap { inner: Some(inner) }))
     }
 
+    /// This node's ancestors, nearest first — empty for a leaf/root.
+    fn parents(&self) -> PyResult<Vec<Mmap>> {
+        Ok(self
+            .io()?
+            .parents()
+            .map(|inner| Mmap { inner: Some(inner) })
+            .collect())
+    }
+
     /// Streams this node's children — always the shared **empty**
     /// [`yggdryl.memory.NoChildren`](crate::io::memory::NoChildren) stream (a raw mapping is a
     /// leaf: it streams nothing, with or without `recursive=True`), still satisfying the

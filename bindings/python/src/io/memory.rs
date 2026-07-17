@@ -989,6 +989,11 @@ impl Cursor {
         self.inner.parent().map(|inner| Cursor { inner })
     }
 
+    /// This node's ancestors, nearest first — empty for a leaf/root.
+    fn parents(&self) -> Vec<Cursor> {
+        self.inner.parents().map(|inner| Cursor { inner }).collect()
+    }
+
     /// Streams this node's children — always the empty [`NoChildren`] stream (a cursor
     /// view is a leaf: it streams nothing, with or without `recursive=True`).
     #[pyo3(signature = (recursive = false))]
@@ -1206,6 +1211,11 @@ impl Slice {
     /// The parent node, or `None` — a window view is a **leaf** of the IO graph.
     fn parent(&self) -> Option<Slice> {
         self.inner.parent().map(|inner| Slice { inner })
+    }
+
+    /// This node's ancestors, nearest first — empty for a leaf/root.
+    fn parents(&self) -> Vec<Slice> {
+        self.inner.parents().map(|inner| Slice { inner }).collect()
     }
 
     /// Streams this node's children — always the empty [`NoChildren`] stream (a window
