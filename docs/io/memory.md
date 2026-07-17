@@ -121,7 +121,7 @@ constructor accepts a bytes value (or nothing) and infers what to build.
 
 ## Addressing
 
-Every source carries an addressing [`Uri`](uri.md) — `uri()` on any `IOBase`. An unaddressed
+Every source carries an addressing [`Uri`](../uri.md) — `uri()` on any `IOBase`. An unaddressed
 in-memory source reports the **`mem` scheme**'s stable synthetic address `mem://heap`
 (deterministic — the real allocation address is deliberately not leaked); a `Heap` can be given
 a real one (`with_uri` / `set_uri`), and the `cursor()` / `window()` wrappers delegate to their
@@ -156,7 +156,7 @@ heaps with the same bytes are equal regardless of address).
 
     ```rust
     use yggdryl_core::io::memory::{Heap, IOBase};
-    use yggdryl_core::io::uri::Uri;
+    use yggdryl_core::uri::Uri;
 
     assert_eq!(Heap::new().uri().to_string(), "mem://heap"); // the synthetic default
     let h = Heap::from_slice(b"data").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
@@ -169,7 +169,7 @@ heaps with the same bytes are equal regardless of address).
 Beyond its address, every source reports three more facets — all delegated by the wrappers:
 
 - **`headers()` / `headers_mut()`** — the source's metadata, as the project-wide
-  [`Headers`](index.md#headers--the-one-metadata-map) map (there is exactly one metadata type).
+  [`Headers`](../headers.md) map (there is exactly one metadata type).
   In the bindings `heap.headers` returns a **copy**; write back with `set_headers` /
   `with_headers`.
 - **`mode()`** — how the source may be accessed, an [`IOMode`](index.md#iomode-and-iokind--int-enums-with-parsers)
@@ -182,7 +182,8 @@ Like the address, all three are metadata — excluded from a heap's value equali
 === "Python"
 
     ```python
-    from yggdryl.io import Headers, IOKind, IOMode
+    from yggdryl.headers import Headers
+    from yggdryl.io import IOKind, IOMode
     from yggdryl.memory import Heap
 
     h = Heap(b"x")
@@ -199,7 +200,8 @@ Like the address, all three are metadata — excluded from a heap's value equali
 === "Node"
 
     ```js
-    const { Headers, IOMode, IOKind } = require('yggdryl').io
+    const { Headers } = require('yggdryl').headers
+    const { IOMode, IOKind } = require('yggdryl').io
     const { Heap } = require('yggdryl').memory
 
     const h = new Heap(Buffer.from('x'))

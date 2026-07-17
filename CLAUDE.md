@@ -6,10 +6,10 @@ Features are implemented in the Rust core first and mirrored, thinly, in both bi
 ## Scope — one abstract byte/memory-access layer, many sources
 
 The core is the **`io` layer**: a single abstract byte-access contract (`io::memory::IOBase`,
-with the concrete `IOCursor` / `IOSlice` wrappers and the in-heap `Heap` source), the `io::uri`
-family (`Uri` / `Url` / `Authority`) that **addresses** sources, and the cross-cutting value
-types at the `io` root (`Headers`, `IOMode`, `IOKind`, `IoError`, `Whence`, the `Serializable`
-trait). Everything reads and writes through the one contract, so a new source (memory-mapped,
+with the concrete `IOCursor` / `IOSlice` wrappers and the in-heap `Heap` source), the root
+`uri` family (`Uri` / `Url` / `Authority`) that **addresses** sources, the root `headers`
+module (the one metadata map), and the cross-cutting value types at the `io` root (`IOMode`,
+`IOKind`, `IoError`, `Whence`, the `Serializable` trait). Everything reads and writes through the one contract, so a new source (memory-mapped,
 file, network, compressed, …) is written once and works everywhere.
 
 From here the library scales up: absorb bytes from as many sources as possible behind this
@@ -21,15 +21,17 @@ current dependency.
 ## Layout — one tree, mirrored everywhere
 
 ```text
-crates/yggdryl-core/src/io/          # the core io layer (no external dependencies)
-  mod.rs                             # io root: cross-cutting contract + value types
-  error.rs  whence.rs                # IoError, Whence (io-wide)
-  serializable.rs                    # the Serializable trait
-  headers.rs  mode.rs  kind.rs       # Headers, IOMode, IOKind
-  memory/                            # byte-access: traits at the module root…
-    base.rs cursor.rs slice.rs       #   IOBase + the IOCursor/IOSlice wrappers
-    heap.rs                          #   …concrete sources below (Heap; a future Mmap)
-  uri/                               # addressing: Uri/Url/Authority + scheme/percent/error
+crates/yggdryl-core/src/             # the core (no external dependencies)
+  io/                                # the io layer
+    mod.rs                           #   io root: cross-cutting contract + value types
+    error.rs  whence.rs              #   IoError, Whence (io-wide)
+    serializable.rs                  #   the Serializable trait
+    mode.rs  kind.rs                 #   IOMode, IOKind
+    memory/                          #   byte-access: traits at the module root…
+      base.rs cursor.rs slice.rs     #     IOBase + the IOCursor/IOSlice wrappers
+      heap.rs                        #     …concrete sources below (Heap; a future Mmap)
+  headers.rs                         # Headers — the one metadata map (root module)
+  uri/                               # addressing (root module): Uri/Url/Authority + scheme/percent
 ```
 
 **The same folder tree is mirrored in code, tests, and benchmarks — in the core and in both
@@ -37,15 +39,18 @@ extensions.** This is a hard rule: a reader must find the same shape everywhere.
 
 - *Core tests/benches* (flat by cargo's design) mirror by **path-derived names**:
   `src/io/memory/heap.rs` → `tests/io_memory_heap.rs` (+ `_alloc`) → `benches/io_memory_heap.rs`
-  → `benchmarks/yggdryl-core/io/memory/heap.md`.
-- *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,uri.rs,mod.rs}`,
-  `bindings/python/tests/io/test_memory.py`, `bindings/node/test/io/memory.test.js`, and the
-  same under `benchmarks/` / `benchmark/`.
+  → `benchmarks/yggdryl-core/io/memory/heap.md`; `src/uri/` → `tests/uri*.rs` →
+  `benches/uri.rs` → `benchmarks/yggdryl-core/uri.md`; `src/headers.rs` → `tests/headers.rs`.
+- *Bindings* mirror with **real folders**: `bindings/*/src/io/{memory.rs,mod.rs,…}` +
+  `bindings/*/src/{headers.rs,uri.rs}`, `bindings/python/tests/{io/test_memory.py,test_uri.py,test_headers.py}`,
+  `bindings/node/test/{io/memory.test.js,uri.test.js}`, and the same under `benchmarks/` /
+  `benchmark/`.
 - *Public namespaces* mirror the **leaf modules identically in both bindings** —
-  `yggdryl.memory`, `yggdryl.uri`, and `yggdryl.io` for the io-root types — adapting only to
+  `yggdryl.memory`, `yggdryl.uri`, `yggdryl.headers`, and `yggdryl.io` for the io-root types —
+  adapting only to
   platform nesting limits (napi namespaces are single-level, so both bindings stay flat and
   therefore identical).
-- `docs/` pages mirror too (`docs/io/memory.md`, `docs/io/uri.md`), each with synced
+- `docs/` pages mirror too (`docs/io/memory.md`, `docs/uri.md`, `docs/headers.md`), each with synced
   `=== "Python"` / `=== "Node"` / `=== "Rust"` tabs, listed in `mkdocs.yml` nav.
 
 Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + strict docs),
@@ -96,8 +101,8 @@ Other top-level dirs: `.github/workflows/` — `ci.yml` (fmt/clippy/test + stric
   `equals` / `hashCode` / `serializeBytes` / `deserializeBytes` — so every value works as a
   map key, in a set, and over a wire in every language. Keep **one identity: equal iff
   canonical bytes equal, and equal values hash equal**; build the canonical form once into a
-  pre-sized buffer and stream it into the hasher (see `io::uri::Uri` / `HashWrite`).
-- **Centralize metadata in `io::Headers`.** There is exactly **one** metadata/annotation map
+  pre-sized buffer and stream it into the hasher (see `uri::Uri` / `HashWrite`).
+- **Centralize metadata in `headers::Headers`.** There is exactly **one** metadata/annotation map
   type in the project: `Headers` (ordered, case-insensitive, multi-value, byte-capable). HTTP
   headers, schema/field metadata, source annotations — all of it is a `Headers`; never
   introduce a second map type or an ad-hoc `HashMap<String, String>` in a public signature.

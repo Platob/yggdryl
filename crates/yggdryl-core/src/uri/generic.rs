@@ -23,7 +23,7 @@ use super::{percent, Authority, UriError, Url};
 /// **drive letter** kept in the path — never a one-letter URI scheme.
 ///
 /// ```
-/// use yggdryl_core::io::uri::Uri;
+/// use yggdryl_core::uri::Uri;
 ///
 /// let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b.txt?q=1#frag").unwrap();
 /// assert_eq!(uri.scheme(), Some("https"));
@@ -63,7 +63,7 @@ impl Uri {
     /// [`UriError::InvalidPort`] for a non-numeric or out-of-range port.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("mailto:a@b.com").unwrap().scheme(), Some("mailto"));
     /// assert_eq!(Uri::parse_str("/a/b/c").unwrap().path(), "/a/b/c");
@@ -115,7 +115,7 @@ impl Uri {
     /// back-slash to a forward slash so the stored path is POSIX slash-based.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::from_path(r"a\b\c").path(), "a/b/c");
     /// assert_eq!(Uri::from_path("/a/b/c").path(), "/a/b/c");
@@ -160,7 +160,7 @@ impl Uri {
     /// see [`Authority::host_is_ipv6`].
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert!(Uri::parse_str("http://[::1]:8080/p").unwrap().host_is_ipv6());
     /// assert!(!Uri::parse_str("http://example.com/p").unwrap().host_is_ipv6());
@@ -173,7 +173,7 @@ impl Uri {
     /// address to hand to a socket API. See [`Authority::host_unbracketed`].
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("http://[::1]:80/p").unwrap().host_unbracketed(), Some("::1"));
     /// assert_eq!(Uri::parse_str("http://h/p").unwrap().host_unbracketed(), Some("h"));
@@ -194,7 +194,7 @@ impl Uri {
     /// lookup: it does **not** read or need the authority.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("https://h/p").unwrap().default_port(), Some(443));
     /// assert_eq!(Uri::parse_str("/just/a/path").unwrap().default_port(), None); // no scheme
@@ -209,7 +209,7 @@ impl Uri {
     /// canonical form still round-trips.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("https://h/p").unwrap().port_or_default(), Some(443)); // default
     /// assert_eq!(Uri::parse_str("https://h:8443/p").unwrap().port_or_default(), Some(8443)); // explicit
@@ -238,7 +238,7 @@ impl Uri {
     /// directory-like path (one ending in `/`).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::from_path("/a/b/c.txt").name(), Some("c.txt"));
     /// assert_eq!(Uri::from_path("/a/b/").name(), None);
@@ -256,7 +256,7 @@ impl Uri {
     /// (`.bashrc`) whose dot is not an extension separator, so its stem is the whole name.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::from_path("/x/archive.tar.gz").stem(), Some("archive.tar"));
     /// assert_eq!(Uri::from_path("/x/.bashrc").stem(), Some(".bashrc"));
@@ -273,7 +273,7 @@ impl Uri {
     /// extension, a trailing dot, or a hidden dotfile (`.bashrc`).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::from_path("/x/archive.tar.gz").extension(), Some("gz"));
     /// assert_eq!(Uri::from_path("/x/.bashrc").extension(), None);
@@ -291,7 +291,7 @@ impl Uri {
     /// it contributes no extension. Empty for a name with no extension or no filename.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::from_path("/x/a.b.c.d").extensions(), vec!["b", "c", "d"]);
     /// assert!(Uri::from_path("/x/.bashrc").extensions().is_empty());
@@ -439,7 +439,7 @@ impl Uri {
     /// `with_*` builders for a one-line "copy, changing one thing".
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let base = Uri::parse_str("https://h/a").unwrap();
     /// assert_eq!(base.copy(), base);
@@ -457,7 +457,7 @@ impl Uri {
     /// so the segment can't fuse into the host.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let base = Uri::parse_str("https://api.example.com/v1").unwrap();
     /// assert_eq!(base.joinpath("users").to_string(), "https://api.example.com/v1/users");
@@ -509,7 +509,7 @@ impl Uri {
     /// default (empty) URI returns a copy unchanged.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let base = Uri::parse_str("https://prod.example.com/v1?trace=1").unwrap();
     /// // A patch that only carries an authority swaps the host, keeping scheme/path/query.
@@ -535,7 +535,7 @@ impl Uri {
     /// The canonical URI string as UTF-8 bytes.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("sc://h/p?q#f").unwrap();
     /// assert_eq!(uri.serialize_bytes(), b"sc://h/p?q#f");
@@ -551,7 +551,7 @@ impl Uri {
     /// [`UriError::NonUtf8`] if the bytes are not UTF-8, or any [`parse_str`](Uri::parse_str) error.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("sc://h/p").unwrap();
     /// assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
@@ -568,7 +568,7 @@ impl Uri {
     /// [`UriError::MissingScheme`] when the URI is not absolute.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert!(Uri::parse_str("https://h/").unwrap().into_url().is_ok());
     /// assert!(Uri::parse_str("/relative").unwrap().into_url().is_err());
@@ -583,7 +583,7 @@ impl Uri {
     /// [`UriError::MissingScheme`] when the URI is not absolute.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// assert_eq!(Uri::parse_str("sc://h").unwrap().to_url().unwrap().scheme(), "sc");
     /// ```
@@ -599,7 +599,7 @@ impl Uri {
     /// `=` reads as an empty value. `key` is matched by its encoded form, so pass it decoded.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(uri.param("a"), Some("1")); // first occurrence wins
@@ -617,7 +617,7 @@ impl Uri {
     /// `?a=1&a=2`. Empty if the key is absent. Zero-copy: the values borrow the query.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(uri.param_all("a"), vec!["1", "3"]);
@@ -645,7 +645,7 @@ impl Uri {
     /// query; the returned `Vec` is the only allocation, pre-sized to one.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     /// assert_eq!(uri.params(), vec![("a", "1"), ("b", "2")]);
@@ -666,7 +666,7 @@ impl Uri {
     /// `("a", ["1", "3"])` rather than two colliding pairs. Empty when there is no query.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(
@@ -693,7 +693,7 @@ impl Uri {
     /// is nothing to decode, otherwise owns the decoded string.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?q=a%20b%26c").unwrap();
     /// assert_eq!(uri.param("q").as_deref(), Some("a%20b%26c")); // stored (encoded)
@@ -724,7 +724,7 @@ impl Uri {
     /// form, so pass it decoded.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1").unwrap();
     /// assert!(uri.has_param("a"));
@@ -745,7 +745,7 @@ impl Uri {
     /// stored safely. Rebuilds the query with a single pre-sized allocation.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// uri.set_param("a", "9");
@@ -788,7 +788,7 @@ impl Uri {
     /// is actually present (one pre-sized rebuild); an absent key is a no-op.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert!(uri.remove_param("a"));
@@ -827,7 +827,7 @@ impl Uri {
     /// `set_param` in a loop, which would rebuild the whole query each time.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// uri.set_params(&[("a", "9"), ("c", "7")]);
@@ -885,7 +885,7 @@ impl Uri {
     /// are preserved, not merged. Rebuilds in one pre-sized allocation.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?c=3&a=1&b=2&a=0").unwrap();
     /// uri.normalize_params();

@@ -14,7 +14,7 @@ use super::{HashWrite, UriError};
 /// `host` is stored verbatim, including the brackets of an IPv6 literal (`"[::1]"`).
 ///
 /// ```
-/// use yggdryl_core::io::uri::Authority;
+/// use yggdryl_core::uri::Authority;
 ///
 /// let a = Authority::new(Some("user"), Some("pass"), "example.com", Some(8080));
 /// assert_eq!(a.user(), Some("user"));
@@ -34,7 +34,7 @@ impl Authority {
     /// Builds an authority from its parts.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// let a = Authority::new(None, None, "localhost", Some(80));
     /// assert_eq!(a.to_string(), "localhost:80");
@@ -51,7 +51,7 @@ impl Authority {
     /// Builds a bare `host`-only authority (no userinfo, no port).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// assert_eq!(Authority::from_host("example.com").host(), "example.com");
     /// ```
@@ -84,7 +84,7 @@ impl Authority {
     /// **not** counted, matching how the parser keeps it verbatim as a plain host.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// assert!(Authority::from_host("[::1]").host_is_ipv6());
     /// assert!(!Authority::from_host("example.com").host_is_ipv6());
@@ -98,7 +98,7 @@ impl Authority {
     /// verbatim. Zero-copy: it borrows the stored host.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// assert_eq!(Authority::from_host("[2001:db8::1]").host_unbracketed(), "2001:db8::1");
     /// assert_eq!(Authority::from_host("example.com").host_unbracketed(), "example.com");
@@ -172,7 +172,7 @@ impl Authority {
     /// kept. Handy for patching just the port or credentials of a base authority.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// let base = Authority::new(Some("svc"), Some("secret"), "db", Some(5432));
     /// let patch = Authority::from_host("replica"); // only the host is set
@@ -231,7 +231,7 @@ impl Authority {
     /// (e.g. an invalid port).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Authority;
+    /// use yggdryl_core::uri::Authority;
     ///
     /// let auth = Authority::new(Some("user"), Some("pw"), "host", Some(99));
     /// assert_eq!(Authority::deserialize_bytes(&auth.serialize_bytes()).unwrap(), auth);

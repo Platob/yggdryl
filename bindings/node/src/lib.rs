@@ -4,13 +4,15 @@
 //! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.io` namespace
 //! (the root value types: the `Headers` metadata map and the `IOMode` / `IOKind` int enums),
 //! the `yggdryl.uri` namespace (RFC 3986 URIs, absolute URLs, and authorities), mirroring
-//! `yggdryl_core::io::uri`, and the `yggdryl.memory` namespace (the in-heap `Heap` byte source
+//! `yggdryl_core::uri`, and the `yggdryl.memory` namespace (the in-heap `Heap` byte source
 //! and the `Whence` seek anchor), mirroring `yggdryl_core::io::memory`.
 
 #[macro_use]
 extern crate napi_derive;
 
+pub mod headers;
 pub mod io;
+pub mod uri;
 
 /// The library version string — delegates to [`yggdryl_core::version`].
 #[napi]

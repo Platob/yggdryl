@@ -1,5 +1,5 @@
-//! Time **and** memory benchmark for the URI base types ([`Uri`](yggdryl_core::io::uri::Uri) /
-//! [`Url`](yggdryl_core::io::uri::Url)): `Uri::parse` over a URL corpus, `Uri::from_path` over a
+//! Time **and** memory benchmark for the URI base types ([`Uri`](yggdryl_core::uri::Uri) /
+//! [`Url`](yggdryl_core::uri::Url)): `Uri::parse` over a URL corpus, `Uri::from_path` over a
 //! Windows-path corpus, the `serialize_bytes` / `deserialize_bytes` byte round-trip, the
 //! zero-copy accessors, `Display`, and `Uri` as a `HashMap` key.
 //!
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
-use yggdryl_core::io::uri::Uri;
+use yggdryl_core::uri::Uri;
 
 // -------------------------------------------------------------------------------------
 // Counting allocator — every alloc (a `String`/`Vec` growth realloc counts as one) is

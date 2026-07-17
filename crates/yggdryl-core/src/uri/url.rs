@@ -14,7 +14,7 @@ use super::{Authority, Uri, UriError};
 /// the present scheme, which is why [`scheme`](Url::scheme) returns `&str`, not `Option`.
 ///
 /// ```
-/// use yggdryl_core::io::uri::Url;
+/// use yggdryl_core::uri::Url;
 ///
 /// let url = Url::parse_str("https://example.com/a/b.txt").unwrap();
 /// assert_eq!(url.scheme(), "https");
@@ -36,7 +36,7 @@ impl Url {
     /// [`UriError::MissingScheme`] if `s` has no scheme, plus any [`Uri::parse_str`] error.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// assert_eq!(Url::parse_str("sc://h/p").unwrap().scheme(), "sc");
     /// ```
@@ -55,7 +55,7 @@ impl Url {
     /// test presence explicitly with [`has_authority`](Url::has_authority).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// assert_eq!(Url::parse_str("https://h:8080/p").unwrap().authority().port(), Some(8080));
     /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().authority().host(), ""); // no authority
@@ -84,7 +84,7 @@ impl Url {
     /// `Option`; `host().is_empty()` (or [`has_authority`](Url::has_authority)) tests presence.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// assert_eq!(Url::parse_str("https://example.com/p").unwrap().host(), "example.com");
     /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().host(), "");
@@ -111,10 +111,10 @@ impl Url {
     }
 
     /// The default port registered for this URL's scheme, or `None` if it has no known
-    /// default — see [`default_port`](crate::io::uri::default_port).
+    /// default — see [`default_port`](crate::uri::default_port).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// assert_eq!(Url::parse_str("wss://h/s").unwrap().default_port(), Some(443));
     /// assert_eq!(Url::parse_str("s3://bucket/key").unwrap().default_port(), None);
@@ -127,7 +127,7 @@ impl Url {
     /// scheme's [`default_port`](Url::default_port) — see [`Uri::port_or_default`].
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// assert_eq!(Url::parse_str("https://h/p").unwrap().port_or_default(), Some(443));
     /// assert_eq!(Url::parse_str("http://h:8080/p").unwrap().port_or_default(), Some(8080));
@@ -378,7 +378,7 @@ impl Url {
     /// decoded URI is not absolute, or any [`Uri::parse_str`] error.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// let url = Url::parse_str("sc://h/p").unwrap();
     /// assert_eq!(Url::deserialize_bytes(&url.serialize_bytes()).unwrap(), url);
@@ -395,7 +395,7 @@ impl Url {
     /// Unwraps into the underlying [`Uri`] (infallible — a URL is always a URI).
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// let uri = Url::parse_str("sc://h").unwrap().into_uri();
     /// assert_eq!(uri.scheme(), Some("sc"));
@@ -415,7 +415,7 @@ impl Url {
     /// is preserved, so the result is still an absolute URL.
     ///
     /// ```
-    /// use yggdryl_core::io::uri::Url;
+    /// use yggdryl_core::uri::Url;
     ///
     /// let base = Url::parse_str("https://api.example.com/v1").unwrap();
     /// assert_eq!(base.joinpath("users/42").to_string(), "https://api.example.com/v1/users/42");

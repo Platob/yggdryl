@@ -13,7 +13,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-use yggdryl_core::io::uri::Uri;
+use yggdryl_core::uri::Uri;
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);

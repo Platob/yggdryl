@@ -1,6 +1,6 @@
 //! The `yggdryl.uri` namespace — RFC 3986 URIs, absolute URLs, and their authority.
 //!
-//! Mirrors `yggdryl_core::io::uri`'s root URI types: [`Uri`] (a generic URI, doubling as a
+//! Mirrors `yggdryl_core::uri`'s root URI types: [`Uri`] (a generic URI, doubling as a
 //! POSIX-normalized filesystem path), [`Url`] (a URI guaranteed to carry a scheme), and
 //! [`Authority`] (the `[user[:password]@]host[:port]` component). Each is a thin value
 //! wrapper with the usual value-type surface — a byte codec (`serializeBytes` /
@@ -21,7 +21,7 @@ use napi::bindgen_prelude::Buffer;
 use napi::{Env, JsFunction, JsObject, JsUnknown};
 use napi_derive::napi;
 
-use yggdryl_core::io::uri as core;
+use yggdryl_core::uri as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
@@ -53,7 +53,7 @@ fn to_param_refs(params: &[Vec<String>]) -> napi::Result<Vec<(&str, &str)>> {
 }
 
 /// The IANA-registered default port for a well-known scheme (case-insensitive), or `null` if
-/// the scheme has no registered default. Mirrors [`yggdryl_core::io::uri::default_port`].
+/// the scheme has no registered default. Mirrors [`yggdryl_core::uri::default_port`].
 #[napi(js_name = "defaultPort", namespace = "uri")]
 pub fn default_port(scheme: String) -> Option<u16> {
     core::default_port(&scheme)

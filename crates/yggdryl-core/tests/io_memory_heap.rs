@@ -6,7 +6,7 @@
 //! this file hammers the edges (EOF, bit addressing, capacity reuse, content equality).
 
 use yggdryl_core::io::memory::{Heap, IOBase, IOCursor, IOSlice, IoError, Whence};
-use yggdryl_core::io::uri::Uri;
+use yggdryl_core::uri::Uri;
 
 // -------------------------------------------------------------------------------------
 // Size + capacity
@@ -511,7 +511,7 @@ fn headers_metadata_lives_on_every_source() {
     assert_eq!(h.headers().content_type(), Some("application/octet-stream"));
 
     // The builder trio.
-    let built = Heap::new().with_headers(yggdryl_core::io::Headers::new().with("k", "v"));
+    let built = Heap::new().with_headers(yggdryl_core::headers::Headers::new().with("k", "v"));
     assert_eq!(built.headers().get("k"), Some("v"));
 
     // Wrappers delegate to the inner source's map.
@@ -519,14 +519,14 @@ fn headers_metadata_lives_on_every_source() {
     cur.headers_mut().insert("k", "v2");
     assert_eq!(cur.headers().get("k"), Some("v2"));
     let win = Heap::from_slice(b"abcd")
-        .with_headers(yggdryl_core::io::Headers::new().with("w", "1"))
+        .with_headers(yggdryl_core::headers::Headers::new().with("w", "1"))
         .window(1, 2)
         .unwrap();
     assert_eq!(win.headers().get("w"), Some("1"));
 
     // Metadata is not part of value equality.
     assert_eq!(
-        Heap::from_slice(b"x").with_headers(yggdryl_core::io::Headers::new().with("a", "1")),
+        Heap::from_slice(b"x").with_headers(yggdryl_core::headers::Headers::new().with("a", "1")),
         Heap::from_slice(b"x")
     );
 }

@@ -13,12 +13,12 @@ import pickle
 import pytest
 
 import yggdryl.io
-from yggdryl.io import Headers
+from yggdryl.headers import Headers
 
 
 def test_module_surface():
-    assert Headers.__module__ == "yggdryl.io"
-    assert hasattr(yggdryl.io, "Headers")
+    assert Headers.__module__ == "yggdryl.headers"
+    assert hasattr(yggdryl.headers, "Headers")
 
 
 # -------------------------------------------------------------------------------------

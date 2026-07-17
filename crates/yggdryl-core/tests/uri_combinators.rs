@@ -5,7 +5,7 @@
 //! interaction — and the invariant that every result still round-trips and keeps value
 //! semantics.
 
-use yggdryl_core::io::uri::{Authority, Uri, Url};
+use yggdryl_core::uri::{Authority, Uri, Url};
 
 // -------------------------------------------------------------------------------------
 // joinpath — correct seam handling

@@ -243,15 +243,15 @@ impl<T: IOBase> IOBase for IOCursor<T> {
         self.inner.pwrite_byte_array(offset, data)
     }
 
-    fn uri(&self) -> crate::io::uri::Uri {
+    fn uri(&self) -> crate::uri::Uri {
         self.inner.uri()
     }
 
-    fn headers(&self) -> &crate::io::Headers {
+    fn headers(&self) -> &crate::headers::Headers {
         self.inner.headers()
     }
 
-    fn headers_mut(&mut self) -> &mut crate::io::Headers {
+    fn headers_mut(&mut self) -> &mut crate::headers::Headers {
         self.inner.headers_mut()
     }
 

@@ -1,6 +1,6 @@
 //! The `yggdryl.io` [`Headers`] map — the project's one metadata map.
 //!
-//! Mirrors [`yggdryl_core::io::Headers`]: an ordered, ASCII case-insensitive, multi-value map
+//! Mirrors [`yggdryl_core::headers::Headers`]: an ordered, ASCII case-insensitive, multi-value map
 //! of byte-string names to byte-string values following HTTP header conventions, with `str`
 //! conveniences over the byte storage. It behaves like a `dict`: `len` / `in` / `h[name]` /
 //! `h[name] = value` / `del h[name]` / iteration over names — and, like `dict`, it is a
@@ -17,7 +17,8 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::io::{self, IoError};
+use yggdryl_core::headers;
+use yggdryl_core::io::IoError;
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {
@@ -29,10 +30,10 @@ fn ioerr(error: IoError) -> PyErr {
 /// (`get` / `append` / `insert`) sit over the byte storage for the common textual case;
 /// `*_bytes` accessors reach the raw bytes. Mutable like `dict`, so intentionally
 /// **not** hashable.
-#[pyclass(module = "yggdryl.io")]
+#[pyclass(module = "yggdryl.headers")]
 #[derive(Clone)]
 pub struct Headers {
-    pub(crate) inner: io::Headers,
+    pub(crate) inner: headers::Headers,
 }
 
 #[pymethods]
@@ -41,7 +42,7 @@ impl Headers {
     #[new]
     fn new() -> Self {
         Self {
-            inner: io::Headers::new(),
+            inner: headers::Headers::new(),
         }
     }
 
@@ -49,7 +50,7 @@ impl Headers {
     #[staticmethod]
     fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: io::Headers::with_capacity(capacity),
+            inner: headers::Headers::with_capacity(capacity),
         }
     }
 
@@ -58,7 +59,7 @@ impl Headers {
     #[staticmethod]
     fn parse_http(data: Vec<u8>) -> Self {
         Self {
-            inner: io::Headers::parse_http(&data),
+            inner: headers::Headers::parse_http(&data),
         }
     }
 
@@ -212,7 +213,7 @@ impl Headers {
     /// raising a guided `ValueError` (naming the shortfall) if the frame is truncated.
     #[staticmethod]
     fn deserialize_bytes(data: &[u8]) -> PyResult<Self> {
-        io::Headers::deserialize_bytes(data)
+        headers::Headers::deserialize_bytes(data)
             .map(|inner| Self { inner })
             .map_err(ioerr)
     }

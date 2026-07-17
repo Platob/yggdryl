@@ -42,5 +42,6 @@ markdown_extensions:
 nav:
   - Home: index.md
   - The io root: io/index.md
+  - Headers: headers.md
   - Memory access: io/memory.md
-  - URIs and URLs: io/uri.md
+  - URIs and URLs: uri.md

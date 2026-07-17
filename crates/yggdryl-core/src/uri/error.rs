@@ -2,15 +2,15 @@
 
 use core::fmt;
 
-/// An error raised while parsing or decoding a [`Uri`](crate::io::uri::Uri) /
-/// [`Url`](crate::io::uri::Url).
+/// An error raised while parsing or decoding a [`Uri`](crate::uri::Uri) /
+/// [`Url`](crate::uri::Url).
 ///
 /// Every variant names the offending piece and the fix: the
 /// bad scheme, the out-of-range port with its value, or why the bytes could not be
 /// decoded. In the bindings it surfaces as a Python `ValueError` / a thrown `Error`.
 ///
 /// ```
-/// use yggdryl_core::io::uri::{Uri, UriError};
+/// use yggdryl_core::uri::{Uri, UriError};
 ///
 /// // A port outside `0..=65535` names the offending value.
 /// let err = Uri::parse_str("http://h:99999/").unwrap_err();
@@ -34,9 +34,9 @@ pub enum UriError {
         /// The offending port text.
         port: String,
     },
-    /// A [`Url`](crate::io::uri::Url) requires an absolute URI but the input had no scheme.
+    /// A [`Url`](crate::uri::Url) requires an absolute URI but the input had no scheme.
     /// Prefix the input with a scheme (`"https://…"`), or parse it as a
-    /// [`Uri`](crate::io::uri::Uri) instead.
+    /// [`Uri`](crate::uri::Uri) instead.
     MissingScheme {
         /// The scheme-less input that was supplied.
         input: String,

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 
 const yggdryl = require('../..')
 const io = yggdryl.io
-const { Headers } = yggdryl.io
+const { Headers } = yggdryl.headers
 const { Heap, Whence, Cursor, Slice } = yggdryl.memory
 const { Uri } = yggdryl.uri
 

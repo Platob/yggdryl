@@ -22,10 +22,10 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use crate::io::headers::Headers;
+use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
-use crate::io::uri::Uri;
+use crate::uri::Uri;
 use yggdryl_core::io::memory::{self, IOBase, IoError};
 use yggdryl_core::io::Serializable;
 

@@ -13,7 +13,7 @@
 /// against a static table).
 ///
 /// ```
-/// use yggdryl_core::io::uri::default_port;
+/// use yggdryl_core::uri::default_port;
 ///
 /// assert_eq!(default_port("https"), Some(443));
 /// assert_eq!(default_port("HTTPS"), Some(443)); // scheme is case-insensitive

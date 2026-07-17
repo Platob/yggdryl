@@ -14,7 +14,8 @@ import pickle
 import pytest
 
 import yggdryl.memory
-from yggdryl.io import Headers, IOKind, IOMode
+from yggdryl.headers import Headers
+from yggdryl.io import IOKind, IOMode
 from yggdryl.memory import Cursor, Heap, Slice, Whence
 from yggdryl.uri import Uri
 

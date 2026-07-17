@@ -1,4 +1,4 @@
-//! Additional edge cases for [`Uri`] beyond `io_uri.rs`: the empty URI, port boundaries,
+//! Additional edge cases for [`Uri`] beyond `uri.rs`: the empty URI, port boundaries,
 //! multi-`?`/`#` component splitting, percent-encoding kept verbatim, Unicode, long paths
 //! (which exercise the pre-sized canonical buffer), an unterminated IPv6 host, scheme case
 //! preservation, and a parse → serialize → parse round-trip property over a broad corpus.
@@ -7,7 +7,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use yggdryl_core::io::uri::{Uri, UriError};
+use yggdryl_core::uri::{Uri, UriError};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();

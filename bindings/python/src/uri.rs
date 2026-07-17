@@ -1,6 +1,6 @@
 //! The `yggdryl.uri` submodule — RFC 3986 URIs, absolute URLs, and authorities.
 //!
-//! Mirrors `yggdryl_core::io::uri`'s root-level `Uri` / `Url` / `Authority`. A [`Uri`] is a generic
+//! Mirrors `yggdryl_core::uri`'s root-level `Uri` / `Url` / `Authority`. A [`Uri`] is a generic
 //! URI split into its components (any of which may be absent — a bare filesystem path is a
 //! perfectly good `Uri`); a [`Url`] is an **absolute** URI (one that carries a scheme); an
 //! [`Authority`] is the `[user[:password]@]host[:port]` component.
@@ -29,7 +29,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple};
 
-use yggdryl_core::io::uri::{self, UriError};
+use yggdryl_core::uri::{self, UriError};
 
 /// Maps a [`UriError`] to a Python `ValueError` carrying its guided text.
 fn uri_err(error: UriError) -> PyErr {
@@ -37,7 +37,7 @@ fn uri_err(error: UriError) -> PyErr {
 }
 
 /// The IANA-registered default port for a well-known scheme (case-insensitive), or `None` if
-/// the scheme has no registered default. Mirrors [`yggdryl_core::io::uri::default_port`].
+/// the scheme has no registered default. Mirrors [`yggdryl_core::uri::default_port`].
 #[pyfunction]
 fn default_port(scheme: &str) -> Option<u16> {
     uri::default_port(scheme)

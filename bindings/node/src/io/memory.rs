@@ -21,10 +21,10 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use crate::io::headers::Headers;
+use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
-use crate::io::uri::Uri;
+use crate::uri::Uri;
 use yggdryl_core::io::memory as core;
 use yggdryl_core::io::memory::IOBase;
 use yggdryl_core::io::Serializable;

@@ -1,12 +1,18 @@
 //! yggdryl core — a dependency-free byte / memory-access foundation.
 //!
-//! Everything lives under the [`io`] layer: the abstract byte-access contract
-//! ([`io::memory::IOBase`]) with its sources, the addressing [`io::uri`] family, and the
-//! cross-cutting value types at the [`io`] root. New features are added here first, in the
-//! Rust core, then mirrored thinly in the Python and Node extensions.
+//! Two root modules: the [`io`] layer — the abstract byte-access contract
+//! ([`io::memory::IOBase`]) with its sources and the cross-cutting value types at the [`io`]
+//! root — and the [`uri`] family that **addresses** those sources. New features are added here
+//! first, in the Rust core, then mirrored thinly in the Python and Node extensions.
 
-/// The io layer: byte / memory access, addressing, and the shared value types.
+/// The io layer: byte / memory access and the shared value types.
 pub mod io;
+
+/// The project's one metadata map (ordered, case-insensitive, multi-value byte headers).
+pub mod headers;
+
+/// The URI / URL family (RFC 3986) that addresses io sources, parsed from scratch.
+pub mod uri;
 
 /// The crate version string (from `Cargo.toml`), e.g. `"0.1.1"`.
 ///

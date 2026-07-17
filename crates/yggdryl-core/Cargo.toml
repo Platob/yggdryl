@@ -19,7 +19,7 @@ name = "io_memory_heap"
 harness = false
 
 [[bench]]
-name = "io_uri"
+name = "uri"
 harness = false
 
 [dependencies]

@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const yggdryl = require('../..')
+const yggdryl = require('..')
 const { Uri, Url, Authority, defaultPort } = yggdryl.uri
 
 test('the uri namespace exposes Uri, Url, and Authority', () => {

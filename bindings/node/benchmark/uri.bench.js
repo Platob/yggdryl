@@ -12,7 +12,7 @@
 //
 //   node --expose-gc bindings/node/benchmark/uri.bench.js
 
-const { uri } = require('../..')
+const { uri } = require('..')
 const { Uri } = uri
 
 const ITERS = 10_000

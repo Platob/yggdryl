@@ -3,14 +3,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const yggdryl = require('../..')
-const { Headers } = yggdryl.io
+const yggdryl = require('..')
+const { Headers } = yggdryl.headers
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
 // -------------------------------------------------------------------------------------
 
-test('the io namespace exposes Headers', () => {
+test('the headers namespace exposes Headers', () => {
   assert.equal(typeof Headers, 'function')
 })
 

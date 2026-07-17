@@ -1,11 +1,12 @@
-//! Functional tests for [`Headers`](yggdryl_core::io::Headers) — the project's one metadata
+//! Functional tests for [`Headers`](yggdryl_core::headers::Headers) — the project's one metadata
 //! map: insertion order, ASCII-case-insensitive matching, multi-value entries, the byte codec
 //! (with truncation errors), the HTTP text form, and value semantics.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl_core::io::{Headers, IoError, Serializable};
+use yggdryl_core::headers::Headers;
+use yggdryl_core::io::{IoError, Serializable};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();

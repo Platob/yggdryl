@@ -6,8 +6,8 @@ every feature is added to the core first, then mirrored, method-for-method, in b
 
 The core is the **`io` layer**: the abstract [memory-access contract](io/memory.md) (`IOBase`
 with the `Cursor`/`Slice` wrappers and the in-heap `Heap` source) and the [URI/URL
-family](io/uri.md) (`Uri` / `Url` / `Authority`) that addresses those sources — plus the [shared value
-types at the `io` root](io/index.md) (`Serializable`, `Headers`, `IOMode`, `IOKind`). Both bindings mirror it in full; more sources plug in against the
+family](uri.md) (`Uri` / `Url` / `Authority`) that addresses those sources — plus the [shared value
+types at the `io` root](io/index.md) (`Serializable`, `IOMode`, `IOKind`) and the root [`headers`](headers.md) metadata map. Both bindings mirror it in full; more sources plug in against the
 same contract as the library grows.
 
 ## Install
@@ -63,7 +63,7 @@ Node extensions both wire through to the Rust core.
 
 RFC 3986 URIs, absolute URLs, and authorities — parsed from scratch, doubling as
 POSIX-normalized filesystem paths, with value semantics (equal, hashable, and
-byte-serializable) across all three languages. See [URIs and URLs](io/uri.md).
+byte-serializable) across all three languages. See [URIs and URLs](uri.md).
 
 === "Python"
 
@@ -88,7 +88,7 @@ byte-serializable) across all three languages. See [URIs and URLs](io/uri.md).
 === "Rust"
 
     ```rust
-    use yggdryl_core::io::uri::Uri;
+    use yggdryl_core::uri::Uri;
 
     let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag").unwrap();
     assert_eq!(uri.host(), Some("example.com"));

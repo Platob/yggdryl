@@ -1,6 +1,6 @@
 //! The `yggdryl.io` namespace's [`Headers`] — the project's **one** metadata map.
 //!
-//! Mirrors `yggdryl_core::io::Headers`: an ordered, case-insensitive (ASCII, per HTTP),
+//! Mirrors `yggdryl_core::headers::Headers`: an ordered, case-insensitive (ASCII, per HTTP),
 //! multi-value map of **byte-string** names to **byte-string** values. String accessors sit
 //! over the byte storage for the common textual case, while the `*Bytes` twins reach the raw
 //! bytes for anything that is not UTF-8. Every method is a thin delegation to the core; the
@@ -12,7 +12,7 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use yggdryl_core::io as core;
+use yggdryl_core::headers as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {
@@ -23,13 +23,13 @@ fn to_error(error: impl std::fmt::Display) -> napi::Error {
 /// following HTTP header conventions — the project's one metadata map (HTTP headers,
 /// schema/field metadata, source annotations all live here). Every `memory` source carries one
 /// (`Heap.headers`).
-#[napi(namespace = "io")]
+#[napi(namespace = "headers")]
 #[derive(Default)]
 pub struct Headers {
     pub(crate) inner: core::Headers,
 }
 
-#[napi(namespace = "io")]
+#[napi(namespace = "headers")]
 impl Headers {
     /// An empty header map (no allocation).
     #[napi(constructor)]

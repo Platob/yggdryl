@@ -3,7 +3,7 @@
 
 use core::fmt;
 
-use super::{IoError, Serializable};
+use crate::io::{IoError, Serializable};
 
 /// One `name: value` entry — both stored as owned byte strings.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -28,7 +28,7 @@ struct Entry {
 /// allocates nothing.
 ///
 /// ```
-/// use yggdryl_core::io::Headers;
+/// use yggdryl_core::headers::Headers;
 ///
 /// let mut headers = Headers::new();
 /// headers.insert(Headers::CONTENT_TYPE, "application/json");
@@ -226,7 +226,7 @@ impl Headers {
     /// The `Content-Length` value parsed as a `u64`, if present and numeric.
     ///
     /// ```
-    /// use yggdryl_core::io::Headers;
+    /// use yggdryl_core::headers::Headers;
     ///
     /// let mut headers = Headers::new();
     /// headers.insert(Headers::CONTENT_LENGTH, "1024");
@@ -242,7 +242,7 @@ impl Headers {
     /// blank line). One pre-sized allocation.
     ///
     /// ```
-    /// use yggdryl_core::io::Headers;
+    /// use yggdryl_core::headers::Headers;
     ///
     /// let mut headers = Headers::new();
     /// headers.insert("Host", "example.com");
@@ -270,7 +270,7 @@ impl Headers {
     /// skipped rather than erroring.
     ///
     /// ```
-    /// use yggdryl_core::io::Headers;
+    /// use yggdryl_core::headers::Headers;
     ///
     /// let headers = Headers::parse_http(b"Host: example.com\r\nAccept: */*\r\n");
     /// assert_eq!(headers.get("host"), Some("example.com"));
@@ -303,7 +303,7 @@ impl Headers {
     /// [`deserialize_bytes`](Headers::deserialize_bytes) is the exact inverse.
     ///
     /// ```
-    /// use yggdryl_core::io::Headers;
+    /// use yggdryl_core::headers::Headers;
     ///
     /// let mut headers = Headers::new();
     /// headers.append("Set-Cookie", "a=1");

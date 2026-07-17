@@ -6,8 +6,9 @@
 use super::base::mem_heap_uri;
 use super::cursor::cursor_methods;
 use super::{IOBase, IoError, Whence};
-use crate::io::uri::Uri;
-use crate::io::{Headers, IOKind, IOMode};
+use crate::headers::Headers;
+use crate::io::{IOKind, IOMode};
+use crate::uri::Uri;
 
 /// An in-heap byte buffer with a **built-in cursor**, amortized capacity, and an addressing
 /// [`Uri`] — the concrete in-memory implementor of [`IOBase`]. Its stream methods (`read` /
@@ -129,7 +130,7 @@ impl Heap {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// let h = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://buf/1").unwrap());
     /// assert_eq!(h.uri().host(), Some("buf"));
@@ -168,7 +169,7 @@ impl Heap {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::io::Headers;
+    /// use yggdryl_core::headers::Headers;
     ///
     /// let h = Heap::new().with_headers(Headers::new().with("Content-Type", "text/plain"));
     /// assert_eq!(h.headers().content_type(), Some("text/plain"));

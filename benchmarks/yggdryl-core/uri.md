@@ -9,10 +9,10 @@ wall-clock is release-only and reported, not asserted.
 ## Run
 
 ```bash
-cargo bench -p yggdryl-core --bench io_uri                 # Rust: Mops/s + allocs/op + bytes/op
-cargo test  -p yggdryl-core --test io_uri_alloc            # deterministic memory budgets (ms)
-(cd bindings/python && uv run maturin develop --release && uv run python benchmarks/io/bench_uri.py)
-(cd bindings/node   && npm run build && node --expose-gc benchmark/io/uri.bench.js)
+cargo bench -p yggdryl-core --bench uri                 # Rust: Mops/s + allocs/op + bytes/op
+cargo test  -p yggdryl-core --test uri_alloc            # deterministic memory budgets (ms)
+(cd bindings/python && uv run maturin develop --release && uv run python benchmarks/bench_uri.py)
+(cd bindings/node   && npm run build && node --expose-gc benchmark/uri.bench.js)
 ```
 
 ## Rust core (release, counting global allocator)

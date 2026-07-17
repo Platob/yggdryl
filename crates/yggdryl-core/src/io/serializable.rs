@@ -13,7 +13,7 @@
 ///
 /// ```
 /// use yggdryl_core::io::Serializable;
-/// use yggdryl_core::io::uri::Uri;
+/// use yggdryl_core::uri::Uri;
 ///
 /// fn roundtrip<T: Serializable>(value: &T) -> Result<T, T::Error> {
 ///     T::deserialize_bytes(&value.serialize_bytes())

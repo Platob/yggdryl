@@ -1,8 +1,9 @@
 //! [`IOBase`] — positioned (random-access) byte read/write, the base of the I/O trait family.
 
 use super::{IOCursor, IOSlice, IoError};
-use crate::io::uri::Uri;
-use crate::io::{Headers, IOKind, IOMode};
+use crate::headers::Headers;
+use crate::io::{IOKind, IOMode};
+use crate::uri::Uri;
 
 /// The default address of an unaddressed in-memory source — the stable synthetic `mem://heap`
 /// (deterministic; the real allocation address is deliberately not leaked).
@@ -96,7 +97,7 @@ pub trait IOBase {
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
-    /// use yggdryl_core::io::uri::Uri;
+    /// use yggdryl_core::uri::Uri;
     ///
     /// // An unaddressed in-memory source reports the synthetic mem:// address…
     /// assert_eq!(Heap::new().uri().to_string(), "mem://heap");
