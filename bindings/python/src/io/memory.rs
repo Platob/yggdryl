@@ -43,6 +43,8 @@ use pyo3::types::PyBytes;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use crate::uri::Uri;
 use yggdryl_core::io::memory::{self, IOBase, IoError};
 use yggdryl_core::io::Serializable;
@@ -553,6 +555,37 @@ impl Heap {
         self.inner.exists()
     }
 
+    // ---- media type (declared headers, else the address, else octet-stream) --------------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of this source: the
+    /// `Content-Type` its [`headers`](Heap::headers) declare, else inferred from the
+    /// [`uri`](Heap::uri)'s file name, else the `application/octet-stream` fallback — always an
+    /// answer.
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) of this source: the media the
+    /// `Content-Type` / `Content-Encoding` [`headers`](Heap::headers) declare, else inferred
+    /// from the [`uri`](Heap::uri)'s extensions, else the single `application/octet-stream`
+    /// fallback.
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type **and stores it** in this source's headers when `Content-Type`
+    /// is not already set — memoizing the inference so later reads come straight from
+    /// [`headers`](Heap::headers). Returns the effective [`MimeType`](crate::mimetype::MimeType).
+    fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
+    }
+
     // ---- graph: navigation + discovery + CRUD (a heap is a leaf) -------------------------
 
     /// The node's own name — the last (percent-decoded) segment of its address's path: empty
@@ -975,6 +1008,31 @@ impl Cursor {
         self.inner.exists()
     }
 
+    // ---- media type (delegates to the wrapped source) -----------------------------------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of the wrapped source (headers,
+    /// else address, else octet-stream).
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) of the wrapped source.
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type and stores it in the wrapped source's headers when
+    /// `Content-Type` is unset; returns the effective [`MimeType`](crate::mimetype::MimeType).
+    fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
+    }
+
     // ---- graph: navigation + discovery + CRUD (a cursor view is a leaf) -----------------
 
     /// The node's own name — the last segment of the wrapped source's address path, so
@@ -1197,6 +1255,31 @@ impl Slice {
     /// existence (a window over a live [`Heap`] exists).
     fn exists(&self) -> bool {
         self.inner.exists()
+    }
+
+    // ---- media type (delegates to the wrapped source) -----------------------------------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of the wrapped source (headers,
+    /// else address, else octet-stream).
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) of the wrapped source.
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type and stores it in the wrapped source's headers when
+    /// `Content-Type` is unset; returns the effective [`MimeType`](crate::mimetype::MimeType).
+    fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
     }
 
     // ---- graph: navigation + discovery + CRUD (a window view is a leaf) -----------------

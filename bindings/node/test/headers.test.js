@@ -5,6 +5,8 @@ const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
 const { Headers } = yggdryl.headers
+const { MimeType } = yggdryl.mimetype
+const { MediaType } = yggdryl.mediatype
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
@@ -243,4 +245,72 @@ test('toString renders the readable map form', () => {
   assert.equal(typeof h.toString(), 'string')
   assert.match(h.toString(), /"A": "1"/)
   assert.equal(new Headers().toString(), '{}')
+})
+
+// -------------------------------------------------------------------------------------
+// media type: Content-Type / Content-Encoding accessors
+// -------------------------------------------------------------------------------------
+
+test('content type / encoding setters and readers', () => {
+  const h = new Headers()
+  h.setContentType('application/json')
+  assert.equal(h.contentType(), 'application/json')
+  h.setContentEncoding('gzip')
+  assert.equal(h.contentEncoding(), 'gzip')
+  assert.equal(new Headers().contentEncoding(), null)
+})
+
+test('mimeType / mediaType interpret Content-Type and Content-Encoding', () => {
+  const h = new Headers()
+  h.setContentType('application/json; charset=utf-8')
+  assert.ok(h.mimeType() instanceof MimeType)
+  assert.equal(h.mimeType().essence, 'application/json') // primary, parameters dropped
+
+  // Content-Type + Content-Encoding compose into the layered media type.
+  h.setContentType('application/x-tar')
+  h.setContentEncoding('gzip')
+  assert.ok(h.mediaType() instanceof MediaType)
+  assert.deepEqual(h.mediaType().essences(), ['application/x-tar', 'application/gzip'])
+
+  // No Content-Type -> null (the justified absence).
+  assert.equal(new Headers().mimeType(), null)
+  assert.equal(new Headers().mediaType(), null)
+})
+
+test('setMimeType / setMediaType write Content-Type from the value types', () => {
+  const h = new Headers()
+  h.setMimeType(MimeType.parse('image/png'))
+  assert.equal(h.contentType(), 'image/png')
+
+  h.setMediaType(MediaType.parse('application/x-tar, application/gzip'))
+  assert.equal(h.contentType(), 'application/x-tar, application/gzip') // comma-joined essences
+  assert.equal(h.mimeType().essence, 'application/x-tar') // primary of the list
+})
+
+// -------------------------------------------------------------------------------------
+// modification time (epoch microseconds) + header-name constants
+// -------------------------------------------------------------------------------------
+
+test('mtime round-trips signed epoch microseconds', () => {
+  const h = new Headers()
+  assert.equal(h.mtime(), null)
+
+  h.setMtime(1_600_000_000_000_000)
+  assert.equal(h.mtime(), 1_600_000_000_000_000)
+  assert.equal(h.get(yggdryl.headers.MTIME), '1600000000000000') // stored as a compact decimal
+
+  // A signed value before the epoch stays negative (never wrapped to a u32).
+  h.setMtime(-123_456)
+  assert.equal(h.mtime(), -123_456)
+
+  // A non-integer value reads back as null.
+  assert.equal(new Headers().with(yggdryl.headers.MTIME, 'notanumber').mtime(), null)
+})
+
+test('the header-name constants are exposed on the namespace', () => {
+  assert.equal(yggdryl.headers.MTIME, 'X-Mtime-Us')
+  assert.equal(yggdryl.headers.LAST_MODIFIED, 'Last-Modified')
+  // The constants address real entries.
+  const h = new Headers().with(yggdryl.headers.LAST_MODIFIED, 'Wed, 21 Oct 2015 07:28:00 GMT')
+  assert.equal(h.get('last-modified'), 'Wed, 21 Oct 2015 07:28:00 GMT')
 })

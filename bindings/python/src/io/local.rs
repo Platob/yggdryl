@@ -37,6 +37,8 @@ use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::memory::{NoChildren, Whence};
 use crate::io::mode::IOMode;
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use crate::uri::Uri;
 use yggdryl_core::io::local;
 use yggdryl_core::io::memory::{IOBase, IoError};
@@ -606,6 +608,38 @@ impl LocalIO {
     /// disk per call.
     fn exists(&self) -> bool {
         self.inner.exists()
+    }
+
+    // ---- media type (declared headers, else the file address, else octet-stream) ---------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of this node: the `Content-Type`
+    /// its [`headers`](LocalIO::headers) declare, else inferred from the [`uri`](LocalIO::uri)'s
+    /// file name (e.g. `report.pdf` → `application/pdf`), else the `application/octet-stream`
+    /// fallback — always an answer.
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) of this node: the media the
+    /// `Content-Type` / `Content-Encoding` [`headers`](LocalIO::headers) declare, else inferred
+    /// from the file's extensions (`archive.tar.gz` → `application/x-tar, application/gzip`),
+    /// else the single `application/octet-stream` fallback.
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type **and stores it** in this node's headers when `Content-Type` is
+    /// not already set — memoizing the inference so later reads come straight from
+    /// [`headers`](LocalIO::headers). Returns the effective
+    /// [`MimeType`](crate::mimetype::MimeType).
+    fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
     }
 
     // ---- graph: navigation + discovery + CRUD --------------------------------------------
@@ -1360,6 +1394,33 @@ impl Mmap {
     /// (`True`).
     fn exists(&self) -> PyResult<bool> {
         Ok(self.io()?.exists())
+    }
+
+    // ---- media type (declared headers, else the file address, else octet-stream) ---------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of the mapped file: the
+    /// `Content-Type` its [`headers`](Mmap::headers) declare, else inferred from the file name,
+    /// else the `application/octet-stream` fallback.
+    fn mime_type(&self) -> PyResult<MimeType> {
+        Ok(MimeType {
+            inner: self.io()?.mime_type(),
+        })
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) of the mapped file (headers, else
+    /// the file's extensions, else the single `application/octet-stream` fallback).
+    fn media_type(&self) -> PyResult<MediaType> {
+        Ok(MediaType {
+            inner: self.io()?.media_type(),
+        })
+    }
+
+    /// Resolves the media type **and stores it** in the mapping's headers when `Content-Type`
+    /// is unset; returns the effective [`MimeType`](crate::mimetype::MimeType).
+    fn ensure_content_type(&mut self) -> PyResult<MimeType> {
+        Ok(MimeType {
+            inner: self.io_mut()?.ensure_content_type(),
+        })
     }
 
     // ---- graph: navigation + discovery + CRUD (a mapping is a leaf) ---------------------

@@ -8,6 +8,8 @@ const io = yggdryl.io
 const { Headers } = yggdryl.headers
 const { Heap, Whence, Cursor, Slice, NoChildren } = yggdryl.memory
 const { Uri } = yggdryl.uri
+const { MimeType } = yggdryl.mimetype
+const { MediaType } = yggdryl.mediatype
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
@@ -813,5 +815,56 @@ test('parents() lists a heap node ancestors nearest-first; leaves and roots are 
   // Cursor and Slice are leaves — parent() is null, so parents() is always empty.
   assert.deepEqual(new Cursor(Buffer.from('x')).parents(), [])
   assert.deepEqual(Slice.over(new Heap(Buffer.from('abc')), 0, 2).parents(), [])
+})
+
+// -------------------------------------------------------------------------------------
+// media type inference (IOBase.mimeType / mediaType / ensureContentType)
+// -------------------------------------------------------------------------------------
+
+test('a heap infers its media type from headers, else the octet-stream fallback', () => {
+  const heap = new Heap()
+  // No headers and no address extension -> the octet-stream fallback (never null).
+  assert.ok(heap.mimeType() instanceof MimeType)
+  assert.ok(heap.mimeType().isOctetStream())
+  assert.ok(heap.mediaType() instanceof MediaType)
+  assert.deepEqual(heap.mediaType().essences(), ['application/octet-stream'])
+
+  // A declared Content-Type wins.
+  heap.setHeaders(new Headers().with('Content-Type', 'application/json'))
+  assert.equal(heap.mimeType().essence, 'application/json')
+
+  // Content-Type + Content-Encoding compose into the layered media type.
+  const tarred = new Heap()
+  const meta = new Headers().with('Content-Type', 'application/x-tar')
+  meta.setContentEncoding('gzip')
+  tarred.setHeaders(meta)
+  assert.deepEqual(tarred.mediaType().essences(), ['application/x-tar', 'application/gzip'])
+})
+
+test('ensureContentType memoizes the inferred type into the headers', () => {
+  const heap = new Heap()
+  // No Content-Type yet: it infers (octet-stream here) and stores it.
+  assert.equal(heap.ensureContentType().essence, 'application/octet-stream')
+  assert.equal(heap.headers.get('Content-Type'), 'application/octet-stream')
+
+  // A pre-set Content-Type is returned unchanged (never overwritten).
+  const typed = new Heap()
+  typed.setHeaders(new Headers().with('Content-Type', 'image/png'))
+  assert.equal(typed.ensureContentType().essence, 'image/png')
+})
+
+test('Cursor and Slice delegate the media type to their wrapped source', () => {
+  const heap = new Heap(Buffer.from('hello world'))
+  heap.setHeaders(new Headers().with('Content-Type', 'text/plain'))
+
+  const cursor = heap.cursor()
+  assert.equal(cursor.mimeType().essence, 'text/plain')
+  assert.deepEqual(cursor.mediaType().essences(), ['text/plain'])
+
+  const slice = heap.window(0, 5)
+  assert.equal(slice.mimeType().essence, 'text/plain')
+
+  // A bare view with no headers falls back to octet-stream.
+  assert.ok(new Cursor(Buffer.from('x')).mimeType().isOctetStream())
 })
 

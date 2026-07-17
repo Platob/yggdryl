@@ -821,10 +821,11 @@ test('Mmap metadata: kind is File, uri round-trips the path, headers/setMode', (
   assert.ok(m.isFile() && !m.isDir() && m.exists()) // a live mapping is a live file
   assert.equal(m.path, file)
 
-  // The uri is the file path as a POSIX-slash URI — and reopens the same mapping.
+  // The uri is the file:// URL of the mapped file path (rooted, back-slashes to slashes).
   assert.ok(m.uri instanceof Uri)
-  assert.equal(m.uri.path, file.replaceAll('\\', '/'))
-  assert.ok(m.uri.equals(Uri.fromPath(file)))
+  assert.equal(m.uri.scheme, 'file')
+  const normalized = file.replaceAll('\\', '/')
+  assert.equal(m.uri.path, normalized.startsWith('/') ? normalized : '/' + normalized)
 
   // headers: the getter returns a copy; setHeaders writes back (no withHeaders — no copy).
   assert.ok(m.headers instanceof Headers)

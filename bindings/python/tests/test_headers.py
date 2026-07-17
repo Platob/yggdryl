@@ -14,6 +14,8 @@ import pytest
 
 import yggdryl.io
 from yggdryl.headers import Headers
+from yggdryl.mediatype import MediaType
+from yggdryl.mimetype import MimeType
 
 
 def test_module_surface():
@@ -286,3 +288,86 @@ def test_pickle_round_trip():
 def test_repr():
     h = Headers().with_("Host", "example.com")
     assert repr(h) == 'Headers({"Host": "example.com"})'
+
+
+# -------------------------------------------------------------------------------------
+# Header-name constants + Content-Encoding / set_content_type
+# -------------------------------------------------------------------------------------
+
+
+def test_header_name_constants():
+    assert Headers.CONTENT_TYPE == "Content-Type"
+    assert Headers.CONTENT_LENGTH == "Content-Length"
+    assert Headers.CONTENT_ENCODING == "Content-Encoding"
+    assert Headers.HOST == "Host"
+    assert Headers.LAST_MODIFIED == "Last-Modified"
+    assert Headers.MTIME == "X-Mtime-Us"
+    # The constants are usable as keys and match case-insensitively.
+    h = Headers()
+    h.insert(Headers.CONTENT_TYPE, "text/plain")
+    assert h.get("content-type") == "text/plain"
+
+
+def test_content_type_and_encoding_setters():
+    h = Headers()
+    assert h.content_encoding() is None
+    h.set_content_type("application/json")
+    h.set_content_encoding("gzip")
+    assert h.content_type() == "application/json"
+    assert h.content_encoding() == "gzip"
+
+
+# -------------------------------------------------------------------------------------
+# mime_type / media_type interpretation of Content-Type / Content-Encoding
+# -------------------------------------------------------------------------------------
+
+
+def test_mime_type_none_until_content_type_set():
+    h = Headers()
+    assert h.mime_type() is None
+    assert h.media_type() is None
+    h.set_content_type("application/json; charset=utf-8")
+    mime = h.mime_type()
+    assert isinstance(mime, MimeType)
+    assert mime.essence == "application/json"  # parameters dropped, primary of a list
+    media = h.media_type()
+    assert isinstance(media, MediaType)
+    assert media.essences() == ["application/json"]
+
+
+def test_media_type_extends_with_content_encoding():
+    h = Headers()
+    h.set_content_type("application/x-tar")
+    h.set_content_encoding("gzip")
+    assert h.media_type().essences() == ["application/x-tar", "application/gzip"]
+    # The primary mime type is just the Content-Type half.
+    assert h.mime_type().essence == "application/x-tar"
+
+
+def test_set_mime_type_and_set_media_type():
+    h = Headers()
+    h.set_mime_type(MimeType.parse("application/pdf"))
+    assert h.content_type() == "application/pdf"
+    h.set_media_type(MediaType.parse("application/x-tar, application/gzip"))
+    assert h.content_type() == "application/x-tar, application/gzip"
+    # Round-trips back through media_type().
+    assert h.media_type().essences() == ["application/x-tar", "application/gzip"]
+
+
+# -------------------------------------------------------------------------------------
+# mtime (epoch microseconds)
+# -------------------------------------------------------------------------------------
+
+
+def test_mtime_round_trip_and_absent():
+    h = Headers()
+    assert h.mtime() is None
+    h.set_mtime(1_600_000_000_000_000)
+    assert h.mtime() == 1_600_000_000_000_000
+    assert h.get(Headers.MTIME) == "1600000000000000"
+    # Signed — before 1970 is negative.
+    h.set_mtime(-1_234)
+    assert h.mtime() == -1_234
+    # A non-integer value reads back as None.
+    h.insert(Headers.MTIME, "not-a-number")
+    assert h.mtime() is None

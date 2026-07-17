@@ -35,6 +35,8 @@ use napi_derive::napi;
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::mode::IOMode;
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use crate::uri::Uri;
 use yggdryl_core::io::memory as core;
 use yggdryl_core::io::memory::IOBase;
@@ -668,6 +670,38 @@ impl Heap {
         self.inner.exists()
     }
 
+    // ---- media type --------------------------------------------------------------------
+
+    /// The **primary [`MimeType`]** of this source: the `Content-Type` its `headers` declare,
+    /// else inferred from the `uri`'s file name, else the `application/octet-stream` fallback —
+    /// always an answer.
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full **[`MediaType`]** of this source: the media the `Content-Type` /
+    /// `Content-Encoding` `headers` declare, else inferred from the `uri`'s extensions, else the
+    /// single `application/octet-stream` fallback.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type **and stores it** in the source's headers when `Content-Type` is
+    /// not already set — memoizing the inference so later reads come straight from `headers`.
+    /// Returns the effective [`MimeType`].
+    #[napi]
+    pub fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
+    }
+
     // ---- the graph surface (a heap is a leaf node) -------------------------------------
 
     /// The node's own name — always the empty string: the synthetic `mem://heap` address
@@ -1091,6 +1125,34 @@ impl Cursor {
         self.inner.exists()
     }
 
+    // ---- media type (delegates to the wrapped source) ----------------------------------
+
+    /// The **primary [`MimeType`]** of the wrapped source — its declared `Content-Type`, else
+    /// inferred from the address, else `application/octet-stream`.
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full **[`MediaType`]** of the wrapped source.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves and stores the media type on the wrapped source's headers when unset; returns
+    /// the effective [`MimeType`].
+    #[napi]
+    pub fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
+    }
+
     // ---- the graph surface (a cursor view is a leaf node) ------------------------------
 
     /// The node's own name — always the empty string (the wrapped heap's `mem://heap`
@@ -1295,6 +1357,34 @@ impl Slice {
     #[napi]
     pub fn exists(&self) -> bool {
         self.inner.exists()
+    }
+
+    // ---- media type (delegates to the wrapped source) ----------------------------------
+
+    /// The **primary [`MimeType`]** of the wrapped source — its declared `Content-Type`, else
+    /// inferred from the address, else `application/octet-stream`.
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full **[`MediaType`]** of the wrapped source.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves and stores the media type on the wrapped source's headers when unset; returns
+    /// the effective [`MimeType`].
+    #[napi]
+    pub fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
     }
 
     // ---- the graph surface (a slice window is a leaf node) -----------------------------

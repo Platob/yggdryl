@@ -12,6 +12,8 @@
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use yggdryl_core::headers as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
@@ -223,6 +225,72 @@ impl Headers {
         self.inner.content_length().map(|length| length as i64)
     }
 
+    /// Sets the `Content-Type` header (replace semantics).
+    #[napi]
+    pub fn set_content_type(&mut self, value: String) {
+        self.inner.set_content_type(&value);
+    }
+
+    /// The `Content-Encoding` value, if present and UTF-8 (e.g. `"gzip"`).
+    #[napi]
+    pub fn content_encoding(&self) -> Option<String> {
+        self.inner.content_encoding().map(str::to_string)
+    }
+
+    /// Sets the `Content-Encoding` header (replace semantics).
+    #[napi]
+    pub fn set_content_encoding(&mut self, value: String) {
+        self.inner.set_content_encoding(&value);
+    }
+
+    // ---- media type: the one place Content-Type / Content-Encoding are interpreted ------
+
+    /// The **primary [`MimeType`]** of `Content-Type`, if present and valid — the single most
+    /// specific type this map declares, or `null` when there is no (valid) `Content-Type`.
+    #[napi]
+    pub fn mime_type(&self) -> Option<MimeType> {
+        self.inner.mime_type().map(|inner| MimeType { inner })
+    }
+
+    /// Sets `Content-Type` to `mime`'s essence — the centralized mime mutator.
+    #[napi]
+    pub fn set_mime_type(&mut self, mime: &MimeType) {
+        self.inner.set_mime_type(&mime.inner);
+    }
+
+    /// The full **[`MediaType`]** this map declares: the `Content-Type` (a comma-list is kept as
+    /// multiple entries), extended by the `Content-Encoding` layers resolved to their mime types
+    /// (`gzip` → `application/gzip`). `null` when there is no `Content-Type`.
+    #[napi]
+    pub fn media_type(&self) -> Option<MediaType> {
+        self.inner.media_type().map(|inner| MediaType { inner })
+    }
+
+    /// Sets `Content-Type` to `media`'s comma-joined essences — the centralized media mutator.
+    #[napi]
+    pub fn set_media_type(&mut self, media: &MediaType) {
+        self.inner.set_media_type(&media.inner);
+    }
+
+    // ---- modification time (epoch microseconds) -----------------------------------------
+
+    /// The modification time as **total epoch microseconds** (signed — before 1970 is
+    /// negative), from the `MTIME` header, if present and an integer. An `i64` (a JS number,
+    /// exact to ±2^53): a signed epoch-microseconds count needs the full 64-bit range, so it is
+    /// never a `u32` (which would wrap) nor lost through a float.
+    #[napi]
+    pub fn mtime(&self) -> Option<i64> {
+        self.inner.mtime()
+    }
+
+    /// Sets the modification time to `micros` total epoch microseconds — written as a compact
+    /// decimal into the `MTIME` header. Keep `micros` within ±2^53 so the JS `number` stays
+    /// exact.
+    #[napi]
+    pub fn set_mtime(&mut self, micros: i64) {
+        self.inner.set_mtime(micros);
+    }
+
     // ---- HTTP text form + binary codec --------------------------------------------------
 
     /// Renders the header block in HTTP wire form — `Name: Value\r\n` per entry (no trailing
@@ -264,3 +332,14 @@ impl Headers {
         format!("{:?}", self.inner)
     }
 }
+
+// ---- common header-name constants ---------------------------------------------------
+
+/// The `Last-Modified` header name (RFC HTTP-date form).
+#[napi(namespace = "headers")]
+pub const LAST_MODIFIED: &str = core::Headers::LAST_MODIFIED;
+
+/// The modification-time header name this map uses for the **epoch-microseconds** form —
+/// `mtime` / `setMtime`.
+#[napi(namespace = "headers")]
+pub const MTIME: &str = core::Headers::MTIME;

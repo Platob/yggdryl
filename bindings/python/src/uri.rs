@@ -31,6 +31,9 @@ use pyo3::types::{PyBytes, PyDict, PyTuple};
 
 use yggdryl_core::uri::{self, UriError};
 
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
+
 /// Maps a [`UriError`] to a Python `ValueError` carrying its guided text.
 fn uri_err(error: UriError) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -45,6 +48,16 @@ fn default_port(scheme: &str) -> Option<u16> {
 
 /// The constructor arguments an [`Authority`] pickles through: `(host, user, password, port)`.
 type AuthorityParts = (String, Option<String>, Option<String>, Option<u16>);
+
+/// The constructor arguments a [`UriParts`] pickles through:
+/// `(path, scheme, authority, query, fragment)`.
+type UriPartsArgs = (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 /// The `[user[:password]@]host[:port]` authority component of a URI.
 #[pyclass(module = "yggdryl.uri")]
@@ -255,6 +268,114 @@ impl Authority {
     }
 }
 
+/// The five RFC 3986 top-level components of a URI bundled into one owned value — the
+/// destructuring counterpart of the individual [`Uri`] / [`Url`] component accessors, built by
+/// [`Uri.parts`](Uri::parts) / [`Url.parts`](Url::parts). Read-only; equal iff its re-rendered
+/// URI string is equal, and it pickles through its five components.
+#[pyclass(module = "yggdryl.uri")]
+#[derive(Clone)]
+pub struct UriParts {
+    pub(crate) inner: uri::UriParts,
+}
+
+#[pymethods]
+impl UriParts {
+    /// Builds the parts directly (`path` required; the rest optional) — the reconstructing
+    /// counterpart of [`Uri.parts`](Uri::parts), and how the value pickles.
+    #[new]
+    #[pyo3(signature = (path, scheme = None, authority = None, query = None, fragment = None))]
+    fn new(
+        path: String,
+        scheme: Option<String>,
+        authority: Option<String>,
+        query: Option<String>,
+        fragment: Option<String>,
+    ) -> Self {
+        Self {
+            inner: uri::UriParts {
+                scheme,
+                authority,
+                path,
+                query,
+                fragment,
+            },
+        }
+    }
+
+    /// The scheme, if any (`"https"`).
+    #[getter]
+    fn scheme(&self) -> Option<String> {
+        self.inner.scheme.clone()
+    }
+
+    /// The authority, if any, rendered as `[user[:password]@]host[:port]` (`"h:8080"`).
+    #[getter]
+    fn authority(&self) -> Option<String> {
+        self.inner.authority.clone()
+    }
+
+    /// The path — always present (may be empty).
+    #[getter]
+    fn path(&self) -> String {
+        self.inner.path.clone()
+    }
+
+    /// The query string, if any (without the leading `?`).
+    #[getter]
+    fn query(&self) -> Option<String> {
+        self.inner.query.clone()
+    }
+
+    /// The fragment, if any (without the leading `#`).
+    #[getter]
+    fn fragment(&self) -> Option<String> {
+        self.inner.fragment.clone()
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    /// Pickles through the five components (`path`, `scheme`, `authority`, `query`,
+    /// `fragment`).
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, UriPartsArgs)> {
+        let ctor = py.get_type_bound::<UriParts>().into_any().unbind();
+        Ok((
+            ctor,
+            (
+                self.inner.path.clone(),
+                self.inner.scheme.clone(),
+                self.inner.authority.clone(),
+                self.inner.query.clone(),
+                self.inner.fragment.clone(),
+            ),
+        ))
+    }
+
+    /// Re-renders the URI from its parts (`scheme://authority/path?query#fragment`).
+    fn __str__(&self) -> String {
+        self.inner.to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("UriParts({:?})", self.inner.to_string())
+    }
+}
+
 /// A generic RFC 3986 URI split into its components, doubling as a filesystem path.
 #[pyclass(module = "yggdryl.uri")]
 #[derive(Clone)]
@@ -387,6 +508,32 @@ impl Uri {
     #[getter]
     fn extensions(&self) -> Vec<String> {
         self.inner.extensions()
+    }
+
+    /// The RFC 3986 top-level components bundled into one owned [`UriParts`] — the
+    /// destructuring counterpart of the individual `scheme` / `authority` / `path` / `query` /
+    /// `fragment` accessors (re-renders the URI via `str(parts)`).
+    fn parts(&self) -> UriParts {
+        UriParts {
+            inner: self.inner.parts(),
+        }
+    }
+
+    /// The **primary mime type** inferred from this URI's file name — its last extension via
+    /// the default catalog, else the `application/octet-stream` fallback (never `None`).
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The **media type** of the resource this URI addresses, inferred from its path
+    /// extensions (`archive.tar.gz` → `application/x-tar, application/gzip`); empty when no
+    /// extension is recognized.
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
     }
 
     // ---- builder mutators (return a new `Uri`) -------------------------------------
@@ -925,6 +1072,31 @@ impl Url {
         self.inner.extensions()
     }
 
+    /// The RFC 3986 top-level components bundled into one owned [`UriParts`] — see
+    /// [`Uri.parts`](Uri::parts). A URL always carries a scheme, so `parts().scheme` is never
+    /// `None`.
+    fn parts(&self) -> UriParts {
+        UriParts {
+            inner: self.inner.parts(),
+        }
+    }
+
+    /// The **primary mime type** inferred from this URL's file name (else octet-stream) — see
+    /// [`Uri.mime_type`](Uri::mime_type).
+    fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The **media type** inferred from this URL's path extensions — see
+    /// [`Uri.media_type`](Uri::media_type).
+    fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
     // ---- builder mutators (return a new `Url`) -------------------------------------
 
     /// Returns a copy with the scheme set.
@@ -1325,6 +1497,7 @@ impl Url {
 /// Populates the `uri` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<Authority>()?;
+    module.add_class::<UriParts>()?;
     module.add_class::<Uri>()?;
     module.add_class::<Url>()?;
     module.add_function(wrap_pyfunction!(default_port, module)?)?;

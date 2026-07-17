@@ -30,6 +30,8 @@ import yggdryl.local
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.local import LocalEntries, LocalIO, Mmap
+from yggdryl.mediatype import MediaType
+from yggdryl.mimetype import MimeType
 from yggdryl.memory import NoChildren, Whence
 from yggdryl.uri import Uri
 
@@ -235,9 +237,12 @@ def test_localio_parents_walk_the_ancestor_chain(root):
 
 def test_localio_uri_and_path(root):
     node = root / "meta.bin"
-    assert isinstance(node.uri, Uri)
-    # The uri reports the path back (from_path rewrites back-slashes).
-    assert str(node.uri) == node.path.replace("\\", "/")
+    uri = node.uri
+    assert isinstance(uri, Uri)
+    # The uri is the file:// URL of the path (rooted, back-slashes rewritten to slashes).
+    assert uri.scheme == "file"
+    normalized = node.path.replace("\\", "/")
+    assert uri.path == (normalized if normalized.startswith("/") else "/" + normalized)
     assert node.path.endswith("meta.bin")
 
 
@@ -898,9 +903,12 @@ def test_mmap_metadata_and_flush(tmp_path):
     m.set_mode(IOMode.ReadWrite)
 
     assert m.path == str(p)
-    assert isinstance(m.uri, Uri)
-    # The uri reports the file path back (from_path rewrites back-slashes).
-    assert str(m.uri) == str(p).replace("\\", "/")
+    uri = m.uri
+    assert isinstance(uri, Uri)
+    # The uri is the file:// URL of the mapped file path (rooted, back-slashes to slashes).
+    assert uri.scheme == "file"
+    normalized = str(p).replace("\\", "/")
+    assert uri.path == (normalized if normalized.startswith("/") else "/" + normalized)
 
     assert isinstance(m.headers, Headers)
     assert len(m.headers) == 0
@@ -1058,3 +1066,57 @@ def test_mmap_context_manager_closes_on_exception(tmp_path):
             raise RuntimeError("boom")  # __exit__ must close and re-raise
     assert m.closed
     assert p.stat().st_size == 7
+
+
+# -------------------------------------------------------------------------------------
+# Address: file:// URI + media type inferred from the file address
+# -------------------------------------------------------------------------------------
+
+
+def test_localio_uri_is_file_scheme(root):
+    node = root.join("report.pdf")
+    uri = node.uri
+    assert isinstance(uri, Uri)
+    assert uri.scheme == "file"
+    assert str(uri).startswith("file:///")
+    assert str(uri).endswith("/report.pdf")
+
+
+def test_localio_mime_and_media_type_from_address(root):
+    # Lazy handle (nothing written yet) still infers from the file name.
+    pdf = root.join("report.pdf")
+    assert isinstance(pdf.mime_type(), MimeType)
+    assert pdf.mime_type().essence == "application/pdf"
+
+    tgz = root.join("archive.tar.gz")
+    media = tgz.media_type()
+    assert isinstance(media, MediaType)
+    assert media.essences() == ["application/x-tar", "application/gzip"]
+
+    # An extension-less node falls back to octet-stream (never raises).
+    assert root.join("mystery").mime_type().is_octet_stream()
+
+
+def test_localio_headers_win_over_address(root):
+    node = root.join("report.pdf")
+    node.set_headers(Headers().with_("Content-Type", "application/json"))
+    assert node.mime_type().essence == "application/json"  # declared header wins
+
+
+def test_localio_ensure_content_type_memoizes(root):
+    node = root.join("data.json")
+    assert node.headers.content_type() is None
+    resolved = node.ensure_content_type()
+    assert resolved.essence == "application/json"  # inferred from the name, and stored
+    assert node.headers.content_type() == "application/json"
+
+
+def test_mmap_mime_type_from_file_name(root):
+    path = root.join("photo.png")
+    m = Mmap.create(path.path)
+    try:
+        assert m.mime_type().essence == "image/png"
+        assert m.media_type().essences() == ["image/png"]
+        assert m.ensure_content_type().essence == "image/png"
+    finally:
+        m.close()

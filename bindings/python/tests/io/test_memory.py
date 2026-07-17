@@ -20,6 +20,8 @@ import pytest
 import yggdryl.memory
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
+from yggdryl.mediatype import MediaType
+from yggdryl.mimetype import MimeType
 from yggdryl.memory import Cursor, Heap, NoChildren, Slice, Whence
 from yggdryl.uri import Uri
 
@@ -833,3 +835,71 @@ def test_heap_parents_lists_ancestor_addresses_nearest_first():
     assert [str(p.uri) for p in parents] == ["mem://heap/a/b", "mem://heap/a", "mem://heap"]
     # A bare root has no ancestors.
     assert Heap().parents() == []
+
+
+# -------------------------------------------------------------------------------------
+# Media type: declared headers, else the address, else the octet-stream fallback
+# -------------------------------------------------------------------------------------
+
+
+def test_heap_mime_type_octet_stream_fallback():
+    # No headers and an anonymous mem://heap address (no extension) -> octet-stream.
+    heap = Heap()
+    mime = heap.mime_type()
+    assert isinstance(mime, MimeType)
+    assert mime.is_octet_stream()
+    media = heap.media_type()
+    assert isinstance(media, MediaType)
+    assert media.essences() == ["application/octet-stream"]
+
+
+def test_heap_mime_type_from_headers_wins():
+    heap = Heap()
+    heap.set_headers(Headers().with_("Content-Type", "application/json"))
+    assert heap.mime_type().essence == "application/json"
+    assert heap.media_type().essences() == ["application/json"]
+
+
+def test_heap_media_type_headers_with_encoding():
+    heap = Heap()
+    headers = Headers()
+    headers.set_content_type("application/x-tar")
+    headers.set_content_encoding("gzip")
+    heap.set_headers(headers)
+    assert heap.mime_type().essence == "application/x-tar"
+    assert heap.media_type().essences() == ["application/x-tar", "application/gzip"]
+
+
+def test_heap_mime_type_inferred_from_address():
+    # An addressed heap (mem://heap/report.pdf) infers from the URI's file name.
+    node = Heap().join("report.pdf")
+    assert node.mime_type().essence == "application/pdf"
+
+
+def test_ensure_content_type_memoizes():
+    heap = Heap()
+    assert heap.headers.content_type() is None
+    resolved = heap.ensure_content_type()
+    assert resolved.is_octet_stream()  # inferred, and now stored
+    assert heap.headers.content_type() == "application/octet-stream"
+
+    # When Content-Type is already set, ensure_content_type returns it untouched.
+    declared = Heap()
+    declared.set_headers(Headers().with_("Content-Type", "application/json"))
+    assert declared.ensure_content_type().essence == "application/json"
+    assert declared.headers.content_type() == "application/json"
+
+
+def test_cursor_and_slice_delegate_media_type():
+    heap = Heap(b"hello world")
+    heap.set_headers(Headers().with_("Content-Type", "text/plain"))
+    cur = heap.cursor()
+    assert cur.mime_type().essence == "text/plain"
+    assert cur.media_type().essences() == ["text/plain"]
+    assert cur.ensure_content_type().essence == "text/plain"
+
+    sl = heap.window(0, 5)
+    assert sl.mime_type().essence == "text/plain"
+    assert sl.media_type().essences() == ["text/plain"]
+    # A bare window over an anonymous heap falls back to octet-stream.
+    assert Heap(b"hello").window(0, 5).mime_type().is_octet_stream()

@@ -21,6 +21,8 @@ use napi::bindgen_prelude::Buffer;
 use napi::{Env, JsFunction, JsObject, JsUnknown};
 use napi_derive::napi;
 
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use yggdryl_core::uri as core;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
@@ -276,6 +278,61 @@ impl Authority {
     }
 }
 
+/// The five RFC 3986 top-level components of a [`Uri`] bundled into one value — the
+/// destructuring counterpart of the individual `scheme` / `authority` / `path` / `query` /
+/// `fragment` accessors, built by `Uri.parts()` / `Url.parts()`. `authority` is rendered as
+/// `[user[:password]@]host[:port]`; `path` is always present (may be empty); the other four are
+/// `string | null`. `toString()` re-renders the URI from the parts.
+#[napi(namespace = "uri")]
+pub struct UriParts {
+    pub(crate) inner: core::UriParts,
+}
+
+#[napi(namespace = "uri")]
+impl UriParts {
+    /// The scheme, if any (`"https"`).
+    #[napi(getter)]
+    pub fn scheme(&self) -> Option<String> {
+        self.inner.scheme.clone()
+    }
+
+    /// The authority, if any, rendered as `[user[:password]@]host[:port]` (`"h:8080"`).
+    #[napi(getter)]
+    pub fn authority(&self) -> Option<String> {
+        self.inner.authority.clone()
+    }
+
+    /// The path — always present (may be empty).
+    #[napi(getter)]
+    pub fn path(&self) -> String {
+        self.inner.path.clone()
+    }
+
+    /// The query string, if any (without the leading `?`).
+    #[napi(getter)]
+    pub fn query(&self) -> Option<String> {
+        self.inner.query.clone()
+    }
+
+    /// The fragment, if any (without the leading `#`).
+    #[napi(getter)]
+    pub fn fragment(&self) -> Option<String> {
+        self.inner.fragment.clone()
+    }
+
+    /// Content equality over the five components.
+    #[napi]
+    pub fn equals(&self, other: &UriParts) -> bool {
+        self.inner == other.inner
+    }
+
+    /// Re-renders the URI from its parts (`scheme://authority/path?query#fragment`).
+    #[napi(js_name = "toString")]
+    pub fn text(&self) -> String {
+        self.inner.to_string()
+    }
+}
+
 /// A generic RFC 3986 URI split into its components, doubling as a filesystem-path
 /// abstraction. Any component may be absent; a bare path (no scheme, no authority) is a
 /// perfectly good `Uri`.
@@ -429,6 +486,38 @@ impl Uri {
     #[napi]
     pub fn parents(&self) -> Vec<Uri> {
         self.inner.parents().map(|inner| Uri { inner }).collect()
+    }
+
+    // ---- parts + media type ------------------------------------------------------------
+
+    /// The RFC 3986 top-level components bundled into one [`UriParts`] — the destructuring
+    /// counterpart of the individual `scheme` / `authority` / `path` / `query` / `fragment`
+    /// accessors.
+    #[napi]
+    pub fn parts(&self) -> UriParts {
+        UriParts {
+            inner: self.inner.parts(),
+        }
+    }
+
+    /// The **primary [`MimeType`]** inferred from this URI's file name — its last extension via
+    /// the default catalog, else the `application/octet-stream` fallback (never `null`, so a
+    /// caller always has a type).
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The **[`MediaType`]** inferred from this URI's path extensions
+    /// (`archive.tar.gz` → `application/x-tar, application/gzip`); empty when no extension is
+    /// recognized.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
     }
 
     // ---- builder mutators (return a new `Uri`) -----------------------------------------
@@ -941,6 +1030,34 @@ impl Url {
     #[napi]
     pub fn parents(&self) -> Vec<Url> {
         self.inner.parents().map(|inner| Url { inner }).collect()
+    }
+
+    // ---- parts + media type ------------------------------------------------------------
+
+    /// The RFC 3986 top-level components bundled into one [`UriParts`] — see `Uri.parts`. A URL
+    /// always carries a scheme, so `parts().scheme` is never `null`.
+    #[napi]
+    pub fn parts(&self) -> UriParts {
+        UriParts {
+            inner: self.inner.parts(),
+        }
+    }
+
+    /// The **primary [`MimeType`]** inferred from this URL's file name (else octet-stream) —
+    /// see `Uri.mimeType`.
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The **[`MediaType`]** inferred from this URL's path extensions — see `Uri.mediaType`.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
     }
 
     // ---- builder mutators (return a new `Url`) -----------------------------------------

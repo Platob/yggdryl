@@ -43,6 +43,8 @@ use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, NoChildren, Whence};
 use crate::io::mode::IOMode;
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use crate::uri::Uri;
 use yggdryl_core::io::local as core;
 use yggdryl_core::io::memory::IOBase;
@@ -621,6 +623,37 @@ impl LocalIO {
     #[napi(getter)]
     pub fn kind(&self) -> IOKind {
         self.inner.kind().into()
+    }
+
+    // ---- media type --------------------------------------------------------------------
+
+    /// The **primary [`MimeType`]** of this node: the `Content-Type` its `headers` declare, else
+    /// inferred from the path's file name, else the `application/octet-stream` fallback — always
+    /// an answer.
+    #[napi]
+    pub fn mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.mime_type(),
+        }
+    }
+
+    /// The full **[`MediaType`]** of this node: the media the `Content-Type` / `Content-Encoding`
+    /// `headers` declare, else inferred from the path's extensions, else the single
+    /// `application/octet-stream` fallback.
+    #[napi]
+    pub fn media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.media_type(),
+        }
+    }
+
+    /// Resolves the media type **and stores it** in this node's headers when `Content-Type` is
+    /// not already set — memoizing the inference. Returns the effective [`MimeType`].
+    #[napi]
+    pub fn ensure_content_type(&mut self) -> MimeType {
+        MimeType {
+            inner: self.inner.ensure_content_type(),
+        }
     }
 
     // ---- the filesystem graph (the IOBase graph surface) -------------------------------
@@ -1386,6 +1419,36 @@ impl Mmap {
     #[napi(getter)]
     pub fn kind(&self) -> napi::Result<IOKind> {
         Ok(self.inner()?.kind().into())
+    }
+
+    // ---- media type --------------------------------------------------------------------
+
+    /// The **primary [`MimeType`]** of this mapping: the `Content-Type` its `headers` declare,
+    /// else inferred from the file name, else the `application/octet-stream` fallback.
+    #[napi]
+    pub fn mime_type(&self) -> napi::Result<MimeType> {
+        Ok(MimeType {
+            inner: self.inner()?.mime_type(),
+        })
+    }
+
+    /// The full **[`MediaType`]** of this mapping: the media the `Content-Type` /
+    /// `Content-Encoding` `headers` declare, else inferred from the file's extensions, else the
+    /// single `application/octet-stream` fallback.
+    #[napi]
+    pub fn media_type(&self) -> napi::Result<MediaType> {
+        Ok(MediaType {
+            inner: self.inner()?.media_type(),
+        })
+    }
+
+    /// Resolves the media type **and stores it** in this mapping's headers when `Content-Type`
+    /// is not already set — memoizing the inference. Returns the effective [`MimeType`].
+    #[napi]
+    pub fn ensure_content_type(&mut self) -> napi::Result<MimeType> {
+        Ok(MimeType {
+            inner: self.inner_mut()?.ensure_content_type(),
+        })
     }
 
     // ---- the graph surface (a mapping is a leaf with a removable file) -----------------

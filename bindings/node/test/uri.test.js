@@ -4,7 +4,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { Uri, Url, Authority, defaultPort } = yggdryl.uri
+const { Uri, Url, Authority, UriParts, defaultPort } = yggdryl.uri
+const { MimeType } = yggdryl.mimetype
+const { MediaType } = yggdryl.mediatype
+const { LocalIO } = yggdryl.local
 
 test('the uri namespace exposes Uri, Url, and Authority', () => {
   for (const cls of [Uri, Url, Authority]) {
@@ -538,4 +541,83 @@ test('Url.authority is an Authority; hasAuthority / host are total', () => {
   assert.equal(mailto.hasAuthority, false)
   assert.equal(mailto.host, '')
   assert.equal(mailto.authority.host, '')
+})
+
+// -------------------------------------------------------------------------------------
+// parts() — the RFC 3986 components bundled into one value
+// -------------------------------------------------------------------------------------
+
+test('Uri.parts bundles the five components and re-renders', () => {
+  const parts = Uri.parse('https://h:8080/a/b?q=1#f').parts()
+  assert.ok(parts instanceof UriParts)
+  assert.equal(parts.scheme, 'https')
+  assert.equal(parts.authority, 'h:8080')
+  assert.equal(parts.path, '/a/b')
+  assert.equal(parts.query, 'q=1')
+  assert.equal(parts.fragment, 'f')
+  assert.equal(parts.toString(), 'https://h:8080/a/b?q=1#f') // re-renders the URI
+
+  // Absent components are null; path is always present (may be empty).
+  const bare = Uri.parse('/just/a/path').parts()
+  assert.equal(bare.scheme, null)
+  assert.equal(bare.authority, null)
+  assert.equal(bare.path, '/just/a/path')
+  assert.equal(bare.query, null)
+  assert.equal(bare.fragment, null)
+
+  // Content equality over the five components.
+  assert.ok(Uri.parse('https://h/a').parts().equals(Uri.parse('https://h/a').parts()))
+  assert.ok(!Uri.parse('https://h/a').parts().equals(Uri.parse('https://h/b').parts()))
+})
+
+test('Url.parts always carries a scheme', () => {
+  const parts = Url.parse('https://h/a/b.txt').parts()
+  assert.ok(parts instanceof UriParts)
+  assert.equal(parts.scheme, 'https') // never null on a Url
+  assert.equal(parts.path, '/a/b.txt')
+})
+
+// -------------------------------------------------------------------------------------
+// mimeType() / mediaType() — inferred from the path extensions
+// -------------------------------------------------------------------------------------
+
+test('Uri.mimeType / mediaType infer from the path extensions', () => {
+  const uri = Uri.fromPath('/data/archive.tar.gz')
+  assert.ok(uri.mimeType() instanceof MimeType)
+  assert.equal(uri.mimeType().essence, 'application/gzip') // primary = last extension
+  assert.ok(uri.mediaType() instanceof MediaType)
+  assert.deepEqual(uri.mediaType().essences(), ['application/x-tar', 'application/gzip'])
+
+  // A known single extension.
+  assert.equal(Uri.fromPath('/x/report.pdf').mimeType().essence, 'application/pdf')
+
+  // No recognized extension: mimeType falls back to octet-stream, mediaType is empty.
+  assert.equal(Uri.fromPath('/x/mystery').mimeType().essence, 'application/octet-stream')
+  assert.ok(Uri.fromPath('/x/mystery').mediaType().isEmpty())
+})
+
+test('Url.mimeType / mediaType mirror Uri', () => {
+  const url = Url.parse('https://h/downloads/data.json')
+  assert.equal(url.mimeType().essence, 'application/json')
+  assert.deepEqual(url.mediaType().essences(), ['application/json'])
+})
+
+// -------------------------------------------------------------------------------------
+// LocalIO addressed by a file:// URI infers its media type from the path
+// -------------------------------------------------------------------------------------
+
+test('a LocalIO built from a file:// URI infers its mime type from the name', () => {
+  const uri = Uri.parse('file:///tmp/yggdryl-report.pdf')
+  assert.equal(uri.scheme, 'file')
+
+  // The constructor accepts the file:// Uri directly (no disk access — pure addressing).
+  const node = new LocalIO(uri)
+  assert.ok(node.mimeType() instanceof MimeType)
+  assert.equal(node.mimeType().essence, 'application/pdf') // inferred from ".pdf"
+  assert.deepEqual(node.mediaType().essences(), ['application/pdf'])
+  assert.equal(node.name, 'yggdryl-report.pdf')
+
+  // An unknown extension falls back to octet-stream (still always an answer).
+  const blob = new LocalIO(Uri.parse('file:///tmp/yggdryl-blob.unknownext'))
+  assert.equal(blob.mimeType().essence, 'application/octet-stream')
 })

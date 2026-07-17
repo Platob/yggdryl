@@ -17,6 +17,8 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::mediatype::MediaType;
+use crate::mimetype::MimeType;
 use yggdryl_core::headers;
 use yggdryl_core::io::IoError;
 
@@ -38,6 +40,55 @@ pub struct Headers {
 
 #[pymethods]
 impl Headers {
+    // ---- common HTTP header names (canonical casing; matched case-insensitively) ---------
+
+    /// The `Content-Type` header name.
+    #[classattr]
+    const CONTENT_TYPE: &'static str = headers::Headers::CONTENT_TYPE;
+    /// The `Content-Length` header name.
+    #[classattr]
+    const CONTENT_LENGTH: &'static str = headers::Headers::CONTENT_LENGTH;
+    /// The `Content-Encoding` header name.
+    #[classattr]
+    const CONTENT_ENCODING: &'static str = headers::Headers::CONTENT_ENCODING;
+    /// The `Host` header name.
+    #[classattr]
+    const HOST: &'static str = headers::Headers::HOST;
+    /// The `Accept` header name.
+    #[classattr]
+    const ACCEPT: &'static str = headers::Headers::ACCEPT;
+    /// The `Accept-Encoding` header name.
+    #[classattr]
+    const ACCEPT_ENCODING: &'static str = headers::Headers::ACCEPT_ENCODING;
+    /// The `Authorization` header name.
+    #[classattr]
+    const AUTHORIZATION: &'static str = headers::Headers::AUTHORIZATION;
+    /// The `User-Agent` header name.
+    #[classattr]
+    const USER_AGENT: &'static str = headers::Headers::USER_AGENT;
+    /// The `Location` header name.
+    #[classattr]
+    const LOCATION: &'static str = headers::Headers::LOCATION;
+    /// The `Connection` header name.
+    #[classattr]
+    const CONNECTION: &'static str = headers::Headers::CONNECTION;
+    /// The `Cache-Control` header name.
+    #[classattr]
+    const CACHE_CONTROL: &'static str = headers::Headers::CACHE_CONTROL;
+    /// The `Cookie` header name.
+    #[classattr]
+    const COOKIE: &'static str = headers::Headers::COOKIE;
+    /// The `Set-Cookie` header name.
+    #[classattr]
+    const SET_COOKIE: &'static str = headers::Headers::SET_COOKIE;
+    /// The `Last-Modified` header name (RFC HTTP-date form).
+    #[classattr]
+    const LAST_MODIFIED: &'static str = headers::Headers::LAST_MODIFIED;
+    /// The modification-time header name for the **epoch-microseconds** form
+    /// (`mtime` / `set_mtime`).
+    #[classattr]
+    const MTIME: &'static str = headers::Headers::MTIME;
+
     /// An empty header map (no allocation).
     #[new]
     fn new() -> Self {
@@ -189,9 +240,64 @@ impl Headers {
         self.inner.content_type().map(str::to_string)
     }
 
+    /// Sets the `Content-Type` header (replace semantics).
+    fn set_content_type(&mut self, value: &str) {
+        self.inner.set_content_type(value);
+    }
+
+    /// The `Content-Encoding` value, if present and UTF-8 (e.g. `"gzip"`).
+    fn content_encoding(&self) -> Option<String> {
+        self.inner.content_encoding().map(str::to_string)
+    }
+
+    /// Sets the `Content-Encoding` header (replace semantics).
+    fn set_content_encoding(&mut self, value: &str) {
+        self.inner.set_content_encoding(value);
+    }
+
     /// The `Content-Length` value parsed as an int, if present and numeric.
     fn content_length(&self) -> Option<u64> {
         self.inner.content_length()
+    }
+
+    // ---- media type: the one place Content-Type / Content-Encoding are interpreted -------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) of `Content-Type`, if present
+    /// and valid — the single most specific type this map declares. `None` when there is no
+    /// (valid) `Content-Type`.
+    fn mime_type(&self) -> Option<MimeType> {
+        self.inner.mime_type().map(|inner| MimeType { inner })
+    }
+
+    /// Sets `Content-Type` to `mime`'s essence — the centralized mime mutator.
+    fn set_mime_type(&mut self, mime: &MimeType) {
+        self.inner.set_mime_type(&mime.inner);
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) this map declares: the
+    /// `Content-Type` extended by the `Content-Encoding` layers resolved to their mime types
+    /// (`gzip` → `application/gzip`). `None` when there is no `Content-Type`.
+    fn media_type(&self) -> Option<MediaType> {
+        self.inner.media_type().map(|inner| MediaType { inner })
+    }
+
+    /// Sets `Content-Type` to `media`'s comma-joined essences — the centralized media mutator.
+    fn set_media_type(&mut self, media: &MediaType) {
+        self.inner.set_media_type(&media.inner);
+    }
+
+    // ---- modification time (epoch microseconds) ------------------------------------------
+
+    /// The modification time as **total epoch microseconds** (signed — before 1970 is
+    /// negative), from the `MTIME` header, if present and an integer.
+    fn mtime(&self) -> Option<i64> {
+        self.inner.mtime()
+    }
+
+    /// Sets the modification time to `micros` total epoch microseconds (written into the
+    /// `MTIME` header).
+    fn set_mtime(&mut self, micros: i64) {
+        self.inner.set_mtime(micros);
     }
 
     // ---- HTTP text form + byte codec ------------------------------------------------------

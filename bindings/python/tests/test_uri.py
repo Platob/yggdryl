@@ -1,18 +1,21 @@
 """Tests for the ``yggdryl.uri`` URIs, URLs, and authorities."""
 
+import copy
 import pickle
 from urllib.parse import urlparse
 
 import pytest
 
 import yggdryl.uri
-from yggdryl.uri import Authority, Uri, Url, default_port
+from yggdryl.mediatype import MediaType
+from yggdryl.mimetype import MimeType
+from yggdryl.uri import Authority, Uri, UriParts, Url, default_port
 
 
 def test_module_surface():
     import yggdryl
 
-    for cls in (Authority, Uri, Url):
+    for cls in (Authority, UriParts, Uri, Url):
         assert cls.__module__ == "yggdryl.uri"
         assert hasattr(yggdryl.uri, cls.__name__)
 
@@ -512,3 +515,80 @@ def test_param_dunders_map_protocol():
     assert "k" in url
     del url["k"]
     assert "k" not in url
+
+
+# -------------------------------------------------------------------------------------
+# parts() -> UriParts (the destructuring counterpart of the component accessors)
+# -------------------------------------------------------------------------------------
+
+
+def test_uri_parts_every_component_and_rerender():
+    parts = Uri.parse("https://user:pw@h:8080/a/b?q=1#f").parts()
+    assert isinstance(parts, UriParts)
+    assert parts.scheme == "https"
+    assert parts.authority == "user:pw@h:8080"
+    assert parts.path == "/a/b"
+    assert parts.query == "q=1"
+    assert parts.fragment == "f"
+    # str(parts) re-renders the URI.
+    assert str(parts) == "https://user:pw@h:8080/a/b?q=1#f"
+    assert repr(parts) == 'UriParts("https://user:pw@h:8080/a/b?q=1#f")'
+
+
+def test_uri_parts_absent_components_are_none():
+    parts = Uri.from_path("/just/a/path").parts()
+    assert parts.scheme is None
+    assert parts.authority is None
+    assert parts.path == "/just/a/path"
+    assert parts.query is None
+    assert parts.fragment is None
+    assert str(parts) == "/just/a/path"
+
+
+def test_uri_parts_value_semantics():
+    a = Uri.parse("https://h/a?q=1").parts()
+    b = Uri.parse("https://h/a?q=1").parts()
+    assert a == b
+    assert hash(a) == hash(b)
+    assert {a, b} == {a}
+    assert a != Uri.parse("https://h/a").parts()
+    # Reconstructible directly (and pickles through the same five components).
+    direct = UriParts("/a", scheme="https", authority="h", query="q=1")
+    assert direct == a
+    assert pickle.loads(pickle.dumps(a)) == a
+    assert copy.copy(a) == a
+
+
+def test_url_parts_always_has_scheme():
+    parts = Url.parse("https://h:443/x").parts()
+    assert isinstance(parts, UriParts)
+    assert parts.scheme == "https"
+    assert str(parts) == "https://h:443/x"
+
+
+# -------------------------------------------------------------------------------------
+# mime_type() / media_type() inferred from the address
+# -------------------------------------------------------------------------------------
+
+
+def test_uri_mime_type_from_name():
+    assert Uri.from_path("/x/report.pdf").mime_type().essence == "application/pdf"
+    assert isinstance(Uri.from_path("/x/report.pdf").mime_type(), MimeType)
+    # No recognizable extension -> the octet-stream fallback (never raises).
+    assert Uri.from_path("/x/mystery").mime_type().is_octet_stream()
+    # The last extension drives the primary mime type.
+    assert Uri.from_path("/data/archive.tar.gz").mime_type().essence == "application/gzip"
+
+
+def test_uri_media_type_from_extensions():
+    media = Uri.from_path("/data/archive.tar.gz").media_type()
+    assert isinstance(media, MediaType)
+    assert media.essences() == ["application/x-tar", "application/gzip"]
+    # No known extension -> empty media (unlike mime_type's octet-stream fallback).
+    assert Uri.from_path("/x/mystery").media_type().essences() == []
+
+
+def test_url_mime_and_media_type():
+    url = Url.parse("https://h/data/archive.tar.gz")
+    assert url.mime_type().essence == "application/gzip"
+    assert url.media_type().essences() == ["application/x-tar", "application/gzip"]
