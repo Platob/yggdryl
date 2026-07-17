@@ -61,6 +61,24 @@ pub enum IoError {
         /// The total length the window had to fit inside.
         available: u64,
     },
+    /// Bytes read as UTF-8 text (a `pread_utf8` / `read_utf8`) are not valid UTF-8. Read the
+    /// raw bytes with `pread_byte_array` instead, or fix the offset/length to span whole
+    /// characters.
+    InvalidUtf8 {
+        /// The byte index (within the read range) at which decoding failed.
+        position: usize,
+    },
+    /// A name/value handed to a parser ([`IOMode::parse_str`](crate::io::IOMode::parse_str) /
+    /// [`IOKind::from_u8`](crate::io::IOKind::from_u8), …) matched none of the accepted
+    /// tokens. Pass one of the expected values.
+    UnknownName {
+        /// Which type was being parsed (`"IOMode"`, `"IOKind"`, …).
+        kind: &'static str,
+        /// The offending input.
+        input: String,
+        /// The accepted tokens, listed.
+        expected: &'static str,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -95,6 +113,16 @@ impl fmt::Display for IoError {
                  window that fits within {available}",
                 end = *offset + *len
             ),
+            Self::InvalidUtf8 { position } => write!(
+                f,
+                "invalid UTF-8 at byte {position}: read the raw bytes with pread_byte_array \
+                 instead, or adjust the offset/length to span whole characters"
+            ),
+            Self::UnknownName {
+                kind,
+                input,
+                expected,
+            } => write!(f, "unknown {kind} {input:?}: expected one of {expected}"),
         }
     }
 }

@@ -287,80 +287,80 @@ test('an out-of-range port is a guided error naming the offending value', () => 
 test('query parameter map access and CRUD', () => {
   const uri = Uri.parse('http://h/p?a=1&b=2&a=3')
   // Read
-  assert.equal(uri.queryParam('a'), '1') // first occurrence wins
-  assert.equal(uri.queryParam('missing'), null)
-  assert.deepEqual(uri.queryParamAll('a'), ['1', '3'])
-  assert.deepEqual(uri.queryParams(), new Map([['a', ['1', '3']], ['b', ['2']]])) // grouped by key
-  assert.ok(uri.hasQueryParam('b'))
-  assert.ok(!uri.hasQueryParam('z'))
+  assert.equal(uri.param('a'), '1') // first occurrence wins
+  assert.equal(uri.param('missing'), null)
+  assert.deepEqual(uri.paramAll('a'), ['1', '3'])
+  assert.deepEqual(uri.params(), new Map([['a', ['1', '3']], ['b', ['2']]])) // grouped by key
+  assert.ok(uri.hasParam('b'))
+  assert.ok(!uri.hasParam('z'))
 
   // Update then create
-  uri.setQueryParam('a', '9')
+  uri.setParam('a', '9')
   assert.equal(uri.query, 'a=9&b=2')
-  uri.setQueryParam('c', '7')
+  uri.setParam('c', '7')
   assert.equal(uri.query, 'a=9&b=2&c=7')
 
   // Delete
-  assert.equal(uri.removeQueryParam('a'), true)
+  assert.equal(uri.removeParam('a'), true)
   assert.equal(uri.query, 'b=2&c=7')
-  assert.equal(uri.removeQueryParam('z'), false)
+  assert.equal(uri.removeParam('z'), false)
 
   // Builder variants return fresh values
-  const built = Uri.parse('http://h/p').withQueryParam('x', '1').withQueryParam('y', '2')
+  const built = Uri.parse('http://h/p').withParam('x', '1').withParam('y', '2')
   assert.equal(built.toString(), 'http://h/p?x=1&y=2')
-  assert.equal(built.withoutQueryParam('x').toString(), 'http://h/p?y=2')
+  assert.equal(built.withoutParam('x').toString(), 'http://h/p?y=2')
 })
 
 test('query parameters on Url and edge cases', () => {
   const url = Url.parse('https://h/p?flag&a=')
-  assert.equal(url.queryParam('flag'), '') // bare key -> empty value
-  assert.equal(url.queryParam('a'), '') // explicit empty value
-  assert.ok(url.hasQueryParam('flag'))
-  url.setQueryParam('flag', 'on')
-  assert.equal(url.queryParam('flag'), 'on')
-  assert.equal(Uri.parse('http://h/p?t=a=b').queryParam('t'), 'a=b') // value keeps inner '='
+  assert.equal(url.param('flag'), '') // bare key -> empty value
+  assert.equal(url.param('a'), '') // explicit empty value
+  assert.ok(url.hasParam('flag'))
+  url.setParam('flag', 'on')
+  assert.equal(url.param('flag'), 'on')
+  assert.equal(Uri.parse('http://h/p?t=a=b').param('t'), 'a=b') // value keeps inner '='
 })
 
 test('bulk query update and normalize', () => {
   const uri = Uri.parse('http://h/p?a=1&b=2&a=3')
-  uri.setQueryParams([['a', '9'], ['c', '7']]) // bulk update in one pass
+  uri.setParams([['a', '9'], ['c', '7']]) // bulk update in one pass
   assert.equal(uri.query, 'a=9&b=2&c=7')
-  uri.setQueryParams(Object.entries({ z: '1' })) // apply an object via Object.entries
-  assert.equal(uri.queryParam('z'), '1')
+  uri.setParams(Object.entries({ z: '1' })) // apply an object via Object.entries
+  assert.equal(uri.param('z'), '1')
 
   const messy = Uri.parse('http://h/p?c=3&a=1&&b=2')
-  messy.normalizeQuery() // sort by key + drop empty tokens
+  messy.normalizeParams() // sort by key + drop empty tokens
   assert.equal(messy.query, 'a=1&b=2&c=3')
 
-  const built = Uri.parse('http://h/p?b=2').withQueryParams([['a', '1']]).withNormalizedQuery()
+  const built = Uri.parse('http://h/p?b=2').withParams([['a', '1']]).withNormalizedParams()
   assert.equal(built.toString(), 'http://h/p?a=1&b=2')
 })
 
 test('query parameter percent-encoding', () => {
   const uri = Uri.parse('http://h/p')
-  uri.setQueryParam('q', 'a b&c')
+  uri.setParam('q', 'a b&c')
   assert.equal(uri.query, 'q=a%20b%26c') // stored encoded
-  assert.equal(uri.queryParam('q'), 'a b&c') // decoded by default
-  assert.equal(uri.queryParam('q', true), 'a%20b%26c') // raw stored form
+  assert.equal(uri.param('q'), 'a b&c') // decoded by default
+  assert.equal(uri.param('q', true), 'a%20b%26c') // raw stored form
 
   for (const value of ['plain', 'a b', '100%', 'x&y=z', 'café', '']) {
-    const u = Uri.parse('http://h/p').withQueryParam('k', value)
-    assert.equal(u.queryParam('k'), value) // set -> get round-trips
+    const u = Uri.parse('http://h/p').withParam('k', value)
+    assert.equal(u.param('k'), value) // set -> get round-trips
   }
 
-  const u = Uri.parse('http://h/p').withQueryParam('n', 'a b').withQueryParam('t', 'x&y')
-  assert.deepEqual(u.queryParams(), new Map([['n', ['a%20b']], ['t', ['x%26y']]])) // stored form
+  const u = Uri.parse('http://h/p').withParam('n', 'a b').withParam('t', 'x&y')
+  assert.deepEqual(u.params(), new Map([['n', ['a%20b']], ['t', ['x%26y']]])) // stored form
 
   assert.equal(Uri.parse('http://h').withPath('/a b').path, '/a%20b') // component encoded
 })
 
 // -------------------------------------------------------------------------------------
-// queryParams grouped object
+// params grouped object
 // -------------------------------------------------------------------------------------
 
-test('queryParams returns an ordered Map, preserving first-appearance key order', () => {
+test('params returns an ordered Map, preserving first-appearance key order', () => {
   const uri = Uri.parse('http://h/p?b=1&a=2&b=3&c=4&a=5')
-  const params = uri.queryParams()
+  const params = uri.params()
   assert.ok(params instanceof Map)
   // Each key maps to the array of its values, in encounter order.
   assert.deepEqual(params, new Map([['b', ['1', '3']], ['a', ['2', '5']], ['c', ['4']]]))
@@ -369,17 +369,17 @@ test('queryParams returns an ordered Map, preserving first-appearance key order'
   assert.deepEqual(params.get('a'), ['2', '5'])
 
   // Numeric-looking keys keep first-appearance order — a plain object would reorder to 1,2.
-  assert.deepEqual([...Uri.parse('http://h/p?2=a&1=b').queryParams().keys()], ['2', '1'])
+  assert.deepEqual([...Uri.parse('http://h/p?2=a&1=b').params().keys()], ['2', '1'])
 
   // A single-valued key still yields a one-element array.
-  assert.deepEqual(Uri.parse('http://h/p?x=1').queryParams(), new Map([['x', ['1']]]))
+  assert.deepEqual(Uri.parse('http://h/p?x=1').params(), new Map([['x', ['1']]]))
   // No query -> empty Map.
-  assert.deepEqual(Uri.parse('http://h/p').queryParams(), new Map())
+  assert.deepEqual(Uri.parse('http://h/p').params(), new Map())
 
   // Url mirrors it (ordered Map, first-appearance order), numeric keys unreordered too.
   const url = Url.parse('https://h/p?z=1&y=2&z=3')
-  assert.deepEqual(url.queryParams(), new Map([['z', ['1', '3']], ['y', ['2']]]))
-  assert.deepEqual([...Url.parse('https://h/p?2=a&1=b').queryParams().keys()], ['2', '1'])
+  assert.deepEqual(url.params(), new Map([['z', ['1', '3']], ['y', ['2']]]))
+  assert.deepEqual([...Url.parse('https://h/p?2=a&1=b').params().keys()], ['2', '1'])
 })
 
 // -------------------------------------------------------------------------------------

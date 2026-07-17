@@ -598,12 +598,12 @@ impl Uri {
     /// The first value of query parameter `key`, **decoded** by default; pass
     /// `encoded=True` for the stored (percent-encoded) form. `None` if absent.
     #[pyo3(signature = (key, encoded = false))]
-    fn query_param(&self, key: &str, encoded: bool) -> Option<String> {
+    fn param(&self, key: &str, encoded: bool) -> Option<String> {
         if encoded {
-            self.inner.query_param(key).map(str::to_string)
+            self.inner.param(key).map(str::to_string)
         } else {
             self.inner
-                .query_param_decoded(key)
+                .param_decoded(key)
                 .map(|value| value.into_owned())
         }
     }
@@ -611,16 +611,16 @@ impl Uri {
     /// Every value of query parameter `key`, in order, decoded by default
     /// (`encoded=True` for the stored form).
     #[pyo3(signature = (key, encoded = false))]
-    fn query_param_all(&self, key: &str, encoded: bool) -> Vec<String> {
+    fn param_all(&self, key: &str, encoded: bool) -> Vec<String> {
         if encoded {
             self.inner
-                .query_param_all(key)
+                .param_all(key)
                 .into_iter()
                 .map(str::to_string)
                 .collect()
         } else {
             self.inner
-                .query_param_all_decoded(key)
+                .param_all_decoded(key)
                 .into_iter()
                 .map(|value| value.into_owned())
                 .collect()
@@ -630,75 +630,104 @@ impl Uri {
     /// All query parameters grouped by key as `dict[str, tuple[str, ...]]`: each key maps to a
     /// tuple of **all** its values (a repeated key collapses into one entry), in
     /// first-appearance order and stored (percent-encoded) form. Per-key decoding stays on
-    /// `query_param` / `query_param_all`.
-    fn query_params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+    /// `param` / `param_all`.
+    fn params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new_bound(py);
-        for (key, values) in self.inner.query_params_grouped() {
+        for (key, values) in self.inner.params_grouped() {
             dict.set_item(key, PyTuple::new_bound(py, values))?;
         }
         Ok(dict)
     }
 
     /// Whether query parameter `key` is present.
-    fn has_query_param(&self, key: &str) -> bool {
-        self.inner.has_query_param(key)
+    fn has_param(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    /// Map access to the params: `uri[key]` is the first (decoded) value of parameter `key`,
+    /// raising `KeyError` when absent — like `dict`. Use `param(key)` for an `Optional` read.
+    fn __getitem__(&self, key: &str) -> PyResult<String> {
+        self.inner
+            .param_decoded(key)
+            .map(|value| value.into_owned())
+            .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(key.to_string()))
+    }
+
+    /// Map write: `uri[key] = value` sets parameter `key` (create-or-update, like `dict`).
+    fn __setitem__(&mut self, key: &str, value: &str) {
+        self.inner.set_param(key, value);
+    }
+
+    /// Map delete: `del uri[key]` removes every occurrence of parameter `key`, raising
+    /// `KeyError` when absent — like `dict`.
+    fn __delitem__(&mut self, key: &str) -> PyResult<()> {
+        if self.inner.remove_param(key) {
+            Ok(())
+        } else {
+            Err(pyo3::exceptions::PyKeyError::new_err(key.to_string()))
+        }
+    }
+
+    /// Membership: `key in uri` is true when parameter `key` is present.
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.has_param(key)
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
     /// or appended if absent). The value is stored verbatim.
-    fn set_query_param(&mut self, key: &str, value: &str) {
-        self.inner.set_query_param(key, value);
+    fn set_param(&mut self, key: &str, value: &str) {
+        self.inner.set_param(key, value);
     }
 
     /// Returns a copy with query parameter `key` set.
-    fn with_query_param(&self, key: &str, value: &str) -> Self {
+    fn with_param(&self, key: &str, value: &str) -> Self {
         Self {
-            inner: self.inner.clone().with_query_param(key, value),
+            inner: self.inner.clone().with_param(key, value),
         }
     }
 
     /// Removes every occurrence of query parameter `key`; returns whether any were removed.
-    fn remove_query_param(&mut self, key: &str) -> bool {
-        self.inner.remove_query_param(key)
+    fn remove_param(&mut self, key: &str) -> bool {
+        self.inner.remove_param(key)
     }
 
     /// Returns a copy with query parameter `key` removed.
-    fn without_query_param(&self, key: &str) -> Self {
+    fn without_param(&self, key: &str) -> Self {
         Self {
-            inner: self.inner.clone().without_query_param(key),
+            inner: self.inner.clone().without_param(key),
         }
     }
 
     /// Bulk-updates query parameters from `(key, value)` pairs in one pass (last value wins
     /// per key). Pass `list(mydict.items())` to apply a dict.
-    fn set_query_params(&mut self, params: Vec<(String, String)>) {
+    fn set_params(&mut self, params: Vec<(String, String)>) {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        self.inner.set_query_params(&refs);
+        self.inner.set_params(&refs);
     }
 
     /// Returns a copy with the bulk update applied.
-    fn with_query_params(&self, params: Vec<(String, String)>) -> Self {
+    fn with_params(&self, params: Vec<(String, String)>) -> Self {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
         Self {
-            inner: self.inner.clone().with_query_params(&refs),
+            inner: self.inner.clone().with_params(&refs),
         }
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.
-    fn normalize_query(&mut self) {
-        self.inner.normalize_query();
+    fn normalize_params(&mut self) {
+        self.inner.normalize_params();
     }
 
     /// Returns a copy with the query normalized.
-    fn with_normalized_query(&self) -> Self {
+    fn with_normalized_params(&self) -> Self {
         Self {
-            inner: self.inner.clone().with_normalized_query(),
+            inner: self.inner.clone().with_normalized_params(),
         }
     }
 
@@ -1090,12 +1119,12 @@ impl Url {
     /// The first value of query parameter `key`, **decoded** by default; pass
     /// `encoded=True` for the stored (percent-encoded) form. `None` if absent.
     #[pyo3(signature = (key, encoded = false))]
-    fn query_param(&self, key: &str, encoded: bool) -> Option<String> {
+    fn param(&self, key: &str, encoded: bool) -> Option<String> {
         if encoded {
-            self.inner.query_param(key).map(str::to_string)
+            self.inner.param(key).map(str::to_string)
         } else {
             self.inner
-                .query_param_decoded(key)
+                .param_decoded(key)
                 .map(|value| value.into_owned())
         }
     }
@@ -1103,16 +1132,16 @@ impl Url {
     /// Every value of query parameter `key`, in order, decoded by default
     /// (`encoded=True` for the stored form).
     #[pyo3(signature = (key, encoded = false))]
-    fn query_param_all(&self, key: &str, encoded: bool) -> Vec<String> {
+    fn param_all(&self, key: &str, encoded: bool) -> Vec<String> {
         if encoded {
             self.inner
-                .query_param_all(key)
+                .param_all(key)
                 .into_iter()
                 .map(str::to_string)
                 .collect()
         } else {
             self.inner
-                .query_param_all_decoded(key)
+                .param_all_decoded(key)
                 .into_iter()
                 .map(|value| value.into_owned())
                 .collect()
@@ -1122,75 +1151,104 @@ impl Url {
     /// All query parameters grouped by key as `dict[str, tuple[str, ...]]`: each key maps to a
     /// tuple of **all** its values (a repeated key collapses into one entry), in
     /// first-appearance order and stored (percent-encoded) form. Per-key decoding stays on
-    /// `query_param` / `query_param_all`.
-    fn query_params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+    /// `param` / `param_all`.
+    fn params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new_bound(py);
-        for (key, values) in self.inner.query_params_grouped() {
+        for (key, values) in self.inner.params_grouped() {
             dict.set_item(key, PyTuple::new_bound(py, values))?;
         }
         Ok(dict)
     }
 
     /// Whether query parameter `key` is present.
-    fn has_query_param(&self, key: &str) -> bool {
-        self.inner.has_query_param(key)
+    fn has_param(&self, key: &str) -> bool {
+        self.inner.has_param(key)
+    }
+
+    /// Map access to the params: `uri[key]` is the first (decoded) value of parameter `key`,
+    /// raising `KeyError` when absent — like `dict`. Use `param(key)` for an `Optional` read.
+    fn __getitem__(&self, key: &str) -> PyResult<String> {
+        self.inner
+            .param_decoded(key)
+            .map(|value| value.into_owned())
+            .ok_or_else(|| pyo3::exceptions::PyKeyError::new_err(key.to_string()))
+    }
+
+    /// Map write: `uri[key] = value` sets parameter `key` (create-or-update, like `dict`).
+    fn __setitem__(&mut self, key: &str, value: &str) {
+        self.inner.set_param(key, value);
+    }
+
+    /// Map delete: `del uri[key]` removes every occurrence of parameter `key`, raising
+    /// `KeyError` when absent — like `dict`.
+    fn __delitem__(&mut self, key: &str) -> PyResult<()> {
+        if self.inner.remove_param(key) {
+            Ok(())
+        } else {
+            Err(pyo3::exceptions::PyKeyError::new_err(key.to_string()))
+        }
+    }
+
+    /// Membership: `key in uri` is true when parameter `key` is present.
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.has_param(key)
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
     /// or appended if absent). The value is stored verbatim.
-    fn set_query_param(&mut self, key: &str, value: &str) {
-        self.inner.set_query_param(key, value);
+    fn set_param(&mut self, key: &str, value: &str) {
+        self.inner.set_param(key, value);
     }
 
     /// Returns a copy with query parameter `key` set.
-    fn with_query_param(&self, key: &str, value: &str) -> Self {
+    fn with_param(&self, key: &str, value: &str) -> Self {
         Self {
-            inner: self.inner.clone().with_query_param(key, value),
+            inner: self.inner.clone().with_param(key, value),
         }
     }
 
     /// Removes every occurrence of query parameter `key`; returns whether any were removed.
-    fn remove_query_param(&mut self, key: &str) -> bool {
-        self.inner.remove_query_param(key)
+    fn remove_param(&mut self, key: &str) -> bool {
+        self.inner.remove_param(key)
     }
 
     /// Returns a copy with query parameter `key` removed.
-    fn without_query_param(&self, key: &str) -> Self {
+    fn without_param(&self, key: &str) -> Self {
         Self {
-            inner: self.inner.clone().without_query_param(key),
+            inner: self.inner.clone().without_param(key),
         }
     }
 
     /// Bulk-updates query parameters from `(key, value)` pairs in one pass (last value wins
     /// per key). Pass `list(mydict.items())` to apply a dict.
-    fn set_query_params(&mut self, params: Vec<(String, String)>) {
+    fn set_params(&mut self, params: Vec<(String, String)>) {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        self.inner.set_query_params(&refs);
+        self.inner.set_params(&refs);
     }
 
     /// Returns a copy with the bulk update applied.
-    fn with_query_params(&self, params: Vec<(String, String)>) -> Self {
+    fn with_params(&self, params: Vec<(String, String)>) -> Self {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
         Self {
-            inner: self.inner.clone().with_query_params(&refs),
+            inner: self.inner.clone().with_params(&refs),
         }
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.
-    fn normalize_query(&mut self) {
-        self.inner.normalize_query();
+    fn normalize_params(&mut self) {
+        self.inner.normalize_params();
     }
 
     /// Returns a copy with the query normalized.
-    fn with_normalized_query(&self) -> Self {
+    fn with_normalized_params(&self) -> Self {
         Self {
-            inner: self.inner.clone().with_normalized_query(),
+            inner: self.inner.clone().with_normalized_params(),
         }
     }
 

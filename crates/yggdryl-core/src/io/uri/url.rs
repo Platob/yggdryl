@@ -173,91 +173,91 @@ impl Url {
 
     // ---- query parameters (map access + CRUD) --------------------------------------
 
-    /// The first value of query parameter `key`, or `None` — see [`Uri::query_param`].
-    pub fn query_param(&self, key: &str) -> Option<&str> {
-        self.inner.query_param(key)
+    /// The first value of query parameter `key`, or `None` — see [`Uri::param`].
+    pub fn param(&self, key: &str) -> Option<&str> {
+        self.inner.param(key)
     }
 
-    /// Every value of query parameter `key`, in order — see [`Uri::query_param_all`].
-    pub fn query_param_all(&self, key: &str) -> Vec<&str> {
-        self.inner.query_param_all(key)
+    /// Every value of query parameter `key`, in order — see [`Uri::param_all`].
+    pub fn param_all(&self, key: &str) -> Vec<&str> {
+        self.inner.param_all(key)
     }
 
-    /// All query parameters as ordered `(key, value)` pairs — see [`Uri::query_params`].
-    pub fn query_params(&self) -> Vec<(&str, &str)> {
-        self.inner.query_params()
+    /// All query parameters as ordered `(key, value)` pairs — see [`Uri::params`].
+    pub fn params(&self) -> Vec<(&str, &str)> {
+        self.inner.params()
     }
 
     /// All query parameters **grouped by key** (each key → all its values) — see
-    /// [`Uri::query_params_grouped`].
-    pub fn query_params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
-        self.inner.query_params_grouped()
+    /// [`Uri::params_grouped`].
+    pub fn params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
+        self.inner.params_grouped()
     }
 
     /// The first value of query parameter `key`, percent-decoded — see
-    /// [`Uri::query_param_decoded`].
-    pub fn query_param_decoded(&self, key: &str) -> Option<Cow<'_, str>> {
-        self.inner.query_param_decoded(key)
+    /// [`Uri::param_decoded`].
+    pub fn param_decoded(&self, key: &str) -> Option<Cow<'_, str>> {
+        self.inner.param_decoded(key)
     }
 
     /// Every value of query parameter `key`, percent-decoded — see
-    /// [`Uri::query_param_all_decoded`].
-    pub fn query_param_all_decoded(&self, key: &str) -> Vec<Cow<'_, str>> {
-        self.inner.query_param_all_decoded(key)
+    /// [`Uri::param_all_decoded`].
+    pub fn param_all_decoded(&self, key: &str) -> Vec<Cow<'_, str>> {
+        self.inner.param_all_decoded(key)
     }
 
     /// All query parameters as `(key, value)` pairs, percent-decoded — see
-    /// [`Uri::query_params_decoded`].
-    pub fn query_params_decoded(&self) -> Vec<(Cow<'_, str>, Cow<'_, str>)> {
-        self.inner.query_params_decoded()
+    /// [`Uri::params_decoded`].
+    pub fn params_decoded(&self) -> Vec<(Cow<'_, str>, Cow<'_, str>)> {
+        self.inner.params_decoded()
     }
 
-    /// Whether query parameter `key` is present — see [`Uri::has_query_param`].
-    pub fn has_query_param(&self, key: &str) -> bool {
-        self.inner.has_query_param(key)
+    /// Whether query parameter `key` is present — see [`Uri::has_param`].
+    pub fn has_param(&self, key: &str) -> bool {
+        self.inner.has_param(key)
     }
 
-    /// Sets query parameter `key` to `value` (map semantics) — see [`Uri::set_query_param`].
-    pub fn set_query_param(&mut self, key: &str, value: &str) {
-        self.inner.set_query_param(key, value);
+    /// Sets query parameter `key` to `value` (map semantics) — see [`Uri::set_param`].
+    pub fn set_param(&mut self, key: &str, value: &str) {
+        self.inner.set_param(key, value);
     }
 
-    /// Returns this URL with query parameter `key` set — see [`Uri::with_query_param`].
-    pub fn with_query_param(mut self, key: &str, value: &str) -> Self {
-        self.inner.set_query_param(key, value);
+    /// Returns this URL with query parameter `key` set — see [`Uri::with_param`].
+    pub fn with_param(mut self, key: &str, value: &str) -> Self {
+        self.inner.set_param(key, value);
         self
     }
 
-    /// Removes every occurrence of query parameter `key` — see [`Uri::remove_query_param`].
-    pub fn remove_query_param(&mut self, key: &str) -> bool {
-        self.inner.remove_query_param(key)
+    /// Removes every occurrence of query parameter `key` — see [`Uri::remove_param`].
+    pub fn remove_param(&mut self, key: &str) -> bool {
+        self.inner.remove_param(key)
     }
 
-    /// Returns this URL with query parameter `key` removed — see [`Uri::without_query_param`].
-    pub fn without_query_param(mut self, key: &str) -> Self {
-        self.inner.remove_query_param(key);
+    /// Returns this URL with query parameter `key` removed — see [`Uri::without_param`].
+    pub fn without_param(mut self, key: &str) -> Self {
+        self.inner.remove_param(key);
         self
     }
 
-    /// Bulk-updates the query from `(key, value)` pairs — see [`Uri::set_query_params`].
-    pub fn set_query_params(&mut self, params: &[(&str, &str)]) {
-        self.inner.set_query_params(params);
+    /// Bulk-updates the query from `(key, value)` pairs — see [`Uri::set_params`].
+    pub fn set_params(&mut self, params: &[(&str, &str)]) {
+        self.inner.set_params(params);
     }
 
-    /// Returns this URL with the bulk update applied — see [`Uri::with_query_params`].
-    pub fn with_query_params(mut self, params: &[(&str, &str)]) -> Self {
-        self.inner.set_query_params(params);
+    /// Returns this URL with the bulk update applied — see [`Uri::with_params`].
+    pub fn with_params(mut self, params: &[(&str, &str)]) -> Self {
+        self.inner.set_params(params);
         self
     }
 
-    /// Sorts and cleans the query parameters in place — see [`Uri::normalize_query`].
-    pub fn normalize_query(&mut self) {
-        self.inner.normalize_query();
+    /// Sorts and cleans the query parameters in place — see [`Uri::normalize_params`].
+    pub fn normalize_params(&mut self) {
+        self.inner.normalize_params();
     }
 
-    /// Returns this URL with the query normalized — see [`Uri::with_normalized_query`].
-    pub fn with_normalized_query(mut self) -> Self {
-        self.inner.normalize_query();
+    /// Returns this URL with the query normalized — see [`Uri::with_normalized_params`].
+    pub fn with_normalized_params(mut self) -> Self {
+        self.inner.normalize_params();
         self
     }
 
@@ -474,5 +474,17 @@ impl Eq for Url {}
 impl core::hash::Hash for Url {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
+    }
+}
+
+impl crate::io::Serializable for Url {
+    type Error = UriError;
+
+    fn serialize_bytes(&self) -> Vec<u8> {
+        Url::serialize_bytes(self)
+    }
+
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, UriError> {
+        Url::deserialize_bytes(bytes)
     }
 }

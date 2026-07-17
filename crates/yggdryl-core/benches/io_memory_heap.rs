@@ -148,4 +148,50 @@ fn main() {
             let _ = Heap::from_slice(&page);
         }),
     );
+
+    // Bulk typed arrays: stack-staged, vectorized dense conversion — zero heap allocation.
+    let bulk_values = vec![7i32; 1024];
+    let mut bulk_back = vec![0i32; 1024];
+    let mut bulk_sink = Heap::with_capacity(4096);
+    bulk_sink.pwrite_i32_array(0, &bulk_values).unwrap();
+    row(
+        "pwrite_i32_array (1024 elems)",
+        measure(1024, iters, || {
+            bulk_sink.pwrite_i32_array(0, &bulk_values).unwrap();
+        }),
+    );
+    row(
+        "pread_i32_array (1024 elems)",
+        measure(1024, iters, || {
+            bulk_sink.pread_i32_array(0, &mut bulk_back).unwrap();
+        }),
+    );
+
+    // Repeated-value fill: never materializes the array (vs building a Vec then writing it).
+    let mut fill_sink = Heap::with_capacity(4096);
+    fill_sink.pwrite_i32_repeat(0, -1, 1024).unwrap();
+    row(
+        "pwrite_i32_repeat (1024 elems)",
+        measure(1024, iters, || {
+            fill_sink.pwrite_i32_repeat(0, -1, 1024).unwrap();
+        }),
+    );
+    row(
+        "repeat via full Vec (compare)",
+        measure(1024, iters, || {
+            let all = vec![-1i32; 1024];
+            fill_sink.pwrite_i32_array(0, &all).unwrap();
+        }),
+    );
+
+    // UTF-8 text over the byte layer: the read owns exactly its String.
+    let mut text = Heap::with_capacity(64);
+    text.pwrite_utf8(0, "héllo wörld — text!");
+    let text_len = text.byte_size() as usize;
+    row(
+        "pread_utf8 (short text)",
+        measure(1, iters, || {
+            let _ = text.pread_utf8(0, text_len).unwrap();
+        }),
+    );
 }

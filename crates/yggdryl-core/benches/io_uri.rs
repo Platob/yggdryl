@@ -238,42 +238,42 @@ fn main() {
     // each allocate once.
     let q = Uri::parse_str("http://h/p?a=1&b=2&c=3&d=4&a=9").unwrap();
     row(
-        "query_param (read, first)",
+        "param (read, first)",
         measure(1, iters, || {
-            let _ = q.query_param("c");
+            let _ = q.param("c");
         }),
     );
     row(
-        "query_params (map view)",
+        "params (map view)",
         measure(1, iters, || {
-            let _ = q.query_params();
+            let _ = q.params();
         }),
     );
     row(
-        "query_param_decoded (clean)",
+        "param_decoded (clean)",
         measure(1, iters, || {
-            let _ = q.query_param_decoded("c");
+            let _ = q.param_decoded("c");
         }),
     );
     let mut q_set = q.clone();
     row(
-        "set_query_param (update)",
+        "set_param (update)",
         measure(1, iters, || {
-            q_set.set_query_param("b", "9");
+            q_set.set_param("b", "9");
         }),
     );
     let mut q_bulk = q.clone();
     row(
-        "set_query_params (bulk x3)",
+        "set_params (bulk x3)",
         measure(1, iters, || {
-            q_bulk.set_query_params(&[("b", "9"), ("e", "5"), ("a", "0")]);
+            q_bulk.set_params(&[("b", "9"), ("e", "5"), ("a", "0")]);
         }),
     );
     let mut q_norm = q.clone();
     row(
-        "normalize_query (sort+clean)",
+        "normalize_params (sort+clean)",
         measure(1, iters, || {
-            q_norm.normalize_query();
+            q_norm.normalize_params();
         }),
     );
 }

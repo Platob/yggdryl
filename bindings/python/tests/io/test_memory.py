@@ -280,7 +280,7 @@ def test_heap_is_unhashable_like_bytearray():
 def test_heap_uri_default_and_set():
     h = Heap(b"x")
     assert isinstance(h.uri, Uri)
-    assert h.uri == Uri.parse("")  # empty/opaque by default
+    assert str(h.uri) == "mem://heap"  # stable synthetic in-memory address by default
 
     addr = Uri.parse("mem://buf/1")
     h.set_uri(addr)
@@ -293,7 +293,7 @@ def test_heap_with_uri_is_a_copy():
     addr = Uri.parse("mem://scratch/a")
     named = h.with_uri(addr)
     assert named.uri == addr
-    assert h.uri == Uri.parse("")  # original address untouched
+    assert str(h.uri) == "mem://heap"  # original address untouched (still the default)
     assert named == h  # equality is over the bytes; the address is metadata
 
 

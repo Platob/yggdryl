@@ -107,6 +107,23 @@ macro_rules! cursor_methods {
             Ok(())
         }
 
+        /// Reads up to `len` **bytes** from the cursor and decodes them as UTF-8 text (clamped
+        /// near the end), advancing the cursor by the bytes read, or errors with
+        /// [`IoError::InvalidUtf8`] (leaving the cursor put).
+        pub fn read_utf8(&mut self, len: usize) -> Result<String, IoError> {
+            let text = self.pread_utf8(self.position, len)?;
+            self.position += text.len() as u64;
+            Ok(text)
+        }
+
+        /// Writes `text`'s UTF-8 bytes at the cursor, advancing it; returns the number of
+        /// **bytes** written.
+        pub fn write_utf8(&mut self, text: &str) -> usize {
+            let written = self.pwrite_utf8(self.position, text);
+            self.position += written as u64;
+            written
+        }
+
         /// Reads up to `len` bytes from the current position into a fresh `Vec` (short near the
         /// end), advancing the cursor by the number read.
         pub fn read_vec(&mut self, len: usize) -> Vec<u8> {
@@ -228,5 +245,21 @@ impl<T: IOBase> IOBase for IOCursor<T> {
 
     fn uri(&self) -> crate::io::uri::Uri {
         self.inner.uri()
+    }
+
+    fn headers(&self) -> &crate::io::Headers {
+        self.inner.headers()
+    }
+
+    fn headers_mut(&mut self) -> &mut crate::io::Headers {
+        self.inner.headers_mut()
+    }
+
+    fn mode(&self) -> crate::io::IOMode {
+        self.inner.mode()
+    }
+
+    fn kind(&self) -> crate::io::IOKind {
+        self.inner.kind()
     }
 }

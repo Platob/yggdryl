@@ -38,7 +38,7 @@ pub(crate) const fn is_userinfo_safe(byte: u8) -> bool {
 
 /// Query-parameter key/value safe set — `unreserved` only, so the structural `&` `=` `+`
 /// (and spaces) of a value never break the surrounding query.
-pub(crate) const fn is_query_param_safe(byte: u8) -> bool {
+pub(crate) const fn is_param_safe(byte: u8) -> bool {
     is_unreserved(byte)
 }
 

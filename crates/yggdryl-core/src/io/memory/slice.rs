@@ -99,4 +99,20 @@ impl<T: IOBase> IOBase for IOSlice<T> {
     fn uri(&self) -> crate::io::uri::Uri {
         self.inner.uri()
     }
+
+    fn headers(&self) -> &crate::io::Headers {
+        self.inner.headers()
+    }
+
+    fn headers_mut(&mut self) -> &mut crate::io::Headers {
+        self.inner.headers_mut()
+    }
+
+    fn mode(&self) -> crate::io::IOMode {
+        self.inner.mode()
+    }
+
+    fn kind(&self) -> crate::io::IOKind {
+        self.inner.kind()
+    }
 }

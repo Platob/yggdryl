@@ -299,91 +299,91 @@ def test_parity_with_urllib(raw):
     assert ours.path == theirs.path
 
 
-def test_query_param_crud():
+def test_param_crud():
     uri = Uri.parse("http://h/p?a=1&b=2&a=3")
     # Read
-    assert uri.query_param("a") == "1"  # first occurrence wins
-    assert uri.query_param("missing") is None
-    assert uri.query_param_all("a") == ["1", "3"]
-    # query_params groups every value of a key into a tuple, first-appearance order preserved.
-    assert uri.query_params() == {"a": ("1", "3"), "b": ("2",)}
-    assert list(uri.query_params()) == ["a", "b"]  # key order preserved
-    assert uri.has_query_param("b")
-    assert not uri.has_query_param("z")
+    assert uri.param("a") == "1"  # first occurrence wins
+    assert uri.param("missing") is None
+    assert uri.param_all("a") == ["1", "3"]
+    # params groups every value of a key into a tuple, first-appearance order preserved.
+    assert uri.params() == {"a": ("1", "3"), "b": ("2",)}
+    assert list(uri.params()) == ["a", "b"]  # key order preserved
+    assert uri.has_param("b")
+    assert not uri.has_param("z")
 
     # Update (map semantics) then create (absent -> appended)
-    uri.set_query_param("a", "9")
+    uri.set_param("a", "9")
     assert uri.query == "a=9&b=2"
-    uri.set_query_param("c", "7")
+    uri.set_param("c", "7")
     assert uri.query == "a=9&b=2&c=7"
 
     # Delete
-    assert uri.remove_query_param("a") is True
+    assert uri.remove_param("a") is True
     assert uri.query == "b=2&c=7"
-    assert uri.remove_query_param("z") is False
+    assert uri.remove_param("z") is False
 
     # Builder variants return fresh values
-    built = Uri.parse("http://h/p").with_query_param("x", "1").with_query_param("y", "2")
+    built = Uri.parse("http://h/p").with_param("x", "1").with_param("y", "2")
     assert str(built) == "http://h/p?x=1&y=2"
-    assert str(built.without_query_param("x")) == "http://h/p?y=2"
+    assert str(built.without_param("x")) == "http://h/p?y=2"
 
 
-def test_query_param_on_url_and_edges():
+def test_param_on_url_and_edges():
     url = Url.parse("https://h/p?flag&a=")
-    assert url.query_param("flag") == ""  # bare key -> empty value
-    assert url.query_param("a") == ""  # explicit empty value
-    assert url.has_query_param("flag")
-    url.set_query_param("flag", "on")
-    assert url.query_param("flag") == "on"
-    assert Uri.parse("http://h/p?t=a=b").query_param("t") == "a=b"  # value keeps inner '='
+    assert url.param("flag") == ""  # bare key -> empty value
+    assert url.param("a") == ""  # explicit empty value
+    assert url.has_param("flag")
+    url.set_param("flag", "on")
+    assert url.param("flag") == "on"
+    assert Uri.parse("http://h/p?t=a=b").param("t") == "a=b"  # value keeps inner '='
 
 
-def test_query_params_bulk_and_normalize():
+def test_params_bulk_and_normalize():
     uri = Uri.parse("http://h/p?a=1&b=2&a=3")
-    uri.set_query_params([("a", "9"), ("c", "7")])  # bulk update in one pass
+    uri.set_params([("a", "9"), ("c", "7")])  # bulk update in one pass
     assert uri.query == "a=9&b=2&c=7"
-    uri.set_query_params(list({"z": "1"}.items()))  # apply a dict via items()
-    assert uri.query_param("z") == "1"
+    uri.set_params(list({"z": "1"}.items()))  # apply a dict via items()
+    assert uri.param("z") == "1"
 
     messy = Uri.parse("http://h/p?c=3&a=1&&b=2")
-    messy.normalize_query()  # sort by key + drop empty tokens
+    messy.normalize_params()  # sort by key + drop empty tokens
     assert messy.query == "a=1&b=2&c=3"
 
-    built = Uri.parse("http://h/p?b=2").with_query_params([("a", "1")]).with_normalized_query()
+    built = Uri.parse("http://h/p?b=2").with_params([("a", "1")]).with_normalized_params()
     assert str(built) == "http://h/p?a=1&b=2"
 
 
-def test_query_param_encoding():
+def test_param_encoding():
     uri = Uri.parse("http://h/p")
-    uri.set_query_param("q", "a b&c")
+    uri.set_param("q", "a b&c")
     assert uri.query == "q=a%20b%26c"                          # stored encoded
-    assert uri.query_param("q") == "a b&c"                     # decoded by default
-    assert uri.query_param("q", encoded=True) == "a%20b%26c"   # raw stored form
+    assert uri.param("q") == "a b&c"                     # decoded by default
+    assert uri.param("q", encoded=True) == "a%20b%26c"   # raw stored form
 
     for value in ["plain", "a b", "100%", "x&y=z", "café", ""]:
-        u = Uri.parse("http://h/p").with_query_param("k", value)
-        assert u.query_param("k") == value                     # set -> get round-trips
+        u = Uri.parse("http://h/p").with_param("k", value)
+        assert u.param("k") == value                     # set -> get round-trips
 
-    u = Uri.parse("http://h/p").with_query_param("n", "a b").with_query_param("t", "x&y")
-    # query_params groups by key in stored (encoded) form; per-key decoding stays on query_param.
-    assert u.query_params() == {"n": ("a%20b",), "t": ("x%26y",)}
-    assert u.query_param("n") == "a b" and u.query_param("t") == "x&y"  # decoded per key
+    u = Uri.parse("http://h/p").with_param("n", "a b").with_param("t", "x&y")
+    # params groups by key in stored (encoded) form; per-key decoding stays on param.
+    assert u.params() == {"n": ("a%20b",), "t": ("x%26y",)}
+    assert u.param("n") == "a b" and u.param("t") == "x&y"  # decoded per key
 
     assert Uri.parse("http://h").with_path("/a b").path == "/a%20b"     # component encoded
 
 
-def test_query_params_grouped_dict():
+def test_params_grouped_dict():
     # Repeated keys collapse into one entry whose tuple holds every value, order preserved.
     uri = Uri.parse("http://h/p?a=1&b=2&a=3&c=4&a=5")
-    grouped = uri.query_params()
+    grouped = uri.params()
     assert grouped == {"a": ("1", "3", "5"), "b": ("2",), "c": ("4",)}
     assert isinstance(grouped["a"], tuple)
     assert list(grouped) == ["a", "b", "c"]  # first-appearance order
     # No query -> empty dict.
-    assert Uri.parse("http://h/p").query_params() == {}
+    assert Uri.parse("http://h/p").params() == {}
     # Url mirrors it method-for-method.
     url = Url.parse("https://h/p?x=1&x=2&y=3")
-    assert url.query_params() == {"x": ("1", "2"), "y": ("3",)}
+    assert url.params() == {"x": ("1", "2"), "y": ("3",)}
 
 
 def test_copy_with_field_overrides():
@@ -433,3 +433,35 @@ def test_url_authority_totals():
     assert isinstance(empty, Authority)
     assert empty.host == ""
     assert mailto.host == ""
+
+
+def test_param_dunders_map_protocol():
+    # __getitem__ / __setitem__ / __delitem__ / __contains__ act on the params map (like dict).
+    uri = Uri.parse("http://h/p?a=1&b=x%20y")
+    assert uri["a"] == "1"
+    assert uri["b"] == "x y"  # decoded, like param(key)
+    assert "a" in uri
+    assert "zzz" not in uri
+
+    uri["c"] = "3"  # create
+    assert uri.query == "a=1&b=x%20y&c=3"
+    uri["a"] = "9"  # update in place
+    assert uri["a"] == "9"
+
+    del uri["a"]
+    assert "a" not in uri
+
+    import pytest as _pytest
+
+    with _pytest.raises(KeyError):
+        _ = uri["missing"]
+    with _pytest.raises(KeyError):
+        del uri["missing"]
+
+    # Url mirrors the same protocol.
+    url = Url.parse("https://h/p?k=v")
+    assert url["k"] == "v"
+    url["k"] = "w"
+    assert "k" in url
+    del url["k"]
+    assert "k" not in url

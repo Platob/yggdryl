@@ -273,16 +273,16 @@ test('toString reports the length', () => {
 // Heap address (uri)
 // -------------------------------------------------------------------------------------
 
-test('uri defaults to the empty Uri; setUri / withUri attach an address', () => {
+test('uri defaults to the synthetic mem://heap; setUri / withUri attach an address', () => {
   const h = new Heap(Buffer.from('x'))
   assert.ok(h.uri instanceof Uri)
-  assert.equal(h.uri.toString(), '') // empty by default
+  assert.equal(h.uri.toString(), 'mem://heap') // stable synthetic default
 
   // withUri returns a copy with the address set; the original is untouched.
   const named = h.withUri(Uri.parse('mem://buf/1'))
   assert.equal(named.uri.host, 'buf')
   assert.equal(named.uri.toString(), 'mem://buf/1')
-  assert.equal(h.uri.toString(), '') // original untouched
+  assert.equal(h.uri.toString(), 'mem://heap') // original untouched (still the default)
 
   // setUri mutates in place.
   h.setUri(Uri.parse('mem://scratch/a'))

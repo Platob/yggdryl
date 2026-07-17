@@ -31,19 +31,19 @@ cargo test  -p yggdryl-core --test io_uri_alloc            # deterministic memor
 | `merge_with` (overlay) | 3.07 | 4.00 | 41.0 |
 | `to_string` (Display) | 3.64 | 3.36 | 119.4 |
 | `HashMap` lookup (`Uri` key) | 2.08 | **2.00** | 95.5 |
-| `query_param` (read, first) | 13.62 | **0.00** | 0.0 |
-| `query_params` (map view) | 5.88 | **1.00** | 160.0 |
-| `query_param_decoded` (clean) | 10.61 | **0.00** | 0.0 |
-| `set_query_param` (update) | 6.91 | **1.00** | 23.0 |
-| `set_query_params` (bulk ×3) | 2.82 | **3.00** | 130.0 |
-| `normalize_query` (sort+clean) | 3.34 | **2.00** | 99.0 |
+| `param` (read, first) | 13.62 | **0.00** | 0.0 |
+| `params` (map view) | 5.88 | **1.00** | 160.0 |
+| `param_decoded` (clean) | 10.61 | **0.00** | 0.0 |
+| `set_param` (update) | 6.91 | **1.00** | 23.0 |
+| `set_params` (bulk ×3) | 2.82 | **3.00** | 130.0 |
+| `normalize_params` (sort+clean) | 3.34 | **2.00** | 99.0 |
 
 `parse` allocates one `String` per present component (scheme/host/path/query/fragment/…);
 that is inherent to an owning split. The accessors return borrows, so they allocate
 nothing — the zero-copy hand-off the design promises.
 
-The query-parameter map (`query_param` / `query_param_all` / `query_params` /
-`has_query_param` + `set`/`with`/`remove`/`without`) keeps that discipline: reads are
+The query-parameter map (`param` / `param_all` / `params` /
+`has_param` + `set`/`with`/`remove`/`without`) keeps that discipline: reads are
 **zero-copy** views into the raw query, the `Vec` views pre-size to **one** allocation, and
 a write rebuilds the query in **one** pre-sized allocation (an absent-key removal is a
 0-alloc no-op). The `uri_alloc` test asserts each of these budgets.

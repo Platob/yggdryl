@@ -298,8 +298,11 @@ fn from_vec_is_zero_copy_into_vec_roundtrips() {
 // -------------------------------------------------------------------------------------
 
 #[test]
-fn uri_default_empty_and_settable() {
-    assert_eq!(Heap::new().uri(), Uri::default());
+fn uri_default_is_mem_heap_and_settable() {
+    // An unaddressed heap reports the stable synthetic mem:// address (deterministic).
+    assert_eq!(Heap::new().uri().to_string(), "mem://heap");
+    assert_eq!(Heap::new().uri().scheme(), Some("mem"));
+    assert_eq!(Heap::new().uri().host(), Some("heap"));
     let named = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
     assert_eq!(named.uri().host(), Some("scratch"));
 
@@ -385,4 +388,181 @@ fn window_is_composable() {
 
     let mut cur = Heap::from_slice(b"abcdefgh").window(2, 4).unwrap().cursor();
     assert_eq!(cur.read_vec(4), b"cdef");
+}
+
+// -------------------------------------------------------------------------------------
+// Bulk typed arrays + repeated-value fills (vectorized, zero-heap-alloc staging)
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn bulk_i32_array_roundtrip_and_eof() {
+    let mut h = Heap::new();
+    // Longer than one 256-element staging chunk, to cross the chunk boundary.
+    let values: Vec<i32> = (0..1000).map(|i| i * 3 - 1500).collect();
+    h.pwrite_i32_array(0, &values).unwrap();
+    assert_eq!(h.byte_size(), 4000);
+
+    let mut back = vec![0i32; 1000];
+    h.pread_i32_array(0, &mut back).unwrap();
+    assert_eq!(back, values);
+
+    // Misaligned offset still works (byte-addressed), and running past the end errors.
+    assert_eq!(h.pread_i32(4).unwrap(), values[1]);
+    let mut too_many = vec![0i32; 1001];
+    assert!(matches!(
+        h.pread_i32_array(0, &mut too_many).unwrap_err(),
+        IoError::UnexpectedEof { .. }
+    ));
+}
+
+#[test]
+fn bulk_i64_array_roundtrip() {
+    let mut h = Heap::new();
+    let values: Vec<i64> = (0..300).map(|i| (i as i64) << 33).collect();
+    h.pwrite_i64_array(0, &values).unwrap();
+    let mut back = vec![0i64; 300];
+    h.pread_i64_array(0, &mut back).unwrap();
+    assert_eq!(back, values);
+}
+
+#[test]
+fn repeat_fills_without_building_arrays() {
+    let mut h = Heap::new();
+    h.pwrite_byte_repeat(0, 0xAB, 3000).unwrap(); // > one staging chunk
+    assert_eq!(h.byte_size(), 3000);
+    assert!(h.as_slice().iter().all(|&b| b == 0xAB));
+
+    let mut h32 = Heap::new();
+    h32.pwrite_i32_repeat(0, -7, 700).unwrap();
+    let mut back = vec![0i32; 700];
+    h32.pread_i32_array(0, &mut back).unwrap();
+    assert!(back.iter().all(|&v| v == -7));
+
+    let mut h64 = Heap::new();
+    h64.pwrite_i64_repeat(4, 1 << 40, 300).unwrap(); // offset keeps a zero-filled gap
+    assert_eq!(h64.pread_i32(0).unwrap(), 0);
+    let mut wide = vec![0i64; 300];
+    h64.pread_i64_array(4, &mut wide).unwrap();
+    assert!(wide.iter().all(|&v| v == 1 << 40));
+}
+
+// -------------------------------------------------------------------------------------
+// UTF-8 read/write over the byte layer
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn utf8_positioned_roundtrip_and_errors() {
+    let mut h = Heap::new();
+    assert_eq!(h.pwrite_utf8(0, "héllo wörld"), 13); // 2 two-byte chars
+    assert_eq!(h.pread_utf8(0, 13).unwrap(), "héllo wörld");
+    // Clamped near the end like pread_vec.
+    assert_eq!(h.pread_utf8(7, 100).unwrap(), "wörld");
+    // Cutting a multi-byte character mid-sequence is a guided error.
+    let err = h.pread_utf8(0, 2).unwrap_err();
+    assert!(matches!(err, IoError::InvalidUtf8 { .. }));
+    assert!(err.to_string().contains("invalid UTF-8"));
+    // Non-text bytes error too.
+    let bin = Heap::from_slice(&[0xff, 0xfe]);
+    assert!(bin.pread_utf8(0, 2).is_err());
+}
+
+#[test]
+fn utf8_cursor_roundtrip() {
+    let mut h = Heap::new();
+    assert_eq!(h.write_utf8("ab"), 2);
+    assert_eq!(h.write_utf8("cé"), 3);
+    assert_eq!(h.position(), 5);
+    h.rewind();
+    assert_eq!(h.read_utf8(2).unwrap(), "ab");
+    assert_eq!(h.read_utf8(3).unwrap(), "cé");
+    assert_eq!(h.position(), 5);
+    // A failed decode leaves the cursor put.
+    h.rewind();
+    assert!(h.read_utf8(4).is_err()); // cuts é
+    assert_eq!(h.position(), 0);
+
+    // The cursor wrapper inherits the same methods.
+    let mut cur = Heap::new().cursor();
+    cur.write_utf8("xyz");
+    cur.rewind();
+    assert_eq!(cur.read_utf8(3).unwrap(), "xyz");
+}
+
+// -------------------------------------------------------------------------------------
+// Trait-level with_capacity + headers/mode/kind + Serializable
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn trait_with_capacity_preallocates_any_source() {
+    let heap = <Heap as IOBase>::with_capacity(4096);
+    assert!(heap.is_empty());
+    assert!(heap.capacity() >= 4096);
+    // Works for the wrappers too (Default + reserve delegation).
+    let cur = <IOCursor<Heap> as IOBase>::with_capacity(128);
+    assert!(cur.capacity() >= 128);
+}
+
+#[test]
+fn headers_metadata_lives_on_every_source() {
+    let mut h = Heap::new();
+    assert!(h.headers().is_empty());
+    h.headers_mut()
+        .insert("Content-Type", "application/octet-stream");
+    assert_eq!(h.headers().content_type(), Some("application/octet-stream"));
+
+    // The builder trio.
+    let built = Heap::new().with_headers(yggdryl_core::io::Headers::new().with("k", "v"));
+    assert_eq!(built.headers().get("k"), Some("v"));
+
+    // Wrappers delegate to the inner source's map.
+    let mut cur = built.cursor();
+    cur.headers_mut().insert("k", "v2");
+    assert_eq!(cur.headers().get("k"), Some("v2"));
+    let win = Heap::from_slice(b"abcd")
+        .with_headers(yggdryl_core::io::Headers::new().with("w", "1"))
+        .window(1, 2)
+        .unwrap();
+    assert_eq!(win.headers().get("w"), Some("1"));
+
+    // Metadata is not part of value equality.
+    assert_eq!(
+        Heap::from_slice(b"x").with_headers(yggdryl_core::io::Headers::new().with("a", "1")),
+        Heap::from_slice(b"x")
+    );
+}
+
+#[test]
+fn mode_and_kind_accessors() {
+    use yggdryl_core::io::{IOKind, IOMode};
+    let h = Heap::new();
+    assert_eq!(h.mode(), IOMode::ReadWrite); // in-memory default
+    assert_eq!(h.kind(), IOKind::Heap);
+
+    let read_only = Heap::new().with_mode(IOMode::Read);
+    assert_eq!(read_only.mode(), IOMode::Read);
+    let mut m = Heap::new();
+    m.set_mode(IOMode::Append);
+    assert_eq!(m.mode(), IOMode::Append);
+
+    // Wrappers delegate both.
+    let cur = read_only.cursor();
+    assert_eq!(cur.mode(), IOMode::Read);
+    assert_eq!(cur.kind(), IOKind::Heap);
+    let win = Heap::from_slice(b"ab")
+        .with_mode(IOMode::Read)
+        .window(0, 1)
+        .unwrap();
+    assert_eq!(win.mode(), IOMode::Read);
+    assert_eq!(win.kind(), IOKind::Heap);
+}
+
+#[test]
+fn heap_serializable_is_its_bytes() {
+    use yggdryl_core::io::Serializable;
+    let h = Heap::from_slice(b"payload").with_uri(Uri::parse_str("mem://x/1").unwrap());
+    let bytes = Serializable::serialize_bytes(&h);
+    assert_eq!(bytes, b"payload");
+    let back = <Heap as Serializable>::deserialize_bytes(&bytes).unwrap();
+    assert_eq!(back, h); // equality is content-only, so the round-trip is exact
+    assert_eq!(back.uri().to_string(), "mem://heap"); // metadata is not serialized
 }

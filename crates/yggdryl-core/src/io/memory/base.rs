@@ -2,6 +2,18 @@
 
 use super::{IOCursor, IOSlice, IoError};
 use crate::io::uri::Uri;
+use crate::io::{Headers, IOKind, IOMode};
+
+/// The default address of an unaddressed in-memory source — the stable synthetic `mem://heap`
+/// (deterministic; the real allocation address is deliberately not leaked).
+pub(crate) fn mem_heap_uri() -> Uri {
+    Uri::parse_str("mem://heap").expect("the static mem://heap URI parses")
+}
+
+/// The element count bulk operations stage per stack chunk — sized so the largest staged
+/// chunk (`i64`: 256 × 8 = 2 KiB) stays comfortably on the stack while the per-chunk convert
+/// loop is long enough for LLVM to vectorize.
+const BULK_CHUNK: usize = 256;
 
 /// Random-access byte storage addressed by absolute offset — no cursor. This is the base
 /// every I/O **source** shares: [`IOCursor`](super::IOCursor) adds a moving position on top, and
@@ -55,24 +67,65 @@ pub trait IOBase {
         let _ = additional;
     }
 
-    /// The [`Uri`] that **addresses** this source — every source is locatable. The default is an
-    /// empty (opaque) URI for a source with no meaningful address (a scratch buffer); a source
-    /// that has one (an in-heap [`Heap`](super::Heap) with a set address, a future file/network
-    /// source) overrides it to return its own.
+    /// Builds a source **pre-allocated** for `capacity` bytes — the fast path when the size is
+    /// known up front, so the first writes never reallocate. Works on any source that is
+    /// `Default` (an empty value plus one [`reserve`](IOBase::reserve)); a source with a cheaper
+    /// exact allocation may override it.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let heap = <Heap as IOBase>::with_capacity(4096);
+    /// assert!(heap.is_empty());
+    /// assert!(heap.capacity() >= 4096);
+    /// ```
+    fn with_capacity(capacity: u64) -> Self
+    where
+        Self: Sized + Default,
+    {
+        let mut source = Self::default();
+        source.reserve(capacity);
+        source
+    }
+
+    /// The [`Uri`] that **addresses** this source — every source is locatable. The default is
+    /// the stable synthetic in-memory address `mem://heap` (the `mem` scheme addresses
+    /// in-memory sources; deterministic, so tests and logs can rely on it). A source with a
+    /// real address (a set [`Heap`](super::Heap) URI, a future file/network source) overrides
+    /// it to return its own.
     ///
     /// ```
     /// use yggdryl_core::io::memory::{Heap, IOBase};
     /// use yggdryl_core::io::uri::Uri;
     ///
-    /// // An unaddressed source reports the empty URI…
-    /// assert_eq!(Heap::new().uri(), Uri::default());
-    /// // …and one can be attached.
+    /// // An unaddressed in-memory source reports the synthetic mem:// address…
+    /// assert_eq!(Heap::new().uri().to_string(), "mem://heap");
+    /// assert_eq!(Heap::new().uri().scheme(), Some("mem"));
+    /// // …and a real one can be attached.
     /// let named = Heap::new().with_uri(Uri::parse_str("mem://scratch/a").unwrap());
     /// assert_eq!(named.uri().host(), Some("scratch"));
     /// ```
     fn uri(&self) -> Uri {
-        Uri::default()
+        mem_heap_uri()
     }
+
+    /// The metadata attached to this source — the project-wide [`Headers`] map (HTTP headers,
+    /// schema/field metadata, source annotations all live here; never a second map type).
+    fn headers(&self) -> &Headers;
+
+    /// Mutable access to the source's [`Headers`] metadata.
+    fn headers_mut(&mut self) -> &mut Headers;
+
+    /// How this source may be accessed — see [`IOMode`]. In-memory sources default to
+    /// [`IOMode::ReadWrite`]; a source opened otherwise overrides it.
+    fn mode(&self) -> IOMode {
+        IOMode::ReadWrite
+    }
+
+    /// What this source **is** — see [`IOKind`] ([`Heap`](super::Heap) reports
+    /// [`IOKind::Heap`]; a file source reports [`IOKind::File`] / [`IOKind::Directory`], or
+    /// [`IOKind::Missing`] when nothing exists at its address).
+    fn kind(&self) -> IOKind;
 
     /// **Positioned read** (primitive). Copies up to `buf.len()` bytes starting at `offset` into
     /// `buf`, returning the number copied — `0` at or past the end, a short count near it. Never
@@ -278,6 +331,177 @@ pub trait IOBase {
     /// Writes `value` as a little-endian `i64` (8 bytes) at `offset`, growing as needed.
     fn pwrite_i64(&mut self, offset: u64, value: i64) -> Result<(), IoError> {
         self.pwrite_all(offset, &value.to_le_bytes())
+    }
+
+    /// Reads up to `len` **bytes** at `offset` and decodes them as UTF-8 text (clamped near the
+    /// end, like [`pread_vec`](IOBase::pread_vec)), or errors with [`IoError::InvalidUtf8`]
+    /// naming the offending byte — including a multi-byte character cut by the range. Built on
+    /// the byte primitives, so every source inherits it.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut data = Heap::new();
+    /// data.pwrite_utf8(0, "héllo");
+    /// assert_eq!(data.pread_utf8(0, 6).unwrap(), "héllo"); // é is 2 bytes
+    /// assert!(data.pread_utf8(0, 2).is_err());             // cuts é in half
+    /// ```
+    fn pread_utf8(&self, offset: u64, len: usize) -> Result<String, IoError> {
+        String::from_utf8(self.pread_vec(offset, len)).map_err(|error| IoError::InvalidUtf8 {
+            position: error.utf8_error().valid_up_to(),
+        })
+    }
+
+    /// Writes `text`'s UTF-8 bytes at `offset` (growing as needed); returns the number of
+    /// **bytes** written. The exact writing counterpart of [`pread_utf8`](IOBase::pread_utf8).
+    fn pwrite_utf8(&mut self, offset: u64, text: &str) -> usize {
+        self.pwrite_byte_array(offset, text.as_bytes())
+    }
+
+    /// **Bulk typed read.** Fills *all* of `dst` with little-endian `i32`s starting at `offset`,
+    /// or errors with [`IoError::UnexpectedEof`]. Stages through a fixed stack chunk — zero heap
+    /// allocation — and converts each chunk in a dense, branch-free loop the compiler
+    /// vectorizes.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut data = Heap::new();
+    /// data.pwrite_i32_array(0, &[1, -2, 3]).unwrap();
+    /// let mut values = [0i32; 3];
+    /// data.pread_i32_array(0, &mut values).unwrap();
+    /// assert_eq!(values, [1, -2, 3]);
+    /// ```
+    fn pread_i32_array(&self, offset: u64, dst: &mut [i32]) -> Result<(), IoError> {
+        let mut bytes = [0u8; BULK_CHUNK * 4];
+        let mut position = offset;
+        for chunk in dst.chunks_mut(BULK_CHUNK) {
+            let staged = &mut bytes[..chunk.len() * 4];
+            self.pread_exact(position, staged)?;
+            for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(4)) {
+                *value = i32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]);
+            }
+            position += staged.len() as u64;
+        }
+        Ok(())
+    }
+
+    /// **Bulk typed write.** Writes all of `src` as little-endian `i32`s at `offset` (growing
+    /// as needed). Stages through a fixed stack chunk — zero heap allocation, vectorizable.
+    fn pwrite_i32_array(&mut self, offset: u64, src: &[i32]) -> Result<(), IoError> {
+        let mut bytes = [0u8; BULK_CHUNK * 4];
+        let mut position = offset;
+        for chunk in src.chunks(BULK_CHUNK) {
+            let staged = &mut bytes[..chunk.len() * 4];
+            for (raw, value) in staged.chunks_exact_mut(4).zip(chunk) {
+                raw.copy_from_slice(&value.to_le_bytes());
+            }
+            self.pwrite_all(position, staged)?;
+            position += staged.len() as u64;
+        }
+        Ok(())
+    }
+
+    /// **Bulk typed read** of little-endian `i64`s — the wide counterpart of
+    /// [`pread_i32_array`](IOBase::pread_i32_array).
+    fn pread_i64_array(&self, offset: u64, dst: &mut [i64]) -> Result<(), IoError> {
+        let mut bytes = [0u8; BULK_CHUNK * 8];
+        let mut position = offset;
+        for chunk in dst.chunks_mut(BULK_CHUNK) {
+            let staged = &mut bytes[..chunk.len() * 8];
+            self.pread_exact(position, staged)?;
+            for (value, raw) in chunk.iter_mut().zip(staged.chunks_exact(8)) {
+                *value = i64::from_le_bytes(raw.try_into().expect("chunks_exact yields 8"));
+            }
+            position += staged.len() as u64;
+        }
+        Ok(())
+    }
+
+    /// **Bulk typed write** of little-endian `i64`s — the wide counterpart of
+    /// [`pwrite_i32_array`](IOBase::pwrite_i32_array).
+    fn pwrite_i64_array(&mut self, offset: u64, src: &[i64]) -> Result<(), IoError> {
+        let mut bytes = [0u8; BULK_CHUNK * 8];
+        let mut position = offset;
+        for chunk in src.chunks(BULK_CHUNK) {
+            let staged = &mut bytes[..chunk.len() * 8];
+            for (raw, value) in staged.chunks_exact_mut(8).zip(chunk) {
+                raw.copy_from_slice(&value.to_le_bytes());
+            }
+            self.pwrite_all(position, staged)?;
+            position += staged.len() as u64;
+        }
+        Ok(())
+    }
+
+    /// **Repeated-value fill.** Writes `count` copies of the byte `value` starting at `offset`
+    /// (growing as needed) — without ever materializing the full array: a fixed stack chunk is
+    /// filled once and written repeatedly. The byte-level `memset` of the family.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut data = Heap::new();
+    /// data.pwrite_byte_repeat(0, 0xAB, 5).unwrap();
+    /// assert_eq!(data.as_slice(), &[0xAB; 5]);
+    /// ```
+    fn pwrite_byte_repeat(&mut self, offset: u64, value: u8, count: usize) -> Result<(), IoError> {
+        let chunk = [value; BULK_CHUNK * 4];
+        let mut position = offset;
+        let mut remaining = count;
+        while remaining > 0 {
+            let take = remaining.min(chunk.len());
+            self.pwrite_all(position, &chunk[..take])?;
+            position += take as u64;
+            remaining -= take;
+        }
+        Ok(())
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i32` copies of `value` at `offset` —
+    /// no full array is built (one stack chunk, filled once, written repeatedly).
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let mut data = Heap::new();
+    /// data.pwrite_i32_repeat(0, -1, 3).unwrap();
+    /// let mut values = [0i32; 3];
+    /// data.pread_i32_array(0, &mut values).unwrap();
+    /// assert_eq!(values, [-1, -1, -1]);
+    /// ```
+    fn pwrite_i32_repeat(&mut self, offset: u64, value: i32, count: usize) -> Result<(), IoError> {
+        let mut chunk = [0u8; BULK_CHUNK * 4];
+        for raw in chunk.chunks_exact_mut(4) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        let mut position = offset;
+        let mut remaining = count;
+        while remaining > 0 {
+            let take = remaining.min(BULK_CHUNK);
+            self.pwrite_all(position, &chunk[..take * 4])?;
+            position += (take * 4) as u64;
+            remaining -= take;
+        }
+        Ok(())
+    }
+
+    /// **Repeated-value fill** of `count` little-endian `i64` copies of `value` at `offset` —
+    /// the wide counterpart of [`pwrite_i32_repeat`](IOBase::pwrite_i32_repeat).
+    fn pwrite_i64_repeat(&mut self, offset: u64, value: i64, count: usize) -> Result<(), IoError> {
+        let mut chunk = [0u8; BULK_CHUNK * 8];
+        for raw in chunk.chunks_exact_mut(8) {
+            raw.copy_from_slice(&value.to_le_bytes());
+        }
+        let mut position = offset;
+        let mut remaining = count;
+        while remaining > 0 {
+            let take = remaining.min(BULK_CHUNK);
+            self.pwrite_all(position, &chunk[..take * 8])?;
+            position += (take * 8) as u64;
+            remaining -= take;
+        }
+        Ok(())
     }
 
     /// Wraps this source in an [`IOCursor`] positioned at the start — the standard way to add a

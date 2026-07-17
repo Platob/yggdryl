@@ -594,7 +594,7 @@ impl Uri {
     // ---- query parameters (map access + CRUD) --------------------------------------
 
     /// The first value of query parameter `key`, or `None` if absent, as **stored**
-    /// (percent-encoded) — use [`query_param_decoded`](Uri::query_param_decoded) for the
+    /// (percent-encoded) — use [`param_decoded`](Uri::param_decoded) for the
     /// decoded value. Zero-copy: the value borrows the query string. A bare `key` with no
     /// `=` reads as an empty value. `key` is matched by its encoded form, so pass it decoded.
     ///
@@ -602,13 +602,13 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    /// assert_eq!(uri.query_param("a"), Some("1")); // first occurrence wins
-    /// assert_eq!(uri.query_param("b"), Some("2"));
-    /// assert_eq!(uri.query_param("z"), None);
+    /// assert_eq!(uri.param("a"), Some("1")); // first occurrence wins
+    /// assert_eq!(uri.param("b"), Some("2"));
+    /// assert_eq!(uri.param("z"), None);
     /// ```
-    pub fn query_param(&self, key: &str) -> Option<&str> {
+    pub fn param(&self, key: &str) -> Option<&str> {
         let query = self.query.as_deref()?;
-        let key = percent::encode(key, percent::is_query_param_safe);
+        let key = percent::encode(key, percent::is_param_safe);
         let key: &str = &key;
         query_pairs(query).find(|(k, _)| *k == key).map(|(_, v)| v)
     }
@@ -620,14 +620,14 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    /// assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);
-    /// assert!(uri.query_param_all("z").is_empty());
+    /// assert_eq!(uri.param_all("a"), vec!["1", "3"]);
+    /// assert!(uri.param_all("z").is_empty());
     /// ```
-    pub fn query_param_all(&self, key: &str) -> Vec<&str> {
+    pub fn param_all(&self, key: &str) -> Vec<&str> {
         let Some(query) = self.query.as_deref() else {
             return Vec::new();
         };
-        let key = percent::encode(key, percent::is_query_param_safe);
+        let key = percent::encode(key, percent::is_param_safe);
         let key: &str = &key;
         // Pre-size to the parameter count (an upper bound on the matches) so the collect
         // allocates once.
@@ -648,9 +648,9 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
-    /// assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2")]);
+    /// assert_eq!(uri.params(), vec![("a", "1"), ("b", "2")]);
     /// ```
-    pub fn query_params(&self) -> Vec<(&str, &str)> {
+    pub fn params(&self) -> Vec<(&str, &str)> {
         let Some(query) = self.query.as_deref() else {
             return Vec::new();
         };
@@ -670,11 +670,11 @@ impl Uri {
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     /// assert_eq!(
-    ///     uri.query_params_grouped(),
+    ///     uri.params_grouped(),
     ///     vec![("a", vec!["1", "3"]), ("b", vec!["2"])],
     /// );
     /// ```
-    pub fn query_params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
+    pub fn params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
         let Some(query) = self.query.as_deref() else {
             return Vec::new();
         };
@@ -696,16 +696,16 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?q=a%20b%26c").unwrap();
-    /// assert_eq!(uri.query_param("q").as_deref(), Some("a%20b%26c")); // stored (encoded)
-    /// assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b&c")); // decoded
+    /// assert_eq!(uri.param("q").as_deref(), Some("a%20b%26c")); // stored (encoded)
+    /// assert_eq!(uri.param_decoded("q").as_deref(), Some("a b&c")); // decoded
     /// ```
-    pub fn query_param_decoded(&self, key: &str) -> Option<Cow<'_, str>> {
-        self.query_param(key).map(percent::decode)
+    pub fn param_decoded(&self, key: &str) -> Option<Cow<'_, str>> {
+        self.param(key).map(percent::decode)
     }
 
     /// Every value of query parameter `key`, in order, each **percent-decoded**.
-    pub fn query_param_all_decoded(&self, key: &str) -> Vec<Cow<'_, str>> {
-        self.query_param_all(key)
+    pub fn param_all_decoded(&self, key: &str) -> Vec<Cow<'_, str>> {
+        self.param_all(key)
             .into_iter()
             .map(percent::decode)
             .collect()
@@ -713,8 +713,8 @@ impl Uri {
 
     /// All query parameters as ordered `(key, value)` pairs, each **percent-decoded** — the
     /// decoded map view.
-    pub fn query_params_decoded(&self) -> Vec<(Cow<'_, str>, Cow<'_, str>)> {
-        self.query_params()
+    pub fn params_decoded(&self) -> Vec<(Cow<'_, str>, Cow<'_, str>)> {
+        self.params()
             .into_iter()
             .map(|(key, value)| (percent::decode(key), percent::decode(value)))
             .collect()
@@ -727,11 +727,11 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let uri = Uri::parse_str("http://h/p?a=1").unwrap();
-    /// assert!(uri.has_query_param("a"));
-    /// assert!(!uri.has_query_param("b"));
+    /// assert!(uri.has_param("a"));
+    /// assert!(!uri.has_param("b"));
     /// ```
-    pub fn has_query_param(&self, key: &str) -> bool {
-        let key = percent::encode(key, percent::is_query_param_safe);
+    pub fn has_param(&self, key: &str) -> bool {
+        let key = percent::encode(key, percent::is_param_safe);
         let key: &str = &key;
         self.query
             .as_deref()
@@ -748,14 +748,14 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    /// uri.set_query_param("a", "9");
+    /// uri.set_param("a", "9");
     /// assert_eq!(uri.query(), Some("a=9&b=2")); // first updated, duplicate dropped
-    /// uri.set_query_param("c", "a b&c");
+    /// uri.set_param("c", "a b&c");
     /// assert_eq!(uri.query(), Some("a=9&b=2&c=a%20b%26c")); // value encoded on store
     /// ```
-    pub fn set_query_param(&mut self, key: &str, value: &str) {
-        let key = percent::encode(key, percent::is_query_param_safe);
-        let value = percent::encode(value, percent::is_query_param_safe);
+    pub fn set_param(&mut self, key: &str, value: &str) {
+        let key = percent::encode(key, percent::is_param_safe);
+        let value = percent::encode(value, percent::is_param_safe);
         let (key, value): (&str, &str) = (&key, &value);
         let existing = self.query.as_deref().unwrap_or("");
         let mut out = String::with_capacity(existing.len() + key.len() + value.len() + 2);
@@ -777,9 +777,9 @@ impl Uri {
         self.query = Some(out);
     }
 
-    /// [`set_query_param`](Uri::set_query_param) as a builder — returns the updated `Uri`.
-    pub fn with_query_param(mut self, key: &str, value: &str) -> Self {
-        self.set_query_param(key, value);
+    /// [`set_param`](Uri::set_param) as a builder — returns the updated `Uri`.
+    pub fn with_param(mut self, key: &str, value: &str) -> Self {
+        self.set_param(key, value);
         self
     }
 
@@ -791,15 +791,15 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    /// assert!(uri.remove_query_param("a"));
+    /// assert!(uri.remove_param("a"));
     /// assert_eq!(uri.query(), Some("b=2"));
-    /// assert!(!uri.remove_query_param("z")); // absent -> no-op
+    /// assert!(!uri.remove_param("z")); // absent -> no-op
     /// ```
-    pub fn remove_query_param(&mut self, key: &str) -> bool {
+    pub fn remove_param(&mut self, key: &str) -> bool {
         let Some(existing) = self.query.as_deref() else {
             return false;
         };
-        let key = percent::encode(key, percent::is_query_param_safe);
+        let key = percent::encode(key, percent::is_param_safe);
         let key: &str = &key;
         if !query_pairs(existing).any(|(k, _)| k == key) {
             return false; // absent — no rebuild, no allocation
@@ -814,26 +814,26 @@ impl Uri {
         true
     }
 
-    /// [`remove_query_param`](Uri::remove_query_param) as a builder — returns the updated `Uri`.
-    pub fn without_query_param(mut self, key: &str) -> Self {
-        self.remove_query_param(key);
+    /// [`remove_param`](Uri::remove_param) as a builder — returns the updated `Uri`.
+    pub fn without_param(mut self, key: &str) -> Self {
+        self.remove_param(key);
         self
     }
 
     /// **Bulk-updates** the query from `(key, value)` pairs in a single rebuild — each key
-    /// is set with the same map semantics as [`set_query_param`](Uri::set_query_param)
+    /// is set with the same map semantics as [`set_param`](Uri::set_param)
     /// (updated in place, later existing duplicates dropped, appended if absent), and a key
     /// repeated in `params` takes its **last** value. Cheaper than calling
-    /// `set_query_param` in a loop, which would rebuild the whole query each time.
+    /// `set_param` in a loop, which would rebuild the whole query each time.
     ///
     /// ```
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    /// uri.set_query_params(&[("a", "9"), ("c", "7")]);
+    /// uri.set_params(&[("a", "9"), ("c", "7")]);
     /// assert_eq!(uri.query(), Some("a=9&b=2&c=7")); // a updated (dup dropped), c appended
     /// ```
-    pub fn set_query_params(&mut self, params: &[(&str, &str)]) {
+    pub fn set_params(&mut self, params: &[(&str, &str)]) {
         if params.is_empty() {
             return;
         }
@@ -841,8 +841,8 @@ impl Uri {
         // (last wins), preserving first-appearance order.
         let mut updates: Vec<(Cow<str>, Cow<str>)> = Vec::with_capacity(params.len());
         for &(key, value) in params {
-            let key = percent::encode(key, percent::is_query_param_safe);
-            let value = percent::encode(value, percent::is_query_param_safe);
+            let key = percent::encode(key, percent::is_param_safe);
+            let value = percent::encode(value, percent::is_param_safe);
             match updates.iter_mut().find(|(k, _)| *k == key) {
                 Some(slot) => slot.1 = value,
                 None => updates.push((key, value)),
@@ -874,9 +874,9 @@ impl Uri {
         self.query = (!out.is_empty()).then_some(out);
     }
 
-    /// [`set_query_params`](Uri::set_query_params) as a builder — returns the updated `Uri`.
-    pub fn with_query_params(mut self, params: &[(&str, &str)]) -> Self {
-        self.set_query_params(params);
+    /// [`set_params`](Uri::set_params) as a builder — returns the updated `Uri`.
+    pub fn with_params(mut self, params: &[(&str, &str)]) -> Self {
+        self.set_params(params);
         self
     }
 
@@ -888,14 +888,14 @@ impl Uri {
     /// use yggdryl_core::io::uri::Uri;
     ///
     /// let mut uri = Uri::parse_str("http://h/p?c=3&a=1&b=2&a=0").unwrap();
-    /// uri.normalize_query();
+    /// uri.normalize_params();
     /// assert_eq!(uri.query(), Some("a=1&a=0&b=2&c=3")); // sorted; 'a' order kept
     ///
     /// let mut messy = Uri::parse_str("http://h/p?b=2&&a=1&").unwrap();
-    /// messy.normalize_query();
+    /// messy.normalize_params();
     /// assert_eq!(messy.query(), Some("a=1&b=2")); // empties cleaned, sorted
     /// ```
-    pub fn normalize_query(&mut self) {
+    pub fn normalize_params(&mut self) {
         let Some(existing) = self.query.as_deref() else {
             return;
         };
@@ -910,9 +910,9 @@ impl Uri {
         self.query = (!out.is_empty()).then_some(out);
     }
 
-    /// [`normalize_query`](Uri::normalize_query) as a builder — returns the normalized `Uri`.
-    pub fn with_normalized_query(mut self) -> Self {
-        self.normalize_query();
+    /// [`normalize_params`](Uri::normalize_params) as a builder — returns the normalized `Uri`.
+    pub fn with_normalized_params(mut self) -> Self {
+        self.normalize_params();
         self
     }
 
@@ -1148,5 +1148,17 @@ fn parse_port(port: Option<&str>) -> Result<Option<u16>, UriError> {
             .map_err(|_| UriError::InvalidPort {
                 port: p.to_string(),
             }),
+    }
+}
+
+impl crate::io::Serializable for Uri {
+    type Error = UriError;
+
+    fn serialize_bytes(&self) -> Vec<u8> {
+        Uri::serialize_bytes(self)
+    }
+
+    fn deserialize_bytes(bytes: &[u8]) -> Result<Self, UriError> {
+        Uri::deserialize_bytes(bytes)
     }
 }

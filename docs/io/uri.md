@@ -461,32 +461,35 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
     assert_eq!(dsn.to_string(), "postgres://svc@db.internal:5432/app");
     ```
 
-## Query parameters
+## Params — the query as a map
 
-The query is exposed as an ordered **map** with full CRUD. Writes **percent-encode** keys
-and values for storage — a value containing `&`, `=`, `#`, or a space is stored safely — and
-rebuild the query in a single pre-sized allocation. Reads return the **decoded** value by
-default (zero-copy when there is nothing to decode); pass `encoded=True` (Node: a `true`
-second argument) for the raw stored form. Components are stored encoded generally: `set_path`,
-`set_query`, `set_fragment`, `set_user`, `set_password`, and `from_path` encode too, while
-`parse` trusts its already-encoded input.
+**`query` names the raw string; `params` names the map.** `query()` / `set_query()` read and
+write the query **string** verbatim, while the `param*` family exposes it as an ordered **map**
+with full CRUD — in Python also through the dict protocol (`uri["key"]`, `uri["key"] = value`,
+`del uri["key"]`, `"key" in uri`). Writes **percent-encode** keys and values for storage — a
+value containing `&`, `=`, `#`, or a space is stored safely — and rebuild the query in a single
+pre-sized allocation. Reads return the **decoded** value by default (zero-copy when there is
+nothing to decode); pass `encoded=True` (Node: a `true` second argument) for the raw stored
+form. Components are stored encoded generally: `set_path`, `set_query`, `set_fragment`,
+`set_user`, `set_password`, and `from_path` encode too, while `parse` trusts its
+already-encoded input.
 
-- **Read** — `query_param(key)` (first value), `query_param_all(key)` (every value of a
-  repeated key), `query_params()` (the **grouped map** in first-appearance key order — each key
+- **Read** — `param(key)` (first value), `param_all(key)` (every value of a
+  repeated key), `params()` (the **grouped map** in first-appearance key order — each key
   mapped to **all** its values, so a repeated key like `?a=1&a=3` round-trips as one entry rather
   than colliding: a `dict[str, tuple[str, …]]` in Python, an ordered `Map<string, string[]>` in
-  Node), `has_query_param(key)`. In the Rust core the grouped view is `query_params_grouped()`
-  (`Vec<(&str, Vec<&str>)>`); `query_params()` there returns the raw ordered `(key, value)` pairs.
-- **Create / update** — `set_query_param(key, value)` updates the first occurrence in place,
+  Node), `has_param(key)`. In the Rust core the grouped view is `params_grouped()`
+  (`Vec<(&str, Vec<&str>)>`); `params()` there returns the raw ordered `(key, value)` pairs.
+- **Create / update** — `set_param(key, value)` updates the first occurrence in place,
   drops later duplicates, or appends when absent (creating the query if there was none);
-  `with_query_param` is the chainable builder form.
-- **Delete** — `remove_query_param(key)` drops every occurrence (returning whether any were);
-  `without_query_param` is the builder form. Removing the last parameter clears the query.
-- **Bulk update** — `set_query_params(pairs)` applies many `(key, value)` updates in a single
-  rebuild (last value wins per key), far cheaper than a loop of `set_query_param`;
-  `with_query_params` is the builder form.
-- **Normalize** — `normalize_query()` drops empty tokens and **stable-sorts** parameters by
-  key (repeated keys preserved, not merged); `with_normalized_query` is the builder form.
+  `with_param` is the chainable builder form.
+- **Delete** — `remove_param(key)` drops every occurrence (returning whether any were);
+  `without_param` is the builder form. Removing the last parameter clears the query.
+- **Bulk update** — `set_params(pairs)` applies many `(key, value)` updates in a single
+  rebuild (last value wins per key), far cheaper than a loop of `set_param`;
+  `with_params` is the builder form.
+- **Normalize** — `normalize_params()` drops empty tokens and **stable-sorts** parameters by
+  key (repeated keys preserved, not merged); `with_normalized_params` is the builder form.
 
 === "Python"
 
@@ -494,17 +497,20 @@ second argument) for the raw stored form. Components are stored encoded generall
     from yggdryl.uri import Uri
 
     uri = Uri.parse("http://h/p?a=1&b=2&a=3")
-    assert uri.query_param("a") == "1"                      # first occurrence wins
-    assert uri.query_param_all("a") == ["1", "3"]           # every value, in order
-    assert uri.query_params() == {"a": ("1", "3"), "b": ("2",)}  # grouped: key -> tuple of values
+    assert uri.param("a") == "1"                      # first occurrence wins
+    assert uri.param_all("a") == ["1", "3"]           # every value, in order
+    assert uri.params() == {"a": ("1", "3"), "b": ("2",)}  # grouped: key -> tuple of values
 
-    uri.set_query_param("a", "9")                           # update (later dupes dropped)
-    uri.set_query_param("c", "7")                           # create (appended)
+    uri.set_param("a", "9")                           # update (later dupes dropped)
+    uri.set_param("c", "7")                           # create (appended)
+    uri["d"] = "4"                                    # dict protocol: set
+    assert uri["d"] == "4" and "d" in uri             # dict protocol: get / contains
+    del uri["d"]                                      # dict protocol: delete
     assert uri.query == "a=9&b=2&c=7"
-    assert uri.remove_query_param("b") is True              # delete
+    assert uri.remove_param("b") is True              # delete
     assert uri.query == "a=9&c=7"
 
-    chained = Uri.parse("http://h/p").with_query_param("x", "1").without_query_param("x")
+    chained = Uri.parse("http://h/p").with_param("x", "1").without_param("x")
     assert chained.query is None
     ```
 
@@ -514,16 +520,16 @@ second argument) for the raw stored form. Components are stored encoded generall
     const { Uri } = require('yggdryl').uri
 
     const uri = Uri.parse('http://h/p?a=1&b=2&a=3')
-    console.assert(uri.queryParam('a') === '1')                      // first occurrence wins
-    console.assert(JSON.stringify(uri.queryParamAll('a')) === '["1","3"]')
+    console.assert(uri.param('a') === '1')                      // first occurrence wins
+    console.assert(JSON.stringify(uri.paramAll('a')) === '["1","3"]')
     // grouped: an ordered Map<string, string[]> (key -> all its values, first-appearance order)
-    const qp = uri.queryParams()
+    const qp = uri.params()
     console.assert(JSON.stringify([...qp]) === '[["a",["1","3"]],["b",["2"]]]')
 
-    uri.setQueryParam('a', '9')                                      // update
-    uri.setQueryParam('c', '7')                                      // create (appended)
+    uri.setParam('a', '9')                                      // update
+    uri.setParam('c', '7')                                      // create (appended)
     console.assert(uri.query === 'a=9&b=2&c=7')
-    console.assert(uri.removeQueryParam('b') === true)               // delete
+    console.assert(uri.removeParam('b') === true)               // delete
     console.assert(uri.query === 'a=9&c=7')
     ```
 
@@ -533,18 +539,18 @@ second argument) for the raw stored form. Components are stored encoded generall
     use yggdryl_core::io::uri::Uri;
 
     let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
-    assert_eq!(uri.query_param("a"), Some("1"));            // first occurrence wins
-    assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);   // every value, in order
-    assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2"), ("a", "3")]); // raw pairs
-    assert_eq!( // grouped: key -> all values (what the bindings' query_params returns)
-        uri.query_params_grouped(),
+    assert_eq!(uri.param("a"), Some("1"));            // first occurrence wins
+    assert_eq!(uri.param_all("a"), vec!["1", "3"]);   // every value, in order
+    assert_eq!(uri.params(), vec![("a", "1"), ("b", "2"), ("a", "3")]); // raw pairs
+    assert_eq!( // grouped: key -> all values (what the bindings' params returns)
+        uri.params_grouped(),
         vec![("a", vec!["1", "3"]), ("b", vec!["2"])],
     );
 
-    uri.set_query_param("a", "9");                          // update (later dupes dropped)
-    uri.set_query_param("c", "7");                          // create (appended)
+    uri.set_param("a", "9");                          // update (later dupes dropped)
+    uri.set_param("c", "7");                          // create (appended)
     assert_eq!(uri.query(), Some("a=9&b=2&c=7"));
-    assert!(uri.remove_query_param("b"));                   // delete
+    assert!(uri.remove_param("b"));                   // delete
     assert_eq!(uri.query(), Some("a=9&c=7"));
     ```
 
@@ -556,10 +562,10 @@ Bulk update then normalize:
     from yggdryl.uri import Uri
 
     uri = Uri.parse("http://h/p?c=3&a=1&b=2")
-    uri.set_query_params([("a", "9"), ("d", "4")])   # bulk: a updated, d appended
+    uri.set_params([("a", "9"), ("d", "4")])   # bulk: a updated, d appended
     assert uri.query == "c=3&a=9&b=2&d=4"
-    uri.set_query_params(list({"e": "5"}.items()))   # a dict via .items()
-    uri.normalize_query()                            # sort by key, drop empties
+    uri.set_params(list({"e": "5"}.items()))   # a dict via .items()
+    uri.normalize_params()                            # sort by key, drop empties
     assert uri.query == "a=9&b=2&c=3&d=4&e=5"
     ```
 
@@ -569,10 +575,10 @@ Bulk update then normalize:
     const { Uri } = require('yggdryl').uri
 
     const uri = Uri.parse('http://h/p?c=3&a=1&b=2')
-    uri.setQueryParams([['a', '9'], ['d', '4']])          // bulk: a updated, d appended
+    uri.setParams([['a', '9'], ['d', '4']])          // bulk: a updated, d appended
     console.assert(uri.query === 'c=3&a=9&b=2&d=4')
-    uri.setQueryParams(Object.entries({ e: '5' }))        // an object via Object.entries
-    uri.normalizeQuery()                                  // sort by key, drop empties
+    uri.setParams(Object.entries({ e: '5' }))        // an object via Object.entries
+    uri.normalizeParams()                                  // sort by key, drop empties
     console.assert(uri.query === 'a=9&b=2&c=3&d=4&e=5')
     ```
 
@@ -582,9 +588,9 @@ Bulk update then normalize:
     use yggdryl_core::io::uri::Uri;
 
     let mut uri = Uri::parse_str("http://h/p?c=3&a=1&b=2").unwrap();
-    uri.set_query_params(&[("a", "9"), ("d", "4")]);   // bulk: a updated, d appended
+    uri.set_params(&[("a", "9"), ("d", "4")]);   // bulk: a updated, d appended
     assert_eq!(uri.query(), Some("c=3&a=9&b=2&d=4"));
-    uri.normalize_query();                             // sort by key, drop empties
+    uri.normalize_params();                             // sort by key, drop empties
     assert_eq!(uri.query(), Some("a=9&b=2&c=3&d=4"));
     ```
 
@@ -595,11 +601,11 @@ Percent-encoding — values are stored encoded and decoded on read:
     ```python
     from yggdryl.uri import Uri
 
-    uri = Uri.parse("http://h/p").with_query_param("q", "a b&c")
+    uri = Uri.parse("http://h/p").with_param("q", "a b&c")
     assert uri.query == "q=a%20b%26c"                    # stored percent-encoded
-    assert uri.query_param("q") == "a b&c"               # decoded by default
-    assert uri.query_param("q", encoded=True) == "a%20b%26c"   # raw stored form
-    assert uri.query_params() == {"q": ("a%20b%26c",)}   # grouped map: stored (encoded) tuples
+    assert uri.param("q") == "a b&c"               # decoded by default
+    assert uri.param("q", encoded=True) == "a%20b%26c"   # raw stored form
+    assert uri.params() == {"q": ("a%20b%26c",)}   # grouped map: stored (encoded) tuples
     ```
 
 === "Node"
@@ -607,10 +613,10 @@ Percent-encoding — values are stored encoded and decoded on read:
     ```js
     const { Uri } = require('yggdryl').uri
 
-    const uri = Uri.parse('http://h/p').withQueryParam('q', 'a b&c')
+    const uri = Uri.parse('http://h/p').withParam('q', 'a b&c')
     console.assert(uri.query === 'q=a%20b%26c')                 // stored percent-encoded
-    console.assert(uri.queryParam('q') === 'a b&c')            // decoded by default
-    console.assert(uri.queryParam('q', true) === 'a%20b%26c')  // raw stored form
+    console.assert(uri.param('q') === 'a b&c')            // decoded by default
+    console.assert(uri.param('q', true) === 'a%20b%26c')  // raw stored form
     ```
 
 === "Rust"
@@ -618,10 +624,10 @@ Percent-encoding — values are stored encoded and decoded on read:
     ```rust
     use yggdryl_core::io::uri::Uri;
 
-    let uri = Uri::parse_str("http://h/p").unwrap().with_query_param("q", "a b&c");
+    let uri = Uri::parse_str("http://h/p").unwrap().with_param("q", "a b&c");
     assert_eq!(uri.query(), Some("q=a%20b%26c"));                     // stored encoded
-    assert_eq!(uri.query_param("q"), Some("a%20b%26c"));             // stored form
-    assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b&c")); // decoded
+    assert_eq!(uri.param("q"), Some("a%20b%26c"));             // stored form
+    assert_eq!(uri.param_decoded("q").as_deref(), Some("a b&c")); // decoded
     ```
 
 ## Windows → POSIX path normalization

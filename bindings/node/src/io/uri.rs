@@ -608,28 +608,28 @@ impl Uri {
     /// The first value of query parameter `key`, **decoded** by default; pass `true` for the
     /// stored (percent-encoded) form. `null` if absent.
     #[napi]
-    pub fn query_param(&self, key: String, encoded: Option<bool>) -> Option<String> {
+    pub fn param(&self, key: String, encoded: Option<bool>) -> Option<String> {
         if encoded.unwrap_or(false) {
-            self.inner.query_param(&key).map(str::to_string)
+            self.inner.param(&key).map(str::to_string)
         } else {
             self.inner
-                .query_param_decoded(&key)
+                .param_decoded(&key)
                 .map(|value| value.into_owned())
         }
     }
 
     /// Every value of query parameter `key`, in order, decoded by default (`true` for stored).
     #[napi]
-    pub fn query_param_all(&self, key: String, encoded: Option<bool>) -> Vec<String> {
+    pub fn param_all(&self, key: String, encoded: Option<bool>) -> Vec<String> {
         if encoded.unwrap_or(false) {
             self.inner
-                .query_param_all(&key)
+                .param_all(&key)
                 .into_iter()
                 .map(str::to_string)
                 .collect()
         } else {
             self.inner
-                .query_param_all_decoded(&key)
+                .param_all_decoded(&key)
                 .into_iter()
                 .map(|value| value.into_owned())
                 .collect()
@@ -640,13 +640,13 @@ impl Uri {
     /// its values, in **first-appearance** key order — e.g. `?a=1&b=2&a=3` →
     /// `Map { "a" => ["1", "3"], "b" => ["2"] }`. A `Map` (not a plain object) is used so that
     /// numeric-looking keys keep insertion order instead of being reordered numerically. Values
-    /// are the stored (percent-encoded) form; use `queryParam` / `queryParamAll` to decode.
+    /// are the stored (percent-encoded) form; use `param` / `paramAll` to decode.
     #[napi(ts_return_type = "Map<string, string[]>")]
-    pub fn query_params(&self, env: Env) -> napi::Result<JsObject> {
+    pub fn params(&self, env: Env) -> napi::Result<JsObject> {
         let map_ctor = env.get_global()?.get_named_property::<JsFunction>("Map")?;
         let map = map_ctor.new_instance::<JsUnknown>(&[])?;
         let set_fn = map.get_named_property::<JsFunction>("set")?;
-        for (key, values) in self.inner.query_params_grouped() {
+        for (key, values) in self.inner.params_grouped() {
             let js_key = env.create_string(key)?;
             let mut js_values = env.create_array_with_length(values.len())?;
             for (index, value) in values.iter().enumerate() {
@@ -662,43 +662,43 @@ impl Uri {
 
     /// Whether query parameter `key` is present.
     #[napi]
-    pub fn has_query_param(&self, key: String) -> bool {
-        self.inner.has_query_param(&key)
+    pub fn has_param(&self, key: String) -> bool {
+        self.inner.has_param(&key)
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
     /// or appended if absent). The value is stored verbatim.
     #[napi]
-    pub fn set_query_param(&mut self, key: String, value: String) {
-        self.inner.set_query_param(&key, &value);
+    pub fn set_param(&mut self, key: String, value: String) {
+        self.inner.set_param(&key, &value);
     }
 
     /// Returns a copy with query parameter `key` set.
     #[napi]
-    pub fn with_query_param(&self, key: String, value: String) -> Self {
+    pub fn with_param(&self, key: String, value: String) -> Self {
         Self {
-            inner: self.inner.clone().with_query_param(&key, &value),
+            inner: self.inner.clone().with_param(&key, &value),
         }
     }
 
     /// Removes every occurrence of query parameter `key`; returns whether any were removed.
     #[napi]
-    pub fn remove_query_param(&mut self, key: String) -> bool {
-        self.inner.remove_query_param(&key)
+    pub fn remove_param(&mut self, key: String) -> bool {
+        self.inner.remove_param(&key)
     }
 
     /// Returns a copy with query parameter `key` removed.
     #[napi]
-    pub fn without_query_param(&self, key: String) -> Self {
+    pub fn without_param(&self, key: String) -> Self {
         Self {
-            inner: self.inner.clone().without_query_param(&key),
+            inner: self.inner.clone().without_param(&key),
         }
     }
 
     /// Bulk-updates query parameters from `[key, value]` pairs in one pass (last value wins
     /// per key). Pass `Object.entries(obj)` to apply an object.
     #[napi]
-    pub fn set_query_params(&mut self, params: Vec<Vec<String>>) {
+    pub fn set_params(&mut self, params: Vec<Vec<String>>) {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|pair| {
@@ -708,12 +708,12 @@ impl Uri {
                 )
             })
             .collect();
-        self.inner.set_query_params(&refs);
+        self.inner.set_params(&refs);
     }
 
     /// Returns a copy with the bulk update applied.
     #[napi]
-    pub fn with_query_params(&self, params: Vec<Vec<String>>) -> Self {
+    pub fn with_params(&self, params: Vec<Vec<String>>) -> Self {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|pair| {
@@ -724,21 +724,21 @@ impl Uri {
             })
             .collect();
         Self {
-            inner: self.inner.clone().with_query_params(&refs),
+            inner: self.inner.clone().with_params(&refs),
         }
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.
     #[napi]
-    pub fn normalize_query(&mut self) {
-        self.inner.normalize_query();
+    pub fn normalize_params(&mut self) {
+        self.inner.normalize_params();
     }
 
     /// Returns a copy with the query normalized.
     #[napi]
-    pub fn with_normalized_query(&self) -> Self {
+    pub fn with_normalized_params(&self) -> Self {
         Self {
-            inner: self.inner.clone().with_normalized_query(),
+            inner: self.inner.clone().with_normalized_params(),
         }
     }
 
@@ -1110,28 +1110,28 @@ impl Url {
     /// The first value of query parameter `key`, **decoded** by default; pass `true` for the
     /// stored (percent-encoded) form. `null` if absent.
     #[napi]
-    pub fn query_param(&self, key: String, encoded: Option<bool>) -> Option<String> {
+    pub fn param(&self, key: String, encoded: Option<bool>) -> Option<String> {
         if encoded.unwrap_or(false) {
-            self.inner.query_param(&key).map(str::to_string)
+            self.inner.param(&key).map(str::to_string)
         } else {
             self.inner
-                .query_param_decoded(&key)
+                .param_decoded(&key)
                 .map(|value| value.into_owned())
         }
     }
 
     /// Every value of query parameter `key`, in order, decoded by default (`true` for stored).
     #[napi]
-    pub fn query_param_all(&self, key: String, encoded: Option<bool>) -> Vec<String> {
+    pub fn param_all(&self, key: String, encoded: Option<bool>) -> Vec<String> {
         if encoded.unwrap_or(false) {
             self.inner
-                .query_param_all(&key)
+                .param_all(&key)
                 .into_iter()
                 .map(str::to_string)
                 .collect()
         } else {
             self.inner
-                .query_param_all_decoded(&key)
+                .param_all_decoded(&key)
                 .into_iter()
                 .map(|value| value.into_owned())
                 .collect()
@@ -1142,13 +1142,13 @@ impl Url {
     /// its values, in **first-appearance** key order — e.g. `?a=1&b=2&a=3` →
     /// `Map { "a" => ["1", "3"], "b" => ["2"] }`. A `Map` (not a plain object) is used so that
     /// numeric-looking keys keep insertion order instead of being reordered numerically. Values
-    /// are the stored (percent-encoded) form; use `queryParam` / `queryParamAll` to decode.
+    /// are the stored (percent-encoded) form; use `param` / `paramAll` to decode.
     #[napi(ts_return_type = "Map<string, string[]>")]
-    pub fn query_params(&self, env: Env) -> napi::Result<JsObject> {
+    pub fn params(&self, env: Env) -> napi::Result<JsObject> {
         let map_ctor = env.get_global()?.get_named_property::<JsFunction>("Map")?;
         let map = map_ctor.new_instance::<JsUnknown>(&[])?;
         let set_fn = map.get_named_property::<JsFunction>("set")?;
-        for (key, values) in self.inner.query_params_grouped() {
+        for (key, values) in self.inner.params_grouped() {
             let js_key = env.create_string(key)?;
             let mut js_values = env.create_array_with_length(values.len())?;
             for (index, value) in values.iter().enumerate() {
@@ -1164,43 +1164,43 @@ impl Url {
 
     /// Whether query parameter `key` is present.
     #[napi]
-    pub fn has_query_param(&self, key: String) -> bool {
-        self.inner.has_query_param(&key)
+    pub fn has_param(&self, key: String) -> bool {
+        self.inner.has_param(&key)
     }
 
     /// Sets query parameter `key` to `value` (first occurrence updated, later dupes dropped,
     /// or appended if absent). The value is stored verbatim.
     #[napi]
-    pub fn set_query_param(&mut self, key: String, value: String) {
-        self.inner.set_query_param(&key, &value);
+    pub fn set_param(&mut self, key: String, value: String) {
+        self.inner.set_param(&key, &value);
     }
 
     /// Returns a copy with query parameter `key` set.
     #[napi]
-    pub fn with_query_param(&self, key: String, value: String) -> Self {
+    pub fn with_param(&self, key: String, value: String) -> Self {
         Self {
-            inner: self.inner.clone().with_query_param(&key, &value),
+            inner: self.inner.clone().with_param(&key, &value),
         }
     }
 
     /// Removes every occurrence of query parameter `key`; returns whether any were removed.
     #[napi]
-    pub fn remove_query_param(&mut self, key: String) -> bool {
-        self.inner.remove_query_param(&key)
+    pub fn remove_param(&mut self, key: String) -> bool {
+        self.inner.remove_param(&key)
     }
 
     /// Returns a copy with query parameter `key` removed.
     #[napi]
-    pub fn without_query_param(&self, key: String) -> Self {
+    pub fn without_param(&self, key: String) -> Self {
         Self {
-            inner: self.inner.clone().without_query_param(&key),
+            inner: self.inner.clone().without_param(&key),
         }
     }
 
     /// Bulk-updates query parameters from `[key, value]` pairs in one pass (last value wins
     /// per key). Pass `Object.entries(obj)` to apply an object.
     #[napi]
-    pub fn set_query_params(&mut self, params: Vec<Vec<String>>) {
+    pub fn set_params(&mut self, params: Vec<Vec<String>>) {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|pair| {
@@ -1210,12 +1210,12 @@ impl Url {
                 )
             })
             .collect();
-        self.inner.set_query_params(&refs);
+        self.inner.set_params(&refs);
     }
 
     /// Returns a copy with the bulk update applied.
     #[napi]
-    pub fn with_query_params(&self, params: Vec<Vec<String>>) -> Self {
+    pub fn with_params(&self, params: Vec<Vec<String>>) -> Self {
         let refs: Vec<(&str, &str)> = params
             .iter()
             .map(|pair| {
@@ -1226,21 +1226,21 @@ impl Url {
             })
             .collect();
         Self {
-            inner: self.inner.clone().with_query_params(&refs),
+            inner: self.inner.clone().with_params(&refs),
         }
     }
 
     /// Normalizes the query: drops empty tokens and stable-sorts parameters by key.
     #[napi]
-    pub fn normalize_query(&mut self) {
-        self.inner.normalize_query();
+    pub fn normalize_params(&mut self) {
+        self.inner.normalize_params();
     }
 
     /// Returns a copy with the query normalized.
     #[napi]
-    pub fn with_normalized_query(&self) -> Self {
+    pub fn with_normalized_params(&self) -> Self {
         Self {
-            inner: self.inner.clone().with_normalized_query(),
+            inner: self.inner.clone().with_normalized_params(),
         }
     }
 

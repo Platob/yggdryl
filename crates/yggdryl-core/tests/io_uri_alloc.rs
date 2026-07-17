@@ -176,58 +176,49 @@ fn allocation_budgets() {
         );
     }
 
-    // Query-parameter access. `query_param` / `has_query_param` borrow into the query and
+    // Query-parameter access. `param` / `has_param` borrow into the query and
     // return a `&str` / `bool` — zero allocation.
     let q = Uri::parse_str("http://h/p?a=1&b=2&c=3&a=4").unwrap();
     let read = allocs_over(iters, || {
-        let _ = q.query_param("c");
-        let _ = q.has_query_param("b");
+        let _ = q.param("c");
+        let _ = q.has_param("b");
     });
-    assert_eq!(
-        read, 0,
-        "query_param / has_query_param must be zero-copy (got {read})"
-    );
+    assert_eq!(read, 0, "param / has_param must be zero-copy (got {read})");
 
     // Decoding a value with nothing to decode borrows it — zero allocation. (`c=3` and the
     // clean lookup key both stay borrowed.)
     let decode_clean = allocs_over(iters, || {
-        let _ = q.query_param_decoded("c");
+        let _ = q.param_decoded("c");
     });
     assert_eq!(
         decode_clean, 0,
-        "query_param_decoded of a clean value must not allocate (got {decode_clean})"
+        "param_decoded of a clean value must not allocate (got {decode_clean})"
     );
 
     // The multi-value and map views each build one pre-sized `Vec`.
     let all = allocs_over(iters, || {
-        let _ = q.query_param_all("a");
+        let _ = q.param_all("a");
     });
-    assert_eq!(
-        all, iters,
-        "query_param_all must pre-size to one allocation"
-    );
+    assert_eq!(all, iters, "param_all must pre-size to one allocation");
     let params = allocs_over(iters, || {
-        let _ = q.query_params();
+        let _ = q.params();
     });
-    assert_eq!(
-        params, iters,
-        "query_params must pre-size to one allocation"
-    );
+    assert_eq!(params, iters, "params must pre-size to one allocation");
 
     // A write rebuilds the query in exactly one allocation.
     let mut set = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let writes = allocs_over(iters, || {
-        set.set_query_param("a", "1");
+        set.set_param("a", "1");
     });
     assert_eq!(
         writes, iters,
-        "set_query_param must rebuild with exactly one allocation"
+        "set_param must rebuild with exactly one allocation"
     );
 
     // Removing an absent key is a no-op — no rebuild, no allocation.
     let mut noop = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let removes_absent = allocs_over(iters, || {
-        let _ = noop.remove_query_param("zzz");
+        let _ = noop.remove_param("zzz");
     });
     assert_eq!(
         removes_absent, 0,
@@ -236,26 +227,26 @@ fn allocation_budgets() {
 
     // A bulk update rebuilds once with a small **constant** allocation count (the dedup Vec,
     // the bookkeeping Vec, and the output) — independent of the number of params, unlike
-    // calling `set_query_param` in a loop (one full rebuild each).
+    // calling `set_param` in a loop (one full rebuild each).
     let mut bulk = Uri::parse_str("http://h/p?a=1&b=2").unwrap();
     let bulk_allocs = allocs_over(iters, || {
-        bulk.set_query_params(&[("a", "9"), ("c", "7"), ("d", "0")]);
+        bulk.set_params(&[("a", "9"), ("c", "7"), ("d", "0")]);
     });
     assert_eq!(
         bulk_allocs,
         3 * iters,
-        "set_query_params rebuilds in a constant 3 allocations"
+        "set_params rebuilds in a constant 3 allocations"
     );
 
     // Normalizing a small query rebuilds in two allocations (the token list + the output;
     // the sort is in-place for a small slice).
     let mut norm = Uri::parse_str("http://h/p?c=3&a=1&b=2").unwrap();
     let norm_allocs = allocs_over(iters, || {
-        norm.normalize_query();
+        norm.normalize_params();
     });
     assert_eq!(
         norm_allocs,
         2 * iters,
-        "normalize_query rebuilds in two allocations"
+        "normalize_params rebuilds in two allocations"
     );
 }

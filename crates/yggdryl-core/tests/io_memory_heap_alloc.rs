@@ -132,4 +132,51 @@ fn allocation_budgets() {
         sliced, iters,
         "slice must own its window in one allocation (got {sliced})"
     );
+
+    // Bulk typed arrays stage through fixed STACK chunks — zero heap allocation, even across
+    // multiple staging chunks (1000 elements > the 256-element chunk).
+    let mut bulk_sink = Heap::with_capacity(8000);
+    let bulk_values = vec![7i32; 1000];
+    let mut bulk_back = vec![0i32; 1000];
+    bulk_sink.pwrite_i32_array(0, &bulk_values).unwrap(); // pre-size once outside the window
+    let bulk = allocs_over(iters, || {
+        bulk_sink.pwrite_i32_array(0, &bulk_values).unwrap();
+        bulk_sink.pread_i32_array(0, &mut bulk_back).unwrap();
+    });
+    assert_eq!(
+        bulk, 0,
+        "bulk i32 array ops must stage on the stack (got {bulk} allocs)"
+    );
+
+    // Repeated-value fills never materialize the full array — zero heap allocation once the
+    // sink is sized.
+    let mut fill_sink = Heap::with_capacity(8000);
+    fill_sink.pwrite_i64_repeat(0, -1, 1000).unwrap();
+    let fills = allocs_over(iters, || {
+        fill_sink.pwrite_byte_repeat(0, 0xAB, 8000).unwrap();
+        fill_sink.pwrite_i32_repeat(0, -7, 2000).unwrap();
+        fill_sink.pwrite_i64_repeat(0, -1, 1000).unwrap();
+    });
+    assert_eq!(
+        fills, 0,
+        "repeat fills must never build the full array (got {fills} allocs)"
+    );
+
+    // A UTF-8 read owns exactly its String; the write allocates nothing beyond the (sized) sink.
+    let mut text_sink = Heap::with_capacity(64);
+    text_sink.pwrite_utf8(0, "hello wörld");
+    let utf8 = allocs_over(iters, || {
+        let _ = text_sink.pread_utf8(0, 12).unwrap();
+    });
+    assert_eq!(
+        utf8, iters,
+        "pread_utf8 must allocate exactly the returned String (got {utf8})"
+    );
+    let utf8_write = allocs_over(iters, || {
+        let _ = text_sink.pwrite_utf8(0, "hello wörld");
+    });
+    assert_eq!(
+        utf8_write, 0,
+        "pwrite_utf8 into a sized sink must not allocate"
+    );
 }
