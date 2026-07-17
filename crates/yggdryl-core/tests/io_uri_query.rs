@@ -195,3 +195,35 @@ fn bulk_and_normalize_on_url() {
     assert_eq!(url.query(), Some("a=9&b=2&c=3"));
     assert_eq!(url.to_string(), "https://h/p?a=9&b=2&c=3");
 }
+
+#[test]
+fn grouped_by_key_preserves_order_and_dups() {
+    // Repeated keys collapse to one entry with all values (the dict[str, tuple] view); key
+    // order is first-appearance, value order is as written.
+    let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3&a=0").unwrap();
+    assert_eq!(
+        uri.query_params_grouped(),
+        vec![("a", vec!["1", "3", "0"]), ("b", vec!["2"])],
+    );
+
+    // No query -> empty.
+    assert!(Uri::parse_str("http://h/p")
+        .unwrap()
+        .query_params_grouped()
+        .is_empty());
+
+    // A bare key groups to an empty-string value; Url delegates identically.
+    let url = Url::parse_str("https://h/p?flag&x=1&flag").unwrap();
+    assert_eq!(
+        url.query_params_grouped(),
+        vec![("flag", vec!["", ""]), ("x", vec!["1"])],
+    );
+}
+
+#[test]
+fn grouped_rebuilds_a_multimap() {
+    let uri = Uri::parse_str("http://h/p?tag=a&tag=b&name=x").unwrap();
+    let map: HashMap<&str, Vec<&str>> = uri.query_params_grouped().into_iter().collect();
+    assert_eq!(map["tag"], vec!["a", "b"]);
+    assert_eq!(map["name"], vec!["x"]);
+}

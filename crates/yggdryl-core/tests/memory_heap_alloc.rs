@@ -11,7 +11,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-use yggdryl_core::memory::{Heap, IOBase, IOCursor, IOSlice};
+use yggdryl_core::memory::{Heap, IOBase};
 
 struct Counting;
 static ALLOCS: AtomicUsize = AtomicUsize::new(0);

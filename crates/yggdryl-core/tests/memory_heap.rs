@@ -6,6 +6,7 @@
 //! this file hammers the edges (EOF, bit addressing, capacity reuse, content equality).
 
 use yggdryl_core::memory::{Heap, IOBase, IOCursor, IOSlice, IoError, Whence};
+use yggdryl_core::uri::Uri;
 
 // -------------------------------------------------------------------------------------
 // Size + capacity
@@ -290,4 +291,98 @@ fn from_vec_is_zero_copy_into_vec_roundtrips() {
     let h = Heap::from_vec(v);
     assert_eq!(h.as_slice(), &[1, 2, 3]);
     assert_eq!(h.into_vec(), vec![1, 2, 3]);
+}
+
+// -------------------------------------------------------------------------------------
+// Addressing URI
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn uri_default_empty_and_settable() {
+    assert_eq!(Heap::new().uri(), Uri::default());
+    let named = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://scratch/a").unwrap());
+    assert_eq!(named.uri().host(), Some("scratch"));
+
+    let mut h = Heap::new();
+    h.set_uri(Uri::parse_str("mem://b/1").unwrap());
+    assert_eq!(h.uri().host(), Some("b"));
+
+    // The address is metadata, not part of value equality (like the cursor).
+    assert_eq!(named, Heap::from_slice(b"x"));
+}
+
+// -------------------------------------------------------------------------------------
+// IOCursor<T> wrapper — a cursor over any source
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn cursor_wrapper_over_a_source() {
+    let mut cur: IOCursor<Heap> = Heap::new().cursor();
+    cur.write_byte(0x7F).unwrap();
+    cur.write_i32(-7).unwrap();
+    cur.write_i64(1 << 40).unwrap();
+    assert_eq!(cur.byte_size(), 13); // IOBase delegates to the wrapped source
+    cur.rewind();
+    assert_eq!(cur.read_byte().unwrap(), 0x7F);
+    assert_eq!(cur.read_i32().unwrap(), -7);
+    assert_eq!(cur.read_i64().unwrap(), 1 << 40);
+
+    // The wrapper owns its source; you can get it back.
+    let inner: &Heap = cur.inner();
+    assert_eq!(inner.byte_size(), 13);
+    let heap = cur.into_inner();
+    assert_eq!(heap.byte_size(), 13);
+}
+
+#[test]
+fn cursor_wrapper_delegates_uri() {
+    let cur = Heap::from_slice(b"x")
+        .with_uri(Uri::parse_str("mem://h/1").unwrap())
+        .cursor();
+    assert_eq!(cur.uri().host(), Some("h"));
+}
+
+// -------------------------------------------------------------------------------------
+// IOSlice<T> wrapper — a bounded window over any source
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn window_wrapper_view_and_bounds() {
+    let win: IOSlice<Heap> = Heap::from_slice(b"hello world").window(6, 5).unwrap();
+    assert_eq!(win.byte_size(), 5);
+    assert_eq!(win.offset(), 6);
+    assert_eq!(win.pread_vec(0, 5), b"world"); // addressed from its own 0
+    assert_eq!(win.pread_byte(0).unwrap(), b'w');
+    // A read past the window end returns nothing.
+    assert_eq!(win.pread_byte_array(5, &mut [0u8; 4]), 0);
+    // Out of bounds names the fix.
+    assert_eq!(
+        Heap::from_slice(b"hello world").window(6, 6).unwrap_err(),
+        IoError::SliceOutOfBounds {
+            offset: 6,
+            len: 6,
+            available: 11,
+        }
+    );
+}
+
+#[test]
+fn window_write_is_clamped_to_the_window() {
+    let mut win = Heap::from_slice(b"hello world").window(6, 5).unwrap();
+    // Writing more than the window holds is clamped (the window can't grow the source).
+    assert_eq!(win.pwrite_byte_array(3, b"ABCDEF"), 2); // only 2 bytes fit (offsets 3,4)
+    assert_eq!(win.pread_vec(0, 5), b"worAB");
+    // A write starting past the window end writes nothing.
+    assert_eq!(win.pwrite_byte_array(5, b"Z"), 0);
+}
+
+#[test]
+fn window_is_composable() {
+    // A window of a window, and a cursor over a window.
+    let outer = Heap::from_slice(b"abcdefgh").window(2, 5).unwrap(); // "cdefg"
+    let inner = outer.window(1, 3).unwrap(); // "def"
+    assert_eq!(inner.pread_vec(0, 3), b"def");
+
+    let mut cur = Heap::from_slice(b"abcdefgh").window(2, 4).unwrap().cursor();
+    assert_eq!(cur.read_vec(4), b"cdef");
 }

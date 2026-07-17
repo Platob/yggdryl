@@ -336,7 +336,8 @@ fn url_with_no_authority_is_valid() {
     // DESIGN: a Url requires only a scheme; the authority is optional.
     let url = Url::parse_str("mailto:person@example.com").unwrap();
     assert_eq!(url.scheme(), "mailto");
-    assert_eq!(url.host(), None);
+    assert_eq!(url.host(), ""); // total: empty when there is no authority
+    assert!(!url.has_authority());
     assert_eq!(url.path(), "person@example.com");
 }
 

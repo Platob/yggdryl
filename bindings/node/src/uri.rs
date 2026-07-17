@@ -712,12 +712,19 @@ impl Url {
         self.inner.scheme().to_string()
     }
 
-    /// The authority, if any.
+    /// The authority — an empty `Authority` when the URL has none (a `mailto:` / `file:` URL);
+    /// use `hasAuthority` to test presence.
     #[napi(getter)]
-    pub fn authority(&self) -> Option<Authority> {
-        self.inner
-            .authority()
-            .map(|a| Authority { inner: a.clone() })
+    pub fn authority(&self) -> Authority {
+        Authority {
+            inner: self.inner.authority(),
+        }
+    }
+
+    /// Whether this URL carries a `//` authority.
+    #[napi(getter)]
+    pub fn has_authority(&self) -> bool {
+        self.inner.has_authority()
     }
 
     /// The userinfo user, if any.
@@ -732,10 +739,11 @@ impl Url {
         self.inner.password().map(str::to_string)
     }
 
-    /// The host, if this URL has an authority (an IPv6 literal keeps its brackets).
+    /// The host — an empty string when the URL has no authority (an IPv6 literal keeps its
+    /// brackets).
     #[napi(getter)]
-    pub fn host(&self) -> Option<String> {
-        self.inner.host().map(str::to_string)
+    pub fn host(&self) -> String {
+        self.inner.host().to_string()
     }
 
     /// Whether the host is a bracketed IPv6 literal (`false` if it has no authority).

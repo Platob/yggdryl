@@ -18,7 +18,7 @@ use super::{Authority, Uri, UriError};
 ///
 /// let url = Url::parse_str("https://example.com/a/b.txt").unwrap();
 /// assert_eq!(url.scheme(), "https");
-/// assert_eq!(url.host(), Some("example.com"));
+/// assert_eq!(url.host(), "example.com");
 /// assert_eq!(url.name(), Some("b.txt"));
 ///
 /// // A scheme-less input is not an absolute URL.
@@ -50,9 +50,23 @@ impl Url {
         self.inner.scheme().unwrap_or_default()
     }
 
-    /// The authority, if any.
-    pub fn authority(&self) -> Option<&Authority> {
-        self.inner.authority()
+    /// The authority — **total**: an empty [`Authority`] when the URL has none (a `mailto:` /
+    /// `file:` URL). A URL almost always has one, so this returns a value rather than an `Option`;
+    /// test presence explicitly with [`has_authority`](Url::has_authority).
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Url;
+    ///
+    /// assert_eq!(Url::parse_str("https://h:8080/p").unwrap().authority().port(), Some(8080));
+    /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().authority().host(), ""); // no authority
+    /// ```
+    pub fn authority(&self) -> Authority {
+        self.inner.authority().cloned().unwrap_or_default()
+    }
+
+    /// Whether this URL carries a `//` authority (`false` for `mailto:` / `file:/path`).
+    pub fn has_authority(&self) -> bool {
+        self.inner.authority().is_some()
     }
 
     /// The userinfo user, if any.
@@ -65,9 +79,18 @@ impl Url {
         self.inner.password()
     }
 
-    /// The host, if this URL has an authority (IPv6 kept bracketed).
-    pub fn host(&self) -> Option<&str> {
-        self.inner.host()
+    /// The host — **total**: an empty string when the URL has no authority (an IPv6 literal keeps
+    /// its brackets). A URL almost always has a host, so this returns a `&str` rather than an
+    /// `Option`; `host().is_empty()` (or [`has_authority`](Url::has_authority)) tests presence.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Url;
+    ///
+    /// assert_eq!(Url::parse_str("https://example.com/p").unwrap().host(), "example.com");
+    /// assert_eq!(Url::parse_str("mailto:a@b.com").unwrap().host(), "");
+    /// ```
+    pub fn host(&self) -> &str {
+        self.inner.host().unwrap_or("")
     }
 
     /// Whether the host is a bracketed IPv6 literal — see [`Uri::host_is_ipv6`].
@@ -163,6 +186,12 @@ impl Url {
     /// All query parameters as ordered `(key, value)` pairs — see [`Uri::query_params`].
     pub fn query_params(&self) -> Vec<(&str, &str)> {
         self.inner.query_params()
+    }
+
+    /// All query parameters **grouped by key** (each key → all its values) — see
+    /// [`Uri::query_params_grouped`].
+    pub fn query_params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
+        self.inner.query_params_grouped()
     }
 
     /// The first value of query parameter `key`, percent-decoded — see

@@ -98,14 +98,23 @@ languages. Minimal example: `yggdryl_core::version()` → `yggdryl.version()` in
   canonical form **once into a pre-sized buffer** (`String::with_capacity(encoded_len())`) and
   **stream it into the hasher** with a zero-alloc `fmt::Write` adapter, so equality and hashing
   add no per-op allocation (see `uri::Uri` / `uri::HashWrite`).
-- **Ergonomic immutable updates — `copy` + `with_*`.** Whenever a public value type is worth
-  mutating, give it a **`copy`** (the cross-language name for a clone) and a **`with_<field>`**
-  builder for every settable field — each returns a fresh value so callers get one-line,
-  chainable, non-mutating updates (`base.with_host("h").with_port(443)`). Keep the in-place
-  `set_<field>` too; `with_*` is the 1-line-friendly wrapper over it. Where combining two whole
-  values reads naturally, add a **`merge_with(other)`** overlay and any domain combinator
-  (`joinpath` for a path). Mirror these thinly in **both** bindings (see `uri::Uri` /
-  `uri::Authority`).
+- **Ergonomic immutable updates — `copy(**fields)` + `set_*` + `with_*`.** Whenever a public
+  value type is worth mutating, give it the full trio, so a caller can update it however reads
+  best:
+  - a **`copy`** (the cross-language name for a clone) that, **where the idiom allows, takes an
+    optional argument per settable field each defaulting to the current value** — so `copy()` is a
+    plain clone and `copy(host="h", port=443)` is a clone-with-overrides in one call (Python
+    keyword args, Node an options object). This is the ergonomic front door; implement it wherever
+    a field can be defaulted to its current value.
+  - an in-place **`set_<field>`** for every settable field (mutates `self`), and
+  - a returns-fresh **`with_<field>`** wrapper over it, so updates chain
+    (`base.with_host("h").with_port(443)`).
+
+  In the Rust core, `copy` stays a plain clone (Rust has no keyword defaults) and the
+  clone-with-overrides is expressed by chaining `with_*`; the **bindings** add the
+  `copy(**fields)` front door over that. Where combining two whole values reads naturally, add a
+  **`merge_with(other)`** overlay and any domain combinator (`joinpath` for a path). Mirror the
+  trio thinly in **both** bindings (see `uri::Uri` / `uri::Authority`).
 - **At-most-one-copy discipline.** Prefer zero-copy hand-off; a bulk op ships an allocation-free
   *fill-into* / *read-into* counterpart (`pread_into`, `pread_vec`); **no allocations in hot
   loops**. Maintain capacity like `Vec` (`with_capacity` / `capacity` / `reserve`) so a growing

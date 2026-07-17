@@ -16,7 +16,7 @@ use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
 use yggdryl_core::memory as core;
-use yggdryl_core::memory::{IOBase, IOCursor, IOSlice};
+use yggdryl_core::memory::IOBase;
 
 /// Maps any core error to a thrown JS `Error` (its guided text).
 fn to_error(error: impl std::fmt::Display) -> napi::Error {

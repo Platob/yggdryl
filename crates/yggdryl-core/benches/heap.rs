@@ -15,7 +15,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
-use yggdryl_core::memory::{Heap, IOBase, IOCursor, IOSlice};
+use yggdryl_core::memory::{Heap, IOBase};
 
 // -------------------------------------------------------------------------------------
 // Counting allocator — every alloc (a `Vec` growth realloc counts as one) is tallied.

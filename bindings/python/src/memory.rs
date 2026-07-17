@@ -19,7 +19,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use yggdryl_core::memory::{self, IOBase, IOCursor, IOSlice, IoError};
+use yggdryl_core::memory::{self, IOBase, IoError};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
 fn ioerr(error: IoError) -> PyErr {

@@ -1,6 +1,7 @@
 //! [`IOBase`] — positioned (random-access) byte read/write, the base of the I/O trait family.
 
-use super::IoError;
+use super::{IOCursor, IOSlice, IoError};
+use crate::uri::Uri;
 
 /// Random-access byte storage addressed by absolute offset — no cursor. This is the base
 /// every I/O **source** shares: [`IOCursor`](super::IOCursor) adds a moving position on top, and
@@ -52,6 +53,25 @@ pub trait IOBase {
     /// default is a **no-op** (a fixed source cannot grow); a growable source overrides it.
     fn reserve(&mut self, additional: u64) {
         let _ = additional;
+    }
+
+    /// The [`Uri`] that **addresses** this source — every source is locatable. The default is an
+    /// empty (opaque) URI for a source with no meaningful address (a scratch buffer); a source
+    /// that has one (an in-heap [`Heap`](super::Heap) with a set address, a future file/network
+    /// source) overrides it to return its own.
+    ///
+    /// ```
+    /// use yggdryl_core::memory::{Heap, IOBase};
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// // An unaddressed source reports the empty URI…
+    /// assert_eq!(Heap::new().uri(), Uri::default());
+    /// // …and one can be attached.
+    /// let named = Heap::new().with_uri(Uri::parse_str("mem://scratch/a").unwrap());
+    /// assert_eq!(named.uri().host(), Some("scratch"));
+    /// ```
+    fn uri(&self) -> Uri {
+        Uri::default()
     }
 
     /// **Positioned read** (primitive). Copies up to `buf.len()` bytes starting at `offset` into
@@ -258,5 +278,39 @@ pub trait IOBase {
     /// Writes `value` as a little-endian `i64` (8 bytes) at `offset`, growing as needed.
     fn pwrite_i64(&mut self, offset: u64, value: i64) -> Result<(), IoError> {
         self.pwrite_all(offset, &value.to_le_bytes())
+    }
+
+    /// Wraps this source in an [`IOCursor`] positioned at the start — the standard way to add a
+    /// moving read/write position to any source. Consumes the source (zero-copy); wrap a clone to
+    /// keep the original.
+    ///
+    /// ```
+    /// use yggdryl_core::memory::{Heap, IOBase};
+    ///
+    /// let mut cur = Heap::from_slice(b"hi").cursor();
+    /// assert_eq!(cur.read_byte().unwrap(), b'h');
+    /// ```
+    fn cursor(self) -> IOCursor<Self>
+    where
+        Self: Sized,
+    {
+        IOCursor::new(self)
+    }
+
+    /// Wraps this source in an [`IOSlice`] — the bounded window `[offset, offset + len)` addressed
+    /// from its own `0`. Errors with [`IoError::SliceOutOfBounds`] if it runs past the end.
+    /// Consumes the source (zero-copy); wrap a clone to keep the original.
+    ///
+    /// ```
+    /// use yggdryl_core::memory::{Heap, IOBase};
+    ///
+    /// let win = Heap::from_slice(b"hello world").window(6, 5).unwrap();
+    /// assert_eq!(win.pread_vec(0, 5), b"world");
+    /// ```
+    fn window(self, offset: u64, len: u64) -> Result<IOSlice<Self>, IoError>
+    where
+        Self: Sized,
+    {
+        IOSlice::new(self, offset, len)
     }
 }

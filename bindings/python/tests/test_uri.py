@@ -122,7 +122,8 @@ def test_uri_url_interchange():
     # mailto: is a valid Url with a scheme but no host.
     mailto = Url.parse("mailto:person@example.com")
     assert mailto.scheme == "mailto"
-    assert mailto.host is None
+    assert mailto.host == ""  # total: empty when there is no authority
+    assert not mailto.has_authority
     assert mailto.path == "person@example.com"
 
 

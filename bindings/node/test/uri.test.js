@@ -133,7 +133,8 @@ test('Url requires a scheme; authority stays optional', () => {
   // A scheme-present, authority-less input is still a valid Url (host is null).
   const mailto = Url.parse('mailto:person@example.com')
   assert.equal(mailto.scheme, 'mailto')
-  assert.equal(mailto.host, null)
+  assert.equal(mailto.host, '') // total: empty when there is no authority
+  assert.equal(mailto.hasAuthority, false)
   assert.equal(mailto.path, 'person@example.com')
 
   // A scheme-less input is not an absolute URL.

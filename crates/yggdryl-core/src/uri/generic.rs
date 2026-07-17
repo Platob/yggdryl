@@ -660,6 +660,34 @@ impl Uri {
         pairs
     }
 
+    /// All query parameters **grouped by key** — each distinct key (in first-appearance order)
+    /// mapped to **all** of its values (in order). This is the `dict[str, tuple[str, …]]` view the
+    /// bindings expose, so a repeated key round-trips faithfully: `?a=1&a=3` is the single entry
+    /// `("a", ["1", "3"])` rather than two colliding pairs. Empty when there is no query.
+    ///
+    /// ```
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
+    /// assert_eq!(
+    ///     uri.query_params_grouped(),
+    ///     vec![("a", vec!["1", "3"]), ("b", vec!["2"])],
+    /// );
+    /// ```
+    pub fn query_params_grouped(&self) -> Vec<(&str, Vec<&str>)> {
+        let Some(query) = self.query.as_deref() else {
+            return Vec::new();
+        };
+        let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+        for (k, v) in query_pairs(query) {
+            match groups.iter_mut().find(|(gk, _)| *gk == k) {
+                Some((_, values)) => values.push(v),
+                None => groups.push((k, vec![v])),
+            }
+        }
+        groups
+    }
+
     /// The first value of query parameter `key`, **percent-decoded** — the value the caller
     /// originally set (or the decoded form of a parsed value). Borrows the query when there
     /// is nothing to decode, otherwise owns the decoded string.

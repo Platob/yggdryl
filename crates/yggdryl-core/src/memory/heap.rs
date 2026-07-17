@@ -1,24 +1,32 @@
 //! [`Heap`] — the **in-heap** source for the memory-access traits: an owned byte `Vec` with a
-//! read/write cursor and `Vec`-like capacity. It is the reference implementor of [`IOBase`] /
-//! [`IOCursor`] / [`IOSlice`] — the "memory" side of the layer; a memory-mapped source plugs in
-//! against the same traits.
+//! built-in read/write cursor, `Vec`-like capacity, and an addressing [`Uri`]. It is the
+//! reference implementor of [`IOBase`] — the "memory" side of the layer; a memory-mapped source
+//! plugs in against the same trait.
 
-use super::{IOBase, IOCursor, IOSlice, IoError};
+use super::cursor::cursor_methods;
+use super::{IOBase, IoError, Whence};
+use crate::uri::Uri;
 
-/// An in-heap byte buffer with a read/write cursor and amortized capacity — the concrete
-/// in-memory implementor of the [`IOBase`] / [`IOCursor`] / [`IOSlice`] contracts.
+/// An in-heap byte buffer with a **built-in cursor**, amortized capacity, and an addressing
+/// [`Uri`] — the concrete in-memory implementor of [`IOBase`]. Its stream methods (`read` /
+/// `write` / `seek` / the typed `read_byte` / `read_i32` / …) are the same ones an
+/// [`IOCursor`](super::IOCursor) adds to any source; `Heap` carries them inherently so a heap is
+/// usable as a cursor without wrapping. You can still wrap it — [`cursor`](IOBase::cursor) /
+/// [`window`](IOBase::window) give an independent [`IOCursor`](super::IOCursor) /
+/// [`IOSlice`](super::IOSlice) over any source, including a heap.
 ///
 /// It grows like a [`Vec`]: [`with_capacity`](Heap::with_capacity) pre-allocates,
 /// [`capacity`](IOBase::capacity) reports the current allocation, and
-/// [`reserve`](IOBase::reserve) amortizes future writes.
+/// [`reserve`](IOBase::reserve) amortizes future writes. Its [`uri`](IOBase::uri) addresses it
+/// (empty by default; set with [`with_uri`](Heap::with_uri) / [`set_uri`](Heap::set_uri)).
 ///
-/// DESIGN: equality is over the **stored bytes only** — the cursor is transient I/O state (a read
-/// position, like a file offset), so two heaps holding the same bytes compare equal regardless of
-/// where their cursors sit. `Heap` is a mutable buffer (like `bytearray`), so it is intentionally
-/// **not** `Hash`.
+/// DESIGN: equality is over the **stored bytes only** — the cursor position and the address
+/// [`Uri`] are transient/metadata, so two heaps holding the same bytes compare equal regardless
+/// of where their cursors sit or how they are addressed. `Heap` is a mutable buffer (like
+/// `bytearray`), so it is intentionally **not** `Hash`.
 ///
 /// ```
-/// use yggdryl_core::memory::{Heap, IOCursor};
+/// use yggdryl_core::memory::{Heap, IOBase};
 ///
 /// let mut h = Heap::new();
 /// h.write_all(b"hello ").unwrap();
@@ -33,12 +41,14 @@ use super::{IOBase, IOCursor, IOSlice, IoError};
 #[derive(Clone, Debug, Default)]
 pub struct Heap {
     data: Vec<u8>,
-    /// The cursor — bytes from the start; may sit past the end after a seek.
+    /// The built-in cursor — bytes from the start; may sit past the end after a seek.
     position: u64,
+    /// The address of this source (empty by default).
+    uri: Uri,
 }
 
 impl Heap {
-    /// An empty buffer with the cursor at `0` and no allocation.
+    /// An empty buffer with the cursor at `0`, no allocation, and no address.
     pub fn new() -> Self {
         Self::default()
     }
@@ -57,6 +67,7 @@ impl Heap {
         Self {
             data: Vec::with_capacity(capacity),
             position: 0,
+            uri: Uri::default(),
         }
     }
 
@@ -65,12 +76,17 @@ impl Heap {
         Self {
             data: data.to_vec(),
             position: 0,
+            uri: Uri::default(),
         }
     }
 
     /// A buffer taking ownership of `data` **without copying**, cursor at `0`.
     pub fn from_vec(data: Vec<u8>) -> Self {
-        Self { data, position: 0 }
+        Self {
+            data,
+            position: 0,
+            uri: Uri::default(),
+        }
     }
 
     /// The stored bytes as a slice — zero-copy.
@@ -82,6 +98,57 @@ impl Heap {
     pub fn into_vec(self) -> Vec<u8> {
         self.data
     }
+
+    /// An explicit copy of this heap — the cross-language name for a clone (bytes, cursor, and
+    /// address all copied).
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Sets the addressing [`Uri`] in place.
+    pub fn set_uri(&mut self, uri: Uri) {
+        self.uri = uri;
+    }
+
+    /// Returns this heap with its addressing [`Uri`] set.
+    ///
+    /// ```
+    /// use yggdryl_core::memory::{Heap, IOBase};
+    /// use yggdryl_core::uri::Uri;
+    ///
+    /// let h = Heap::from_slice(b"x").with_uri(Uri::parse_str("mem://buf/1").unwrap());
+    /// assert_eq!(h.uri().host(), Some("buf"));
+    /// ```
+    pub fn with_uri(mut self, uri: Uri) -> Self {
+        self.uri = uri;
+        self
+    }
+
+    /// The window `[offset, offset + len)` as a fresh, independent `Heap` owning a **copy** of the
+    /// range (addressed from its own `0`). Errors with [`IoError::SliceOutOfBounds`] if it runs
+    /// past the end. For a zero-copy *view* that borrows the source instead, use
+    /// [`window`](IOBase::window), which returns an [`IOSlice`](super::IOSlice).
+    ///
+    /// ```
+    /// use yggdryl_core::memory::{Heap, IOBase};
+    ///
+    /// let data = Heap::from_slice(b"hello world");
+    /// assert_eq!(data.slice(6, 5).unwrap().as_slice(), b"world");
+    /// assert!(data.slice(6, 6).is_err()); // 6 + 6 > 11
+    /// ```
+    pub fn slice(&self, offset: u64, len: u64) -> Result<Self, IoError> {
+        let available = self.data.len() as u64;
+        let end = offset.checked_add(len).filter(|&e| e <= available).ok_or(
+            IoError::SliceOutOfBounds {
+                offset,
+                len,
+                available,
+            },
+        )?;
+        Ok(Self::from_slice(&self.data[offset as usize..end as usize]))
+    }
+
+    cursor_methods!();
 }
 
 impl IOBase for Heap {
@@ -95,6 +162,10 @@ impl IOBase for Heap {
 
     fn reserve(&mut self, additional: u64) {
         self.data.reserve(additional as usize);
+    }
+
+    fn uri(&self) -> Uri {
+        self.uri.clone()
     }
 
     fn pread_byte_array(&self, offset: u64, buf: &mut [u8]) -> usize {
@@ -121,32 +192,8 @@ impl IOBase for Heap {
     }
 }
 
-impl IOCursor for Heap {
-    fn position(&self) -> u64 {
-        self.position
-    }
-
-    fn set_position(&mut self, position: u64) {
-        self.position = position;
-    }
-}
-
-impl IOSlice for Heap {
-    fn slice(&self, offset: u64, len: u64) -> Result<Self, IoError> {
-        let available = self.data.len() as u64;
-        let end = offset.checked_add(len).filter(|&e| e <= available).ok_or(
-            IoError::SliceOutOfBounds {
-                offset,
-                len,
-                available,
-            },
-        )?;
-        Ok(Self::from_slice(&self.data[offset as usize..end as usize]))
-    }
-}
-
-// Value equality over the stored bytes only — the cursor is transient (see the type's DESIGN
-// note). `Heap` is mutable, so it is deliberately not `Hash`.
+// Value equality over the stored bytes only — the cursor and address `Uri` are transient/metadata
+// (see the type's DESIGN note). `Heap` is mutable, so it is deliberately not `Hash`.
 impl PartialEq for Heap {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
