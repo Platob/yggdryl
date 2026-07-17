@@ -186,6 +186,47 @@ fn navigation_name_parent_join() {
 }
 
 #[test]
+fn join_composes_addresses_and_reads_writes_the_child() {
+    let tmp = TempDir::new("join");
+    let root = tmp.root();
+
+    // `join` composes the child's address by joining onto the parent's URI (Uri::joinpath),
+    // and is lazy — nothing exists until we write.
+    let mut child = root.join("logs/day1.bin").unwrap();
+    assert_eq!(child.uri(), root.uri().joinpath("logs/day1.bin"));
+    assert!(!child.exists());
+
+    // Writing the joined child auto-creates its parents + file, and reads back exactly.
+    child.pwrite_utf8(0, "hello join");
+    assert!(child.is_file());
+    assert_eq!(child.pread_utf8(0, 10).unwrap(), "hello join");
+    child.close();
+
+    // The child's `parent()` addresses the joined directory again (the inverse of join).
+    let dir = child.parent().unwrap();
+    assert_eq!(dir.uri(), root.join("logs").unwrap().uri());
+    assert!(dir.is_dir());
+
+    // A second child under the same directory; the directory (memory tree) sees both.
+    let mut sibling = root.join("logs").unwrap().join("day2.bin").unwrap();
+    sibling.pwrite_utf8(0, "two");
+    sibling.close();
+    let mut names: Vec<String> = dir.ls().unwrap().map(|e| e.unwrap().name()).collect();
+    names.sort();
+    assert_eq!(names, vec!["day1.bin", "day2.bin"]);
+
+    // Multi-segment and re-reading through a freshly joined handle (no shared state).
+    let mut deep = root.join("a/b/c/note.txt").unwrap();
+    deep.pwrite_utf8(0, "deep");
+    deep.close();
+    let reread = root.join("a").unwrap().join("b/c/note.txt").unwrap();
+    assert_eq!(reread.pread_utf8(0, 4).unwrap(), "deep");
+
+    // `join_str` is the infallible inherent form of the same operation.
+    assert_eq!(root.join_str("logs/day1.bin").uri(), child.uri());
+}
+
+#[test]
 fn ls_streams_children_and_walks_recursively() {
     let tmp = TempDir::new("ls");
     let root = tmp.root();

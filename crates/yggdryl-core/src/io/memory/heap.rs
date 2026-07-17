@@ -7,6 +7,7 @@ use super::cursor::cursor_methods;
 use super::{IOBase, IoError, Whence};
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
+use crate::uri::Uri;
 
 /// An in-heap byte buffer with a **built-in cursor** and amortized capacity — the concrete
 /// in-memory implementor of [`IOBase`]. Its stream methods (`read` / `write` / `seek` / the
@@ -52,6 +53,11 @@ pub struct Heap {
     headers: Headers,
     /// How this source may be accessed (`ReadWrite` by default — it is in-memory).
     mode: IOMode,
+    /// The optional address — `None` for the synthetic `mem://heap` (the lightweight
+    /// default, allocation-free), `Some` for a heap re-addressed by [`join`](IOBase::join)
+    /// so navigation composes through the URI. Boxed so an untouched heap stays small, and
+    /// **not** part of equality (a heap is its bytes; the address is transient metadata).
+    address: Option<Box<Uri>>,
 }
 
 impl Default for Heap {
@@ -61,6 +67,7 @@ impl Default for Heap {
             position: 0,
             headers: Headers::new(),
             mode: IOMode::ReadWrite,
+            address: None,
         }
     }
 }
@@ -100,6 +107,18 @@ impl Heap {
     pub fn from_vec(data: Vec<u8>) -> Self {
         Self {
             data,
+            ..Self::default()
+        }
+    }
+
+    /// An empty buffer **addressed** by `uri` — the child form [`join`](IOBase::join) builds,
+    /// so a heap can carry a place in a URI graph (`mem://heap/logs/app.bin`) while staying an
+    /// independent in-memory buffer. A `mem://heap` address is normalized back to the
+    /// lightweight default (no stored URI).
+    pub fn at_uri(uri: Uri) -> Self {
+        let address = (uri != *super::base::default_uri()).then(|| Box::new(uri));
+        Self {
+            address,
             ..Self::default()
         }
     }
@@ -312,8 +331,14 @@ impl IOBase for Heap {
             .shrink_to(usize::try_from(min_capacity).unwrap_or(usize::MAX));
     }
 
-    // `uri()` is deliberately NOT overridden: a heap stores no address, so every heap reports
-    // the trait's stable synthetic `mem://heap`.
+    /// An untouched heap reports the stable synthetic `mem://heap`; a heap re-addressed by
+    /// [`join`](IOBase::join) reports its place in the URI graph.
+    fn uri(&self) -> Uri {
+        match &self.address {
+            Some(uri) => (**uri).clone(),
+            None => super::base::default_uri().clone(),
+        }
+    }
 
     #[inline]
     fn headers(&self) -> &Headers {
@@ -340,9 +365,32 @@ impl IOBase for Heap {
         true // a live in-memory buffer always exists (it is neither file nor directory)
     }
 
-    // A heap is a **leaf** node of the IO graph: it streams no children.
+    // A heap is a **leaf** node of the IO graph: it streams no children. But it *is*
+    // addressable — `join` composes a child address, `parent` navigates back — so the same
+    // uniform graph API works over an in-memory buffer as over a filesystem node (the child
+    // is an independent buffer; only the address composes).
     type Children = super::NoChildren<Heap>;
     type Walk = super::NoChildren<Heap>;
+
+    fn join(&self, segment: &str) -> Result<Heap, IoError> {
+        Ok(Heap::at_uri(self.uri().joinpath(segment)))
+    }
+
+    fn parent(&self) -> Option<Heap> {
+        let uri = self.uri();
+        let trimmed = uri.path().trim_end_matches('/');
+        if trimmed.is_empty() {
+            return None; // the root `mem://heap` has no parent
+        }
+        let parent_path = match trimmed.rfind('/') {
+            Some(cut) => &trimmed[..cut], // keep the leading portion (may be "")
+            None => "",                   // a single segment: parent is the empty-path root
+        };
+        // `path()` is percent-encoded; decode before `with_path` re-encodes, so a retained
+        // segment with special bytes is not double-encoded. Own it before consuming `uri`.
+        let decoded = crate::uri::percent::decode(parent_path).into_owned();
+        Some(Heap::at_uri(uri.with_path(&decoded)))
+    }
 
     fn ls(&self) -> Result<Self::Children, IoError> {
         Ok(std::iter::empty())

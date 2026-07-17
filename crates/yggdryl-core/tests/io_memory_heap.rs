@@ -353,6 +353,47 @@ fn wrappers_forward_the_existence_predicates() {
 }
 
 #[test]
+fn heap_join_composes_addresses_over_an_in_memory_buffer() {
+    // The uniform graph `join`/`parent` work over an in-memory heap as address algebra: the
+    // child is an independent buffer, but its address composes through the URI (joinpath),
+    // and `parent()` is the inverse.
+    let root = Heap::new();
+    assert_eq!(root.uri().to_string(), "mem://heap");
+    assert!(root.parent().is_none()); // the root has no parent
+
+    let mut child = root.join("logs/app.bin").unwrap();
+    assert_eq!(child.uri().to_string(), "mem://heap/logs/app.bin");
+    assert_eq!(child.name(), "app.bin");
+
+    // The child is a real, independent buffer — writing and reading it works.
+    child.pwrite_utf8(0, "entry");
+    assert_eq!(child.pread_utf8(0, 5).unwrap(), "entry");
+    assert_eq!(child.byte_size(), 5);
+    // The parent heap is a *different* buffer (addresses compose; bytes do not).
+    assert_eq!(root.byte_size(), 0);
+
+    // parent() navigates back up the URI, the exact inverse of join.
+    assert_eq!(child.parent().unwrap().uri().to_string(), "mem://heap/logs");
+    assert_eq!(
+        child.parent().unwrap().parent().unwrap().uri().to_string(),
+        "mem://heap"
+    );
+    assert!(child.parent().unwrap().parent().unwrap().parent().is_none());
+
+    // A percent-encoding round-trip: a spaced segment encodes on join and the retained
+    // portion is not double-encoded on parent.
+    let spaced = root.join("my dir/my file").unwrap();
+    assert_eq!(spaced.uri().to_string(), "mem://heap/my%20dir/my%20file");
+    assert_eq!(
+        spaced.parent().unwrap().uri().to_string(),
+        "mem://heap/my%20dir"
+    );
+
+    // An untouched heap still allocates nothing for its address (None → the static default).
+    assert_eq!(Heap::new().uri().to_string(), "mem://heap");
+}
+
+#[test]
 fn leaf_sources_carry_the_graph_surface() {
     // IOBase is the central access path: every source is a node of the IO graph. A heap
     // (and the wrapper views) are LEAVES — they stream no children and have no parent.

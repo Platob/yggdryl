@@ -101,9 +101,13 @@ impl LocalIO {
     }
 
     /// The child node at `segment` (which may be a multi-segment relative path like
-    /// `"a/b/c.txt"`) — **lazy**: nothing is touched or created.
+    /// `"a/b/c.txt"`) — **lazy** and **infallible**: the ergonomic inherent form of the
+    /// graph-uniform [`join`](IOBase::join), which it delegates to (composing the child's
+    /// address through the URI). Nothing is touched or created.
     pub fn join_str(&self, segment: &str) -> LocalIO {
-        LocalIO::from_path(self.path.join(segment))
+        // `join` is infallible for a local node (the fallback guarantees `Ok`); unwrap it.
+        self.join(segment)
+            .unwrap_or_else(|_| LocalIO::from_path(self.path.join(segment)))
     }
 
     /// Auto-creates the directory tree at this path (like `mkdir -p`) — the explicit form
@@ -436,6 +440,17 @@ impl IOBase for LocalIO {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .map(LocalIO::from_path)
+    }
+
+    /// The child node at `segment`, its address composed by joining onto this node's URI
+    /// ([`Uri::joinpath`](crate::uri::Uri::joinpath)) — so `child.parent()` addresses this
+    /// node again. Lazy: pure address algebra, nothing on disk is touched until the child is
+    /// read or written. Infallible for a local node (a locally-joined URI always resolves
+    /// back to a path); the ergonomic [`join_str`](LocalIO::join_str) unwraps it.
+    fn join(&self, segment: &str) -> Result<LocalIO, IoError> {
+        let child = self.uri().joinpath(segment);
+        Ok(LocalIO::from_uri(&child)
+            .unwrap_or_else(|_| LocalIO::from_path(self.path.join(segment))))
     }
 
     fn ls(&self) -> Result<LocalChildren, IoError> {

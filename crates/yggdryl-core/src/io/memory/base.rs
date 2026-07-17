@@ -13,6 +13,12 @@ pub(crate) static DEFAULT_URI: std::sync::LazyLock<Uri> = std::sync::LazyLock::n
     Uri::parse_str("mem://heap").expect("the static mem://heap URI parses")
 });
 
+/// The shared synthetic `mem://heap` address (parsed once) — what any in-memory source
+/// reports from [`uri`](IOBase::uri) unless it has been re-addressed by [`join`](IOBase::join).
+pub(crate) fn default_uri() -> &'static Uri {
+    &DEFAULT_URI
+}
+
 /// The element count bulk operations stage per stack chunk — sized so the largest staged
 /// chunk (`i64`: 256 × 8 = 2 KiB) stays comfortably on the stack while the per-chunk convert
 /// loop is long enough for LLVM to vectorize.
@@ -309,6 +315,37 @@ pub trait IOBase: Sized {
     /// The parent node, or `None` — the default for a leaf source or a root.
     fn parent(&self) -> Option<Self> {
         None
+    }
+
+    /// The child node at `segment` — a **new node of the same kind**, addressed by joining
+    /// `segment` onto this node's address with [`Uri::joinpath`](crate::uri::Uri::joinpath),
+    /// so navigation composes through the URI: the child's [`parent`](IOBase::parent)
+    /// addresses this node again. `segment` may be multi-segment (`"a/b/c"`); an **absolute**
+    /// segment (leading `/`) re-roots (the URI merge/join algebra, shared with `Uri`/`Url`).
+    ///
+    /// Constructing a child touches nothing — it is pure address algebra. Reading or writing
+    /// the returned node is what actually creates or opens its backing (e.g. a `LocalIO`
+    /// child auto-creates on first write). The default reports that this source has no
+    /// navigable child space (a bare byte view or wrapper); [`Heap`](super::Heap) and the
+    /// local family ([`LocalIO`](crate::io::local::LocalIO)) build a real child.
+    ///
+    /// ```
+    /// use yggdryl_core::io::memory::{Heap, IOBase};
+    ///
+    /// let root = Heap::new();
+    /// let child = root.join("logs/app.bin").unwrap();
+    /// assert_eq!(child.uri().to_string(), "mem://heap/logs/app.bin");
+    /// assert_eq!(child.parent().unwrap().uri().to_string(), "mem://heap/logs");
+    /// ```
+    fn join(&self, segment: &str) -> Result<Self, IoError> {
+        let _ = segment;
+        Err(IoError::FileIo {
+            op: "join",
+            path: self.uri().to_string(),
+            detail: "this source has no child path space to join onto; address a filesystem \
+                     node (LocalIO) or an in-heap node (Heap)"
+                .to_string(),
+        })
     }
 
     /// Streams this node's **direct children**, lazily — each item is produced as the
