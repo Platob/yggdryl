@@ -89,7 +89,7 @@ byte-serializable) across all three languages. See [URIs and URLs](uri.md).
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let uri = Uri::parse("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag").unwrap();
+    let uri = Uri::parse_str("https://user:pw@example.com:8080/a/b.tar.gz?q=1#frag").unwrap();
     assert_eq!(uri.host(), Some("example.com"));
     assert_eq!(uri.extensions(), vec!["tar", "gz"]);
     ```

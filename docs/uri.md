@@ -62,15 +62,15 @@ guided error) when the URI has no scheme; the reverse is infallible.
     ```rust
     use yggdryl_core::uri::{Uri, Url};
 
-    let absolute = Uri::parse("https://example.com/a/b.txt").unwrap();
+    let absolute = Uri::parse_str("https://example.com/a/b.txt").unwrap();
     assert_eq!(absolute.scheme(), Some("https"));
     assert_eq!(absolute.to_url().unwrap().scheme(), "https");   // Uri -> Url
 
-    let relative = Uri::parse("/just/a/path").unwrap();
+    let relative = Uri::parse_str("/just/a/path").unwrap();
     assert_eq!(relative.scheme(), None);
     assert!(relative.to_url().is_err());                        // no scheme
 
-    let uri: Uri = Url::parse("s3://bucket/key").unwrap().into();  // Url -> Uri
+    let uri: Uri = Url::parse_str("s3://bucket/key").unwrap().into();  // Url -> Uri
     assert_eq!(uri.host(), Some("bucket"));
     ```
 
@@ -155,7 +155,7 @@ extension, no dot), and `extensions` (every extension of a multi-dot name, outer
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let uri = Uri::parse("https://user:pw@host.com:8080/a/b.tar.gz?q=1#frag").unwrap();
+    let uri = Uri::parse_str("https://user:pw@host.com:8080/a/b.tar.gz?q=1#frag").unwrap();
     assert_eq!(uri.scheme(), Some("https"));
     assert_eq!(uri.user(), Some("user"));
     assert_eq!(uri.password(), Some("pw"));
@@ -170,9 +170,9 @@ extension, no dot), and `extensions` (every extension of a multi-dot name, outer
     assert_eq!(uri.extensions(), vec!["tar", "gz"]);
     assert_eq!(uri.authority().unwrap().host(), "host.com");
 
-    assert_eq!(Uri::parse("/a/b/").unwrap().name(), None);
+    assert_eq!(Uri::parse_str("/a/b/").unwrap().name(), None);
     assert_eq!(Uri::from_path("/home/.bashrc").extension(), None);
-    assert_eq!(Uri::parse("http://[::1]:9000/p").unwrap().host(), Some("[::1]"));
+    assert_eq!(Uri::parse_str("http://[::1]:9000/p").unwrap().host(), Some("[::1]"));
     ```
 
 ## Default ports and IPv6 hosts
@@ -246,20 +246,20 @@ Because the fallback is read-only, `https://h/` and `https://h:443/` stay **dist
     use yggdryl_core::uri::{default_port, Uri, Url};
 
     // A scheme's default fills in when no port was written.
-    let uri = Uri::parse("https://example.com/p").unwrap();
+    let uri = Uri::parse_str("https://example.com/p").unwrap();
     assert_eq!(uri.port(), None);              // nothing was written
     assert_eq!(uri.default_port(), Some(443)); // the scheme's default
     assert_eq!(uri.port_or_default(), Some(443)); // effective port to connect to
     assert_eq!(uri.to_string(), "https://example.com/p"); // read-only: no ":443" added
 
     // An explicit port wins; a scheme with no default (or none at all) is None.
-    assert_eq!(Uri::parse("https://h:8443/p").unwrap().port_or_default(), Some(8443));
-    assert_eq!(Uri::parse("s3://bucket/key").unwrap().port_or_default(), None);
+    assert_eq!(Uri::parse_str("https://h:8443/p").unwrap().port_or_default(), Some(8443));
+    assert_eq!(Uri::parse_str("s3://bucket/key").unwrap().port_or_default(), None);
     assert_eq!(default_port("ws"), Some(80));
     assert_eq!(default_port("s3"), None);
 
     // IPv6 hosts: detect and unbracket.
-    let v6 = Url::parse("https://[2001:db8::1]:8080/p").unwrap();
+    let v6 = Url::parse_str("https://[2001:db8::1]:8080/p").unwrap();
     assert_eq!(v6.host(), Some("[2001:db8::1]"));          // stored bracketed
     assert!(v6.host_is_ipv6());
     assert_eq!(v6.host_unbracketed(), Some("2001:db8::1")); // bare address to dial
@@ -366,7 +366,7 @@ the receiver. Setting a host/port/user/password creates an authority if the URI 
     assert_eq!(built.to_string(), "https://api.example.com:443/v1/data?page=2");
 
     // In-place: `set_*` mutates the receiver.
-    let mut u = Uri::parse("https://old.example.com/x").unwrap();
+    let mut u = Uri::parse_str("https://old.example.com/x").unwrap();
     u.set_host("new.example.com");
     u.set_fragment("section");
     assert_eq!(u.host(), Some("new.example.com"));
@@ -443,15 +443,15 @@ An [`Authority`] can also be built up with `with_user` / `with_password` / `with
     use yggdryl_core::uri::{Authority, Uri};
 
     // joinpath: one slash at the seam, an absolute segment resets, multi-segment is fine.
-    let base = Uri::parse("https://api.example.com/v1").unwrap();
+    let base = Uri::parse_str("https://api.example.com/v1").unwrap();
     assert_eq!(base.joinpath("users").joinpath("42").to_string(), "https://api.example.com/v1/users/42");
     assert_eq!(Uri::from_path("/v1/").joinpath("users").path(), "/v1/users");   // not doubled
     assert_eq!(base.joinpath("/reset").to_string(), "https://api.example.com/reset");
 
     // merge_with: apply only the fields the patch sets.
-    let prod = Uri::parse("https://prod.example.com/v1?trace=1").unwrap();
+    let prod = Uri::parse_str("https://prod.example.com/v1?trace=1").unwrap();
     assert_eq!(
-        prod.merge_with(&Uri::parse("//staging.example.com").unwrap()).to_string(),
+        prod.merge_with(&Uri::parse_str("//staging.example.com").unwrap()).to_string(),
         "https://staging.example.com/v1?trace=1",
     );
 
@@ -527,7 +527,7 @@ second argument) for the raw stored form. Components are stored encoded generall
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let mut uri = Uri::parse("http://h/p?a=1&b=2&a=3").unwrap();
+    let mut uri = Uri::parse_str("http://h/p?a=1&b=2&a=3").unwrap();
     assert_eq!(uri.query_param("a"), Some("1"));            // first occurrence wins
     assert_eq!(uri.query_param_all("a"), vec!["1", "3"]);   // every value, in order
     assert_eq!(uri.query_params(), vec![("a", "1"), ("b", "2"), ("a", "3")]);
@@ -572,7 +572,7 @@ Bulk update then normalize:
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let mut uri = Uri::parse("http://h/p?c=3&a=1&b=2").unwrap();
+    let mut uri = Uri::parse_str("http://h/p?c=3&a=1&b=2").unwrap();
     uri.set_query_params(&[("a", "9"), ("d", "4")]);   // bulk: a updated, d appended
     assert_eq!(uri.query(), Some("c=3&a=9&b=2&d=4"));
     uri.normalize_query();                             // sort by key, drop empties
@@ -609,7 +609,7 @@ Percent-encoding — values are stored encoded and decoded on read:
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let uri = Uri::parse("http://h/p").unwrap().with_query_param("q", "a b&c");
+    let uri = Uri::parse_str("http://h/p").unwrap().with_query_param("q", "a b&c");
     assert_eq!(uri.query(), Some("q=a%20b%26c"));                     // stored encoded
     assert_eq!(uri.query_param("q"), Some("a%20b%26c"));             // stored form
     assert_eq!(uri.query_param_decoded("q").as_deref(), Some("a b&c")); // decoded
@@ -656,12 +656,12 @@ that need a real scheme use a multi-letter one.
     ```rust
     use yggdryl_core::uri::Uri;
 
-    let drive = Uri::parse(r"C:\Users\x\archive.tar.gz").unwrap();
+    let drive = Uri::parse_str(r"C:\Users\x\archive.tar.gz").unwrap();
     assert_eq!(drive.scheme(), None);               // drive letter, not a scheme
     assert_eq!(drive.path(), "C:/Users/x/archive.tar.gz");
     assert_eq!(drive.extensions(), vec!["tar", "gz"]);
 
-    assert_eq!(Uri::parse(r"\\server\share\file.txt").unwrap().path(), "//server/share/file.txt");
+    assert_eq!(Uri::parse_str(r"\\server\share\file.txt").unwrap().path(), "//server/share/file.txt");
     assert_eq!(Uri::from_path(r"a\b\c").path(), "a/b/c");
     ```
 
@@ -721,12 +721,12 @@ pickles through its four components in Python.)
     ```rust
     use yggdryl_core::uri::{Uri, Url};
 
-    let uri = Uri::parse("sc://host/path?q#f").unwrap();
+    let uri = Uri::parse_str("sc://host/path?q#f").unwrap();
     assert_eq!(uri.serialize_bytes(), b"sc://host/path?q#f");
     assert_eq!(Uri::deserialize_bytes(&uri.serialize_bytes()).unwrap(), uri);
 
     // Value semantics.
-    assert_eq!(Url::parse("https://h/a").unwrap(), Url::parse("https://h/a").unwrap());
+    assert_eq!(Url::parse_str("https://h/a").unwrap(), Url::parse_str("https://h/a").unwrap());
 
     // A non-UTF-8 payload is a guided error.
     assert!(Uri::deserialize_bytes(&[0xff, 0xfe]).is_err());
@@ -777,6 +777,6 @@ Python, a thrown `Error` in Node).
     ```rust
     use yggdryl_core::uri::{Uri, Url};
 
-    assert!(Uri::parse("https://host:99999/").is_err());   // port out of range
-    assert!(Url::parse("/no/scheme").is_err());            // not absolute
+    assert!(Uri::parse_str("https://host:99999/").is_err());   // port out of range
+    assert!(Url::parse_str("/no/scheme").is_err());            // not absolute
     ```
