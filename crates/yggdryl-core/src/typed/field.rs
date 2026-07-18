@@ -55,9 +55,34 @@ impl HeaderField {
         HeaderField { headers }
     }
 
+    /// A **decimal** field — sets the `precision` (max significant digits) and `scale` (decimal
+    /// places) alongside the name / type / nullable.
+    pub fn decimal(
+        name: Option<&str>,
+        type_id: DataTypeId,
+        precision: u32,
+        scale: i32,
+        nullable: bool,
+    ) -> Self {
+        let mut field = Self::new(name, type_id, nullable);
+        field.headers.set_precision(precision);
+        field.headers.set_scale(scale);
+        field
+    }
+
     /// A field wrapping an existing [`Headers`] map (its `type_id`/`name`/`nullable` are read from it).
     pub fn from_headers(headers: Headers) -> Self {
         HeaderField { headers }
+    }
+
+    /// The decimal **precision** (max significant digits), if this field carries it.
+    pub fn precision(&self) -> Option<u32> {
+        self.headers.precision()
+    }
+
+    /// The decimal **scale** (decimal places), if this field carries it.
+    pub fn scale(&self) -> Option<i32> {
+        self.headers.scale()
     }
 
     /// The mutable metadata map — annotate the field with any extra headers.

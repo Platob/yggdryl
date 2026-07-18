@@ -43,11 +43,19 @@ pub enum DataTypeId {
     F32 = 12,
     /// 64-bit IEEE-754 float.
     F64 = 13,
+    /// 32-bit fixed-point **decimal** — a signed `i32` unscaled value (precision/scale in metadata).
+    Decimal32 = 14,
+    /// 64-bit fixed-point **decimal** — a signed `i64` unscaled value.
+    Decimal64 = 15,
+    /// 128-bit fixed-point **decimal** — a signed `i128` unscaled value.
+    Decimal128 = 16,
+    /// 256-bit fixed-point **decimal** — a signed `I256` unscaled value.
+    Decimal256 = 17,
 }
 
 impl DataTypeId {
     /// Every non-`Unknown` type, in id order — the canonical set (used by tests and registries).
-    pub const ALL: [DataTypeId; 13] = [
+    pub const ALL: [DataTypeId; 17] = [
         DataTypeId::Bool,
         DataTypeId::I8,
         DataTypeId::U8,
@@ -61,6 +69,10 @@ impl DataTypeId {
         DataTypeId::U128,
         DataTypeId::F32,
         DataTypeId::F64,
+        DataTypeId::Decimal32,
+        DataTypeId::Decimal64,
+        DataTypeId::Decimal128,
+        DataTypeId::Decimal256,
     ];
 
     /// The `u16` discriminant — what a source stores in its headers.
@@ -85,6 +97,10 @@ impl DataTypeId {
             11 => DataTypeId::U128,
             12 => DataTypeId::F32,
             13 => DataTypeId::F64,
+            14 => DataTypeId::Decimal32,
+            15 => DataTypeId::Decimal64,
+            16 => DataTypeId::Decimal128,
+            17 => DataTypeId::Decimal256,
             _ => DataTypeId::Unknown,
         }
     }
@@ -106,6 +122,10 @@ impl DataTypeId {
             DataTypeId::U128 => "u128",
             DataTypeId::F32 => "f32",
             DataTypeId::F64 => "f64",
+            DataTypeId::Decimal32 => "decimal32",
+            DataTypeId::Decimal64 => "decimal64",
+            DataTypeId::Decimal128 => "decimal128",
+            DataTypeId::Decimal256 => "decimal256",
         }
     }
 
@@ -131,6 +151,10 @@ impl DataTypeId {
             DataTypeId::I32 | DataTypeId::U32 | DataTypeId::F32 => 4,
             DataTypeId::I64 | DataTypeId::U64 | DataTypeId::F64 => 8,
             DataTypeId::I128 | DataTypeId::U128 => 16,
+            DataTypeId::Decimal32 => 4,
+            DataTypeId::Decimal64 => 8,
+            DataTypeId::Decimal128 => 16,
+            DataTypeId::Decimal256 => 32,
         }
     }
 
@@ -166,7 +190,7 @@ impl DataTypeId {
         )
     }
 
-    /// Whether this is a **signed** numeric type (the signed integers and the floats).
+    /// Whether this is a **signed** numeric type (the signed integers, the floats, and the decimals).
     pub fn is_signed(self) -> bool {
         matches!(
             self,
@@ -177,12 +201,23 @@ impl DataTypeId {
                 | DataTypeId::I128
                 | DataTypeId::F32
                 | DataTypeId::F64
-        )
+        ) || self.is_decimal()
     }
 
     /// Whether this is a floating-point type (`f32` / `f64`).
     pub fn is_float(self) -> bool {
         matches!(self, DataTypeId::F32 | DataTypeId::F64)
+    }
+
+    /// Whether this is a fixed-point **decimal** type (`decimal32`…`decimal256`).
+    pub fn is_decimal(self) -> bool {
+        matches!(
+            self,
+            DataTypeId::Decimal32
+                | DataTypeId::Decimal64
+                | DataTypeId::Decimal128
+                | DataTypeId::Decimal256
+        )
     }
 
     /// Whether this is the boolean type.

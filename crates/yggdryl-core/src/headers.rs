@@ -88,6 +88,12 @@ impl Headers {
     /// The **nullable** flag header — whether a typed field/column admits nulls
     /// ([`nullable`](Headers::nullable) / [`set_nullable`](Headers::set_nullable)).
     pub const NULLABLE: &'static str = "X-Nullable";
+    /// The decimal **precision** header — the max significant digits of a decimal field
+    /// ([`precision`](Headers::precision) / [`set_precision`](Headers::set_precision)).
+    pub const PRECISION: &'static str = "X-Precision";
+    /// The decimal **scale** header — the decimal places of a decimal field
+    /// ([`scale`](Headers::scale) / [`set_scale`](Headers::set_scale)).
+    pub const SCALE: &'static str = "X-Scale";
 
     // ---- construction -------------------------------------------------------------------
 
@@ -351,6 +357,28 @@ impl Headers {
     /// Sets the [`NULLABLE`](Headers::NULLABLE) flag (`"true"` / `"false"`).
     pub fn set_nullable(&mut self, nullable: bool) {
         self.insert(Self::NULLABLE, if nullable { "true" } else { "false" });
+    }
+
+    /// The decimal **precision** (max significant digits) from the [`PRECISION`](Headers::PRECISION)
+    /// header, if present and numeric.
+    pub fn precision(&self) -> Option<u32> {
+        self.get(Self::PRECISION)?.trim().parse().ok()
+    }
+
+    /// Sets the decimal [`PRECISION`](Headers::PRECISION).
+    pub fn set_precision(&mut self, precision: u32) {
+        self.insert(Self::PRECISION, &precision.to_string());
+    }
+
+    /// The decimal **scale** (decimal places) from the [`SCALE`](Headers::SCALE) header, if present
+    /// and an integer.
+    pub fn scale(&self) -> Option<i32> {
+        self.get(Self::SCALE)?.trim().parse().ok()
+    }
+
+    /// Sets the decimal [`SCALE`](Headers::SCALE).
+    pub fn set_scale(&mut self, scale: i32) {
+        self.insert(Self::SCALE, &scale.to_string());
     }
 
     /// Sets [`mtime`](Headers::mtime) to **now** (epoch microseconds from the system clock) —

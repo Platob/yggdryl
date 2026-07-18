@@ -35,6 +35,7 @@
 //! ```
 
 mod data_type;
+mod decimal;
 mod decoder;
 mod encoder;
 mod field;
@@ -48,6 +49,7 @@ pub mod varbit;
 pub mod varbyte;
 
 pub use data_type::DataType;
+pub use decimal::{apply_scale, Decimal};
 pub use decoder::Decoder;
 pub use encoder::Encoder;
 pub use field::{Field, HeaderField};

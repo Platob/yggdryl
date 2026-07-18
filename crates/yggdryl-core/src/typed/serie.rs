@@ -12,7 +12,7 @@
 
 use core::marker::PhantomData;
 
-use super::{DataType, Decoder, Encoder, HeaderField, Reduce, Scalar};
+use super::{DataType, Decimal, Decoder, Encoder, HeaderField, Reduce, Scalar};
 use crate::datatype_id::DataTypeId;
 use crate::io::memory::{Heap, IOBase, IoError};
 
@@ -32,6 +32,10 @@ pub struct FixedSerie<T: DataType, D: IOBase = Heap> {
     validity: Option<D>,
     len: usize,
     name: Option<Box<str>>,
+    /// Decimal precision / scale metadata — set only for decimal columns (see
+    /// [`with_precision_scale`](FixedSerie::with_precision_scale)).
+    precision: Option<u32>,
+    scale: Option<i32>,
     _type: PhantomData<T>,
 }
 
@@ -45,6 +49,8 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
             validity: None,
             len: 0,
             name: None,
+            precision: None,
+            scale: None,
             _type: PhantomData,
         }
     }
@@ -56,6 +62,8 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
             validity: None,
             len: 0,
             name: None,
+            precision: None,
+            scale: None,
             _type: PhantomData,
         }
     }
@@ -81,6 +89,15 @@ impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
     /// Sets the column **name** (the metadata a [`field`](FixedSerie::field) reports).
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    /// Sets the **decimal precision + scale** metadata (for a decimal column) — reported by
+    /// [`field`](FixedSerie::field) and used by
+    /// [`to_decimal_string`](FixedSerie::to_decimal_string) to place the decimal point.
+    pub fn with_precision_scale(mut self, precision: u32, scale: i32) -> Self {
+        self.precision = Some(precision);
+        self.scale = Some(scale);
         self
     }
 
@@ -165,6 +182,8 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
             validity,
             len,
             name: None,
+            precision: None,
+            scale: None,
             _type: PhantomData,
         }
     }
@@ -198,13 +217,20 @@ impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
         self.validity.as_ref()
     }
 
-    /// The column's [`Field`] metadata — its `name`, `type_id`, and `nullable` flag.
+    /// The column's [`Field`] metadata — its `name`, `type_id`, `nullable` flag, and (for a decimal
+    /// column) its `precision` / `scale`.
     pub fn field(&self) -> HeaderField {
-        HeaderField::new(
-            self.name.as_deref(),
-            T::DATA_TYPE_ID,
-            self.validity.is_some(),
-        )
+        let nullable = self.validity.is_some();
+        match (self.precision, self.scale) {
+            (Some(precision), Some(scale)) => HeaderField::decimal(
+                self.name.as_deref(),
+                T::DATA_TYPE_ID,
+                precision,
+                scale,
+                nullable,
+            ),
+            _ => HeaderField::new(self.name.as_deref(), T::DATA_TYPE_ID, nullable),
+        }
     }
 }
 
@@ -257,5 +283,29 @@ impl<T: Reduce + Decoder, D: IOBase> FixedSerie<T, D> {
     /// The **mean** as `f64`; `None` when empty.
     pub fn mean(&self) -> Result<Option<f64>, IoError> {
         T::mean(&self.data, 0, self.len)
+    }
+}
+
+/// Decimal interoperability — the precision/scale metadata and scale-aware string formatting for a
+/// decimal column (`FixedSerie<Decimal32|64|128|256>`).
+impl<T: Decimal + Decoder, D: IOBase> FixedSerie<T, D>
+where
+    T::Native: core::fmt::Display,
+{
+    /// The decimal **scale** (decimal places) — the set value, else `0`.
+    pub fn decimal_scale(&self) -> i32 {
+        self.scale.unwrap_or(0)
+    }
+
+    /// The decimal **precision** (max significant digits) — the set value, else the type's max.
+    pub fn decimal_precision(&self) -> u32 {
+        self.precision.unwrap_or(T::MAX_PRECISION)
+    }
+
+    /// The decimal value at `index` formatted with the column's scale (e.g. `"123.45"`), or `None`
+    /// when the element is null or out of range — the easy human-readable interop.
+    pub fn to_decimal_string(&self, index: usize) -> Option<String> {
+        self.get(index)
+            .map(|value| T::format(value, self.decimal_scale()))
     }
 }

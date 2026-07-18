@@ -38,3 +38,22 @@ fn predicates_and_element_count() {
     assert_eq!(DataTypeId::I64.element_count(25), 3); // whole elements only
     assert_eq!(DataTypeId::Unknown.element_count(100), 0);
 }
+
+#[test]
+fn decimal_variants() {
+    assert_eq!(DataTypeId::Decimal32.byte_size(), 4);
+    assert_eq!(DataTypeId::Decimal64.byte_size(), 8);
+    assert_eq!(DataTypeId::Decimal128.byte_size(), 16);
+    assert_eq!(DataTypeId::Decimal256.byte_size(), 32);
+    assert!(DataTypeId::Decimal128.is_decimal());
+    assert!(DataTypeId::Decimal128.is_signed());
+    assert!(!DataTypeId::Decimal128.is_integer() && !DataTypeId::Decimal128.is_float());
+    assert!(!DataTypeId::I64.is_decimal());
+    assert_eq!(
+        DataTypeId::from_name("decimal256"),
+        Some(DataTypeId::Decimal256)
+    );
+    assert_eq!(DataTypeId::Decimal64.to_string(), "decimal64");
+    // Still round-trips through u16 (ALL now covers the 4 decimals).
+    assert_eq!(DataTypeId::from_u16(16), DataTypeId::Decimal128);
+}

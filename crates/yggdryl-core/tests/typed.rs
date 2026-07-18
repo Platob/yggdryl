@@ -6,9 +6,12 @@
 use yggdryl_core::datatype_id::DataTypeId;
 use yggdryl_core::io::memory::{Heap, IOBase};
 use yggdryl_core::typed::fixedbit::Bit;
-use yggdryl_core::typed::fixedbyte::{Float64, Int128, Int32, Int64, Int8, UInt128, UInt8};
+use yggdryl_core::typed::fixedbyte::{
+    Decimal128, Decimal256, Decimal32, Decimal64, Float64, Int128, Int32, Int64, Int8, UInt128,
+    UInt8, I256,
+};
 use yggdryl_core::typed::{
-    Decoder, Encoder, Field, FixedScalar, FixedSerie, HeaderField, Scalar, Serie,
+    Decimal, Decoder, Encoder, Field, FixedScalar, FixedSerie, HeaderField, Scalar, Serie,
 };
 
 // -------------------------------------------------------------------------------------
@@ -267,4 +270,99 @@ fn serie_from_data_views_an_existing_buffer() {
     let nullable: FixedSerie<Int32, Heap> = FixedSerie::from_data(data, Some(validity), 3);
     assert_eq!(nullable.to_options(), vec![Some(1), None, Some(3)]);
     assert_eq!(nullable.null_count(), 1);
+}
+
+// -------------------------------------------------------------------------------------
+// Fixed-point decimals — Decimal32/64/128/256 + the shared Decimal trait + precision/scale
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn decimal_serie_precision_scale_and_format() {
+    // Money as Decimal128 scale 2: the stored value is the unscaled integer; the string is scaled.
+    let col = FixedSerie::<Decimal128>::from_values(&[12345, 5, -5, 100000])
+        .with_name("price")
+        .with_precision_scale(10, 2);
+    assert_eq!(col.len(), 4);
+    assert_eq!(col.get(0), Some(12345i128)); // the raw unscaled value
+    assert_eq!(col.to_decimal_string(0).as_deref(), Some("123.45"));
+    assert_eq!(col.to_decimal_string(1).as_deref(), Some("0.05"));
+    assert_eq!(col.to_decimal_string(2).as_deref(), Some("-0.05"));
+    assert_eq!(col.to_decimal_string(3).as_deref(), Some("1000.00"));
+    assert_eq!(col.decimal_scale(), 2);
+    assert_eq!(col.decimal_precision(), 10);
+
+    // The field carries the decimal metadata (in its Headers).
+    let field = col.field();
+    assert_eq!(field.name(), Some("price"));
+    assert_eq!(field.data_type_id(), DataTypeId::Decimal128);
+    assert_eq!(field.precision(), Some(10));
+    assert_eq!(field.scale(), Some(2));
+    assert!(field.data_type_id().is_decimal());
+}
+
+#[test]
+fn decimal_widths_and_trait() {
+    assert_eq!(
+        FixedSerie::<Decimal32>::from_values(&[999, -1]).get(1),
+        Some(-1i32)
+    );
+    assert_eq!(
+        FixedSerie::<Decimal64>::from_values(&[i64::MAX]).get(0),
+        Some(i64::MAX)
+    );
+    // The shared Decimal trait: max precision per width + scale-aware format.
+    assert_eq!(Decimal32::MAX_PRECISION, 9);
+    assert_eq!(Decimal64::MAX_PRECISION, 18);
+    assert_eq!(Decimal128::MAX_PRECISION, 38);
+    assert_eq!(Decimal256::MAX_PRECISION, 76);
+    assert_eq!(Decimal64::format(-12345, 3), "-12.345");
+    assert_eq!(Decimal32::format(7, 0), "7");
+}
+
+#[test]
+fn decimal256_i256_round_trip_and_format() {
+    let col = FixedSerie::<Decimal256>::from_values(&[
+        I256::from_i128(12345678901234567890i128),
+        I256::from_i128(-1),
+        I256::ZERO,
+    ])
+    .with_precision_scale(40, 4);
+    assert_eq!(col.len(), 3);
+    assert_eq!(col.get(1), Some(I256::from_i128(-1)));
+    assert_eq!(
+        col.to_decimal_string(0).as_deref(),
+        Some("1234567890123456.7890")
+    );
+    assert_eq!(col.to_decimal_string(2).as_deref(), Some("0.0000"));
+
+    // I256 native basics: i128 interop, ordering, byte round-trip.
+    assert_eq!(I256::from_i128(42).to_i128(), Some(42));
+    assert!(I256::from_i128(-5) < I256::from_i128(5));
+    assert!(I256::ZERO < I256::from_i128(1));
+    let bytes = I256::from_i128(-1).to_le_bytes();
+    assert_eq!(I256::from_le_bytes(bytes), I256::from_i128(-1));
+    assert_eq!(I256::from_i128(-1).to_string(), "-1");
+}
+
+#[test]
+fn decimal_encoder_decoder_direct() {
+    let mut h = Heap::new();
+    Decimal128::encode(&mut h, 0, 999i128).unwrap();
+    Decimal128::encode(&mut h, 1, -1i128).unwrap();
+    assert_eq!(Decimal128::decode(&h, 0).unwrap(), 999);
+    assert_eq!(Decimal128::decode(&h, 1).unwrap(), -1);
+
+    // Decimal256 encodes its 32 LE bytes per element.
+    let mut d256 = Heap::new();
+    Decimal256::encode_slice(&mut d256, 0, &[I256::from_i128(7), I256::from_i128(-9)]).unwrap();
+    assert_eq!(Decimal256::decode(&d256, 0).unwrap(), I256::from_i128(7));
+    assert_eq!(Decimal256::decode(&d256, 1).unwrap(), I256::from_i128(-9));
+
+    // A nullable decimal column via from_options.
+    let nullable = FixedSerie::<Decimal64>::from_options(&[Some(100), None, Some(250)])
+        .with_precision_scale(6, 2);
+    assert_eq!(nullable.null_count(), 1);
+    assert_eq!(nullable.to_decimal_string(0).as_deref(), Some("1.00"));
+    assert_eq!(nullable.to_decimal_string(1), None); // null
+    assert_eq!(nullable.to_decimal_string(2).as_deref(), Some("2.50"));
 }
