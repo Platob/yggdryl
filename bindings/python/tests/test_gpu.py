@@ -13,6 +13,7 @@ so no separate CPU buffer class is exposed on ``yggdryl.gpu``.
 """
 
 import pickle
+import struct
 
 import pytest
 
@@ -192,3 +193,73 @@ def test_amd_buffer_context_manager_and_repr():
     with AmdBuffer.from_host(b"ctx") as buf:
         assert buf.download_vec() == b"ctx"
     assert repr(AmdBuffer.from_host(b"abc")).startswith("AmdBuffer(<3 bytes on ")
+
+
+# -------------------------------------------------------------------------------------
+# Compute — auto-dispatched aggregations, threshold filter, device-aware copy
+# -------------------------------------------------------------------------------------
+
+
+def test_amd_buffer_compute_i32_aggregations_and_filter():
+    buf = AmdBuffer()
+    buf.pwrite_i32_array(0, [4, 8, 15, 16, 23, 42])
+    assert buf.sum_i32(0, 6) == 108
+    assert buf.min_i32(0, 6) == 4
+    assert buf.max_i32(0, 6) == 42
+    assert buf.mean_i32(0, 6) == pytest.approx(18.0)
+    # count_ge is a threshold filter: how many values are >= threshold.
+    assert buf.count_ge_i32(0, 6, 16) == 3
+    assert buf.count_ge_i32(0, 6, 100) == 0
+    # An empty span reduces to the None / 0 identities.
+    assert buf.min_i32(0, 0) is None
+    assert buf.max_i32(0, 0) is None
+    assert buf.mean_i32(0, 0) is None
+    assert buf.sum_i32(0, 0) == 0
+
+
+def test_amd_buffer_compute_i64_aggregations():
+    buf = AmdBuffer()
+    buf.pwrite_i64_array(0, [1 << 40, 2 << 40, 3 << 40])
+    # The i64 accumulator is a 128-bit int on the core side; Python's int carries it.
+    assert buf.sum_i64(0, 3) == (1 << 40) + (2 << 40) + (3 << 40)
+    assert buf.min_i64(0, 3) == 1 << 40
+    assert buf.max_i64(0, 3) == 3 << 40
+    assert buf.count_ge_i64(0, 3, 2 << 40) == 2
+
+
+def test_amd_buffer_compute_f64_large_array_streams():
+    # More than one compute stack chunk (1024 elements) exercises the streaming reduction.
+    values = [float(i) for i in range(1025)]  # 0.0 .. 1024.0
+    buf = AmdBuffer()
+    buf.pwrite_byte_array(0, struct.pack(f"<{len(values)}d", *values))
+    n = len(values)
+    assert buf.sum_f64(0, n) == pytest.approx(sum(values))
+    assert buf.min_f64(0, n) == pytest.approx(0.0)
+    assert buf.max_f64(0, n) == pytest.approx(1024.0)
+    assert buf.mean_f64(0, n) == pytest.approx(sum(values) / n)
+    assert buf.count_ge_f64(0, n, 512.0) == sum(1 for v in values if v >= 512.0)
+
+
+def test_amd_buffer_compute_f32_aggregations():
+    values = [1.5, 2.5, 3.5]
+    buf = AmdBuffer()
+    buf.pwrite_byte_array(0, struct.pack(f"<{len(values)}f", *values))
+    assert buf.sum_f32(0, 3) == pytest.approx(7.5)
+    assert buf.min_f32(0, 3) == pytest.approx(1.5)
+    assert buf.max_f32(0, 3) == pytest.approx(3.5)
+    assert buf.mean_f32(0, 3) == pytest.approx(2.5)
+    assert buf.count_ge_f32(0, 3, 2.5) == 2
+
+
+def test_amd_buffer_compute_copy_into_round_trip():
+    src = AmdBuffer.from_host(b"device-to-device payload")
+    dst = AmdBuffer()
+    written = src.compute_copy_into(dst)
+    assert written == src.byte_size()
+    assert dst.download_vec() == b"device-to-device payload"
+
+
+def test_amd_buffer_compute_backend_token_is_cpu_for_small_work():
+    buf = AmdBuffer.from_host(b"small")
+    # A tiny workload never amortizes a host<->device transfer, so it runs on the CPU arm.
+    assert buf.compute_backend(8) == "cpu"

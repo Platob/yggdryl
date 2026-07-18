@@ -154,3 +154,92 @@ test('AmdBuffer bulk read past the end throws a guided Error', () => {
   const buf = AmdBuffer.fromHost(Buffer.from('short'))
   assert.throws(() => buf.preadI32Array(0, 100), /.+/)
 })
+
+// -------------------------------------------------------------------------------------
+// AmdBuffer — Compute: auto-dispatched aggregations, filter, and device-aware copy
+// -------------------------------------------------------------------------------------
+
+test('AmdBuffer i32 aggregations: sum/min/max/mean/countGe', () => {
+  const buf = new AmdBuffer()
+  const values = [4, 8, 15, 16, 23, 42]
+  buf.pwriteI32Array(0, values)
+
+  assert.equal(buf.sumI32(0, 6), 108)
+  assert.equal(buf.minI32(0, 6), 4)
+  assert.equal(buf.maxI32(0, 6), 42)
+  assert.equal(buf.meanI32(0, 6), 18)
+  // Filter: how many are >= 16.
+  assert.equal(buf.countGeI32(0, 6, 16), 3)
+
+  // An empty window yields the null/None aggregates but a zero filter count.
+  assert.equal(buf.minI32(0, 0), null)
+  assert.equal(buf.maxI32(0, 0), null)
+  assert.equal(buf.meanI32(0, 0), null)
+  assert.equal(buf.countGeI32(0, 0, 16), 0)
+})
+
+test('AmdBuffer i64 aggregations cross 64-bit values (BigInt sum, BigInt threshold)', () => {
+  const buf = new AmdBuffer()
+  buf.pwriteI64Array(0, [10, 20, 30, 40])
+
+  // The i64 sum accumulates to i128 and crosses as a BigInt.
+  assert.equal(buf.sumI64(0, 4), 100n)
+  // min/max cross as JS numbers (i64, exact to 2^53).
+  assert.equal(buf.minI64(0, 4), 10)
+  assert.equal(buf.maxI64(0, 4), 40)
+  assert.equal(buf.meanI64(0, 4), 25)
+  // The i64 filter threshold is a BigInt.
+  assert.equal(buf.countGeI64(0, 4, 25n), 2)
+})
+
+test('AmdBuffer f64 aggregations stream a large (>1024) array through the stack chunk', () => {
+  const buf = new AmdBuffer()
+  const n = 5000 // exceeds the 1024-element compute chunk, exercising the streaming loop
+  // No f64 bulk-array method on AmdBuffer, so seed the device bytes as little-endian f64s.
+  const bytes = Buffer.alloc(n * 8)
+  let expectedSum = 0
+  for (let i = 0; i < n; i++) {
+    const v = i + 0.5
+    bytes.writeDoubleLE(v, i * 8)
+    expectedSum += v
+  }
+  buf.pwriteByteArray(0, bytes)
+
+  assert.ok(Math.abs(buf.sumF64(0, n) - expectedSum) < 1e-6)
+  assert.equal(buf.minF64(0, n), 0.5)
+  assert.equal(buf.maxF64(0, n), n - 1 + 0.5)
+  assert.ok(Math.abs(buf.meanF64(0, n) - expectedSum / n) < 1e-9)
+  // How many of the n values are >= (n / 2): the upper half.
+  assert.equal(buf.countGeF64(0, n, n / 2), n - n / 2)
+})
+
+test('AmdBuffer f32 aggregations widen to JS numbers', () => {
+  const buf = new AmdBuffer()
+  // Seed little-endian f32s (no f32 bulk-array method on AmdBuffer).
+  const bytes = Buffer.alloc(3 * 4)
+  ;[1.5, 2.5, 3.5].forEach((v, i) => bytes.writeFloatLE(v, i * 4))
+  buf.pwriteByteArray(0, bytes)
+
+  assert.equal(buf.sumF32(0, 3), 7.5)
+  assert.equal(buf.minF32(0, 3), 1.5)
+  assert.equal(buf.maxF32(0, 3), 3.5)
+  assert.equal(buf.meanF32(0, 3), 2.5)
+  assert.equal(buf.countGeF32(0, 3, 2.5), 2)
+})
+
+test('AmdBuffer computeCopyInto round-trips the whole buffer into another buffer', () => {
+  const src = new AmdBuffer()
+  src.pwriteI32Array(0, [7, 11, 13, 17])
+  const dst = new AmdBuffer()
+
+  const copied = src.computeCopyInto(dst)
+  assert.equal(copied, src.byteSize())
+  assert.equal(copied, 16) // four i32s
+  assert.deepEqual(dst.downloadVec(), src.downloadVec())
+  assert.deepEqual(dst.preadI32Array(0, 4), [7, 11, 13, 17])
+})
+
+test('AmdBuffer computeBackend reports the cpu token for small workloads', () => {
+  const buf = new AmdBuffer()
+  assert.equal(buf.computeBackend(8), 'cpu')
+})

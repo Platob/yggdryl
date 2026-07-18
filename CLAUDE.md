@@ -37,6 +37,7 @@ crates/yggdryl-core/src/             # the core (dependency-free by default; cod
       mmap.rs                        #     the raw memory-mapped file LocalIO builds on
     gpu/                             #   device memory (feature `gpu`) — organized BY ARCHITECTURE:
       mod.rs device.rs               #     GpuMemory over IOBase + the by-arch device probe
+      compute.rs                     #     Compute — aggregations/filters/copy, auto GPU-vs-CPU
       cpu.rs                         #     CpuHeap — device memory IS our Heap (host RAM)
       amd.rs  cuda.rs                #     AMD Radeon (gpu-amd, live detect) / NVIDIA (gpu-cuda)
   headers.rs                         # Headers — the one metadata map (root module)

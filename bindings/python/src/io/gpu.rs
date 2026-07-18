@@ -27,7 +27,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::io::meminfo::MemoryInfo;
-use yggdryl_core::io::gpu::{self, GpuMemory};
+use yggdryl_core::io::gpu::{self, Compute, GpuMemory};
 use yggdryl_core::io::memory::{IOBase, IoError};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
@@ -297,6 +297,132 @@ impl AmdBuffer {
     /// [`pwrite_i32_array`](AmdBuffer::pwrite_i32_array).
     fn pwrite_i64_array(&mut self, offset: u64, values: Vec<i64>) -> PyResult<()> {
         self.inner.pwrite_i64_array(offset, &values).map_err(ioerr)
+    }
+
+    // ---- compute: auto-dispatched aggregations, filter, device-aware copy --------------
+
+    /// **Sum** of `count` little-endian `i32`s at `offset` (accumulated as a 64-bit int).
+    fn sum_i32(&self, offset: u64, count: usize) -> PyResult<i64> {
+        self.inner.sum_i32(offset, count).map_err(ioerr)
+    }
+
+    /// **Sum** of `count` little-endian `i64`s at `offset` (accumulated as a 128-bit int).
+    fn sum_i64(&self, offset: u64, count: usize) -> PyResult<i128> {
+        self.inner.sum_i64(offset, count).map_err(ioerr)
+    }
+
+    /// **Sum** of `count` little-endian `f32`s at `offset` (accumulated as `f64`).
+    fn sum_f32(&self, offset: u64, count: usize) -> PyResult<f64> {
+        self.inner.sum_f32(offset, count).map_err(ioerr)
+    }
+
+    /// **Sum** of `count` little-endian `f64`s at `offset`.
+    fn sum_f64(&self, offset: u64, count: usize) -> PyResult<f64> {
+        self.inner.sum_f64(offset, count).map_err(ioerr)
+    }
+
+    /// **Minimum** of `count` `i32`s at `offset`, or `None` when `count == 0`.
+    fn min_i32(&self, offset: u64, count: usize) -> PyResult<Option<i32>> {
+        self.inner.min_i32(offset, count).map_err(ioerr)
+    }
+
+    /// **Minimum** of `count` `i64`s at `offset`, or `None` when `count == 0`.
+    fn min_i64(&self, offset: u64, count: usize) -> PyResult<Option<i64>> {
+        self.inner.min_i64(offset, count).map_err(ioerr)
+    }
+
+    /// **Minimum** of `count` `f32`s at `offset`, or `None` when `count == 0`.
+    fn min_f32(&self, offset: u64, count: usize) -> PyResult<Option<f32>> {
+        self.inner.min_f32(offset, count).map_err(ioerr)
+    }
+
+    /// **Minimum** of `count` `f64`s at `offset`, or `None` when `count == 0`.
+    fn min_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.min_f64(offset, count).map_err(ioerr)
+    }
+
+    /// **Maximum** of `count` `i32`s at `offset`, or `None` when `count == 0`.
+    fn max_i32(&self, offset: u64, count: usize) -> PyResult<Option<i32>> {
+        self.inner.max_i32(offset, count).map_err(ioerr)
+    }
+
+    /// **Maximum** of `count` `i64`s at `offset`, or `None` when `count == 0`.
+    fn max_i64(&self, offset: u64, count: usize) -> PyResult<Option<i64>> {
+        self.inner.max_i64(offset, count).map_err(ioerr)
+    }
+
+    /// **Maximum** of `count` `f32`s at `offset`, or `None` when `count == 0`.
+    fn max_f32(&self, offset: u64, count: usize) -> PyResult<Option<f32>> {
+        self.inner.max_f32(offset, count).map_err(ioerr)
+    }
+
+    /// **Maximum** of `count` `f64`s at `offset`, or `None` when `count == 0`.
+    fn max_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.max_f64(offset, count).map_err(ioerr)
+    }
+
+    /// **Mean** of `count` `i32`s at `offset` as `float`, or `None` when `count == 0`.
+    fn mean_i32(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.mean_i32(offset, count).map_err(ioerr)
+    }
+
+    /// **Mean** of `count` `i64`s at `offset` as `float`, or `None` when `count == 0`.
+    fn mean_i64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.mean_i64(offset, count).map_err(ioerr)
+    }
+
+    /// **Mean** of `count` `f32`s at `offset` as `float`, or `None` when `count == 0`.
+    fn mean_f32(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.mean_f32(offset, count).map_err(ioerr)
+    }
+
+    /// **Mean** of `count` `f64`s at `offset` as `float`, or `None` when `count == 0`.
+    fn mean_f64(&self, offset: u64, count: usize) -> PyResult<Option<f64>> {
+        self.inner.mean_f64(offset, count).map_err(ioerr)
+    }
+
+    /// **Filter count** — how many of `count` `i32`s at `offset` are `>= threshold`.
+    fn count_ge_i32(&self, offset: u64, count: usize, threshold: i32) -> PyResult<usize> {
+        self.inner
+            .count_ge_i32(offset, count, threshold)
+            .map_err(ioerr)
+    }
+
+    /// **Filter count** — how many of `count` `i64`s at `offset` are `>= threshold`.
+    fn count_ge_i64(&self, offset: u64, count: usize, threshold: i64) -> PyResult<usize> {
+        self.inner
+            .count_ge_i64(offset, count, threshold)
+            .map_err(ioerr)
+    }
+
+    /// **Filter count** — how many of `count` `f32`s at `offset` are `>= threshold`.
+    fn count_ge_f32(&self, offset: u64, count: usize, threshold: f32) -> PyResult<usize> {
+        self.inner
+            .count_ge_f32(offset, count, threshold)
+            .map_err(ioerr)
+    }
+
+    /// **Filter count** — how many of `count` `f64`s at `offset` are `>= threshold`.
+    fn count_ge_f64(&self, offset: u64, count: usize, threshold: f64) -> PyResult<usize> {
+        self.inner
+            .count_ge_f64(offset, count, threshold)
+            .map_err(ioerr)
+    }
+
+    /// The backend the next op over `elements` values runs on — the token `"gpu"` (device
+    /// kernel, when on a real device and the workload amortizes the transfer) or `"cpu"` (the
+    /// vectorized host reduction).
+    fn compute_backend(&self, elements: usize) -> &'static str {
+        if self.inner.compute_backend(elements).is_gpu() {
+            "gpu"
+        } else {
+            "cpu"
+        }
+    }
+
+    /// **Device-aware copy** of this buffer's whole content into `dst`; returns the byte count.
+    fn compute_copy_into(&self, dst: &mut AmdBuffer) -> PyResult<u64> {
+        self.inner.compute_copy_into(&mut dst.inner).map_err(ioerr)
     }
 
     // ---- context manager + repr --------------------------------------------------------

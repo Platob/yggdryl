@@ -83,3 +83,71 @@ fn amd_buffer_is_a_gpu_memory_over_the_detected_device() {
     assert_eq!(back, [10, -20, 30]);
     assert_eq!(&buf.download_vec()[..16], &[0xAB; 16]);
 }
+
+// -------------------------------------------------------------------------------------
+// Compute — auto-dispatched aggregations / filters / copy
+// -------------------------------------------------------------------------------------
+
+#[test]
+fn compute_aggregations_and_filter_on_device_memory() {
+    use yggdryl_core::io::gpu::{Compute, ComputeBackend, GPU_ELEMENT_THRESHOLD};
+
+    let mut buf = CpuHeap::new();
+    buf.pwrite_i32_array(0, &[4, 8, 15, 16, 23, 42]).unwrap();
+    assert_eq!(buf.sum_i32(0, 6).unwrap(), 108);
+    assert_eq!(buf.min_i32(0, 6).unwrap(), Some(4));
+    assert_eq!(buf.max_i32(0, 6).unwrap(), Some(42));
+    assert_eq!(buf.mean_i32(0, 6).unwrap(), Some(18.0));
+    assert_eq!(buf.count_ge_i32(0, 6, 16).unwrap(), 3); // filter: 16, 23, 42
+                                                        // Empty range: min/max/mean are None, sum is 0.
+    assert_eq!(buf.min_i32(0, 0).unwrap(), None);
+    assert_eq!(buf.sum_i32(0, 0).unwrap(), 0);
+
+    // Floats, across the chunk boundary (> COMPUTE_CHUNK = 1024 elements) to exercise streaming.
+    let data: Vec<f64> = (0..5000).map(|i| i as f64).collect();
+    let mut fbuf = CpuHeap::new();
+    fbuf.pwrite_f64_array(0, &data).unwrap();
+    assert_eq!(
+        fbuf.sum_f64(0, 5000).unwrap(),
+        (0..5000).sum::<i64>() as f64
+    );
+    assert_eq!(fbuf.max_f64(0, 5000).unwrap(), Some(4999.0));
+    assert_eq!(fbuf.count_ge_f64(0, 5000, 2500.0).unwrap(), 2500);
+
+    // Dispatch policy: the CPU device always resolves to the CPU backend (no real GPU here for a
+    // CpuHeap), regardless of size; the threshold constant is exposed and sane.
+    assert_eq!(buf.compute_backend(6), ComputeBackend::Cpu);
+    assert_eq!(
+        buf.compute_backend(GPU_ELEMENT_THRESHOLD * 2),
+        ComputeBackend::Cpu
+    );
+    assert!(!ComputeBackend::Cpu.is_gpu());
+}
+
+#[test]
+fn compute_copy_into_transfers_between_device_buffers() {
+    use yggdryl_core::io::gpu::Compute;
+
+    let src = CpuHeap::from_slice(b"compute copy");
+    let mut dst = CpuHeap::new();
+    assert_eq!(src.compute_copy_into(&mut dst).unwrap(), 12);
+    assert_eq!(dst.as_slice(), b"compute copy");
+}
+
+#[cfg(feature = "gpu-amd")]
+#[test]
+fn compute_backend_selects_gpu_on_a_large_device_workload() {
+    use yggdryl_core::io::gpu::{AmdBuffer, Compute, ComputeBackend, GPU_ELEMENT_THRESHOLD};
+
+    let buf = AmdBuffer::new();
+    // Only a real (non-cpu) detected device dispatches to GPU for a large workload; on a machine
+    // whose AMD adapter is detected the large-workload backend is Gpu, else Cpu (fallback).
+    let big = buf.compute_backend(GPU_ELEMENT_THRESHOLD * 4);
+    if buf.device().backend().as_str() == "amd" {
+        assert_eq!(big, ComputeBackend::Gpu);
+    } else {
+        assert_eq!(big, ComputeBackend::Cpu);
+    }
+    // A small workload always stays on the CPU (transfer would not amortize).
+    assert_eq!(buf.compute_backend(8), ComputeBackend::Cpu);
+}

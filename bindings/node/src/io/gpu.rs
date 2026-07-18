@@ -10,12 +10,12 @@
 //! delegation to `yggdryl_core`; every failing byte op surfaces as a thrown `Error` carrying the
 //! core's guided text unchanged.
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{BigInt, Buffer};
 use napi_derive::napi;
 
 use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::{check_bulk_read, to_error};
-use yggdryl_core::io::gpu::{self as core, GpuMemory};
+use yggdryl_core::io::gpu::{self as core, Compute, GpuMemory};
 use yggdryl_core::io::memory::IOBase;
 
 /// Enumerates the compute devices this build can allocate on — **adapting to the hardware
@@ -243,6 +243,213 @@ impl AmdBuffer {
     pub fn pwrite_i64_array(&mut self, offset: u32, values: Vec<i64>) -> napi::Result<()> {
         self.inner
             .pwrite_i64_array(offset as u64, &values)
+            .map_err(to_error)
+    }
+
+    // ---- Compute: auto-dispatched aggregations, filter, and device-aware copy ----------
+    //
+    // Each is a thin delegation to the core `Compute` blanket trait (in scope via the
+    // `Compute` import): the op first consults `computeBackend` for the GPU seam, then runs
+    // the dense vectorized reduction streamed through a fixed stack chunk. `offset` / `count`
+    // cross as `u32` like the bulk byte surface; a `count` past the buffer throws the core's
+    // guided EOF text. 64-bit crossings follow the buffer's convention — an `i64` accumulator
+    // is a JS number (exact to 2^53), an `i128` sum is a `BigInt`, and an `i64` threshold is a
+    // `BigInt`; `f32` values widen to `f64` like `preadF32`.
+
+    /// **Sum** of `count` `i32`s at `offset` (accumulated as `i64`) — auto-dispatched (GPU when
+    /// large + on a device, else the vectorized CPU reduction). An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn sum_i32(&self, offset: u32, count: u32) -> napi::Result<i64> {
+        self.inner
+            .sum_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `i64`s at `offset` (accumulated as `i128`, a `BigInt`) — auto-dispatched.
+    #[napi]
+    pub fn sum_i64(&self, offset: u32, count: u32) -> napi::Result<i128> {
+        self.inner
+            .sum_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `f32`s at `offset` (accumulated as `f64`) — auto-dispatched.
+    #[napi]
+    pub fn sum_f32(&self, offset: u32, count: u32) -> napi::Result<f64> {
+        self.inner
+            .sum_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Sum** of `count` `f64`s at `offset` — auto-dispatched.
+    #[napi]
+    pub fn sum_f64(&self, offset: u32, count: u32) -> napi::Result<f64> {
+        self.inner
+            .sum_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `i32`s at `offset`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn min_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .min_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `i64`s at `offset` (a JS number, exact to 2^53), or `null` when
+    /// `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn min_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .min_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `f32`s at `offset` (widened to a JS number), or `null` when
+    /// `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn min_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .min_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// **Minimum** of `count` `f64`s at `offset`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn min_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .min_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `i32`s at `offset`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn max_i32(&self, offset: u32, count: u32) -> napi::Result<Option<i32>> {
+        self.inner
+            .max_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `i64`s at `offset` (a JS number, exact to 2^53), or `null` when
+    /// `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn max_i64(&self, offset: u32, count: u32) -> napi::Result<Option<i64>> {
+        self.inner
+            .max_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `f32`s at `offset` (widened to a JS number), or `null` when
+    /// `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn max_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .max_f32(offset as u64, count as usize)
+            .map(|opt| opt.map(|v| v as f64))
+            .map_err(to_error)
+    }
+
+    /// **Maximum** of `count` `f64`s at `offset`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn max_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .max_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `i32`s at `offset` as `f64`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn mean_i32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_i32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `i64`s at `offset` as `f64`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn mean_i64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_i64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `f32`s at `offset` as `f64`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn mean_f32(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_f32(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Mean** of `count` `f64`s at `offset` as `f64`, or `null` when `count == 0` — auto-dispatched.
+    #[napi]
+    pub fn mean_f64(&self, offset: u32, count: u32) -> napi::Result<Option<f64>> {
+        self.inner
+            .mean_f64(offset as u64, count as usize)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `i32`s at `offset` are `>= threshold`. An `i64`
+    /// (a JS number, exact to 2^53).
+    #[napi]
+    pub fn count_ge_i32(&self, offset: u32, count: u32, threshold: i32) -> napi::Result<i64> {
+        self.inner
+            .count_ge_i32(offset as u64, count as usize, threshold)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `i64`s at `offset` are `>= threshold` (a `BigInt`).
+    /// An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn count_ge_i64(&self, offset: u32, count: u32, threshold: BigInt) -> napi::Result<i64> {
+        self.inner
+            .count_ge_i64(offset as u64, count as usize, threshold.get_i64().0)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `f32`s at `offset` are `>= threshold`. An `i64`
+    /// (a JS number, exact to 2^53).
+    #[napi]
+    pub fn count_ge_f32(&self, offset: u32, count: u32, threshold: f64) -> napi::Result<i64> {
+        self.inner
+            .count_ge_f32(offset as u64, count as usize, threshold as f32)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// **Filter count** — how many of `count` `f64`s at `offset` are `>= threshold`. An `i64`
+    /// (a JS number, exact to 2^53).
+    #[napi]
+    pub fn count_ge_f64(&self, offset: u32, count: u32, threshold: f64) -> napi::Result<i64> {
+        self.inner
+            .count_ge_f64(offset as u64, count as usize, threshold)
+            .map(|n| n as i64)
+            .map_err(to_error)
+    }
+
+    /// The backend token an op over `elements` values would run on — `"gpu"` when this buffer is
+    /// on a real device *and* `elements` clears the transfer threshold, else `"cpu"`.
+    #[napi]
+    pub fn compute_backend(&self, elements: u32) -> String {
+        if self.inner.compute_backend(elements as usize).is_gpu() {
+            "gpu".to_string()
+        } else {
+            "cpu".to_string()
+        }
+    }
+
+    /// **Device-aware copy** — copies this buffer's whole content into `dst` (a same-device
+    /// GPU→GPU copy would run as a device DMA; else the zero-copy host copy) and returns the
+    /// byte count. An `i64` (a JS number, exact to 2^53).
+    #[napi]
+    pub fn compute_copy_into(&self, dst: &mut AmdBuffer) -> napi::Result<i64> {
+        self.inner
+            .compute_copy_into(&mut dst.inner)
+            .map(|n| n as i64)
             .map_err(to_error)
     }
 

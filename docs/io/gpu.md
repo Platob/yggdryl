@@ -254,6 +254,70 @@ as the next increment behind a stable API.
     assert!(buf.device().backend().as_str() == "amd" || buf.device().is_cpu());
     ```
 
+## Auto-dispatched compute — aggregations, filters, copy
+
+Beyond raw byte I/O, a device buffer runs **compute** operations — math **aggregations** (`sum` /
+`min` / `max` / `mean`), a threshold **filter** (`count_ge` — how many values are `>= threshold`),
+and a device-aware **copy** — that **auto-select GPU vs CPU**. Each op asks `compute_backend(n)`
+which backend to use: the **GPU** when the buffer lives on a real device *and* the workload is large
+enough to amortize the host↔device transfer, else the **CPU** (the dense, LLVM-vectorized reduction,
+streamed through a stack chunk with no heap allocation). Today both arms run the CPU kernel — the
+GPU arm is the optimization **seam** where a device reduction / filter / DMA kernel drops in behind a
+hardware backend, so code written against these ops accelerates transparently when the kernels land.
+The typed ops exist for `i32`, `i64`, `f32`, and `f64`.
+
+=== "Python"
+
+    ```python
+    from yggdryl.gpu import AmdBuffer
+
+    buf = AmdBuffer()
+    buf.pwrite_i32_array(0, [4, 8, 15, 16, 23, 42])
+    assert buf.sum_i32(0, 6) == 108
+    assert buf.min_i32(0, 6) == 4 and buf.max_i32(0, 6) == 42
+    assert buf.mean_i32(0, 6) == 18.0
+    assert buf.count_ge_i32(0, 6, 16) == 3      # a filter: how many >= 16
+    assert buf.compute_backend(8) == "cpu"      # small workload stays on the CPU
+
+    dst = AmdBuffer()
+    assert buf.compute_copy_into(dst) == 24     # device-aware copy, returns bytes moved
+    ```
+
+=== "Node"
+
+    ```js
+    const { AmdBuffer } = require('yggdryl').gpu
+
+    const buf = new AmdBuffer()
+    buf.pwriteI32Array(0, [4, 8, 15, 16, 23, 42])
+    console.assert(buf.sumI32(0, 6) === 108)
+    console.assert(buf.minI32(0, 6) === 4 && buf.maxI32(0, 6) === 42)
+    console.assert(buf.meanI32(0, 6) === 18)
+    console.assert(buf.countGeI32(0, 6, 16) === 3)   // filter: how many >= 16
+    console.assert(buf.computeBackend(8) === 'cpu')
+
+    const dst = new AmdBuffer()
+    console.assert(buf.computeCopyInto(dst) === 24)
+    ```
+
+=== "Rust"
+
+    ```rust
+    use yggdryl_core::io::gpu::{AmdBuffer, Compute, ComputeBackend, GpuMemory};
+    use yggdryl_core::io::memory::IOBase;
+
+    let mut buf = AmdBuffer::new();
+    buf.pwrite_i32_array(0, &[4, 8, 15, 16, 23, 42]).unwrap();
+    assert_eq!(buf.sum_i32(0, 6).unwrap(), 108);
+    assert_eq!(buf.max_i32(0, 6).unwrap(), Some(42));
+    assert_eq!(buf.mean_i32(0, 6).unwrap(), Some(18.0));
+    assert_eq!(buf.count_ge_i32(0, 6, 16).unwrap(), 3); // filter: how many >= 16
+    assert_eq!(buf.compute_backend(8), ComputeBackend::Cpu);
+
+    let mut dst = AmdBuffer::new();
+    assert_eq!(buf.compute_copy_into(&mut dst).unwrap(), 24); // device-aware copy
+    ```
+
 ## Capacity — `MemoryInfo`
 
 `MemoryInfo` is the **one capacity type** across the whole library — the single answer to "how much

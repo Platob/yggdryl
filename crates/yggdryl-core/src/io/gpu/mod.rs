@@ -30,6 +30,7 @@
 use super::MemoryInfo;
 use crate::io::memory::{IOBase, IoError};
 
+mod compute;
 pub mod cpu;
 mod device;
 
@@ -38,6 +39,7 @@ pub mod amd;
 #[cfg(feature = "gpu-cuda")]
 pub mod cuda;
 
+pub use compute::{Compute, ComputeBackend, GPU_ELEMENT_THRESHOLD};
 pub use cpu::CpuHeap;
 pub use device::{available_devices, default_device, GpuBackend, GpuDevice};
 
