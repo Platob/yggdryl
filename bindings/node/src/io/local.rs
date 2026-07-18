@@ -36,9 +36,10 @@
 //! `yggdryl.memory` classes, and every failing operation surfaces as a thrown `Error`
 //! carrying the core's guided text unchanged.
 
-use napi::bindgen_prelude::{Buffer, Either, Generator, JsError, ToNapiValue, Unknown};
+use napi::bindgen_prelude::{Buffer, Either, Either4, Generator, JsError, ToNapiValue, Unknown};
 use napi_derive::napi;
 
+use crate::compression::{as_dyn, wrap_codec, Gzip, Lzma, Zlib, Zstd};
 use crate::headers::Headers;
 use crate::io::kind::IOKind;
 use crate::io::memory::{check_bulk_read, to_bit_offset, to_error, NoChildren, Whence};
@@ -654,6 +655,67 @@ impl LocalIO {
         MimeType {
             inner: self.inner.ensure_content_type(),
         }
+    }
+
+    // ---- compression (magic inference + codec run) -------------------------------------
+
+    /// The **primary [`MimeType`]** inferred from this node's **magic bytes** — a positioned
+    /// read of the head (never moves the cursor), falling back to the declared/path `mimeType()`
+    /// when no magic matches.
+    #[napi]
+    pub fn infer_mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.infer_mime_type(),
+        }
+    }
+
+    /// The full **[`MediaType`]** inferred by **recursive magic** — the head's type, then the
+    /// type inside each compression layer it can peel (a gzipped tar reads as
+    /// `[application/gzip, application/x-tar]`). The head is read positioned (no cursor seek).
+    #[napi]
+    pub fn infer_media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.infer_media_type(),
+        }
+    }
+
+    /// The [`compression`](crate::compression) codec for this node's media type, or `null` when
+    /// the type is not a supported compression (mirrors `compression.codecFor`).
+    #[napi]
+    pub fn compression(&self) -> Option<Either4<Gzip, Zlib, Zstd, Lzma>> {
+        wrap_codec(self.inner.mime_type().essence())
+    }
+
+    /// This node's whole content **compressed** with `codec` into a new `Buffer`.
+    #[napi]
+    pub fn compress_with(
+        &self,
+        codec: Either4<&Gzip, &Zlib, &Zstd, &Lzma>,
+    ) -> napi::Result<Buffer> {
+        self.inner
+            .compressed_with(as_dyn(codec))
+            .map(Into::into)
+            .map_err(to_error)
+    }
+
+    /// This node's whole content **decompressed** with `codec` into a new `Buffer`, or throws a
+    /// guided `Error` on corrupt input.
+    #[napi]
+    pub fn decompress_with(
+        &self,
+        codec: Either4<&Gzip, &Zlib, &Zstd, &Lzma>,
+    ) -> napi::Result<Buffer> {
+        self.inner
+            .decompressed_with(as_dyn(codec))
+            .map(Into::into)
+            .map_err(to_error)
+    }
+
+    /// This node **decompressed** with the codec inferred from its media type, into a new
+    /// `Buffer` — throws a guided `Error` when the media type is not a supported compression.
+    #[napi]
+    pub fn decompress(&self) -> napi::Result<Buffer> {
+        self.inner.decompress().map(Into::into).map_err(to_error)
     }
 
     // ---- the filesystem graph (the IOBase graph surface) -------------------------------
@@ -1449,6 +1511,66 @@ impl Mmap {
         Ok(MimeType {
             inner: self.inner_mut()?.ensure_content_type(),
         })
+    }
+
+    // ---- compression (magic inference + codec run) -------------------------------------
+
+    /// The **primary [`MimeType`]** inferred from this mapping's **magic bytes** — a positioned
+    /// read of the head (never moves the cursor), falling back to the declared/file `mimeType()`
+    /// when no magic matches.
+    #[napi]
+    pub fn infer_mime_type(&self) -> napi::Result<MimeType> {
+        Ok(MimeType {
+            inner: self.inner()?.infer_mime_type(),
+        })
+    }
+
+    /// The full **[`MediaType`]** inferred by **recursive magic** — the head's type, then the
+    /// type inside each compression layer it can peel. The head is read positioned (no seek).
+    #[napi]
+    pub fn infer_media_type(&self) -> napi::Result<MediaType> {
+        Ok(MediaType {
+            inner: self.inner()?.infer_media_type(),
+        })
+    }
+
+    /// The [`compression`](crate::compression) codec for this mapping's media type, or `null`
+    /// when the type is not a supported compression (mirrors `compression.codecFor`).
+    #[napi]
+    pub fn compression(&self) -> napi::Result<Option<Either4<Gzip, Zlib, Zstd, Lzma>>> {
+        Ok(wrap_codec(self.inner()?.mime_type().essence()))
+    }
+
+    /// This mapping's whole content **compressed** with `codec` into a new `Buffer`.
+    #[napi]
+    pub fn compress_with(
+        &self,
+        codec: Either4<&Gzip, &Zlib, &Zstd, &Lzma>,
+    ) -> napi::Result<Buffer> {
+        self.inner()?
+            .compressed_with(as_dyn(codec))
+            .map(Into::into)
+            .map_err(to_error)
+    }
+
+    /// This mapping's whole content **decompressed** with `codec` into a new `Buffer`, or throws
+    /// a guided `Error` on corrupt input.
+    #[napi]
+    pub fn decompress_with(
+        &self,
+        codec: Either4<&Gzip, &Zlib, &Zstd, &Lzma>,
+    ) -> napi::Result<Buffer> {
+        self.inner()?
+            .decompressed_with(as_dyn(codec))
+            .map(Into::into)
+            .map_err(to_error)
+    }
+
+    /// This mapping **decompressed** with the codec inferred from its media type, into a new
+    /// `Buffer` — throws a guided `Error` when the media type is not a supported compression.
+    #[napi]
+    pub fn decompress(&self) -> napi::Result<Buffer> {
+        self.inner()?.decompress().map(Into::into).map_err(to_error)
     }
 
     // ---- the graph surface (a mapping is a leaf with a removable file) -----------------

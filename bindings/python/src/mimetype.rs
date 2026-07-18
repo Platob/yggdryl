@@ -30,8 +30,9 @@ fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
-/// The constructor arguments a [`MimeType`] pickles through: `(essence, extensions, magic)`.
-type MimeTypeArgs<'py> = (String, Vec<String>, Vec<Bound<'py, PyBytes>>);
+/// The constructor arguments a [`MimeType`] pickles through:
+/// `(essence, extensions, magic, names)`.
+type MimeTypeArgs<'py> = (String, Vec<String>, Vec<Bound<'py, PyBytes>>, Vec<String>);
 
 /// One media type: a lowercased `type/subtype` **essence** (the mime string without
 /// parameters), the file **extensions** it is known by, and the **magic-byte** signatures a
@@ -45,14 +46,21 @@ pub struct MimeType {
 #[pymethods]
 impl MimeType {
     /// Builds a media type from its `essence` (`type/subtype`), known `extensions` (no dot),
-    /// and `magic` signatures (list of `bytes`). The essence is lowercased; extensions are
-    /// lowercased and stripped of a leading dot.
+    /// `magic` signatures (list of `bytes`), and short `names` / aliases (`["gzip"]`). The
+    /// essence and names are lowercased; extensions are lowercased and stripped of a leading
+    /// dot.
     #[new]
-    #[pyo3(signature = (essence, extensions = None, magic = None))]
-    fn new(essence: &str, extensions: Option<Vec<String>>, magic: Option<Vec<Vec<u8>>>) -> Self {
+    #[pyo3(signature = (essence, extensions = None, magic = None, names = None))]
+    fn new(
+        essence: &str,
+        extensions: Option<Vec<String>>,
+        magic: Option<Vec<Vec<u8>>>,
+        names: Option<Vec<String>>,
+    ) -> Self {
         Self {
-            inner: mimetype::MimeType::new(
+            inner: mimetype::MimeType::named(
                 essence,
+                names.unwrap_or_default(),
                 extensions.unwrap_or_default(),
                 magic.unwrap_or_default(),
             ),
@@ -89,6 +97,13 @@ impl MimeType {
     #[staticmethod]
     fn from_name(name: &str) -> Option<Self> {
         mimetype::MimeType::from_name(name).map(|inner| Self { inner })
+    }
+
+    /// Resolves a media type from a short **name** / alias (`"gzip"`) via the default catalog,
+    /// or `None`.
+    #[staticmethod]
+    fn from_alias(name: &str) -> Option<Self> {
+        mimetype::MimeType::from_alias(name).map(|inner| Self { inner })
     }
 
     /// Resolves a media type from the **magic bytes** at the start of a file via the default
@@ -132,6 +147,19 @@ impl MimeType {
         self.inner.extensions().to_vec()
     }
 
+    /// The **primary** extension (the first), or `None` when the type has none.
+    #[getter]
+    fn extension(&self) -> Option<String> {
+        self.inner.extension().map(str::to_string)
+    }
+
+    /// The short **names** / aliases this type is known by (`["gzip"]` for
+    /// `application/gzip`).
+    #[getter]
+    fn names(&self) -> Vec<String> {
+        self.inner.names().to_vec()
+    }
+
     /// The magic-byte signatures a file of this type starts with, as a list of `bytes`.
     #[getter]
     fn magic<'py>(&self, py: Python<'py>) -> Vec<Bound<'py, PyBytes>> {
@@ -150,6 +178,12 @@ impl MimeType {
     /// Whether `head` (the start of a file) begins with one of this type's magic signatures.
     fn matches_magic(&self, head: &[u8]) -> bool {
         self.inner.matches_magic(head)
+    }
+
+    /// Whether this type is a **compression** format (gzip / zstd / xz-lzma / zlib) — whether a
+    /// source of this type can be run through a `yggdryl.compression` codec.
+    fn is_compression(&self) -> bool {
+        self.inner.is_compression()
     }
 
     /// Whether this is the `application/octet-stream` fallback.
@@ -199,9 +233,9 @@ impl MimeType {
         hasher.finish()
     }
 
-    /// Pickles through the constructor components (`essence`, `extensions`, `magic`), so a
-    /// catalog entry with its extensions and magic round-trips faithfully — unlike the
-    /// essence-only byte codec.
+    /// Pickles through the constructor components (`essence`, `extensions`, `magic`, `names`),
+    /// so a catalog entry with its extensions, magic, and names round-trips faithfully — unlike
+    /// the essence-only byte codec.
     fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyAny>, MimeTypeArgs<'py>)> {
         let ctor = py.get_type_bound::<MimeType>().into_any().unbind();
         let magic = self
@@ -216,6 +250,7 @@ impl MimeType {
                 self.inner.essence().to_string(),
                 self.inner.extensions().to_vec(),
                 magic,
+                self.inner.names().to_vec(),
             ),
         ))
     }

@@ -12,8 +12,10 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-# The Rust core — this binding is a thin wrapper that delegates to it.
-yggdryl-core = { workspace = true }
+# The Rust core — this binding is a thin wrapper that delegates to it. The `compression`
+# feature pulls the native codec cores (flate2 / zstd / xz2) so the `yggdryl.compression`
+# namespace and the IOBase compression helpers resolve real Gzip / Zlib / Zstd / Lzma codecs.
+yggdryl-core = { workspace = true, features = ["compression"] }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 

@@ -642,6 +642,67 @@ impl LocalIO {
         }
     }
 
+    // ---- inference + compression (magic-inferred type; codec over the bytes) -------------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) inferred from this node's
+    /// **magic bytes** — a positioned read of the head that **never moves the cursor**; falls
+    /// back to the declared/address [`mime_type`](LocalIO::mime_type) when no magic matches.
+    fn infer_mime_type(&self) -> MimeType {
+        MimeType {
+            inner: self.inner.infer_mime_type(),
+        }
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) inferred by **recursive magic** — the
+    /// head's type, then the type inside each compression layer it can peel (a gzipped tar reads
+    /// as `[application/gzip, application/x-tar]`). The head is read positioned (no cursor seek).
+    fn infer_media_type(&self) -> MediaType {
+        MediaType {
+            inner: self.inner.infer_media_type(),
+        }
+    }
+
+    /// The `yggdryl.compression` codec for this node's media type (headers, else the file
+    /// address), or `None` when the type is not a supported compression.
+    fn compression(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        crate::compression::codec_to_object(py, self.inner.compression())
+    }
+
+    /// This node **decompressed** with the codec inferred from its **media type**, as `bytes` —
+    /// raises a guided `ValueError` when the node is not a supported compression.
+    fn decompress<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let out = self.inner.decompress().map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
+    }
+
+    /// This node's whole content **compressed** with the explicit `codec` (a
+    /// `yggdryl.compression` codec), as `bytes`.
+    fn compress_with<'py>(
+        &self,
+        py: Python<'py>,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = crate::compression::with_codec(codec, |c| self.inner.compressed_with(c))?
+            .map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
+    }
+
+    /// This node's whole content **decompressed** with the explicit `codec`, as `bytes` —
+    /// raises a guided `ValueError` on a corrupt stream.
+    fn decompress_with<'py>(
+        &self,
+        py: Python<'py>,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = crate::compression::with_codec(codec, |c| self.inner.decompressed_with(c))?
+            .map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
+    }
+
+    // DESIGN: the byte-returning `decompress` / `compress_with` / `decompress_with` are the
+    // ergonomic mirror of the core's compress/decompress family; the generic `compress_into` /
+    // `decompress_into` (source-to-source) and `as_bytes` are deliberately not exposed.
+
     // ---- graph: navigation + discovery + CRUD --------------------------------------------
 
     /// The last path segment — the node's own name (empty for a root).
@@ -1421,6 +1482,62 @@ impl Mmap {
         Ok(MimeType {
             inner: self.io_mut()?.ensure_content_type(),
         })
+    }
+
+    // ---- inference + compression (magic-inferred type; codec over the bytes) -------------
+
+    /// The **primary** [`MimeType`](crate::mimetype::MimeType) inferred from the mapped file's
+    /// **magic bytes** — a positioned read of the head that **never moves the cursor**; falls
+    /// back to the declared/address mime when no magic matches.
+    fn infer_mime_type(&self) -> PyResult<MimeType> {
+        Ok(MimeType {
+            inner: self.io()?.infer_mime_type(),
+        })
+    }
+
+    /// The full [`MediaType`](crate::mediatype::MediaType) inferred by **recursive magic** over
+    /// the mapped file's head (peeling each compression layer it can).
+    fn infer_media_type(&self) -> PyResult<MediaType> {
+        Ok(MediaType {
+            inner: self.io()?.infer_media_type(),
+        })
+    }
+
+    /// The `yggdryl.compression` codec for the mapped file's media type, or `None` when it is
+    /// not a supported compression.
+    fn compression(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        crate::compression::codec_to_object(py, self.io()?.compression())
+    }
+
+    /// The mapped file **decompressed** with the codec inferred from its media type, as
+    /// `bytes` — raises a guided `ValueError` when it is not a supported compression.
+    fn decompress<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let out = self.io()?.decompress().map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
+    }
+
+    /// The mapped file's content **compressed** with the explicit `codec`, as `bytes`.
+    fn compress_with<'py>(
+        &self,
+        py: Python<'py>,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let io = self.io()?;
+        let out =
+            crate::compression::with_codec(codec, |c| io.compressed_with(c))?.map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
+    }
+
+    /// The mapped file's content **decompressed** with the explicit `codec`, as `bytes`.
+    fn decompress_with<'py>(
+        &self,
+        py: Python<'py>,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let io = self.io()?;
+        let out =
+            crate::compression::with_codec(codec, |c| io.decompressed_with(c))?.map_err(ioerr)?;
+        Ok(PyBytes::new_bound(py, &out))
     }
 
     // ---- graph: navigation + discovery + CRUD (a mapping is a leaf) ---------------------

@@ -184,3 +184,50 @@ def test_catalog_copy_and_repr():
     catalog = MimeCatalog.defaults()
     assert len(copy.copy(catalog)) == len(catalog)
     assert repr(MimeCatalog()) == "MimeCatalog(<0 types>)"
+
+
+# -------------------------------------------------------------------------------------
+# names / extension / is_compression / from_alias
+# -------------------------------------------------------------------------------------
+
+
+def test_names_and_primary_extension_accessors():
+    gz = MimeType.from_extension("gz")  # a built-in with names + extensions
+    assert "gzip" in gz.names
+    assert gz.extension == "gz"  # the primary (first) extension
+    # A parsed essence has neither names nor extensions.
+    parsed = MimeType.parse("application/json")
+    assert parsed.names == []
+    assert parsed.extension is None
+
+
+def test_construct_with_names():
+    m = MimeType("Application/X-Foo", ["foo", "fo"], [b"FOO"], names=["Foo", "FOOBAR"])
+    assert m.essence == "application/x-foo"
+    assert m.names == ["foo", "foobar"]  # lowercased
+    assert m.extensions == ["foo", "fo"]
+    assert m.extension == "foo"
+    assert m.magic == [b"FOO"]
+
+
+def test_is_compression():
+    assert MimeType.from_extension("gz").is_compression()
+    assert MimeType.from_extension("zst").is_compression()
+    assert MimeType.from_extension("xz").is_compression()
+    assert not MimeType.from_extension("json").is_compression()
+    assert not MimeType.octet_stream().is_compression()
+
+
+def test_from_alias():
+    assert MimeType.from_alias("gzip").essence == "application/gzip"
+    assert MimeType.from_alias("zstd").essence == "application/zstd"
+    assert MimeType.from_alias("json").essence == "application/json"
+    assert MimeType.from_alias("no-such-alias") is None
+
+
+def test_pickle_round_trips_names():
+    m = MimeType.from_extension("gz")  # carries names + extensions + magic
+    restored = pickle.loads(pickle.dumps(m))
+    assert restored == m
+    assert restored.names == m.names
+    assert restored.extensions == m.extensions

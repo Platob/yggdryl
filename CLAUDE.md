@@ -21,7 +21,7 @@ current dependency.
 ## Layout — one tree, mirrored everywhere
 
 ```text
-crates/yggdryl-core/src/             # the core (no external dependencies)
+crates/yggdryl-core/src/             # the core (dependency-free by default; codecs opt-in)
   io/                                # the io layer
     mod.rs                           #   io root: cross-cutting contract + value types
     error.rs  whence.rs              #   IoError, Whence (io-wide)
@@ -36,6 +36,7 @@ crates/yggdryl-core/src/             # the core (no external dependencies)
   headers.rs                         # Headers — the one metadata map (root module)
   mimetype.rs                        # MimeType + MimeRegistry/MimeCatalog (root module)
   mediatype.rs                       # MediaType — an ordered MimeType list (root module)
+  compression.rs                     # Compression trait + feature-gated Gzip/Zlib/Zstd/Lzma
   uri/                               # addressing (root module): Uri/Url/Authority/UriParts + scheme/percent
 ```
 

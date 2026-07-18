@@ -44,6 +44,7 @@ nav:
   - The io root: io/index.md
   - Headers: headers.md
   - Media types: mediatype.md
+  - Compression: compression.md
   - Memory access: io/memory.md
   - Local filesystem: io/local.md
   - URIs and URLs: uri.md

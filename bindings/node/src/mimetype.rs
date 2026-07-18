@@ -44,20 +44,28 @@ pub struct MimeType {
 #[napi(namespace = "mimetype")]
 impl MimeType {
     /// Builds a media type from its `essence` (`type/subtype`), known `extensions` (no dot),
-    /// and `magic` signatures (an array of `Buffer` / `Uint8Array`). The essence is lowercased;
-    /// extensions are lowercased and stripped of a leading dot.
+    /// `magic` signatures (an array of `Buffer` / `Uint8Array`), and short **names** / aliases.
+    /// The essence and names are lowercased; extensions are lowercased and stripped of a leading
+    /// dot. (`names` is the trailing optional so the earlier `(essence, extensions?, magic?)`
+    /// calls keep working — it maps to the core `named` constructor.)
     #[napi(constructor)]
     pub fn new(
         essence: String,
         extensions: Option<Vec<String>>,
         magic: Option<Vec<Buffer>>,
+        names: Option<Vec<String>>,
     ) -> Self {
         let magic = magic
             .unwrap_or_default()
             .into_iter()
             .map(|sig| sig.to_vec());
         Self {
-            inner: core::MimeType::new(essence, extensions.unwrap_or_default(), magic),
+            inner: core::MimeType::named(
+                essence,
+                names.unwrap_or_default(),
+                extensions.unwrap_or_default(),
+                magic,
+            ),
         }
     }
 
@@ -91,6 +99,13 @@ impl MimeType {
     #[napi]
     pub fn from_name(name: String) -> Option<MimeType> {
         core::MimeType::from_name(&name).map(|inner| Self { inner })
+    }
+
+    /// Resolves a media type from a short **name** / alias (`"gzip"`) via the default catalog,
+    /// or `null` if unknown.
+    #[napi]
+    pub fn from_alias(name: String) -> Option<MimeType> {
+        core::MimeType::from_alias(&name).map(|inner| Self { inner })
     }
 
     /// Resolves a media type from the **magic bytes** at the start of a file via the default
@@ -133,6 +148,19 @@ impl MimeType {
         self.inner.extensions().to_vec()
     }
 
+    /// The **primary** extension (the first), or `null` when the type has none.
+    #[napi(getter)]
+    pub fn extension(&self) -> Option<String> {
+        self.inner.extension().map(str::to_string)
+    }
+
+    /// The short **names** / aliases this type is known by (`["gzip", "gz"]` for
+    /// `application/gzip`).
+    #[napi(getter)]
+    pub fn names(&self) -> Vec<String> {
+        self.inner.names().to_vec()
+    }
+
     /// The magic-byte signatures a file of this type starts with, as an array of `Buffer`.
     #[napi(getter)]
     pub fn magic(&self) -> Vec<Buffer> {
@@ -153,6 +181,13 @@ impl MimeType {
     #[napi]
     pub fn matches_magic(&self, head: Buffer) -> bool {
         self.inner.matches_magic(head.as_ref())
+    }
+
+    /// Whether this type is a **compression** format (gzip / zstd / xz-lzma / zlib) — whether a
+    /// source of this type can be run through a `compression` codec.
+    #[napi]
+    pub fn is_compression(&self) -> bool {
+        self.inner.is_compression()
     }
 
     /// Whether this is the `application/octet-stream` fallback.

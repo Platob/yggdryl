@@ -9,11 +9,14 @@
 //! mirroring `yggdryl_core::io::local`), the `yggdryl.uri` submodule (RFC 3986 URIs, absolute
 //! URLs, and authorities, mirroring `yggdryl_core::uri`), the `yggdryl.mimetype` submodule
 //! (the `MimeType` media type and the `MimeCatalog` registry, mirroring
-//! `yggdryl_core::mimetype`) and the `yggdryl.mediatype` submodule (the layered `MediaType`
-//! list, mirroring `yggdryl_core::mediatype`).
+//! `yggdryl_core::mimetype`), the `yggdryl.mediatype` submodule (the layered `MediaType`
+//! list, mirroring `yggdryl_core::mediatype`) and the `yggdryl.compression` submodule (the
+//! `Gzip` / `Zlib` / `Zstd` / `Lzma` codecs and the `codec_for` resolver, mirroring
+//! `yggdryl_core::compression`).
 
 use pyo3::prelude::*;
 
+mod compression;
 mod headers;
 mod io;
 mod mediatype;
@@ -47,6 +50,7 @@ fn add_submodule(
 #[pymodule]
 fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
+    add_submodule(py, module, "compression", compression::register)?;
     add_submodule(py, module, "headers", |m| m.add_class::<headers::Headers>())?;
     add_submodule(py, module, "io", io::register)?;
     add_submodule(py, module, "local", io::local::register)?;

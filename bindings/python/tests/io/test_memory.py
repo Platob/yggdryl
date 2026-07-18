@@ -18,6 +18,7 @@ import pickle
 import pytest
 
 import yggdryl.memory
+from yggdryl.compression import Gzip, Zstd
 from yggdryl.headers import Headers
 from yggdryl.io import IOKind, IOMode
 from yggdryl.mediatype import MediaType
@@ -903,3 +904,101 @@ def test_cursor_and_slice_delegate_media_type():
     assert sl.media_type().essences() == ["text/plain"]
     # A bare window over an anonymous heap falls back to octet-stream.
     assert Heap(b"hello").window(0, 5).mime_type().is_octet_stream()
+
+
+# -------------------------------------------------------------------------------------
+# Magic inference: infer_mime_type / infer_media_type (positioned reads, cursor untouched)
+# -------------------------------------------------------------------------------------
+
+PNG_HEAD = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def test_infer_mime_type_from_magic_does_not_move_cursor():
+    h = Heap(PNG_HEAD)
+    h.set_position(3)  # a cursor mid-stream
+    inferred = h.infer_mime_type()
+    assert isinstance(inferred, MimeType)
+    assert inferred.essence == "image/png"  # magic wins over the octet-stream fallback
+    assert h.position == 3  # a positioned head read never moved the cursor
+
+    # No magic and no address -> the declared/octet-stream fallback.
+    assert Heap(b"just some plain text").infer_mime_type().is_octet_stream()
+
+
+def test_cursor_infer_mime_type_does_not_move_cursor():
+    cur = Cursor(PNG_HEAD)
+    assert cur.read(4) == b"\x89PNG"  # advance the cursor first
+    assert cur.position == 4
+    assert cur.infer_mime_type().essence == "image/png"
+    assert cur.position == 4  # infer read the head positioned, leaving the cursor put
+
+
+def test_infer_media_type_peels_compression_layers():
+    # A gzip stream whose payload has PNG magic: recursive inference peels the gzip layer.
+    inner = PNG_HEAD
+    packed = Gzip().compress(inner)
+    media = Heap(packed).infer_media_type()
+    assert isinstance(media, MediaType)
+    assert media.essences()[0] == "application/gzip"  # outer magic (0x1f 0x8b)
+    assert "image/png" in media.essences()  # the peeled inner type
+
+
+# -------------------------------------------------------------------------------------
+# Compression: compression() / decompress() (inferred) + compress_with / decompress_with
+# -------------------------------------------------------------------------------------
+
+
+def test_decompress_heap_addressed_by_content_type():
+    payload = b"decompress me from a zstd heap " * 100
+    packed = Zstd().compress(payload)
+    h = Heap(packed)
+    h.set_headers(Headers().with_("Content-Type", "application/zstd"))
+    # compression() resolves the codec from the declared media type...
+    codec = h.compression()
+    assert codec is not None
+    assert codec.name == "zstd"
+    # ...and decompress() uses it, returning the original bytes.
+    assert h.decompress() == payload
+
+
+def test_decompress_gzip_heap_by_content_type():
+    payload = b"gzip payload " * 200
+    h = Heap(Gzip().compress(payload))
+    h.set_headers(Headers().with_("Content-Type", "application/gzip"))
+    assert h.compression().name == "gzip"
+    assert h.decompress() == payload
+
+
+def test_compression_is_none_and_decompress_raises_for_non_compression():
+    h = Heap(b"plain bytes, not a compression")  # octet-stream -> not a codec
+    assert h.compression() is None
+    with pytest.raises(ValueError, match="not a supported compression"):
+        h.decompress()
+
+
+def test_compress_with_and_decompress_with_explicit_codec():
+    payload = b"explicit codec round trip " * 100
+    src = Heap(payload)
+    packed = src.compress_with(Gzip())
+    assert isinstance(packed, bytes)
+    assert len(packed) < len(payload)
+    # A heap holding the packed bytes, decompressed with a matching codec, restores the input.
+    assert Heap(packed).decompress_with(Gzip()) == payload
+
+
+def test_compress_with_rejects_a_non_codec():
+    with pytest.raises(TypeError):
+        Heap(b"data").compress_with("not a codec")
+
+
+def test_cursor_and_slice_compression_delegate():
+    payload = b"delegated compression " * 100
+    packed = Zstd().compress(payload)
+    # A cursor/window over a zstd-addressed heap decompresses through the wrapped source.
+    heap = Heap(packed)
+    heap.set_headers(Headers().with_("Content-Type", "application/zstd"))
+    assert heap.cursor().decompress() == payload
+    assert heap.window(0, len(packed)).decompress() == payload
+    # The explicit-codec path works over the views too.
+    assert Cursor(payload).compress_with(Zstd())  # non-empty compressed bytes
+    assert Heap(packed).cursor().decompress_with(Zstd()) == payload

@@ -13,9 +13,10 @@ name = "yggdryl"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The Rust core — this binding is a thin wrapper that delegates to it. The `arrow` feature
-# powers the zero-copy Arrow C Data Interface (PyCapsule) bridge to pyarrow.
-yggdryl-core = { workspace = true }
+# The Rust core — this binding is a thin wrapper that delegates to it. The `compression`
+# feature compiles the native codec cores (flate2 / zstd / xz2) into the extension so the
+# `yggdryl.compression` codecs and the source compress/decompress helpers resolve real codecs.
+yggdryl-core = { workspace = true, features = ["compression"] }
 # `extension-module` links against the interpreter at import time (added on top of the
 # workspace's stable-ABI `abi3-py37`), so `cargo build`/`cargo test` never touch this crate
 # (default-members = core); maturin builds it.

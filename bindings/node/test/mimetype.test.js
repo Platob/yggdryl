@@ -148,3 +148,52 @@ test('MimeCatalog.copy is an independent clone', () => {
   assert.equal(base.len(), 1) // original untouched
   assert.equal(dup.len(), 2)
 })
+
+// -------------------------------------------------------------------------------------
+// names / extension / isCompression / fromAlias (the enriched MimeType surface)
+// -------------------------------------------------------------------------------------
+
+test('extension is the primary (first) extension, or null when there is none', () => {
+  assert.equal(MimeType.fromExtension('jpeg').extension, 'jpg') // primary of [jpg, jpeg]
+  assert.equal(MimeType.fromExtension('gz').extension, 'gz')
+  assert.equal(MimeType.parse('application/json').extension, null) // parsed -> no extensions
+})
+
+test('names lists the short aliases; the constructor takes an optional names[]', () => {
+  // Catalog entries carry their aliases (application/gzip is known as gzip / gz).
+  assert.deepEqual(MimeType.fromExtension('gz').names, ['gzip', 'gz'])
+  assert.deepEqual(MimeType.parse('application/json').names, []) // parsed -> no names
+
+  // The trailing `names?` constructor arg maps to the core `named` builder (lowercased).
+  const foo = new MimeType('application/x-foo', ['foo'], [], ['F-Oo', 'foo-alias'])
+  assert.deepEqual(foo.names, ['f-oo', 'foo-alias'])
+  assert.deepEqual(foo.extensions, ['foo'])
+  // Omitted names default to empty; the earlier (essence, extensions, magic) calls still work.
+  assert.deepEqual(new MimeType('application/x-bar', ['bar'], []).names, [])
+
+  // Names/extensions are catalog metadata dropped by the byte codec: serializeBytes is
+  // essence-only, so the round-tripped value is a bare essence.
+  assert.equal(foo.serializeBytes().toString('utf8'), 'application/x-foo')
+  const back = MimeType.deserializeBytes(foo.serializeBytes())
+  assert.deepEqual(back.names, []) // names not carried across the byte form
+  assert.deepEqual(back.extensions, [])
+  const parsed = MimeType.parse('application/x-foo') // also essence-only
+  assert.ok(back.equals(parsed)) // two essence-only values with the same essence are equal
+  assert.equal(back.hashCode(), parsed.hashCode())
+})
+
+test('isCompression flags the compression formats', () => {
+  assert.ok(MimeType.fromExtension('gz').isCompression())
+  assert.ok(MimeType.fromExtension('zst').isCompression())
+  assert.ok(MimeType.parse('application/x-xz').isCompression())
+  assert.ok(MimeType.parse('application/zlib').isCompression())
+  assert.ok(!MimeType.fromExtension('json').isCompression())
+  assert.ok(!MimeType.parse('image/png').isCompression())
+})
+
+test('fromAlias resolves a short name via the default catalog, else null', () => {
+  assert.equal(MimeType.fromAlias('gzip').essence, 'application/gzip')
+  assert.equal(MimeType.fromAlias('zstd').essence, 'application/zstd')
+  assert.equal(MimeType.fromAlias('json').essence, 'application/json')
+  assert.equal(MimeType.fromAlias('nope'), null) // unknown alias -> justified null
+})

@@ -10,6 +10,7 @@ const { Heap, Whence, Cursor, Slice, NoChildren } = yggdryl.memory
 const { Uri } = yggdryl.uri
 const { MimeType } = yggdryl.mimetype
 const { MediaType } = yggdryl.mediatype
+const { Gzip, Zstd, Lzma, codecFor } = yggdryl.compression
 
 // -------------------------------------------------------------------------------------
 // Namespace + construction
@@ -866,5 +867,94 @@ test('Cursor and Slice delegate the media type to their wrapped source', () => {
 
   // A bare view with no headers falls back to octet-stream.
   assert.ok(new Cursor(Buffer.from('x')).mimeType().isOctetStream())
+})
+
+// -------------------------------------------------------------------------------------
+// magic inference + compression (IOBase.inferMimeType / inferMediaType / compression /
+// compressWith / decompressWith / decompress)
+// -------------------------------------------------------------------------------------
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+test('inferMimeType reads the magic bytes without moving the cursor', () => {
+  const heap = new Heap(PNG_MAGIC)
+  heap.setPosition(3) // park the cursor mid-stream
+  assert.equal(heap.inferMimeType().essence, 'image/png') // positioned head read
+  assert.equal(heap.position, 3) // the cursor never moved
+
+  // No magic match -> falls back to the declared/address mimeType (octet-stream here).
+  assert.ok(new Heap(Buffer.from('plain bytes')).inferMimeType().isOctetStream())
+})
+
+test('inferMediaType peels compression layers by recursive magic', () => {
+  // A gzip stream whose decompressed head is itself a recognizable magic (PNG).
+  const gz = new Gzip().compress(PNG_MAGIC)
+  const heap = new Heap(gz)
+  // Outer magic is gzip; the peeled inner head is PNG.
+  assert.deepEqual(heap.inferMediaType().essences(), ['application/gzip', 'image/png'])
+
+  // A plain, non-compression source is a single layer.
+  assert.deepEqual(new Heap(PNG_MAGIC).inferMediaType().essences(), ['image/png'])
+})
+
+test('compression() resolves a codec from the source media type, else null', () => {
+  const gzipped = new Heap(new Gzip().compress(Buffer.from('data')))
+  gzipped.setHeaders(new Headers().with('Content-Type', 'application/gzip'))
+  assert.ok(gzipped.compression() instanceof Gzip)
+
+  // No compression content type -> null.
+  assert.equal(new Heap(Buffer.from('x')).compression(), null)
+})
+
+test('decompress() uses the codec inferred from the content-type header', () => {
+  const payload = Buffer.from('hello '.repeat(200))
+
+  // A gzip heap addressed by its Content-Type decompresses to the original.
+  const gz = new Heap(new Gzip().compress(payload))
+  gz.setHeaders(new Headers().with('Content-Type', 'application/gzip'))
+  assert.deepEqual(gz.decompress(), payload)
+
+  // A zstd heap, same path.
+  const zs = new Heap(new Zstd().compress(payload))
+  zs.setHeaders(new Headers().with('Content-Type', 'application/zstd'))
+  assert.deepEqual(zs.decompress(), payload)
+
+  // A non-compression source throws the guided compression error.
+  assert.throws(() => new Heap(payload).decompress(), /compression/)
+})
+
+test('compressWith / decompressWith run an explicit codec over the whole source', () => {
+  const payload = Buffer.from('the quick brown fox '.repeat(50))
+  const heap = new Heap(payload)
+
+  const gzip = new Gzip()
+  const packed = heap.compressWith(gzip)
+  assert.ok(packed.length < payload.length)
+  // Round-trip: rebuild a heap over the packed bytes and decompress it back.
+  assert.deepEqual(new Heap(packed).decompressWith(gzip), payload)
+
+  // Any of the four codec classes is accepted (the Either4 codec argument).
+  const xz = new Lzma()
+  assert.deepEqual(new Heap(heap.compressWith(xz)).decompressWith(xz), payload)
+
+  // A codec resolved via codecFor works interchangeably.
+  assert.deepEqual(new Heap(packed).decompressWith(codecFor('application/gzip')), payload)
+})
+
+test('Cursor and Slice inherit the compression surface from their source', () => {
+  const payload = Buffer.from('cursor payload '.repeat(30))
+  const gz = new Gzip().compress(payload)
+
+  // The content type is set on the Heap; a cursor over it delegates the media type (and so
+  // the inferred codec) to the wrapped source.
+  const source = new Heap(gz)
+  source.setHeaders(new Headers().with('Content-Type', 'application/gzip'))
+  const cursor = source.cursor()
+  assert.ok(cursor.compression() instanceof Gzip)
+  assert.deepEqual(cursor.decompress(), payload)
+
+  // A Slice window over the whole gzip stream decompresses with an explicit codec.
+  const slice = new Heap(gz).window(0, gz.length)
+  assert.deepEqual(slice.decompressWith(new Gzip()), payload)
 })
 
