@@ -1,0 +1,248 @@
+//! [`Serie`] — a **typed column**: many elements of one [`DataType`] over an [`IOBase`] data
+//! buffer, with an optional validity bit buffer for nulls.
+//!
+//! `Serie: Scalar` — a series *is* a scalar generalized to `n` elements, so it shares the null-aware
+//! indexed surface and adds the bulk one ([`to_options`](Serie::to_options)). The concrete
+//! [`FixedSerie`] borrows the byte layer: it encodes through the source's **vectorized** typed array
+//! write, decodes through the array read, and reduces through the source's
+//! [`Aggregate`](crate::io::memory::Aggregate) kernels — no per-column loops of its own.
+//!
+//! Nulls: an absent validity buffer means **all valid** (a non-nullable column); a present one is
+//! LSB-first, `1` = valid. Constructing from options builds it lazily on the first null.
+
+use core::marker::PhantomData;
+
+use super::{DataType, Decoder, Encoder, HeaderField, Reduce, Scalar};
+use crate::datatype_id::DataTypeId;
+use crate::io::memory::{Heap, IOBase, IoError};
+
+/// The bulk surface a [`Scalar`] gains as a column.
+pub trait Serie: Scalar {
+    /// Every element as an option, null-aware, decoded into a fresh `Vec`.
+    fn to_options(&self) -> Vec<Option<Self::Value>> {
+        (0..self.len()).map(|index| self.get(index)).collect()
+    }
+}
+
+/// A **typed column** over an [`IOBase`] data buffer `D` (default [`Heap`]) plus an optional
+/// validity buffer. Elements are packed at the type's stride; reads/writes/reductions all forward
+/// to the byte layer's vectorized kernels.
+pub struct FixedSerie<T: DataType, D: IOBase = Heap> {
+    data: D,
+    validity: Option<D>,
+    len: usize,
+    name: Option<Box<str>>,
+    _type: PhantomData<T>,
+}
+
+impl<T: Encoder + Decoder> FixedSerie<T, Heap> {
+    /// An empty non-nullable column.
+    pub fn new() -> Self {
+        let mut data = Heap::new();
+        data.set_dtype(T::DATA_TYPE_ID);
+        FixedSerie {
+            data,
+            validity: None,
+            len: 0,
+            name: None,
+            _type: PhantomData,
+        }
+    }
+
+    /// An empty non-nullable column with room for `capacity` elements before reallocating.
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut data = Heap::with_capacity(capacity * T::byte_width() as usize);
+        data.set_dtype(T::DATA_TYPE_ID);
+        FixedSerie {
+            data,
+            validity: None,
+            len: 0,
+            name: None,
+            _type: PhantomData,
+        }
+    }
+
+    /// A non-nullable column holding `values` (encoded in one vectorized bulk write).
+    pub fn from_values(values: &[T::Native]) -> Self {
+        let mut column = Self::with_capacity(values.len());
+        T::encode_slice(&mut column.data, 0, values).expect("encode into a fresh heap never fails");
+        column.len = values.len();
+        column
+    }
+
+    /// A column from options — builds the validity buffer, encoding a default in each null slot.
+    pub fn from_options(values: &[Option<T::Native>]) -> Self {
+        let mut column = Self::with_capacity(values.len());
+        column.ensure_validity();
+        for value in values {
+            column.push_option(*value);
+        }
+        column
+    }
+
+    /// Sets the column **name** (the metadata a [`field`](FixedSerie::field) reports).
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Appends a **non-null** `value`.
+    pub fn push(&mut self, value: T::Native) {
+        T::encode(&mut self.data, self.len as u64, value).expect("encode into a heap never fails");
+        if let Some(validity) = self.validity.as_mut() {
+            validity
+                .pwrite_bit(self.len as u64, true)
+                .expect("bit write never fails");
+        }
+        self.len += 1;
+    }
+
+    /// Appends a **null** (creating + back-filling the validity buffer on the first null).
+    pub fn push_null(&mut self) {
+        self.ensure_validity();
+        T::encode(&mut self.data, self.len as u64, T::Native::default())
+            .expect("encode into a heap never fails");
+        self.validity
+            .as_mut()
+            .expect("validity ensured")
+            .pwrite_bit(self.len as u64, false)
+            .expect("bit write never fails");
+        self.len += 1;
+    }
+
+    /// Appends an option — [`push`](FixedSerie::push) / [`push_null`](FixedSerie::push_null).
+    pub fn push_option(&mut self, value: Option<T::Native>) {
+        match value {
+            Some(value) => self.push(value),
+            None => self.push_null(),
+        }
+    }
+
+    /// Ensures a validity buffer exists, back-filling every existing element as valid.
+    fn ensure_validity(&mut self) {
+        if self.validity.is_none() {
+            let mut validity = Heap::new();
+            for index in 0..self.len as u64 {
+                validity
+                    .pwrite_bit(index, true)
+                    .expect("bit write never fails");
+            }
+            self.validity = Some(validity);
+        }
+    }
+
+    /// **Filters** the column by a boolean `mask` (an LSB-first bit source, `1` = keep), returning a
+    /// fresh compacted column. DESIGN: the scaffold compacts element-by-element; the vectorized path
+    /// is [`IOBase::mask_filter`](crate::io::memory::IOBase::mask_filter) over the data buffer with a
+    /// rebuilt validity — wired here once the null-aware bitmap compaction lands.
+    pub fn filter<M: IOBase>(&self, mask: &M) -> Self {
+        let mut out = Self::new();
+        if self.validity.is_some() {
+            out.ensure_validity();
+        }
+        for index in 0..self.len {
+            if mask.pread_bit(index as u64).unwrap_or(false) {
+                out.push_option(self.get(index));
+            }
+        }
+        out
+    }
+}
+
+impl<T: Encoder + Decoder> Default for FixedSerie<T, Heap> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Decoder, D: IOBase> FixedSerie<T, D> {
+    /// Whether the element at `index` is valid (non-null).
+    fn valid(&self, index: usize) -> bool {
+        index < self.len
+            && self
+                .validity
+                .as_ref()
+                .is_none_or(|bits| bits.pread_bit(index as u64).unwrap_or(false))
+    }
+
+    /// The **raw** values (validity ignored) decoded in one vectorized bulk read — null slots
+    /// surface their stored default. Pair with [`is_valid`](Scalar::is_valid) for null-awareness.
+    pub fn values(&self) -> Vec<T::Native> {
+        let mut out = vec![T::Native::default(); self.len];
+        if self.len > 0 {
+            T::decode_slice(&self.data, 0, &mut out).expect("decode over a valid buffer");
+        }
+        out
+    }
+
+    /// The backing data buffer (borrowed).
+    pub fn data(&self) -> &D {
+        &self.data
+    }
+
+    /// The validity bit buffer, when the column is nullable.
+    pub fn validity(&self) -> Option<&D> {
+        self.validity.as_ref()
+    }
+
+    /// The column's [`Field`] metadata — its `name`, `type_id`, and `nullable` flag.
+    pub fn field(&self) -> HeaderField {
+        HeaderField::new(
+            self.name.as_deref(),
+            T::DATA_TYPE_ID,
+            self.validity.is_some(),
+        )
+    }
+}
+
+impl<T: Decoder, D: IOBase> Scalar for FixedSerie<T, D> {
+    type Value = T::Native;
+
+    fn data_type_id(&self) -> DataTypeId {
+        T::DATA_TYPE_ID
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_valid(&self, index: usize) -> bool {
+        self.valid(index)
+    }
+
+    fn get(&self, index: usize) -> Option<T::Native> {
+        if self.valid(index) {
+            T::decode(&self.data, index as u64).ok()
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: Decoder, D: IOBase> Serie for FixedSerie<T, D> {}
+
+/// Numeric reductions — routed to the data buffer's [`Aggregate`](crate::io::memory::Aggregate)
+/// kernels. DESIGN: these reduce over the **physical** buffer (a null slot contributes its stored
+/// default), so they are exact for a non-nullable column; the null-aware reduction (skip via the
+/// validity bitmap) is the marked optimization seam.
+impl<T: Reduce + Decoder, D: IOBase> FixedSerie<T, D> {
+    /// The **sum** of every element.
+    pub fn sum(&self) -> Result<T::Sum, IoError> {
+        T::sum(&self.data, 0, self.len)
+    }
+
+    /// The **minimum** element (a float min ignores NaN); `None` when empty.
+    pub fn min(&self) -> Result<Option<T::Native>, IoError> {
+        T::min(&self.data, 0, self.len)
+    }
+
+    /// The **maximum** element (a float max ignores NaN); `None` when empty.
+    pub fn max(&self) -> Result<Option<T::Native>, IoError> {
+        T::max(&self.data, 0, self.len)
+    }
+
+    /// The **mean** as `f64`; `None` when empty.
+    pub fn mean(&self) -> Result<Option<f64>, IoError> {
+        T::mean(&self.data, 0, self.len)
+    }
+}

@@ -11,6 +11,10 @@ pub mod io;
 /// The primitive element data types ([`datatype_id::DataTypeId`]) a byte region is interpreted as.
 pub mod datatype_id;
 
+/// The typed data serialization layer over the io byte contract — `DataType` / `Encoder` /
+/// `Decoder` / `Scalar` / `Serie` / `Field`, with the fixed/variable × bit/byte type families.
+pub mod typed;
+
 /// The project's one metadata map (ordered, case-insensitive, multi-value byte headers).
 pub mod headers;
 
