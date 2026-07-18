@@ -1,14 +1,12 @@
-//! The `yggdryl.gpu` namespace — the **device-memory** layer (feature `gpu-amd`), organized
-//! by GPU architecture.
+//! The `yggdryl.amd` namespace — the **AMD Radeon device-memory** layer (feature `amd`).
 //!
-//! Mirrors `yggdryl_core::io::gpu`: the by-architecture device probe (`availableDevices` /
-//! `defaultDevice`), the [`GpuDevice`] value descriptor, and the [`AmdBuffer`] AMD device-memory
-//! buffer — a full `GpuMemory` that speaks the whole `IOBase` byte + vectorized-bulk surface plus
-//! host↔device `upload` / `download`. The **CPU** device-memory type is `memory.Heap` itself
-//! (the core aliases `CpuHeap = Heap`), so there is deliberately **no** separate CPU class here —
-//! allocate a `memory.Heap` for CPU device memory. Every method is a thin one- or two-line
-//! delegation to `yggdryl_core`; every failing byte op surfaces as a thrown `Error` carrying the
-//! core's guided text unchanged.
+//! Mirrors `yggdryl_core::io::amd`: the AMD device probe (`detect`), the [`AmdDevice`] value
+//! descriptor, and the [`AmdHeap`] AMD device-memory heap — a full `AmdMemory` that speaks the
+//! whole `IOBase` byte + vectorized-bulk surface plus host↔device `upload` / `download`. It
+//! **adapts to the hardware present**: `detect()` returns an [`AmdDevice`] only on a real Radeon
+//! adapter, and an [`AmdHeap`] always works (staging through host memory when no adapter is
+//! installed). Every method is a thin one- or two-line delegation to `yggdryl_core`; every failing
+//! byte op surfaces as a thrown `Error` carrying the core's guided text unchanged.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -18,7 +16,7 @@ use napi_derive::napi;
 
 use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::{check_bulk_read, to_error};
-use yggdryl_core::io::gpu::{self as core, Compute, GpuMemory};
+use yggdryl_core::io::amd::{self as core, AmdMemory};
 use yggdryl_core::io::memory::Aggregate;
 use yggdryl_core::io::memory::IOBase;
 
@@ -30,62 +28,47 @@ fn java_hash<T: Hash>(value: &T) -> i32 {
     (hash as u32 ^ (hash >> 32) as u32) as i32
 }
 
-/// Enumerates the compute devices this build can allocate on — **adapting to the hardware
-/// present**. Each enabled architecture (AMD via `gpu-amd`) contributes what it detects, and the
-/// portable CPU device is always appended last, so the result is never empty.
-#[napi(namespace = "gpu")]
-pub fn available_devices() -> Vec<GpuDevice> {
-    core::available_devices()
-        .into_iter()
-        .map(|inner| GpuDevice { inner })
-        .collect()
+/// Probes for an **AMD Radeon** device, returning its [`AmdDevice`] (name + VRAM) when a real
+/// adapter is present, else `null` — **adapting to the hardware present** (on Windows it enumerates
+/// the display-adapter registry class). An [`AmdHeap`] still works without one, staging through host
+/// memory.
+#[napi(namespace = "amd")]
+pub fn detect() -> Option<AmdDevice> {
+    core::detect().map(|inner| AmdDevice { inner })
 }
 
-/// The **default** device — the first detected hardware GPU, else the CPU fallback.
-#[napi(namespace = "gpu")]
-pub fn default_device() -> GpuDevice {
-    GpuDevice {
-        inner: core::default_device(),
-    }
+/// A **value description of the AMD compute device** — its human name and total VRAM, plus whether a
+/// real Radeon adapter backs it (`isPresent`) or it is the host-memory fallback. A plain value
+/// (equatable); the live free-memory is a fresh `memoryInfo()` query, not baked into the descriptor.
+#[napi(namespace = "amd")]
+pub struct AmdDevice {
+    pub(crate) inner: core::AmdDevice,
 }
 
-/// A **value description of one compute device** — its architecture, human name, and total
-/// memory (VRAM for a GPU, host RAM for the CPU). A plain value (equatable); the live free-memory
-/// is a fresh `memoryInfo()` query, not baked into the descriptor.
-#[napi(namespace = "gpu")]
-pub struct GpuDevice {
-    pub(crate) inner: core::GpuDevice,
-}
-
-#[napi(namespace = "gpu")]
-impl GpuDevice {
-    /// The short lowercase architecture token — `"cpu"`, `"amd"`, or `"cuda"`.
-    #[napi]
-    pub fn backend(&self) -> String {
-        self.inner.backend().as_str().to_string()
-    }
-
-    /// The human-readable device name.
+#[napi(namespace = "amd")]
+impl AmdDevice {
+    /// The human-readable device name (the driver description for a real adapter, or
+    /// `"no AMD device (host memory)"` for the fallback).
     #[napi]
     pub fn name(&self) -> String {
         self.inner.name().to_string()
     }
 
-    /// The total device memory in bytes (VRAM, or host RAM for the CPU device) — an `i64`
-    /// (a JS number, exact to 2^53).
+    /// The total device memory in bytes (VRAM for a real adapter, host RAM for the fallback) — an
+    /// `i64` (a JS number, exact to 2^53).
     #[napi]
     pub fn total_memory(&self) -> i64 {
         self.inner.total_memory() as i64
     }
 
-    /// Whether this is the CPU (host-memory) device.
+    /// Whether a **real AMD Radeon adapter** backs this device (vs the host-memory fallback).
     #[napi]
-    pub fn is_cpu(&self) -> bool {
-        self.inner.is_cpu()
+    pub fn is_present(&self) -> bool {
+        self.inner.is_present()
     }
 
-    /// A **live capacity snapshot** for this device — the CPU device queries host RAM fresh; a
-    /// GPU device reports its total VRAM.
+    /// A **live capacity snapshot** for this device — a present adapter reports its total VRAM; the
+    /// fallback queries host RAM fresh.
     #[napi]
     pub fn memory_info(&self) -> MemoryInfo {
         MemoryInfo {
@@ -93,9 +76,9 @@ impl GpuDevice {
         }
     }
 
-    /// Content equality — equal iff the backend, name, and total memory all match.
+    /// Content equality — equal iff the name, total memory, and presence all match.
     #[napi]
-    pub fn equals(&self, other: &GpuDevice) -> bool {
+    pub fn equals(&self, other: &AmdDevice) -> bool {
         self.inner == other.inner
     }
 
@@ -105,54 +88,54 @@ impl GpuDevice {
         java_hash(&self.inner)
     }
 
-    /// A short debug string of the form `GpuDevice(<backend>, <name>)`.
+    /// A short debug string of the form `AmdDevice(<name>, present=<bool>)`.
     #[napi(js_name = "toString")]
     pub fn text(&self) -> String {
         format!(
-            "GpuDevice({}, {})",
-            self.inner.backend().as_str(),
-            self.inner.name()
+            "AmdDevice({}, present={})",
+            self.inner.name(),
+            self.inner.is_present()
         )
     }
 }
 
-/// An **AMD Radeon device-memory buffer** — a full `GpuMemory` over the detected AMD device (or
-/// the CPU fallback when none), implementing the whole `IOBase` byte + vectorized-bulk surface
-/// plus host↔device `upload` / `download`. (The resident store stages through host memory for
-/// now; the API is stable so wiring the VRAM queue does not change a caller.)
-#[napi(namespace = "gpu")]
+/// An **AMD Radeon device-memory heap** — a full `AmdMemory` over the detected AMD device (or the
+/// host-memory fallback when none), implementing the whole `IOBase` byte + vectorized-bulk surface
+/// plus host↔device `upload` / `download`. (The resident store stages through host memory for now;
+/// the API is stable so wiring the VRAM queue does not change a caller.)
+#[napi(namespace = "amd")]
 #[derive(Default)]
-pub struct AmdBuffer {
-    pub(crate) inner: core::AmdBuffer,
+pub struct AmdHeap {
+    pub(crate) inner: core::AmdHeap,
 }
 
-#[napi(namespace = "gpu")]
-impl AmdBuffer {
-    /// An empty AMD device buffer on the detected AMD device (or the CPU fallback when none).
+#[napi(namespace = "amd")]
+impl AmdHeap {
+    /// An empty AMD device heap on the detected AMD device (or the host fallback when none).
     #[napi(constructor)]
     pub fn new() -> Self {
         Self {
-            inner: core::AmdBuffer::new(),
+            inner: core::AmdHeap::new(),
         }
     }
 
-    /// An empty buffer with room for `capacity` bytes before reallocating.
+    /// An empty heap with room for `capacity` bytes before reallocating.
     #[napi(factory)]
-    pub fn with_capacity(capacity: u32) -> AmdBuffer {
+    pub fn with_capacity(capacity: u32) -> AmdHeap {
         Self {
-            inner: core::AmdBuffer::with_capacity(capacity as usize),
+            inner: core::AmdHeap::with_capacity(capacity as usize),
         }
     }
 
-    /// A buffer initialized by **uploading** `data` (host → device).
+    /// A heap initialized by **uploading** `data` (host → device).
     #[napi(factory)]
-    pub fn from_host(data: Buffer) -> AmdBuffer {
+    pub fn from_host(data: Buffer) -> AmdHeap {
         Self {
-            inner: core::AmdBuffer::from_host(data.as_ref()),
+            inner: core::AmdHeap::from_host(data.as_ref()),
         }
     }
 
-    // ---- GpuMemory transfer surface ----------------------------------------------------
+    // ---- AmdMemory transfer surface ----------------------------------------------------
 
     /// **Uploads** `host` into device memory, replacing the whole content (and syncing the size
     /// headers) — the "copy this array to the GPU" entry point.
@@ -182,15 +165,15 @@ impl AmdBuffer {
         self.inner.download_vec().into()
     }
 
-    /// The [`GpuDevice`] this buffer's memory lives on.
+    /// The [`AmdDevice`] this heap's memory lives on.
     #[napi]
-    pub fn device(&self) -> GpuDevice {
-        GpuDevice {
+    pub fn device(&self) -> AmdDevice {
+        AmdDevice {
             inner: self.inner.device().clone(),
         }
     }
 
-    /// This buffer's device capacity snapshot — `device().memoryInfo()`.
+    /// This heap's device capacity snapshot — `device().memoryInfo()`.
     #[napi]
     pub fn memory_info(&self) -> MemoryInfo {
         MemoryInfo {
@@ -204,6 +187,12 @@ impl AmdBuffer {
     #[napi]
     pub fn byte_size(&self) -> i64 {
         self.inner.byte_size() as i64
+    }
+
+    /// Whether the heap is empty (`byteSize == 0`).
+    #[napi]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 
     /// Reads up to `length` bytes at `offset` into a fresh `Buffer` — short (or empty) near the
@@ -266,8 +255,8 @@ impl AmdBuffer {
     // ---- aggregations, filter, and device-aware copy -----------------------------------
     //
     // The reductions delegate to the core `Aggregate` blanket trait (in scope via the
-    // `Aggregate` import); the device-aware `computeBackend` / `computeCopyInto` stay on the
-    // gpu `Compute` trait. Each op runs the dense vectorized reduction streamed through a fixed
+    // `Aggregate` import); the device-aware `computeBackend` / `computeCopyInto` come from the
+    // `AmdMemory` trait. Each op runs the dense vectorized reduction streamed through a fixed
     // stack chunk (a GPU-backed source overrides it with a device kernel). `offset` / `count`
     // cross as `u32` like the bulk byte surface; a `count` past the buffer throws the core's
     // guided EOF text. 64-bit crossings follow the buffer's convention — an `i64` accumulator
@@ -552,8 +541,8 @@ impl AmdBuffer {
             .map_err(to_error)
     }
 
-    /// The backend token an op over `elements` values would run on — `"gpu"` when this buffer is
-    /// on a real device *and* `elements` clears the transfer threshold, else `"cpu"`.
+    /// The backend token an op over `elements` values would run on — `"gpu"` when this heap is
+    /// on a real Radeon adapter *and* `elements` clears the transfer threshold, else `"cpu"`.
     #[napi]
     pub fn compute_backend(&self, elements: u32) -> String {
         self.inner
@@ -562,21 +551,21 @@ impl AmdBuffer {
             .to_string()
     }
 
-    /// **Device-aware copy** — copies this buffer's whole content into `dst` (a same-device
+    /// **Device-aware copy** — copies this heap's whole content into `dst` (a same-device
     /// GPU→GPU copy would run as a device DMA; else the zero-copy host copy) and returns the
     /// byte count. An `i64` (a JS number, exact to 2^53).
     #[napi]
-    pub fn compute_copy_into(&self, dst: &mut AmdBuffer) -> napi::Result<i64> {
+    pub fn compute_copy_into(&self, dst: &mut AmdHeap) -> napi::Result<i64> {
         self.inner
             .compute_copy_into(&mut dst.inner)
             .map(|n| n as i64)
             .map_err(to_error)
     }
 
-    /// Releases the device buffer's backing storage — resets it to empty. The JS
+    /// Releases the device heap's backing storage — resets it to empty. The JS
     /// explicit-resource-management disposer (an explicit `buf.dispose()` frees the memory).
     #[napi]
     pub fn dispose(&mut self) {
-        self.inner = core::AmdBuffer::new();
+        self.inner = core::AmdHeap::new();
     }
 }

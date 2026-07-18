@@ -11,7 +11,7 @@ use pyo3::types::{PyByteArray, PyBytes};
 
 use yggdryl_core::io::memory::IOBase;
 
-pub mod gpu;
+pub mod amd;
 pub mod kind;
 pub mod local;
 pub mod meminfo;

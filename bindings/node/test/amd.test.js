@@ -4,18 +4,17 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const yggdryl = require('..')
-const { availableDevices, defaultDevice, GpuDevice, AmdBuffer } = yggdryl.gpu
+const { detect, AmdDevice, AmdHeap } = yggdryl.amd
 const { MemoryInfo } = yggdryl.io
 
 // -------------------------------------------------------------------------------------
 // Namespace
 // -------------------------------------------------------------------------------------
 
-test('the gpu namespace exposes availableDevices, defaultDevice, GpuDevice, and AmdBuffer', () => {
-  assert.equal(typeof availableDevices, 'function')
-  assert.equal(typeof defaultDevice, 'function')
-  assert.equal(typeof GpuDevice, 'function')
-  assert.equal(typeof AmdBuffer, 'function')
+test('the amd namespace exposes detect, AmdDevice, and AmdHeap', () => {
+  assert.equal(typeof detect, 'function')
+  assert.equal(typeof AmdDevice, 'function')
+  assert.equal(typeof AmdHeap, 'function')
 })
 
 // -------------------------------------------------------------------------------------
@@ -64,49 +63,52 @@ test('MemoryInfo equals + hashCode + toString', () => {
 })
 
 // -------------------------------------------------------------------------------------
-// GpuDevice + the device probe
+// detect() + AmdDevice — the hardware probe
 // -------------------------------------------------------------------------------------
 
-test('availableDevices() is non-empty and always includes a cpu device', () => {
-  const devices = availableDevices()
-  assert.ok(Array.isArray(devices))
-  assert.ok(devices.length >= 1)
-  const cpu = devices.find((d) => d.isCpu())
-  assert.ok(cpu, 'the CPU device is always present')
-  assert.equal(cpu.backend(), 'cpu')
-  assert.equal(typeof cpu.name(), 'string')
-  assert.ok(cpu.totalMemory() >= 0)
+test('detect() is null or an AmdDevice with isPresent() true', () => {
+  const adapter = detect()
+  // Adapts to the hardware present: null on a machine with no AMD Radeon adapter.
+  assert.ok(adapter === null || adapter instanceof AmdDevice)
+  if (adapter !== null) {
+    assert.equal(adapter.isPresent(), true)
+    assert.equal(typeof adapter.name(), 'string')
+    assert.ok(adapter.totalMemory() >= 0)
+  }
 })
 
-test('defaultDevice() is a GpuDevice whose backend token is amd or cpu', () => {
-  const device = defaultDevice()
-  assert.ok(device instanceof GpuDevice)
-  assert.ok(['amd', 'cpu'].includes(device.backend()))
-  const info = device.memoryInfo()
-  assert.ok(info.total() >= info.available()) // total >= available within a device
-  assert.equal(device.toString(), `GpuDevice(${device.backend()}, ${device.name()})`)
+test('AmdHeap().device() is the detected adapter, else the host fallback', () => {
+  const adapter = detect()
+  const dev = new AmdHeap().device()
+  assert.ok(dev instanceof AmdDevice)
+  // isPresent() tracks whether a real adapter was detected.
+  assert.equal(dev.isPresent(), adapter !== null)
+
+  const info = dev.memoryInfo() // a live capacity snapshot for the device
+  assert.ok(info.total() >= info.available())
 })
 
-test('GpuDevice.equals + hashCode compare by value', () => {
-  const devices = availableDevices()
-  const cpuA = devices.find((d) => d.isCpu())
-  const cpuB = availableDevices().find((d) => d.isCpu())
-  assert.equal(cpuA.equals(cpuB), true)
+test('AmdDevice equals + hashCode + toString compare by value', () => {
+  const a = new AmdHeap().device()
+  const b = new AmdHeap().device()
+  assert.equal(a.equals(b), true)
   // Equal devices hash equal.
-  assert.equal(typeof cpuA.hashCode(), 'number')
-  assert.equal(cpuA.hashCode(), cpuB.hashCode())
+  assert.equal(typeof a.hashCode(), 'number')
+  assert.equal(a.hashCode(), b.hashCode())
+  assert.equal(a.toString(), `AmdDevice(${a.name()}, present=${a.isPresent()})`)
 })
 
 // -------------------------------------------------------------------------------------
-// AmdBuffer — device memory over the IOBase byte + bulk surface
+// AmdHeap — device memory over the IOBase byte + bulk surface
 // -------------------------------------------------------------------------------------
 
-test('AmdBuffer upload/download round-trips the payload', () => {
-  const buf = new AmdBuffer()
+test('AmdHeap upload/download round-trips the payload', () => {
+  const buf = new AmdHeap()
   const payload = Buffer.from('radeon payload')
   buf.upload(payload)
 
   assert.equal(buf.byteSize(), payload.length)
+  assert.equal(buf.isEmpty(), false)
   assert.deepEqual(buf.downloadVec(), payload)
   assert.deepEqual(buf.toBytes(), payload)
   // A short download clamps to what is available.
@@ -115,8 +117,8 @@ test('AmdBuffer upload/download round-trips the payload', () => {
   assert.deepEqual(buf.download(1000), payload)
 })
 
-test('AmdBuffer runs a vectorized bulk op on device memory', () => {
-  const buf = new AmdBuffer()
+test('AmdHeap runs a vectorized bulk op on device memory', () => {
+  const buf = new AmdHeap()
   buf.upload(Buffer.from('radeon payload'))
   buf.pwriteI32Array(16, [1, -2, 3])
   assert.deepEqual(buf.preadI32Array(16, 3), [1, -2, 3])
@@ -129,44 +131,45 @@ test('AmdBuffer runs a vectorized bulk op on device memory', () => {
   assert.deepEqual(buf.preadI64Array(64, 2), [10, 20])
 })
 
-test('AmdBuffer positioned byte reads/writes', () => {
-  const buf = AmdBuffer.withCapacity(32)
+test('AmdHeap positioned byte reads/writes', () => {
+  const buf = AmdHeap.withCapacity(32)
   assert.equal(buf.byteSize(), 0)
+  assert.equal(buf.isEmpty(), true)
   buf.pwriteByteArray(0, Buffer.from('abcdef'))
   assert.deepEqual(buf.preadByteArray(2, 3), Buffer.from('cde'))
 })
 
-test('AmdBuffer.fromHost seeds the buffer, and its device backend is amd or cpu', () => {
-  const buf = AmdBuffer.fromHost(Buffer.from('seed'))
+test('AmdHeap.fromHost seeds the heap and reports its device', () => {
+  const buf = AmdHeap.fromHost(Buffer.from('seed'))
   assert.deepEqual(buf.downloadVec(), Buffer.from('seed'))
 
   const device = buf.device()
-  assert.ok(device instanceof GpuDevice)
-  assert.ok(['amd', 'cpu'].includes(device.backend()))
+  assert.ok(device instanceof AmdDevice)
+  assert.equal(device.isPresent(), detect() !== null)
 
   const info = buf.memoryInfo()
   assert.ok(info.total() >= info.available())
 })
 
-test('AmdBuffer.dispose resets the buffer to empty', () => {
-  const buf = AmdBuffer.fromHost(Buffer.from('payload'))
+test('AmdHeap.dispose resets the heap to empty', () => {
+  const buf = AmdHeap.fromHost(Buffer.from('payload'))
   assert.equal(buf.byteSize(), 7)
   buf.dispose()
   assert.equal(buf.byteSize(), 0)
   assert.deepEqual(buf.downloadVec(), Buffer.alloc(0))
 })
 
-test('AmdBuffer bulk read past the end throws a guided Error', () => {
-  const buf = AmdBuffer.fromHost(Buffer.from('short'))
+test('AmdHeap bulk read past the end throws a guided Error', () => {
+  const buf = AmdHeap.fromHost(Buffer.from('short'))
   assert.throws(() => buf.preadI32Array(0, 100), /.+/)
 })
 
 // -------------------------------------------------------------------------------------
-// AmdBuffer — Compute: auto-dispatched aggregations, filter, and device-aware copy
+// AmdHeap — auto-dispatched aggregations, filter, and device-aware copy
 // -------------------------------------------------------------------------------------
 
-test('AmdBuffer i32 aggregations: sum/min/max/mean/countGe', () => {
-  const buf = new AmdBuffer()
+test('AmdHeap i32 aggregations: sum/min/max/mean/countGe', () => {
+  const buf = new AmdHeap()
   const values = [4, 8, 15, 16, 23, 42]
   buf.pwriteI32Array(0, values)
 
@@ -177,15 +180,15 @@ test('AmdBuffer i32 aggregations: sum/min/max/mean/countGe', () => {
   // Filter: how many are >= 16.
   assert.equal(buf.countGeI32(0, 6, 16), 3)
 
-  // An empty window yields the null/None aggregates but a zero filter count.
+  // An empty window yields the null aggregates but a zero filter count.
   assert.equal(buf.minI32(0, 0), null)
   assert.equal(buf.maxI32(0, 0), null)
   assert.equal(buf.meanI32(0, 0), null)
   assert.equal(buf.countGeI32(0, 0, 16), 0)
 })
 
-test('AmdBuffer std / first / last aggregations (i32 / i64 / f32 / f64)', () => {
-  const i32 = new AmdBuffer()
+test('AmdHeap std / first / last aggregations (i32 / i64 / f32 / f64)', () => {
+  const i32 = new AmdHeap()
   i32.pwriteI32Array(0, [4, 8, 15, 16, 23, 42])
   assert.equal(i32.firstI32(0, 6), 4)
   assert.equal(i32.lastI32(0, 6), 42)
@@ -194,14 +197,14 @@ test('AmdBuffer std / first / last aggregations (i32 / i64 / f32 / f64)', () => 
   assert.equal(i32.lastI32(0, 0), null)
   assert.equal(i32.stdI32(0, 0), null)
 
-  const i64 = new AmdBuffer()
+  const i64 = new AmdHeap()
   i64.pwriteI64Array(0, [10, 20, 30, 40])
   assert.equal(i64.firstI64(0, 4), 10) // a JS number
   assert.equal(i64.lastI64(0, 4), 40)
   assert.ok(i64.stdI64(0, 4) > 0)
 
   // f64 / f32 first/last widen to JS numbers (seed little-endian bytes).
-  const f64 = new AmdBuffer()
+  const f64 = new AmdHeap()
   const b64 = Buffer.alloc(3 * 8)
   ;[10.0, 20.0, 30.0].forEach((v, i) => b64.writeDoubleLE(v, i * 8))
   f64.pwriteByteArray(0, b64)
@@ -209,7 +212,7 @@ test('AmdBuffer std / first / last aggregations (i32 / i64 / f32 / f64)', () => 
   assert.equal(f64.lastF64(0, 3), 30.0)
   assert.ok(Math.abs(f64.stdF64(0, 3) - 8.165) < 0.01) // sqrt(200/3)
 
-  const f32 = new AmdBuffer()
+  const f32 = new AmdHeap()
   const b32 = Buffer.alloc(3 * 4)
   ;[1.5, 2.5, 3.5].forEach((v, i) => b32.writeFloatLE(v, i * 4))
   f32.pwriteByteArray(0, b32)
@@ -218,8 +221,8 @@ test('AmdBuffer std / first / last aggregations (i32 / i64 / f32 / f64)', () => 
   assert.ok(f32.stdF32(0, 3) > 0)
 })
 
-test('AmdBuffer i64 aggregations cross 64-bit values (BigInt sum, BigInt threshold)', () => {
-  const buf = new AmdBuffer()
+test('AmdHeap i64 aggregations cross 64-bit values (BigInt sum, BigInt threshold)', () => {
+  const buf = new AmdHeap()
   buf.pwriteI64Array(0, [10, 20, 30, 40])
 
   // The i64 sum accumulates to i128 and crosses as a BigInt.
@@ -232,10 +235,10 @@ test('AmdBuffer i64 aggregations cross 64-bit values (BigInt sum, BigInt thresho
   assert.equal(buf.countGeI64(0, 4, 25n), 2)
 })
 
-test('AmdBuffer f64 aggregations stream a large (>1024) array through the stack chunk', () => {
-  const buf = new AmdBuffer()
-  const n = 5000 // exceeds the 1024-element compute chunk, exercising the streaming loop
-  // No f64 bulk-array method on AmdBuffer, so seed the device bytes as little-endian f64s.
+test('AmdHeap f64 aggregations stream a large (>1024) array through the stack chunk', () => {
+  const buf = new AmdHeap()
+  const n = 5000 // exceeds the compute chunk, exercising the streaming loop
+  // Seed the device bytes as little-endian f64s.
   const bytes = Buffer.alloc(n * 8)
   let expectedSum = 0
   for (let i = 0; i < n; i++) {
@@ -253,9 +256,9 @@ test('AmdBuffer f64 aggregations stream a large (>1024) array through the stack 
   assert.equal(buf.countGeF64(0, n, n / 2), n - n / 2)
 })
 
-test('AmdBuffer f32 aggregations widen to JS numbers', () => {
-  const buf = new AmdBuffer()
-  // Seed little-endian f32s (no f32 bulk-array method on AmdBuffer).
+test('AmdHeap f32 aggregations widen to JS numbers', () => {
+  const buf = new AmdHeap()
+  // Seed little-endian f32s.
   const bytes = Buffer.alloc(3 * 4)
   ;[1.5, 2.5, 3.5].forEach((v, i) => bytes.writeFloatLE(v, i * 4))
   buf.pwriteByteArray(0, bytes)
@@ -267,10 +270,29 @@ test('AmdBuffer f32 aggregations widen to JS numbers', () => {
   assert.equal(buf.countGeF32(0, 3, 2.5), 2)
 })
 
-test('AmdBuffer computeCopyInto round-trips the whole buffer into another buffer', () => {
-  const src = new AmdBuffer()
+test('AmdHeap min/max ignore NaN independent of its position', () => {
+  // Seed the finite values with a NaN at the start, middle, and end — min/max skip NaN,
+  // so the finite min/max is the same wherever NaN sits (order-independent).
+  const layouts = [
+    [NaN, 1.5, 4.5, 2.5],
+    [1.5, NaN, 4.5, 2.5],
+    [1.5, 4.5, 2.5, NaN],
+  ]
+  for (const values of layouts) {
+    const buf = new AmdHeap()
+    const bytes = Buffer.alloc(values.length * 8)
+    values.forEach((v, i) => bytes.writeDoubleLE(v, i * 8))
+    buf.pwriteByteArray(0, bytes)
+
+    assert.equal(buf.minF64(0, values.length), 1.5)
+    assert.equal(buf.maxF64(0, values.length), 4.5)
+  }
+})
+
+test('AmdHeap computeCopyInto round-trips the whole heap into another heap', () => {
+  const src = new AmdHeap()
   src.pwriteI32Array(0, [7, 11, 13, 17])
-  const dst = new AmdBuffer()
+  const dst = new AmdHeap()
 
   const copied = src.computeCopyInto(dst)
   assert.equal(copied, src.byteSize())
@@ -279,7 +301,7 @@ test('AmdBuffer computeCopyInto round-trips the whole buffer into another buffer
   assert.deepEqual(dst.preadI32Array(0, 4), [7, 11, 13, 17])
 })
 
-test('AmdBuffer computeBackend reports the cpu token for small workloads', () => {
-  const buf = new AmdBuffer()
+test('AmdHeap computeBackend reports the cpu token for small workloads', () => {
+  const buf = new AmdHeap()
   assert.equal(buf.computeBackend(8), 'cpu')
 })

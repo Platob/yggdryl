@@ -15,8 +15,8 @@ crate-type = ["cdylib"]
 # The Rust core — this binding is a thin wrapper that delegates to it. The `compression`
 # feature pulls the native codec cores (flate2 / zstd / xz2) so the `yggdryl.compression`
 # namespace and the IOBase compression helpers resolve real Gzip / Zlib / Zstd / Lzma codecs;
-# `gpu-amd` enables the AMD device-memory backend behind the `yggdryl.gpu` namespace.
-yggdryl-core = { workspace = true, features = ["compression", "gpu-amd"] }
+# `amd` enables the AMD Radeon device-memory backend behind the `yggdryl.amd` namespace.
+yggdryl-core = { workspace = true, features = ["compression", "amd"] }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 

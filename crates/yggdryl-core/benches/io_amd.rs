@@ -1,11 +1,11 @@
-//! Time **and** memory benchmark for the `io::gpu` device-memory layer (feature `gpu`) — the
-//! auto-dispatched [`Compute`](yggdryl_core::io::gpu::Compute) aggregations / filter and the
-//! host↔device transfer, over a [`CpuHeap`](yggdryl_core::io::gpu::CpuHeap). The reductions stream
-//! the typed data through a fixed stack chunk, so the **allocs/op** column proves they run with
-//! zero heap allocation in the hot loop.
+//! Time **and** memory benchmark for the `io::amd` device-memory family (feature `amd`) — the
+//! [`Aggregate`](yggdryl_core::io::memory::Aggregate) reductions / filter and the host↔device
+//! transfer, over an [`AmdHeap`](yggdryl_core::io::amd::AmdHeap). The reductions stream the typed
+//! data through a fixed stack chunk, so the **allocs/op** column proves they run with zero heap
+//! allocation in the hot loop.
 //!
 //! Dependency-free (`harness = false`, a plain `main`) with the same counting allocator as the
-//! other benches. Run with `cargo bench -p yggdryl-core --features gpu --bench io_gpu`.
+//! other benches. Run with `cargo bench -p yggdryl-core --features amd --bench io_amd`.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
@@ -55,21 +55,21 @@ fn row(name: &str, (mops, allocs, bytes): (f64, f64, f64)) {
 }
 
 fn main() {
-    use yggdryl_core::io::gpu::{CpuHeap, GpuMemory};
+    use yggdryl_core::io::amd::{AmdHeap, AmdMemory};
     use yggdryl_core::io::memory::{Aggregate, IOBase};
 
     let iters = 2_000;
     let n = 1 << 16; // 65 536 elements — crosses the GPU dispatch threshold + many stack chunks
 
-    // A device buffer holding N i32s and N f64s.
+    // An AMD device heap holding N i32s and N f64s.
     let ints: Vec<i32> = (0..n as i32).collect();
     let floats: Vec<f64> = (0..n).map(|i| i as f64).collect();
-    let mut ibuf = CpuHeap::with_capacity(n * 4);
+    let mut ibuf = AmdHeap::with_capacity(n * 4);
     ibuf.pwrite_i32_array(0, &ints).unwrap();
-    let mut fbuf = CpuHeap::with_capacity(n * 8);
+    let mut fbuf = AmdHeap::with_capacity(n * 8);
     fbuf.pwrite_f64_array(0, &floats).unwrap();
 
-    println!("gpu compute — time & memory ({iters} iters over {n} elements)\n");
+    println!("amd device compute — time & memory ({iters} iters over {n} elements)\n");
     println!(
         "  {:<36} {:>8}   {:>10}   {:>9}",
         "op", "Melem/s", "allocs/op", "bytes/op"
@@ -115,7 +115,7 @@ fn main() {
 
     // Host <-> device transfer: upload replaces the content, download_vec owns one Vec.
     let payload = vec![0xABu8; n];
-    let mut xfer = CpuHeap::with_capacity(n);
+    let mut xfer = AmdHeap::with_capacity(n);
     row(
         "upload (host -> device)",
         measure(n, iters, || {

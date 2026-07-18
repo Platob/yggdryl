@@ -6,7 +6,7 @@ const assert = require('node:assert/strict')
 const yggdryl = require('..')
 const { buffer, array, deviceBuffer } = yggdryl
 const { Heap } = yggdryl.memory
-const { AmdBuffer } = yggdryl.gpu
+const { AmdHeap } = yggdryl.amd
 const { Headers } = yggdryl.headers
 const io = yggdryl.io
 
@@ -122,8 +122,8 @@ test('array([1], "bogus") throws a guided Error naming the valid dtypes', () => 
 test('deviceBuffer(data) seeds the best available device buffer (byteSize === data length)', () => {
   const dev = deviceBuffer(Buffer.from('x'))
   // The concrete class depends on the hardware present (Heap on a CPU-only host,
-  // AmdBuffer when a GPU is detected); either way it carries the uploaded byte.
-  assert.ok(dev instanceof Heap || dev instanceof AmdBuffer)
+  // AmdHeap when an AMD adapter is detected); either way it carries the uploaded byte.
+  assert.ok(dev instanceof Heap || dev instanceof AmdHeap)
   assert.equal(dev.byteSize(), 1)
 })
 
@@ -133,22 +133,22 @@ test('deviceBuffer(undefined, "cpu") returns an empty Heap', () => {
   assert.equal(dev.byteSize(), 0)
 })
 
-test('deviceBuffer(data, "amd") returns an AmdBuffer carrying the payload', () => {
+test('deviceBuffer(data, "amd") returns an AmdHeap carrying the payload', () => {
   const dev = deviceBuffer(Buffer.from('radeon'), 'amd')
-  assert.ok(dev instanceof AmdBuffer)
+  assert.ok(dev instanceof AmdHeap)
   assert.equal(dev.byteSize(), 6)
   assert.deepEqual(dev.toBytes(), Buffer.from('radeon'))
 })
 
-test('deviceBuffer accepts "gpu" / "cuda" as GPU tokens (mirroring Python)', () => {
-  // The AmdBuffer device-memory type falls back to the CPU device when no GPU is present,
-  // so these resolve to an AmdBuffer regardless of the hardware.
-  assert.ok(deviceBuffer(undefined, 'gpu') instanceof AmdBuffer)
-  assert.ok(deviceBuffer(undefined, 'cuda') instanceof AmdBuffer)
+test('deviceBuffer accepts "gpu" / "cuda" as device tokens (mirroring Python)', () => {
+  // The AmdHeap device-memory type falls back to host memory when no adapter is present,
+  // so these resolve to an AmdHeap regardless of the hardware.
+  assert.ok(deviceBuffer(undefined, 'gpu') instanceof AmdHeap)
+  assert.ok(deviceBuffer(undefined, 'cuda') instanceof AmdHeap)
 })
 
 test('deviceBuffer device tokens are case-insensitive', () => {
-  assert.ok(deviceBuffer(undefined, 'AMD') instanceof AmdBuffer)
+  assert.ok(deviceBuffer(undefined, 'AMD') instanceof AmdHeap)
   assert.ok(deviceBuffer(undefined, 'CPU') instanceof Heap)
 })
 

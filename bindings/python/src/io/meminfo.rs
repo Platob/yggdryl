@@ -6,7 +6,7 @@
 //! and the host-RAM [`system`](MemoryInfo::system) snapshot. It is immutable, so it is equal,
 //! hashable, and picklable through its `(total, available)` pair. The same value type answers
 //! "how much room is there?" for a [`LocalIO`](crate::io::local::LocalIO) disk
-//! (`memory_info()`) and a [`GpuDevice`](crate::io::gpu::GpuDevice) uniformly.
+//! (`memory_info()`) and an [`AmdDevice`](crate::io::amd::AmdDevice) uniformly.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

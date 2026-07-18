@@ -16,10 +16,10 @@ crate-type = ["cdylib"]
 # The Rust core — this binding is a thin wrapper that delegates to it. The `compression`
 # feature compiles the native codec cores (flate2 / zstd / xz2) into the extension so the
 # `yggdryl.compression` codecs and the source compress/decompress helpers resolve real codecs.
-# `gpu-amd` compiles the device-memory layer (`io::gpu`, the AMD Radeon architecture) so the
-# `yggdryl.gpu` submodule (`GpuDevice` / `AmdBuffer` + `available_devices` / `default_device`)
-# resolves the same devices the core probes.
-yggdryl-core = { workspace = true, features = ["compression", "gpu-amd"] }
+# `amd` compiles the device-memory layer (`io::amd`, the AMD Radeon family) so the
+# `yggdryl.amd` submodule (`AmdDevice` / `AmdHeap` + the `detect` probe) resolves the same
+# device the core probes.
+yggdryl-core = { workspace = true, features = ["compression", "amd"] }
 # `extension-module` links against the interpreter at import time (added on top of the
 # workspace's stable-ABI `abi3-py37`), so `cargo build`/`cargo test` never touch this crate
 # (default-members = core); maturin builds it.

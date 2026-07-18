@@ -673,7 +673,7 @@ error.
 
 `memory_info()` reports the **disk capacity of the volume** backing this path — its total and
 available bytes — as a `MemoryInfo`, the local-filesystem answer to "how much room is there?".
-It is the **same value type** a `yggdryl.gpu` device reports for its VRAM (and an object store
+It is the **same value type** a `yggdryl.amd` device reports for its VRAM (and an object store
 will report for its quota), so one capacity vocabulary spans every source. The path need not
 exist yet — the lookup walks up to the nearest existing ancestor to resolve the volume.
 

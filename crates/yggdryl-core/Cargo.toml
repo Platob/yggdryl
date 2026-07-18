@@ -40,9 +40,9 @@ harness = false
 required-features = ["compression"]
 
 [[bench]]
-name = "io_gpu"
+name = "io_amd"
 harness = false
-required-features = ["gpu"]
+required-features = ["amd"]
 
 [features]
 # `compression` is the ONLY feature that pulls external crates: the native codec cores for the
@@ -50,13 +50,12 @@ required-features = ["gpu"]
 # `Compression` trait, the `MimeType`/`IOBase` integration, and magic inference are all `std`.
 default = []
 compression = ["dep:flate2", "dep:zstd", "dep:xz2"]
-# `gpu` enables the device-memory layer (`io::gpu`), organized by architecture: the `GpuMemory`
-# trait over `IOBase`, the CPU backend where device memory IS our `Heap` (`CpuHeap`), and the
-# `MemoryInfo`/`GpuDevice` probe. All dependency-free. `gpu-amd` / `gpu-cuda` add the AMD Radeon /
-# NVIDIA architecture modules (native detection today; the VRAM queue drops in behind them later).
-gpu = []
-gpu-amd = ["gpu"]
-gpu-cuda = ["gpu"]
+# `amd` enables the AMD Radeon device-memory family (`io::amd`): the AMD-optimized `AmdHeap` /
+# `AmdCursor` / `AmdSlice` over the full `IOBase` byte + bulk contract, the `AmdMemory` host↔device
+# transfer, and the live Radeon detection (`AmdDevice` / `detect`). Dependency-free (the CPU byte
+# layer is `io::memory`; `MemoryInfo` lives at the io root). The VRAM queue + device kernels drop in
+# behind this feature later.
+amd = []
 
 [dependencies]
 # Dependency-free by default: the core is the abstract memory-access traits (with an in-heap

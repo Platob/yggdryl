@@ -27,8 +27,8 @@ mod mode;
 mod serializable;
 mod whence;
 
-#[cfg(feature = "gpu")]
-pub mod gpu;
+#[cfg(feature = "amd")]
+pub mod amd;
 pub mod local;
 pub mod memory;
 

@@ -1073,8 +1073,8 @@ right underlying constructor (the same "one generic entry point that infers and 
   matching vectorized `pwrite_<dtype>_array`. With no `dtype` it **infers**: all-integer values →
   `i64`, any fractional value → `f64`. Read it back with the Heap's `pread_<dtype>_array`.
 - **`device_buffer(data, device=None)`** — the **best available device-memory buffer**: an
-  `AmdBuffer` when a real GPU is present (or `device="amd"`), else a `Heap` (the CPU device-memory
-  type). Both share the byte I/O surface.
+  `AmdHeap` when a real AMD adapter is present (or `device="amd"`), else a `Heap` (the CPU
+  byte layer). Both share the byte I/O surface.
 
 In Rust these are just the explicit constructors the generic builders redirect to.
 
@@ -1094,7 +1094,7 @@ In Rust these are just the explicit constructors the generic builders redirect t
     floats = yggdryl.array([1.5, 2.5], "f32")          # explicit dtype
     assert floats.pread_f32_array(0, 2) == [1.5, 2.5]
 
-    # device_buffer(): AmdBuffer if a GPU is present, else a Heap — same byte surface either way
+    # device_buffer(): AmdHeap if an AMD adapter is present, else a Heap — same byte surface either way
     dev = yggdryl.device_buffer(b"x")
     assert dev.byte_size() == 1
     ```
@@ -1114,7 +1114,7 @@ In Rust these are just the explicit constructors the generic builders redirect t
     const floats = yggdryl.array([1.5, 2.5], 'f32')     // explicit dtype
     console.assert(floats.preadF32Array(0, 2).join() === '1.5,2.5')
 
-    // deviceBuffer(): AmdBuffer if a GPU is present, else a Heap
+    // deviceBuffer(): AmdHeap if an AMD adapter is present, else a Heap
     const dev = yggdryl.deviceBuffer(Buffer.from('x'))
     console.assert(dev.byteSize() === 1)
     ```

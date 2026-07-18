@@ -4,8 +4,9 @@
 //! The top-level `yggdryl.version()` is the minimal example, plus the `yggdryl.io` submodule
 //! (the io-root value types `Headers` / `IOMode` / `IOKind` / `MemoryInfo`, mirroring
 //! `yggdryl_core::io`), the `yggdryl.dtype` submodule (the `DataTypeId` primitive element data
-//! types, mirroring `yggdryl_core::dtype`), the `yggdryl.gpu` submodule (the device-memory layer — `GpuDevice` /
-//! `AmdBuffer` + `available_devices` / `default_device`, mirroring `yggdryl_core::io::gpu`),
+//! types, mirroring `yggdryl_core::dtype`), the `yggdryl.amd` submodule (the AMD Radeon
+//! device-memory family — `AmdDevice` / `AmdHeap` + the `detect` probe, mirroring
+//! `yggdryl_core::io::amd`),
 //! the `yggdryl.memory` submodule (the in-heap `Heap` byte source and the `Whence` seek anchor,
 //! mirroring `yggdryl_core::io::memory`), the `yggdryl.local` submodule (the local-filesystem
 //! `LocalIO` access point and the raw `Mmap` mapping — moved from `yggdryl.memory` —
@@ -71,9 +72,9 @@ fn yggdryl(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(version, module)?)?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
     builders::register(module)?;
+    add_submodule(py, module, "amd", io::amd::register)?;
     add_submodule(py, module, "compression", compression::register)?;
     add_submodule(py, module, "dtype", dtype::register)?;
-    add_submodule(py, module, "gpu", io::gpu::register)?;
     add_submodule(py, module, "headers", |m| m.add_class::<headers::Headers>())?;
     add_submodule(py, module, "io", io::register)?;
     add_submodule(py, module, "local", io::local::register)?;

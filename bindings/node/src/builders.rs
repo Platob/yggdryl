@@ -2,15 +2,16 @@
 //! concrete binding classes behind one call, mirroring the spirit of the top-level [`open`].
 //!
 //! Each function dispatches on the runtime type / arguments and redirects to the matching
-//! `memory.Heap` / `gpu.AmdBuffer` wrapper — JS-level convenience glue over the existing classes,
+//! `memory.Heap` / `amd.AmdHeap` wrapper — JS-level convenience glue over the existing classes,
 //! with no logic beyond the dispatch:
 //!
 //! - [`buffer`] builds a `memory.Heap` from optional bytes plus an options object
 //!   (`{ capacity, headers, mode }`);
 //! - [`array`] builds a `memory.Heap` from a numeric array, inferring (or taking) an element
 //!   `dtype` and writing it through the matching vectorized bulk kernel;
-//! - [`device_buffer`] returns the **best available** device buffer — a `gpu.AmdBuffer` when a
-//!   real GPU is present (or `"amd"` is requested), else a `memory.Heap` (the CPU device memory).
+//! - [`device_buffer`] returns the **best available** device buffer — an `amd.AmdHeap` when a
+//!   real AMD adapter is present (or `"amd"` is requested), else a `memory.Heap` (the CPU device
+//!   memory).
 //!
 //! Every failing build surfaces as a thrown `Error` carrying a guided message.
 
@@ -18,9 +19,9 @@ use napi::bindgen_prelude::{BigInt, Either, Object, Uint8Array};
 use napi_derive::napi;
 
 use crate::headers::Headers;
-use crate::io::gpu::AmdBuffer;
+use crate::io::amd::AmdHeap;
 use crate::io::memory::{to_error, Heap};
-use yggdryl_core::io::gpu as gpu_core;
+use yggdryl_core::io::amd as amd_core;
 use yggdryl_core::io::memory::{self as mem_core, IOBase};
 use yggdryl_core::io::{IOMode as CoreIOMode, IoError};
 
@@ -210,44 +211,42 @@ pub fn array(values: Vec<ArrayValue>, dtype: Option<String>) -> napi::Result<Hea
 }
 
 /// Builds the **best available device buffer** — the generic, hardware-inferring device-memory
-/// front door. Returns a `gpu.AmdBuffer` when a real GPU is present (any non-CPU device in
-/// `gpu.availableDevices()`) **or** `device` names `"amd"`, else a `memory.Heap` (the CPU
-/// device-memory type — the core aliases `CpuHeap == Heap`). When `data` (a `Buffer` /
-/// `Uint8Array`) is given it seeds the buffer (uploaded to the device for a GPU buffer, copied
-/// for a heap). Throws a guided `Error` for an unknown `device` token.
+/// front door. Returns an `amd.AmdHeap` when a real AMD adapter is present (`amd.detect()` finds
+/// one) **or** `device` names `"amd"`, else a `memory.Heap` (the CPU device-memory type — a
+/// `Heap` is simply the CPU heap). When `data` (a `Buffer` / `Uint8Array`) is given it seeds the
+/// buffer (uploaded to the device for a device heap, copied for a heap). Throws a guided `Error`
+/// for an unknown `device` token.
 #[napi(
     ts_args_type = "data?: Uint8Array, device?: string",
-    ts_return_type = "memory.Heap | gpu.AmdBuffer"
+    ts_return_type = "memory.Heap | amd.AmdHeap"
 )]
 pub fn device_buffer(
     data: Option<Uint8Array>,
     device: Option<String>,
-) -> napi::Result<Either<Heap, AmdBuffer>> {
+) -> napi::Result<Either<Heap, AmdHeap>> {
     let use_gpu = match device.as_deref() {
         // Case-insensitive tokens, matching the Python twin: `"cpu"` → the CPU heap,
-        // `"amd"` / `"gpu"` / `"cuda"` → a GPU buffer (an `AmdBuffer`).
+        // `"amd"` / `"gpu"` / `"cuda"` → a device heap (an `AmdHeap`).
         Some(name) => match name.to_ascii_lowercase().as_str() {
             "amd" | "gpu" | "cuda" => true,
             "cpu" => false,
             _ => {
                 return Err(to_error(format!(
                     "unknown device '{name}': expected 'cpu' (the CPU heap) or one of 'amd' / \
-                     'gpu' / 'cuda' (a GPU buffer), or omit it to pick the best available device"
+                     'gpu' / 'cuda' (a device heap), or omit it to pick the best available device"
                 )))
             }
         },
-        // No preference: prefer a real GPU when the probe finds one, else the CPU heap.
-        None => gpu_core::available_devices()
-            .iter()
-            .any(|device| !device.is_cpu()),
+        // No preference: prefer a real AMD adapter when the probe finds one, else the CPU heap.
+        None => amd_core::detect().is_some(),
     };
 
     if use_gpu {
         let inner = match &data {
-            Some(bytes) => gpu_core::AmdBuffer::from_host(bytes.as_ref()),
-            None => gpu_core::AmdBuffer::new(),
+            Some(bytes) => amd_core::AmdHeap::from_host(bytes.as_ref()),
+            None => amd_core::AmdHeap::new(),
         };
-        Ok(Either::B(AmdBuffer { inner }))
+        Ok(Either::B(AmdHeap { inner }))
     } else {
         let inner = match &data {
             Some(bytes) => mem_core::Heap::from_slice(bytes.as_ref()),

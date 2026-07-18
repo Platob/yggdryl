@@ -4,7 +4,7 @@
 //! Mirrors `yggdryl_core::io::MemoryInfo`: a plain value carrying a backend's `total` size and
 //! currently `available` (free) bytes, the one answer to "how much room is there?" across
 //! backends — host RAM (`MemoryInfo.system`), the disk under a `LocalIO` (`LocalIO.memoryInfo`),
-//! and a GPU device's VRAM (`gpu.GpuDevice.memoryInfo`). Every method is a thin one- or two-line
+//! and an AMD device's VRAM (`amd.AmdDevice.memoryInfo`). Every method is a thin one- or two-line
 //! delegation to the core. Byte counts cross as `i64` (a JS number, exact to 2^53), matching the
 //! `byteSize()` convention on the `memory` / `local` sources; the ratio crosses as `f64`.
 

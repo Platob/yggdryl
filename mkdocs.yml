@@ -47,5 +47,5 @@ nav:
   - Compression: compression.md
   - Memory access: io/memory.md
   - Local filesystem: io/local.md
-  - GPU device memory: io/gpu.md
+  - AMD device memory: io/amd.md
   - URIs and URLs: uri.md

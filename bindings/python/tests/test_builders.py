@@ -10,7 +10,7 @@ inference and redirect, and the device probe — resolves to the right concrete 
 import pytest
 
 import yggdryl
-from yggdryl.gpu import AmdBuffer, GpuDevice, available_devices
+from yggdryl.amd import AmdDevice, AmdHeap, detect
 from yggdryl.headers import Headers
 from yggdryl.io import IOMode
 from yggdryl.memory import Heap
@@ -135,7 +135,7 @@ def test_array_accepts_a_tuple():
 
 
 def _has_real_gpu():
-    return any(not d.is_cpu() for d in available_devices())
+    return detect() is not None
 
 
 def test_device_buffer_default_returns_usable_buffer():
@@ -157,26 +157,31 @@ def test_device_buffer_cpu_empty():
     assert buf.byte_size() == 0
 
 
-def test_device_buffer_amd_returns_amd_buffer():
-    # "amd" always selects the device-memory class (which falls back to the CPU device when no
-    # AMD hardware is present, but is still an AmdBuffer holding the uploaded bytes).
+def test_device_buffer_amd_returns_amd_heap():
+    # "amd" always selects the device-memory class (which falls back to host memory when no AMD
+    # hardware is present, but is still an AmdHeap holding the uploaded bytes).
     buf = yggdryl.device_buffer(b"gpu-bytes", device="amd")
-    assert isinstance(buf, AmdBuffer)
+    assert isinstance(buf, AmdHeap)
     assert bytes(buf) == b"gpu-bytes"
 
 
 def test_device_buffer_default_matches_hardware_probe():
     buf = yggdryl.device_buffer(b"x")
     if _has_real_gpu():
-        assert isinstance(buf, AmdBuffer)
+        assert isinstance(buf, AmdHeap)
     else:
         assert isinstance(buf, Heap)
 
 
-def test_device_buffer_by_gpu_device_object():
-    cpu = next(d for d in available_devices() if d.is_cpu())
-    buf = yggdryl.device_buffer(b"x", device=cpu)
-    assert isinstance(buf, Heap)
+def test_device_buffer_by_amd_device_object():
+    # An AmdDevice selects by its is_present(): a detected adapter -> AmdHeap, the host fallback
+    # -> a plain Heap. Use the heap's own device so the test is green on any machine.
+    dev = AmdHeap().device()
+    buf = yggdryl.device_buffer(b"x", device=dev)
+    if dev.is_present():
+        assert isinstance(buf, AmdHeap)
+    else:
+        assert isinstance(buf, Heap)
     assert bytes(buf) == b"x"
 
 
@@ -185,6 +190,6 @@ def test_device_buffer_rejects_unknown_device_name():
         yggdryl.device_buffer(b"x", device="quantum")
 
 
-def test_device_buffer_accepts_gpu_device_type_alias():
-    # A sanity check that the GpuDevice type is importable and usable as a selector.
-    assert GpuDevice is not None
+def test_device_buffer_accepts_amd_device_type_alias():
+    # A sanity check that the AmdDevice type is importable and usable as a selector.
+    assert AmdDevice is not None

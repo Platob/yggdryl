@@ -35,11 +35,10 @@ crates/yggdryl-core/src/             # the core (dependency-free by default; cod
     local/                           #   the local-filesystem family
       io.rs                          #     LocalIO — the single access point (lazy, self-optimizing)
       mmap.rs                        #     the raw memory-mapped file LocalIO builds on
-    gpu/                             #   device memory (feature `gpu`) — organized BY ARCHITECTURE:
-      mod.rs device.rs               #     GpuMemory over IOBase + the by-arch device probe
-      compute.rs                     #     Compute — aggregations/filters/copy, auto GPU-vs-CPU
-      cpu.rs                         #     CpuHeap — device memory IS our Heap (host RAM)
-      amd.rs  cuda.rs                #     AMD Radeon (gpu-amd, live detect) / NVIDIA (gpu-cuda)
+    amd/                             #   the AMD Radeon device-memory family (feature `amd`)
+      mod.rs                         #     AmdMemory over IOBase (upload/download + compute dispatch)
+      device.rs compute.rs          #     AmdDevice + live Radeon detect / ComputeBackend (GPU-vs-CPU)
+      heap.rs cursor.rs slice.rs     #     AmdHeap + the shared cursor/slice over it (zero-copy)
   headers.rs                         # Headers — the one metadata map (root module)
   mimetype.rs                        # MimeType + MimeRegistry/MimeCatalog (root module)
   mediatype.rs                       # MediaType — an ordered MimeType list (root module)

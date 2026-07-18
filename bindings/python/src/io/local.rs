@@ -491,7 +491,7 @@ impl LocalIO {
 
     /// The [`MemoryInfo`](crate::io::meminfo::MemoryInfo) capacity snapshot of the **disk
     /// volume** backing this path — total and free bytes (the same value type a
-    /// `yggdryl.gpu.GpuDevice` reports for its memory). Reports the portable
+    /// `yggdryl.amd.AmdDevice` reports for its memory). Reports the portable
     /// [`unknown`](crate::io::meminfo::MemoryInfo::unknown) snapshot where a native route is not
     /// yet wired.
     fn memory_info(&self) -> crate::io::meminfo::MemoryInfo {

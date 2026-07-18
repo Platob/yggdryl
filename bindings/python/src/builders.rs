@@ -6,8 +6,8 @@
 //! Each is one thin dispatch: [`buffer`] assembles a [`Heap`](crate::io::memory::Heap) from
 //! `data` / `capacity` / `headers` / `mode`, [`array`] redirects a sequence of numbers to the
 //! matching bulk `pwrite_<dtype>_array`, and [`device_buffer`] probes the device layer and hands
-//! back the best device-memory buffer (an [`AmdBuffer`](crate::io::gpu::AmdBuffer) on a real GPU,
-//! else a `Heap` — the CPU device-memory type). No logic beyond the dispatch lives here; the byte
+//! back the best device-memory buffer (an [`AmdHeap`](crate::io::amd::AmdHeap) on a real AMD
+//! adapter, else a `Heap` — the CPU device-memory type). No logic beyond the dispatch lives here; the byte
 //! / numeric work stays in `yggdryl_core`, and every result is a concrete binding class the caller
 //! already knows.
 
@@ -19,11 +19,11 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat};
 
-use crate::io::gpu::AmdBuffer;
+use crate::io::amd::AmdHeap;
 use crate::io::memory::Heap;
 use crate::io::mode::IOMode;
 use yggdryl_core::headers;
-use yggdryl_core::io::gpu;
+use yggdryl_core::io::amd;
 use yggdryl_core::io::memory::{self, IOBase};
 
 /// The valid `array` dtype tokens, in one place so the guided error and the docs stay in sync.
@@ -158,28 +158,28 @@ fn array(values: &Bound<'_, PyAny>, dtype: Option<String>) -> PyResult<Heap> {
     Ok(Heap { inner })
 }
 
-/// Whether `device_buffer` should back onto a real GPU (an [`AmdBuffer`]) rather than the CPU
-/// [`Heap`]. `None` probes the device layer (GPU when a non-CPU device is present); a `str`
-/// selects (`"cpu"` → CPU, `"amd"` / `"gpu"` / `"cuda"` → GPU); a `yggdryl.gpu.GpuDevice` decides
-/// by its `is_cpu()`.
+/// Whether `device_buffer` should back onto a real AMD adapter (an [`AmdHeap`]) rather than the
+/// CPU [`Heap`]. `None` probes the device layer (device when an AMD adapter is present); a `str`
+/// selects (`"cpu"` → CPU, `"amd"` / `"gpu"` / `"cuda"` → device); a `yggdryl.amd.AmdDevice`
+/// decides by its `is_present()`.
 fn wants_gpu(device: Option<&Bound<'_, PyAny>>) -> PyResult<bool> {
     match device {
-        None => Ok(gpu::available_devices().iter().any(|d| !d.is_cpu())),
+        None => Ok(amd::detect().is_some()),
         Some(device) => {
-            if let Ok(device) = device.extract::<crate::io::gpu::GpuDevice>() {
-                Ok(!device.inner.is_cpu())
+            if let Ok(device) = device.extract::<crate::io::amd::AmdDevice>() {
+                Ok(device.inner.is_present())
             } else if let Ok(name) = device.extract::<String>() {
                 match name.to_ascii_lowercase().as_str() {
                     "cpu" => Ok(false),
                     "amd" | "gpu" | "cuda" => Ok(true),
                     other => Err(PyValueError::new_err(format!(
                         "unknown device {other:?}: expected \"cpu\", \"amd\", \"gpu\", \"cuda\", \
-                         or a yggdryl.gpu.GpuDevice"
+                         or a yggdryl.amd.AmdDevice"
                     ))),
                 }
             } else {
                 Err(PyTypeError::new_err(
-                    "device must be a str (\"cpu\" / \"amd\") or a yggdryl.gpu.GpuDevice",
+                    "device must be a str (\"cpu\" / \"amd\") or a yggdryl.amd.AmdDevice",
                 ))
             }
         }
@@ -187,10 +187,11 @@ fn wants_gpu(device: Option<&Bound<'_, PyAny>>) -> PyResult<bool> {
 }
 
 /// **Best device-memory buffer** — hides the device probe + class selection. Returns an
-/// [`AmdBuffer`] (device memory, `data` uploaded host → device) when a real GPU is available or
-/// `device` names a non-CPU one, else a [`Heap`](crate::io::memory::Heap) (the CPU device-memory
-/// type — `CpuHeap == Heap` in the core) holding `data`. Both share the byte-I/O surface, so the
-/// caller reads / writes the result the same way regardless of where its memory lives.
+/// [`AmdHeap`] (device memory, `data` uploaded host → device) when a real AMD adapter is available
+/// or `device` names a non-CPU one, else a [`Heap`](crate::io::memory::Heap) (the CPU
+/// device-memory type — a `Heap` is simply the CPU heap) holding `data`. Both share the byte-I/O
+/// surface, so the caller reads / writes the result the same way regardless of where its memory
+/// lives.
 #[pyfunction]
 #[pyo3(signature = (data = None, *, device = None))]
 fn device_buffer(
@@ -200,10 +201,10 @@ fn device_buffer(
 ) -> PyResult<PyObject> {
     if wants_gpu(device)? {
         let inner = match data {
-            Some(bytes) => gpu::AmdBuffer::from_host(&bytes),
-            None => gpu::AmdBuffer::new(),
+            Some(bytes) => amd::AmdHeap::from_host(&bytes),
+            None => amd::AmdHeap::new(),
         };
-        Ok(Py::new(py, AmdBuffer { inner })?.into_any())
+        Ok(Py::new(py, AmdHeap { inner })?.into_any())
     } else {
         let inner = match data {
             Some(bytes) => memory::Heap::from_vec(bytes),

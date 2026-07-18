@@ -1,16 +1,13 @@
-//! The `yggdryl.gpu` submodule — the **device-memory** layer, organized by GPU architecture.
+//! The `yggdryl.amd` submodule — the **AMD Radeon device-memory** family.
 //!
-//! Mirrors `yggdryl_core::io::gpu`. [`available_devices`] **adapts to the hardware present**
-//! (always ending with the CPU device) and [`default_device`] picks the first detected GPU, else
-//! the CPU fallback. A [`GpuDevice`] is a value description of one compute device (its
-//! architecture token, name, and total memory), and an [`AmdBuffer`] is device memory over the
-//! detected AMD Radeon adapter that **is an `IOBase`** — it reads, writes, and runs the
-//! vectorized bulk numeric kernels exactly as a `yggdryl.memory.Heap` does, plus the host↔device
-//! [`upload`](AmdBuffer::upload) / [`download`](AmdBuffer::download) transfer.
-//!
-//! The **CPU** device-memory type (`CpuHeap`) *is* [`yggdryl.memory.Heap`] — the core aliases
-//! them (`CpuHeap = Heap`), so no separate class is exposed here; construct a `Heap` and use its
-//! ordinary byte surface on the CPU device.
+//! Mirrors `yggdryl_core::io::amd`. [`detect`] **adapts to the hardware present** — it returns an
+//! [`AmdDevice`] only on a real Radeon adapter, else `None`. An [`AmdDevice`] is a value
+//! description of the AMD compute device (its name, total VRAM, and whether a real adapter backs
+//! it), and an [`AmdHeap`] is device memory over the detected adapter (or the host-memory fallback
+//! when none is present) that **is an `IOBase`** — it reads, writes, and runs the vectorized bulk
+//! numeric kernels exactly as a `yggdryl.memory.Heap` does, plus the host↔device
+//! [`upload`](AmdHeap::upload) / [`download`](AmdHeap::download) transfer and the GPU-vs-CPU
+//! [`compute_backend`](AmdHeap::compute_backend) dispatch.
 //!
 //! Every method is one or two lines over `yggdryl_core`; a read with a hard length requirement
 //! that runs off the end raises a guided `ValueError` carrying the core error text unchanged.
@@ -29,9 +26,9 @@ use pyo3::types::PyBytes;
 
 use crate::io::meminfo::MemoryInfo;
 use crate::io::memory::bulk_eof;
-use yggdryl_core::io::gpu::{self, Compute, GpuMemory};
-// The statistical aggregations moved from the gpu `Compute` trait onto the `Aggregate` blanket
-// trait over any `IOBase`; import it so `sum_i32` / `std_i32` / … resolve on `AmdBuffer`.
+use yggdryl_core::io::amd::{self as core, AmdMemory};
+// The statistical aggregations live on the `Aggregate` blanket trait over any `IOBase`; import it
+// so `sum_i32` / `std_i32` / … resolve on `AmdHeap`, and `IOBase` for the byte surface.
 use yggdryl_core::io::memory::{Aggregate, IOBase, IoError};
 
 /// Maps an [`IoError`] to a Python `ValueError` carrying its guided text.
@@ -39,59 +36,42 @@ fn ioerr(error: IoError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
-/// The compute devices this build can allocate on — **adapting to the hardware present**. Each
-/// enabled architecture contributes what it detects; the portable CPU device is always appended
-/// last, so the result is never empty.
+/// Probes for an **AMD Radeon** device, returning its [`AmdDevice`] (name + VRAM) when a real
+/// adapter is present, else `None`. Defensive — any platform-query failure yields `None`.
 #[pyfunction]
-fn available_devices() -> Vec<GpuDevice> {
-    gpu::available_devices()
-        .into_iter()
-        .map(|inner| GpuDevice { inner })
-        .collect()
+fn detect() -> Option<AmdDevice> {
+    core::detect().map(|inner| AmdDevice { inner })
 }
 
-/// The **default** device — the first detected hardware GPU, else the CPU fallback.
-#[pyfunction]
-fn default_device() -> GpuDevice {
-    GpuDevice {
-        inner: gpu::default_device(),
-    }
-}
-
-/// A **value description of one compute device** — its architecture token, human name, and total
-/// memory (VRAM for a GPU, host RAM for the CPU). A plain value: equal, hashable, and keys a map
-/// / sits in a set. Live free-memory is a fresh [`memory_info`](GpuDevice::memory_info) query,
-/// not baked into the descriptor.
-#[pyclass(module = "yggdryl.gpu")]
+/// A **value description of the AMD compute device** — its human name and total VRAM, plus whether
+/// a real Radeon adapter backs it ([`is_present`](AmdDevice::is_present)) or it is the host-memory
+/// fallback. A plain value: equal, hashable, and keys a map / sits in a set. Live free-memory is a
+/// fresh [`memory_info`](AmdDevice::memory_info) query, not baked into the descriptor.
+#[pyclass(module = "yggdryl.amd")]
 #[derive(Clone)]
-pub struct GpuDevice {
-    pub(crate) inner: gpu::GpuDevice,
+pub struct AmdDevice {
+    pub(crate) inner: core::AmdDevice,
 }
 
 #[pymethods]
-impl GpuDevice {
-    /// The short lowercase architecture token — `"cpu"`, `"amd"`, or `"cuda"`.
-    fn backend(&self) -> &'static str {
-        self.inner.backend().as_str()
-    }
-
-    /// The human-readable device name.
+impl AmdDevice {
+    /// The human-readable device name (the driver description for a real adapter).
     fn name(&self) -> String {
         self.inner.name().to_string()
     }
 
-    /// The total device memory in bytes (VRAM, or host RAM for the CPU device).
+    /// The total device memory in bytes (VRAM for a real adapter, host RAM for the fallback).
     fn total_memory(&self) -> u64 {
         self.inner.total_memory()
     }
 
-    /// Whether this is the CPU (host-memory) device.
-    fn is_cpu(&self) -> bool {
-        self.inner.is_cpu()
+    /// Whether a **real AMD Radeon adapter** backs this device (vs the host-memory fallback).
+    fn is_present(&self) -> bool {
+        self.inner.is_present()
     }
 
-    /// A **live capacity snapshot** for this device — the CPU device queries host RAM fresh; a
-    /// GPU device reports its total VRAM.
+    /// A **live capacity snapshot** for this device — a present adapter reports its total VRAM;
+    /// the fallback queries host RAM fresh.
     fn memory_info(&self) -> MemoryInfo {
         MemoryInfo {
             inner: self.inner.memory_info(),
@@ -110,48 +90,52 @@ impl GpuDevice {
 
     fn __repr__(&self) -> String {
         format!(
-            "GpuDevice(backend={:?}, name={:?}, total_memory={})",
-            self.inner.backend().as_str(),
+            "AmdDevice(name={:?}, total_memory={}, present={})",
             self.inner.name(),
-            self.inner.total_memory()
+            self.inner.total_memory(),
+            if self.inner.is_present() {
+                "True"
+            } else {
+                "False"
+            }
         )
     }
 }
 
-/// An **AMD Radeon device-memory buffer** — device memory over the detected AMD adapter (or the
-/// CPU fallback when none is present) that **is an `IOBase`**: it carries the full positioned /
-/// bulk byte surface (`pread_byte_array` / `pwrite_byte_array`, the vectorized
+/// An **AMD Radeon device-memory heap** — device memory over the detected AMD adapter (or the
+/// host-memory fallback when none is present) that **is an `IOBase`**: it carries the full
+/// positioned / bulk byte surface (`pread_byte_array` / `pwrite_byte_array`, the vectorized
 /// `pwrite_i32_array` / `pread_i32_array` / `pwrite_i64_array` / `pread_i64_array`), plus the
-/// host↔device [`upload`](AmdBuffer::upload) / [`download`](AmdBuffer::download) transfer.
-#[pyclass(module = "yggdryl.gpu")]
+/// host↔device [`upload`](AmdHeap::upload) / [`download`](AmdHeap::download) transfer.
+#[pyclass(module = "yggdryl.amd")]
 #[derive(Clone)]
-pub struct AmdBuffer {
-    pub(crate) inner: gpu::AmdBuffer,
+pub struct AmdHeap {
+    pub(crate) inner: core::AmdHeap,
 }
 
 #[pymethods]
-impl AmdBuffer {
-    /// An empty AMD device buffer on the detected AMD device (or the CPU fallback when none).
+impl AmdHeap {
+    /// An empty AMD device heap on the detected AMD device (or the host fallback when none).
     #[new]
     fn new() -> Self {
         Self {
-            inner: gpu::AmdBuffer::new(),
+            inner: core::AmdHeap::new(),
         }
     }
 
-    /// An empty buffer with room for `capacity` bytes before reallocating.
+    /// An empty heap with room for `capacity` bytes before reallocating.
     #[staticmethod]
     fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: gpu::AmdBuffer::with_capacity(capacity),
+            inner: core::AmdHeap::with_capacity(capacity),
         }
     }
 
-    /// A buffer initialized by **uploading** `data` (bytes / bytearray) — host → device.
+    /// A heap initialized by **uploading** `data` (bytes / bytearray) — host → device.
     #[staticmethod]
     fn from_host(data: PyBackedBytes) -> Self {
         Self {
-            inner: gpu::AmdBuffer::from_host(&data),
+            inner: core::AmdHeap::from_host(&data),
         }
     }
 
@@ -179,7 +163,7 @@ impl AmdBuffer {
     }
 
     /// The whole device buffer as a `bytes` copy — an alias of
-    /// [`download_vec`](AmdBuffer::download_vec) (so `to_bytes()` reads naturally).
+    /// [`download_vec`](AmdHeap::download_vec) (so `to_bytes()` reads naturally).
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new_bound(py, &self.inner.download_vec())
     }
@@ -189,9 +173,9 @@ impl AmdBuffer {
         PyBytes::new_bound(py, &self.inner.download_vec())
     }
 
-    /// The [`GpuDevice`] this buffer's memory lives on.
-    fn device(&self) -> GpuDevice {
-        GpuDevice {
+    /// The [`AmdDevice`] this heap's memory lives on (a clone of the heap's device).
+    fn device(&self) -> AmdDevice {
+        AmdDevice {
             inner: self.inner.device().clone(),
         }
     }
@@ -276,7 +260,7 @@ impl AmdBuffer {
     }
 
     /// **Bulk typed read** of `count` little-endian `i64`s — the wide counterpart of
-    /// [`pread_i32_array`](AmdBuffer::pread_i32_array), with the same fail-fast bounds check.
+    /// [`pread_i32_array`](AmdHeap::pread_i32_array), with the same fail-fast bounds check.
     fn pread_i64_array(&self, offset: u64, count: usize) -> PyResult<Vec<i64>> {
         let available = self.inner.byte_size().saturating_sub(offset);
         if let Some(e) = bulk_eof(offset, available, count, 8) {
@@ -290,7 +274,7 @@ impl AmdBuffer {
     }
 
     /// **Bulk typed write** of little-endian `i64`s — the wide counterpart of
-    /// [`pwrite_i32_array`](AmdBuffer::pwrite_i32_array).
+    /// [`pwrite_i32_array`](AmdHeap::pwrite_i32_array).
     fn pwrite_i64_array(&mut self, offset: u64, values: Vec<i64>) -> PyResult<()> {
         self.inner.pwrite_i64_array(offset, &values).map_err(ioerr)
     }
@@ -470,26 +454,25 @@ impl AmdBuffer {
     }
 
     /// The backend the next op over `elements` values runs on — the token `"gpu"` (device
-    /// kernel, when on a real device and the workload amortizes the transfer) or `"cpu"` (the
+    /// kernel, when on a real adapter and the workload amortizes the transfer) or `"cpu"` (the
     /// vectorized host reduction).
     fn compute_backend(&self, elements: usize) -> String {
         self.inner.compute_backend(elements).as_str().to_string()
     }
 
     /// **Device-aware copy** of this buffer's whole content into `dst`; returns the byte count.
-    fn compute_copy_into(&self, dst: &mut AmdBuffer) -> PyResult<u64> {
+    fn compute_copy_into(&self, dst: &mut AmdHeap) -> PyResult<u64> {
         self.inner.compute_copy_into(&mut dst.inner).map_err(ioerr)
     }
 
     // ---- context manager + repr --------------------------------------------------------
 
-    /// Context-manager entry — returns the buffer itself, so `with AmdBuffer() as buf:` binds
-    /// it.
+    /// Context-manager entry — returns the heap itself, so `with AmdHeap() as buf:` binds it.
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
 
-    /// Context-manager exit — a no-op for the host-staged device buffer (nothing to release);
+    /// Context-manager exit — a no-op for the host-staged device heap (nothing to release);
     /// returns `False` so exceptions propagate.
     fn __exit__(
         &self,
@@ -502,18 +485,17 @@ impl AmdBuffer {
 
     fn __repr__(&self) -> String {
         format!(
-            "AmdBuffer(<{} bytes on {}>)",
+            "AmdHeap(<{} bytes on {}>)",
             self.inner.byte_size(),
-            self.inner.device().backend().as_str()
+            self.inner.device().name()
         )
     }
 }
 
-/// Populates the `gpu` submodule.
+/// Populates the `amd` submodule.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(available_devices, module)?)?;
-    module.add_function(wrap_pyfunction!(default_device, module)?)?;
-    module.add_class::<GpuDevice>()?;
-    module.add_class::<AmdBuffer>()?;
+    module.add_function(wrap_pyfunction!(detect, module)?)?;
+    module.add_class::<AmdDevice>()?;
+    module.add_class::<AmdHeap>()?;
     Ok(())
 }
