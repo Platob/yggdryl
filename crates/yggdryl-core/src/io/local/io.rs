@@ -322,6 +322,12 @@ impl IOBase for LocalIO {
         }
     }
 
+    #[inline]
+    fn as_bytes(&self) -> Option<&[u8]> {
+        // Zero-copy only when self-optimized (mapped); an ad-hoc read has no contiguous view.
+        self.map.as_ref().and_then(Mmap::as_bytes)
+    }
+
     fn kind(&self) -> IOKind {
         if self.map.is_some() {
             return IOKind::File; // a mapped backing is by construction a live file

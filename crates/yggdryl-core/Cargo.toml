@@ -34,7 +34,17 @@ harness = false
 name = "headers"
 harness = false
 
+[features]
+# `compression` is the ONLY feature that pulls external crates: the native codec cores for the
+# Gzip / Zlib / Zstd / Lzma implementations. The default core stays dependency-free — the
+# `Compression` trait, the `MimeType`/`IOBase` integration, and magic inference are all `std`.
+default = []
+compression = ["dep:flate2", "dep:zstd", "dep:xz2"]
+
 [dependencies]
-# Dependency-free: the reset core is just the abstract memory-access traits (with an in-heap
-# `Heap` source) and the RFC 3986 URI/URL family — both built on `std` alone. Other sources
-# (mmap, …) and the typed data layer are (re)built here against the same `memory` traits.
+# Dependency-free by default: the core is the abstract memory-access traits (with an in-heap
+# `Heap` source), the RFC 3986 URI/URL family, and the media-type layer — all on `std` alone.
+# The compression codecs are the sole opt-in native dependencies (behind `--features compression`).
+flate2 = { version = "1", optional = true }
+zstd = { version = "0.13", optional = true }
+xz2 = { version = "0.1", optional = true }

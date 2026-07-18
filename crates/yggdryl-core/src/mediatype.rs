@@ -78,6 +78,17 @@ impl MediaType {
         }
     }
 
+    /// **Recursive magic inference** from a file's `head` bytes: the type its magic signature
+    /// names, and — when that type is a **compression** and a codec is available — the type
+    /// found by peeling that layer (a bounded, truncation-tolerant peek via
+    /// [`decompress_prefix`](crate::compression::Compression::decompress_prefix)), repeated up
+    /// to a small depth. So a gzipped tar's head yields `[application/gzip, application/x-tar]`.
+    /// `name_hint` (e.g. from the file name) is the fallback for the outermost layer when its
+    /// magic is unknown. Without the `compression` feature only the outer layer is inferred.
+    pub fn infer_from_head(head: &[u8], name_hint: Option<MimeType>) -> MediaType {
+        infer_layer(head, name_hint, 0)
+    }
+
     // ---- accessors ----------------------------------------------------------------------
 
     /// The **primary** type (the first), or `None` when empty.
@@ -143,6 +154,30 @@ impl fmt::Debug for MediaType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "MediaType([{self}])")
     }
+}
+
+/// One layer of [`MediaType::infer_from_head`]: the head's magic type, then — if it is a
+/// compression with an available codec — the type of its decoded prefix, recursively.
+fn infer_layer(head: &[u8], name_hint: Option<MimeType>, depth: usize) -> MediaType {
+    /// The recursion cap and the bounded peek size for peeling a compression layer.
+    const MAX_DEPTH: usize = 8;
+    const PEEK: usize = 64 * 1024;
+
+    let mime = MimeType::from_magic(head)
+        .or(name_hint)
+        .unwrap_or_else(MimeType::octet_stream);
+    let mut media = MediaType::of(mime.clone());
+    if depth + 1 < MAX_DEPTH && mime.is_compression() {
+        if let Some(codec) = crate::compression::codec_for_mime(&mime) {
+            let inner = codec.decompress_prefix(head, PEEK);
+            if !inner.is_empty() {
+                for inner_mime in infer_layer(&inner, None, depth + 1).types() {
+                    media.push(inner_mime.clone());
+                }
+            }
+        }
+    }
+    media
 }
 
 /// The value form is the comma-joined essence list — the inverse of

@@ -438,6 +438,11 @@ impl IOBase for Mmap {
         IOKind::File
     }
 
+    #[inline]
+    fn as_bytes(&self) -> Option<&[u8]> {
+        Some(self.mapped()) // the live mapping — zero-copy for the compression helpers
+    }
+
     // A raw mapped file is a **leaf** node of the IO graph — the tree surface lives on
     // `LocalIO`, the family's access point.
     type Children = crate::io::memory::NoChildren<Mmap>;

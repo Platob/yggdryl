@@ -138,6 +138,45 @@ fn custom_registration_overrides_by_essence() {
 }
 
 #[test]
+fn names_extension_and_compression_accessors() {
+    let gz = MimeType::from_extension("gz").unwrap();
+    assert_eq!(gz.essence(), "application/gzip");
+    // Instances hold names, a primary extension, extensions, and magic.
+    assert!(gz.names().iter().any(|n| n == "gzip"));
+    assert_eq!(gz.extension(), Some("gz")); // primary (first) extension
+    assert!(gz.extensions().contains(&"gz".to_string()));
+    assert!(!gz.magic().is_empty());
+    assert!(gz.is_compression());
+
+    // Resolve by a short name / alias via the default catalog.
+    assert_eq!(
+        MimeType::from_alias("gzip").unwrap().essence(),
+        "application/gzip"
+    );
+    assert_eq!(
+        MimeType::from_alias("zstd").unwrap().essence(),
+        "application/zstd"
+    );
+    assert!(MimeType::from_alias("nope").is_none());
+
+    // All the compression formats report is_compression; ordinary types do not.
+    for ext in ["gz", "zst", "xz", "lzma", "zz"] {
+        assert!(
+            MimeType::from_extension(ext).unwrap().is_compression(),
+            "ext {ext}"
+        );
+    }
+    for ext in ["json", "png", "tar", "csv"] {
+        assert!(
+            !MimeType::from_extension(ext).unwrap().is_compression(),
+            "ext {ext}"
+        );
+    }
+    assert!(!MimeType::octet_stream().is_compression());
+    assert_eq!(MimeType::octet_stream().extension(), None);
+}
+
+#[test]
 fn value_type_contract() {
     let a = MimeType::parse_str("text/plain").unwrap();
     let b = MimeType::from_extension("txt").unwrap();

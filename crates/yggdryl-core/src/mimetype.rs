@@ -28,7 +28,10 @@ use crate::io::{IoError, Serializable};
 pub struct MimeType {
     /// The lowercased `type/subtype` essence, e.g. `"application/json"`.
     essence: String,
-    /// The known file extensions (lowercase, no dot), e.g. `["jpg", "jpeg"]`.
+    /// Short **names** / aliases the type is known by, e.g. `["gzip"]` for `application/gzip`.
+    names: Vec<String>,
+    /// The known file extensions (lowercase, no dot). The first is the **primary**
+    /// ([`extension`](MimeType::extension)).
     extensions: Vec<String>,
     /// The magic-byte prefixes a file of this type starts with (any one matches).
     magic: Vec<Vec<u8>>,
@@ -48,8 +51,23 @@ impl MimeType {
         extensions: impl IntoIterator<Item = impl Into<String>>,
         magic: impl IntoIterator<Item = Vec<u8>>,
     ) -> MimeType {
+        MimeType::named(essence, Vec::<String>::new(), extensions, magic)
+    }
+
+    /// A media type with explicit **names** as well as extensions and magic. Essence and names
+    /// are lowercased; extensions are lowercased and lose a leading dot.
+    pub fn named(
+        essence: impl Into<String>,
+        names: impl IntoIterator<Item = impl Into<String>>,
+        extensions: impl IntoIterator<Item = impl Into<String>>,
+        magic: impl IntoIterator<Item = Vec<u8>>,
+    ) -> MimeType {
         MimeType {
             essence: essence.into().trim().to_ascii_lowercase(),
+            names: names
+                .into_iter()
+                .map(|n| n.into().trim().to_ascii_lowercase())
+                .collect(),
             extensions: extensions
                 .into_iter()
                 .map(|ext| ext.into().trim_start_matches('.').to_ascii_lowercase())
@@ -115,9 +133,33 @@ impl MimeType {
         &self.extensions
     }
 
+    /// The **primary** extension (the first), or `None` when the type has none.
+    pub fn extension(&self) -> Option<&str> {
+        self.extensions.first().map(String::as_str)
+    }
+
+    /// The short names / aliases this type is known by (`["gzip"]` for `application/gzip`).
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
     /// The magic-byte signatures a file of this type starts with.
     pub fn magic(&self) -> &[Vec<u8>] {
         &self.magic
+    }
+
+    /// Whether this type is a **compression** format (gzip / zstd / xz-lzma / zlib) — the
+    /// accessor that decides whether a source's bytes can be run through a
+    /// [`Compression`](crate::compression::Compression) codec.
+    ///
+    /// ```
+    /// use yggdryl_core::mimetype::MimeType;
+    ///
+    /// assert!(MimeType::from_extension("gz").unwrap().is_compression());
+    /// assert!(!MimeType::from_extension("json").unwrap().is_compression());
+    /// ```
+    pub fn is_compression(&self) -> bool {
+        COMPRESSION_ESSENCES.contains(&self.essence.as_str())
     }
 
     /// Whether this type is registered under `ext` (case-insensitive, leading dot ignored).
@@ -148,6 +190,12 @@ impl MimeType {
     /// catalog, or `None`. See [`MimeRegistry::from_name`].
     pub fn from_name(name: &str) -> Option<MimeType> {
         default_catalog().from_name(name)
+    }
+
+    /// Resolves a media type from a short **name** / alias (`"gzip"`) via the default catalog,
+    /// or `None`. See [`MimeRegistry::from_alias`].
+    pub fn from_alias(name: &str) -> Option<MimeType> {
+        default_catalog().from_alias(name)
     }
 
     /// Resolves a media type from the **magic bytes** at the start of a file via the default
@@ -209,6 +257,14 @@ pub trait MimeRegistry {
     /// The registered type known by `ext` (no dot, case-insensitive), or `None`.
     fn from_extension(&self, ext: &str) -> Option<MimeType>;
 
+    /// The registered type known by a short **name** / alias (`"gzip"`), or `None`. The
+    /// default has no name index (returns `None`); a real catalog matches the
+    /// [`names`](MimeType::names) field.
+    fn from_alias(&self, name: &str) -> Option<MimeType> {
+        let _ = name;
+        None
+    }
+
     /// The registered type for a **file name** — its last extension is looked up. `None` when
     /// the name has no extension or the extension is unknown.
     fn from_name(&self, name: &str) -> Option<MimeType> {
@@ -267,9 +323,10 @@ impl MimeCatalog {
     /// image formats, with their extensions and (where distinctive) magic signatures.
     pub fn defaults() -> MimeCatalog {
         let mut catalog = MimeCatalog::new();
-        for (essence, exts, magic) in KNOWN {
-            catalog.register(MimeType::new(
+        for (essence, names, exts, magic) in KNOWN {
+            catalog.register(MimeType::named(
                 *essence,
+                names.iter().copied(),
                 exts.iter().copied(),
                 magic.iter().map(|m| m.to_vec()),
             ));
@@ -290,6 +347,13 @@ impl MimeRegistry for MimeCatalog {
 
     fn from_extension(&self, ext: &str) -> Option<MimeType> {
         self.types.iter().find(|m| m.has_extension(ext)).cloned()
+    }
+
+    fn from_alias(&self, name: &str) -> Option<MimeType> {
+        self.types
+            .iter()
+            .find(|m| m.names.iter().any(|n| n.eq_ignore_ascii_case(name)))
+            .cloned()
     }
 
     fn from_magic(&self, head: &[u8]) -> Option<MimeType> {
@@ -328,32 +392,93 @@ fn from_name_extension(name: &str) -> Option<&str> {
     }
 }
 
-/// The built-in known types: `(essence, extensions, magic signatures)`. Deliberately compact —
-/// the common web, data, archive, and image formats.
+/// The essences that are **compression** formats — [`MimeType::is_compression`] and the
+/// [`Compression`](crate::compression::Compression) codec resolution key off this list.
+pub(crate) const COMPRESSION_ESSENCES: &[&str] = &[
+    "application/gzip",
+    "application/zstd",
+    "application/x-xz",
+    "application/x-lzma",
+    "application/zlib",
+];
+
+/// The built-in known types: `(essence, names, extensions, magic signatures)`. Deliberately
+/// compact — the common web, data, archive, image, and **compression** formats.
 #[allow(clippy::type_complexity)]
-const KNOWN: &[(&str, &[&str], &[&[u8]])] = &[
-    ("text/plain", &["txt", "text", "log"], &[]),
-    ("text/html", &["html", "htm"], &[]),
-    ("text/css", &["css"], &[]),
-    ("text/csv", &["csv"], &[]),
-    ("text/markdown", &["md", "markdown"], &[]),
-    ("application/json", &["json"], &[]),
-    ("application/xml", &["xml"], &[]),
-    ("application/javascript", &["js", "mjs"], &[]),
-    ("application/pdf", &["pdf"], &[b"%PDF-"]),
-    ("application/zip", &["zip"], &[b"PK\x03\x04", b"PK\x05\x06"]),
-    ("application/gzip", &["gz"], &[b"\x1f\x8b"]),
-    ("application/x-tar", &["tar"], &[]),
-    ("application/wasm", &["wasm"], &[b"\x00asm"]),
-    ("application/vnd.apache.parquet", &["parquet"], &[b"PAR1"]),
+const KNOWN: &[(&str, &[&str], &[&str], &[&[u8]])] = &[
+    ("text/plain", &["text"], &["txt", "text", "log"], &[]),
+    ("text/html", &["html"], &["html", "htm"], &[]),
+    ("text/css", &["css"], &["css"], &[]),
+    ("text/csv", &["csv"], &["csv"], &[]),
+    ("text/markdown", &["markdown"], &["md", "markdown"], &[]),
+    ("application/json", &["json"], &["json"], &[]),
+    ("application/xml", &["xml"], &["xml"], &[]),
+    (
+        "application/javascript",
+        &["javascript"],
+        &["js", "mjs"],
+        &[],
+    ),
+    ("application/pdf", &["pdf"], &["pdf"], &[b"%PDF-"]),
+    (
+        "application/zip",
+        &["zip"],
+        &["zip"],
+        &[b"PK\x03\x04", b"PK\x05\x06"],
+    ),
+    ("application/x-tar", &["tar"], &["tar"], &[]),
+    ("application/wasm", &["wasm"], &["wasm"], &[b"\x00asm"]),
+    (
+        "application/vnd.apache.parquet",
+        &["parquet"],
+        &["parquet"],
+        &[b"PAR1"],
+    ),
     (
         "application/vnd.apache.arrow.file",
         &["arrow"],
+        &["arrow"],
         &[b"ARROW1"],
     ),
-    ("image/png", &["png"], &[b"\x89PNG\r\n\x1a\n"]),
-    ("image/jpeg", &["jpg", "jpeg"], &[b"\xff\xd8\xff"]),
-    ("image/gif", &["gif"], &[b"GIF87a", b"GIF89a"]),
-    ("image/webp", &["webp"], &[]),
-    ("application/octet-stream", &["bin"], &[]),
+    ("image/png", &["png"], &["png"], &[b"\x89PNG\r\n\x1a\n"]),
+    (
+        "image/jpeg",
+        &["jpeg"],
+        &["jpg", "jpeg"],
+        &[b"\xff\xd8\xff"],
+    ),
+    ("image/gif", &["gif"], &["gif"], &[b"GIF87a", b"GIF89a"]),
+    ("image/webp", &["webp"], &["webp"], &[]),
+    // Compression formats (see COMPRESSION_ESSENCES + the compression codecs).
+    ("application/gzip", &["gzip", "gz"], &["gz"], &[b"\x1f\x8b"]),
+    (
+        "application/zstd",
+        &["zstd", "zst"],
+        &["zst"],
+        &[b"\x28\xb5\x2f\xfd"],
+    ),
+    (
+        "application/x-xz",
+        &["xz", "lzma"],
+        &["xz"],
+        &[b"\xfd7zXZ\x00"],
+    ),
+    (
+        "application/x-lzma",
+        &["lzma-alone"],
+        &["lzma"],
+        &[b"\x5d\x00\x00"],
+    ),
+    (
+        "application/zlib",
+        &["zlib"],
+        &["zz"],
+        &[b"\x78\x9c", b"\x78\x01", b"\x78\xda"],
+    ),
+    (
+        "application/octet-stream",
+        &["octet-stream", "binary"],
+        &["bin"],
+        &[],
+    ),
 ];

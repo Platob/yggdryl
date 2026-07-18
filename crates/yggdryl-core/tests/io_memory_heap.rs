@@ -463,6 +463,23 @@ fn media_type_inference_headers_then_uri_then_octet_stream() {
 }
 
 #[test]
+fn infer_mime_type_reads_magic_without_seeking() {
+    // A PNG header: magic inference works even with no headers and no address, and a
+    // positioned head read must NOT move the cursor.
+    let mut png = Heap::from_slice(b"\x89PNG\r\n\x1a\nrest of the file...");
+    png.set_position(3);
+    assert_eq!(png.infer_mime_type().essence(), "image/png"); // from magic
+    assert_eq!(png.position(), 3, "infer must not seek the cursor");
+
+    // Recursive media inference of a non-compressed magic type is just that type.
+    assert_eq!(png.infer_media_type().essences(), vec!["image/png"]);
+
+    // No magic + no headers + no address extension -> the octet-stream fallback.
+    let plain = Heap::from_slice(b"just some text");
+    assert!(plain.infer_mime_type().is_octet_stream());
+}
+
+#[test]
 fn leaf_sources_carry_the_graph_surface() {
     // IOBase is the central access path: every source is a node of the IO graph. A heap
     // (and the wrapper views) are LEAVES — they stream no children and have no parent.

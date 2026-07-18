@@ -1,6 +1,7 @@
 //! [`IOBase`] — positioned (random-access) byte read/write, the base of the I/O trait family.
 
 use super::{IOCursor, IOSlice, IoError};
+use crate::compression::{codec_for_mime, compression_err, Compression};
 use crate::headers::Headers;
 use crate::io::{IOKind, IOMode};
 use crate::mediatype::MediaType;
@@ -359,6 +360,106 @@ pub trait IOBase: Sized {
         let inferred = self.uri().mime_type();
         self.headers_mut().set_mime_type(&inferred);
         inferred
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Magic inference — read the head with a positioned read, never moving the cursor.
+    // ---------------------------------------------------------------------------------
+
+    /// The **primary [`MimeType`]** inferred from this source's **magic bytes** — a positioned
+    /// read of the head (**never** moves the cursor), so it works mid-stream. Falls back to the
+    /// declared/address [`mime_type`](IOBase::mime_type) when no magic matches.
+    fn infer_mime_type(&self) -> MimeType {
+        let mut head = [0u8; 32];
+        let n = self.pread_byte_array(0, &mut head); // positioned — no cursor seek
+        MimeType::from_magic(&head[..n]).unwrap_or_else(|| self.mime_type())
+    }
+
+    /// The full **[`MediaType`]** inferred by **recursive magic** — the head's type, then the
+    /// type inside each compression layer it can peel (see
+    /// [`MediaType::infer_from_head`](crate::mediatype::MediaType::infer_from_head)). A gzipped
+    /// tar reads as `[application/gzip, application/x-tar]`. The head is read positioned (no
+    /// cursor seek); the address is the outermost fallback.
+    fn infer_media_type(&self) -> MediaType {
+        let want = (64 * 1024).min(self.byte_size() as usize).max(1);
+        let head = self.pread_vec(0, want);
+        MediaType::infer_from_head(&head, Some(self.mime_type()))
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Compression — run a codec over the source's bytes, zero-copy on the read side.
+    // ---------------------------------------------------------------------------------
+
+    /// This source's bytes as one **borrowed slice**, when it has a contiguous backing (a
+    /// [`Heap`](super::Heap), a mapped file) — the zero-copy read the compression helpers use
+    /// to hand the codec the bytes directly. `None` for a source with no contiguous view (an
+    /// ad-hoc `LocalIO` read), which then copies through [`pread_vec`](IOBase::pread_vec).
+    fn as_bytes(&self) -> Option<&[u8]> {
+        None
+    }
+
+    /// A boxed [`Compression`] codec for this source's media type, or `None` when the type is
+    /// not a (supported) compression — see
+    /// [`codec_for_mime`](crate::compression::codec_for_mime).
+    fn compression(&self) -> Option<Box<dyn Compression>> {
+        codec_for_mime(&self.mime_type())
+    }
+
+    /// This source's whole content **compressed** with `codec` — zero-copy on the read side
+    /// ([`as_bytes`](IOBase::as_bytes) when available, else one `pread_vec` copy).
+    fn compressed_with(&self, codec: &dyn Compression) -> Result<Vec<u8>, IoError> {
+        match self.as_bytes() {
+            Some(bytes) => codec.compress(bytes),
+            None => codec.compress(&self.pread_vec(0, self.byte_size() as usize)),
+        }
+    }
+
+    /// This source's whole content **decompressed** with `codec`, zero-copy on the read side.
+    fn decompressed_with(&self, codec: &dyn Compression) -> Result<Vec<u8>, IoError> {
+        match self.as_bytes() {
+            Some(bytes) => codec.decompress(bytes),
+            None => codec.decompress(&self.pread_vec(0, self.byte_size() as usize)),
+        }
+    }
+
+    /// Compresses this source's bytes with `codec` **into** `dst` (written from offset 0),
+    /// returning the compressed length. `dst` grows to fit.
+    fn compress_into<D: IOBase>(
+        &self,
+        codec: &dyn Compression,
+        dst: &mut D,
+    ) -> Result<u64, IoError> {
+        let out = self.compressed_with(codec)?;
+        dst.pwrite_all(0, &out)?;
+        Ok(out.len() as u64)
+    }
+
+    /// Decompresses this source's bytes with `codec` **into** `dst` (from offset 0), returning
+    /// the decompressed length.
+    fn decompress_into<D: IOBase>(
+        &self,
+        codec: &dyn Compression,
+        dst: &mut D,
+    ) -> Result<u64, IoError> {
+        let out = self.decompressed_with(codec)?;
+        dst.pwrite_all(0, &out)?;
+        Ok(out.len() as u64)
+    }
+
+    /// Decompresses this source using the codec inferred from its **media type** (the
+    /// "compression optional from the media type" path), returning the plain bytes. Errors with
+    /// a guided [`IoError::Compression`] when the source is not a supported compression (or the
+    /// `compression` feature is off).
+    fn decompress(&self) -> Result<Vec<u8>, IoError> {
+        match self.compression() {
+            Some(codec) => self.decompressed_with(&*codec),
+            None => Err(compression_err(
+                self.mime_type().essence(),
+                "decompress",
+                "the source's media type is not a supported compression (enable the \
+                 `compression` feature for gzip/zstd/xz/zlib)",
+            )),
+        }
     }
 
     // ---------------------------------------------------------------------------------

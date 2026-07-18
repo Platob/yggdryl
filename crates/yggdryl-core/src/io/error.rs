@@ -102,6 +102,17 @@ pub enum IoError {
         /// The accepted tokens, listed.
         expected: &'static str,
     },
+    /// A [`Compression`](crate::compression::Compression) codec operation failed, or no codec is
+    /// available (the media type is not a compression, or the `compression` cargo feature is
+    /// off). The message names the codec, the operation, and the fix.
+    Compression {
+        /// The codec's mime essence (`"application/gzip"`), or `"?"` when none resolved.
+        codec: String,
+        /// The operation (`"compress"`, `"decompress"`, `"resolve"`).
+        op: &'static str,
+        /// The underlying detail (the codec error, or why no codec was available).
+        detail: String,
+    },
 }
 
 impl fmt::Display for IoError {
@@ -157,6 +168,10 @@ impl fmt::Display for IoError {
                 input,
                 expected,
             } => write!(f, "unknown {kind} {input:?}: expected one of {expected}"),
+            Self::Compression { codec, op, detail } => write!(
+                f,
+                "cannot {op} with codec {codec:?}: {detail}"
+            ),
         }
     }
 }

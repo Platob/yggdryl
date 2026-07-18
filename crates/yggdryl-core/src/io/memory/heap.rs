@@ -353,6 +353,11 @@ impl IOBase for Heap {
         IOKind::Heap
     }
 
+    #[inline]
+    fn as_bytes(&self) -> Option<&[u8]> {
+        Some(&self.data) // contiguous owned buffer — zero-copy for the compression helpers
+    }
+
     // `exists()` is not overridden: the default is `kind().exists()`, and `Heap` (never
     // `Missing`) always exists — a live in-memory buffer that is neither file nor directory.
 

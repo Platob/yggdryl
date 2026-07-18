@@ -18,6 +18,10 @@ pub mod mimetype;
 /// An ordered list of [`mimetype::MimeType`]s — the layered type description of a resource.
 pub mod mediatype;
 
+/// The compression codec contract ([`compression::Compression`]) — byte + stream compress /
+/// decompress; the concrete Gzip/Zlib/Zstd/Lzma codecs are behind the `compression` feature.
+pub mod compression;
+
 /// The URI / URL family (RFC 3986) that addresses io sources, parsed from scratch.
 pub mod uri;
 
